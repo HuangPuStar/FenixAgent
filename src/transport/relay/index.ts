@@ -4,6 +4,7 @@ export { RelayConnectionManager, sendToRelayWs } from "./connection-manager";
 export {
   closeAllRelayConnections,
   closeInstanceRelay,
+  closeRelayConnectionsForIdleReclaim,
   findRunningInstanceByEnvironment,
   handleMachineDisconnected,
   handleRelayClose,

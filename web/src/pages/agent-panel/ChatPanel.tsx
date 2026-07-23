@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { type ACPClient, DisconnectRequestedError } from "../../acp/client";
 import { createRelayClient } from "../../acp/relay-client";
 import type { ConnectionState } from "../../acp/types";
+import { useChatPageVisible } from "../../hooks/useSessions";
 import { NS } from "../../i18n";
 
 interface ChatPanelProps {
@@ -37,6 +38,8 @@ export function ChatPanel({
   const clientRef = useRef<ACPClient | null>(null);
   const [reconnectKey, setReconnectKey] = useState(0);
   const lastReconnectRef = useRef(0);
+  const pageVisible = useChatPageVisible();
+  const prevPageVisibleRef = useRef(pageVisible);
 
   // 监听实例重启事件，强制重连（带最小间隔防止风暴）
   useEffect(() => {
@@ -54,6 +57,30 @@ export function ChatPanel({
     window.addEventListener("agent:reconnect", handler);
     return () => window.removeEventListener("agent:reconnect", handler);
   }, [agentId]);
+
+  // 面板从隐藏切回可见时，如果当前处于可恢复的断开态，则自动补连一次。
+  // machine_unavailable 仍保留手动重连，避免在远端机器离线时反复空转。
+  useEffect(() => {
+    const becameVisible = !prevPageVisibleRef.current && pageVisible;
+    prevPageVisibleRef.current = pageVisible;
+    if (!becameVisible || !agentId) {
+      return;
+    }
+
+    const shouldReconnect =
+      connectionState === "disconnected" || (connectionState === "error" && error !== "machine_unavailable");
+    if (!shouldReconnect) {
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastReconnectRef.current;
+    if (elapsed < 2000) return;
+    lastReconnectRef.current = now;
+    setError(null);
+    setConnectionState("connecting");
+    setReconnectKey((k) => k + 1);
+  }, [agentId, connectionState, error, pageVisible]);
 
   // 使用 useLayoutEffect 在 paint 前同步重置状态，避免切换 agent / 重连时闪烁过时 UI
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey 变更时需强制重建连接
@@ -122,8 +149,13 @@ export function ChatPanel({
   // 此时不能进入 "已连接" 或 "连接中"，必须显示错误页面 + 重连按钮
   if (connectionState === "error") {
     const isMachineUnavailable = error === "machine_unavailable";
+    const isIdleReclaimed = error === "instance_idle_reclaimed";
     const title = isMachineUnavailable ? t("machineUnavailable") : t("agentDisconnected");
-    const desc = isMachineUnavailable ? t("machineUnavailableDesc") : error || t("agentOfflineDesc");
+    const desc = isMachineUnavailable
+      ? t("machineUnavailableDesc")
+      : isIdleReclaimed
+        ? t("agentOfflineDesc")
+        : error || t("agentOfflineDesc");
     return (
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>

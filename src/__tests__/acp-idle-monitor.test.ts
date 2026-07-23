@@ -62,6 +62,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-1",
       instanceNumber: 1,
       organizationId: "org-1",
+      spawnSource: "interactive",
       lastActivityAt: 1000,
       relayCount: 0,
       lastRelayDetachedAt: 1000,
@@ -71,6 +72,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-2",
       instanceNumber: 1,
       organizationId: "org-1",
+      spawnSource: "interactive",
       lastActivityAt: 2000,
       relayCount: 1,
       lastRelayDetachedAt: null,
@@ -82,7 +84,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: busyInstance.id, status: "running" },
           ],
-        }) as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === busyInstance.id) return busyInstance;
@@ -100,6 +102,58 @@ describe("acp idle monitor", () => {
     expect(snapshots[1]?.activity_kill_eligible).toBe(false);
   });
 
+  // 全局统计应包含没有 supplement 的活跃 runtime 实例；按组织过滤时则应跳过。
+  test("listInstanceActivitySnapshots includes runtime-only instances only in global view", () => {
+    const trackedInstance = makeInstance("inst_tracked", "env-1");
+    globalInstanceRegistry.register(trackedInstance.id, {
+      userId: "user-1",
+      environmentId: "env-1",
+      instanceNumber: 1,
+      organizationId: "org-1",
+      spawnSource: "interactive",
+      lastActivityAt: 1000,
+      relayCount: 0,
+      lastRelayDetachedAt: 1000,
+    });
+
+    setAcpIdleMonitorDeps({
+      getCoreRuntime: () =>
+        ({
+          listInstances: () => [
+            {
+              instanceId: trackedInstance.id,
+              status: "running",
+              createdAt: new Date("2026-06-24T00:00:00Z"),
+              errorMessage: null,
+              pluginMetadata: {},
+            },
+            {
+              instanceId: "inst_runtime_only",
+              status: "running",
+              createdAt: new Date("2026-06-24T00:00:00Z"),
+              errorMessage: null,
+              pluginMetadata: { port: 9527 },
+            },
+          ],
+        }) as unknown as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
+      getInstance: (instanceId: string) => {
+        if (instanceId === trackedInstance.id) return trackedInstance;
+        return;
+      },
+    });
+
+    const globalSnapshots = listInstanceActivitySnapshots(1000 + 1200 * 1000);
+    expect(globalSnapshots.map((item) => item.id)).toContain("inst_runtime_only");
+    expect(globalSnapshots.find((item) => item.id === "inst_runtime_only")).toMatchObject({
+      environment_id: null,
+      instance_number: 0,
+      port: 9527,
+    });
+
+    const orgSnapshots = listInstanceActivitySnapshots(1000 + 1200 * 1000, "org-1");
+    expect(orgSnapshots.map((item) => item.id)).toEqual(["inst_tracked"]);
+  });
+
   // sweep 只会停止满足空闲条件的实例
   test("runAcpIdleMonitorSweep stops only eligible idle instances", async () => {
     const stopCalls: Array<{ instanceId: string; organizationId: string }> = [];
@@ -110,6 +164,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-1",
       instanceNumber: 1,
       organizationId: "org-1",
+      spawnSource: "interactive",
       lastActivityAt: 1000,
       relayCount: 0,
       lastRelayDetachedAt: 1000,
@@ -119,6 +174,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-2",
       instanceNumber: 1,
       organizationId: "org-1",
+      spawnSource: "interactive",
       lastActivityAt: 1000,
       relayCount: 1,
       lastRelayDetachedAt: null,
@@ -130,7 +186,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: activeInstance.id, status: "running" },
           ],
-        }) as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === activeInstance.id) return activeInstance;
@@ -155,6 +211,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-1",
       instanceNumber: 1,
       organizationId: "org-1",
+      spawnSource: "interactive",
       lastActivityAt: 1000,
       relayCount: 1,
       lastRelayDetachedAt: null,
@@ -163,7 +220,7 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [{ instanceId: staleInstance.id, status: "running" }],
-        }) as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === staleInstance.id) return staleInstance;
         return;

@@ -62,6 +62,8 @@ export interface RelayConnectionEntry {
   sessionStarted?: boolean;
   /** machine 断连后标记为待重连，保持 relay WS 连接不关 */
   pendingReconnect?: boolean;
+  /** 主动关闭 relay 的原因，用于抑制后续兜底 close 行为。 */
+  closingReason?: "idle_reclaim";
   /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
   machineWsId?: string;
   /** 本地 agent 的 workspace 路径，用于 JSON-RPC session cwd 注入 */
@@ -92,12 +94,17 @@ export interface WsSessionCleanupEntry {
 // Extracted from: src/services/instance.ts
 // ────────────────────────────────────────────
 
+/** 实例启动来源，用于并发分类与后续审计。 */
+export type InstanceSpawnSource = "interactive" | "scheduled" | "system";
+
 /** RCS business fields not tracked by core RuntimeInstanceSnapshot */
 export interface InstanceSupplement {
   userId: string;
   environmentId: string;
   instanceNumber: number;
   organizationId: string;
+  /** 实例创建来源，用于并发分类与审计。 */
+  spawnSource: InstanceSpawnSource;
   /** 最近一次非保活 ACP 业务消息时间 */
   lastActivityAt: number;
   /** 当前绑定到该实例的前端 relay 连接数 */

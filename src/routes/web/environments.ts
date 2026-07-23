@@ -102,7 +102,7 @@ app.post(
     }
 
     if (b.autoStart && record.userId) {
-      spawnInstanceFromEnvironment(record.userId, record.id)
+      spawnInstanceFromEnvironment(record.userId, record.id, undefined, { source: "interactive" })
         .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
         .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
     }

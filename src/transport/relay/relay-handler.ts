@@ -39,6 +39,8 @@ export async function connectAgentRelay(instanceId: string, sessionId: string): 
 const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
+const RELAY_NO_RECONNECT_CLOSE_CODE = 1000;
+const IDLE_RECLAIM_CLOSE_REASON = "instance_idle_reclaimed";
 
 /** relay 设置期间（openLocalRelay 尚未完成）缓存前端消息 */
 const pendingRelayMessages = new Map<string, Array<Record<string, unknown>>>();
@@ -103,7 +105,7 @@ async function openLocalRelay(
   // 1. 确保实例运行
   let instanceId: string;
   try {
-    const result = await ensureRunning(userId, agentId);
+    const result = await ensureRunning(userId, agentId, "interactive");
     instanceId = result.instance.id;
     log(`Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
   } catch (err) {
@@ -200,6 +202,11 @@ async function openLocalRelay(
       }
       if (msgType === "relay_closed") {
         log("Relay ← agent relay_closed", { relayWsId, agentId, instanceId });
+        const currentEntry = manager.get(relayWsId);
+        if (currentEntry?.closingReason === "idle_reclaim") {
+          log(`[ACP-Relay] Ignoring relay_closed fallback for idle reclaim relayWsId=${relayWsId}`);
+          return;
+        }
         sendToRelayWs(ws, {
           type: "error",
           payload: { message: "Agent connection lost" },
@@ -387,6 +394,43 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
   }
 
   manager.remove(relayWsId);
+}
+
+/** 因实例被回收而主动关闭关联的前端 relay，阻止前端自动重连。 */
+export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
+  for (const [relayWsId, entry] of manager.entries()) {
+    if (entry.instanceId !== instanceId) continue;
+
+    log(`[ACP-Relay] Closing relay ${relayWsId} for idle reclaim instanceId=${instanceId} agentId=${entry.agentId}`);
+
+    entry.closingReason = "idle_reclaim";
+    entry.relayUnsub?.();
+    entry.relayUnsub = null;
+
+    try {
+      entry.relayHandle?.close(RELAY_NO_RECONNECT_CLOSE_CODE, IDLE_RECLAIM_CLOSE_REASON);
+    } catch {
+      /* ignore */
+    }
+
+    if (entry.ws.readyState === 1) {
+      sendToRelayWs(entry.ws, {
+        type: "error",
+        payload: { code: IDLE_RECLAIM_CLOSE_REASON, message: IDLE_RECLAIM_CLOSE_REASON },
+      });
+      try {
+        entry.ws.close(RELAY_NO_RECONNECT_CLOSE_CODE, IDLE_RECLAIM_CLOSE_REASON);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    clearInterval(entry.keepalive!);
+    if (entry.instanceId) {
+      markInstanceRelayDetached(entry.instanceId);
+    }
+    manager.remove(relayWsId);
+  }
 }
 
 // ────────────────────────────────────────────

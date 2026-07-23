@@ -2,6 +2,19 @@ import { log, error as logError } from "@fenix/logger";
 import { openAgentSession, type PromptTurn } from "../agent-chat-service";
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 
+const deps = {
+  openAgentSession,
+};
+
+/** 测试用：覆盖 executor 依赖。 */
+export function setAgentExecutorDeps(overrides: Partial<typeof deps> | null): void {
+  if (overrides) {
+    Object.assign(deps, overrides);
+    return;
+  }
+  deps.openAgentSession = openAgentSession;
+}
+
 interface AgentDefinition {
   prompt: string;
 }
@@ -55,10 +68,11 @@ export const agentExecutor: TaskExecutor = {
 
     let turn: PromptTurn | undefined;
     try {
-      const result = await openAgentSession({
+      const result = await deps.openAgentSession({
         userId: task.userId,
         agentConfigId: task.agentId,
         organizationId: task.organizationId,
+        startSource: "scheduled",
       });
       turn = result.turn;
 

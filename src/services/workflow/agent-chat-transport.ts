@@ -268,7 +268,7 @@ class AgentChatTransport implements Transport {
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
 
     // 2. 确保实例运行
-    const { instance, status } = await ensureRunning("system", envRow.id);
+    const { instance, status } = await ensureRunning("system", envRow.id, "system");
     if (status === "spawned") {
       options?.spawnedEnvIds?.add(envRow.id);
     }

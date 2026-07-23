@@ -7,7 +7,8 @@ import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import { findMachineConnectionById } from "../transport/acp-ws-handler";
-import type { InstanceSupplement } from "../types/store";
+import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
+import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
@@ -47,6 +48,7 @@ export interface InstanceInfo {
 }
 
 export interface InstanceActivityInfo extends InstanceInfo {
+  spawn_source: InstanceSpawnSource | null;
   last_activity_at: number;
   relay_count: number;
   last_relay_detached_at: number | null;
@@ -61,6 +63,11 @@ export interface InstanceActivityInfo extends InstanceInfo {
 export interface EnsureRunningResult {
   instance: SpawnedInstance;
   status: "reused" | "spawned";
+}
+
+export interface SpawnInstanceOptions {
+  extraEnv?: Record<string, string>;
+  source: InstanceSpawnSource;
 }
 
 // ────────────────────────────────────────────
@@ -141,6 +148,7 @@ export function toInstanceActivityInfo(
   const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
   return {
     ...toInstanceInfo(instance),
+    spawn_source: supplement.spawnSource,
     last_activity_at: Math.floor(supplement.lastActivityAt / 1000),
     relay_count: supplement.relayCount,
     last_relay_detached_at:
@@ -185,8 +193,9 @@ export async function spawnInstanceFromEnvironment(
   userId: string,
   environmentId: string,
   prefetchedEnv?: EnvironmentRecord,
-  extraEnv?: Record<string, string>,
+  options: SpawnInstanceOptions = { source: "interactive" },
 ): Promise<SpawnedInstance> {
+  assertAgentConcurrencyAvailable(options.source);
   const env = prefetchedEnv ?? (await environmentRepo.getById(environmentId));
   if (!env) throw new NotFoundError("Environment not found");
   log(
@@ -202,7 +211,7 @@ export async function spawnInstanceFromEnvironment(
     USER_META_USER_ID: env.userId ?? userId,
     USER_META_ORG_ID: env.organizationId ?? "",
   };
-  const mergedExtraEnv = { ...platformEnv, ...extraEnv };
+  const mergedExtraEnv = { ...platformEnv, ...options.extraEnv };
 
   // Phase 2: 有 agentConfig 时走完整 builder；没有时降级为最小可运行配置。
   let agentMachineId: string | null = null;
@@ -279,6 +288,7 @@ export async function spawnInstanceFromEnvironment(
     environmentId,
     instanceNumber,
     organizationId: env.organizationId ?? userId,
+    spawnSource: options.source,
     lastActivityAt: Date.now(),
     relayCount: 0,
     lastRelayDetachedAt: Date.now(),
@@ -403,7 +413,11 @@ export async function stopAllInstances(): Promise<void> {
   registry.clear();
 }
 
-export async function ensureRunning(userId: string, environmentId: string): Promise<EnsureRunningResult> {
+export async function ensureRunning(
+  userId: string,
+  environmentId: string,
+  source: InstanceSpawnSource = "interactive",
+): Promise<EnsureRunningResult> {
   const runningInstances = getRunningInstancesByEnvironment(environmentId);
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
@@ -423,7 +437,7 @@ export async function ensureRunning(userId: string, environmentId: string): Prom
     throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
   }
 
-  const instance = await spawnInstanceFromEnvironment(userId, environmentId, env);
+  const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
   return { instance, status: "spawned" };
 }
 

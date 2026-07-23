@@ -380,7 +380,10 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   const existing = await findMetaEnvironment(ctx);
   if (existing) {
     try {
-      const inst = await spawnInstanceFromEnvironment(ctx.userId, existing.id, undefined, extraEnv);
+      const inst = await spawnInstanceFromEnvironment(ctx.userId, existing.id, undefined, {
+        extraEnv,
+        source: "system",
+      });
       return {
         environmentId: existing.id,
         instanceId: inst.id,
@@ -405,7 +408,10 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   });
 
   try {
-    const inst = await spawnInstanceFromEnvironment(ctx.userId, env.id, undefined, extraEnv);
+    const inst = await spawnInstanceFromEnvironment(ctx.userId, env.id, undefined, {
+      extraEnv,
+      source: "system",
+    });
     return {
       environmentId: env.id,
       instanceId: inst.id,

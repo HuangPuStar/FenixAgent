@@ -4,6 +4,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   InstanceActivityListResponseSchema,
+  InstanceActivityQuerySchema,
   SpawnInstanceFromEnvironmentRequestSchema,
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "../../schemas/instance.schema";
@@ -13,6 +14,7 @@ import { getOwnedEnvironment } from "../../services/environment";
 import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../../services/instance";
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
+  "instance-activity-query": InstanceActivityQuerySchema,
   "instance-activity-list-response": InstanceActivityListResponseSchema,
   "spawn-instance-request": SpawnInstanceFromEnvironmentRequestSchema,
   "spawn-instance-response": SpawnInstanceFromEnvironmentResponseSchema,
@@ -22,18 +24,22 @@ const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
 app.get(
   "/instances/activity",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store }: any) => {
-    const authCtx = store.authContext!;
-    return { success: true as const, data: listInstanceActivitySnapshots(Date.now(), authCtx.organizationId) };
+  async ({ store, query }: any) => {
+    const organizationId = query.all === true ? undefined : (store.authContext?.organizationId ?? store.user?.id);
+    return {
+      success: true as const,
+      data: listInstanceActivitySnapshots(Date.now(), organizationId, query.showError === true),
+    };
   },
   {
     sessionAuth: true,
+    query: "instance-activity-query",
     response: InstanceActivityListResponseSchema,
     detail: {
       tags: ["Instances"],
       summary: "查看 ACP 实例活跃度",
       description:
-        "返回当前组织下活跃实例的 ACP 连接观测数据，包括最近业务活跃时间、relay 数量、空闲时长，以及是否满足空闲回收或无 ACP 活动硬超时回收条件。",
+        "默认返回当前组织下活跃实例的 ACP 连接观测数据；当 query `all=true` 时忽略组织过滤，当 query `showError=true` 时额外返回 error 状态实例。",
     },
   },
 );
@@ -56,7 +62,7 @@ app.post(
       throw err;
     }
 
-    const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId);
+    const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId, undefined, { source: "interactive" });
     return { success: true as const, data: toInstanceInfo(instance) };
   },
   {
