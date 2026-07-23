@@ -1,5 +1,5 @@
 import { log, error as logError } from "@fenix/logger";
-import { openAgentSession } from "../agent-chat-service";
+import { openAgentSession, type PromptTurn } from "../agent-chat-service";
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 
 interface AgentDefinition {
@@ -50,17 +50,19 @@ export const agentExecutor: TaskExecutor = {
       return { status: "failed", duration: Date.now() - startTime, error: "agentId is null" };
     }
 
-    const result = await openAgentSession({
-      userId: task.userId,
-      agentConfigId: task.agentId,
-      organizationId: task.organizationId,
-    });
-
     const timeoutMs = (task.timeoutSeconds ?? 300) * 1000;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+    let turn: PromptTurn | undefined;
     try {
-      result.turn.prompt([{ type: "text", text: def.prompt }]);
+      const result = await openAgentSession({
+        userId: task.userId,
+        agentConfigId: task.agentId,
+        organizationId: task.organizationId,
+      });
+      turn = result.turn;
+
+      turn.prompt([{ type: "text", text: def.prompt }]);
 
       const events: Array<{ type: string; payload?: unknown }> = [];
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -69,7 +71,7 @@ export const agentExecutor: TaskExecutor = {
 
       await Promise.race([
         (async () => {
-          for await (const ev of result.turn.events()) {
+          for await (const ev of turn.events()) {
             events.push(ev as unknown as { type: string; payload?: unknown });
             const raw = ev as unknown as Record<string, unknown>;
             const rpc = raw.jsonrpc === "2.0" ? raw : (ev.payload as Record<string, unknown> | undefined);
@@ -99,9 +101,11 @@ export const agentExecutor: TaskExecutor = {
       };
     } finally {
       clearTimeout(timeoutId);
-      await result.turn.dispose().catch((err) => {
-        logError(`[agent-executor] Failed to dispose turn for task ${task.id}:`, err);
-      });
+      if (turn) {
+        await turn.dispose().catch((err) => {
+          logError(`[agent-executor] Failed to dispose turn for task ${task.id}:`, err);
+        });
+      }
     }
   },
 };
