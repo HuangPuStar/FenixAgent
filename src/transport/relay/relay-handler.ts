@@ -103,7 +103,7 @@ async function openLocalRelay(
   // 1. 确保实例运行
   let instanceId: string;
   try {
-    const result = await ensureRunning(userId, agentId);
+    const result = await ensureRunning(userId, agentId, "interactive");
     instanceId = result.instance.id;
     log(`Local instance ${result.status}: instanceId=${instanceId} envId=${agentId}`);
   } catch (err) {

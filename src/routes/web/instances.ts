@@ -23,8 +23,8 @@ app.get(
   "/instances/activity",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store }: any) => {
-    const authCtx = store.authContext!;
-    return { success: true as const, data: listInstanceActivitySnapshots(Date.now(), authCtx.organizationId) };
+    const organizationId = store.authContext?.organizationId ?? store.user?.id;
+    return { success: true as const, data: listInstanceActivitySnapshots(Date.now(), organizationId) };
   },
   {
     sessionAuth: true,
@@ -56,7 +56,7 @@ app.post(
       throw err;
     }
 
-    const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId);
+    const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId, undefined, { source: "interactive" });
     return { success: true as const, data: toInstanceInfo(instance) };
   },
   {

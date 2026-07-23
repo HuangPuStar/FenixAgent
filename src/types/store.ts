@@ -92,12 +92,17 @@ export interface WsSessionCleanupEntry {
 // Extracted from: src/services/instance.ts
 // ────────────────────────────────────────────
 
+/** 实例启动来源，用于并发分类与后续审计。 */
+export type InstanceSpawnSource = "interactive" | "scheduled" | "system";
+
 /** RCS business fields not tracked by core RuntimeInstanceSnapshot */
 export interface InstanceSupplement {
   userId: string;
   environmentId: string;
   instanceNumber: number;
   organizationId: string;
+  /** 实例创建来源，用于并发分类与审计。 */
+  spawnSource: InstanceSpawnSource;
   /** 最近一次非保活 ACP 业务消息时间 */
   lastActivityAt: number;
   /** 当前绑定到该实例的前端 relay 连接数 */

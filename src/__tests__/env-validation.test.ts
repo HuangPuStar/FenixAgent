@@ -102,4 +102,21 @@ describe("env validation", () => {
     process.env.RCS_DEFAULT_ENGINE_TYPE = "invalid-engine";
     expect(() => validateEnv()).toThrow(/RCS_DEFAULT_ENGINE_TYPE/);
   });
+
+  // RCS_AGENT_MAX_CONCURRENCY 合法值时应通过校验
+  test("RCS_AGENT_MAX_CONCURRENCY 合法值时通过校验", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_AGENT_MAX_CONCURRENCY = "3";
+    const env = validateEnv();
+    expect(env.RCS_AGENT_MAX_CONCURRENCY).toBe(3);
+  });
+
+  // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
+  test("RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY = "0";
+    expect(() => validateEnv()).toThrow(/RCS_SCHEDULED_AGENT_MAX_CONCURRENCY/);
+  });
 });

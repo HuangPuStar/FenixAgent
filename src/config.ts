@@ -29,6 +29,10 @@ function buildConfig(env: Env) {
     acpIdleSweepIntervalSeconds: env.RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS,
     /** Hard timeout in seconds for no ACP business activity, even if relay is still attached. */
     acpActivityTimeoutSeconds: env.RCS_ACP_ACTIVITY_TIMEOUT_SECONDS,
+    /** 全部活跃 Agent 实例的并发上限。 */
+    agentMaxConcurrency: env.RCS_AGENT_MAX_CONCURRENCY,
+    /** 定时任务触发的活跃 Agent 实例并发上限。 */
+    scheduledAgentMaxConcurrency: env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY,
     /** acpx-g workflow engine URL for reverse proxy. */
     acpxGUrl: env.ACPX_G_URL,
     /** RagFlow API base URL (e.g. http://localhost:9380). */

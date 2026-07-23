@@ -119,7 +119,7 @@ export async function connectAgentInstance(
   const instance =
     !options.preferNewInstance && runningInstances[0]
       ? runningInstances[0]
-      : await deps.spawnInstanceFromEnvironment(ctx.userId, environment.id, environment);
+      : await deps.spawnInstanceFromEnvironment(ctx.userId, environment.id, environment, { source: "interactive" });
 
   return {
     agentConfigId: agent.id,

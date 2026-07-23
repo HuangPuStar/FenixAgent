@@ -7,6 +7,18 @@ import { openAgentSession } from "../../services/agent-chat-service";
 import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "../../services/openai-response-mapper";
 
 const AGENT_TIMEOUT_MS = 300_000; // 5 分钟
+const deps = {
+  openAgentSession,
+};
+
+/** 测试用：覆盖 route 内部依赖，避免 mock.module。 */
+export function setOpenAIChatRouteDeps(overrides: Partial<typeof deps> | null): void {
+  if (overrides) {
+    Object.assign(deps, overrides);
+    return;
+  }
+  deps.openAgentSession = openAgentSession;
+}
 
 const OpenAIChatParamsSchema = z
   .object({
@@ -45,11 +57,12 @@ app.post(
     let turn: Awaited<ReturnType<typeof openAgentSession>>["turn"] | null = null;
     let instanceId: string | null = null;
     try {
-      const result = await openAgentSession({
+      const result = await deps.openAgentSession({
         userId: authCtx.userId,
         agentConfigId,
         organizationId: authCtx.organizationId,
         sessionId,
+        startSource: "interactive",
       });
       turn = result.turn;
       instanceId = result.instanceId;

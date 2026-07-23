@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { environment } from "../db/schema";
 import { connectAgentRelay } from "../transport/relay/relay-handler";
+import type { InstanceSpawnSource } from "../types/store";
 import { createWebEnvironment } from "./environment-web";
 import { spawnInstanceFromEnvironment, stopInstance } from "./instance";
 
@@ -243,6 +244,7 @@ export interface OpenAgentSessionInput {
   organizationId: string;
   /** 可选：恢复已有会话时传入 ACP session ID */
   sessionId?: string;
+  startSource: InstanceSpawnSource;
 }
 
 export interface OpenAgentSessionResult {
@@ -300,7 +302,9 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
   }
 
   // 2. 基于解析出的 environmentId 启动实例
-  const instance = await spawnInstanceFromEnvironment(input.userId, environmentId);
+  const instance = await spawnInstanceFromEnvironment(input.userId, environmentId, undefined, {
+    source: input.startSource,
+  });
   log(`[agent-chat] Instance spawned: instanceId=${instance.id}`);
 
   // 3. 连接 relay
