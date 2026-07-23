@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ACPClient } from "../acp/client";
 import type { AgentSessionInfo } from "../acp/types";
 
@@ -16,15 +16,32 @@ export interface SessionsState {
 const SessionsContext = createContext<SessionsState | null>(null);
 
 /**
+ * ChatPageVisibleContext — 由 ChatArea 提供，标识当前聊天页面是否对用户可见。
+ * SessionsProvider 消费此 context 来控制 session/list 轮询：
+ * 页面不可见（用户导航到非 chat 页面）时暂停轮询，切回后自动恢复。
+ * 默认 true，确保在非 ChatArea 场景（如 MetaAgentPanel）下轮询正常工作。
+ */
+export const ChatPageVisibleContext = createContext<boolean>(true);
+
+/** useChatPageVisible — 读取当前聊天页面是否对用户可见。 */
+export function useChatPageVisible(): boolean {
+  return useContext(ChatPageVisibleContext);
+}
+
+const POLL_INTERVAL = 30_000;
+
+/**
  * SessionsProvider — 在 ACPMain 层级挂载，统一管理会话列表的请求/轮询/错误。
  *
- * 使用 ahooks useRequest + pollingInterval 替代各自组件的 setInterval。
- * capabilities 到达后通过 ready 参数自动触发首次请求，之后每 30s 轮询。
+ * capabilities 到达后通过 ready 参数自动触发首次请求。轮询由 useEffect 手动管理
+ * setInterval/clearInterval，而非依赖 ahooks 的 pollingInterval 选项——
+ * 这样可以精确控制何时启动/停止定时器，避免 ahooks 对动态 pollingInterval 处理不一致的问题。
  *
  * 关键设计：
  * - isReady 是 useState（响应式），订阅 capabilitiesChange 事件更新，
  *   而非一次性读取 client.supportsSessionList（后者不会触发 re-render）
- * - 不用 refreshDeps 额外触发——ready 由 false→true 时 useRequest 自动执行
+ * - 轮询定时器受 isReady && pageVisible 双重控制：任一变 false 即 clearInterval
+ * - 切回可见时立即 refresh() 拉取最新数据，不等 30s
  * - mutate 供消费者做乐观更新，避免 rename/delete 后 UI 闪烁
  */
 export function SessionsProvider({ client, children }: { client: ACPClient; children: React.ReactNode }) {
@@ -39,6 +56,9 @@ export function SessionsProvider({ client, children }: { client: ACPClient; chil
     };
   }, [client]);
 
+  // 聊天页面可见性：切到非 chat 页面时暂停轮询，切回后自动恢复
+  const pageVisible = useChatPageVisible();
+
   const {
     data: sessionsRaw,
     loading,
@@ -51,14 +71,29 @@ export function SessionsProvider({ client, children }: { client: ACPClient; chil
       return Array.isArray(response?.sessions) ? (response.sessions as AgentSessionInfo[]) : [];
     },
     {
-      pollingInterval: 30_000,
       ready: isReady,
-      // 不用 refreshDeps — ready 由 false→true 时 useRequest 自动触发首次请求
       onError: (err) => {
         console.warn("[useSessions] Failed to load sessions:", err);
       },
     },
   );
+
+  // 缓存 refresh 引用，避免 effect 因 refresh 变化而反复重建定时器
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  const fetchSessions = useCallback(() => {
+    refreshRef.current();
+  }, []);
+
+  // 手动管理轮询：isReady && pageVisible 时启动，否则清除
+  useEffect(() => {
+    if (!isReady || !pageVisible) return;
+
+    fetchSessions();
+    const timer = setInterval(fetchSessions, POLL_INTERVAL);
+    return () => clearInterval(timer);
+  }, [isReady, pageVisible, fetchSessions]);
 
   const sessions = sessionsRaw ?? [];
 
