@@ -2,6 +2,7 @@ import { Clock, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
+import { useSessions } from "../src/hooks/useSessions";
 import { cn } from "../src/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -89,47 +90,26 @@ interface GroupedSessions {
   sessions: AgentSessionInfo[];
 }
 
-export function ThreadHistory({ client, cwd, onSelectSession }: ThreadHistoryProps) {
-  const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
+export function ThreadHistory({ client, cwd: _cwd, onSelectSession }: ThreadHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  // Start with isLoading=true to prevent flash of "no threads" message
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Track which session is currently being loaded to show loading state and prevent double-clicks
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
   // Check if session history is supported
   const supportsHistory = client.supportsSessionHistory;
-
-  const loadSessions = useCallback(async () => {
-    if (!client.supportsSessionList) {
-      setError("Session list not supported by this agent");
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await client.listSessions(cwd ? { cwd } : undefined);
-      setSessions(Array.isArray(response?.sessions) ? response.sessions : []);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [client, cwd]);
+  const { sessions, loading: isLoading, error: hookError, refresh } = useSessions();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (supportsHistory) {
-      loadSessions();
+    if (!supportsHistory) {
+      setError("Session history is not supported by this agent.");
+    } else if (hookError) {
+      setError(hookError.message);
     } else {
-      // Not supported, clear loading state
-      setIsLoading(false);
+      setError(null);
     }
-  }, [supportsHistory, loadSessions]);
+  }, [supportsHistory, hookError]);
 
   // Filter and group sessions
   // Reference: Zed's add_list_separators and filter_search_results
@@ -203,7 +183,7 @@ export function ThreadHistory({ client, cwd, onSelectSession }: ThreadHistoryPro
           onChange={(e) => setSearchQuery(e.target.value)}
           className="h-8 border-0 focus-visible:ring-0 shadow-none"
         />
-        <Button variant="ghost" size="sm" onClick={loadSessions} disabled={isLoading} className="shrink-0">
+        <Button variant="ghost" size="sm" onClick={refresh} disabled={isLoading} className="shrink-0">
           <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
         </Button>
       </div>

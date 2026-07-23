@@ -12,14 +12,20 @@ services:
         container_name: rcs-sandbox-peri
         restart: unless-stopped
         environment:
-            RCS_URL: ws://host.docker.internal:3000
-            # client 端的 secret, 用于鉴权
+            TZ: Asia/Shanghai
+            RCS_URL: ws://rcs:3000
             RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
-            # 用于远程注册机器的 id
-            RCS_TENANT_ID: sbFAPs2nyyL0ZNxTE8CSqXUu6AIPULfL
-            RCS_MACHINE_NAME: sandbox-peri-01
+            RCS_MACHINE_ID: mach_d72e997e_8774_484b_b1f6_e2ccd241d60c
+            RCS_MACHINE_NAME: basebox
+            RCS_LABELS: sandbox,production
+            # 这里需要标记为 ccb
+            AGENT_TYPE: ccb
+            # 这个 id 设置为空，表示都可以使用
+            RCS_TENANT_ID:
         volumes:
             - sandbox-peri-workspaces:/app/workspaces
+            - sandbox-peri-global:/app/.peri
 
 volumes:
     sandbox-peri-workspaces:
+    sandbox-peri-global:

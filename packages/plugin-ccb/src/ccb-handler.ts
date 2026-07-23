@@ -6,10 +6,10 @@ import {
   writePeriSettings,
 } from "@fenix/ccb";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { AcpDispatcher } from "../../acp-link/src/acp-dispatcher.js";
-import { spawnAcpAgent } from "../../acp-link/src/client/acp-spawn-helper.js";
-import type { EngineHandler, EngineStartContext } from "../../acp-link/src/client/instance-manager.js";
-import { resolveExecutable } from "../../acp-link/src/client/resolve-executable.js";
+import { AcpDispatcher } from "acp-link/acp-dispatcher";
+import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
+import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
+import { resolveExecutable } from "acp-link/client/resolve-executable";
 
 /**
  * ccb 引擎 handler：spawn ccb --acp 子进程，通过 ACP stdio 通信。

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
+import { SessionsProvider } from "../hooks/useSessions";
 
 // ChatHeader 内部 useEffect 依赖 client.state.on / client.getState 等，
 // SSR 渲染不会执行 useEffect，提供最小 mock 即可保证渲染不崩溃。
@@ -21,7 +22,9 @@ describe("ChatHeader", () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
     expect(() => {
       ReactDOMServer.renderToString(
-        <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />,
+        <SessionsProvider client={mockClient}>
+          <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />
+        </SessionsProvider>,
       );
     }).not.toThrow();
   });
@@ -30,7 +33,9 @@ describe("ChatHeader", () => {
   test("renders new session placeholder when no active session", async () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
     const html = ReactDOMServer.renderToString(
-      <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />,
+      <SessionsProvider client={mockClient}>
+        <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />
+      </SessionsProvider>,
     );
     expect(html).toContain("chatHeader.newSession");
   });
@@ -39,7 +44,9 @@ describe("ChatHeader", () => {
   test("renders message square icon", async () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
     const html = ReactDOMServer.renderToString(
-      <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />,
+      <SessionsProvider client={mockClient}>
+        <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />
+      </SessionsProvider>,
     );
     expect(html).toContain("lucide-message-square");
   });
@@ -48,7 +55,9 @@ describe("ChatHeader", () => {
   test("does not render sidebar toggle when onToggleSidebar is missing", async () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
     const html = ReactDOMServer.renderToString(
-      <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />,
+      <SessionsProvider client={mockClient}>
+        <ChatHeader client={mockClient} activeSessionId={null} onSelectSession={() => {}} />
+      </SessionsProvider>,
     );
     expect(html).not.toContain("lucide-panel-left");
   });
@@ -58,13 +67,58 @@ describe("ChatHeader", () => {
     const { ChatHeader } = await import("../../components/chat/ChatHeader");
     expect(() => {
       ReactDOMServer.renderToString(
-        <ChatHeader
-          client={mockClient}
-          activeSessionId={null}
-          onSelectSession={() => {}}
-          onToggleSidebar={() => {}}
-          sidebarOpen={true}
-        />,
+        <SessionsProvider client={mockClient}>
+          <ChatHeader
+            client={mockClient}
+            activeSessionId={null}
+            onSelectSession={() => {}}
+            onToggleSidebar={() => {}}
+            sidebarOpen={true}
+          />
+        </SessionsProvider>,
+      );
+    }).not.toThrow();
+  });
+
+  // 提供改名后新数据，验证 handleSaveRename 不抛错
+  test("rename handler does not crash during SSR", async () => {
+    const renameClient = {
+      ...mockClient,
+      supportsSessionList: true,
+      listSessions: async () => ({
+        sessions: [{ sessionId: "s1", title: "Old Title", updatedAt: new Date().toISOString() }],
+      }),
+    } as any;
+
+    const { ChatHeader } = await import("../../components/chat/ChatHeader");
+    expect(() => {
+      ReactDOMServer.renderToString(
+        <SessionsProvider client={renameClient}>
+          <ChatHeader client={renameClient} activeSessionId="s1" onSelectSession={() => {}} />
+        </SessionsProvider>,
+      );
+    }).not.toThrow();
+  });
+
+  // 有会话列表时的 delete handler 渲染不抛错
+  test("renders with sessions without throwing", async () => {
+    const sessionsClient = {
+      ...mockClient,
+      supportsSessionList: true,
+      listSessions: async () => ({
+        sessions: [
+          { sessionId: "s1", title: "Session 1", updatedAt: new Date().toISOString() },
+          { sessionId: "s2", title: "Session 2", updatedAt: new Date().toISOString() },
+        ],
+      }),
+    } as any;
+
+    const { ChatHeader } = await import("../../components/chat/ChatHeader");
+    expect(() => {
+      ReactDOMServer.renderToString(
+        <SessionsProvider client={sessionsClient}>
+          <ChatHeader client={sessionsClient} activeSessionId="s1" onSelectSession={() => {}} />
+        </SessionsProvider>,
       );
     }).not.toThrow();
   });

@@ -6,9 +6,9 @@ import {
   writeSettings as writeClaudeCodeSettings,
 } from "@fenix/claude-code";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { AcpDispatcher } from "../../acp-link/src/acp-dispatcher.js";
-import { createClaudeAcpConnection } from "../../acp-link/src/client/claude-acp-adapter.js";
-import type { EngineHandler, EngineStartContext } from "../../acp-link/src/client/instance-manager.js";
+import { AcpDispatcher } from "acp-link/acp-dispatcher";
+import { createClaudeAcpConnection } from "acp-link/client/claude-acp-adapter";
+import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 
 /**
  * Claude Code 引擎 handler：SDK query() 方式，不 spawn 子进程。
