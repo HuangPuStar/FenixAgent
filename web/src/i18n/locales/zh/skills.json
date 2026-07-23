@@ -12,7 +12,9 @@
     "edit": "编辑",
     "view": "查看",
     "delete": "删除",
-    "createSkill": "+ 新建技能",
+    "createSkill": "新建技能",
+    "manualCreate": "手动创建",
+    "conversationCreate": "对话创建",
     "uploadSkill": "上传技能",
     "batchDelete": "批量删除",
     "reselect": "重新选择"
@@ -24,7 +26,8 @@
     "save": "保存",
     "startUpload": "开始上传",
     "uploadTab": "上传技能",
-    "createTab": "创建技能"
+    "createTab": "创建技能",
+    "uploadTitle": "上传技能"
   },
   "form": {
     "name": "技能名称",

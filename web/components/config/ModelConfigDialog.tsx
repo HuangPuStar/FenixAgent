@@ -9,20 +9,10 @@ import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "@/src/lib/config-events";
+import { buildModelOptions } from "@/src/lib/model-config-utils";
 import type { ModelConfig, ModelEntry } from "@/src/types/config";
 
-export function buildModelOptions(available: ModelEntry[]): { value: string; label: string }[] {
-  return available.map((model) => {
-    const source = model.providerResourceAccess?.sourceOrganizationName;
-    const providerLabel = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
-    return {
-      value: model.providerResourceKey
-        ? `${model.providerResourceKey}/${model.modelId}`
-        : `${model.provider}/${model.modelId}`,
-      label: `${providerLabel}/${model.displayName}`,
-    };
-  });
-}
+export { buildModelOptions };
 
 /** Server response shape returned after updating the current model config. */
 export type ModelConfigUpdate = Partial<ModelConfig["current"]>;

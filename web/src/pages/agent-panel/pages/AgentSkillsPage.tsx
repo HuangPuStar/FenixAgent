@@ -1,5 +1,5 @@
 import { useRequest } from "ahooks";
-import { Search, Share2, Sparkles, Upload } from "lucide-react";
+import { ChevronDown, FileText, Plus, Search, Share2, Sparkles, Upload } from "lucide-react";
 import { type ChangeEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,10 +7,16 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Textarea } from "@/components/ui/textarea";
 import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
@@ -495,13 +501,25 @@ export function AgentSkillsPage() {
                 <Upload className="h-4 w-4" />
                 {t("btn.uploadSkill")}
               </Button>
-              <Button
-                className="h-10 shrink-0 gap-2 rounded-lg px-4 text-[13px] font-semibold"
-                onClick={() => setChatOpen(true)}
-              >
-                <Sparkles className="h-4 w-4" />
-                {tComponents("chatEmpty.startConversation")}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-[13px] font-semibold">
+                    <Plus className="h-4 w-4" />
+                    {t("btn.createSkill")}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onClick={() => handleOpenCreate("text")}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    {t("btn.manualCreate")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setChatOpen(true)}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {t("btn.conversationCreate")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           }
         />
@@ -561,7 +579,13 @@ export function AgentSkillsPage() {
             if (!open) resetUploadState();
           }}
           title={
-            editingSkill ? (editingReadOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")
+            editingSkill
+              ? editingReadOnly
+                ? t("dialog.detailTitle")
+                : t("dialog.editTitle")
+              : createMode === "upload"
+                ? t("dialog.uploadTitle")
+                : t("dialog.createTitle")
           }
           onSubmit={handleDialogSubmit}
           submitLabel={editingSkill || createMode === "text" ? t("dialog.save") : t("dialog.startUpload")}
@@ -574,12 +598,8 @@ export function AgentSkillsPage() {
           width="sm:max-w-4xl"
         >
           {!editingSkill ? (
-            <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as CreateMode)} className="min-h-0">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="upload">{t("dialog.uploadTab")}</TabsTrigger>
-                <TabsTrigger value="text">{t("dialog.createTab")}</TabsTrigger>
-              </TabsList>
-              <TabsContent value="upload" className="space-y-4">
+            createMode === "upload" ? (
+              <div className="space-y-4">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -660,8 +680,9 @@ export function AgentSkillsPage() {
                     </div>
                   </div>
                 )}
-              </TabsContent>
-              <TabsContent value="text" className="space-y-4">
+              </div>
+            ) : (
+              <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-text-primary">{t("form.name")}</label>
                   <Input
@@ -690,8 +711,8 @@ export function AgentSkillsPage() {
                     placeholder={t("form.contentPlaceholder")}
                   />
                 </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               {editingReadOnly && (

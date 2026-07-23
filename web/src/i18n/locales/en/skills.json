@@ -13,6 +13,8 @@
     "view": "View",
     "delete": "Delete",
     "createSkill": "+ New Skill",
+    "manualCreate": "Create Manually",
+    "conversationCreate": "Create via Chat",
     "uploadSkill": "Upload Skill",
     "batchDelete": "Batch Delete",
     "reselect": "Reselect"
@@ -24,7 +26,8 @@
     "save": "Save",
     "startUpload": "Start Upload",
     "uploadTab": "Upload Skill",
-    "createTab": "Create Skill"
+    "createTab": "Create Skill",
+    "uploadTitle": "Upload Skill"
   },
   "form": {
     "name": "Skill Name",
