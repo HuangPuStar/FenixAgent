@@ -1,3 +1,4 @@
+import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { config } from "../config";
 import { getCoreRuntime } from "./core-bootstrap";
@@ -51,6 +52,33 @@ export function markInstanceRelayDetached(instanceId: string, at = Date.now()): 
   globalInstanceRegistry.detachRelay(instanceId, at);
 }
 
+function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActivityInfo {
+  const meta = snapshot.pluginMetadata ?? {};
+  const createdAtSeconds = Math.floor(snapshot.createdAt.getTime() / 1000);
+  return {
+    id: snapshot.instanceId,
+    port: typeof meta.port === "number" ? meta.port : 0,
+    status: snapshot.status === "running" ? "running" : "starting",
+    error: snapshot.errorMessage ?? null,
+    group_id: "",
+    environment_id: null,
+    session_id: null,
+    instance_number: 0,
+    created_at: createdAtSeconds,
+    // 缺少 supplement 时无法可靠推导活动信息；这里保守给默认值，
+    // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+    last_activity_at: createdAtSeconds,
+    relay_count: 0,
+    last_relay_detached_at: null,
+    idle_seconds: 0,
+    idle_timeout_seconds: config.acpIdleTimeoutSeconds,
+    idle_kill_eligible: false,
+    inactivity_seconds: 0,
+    activity_timeout_seconds: config.acpActivityTimeoutSeconds,
+    activity_kill_eligible: false,
+  };
+}
+
 /** 返回当前所有活跃实例的 ACP 空闲观测视图。 */
 export function listInstanceActivitySnapshots(now = Date.now(), organizationId?: string): InstanceActivityInfo[] {
   const runtime = _deps.getCoreRuntime();
@@ -59,7 +87,17 @@ export function listInstanceActivitySnapshots(now = Date.now(), organizationId?:
   for (const snapshot of instances) {
     if (snapshot.status === "stopped" || snapshot.status === "stopping") continue;
     const supplement = globalInstanceRegistry.get(snapshot.instanceId);
-    if (!supplement) continue;
+    if (!supplement) {
+      if (organizationId) {
+        // 没有 supplement 时无法判断组织归属，因此在指定组织 ID 时直接跳过该实例。
+        continue;
+      } else {
+        // 没有 supplement 时无法可靠推导活动信息；这里保守给默认值，
+        // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+        results.push(toFallbackActivityInfo(snapshot));
+        continue;
+      }
+    }
     if (organizationId && supplement.organizationId !== organizationId) continue;
     const instance = _deps.getInstance(snapshot.instanceId, supplement.userId);
     if (!instance) continue;
