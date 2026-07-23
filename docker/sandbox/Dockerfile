@@ -18,7 +18,8 @@ RUN apt-get install -y --no-install-recommends \
 RUN rm -rf /var/lib/apt/lists/*
 
 # 安装 Opencode / ACP Runtime CLI / Hindsight 插件
-RUN npm install -g opencode-ai@1.17.12 @fenix-agent/acp-runtime-cli @konghayao/opencode-hindsight@0.1.1
+RUN npm install -g opencode-ai@1.17.12
+RUN RUN opencode plugin @konghayao/opencode-hindsight -g
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]

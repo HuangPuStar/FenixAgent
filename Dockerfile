@@ -65,13 +65,13 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
 RUN printf '[global]\nindex-url = %s\ntrusted-host = %s\n' \
     "$PIP_INDEX_URL" "$PIP_TRUSTED_HOST" > /etc/pip.conf
 
-
+# replace node/npm/npx with bun
+RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
+    && ln -sf /usr/local/bin/bun /usr/local/bin/npm \
+    && ln -sf /usr/local/bin/bunx /usr/local/bin/npx
 RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN bun install -g @konghayao/opencode-hindsight@0.1.1 --registry=https://registry.npmmirror.com
+RUN opencode plugin @konghayao/opencode-hindsight -g
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
-
-RUN printf '#!/bin/sh\nargs="";\nfor a in "$@"; do\n  case "$a" in\n    -y|--yes|-p|--package) ;;\n    *) args="$args $a" ;;\n  esac\ndone\nexec bunx $args\n' > /usr/local/bin/npx \
-    && chmod +x /usr/local/bin/npx
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
