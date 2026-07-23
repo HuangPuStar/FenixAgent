@@ -333,11 +333,6 @@ export const AgentInfoSchema = z
     machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
     knowledgeBaseCount: z.number().describe("绑定的知识库数量。"),
     skillLabels: z.array(AgentLabelSchema).optional().describe("Skill 展示标签列表；仅列表场景返回。"),
-    engineType: z
-      .string()
-      .nullable()
-      .optional()
-      .describe("执行引擎类型：opencode / ccb / claude-code；未设置时默认 opencode。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
   })
   .describe("Agent 列表项。");
@@ -352,11 +347,6 @@ export const AgentDetailSchema = z
     prompt: z.string().nullable().describe("Agent 系统提示词；未设置时为 null。"),
     description: z.string().nullable().describe("Agent 描述；未设置时为 null。"),
     extra: z.record(z.string(), z.unknown()).nullable().optional().describe("额外扩展配置；未设置时为 null。"),
-    engineType: z
-      .string()
-      .nullable()
-      .optional()
-      .describe("执行引擎类型：opencode / ccb / claude-code；未设置时默认 opencode。"),
     knowledge: AgentKnowledgeConfigSchema.nullable().describe("知识库绑定配置；未设置时为 null。"),
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),

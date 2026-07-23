@@ -7,7 +7,7 @@ import type {
   StopInstanceInput,
 } from "@fenix/plugin-sdk";
 import { RemoteRelayHandle } from "./remote-relay-handle";
-import type { RemoteTransport } from "./remote-transport";
+import type { RemoteTransport, TransportMessage } from "./remote-transport";
 
 export interface RemoteRuntimeOptions {
   transport: RemoteTransport;
@@ -17,12 +17,13 @@ export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntim
   const { transport } = options;
 
   async function prepareEnvironment(input: PrepareEnvironmentInput): Promise<void> {
-    const response = await transport.sendAndWait({
+    const msg: TransportMessage = {
       type: "prepare",
       instance_id: input.instanceId,
       launch_spec: input.launchSpec,
-      engine_type: input.engineType ?? "opencode",
-    });
+      ...(input.engineType ? { engine_type: input.engineType } : {}),
+    };
+    const response = await transport.sendAndWait(msg);
 
     if (response.status === "error") {
       throw new Error(response.message ?? "Remote prepare failed");

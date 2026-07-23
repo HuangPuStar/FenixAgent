@@ -57,7 +57,6 @@ export function AgentOrganizationsPage() {
   const { org: currentOrg, refreshOrgs } = useOrg();
 
   // 默认引擎设置
-  const [defaultEngineType, setDefaultEngineType] = useState<string>("");
   const [defaultMachineId, setDefaultMachineId] = useState<string>("local");
   const [engineDirty, setEngineDirty] = useState(false);
   const [savingEngine, setSavingEngine] = useState(false);
@@ -159,11 +158,10 @@ export function AgentOrganizationsPage() {
   useEffect(() => {
     if (!detail) return;
     const metadata = (detail as unknown as Record<string, unknown>).metadata as
-      | { defaultEngine?: { engineType?: string; machineId?: string } }
+      | { defaultEngine?: { machineId?: string } }
       | null
       | undefined;
     const def = metadata?.defaultEngine;
-    setDefaultEngineType(def?.engineType ?? "");
     setDefaultMachineId(def?.machineId || "local");
     setEngineDirty(false);
   }, [detail]);
@@ -297,7 +295,6 @@ export function AgentOrganizationsPage() {
       const metadata = {
         ...(((detail as unknown as Record<string, unknown>).metadata as Record<string, unknown>) || {}),
         defaultEngine: {
-          engineType: defaultEngineType || undefined,
           machineId: defaultMachineId === "local" ? "" : defaultMachineId,
         },
       };
@@ -317,7 +314,7 @@ export function AgentOrganizationsPage() {
     } finally {
       setSavingEngine(false);
     }
-  }, [selectedOrgId, detail, defaultEngineType, defaultMachineId, refreshDetail, t]);
+  }, [selectedOrgId, detail, defaultMachineId, refreshDetail, t]);
 
   const members = (detail?.members ?? []) as unknown as OrgMember[];
   const showCandidateResults = debouncedAddMemberKeyword.length >= 3;
@@ -501,24 +498,6 @@ export function AgentOrganizationsPage() {
                   <div className="rounded-lg border border-border-light bg-surface-1 px-4 py-3 space-y-3">
                     <div className="flex items-center gap-4">
                       <label className="text-xs text-text-secondary w-20 shrink-0">
-                        {t("form.engineType", "引擎类型")}
-                      </label>
-                      <select
-                        className="flex-1 rounded-md border border-border-light bg-surface-2 px-3 py-1.5 text-sm text-text-primary"
-                        value={defaultEngineType}
-                        onChange={(e) => {
-                          setDefaultEngineType(e.target.value);
-                          setEngineDirty(true);
-                        }}
-                      >
-                        <option value="">{t("form.engineTypePlaceholder", "未设置")}</option>
-                        <option value="opencode">OpenCode</option>
-                        <option value="ccb">CCB</option>
-                        <option value="claude-code">Claude Code</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <label className="text-xs text-text-secondary w-20 shrink-0">
                         {t("form.machine", "执行节点")}
                       </label>
                       <select
@@ -551,11 +530,10 @@ export function AgentOrganizationsPage() {
                           variant="outline"
                           onClick={() => {
                             const metadata = (detail as unknown as Record<string, unknown>).metadata as
-                              | { defaultEngine?: { engineType?: string; machineId?: string } }
+                              | { defaultEngine?: { machineId?: string } }
                               | null
                               | undefined;
                             const def = metadata?.defaultEngine;
-                            setDefaultEngineType(def?.engineType ?? "");
                             setDefaultMachineId(def?.machineId || "local");
                             setEngineDirty(false);
                           }}

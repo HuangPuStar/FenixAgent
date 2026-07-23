@@ -28,33 +28,37 @@ describe("instance machine/engine fallback", () => {
     expect(config.defaultEngineType).toBe("ccb");
   });
 
-  // ── engineType 默认值优先级 ──
+  // ── engineType 传递决策：基于最终 nodeId ──
 
-  // engineType 未设置任何值时默认为 'opencode'
-  test("engineType 未设置任何值时默认为 'opencode'", () => {
-    const resolved = null;
-    const systemDefault: string | undefined = undefined;
-    const fallback = "opencode";
-    const engineType = (resolved as any)?.engineType ?? systemDefault ?? fallback;
+  // local 执行时传递 engineType，使用 RCS_DEFAULT_ENGINE_TYPE 或默认 opencode
+  test("local 执行时传递 engineType，优先使用 RCS_DEFAULT_ENGINE_TYPE", () => {
+    const resolvedNodeId: string = "local-default";
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
     expect(engineType).toBe("opencode");
   });
 
-  // engineType 系统默认 ccb 覆盖 hardcoded opencode
-  test("engineType 系统默认 ccb 覆盖 hardcoded opencode", () => {
-    const resolved = null;
-    const systemDefault: string | undefined = "ccb";
-    const fallback = "opencode";
-    const engineType = (resolved as any)?.engineType ?? systemDefault ?? fallback;
+  // local 执行、RCS_DEFAULT_ENGINE_TYPE 有值时使用环境变量
+  test("local 执行时 RCS_DEFAULT_ENGINE_TYPE 覆盖默认值", () => {
+    setConfig({ defaultEngineType: "ccb" } as any);
+    const resolvedNodeId: string = "local-default";
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
     expect(engineType).toBe("ccb");
   });
 
-  // engineType agent config 显式指定时覆盖系统默认
-  test("engineType agent config 显式指定时覆盖系统默认", () => {
-    const resolved = { engineType: "claude-code" };
-    const systemDefault: string | undefined = "ccb";
-    const fallback = "opencode";
-    const engineType = (resolved as any)?.engineType ?? systemDefault ?? fallback;
-    expect(engineType).toBe("claude-code");
+  // remote 执行时不传递 engineType（agent 绑定场景）
+  test("remote 执行时 engineType 始终为 undefined", () => {
+    const resolvedNodeId: string = "mach_remote_01";
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
+    expect(engineType).toBeUndefined();
+  });
+
+  // RCS_DEFAULT_MACHINE_ID 重定向到 remote 时不传 engineType
+  test("RCS_DEFAULT_MACHINE_ID 重定向后 remote 执行不传 engineType", () => {
+    setConfig({ defaultMachineId: "mach_redirect" } as any);
+    const resolvedNodeId = config.defaultMachineId ?? "local-default";
+    // resolvedNodeId 是 "mach_redirect"，不等于 "local-default"
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
+    expect(engineType).toBeUndefined();
   });
 
   // ── nodeId fallback 优先级 ──

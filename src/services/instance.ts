@@ -264,16 +264,15 @@ export async function spawnInstanceFromEnvironment(
   }
 
   // 委托 core 执行 launch
-  // engineType 优先级：agent config 指定 > 系统环境变量 > hardcoded "opencode"
-  const engineType =
-    (resolvedAgentConfig as Record<string, unknown> | null)?.engineType ?? config.defaultEngineType ?? "opencode";
+  // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定
   const facade = getCoreRuntime();
-  const snapshot = await facade.launchInstance({
-    instanceId,
-    engineType: engineType as string,
-    nodeId,
-    launchSpec,
-  });
+  let snapshot: Awaited<ReturnType<typeof facade.launchInstance>>;
+  if (nodeId === "local-default") {
+    const engineType = config.defaultEngineType ?? "opencode";
+    snapshot = await facade.launchInstance({ instanceId, engineType, nodeId, launchSpec });
+  } else {
+    snapshot = await facade.launchInstance({ instanceId, nodeId, launchSpec });
+  }
 
   const supplement: InstanceSupplement = {
     userId,

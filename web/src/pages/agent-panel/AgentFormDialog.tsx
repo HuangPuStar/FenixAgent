@@ -135,7 +135,6 @@ interface LoadedFormData {
     prompt: string;
     description: string;
     machineId: string;
-    engineType: string;
     resourceAccess?: ResourceAccess;
     publicReadable: boolean;
     relatedResources?: AgentRelatedResourcesView;
@@ -179,7 +178,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
   const [formSiteAppIds, setFormSiteAppIds] = useState<string[]>([]);
   const [formMachineId, setFormMachineId] = useState<string>("local");
-  const [formEngineType, setFormEngineType] = useState<string>("opencode");
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
@@ -214,18 +212,12 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       (async () => {
         try {
           const detail = (await unwrap(orgApi.get(org.id))) as unknown as Record<string, unknown>;
-          const metadata = detail.metadata as
-            | { defaultEngine?: { engineType?: string; machineId?: string } }
-            | null
-            | undefined;
+          const metadata = detail.metadata as { defaultEngine?: { machineId?: string } } | null | undefined;
           const def = metadata?.defaultEngine;
           if (def?.machineId && def.machineId !== "") {
             setFormMachineId(def.machineId);
           } else {
             setFormMachineId("local");
-          }
-          if (def?.engineType) {
-            setFormEngineType(def.engineType);
           }
         } catch {
           setFormMachineId("local");
@@ -233,9 +225,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       })();
     } else {
       setFormMachineId("local");
-      if (!isEdit) {
-        setFormEngineType("opencode");
-      }
     }
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
@@ -365,7 +354,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             prompt: String(d.prompt ?? ""),
             description: String(d.description ?? ""),
             machineId: (d.machineId as string) || "local",
-            engineType: (d.engineType as string) ?? "opencode",
             resourceAccess: d.resourceAccess as ResourceAccess | undefined,
             publicReadable: Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable),
             relatedResources: (d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined,
@@ -457,7 +445,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormPrompt(es.prompt);
           setFormDescription(es.description);
           setFormMachineId(es.machineId);
-          setFormEngineType(es.engineType);
           setFormResourceAccess(es.resourceAccess);
           setFormPublicReadable(es.publicReadable);
           setRelatedResources(es.relatedResources);
@@ -599,7 +586,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             modelId: formModel,
             prompt: formPrompt,
             description: formDescription,
-            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: validKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -627,7 +613,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             modelId: formModel,
             prompt: formPrompt,
             description: formDescription,
-            engineType: formEngineType,
             knowledge: {
               knowledgeBaseIds: formKnowledgeBaseIds,
               searchFirst: formKnowledgeSearchFirst,
@@ -854,19 +839,6 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                               : tAgentPanel("machineStatus.offline", "离线")}
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{t("form.engineType")}</Label>
-                    <Select value={formEngineType} onValueChange={setFormEngineType} disabled={readOnlyAgent}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder={t("form.engineTypePlaceholder")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="opencode">OpenCode</SelectItem>
-                        <SelectItem value="ccb">CCB</SelectItem>
-                        <SelectItem value="claude-code">Claude Code</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

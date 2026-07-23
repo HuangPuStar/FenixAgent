@@ -351,4 +351,78 @@ describe("InstanceOrchestrator", () => {
       errorMessage: "stop failed",
     });
   });
+
+  // remote 执行时不传 engineType，通过 runtimeResolver 启动
+  test("remote node launches without engineType via runtimeResolver", async () => {
+    const pluginRegistry = new EnginePluginRegistry();
+    const nodeRegistry = new CoreNodeRegistry();
+    const store = createRuntimeInstanceStore();
+
+    const fakePlugin = createFakeEnginePlugin();
+    const remoteRuntime = fakePlugin.createRuntime();
+
+    nodeRegistry.register({
+      id: "remote-machine-3",
+      mode: "remote",
+      engineTypes: ["opencode"],
+      status: "online",
+    });
+
+    const orchestrator = createInstanceOrchestrator({
+      pluginRegistry,
+      nodeRegistry,
+      store,
+      runtimeResolver: () => remoteRuntime,
+    });
+
+    // 不传 engineType
+    const launched = await orchestrator.launch({
+      instanceId: "inst_remote_no_engine",
+      nodeId: "remote-machine-3",
+      launchSpec: createLaunchSpec(),
+    });
+
+    expect(launched.status).toBe("running");
+    expect(launched.nodeId).toBe("remote-machine-3");
+    // engineType 记录为 "remote" 占位值
+    expect(launched.engineType).toBe("remote");
+
+    // remote node 的 runtime entry 中 plugin 应为 null
+    const runtimeEntry = store.getRuntimeEntry("inst_remote_no_engine");
+    expect(runtimeEntry?.plugin).toBeNull();
+    expect(runtimeEntry?.runtime).toBe(remoteRuntime);
+  });
+
+  // local 执行不传 engineType 时从 node.engineTypes[0] 自动取
+  test("local node auto-selects engineType from node declaration", async () => {
+    const { orchestrator, store } = createTestContext({
+      pluginOptions: { engineType: "ccb" },
+      nodeEngineTypes: ["ccb"],
+    });
+
+    // 不传 engineType
+    const launched = await orchestrator.launch({
+      instanceId: "inst_local_auto_engine",
+      nodeId: "local-default",
+      launchSpec: createLaunchSpec(),
+    });
+
+    expect(launched.status).toBe("running");
+    expect(launched.engineType).toBe("ccb");
+  });
+
+  // local 执行不传 engineType 且 node engineTypes 为空时抛错
+  test("throws NO_ENGINE_AVAILABLE when local node has empty engineTypes and no engineType passed", async () => {
+    const { orchestrator } = createTestContext({
+      nodeEngineTypes: [],
+    });
+
+    await expect(
+      orchestrator.launch({
+        instanceId: "inst_no_engine",
+        nodeId: "local-default",
+        launchSpec: createLaunchSpec(),
+      }),
+    ).rejects.toMatchObject({ code: "NO_ENGINE_AVAILABLE" });
+  });
 });

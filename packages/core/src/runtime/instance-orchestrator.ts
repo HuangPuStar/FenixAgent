@@ -85,7 +85,7 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
     if (!store.get(request.instanceId)) {
       store.create({
         instanceId: request.instanceId,
-        engineType: request.engineType,
+        engineType: request.engineType ?? "unknown",
         nodeId: request.nodeId,
         launchSpec: request.launchSpec,
       });
@@ -113,28 +113,45 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
           nodeId: request.nodeId,
         });
       }
-      if (!nodeRegistry.supportsEngine(request.nodeId, request.engineType)) {
-        throw createCoreRuntimeError(
-          "ENGINE_NOT_SUPPORTED",
-          `Core node ${request.nodeId} does not support engine ${request.engineType}`,
-          {
+      // 确定 engineType：显式传入 > remote 占位 > local 从 node 声明取
+      let effectiveEngineType: string;
+      if (request.engineType) {
+        // 上层显式指定（local 执行路径）
+        effectiveEngineType = request.engineType;
+        if (node.mode !== "remote") {
+          if (!nodeRegistry.supportsEngine(request.nodeId, effectiveEngineType)) {
+            throw createCoreRuntimeError(
+              "ENGINE_NOT_SUPPORTED",
+              `Core node ${request.nodeId} does not support engine ${effectiveEngineType}`,
+              { nodeId: request.nodeId, engineType: effectiveEngineType },
+            );
+          }
+          pluginRegistry.require(effectiveEngineType);
+        }
+      } else if (node.mode === "remote") {
+        // remote 执行：不选引擎，由 machine 端自行决定
+        effectiveEngineType = "remote";
+      } else {
+        // local 执行但上层未传（兜底，从 node 声明中取第一个）
+        effectiveEngineType = node.engineTypes[0];
+        if (!effectiveEngineType) {
+          throw createCoreRuntimeError("NO_ENGINE_AVAILABLE", `Core node ${request.nodeId} declares no engine types`, {
             nodeId: request.nodeId,
-            engineType: request.engineType,
-          },
-        );
+          });
+        }
       }
 
-      const plugin = pluginRegistry.get(request.engineType);
+      const plugin = pluginRegistry.get(effectiveEngineType);
       // remote node 不需要 plugin，但 local node 需要
       if (!plugin && node.mode !== "remote") {
-        pluginRegistry.require(request.engineType);
+        pluginRegistry.require(effectiveEngineType);
       }
 
       let runtime: EngineRuntime;
       try {
         let resolved: EngineRuntime | null | undefined;
         if (runtimeResolver) {
-          resolved = await runtimeResolver(request.engineType, node);
+          resolved = await runtimeResolver(effectiveEngineType, node);
         }
         if (resolved) {
           runtime = resolved;
@@ -143,8 +160,8 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         } else {
           throw createCoreRuntimeError(
             "PLUGIN_NOT_FOUND",
-            `No runtime resolver and no plugin for engine ${request.engineType} on remote node ${request.nodeId}`,
-            { engineType: request.engineType, nodeId: request.nodeId },
+            `No runtime resolver and no plugin for engine ${effectiveEngineType} on remote node ${request.nodeId}`,
+            { engineType: effectiveEngineType, nodeId: request.nodeId },
           );
         }
       } catch (error) {
@@ -154,7 +171,7 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
 
       store.create({
         instanceId: request.instanceId,
-        engineType: request.engineType,
+        engineType: effectiveEngineType,
         nodeId: request.nodeId,
         launchSpec: request.launchSpec,
       });
@@ -169,7 +186,8 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         await runtime.prepareEnvironment({
           instanceId: request.instanceId,
           launchSpec: request.launchSpec,
-          engineType: request.engineType,
+          // remote 时不传 engineType，由 machine 端自行决定
+          engineType: node.mode === "remote" ? undefined : effectiveEngineType,
         });
         store.update(request.instanceId, { status: "prepared" });
         store.update(request.instanceId, { status: "starting" });
