@@ -268,6 +268,13 @@ export {
   type SessionSummary,
   SessionSummarySchema,
 } from "./session.schema";
+// Sidebar
+export {
+  type SidebarConfig,
+  type SidebarConfigResponse,
+  SidebarConfigResponseSchema,
+  SidebarConfigSchema,
+} from "./sidebar-config.schema";
 // Tasks
 export {
   type ClearTaskLogsResponse,

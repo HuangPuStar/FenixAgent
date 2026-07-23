@@ -1,3 +1,4 @@
+import { useRequest } from "ahooks";
 import type { LucideIcon } from "lucide-react";
 import {
   Binary,
@@ -16,49 +17,88 @@ import {
   Workflow,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { sidebarConfigApi } from "@/src/api/sidebar-config";
 import { NS } from "@/src/i18n";
 
-interface NavEntry {
+export interface NavEntry {
   id: string;
   labelKey: string;
   icon: LucideIcon;
 }
 
-interface NavGroup {
+export interface NavGroup {
+  id: string;
   label: string;
   items: NavEntry[];
+}
+
+interface NavGroupDefinition {
+  id: string;
+  labelKey: string;
+  items: NavEntry[];
+}
+
+export const SIDEBAR_NAV_GROUPS: NavGroupDefinition[] = [
+  {
+    id: "core",
+    labelKey: "navGroupCore",
+    items: [
+      { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
+      { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
+      { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
+    ],
+  },
+  {
+    id: "config",
+    labelKey: "navGroupConfig",
+    items: [
+      { id: "models", labelKey: "agentPanel:models", icon: Cpu },
+      { id: "vertical-models", labelKey: "agentPanel:verticalModels", icon: Layers },
+      { id: "algorithms", labelKey: "agentPanel:algorithms", icon: Binary },
+      { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
+      { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
+      { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
+      { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
+      { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
+      { id: "sites", labelKey: "agentPanel:sites", icon: Globe },
+      { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
+      { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
+    ],
+  },
+];
+
+/** 按隐藏列表过滤导航组，并自动移除空组。 */
+export function filterNavGroups<T extends { id: string; items: NavEntry[] }>(groups: T[], hiddenTabs: string[]): T[] {
+  const hiddenTabSet = new Set(hiddenTabs);
+  return (
+    groups.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !hiddenTabSet.has(item.id)),
+    })) as T[]
+  ).filter((group) => group.items.length > 0);
 }
 
 /** 导航分组定义，labelKey 统一在组件内通过 t() 翻译 */
 function useNavGroups(): NavGroup[] {
   const { t } = useTranslation(NS.SIDEBAR);
+  const { data } = useRequest(
+    async () => {
+      const response = await sidebarConfigApi.get();
+      return response.success ? (response.data?.hiddenTabs ?? []) : [];
+    },
+    {
+      cacheKey: "sidebar-config",
+      staleTime: 60_000,
+    },
+  );
 
-  return [
-    {
-      label: t("navGroupCore"),
-      items: [
-        { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
-        { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
-        { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
-      ],
-    },
-    {
-      label: t("navGroupConfig"),
-      items: [
-        { id: "models", labelKey: "agentPanel:models", icon: Cpu },
-        { id: "vertical-models", labelKey: "agentPanel:verticalModels", icon: Layers },
-        { id: "algorithms", labelKey: "agentPanel:algorithms", icon: Binary },
-        { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
-        { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },
-        { id: "mcp", labelKey: "agentPanel:mcp", icon: Plug },
-        { id: "tasks", labelKey: "agentPanel:tasks", icon: Clock },
-        { id: "memories", labelKey: "agentPanel:memories", icon: Brain },
-        { id: "sites", labelKey: "agentPanel:sites", icon: Globe },
-        { id: "organizations", labelKey: "sidebar:organizations", icon: Users },
-        { id: "apikeys", labelKey: "agentPanel:apiKeys", icon: KeyRound },
-      ],
-    },
-  ];
+  const translatedGroups = SIDEBAR_NAV_GROUPS.map((group) => ({
+    id: group.id,
+    label: t(group.labelKey),
+    items: group.items,
+  }));
+
+  return filterNavGroups(translatedGroups, data ?? []);
 }
 
 interface AgentSidebarConfigProps {

@@ -15,6 +15,7 @@ import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webProdViews from "./prod-views";
 import webRegistry from "./registry";
+import webSidebarConfig from "./sidebar-config";
 import webTasks from "./tasks";
 import webTasksV2 from "./tasks-v2";
 import webUserFile from "./user-file";
@@ -27,6 +28,7 @@ import webWorkflowSse from "./workflow-sse";
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webApiKeys)
   .use(webBranding)
+  .use(webSidebarConfig)
   .use(webAgentSites)
   .use(webChannels)
   .use(webConfig)

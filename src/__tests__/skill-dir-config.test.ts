@@ -18,6 +18,7 @@ function makeEnv(skillDir: string): Env {
     RCS_SYSTEM_ADMIN_PASSWORD_FILE: "./data/password.txt",
     APP_BRAND_NAME: "Fenix",
     APP_LOGO_PATH: "",
+    APP_HIDDEN_SIDEBAR_TABS: "",
     RCS_POLL_TIMEOUT: 8,
     RCS_HEARTBEAT_INTERVAL: 20,
     RCS_WS_IDLE_TIMEOUT: 255,
