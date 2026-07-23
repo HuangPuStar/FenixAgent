@@ -20,6 +20,7 @@ const envSchema = z.object({
   RCS_SYSTEM_ADMIN_PASSWORD_FILE: z.string().default("./data/password.txt"),
   APP_BRAND_NAME: z.string().default("Fenix"),
   APP_LOGO_PATH: z.string().default(""),
+  APP_HIDDEN_SIDEBAR_TABS: z.string().default(""),
 
   // ── 可选：HTTP/WebSocket ──
   RCS_POLL_TIMEOUT: z.coerce.number().int().positive().default(8),

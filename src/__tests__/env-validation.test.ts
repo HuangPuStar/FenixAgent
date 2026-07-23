@@ -14,6 +14,7 @@ describe("env validation", () => {
     delete process.env.SKILL_DIR;
     delete process.env.APP_BRAND_NAME;
     delete process.env.APP_LOGO_PATH;
+    delete process.env.APP_HIDDEN_SIDEBAR_TABS;
   });
 
   afterEach(() => {
@@ -51,6 +52,7 @@ describe("env validation", () => {
     expect(env.SKILL_DIR).toBe("./data/skills");
     expect(env.APP_BRAND_NAME).toBe("Fenix");
     expect(env.APP_LOGO_PATH).toBe("");
+    expect(env.APP_HIDDEN_SIDEBAR_TABS).toBe("");
   });
 
   test("PORT 非数字时校验失败", () => {
