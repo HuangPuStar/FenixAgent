@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildModelOptions } from "@/components/config/ModelConfigDialog";
+import { buildModelOptions } from "../lib/model-config-utils";
 import type { ModelEntry } from "../types/config";
 
 describe("buildModelOptions", () => {

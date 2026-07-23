@@ -336,3 +336,21 @@ const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] 
 mock.module("../services/workflow/custom-tools", () =>
   createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
 );
+
+// ── react-i18next ──
+// CI 的 bun 包缓存（npmmirror 镜像）解析出的 react-i18next@17.0.8 的 es/index.js
+// 不导出 initReactI18next，导致任何导入 react-i18next 的前端测试抛出 SyntaxError。
+// 这里提供一个最小 mock，覆盖所有 react-i18next 导出，对后端测试无害（它们不导入该模块）。
+
+mock.module("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  }),
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
+  Trans: ({ children }: { children: any }) => children,
+  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
+  I18nextProvider: ({ children }: { children: any }) => children,
+  withTranslation: () => (Component: unknown) => Component,
+}));
