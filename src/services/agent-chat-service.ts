@@ -141,7 +141,13 @@ export function createPromptTurn(session: AgentSession, sessionId: string): Prom
     async dispose() {
       done = true;
       resolveNext?.({ value: undefined, done: true });
-      for (const fn of cleanupFns) fn();
+      for (const fn of cleanupFns) {
+        try {
+          fn();
+        } catch {
+          // 单个 cleanup 失败不应阻止后续清理
+        }
+      }
       await session.dispose();
     },
   };

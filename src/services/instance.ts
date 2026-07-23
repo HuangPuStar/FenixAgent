@@ -381,6 +381,8 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logError(`[Instance] Failed to stop instance ${id}:`, err);
+    // 无论 facade.stopInstance 是否成功，实例已不可用，清理 supplement
+    registry.unregister(id);
     return { ok: false, error: message };
   }
 }
