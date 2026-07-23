@@ -62,6 +62,8 @@ export interface RelayConnectionEntry {
   sessionStarted?: boolean;
   /** machine 断连后标记为待重连，保持 relay WS 连接不关 */
   pendingReconnect?: boolean;
+  /** 主动关闭 relay 的原因，用于抑制后续兜底 close 行为。 */
+  closingReason?: "idle_reclaim";
   /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
   machineWsId?: string;
   /** 本地 agent 的 workspace 路径，用于 JSON-RPC session cwd 注入 */

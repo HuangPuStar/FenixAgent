@@ -1,6 +1,7 @@
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { config } from "../config";
+import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
 import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
 import { globalInstanceRegistry } from "./instance-registry";
@@ -58,13 +59,14 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
   return {
     id: snapshot.instanceId,
     port: typeof meta.port === "number" ? meta.port : 0,
-    status: snapshot.status === "running" ? "running" : "starting",
+    status: snapshot.status === "running" || snapshot.status === "error" ? snapshot.status : "starting",
     error: snapshot.errorMessage ?? null,
     group_id: "",
     environment_id: null,
     session_id: null,
     instance_number: 0,
     created_at: createdAtSeconds,
+    spawn_source: null,
     // 缺少 supplement 时无法可靠推导活动信息；这里保守给默认值，
     // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
     last_activity_at: createdAtSeconds,
@@ -79,13 +81,23 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
   };
 }
 
+function shouldIncludeSnapshot(snapshot: RuntimeInstanceSnapshot, showError: boolean): boolean {
+  return showError
+    ? isActiveRuntimeStatus(snapshot.status) || snapshot.status === "error"
+    : isActiveRuntimeStatus(snapshot.status);
+}
+
 /** 返回当前所有活跃实例的 ACP 空闲观测视图。 */
-export function listInstanceActivitySnapshots(now = Date.now(), organizationId?: string): InstanceActivityInfo[] {
+export function listInstanceActivitySnapshots(
+  now = Date.now(),
+  organizationId?: string,
+  showError = false,
+): InstanceActivityInfo[] {
   const runtime = _deps.getCoreRuntime();
   const instances = runtime.listInstances();
   const results: InstanceActivityInfo[] = [];
   for (const snapshot of instances) {
-    if (snapshot.status === "stopped" || snapshot.status === "stopping") continue;
+    if (!shouldIncludeSnapshot(snapshot, showError)) continue;
     const supplement = globalInstanceRegistry.get(snapshot.instanceId);
     if (!supplement) {
       if (organizationId) {
@@ -121,6 +133,8 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
       logger.info(
         `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${config.acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
+      const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
+      closeRelayConnectionsForIdleReclaim(snapshot.id);
       const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
       if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
         logger.error(
@@ -137,6 +151,8 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
     logger.info(
       `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${config.acpIdleTimeoutSeconds}s`,
     );
+    const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
+    closeRelayConnectionsForIdleReclaim(snapshot.id);
     const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
     if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
       logger.error(

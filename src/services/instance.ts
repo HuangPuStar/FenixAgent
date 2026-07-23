@@ -48,6 +48,7 @@ export interface InstanceInfo {
 }
 
 export interface InstanceActivityInfo extends InstanceInfo {
+  spawn_source: InstanceSpawnSource | null;
   last_activity_at: number;
   relay_count: number;
   last_relay_detached_at: number | null;
@@ -147,6 +148,7 @@ export function toInstanceActivityInfo(
   const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
   return {
     ...toInstanceInfo(instance),
+    spawn_source: supplement.spawnSource,
     last_activity_at: Math.floor(supplement.lastActivityAt / 1000),
     relay_count: supplement.relayCount,
     last_relay_detached_at:

@@ -2,6 +2,9 @@ import * as z from "zod/v4";
 import { WebOkSchema } from "./common.schema";
 /** 实例运行状态 */
 export const InstanceStatusSchema = z.enum(["starting", "running", "stopped", "error"]).describe("实例当前运行状态。");
+export const InstanceSpawnSourceSchema = z
+  .enum(["interactive", "scheduled", "system"])
+  .describe("实例启动来源，用于并发分类与审计。");
 
 /** 实例详情信息 */
 export const InstanceInfoSchema = z.object({
@@ -18,6 +21,7 @@ export const InstanceInfoSchema = z.object({
 
 /** ACP 实例活跃度监控视图 */
 export const InstanceActivityInfoSchema = InstanceInfoSchema.extend({
+  spawn_source: InstanceSpawnSourceSchema.nullable().describe("实例启动来源；缺少 supplement 时为 null。"),
   last_activity_at: z.number().describe("最近一次非保活 ACP 业务消息时间戳，单位为秒。"),
   relay_count: z.number().describe("当前附着到实例的前端 relay 连接数。"),
   last_relay_detached_at: z
@@ -45,6 +49,10 @@ export const SpawnInstanceFromEnvironmentResponseSchema = z.object({
 
 /** GET /web/instances — 实例列表响应 */
 export const InstanceListResponseSchema = InstanceInfoSchema.array();
+export const InstanceActivityQuerySchema = z.object({
+  all: z.coerce.boolean().optional().describe("为 true 时忽略组织过滤，返回所有活跃实例。"),
+  showError: z.coerce.boolean().optional().describe("为 true 时额外返回 error 状态实例，便于排查问题。"),
+});
 export const InstanceActivityListResponseSchema = WebOkSchema(
   InstanceActivityInfoSchema.array().describe("实例活跃度列表。"),
 ).describe("实例活跃度列表响应。");
@@ -52,6 +60,7 @@ export const InstanceActivityListResponseSchema = WebOkSchema(
 export type InstanceInfo = z.infer<typeof InstanceInfoSchema>;
 export type InstanceActivityInfo = z.infer<typeof InstanceActivityInfoSchema>;
 export type InstanceStatus = z.infer<typeof InstanceStatusSchema>;
+export type InstanceActivityQuery = z.infer<typeof InstanceActivityQuerySchema>;
 export type SpawnInstanceFromEnvironmentRequest = z.infer<typeof SpawnInstanceFromEnvironmentRequestSchema>;
 export type SpawnInstanceFromEnvironmentResponse = z.infer<typeof SpawnInstanceFromEnvironmentResponseSchema>;
 export type InstanceListResponse = z.infer<typeof InstanceListResponseSchema>;
