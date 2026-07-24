@@ -8,6 +8,7 @@ export interface BoundKnowledgeBase {
   remoteAccountId: string;
   remoteUserId: string;
   priority: number;
+  name: string;
 }
 
 export { setKnowledgeProviderForTesting as setKnowledgeRuntimeProviderForTesting } from "./knowledge-provider/registry";
@@ -70,6 +71,7 @@ export async function resolveBoundKnowledgeBasesByConfigId(
       remoteAccountId: row.kbRemoteAccountId?.trim() || row.kbUserId,
       remoteUserId: row.kbRemoteUserId?.trim() || row.kbUserId,
       priority: row.priority,
+      name: (row as { kbName?: string }).kbName ?? "未知知识库",
     }));
 }
 
@@ -97,6 +99,7 @@ export async function searchKnowledgeByConfigId(input: {
   });
 
   const knowledgeBaseIdByRemoteId = new Map(knowledgeBases.map((item) => [item.remoteId, item.id]));
+  const kbNameByRemoteId = new Map(knowledgeBases.map((item) => [item.remoteId, item.name]));
   const resourceRemoteIds = Array.from(
     new Set(results.map((item) => item.resourceId?.trim()).filter((value): value is string => !!value)),
   );
@@ -124,5 +127,6 @@ export async function searchKnowledgeByConfigId(input: {
     score: item.score,
     knowledgeBaseId: item.knowledgeBaseId ? (knowledgeBaseIdByRemoteId.get(item.knowledgeBaseId) ?? null) : null,
     resourceId: item.resourceId ? (resourceIdByRemoteId.get(item.resourceId) ?? item.resourceId) : null,
+    kbName: item.knowledgeBaseId ? (kbNameByRemoteId.get(item.knowledgeBaseId) ?? null) : null,
   }));
 }

@@ -32,6 +32,11 @@ Claude-Haiku-*.txt
 .swarm/
 .agents/__pycache__/
 
+# AI 工具运行时本地目录与产物，不应入库
+.zcode/
+.pi/
+skills-lock.json
+
 # Python bytecode
 __pycache__/
 *.pyc

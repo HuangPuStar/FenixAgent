@@ -115,7 +115,9 @@ export function AgentPanelLayout() {
       />
       <div className="agent-panel-body">
         <Outlet />
-        <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
+        {/* ChatArea keep-alive：始终保持挂载以维持 WebSocket 连接，始终不可见。
+            聊天页面由路由 <Outlet /> 渲染完整聊天 UI。 */}
+        <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={false} />
       </div>
       <AgentFormDialog
         open={createDialogOpen}

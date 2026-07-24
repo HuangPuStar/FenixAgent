@@ -7,10 +7,6 @@ export interface InstalledSkillReference {
 
 export interface OpencodeProviderModelConfig {
   name: string;
-  modalities?: {
-    input?: ("text" | "image")[];
-    output?: ("text" | "image")[];
-  };
 }
 
 export interface OpencodeProviderConfig {
@@ -54,12 +50,16 @@ export interface OpencodeRuntimeConfig {
   $schema: string;
   autoupdate: boolean;
   default_agent: string;
-  enabled_providers: string[];
   provider: Record<string, OpencodeProviderConfig>;
   model: string;
   agent: Record<string, OpencodeAgentConfig>;
   mcp: Record<string, OpencodeMcpConfig>;
-  plugin?: Array<[string, Record<string, unknown>]>;
+  /**
+   * 工具权限配置。RCS 平台已通过 ACP 层和 resource_permission 表做了访问控制，
+   * OpenCode 内部不再重复询问工具权限，避免 Glob/Read/Bash 等内置工具被拦截。
+   * 取值：allow / deny / ask，"*" 为通配符匹配所有工具。
+   */
+  permission?: Record<string, "allow" | "deny" | "ask">;
 }
 
 function toProviderPackage(protocol: AgentLaunchSpec["model"]["protocol"]): string {
@@ -117,7 +117,6 @@ export function buildOpencodeRuntimeConfig(
     // 禁止 opencode 自动更新，避免新版本在未验证前引入兼容性问题。
     autoupdate: false,
     default_agent: agentName,
-    enabled_providers: [providerId],
     provider: {
       [providerId]: {
         npm: toProviderPackage(launchSpec.model.protocol),
@@ -127,25 +126,9 @@ export function buildOpencodeRuntimeConfig(
           setCacheKey: true,
         },
         models: {
-          [modelId]: (() => {
-            const modelEntry: OpencodeProviderModelConfig = {
-              name: launchSpec.model.model,
-            };
-            const rawModalities = launchSpec.model.modalities;
-            // 仅当 modalities 是对象格式（非数组）且 input 包含 "image" 时才认为支持图片
-            const modelHasImage =
-              rawModalities != null &&
-              typeof rawModalities === "object" &&
-              !Array.isArray(rawModalities) &&
-              (rawModalities as { input?: string[] }).input?.includes("image");
-
-            if (modelHasImage) {
-              modelEntry.modalities = rawModalities as { input?: ("text" | "image")[]; output?: ("text" | "image")[] };
-            } else {
-              modelEntry.modalities = { input: ["text"], output: ["text"] };
-            }
-            return modelEntry;
-          })(),
+          [modelId]: {
+            name: launchSpec.model.model,
+          },
         },
       },
     },
@@ -154,15 +137,15 @@ export function buildOpencodeRuntimeConfig(
       [agentName]: {
         model: providerModelRef,
         mode: "primary",
-        steps: (launchSpec.agent.extra?.steps as number) ?? 1000,
+        steps: 50,
         ...(launchSpec.agent.prompt ? { prompt: launchSpec.agent.prompt } : {}),
         hidden: false,
         disable: false,
       },
     },
-    mcp: toMcpRecord(launchSpec.mcpServers.filter((s) => s.name !== "hindsight")),
-    ...(launchSpec.agent.extra?.plugin && Array.isArray(launchSpec.agent.extra.plugin)
-      ? { plugin: launchSpec.agent.extra.plugin as Array<[string, Record<string, unknown>]> }
-      : {}),
+    mcp: toMcpRecord(launchSpec.mcpServers),
+    // RCS 平台已通过 ACP 层和 resource_permission 表做访问控制，
+    // OpenCode 内部对所有工具默认放行，避免 Glob/Read/Bash 等被拦截。
+    permission: { "*": "allow" },
   };
 }

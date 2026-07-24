@@ -1,7 +1,9 @@
 import { log, error as logError } from "@fenix/logger";
+import { environmentRepo } from "../repositories/environment";
 import { eventService } from "../services/event-service";
 import { findRunningInstanceByEnvironment, sendToAgentWs, sendToInstanceRelay } from "../transport/relay";
 import { findBindingForMessage } from "./channel-binding";
+import { getAgentConfigById } from "./config/index";
 
 // --- Types ---
 
@@ -230,6 +232,24 @@ export class HermesClient {
   }
 
   private async routeToAgent(agentId: string, hermesMsg: HermesInboundMessage): Promise<void> {
+    // 组织级启停：agentId 是 environment id，禁用的 agent 直接丢弃 IM 消息。
+    // 必须在此独立检查：sendToAgentWs 兜底分支不经过 spawn/ensureRunning，仅靠停实例拦不住。
+    try {
+      const env = await environmentRepo.getById(agentId);
+      if (env?.agentConfigId) {
+        const cfg = (await getAgentConfigById(env.agentConfigId)) as Record<string, unknown> | null;
+        if (cfg && cfg.enabled === false) {
+          log(
+            `[Hermes] Dropped inbound message: agent '${cfg.name}' is disabled — platform=${hermesMsg.data.source.platform} chatId=${hermesMsg.data.source.chat_id} envId=${agentId}`,
+          );
+          return;
+        }
+      }
+    } catch (err) {
+      // 检查失败不阻断路由：启停是访问控制增强，查询异常时保持原有投递行为并留日志
+      console.error(`[Hermes] agent enabled check failed for envId=${agentId}:`, err);
+    }
+
     const acpMsg = {
       type: "prompt",
       payload: {

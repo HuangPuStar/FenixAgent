@@ -19,13 +19,18 @@ import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
 import { Route as AgentPanelViewsRouteImport } from "./routes/agent/_panel/views"
 import { Route as AgentPanelVerticalModelsRouteImport } from "./routes/agent/_panel/vertical-models"
+import { Route as AgentPanelUserSettingsRouteImport } from "./routes/agent/_panel/user-settings"
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
+import { Route as AgentPanelSessionsRouteImport } from "./routes/agent/_panel/sessions"
+import { Route as AgentPanelRagflowRouteImport } from "./routes/agent/_panel/ragflow"
+import { Route as AgentPanelOverviewRouteImport } from "./routes/agent/_panel/overview"
 import { Route as AgentPanelOrganizationsRouteImport } from "./routes/agent/_panel/organizations"
 import { Route as AgentPanelModelsRouteImport } from "./routes/agent/_panel/models"
 import { Route as AgentPanelMemoriesRouteImport } from "./routes/agent/_panel/memories"
 import { Route as AgentPanelMcpRouteImport } from "./routes/agent/_panel/mcp"
+import { Route as AgentPanelMarketplaceRouteImport } from "./routes/agent/_panel/marketplace"
 import { Route as AgentPanelKnowledgeBasesRouteImport } from "./routes/agent/_panel/knowledge-bases"
 import { Route as AgentPanelHomeRouteImport } from "./routes/agent/_panel/home"
 import { Route as AgentPanelDashboardRouteImport } from "./routes/agent/_panel/dashboard"
@@ -90,6 +95,11 @@ const AgentPanelVerticalModelsRoute =
     path: "/vertical-models",
     getParentRoute: () => AgentPanelRoute,
   } as any)
+const AgentPanelUserSettingsRoute = AgentPanelUserSettingsRouteImport.update({
+  id: "/user-settings",
+  path: "/user-settings",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
 const AgentPanelTasksRoute = AgentPanelTasksRouteImport.update({
   id: "/tasks",
   path: "/tasks",
@@ -103,6 +113,21 @@ const AgentPanelSkillsRoute = AgentPanelSkillsRouteImport.update({
 const AgentPanelSitesRoute = AgentPanelSitesRouteImport.update({
   id: "/sites",
   path: "/sites",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
+const AgentPanelSessionsRoute = AgentPanelSessionsRouteImport.update({
+  id: "/sessions",
+  path: "/sessions",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
+const AgentPanelRagflowRoute = AgentPanelRagflowRouteImport.update({
+  id: "/ragflow",
+  path: "/ragflow",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
+const AgentPanelOverviewRoute = AgentPanelOverviewRouteImport.update({
+  id: "/overview",
+  path: "/overview",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelOrganizationsRoute = AgentPanelOrganizationsRouteImport.update({
@@ -123,6 +148,11 @@ const AgentPanelMemoriesRoute = AgentPanelMemoriesRouteImport.update({
 const AgentPanelMcpRoute = AgentPanelMcpRouteImport.update({
   id: "/mcp",
   path: "/mcp",
+  getParentRoute: () => AgentPanelRoute,
+} as any)
+const AgentPanelMarketplaceRoute = AgentPanelMarketplaceRouteImport.update({
+  id: "/marketplace",
+  path: "/marketplace",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelKnowledgeBasesRoute =
@@ -205,13 +235,18 @@ export interface FileRoutesByFullPath {
   "/agent/dashboard": typeof AgentPanelDashboardRoute
   "/agent/home": typeof AgentPanelHomeRoute
   "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/marketplace": typeof AgentPanelMarketplaceRoute
   "/agent/mcp": typeof AgentPanelMcpRoute
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/overview": typeof AgentPanelOverviewRoute
+  "/agent/ragflow": typeof AgentPanelRagflowRoute
+  "/agent/sessions": typeof AgentPanelSessionsRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/user-settings": typeof AgentPanelUserSettingsRoute
   "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
@@ -235,13 +270,18 @@ export interface FileRoutesByTo {
   "/agent/dashboard": typeof AgentPanelDashboardRoute
   "/agent/home": typeof AgentPanelHomeRoute
   "/agent/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/marketplace": typeof AgentPanelMarketplaceRoute
   "/agent/mcp": typeof AgentPanelMcpRoute
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/overview": typeof AgentPanelOverviewRoute
+  "/agent/ragflow": typeof AgentPanelRagflowRoute
+  "/agent/sessions": typeof AgentPanelSessionsRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
+  "/agent/user-settings": typeof AgentPanelUserSettingsRoute
   "/agent/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/views": typeof AgentPanelViewsRoute
   "/agent/workflow": typeof AgentPanelWorkflowRoute
@@ -267,13 +307,18 @@ export interface FileRoutesById {
   "/agent/_panel/dashboard": typeof AgentPanelDashboardRoute
   "/agent/_panel/home": typeof AgentPanelHomeRoute
   "/agent/_panel/knowledge-bases": typeof AgentPanelKnowledgeBasesRoute
+  "/agent/_panel/marketplace": typeof AgentPanelMarketplaceRoute
   "/agent/_panel/mcp": typeof AgentPanelMcpRoute
   "/agent/_panel/memories": typeof AgentPanelMemoriesRoute
   "/agent/_panel/models": typeof AgentPanelModelsRoute
   "/agent/_panel/organizations": typeof AgentPanelOrganizationsRoute
+  "/agent/_panel/overview": typeof AgentPanelOverviewRoute
+  "/agent/_panel/ragflow": typeof AgentPanelRagflowRoute
+  "/agent/_panel/sessions": typeof AgentPanelSessionsRoute
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
+  "/agent/_panel/user-settings": typeof AgentPanelUserSettingsRoute
   "/agent/_panel/vertical-models": typeof AgentPanelVerticalModelsRoute
   "/agent/_panel/views": typeof AgentPanelViewsRoute
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
@@ -300,13 +345,18 @@ export interface FileRouteTypes {
     | "/agent/dashboard"
     | "/agent/home"
     | "/agent/knowledge-bases"
+    | "/agent/marketplace"
     | "/agent/mcp"
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
+    | "/agent/overview"
+    | "/agent/ragflow"
+    | "/agent/sessions"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/user-settings"
     | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
@@ -330,13 +380,18 @@ export interface FileRouteTypes {
     | "/agent/dashboard"
     | "/agent/home"
     | "/agent/knowledge-bases"
+    | "/agent/marketplace"
     | "/agent/mcp"
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
+    | "/agent/overview"
+    | "/agent/ragflow"
+    | "/agent/sessions"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
+    | "/agent/user-settings"
     | "/agent/vertical-models"
     | "/agent/views"
     | "/agent/workflow"
@@ -361,13 +416,18 @@ export interface FileRouteTypes {
     | "/agent/_panel/dashboard"
     | "/agent/_panel/home"
     | "/agent/_panel/knowledge-bases"
+    | "/agent/_panel/marketplace"
     | "/agent/_panel/mcp"
     | "/agent/_panel/memories"
     | "/agent/_panel/models"
     | "/agent/_panel/organizations"
+    | "/agent/_panel/overview"
+    | "/agent/_panel/ragflow"
+    | "/agent/_panel/sessions"
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
+    | "/agent/_panel/user-settings"
     | "/agent/_panel/vertical-models"
     | "/agent/_panel/views"
     | "/agent/_panel/workflow"
@@ -460,6 +520,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentPanelVerticalModelsRouteImport
       parentRoute: typeof AgentPanelRoute
     }
+    "/agent/_panel/user-settings": {
+      id: "/agent/_panel/user-settings"
+      path: "/user-settings"
+      fullPath: "/agent/user-settings"
+      preLoaderRoute: typeof AgentPanelUserSettingsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/tasks": {
       id: "/agent/_panel/tasks"
       path: "/tasks"
@@ -479,6 +546,27 @@ declare module "@tanstack/react-router" {
       path: "/sites"
       fullPath: "/agent/sites"
       preLoaderRoute: typeof AgentPanelSitesRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/sessions": {
+      id: "/agent/_panel/sessions"
+      path: "/sessions"
+      fullPath: "/agent/sessions"
+      preLoaderRoute: typeof AgentPanelSessionsRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/ragflow": {
+      id: "/agent/_panel/ragflow"
+      path: "/ragflow"
+      fullPath: "/agent/ragflow"
+      preLoaderRoute: typeof AgentPanelRagflowRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/overview": {
+      id: "/agent/_panel/overview"
+      path: "/overview"
+      fullPath: "/agent/overview"
+      preLoaderRoute: typeof AgentPanelOverviewRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/organizations": {
@@ -507,6 +595,13 @@ declare module "@tanstack/react-router" {
       path: "/mcp"
       fullPath: "/agent/mcp"
       preLoaderRoute: typeof AgentPanelMcpRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
+    "/agent/_panel/marketplace": {
+      id: "/agent/_panel/marketplace"
+      path: "/marketplace"
+      fullPath: "/agent/marketplace"
+      preLoaderRoute: typeof AgentPanelMarketplaceRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/knowledge-bases": {
@@ -604,13 +699,18 @@ interface AgentPanelRouteChildren {
   AgentPanelDashboardRoute: typeof AgentPanelDashboardRoute
   AgentPanelHomeRoute: typeof AgentPanelHomeRoute
   AgentPanelKnowledgeBasesRoute: typeof AgentPanelKnowledgeBasesRoute
+  AgentPanelMarketplaceRoute: typeof AgentPanelMarketplaceRoute
   AgentPanelMcpRoute: typeof AgentPanelMcpRoute
   AgentPanelMemoriesRoute: typeof AgentPanelMemoriesRoute
   AgentPanelModelsRoute: typeof AgentPanelModelsRoute
   AgentPanelOrganizationsRoute: typeof AgentPanelOrganizationsRoute
+  AgentPanelOverviewRoute: typeof AgentPanelOverviewRoute
+  AgentPanelRagflowRoute: typeof AgentPanelRagflowRoute
+  AgentPanelSessionsRoute: typeof AgentPanelSessionsRoute
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
+  AgentPanelUserSettingsRoute: typeof AgentPanelUserSettingsRoute
   AgentPanelVerticalModelsRoute: typeof AgentPanelVerticalModelsRoute
   AgentPanelViewsRoute: typeof AgentPanelViewsRoute
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
@@ -629,13 +729,18 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelDashboardRoute: AgentPanelDashboardRoute,
   AgentPanelHomeRoute: AgentPanelHomeRoute,
   AgentPanelKnowledgeBasesRoute: AgentPanelKnowledgeBasesRoute,
+  AgentPanelMarketplaceRoute: AgentPanelMarketplaceRoute,
   AgentPanelMcpRoute: AgentPanelMcpRoute,
   AgentPanelMemoriesRoute: AgentPanelMemoriesRoute,
   AgentPanelModelsRoute: AgentPanelModelsRoute,
   AgentPanelOrganizationsRoute: AgentPanelOrganizationsRoute,
+  AgentPanelOverviewRoute: AgentPanelOverviewRoute,
+  AgentPanelRagflowRoute: AgentPanelRagflowRoute,
+  AgentPanelSessionsRoute: AgentPanelSessionsRoute,
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,
+  AgentPanelUserSettingsRoute: AgentPanelUserSettingsRoute,
   AgentPanelVerticalModelsRoute: AgentPanelVerticalModelsRoute,
   AgentPanelViewsRoute: AgentPanelViewsRoute,
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,

@@ -120,8 +120,10 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // 活跃面板使用 display:contents 使其在布局中透明，让 ChatPanel 直接作为 flex 子元素继承高度
   // 每个 ChatPanel 用独立的 ChatPageVisibleContext 包裹，传递 isActive，
   // 使非活跃面板的 SessionsProvider 能感知到自己被隐藏，从而停止轮询
+  // 不可见时不渲染任何 ChatPanel，避免隐藏的 WebSocket 连接接收重复消息
   const chatPanels = Object.entries(allSlots).map(([key, slot]) => {
     const isActive = key === currentSessionKey && visible;
+    if (!visible) return null;
     return (
       <ChatPageVisibleContext.Provider key={key} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>

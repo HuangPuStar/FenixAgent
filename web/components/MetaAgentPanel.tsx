@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { ChatPanel } from "../src/pages/agent-panel/ChatPanel";
+import { CitationPreviewScope } from "./chat/CitationPreviewScope";
 
 export interface MetaAgentPanelProps {
   /** 面板是否展开 */
@@ -94,13 +95,16 @@ export function MetaAgentPanel({
         >
           {/* 聊天区域 — ChatHeader 内部已提供历史会话 popover，无需外层 header */}
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <ChatPanel
-              agentId={metaAgentId}
-              hideSidebar
-              scenePrompt={scenePrompt}
-              contextKey={contextKey}
-              onPromptComplete={onPromptComplete}
-            />
+            {/* CitationPreviewScope 提供引用预览能力（无 ArtifactsPanel，不传 ref，仅弹 overlay） */}
+            <CitationPreviewScope>
+              <ChatPanel
+                agentId={metaAgentId}
+                hideSidebar
+                scenePrompt={scenePrompt}
+                contextKey={contextKey}
+                onPromptComplete={onPromptComplete}
+              />
+            </CitationPreviewScope>
           </div>
         </div>
       )}
