@@ -972,10 +972,10 @@ export function AgentKnowledgeBasesPage() {
                     type="button"
                     className="absolute top-7 right-7 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold bg-[#f0f4ff] text-[#6366f1] hover:bg-[#e4eaff] border border-[#d4dafc] transition-all duration-150 shadow-sm hover:shadow-md"
                     onClick={() => setShowGraphPanel(!showGraphPanel)}
-                    title={t("retrieval.knowledgeGraphSection")}
+                    title={showGraphPanel ? "收起知识图谱" : t("retrieval.knowledgeGraphSection")}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    {t("retrieval.knowledgeGraphSection")}
+                    {showGraphPanel ? "收起知识图谱" : t("retrieval.knowledgeGraphSection")}
                   </button>
                   <div className="flex items-start gap-5">
                     {/* 头像 */}
@@ -1051,7 +1051,10 @@ export function AgentKnowledgeBasesPage() {
               {/* 知识图谱面板（点击魔法棒展开） */}
               {showGraphPanel && selectedDetail && (
                 <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-6">
-                  <KnowledgeGraphPanel knowledgeBaseId={selectedDetail.id} />
+                  <KnowledgeGraphPanel
+                    knowledgeBaseId={selectedDetail.id}
+                    onCollapse={() => setShowGraphPanel(false)}
+                  />
                 </div>
               )}
 
