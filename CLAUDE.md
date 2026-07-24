@@ -98,6 +98,7 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 - route 只做协议接入、鉴权、参数校验、响应映射
 - service 负责业务编排、事务边界、跨表操作、外部调用
 - repository 只做数据访问，不承载业务规则
+- 数据库读写、查询条件拼装等 DB 操作默认收敛到 `repositories` 方便复用；`routes` 层一定不能直接访问 `db`
 - `/web/*`：
   - 给控制台前端使用
   - 默认返回 `{ success, data }` 或 `{ success: false, error }`
