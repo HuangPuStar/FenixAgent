@@ -162,4 +162,11 @@ export const orgApi = {
       params: { id: orgId },
       body: { data },
     }),
+
+  /** 获取组织 RAGFlow Key 配置状态 */
+  getRagflowKeyStatus: () =>
+    request<{ configured: boolean; prefix: string | null }>("/web/organizations", {
+      method: "POST",
+      body: { action: "get-ragflow-key" },
+    }),
 };

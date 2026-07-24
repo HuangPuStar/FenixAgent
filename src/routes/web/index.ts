@@ -5,6 +5,7 @@ import webApiKeys from "./api-keys";
 import webBranding from "./branding";
 import webChannels from "./channels";
 import webConfig from "./config";
+import webControl from "./control";
 import webEnvironments from "./environments";
 import webFiles from "./files";
 import webFs from "./fs";
@@ -14,6 +15,7 @@ import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
 import webProdViews from "./prod-views";
+import webProxyImage from "./proxy-image";
 import webRegistry from "./registry";
 import webSidebarConfig from "./sidebar-config";
 import webTasks from "./tasks";
@@ -32,6 +34,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webAgentSites)
   .use(webChannels)
   .use(webConfig)
+  .use(webControl)
   .use(webFiles)
   .use(webFs)
   .use(webInstances)
@@ -39,17 +42,18 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
+  .use(webProdViews)
+  .use(webProxyImage)
+  .use(webRegistry)
   .use(webTasks)
   .use(webTasksV2)
   .use(webUserFile)
   .use(webEnvironments)
-  .use(webRegistry)
   .use(webWorkflowDefs)
   .use(webWorkflowCustomTools)
   .use(webWorkflowEngine)
   .use(webWorkflowSse)
   .use(workflowRunsRoutes)
-  .use(webProdViews)
   .use(webAgentGeneration);
 
 export default webApp;

@@ -894,3 +894,21 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 .meta-agent-panel .tool-call-group {
   padding-left: 0;
 }
+
+/* 视频播放器闪烁高亮：点击引用链接时，对应播放器短暂黄色闪烁提示位置 */
+@keyframes videoFlashPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(251, 191, 36, 0.6),
+      0 0 0 0 rgba(251, 191, 36, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(251, 191, 36, 0.25),
+      0 0 0 16px rgba(251, 191, 36, 0.1);
+  }
+}
+.video-flash-highlight {
+  animation: videoFlashPulse 1s ease-in-out 3;
+}

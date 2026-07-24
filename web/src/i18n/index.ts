@@ -10,6 +10,7 @@ import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
 import dashboardEN from "./locales/en/dashboard.json";
 import environmentsEN from "./locales/en/environments.json";
+import faqEN from "./locales/en/faq.json";
 import hindsightEN from "./locales/en/hindsight.json";
 import knowledgeEN from "./locales/en/knowledge.json";
 import loginEN from "./locales/en/login.json";
@@ -34,6 +35,7 @@ import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
 import dashboardZH from "./locales/zh/dashboard.json";
 import environmentsZH from "./locales/zh/environments.json";
+import faqZH from "./locales/zh/faq.json";
 import hindsightZH from "./locales/zh/hindsight.json";
 import knowledgeZH from "./locales/zh/knowledge.json";
 import loginZH from "./locales/zh/login.json";
@@ -75,6 +77,7 @@ export const NS = {
   AGENT_HOME: "agentHome",
   PROD_VIEWS: "prodViews",
   TOOL_NARRATOR: "toolNarrator",
+  FAQ: "faq",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -94,6 +97,7 @@ i18n
         [NS.AGENTS]: agentsEN,
         [NS.MODELS]: modelsEN,
         [NS.ENVIRONMENTS]: environmentsEN,
+        [NS.FAQ]: faqEN,
         [NS.SKILLS]: skillsEN,
         [NS.MCP]: mcpEN,
         [NS.AGENT_PANEL]: agentPanelEN,
@@ -120,6 +124,7 @@ i18n
         [NS.AGENTS]: agentsZH,
         [NS.MODELS]: modelsZH,
         [NS.ENVIRONMENTS]: environmentsZH,
+        [NS.FAQ]: faqZH,
         [NS.SKILLS]: skillsZH,
         [NS.MCP]: mcpZH,
         [NS.AGENT_PANEL]: agentPanelZH,

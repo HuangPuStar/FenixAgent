@@ -1,4 +1,4 @@
-export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "video";
 
 /** encodeURIComponent 不编码 ()，需额外处理，用于 URL 路径 */
 export function encodePathSegment(seg: string) {
@@ -87,28 +87,72 @@ const CODE_EXTENSIONS = new Set([
   "asm",
 ]);
 
-const IMAGE_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "ico",
-  "bmp",
-  "svg",
-  "tiff",
-  "tif",
-  "heic",
-  "heif",
-]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
 
-const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm", "xlsb"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "avi", "mkv", "ogv", "ogg"]);
 
-const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "ods", "rtf", "wps", "et", "dps"]);
+const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm"]);
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
 
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
+
+const EXT_TO_SHIKI_LANG: Record<string, string> = {
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  mjs: "javascript",
+  cjs: "javascript",
+  py: "python",
+  go: "go",
+  rs: "rust",
+  rb: "ruby",
+  java: "java",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  hpp: "cpp",
+  cs: "csharp",
+  swift: "swift",
+  kt: "kotlin",
+  r: "r",
+  scala: "scala",
+  lua: "lua",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  fish: "shell",
+  ps1: "powershell",
+  json: "json",
+  jsonc: "json",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  css: "css",
+  scss: "scss",
+  less: "less",
+  html: "html",
+  htm: "html",
+  xml: "xml",
+  vue: "vue",
+  svelte: "svelte",
+  md: "markdown",
+  mdx: "mdx",
+  sql: "sql",
+  graphql: "graphql",
+  gql: "graphql",
+  proto: "protobuf",
+  dart: "dart",
+  zig: "zig",
+  nim: "nim",
+  ex: "elixir",
+  exs: "elixir",
+  hs: "haskell",
+  tf: "hcl",
+  hcl: "hcl",
+  properties: "properties",
+};
 
 function getExtension(filePath: string): string {
   const segments = filePath.split("/");
@@ -122,46 +166,46 @@ export function classifyFile(filePath: string): FileCategory {
   const ext = getExtension(filePath);
   if (ext === "pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
+  if (VIDEO_EXTENSIONS.has(ext)) return "video";
   if (TABLE_EXTENSIONS.has(ext)) return "table";
-  if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
   if (HTML_EXTENSIONS.has(ext)) return "html";
   if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
   if (CODE_EXTENSIONS.has(ext)) return "code";
   return "binary";
 }
 
-/**
- * 构建文件预览 URL。
- * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
- * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。
- */
-export function buildPreviewUrl(envId: string, filePath: string): string {
-  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
-  return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
+export function getShikiLanguage(filePath: string): string | undefined {
+  const ext = getExtension(filePath);
+  return EXT_TO_SHIKI_LANG[ext];
 }
 
 /**
- * 把 Agent 工具调用上报的任意格式路径规范化为 workspace 相对路径，
- * 与后端文件树 API 返回的路径格式保持一致。
- *
- * Agent 的 cwd 即 workspace 根目录，上报的 path 已经是相对于 workspace 的路径，
- * 无需额外添加 `user/` 前缀。后端 `resolveWorkspacePath` 会自行处理路径解析。
+ * 构建文件预览 URL。
+ * 远程节点的 tree 返回路径如 "user/hello.html"，已经带 user/ 前缀；
+ * 本地节点 tree 也返回 "user/hello.html"。
+ * 路由 /:id/user/* 的通配符不包含 "user/"，所以需要确保 filePath 带 user/ 前缀。
+ */
+export function buildPreviewUrl(envId: string, filePath: string): string {
+  const withUserPrefix = filePath.startsWith("user/") ? filePath : `user/${filePath}`;
+  const encoded = withUserPrefix.split("/").map(encodePathSegment).join("/");
+  return `/web/environments/${envId}/user/${encoded}?preview=true`;
+}
+
+/**
+ * 把 Agent 工具调用上报的任意格式路径规范化为「相对 user/ 的路径」（带 user/ 前缀），
+ * 与后端 `isUserPath` 校验保持一致。
  *
  * Agent 上报的 path 可能是：
- * 1. workspace 相对路径（`src/foo.ts`、`user/foo.txt`）——直接返回
- * 2. workspace 绝对路径含 /user/ 段（`/workspaces/{org}/{user}/{env}/user/src/foo.ts`）
- * 3. workspace 绝对路径不含 /user/ 段（`/workspaces/{org}/{user}/{env}/src/foo.ts`）
- * 4. 空串 —— 兜底为 `user/`
+ * 1. 相对路径（`src/foo.ts`）—— Agent 工作目录为 workspace 时常见
+ * 2. 已带 user/ 前缀的相对路径（`user/src/foo.ts`）
+ * 3. workspace 绝对路径（`/Users/.../workspaces/{org}/{user}/{env}/user/src/foo.ts`）
  *
  * 规范化策略：
- * - 已带 `user/` 前缀的路径：直接保持原样
- * - 空字符串、纯粹 "user" / "user/"：统一为 `user/`
- * - 绝对路径命中 env_* 段：取其后部分作为 workspace 相对路径，
- *   保留原始 user/ 或非 user/ 前缀状态，不额外添加前缀
- * - 绝对路径无 env_* 段：原样返回让 server 兜底
- * - 纯相对路径：直接返回（agent 工作目录即 workspace 根，路径已正确）
+ * - 命中 `/user/` 段（绝对路径场景）：取最后一个 `/user/` 之后的部分（兼容路径中其它 user/ 目录），补回 `user/` 前缀
+ * - 已带 `user/` 前缀：保持不变
+ * - 纯相对路径：统一加 `user/` 前缀（兼容前导 `/`，如 `/src/foo.ts`）
  *
- * 这样可与文件树 tree API 返回的路径格式对齐，
+ * 这样可与文件树 tree API 返回的路径格式（`user/foo/bar.html`）对齐，
  * 同一文件不会因为路径来源不同而出现两个 tab。
  */
 export function normalizeToUserPath(rawPath: string): string {
@@ -187,7 +231,7 @@ export function normalizeToUserPath(rawPath: string): string {
     return trimmed;
   }
 
-  // 纯相对路径：直接返回（agent 工作目录即 workspace 根，路径已正确）
+  // 纯相对路径：agent 的 cwd 即 workspace 根，不加 user/ 前缀
   return trimmed;
 }
 
@@ -195,4 +239,19 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** 根据视频文件扩展名返回对应的 MIME type，用于 <source type="..."> */
+export function getVideoMimeType(ext: string): string {
+  switch (ext) {
+    case "mov":
+      return "video/quicktime";
+    case "webm":
+      return "video/webm";
+    case "ogv":
+    case "ogg":
+      return "video/ogg";
+    default:
+      return `video/${ext}`;
+  }
 }

@@ -20,6 +20,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
+  /** 点击取消时触发的回调（如重新解析时保留旧分块） */
+  onCancel?: () => void;
   loading?: boolean;
 }
 
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   cancelLabel,
   variant = "default",
   onConfirm,
+  onCancel,
   loading,
 }: ConfirmDialogProps) {
   const { t } = useTranslation("components");
@@ -45,7 +48,9 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>{cnlLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading} onClick={onCancel}>
+            {cnlLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             disabled={loading}
