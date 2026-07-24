@@ -68,44 +68,45 @@ export async function writePeriSettings(workspace: string, launchSpec: AgentLaun
   await mkdir(periDir, { recursive: true });
 
   const modelId = model.modelName ?? model.model;
+  // 透传所有 launchSpec.env 给 Peri（含 HINDSIGHT_*、USER_META_* 等平台级变量）
+  // 模型认证信息已通过 config.providers 注入，不在此重复
   const periEnv: Record<string, string> = {};
-  // 仅透传 HINDSIGHT_* 环境变量给 Peri，模型认证信息已通过 config.providers 注入
   if (launchSpec.env) {
     for (const key of Object.keys(launchSpec.env)) {
-      if (key.startsWith("HINDSIGHT_")) {
-        periEnv[key] = launchSpec.env[key];
-      }
+      periEnv[key] = launchSpec.env[key];
     }
   }
 
-  const settings: Record<string, unknown> = {
-    config: {
-      active_provider_id: model.provider,
-      active_alias: "sonnet",
-      providers: [
-        {
-          id: model.provider,
-          type: model.protocol,
-          apiKey: model.apiKey,
-          baseUrl: model.baseUrl,
-          models: {
-            opus: modelId,
-            sonnet: modelId,
-            haiku: modelId,
-          },
+  const configContent: Record<string, unknown> = {
+    active_provider_id: model.provider,
+    active_alias: "sonnet",
+    providers: [
+      {
+        id: model.provider,
+        type: model.protocol,
+        apiKey: model.apiKey,
+        baseUrl: model.baseUrl,
+        models: {
+          opus: modelId,
+          sonnet: modelId,
+          haiku: modelId,
         },
-      ],
-      thinking: {
-        enabled: true,
-        budget_tokens: 8000,
-        effort: "high",
       },
+    ],
+    thinking: {
+      enabled: true,
+      budget_tokens: 8000,
+      effort: "high",
     },
   };
 
   if (Object.keys(periEnv).length > 0) {
-    settings.env = periEnv;
+    configContent.env = periEnv;
   }
+
+  const settings: Record<string, unknown> = {
+    config: configContent,
+  };
 
   const configPath = join(periDir, "settings.json");
   await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");

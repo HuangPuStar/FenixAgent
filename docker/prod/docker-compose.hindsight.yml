@@ -1,0 +1,44 @@
+# ── 启动说明 ──────────────────────────────────────────────────────────────
+# 必须先启动主编排（docker-compose.yml），fenix-ver-net 网络必须存在
+# 启动命令：
+#   docker compose -f docker/prod/docker-compose.hindsight.yml --env-file docker/prod/.env.hindsight up -d
+
+networks:
+    fenix-ver-net:
+        external: true
+
+
+services:
+    hindsight:
+        image: 
+            h1nxigwsr9srbzopdt-ghcr.xuanyuan.run/vectorize-io/hindsight:0.8.0
+        container_name: hindsightt-ver
+        restart: unless-stopped
+        ports:
+            - "38880:9999"
+            - "38881:8888"
+        networks:
+            - fenix-ver-net
+        environment:
+             # LLM: 阿里云百炼（OpenAI 兼容格式）
+            HINDSIGHT_API_LLM_PROVIDER: openai
+            HINDSIGHT_API_LLM_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_LLM_MODEL: qwen3.6-flash
+            HINDSIGHT_API_LLM_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Embedding: 阿里云百炼 text-embedding-v3
+            ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: 64
+            HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: text-embedding-v4
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Reranker: 阿里云百炼 qwen3-rerank
+            HINDSIGHT_API_RERANKER_PROVIDER: alibaba
+            HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_RERANKER_ALIBABA_MODEL: qwen3-rerank
+        volumes:
+            - ./.hindsight-docker:/home/hindsight/.pg0
+
+
+
