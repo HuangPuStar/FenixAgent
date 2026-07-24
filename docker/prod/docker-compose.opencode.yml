@@ -1,0 +1,28 @@
+networks:
+    fenix-ver-net:
+        external: true
+
+services:
+    sandbox:
+        image: ghcr.io/huangpustar/fenixagent-sandbox-opencode:v0.3.1-beta.2-opencode
+        container_name: fenix-sandbox-ver
+        restart: unless-stopped
+        networks:
+            - fenix-ver-net
+        environment:
+            TZ: Asia/Shanghai
+            RCS_URL: ws://rcs:3000
+            RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
+            RCS_MACHINE_ID: mach_d72e997e_8774_484b_b1f6_e2ccd241d60c
+            RCS_MACHINE_NAME: basebox
+            RCS_LABELS: sandbox,production
+            AGENT_TYPE: opencode
+            # 这个 id 设置为空，表示都可以使用
+            RCS_TENANT_ID:
+            OPENCODE_DISABLE_FFF: true
+        volumes:
+            - ./opencode-config:/root/.config/opencode
+            - ./opencode-data:/root/.local/share/opencode
+            - ./workspaces:/app/workspaces
+
+

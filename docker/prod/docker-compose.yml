@@ -1,231 +1,109 @@
-# ============================================================================
-# FenixAgent 生产环境 — 完整部署
-# ============================================================================
+# ── 启动顺序 ──────────────────────────────────────────────────────────────
+# 1. 先启动本编排（创建 fenix-ver-net 并启动 postgres）
+# 2. 再启动 docker-compose.ragflow.yml 和 docker-compose.hindsight.yml
+#    它们依赖 fenix-ver-net（external: true），必须先有网络才能启动
 #
-# 包含以下服务：
-#   - postgres      PostgreSQL 16
-#   - litellm       LiteLLM AI 网关（用量追踪 + 预算控制）
-#   - rcs           FenixAgent 主服务器（ghcr.io 远程镜像）
-#   - sandbox       远程执行沙箱（固定 machine id，全局可见）
-#   - hindsight     AI 记忆服务
-#   - agent-sites   站点托管服务
-#
-# 可选叠加：
-#   docker compose -f docker/prod/docker-compose.yml -f docker/ragflow/docker-compose.yml up -d
-#
-# 快速启动：
-#   1. cp docker/prod/.env.example .env && 编辑 .env 填入必填变量
-#   2. docker compose -f docker/prod/docker-compose.yml pull
-#   3. docker compose -f docker/prod/docker-compose.yml up -d
-#
-# ============================================================================
+# 启动命令：
+#   docker compose -f docker/prod/docker-compose.yml up -d
+
+networks:
+    fenix-ver-net:
+      driver: bridge
 
 services:
+    rcs:
+        image: ghcr.io/huangpustar/fenixagent:sha-f00efc9
+        container_name: fenix-ver
+        restart: unless-stopped
+        depends_on:
+            postgres:
+                condition: service_healthy
+        ports:
+            - "38879:3000"
+        networks:
+            - default
+            - fenix-ver-net
+        environment:
+            TZ: Asia/Shanghai
+            LOG_FORMAT: json
+            RCS_HOST: 0.0.0.0
+            RCS_PORT: 3000
+            OPENAI_API_KEY: ${OPENAI_API_KEY}
+            OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.deepseek.com/v1/}
+            OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
+            RCS_BASE_URL: ${RCS_BASE_URL:-http://localhost:3000}
+            HINDSIGHT_MCP_URL: ${HINDSIGHT_MCP_URL:-}
+            RCS_API_KEYS: ${RCS_API_KEYS:-}
+            # BETTER_AUTH_URL: http://localhost:3000
+            REGISTRY_SECRET: ${REGISTRY_SECRET}
+            DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+            RCS_KNOWLEDGE_PROVIDER: ${RCS_KNOWLEDGE_PROVIDER:-}
+            RCS_KNOWLEDGE_BASE_URL: ${RCS_KNOWLEDGE_BASE_URL:-}
+            RCS_KNOWLEDGE_API_KEY: ${RCS_KNOWLEDGE_API_KEY:-}
+            RAGFLOW_API_URL: ${RAGFLOW_API_URL:-}
+            RAGFLOW_API_KEY: ${RAGFLOW_API_KEY:-}
+            AGENT_SITES_BASE_URL: http://agent-sites:3000
+            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY}
+            RCS_DEFAULT_MACHINE_ID: ${RCS_DEFAULT_MACHINE_ID:-}
+            RCS_DEFAULT_MACHINE_TYPE: ${RCS_DEFAULT_MACHINE_TYPE:-opencode}
+            OPENCODE_DISABLE_AUTOUPDATE: "1"
+            OPENCODE_DISABLE_TELEMETRY: "1"
+            OPENCODE_DISABLE_FFF: true
+        volumes:
+            - ./data:/app/data
+            - ./workflow:/app/workflow
+            - ./logs:/app/logs
+        command: ["sh", "-lc", "bun migrate.js && exec bun --no-install run dist/index.js"]
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "bun",
+                    "-e",
+                    "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s
 
-  # ── PostgreSQL ────────────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: rcs
-      POSTGRES_PASSWORD: rcs
-      POSTGRES_DB: rcs
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      # 自动创建 litellm 数据库
-      - ../litellm/init-db.sh:/docker-entrypoint-initdb.d/init-litellm-db.sh:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rcs"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
+    agent-sites:
+        image: ghcr.io/konghayao/agent-sites:v0.3.2
+        networks:
+          - default
+          - fenix-ver-net
+        ports:
+          - "26778:3000"
+        volumes:
+          - ./data:/app/data
+          - ./public:/app/public
+        environment:
+          - HOST=0.0.0.0
+          - PORT=3000
+          - PB_PORT_MIN=9000
+          - PB_PORT_MAX=11000
+          - MAX_APPS=50
+          - AGENT_SITES_MASTER_KEY=${AGENT_SITES_MASTER_KEY}
+        restart: unless-stopped
 
-  # ── LiteLLM AI 网关 ──────────────────────────────────────────────────────
-  litellm:
-    image: ghcr.io/berriai/litellm:main-stable
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "4000:4000"
-    environment:
-      DATABASE_URL: postgresql://rcs:rcs@postgres:5432/litellm
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
-      STORE_MODEL_IN_DB: "True"
-      SERVER_ROOT_PATH: "/litellm"
-      UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
-      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
-    networks:
-      - internal
-
-  # ── RCS 主服务器 ──────────────────────────────────────────────────────────
-  rcs:
-    image: ghcr.io/huangpustar/fenixagent:latest
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      litellm:
-        condition: service_started
-      hindsight:
-        condition: service_started
-    ports:
-      - "3000:3000"
-    environment:
-      # 基础配置
-      LOG_FORMAT: json
-      RCS_HOST: 0.0.0.0
-      RCS_PORT: 3000
-      RCS_BASE_URL: http://localhost:3000
-
-      # 数据库
-      DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
-
-      # 认证与安全（必填）
-      RCS_API_KEYS: ${RCS_API_KEYS}
-      REGISTRY_SECRET: ${REGISTRY_SECRET}
-
-      # 品牌
-      APP_BRAND_NAME: Fenix
-
-      # AI 模型生成（模板创建 Agent）
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
-      OPENAI_MODEL: ${OPENAI_MODEL}
-
-      # Hindsight 记忆服务
-      HINDSIGHT_MCP_URL: http://hindsight:9999
-      HINDSIGHT_API_TOKEN: ${HINDSIGHT_API_TOKEN:-}
-
-      # 知识库（需额外启动 RagFlow）
-      RAGFLOW_API_URL: ${RAGFLOW_API_URL}
-      RAGFLOW_API_KEY: ${RAGFLOW_API_KEY}
-
-      # OpenCode 行为
-      OPENCODE_DISABLE_AUTOUPDATE: "1"
-      OPENCODE_DISABLE_TELEMETRY: "1"
-
-      # LiteLLM AI 网关
-      RCS_SECRET_LITELLM_ADMIN_KEY: ${LITELLM_MASTER_KEY}
-      RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY}
-
-      # 系统级默认 fallback：agent config 未绑定 machine 时路由到 sandbox
-      RCS_DEFAULT_MACHINE_ID: mach_sandbox_01
-
-      # 禁用本地执行，所有 agent 必须通过 sandbox 远程执行
-      RCS_DISABLE_LOCAL_EXECUTION: "true"
-
-      # Agent Sites 站点托管
-      AGENT_SITES_BASE_URL: http://agent-sites:3000
-      AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY}
-
-    volumes:
-      - rcs-data:/app/data
-      - workspace-data:/app/workspaces
-      # 工作流 YAML 持久化
-      - workflow-data:/app/workflow
-
-    command: ["sh", "-lc", "bun migrate.js && exec bun dist/index.js"]
-    networks:
-      - internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-
-  # ── 远程执行 Sandbox ──────────────────────────────────────────────────────
-  sandbox:
-    image: ghcr.io/huangpustar/fenixagent-sandbox-opencode:v0.3.0-beta.2-opencode
-    restart: unless-stopped
-    depends_on:
-      rcs:
-        condition: service_healthy
-    environment:
-      RCS_URL: ws://rcs:3000
-      RCS_SECRET: ${REGISTRY_SECRET}
-      RCS_MACHINE_ID: mach_sandbox_01
-      RCS_MACHINE_NAME: sandbox-01
-      RCS_LABELS: sandbox,production
-      AGENT_TYPE: opencode
-
-    volumes:
-      - rcs-opencode-config:/root/.config/opencode
-      - rcs-opencode-data:/root/.local/share/opencode
-      - workspace-data:/app/workspaces
-    networks:
-      - internal
-
-  # ── Hindsight AI 记忆服务 ──────────────────────────────────────────────────
-  hindsight:
-    image: ghcr.io/vectorize-io/hindsight:latest
-    restart: unless-stopped
-    ports:
-      - "9999:9999"
-      - "8888:8888"
-    environment:
-      HINDSIGHT_API_LLM_PROVIDER: openai
-      HINDSIGHT_API_LLM_API_KEY: ${HINDSIGHT_LLM_API_KEY}
-      HINDSIGHT_API_LLM_MODEL: qwen3.6-flash
-      HINDSIGHT_API_LLM_BASE_URL: ${HINDSIGHT_LLM_BASE_URL}
-
-      ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: 64
-      HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
-      HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${HINDSIGHT_EMBEDDINGS_API_KEY}
-      HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: text-embedding-v4
-      HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: ${HINDSIGHT_EMBEDDINGS_BASE_URL}
-
-      HINDSIGHT_API_RERANKER_PROVIDER: alibaba
-      HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${HINDSIGHT_RERANKER_API_KEY}
-      HINDSIGHT_API_RERANKER_ALIBABA_MODEL: qwen3-rerank
-
-    volumes:
-      - hindsight-data:/home/hindsight/.pg0
-    networks:
-      - internal
-
-  # ── Agent Sites 站点托管 ────────────────────────────────────────────────────
-  agent-sites:
-    image: ghcr.io/konghayao/agent-sites:v0.3.2
-    restart: unless-stopped
-    ports:
-      - "26779:3000"
-    volumes:
-      - sites-data:/app/data
-      - sites-public:/app/public
-    environment:
-      HOST: 0.0.0.0
-      PORT: 3000
-      AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY}
-    networks:
-      - internal
-
-# ── 持久化卷 ────────────────────────────────────────────────────────────────
+    postgres:
+        image: postgres:16-alpine
+        container_name: fenix-postgres-ver
+        restart: unless-stopped
+        networks:
+            - fenix-ver-net
+        environment:
+            TZ: Asia/Shanghai
+            POSTGRES_USER: rcs
+            POSTGRES_PASSWORD: rcs
+            POSTGRES_DB: rcs
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U rcs"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 volumes:
-  postgres-data:
-  rcs-data:
-  workflow-data:
-  rcs-opencode-config:
-  rcs-opencode-data:
-  workspace-data:
-  hindsight-data:
-  sites-data:
-  sites-public:
+    postgres-data:
 
-# ── 内网 ────────────────────────────────────────────────────────────────────
-networks:
-  internal:
-    driver: bridge
