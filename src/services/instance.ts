@@ -48,6 +48,11 @@ export interface InstanceInfo {
 }
 
 export interface InstanceActivityInfo extends InstanceInfo {
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
   spawn_source: InstanceSpawnSource | null;
   last_activity_at: number;
   relay_count: number;
@@ -148,6 +153,11 @@ export function toInstanceActivityInfo(
   const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
   return {
     ...toInstanceInfo(instance),
+    user: {
+      id: supplement.userId,
+      name: null,
+      email: null,
+    },
     spawn_source: supplement.spawnSource,
     last_activity_at: Math.floor(supplement.lastActivityAt / 1000),
     relay_count: supplement.relayCount,
@@ -195,7 +205,7 @@ export async function spawnInstanceFromEnvironment(
   prefetchedEnv?: EnvironmentRecord,
   options: SpawnInstanceOptions = { source: "interactive" },
 ): Promise<SpawnedInstance> {
-  assertAgentConcurrencyAvailable(options.source);
+  assertAgentConcurrencyAvailable(userId, options.source);
   const env = prefetchedEnv ?? (await environmentRepo.getById(environmentId));
   if (!env) throw new NotFoundError("Environment not found");
   log(

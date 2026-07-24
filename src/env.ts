@@ -32,6 +32,7 @@ const envSchema = z.object({
   RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
   RCS_ACP_ACTIVITY_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(7200),
   RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
+  RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
 
   // ── 可选：知识库（RagFlow）──
