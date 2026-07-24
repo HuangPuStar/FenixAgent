@@ -22,6 +22,8 @@ RUN ccb plugin marketplace add vectorize-io/hindsight && ccb plugin install hind
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
+RUN alias claude='ccb'
+
 ENV AGENT_TYPE=ccb
 # IS_PERI=1 时额外生成 .peri/settings.json（Peri 客户端模式），默认 0
 ENV IS_PERI=0
