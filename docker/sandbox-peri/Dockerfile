@@ -27,6 +27,9 @@ ENV PATH="/opt/.peri-binary:$PATH"
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
+RUN peri plugin marketplace add vectorize-io/hindsight
+RUN peri plugin install hindsight-memory
+
 ENV AGENT_TYPE=ccb
 # Peri 客户端模式，额外生成 .peri/settings.json
 ENV IS_PERI=1

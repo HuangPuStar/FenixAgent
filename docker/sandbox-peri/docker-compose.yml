@@ -22,6 +22,9 @@ services:
             AGENT_TYPE: ccb
             # 这个 id 设置为空，表示都可以使用
             RCS_TENANT_ID:
+            # 下面的 command 要进行替换
+            RCS_CCB_COMMAND: peri
+            RCS_CCB_ARGS: acp
         volumes:
             - sandbox-peri-workspaces:/app/workspaces
             - sandbox-peri-global:/app/.peri

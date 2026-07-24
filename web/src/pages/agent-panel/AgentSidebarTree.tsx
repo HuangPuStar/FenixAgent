@@ -104,6 +104,9 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   // 相比 treeNodes 每个 agent 只保留单个环境，这里覆盖全部环境，避免多环境场景漏判。
   const envConfigMapRef = useRef<Map<string, string>>(new Map());
 
+  // 跟踪首次加载是否已完成。用于避免轮询刷新时替换已有 UI，消除闪烁。
+  const initialLoadDoneRef = useRef(false);
+
   // ---- 数据加载（带 15s 轮询）----
   const {
     data: treeNodes = [],
@@ -159,7 +162,15 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
 
       return nodes;
     },
-    { pollingInterval: 15_000, refreshDeps: [orgId], ready: !!orgId, loadingDelay: 300 },
+    {
+      pollingInterval: 15_000,
+      refreshDeps: [orgId],
+      ready: !!orgId,
+      loadingDelay: 300,
+      onSuccess: () => {
+        initialLoadDoneRef.current = true;
+      },
+    },
   );
 
   // 监听配置变更事件，agents 变更时立即刷新
@@ -373,7 +384,10 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   };
 
   // ---- 渲染 ----
-  if (loading) {
+
+  // 只有首次加载（尚未完成过任何一次数据加载）才显示全屏 loading 动画。
+  // 轮询刷新、手动 refresh() 时已有数据保留在 DOM 中，不替换，避免闪烁。
+  if (loading && !initialLoadDoneRef.current) {
     return (
       <div className="flex items-center justify-center py-6">
         <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
@@ -381,7 +395,8 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     );
   }
 
-  if (!treeNodes || treeNodes.length === 0) {
+  // 非加载状态下的空列表
+  if ((!treeNodes || treeNodes.length === 0) && !loading) {
     return (
       <div className="agent-sidebar-empty px-4 py-4 text-center">
         <Bot className="h-8 w-8 mx-auto mb-2 text-text-muted opacity-30" />
