@@ -59,12 +59,12 @@ export function GlobalSearch({ open: externalOpen, onOpenChange: externalOnOpenC
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
-        setOpen((prev) => !prev);
+        setOpen(!open);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [setOpen]);
+  }, [setOpen, open]);
 
   // ── 外部触发事件（供页面内搜索栏调用）──
   useEffect(() => {

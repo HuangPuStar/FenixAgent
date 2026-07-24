@@ -49,14 +49,17 @@ export function EmbeddingModelManager({ canManage, inDialog }: EmbeddingModelMan
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
 
-  const { data: tree, loading } = useRequest(() => unwrap(embeddingModelApi.list()), {
-    refreshDeps: [refreshKey],
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "加载模型列表失败");
+  const { data: tree, loading } = useRequest(
+    () => unwrap(embeddingModelApi.list()) as Promise<ConfiguredProviderNode[]>,
+    {
+      refreshDeps: [refreshKey],
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "加载模型列表失败");
+      },
     },
-  });
+  );
 
-  const treeSafe = tree ?? [];
+  const treeSafe: ConfiguredProviderNode[] = tree ?? [];
   const providerCount = treeSafe.length;
   const instanceCount = treeSafe.reduce((sum, p) => sum + (p.instances?.length ?? 0), 0);
 
@@ -330,11 +333,14 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
   const [submitting, setSubmitting] = useState(false);
 
   // 加载厂商列表
-  const { loading: factoriesLoading } = useRequest(() => unwrap(embeddingModelApi.listFactories()), {
-    ready: open,
-    onSuccess: (data) => setFactories((data ?? []).sort((a, b) => a.name.localeCompare(b.name))),
-    onError: (err) => toast.error(err instanceof Error ? err.message : "加载厂商失败"),
-  });
+  const { loading: factoriesLoading } = useRequest(
+    () => unwrap(embeddingModelApi.listFactories()) as Promise<EmbeddingFactoryOption[]>,
+    {
+      ready: open,
+      onSuccess: (data) => setFactories((data ?? []).sort((a, b) => a.name.localeCompare(b.name))),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "加载厂商失败"),
+    },
+  );
 
   const reset = () => {
     setSelectedFactory("");
@@ -366,13 +372,13 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
     setSubmitting(true);
     try {
       // 1. 先验证 Key，失败则提示并不继续
-      const verifyResult = await unwrap(
+      const verifyResult = (await unwrap(
         embeddingModelApi.verify({
           provider: selectedFactory,
           providerApiKey: apiKey.trim(),
           baseUrl: baseUrl.trim() || null,
         }),
-      );
+      )) as { success?: boolean; message?: string };
       if (!verifyResult.success) {
         toast.error(verifyResult.message || "API Key 验证失败");
         return;

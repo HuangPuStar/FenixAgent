@@ -50,11 +50,11 @@ export function FaqDialog({ onClose }: FaqDialogProps) {
         // 3. 创建新环境（autoStart 默认 true，创建后自动 fire-and-forget spawn 实例）
         const createResp = await envApi.create({
           name: "faq-runtime",
-          agentConfigId: agent.id,
+          agentConfigId: agent.id ?? "",
           autoStart: true,
         });
         if (!cancelled && createResp.success && createResp.data) {
-          setFaqEnvId(createResp.data.id);
+          setFaqEnvId(createResp.data.id ?? null);
           setLoading(false);
           return;
         }

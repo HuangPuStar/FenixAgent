@@ -5,8 +5,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { type AgentMarketplaceItem, agentMarketplaceApi } from "@/src/api/agent-marketplace";
 import { unwrap } from "@/src/api/request";
-import { type AgentConfigSnapshotView, AgentFormDialog } from "../AgentFormDialog";
+import { AgentFormDialog } from "../AgentFormDialog";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
+
+/** 已发布/市场 Agent 的配置快照（从 API 返回） */
+type AgentConfigSnapshot = Record<string, unknown>;
 
 type FilterId = "all" | "external" | "published";
 
@@ -130,7 +133,7 @@ export function AgentMarketplacePage() {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [configItem, setConfigItem] = useState<AgentMarketplaceItem | null>(null);
-  const [configSnapshot, setConfigSnapshot] = useState<AgentConfigSnapshotView | null>(null);
+  const [configSnapshot, setConfigSnapshot] = useState<AgentConfigSnapshot | null>(null);
 
   const { data: items = [], loading } = useRequest(async () => unwrap(agentMarketplaceApi.list()), {
     onError: (err) => {
@@ -140,7 +143,7 @@ export function AgentMarketplacePage() {
   });
 
   const { loading: loadingConfig, run: runLoadConfig } = useRequest(
-    async (id: string) => unwrap(agentMarketplaceApi.getConfig(id)) as Promise<AgentConfigSnapshotView>,
+    async (id: string) => unwrap(agentMarketplaceApi.getConfig(id)) as Promise<AgentConfigSnapshot>,
     {
       manual: true,
       onSuccess: (data) => {
@@ -254,9 +257,7 @@ export function AgentMarketplacePage() {
           }
         }}
         mode="edit"
-        agentName={configSnapshot?.name ?? configItem?.name}
-        snapshot={configSnapshot}
-        readOnlyTitle="智能体配置"
+        agentName={configSnapshot?.name != null ? String(configSnapshot.name) : configItem?.name}
       />
     </div>
   );
