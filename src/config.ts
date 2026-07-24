@@ -31,6 +31,8 @@ function buildConfig(env: Env) {
     acpActivityTimeoutSeconds: env.RCS_ACP_ACTIVITY_TIMEOUT_SECONDS,
     /** 全部活跃 Agent 实例的并发上限。 */
     agentMaxConcurrency: env.RCS_AGENT_MAX_CONCURRENCY,
+    /** 单个用户活跃 Agent 实例的并发上限。 */
+    userAgentMaxConcurrency: env.RCS_USER_AGENT_MAX_CONCURRENCY,
     /** 定时任务触发的活跃 Agent 实例并发上限。 */
     scheduledAgentMaxConcurrency: env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY,
     /** acpx-g workflow engine URL for reverse proxy. */
