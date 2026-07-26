@@ -114,6 +114,24 @@ describe("env validation", () => {
     expect(env.RCS_AGENT_MAX_CONCURRENCY).toBe(3);
   });
 
+  // RCS_USER_AGENT_MAX_CONCURRENCY 合法值时应通过校验
+  test("RCS_USER_AGENT_MAX_CONCURRENCY 合法值时通过校验", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_USER_AGENT_MAX_CONCURRENCY = "2";
+    const env = validateEnv();
+    expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(2);
+  });
+
+  // 未设置 RCS_USER_AGENT_MAX_CONCURRENCY 时应使用默认值 10
+  test("RCS_USER_AGENT_MAX_CONCURRENCY 未设置时使用默认值 10", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    delete process.env.RCS_USER_AGENT_MAX_CONCURRENCY;
+    const env = validateEnv();
+    expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
+  });
+
   // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
   test("RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";

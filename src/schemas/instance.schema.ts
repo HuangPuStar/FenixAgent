@@ -5,6 +5,11 @@ export const InstanceStatusSchema = z.enum(["starting", "running", "stopped", "e
 export const InstanceSpawnSourceSchema = z
   .enum(["interactive", "scheduled", "system"])
   .describe("实例启动来源，用于并发分类与审计。");
+export const InstanceActivityUserSchema = z.object({
+  id: z.string().describe("实例所属用户 ID。"),
+  name: z.string().nullable().describe("实例所属用户名；查不到时为 null。"),
+  email: z.string().nullable().describe("实例所属用户邮箱；查不到时为 null。"),
+});
 
 /** 实例详情信息 */
 export const InstanceInfoSchema = z.object({
@@ -21,6 +26,7 @@ export const InstanceInfoSchema = z.object({
 
 /** ACP 实例活跃度监控视图 */
 export const InstanceActivityInfoSchema = InstanceInfoSchema.extend({
+  user: InstanceActivityUserSchema.nullable().describe("实例所属用户信息；缺少 supplement 时为 null。"),
   spawn_source: InstanceSpawnSourceSchema.nullable().describe("实例启动来源；缺少 supplement 时为 null。"),
   last_activity_at: z.number().describe("最近一次非保活 ACP 业务消息时间戳，单位为秒。"),
   relay_count: z.number().describe("当前附着到实例的前端 relay 连接数。"),

@@ -40,6 +40,7 @@ export type { IScheduledTaskRepo, ITaskExecutionLogRepo, ScheduledTaskRow, TaskE
 export { scheduledTaskRepo, taskExecutionLogRepo } from "./task";
 export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
+export { findUsersBasicInfoByIds } from "./user";
 export type { AuthCtx as WorkflowAuthCtx, WorkflowDefRow, WorkflowVersionRow } from "./workflow-def";
 export {
   createWorkflowDef,

@@ -3,6 +3,7 @@ import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import {
   getActiveAgentCount,
   getActiveScheduledAgentCount,
+  getActiveUserAgentCount,
   isActiveRuntimeStatus,
 } from "../services/agent-concurrency";
 import { globalInstanceRegistry } from "../services/instance-registry";
@@ -97,5 +98,35 @@ describe("agent concurrency", () => {
 
     expect(getActiveAgentCount(runtime as never)).toBe(1);
     expect(getActiveScheduledAgentCount(runtime as never, globalInstanceRegistry)).toBe(0);
+  });
+
+  // 用户并发只统计 supplement 中归属于该用户的活跃实例
+  test("getActiveUserAgentCount counts only instances belonging to the target user", () => {
+    globalInstanceRegistry.register(
+      "inst_user_1",
+      makeSupplement({
+        userId: "user-1",
+      }),
+    );
+    globalInstanceRegistry.register(
+      "inst_user_2",
+      makeSupplement({
+        userId: "user-2",
+        environmentId: "env-2",
+        instanceNumber: 2,
+      }),
+    );
+
+    const runtime = {
+      listInstances: () => [
+        makeSnapshot("inst_user_1", "running"),
+        makeSnapshot("inst_user_2", "running"),
+        makeSnapshot("inst_runtime_only", "running"),
+      ],
+    };
+
+    expect(getActiveUserAgentCount("user-1", runtime as never, globalInstanceRegistry)).toBe(1);
+    expect(getActiveUserAgentCount("user-2", runtime as never, globalInstanceRegistry)).toBe(1);
+    expect(getActiveUserAgentCount("user-3", runtime as never, globalInstanceRegistry)).toBe(0);
   });
 });

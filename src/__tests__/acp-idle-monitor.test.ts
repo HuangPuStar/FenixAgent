@@ -148,10 +148,16 @@ describe("acp idle monitor", () => {
       environment_id: null,
       instance_number: 0,
       port: 9527,
+      user: null,
     });
 
     const orgSnapshots = listInstanceActivitySnapshots(1000 + 1200 * 1000, "org-1");
     expect(orgSnapshots.map((item) => item.id)).toEqual(["inst_tracked"]);
+    expect(orgSnapshots[0]?.user).toEqual({
+      id: "user-1",
+      name: null,
+      email: null,
+    });
   });
 
   // sweep 只会停止满足空闲条件的实例

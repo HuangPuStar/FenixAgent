@@ -1,6 +1,7 @@
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { config } from "../config";
+import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
 import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
@@ -66,6 +67,7 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
     session_id: null,
     instance_number: 0,
     created_at: createdAtSeconds,
+    user: null,
     spawn_source: null,
     // 缺少 supplement 时无法可靠推导活动信息；这里保守给默认值，
     // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
@@ -118,6 +120,37 @@ export function listInstanceActivitySnapshots(
     );
   }
   return results.sort((a, b) => b.idle_seconds - a.idle_seconds);
+}
+
+/** 为实例活动快照补齐用户展示信息，方便管理侧识别占用者。 */
+export async function listInstanceActivitySnapshotsWithUsers(
+  now = Date.now(),
+  organizationId?: string,
+  showError = false,
+): Promise<InstanceActivityInfo[]> {
+  const snapshots = listInstanceActivitySnapshots(now, organizationId, showError);
+  const userIds = [...new Set(snapshots.flatMap((snapshot) => (snapshot.user?.id ? [snapshot.user.id] : [])))];
+  if (userIds.length === 0) {
+    return snapshots;
+  }
+
+  const userRows = await findUsersBasicInfoByIds(userIds);
+  const userMap = new Map(userRows.map((row) => [row.id, row]));
+
+  return snapshots.map((snapshot) => {
+    if (!snapshot.user) {
+      return snapshot;
+    }
+    const userRow = userMap.get(snapshot.user.id);
+    return {
+      ...snapshot,
+      user: {
+        id: snapshot.user.id,
+        name: userRow?.name ?? null,
+        email: userRow?.email ?? null,
+      },
+    };
+  });
 }
 
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */

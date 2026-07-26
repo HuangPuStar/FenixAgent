@@ -8,7 +8,7 @@ import {
   SpawnInstanceFromEnvironmentRequestSchema,
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "../../schemas/instance.schema";
-import { listInstanceActivitySnapshots } from "../../services/acp-idle-monitor";
+import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-monitor";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { getOwnedEnvironment } from "../../services/environment";
 import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../../services/instance";
@@ -28,7 +28,7 @@ app.get(
     const organizationId = query.all === true ? undefined : (store.authContext?.organizationId ?? store.user?.id);
     return {
       success: true as const,
-      data: listInstanceActivitySnapshots(Date.now(), organizationId, query.showError === true),
+      data: await listInstanceActivitySnapshotsWithUsers(Date.now(), organizationId, query.showError === true),
     };
   },
   {

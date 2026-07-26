@@ -58,8 +58,8 @@ export function ChatPanel({
     return () => window.removeEventListener("agent:reconnect", handler);
   }, [agentId]);
 
-  // 面板从隐藏切回可见时，如果当前处于可恢复的断开态，则自动补连一次。
-  // machine_unavailable 仍保留手动重连，避免在远端机器离线时反复空转。
+  // 面板从隐藏切回可见时，仅对 idle reclaim 的断开态（后端自动关闭长时间不活跃的实例）自动补连一次。
+  // 其他错误仍按原状保留，避免把非预期错误都吞成自动重试。
   useEffect(() => {
     const becameVisible = !prevPageVisibleRef.current && pageVisible;
     prevPageVisibleRef.current = pageVisible;
@@ -67,8 +67,7 @@ export function ChatPanel({
       return;
     }
 
-    const shouldReconnect =
-      connectionState === "disconnected" || (connectionState === "error" && error !== "machine_unavailable");
+    const shouldReconnect = connectionState === "error" && error === "instance_idle_reclaimed";
     if (!shouldReconnect) {
       return;
     }

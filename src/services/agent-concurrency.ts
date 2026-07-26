@@ -55,8 +55,25 @@ export function getActiveScheduledAgentCount(
   return count;
 }
 
+/** 统计指定用户的活跃实例数。 */
+export function getActiveUserAgentCount(
+  userId: string,
+  runtime: Pick<CoreRuntimeFacade, "listInstances"> = _deps.getRuntime(),
+  registry: Pick<InstanceRegistry, "get"> = _deps.registry,
+): number {
+  let count = 0;
+  for (const snapshot of runtime.listInstances()) {
+    if (!isActiveRuntimeStatus(snapshot.status)) continue;
+    const supplement = registry.get(snapshot.instanceId) as InstanceSupplement | undefined;
+    if (!supplement) continue;
+    if (supplement.userId === userId) count += 1;
+  }
+  return count;
+}
+
 /** 在实例启动前校验当前来源对应的并发额度。 */
 export function assertAgentConcurrencyAvailable(
+  userId: string,
   source: InstanceSpawnSource,
   runtime: Pick<CoreRuntimeFacade, "listInstances"> = _deps.getRuntime(),
   registry: Pick<InstanceRegistry, "get"> = _deps.registry,
@@ -64,6 +81,11 @@ export function assertAgentConcurrencyAvailable(
   const totalLimit = config.agentMaxConcurrency;
   if (totalLimit && getActiveAgentCount(runtime) >= totalLimit) {
     throw new AppError("已达到 Agent 总并发上限", "AGENT_CONCURRENCY_LIMIT_REACHED", 429);
+  }
+
+  const userLimit = config.userAgentMaxConcurrency;
+  if (userLimit && getActiveUserAgentCount(userId, runtime, registry) >= userLimit) {
+    throw new AppError("已达到当前用户 Agent 并发上限", "USER_AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }
 
   const scheduledLimit = config.scheduledAgentMaxConcurrency;
