@@ -4,14 +4,27 @@ import { isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-handl
 import { getAgentConfigById } from "./config/agent-config";
 
 /**
- * 判断 environment 是否绑定了远程 machine。
- * 优先级：agent config 绑定 > 系统默认 fallback > null（本地）
+ * 判断 environment 是否绑定了远程 machine（且 file-ws 已连接）。
+ * 优先级：agent config machineId > 系统默认 fallback > null（本地）
+ *
+ * 仅当配置了 machineId 且其 file-ws 已连接时，才返回 machineId（走远程文件操作）。
+ * 若 file-ws 未连接，则视为本地 machine，回退到本地文件系统操作。
+ * 这样可以避免本地部署的 acp-link machine（无 file-ws 支持）被误判为远程机器导致 503。
  */
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await environmentRepo.getById(envId);
   if (!env?.agentConfigId) return null;
   const agentCfg = await getAgentConfigById(env.agentConfigId);
-  return agentCfg?.machineId ?? config.defaultMachineId ?? null;
+  const machineId = agentCfg?.machineId ?? config.defaultMachineId ?? null;
+
+  // 没有配置 machine → 本地 FS
+  if (!machineId) return null;
+
+  // 仅当 file-ws 已连接时，才走远程文件操作
+  // 若 file-ws 未连接，回退本地 FS（适用于本地 machine 或远程 machine file-ws 尚未就绪的场景）
+  if (!isFileWsConnected(machineId)) return null;
+
+  return machineId;
 }
 
 /**
