@@ -280,6 +280,9 @@ export const knowledgeBase = pgTable(
     remoteUserId: varchar("remote_user_id"),
     status: varchar("status", { length: 50 }).notNull().default("empty"),
     lastError: text("last_error"),
+    embeddingModel: varchar("embedding_model", { length: 255 }),
+    parseMethod: varchar("parse_method", { length: 20 }),
+    chunkMethod: varchar("chunk_method", { length: 40 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1064,3 +1067,27 @@ export const prodView = pgTable(
 
 export type ProdViewRow = typeof prodView.$inferSelect;
 export type ProdViewInsert = typeof prodView.$inferInsert;
+
+export const notification = pgTable(
+  "notification",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: varchar("type", { length: 50 }).notNull(), // 'platform' | 'agent' | 'knowledge'
+    subType: varchar("sub_type", { length: 100 }), // 'agent_published' | 'doc_vectorized' | 'doc_parse_failed' | 'kb_created'
+    title: varchar("title", { length: 500 }).notNull(),
+    content: text("content"),
+    targetUrl: text("target_url"), // 跳转链接
+    metadata: jsonb("metadata"), // 动态字段
+    userId: text("user_id"), // 接收人 (null = 全部用户/平台级)
+    organizationId: text("organization_id").notNull(),
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgIdx: index("idx_notification_org").on(table.organizationId),
+    userIdx: index("idx_notification_user").on(table.userId),
+    typeIdx: index("idx_notification_type").on(table.type),
+    readIdx: index("idx_notification_read").on(table.isRead),
+    createdIdx: index("idx_notification_created").on(table.createdAt),
+  }),
+);

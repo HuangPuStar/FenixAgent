@@ -122,6 +122,7 @@ export async function syncAgentKnowledgeBindingsById(
   organizationId: string,
   agentConfigId: string,
   knowledge: AgentKnowledgeConfig | null | undefined,
+  userId?: string,
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
   const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;
@@ -133,10 +134,10 @@ export async function syncAgentKnowledgeBindingsById(
 
   const existingIds = new Set<string>();
   for (const kbId of knowledgeBaseIds) {
-    const kb = await knowledgeBaseRepo.getByOrgAndId(organizationId, kbId);
-    if (kb) {
-      existingIds.add(kb.id);
-    }
+    const kb = await knowledgeBaseRepo.getById(kbId);
+    if (!kb) continue;
+
+    existingIds.add(kb.id);
   }
   const missingIds = knowledgeBaseIds.filter((id) => !existingIds.has(id));
   if (missingIds.length > 0) {

@@ -22,11 +22,13 @@ export interface IKnowledgeBaseRepo {
   findByUserAndSlug(userId: string, slug: string): Promise<KnowledgeBaseRow | null>;
   listByOrganizationId(organizationId: string): Promise<KnowledgeBaseRow[]>;
   getByOrgAndId(organizationId: string, knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
-  findByOrgAndSlug(organizationId: string, slug: string): Promise<KnowledgeBaseRow | null>;
+  findByOrgAndSlug(organizationId: string, slug: string, userId?: string): Promise<KnowledgeBaseRow | null>;
   create(data: KnowledgeBaseInsert): Promise<KnowledgeBaseRow>;
   update(knowledgeBaseId: string, data: Partial<KnowledgeBaseInsert>): Promise<void>;
   delete(knowledgeBaseId: string): Promise<boolean>;
   countBindings(knowledgeBaseId: string): Promise<number>;
+  /** 列出所有知识库 */
+  listGlobal(): Promise<KnowledgeBaseRow[]>;
 }
 
 /** KnowledgeResource 仓储接口 */
@@ -66,16 +68,20 @@ export interface IAgentKnowledgeBindingRepo {
     Array<
       AgentKnowledgeBindingRow & {
         kbId: string;
+        kbName: string;
         kbRemoteId: string | null;
         kbRemoteAccountId: string | null;
         kbRemoteUserId: string | null;
         kbUserId: string;
+        kbOrganizationId: string | null;
+        kbEmbeddingModel: string | null;
       }
     >
   >;
   getResourceWithKnowledgeBase(resourceId: string): Promise<{
     resource: KnowledgeResourceRow;
     kbUserId: string;
+    kbOrganizationId: string | null;
     kbRemoteId: string | null;
     kbRemoteAccountId: string | null;
     kbRemoteUserId: string | null;
@@ -128,11 +134,13 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
     return rows[0] ?? null;
   }
 
-  async findByOrgAndSlug(organizationId: string, slug: string) {
+  async findByOrgAndSlug(organizationId: string, slug: string, userId?: string) {
+    const conditions = [eq(knowledgeBase.organizationId, organizationId), eq(knowledgeBase.slug, slug)];
+    if (userId) conditions.push(eq(knowledgeBase.userId, userId));
     const rows = await db
       .select()
       .from(knowledgeBase)
-      .where(and(eq(knowledgeBase.organizationId, organizationId), eq(knowledgeBase.slug, slug)));
+      .where(and(...conditions));
     return rows[0] ?? null;
   }
 
@@ -159,6 +167,10 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
       .from(agentKnowledgeBinding)
       .where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
     return row?.count ?? 0;
+  }
+
+  async listGlobal() {
+    return db.select().from(knowledgeBase).orderBy(desc(knowledgeBase.updatedAt));
   }
 }
 
@@ -328,10 +340,13 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         createdAt: agentKnowledgeBinding.createdAt,
         updatedAt: agentKnowledgeBinding.updatedAt,
         kbId: knowledgeBase.id,
+        kbName: knowledgeBase.name,
         kbRemoteId: knowledgeBase.remoteId,
         kbRemoteAccountId: knowledgeBase.remoteAccountId,
         kbRemoteUserId: knowledgeBase.remoteUserId,
         kbUserId: knowledgeBase.userId,
+        kbOrganizationId: knowledgeBase.organizationId,
+        kbEmbeddingModel: knowledgeBase.embeddingModel,
       })
       .from(agentKnowledgeBinding)
       .innerJoin(knowledgeBase, eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBase.id))
@@ -353,6 +368,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         updatedAt: knowledgeResource.updatedAt,
         kbRemoteId: knowledgeBase.remoteId,
         kbUserId: knowledgeBase.userId,
+        kbOrganizationId: knowledgeBase.organizationId,
         kbRemoteAccountId: knowledgeBase.remoteAccountId,
         kbRemoteUserId: knowledgeBase.remoteUserId,
       })
@@ -379,6 +395,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
       },
       kbRemoteId: row.kbRemoteId,
       kbUserId: row.kbUserId,
+      kbOrganizationId: row.kbOrganizationId,
       kbRemoteAccountId: row.kbRemoteAccountId,
       kbRemoteUserId: row.kbRemoteUserId,
     };

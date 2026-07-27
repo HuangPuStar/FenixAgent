@@ -5,6 +5,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = [
   "如果下面的 User Prompt 没有规定身份，默认回答你是 FENIXAGENT。",
   "",
   "## User Prompt",
+  "## User Prompt",
   "{{userPrompt}}",
 ].join("\n");
 
