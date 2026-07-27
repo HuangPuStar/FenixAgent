@@ -52,6 +52,7 @@ export type ModeStateChangedHandler = (state: SessionModeState | null) => void;
 export type AvailableCommandsChangedHandler = (commands: AvailableCommand[]) => void;
 export type SessionLoadedHandler = (sessionId: string) => void;
 export type SessionSwitchingHandler = (sessionId: string) => void;
+export type YjsUpdateHandler = (payload: { docName: string; data: string }) => void;
 
 /**
  * ACP 客户端 — 薄编排层，组合传输/协议/状态/pending 四个子模块。
@@ -95,6 +96,7 @@ export class ACPClient {
   private availableCommandsChangedHandler: AvailableCommandsChangedHandler | null = null;
   private sessionLoadedHandler: SessionLoadedHandler | null = null;
   private sessionSwitchingHandler: SessionSwitchingHandler | null = null;
+  private yjsUpdateHandler: YjsUpdateHandler | null = null;
 
   /**
    * 兼容不同服务端返回形态，保证 session/load 和 session/resume 最终都能拿到 sessionId。
@@ -249,6 +251,11 @@ export class ACPClient {
     });
     this.state.on("availableCommandsChange", (cmds) => {
       this.availableCommandsChangedHandler?.(cmds);
+    });
+
+    // yjs:update → user-registered handler
+    this.protocol.on("yjs_update", (payload) => {
+      this.yjsUpdateHandler?.(payload);
     });
 
     // Transport state: send ACP handshake on every WS connection (initial + reconnect)
@@ -566,6 +573,9 @@ export class ACPClient {
   }
   setSessionSwitchingHandler(handler: SessionSwitchingHandler | null): void {
     this.sessionSwitchingHandler = handler;
+  }
+  setYjsUpdateHandler(handler: YjsUpdateHandler | null): void {
+    this.yjsUpdateHandler = handler;
   }
 
   // ==========================================================================

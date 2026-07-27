@@ -1,38 +1,17 @@
-import { getParentToolUseId } from "acp-link/types";
+import type { ChatStateSnapshot, SessionStateSnapshot, StructuredMessage } from "@fenix/acp-server";
 import imageCompression from "browser-image-compression";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ACPClient } from "../src/acp/client";
-import type {
-  ContentBlock,
-  ImageContent,
-  PermissionOption,
-  PermissionRequestPayload,
-  PromptUsage,
-  SessionUpdate,
-} from "../src/acp/types";
-import { useCommands } from "../src/hooks/useCommands";
-import { useModes } from "../src/hooks/useModes";
-import { finalizeRunningToolCalls } from "../src/lib/chat-finalize-tools";
-import { flushContext, isVisibleContentBlock } from "../src/lib/context-queue";
+import type { AvailableCommand, ContentBlock, ImageContent, PromptUsage, SessionMode } from "../src/acp/types";
+import { flushContext } from "../src/lib/context-queue";
+import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";
-import type {
-  ChatInputMessage,
-  PendingPermission,
-  ThreadEntry,
-  ToolCallData,
-  ToolCallEntry,
-  ToolCallStatus,
-  UserMessageEntry,
-  UserMessageImage,
-} from "../src/lib/types";
+import type { ChatInputMessage, PendingPermission, ThreadEntry, UserMessageImage } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
-import { extractDisplayMeta, resolveToolCardKind } from "./chat/narrators/helpers";
 import { PermissionPanel } from "./chat/PermissionPanel";
-import type { TodoItem } from "./chat/TodoPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
 
 // Image compression options
@@ -77,7 +56,6 @@ import { Button } from "./ui/button";
 // =============================================================================
 
 interface ChatInterfaceProps {
-  client: ACPClient;
   agentId?: string;
   readonly?: boolean;
   hideContextPanel?: boolean;
@@ -87,254 +65,29 @@ interface ChatInterfaceProps {
   onPromptComplete?: () => void;
   /** 上下文标识：变化时自动触发 newSession（如工作流 ID 变化） */
   contextKey?: string;
-}
-// Helper Functions
-// =============================================================================
+  /** Yjs Session 级状态快照 — 替代旧 SessionUpdate handler */
+  sessionState?: SessionStateSnapshot | null;
+  /** Yjs Chat 级状态快照 — 替代旧 session 创建/切换/权限 handler */
+  chatState?: ChatStateSnapshot;
 
-// Map ACP status string to our status type
-function mapToolStatus(status: string): ToolCallStatus {
-  if (status === "completed") return "complete";
-  if (status === "failed") return "error";
-  if (status === "canceled" || status === "cancelled") return "canceled";
-  if (status === "rejected") return "rejected";
-  // "pending" / "in_progress" / unknown → "running"
-  return "running";
-}
+  // ── Callbacks（替代 client 方法）──
+  onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
+  onCancel: () => void;
+  onCreateSession: () => Promise<void>;
+  onRespondPermission: (requestId: string, optionId: string | null) => void;
 
-// Find tool call index in entries (search from end, like Zed)
-function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (entry && entry.type === "tool_call" && entry.toolCall.id === toolCallId) {
-      return i;
-    }
-  }
-  return -1;
-}
+  // ── 提升的状态（原 useCommands/useModes 结果）──
+  availableCommands: AvailableCommand[];
+  availableModes: SessionMode[];
+  currentModeId: string | null;
+  onSetMode: (modeId: string) => void;
+  supportsModeSelection: boolean;
 
-// 终态集合 — 已处于终态的工具调用不接受服务器状态覆盖
-const TERMINAL_STATUSES = new Set<ToolCallStatus>(["canceled", "rejected"]);
-
-// =============================================================================
-// 纯函数：将 SessionUpdate 应用到 entries 数组，返回新数组
-// 顶级和子 agent 嵌套复用同一套逻辑
-// =============================================================================
-function applySessionUpdateToEntries(entries: ThreadEntry[], update: SessionUpdate): ThreadEntry[] {
-  // Handle agent message chunk
-  if (update.sessionUpdate === "agent_message_chunk") {
-    const text = update.content.type === "text" && update.content.text ? update.content.text : "";
-    if (!text) return entries;
-
-    const lastEntry = entries[entries.length - 1];
-
-    // If last entry is AssistantMessage, append to it
-    if (lastEntry?.type === "assistant_message") {
-      const lastChunk = lastEntry.chunks[lastEntry.chunks.length - 1];
-      if (lastChunk?.type === "message") {
-        return [
-          ...entries.slice(0, -1),
-          {
-            ...lastEntry,
-            chunks: [...lastEntry.chunks.slice(0, -1), { type: "message", text: lastChunk.text + text }],
-          },
-        ];
-      }
-      return [...entries.slice(0, -1), { ...lastEntry, chunks: [...lastEntry.chunks, { type: "message", text }] }];
-    }
-
-    return [
-      ...entries,
-      { type: "assistant_message", id: `assistant-${Date.now()}`, chunks: [{ type: "message", text }] },
-    ];
-  }
-
-  // Handle agent thought chunk
-  if (update.sessionUpdate === "agent_thought_chunk") {
-    const text = update.content.type === "text" && update.content.text ? update.content.text : "";
-    if (!text) return entries;
-
-    const lastEntry = entries[entries.length - 1];
-
-    if (lastEntry?.type === "assistant_message") {
-      const lastChunk = lastEntry.chunks[lastEntry.chunks.length - 1];
-      if (lastChunk?.type === "thought") {
-        return [
-          ...entries.slice(0, -1),
-          {
-            ...lastEntry,
-            chunks: [...lastEntry.chunks.slice(0, -1), { type: "thought", text: lastChunk.text + text }],
-          },
-        ];
-      }
-      return [...entries.slice(0, -1), { ...lastEntry, chunks: [...lastEntry.chunks, { type: "thought", text }] }];
-    }
-
-    return [
-      ...entries,
-      { type: "assistant_message", id: `assistant-${Date.now()}`, chunks: [{ type: "thought", text }] },
-    ];
-  }
-
-  // Handle user message chunk
-  if (update.sessionUpdate === "user_message_chunk") {
-    const text = update.content.type === "text" && update.content.text ? update.content.text : "";
-    if (!text) return entries;
-    if (!isVisibleContentBlock({ type: "text", text })) return entries;
-
-    const lastEntry = entries[entries.length - 1];
-    if (lastEntry?.type === "user_message") {
-      return [...entries.slice(0, -1), { ...lastEntry, content: lastEntry.content + text }];
-    }
-
-    return [...entries, { type: "user_message", id: `user-${Date.now()}`, content: text }];
-  }
-
-  // Handle tool call (UPSERT)
-  if (update.sessionUpdate === "tool_call") {
-    // 处理 resume 回放中 CC SDK tool_use 格式：
-    // unstable_resumeSession 将 CC SDK tool_use block 整包放入 content 字段，
-    // 缺少 toolCallId/title/status，导致后续 tool_call_update 通过 findToolCallIndex 匹配失败。
-    // 此处从 content 中提取 id/name/input，补齐 ACP 标准字段。
-    let toolCallId = update.toolCallId as string | undefined;
-    let title = update.title as string | undefined;
-    let rawInput = update.rawInput as Record<string, unknown> | undefined;
-    let toolContent = update.content;
-    const nonArrayContent = toolContent as unknown as Record<string, unknown> | undefined;
-    const isCCSdkToolUse =
-      !toolCallId &&
-      nonArrayContent &&
-      !Array.isArray(nonArrayContent) &&
-      typeof nonArrayContent === "object" &&
-      nonArrayContent.type === "tool_use";
-    if (isCCSdkToolUse) {
-      toolCallId = (nonArrayContent.id as string) ?? toolCallId;
-      title = (nonArrayContent.name as string) ?? title;
-      rawInput = (nonArrayContent.input as Record<string, unknown>) ?? rawInput;
-      toolContent = undefined; // CC SDK 格式不是有效的 ACP ToolCallContent[]
-    }
-
-    // ① 顶层 display（opencode 风格，可能不在 ACP ToolCallUpdate 标准类型中，需转型访问）
-    const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
-      | Record<string, unknown>
-      | undefined;
-    const display = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
-    // 构造临时 tool 对象用于 resolveToolCardKind
-    const tempTool = { display, rawInput, rawOutput: update.rawOutput };
-    const kind = resolveToolCardKind(tempTool, update._meta);
-    const toolCallData: ToolCallData = {
-      id: toolCallId ?? "",
-      title: title ?? "",
-      status: mapToolStatus(update.status),
-      kind,
-      content: toolContent,
-      // 条件展开避免 undefined 覆盖已有值（rawInput 可能是空对象 {}，用 != null 而非 &&）
-      ...(rawInput != null ? { rawInput } : {}),
-      ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
-      ...(display && { display }),
-    };
-
-    const existingIndex = findToolCallIndex(entries, toolCallId ?? "");
-    if (existingIndex >= 0) {
-      return entries.map((entry, index) => {
-        if (index !== existingIndex || entry.type !== "tool_call") return entry;
-        // 保护终态和待确认状态
-        if (TERMINAL_STATUSES.has(entry.toolCall.status) || entry.toolCall.status === "waiting_for_confirmation")
-          return entry;
-        return { type: "tool_call", toolCall: { ...entry.toolCall, ...toolCallData } };
-      });
-    }
-
-    return [...entries, { type: "tool_call", toolCall: toolCallData }];
-  }
-
-  // Handle tool call update (partial update)
-  if (update.sessionUpdate === "tool_call_update") {
-    const existingIndex = findToolCallIndex(entries, update.toolCallId);
-
-    if (existingIndex < 0) {
-      // tool_call_update 先于 tool_call 到达，或页面刷新后前端 state 丢失：
-      // 基于 update 数据构建正常占位条目，而非硬造 error 条目。
-      // 页面刷新场景下 agent 发送的 tool_call_update 可能携带有效 status/rawOutput 等数据，
-      // 硬造 error 会导致正常完成的工具调用显示为"失败"+"未知错误"。
-      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
-        | Record<string, unknown>
-        | undefined;
-      const fallbackDisplay = extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay);
-      const tempTool = { display: fallbackDisplay, rawInput: update.rawInput, rawOutput: update.rawOutput };
-      const kind = resolveToolCardKind(tempTool, update._meta);
-      const placeholder: ToolCallEntry = {
-        type: "tool_call",
-        toolCall: {
-          id: update.toolCallId,
-          title: update.title || "Running tool",
-          status: update.status ? mapToolStatus(update.status) : "running",
-          kind,
-          content: update.content || [],
-          ...(update.rawInput != null ? { rawInput: update.rawInput } : {}),
-          ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
-          ...(fallbackDisplay && { display: fallbackDisplay }),
-        },
-      };
-      return [...entries, placeholder];
-    }
-
-    return entries.map((entry, index) => {
-      if (index !== existingIndex || entry.type !== "tool_call") return entry;
-      // 保护终态和待确认状态
-      if (TERMINAL_STATUSES.has(entry.toolCall.status) || entry.toolCall.status === "waiting_for_confirmation")
-        return entry;
-
-      const newStatus = update.status ? mapToolStatus(update.status) : entry.toolCall.status;
-      const mergedContent = update.content
-        ? [...(entry.toolCall.content || []), ...update.content]
-        : entry.toolCall.content;
-      const topLevelDisplay = (update as unknown as Record<string, unknown>).display as
-        | Record<string, unknown>
-        | undefined;
-      // extractDisplayMeta 可能返回 undefined（metadata 结构异常），
-      // 此时应保留旧 display 值，避免 display 丢失
-      const display = update.rawOutput
-        ? (extractDisplayMeta(update.rawOutput, update._meta, topLevelDisplay) ?? entry.toolCall.display)
-        : entry.toolCall.display;
-      // kind 同步更新（rawInput/output 变化可能导致 kind 变化）
-      const tempTool = {
-        display,
-        rawInput: update.rawInput ?? entry.toolCall.rawInput,
-        rawOutput: update.rawOutput ?? entry.toolCall.rawOutput,
-      };
-      const kind = resolveToolCardKind(tempTool, update._meta);
-
-      return {
-        type: "tool_call",
-        toolCall: {
-          ...entry.toolCall,
-          status: newStatus,
-          kind,
-          ...(update.title && { title: update.title }),
-          content: mergedContent,
-          ...(update.rawInput && { rawInput: update.rawInput }),
-          ...(update.rawOutput && { rawOutput: update.rawOutput }),
-          ...(display && { display }),
-        },
-      };
-    });
-  }
-
-  // Handle plan update
-  if (update.sessionUpdate === "plan") {
-    if (update.entries.length === 0) {
-      return entries.filter((e) => e.type !== "plan");
-    }
-
-    const lastPlanIndex = entries.reduce((acc, entry, i) => (entry.type === "plan" ? i : acc), -1);
-    if (lastPlanIndex >= 0) {
-      return entries.map((entry, index) => (index === lastPlanIndex ? { ...entry, entries: update.entries } : entry));
-    }
-
-    return [...entries, { type: "plan", id: `plan-${Date.now()}`, entries: update.entries }];
-  }
-
-  return entries;
+  // ── 提升的状态（原从 client 直接读）──
+  supportsImages: boolean;
+  modelName: string | undefined;
+  /** ACP prompt_complete 返回的真实 token 用量 */
+  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
 }
 
 // =============================================================================
@@ -349,7 +102,6 @@ export interface ChatInterfaceHandle {
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
   {
-    client,
     agentId,
     readonly,
     hideContextPanel,
@@ -357,469 +109,168 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onSessionCreated,
     scenePrompt,
     contextKey,
-    onPromptComplete,
+    onPromptComplete: _onPromptComplete,
+    sessionState,
+    chatState,
+    onSendPrompt,
+    onCancel,
+    onCreateSession,
+    onRespondPermission,
+    availableCommands,
+    availableModes,
+    currentModeId,
+    onSetMode,
+    supportsModeSelection: _supportsModeSelection,
+    supportsImages,
+    modelName,
+    tokenUsage,
   },
   ref,
 ) {
   const { t } = useTranslation("components");
-  // Flat list of entries (like Zed's entries: Vec<AgentThreadEntry>)
-  const [entries, setEntries] = useState<ThreadEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  // 断连时记住 loading 状态，WS 重连 resume 后恢复
-  const wasLoadingBeforeDisconnect = useRef(false);
-  // 追踪所有工具调用的 raw ACP status（toolCallId → status 字符串），
-  // 用于 resume 回放后判断是否有未完成的工具调用，从而决定是否恢复 loading 态
-  const toolEndStatusRef = useRef<Map<string, string>>(new Map());
-  const [sessionReady, setSessionReady] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const activeSessionIdRef = useRef<string | null>(null);
+
+  // ── YJS-driven computed state ──
+
+  // 从 Yjs chatState 获取当前活跃会话 ID
+  const activeSessionId = chatState?.activeSessionId ?? null;
+
+  // 从 Yjs sessionState 计算 loading 状态
+  const isLoading = sessionState?.loading != null;
+
+  // 从 Yjs sessionState 计算会话是否就绪
+  const sessionReady = !!sessionState && sessionState.status !== "idle";
+
+  // 从 Yjs structuredMessages 计算渲染用的 ThreadEntry[]
+  const renderEntries: ThreadEntry[] = useMemo(() => {
+    if (!sessionState) return [];
+    const result = sessionState.structuredMessages?.length
+      ? structuredToThreadEntries(sessionState.structuredMessages)
+      : [];
+    return result;
+  }, [sessionState]);
+
+  // ── Refs & retained local state (YJS does not yet carry these fields) ──
+
   const scenePromptUsedRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 追踪用户主动取消操作，避免取消后触发错误提示
   const userCancelledRef = useRef(false);
-  // 追踪 errorMessageHandler 是否已设置后端错误，避免 promptCompleteHandler 的通用错误覆盖具体报错
-  const backendErrorRef = useRef(false);
-  // 追踪一轮 prompt 中是否收到 agent 输出（agent_message/tool_call 等），用于检测空响应
-  const hasAssistantOutputRef = useRef(false);
-  // Todo 面板状态 — 每次 todowrite 调用替换
-  const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
-  // Reference: Zed's supports_images() checks prompt_capabilities.image
-  const [supportsImages, setSupportsImages] = useState(false);
+  // 缓存用户首次发送的 prompt，等 activeSessionId 就绪后自动发送
+  const pendingSendRef = useRef<ContentBlock[] | null>(null);
+  const pendingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   // ACP 返回的真实 token 用量（prompt/complete 响应），用于 ContextPanel 优先展示
   const [promptUsage, setPromptUsage] = useState<PromptUsage | null>(null);
-  const { commands: availableCommands } = useCommands(client);
-  const { availableModes, currentModeId, setMode } = useModes(client);
 
+  // ── Side effects from YJS state changes ──
+
+  // Reset scene prompt flag when session changes
   useEffect(() => {
-    activeSessionIdRef.current = activeSessionId;
     scenePromptUsedRef.current = false;
-  }, [activeSessionId]);
+  }, []);
+
+  // Persist active session id to localStorage when it changes via YJS
+  const storageKey = agentId ? `acp_last_session_${agentId}` : null;
+  useEffect(() => {
+    if (activeSessionId && storageKey) {
+      try {
+        localStorage.setItem(storageKey, activeSessionId);
+      } catch {}
+    }
+  }, [activeSessionId, storageKey]);
+
+  // Notify parent when active session changes
+  useEffect(() => {
+    if (activeSessionId) {
+      onSessionCreated?.(activeSessionId);
+    }
+  }, [activeSessionId, onSessionCreated]);
+
+  // 当 activeSessionId 从无到有时（首次发送自动创建会话），发送缓存的 prompt
+  useEffect(() => {
+    if (activeSessionId && pendingSendRef.current) {
+      const blocks = pendingSendRef.current;
+      pendingSendRef.current = null;
+      if (pendingSendTimerRef.current) {
+        clearTimeout(pendingSendTimerRef.current);
+        pendingSendTimerRef.current = null;
+      }
+      userCancelledRef.current = false;
+      onSendPrompt(blocks).catch((err) => {
+        console.error("[ChatInterface] Pending send failed:", err);
+      });
+    }
+  }, [activeSessionId, onSendPrompt]);
+
+  // 组件卸载或 contextKey 变化时清理 pending prompt（避免内存泄漏 / 错误发送）
+  useEffect(() => {
+    return () => {
+      pendingSendRef.current = null;
+      if (pendingSendTimerRef.current) {
+        clearTimeout(pendingSendTimerRef.current);
+        pendingSendTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // ── Core operations ──
 
   const resetThreadState = useCallback(() => {
-    setEntries([]);
-    setIsLoading(false);
-    setSessionReady(false);
-    setTodoItems([]);
-    // 清除残留的错误提示和定时器，避免切换会话后错误横幅持续显示
     setErrorMessage(null);
     if (errorTimerRef.current) {
       clearTimeout(errorTimerRef.current);
       errorTimerRef.current = null;
     }
     userCancelledRef.current = false;
-    backendErrorRef.current = false;
-    wasLoadingBeforeDisconnect.current = false;
-    hasAssistantOutputRef.current = false;
-    toolEndStatusRef.current.clear();
     setPromptUsage(null);
   }, []);
 
-  const storageKey = agentId ? `acp_last_session_${agentId}` : null;
-
   const requestCreateSession = useCallback(async () => {
-    await client.createSession();
-  }, [client]);
+    await onCreateSession();
+  }, [onCreateSession]);
 
-  const activateSession = useCallback(
-    (sessionId: string, options?: { resetEntries?: boolean }) => {
-      const shouldResetEntries = options?.resetEntries ?? true;
-      if (shouldResetEntries) {
-        setEntries([]);
-        setIsLoading(false);
-        wasLoadingBeforeDisconnect.current = false;
-      }
-      setActiveSessionId(sessionId);
-      setSessionReady(true);
-      setSupportsImages(client.supportsImages);
-      if (storageKey) {
-        try {
-          localStorage.setItem(storageKey, sessionId);
-        } catch {}
-      }
-      console.log("[ChatInterface] Active session:", sessionId, "supportsImages:", client.supportsImages);
-    },
-    [client, storageKey],
-  );
-
-  // =============================================================================
-  // Permission Request Handler
-  // =============================================================================
-  const handlePermissionRequest = useCallback((request: PermissionRequestPayload) => {
-    if (activeSessionIdRef.current && request.sessionId !== activeSessionIdRef.current) {
-      return;
-    }
-    console.log("[ChatInterface] Permission request:", request);
-
-    setEntries((prev) => {
-      // Find matching tool call (search from end)
-      const toolCallIndex = findToolCallIndex(prev, request.toolCall.toolCallId);
-
-      if (toolCallIndex >= 0) {
-        // Update existing tool call's status
-        return prev.map((entry, index) => {
-          if (index !== toolCallIndex) return entry;
-          if (entry.type !== "tool_call") return entry;
-          if (entry.toolCall.status !== "running") return entry;
-
-          return {
-            type: "tool_call",
-            toolCall: {
-              ...entry.toolCall,
-              status: "waiting_for_confirmation" as const,
-              permissionRequest: {
-                requestId: request.requestId,
-                options: request.options,
-              },
-            },
-          };
-        });
-      } else {
-        // No matching tool call - create standalone permission request as new entry
-        console.log("[ChatInterface] No matching tool call, creating standalone permission request");
-
-        const permissionToolCall: ToolCallEntry = {
-          type: "tool_call",
-          toolCall: {
-            id: request.toolCall.toolCallId,
-            title: request.toolCall.title || "Permission Request",
-            status: "waiting_for_confirmation",
-            kind: resolveToolCardKind({
-              rawInput: (request.toolCall as Record<string, unknown>).rawInput as Record<string, unknown>,
-            }),
-            permissionRequest: {
-              requestId: request.requestId,
-              options: request.options,
-            },
-            isStandalonePermission: true,
-          },
-        };
-
-        return [...prev, permissionToolCall];
-      }
-    });
-  }, []);
-
-  // =============================================================================
-  // Session Update Handler (Zed-style: check last entry type)
-  // 支持子 agent 嵌套：带 parentToolUseId 的 update 路由到父工具调用的 subEntries
-  // =============================================================================
-
-  const handleSessionUpdate = useCallback((sessionId: string, update: SessionUpdate) => {
-    if (activeSessionIdRef.current && sessionId !== activeSessionIdRef.current) {
-      return;
-    }
-
-    // 记录本轮 prompt 中出现了 agent 输出，用于 promptComplete 时检测空响应
-    if (
-      update.sessionUpdate === "agent_message_chunk" ||
-      update.sessionUpdate === "tool_call" ||
-      update.sessionUpdate === "tool_call_update"
-    ) {
-      hasAssistantOutputRef.current = true;
-    }
-
-    // 记录工具调用的 ACP 原始状态，用于 resume 回放后判断是否有未完成的工具
-    if (update.sessionUpdate === "tool_call" && update.status) {
-      toolEndStatusRef.current.set(update.toolCallId, update.status);
-    } else if (update.sessionUpdate === "tool_call_update" && update.status) {
-      toolEndStatusRef.current.set(update.toolCallId, update.status);
-    }
-
-    // 拦截 todowrite 工具调用 → 更新 Todo 面板（仅顶层）
-    if (update.sessionUpdate === "tool_call" && isTodoWriteToolCall(update.title, update.rawInput)) {
-      const todos = parseTodosFromRawInput(update.rawInput!);
-      if (todos.length > 0) {
-        setTodoItems(todos);
-      }
-    } else if (
-      update.sessionUpdate === "tool_call_update" &&
-      update.rawInput &&
-      isTodoWriteToolCall(update.title || "", update.rawInput)
-    ) {
-      const todos = parseTodosFromRawInput(update.rawInput);
-      if (todos.length > 0) {
-        setTodoItems(todos);
-      }
-    }
-
-    // 检测子 agent 关联 — 有 parentToolUseId 时路由到嵌套处理
-    const parentToolUseId = getParentToolUseId(update);
-    if (parentToolUseId) {
-      setEntries((prev) => {
-        const parentIndex = findToolCallIndex(prev, parentToolUseId);
-        if (parentIndex < 0) {
-          console.warn(`[ChatInterface] Parent tool call not found: ${parentToolUseId}, skipping sub-agent update`);
-          return prev;
-        }
-
-        const parentEntry = prev[parentIndex];
-        if (parentEntry.type !== "tool_call") return prev;
-
-        const subEntries = parentEntry.toolCall.subEntries ?? [];
-        const newSubEntries = applySessionUpdateToEntries(subEntries, update);
-
-        // 如果父工具调用完成（来自子 agent 的 tool_call_update 匹配 parentToolUseId），更新父状态
-        if (
-          update.sessionUpdate === "tool_call_update" &&
-          "toolCallId" in update &&
-          update.toolCallId === parentToolUseId
-        ) {
-          const newStatus = update.status ? mapToolStatus(update.status) : parentEntry.toolCall.status;
-          // 提取 display 元数据，避免子 agent 父 entry 的 display/rawOutput 丢失
-          const parentDisplay = update.rawOutput ? extractDisplayMeta(update.rawOutput, update._meta) : undefined;
-          return prev.map((entry, i) => {
-            if (i !== parentIndex || entry.type !== "tool_call") return entry;
-            return {
-              ...entry,
-              toolCall: {
-                ...entry.toolCall,
-                status: newStatus,
-                subEntries: newSubEntries,
-                ...(update.rawOutput != null ? { rawOutput: update.rawOutput } : {}),
-                ...(parentDisplay && { display: parentDisplay }),
-              },
-            };
-          });
-        }
-
-        return prev.map((entry, i) => {
-          if (i !== parentIndex || entry.type !== "tool_call") return entry;
-          return {
-            ...entry,
-            toolCall: {
-              ...entry.toolCall,
-              subEntries: newSubEntries,
-            },
-          };
-        });
-      });
-      return;
-    }
-
-    // 顶级消息 — 正常处理
-    setEntries((prev) => applySessionUpdateToEntries(prev, update));
-  }, []);
-
-  // =============================================================================
-  // Setup Effect
-  // =============================================================================
-  useEffect(() => {
-    client.setSessionCreatedHandler((sessionId) => {
-      console.log("[ChatInterface] Session created:", sessionId);
-      activateSession(sessionId);
-      onSessionCreated?.(sessionId);
-    });
-
-    client.setSessionLoadedHandler((sessionId) => {
-      console.log("[ChatInterface] Session loaded/resumed:", sessionId);
-      activateSession(sessionId, { resetEntries: false });
-      // 回放后检查：如果存在未完成的工具调用（status 非终态），说明 agent 仍在执行
-      const hasUnfinishedTool = [...toolEndStatusRef.current.values()].some(
-        (status) => !["completed", "failed", "canceled", "cancelled", "rejected"].includes(status),
-      );
-      if (hasUnfinishedTool) {
-        console.log("[ChatInterface] Resume with unfinished tool call, setting isLoading=true");
-        setIsLoading(true);
-        wasLoadingBeforeDisconnect.current = false;
-      } else if (wasLoadingBeforeDisconnect.current) {
-        // WS 重连 resume：恢复断连前的 loading 状态（agent 可能仍在执行，但无工具调用可跟踪）
-        console.log("[ChatInterface] Restoring isLoading=true after reconnect resume (no tool to track)");
-        setIsLoading(true);
-        wasLoadingBeforeDisconnect.current = false;
-      }
-    });
-
-    client.setSessionSwitchingHandler((sessionId) => {
-      console.log("[ChatInterface] Switching to session:", sessionId);
-      setActiveSessionId(sessionId);
-      resetThreadState();
-    });
-
-    // 连接断开时强制退出 loading 状态，防止卡死
-    const connectionStateHandler = (state: string) => {
-      if (state === "error" || state === "disconnected") {
-        setIsLoading((prev) => {
-          if (prev) {
-            console.log("[ChatInterface] Connection lost while loading, forcing isLoading=false");
-            wasLoadingBeforeDisconnect.current = true;
-          }
-          return false;
-        });
-      }
-    };
-    client.setConnectionStateHandler(connectionStateHandler);
-
-    client.setSessionUpdateHandler((sessionId: string, update: SessionUpdate) => {
-      handleSessionUpdate(sessionId, update);
-    });
-
-    client.setPromptCompleteHandler((stopReason, usage) => {
-      console.log("[ChatInterface] Prompt complete:", stopReason, usage);
-      // Always set isLoading=false when prompt completes
-      // This includes stopReason="cancelled" (which is the expected response after client.cancel())
-      // Note: Tool calls are already marked as "canceled" in handleCancel before this fires
-      setIsLoading(false);
-
-      // 清理工具状态追踪：本轮 prompt 结束，所有工具调用状态重置
-      toolEndStatusRef.current.clear();
-
-      // 存储 ACP 真实 token 用量，供 ContextPanel 优先展示
-      setPromptUsage(usage ?? null);
-
-      // 兜底：远程 agent（如 claude --acp）有时不在工具完成时推送 status="completed"
-      // 的 session_update，导致 tool_call 永久卡在 running。一轮 prompt 结束后，
-      // 把仍为 running 的工具调用统一标记为 complete，避免 UI 持续 loading。
-      // 已是终态（canceled/rejected/error/complete）的不动；handleCancel 已经把
-      // 取消的工具改成 canceled，这里只兜底未通知完成的 running 调用。
-      setEntries((prev) => finalizeRunningToolCalls(prev));
-
-      // 用户主动取消时跳过错误提示，避免误导用户
-      if (userCancelledRef.current) {
-        userCancelledRef.current = false;
-      } else {
-        // 如果后端已通过 errorMessageHandler 报告了具体错误，不再用通用错误覆盖
-        if (backendErrorRef.current) {
-          backendErrorRef.current = false;
-        }
-        // inputTokens === 0 且 outputTokens === 0 说明 prompt 未被处理（真错误）
-        // 仅 inputTokens === 0 可能是 prompt caching 导致的正常情况（CCB/OC 引擎常见）
-        else if (usage && usage.inputTokens === 0 && (usage.outputTokens ?? 0) === 0) {
-          setErrorMessage(
-            t("chatInterface.processingErrorDetail", {
-              stopReason,
-              inputTokens: String(usage.inputTokens),
-              outputTokens: String(usage.outputTokens ?? 0),
-            }),
-          );
-          if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-          errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
-        }
-        // 检测空响应：prompt 正常结束但 agent 没有产生任何输出
-        // 典型场景：opencode 返回 {stopReason:"end_turn","_meta":{}} 无 usage 无内容
-        else if (!hasAssistantOutputRef.current) {
-          console.warn("[ChatInterface] Prompt completed with no assistant output");
-          setErrorMessage(
-            t("chatInterface.processingErrorDetail", {
-              stopReason,
-              inputTokens: String(usage?.inputTokens ?? "N/A"),
-              outputTokens: String(usage?.outputTokens ?? "N/A"),
-            }),
-          );
-          if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-          errorTimerRef.current = setTimeout(() => setErrorMessage(null), 8000);
-        }
-      }
-
-      onPromptComplete?.();
-    });
-
-    client.setPermissionRequestHandler(handlePermissionRequest);
-
-    // InteractiveQuestion handler — 当 CC 使用 AskUserQuestion 等交互工具时触发
-    client.setInteractiveQuestionHandler((iq) => {
-      console.log("[ChatInterface] Interactive question:", iq);
-      // 将问题转为 pending permission 格式，复用 PermissionPanel 渲染
-      const question = iq.questions[0];
-      if (!question) return;
-      setEntries((prev) => [
-        ...prev,
-        {
-          type: "tool_call" as const,
-          id: `iq-${iq.questionId}`,
-          toolCall: {
-            id: iq.questionId,
-            title: question.header || iq.toolName,
-            status: "waiting_for_confirmation" as ToolCallStatus,
-            kind: "question" as const,
-            rawInput: { questions: iq.questions },
-            permissionRequest: {
-              requestId: iq.questionId,
-              options: question.options.map((opt, i) => ({
-                kind: (i === 0 ? "allow_always" : "allow_once") as PermissionOption["kind"],
-                name: `${opt.label}${opt.description ? ` — ${opt.description}` : ""}`,
-                optionId: opt.label,
-              })),
-            },
-            isStandalonePermission: true,
-          },
-        },
-      ]);
-    });
-
-    client.setErrorMessageHandler((msg) => {
-      console.error("[ChatInterface] Agent error:", msg);
-      // 用户主动取消后，忽略服务端回传的错误消息
-      if (userCancelledRef.current) return;
-      // 标记后端已报错，避免 promptCompleteHandler 用通用错误覆盖具体报错
-      backendErrorRef.current = true;
-      setErrorMessage(msg);
-      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = setTimeout(() => setErrorMessage(null), 5000);
-    });
-
-    return () => {
-      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-      client.removeConnectionStateHandler(connectionStateHandler);
-      client.setSessionCreatedHandler(() => {});
-      client.setSessionLoadedHandler(() => {});
-      client.setSessionSwitchingHandler(null);
-      client.setSessionUpdateHandler(() => {});
-      client.setPromptCompleteHandler(() => {});
-      client.setPermissionRequestHandler(() => {});
-      client.setErrorMessageHandler(() => {});
-    };
-  }, [
-    activateSession,
-    client,
-    handlePermissionRequest,
-    handleSessionUpdate,
-    resetThreadState,
-    onSessionCreated,
-    onPromptComplete,
-    t,
-  ]);
+  // Todo 面板状态 — 从 Yjs structuredMessages 中提取最新 TodoWrite 工具调用
+  const todoItems = useMemo(() => {
+    if (!sessionState) return [];
+    if (!sessionState.structuredMessages) return [];
+    const todoWrites = sessionState.structuredMessages
+      .filter(
+        (m): m is StructuredMessage & { type: "tool_call"; rawInput?: Record<string, unknown> } =>
+          m.type === "tool_call",
+      )
+      .filter((m) => isTodoWriteToolCall(m.title, m.rawInput));
+    const last = todoWrites[todoWrites.length - 1];
+    if (!last?.rawInput) return [];
+    return parseTodosFromRawInput(last.rawInput);
+  }, [sessionState]);
 
   // 计算 token 统计，传给 ChatComposer 元信息条
-  // 复用 entries 派生结果，避免重复遍历；chat:stats dispatch 仍独立维护以便外部监听
-  const tokenStats: TokenStats = useMemo(() => computeStats(entries), [entries]);
+  const tokenStats: TokenStats = useMemo(() => computeStats(renderEntries), [renderEntries]);
 
   // Broadcast entries via custom event（路由层 chat.$agentId.tsx 据此派生 changedFiles 给 ArtifactsPanel）
   useEffect(() => {
-    const modelName = client.modelState
-      ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??
-        client.modelState.currentModelId)
-      : undefined;
     window.dispatchEvent(
       new CustomEvent("chat:stats", {
-        detail: { agentName: agentId, modelName, entries },
+        detail: { agentName: agentId, modelName, entries: renderEntries },
       }),
     );
-  }, [entries, agentId, client.modelState]);
+  }, [renderEntries, agentId, modelName]);
 
   // =============================================================================
   // User Actions
   // =============================================================================
 
-  // Reference: Zed's ConnectionView.reset() + set_server_state() + _external_thread()
   // Creates a new session by clearing current state and calling new_session
-  // This is the core of Zed's NewThread action
   const handleNewSession = useCallback(() => {
-    console.log("[ChatInterface] Creating new session...");
-
     // 正在等待 agent 响应时，阻止新建会话以避免状态混乱
     if (isLoading) {
       toast.warning(t("acpMain.chatBusy"));
       return;
     }
 
-    // 1. Clear all entries (like Zed's set_server_state which creates new view)
     resetThreadState();
-    setActiveSessionId(null);
-
-    // 3. Create new session (like Zed's initial_state -> connection.new_session())
-    // The session_created handler will set sessionReady=true when ready
+    // Create new session — YJS will update chatState.activeSessionId
     requestCreateSession();
   }, [isLoading, resetThreadState, requestCreateSession, t]);
 
@@ -841,150 +292,49 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [handleNewSession, isLoading],
   );
 
-  // Cancel handler - matches Zed's cancel() logic in acp_thread.rs
-  // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
-  // 2. Send cancel notification to agent
-  // 3. Do NOT set isLoading=false here - wait for prompt_complete with stopReason="cancelled"
-  // 4. Safety: if prompt_complete never arrives (agent dead), force isLoading=false after timeout
+  // Cancel handler - send cancel notification to agent.
+  // Tool call status updates come from YJS sessionState.
   const handleCancel = useCallback(() => {
-    console.log("[ChatInterface] Cancel requested");
-
-    // 标记为用户主动取消，后续 promptComplete/errorMessage 不弹出错误提示
+    // 标记为用户主动取消，后续错误提示不弹出
     userCancelledRef.current = true;
-    // Like Zed: iterate all entries, mark Pending/WaitingForConfirmation/InProgress tool calls as Canceled
-    setEntries((prev) =>
-      prev.map((entry) => {
-        if (entry.type !== "tool_call") return entry;
-
-        // Check if status should be canceled (matches Zed's logic)
-        const shouldCancel =
-          entry.toolCall.status === "running" || entry.toolCall.status === "waiting_for_confirmation";
-
-        if (!shouldCancel) return entry;
-
-        console.log("[ChatInterface] Marking tool call as canceled:", entry.toolCall.id);
-        return {
-          type: "tool_call",
-          toolCall: {
-            ...entry.toolCall,
-            status: "canceled" as ToolCallStatus,
-            permissionRequest: undefined, // Clear any pending permission request
-          },
-        };
-      }),
-    );
-
     // Send cancel notification to server (which forwards to agent)
-    client.cancel();
-    // Note: Do NOT set isLoading=false here!
-    // Wait for prompt_complete with stopReason="cancelled" from the agent
-    // Safety: if agent is dead and prompt_complete never arrives, force after 3s
-    setTimeout(() => {
-      setIsLoading((prev) => {
-        if (prev) {
-          console.log("[ChatInterface] Cancel timeout - forcing isLoading=false");
-        }
-        return false;
-      });
-      // 兜底清理：prompt_complete 未及时到达时避免残留的非终态工具状态
-      toolEndStatusRef.current.clear();
-    }, 3000);
-  }, [client]);
+    onCancel();
+    // Note: isLoading is now computed from YJS sessionState.loading.
+    // The server will clear loading state upon cancel completion.
+    // Safety: if agent is dead and loading never clears, server handles the timeout.
+  }, [onCancel]);
 
+  // Permission response — called from ChatView inline permission buttons
   const handlePermissionResponse = useCallback(
-    (requestId: string, optionId: string | null, optionKind: PermissionOption["kind"] | null) => {
-      console.log("[ChatInterface] Permission response:", { requestId, optionId, optionKind });
-      client.respondToPermission(requestId, optionId);
-
-      // Determine new status based on option kind
-      const isRejected = optionKind === "reject_once" || optionKind === "reject_always" || optionId === null;
-
-      // Update the tool call status in entries
-      setEntries((prev) =>
-        prev.map((entry) => {
-          if (entry.type !== "tool_call") return entry;
-          if (entry.toolCall.permissionRequest?.requestId !== requestId) return entry;
-
-          // For standalone permission requests, mark as complete immediately when approved
-          // For regular tool calls, mark as running (agent will update to complete later)
-          let newStatus: ToolCallStatus;
-          if (isRejected) {
-            newStatus = "rejected";
-          } else if (entry.toolCall.isStandalonePermission) {
-            newStatus = "complete";
-          } else {
-            newStatus = "running";
-          }
-
-          return {
-            type: "tool_call",
-            toolCall: {
-              ...entry.toolCall,
-              status: newStatus,
-              permissionRequest: undefined,
-              isStandalonePermission: undefined,
-            },
-          };
-        }),
-      );
+    (requestId: string, optionId: string | null) => {
+      onRespondPermission(requestId, optionId);
     },
-    [client],
+    [onRespondPermission],
   );
 
   // =============================================================================
-  // Render
+  // Render helpers
   // =============================================================================
 
-  // Collect pending permissions from tool call entries
-  const pendingPermissions: PendingPermission[] = entries
-    .filter(
-      (e): e is ToolCallEntry =>
-        e.type === "tool_call" && e.toolCall.status === "waiting_for_confirmation" && !!e.toolCall.permissionRequest,
-    )
-    .map((e) => ({
-      requestId: e.toolCall.permissionRequest!.requestId,
-      toolName: e.toolCall.title,
-      toolInput: e.toolCall.rawInput || {},
-      description: e.toolCall.title,
-      options: e.toolCall.permissionRequest!.options,
-    }));
+  // Collect pending permissions from YJS chatState
+  const pendingPermissions: PendingPermission[] = useMemo(() => {
+    if (!chatState?.permissions) return [];
+    return chatState.permissions
+      .filter((p) => p.status === "pending")
+      .map((p) => ({
+        requestId: p.id,
+        toolName: p.tool,
+        toolInput: (p.args as Record<string, unknown>) ?? {},
+        description: p.tool,
+      }));
+  }, [chatState?.permissions]);
 
   // Handle permission respond for unified PermissionPanel
   const handlePermissionPanelRespond = useCallback(
     (requestId: string, approved: boolean) => {
-      // Find the matching permission request to get the real optionId
-      const perm = pendingPermissions.find((p) => p.requestId === requestId);
-      let optionId: string | null = null;
-      let optionKind: PermissionOption["kind"] | null = null;
-
-      if (perm?.options && perm.options.length > 0) {
-        if (approved) {
-          // Pick the first allow option (prefer allow_once, then allow_always)
-          const allowOpt =
-            perm.options.find((o) => o.kind === "allow_once") ?? perm.options.find((o) => o.kind === "allow_always");
-          if (allowOpt) {
-            optionId = allowOpt.optionId;
-            optionKind = allowOpt.kind;
-          }
-        } else {
-          // Pick the first reject option
-          const rejectOpt =
-            perm.options.find((o) => o.kind === "reject_once") ?? perm.options.find((o) => o.kind === "reject_always");
-          if (rejectOpt) {
-            optionId = rejectOpt.optionId;
-            optionKind = rejectOpt.kind;
-          }
-        }
-      }
-
-      // Fallback: if no matching option found, use null (cancelled)
-      if (!optionId) {
-        optionKind = approved ? "allow_once" : "reject_once";
-      }
-
-      handlePermissionResponse(requestId, optionId, optionKind);
+      onRespondPermission(requestId, approved ? "allow" : null);
     },
-    [handlePermissionResponse, pendingPermissions],
+    [onRespondPermission],
   );
 
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
@@ -993,7 +343,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       const text = message.text.trim();
       const images = message.images || [];
 
-      if ((!text && images.length === 0) || isLoading || !sessionReady) return;
+      if ((!text && images.length === 0) || isLoading) return;
 
       const contentBlocks: ContentBlock[] = [];
 
@@ -1046,8 +396,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             mimeType: finalMimeType,
             data: base64Data,
           });
-        } catch (error) {
-          console.error("[ChatInterface] Failed to process image:", error);
+        } catch {
+          // 图片处理失败静默跳过
         }
       }
 
@@ -1065,28 +415,40 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         contentBlocks.unshift({ type: "text", text: contextBlock });
       }
 
-      // Add user message entry
-      const userEntry: UserMessageEntry = {
-        type: "user_message",
-        id: `user-${Date.now()}`,
-        content: text,
-        images: userImages.length > 0 ? userImages : undefined,
-      };
-      setEntries((prev) => [...prev, userEntry]);
-      setIsLoading(true);
-      // 重置 agent 输出追踪和错误标记，用于本轮 prompt 检测
-      hasAssistantOutputRef.current = false;
-      backendErrorRef.current = false;
-
       userCancelledRef.current = false;
+
+      // 无活跃会话时先创建会话，prompt 缓存到 pendingSendRef，等 activeSessionId 就绪后由 useEffect 自动发送
+      if (!activeSessionId) {
+        // 已有待发送的 prompt 在等待中，忽略重复提交
+        if (pendingSendRef.current) return;
+        pendingSendRef.current = contentBlocks;
+        // 10 秒超时保护：若会话创建失败则清理缓存，避免 prompt 永久挂起
+        pendingSendTimerRef.current = setTimeout(() => {
+          if (pendingSendRef.current) {
+            pendingSendRef.current = null;
+            console.warn("[ChatInterface] Session creation timeout, pending send cleared");
+          }
+        }, 10_000);
+        try {
+          await onCreateSession();
+        } catch (err) {
+          console.error("[ChatInterface] Failed to create session:", err);
+          pendingSendRef.current = null;
+          if (pendingSendTimerRef.current) {
+            clearTimeout(pendingSendTimerRef.current);
+            pendingSendTimerRef.current = null;
+          }
+        }
+        return;
+      }
+
       try {
-        await client.sendPrompt(contentBlocks);
+        await onSendPrompt(contentBlocks);
       } catch (error) {
         console.error("[ChatInterface] Failed to send prompt:", error);
-        setIsLoading(false);
       }
     },
-    [isLoading, sessionReady, client, scenePrompt],
+    [isLoading, onSendPrompt, scenePrompt, activeSessionId, onCreateSession],
   );
 
   return (
@@ -1094,10 +456,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       <div className="flex flex-col flex-1 min-w-0">
         {/* Chat messages — unified ChatView */}
         <ChatView
-          entries={entries}
+          entries={renderEntries}
           isLoading={isLoading && !sessionReady ? false : isLoading}
-          onPermissionRespond={(requestId, optionId, optionKind) => {
-            handlePermissionResponse(requestId, optionId, optionKind as PermissionOption["kind"] | null);
+          onPermissionRespond={(requestId, optionId) => {
+            handlePermissionResponse(requestId, optionId);
           }}
           emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
           emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
@@ -1140,13 +502,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               supportsImages={supportsImages}
               commands={availableCommands.length > 0 ? availableCommands : undefined}
               envId={agentId}
-              client={client}
               availableModes={availableModes}
               currentModeId={currentModeId}
-              onModeChange={setMode}
+              onModeChange={onSetMode}
               tokenStats={tokenStats}
               onNewSession={handleNewSession}
-              showNewSession={entries.length > 0}
+              showNewSession={renderEntries.length > 0}
+              modelName={modelName}
             />
           </div>
         )}
@@ -1162,17 +524,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       {/* Context Panel */}
       {!readonly && !hideContextPanel && (
         <ContextPanel
-          entries={entries}
+          entries={renderEntries}
           agentName={agentId}
-          modelName={
-            client.modelState
-              ? (client.modelState.availableModels.find((m) => m.modelId === client.modelState!.currentModelId)?.name ??
-                client.modelState.currentModelId)
-              : undefined
-          }
+          modelName={modelName}
           collapsed={!contextPanelOpen}
           onToggle={() => setContextPanelOpen(!contextPanelOpen)}
-          acpUsage={promptUsage}
+          acpUsage={tokenUsage ?? promptUsage}
         />
       )}
     </div>

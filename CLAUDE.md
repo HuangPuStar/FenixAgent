@@ -170,6 +170,7 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 4. relay 必须转发 agent `status`，前端依赖 `status.capabilities` 判断能力。
 5. ACP session id 是 `ses_xxx`，RCS session id 是 `session_xxx` / `cse_xxx`；文件 API 必须使用 RCS id。
 6. **session/update 二级结构**：`update.sessionUpdate` 是事件类型字符串（如 `"agent_message_chunk"`），`update.content` 是载荷对象（`{ type, text }`）。**不要把事件类型值当 key 写**（如 `update.agent_message_chunk`）。写 ACP 消息处理代码前，先 `grep agent_message_chunk` 看已有消费者做参照。
+7. **`getRemoteMachineId` 允许无 `agentConfigId` 的 environment**：ACP/Bridge 注册路径（`registerEnvironment`、`createTemporaryEnvironment`）创建的环境没有 `agentConfigId`。`getRemoteMachineId` 不能对这类环境直接返回 null——必须先查 `agentConfigId`，不存在则 fallback 到 `config.defaultMachineId`，否则设了 `RCS_DEFAULT_MACHINE_ID` 文件操作也会落到本地 FS。
 
 ### Workspace / Skill
 
