@@ -64,6 +64,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
 
 RUN printf '[global]\nindex-url = %s\ntrusted-host = %s\n' \
     "$PIP_INDEX_URL" "$PIP_TRUSTED_HOST" > /etc/pip.conf
+RUN printf 'registry=%s\n' \
+    'https://registry.npmmirror.com/' > /root/.npmrc
 
 # replace node/npm/npx with bun
 RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
