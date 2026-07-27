@@ -46,6 +46,7 @@ export const SIDEBAR_NAV_GROUPS: NavGroupDefinition[] = [
       { id: "home", labelKey: "agentPanel:createAgent", icon: Plus },
       { id: "agents", labelKey: "agentPanel:agentManagement", icon: Bot },
       { id: "workflow", labelKey: "agentPanel:workflow", icon: Workflow },
+      { id: "vertical-models", labelKey: "agentPanel:verticalModels", icon: Layers },
     ],
   },
   {
@@ -53,7 +54,6 @@ export const SIDEBAR_NAV_GROUPS: NavGroupDefinition[] = [
     labelKey: "navGroupConfig",
     items: [
       { id: "models", labelKey: "agentPanel:models", icon: Cpu },
-      { id: "vertical-models", labelKey: "agentPanel:verticalModels", icon: Layers },
       { id: "algorithms", labelKey: "agentPanel:algorithms", icon: Binary },
       { id: "skills", labelKey: "agentPanel:skills", icon: Settings },
       { id: "knowledge-bases", labelKey: "agentPanel:knowledgeBases", icon: BookOpen },

@@ -1,8 +1,8 @@
 {
-  "title": "Providers & Models",
-  "subtitle": "Manage AI providers and their available models",
+  "title": "Model Library",
+  "subtitle": "Manage AI providers and models — connect and orchestrate LLM capabilities",
   "createButton": "New Provider",
-  "searchPlaceholder": "Search providers...",
+  "searchPlaceholder": "Search provider names...",
   "emptyMessage": "No providers yet. Click \"New Provider\" to add one",
   "loadError": "Failed to load data: {{message}}",
   "loadProvidersError": "Failed to load provider list: {{message}}",

@@ -13,7 +13,7 @@ describe("agent sidebar config", () => {
 
   // 过滤后空掉的导航组不会继续渲染
   test("filterNavGroups removes empty groups", () => {
-    const filtered = filterNavGroups(SIDEBAR_NAV_GROUPS, ["home", "agents", "workflow"]);
+    const filtered = filterNavGroups(SIDEBAR_NAV_GROUPS, ["home", "agents", "workflow", "vertical-models"]);
 
     expect(filtered.find((group) => group.id === "core")).toBeUndefined();
   });

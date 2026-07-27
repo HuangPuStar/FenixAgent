@@ -1,8 +1,8 @@
 {
-  "title": "服务商与模型",
-  "subtitle": "管理 AI 服务商及其可用模型",
+  "title": "模型库",
+  "subtitle": "管理 AI 服务商及可用模型，为大模型应用提供接入与调度能力",
   "createButton": "新建服务商",
-  "searchPlaceholder": "搜索服务商...",
+  "searchPlaceholder": "搜索服务商名称...",
   "emptyMessage": "暂无服务商，点击「新建服务商」添加",
   "loadError": "加载数据失败: {{message}}",
   "loadProvidersError": "加载服务商列表失败: {{message}}",
