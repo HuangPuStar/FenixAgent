@@ -16,6 +16,8 @@ RUN apt-get install -y --no-install-recommends \
        python3 python3-pip python3-venv \
        curl jq git ripgrep zip unzip
 RUN rm -rf /var/lib/apt/lists/*
+RUN printf 'registry=%s\n' \
+    'https://registry.npmmirror.com/' > /root/.npmrc
 
 # 安装 Opencode / ACP Runtime CLI / Hindsight 插件
 RUN npm install -g opencode-ai@1.17.12
