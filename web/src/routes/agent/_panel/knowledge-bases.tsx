@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { z } from "zod";
+
+const kbSearchSchema = z.object({
+  kbId: z.string().optional(),
+});
 
 const Page = lazy(() =>
   import("../../../pages/agent-panel/pages/AgentKnowledgeBasesPage").then((m) => ({
@@ -8,6 +13,7 @@ const Page = lazy(() =>
 );
 
 export const Route = createFileRoute("/agent/_panel/knowledge-bases")({
+  validateSearch: kbSearchSchema,
   component: () => (
     <Suspense
       fallback={

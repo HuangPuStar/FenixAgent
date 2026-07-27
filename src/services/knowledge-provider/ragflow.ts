@@ -1,10 +1,19 @@
 import { config } from "../../config";
 import type {
+  EmbeddingModelOption,
+  InstanceModelOption,
   KnowledgeBaseSnapshot,
+  KnowledgeChunk,
+  KnowledgeGraphEdge,
+  KnowledgeGraphNode,
+  KnowledgePipelineOption,
   KnowledgeProvider,
   KnowledgeResourceContent,
   KnowledgeResourceSnapshot,
   KnowledgeSearchResult,
+  ProviderInstanceOption,
+  ProviderModelOption,
+  RerankModelOption,
 } from "./types";
 
 /**
@@ -68,7 +77,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
    * - 检查 HTTP status 与业务 code
    * - 支持 AbortController 超时
    */
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit, apiKey?: string): Promise<T> {
     this.ensureConfigured();
     const controller = new AbortController();
     const timeoutMs = config.ragflowRequestTimeoutMs;
@@ -77,7 +86,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     try {
       const url = `${config.ragflowApiUrl}${path}`;
       const headers = new Headers(init?.headers);
-      headers.set("Authorization", `Bearer ${config.ragflowApiKey}`);
+      headers.set("Authorization", `Bearer ${apiKey ?? config.ragflowApiKey}`);
       // 默认 JSON，文件上传时不设置以让 fetch 自动生成 multipart boundary
       if (!headers.has("Content-Type") && typeof init?.body === "string") {
         headers.set("Content-Type", "application/json");
@@ -126,6 +135,37 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       }
 
       return payload as T;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /** 从 RAGFlow 下载原始文件（二进制流），失败时返回 null */
+  async downloadResource(input: {
+    resourceRemoteId: string;
+    knowledgeBaseRemoteId: string;
+  }): Promise<{ content: ReadableStream<Uint8Array>; contentType: string; fileName: string } | null> {
+    this.ensureConfigured();
+    const controller = new AbortController();
+    const timeoutMs = config.ragflowRequestTimeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const url = `${config.ragflowApiUrl}/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/${input.resourceRemoteId}`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) return null;
+
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const fileNameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      const fileName = fileNameMatch?.[1]?.replace(/['"]/g, "") ?? "document";
+      const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
+
+      return { content: response.body, contentType, fileName };
     } finally {
       clearTimeout(timeout);
     }
@@ -180,6 +220,15 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         headers: { "Content-Type": "application/json" },
       });
     }
+  }
+
+  /** 列出远程数据集（RAGFlow 中所有数据集） */
+  async listDatasets(_input: { apiKey?: string }): Promise<Array<{ id: string; name: string }>> {
+    const payload = await this.request<RagFlowResponse<Array<{ id: string; name: string; description?: string }>>>(
+      "/api/v1/datasets",
+      { method: "GET" },
+    );
+    return (payload.data ?? []).map((ds) => ({ id: ds.id, name: ds.name }));
   }
 
   async addResource(input: {
@@ -335,6 +384,9 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
             source_url?: string;
             run?: string;
             progress_msg?: string;
+            chunk_count?: number;
+            progress?: number;
+            status?: string;
           }>;
         }>
       >(`/api/v1/datasets/${datasetId}/documents?page=${page}&page_size=${pageSize}`);
@@ -354,6 +406,10 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           status: mapRunStatus(doc.run),
           source: doc.source_url ?? null,
           lastError: doc.progress_msg ?? null,
+          chunkCount: doc.chunk_count ?? null,
+          enabled: doc.status === "1" ? true : doc.status === "0" ? false : null,
+          runStatus: doc.run ?? null,
+          parseProgress: doc.progress != null ? doc.progress : null,
         });
       }
 
@@ -393,6 +449,139 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         headers: { "Content-Type": "application/json" },
       });
     }
+  }
+
+  // 检索测试专用（返回丰富字段：chunk detail + doc aggs）
+  async searchDetailed(input: {
+    knowledgeBases: Array<{ remoteId: string; remoteAccountId: string; remoteUserId: string }>;
+    query: string;
+    topK: number;
+    similarityThreshold?: number;
+    vectorSimilarityWeight?: number;
+    rerankId?: string | null;
+    keyword?: boolean;
+    highlight?: boolean;
+    pageSize?: number;
+    page?: number;
+    useKg?: boolean;
+    crossLanguages?: string[];
+    metaDataFilter?: import("./types").MetaDataFilter;
+  }): Promise<import("./types").KnowledgeRetrievalDetailedResult> {
+    const datasetIds = input.knowledgeBases.map((kb) => kb.remoteId);
+    const body: Record<string, unknown> = {
+      question: input.query,
+      dataset_ids: datasetIds,
+      top_k: input.topK,
+      highlight: input.highlight ?? true,
+    };
+    if (input.similarityThreshold != null) body.similarity_threshold = input.similarityThreshold;
+    if (input.vectorSimilarityWeight != null) body.vector_similarity_weight = input.vectorSimilarityWeight;
+    if (input.rerankId?.trim()) body.rerank_id = input.rerankId.trim();
+    if (input.keyword != null) body.keyword = input.keyword;
+    if (input.pageSize != null) body.size = input.pageSize;
+    if (input.page != null) body.page = input.page;
+    if (input.useKg != null) body.use_kg = input.useKg;
+    if (input.crossLanguages?.length) body.cross_languages = input.crossLanguages;
+    if (input.metaDataFilter?.method !== "disabled") body.meta_data_filter = input.metaDataFilter;
+
+    const payload = await this.request<
+      RagFlowResponse<{
+        chunks?: Array<{
+          chunk_id?: string;
+          id?: string;
+          content_with_weight?: string;
+          content?: string;
+          docnm_kwd?: string;
+          document_name?: string;
+          doc_id?: string;
+          document_id?: string;
+          kb_id?: string;
+          dataset_id?: string;
+          similarity?: number;
+          vector_similarity?: number;
+          term_similarity?: number;
+          highlight?: string;
+          important_kwd?: string[] | string;
+          important_keywords?: string[] | string;
+        }>;
+        total?: number;
+        doc_aggs?: Array<{ doc_name?: string; doc_id?: string; count?: number }>;
+      }>
+    >("/api/v1/datasets/search", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const rawChunks = payload.data?.chunks ?? [];
+    const chunks = rawChunks.map((chunk) => {
+      const content = chunk.content_with_weight ?? chunk.content ?? "";
+      const documentName = chunk.docnm_kwd ?? chunk.document_name ?? "";
+      const documentId = chunk.doc_id ?? chunk.document_id ?? "";
+      const datasetId = chunk.kb_id ?? chunk.dataset_id ?? "";
+      let importantKeywords: string[] | undefined;
+      if (Array.isArray(chunk.important_kwd))
+        importantKeywords = chunk.important_kwd.filter((k): k is string => typeof k === "string");
+      else if (typeof chunk.important_kwd === "string" && chunk.important_kwd.trim())
+        importantKeywords = chunk.important_kwd
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
+      else if (Array.isArray(chunk.important_keywords))
+        importantKeywords = chunk.important_keywords.filter((k): k is string => typeof k === "string");
+      return {
+        chunkId: chunk.chunk_id ?? chunk.id ?? "",
+        content,
+        documentName,
+        documentId,
+        datasetId,
+        similarity: chunk.similarity ?? 0,
+        vectorSimilarity: chunk.vector_similarity,
+        termSimilarity: chunk.term_similarity,
+        highlight: chunk.highlight,
+        importantKeywords,
+      };
+    });
+    const total = payload.data?.total ?? chunks.length;
+    const docAggs = (payload.data?.doc_aggs ?? []).map((agg) => ({
+      documentName: agg.doc_name ?? "",
+      documentId: agg.doc_id ?? "",
+      count: agg.count ?? 0,
+    }));
+    return { chunks, total, docAggs };
+  }
+
+  // 资源启用/禁用开关
+  async setResourceEnabled(input: {
+    resourceRemoteId: string;
+    knowledgeBaseRemoteId: string;
+    enabled: boolean;
+  }): Promise<void> {
+    await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/batch-update-status`, {
+      method: "POST",
+      body: JSON.stringify({ doc_ids: [input.resourceRemoteId], status: input.enabled ? 1 : 0 }),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 重新解析资源
+  async reparseResource(input: {
+    resourceRemoteId: string;
+    knowledgeBaseRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+    deleteOld: boolean;
+  }): Promise<void> {
+    await this.request("/api/v1/documents/ingest", {
+      method: "POST",
+      body: JSON.stringify({
+        doc_ids: [input.resourceRemoteId],
+        run: 1,
+        delete: input.deleteOld,
+        apply_kb: false,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   async search(input: {
@@ -462,6 +651,422 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       title: doc?.name ?? input.resourceRemoteId,
       content,
       source: doc?.source_url ?? null,
+    };
+  }
+
+  /**
+   * 分页拉取资源内的切片列表（含关键词）。
+   * 调用 RAGFlow GET /api/v1/datasets/{id}/documents/{doc_id}/chunks
+   */
+  async listChunks(input: {
+    knowledgeBaseRemoteId: string;
+    resourceRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+    page: number;
+    pageSize: number;
+    keyword?: string;
+  }): Promise<{ items: KnowledgeChunk[]; total: number; page: number; pageSize: number }> {
+    const params = new URLSearchParams();
+    params.set("page", String(input.page));
+    params.set("page_size", String(input.pageSize));
+    if (input.keyword?.trim()) {
+      params.set("keywords", input.keyword.trim());
+    }
+
+    const payload = await this.request<
+      RagFlowResponse<{
+        total?: number;
+        chunks?: Array<{
+          id: string;
+          content: string;
+          important_keywords?: string[];
+          available_int?: number;
+        }>;
+      }>
+    >(
+      `/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/${input.resourceRemoteId}/chunks?${params.toString()}`,
+    );
+
+    const { chunks, total } = payload.data ?? {};
+    const chunkList = chunks ?? [];
+
+    const items: KnowledgeChunk[] = chunkList.map((c, idx) => ({
+      id: c.id,
+      content: c.content ?? "",
+      chunkIndex: (input.page - 1) * input.pageSize + idx + 1,
+      importantKeywords: Array.isArray(c.important_keywords) ? c.important_keywords : [],
+      enabled: c.available_int !== 0,
+    }));
+
+    return {
+      items,
+      total: total ?? items.length,
+      page: input.page,
+      pageSize: input.pageSize,
+    };
+  }
+
+  /**
+   * 切换单个切片的启用/禁用状态。
+   */
+  async switchChunk(input: {
+    knowledgeBaseRemoteId: string;
+    resourceRemoteId: string;
+    chunkId: string;
+    available: boolean;
+    remoteAccountId: string;
+    remoteUserId: string;
+  }): Promise<void> {
+    await this.request(
+      `/api/v1/datasets/${input.knowledgeBaseRemoteId}/documents/${input.resourceRemoteId}/chunks/${input.chunkId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ available: input.available ? 1 : 0 }),
+      },
+    );
+  }
+
+  // ========== 模型列表 & Pipeline 拉取 ==========
+
+  async listEmbeddingModels(_apiKey?: string): Promise<EmbeddingModelOption[]> {
+    return this.listModelsByType("embedding");
+  }
+
+  async listRerankModels(_apiKey?: string): Promise<RerankModelOption[]> {
+    return this.listModelsByType("rerank");
+  }
+
+  async listPipelines(_apiKey?: string): Promise<KnowledgePipelineOption[]> {
+    try {
+      const payload = await this.request<
+        RagFlowResponse<{
+          canvas: Array<{ id?: string; title?: string }>;
+          total: number;
+        }>
+      >("/api/v1/agents?canvas_category=dataflow_canvas");
+      const items = Array.isArray(payload.data?.canvas) ? payload.data.canvas : [];
+      return items
+        .map((item) => ({
+          id: String(item.id ?? ""),
+          name: String(item.title ?? ""),
+        }))
+        .filter((item) => item.id.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  async listFactories(_apiKey?: string): Promise<Array<{ name: string; tags?: string | null; url?: string | null }>> {
+    try {
+      const payload = await this.request<
+        RagFlowResponse<Array<{ name?: string; tags?: string | null; url?: Record<string, string> | string | null }>>
+      >("/api/v1/providers?available=true");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      return items
+        .filter((item) => item && typeof item.name === "string" && item.name.trim().length > 0)
+        .map((item) => {
+          let url: string | null = null;
+          if (typeof item.url === "string") url = item.url;
+          else if (item.url && typeof item.url === "object" && item.url.default) url = item.url.default;
+          return { name: String(item.name), tags: item.tags ?? null, url };
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  // ============================================================
+  // Embedding 模型管理方法
+  // ============================================================
+
+  /** 列出当前租户已配置的供应商名单（仅用户添加过的）。 */
+  async listConfiguredProviders(apiKey?: string): Promise<string[]> {
+    try {
+      const payload = await this.request<RagFlowResponse<Array<{ name?: string }>>>(
+        "/api/v1/providers",
+        undefined,
+        apiKey,
+      );
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      return items
+        .filter((it) => it && typeof it.name === "string")
+        .map((it) => String(it.name))
+        .filter((n) => n.length > 0);
+    } catch (err) {
+      console.error("[ragflow] listConfiguredProviders failed:", err);
+      return [];
+    }
+  }
+
+  /** 列出某供应商下的实例 */
+  async listProviderInstances(input: { apiKey?: string; provider: string }): Promise<ProviderInstanceOption[]> {
+    try {
+      const payload = await this.request<RagFlowResponse<Array<{ instance_name?: string; status?: string }>>>(
+        `/api/v1/providers/${encodeURIComponent(input.provider)}/instances`,
+        undefined,
+        input.apiKey,
+      );
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      return items
+        .filter((it) => it && typeof it.instance_name === "string")
+        .map((it) => ({
+          provider: input.provider,
+          instanceName: String(it.instance_name),
+          status: it.status != null ? String(it.status) : "active",
+        }));
+    } catch (err) {
+      console.error("[ragflow] listProviderInstances failed:", err);
+      return [];
+    }
+  }
+
+  /** 列出某实例下的 embedding 模型（含 active/inactive 状态） */
+  async listInstanceModels(input: {
+    apiKey?: string;
+    provider: string;
+    instanceName: string;
+  }): Promise<InstanceModelOption[]> {
+    try {
+      const payload = await this.request<
+        RagFlowResponse<
+          Array<{ name?: string; model_type?: string | string[]; max_tokens?: number | null; status?: string }>
+        >
+      >(
+        `/api/v1/providers/${encodeURIComponent(input.provider)}/instances/${encodeURIComponent(input.instanceName)}/models`,
+        undefined,
+        input.apiKey,
+      );
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      return items
+        .filter((it) => {
+          if (!it || typeof it.name !== "string") return false;
+          const types = it.model_type;
+          const typeArr = Array.isArray(types) ? types : [types];
+          return typeArr.some((t) => String(t ?? "").toLowerCase() === "embedding");
+        })
+        .map((it) => {
+          const types = it.model_type;
+          const modelType = Array.isArray(types) ? types.join(",") : String(types ?? "");
+          return {
+            name: String(it.name),
+            provider: input.provider,
+            instance: input.instanceName,
+            modelType,
+            maxTokens: it.max_tokens ?? null,
+            status: it.status != null ? String(it.status) : "active",
+          };
+        });
+    } catch (err) {
+      console.error("[ragflow] listInstanceModels failed:", err);
+      return [];
+    }
+  }
+
+  /** 切换实例下单个模型的 active/inactive 状态 */
+  async setModelStatus(input: {
+    apiKey?: string;
+    provider: string;
+    instanceName: string;
+    modelName: string;
+    status: "active" | "inactive";
+  }): Promise<void> {
+    await this.request(
+      `/api/v1/providers/${encodeURIComponent(input.provider)}/instances/${encodeURIComponent(input.instanceName)}/models/${encodeURIComponent(input.modelName)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status: input.status }),
+        headers: { "Content-Type": "application/json" },
+      },
+      input.apiKey,
+    );
+  }
+
+  /** 验证厂商 API Key */
+  async verifyProviderConnection(input: {
+    apiKey?: string;
+    provider: string;
+    providerApiKey: string;
+    baseUrl?: string | null;
+  }): Promise<{ success: boolean; message?: string }> {
+    const body: Record<string, unknown> = { api_key: input.providerApiKey };
+    if (input.baseUrl?.trim()) body.base_url = input.baseUrl.trim();
+    try {
+      await this.request(
+        `/api/v1/providers/${encodeURIComponent(input.provider)}/connection`,
+        { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } },
+        input.apiKey,
+      );
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "验证失败";
+      return { success: false, message };
+    }
+  }
+
+  /** 动态列出某厂商的模型库（仅 embedding 类型） */
+  async listProviderModels(input: {
+    apiKey?: string;
+    provider: string;
+    providerApiKey: string;
+    baseUrl?: string | null;
+    modelType?: string;
+  }): Promise<ProviderModelOption[]> {
+    const params = new URLSearchParams({ api_key: input.providerApiKey });
+    if (input.baseUrl?.trim()) params.set("base_url", input.baseUrl.trim());
+    if (input.modelType) params.set("model_type", input.modelType);
+    try {
+      const payload = await this.request<
+        RagFlowResponse<Array<{ name?: string; model_type?: string | string[]; max_tokens?: number | null }>>
+      >(`/api/v1/providers/${encodeURIComponent(input.provider)}/models?${params.toString()}`, undefined, input.apiKey);
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      return items
+        .filter((item) => item && typeof item.name === "string")
+        .map((item) => {
+          const types = item.model_type;
+          const modelType = Array.isArray(types) ? types.join(",") : String(types ?? "");
+          return { name: String(item.name), modelType, maxTokens: item.max_tokens ?? null };
+        });
+    } catch (err) {
+      console.error("[ragflow] listProviderModels failed:", err);
+      return [];
+    }
+  }
+
+  /** 添加厂商实例（幂等：已存在视为成功） */
+  async addProviderInstance(input: {
+    apiKey?: string;
+    provider: string;
+    instanceName: string;
+    providerApiKey: string;
+    baseUrl?: string | null;
+  }): Promise<{ instanceName: string }> {
+    const body: Record<string, unknown> = { instance_name: input.instanceName, api_key: input.providerApiKey };
+    if (input.baseUrl?.trim()) body.base_url = input.baseUrl.trim();
+    await this.request(
+      `/api/v1/providers/${encodeURIComponent(input.provider)}/instances`,
+      { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } },
+      input.apiKey,
+    );
+    return { instanceName: input.instanceName };
+  }
+
+  /** 删除一个 provider 实例（含其下所有模型配置） */
+  async deleteProviderInstance(input: { apiKey?: string; provider: string; instanceName: string }): Promise<void> {
+    await this.request(
+      `/api/v1/providers/${encodeURIComponent(input.provider)}/instances`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ instances: [input.instanceName] }),
+        headers: { "Content-Type": "application/json" },
+      },
+      input.apiKey,
+    );
+  }
+
+  private async listModelsByType(type: "embedding" | "rerank"): Promise<EmbeddingModelOption[]> {
+    let items: unknown[] = [];
+    try {
+      const payload = await this.request<RagFlowResponse<unknown[]>>("/api/v1/models");
+      if (Array.isArray(payload.data)) items = payload.data;
+    } catch {
+      try {
+        const payload =
+          await this.request<RagFlowResponse<Array<{ llm_name?: string; name?: string; model_type?: string }>>>(
+            "/api/v1/llm/list",
+          );
+        if (Array.isArray(payload.data)) items = payload.data;
+      } catch {
+        return [];
+      }
+    }
+    return items
+      .filter((item) => {
+        if (typeof item !== "object" || item === null) return false;
+        const record = item as Record<string, unknown>;
+        const types = record.model_type;
+        if (Array.isArray(types)) return types.some((t) => String(t).toLowerCase() === type);
+        return String(types ?? "").toLowerCase() === type;
+      })
+      .map((item) => {
+        const r = item as Record<string, unknown>;
+        const modelName = String(r.name ?? "");
+        const provider = String(r.provider_name ?? "");
+        const instanceName = String(r.instance_name ?? "");
+        if (instanceName && provider)
+          return {
+            name: `${modelName}@${instanceName}@${provider}`,
+            label: `${instanceName} › ${modelName}`,
+            provider,
+            instance: instanceName,
+          };
+        if (provider)
+          return { name: `${modelName}@${provider}`, label: `${provider} · ${modelName}`, provider, instance: "" };
+        return { name: modelName, label: modelName, provider: "", instance: "" };
+      })
+      .filter((item) => item.name.length > 0);
+  }
+
+  // ============================================================
+  // 知识图谱
+  // ============================================================
+
+  async generateKnowledgeGraph(input: {
+    knowledgeBaseRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+  }): Promise<void> {
+    await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/run_graphrag`, { method: "POST" });
+  }
+
+  async getKnowledgeGraph(input: {
+    knowledgeBaseRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+  }): Promise<{ graph: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }; mind_map?: unknown } | null> {
+    const payload = await this.request<
+      RagFlowResponse<{
+        graph?: { nodes?: KnowledgeGraphNode[]; edges?: KnowledgeGraphEdge[] };
+        mind_map?: unknown;
+      }>
+    >(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/knowledge_graph`, { method: "GET" });
+
+    const data = payload.data;
+    if (!data?.graph) return null;
+    return {
+      graph: { nodes: data.graph.nodes ?? [], edges: data.graph.edges ?? [] },
+      mind_map: data.mind_map,
+    };
+  }
+
+  async deleteKnowledgeGraph(input: {
+    knowledgeBaseRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+  }): Promise<void> {
+    try {
+      await this.request(`/api/v1/datasets/${input.knowledgeBaseRemoteId}/knowledge_graph`, { method: "DELETE" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("code=102")) return;
+      throw err;
+    }
+  }
+
+  async pollKnowledgeGraphProgress(input: {
+    knowledgeBaseRemoteId: string;
+    remoteAccountId: string;
+    remoteUserId: string;
+  }): Promise<{ progress: number; progressMsg?: string; taskId?: string }> {
+    const payload = await this.request<RagFlowResponse<{ progress?: number; progress_msg?: string; task_id?: string }>>(
+      `/api/v1/datasets/${input.knowledgeBaseRemoteId}/trace_graphrag`,
+      { method: "GET" },
+    );
+
+    return {
+      progress: payload.data?.progress ?? 0,
+      progressMsg: payload.data?.progress_msg,
+      taskId: payload.data?.task_id,
     };
   }
 }

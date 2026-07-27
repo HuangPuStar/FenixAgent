@@ -1,8 +1,32 @@
 import { randomBytes } from "node:crypto";
+import { config } from "../config";
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
 import { getKnowledgeProvider } from "./knowledge-provider/registry";
-import type { KnowledgeBaseStatus, KnowledgeResourceStatus } from "./knowledge-provider/types";
+import type {
+  ConfiguredInstanceNode,
+  ConfiguredProviderNode,
+  KnowledgeBaseStatus,
+  KnowledgeResourceStatus,
+} from "./knowledge-provider/types";
+
+/** 内置分块方法列表 */
+export const KNOWLEDGE_CHUNK_METHODS: Array<{ value: string; label: string }> = [
+  { value: "naive", label: "General" },
+  { value: "book", label: "Book" },
+  { value: "email", label: "Email" },
+  { value: "laws", label: "Laws" },
+  { value: "manual", label: "Manual" },
+  { value: "one", label: "One" },
+  { value: "paper", label: "Paper" },
+  { value: "picture", label: "Picture" },
+  { value: "presentation", label: "Presentation" },
+  { value: "qa", label: "Q&A" },
+  { value: "table", label: "Table" },
+  { value: "tag", label: "Tag" },
+  { value: "resume", label: "Resume" },
+  { value: "audio", label: "Audio" },
+];
 
 export interface KnowledgeTenantIdentity {
   remoteAccountId: string;
@@ -102,6 +126,9 @@ function sanitizeKnowledgeBase(
     remoteUserId: row.remoteUserId ?? null,
     status: row.status as KnowledgeBaseStatus,
     lastError: row.lastError ?? null,
+    embeddingModel: row.embeddingModel ?? null,
+    parseMethod: row.parseMethod ?? null,
+    chunkMethod: row.chunkMethod ?? null,
     bindingsCount: extras?.bindingsCount ?? 0,
     resourcesCount: extras?.resourcesCount ?? 0,
     recentResources: extras?.recentResources ?? [],
@@ -184,7 +211,16 @@ export async function getKnowledgeBaseDetail(organizationId: string, knowledgeBa
 
 export async function createKnowledgeBaseRecord(
   organizationId: string,
-  input: { name: string; slug?: string; description?: string | null },
+  input: {
+    name: string;
+    slug?: string;
+    description?: string | null;
+    embeddingModel?: string | null;
+    parseMethod?: "builtin" | "pipeline" | null;
+    pipelineId?: string | null;
+    chunkMethod?: string | null;
+    apiKey?: string;
+  },
   userId?: string,
 ) {
   const nameError = validateName(input.name);
@@ -236,6 +272,9 @@ export async function createKnowledgeBaseRecord(
     remoteUserId: tenantIdentity.remoteUserId,
     status: remote.status,
     lastError: remote.lastError ?? null,
+    embeddingModel: input.embeddingModel ?? null,
+    parseMethod: input.parseMethod ?? null,
+    chunkMethod: input.parseMethod === "builtin" ? input.chunkMethod?.trim() || null : null,
     createdAt: now,
     updatedAt: now,
   });
@@ -350,4 +389,130 @@ export async function upsertKnowledgeBaseStatusFromResources(knowledgeBaseId: st
   }
 
   await touchKnowledgeBaseUpdatedAt(knowledgeBaseId, { status });
+}
+
+// ===== Embedding 模型管理 service =====
+// 全部使用全局 RAGFlow API Key（分层功能已移除）。
+
+/** 列出可用厂商 */
+export async function listEmbeddingFactories() {
+  const provider = getKnowledgeProvider();
+  if (!config.ragflowApiKey) return [];
+  return provider.listFactories?.(config.ragflowApiKey) ?? [];
+}
+
+/**
+ * 列出已配置的模型供应商树：provider → instance → models。
+ */
+export async function listConfiguredProviderTree(): Promise<ConfiguredProviderNode[]> {
+  try {
+    if (!config.ragflowApiKey) return [];
+    const provider = getKnowledgeProvider();
+    const rawNames = (await provider.listConfiguredProviders?.(config.ragflowApiKey)) ?? [];
+    const providerNames = Array.from(new Set(rawNames.filter((n) => typeof n === "string" && n.length > 0)));
+    if (providerNames.length === 0) return [];
+
+    const nodes: ConfiguredProviderNode[] = [];
+    for (const pName of providerNames) {
+      try {
+        const instances =
+          (await provider.listProviderInstances?.({ provider: pName, apiKey: config.ragflowApiKey })) ?? [];
+        if (instances.length === 0) continue;
+        const instanceNodes: ConfiguredInstanceNode[] = [];
+        for (const inst of instances) {
+          const models =
+            (await provider.listInstanceModels?.({
+              provider: pName,
+              instanceName: inst.instanceName,
+              apiKey: config.ragflowApiKey,
+            })) ?? [];
+          if (models.length === 0) continue;
+          instanceNodes.push({
+            provider: pName,
+            instanceName: inst.instanceName,
+            status: inst.status,
+            models,
+          });
+        }
+        if (instanceNodes.length === 0) continue;
+        nodes.push({ provider: pName, instances: instanceNodes });
+      } catch (err) {
+        console.error(`[embedding] list provider tree failed for ${pName}:`, err);
+      }
+    }
+    return nodes;
+  } catch (err) {
+    console.error("[embedding] listConfiguredProviderTree failed:", err);
+    return [];
+  }
+}
+
+/** 切换实例下单个模型的 active/inactive 状态 */
+export async function setEmbeddingModelStatus(input: {
+  provider: string;
+  instanceName: string;
+  modelName: string;
+  status: "active" | "inactive";
+}) {
+  if (!config.ragflowApiKey) throw new Error("RAGFLOW_API_KEY is not configured");
+  await getKnowledgeProvider().setModelStatus?.({ ...input, apiKey: config.ragflowApiKey });
+}
+
+/** 列出某实例下的模型 */
+export async function listInstanceEmbeddingModels(input: { provider: string; instanceName: string }) {
+  if (!config.ragflowApiKey) return [];
+  return getKnowledgeProvider().listInstanceModels?.({ ...input, apiKey: config.ragflowApiKey }) ?? [];
+}
+
+/** 验证厂商 API Key */
+export async function verifyEmbeddingProvider(input: {
+  provider: string;
+  providerApiKey: string;
+  baseUrl?: string | null;
+}) {
+  if (!config.ragflowApiKey) throw new Error("RAGFLOW_API_KEY is not configured");
+  return (
+    getKnowledgeProvider().verifyProviderConnection?.({ ...input, apiKey: config.ragflowApiKey }) ?? {
+      success: false,
+      message: "provider 不支持 verifyProviderConnection",
+    }
+  );
+}
+
+/** 动态列出厂商模型库 */
+export async function listProviderEmbeddingModels(input: {
+  provider: string;
+  providerApiKey: string;
+  baseUrl?: string | null;
+}) {
+  if (!config.ragflowApiKey) return [];
+  return (
+    getKnowledgeProvider().listProviderModels?.({ ...input, modelType: "embedding", apiKey: config.ragflowApiKey }) ??
+    []
+  );
+}
+
+/** 添加模型供应商 */
+export async function addEmbeddingProvider(input: {
+  provider: string;
+  instanceName: string;
+  providerApiKey: string;
+  baseUrl?: string | null;
+}): Promise<{ instanceName: string }> {
+  if (!config.ragflowApiKey) throw new Error("RAGFLOW_API_KEY is not configured");
+  const provider = getKnowledgeProvider();
+  try {
+    await provider.addProviderInstance?.({ ...input, apiKey: config.ragflowApiKey });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (!/exist|conflict|already/i.test(msg)) throw err;
+    console.warn("[embedding-provider] instance may already exist:", msg);
+  }
+  return { instanceName: input.instanceName };
+}
+
+/** 删除一个 provider 实例 */
+export async function deleteEmbeddingInstance(input: { provider: string; instanceName: string }) {
+  if (!config.ragflowApiKey) throw new Error("RAGFLOW_API_KEY is not configured");
+  await getKnowledgeProvider().deleteProviderInstance?.({ ...input, apiKey: config.ragflowApiKey });
 }

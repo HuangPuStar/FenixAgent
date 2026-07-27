@@ -30,6 +30,13 @@ function sanitizeResource(row: KnowledgeResourceRow) {
     remoteId: row.remoteId ?? null,
     status: row.status as KnowledgeResourceStatus,
     lastError: row.lastError ?? null,
+    enabled: null,
+    chunkCount: null,
+    metaFields: null,
+    parseProgress: null,
+    runStatus: null,
+    chunkMethod: null,
+    fileSize: null,
     createdAt: Math.floor(row.createdAt.getTime() / 1000),
     updatedAt: Math.floor(row.updatedAt.getTime() / 1000),
   };
@@ -209,6 +216,57 @@ export async function listKnowledgeResources(userId: string, knowledgeBaseId: st
     return null;
   }
   const rows = await knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId);
+
+  // 如果有 remoteId，尝试从 RagFlow 拉取富信息（chunkCount / enabled / runStatus / parseProgress）
+  if (kb.remoteId) {
+    try {
+      const tenantIdentity = resolveKnowledgeTenantIdentity(kb);
+      const remoteResources = await getKnowledgeProvider().listResources({
+        knowledgeBaseRemoteId: kb.remoteId,
+        remoteAccountId: tenantIdentity.remoteAccountId,
+        remoteUserId: tenantIdentity.remoteUserId,
+      });
+      const remoteByRemoteId = new Map(remoteResources.map((r) => [r.remoteId, r]));
+      const updatePromises: Promise<void>[] = [];
+      const enriched = rows.map((row) => {
+        const base = sanitizeResource(row);
+        if (!row.remoteId) return base;
+        const remote = remoteByRemoteId.get(row.remoteId);
+        if (!remote) return base;
+        // 将远端状态回写到本地 DB，确保知识库状态能正确反映
+        if (row.status !== remote.status) {
+          updatePromises.push(
+            knowledgeResourceRepo
+              .update(row.id, {
+                status: remote.status,
+                lastError: remote.lastError ?? null,
+                updatedAt: new Date(),
+              })
+              .catch((err) => console.warn("[knowledge-upload] failed to update resource status:", err)),
+          );
+          base.status = remote.status;
+          base.lastError = remote.lastError ?? null;
+        }
+        return {
+          ...base,
+          enabled: remote.enabled ?? null,
+          chunkCount: remote.chunkCount ?? null,
+          runStatus: remote.runStatus ?? null,
+          parseProgress: remote.parseProgress ?? null,
+        };
+      });
+      // 先等所有状态更新写入 DB，再基于最新数据计算 KB 状态
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+        await upsertKnowledgeBaseStatusFromResources(knowledgeBaseId);
+      }
+      return enriched;
+    } catch (err) {
+      // RagFlow 不可用时降级为本地数据
+      console.warn("[knowledge-upload] failed to enrich resources from RagFlow:", err);
+    }
+  }
+
   return rows.map(sanitizeResource);
 }
 
@@ -280,6 +338,20 @@ export async function refreshKnowledgeResourceStatus(userId: string, knowledgeBa
     });
   }
   await upsertKnowledgeBaseStatusFromResources(knowledgeBaseId);
-  const rows = await listKnowledgeResources(userId, knowledgeBaseId);
-  return rows ?? [];
+  // 将远端富信息合并到本地行上
+  const updatedRows = await listKnowledgeBaseResources(knowledgeBaseId);
+  const refreshed = updatedRows.map((row) => {
+    const base = sanitizeResource(row);
+    if (!row.remoteId) return base;
+    const remote = remoteResources.find((r) => r.remoteId === row.remoteId);
+    if (!remote) return base;
+    return {
+      ...base,
+      enabled: remote.enabled ?? null,
+      chunkCount: remote.chunkCount ?? null,
+      runStatus: remote.runStatus ?? null,
+      parseProgress: remote.parseProgress ?? null,
+    };
+  });
+  return refreshed;
 }

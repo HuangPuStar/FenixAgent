@@ -328,6 +328,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
         createdAt: agentKnowledgeBinding.createdAt,
         updatedAt: agentKnowledgeBinding.updatedAt,
         kbId: knowledgeBase.id,
+        kbName: knowledgeBase.name,
         kbRemoteId: knowledgeBase.remoteId,
         kbRemoteAccountId: knowledgeBase.remoteAccountId,
         kbRemoteUserId: knowledgeBase.remoteUserId,
