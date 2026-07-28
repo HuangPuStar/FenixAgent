@@ -12,6 +12,15 @@ export class ProtocolAdapter {
   /** 跟踪当前回合是否已经通过 stream_event 流式推送过文本内容 */
   private streamedTextThisTurn = false;
 
+  /** 跟踪当前正在流式输入的工具调用 ID（用于 input_json_delta → tool_call_update 映射） */
+  private currentToolCallId: string | null = null;
+
+  /** 累积当前工具调用的流式输入 JSON（每次 input_json_delta 后更新） */
+  private currentToolInput = "";
+
+  /** 已通过 stream_event content_block_start 发出的 tool_use ID，避免 assistant 消息重复发送 */
+  private emittedToolIds = new Set<string>();
+
   constructor(private send: (type: string, payload?: unknown) => void) {}
 
   /** 处理来自 relay 的 ACP 消息，转换为 SDK 操作 */
@@ -69,15 +78,30 @@ export class ProtocolAdapter {
             console.log("[protocol-debug] → agent_thought_chunk:", (delta.thinking as string).slice(0, 50));
             this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
-            // tool_use 参数流式增量，透传
-            this.send("agent_message_chunk", { type: "tool_input_delta", partial: delta.partial_json });
+            // 工具参数流式增量 → 累积并更新 rawInput
+            this.currentToolInput += delta.partial_json as string;
+            if (this.currentToolCallId) {
+              this.send("tool_call_update", {
+                toolCallId: this.currentToolCallId,
+                status: "running",
+                rawInput: this.currentToolInput,
+              });
+            }
           }
           break;
         }
         case "content_block_start": {
           const contentBlock = event.content_block as Record<string, unknown> | undefined;
           if (contentBlock?.type === "tool_use") {
+            const toolId = contentBlock.id as string | undefined;
+            this.currentToolCallId = toolId || null;
+            this.currentToolInput = "";
+            if (toolId) {
+              this.emittedToolIds.add(toolId);
+            }
             this.send("tool_call", { id: contentBlock.id, name: contentBlock.name, input: {} });
+          } else {
+            this.currentToolCallId = null;
           }
           break;
         }
@@ -103,11 +127,17 @@ export class ProtocolAdapter {
             this.send("agent_thought_chunk", { type: "text", text: block.thinking });
           }
         } else if (block.type === "tool_use") {
-          this.send("tool_call", block);
+          // 若已通过 stream_event content_block_start 发出，跳过避免重复
+          if (!this.emittedToolIds.has(block.id as string)) {
+            this.send("tool_call", block);
+          }
         }
       }
     } else if (message.type === "result") {
       this.streamedTextThisTurn = false;
+      this.currentToolCallId = null;
+      this.currentToolInput = "";
+      this.emittedToolIds.clear();
       this.send("prompt_complete", { stopReason: message.subtype ?? message.stopReason ?? "end_turn" });
     } else if (message.type === "system") {
       const subtype = message.subtype as string | undefined;
@@ -137,15 +167,28 @@ export class ProtocolAdapter {
       }
     } else if (message.type === "user") {
       // 用户消息回显（CC 可能会回放历史消息）
-      // 作为 user_message_chunk 转发
-      const blocks = (message as Record<string, unknown>).message
-        ? ((message as Record<string, unknown>).message as Record<string, unknown>)?.content
-        : undefined;
-      if (Array.isArray(blocks as unknown)) {
-        for (const block of blocks as Array<Record<string, unknown>>) {
-          if (block.type === "text" && block.text) {
-            this.send("user_message_chunk", { type: "text", text: block.text as string });
+      // 同时提取 tool_result 块发出 tool_call_result 事件
+      const sdkMsg = message as Record<string, unknown>;
+      const inner = (sdkMsg.message ?? message) as Record<string, unknown>;
+      const blocks = (inner.content ?? []) as Array<Record<string, unknown>>;
+      for (const block of blocks) {
+        if (block.type === "text" && block.text) {
+          this.send("user_message_chunk", { type: "text", text: block.text as string });
+        } else if (block.type === "tool_result") {
+          // 提取 tool_result 的输出：content 可能是 string 或 ContentBlock[]
+          const rawContent = block.content;
+          let output: unknown = rawContent;
+          if (Array.isArray(rawContent)) {
+            output = (rawContent as Array<Record<string, unknown>>)
+              .filter((c) => c.type === "text" && c.text)
+              .map((c) => c.text as string)
+              .join("\n");
           }
+          this.send("tool_call_result", {
+            id: block.tool_use_id,
+            output,
+            isError: block.is_error,
+          });
         }
       }
     }
