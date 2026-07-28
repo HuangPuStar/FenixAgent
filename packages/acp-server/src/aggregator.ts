@@ -145,12 +145,18 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         const id = (payload?.toolCallId as string) || innerId || `tool_${Date.now()}`;
         const name = (payload?.title as string) || (inner?.name as string) || "";
         const input = (payload?.rawInput as Record<string, unknown>) || (inner?.input as Record<string, unknown>) || {};
+        // 非流式 agent 可能在 tool_call 中直接发送完整结果（status + rawOutput）
+        const status = (payload?.status as string) || "running";
+        const rawOutput = payload?.rawOutput ?? inner?.rawOutput;
 
         const tool = new Y.Map<unknown>();
         tool.set("name", name);
-        tool.set("status", "running");
+        tool.set("status", status);
         tool.set("input", input);
         tool.set("startedAt", Date.now());
+        if (rawOutput != null) {
+          tool.set("output", rawOutput);
+        }
         tools.set(id, tool);
         meta.set("status", "tool-calling");
         meta.set("updatedAt", Date.now());
@@ -161,14 +167,22 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
           msg.set("type", "tool_call");
           msg.set("id", id);
           msg.set("title", name);
-          msg.set("status", "running");
+          msg.set("status", status);
           msg.set("kind", (payload?.kind as string) ?? undefined);
           msg.set("seq", structuredMessages.length);
           msg.set("ts", Date.now());
           const contentArray = new Y.Array<Y.Map<unknown>>();
           msg.set("content", contentArray);
           msg.set("rawInput", input);
+          if (rawOutput != null) {
+            msg.set("rawOutput", rawOutput);
+          }
           structuredMessages.push([msg]);
+        }
+
+        // 如果 tool_call 已携带输出，同步更新 artifacts
+        if (rawOutput != null && status === "completed") {
+          extractArtifacts(artifacts, rawOutput, messages.length);
         }
         break;
       }
