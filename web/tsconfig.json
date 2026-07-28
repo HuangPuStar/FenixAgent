@@ -18,7 +18,8 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./*"],
-      "@server/*": ["../../src/*"]
+      "@server/*": ["../../src/*"],
+      "@fenix/acp-server": ["../packages/acp-server/src/index.ts"]
     }
   },
   "include": ["src", "components"],
