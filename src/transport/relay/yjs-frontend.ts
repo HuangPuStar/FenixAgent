@@ -782,10 +782,26 @@ export async function handleYjsWsOpen(
   try {
     const chatDoc = await openChat(effectiveRcsSessionId);
     const chatSnapshot = Y.encodeStateAsUpdate(chatDoc.ydoc);
-    const chatBase64 = Buffer.from(chatSnapshot).toString("base64");
-    sendToYjsWs(ws, { type: "yjs:update", docName: `chat:${effectiveRcsSessionId}`, data: chatBase64 });
+    sendToYjsWs(ws, {
+      type: "yjs:update",
+      docName: `chat:${effectiveRcsSessionId}`,
+      data: Buffer.from(chatSnapshot).toString("base64"),
+    });
   } catch (err) {
-    logError("[YJS-FE] Failed to push init state:", err);
+    logError("[YJS-FE] Failed to push chat init state:", err);
+  }
+
+  // 推送 Session Doc 完整初始状态 —— 重连客户端需要此快照才能立即渲染当前消息
+  try {
+    const sessionDoc = await openSession(userId, agentId, effectiveRcsSessionId);
+    const sessionSnapshot = Y.encodeStateAsUpdate(sessionDoc.ydoc);
+    sendToYjsWs(ws, {
+      type: "yjs:update",
+      docName: `session:${effectiveRcsSessionId}`,
+      data: Buffer.from(sessionSnapshot).toString("base64"),
+    });
+  } catch (err) {
+    logError("[YJS-FE] Failed to push session init state:", err);
   }
 
   entry.relayReady = true;
@@ -869,30 +885,49 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
           });
           return;
         }
-        entry.acpSessionId = rawSid;
+        // 若是同一 ACP session（如重连后的自动 load），跳过清空，保持当前状态
+        const isSameSession = entry.acpSessionId === rawSid;
+        if (!isSameSession) {
+          entry.acpSessionId = rawSid;
+          clearSessionDocContent(entry.rcsSessionId);
+          // 同步清空 Redis
+          const redis = getRedisConnection();
+          if (redis) {
+            try {
+              const sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+              const cleared = Y.encodeStateAsUpdate(sessionDoc.ydoc);
+              redis.set(`yjs:session:${entry.rcsSessionId}`, Buffer.from(cleared).toString("base64")).catch(() => {});
+            } catch {
+              /* 清空 Redis 失败不阻塞主流程 */
+            }
+          }
+        } else {
+          entry.acpSessionId = rawSid;
+        }
       }
 
-      // 确保 Session Doc 在内存（已存在则复用，不存在则创建），
-      // 然后 Y.Doc 事务内原地清空内容，替代 destroy+recreate，消除竞态。
-      let sessionDoc: Awaited<ReturnType<typeof openSession>>;
-      try {
-        sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
-      } catch (err) {
-        logError("[YJS-FE] Failed to open session doc for clear:", err);
-        return;
+      if (action === "create_session") {
+        // 新建会话：始终清空当前 Session Doc，切换到全新空白状态
+        try {
+          await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+        } catch (err) {
+          logError("[YJS-FE] Failed to open session doc for create:", err);
+          return;
+        }
+        clearSessionDocContent(entry.rcsSessionId);
+        // 同步清空 Redis
+        const redis = getRedisConnection();
+        if (redis) {
+          try {
+            const doc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+            const cleared = Y.encodeStateAsUpdate(doc.ydoc);
+            redis.set(`yjs:session:${entry.rcsSessionId}`, Buffer.from(cleared).toString("base64")).catch(() => {});
+          } catch {
+            /* 清空 Redis 失败不阻塞主流程 */
+          }
+        }
       }
-      clearSessionDocContent(entry.rcsSessionId);
-
-      // 同步清空 Redis，避免重启后被旧数据覆盖
-      const redis = getRedisConnection();
-      if (redis) {
-        const cleared = Y.encodeStateAsUpdate(sessionDoc.ydoc);
-        redis.set(`yjs:session:${entry.rcsSessionId}`, Buffer.from(cleared).toString("base64")).catch(() => {});
-      }
-
-      // 注册监听（已注册则跳过）
-      registerYjsDocListener(sessionDoc.ydoc, `session:${entry.rcsSessionId}`);
-    }
+    } // end if (load_session || create_session)
 
     // 【用户消息写入 Session Doc】send_prompt 时提取 content 中的 text，先写后发
     // 这样即使 agent 不回显 user_message_chunk，后端 Y.Doc 也有用户消息记录，前端通过 YJS 同步渲染
