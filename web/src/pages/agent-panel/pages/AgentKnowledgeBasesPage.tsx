@@ -671,8 +671,8 @@ export function AgentKnowledgeBasesPage() {
     <div
       className={
         selectedDetail
-          ? "h-full flex flex-col overflow-hidden bg-[#f7f8fa] px-6 py-6 text-[#0f172a]"
-          : "min-h-full overflow-auto bg-[#f7f8fa] px-6 py-6 text-[#0f172a]"
+          ? "flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f8fa] px-4 py-4 text-[#0f172a] sm:px-6 sm:py-6"
+          : "min-h-full overflow-auto bg-[#f7f8fa] px-4 py-4 text-[#0f172a] sm:px-6 sm:py-6"
       }
     >
       {/* ===== 网格视图 ===== */}
@@ -766,7 +766,7 @@ export function AgentKnowledgeBasesPage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredItems.map((kb) => (
                 <KbCard
                   key={kb.id}
@@ -851,325 +851,331 @@ export function AgentKnowledgeBasesPage() {
           )}
 
           {!detailLoading && (
-            <div className="max-w-[960px] mx-auto space-y-6 flex flex-col flex-1 min-h-0">
-              {/* 详情头部卡片：头像 + 名称 + 元数据 + 配置 */}
-              <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
-                {/* 顶部渐变装饰条 */}
-                <div className="h-1.5 w-full bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-400" />
-                <div className="p-7 relative">
-                  {/* 右上角知识图谱魔法棒按钮 */}
-                  <button
-                    type="button"
-                    className="absolute top-7 right-7 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold bg-[#f0f4ff] text-[#6366f1] hover:bg-[#e4eaff] border border-[#d4dafc] transition-all duration-150 shadow-sm hover:shadow-md"
-                    onClick={() => setShowGraphPanel(!showGraphPanel)}
-                    title={t("retrieval.knowledgeGraphSection")}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {t("retrieval.knowledgeGraphSection")}
-                  </button>
-                  <div className="flex items-start gap-5">
-                    {/* 头像 */}
-                    <div
-                      className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-[22px] font-bold bg-gradient-to-br ${pickAvatarColor(
-                        selectedDetail.name,
-                      ).replace(
-                        /bg-(\w+)-\d+ text-(\w+)-\d+/,
-                        "from-$1-100 to-$1-200 text-$2-600",
-                      )} shadow-sm ring-1 ring-black/5`}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="mx-auto flex min-h-full w-full max-w-[1480px] flex-col space-y-6 pb-6">
+                {/* 详情头部卡片：头像 + 名称 + 元数据 + 配置 */}
+                <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
+                  {/* 顶部渐变装饰条 */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-400" />
+                  <div className="p-7 relative">
+                    {/* 右上角知识图谱魔法棒按钮 */}
+                    <button
+                      type="button"
+                      className="absolute top-7 right-7 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold bg-[#f0f4ff] text-[#6366f1] hover:bg-[#e4eaff] border border-[#d4dafc] transition-all duration-150 shadow-sm hover:shadow-md"
+                      onClick={() => setShowGraphPanel(!showGraphPanel)}
+                      title={t("retrieval.knowledgeGraphSection")}
                     >
-                      {getInitial(selectedDetail.name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2.5">
-                        <h2 className="text-[22px] font-bold text-[#0f172a] truncate">{selectedDetail.name}</h2>
-                        <span
-                          className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusDot(selectedDetail.status)} ring-2 ring-white`}
-                        />
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {t("retrieval.knowledgeGraphSection")}
+                    </button>
+                    <div className="flex items-start gap-5">
+                      {/* 头像 */}
+                      <div
+                        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-[22px] font-bold bg-gradient-to-br ${pickAvatarColor(
+                          selectedDetail.name,
+                        ).replace(
+                          /bg-(\w+)-\d+ text-(\w+)-\d+/,
+                          "from-$1-100 to-$1-200 text-$2-600",
+                        )} shadow-sm ring-1 ring-black/5`}
+                      >
+                        {getInitial(selectedDetail.name)}
                       </div>
-                      <p className="text-[12px] text-[#94a3b8] font-mono mt-0.5">{selectedDetail.slug}</p>
-                      {selectedDetail.description && (
-                        <p className="mt-3 text-[13px] text-[#475569] leading-relaxed max-w-[640px]">
-                          {selectedDetail.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-4 mt-4">
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase shadow-sm ${getStatusBadge(
-                            selectedDetail.status,
-                          )}`}
-                        >
-                          {selectedDetail.status}
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
-                          <File className="h-3.5 w-3.5" />
-                          {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
-                        </span>
-                        {selectedDetail.bindingsCount > 0 && (
-                          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
-                            <Braces className="h-3.5 w-3.5" />
-                            {selectedDetail.bindingsCount} agent{selectedDetail.bindingsCount > 1 ? "s" : ""}
-                          </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2.5">
+                          <h2 className="text-[22px] font-bold text-[#0f172a] truncate">{selectedDetail.name}</h2>
+                          <span
+                            className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusDot(selectedDetail.status)} ring-2 ring-white`}
+                          />
+                        </div>
+                        <p className="text-[12px] text-[#94a3b8] font-mono mt-0.5">{selectedDetail.slug}</p>
+                        {selectedDetail.description && (
+                          <p className="mt-3 text-[13px] text-[#475569] leading-relaxed max-w-[640px]">
+                            {selectedDetail.description}
+                          </p>
                         )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 创建时选定的配置（只读展示） */}
-                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5 border-t border-[#f0f3f8] pt-5">
-                    <ConfigItem
-                      icon={<Cpu className="h-4 w-4 text-[#6366f1]" />}
-                      label={t("detailConfig.embeddingModel")}
-                    >
-                      {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
-                    </ConfigItem>
-                    <ConfigItem
-                      icon={<Layers className="h-4 w-4 text-violet-500" />}
-                      label={t("detailConfig.parseMethod")}
-                    >
-                      {parseMethodLabel(selectedDetail.parseMethod)}
-                    </ConfigItem>
-                    <ConfigItem
-                      icon={<Scissors className="h-4 w-4 text-emerald-500" />}
-                      label={t("detailConfig.chunkMethod")}
-                    >
-                      {chunkMethodLabel(selectedDetail.chunkMethod)}
-                    </ConfigItem>
-                  </div>
-                </div>
-              </div>
-
-              {/* 知识图谱面板（点击魔法棒展开） */}
-              {showGraphPanel && selectedDetail && (
-                <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-6">
-                  <KnowledgeGraphPanel
-                    knowledgeBaseId={selectedDetail.id}
-                    canManage={canManageDetail}
-                    onCollapse={() => setShowGraphPanel(false)}
-                  />
-                </div>
-              )}
-
-              {/* Tab 切换：文档 | 检索测试 */}
-              <Tabs
-                value={detailTab}
-                onValueChange={(v) => setDetailTab(v as "documents" | "retrieval")}
-                className="flex flex-col flex-1 min-h-0 space-y-4"
-              >
-                <TabsList>
-                  <TabsTrigger value="documents">{t("tabs.documents")}</TabsTrigger>
-                  <TabsTrigger value="retrieval">{t("tabs.retrievalTest")}</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="documents" className="flex flex-col flex-1 min-h-0 space-y-6">
-                  {/* 外部链接 */}
-                  {selectedDetail.remoteId && (
-                    <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 p-4">
-                      <div className="flex items-center gap-2 text-[12px] text-[#64748b]">
-                        <Globe className="h-3.5 w-3.5 text-[#6366f1]" />
-                        <span>Remote ID: {selectedDetail.remoteId}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 资源列表 — 表格形式 */}
-                  <div className="flex flex-col flex-1 min-h-0 rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
-                    {/* 表头工具栏 */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-[#eef2f6]">
-                      <h3 className="text-[14px] font-semibold text-[#0f172a]">
-                        {t("resources.title", { count: resources.length })}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0 && kbId) {
-                              const filesArr = Array.from(e.target.files);
-                              const formData = new FormData();
-                              for (const file of filesArr) {
-                                formData.append("files", file);
-                              }
-                              // 检查与现有资源的同名冲突
-                              const existingNames = new Set(resources.map((r) => r.sourceName));
-                              const dupNames = filesArr.map((f) => f.name).filter((n) => existingNames.has(n));
-                              if (dupNames.length > 0) {
-                                // 先存起来，弹窗确认后再上传
-                                pendingOverwriteRef.current = { kbId: kbId, formData, dupNames };
-                                setOverwriteConfirmOpen(true);
-                                // 重置 input 值，否则第二次选同名文件不会触发 onChange
-                                if (fileInputRef.current) fileInputRef.current.value = "";
-                                return;
-                              }
-                              runUpload(kbId, formData);
-                            }
-                          }}
-                          className="hidden"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={uploading || !canManageDetail}
-                          onClick={() => fileInputRef.current?.click()}
-                          className="h-8 gap-1.5 text-[12px] rounded-lg border-[#e2e8f0] hover:border-[#6366f1] hover:text-[#6366f1] hover:bg-[#f0f4ff] transition-all duration-150"
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          {uploading ? t("btn.uploading") : t("btn.upload")}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* 表头 */}
-                    <div className="flex items-center gap-3 border-b border-[#eef2f6] bg-[#f8fafc] px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#94a3b8]">
-                      <div className="flex-[2] min-w-0">{t("columns.name")}</div>
-                      <div className="w-[60px] shrink-0 text-center">{t("resources.colChunks")}</div>
-                      <div className="w-[100px] shrink-0">{t("resources.colStatus")}</div>
-                      <div className="w-[80px] shrink-0 text-center">{t("resources.colEnabled")}</div>
-                      <div className="w-[130px] shrink-0">{t("columns.updatedAt")}</div>
-                      <div className="w-[200px] shrink-0 text-right">{t("resources.colActions")}</div>
-                    </div>
-
-                    {/* 表格行 — 自动填充剩余空间并滚动 */}
-                    <div className="divide-y divide-[#f0f3f8] flex-1 overflow-y-auto">
-                      {resources.map((r) => (
-                        <div
-                          key={r.id}
-                          className="group flex items-center gap-3 px-6 py-3.5 hover:bg-[#fafbfd] transition-all duration-150 border-l-[3px] border-l-transparent hover:border-l-[#6366f1]"
-                        >
-                          {/* 文件名 + 方法标签 — 点击文件名进入切片详情 */}
-                          <div className="flex-[2] min-w-0 flex items-center gap-2.5">
-                            <span className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-[#f1f5f9] group-hover:bg-[#eef0ff] transition-colors">
-                              {getFileIcon(r.sourceName)}
+                        <div className="flex items-center gap-4 mt-4">
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase shadow-sm ${getStatusBadge(
+                              selectedDetail.status,
+                            )}`}
+                          >
+                            {selectedDetail.status}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
+                            <File className="h-3.5 w-3.5" />
+                            {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
+                          </span>
+                          {selectedDetail.bindingsCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
+                              <Braces className="h-3.5 w-3.5" />
+                              {selectedDetail.bindingsCount} agent{selectedDetail.bindingsCount > 1 ? "s" : ""}
                             </span>
-                            {r.chunkCount != null && r.chunkCount > 0 ? (
-                              <button
-                                type="button"
-                                className="text-[13px] font-semibold text-[#0f172a] hover:text-[#6366f1] truncate transition-colors text-left"
-                                onClick={() => setSelectedChunkResource(r)}
-                              >
-                                {r.sourceName}
-                              </button>
-                            ) : (
-                              <span className="text-[13px] font-semibold text-[#0f172a] truncate">{r.sourceName}</span>
-                            )}
-                          </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                          {/* 分块数 */}
-                          <div className="w-[60px] shrink-0 text-center text-[12px] text-[#94a3b8]">
-                            {r.chunkCount != null ? r.chunkCount : "—"}
-                          </div>
+                    {/* 创建时选定的配置（只读展示） */}
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5 border-t border-[#f0f3f8] pt-5">
+                      <ConfigItem
+                        icon={<Cpu className="h-4 w-4 text-[#6366f1]" />}
+                        label={t("detailConfig.embeddingModel")}
+                      >
+                        {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
+                      </ConfigItem>
+                      <ConfigItem
+                        icon={<Layers className="h-4 w-4 text-violet-500" />}
+                        label={t("detailConfig.parseMethod")}
+                      >
+                        {parseMethodLabel(selectedDetail.parseMethod)}
+                      </ConfigItem>
+                      <ConfigItem
+                        icon={<Scissors className="h-4 w-4 text-emerald-500" />}
+                        label={t("detailConfig.chunkMethod")}
+                      >
+                        {chunkMethodLabel(selectedDetail.chunkMethod)}
+                      </ConfigItem>
+                    </div>
+                  </div>
+                </div>
 
-                          {/* 状态 */}
-                          <div className="w-[100px] shrink-0">
-                            {r.runStatus === "RUNNING" && r.parseProgress != null ? (
-                              <div className="flex items-center gap-1.5">
-                                <div className="flex-1 h-1.5 rounded-full bg-[#eef2f8] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-gradient-to-r from-[#1677ff] to-[#6366f1] shadow-[0_0_6px_rgba(99,102,241,0.3)] transition-all duration-500"
-                                    style={{ width: `${Math.round(r.parseProgress * 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-[10px] font-medium text-[#6366f1] shrink-0">
-                                  {Math.round(r.parseProgress * 100)}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusBadge(r.status)}`}
-                              >
-                                <span className={`inline-block h-1.5 w-1.5 rounded-full ${getStatusDot(r.status)}`} />
-                                {r.status}
+                {/* 知识图谱面板（点击魔法棒展开） */}
+                {showGraphPanel && selectedDetail && (
+                  <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-6">
+                    <KnowledgeGraphPanel
+                      knowledgeBaseId={selectedDetail.id}
+                      canManage={canManageDetail}
+                      onCollapse={() => setShowGraphPanel(false)}
+                    />
+                  </div>
+                )}
+
+                {/* Tab 切换：文档 | 检索测试 */}
+                <Tabs
+                  value={detailTab}
+                  onValueChange={(v) => setDetailTab(v as "documents" | "retrieval")}
+                  className="flex flex-col flex-1 min-h-0 space-y-4"
+                >
+                  <TabsList>
+                    <TabsTrigger value="documents">{t("tabs.documents")}</TabsTrigger>
+                    <TabsTrigger value="retrieval">{t("tabs.retrievalTest")}</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="documents" className="flex flex-col flex-1 min-h-0 space-y-6">
+                    {/* 外部链接 */}
+                    {selectedDetail.remoteId && (
+                      <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 p-4">
+                        <div className="flex items-center gap-2 text-[12px] text-[#64748b]">
+                          <Globe className="h-3.5 w-3.5 text-[#6366f1]" />
+                          <span>Remote ID: {selectedDetail.remoteId}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 资源列表 — 表格形式 */}
+                    <div className="flex flex-col flex-1 min-h-0 rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
+                      {/* 表头工具栏 */}
+                      <div className="flex items-center justify-between px-6 py-4 border-b border-[#eef2f6]">
+                        <h3 className="text-[14px] font-semibold text-[#0f172a]">
+                          {t("resources.title", { count: resources.length })}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files.length > 0 && kbId) {
+                                const filesArr = Array.from(e.target.files);
+                                const formData = new FormData();
+                                for (const file of filesArr) {
+                                  formData.append("files", file);
+                                }
+                                // 检查与现有资源的同名冲突
+                                const existingNames = new Set(resources.map((r) => r.sourceName));
+                                const dupNames = filesArr.map((f) => f.name).filter((n) => existingNames.has(n));
+                                if (dupNames.length > 0) {
+                                  // 先存起来，弹窗确认后再上传
+                                  pendingOverwriteRef.current = { kbId: kbId, formData, dupNames };
+                                  setOverwriteConfirmOpen(true);
+                                  // 重置 input 值，否则第二次选同名文件不会触发 onChange
+                                  if (fileInputRef.current) fileInputRef.current.value = "";
+                                  return;
+                                }
+                                runUpload(kbId, formData);
+                              }
+                            }}
+                            className="hidden"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={uploading || !canManageDetail}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="h-8 gap-1.5 text-[12px] rounded-lg border-[#e2e8f0] hover:border-[#6366f1] hover:text-[#6366f1] hover:bg-[#f0f4ff] transition-all duration-150"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            {uploading ? t("btn.uploading") : t("btn.upload")}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* 表头 */}
+                      <div className="flex items-center gap-3 border-b border-[#eef2f6] bg-[#f8fafc] px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#94a3b8]">
+                        <div className="flex-[2] min-w-0">{t("columns.name")}</div>
+                        <div className="w-[60px] shrink-0 text-center">{t("resources.colChunks")}</div>
+                        <div className="w-[100px] shrink-0">{t("resources.colStatus")}</div>
+                        <div className="w-[80px] shrink-0 text-center">{t("resources.colEnabled")}</div>
+                        <div className="w-[130px] shrink-0">{t("columns.updatedAt")}</div>
+                        <div className="w-[200px] shrink-0 text-right">{t("resources.colActions")}</div>
+                      </div>
+
+                      {/* 表格行 — 自动填充剩余空间并滚动 */}
+                      <div className="divide-y divide-[#f0f3f8] flex-1 overflow-y-auto">
+                        {resources.map((r) => (
+                          <div
+                            key={r.id}
+                            className="group flex items-center gap-3 px-6 py-3.5 hover:bg-[#fafbfd] transition-all duration-150 border-l-[3px] border-l-transparent hover:border-l-[#6366f1]"
+                          >
+                            {/* 文件名 + 方法标签 — 点击文件名进入切片详情 */}
+                            <div className="flex-[2] min-w-0 flex items-center gap-2.5">
+                              <span className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-[#f1f5f9] group-hover:bg-[#eef0ff] transition-colors">
+                                {getFileIcon(r.sourceName)}
                               </span>
-                            )}
-                          </div>
+                              {r.chunkCount != null && r.chunkCount > 0 ? (
+                                <button
+                                  type="button"
+                                  className="text-[13px] font-semibold text-[#0f172a] hover:text-[#6366f1] truncate transition-colors text-left"
+                                  onClick={() => setSelectedChunkResource(r)}
+                                >
+                                  {r.sourceName}
+                                </button>
+                              ) : (
+                                <span className="text-[13px] font-semibold text-[#0f172a] truncate">
+                                  {r.sourceName}
+                                </span>
+                              )}
+                            </div>
 
-                          {/* 启用 */}
-                          <div className="w-[80px] shrink-0 flex justify-center">
-                            <Switch
-                              checked={r.enabled ?? true}
-                              disabled={!canManageDetail}
-                              onCheckedChange={(checked) => {
-                                kbApi
-                                  .toggleResourceEnabled({ kbId: kbId!, resourceId: r.id }, { enabled: checked })
-                                  .then(() => runLoadDetail(kbId!))
-                                  .catch((err) => {
-                                    toast.error(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
-                                    runLoadDetail(kbId!);
-                                  });
-                              }}
-                            />
-                          </div>
+                            {/* 分块数 */}
+                            <div className="w-[60px] shrink-0 text-center text-[12px] text-[#94a3b8]">
+                              {r.chunkCount != null ? r.chunkCount : "—"}
+                            </div>
 
-                          {/* 更新时间 */}
-                          <div className="w-[130px] shrink-0 text-[12px] text-[#94a3b8]">
-                            {formatTimestamp(r.createdAt)}
-                          </div>
+                            {/* 状态 */}
+                            <div className="w-[100px] shrink-0">
+                              {r.runStatus === "RUNNING" && r.parseProgress != null ? (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex-1 h-1.5 rounded-full bg-[#eef2f8] overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-[#1677ff] to-[#6366f1] shadow-[0_0_6px_rgba(99,102,241,0.3)] transition-all duration-500"
+                                      style={{ width: `${Math.round(r.parseProgress * 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] font-medium text-[#6366f1] shrink-0">
+                                    {Math.round(r.parseProgress * 100)}%
+                                  </span>
+                                </div>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusBadge(r.status)}`}
+                                >
+                                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${getStatusDot(r.status)}`} />
+                                  {r.status}
+                                </span>
+                              )}
+                            </div>
 
-                          {/* 操作 */}
-                          <div className="w-[200px] shrink-0 flex items-center justify-end gap-2">
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              className="h-7 gap-1 rounded-md border-[#dbe1ea] px-2 text-[11px] text-[#1677ff] hover:border-[#1677ff] hover:bg-[#e8f4ff] shrink-0"
-                              disabled={!canManageDetail || reparsingResourceId === r.id}
-                              onClick={() => {
-                                setReparseDeleteOld(false);
-                                setReparseTarget(r);
-                                setReparseConfirmOpen(true);
-                              }}
-                            >
-                              <RefreshCw className={`h-3 w-3 ${reparsingResourceId === r.id ? "animate-spin" : ""}`} />
-                              {t("reparse.btn")}
-                            </Button>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {r.status === "ready" && (
+                            {/* 启用 */}
+                            <div className="w-[80px] shrink-0 flex justify-center">
+                              <Switch
+                                checked={r.enabled ?? true}
+                                disabled={!canManageDetail}
+                                onCheckedChange={(checked) => {
+                                  kbApi
+                                    .toggleResourceEnabled({ kbId: kbId!, resourceId: r.id }, { enabled: checked })
+                                    .then(() => runLoadDetail(kbId!))
+                                    .catch((err) => {
+                                      toast.error(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+                                      runLoadDetail(kbId!);
+                                    });
+                                }}
+                              />
+                            </div>
+
+                            {/* 更新时间 */}
+                            <div className="w-[130px] shrink-0 text-[12px] text-[#94a3b8]">
+                              {formatTimestamp(r.createdAt)}
+                            </div>
+
+                            {/* 操作 */}
+                            <div className="w-[200px] shrink-0 flex items-center justify-end gap-2">
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                className="h-7 gap-1 rounded-md border-[#dbe1ea] px-2 text-[11px] text-[#1677ff] hover:border-[#1677ff] hover:bg-[#e8f4ff] shrink-0"
+                                disabled={!canManageDetail || reparsingResourceId === r.id}
+                                onClick={() => {
+                                  setReparseDeleteOld(false);
+                                  setReparseTarget(r);
+                                  setReparseConfirmOpen(true);
+                                }}
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${reparsingResourceId === r.id ? "animate-spin" : ""}`}
+                                />
+                                {t("reparse.btn")}
+                              </Button>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {r.status === "ready" && (
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-[#94a3b8] hover:text-[#1677ff]"
+                                    title={t("preview.btn")}
+                                    onClick={() => setPreviewResource(r)}
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                                 <Button
                                   size="xs"
                                   variant="ghost"
-                                  className="h-7 w-7 p-0 text-[#94a3b8] hover:text-[#1677ff]"
-                                  title={t("preview.btn")}
-                                  onClick={() => setPreviewResource(r)}
+                                  className="h-7 w-7 p-0 text-[#94a3b8] hover:text-red-500"
+                                  title={t("actions.delete")}
+                                  disabled={!canManageDetail || deletingResourceId === r.id}
+                                  onClick={() => {
+                                    setResourceDeleteTarget({ kbId: kbId!, resourceId: r.id, name: r.sourceName });
+                                    setResourceDeleteConfirmOpen(true);
+                                  }}
                                 >
-                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
-                              )}
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                className="h-7 w-7 p-0 text-[#94a3b8] hover:text-red-500"
-                                title={t("actions.delete")}
-                                disabled={!canManageDetail || deletingResourceId === r.id}
-                                onClick={() => {
-                                  setResourceDeleteTarget({ kbId: kbId!, resourceId: r.id, name: r.sourceName });
-                                  setResourceDeleteConfirmOpen(true);
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
 
-                      {resources.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-24 text-[#94a3b8] gap-5">
-                          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
-                            <File className="h-8 w-8 opacity-25" />
+                        {resources.length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-24 text-[#94a3b8] gap-5">
+                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
+                              <File className="h-8 w-8 opacity-25" />
+                            </div>
+                            <p className="text-[14px] font-medium">{t("resources.empty")}</p>
                           </div>
-                          <p className="text-[14px] font-medium">{t("resources.empty")}</p>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </TabsContent>
+                  </TabsContent>
 
-                {/* 检索测试 Tab — 仅在切换到此 tab 时挂载 */}
-                <TabsContent value="retrieval" forceMount className="data-[state=inactive]:hidden">
-                  {detailTab === "retrieval" && selectedDetail && (
-                    <RetrievalTestPanel knowledgeBaseId={selectedDetail.id} />
-                  )}
-                </TabsContent>
-              </Tabs>
+                  {/* 检索测试 Tab — 仅在切换到此 tab 时挂载 */}
+                  <TabsContent value="retrieval" forceMount className="data-[state=inactive]:hidden">
+                    {detailTab === "retrieval" && selectedDetail && (
+                      <RetrievalTestPanel knowledgeBaseId={selectedDetail.id} />
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </div>
             </div>
           )}
         </div>
