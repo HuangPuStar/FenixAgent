@@ -12,6 +12,12 @@ export class ProtocolAdapter {
   /** 跟踪当前回合是否已经通过 stream_event 流式推送过文本内容 */
   private streamedTextThisTurn = false;
 
+  /** 跟踪当前正在流式输入的工具调用 ID（用于 input_json_delta → tool_call_update 映射） */
+  private currentToolCallId: string | null = null;
+
+  /** 累积当前工具调用的流式输入 JSON（每次 input_json_delta 后更新） */
+  private currentToolInput = "";
+
   constructor(private send: (type: string, payload?: unknown) => void) {}
 
   /** 处理来自 relay 的 ACP 消息，转换为 SDK 操作 */
@@ -69,15 +75,26 @@ export class ProtocolAdapter {
             console.log("[protocol-debug] → agent_thought_chunk:", (delta.thinking as string).slice(0, 50));
             this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
-            // tool_use 参数流式增量，透传
-            this.send("agent_message_chunk", { type: "tool_input_delta", partial: delta.partial_json });
+            // 工具参数流式增量 → 累积并通过 tool_call_update 更新 rawInput
+            this.currentToolInput += delta.partial_json as string;
+            if (this.currentToolCallId) {
+              this.send("tool_call_update", {
+                toolCallId: this.currentToolCallId,
+                status: "running",
+                rawInput: this.currentToolInput,
+              });
+            }
           }
           break;
         }
         case "content_block_start": {
           const contentBlock = event.content_block as Record<string, unknown> | undefined;
           if (contentBlock?.type === "tool_use") {
+            this.currentToolCallId = (contentBlock.id as string) || null;
+            this.currentToolInput = "";
             this.send("tool_call", { id: contentBlock.id, name: contentBlock.name, input: {} });
+          } else {
+            this.currentToolCallId = null;
           }
           break;
         }
@@ -108,6 +125,8 @@ export class ProtocolAdapter {
       }
     } else if (message.type === "result") {
       this.streamedTextThisTurn = false;
+      this.currentToolCallId = null;
+      this.currentToolInput = "";
       this.send("prompt_complete", { stopReason: message.subtype ?? message.stopReason ?? "end_turn" });
     } else if (message.type === "system") {
       const subtype = message.subtype as string | undefined;
@@ -137,15 +156,27 @@ export class ProtocolAdapter {
       }
     } else if (message.type === "user") {
       // 用户消息回显（CC 可能会回放历史消息）
-      // 作为 user_message_chunk 转发
-      const blocks = (message as Record<string, unknown>).message
-        ? ((message as Record<string, unknown>).message as Record<string, unknown>)?.content
-        : undefined;
-      if (Array.isArray(blocks as unknown)) {
-        for (const block of blocks as Array<Record<string, unknown>>) {
-          if (block.type === "text" && block.text) {
-            this.send("user_message_chunk", { type: "text", text: block.text as string });
+      // 同时提取 tool_result 块发出 tool_call_update（ACP 协议中工具输出走此事件）
+      const sdkMsg = message as Record<string, unknown>;
+      const inner = (sdkMsg.message ?? message) as Record<string, unknown>;
+      const blocks = (inner.content ?? []) as Array<Record<string, unknown>>;
+      for (const block of blocks) {
+        if (block.type === "text" && block.text) {
+          this.send("user_message_chunk", { type: "text", text: block.text as string });
+        } else if (block.type === "tool_result") {
+          const rawContent = block.content;
+          let output: unknown = rawContent;
+          if (Array.isArray(rawContent)) {
+            output = (rawContent as Array<Record<string, unknown>>)
+              .filter((c) => c.type === "text" && c.text)
+              .map((c) => c.text as string)
+              .join("\n");
           }
+          this.send("tool_call_update", {
+            toolCallId: block.tool_use_id,
+            status: block.is_error ? "error" : "completed",
+            rawOutput: output,
+          });
         }
       }
     }
