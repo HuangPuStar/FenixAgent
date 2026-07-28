@@ -909,6 +909,9 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
           }
         } else {
           entry.acpSessionId = rawSid;
+          // 同一 session 的重连/多窗口加入：跳过 session/load ≤ agent，避免触发
+          // agent 全量回放导致已在线客户端消息重复渲染。
+          return;
         }
       }
 
