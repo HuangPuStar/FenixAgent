@@ -69,29 +69,6 @@ export function ChatPanel({
     }
   }, [rcsSessionId, sessionApplyUpdate]);
 
-  // 🔍 DEBUG: 监听 chatState 变化，打印 sessions 等关键字段
-  useEffect(() => {
-    const { sessions, activeSessionId, connection, agentInfo, capabilities } = chatState;
-    console.debug(
-      `[YJS STATE] agentId=${agentId} hookKey=${chatHookKey}`,
-      JSON.stringify(
-        {
-          connection,
-          agentInfo: agentInfo ? { id: agentInfo.id, name: agentInfo.name } : null,
-          activeSessionId,
-          capabilities: capabilities ? Object.keys(capabilities as Record<string, unknown>) : null,
-          sessions: (sessions ?? []).map((s: any) => ({
-            sessionId: s.sessionId,
-            title: s.title,
-            status: s.status,
-          })),
-        },
-        null,
-        2,
-      ),
-    );
-  }, [chatState, agentId, chatHookKey]);
-
   // 监听实例重启事件，强制重连（带最小间隔防止风暴）
   useEffect(() => {
     const handler = (e: Event) => {
@@ -126,26 +103,6 @@ export function ChatPanel({
     setReconnectKey((k) => k + 1);
   }, [agentId, connectionState, pageVisible]);
 
-  // 🔍 DEBUG: 面板从隐藏变为可见时，打印当前 chatState（切换 agent 触发）
-  useEffect(() => {
-    if (!pageVisible || !agentId) return;
-    const { sessions, activeSessionId, connection, agentInfo, capabilities } = chatState;
-    console.debug(
-      `[YJS VISIBLE] agentId=${agentId} hookKey=${chatHookKey} visible=${pageVisible}`,
-      JSON.stringify(
-        {
-          connection,
-          agentInfo: agentInfo ? { id: agentInfo.id, name: agentInfo.name } : null,
-          activeSessionId,
-          sessionCount: sessions.length,
-          sessions: (sessions ?? []).map((s: any) => `${(s.sessionId ?? "").slice(-8)}:${s.title}`),
-        },
-        null,
-        2,
-      ),
-    );
-  }, [pageVisible, agentId, chatHookKey, chatState]);
-
   // 创建 YjsWs 连接
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey 变更时需强制重建连接
   useLayoutEffect(() => {
@@ -165,10 +122,6 @@ export function ChatPanel({
       onYjsUpdate: (docName, data) => {
         try {
           if (docName.startsWith("chat:")) {
-            // 🔍 DEBUG: 到达通知
-            console.debug(
-              `[YJS ← chat] agentId=${agentId} hookKey=${chatHookKey} rcsSession=${docName.slice(5)} size=${data.length}`,
-            );
             chatApplyUpdate(data);
           } else if (docName.startsWith("session:")) {
             const sessId = docName.replace("session:", "");
@@ -182,7 +135,6 @@ export function ChatPanel({
         }
       },
       onConnectionState: (state: YjsWsState) => {
-        console.log("[ChatPanel] onConnectionState:", state);
         if (state === "connecting") setConnectionState("connecting");
         else if (state === "connected") {
           setConnectionState("connected");
