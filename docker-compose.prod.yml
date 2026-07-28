@@ -45,7 +45,7 @@ services:
             - ./workflow:/app/workflow
             - ./workspaces:/app/workspaces
         # 在主进程启动前先完成数据库迁移
-        command: ["sh", "-lc", "bun migrate.js && exec bun dist/index.js"]
+        command: ["sh", "-lc", "bun migrate.js && exec bun --no-install run dist/index.js"]
         healthcheck:
             test:
                 [

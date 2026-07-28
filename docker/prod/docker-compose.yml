@@ -37,9 +37,6 @@ services:
             # BETTER_AUTH_URL: http://localhost:3000
             REGISTRY_SECRET: ${REGISTRY_SECRET}
             DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
-            RCS_KNOWLEDGE_PROVIDER: ${RCS_KNOWLEDGE_PROVIDER:-}
-            RCS_KNOWLEDGE_BASE_URL: ${RCS_KNOWLEDGE_BASE_URL:-}
-            RCS_KNOWLEDGE_API_KEY: ${RCS_KNOWLEDGE_API_KEY:-}
             RAGFLOW_API_URL: ${RAGFLOW_API_URL:-}
             RAGFLOW_API_KEY: ${RAGFLOW_API_KEY:-}
             AGENT_SITES_BASE_URL: http://agent-sites:3000
