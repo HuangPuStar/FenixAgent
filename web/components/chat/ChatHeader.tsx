@@ -1,10 +1,8 @@
-import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, Search, Trash2, X } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ACPClient } from "../../src/acp/client";
 import type { AgentSessionInfo } from "../../src/acp/types";
-import { useSessions } from "../../src/hooks/useSessions";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -13,8 +11,6 @@ import { ScrollArea } from "../ui/scroll-area";
 import { groupByRecency } from "./session-grouping";
 
 interface ChatHeaderProps {
-  /** ACP 客户端实例，用于拉取会话列表和监听能力/连接变化 */
-  client: ACPClient;
   /** 当前激活的会话 ID（与 ChatInterface 内 activeSessionId 对齐） */
   activeSessionId: string | null;
   /** 在 popover 中选中某个历史会话时回调，由父组件负责调用 loadSession/resumeSession */
@@ -30,6 +26,13 @@ interface ChatHeaderProps {
   /** 弹窗状态变化回调 */
   onPopoverChange?: (open: boolean) => void;
   className?: string;
+  /** Phase B: 外部注入 sessions（来自 Yjs chatState） */
+  sessions?: readonly { sessionId: string; title?: string | null; updatedAt?: string | null }[];
+  loading?: boolean;
+  /** 重命名会话回调 */
+  onRenameSession?: (sessionId: string, title: string) => void;
+  /** 删除会话回调 */
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 /**
@@ -43,7 +46,6 @@ interface ChatHeaderProps {
  * 避免与 ChatInterface 的会话状态耦合。
  */
 export function ChatHeader({
-  client,
   activeSessionId,
   onSelectSession,
   onNewSession,
@@ -52,9 +54,12 @@ export function ChatHeader({
   forceOpen = false,
   onPopoverChange,
   className,
+  sessions = [],
+  loading = false,
+  onRenameSession,
+  onDeleteSession,
 }: ChatHeaderProps) {
   const { t } = useTranslation("components");
-  const { sessions, loading, refresh, mutate } = useSessions();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   // 钉子状态与侧边栏状态同步：侧边栏打开时即为钉住状态
@@ -62,13 +67,6 @@ export function ChatHeader({
   // 内联重命名状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
-
-  // popover 打开时主动刷新一次，避免停留在 30s 间隔之外的数据
-  useEffect(() => {
-    if (open) {
-      refresh();
-    }
-  }, [open, refresh]);
 
   // 外部控制弹窗打开
   useEffect(() => {
@@ -162,18 +160,14 @@ export function ChatHeader({
       const title = editTitle.trim();
       if (!title) return;
       try {
-        // 乐观更新：本地立即修改标题
-        mutate(sessions.map((s) => (s.sessionId === sessionId ? { ...s, title } : s)));
-        client.renameSession({ sessionId, title });
-        // 从服务端拉取最新数据以同步
-        refresh();
+        onRenameSession?.(sessionId, title);
       } catch (err) {
         toast.error(`重命名失败: ${(err as Error).message}`);
       }
       setEditingId(null);
       setEditTitle("");
     },
-    [editTitle, client, sessions, mutate, refresh],
+    [editTitle, onRenameSession],
   );
   const handleCancelRename = () => {
     setEditingId(null);
@@ -184,15 +178,12 @@ export function ChatHeader({
   const handleDelete = useCallback(
     async (sessionId: string) => {
       try {
-        // 乐观更新：本地立即移除
-        mutate(sessions.filter((s) => s.sessionId !== sessionId));
-        await client.deleteSession({ sessionId });
-        refresh(); // 从服务端同步
+        onDeleteSession?.(sessionId);
       } catch (err) {
         toast.error(`删除失败: ${(err as Error).message}`);
       }
     },
-    [client, sessions, mutate, refresh],
+    [onDeleteSession],
   );
 
   return (
@@ -247,19 +238,7 @@ export function ChatHeader({
                 placeholder={t("chatHeader.searchPlaceholder")}
                 className="h-7 border-0 focus-visible:ring-0 shadow-none text-xs"
               />
-              {loading ? (
-                <Loader2 className="h-3.5 w-3.5 text-text-muted animate-spin flex-shrink-0" />
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={refresh}
-                  className="h-7 w-7 text-text-muted hover:text-text-primary flex-shrink-0"
-                  title={t("chatHeader.refresh")}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </Button>
-              )}
+              {loading && <Loader2 className="h-3.5 w-3.5 text-text-muted animate-spin flex-shrink-0" />}
               {onNewSession && (
                 <Button
                   variant="ghost"
@@ -353,7 +332,7 @@ export function ChatHeader({
                       >
                         <Button
                           variant="ghost"
-                          onClick={() => handleSelect(session)}
+                          onClick={() => handleSelect(session as AgentSessionInfo)}
                           className={cn(
                             "flex-1 flex items-center gap-2 px-4 py-2 text-left justify-start rounded-none",
                             isActive
@@ -375,7 +354,7 @@ export function ChatHeader({
                             className="h-6 w-6 p-0 flex items-center justify-center rounded text-text-muted hover:text-brand"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStartRename(session);
+                              handleStartRename(session as AgentSessionInfo);
                             }}
                             aria-label={t("acpMain.rename")}
                             title={t("acpMain.rename")}

@@ -58,6 +58,8 @@ interface ChatComposerProps {
   onNewSession?: () => void;
   /** 是否显示新建会话按钮（Task 5 元信息条用到） */
   showNewSession?: boolean;
+  /** 当前模型名称（YJS 传输模式下通过 Chat Doc 同步，不依赖 ACPClient） */
+  modelName?: string;
   className?: string;
 }
 
@@ -84,6 +86,7 @@ export function ChatComposer({
   tokenStats,
   onNewSession,
   showNewSession,
+  modelName,
   className,
 }: ChatComposerProps) {
   const { t } = useTranslation("components");
@@ -609,7 +612,16 @@ export function ChatComposer({
               />
             )}
 
-            {client && <ModelSelectorPopover client={client} />}
+            {client ? (
+              <ModelSelectorPopover client={client} />
+            ) : modelName ? (
+              <span
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground select-none"
+                title={modelName}
+              >
+                <span className="truncate max-w-[120px]">{modelName}</span>
+              </span>
+            ) : null}
 
             {/* 中间弹簧 */}
             <div className="flex-1" />
