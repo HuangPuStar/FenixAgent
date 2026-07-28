@@ -53,7 +53,7 @@ export function createCcbHandler(): EngineHandler {
         resolvePermissionOutcome,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
-      proc.on("exit", (code) => {
+      (proc as any).on("exit", (code: number | null) => {
         console.log(`[ccb-handler] ccb exited: ${instanceId}, code=${code}`);
         state.process = null;
         state.connection = null;

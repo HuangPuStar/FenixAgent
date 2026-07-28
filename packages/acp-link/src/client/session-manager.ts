@@ -88,7 +88,7 @@ export class SessionManager {
         env: spawnEnv,
       });
 
-      proc.on("exit", (code) => {
+      (proc as any).on("exit", (code: number | null) => {
         console.log("[session-manager] opencode exited:", code);
         this.sharedProc = null;
         this.sharedConnection = null;
@@ -125,16 +125,6 @@ export class SessionManager {
       this.sharedConnection = connection;
       this.agentCapabilities = initResult.agentCapabilities as Record<string, unknown> | null;
       console.log("[session-manager] opencode initialized");
-
-      // 首次初始化时自动创建一个 session（前端 bootstrap 时序依赖此行为）
-      try {
-        const autoSession = await connection.newSession({ cwd: this.cwd, mcpServers: [] });
-        this.currentAcpSessionId = autoSession.sessionId;
-        console.log("[session-manager] auto-created:", autoSession.sessionId);
-        this.emit(sessionId, "session_data", { type: "session_created", payload: autoSession });
-      } catch (err) {
-        console.error("[session-manager] auto newSession failed:", err);
-      }
 
       return "started";
     } catch (err) {
@@ -409,7 +399,7 @@ export class SessionManager {
                 "[session-manager] prompt completed, stopReason:",
                 (result as unknown as Record<string, unknown>).stopReason,
               );
-              this.emit(sessionId, "session_data", createSuccessResponse(id, result));
+              this.emit(sessionId, "session_data", { type: "prompt_complete", payload: result });
             })
             .catch((err) => {
               this.emit(sessionId, "session_data", createErrorResponse(id, -32603, String(err)));

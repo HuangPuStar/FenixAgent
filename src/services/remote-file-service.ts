@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { AppError } from "../errors";
 import { environmentRepo } from "../repositories";
 import { isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-handler";
 import { getAgentConfigById } from "./config/agent-config";
@@ -7,22 +8,42 @@ import { getAgentConfigById } from "./config/agent-config";
  * 判断 environment 是否绑定了远程 machine（且 file-ws 已连接）。
  * 优先级：agent config machineId > 系统默认 fallback > null（本地）
  *
- * 仅当配置了 machineId 且其 file-ws 已连接时，才返回 machineId（走远程文件操作）。
- * 若 file-ws 未连接，则视为本地 machine，回退到本地文件系统操作。
- * 这样可以避免本地部署的 acp-link machine（无 file-ws 支持）被误判为远程机器导致 503。
+ * - 无 machineId 配置 → 返回 null（调用方使用本地 FS）
+ * - machineId 已配置 + file-ws 已连接 → 返回 machineId（走远程文件操作）
+ * - machineId 已配置 + file-ws 未连接 → 抛 AppError（明确拒绝本地回退，
+ *   避免"配置了远程机器，用户以为文件在远程，实际落在本地"的分裂场景）
  */
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await environmentRepo.getById(envId);
-  if (!env?.agentConfigId) return null;
-  const agentCfg = await getAgentConfigById(env.agentConfigId);
-  const machineId = agentCfg?.machineId ?? config.defaultMachineId ?? null;
+  if (!env) return null;
+
+  let machineId: string | null = null;
+
+  // 优先级 1：agent config 绑定的 machineId
+  if (env.agentConfigId) {
+    const agentCfg = await getAgentConfigById(env.agentConfigId);
+    machineId = agentCfg?.machineId ?? null;
+  }
+
+  // 优先级 2：系统默认 machine（RCS_DEFAULT_MACHINE_ID）
+  // 覆盖两种场景：
+  //   a) environment 无 agentConfigId（如 ACP/Bridge 注册路径创建的环境）
+  //   b) agent config 未绑定 machineId
+  if (!machineId) {
+    machineId = config.defaultMachineId ?? null;
+  }
 
   // 没有配置 machine → 本地 FS
   if (!machineId) return null;
 
-  // 仅当 file-ws 已连接时，才走远程文件操作
-  // 若 file-ws 未连接，回退本地 FS（适用于本地 machine 或远程 machine file-ws 尚未就绪的场景）
-  if (!isFileWsConnected(machineId)) return null;
+  // 配了 machine 但 file-ws 未连 → 主动报错，不透传回退
+  if (!isFileWsConnected(machineId)) {
+    throw new AppError(
+      `远程机器文件服务不可用 (machine: ${machineId})，请检查远程机器是否在线`,
+      "REMOTE_FILE_UNAVAILABLE",
+      503,
+    );
+  }
 
   return machineId;
 }

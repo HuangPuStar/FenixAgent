@@ -170,6 +170,7 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 4. relay 必须转发 agent `status`，前端依赖 `status.capabilities` 判断能力。
 5. ACP session id 是 `ses_xxx`，RCS session id 是 `session_xxx` / `cse_xxx`；文件 API 必须使用 RCS id。
 6. **session/update 二级结构**：`update.sessionUpdate` 是事件类型字符串（如 `"agent_message_chunk"`），`update.content` 是载荷对象（`{ type, text }`）。**不要把事件类型值当 key 写**（如 `update.agent_message_chunk`）。写 ACP 消息处理代码前，先 `grep agent_message_chunk` 看已有消费者做参照。
+7. **`getRemoteMachineId` 允许无 `agentConfigId` 的 environment**：ACP/Bridge 注册路径（`registerEnvironment`、`createTemporaryEnvironment`）创建的环境没有 `agentConfigId`。`getRemoteMachineId` 不能对这类环境直接返回 null——必须先查 `agentConfigId`，不存在则 fallback 到 `config.defaultMachineId`，否则设了 `RCS_DEFAULT_MACHINE_ID` 文件操作也会落到本地 FS。
 
 ### Workspace / Skill
 
@@ -194,6 +195,23 @@ Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用
 4. `@lobehub/icons` 不要被后端或纯逻辑测试间接加载；纯工具逻辑要拆到不依赖 UI 的独立模块。
 5. 代码库里仍可能有少量历史写法与规范不一致；新改动按规范收敛，不要继续扩散旧模式。
 6. **i18n 插值语法**：i18n 配置（`web/src/i18n/index.ts:160`）未自定义 prefix/suffix，必须用 `{{var}}`（双花括号），`{var}` 会被当字面文本。写翻译前先看同 namespace 已有占位符写法做参照。
+
+### YJS / Chat
+
+1. **`rcsSessionId` 必须确定性生成**。使用 `agentId+userId` 拼接而非 `Date.now()` 随机值。页面刷新后同一用户同一 agent 复用相同 ID，Session Doc 在内存中持久存在。随机 ID 会导致旧 Doc 不可达、工具调用/流式状态全丢。
+2. **Session Doc 初始快照必须在 `handleYjsWsOpen` 时推送**。重连客户端只收到 Chat Doc 快照，若不同步推送 Session Doc 快照，消息区域为空直到 agent 回放。与 Chat Doc 快照一并在 `entry.relayReady=true` 之前发送。
+3. **重连后 `entry.acpSessionId` 必须从 Chat Doc 恢复**。新建 entry 时 `acpSessionId` 初始为 `null`，若不从 `chatMeta.activeSessionId` 恢复，后续 `load_session` 的 `isSameSession` 检查（`null === ses_xxx`）必定为 false → 误清 Session Doc → 多窗口工具调用消失。
+4. **同 session 的 `load_session` 必须 skip agent 回放**。`isSameSession=true` 时直接 `return`，不向 agent 发送 `session/load` RPC。否则 agent 全量回放消息 → `processACP` 追加到 Session Doc → 其他在线客户端收到重复消息。
+5. **`session/list` 必须注入 `cwd`**。YJS 前端没有旧 relay 的二次注入逻辑，必须在 `translateSimpleAction` 阶段就带 `cwd`，否则不同 environment 的会话列表会串数据。
+6. **ID 体系不可混**：ACP session id 是 `ses_xxx`，RCS session id 是 `rcs_xxx`。文件 API 用 RCS id，ACP JSON-RPC 用 ACP ses_ id。
+7. **Y.Doc 广播按 `rcsSessionId` 隔离，不发全局**。docName 格式 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，`registerYjsDocListener` 从 docName 提取目标 ID 只发匹配客户端。
+8. **用户消息只由后端写入 Y.Doc**。前端不维护 `localUserEntries`。Agent 回显会导致双写。
+9. **Session Doc 清洁用 `clearSessionDocContent`（Y.Doc 事务内清空）而非 `closeSession`+`openSession`（destroy+recreate）**。`handleYjsWsMessage` 是 fire-and-forget async，destroy→recreate 间隙 agent 回放事件可写入错误 Doc。原地清空无竞态、不重注册 listener。
+10. **`create_session` 也清空 Session Doc**。新建会话时旧消息若不清理，新旧 ACP session 消息叠加导致 chat 越来越长。
+11. **Agent status 到达前不发 `list_sessions`**，否则收到空列表。
+12. **Instance 级别 relay handle 共享**。同一 Agent 多标签页共享一个 relay handle，断开计数归零才销毁。
+13. **WS 背压与连接防护**：`sendToYjsWs` bufferedAmount > 64KB 跳过；连接数上限 200（`YJS_MAX_CLIENTS`）。
+14. **ChatView 用 `React.memo`**，comparator 排除 `onPermissionRespond`（始终新引用）。`EntryRenderer` 同步加 memo。
 
 ## 项目特有约束
 

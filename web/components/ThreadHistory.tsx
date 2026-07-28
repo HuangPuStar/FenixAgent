@@ -1,8 +1,7 @@
+import type { SessionSummary } from "@fenix/acp-server";
 import { Clock, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ACPClient } from "../src/acp/client";
 import type { AgentSessionInfo } from "../src/acp/types";
-import { useSessions } from "../src/hooks/useSessions";
 import { cn } from "../src/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -79,9 +78,14 @@ function formatRelativeTime(date: Date | null): string {
 }
 
 interface ThreadHistoryProps {
-  client: ACPClient;
-  cwd?: string;
-  // Returns Promise to allow loading state tracking; resolves when session is loaded
+  /** 是否支持会话历史 */
+  supportsHistory?: boolean;
+  /** 外部注入 sessions（来自 Yjs chatState） */
+  externalSessions?: SessionSummary[];
+  externalLoading?: boolean;
+  /** 外部刷新回调 */
+  onRefresh?: () => void;
+  /** Returns Promise to allow loading state tracking; resolves when session is loaded */
   onSelectSession: (session: AgentSessionInfo) => void | Promise<void>;
 }
 
@@ -90,26 +94,30 @@ interface GroupedSessions {
   sessions: AgentSessionInfo[];
 }
 
-export function ThreadHistory({ client, cwd: _cwd, onSelectSession }: ThreadHistoryProps) {
+export function ThreadHistory({
+  supportsHistory = false,
+  onSelectSession,
+  externalSessions,
+  externalLoading,
+  onRefresh,
+}: ThreadHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Track which session is currently being loaded to show loading state and prevent double-clicks
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
-  // Check if session history is supported
-  const supportsHistory = client.supportsSessionHistory;
-  const { sessions, loading: isLoading, error: hookError, refresh } = useSessions();
+  const sessions = (externalSessions ?? []) as AgentSessionInfo[];
+  const isLoading = externalLoading ?? false;
   const [error, setError] = useState<string | null>(null);
 
+  // Check if session history is supported
   useEffect(() => {
     if (!supportsHistory) {
       setError("Session history is not supported by this agent.");
-    } else if (hookError) {
-      setError(hookError.message);
     } else {
       setError(null);
     }
-  }, [supportsHistory, hookError]);
+  }, [supportsHistory]);
 
   // Filter and group sessions
   // Reference: Zed's add_list_separators and filter_search_results
@@ -183,7 +191,7 @@ export function ThreadHistory({ client, cwd: _cwd, onSelectSession }: ThreadHist
           onChange={(e) => setSearchQuery(e.target.value)}
           className="h-8 border-0 focus-visible:ring-0 shadow-none"
         />
-        <Button variant="ghost" size="sm" onClick={refresh} disabled={isLoading} className="shrink-0">
+        <Button variant="ghost" size="sm" onClick={onRefresh} disabled={isLoading} className="shrink-0">
           <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
         </Button>
       </div>

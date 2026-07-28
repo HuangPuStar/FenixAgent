@@ -45,6 +45,7 @@ export interface ProtocolEvents {
   mode_changed: { modeId: string };
   pong: undefined;
   rpc_response: { id: number | string; result: unknown };
+  yjs_update: { docName: string; data: string };
   [key: string]: unknown;
 }
 
@@ -67,6 +68,16 @@ export class ACPProtocol extends EventEmitter<ProtocolEvents> {
     }
 
     if ((parsed as Record<string, unknown>)?.type === "keep_alive") return;
+
+    // yjs:update 拦截 — 服务端推送的 CRDT 同步消息，不进入 ACP 协议路由
+    if ((parsed as Record<string, unknown>)?.type === "yjs:update") {
+      const msg = parsed as Record<string, unknown>;
+      this.emit("yjs_update", {
+        docName: msg.docName as string,
+        data: msg.data as string,
+      });
+      return;
+    }
 
     // 传输层消息
     if (isTransportMessage(parsed)) {

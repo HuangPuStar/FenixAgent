@@ -32,7 +32,7 @@ export function createOpencodeHandler(binary?: string, extraArgs?: string[]): En
         resolvePermissionOutcome,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
-      proc.on("exit", (code) => {
+      (proc as any).on("exit", (code: number | null) => {
         console.log(`[opencode-handler] opencode exited: ${instanceId}, code=${code}`);
         state.process = null;
         state.connection = null;

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { exists, mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -33,7 +34,7 @@ describe("workflow-fs", () => {
   test("ensureWorkflowDir creates directory", async () => {
     const dir = buildStoragePath(testRoot, "team-1", "wf-abc");
     await ensureWorkflowDir(dir);
-    expect(await exists(dir)).toBe(true);
+    expect(existsSync(dir)).toBe(true);
   });
 
   // writeYamlFile + readYamlFile 写读一致

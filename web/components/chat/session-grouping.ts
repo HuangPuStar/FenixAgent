@@ -1,14 +1,14 @@
-import type { AgentSessionInfo } from "../../src/acp/types";
+import type { SessionSummary } from "@fenix/acp-server";
 
 /**
  * 按日期分组的会话列表条目
  * 复用场景：ACPMain 左侧 SidebarSessionList、ChatHeader popover 中的历史会话列表
  */
-export interface SessionGroup {
+export interface SessionGroup<T = SessionSummary> {
   /** 分组展示文案（已国际化） */
   label: string;
   /** 分组内的会话列表（已按 updatedAt 降序） */
-  sessions: AgentSessionInfo[];
+  sessions: T[];
 }
 
 /**
@@ -21,15 +21,15 @@ export interface SessionGroup {
  * @param sessions 原始会话列表
  * @param labels 三档分组的本地化文案
  */
-export function groupByRecency(
-  sessions: AgentSessionInfo[],
+export function groupByRecency<T extends { updatedAt?: string | null }>(
+  sessions: readonly T[],
   labels: { today: string; yesterday: string; earlier: string },
-): SessionGroup[] {
+): SessionGroup<T>[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86_400_000);
 
-  const groups: SessionGroup[] = [
+  const groups: SessionGroup<T>[] = [
     { label: labels.today, sessions: [] },
     { label: labels.yesterday, sessions: [] },
     { label: labels.earlier, sessions: [] },

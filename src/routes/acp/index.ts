@@ -15,6 +15,12 @@ import {
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
+import {
+  createDeterministicRcsSessionId,
+  handleYjsWsClose,
+  handleYjsWsMessage,
+  handleYjsWsOpen,
+} from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
@@ -251,6 +257,81 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const relayWsId = (ws.data as any).__relayWsId as string | undefined;
       if (relayWsId) {
         handleRelayClose(adaptWs(ws), relayWsId, code, reason);
+      }
+    },
+  })
+
+  /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
+  .ws("/yjs/:agentId", {
+    detail: {
+      tags: ["ACP"],
+      summary: "YJS Frontend WebSocket",
+      description:
+        "专用于前端的 YJS WebSocket 端点。仅传输 yjs:update CRDT 增量消息和简单 JSON 出站命令。不涉及 ACP JSON-RPC 协议。",
+    },
+    params: "acp-relay-params",
+    async open(ws) {
+      const yjsWsId = `yjs_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__yjsWsId = yjsWsId;
+
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      const userId = authResult.user.id;
+      const agentId = ws.data.params.agentId;
+      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId);
+
+      const env = await environmentRepo.getById(agentId);
+      const authCtx = authResult.authContext;
+      if (!env || !authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId}`);
+
+      try {
+        await handleYjsWsOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logError(`[YJS-WS] Open failed: ${message}`, err);
+        try {
+          adaptWs(ws).close(1011, "setup failed");
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    message(ws, data) {
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        const text = typeof data === "string" ? data : JSON.stringify(data);
+        handleYjsWsMessage(adaptWs(ws), yjsWsId, text);
+      }
+    },
+    close(ws) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        handleYjsWsClose(yjsWsId);
       }
     },
   });

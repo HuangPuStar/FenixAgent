@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NS } from "@/src/i18n";
+import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 interface VerticalModel {
   id: string;
@@ -112,8 +113,7 @@ export function VerticalModelsPage() {
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <h1 className="text-xl font-bold text-text-primary">{t("verticalModels")}</h1>
-        <p className="mt-1.5 text-sm text-text-secondary">{t("verticalModelsSubtitle")}</p>
+        <AgentPageHeader title={t("verticalModels")} subtitle={t("verticalModelsSubtitle")} />
       </div>
 
       {/* 搜索栏 */}

@@ -55,8 +55,10 @@ export interface RelayConnectionEntry {
   instanceId: string | null;
   relayHandle: EngineRelayHandle | null;
   relayUnsub: (() => void) | null;
-  /** 远端路径使用的 sessionId（用于 session_start/session_data/session_end 一致性） */
-  sessionId: string;
+  /** RCS 层会话标识符 (rcs_xxx)，连接生命周期内不变 */
+  rcsSessionId: string;
+  /** 当前活跃的 ACP 会话标识符 (ses_xxx)，在 session/new、session/load 后更新；初始为 null */
+  acpSessionId: string | null;
   outboundBuffer: Record<string, unknown>[];
   /** 等待 session_started 确认后才能转发消息 */
   sessionStarted?: boolean;

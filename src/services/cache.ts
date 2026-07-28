@@ -126,3 +126,8 @@ export async function closeCache(): Promise<void> {
     _redis = null;
   }
 }
+
+/** 获取底层 Redis 连接（供 yjs provider 等直接使用） */
+export function getRedisConnection(): Redis | Cluster | null {
+  return _redis;
+}
