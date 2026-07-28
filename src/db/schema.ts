@@ -280,6 +280,7 @@ export const knowledgeBase = pgTable(
     remoteUserId: varchar("remote_user_id"),
     status: varchar("status", { length: 50 }).notNull().default("empty"),
     lastError: text("last_error"),
+    metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

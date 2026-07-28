@@ -6,7 +6,7 @@ import {
   ApiKnowledgeBaseListQuerySchema,
   ApiKnowledgeBaseListResponseSchema,
 } from "../../schemas/api-knowledge.schema";
-import { listKnowledgeBasesByTeamId } from "../../services/knowledge-base";
+import { listKnowledgeBasesByTeamId, listKnowledgeBasesGlobal } from "../../services/knowledge-base";
 
 const ApiErrorResponseSchema = z.object({
   error: z.object({
@@ -28,7 +28,11 @@ app.get(
     const { page, pageSize } = query as ApiKnowledgeBaseListQuery;
 
     try {
-      const rows = await listKnowledgeBasesByTeamId(authCtx.organizationId);
+      const [orgRows, globalRows] = await Promise.all([
+        listKnowledgeBasesByTeamId(authCtx.organizationId),
+        listKnowledgeBasesGlobal(),
+      ]);
+      const rows = [...orgRows, ...globalRows];
       const total = rows.length;
       const start = (page - 1) * pageSize;
       return {
@@ -59,7 +63,7 @@ app.get(
     detail: {
       tags: ["External Knowledge"],
       summary: "获取知识库列表",
-      description: "返回当前调用方所属组织下可访问的知识库分页列表。",
+      description: "返回当前调用方可访问的知识库分页列表。",
     },
   },
 );
