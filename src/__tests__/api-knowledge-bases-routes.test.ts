@@ -18,6 +18,7 @@ describe("API Knowledge Base Routes", () => {
     });
     setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
     stubKnowledgeBaseService({
+      listKnowledgeBasesGlobal: async () => [],
       listKnowledgeBasesByTeamId: async () => [
         {
           id: "kb-1",
@@ -35,6 +36,12 @@ describe("API Knowledge Base Routes", () => {
           recentResources: [],
           createdAt: 1718000000,
           updatedAt: 1718000100,
+          userId: "user-1",
+          organizationId: "org-1",
+          embeddingModel: null,
+          parseMethod: "builtin",
+          chunkMethod: "naive",
+          remoteExists: true,
         },
       ],
     });
@@ -69,6 +76,12 @@ describe("API Knowledge Base Routes", () => {
           recentResources: [],
           createdAt: 1718000000,
           updatedAt: 1718000100,
+          userId: "user-1",
+          organizationId: "org-1",
+          embeddingModel: null,
+          parseMethod: "builtin",
+          chunkMethod: "naive",
+          remoteExists: true,
         },
       ],
       total: 1,

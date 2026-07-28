@@ -23,7 +23,7 @@ import {
   Upload,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -259,7 +259,7 @@ export function AgentKnowledgeBasesPage() {
   const { role: orgRole } = useOrg();
 
   // 从 URL search param 读取 kbId（支持浏览器前进后退及直接访问带 kbId 的 URL）
-  const getKbIdFromUrl = () => new URLSearchParams(window.location.search).get("kbId") ?? null;
+  const getKbIdFromUrl = useCallback(() => new URLSearchParams(window.location.search).get("kbId") ?? null, []);
   const [kbId, setKbId] = useState<string | null>(getKbIdFromUrl);
 
   // 监听浏览器前进后退，同步 kbId
@@ -267,7 +267,7 @@ export function AgentKnowledgeBasesPage() {
     const onPopState = () => setKbId(getKbIdFromUrl());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [getKbIdFromUrl]);
 
   const pushKbId = (id: string | null) => {
     const url = new URL(window.location.href);
@@ -377,7 +377,7 @@ export function AgentKnowledgeBasesPage() {
       setSelectedDetail(null);
       setResources([]);
     }
-  }, [kbId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kbId, runLoadDetail]);
 
   // 创建知识库
   const { run: runCreate, loading: createSaving } = useRequest(
@@ -625,10 +625,9 @@ export function AgentKnowledgeBasesPage() {
         </div>
         <div className="mb-6 h-px bg-gradient-to-r from-transparent via-[#e2e8f0] to-transparent" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {Array.from({ length: 8 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+          {Array.from({ length: 8 }, (_, i) => `kb-skeleton-${i}`).map((placeholderKey) => (
             <div
-              key={i}
+              key={placeholderKey}
               className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden"
             >
               <div className="h-1 w-full bg-[#e2e8f0]" />

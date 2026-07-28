@@ -35,7 +35,6 @@ import {
   listEmbeddingFactories,
   listInstanceEmbeddingModels,
   listKnowledgeBases,
-  listKnowledgeBasesByTeamId,
   listKnowledgeFormOptions,
   listProviderEmbeddingModels,
   sanitizeKnowledgeBase,
@@ -428,7 +427,7 @@ app.post(
 app.get(
   "/knowledgeBases/form-options",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth + query
-  async ({ store, query }: any) => {
+  async ({ store }: any) => {
     const authCtx = store.authContext!;
     let apiKey: string | undefined;
     try {

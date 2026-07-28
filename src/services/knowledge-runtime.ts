@@ -172,7 +172,7 @@ export async function searchKnowledgeDetailedForAgent(input: {
 
   const allResults: KnowledgeSearchResult[] = [];
 
-  for (const [model, modelKbs] of byModel) {
+  for (const [_model, modelKbs] of byModel) {
     let modelResults: Awaited<ReturnType<typeof provider.search>>;
     try {
       modelResults = await provider.search({

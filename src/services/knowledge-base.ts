@@ -61,19 +61,19 @@ function normalizeSlug(slug: string): string {
 
 /**
  * 将任意名称裁剪为可读的 slug base。
- * 保留 Unicode 字母和数字，其他字符替换为连字符。
+ * 仅保留 ASCII 字母和数字，避免中文等名称直接进入 slug。
  */
 function buildSlugBase(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
 /**
  * 基于知识库名称生成 slug。
- * 保留 Unicode 字母和数字，附加随机后缀保证唯一性。
+ * 可读 base 为空时回退到 `kb-<suffix>`，附加随机后缀保证唯一性。
  */
 export function generateKnowledgeBaseSlug(name: string): string {
   const suffix = randomBytes(4).toString("hex");
@@ -354,7 +354,6 @@ export async function createKnowledgeBaseRecord(
     remoteAccountId: effectiveUserId,
     remoteUserId: effectiveUserId,
   });
-  const effectiveChunkMethod = input.parseMethod === "builtin" ? input.chunkMethod?.trim() || null : null;
   const effectiveParseType = input.parseMethod === "pipeline" ? 2 : input.parseMethod === "builtin" ? 1 : null;
   const effectivePipelineId =
     input.parseMethod === "pipeline" && input.pipelineId?.trim() ? input.pipelineId.trim() : null;

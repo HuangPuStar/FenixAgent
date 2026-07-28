@@ -119,10 +119,8 @@ export async function getAgentKnowledgeConfigById(agentConfigId: string): Promis
  * Replaces all agent knowledge bindings for an agent config with the provided ordered knowledge base ids.
  */
 export async function syncAgentKnowledgeBindingsById(
-  organizationId: string,
   agentConfigId: string,
   knowledge: AgentKnowledgeConfig | null | undefined,
-  userId?: string,
 ): Promise<void> {
   const knowledgeBaseIds = normalizeKnowledgeBaseIds(knowledge?.knowledgeBaseIds);
   const normalizedPolicy = knowledge?.policy ? resolveAgentKnowledgePolicy(knowledge.policy) : null;

@@ -45,7 +45,10 @@ const CROSS_LANGUAGE_OPTIONS = [
 const ALL_LANGUAGE_VALUES = CROSS_LANGUAGE_OPTIONS.map((l) => l.value);
 
 /** 元数据过滤 4 种模式 */
-const META_FILTER_METHODS: { value: MetaDataFilterMethod; labelKey: string }[] = [
+const META_FILTER_METHODS: {
+  value: MetaDataFilterMethod;
+  labelKey: "metaFilterDisabled" | "metaFilterAuto" | "metaFilterSemiAuto" | "metaFilterManual";
+}[] = [
   { value: "disabled", labelKey: "metaFilterDisabled" },
   { value: "auto", labelKey: "metaFilterAuto" },
   { value: "semi_auto", labelKey: "metaFilterSemiAuto" },
@@ -336,7 +339,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
             <SelectContent>
               {META_FILTER_METHODS.map((m) => (
                 <SelectItem key={m.value} value={m.value}>
-                  {t(`retrieval.${m.labelKey}` as any)}
+                  {t(`retrieval.${m.labelKey}`)}
                 </SelectItem>
               ))}
             </SelectContent>

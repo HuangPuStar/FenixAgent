@@ -304,7 +304,6 @@ export async function refreshKnowledgeResourceStatus(organizationId: string, kno
     return [];
   }
 
-  const apiKeyUserId = userId ?? kb.userId;
   const tenantIdentity = resolveKnowledgeTenantIdentity(kb);
 
   // 尝试从 RAGFlow 同步最新状态；失败时回退到本地缓存数据

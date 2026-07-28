@@ -905,7 +905,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           status: mapRunStatus(doc.run),
           source: doc.source_url ?? null,
           lastError: doc.progress_msg ?? null,
-          enabled: doc.status === "1" ? true : doc.status === "0" ? false : true,
+          enabled: doc.status !== "0",
           chunkCount: doc.chunk_count ?? null,
           metaFields: doc.meta_fields ?? null,
           parseProgress: doc.progress ?? null,
