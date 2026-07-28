@@ -173,6 +173,18 @@ export function useSessionState(rcsSessionId: string) {
   // 3. useSyncExternalStore — subscribe 和 getSnapshot 是稳定引用
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
+  // debug: 每次 YJS 状态更新时打印工具调用的原始数据
+  useEffect(() => {
+    const sm = state.structuredMessages;
+    if (sm.length === 0) return;
+    const toolMsgs = sm.filter((m) => m.type === "tool_call");
+    if (toolMsgs.length === 0) return;
+    console.group(`%c[YJS-DEBUG] sm=${sm.length} tool=${toolMsgs.length}`, "color: #e07b00; font-weight: bold");
+    console.log("structuredMessages →", toolMsgs);
+    console.log("state.tools →", [...state.tools.entries()]);
+    console.groupEnd();
+  }, [state.structuredMessages, state.tools]);
+
   // 4. 组件卸载时清理 store
   useEffect(() => {
     return () => store.destroy();

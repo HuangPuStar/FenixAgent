@@ -146,7 +146,9 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         const name = (payload?.title as string) || (inner?.name as string) || "";
         const input = (payload?.rawInput as Record<string, unknown>) || (inner?.input as Record<string, unknown>) || {};
         // 非流式 agent 可能在 tool_call 中直接发送完整结果（status + rawOutput）
-        const status = (payload?.status as string) || "running";
+        // ACP 协议发送 "completed"，前端 YJS 数据层使用 "complete"（无 d），此处归一化
+        const rawStatus = (payload?.status as string) || "running";
+        const status = rawStatus === "completed" ? "complete" : rawStatus;
         const rawOutput = payload?.rawOutput ?? inner?.rawOutput;
 
         const tool = new Y.Map<unknown>();
@@ -264,11 +266,14 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         const rawOutput = payload?.rawOutput ?? inner?.rawOutput;
         const rawInput = payload?.rawInput ?? inner?.rawInput;
 
+        // ACP 协议发送 "completed"，YJS 存储使用 "complete"（无 d），归一化
+        const canonicalStatus = status === "completed" ? "complete" : status;
+
         // Update tools map entry
         const tool = tools.get(id);
         if (tool) {
-          if (status != null) {
-            tool.set("status", status);
+          if (canonicalStatus != null) {
+            tool.set("status", canonicalStatus);
           }
           if (title != null) {
             tool.set("name", title);
@@ -282,8 +287,8 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         for (let i = structuredMessages.length - 1; i >= 0; i--) {
           const m = structuredMessages.get(i);
           if (m.get("type") === "tool_call" && m.get("id") === id) {
-            if (status != null) {
-              m.set("status", status);
+            if (canonicalStatus != null) {
+              m.set("status", canonicalStatus);
             }
             if (title != null) {
               m.set("title", title);
