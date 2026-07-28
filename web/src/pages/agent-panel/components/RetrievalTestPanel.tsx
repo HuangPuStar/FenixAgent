@@ -204,7 +204,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           </div>
           <Slider
             value={[similarityThreshold]}
-            onValueChange={(vals) => setSimilarityThreshold(vals[0])}
+            onValueChange={(vals: number[]) => setSimilarityThreshold(vals[0])}
             min={0}
             max={1}
             step={0.01}
@@ -222,7 +222,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           </div>
           <Slider
             value={[vectorSimilarityWeight]}
-            onValueChange={(vals) => setVectorSimilarityWeight(vals[0])}
+            onValueChange={(vals: number[]) => setVectorSimilarityWeight(vals[0])}
             min={0}
             max={1}
             step={0.01}
@@ -254,7 +254,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
               <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.topK")}</label>
               <span className="text-[13px] font-mono text-[#64748b]">{topK}</span>
             </div>
-            <Slider value={[topK]} onValueChange={(vals) => setTopK(vals[0])} min={1} max={2048} step={1} />
+            <Slider value={[topK]} onValueChange={(vals: number[]) => setTopK(vals[0])} min={1} max={2048} step={1} />
           </div>
         )}
 
