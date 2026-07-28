@@ -226,24 +226,14 @@ export function registerYjsDocListener(ydoc: import("yjs").Doc, docName: string)
     } else if (docName.startsWith("session:")) {
       targetRcsSessionId = docName.slice(8);
     }
-    let matched = 0;
-    let skipped = 0;
     for (const [, entry] of clients.entries()) {
-      if (targetRcsSessionId && entry.rcsSessionId !== targetRcsSessionId) {
-        skipped++;
-        continue;
-      }
-      matched++;
+      if (targetRcsSessionId && entry.rcsSessionId !== targetRcsSessionId) continue;
       try {
         sendToYjsWs(entry.ws, msg);
       } catch {
         // 单连接失败不阻塞
       }
     }
-    // 🔍 DEBUG: 广播日志
-    console.debug(
-      `[YJS-BROADCAST] docName=${docName} targetRcs=${targetRcsSessionId} size=${update.length} matched=${matched} skipped=${skipped} totalClients=${clients.size}`,
-    );
   });
 }
 
@@ -301,7 +291,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
   return async (message) => {
     const raw = message as unknown as Record<string, unknown>;
     const msgType = raw.type as string | undefined;
-    log(`[YJS-FE] ← agent: type=${msgType ?? "(no type)"} hasPayload=${raw.payload != null}`);
 
     // ── sessionId 过滤：防止 in-flight 事件泄漏到错误 session ──
     const rpcCheck = extractJsonRpc(raw);
@@ -320,7 +309,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
 
     // ── relay_closed：agent 连接断开 → 关闭所有前向 WS + 清理状态 ──
     if (msgType === "relay_closed") {
-      log(`[YJS-FE] agent relay closed for instanceId=${shared.instanceId}, cleaning up all frontend connections`);
       // 断开状态写入 Chat Doc
       setChatConnectionStatus(shared.rcsSessionId, {
         status: "disconnected",
@@ -471,11 +459,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
       if (listPayload) {
         const sessions = listPayload.sessions as Array<Record<string, unknown>> | undefined;
         if (Array.isArray(sessions)) {
-          // 🔍 DEBUG: session_list 原始数据
-          const sessionIds = sessions.map((s) => s.sessionId as string).filter(Boolean);
-          console.debug(
-            `[YJS-FE] session_list → rcsSessionId=${shared.rcsSessionId} count=${sessions.length} ids=[${sessionIds.join(", ")}]`,
-          );
           for (const s of sessions) {
             const sid = s.sessionId as string | undefined;
             if (!sid) continue;
@@ -637,7 +620,6 @@ export async function handleYjsWsOpen(
   agentId: string,
   rcsSessionId: string | null,
 ): Promise<void> {
-  log(`[YJS-FE] open start: wsId=${wsId} userId=${userId} agentId=${agentId} sessionId=${rcsSessionId}`);
   // 注册 pending buffer：setup 期间到达的消息不会丢失
   pendingBuffers.set(wsId, []);
 
@@ -657,19 +639,9 @@ export async function handleYjsWsOpen(
   const { ensureRunning } = await import("../../services/instance");
 
   let instanceId: string;
-  let ensureStatus: string;
   try {
     const result = await ensureRunning(userId, agentId, "interactive");
     instanceId = result.instance.id;
-    ensureStatus = result.status;
-    // 🔍 DEBUG: 诊断 instance 分配
-    const { getRunningInstancesByEnvironment } = await import("../../services/instance");
-    const allRunning = getRunningInstancesByEnvironment(agentId);
-    const allInstanceIds = allRunning.map((i) => `${i.id}(env=${agentId})`);
-    console.debug(
-      `[YJS-INSTANCE] agentId=${agentId} instanceId=${instanceId} status=${ensureStatus} ` +
-        `runningCount=${allRunning.length} all=[${allInstanceIds.join(", ")}]`,
-    );
   } catch (err) {
     pendingBuffers.delete(wsId);
     const message = err instanceof Error ? err.message : String(err);
@@ -688,25 +660,16 @@ export async function handleYjsWsOpen(
     return;
   }
 
-  const rcsSessionIdFinal = rcsSessionId ?? `rcs_${Date.now().toString(36)}`;
+  const rcsSessionIdFinal = rcsSessionId ?? `rcs_${agentId.slice(0, 8)}_${userId.slice(0, 8)}`;
   let handle: EngineRelayHandle;
 
   // 3. 检查是否有共享 relay（Instance 级别复用）
   let shared = sharedRelays.get(instanceId);
 
-  // 🔍 DEBUG: 连接建立时的 rcsSessionId 状态
-  const preExisting = shared ? "reuse" : "create";
-  console.debug(
-    `[YJS-CONNECT] wsId=${wsId} agentId=${agentId} instanceId=${instanceId} ` +
-      `providedRcs=${rcsSessionId ?? "null"} generatedRcs=${rcsSessionIdFinal} ` +
-      `sharedRelay=${preExisting} existingRcs=${shared?.rcsSessionId ?? "N/A"} clients=${clients.size}`,
-  );
-
   if (shared) {
     // 复用已有 relay handle
     shared.refCount++;
     handle = shared.handle;
-    log(`[YJS-FE] reusing existing relay for instanceId=${instanceId}, refCount=${shared.refCount}`);
   } else {
     // 创建新 relay handle
     const { connectAgentRelay } = await import("../agent-relay");
@@ -813,12 +776,6 @@ export async function handleYjsWsOpen(
 
   // 5. per-client 初始化（使用 shared.rcsSessionId，确保新连接接收来自共享 Chat Doc 的状态）
   const effectiveRcsSessionId = shared.rcsSessionId;
-  // 🔍 DEBUG: entry 注册后的 rcsSessionId 对齐检查
-  console.debug(
-    `[YJS-ENTRY] wsId=${wsId} agentId=${agentId} entryRcs=${entry.rcsSessionId} ` +
-      `sharedRcs=${shared.rcsSessionId} effectiveRcs=${effectiveRcsSessionId} ` +
-      `match=${entry.rcsSessionId === shared.rcsSessionId ? "OK" : "MISMATCH!"} totalClients=${clients.size}`,
-  );
   await setChatConnectionStatus(effectiveRcsSessionId, { status: "connected", since: Date.now() });
 
   // 推送 Chat Doc 完整初始状态给新连接的客户端
@@ -827,23 +784,16 @@ export async function handleYjsWsOpen(
     const chatSnapshot = Y.encodeStateAsUpdate(chatDoc.ydoc);
     const chatBase64 = Buffer.from(chatSnapshot).toString("base64");
     sendToYjsWs(ws, { type: "yjs:update", docName: `chat:${effectiveRcsSessionId}`, data: chatBase64 });
-    log(`[YJS-FE] pushed chat init state to wsId=${wsId}, size=${chatSnapshot.length}`);
   } catch (err) {
     logError("[YJS-FE] Failed to push init state:", err);
   }
 
   entry.relayReady = true;
-  try {
-    log(`[YJS-FE] skip explicit connect: relay handle auto-sends connect on WS open`);
-  } catch {
-    /* 忽略 */
-  }
 
   // flush setup 期间缓冲的前端消息
   const pending = pendingBuffers.get(wsId);
   pendingBuffers.delete(wsId);
   if (pending && pending.length > 0) {
-    log(`[YJS-FE] Flushing ${pending.length} pending message(s) for wsId=${wsId}`);
     for (const msg of pending) {
       try {
         const parsed = JSON.parse(msg) as Record<string, unknown>;
@@ -863,8 +813,6 @@ export async function handleYjsWsOpen(
       }
     }
   }
-
-  log(`[YJS-FE] open complete: wsId=${wsId} instanceId=${instanceId}`);
 }
 
 // ── message ──
