@@ -8,15 +8,20 @@ import { deleteEnvironment, toResponse } from "./environment-core";
 import { findOrCreateForEnvironment } from "./session";
 
 /** 通过 secret 获取环境信息（认证用），仅返回认证所需字段 */
-export async function getEnvironmentBySecret(
-  secret: string,
-): Promise<{ id: string; userId: string | null; agentConfigId: string | null; secret: string } | null> {
+export async function getEnvironmentBySecret(secret: string): Promise<{
+  id: string;
+  userId: string | null;
+  agentConfigId: string | null;
+  organizationId: string | null;
+  secret: string;
+} | null> {
   const env = await environmentRepo.getBySecret(secret);
   if (!env) return null;
   return {
     id: env.id,
     userId: env.userId,
     agentConfigId: env.agentConfigId,
+    organizationId: env.organizationId,
     secret: env.secret,
   };
 }
