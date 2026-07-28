@@ -22,6 +22,7 @@ import { markInstanceRelayAttached, markInstanceRelayDetached } from "../../serv
 import { getRedisConnection } from "../../services/cache";
 import {
   closeSession,
+  getChat,
   openChat,
   openSession,
   processACP,
@@ -488,6 +489,27 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
               updatedAt: (s.updatedAt as string) || new Date().toISOString(),
             });
           }
+
+          // 自动选择最近更新的 session（仅在 Chat Doc 中尚无 activeSessionId 时生效）
+          // 解决 YJS 初始化时序：session_list 可能在 bootstrap 之后才到达，
+          // 若未主动设置 activeSessionId，前端会停留在"新会话"状态。
+          const chatDoc = getChat(shared.rcsSessionId);
+          if (chatDoc) {
+            const currentActive = chatDoc.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
+            if (!currentActive) {
+              const sorted = [...sessions].sort((a, b) => {
+                const ta = a.updatedAt ? new Date(a.updatedAt as string).getTime() : 0;
+                const tb = b.updatedAt ? new Date(b.updatedAt as string).getTime() : 0;
+                return tb - ta;
+              });
+              const latestSid = sorted[0]?.sessionId as string | undefined;
+              if (latestSid) {
+                setChatActiveSession(shared.rcsSessionId, latestSid);
+                log(`[YJS-FE] auto-selected active session: ${latestSid}`);
+              }
+            }
+          }
+
           return;
         }
       }

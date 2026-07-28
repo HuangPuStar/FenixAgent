@@ -103,14 +103,16 @@ export function ACPMain({
   const [forcePopoverOpen, setForcePopoverOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
-  const bootstrappedRef = useRef(false);
+  // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
+  // 用于防止重复进入 session 以及处理延迟到达的 activeSessionId
+  const sessionEnteredRef = useRef(false);
   // 防抖：sessions 增量更新可能分多次到达（list_sessions 返回 N 条 registerSession 逐条广播），
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 连接重建时需重置 bootstrap 状态
   useEffect(() => {
-    bootstrappedRef.current = false;
+    sessionEnteredRef.current = false;
     if (bootstrapTimerRef.current) {
       clearTimeout(bootstrapTimerRef.current);
       bootstrapTimerRef.current = null;
@@ -168,6 +170,7 @@ export function ACPMain({
         } else {
           throw new Error("Loading or resuming sessions is not supported by this agent.");
         }
+        sessionEnteredRef.current = true;
         setInitialActiveSessionId(session.sessionId);
       } catch (error) {
         console.error("Failed to load/resume session:", error);
@@ -189,11 +192,12 @@ export function ACPMain({
     }
   }, []);
 
-  // Bootstrap: 通过 YJS chatState 获取会话列表，自动加载最新会话或创建新会话
-  // 使用防抖避免增量更新分片到达时的过早触发（如 list_sessions 逐条 broadcast）
+  // Bootstrap: 通过 YJS chatState 获取会话列表，自动进入最近会话。
+  // 使用防抖避免增量更新分片到达时的过早触发（如 list_sessions 逐条 broadcast）。
+  // 会话为空时不自动创建新会话，等待后端 session_list 设置 activeSessionId。
   useEffect(() => {
     if (connectionState !== "connected") return;
-    if (bootstrappedRef.current) return;
+    if (sessionEnteredRef.current) return;
 
     // 清除上一次的防抖定时器，重新计时
     if (bootstrapTimerRef.current) {
@@ -202,9 +206,7 @@ export function ACPMain({
 
     bootstrapTimerRef.current = setTimeout(() => {
       bootstrapTimerRef.current = null;
-      if (bootstrappedRef.current) return;
-
-      bootstrappedRef.current = true;
+      if (sessionEnteredRef.current) return;
 
       // 如果 chatState 已有 activeSessionId，直接使用
       // 但仍需发送 load_session 初始化当前客户端的 Session Doc 同步，
@@ -213,6 +215,7 @@ export function ACPMain({
         setInitialActiveSessionId(chatState.activeSessionId);
         const activeSession = sessions.find((s) => s.sessionId === chatState.activeSessionId);
         if (activeSession) {
+          sessionEnteredRef.current = true;
           handleSelectSession(activeSession as AgentSessionInfo);
         }
         return;
@@ -226,13 +229,14 @@ export function ACPMain({
       })[0];
 
       if (latest) {
+        sessionEnteredRef.current = true;
         setInitialActiveSessionId(latest.sessionId);
         handleSelectSession(latest as AgentSessionInfo);
         return;
       }
 
-      // 无历史会话 → 自动创建首个会话
-      onCreateSession();
+      // 尚无会话 → 不自动创建，等待后端 session_list 响应设置 activeSessionId 后再进入。
+      // 若确实无历史会话，用户主动输入消息时 ChatInterface 会触发 create_session。
     }, 300);
 
     return () => {
@@ -241,7 +245,26 @@ export function ACPMain({
         bootstrapTimerRef.current = null;
       }
     };
-  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession, onCreateSession]);
+  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession]);
+
+  // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
+  // 当服务端 session_list 响应到达并设置 activeSessionId 后，
+  // 需要首次进入该会话，避免前端停留在空状态。
+  useEffect(() => {
+    const sid = chatState?.activeSessionId;
+    if (!sid || sessionEnteredRef.current) return;
+    // 确认 sessions 中包含该 activeSessionId 对应的会话
+    const activeSession = sessions.find((s) => s.sessionId === sid);
+    if (!activeSession) return;
+
+    sessionEnteredRef.current = true;
+    setInitialActiveSessionId(sid);
+    try {
+      handleSelectSession(activeSession as AgentSessionInfo);
+    } catch (err) {
+      console.error("[ACPMain] Delayed session enter failed:", err);
+    }
+  }, [chatState?.activeSessionId, sessions, handleSelectSession]);
 
   return (
     // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
