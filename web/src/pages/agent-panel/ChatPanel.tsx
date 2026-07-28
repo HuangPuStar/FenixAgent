@@ -46,9 +46,6 @@ export function ChatPanel({
   const { data: session } = useSession();
   const userId = session?.user?.id ?? "unknown";
 
-  // rcsSessionId: ACP session ID (从 URL 取值)，用于 WS 连接参数和 UI 显示
-  const acpSessionId = sessionId ?? undefined;
-
   // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
   const rcsSessionKey = agentId && userId !== "unknown" ? createDeterministicRcsSessionId(agentId, userId) : undefined;

@@ -945,6 +945,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.process = agentProcess;
 
+      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcessByStdio 不继承 EventEmitter，需 cast 监听 exit
       (agentProcess as any).on("exit", (code: number | null) => {
         console.log("agent process exited:", code);
         if (state.process === agentProcess) {

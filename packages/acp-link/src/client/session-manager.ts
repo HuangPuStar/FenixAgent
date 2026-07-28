@@ -88,6 +88,7 @@ export class SessionManager {
         env: spawnEnv,
       });
 
+      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcessByStdio 不继承 EventEmitter，需 cast 监听 exit
       (proc as any).on("exit", (code: number | null) => {
         console.log("[session-manager] opencode exited:", code);
         this.sharedProc = null;

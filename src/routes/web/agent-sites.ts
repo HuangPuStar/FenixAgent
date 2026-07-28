@@ -360,6 +360,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
         return status(403, buildError("forbidden", "无权限上传文件"));
       }
+      // biome-ignore lint/suspicious/noExplicitAny: 透传 raw binary body 到上游 agent-sites 平台，不匹配 Elysia schema 类型
       const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body as any);
       return { success: true as const, data: result.data };
     },
@@ -390,6 +391,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
         return status(403, buildError("forbidden", "无权限上传文件"));
       }
+      // biome-ignore lint/suspicious/noExplicitAny: 透传 gzip tar raw body 到上游 agent-sites 平台
       const result = await uploadRemoteBundle(row.remoteAppId, request.body as any);
       return { success: true as const, data: result.data };
     },
@@ -431,6 +433,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         );
       }
       // 透传 gzip body 到平台，平台做解压 + 探活 + 切换
+      // biome-ignore lint/suspicious/noExplicitAny: 透传 gzip tar.gz raw body 到上游 agent-sites 平台部署
       const remote = await deployCustomApp(row.remoteAppId, request.body as any);
       // 平台返回的 slot 是 "a" | "b"，DB 与响应 schema 均要求此字面量类型
       const slot = remote.data.slot as "a" | "b";
