@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/useSessions";
+import { createDeterministicRcsSessionId } from "../../hooks/yjs-rcs-id";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { buildYjsUrl, createYjsWs, type YjsWsState } from "../../yjs/yjs-ws";
@@ -45,29 +46,33 @@ export function ChatPanel({
   const { data: session } = useSession();
   const userId = session?.user?.id ?? "unknown";
 
-  // rcsSessionId: props 中是 string | null | undefined，转 undefined 避免 null 传入
-  const rcsSessionId = sessionId ?? undefined;
+  // rcsSessionId: ACP session ID (从 URL 取值)，用于 WS 连接参数和 UI 显示
+  const acpSessionId = sessionId ?? undefined;
+
+  // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId 确定性生成)
+  // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
+  const rcsSessionKey = agentId && userId !== "unknown" ? createDeterministicRcsSessionId(agentId, userId) : undefined;
 
   // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
-  const chatHookKey = rcsSessionId ?? `__pending_${agentId ?? "unknown"}`;
+  const chatHookKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
   const { state: chatState, applyUpdate: chatApplyUpdate } = useChatState(chatHookKey);
 
-  // Session Doc — 按 rcsSessionId 命名，不再按 acpSessionId
-  const { state: sessionState, applyUpdate: sessionApplyUpdate } = useSessionState(rcsSessionId ?? "__placeholder__");
+  // Session Doc — 按 RCS session ID 命名
+  const { state: sessionState, applyUpdate: sessionApplyUpdate } = useSessionState(rcsSessionKey ?? "__placeholder__");
 
   // Buffer: 缓存每个 session 的最后一次 yjs:update，用于 acpSessionId 切换后重放
   // 解决竞态条件：session 数据可能在 useSessionState 切换到正确 Y.Doc 之前到达，
   // 此时数据被应用到旧的 placeholder Y.Doc → 切换后被销毁 → 需要重放
   const sessionLatestUpdateRef = useRef<Map<string, Uint8Array>>(new Map());
 
-  // 当 rcsSessionId 切换后，重放宽存的 session 更新 (H1 fix)
+  // 当 rcsSessionKey 切换后，重放宽存的 session 更新 (H1 fix)
   useEffect(() => {
-    if (!rcsSessionId) return;
-    const cached = sessionLatestUpdateRef.current.get(rcsSessionId);
+    if (!rcsSessionKey) return;
+    const cached = sessionLatestUpdateRef.current.get(rcsSessionKey);
     if (cached) {
-      sessionApplyUpdate(cached, rcsSessionId);
+      sessionApplyUpdate(cached, rcsSessionKey);
     }
-  }, [rcsSessionId, sessionApplyUpdate]);
+  }, [rcsSessionKey, sessionApplyUpdate]);
 
   // 监听实例重启事件，强制重连（带最小间隔防止风暴）
   useEffect(() => {

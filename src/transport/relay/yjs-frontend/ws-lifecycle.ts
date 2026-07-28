@@ -289,6 +289,7 @@ export class WsLifecycle {
     }
     try {
       const sessionDoc = await this.dependencies.openSession(userId, agentId, shared.rcsSessionId);
+      broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
       broadcaster.sendSnapshot(ws, sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] Failed to push session init state:", err);
