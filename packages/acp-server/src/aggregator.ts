@@ -175,14 +175,19 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
 
       // ── 工具调用结果 ──
       case "tool_call_result": {
-        const id = event.payload?.id as string;
+        // Dual-format：JSON-RPC 路径数据嵌套在 payload.content 内，直接路径数据在 payload 顶层
+        const payload = event.payload as Record<string, unknown> | undefined;
+        const inner = payload?.content as Record<string, unknown> | undefined;
+        const id = (payload?.id as string) || (inner?.id as string);
+        const output = payload?.output ?? inner?.output;
+        const isError = (payload?.isError ?? inner?.isError) as boolean | undefined;
         if (id) {
           const tool = tools.get(id);
           if (tool) {
-            tool.set("status", "done");
-            tool.set("output", event.payload?.output || "");
+            tool.set("status", isError ? "error" : "done");
+            tool.set("output", output || "");
             // 提取链接/文件引用
-            extractArtifacts(artifacts, event.payload?.output, messages.length);
+            extractArtifacts(artifacts, output, messages.length);
           }
         }
         meta.set("updatedAt", Date.now());
@@ -192,9 +197,9 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
           for (let i = structuredMessages.length - 1; i >= 0; i--) {
             const m = structuredMessages.get(i);
             if (m.get("type") === "tool_call" && m.get("id") === id) {
-              m.set("status", "complete");
-              if (event.payload?.output != null) {
-                m.set("rawOutput", event.payload.output);
+              m.set("status", isError ? "error" : "complete");
+              if (output != null) {
+                m.set("rawOutput", output);
               }
               break;
             }
@@ -235,20 +240,27 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
       case "tool_call_update": {
         const payload = event.payload as Record<string, unknown> | undefined;
         const inner = payload?.content as Record<string, unknown> | undefined;
-        const id = (payload?.toolCallId as string) || (inner?.id as string);
+        // ID: 兼容 payload.toolCallId (顶层) 和 inner.toolCallId / inner.id (嵌套)
+        const id = (payload?.toolCallId as string) || (inner?.toolCallId as string) || (inner?.id as string);
         if (!id) break;
+
+        // 字段值优先从顶层取，回退到嵌套 content 内
+        const status = (payload?.status ?? inner?.status) as string | undefined;
+        const title = (payload?.title ?? inner?.title) as string | undefined;
+        const rawOutput = payload?.rawOutput ?? inner?.rawOutput;
+        const rawInput = payload?.rawInput ?? inner?.rawInput;
 
         // Update tools map entry
         const tool = tools.get(id);
         if (tool) {
-          if (event.payload?.status != null) {
-            tool.set("status", event.payload.status);
+          if (status != null) {
+            tool.set("status", status);
           }
-          if (event.payload?.title != null) {
-            tool.set("name", event.payload.title);
+          if (title != null) {
+            tool.set("name", title);
           }
-          if (event.payload?.rawOutput != null) {
-            tool.set("output", event.payload.rawOutput);
+          if (rawOutput != null) {
+            tool.set("output", rawOutput);
           }
         }
 
@@ -256,22 +268,26 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         for (let i = structuredMessages.length - 1; i >= 0; i--) {
           const m = structuredMessages.get(i);
           if (m.get("type") === "tool_call" && m.get("id") === id) {
-            if (event.payload?.status != null) {
-              m.set("status", event.payload.status);
+            if (status != null) {
+              m.set("status", status);
             }
-            if (event.payload?.title != null) {
-              m.set("title", event.payload.title);
+            if (title != null) {
+              m.set("title", title);
             }
-            if (event.payload?.rawOutput != null) {
-              m.set("rawOutput", event.payload.rawOutput);
+            if (rawOutput != null) {
+              m.set("rawOutput", rawOutput);
             }
-            if (event.payload?.rawInput != null) {
-              m.set("rawInput", event.payload.rawInput);
+            if (rawInput != null) {
+              m.set("rawInput", rawInput);
             }
-            // Append content blocks if provided
-            if (event.payload?.content && Array.isArray(event.payload.content)) {
+            // Append content blocks if provided (direct path only: payload.content is Array;
+            // JSON-RPC wrapper path uses inner = payload.content for metadata, blocks would be at inner.content)
+            const outerContent =
+              (Array.isArray(payload?.content) ? payload?.content : null) ??
+              (inner?.content && Array.isArray(inner.content) ? inner.content : null);
+            if (outerContent) {
               const existingContent = m.get("content") as Y.Array<Y.Map<unknown>>;
-              for (const block of event.payload.content as Array<Record<string, unknown>>) {
+              for (const block of outerContent as Array<Record<string, unknown>>) {
                 const cm = new Y.Map<unknown>();
                 cm.set("type", (block.type as string) || "content");
                 if (block.content != null) cm.set("content", block.content);
