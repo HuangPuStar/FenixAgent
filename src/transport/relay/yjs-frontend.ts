@@ -787,6 +787,12 @@ export async function handleYjsWsOpen(
       docName: `chat:${effectiveRcsSessionId}`,
       data: Buffer.from(chatSnapshot).toString("base64"),
     });
+    // 从 Chat Doc 恢复 acpSessionId，确保 load_session 的 isSameSession 判断正确
+    // （重连客户端 entry.acpSessionId 初始为 null，若跳过此步会导致误清 Session Doc）
+    const activeSid = chatDoc.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
+    if (activeSid) {
+      entry.acpSessionId = activeSid;
+    }
   } catch (err) {
     logError("[YJS-FE] Failed to push chat init state:", err);
   }
