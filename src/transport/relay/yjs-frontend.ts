@@ -909,6 +909,19 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
     if (action === "load_session" || action === "create_session") {
       // load_session: 前端传的是目标 ACP session ID
       // create_session: 前端不传 sessionId，agent 响应后会更新
+
+      // 销毁目标 Session Doc（内存 + Redis），防止新旧 session 消息叠加。
+      // 会话 doc 按 rcsSessionId 存储，清理时使用 rcsSessionId 作为 key。
+      log(`[YJS-FE] clearing session doc for new/load: rcsSessionId=${entry.rcsSessionId} action=${action}`);
+      await closeSession(entry.rcsSessionId);
+      unregisterYjsDocListener(`session:${entry.rcsSessionId}`);
+      const redis = getRedisConnection();
+      if (redis) {
+        await redis.del(`yjs:session:${entry.rcsSessionId}`).catch((err) => {
+          logError(`[YJS-FE] Failed to clear Redis for session ${entry.rcsSessionId}:`, err);
+        });
+      }
+
       if (action === "load_session") {
         const rawSid = parsed.sessionId;
         log(`[YJS-FE] load_session request: sessionId=${rawSid} (type=${typeof rawSid})`);
@@ -921,27 +934,15 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
           return;
         }
         const targetSid = rawSid;
-
-        // 销毁目标 Session Doc（内存 + Redis），防止 agent 回放历史时消息重复。
-        // 会话 doc 按 rcsSessionId 存储，清理时使用 rcsSessionId 作为 key。
-        // 如果多次 load 同一 rcsSession，先清除旧数据再重建。
-        log(`[YJS-FE] clearing session doc for load: rcsSessionId=${entry.rcsSessionId} targetSid=${targetSid}`);
-        await closeSession(entry.rcsSessionId);
-        unregisterYjsDocListener(`session:${entry.rcsSessionId}`);
-        const redis = getRedisConnection();
-        if (redis) {
-          await redis.del(`yjs:session:${entry.rcsSessionId}`).catch((err) => {
-            logError(`[YJS-FE] Failed to clear Redis for session ${entry.rcsSessionId}:`, err);
-          });
-        }
-        log(`[YJS-FE] pre-creating session doc for load: rcsSessionId=${entry.rcsSessionId}`);
         entry.acpSessionId = targetSid;
-        try {
-          const sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
-          registerYjsDocListener(sessionDoc.ydoc, `session:${entry.rcsSessionId}`);
-        } catch (err) {
-          logError("[YJS-FE] Failed to pre-create session doc:", err);
-        }
+      }
+
+      log(`[YJS-FE] pre-creating session doc for new/load: rcsSessionId=${entry.rcsSessionId}`);
+      try {
+        const sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+        registerYjsDocListener(sessionDoc.ydoc, `session:${entry.rcsSessionId}`);
+      } catch (err) {
+        logError("[YJS-FE] Failed to pre-create session doc:", err);
       }
     }
 
