@@ -1,3 +1,4 @@
+import React from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanDisplayEntry, ThreadEntry, ToolCallEntry } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
@@ -30,74 +31,87 @@ interface ChatViewProps {
   envId?: string;
 }
 
-export function ChatView({
-  entries,
-  isLoading = false,
-  onPermissionRespond,
-  emptyTitle,
-  emptyDescription,
-  agentName,
-  agentDescription,
-  agentSkills,
-  sessionId,
-  envId,
-}: ChatViewProps) {
-  const { t } = useTranslation("components");
-  const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
-  const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
-  // 将相邻的 ToolCallEntry 合并为一组
-  const grouped = groupToolCalls(entries);
-  const hasMessages = entries.length > 0;
+export const ChatView = React.memo(
+  function ChatView({
+    entries,
+    isLoading = false,
+    onPermissionRespond,
+    emptyTitle,
+    emptyDescription,
+    agentName,
+    agentDescription,
+    agentSkills,
+    sessionId,
+    envId,
+  }: ChatViewProps) {
+    const { t } = useTranslation("components");
+    const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
+    const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
+    // 将相邻的 ToolCallEntry 合并为一组
+    const grouped = groupToolCalls(entries);
+    const hasMessages = entries.length > 0;
 
-  return (
-    <Conversation className="flex-1">
-      <ConversationContent>
-        {!hasMessages ? (
-          isLoading && !agentName ? (
-            <AgentBadgeSkeleton />
-          ) : agentName ? (
-            <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
+    return (
+      <Conversation className="flex-1">
+        <ConversationContent>
+          {!hasMessages ? (
+            isLoading && !agentName ? (
+              <AgentBadgeSkeleton />
+            ) : agentName ? (
+              <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
+            ) : (
+              <ConversationEmptyState title={finalEmptyTitle} description={finalEmptyDescription} />
+            )
           ) : (
-            <ConversationEmptyState title={finalEmptyTitle} description={finalEmptyDescription} />
-          )
-        ) : (
-          <>
-            {grouped.map((item, i) => {
-              const isLastEntry = i === grouped.length - 1;
-              if (item.type === "single") {
-                const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
-                // 只有最后一条 assistant 消息且全局 loading 时才标记 streaming
-                const entryIsStreaming = isLoading && isLastEntry && item.entry.type === "assistant_message";
+            <>
+              {grouped.map((item, i) => {
+                const isLastEntry = i === grouped.length - 1;
+                if (item.type === "single") {
+                  const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
+                  // 只有最后一条 assistant 消息且全局 loading 时才标记 streaming
+                  const entryIsStreaming = isLoading && isLastEntry && item.entry.type === "assistant_message";
+                  return (
+                    <div key={entryId} className={cn(entrySpacing(entries, i))}>
+                      <EntryRenderer
+                        entry={item.entry}
+                        isLoading={entryIsStreaming}
+                        onPermissionRespond={onPermissionRespond}
+                        sessionId={sessionId}
+                        envId={envId}
+                      />
+                    </div>
+                  );
+                }
+                // 工具调用组 — 紧贴在助手消息下方
                 return (
-                  <div key={entryId} className={cn(entrySpacing(entries, i))}>
-                    <EntryRenderer
-                      entry={item.entry}
-                      isLoading={entryIsStreaming}
-                      onPermissionRespond={onPermissionRespond}
-                      sessionId={sessionId}
-                      envId={envId}
-                    />
+                  // biome-ignore lint/suspicious/noArrayIndexKey: tool group entries lack a unique identifier
+                  <div key={`group-${i}`} className="-mt-2">
+                    <ToolCallGroup entries={item.entries} onPermissionRespond={onPermissionRespond} />
                   </div>
                 );
-              }
-              // 工具调用组 — 紧贴在助手消息下方
-              return (
-                // biome-ignore lint/suspicious/noArrayIndexKey: tool group entries lack a unique identifier
-                <div key={`group-${i}`} className="-mt-2">
-                  <ToolCallGroup entries={item.entries} onPermissionRespond={onPermissionRespond} />
-                </div>
-              );
-            })}
+              })}
 
-            {/* 加载指示器 — loading 期间一直显示 */}
-            {isLoading && <LoadingIndicator />}
-          </>
-        )}
-        <ConversationScrollButtons hasUserMessages={entries.some((e) => e.type === "user_message")} />
-      </ConversationContent>
-    </Conversation>
-  );
-}
+              {/* 加载指示器 — loading 期间一直显示 */}
+              {isLoading && <LoadingIndicator />}
+            </>
+          )}
+          <ConversationScrollButtons hasUserMessages={entries.some((e) => e.type === "user_message")} />
+        </ConversationContent>
+      </Conversation>
+    );
+  },
+  // P0-3: 仅比较稳定引用字段；onPermissionRespond 始终是新引用，排除
+  (prev, next) =>
+    prev.entries === next.entries &&
+    prev.isLoading === next.isLoading &&
+    prev.emptyTitle === next.emptyTitle &&
+    prev.emptyDescription === next.emptyDescription &&
+    prev.agentName === next.agentName &&
+    prev.agentDescription === next.agentDescription &&
+    prev.agentSkills === next.agentSkills &&
+    prev.sessionId === next.sessionId &&
+    prev.envId === next.envId,
+);
 
 // =============================================================================
 // 间距逻辑 — 用户消息前后间距大，工具调用紧贴
@@ -128,7 +142,7 @@ function entrySpacing(entries: ThreadEntry[], index: number): string {
 // 单条目渲染器
 // =============================================================================
 
-function EntryRenderer({
+const EntryRenderer = React.memo(function EntryRenderer({
   entry,
   isLoading,
   onPermissionRespond,
@@ -153,7 +167,7 @@ function EntryRenderer({
     default:
       return null;
   }
-}
+});
 
 // =============================================================================
 // 工具调用分组逻辑

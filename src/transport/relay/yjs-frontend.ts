@@ -190,10 +190,15 @@ interface YjsFrontendEntry {
 
 const clients = new Map<string, YjsFrontendEntry>();
 
+// P1-7: WS 发送缓冲区背压阈值 (64KB)，防止慢客户端导致内存泄漏
+const WS_SEND_THRESHOLD = 64 * 1024;
+
 export function sendToYjsWs(ws: WsConnection, data: unknown): void {
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify(data));
-  }
+  if (ws.readyState !== 1) return;
+  // P1-7: 检查发送缓冲区积压，超阈值跳过（客户端通过重连+全量 snapshot 恢复）
+  // biome-ignore lint/suspicious/noExplicitAny: bufferedAmount 不在 WsConnection 接口中，但 Bun WS 原生支持
+  if (((ws as any).bufferedAmount ?? 0) > WS_SEND_THRESHOLD) return;
+  ws.send(JSON.stringify(data));
 }
 
 // ── YJS 广播（直接绑定 Y.Doc 的 update 事件）──
@@ -744,6 +749,18 @@ export async function handleYjsWsOpen(
   }
 
   // 4. 创建 entry（每个 WS 连接一个 entry）
+  // P1-6: 连接数上限检查（可配置，默认 200）
+  const MAX_CLIENTS = parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200;
+  if (clients.size >= MAX_CLIENTS) {
+    pendingBuffers.delete(wsId);
+    sendToYjsWs(ws, {
+      type: "error",
+      payload: { code: "too_many_connections", message: `Max ${MAX_CLIENTS} connections reached` },
+    });
+    ws.close(1013, "too many connections");
+    return;
+  }
+
   const keepalive = setInterval(() => {
     const entry2 = clients.get(wsId);
     if (entry2?.ws.readyState !== 1) {
