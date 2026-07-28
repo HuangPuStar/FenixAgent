@@ -318,7 +318,6 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
   const updatedAgent = await configPg.getAgentConfig(ctx, name);
   if (updatedAgent) {
     await syncAgentKnowledgeBindingsById(
-      ctx.organizationId,
       updatedAgent.id,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );
@@ -418,7 +417,6 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   const createdAgent = await configPg.getAgentConfig(ctx, name);
   if (createdAgent) {
     await syncAgentKnowledgeBindingsById(
-      ctx.organizationId,
       createdAgent.id,
       filtered.knowledge as AgentKnowledgeConfig | null | undefined,
     );

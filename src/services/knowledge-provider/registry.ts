@@ -1,15 +1,13 @@
 import { RagFlowKnowledgeProvider } from "./ragflow";
 import type { KnowledgeProvider } from "./types";
 
-let provider: KnowledgeProvider | null = null;
+let testProvider: KnowledgeProvider | null = null;
 
 export function getKnowledgeProvider(): KnowledgeProvider {
-  if (!provider) {
-    provider = new RagFlowKnowledgeProvider();
-  }
-  return provider;
+  if (testProvider) return testProvider;
+  return new RagFlowKnowledgeProvider();
 }
 
 export function setKnowledgeProviderForTesting(p: KnowledgeProvider | null): void {
-  provider = p;
+  testProvider = p;
 }

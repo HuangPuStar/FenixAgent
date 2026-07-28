@@ -144,31 +144,8 @@ describe("RagFlowKnowledgeProvider", () => {
     ).rejects.toThrow("102");
   });
 
-  test("addResource 上传文件并轮询解析状态直到 DONE", async () => {
-    const responses = [
-      { ok: true, json: async () => ({ code: 0, data: [{ id: "doc_xyz" }] }) },
-      { ok: true, json: async () => ({ code: 0 }) },
-      {
-        ok: true,
-        json: async () => ({
-          code: 0,
-          data: { docs: [{ id: "doc_xyz", run: "RUNNING", progress: 0.35, chunk_count: 0, token_count: 0 }] },
-        }),
-      },
-      {
-        ok: true,
-        json: async () => ({
-          code: 0,
-          data: { docs: [{ id: "doc_xyz", run: "DONE", progress: 1, chunk_count: 3, token_count: 128 }] },
-        }),
-      },
-    ];
-    let callIndex = 0;
-    const fetchSpy = mock(async () => {
-      const res = responses[callIndex];
-      callIndex += 1;
-      return res;
-    });
+  test("addResource 上传后立刻返回 processing，并异步触发解析", async () => {
+    const fetchSpy = mock(async () => ({ ok: true, json: async () => ({ code: 0, data: [{ id: "doc_xyz" }] }) }));
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const provider = new RagFlowKnowledgeProvider();
@@ -178,13 +155,12 @@ describe("RagFlowKnowledgeProvider", () => {
       remoteUserId: "user1",
       filePath: "/tmp/test.pdf",
       sourceName: "test.pdf",
-      wait: true,
     });
 
     expect(result.remoteId).toBe("doc_xyz");
-    expect(result.status).toBe("ready");
+    expect(result.status).toBe("processing");
     expect(result.knowledgeBaseRemoteId).toBe("ds_abc123");
-    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   test("addResource 上传响应 data 数组为空时抛出异常", async () => {
@@ -223,9 +199,9 @@ describe("RagFlowKnowledgeProvider", () => {
     ).rejects.toThrow("Duplicate file");
   });
 
-  test("addResource wait=false 跳过轮询直接返回 processing", async () => {
-    const fetchSpy = mock(async (url: string) => {
-      if (String(url).includes("/chunks")) {
+  test("addResource wait=false 同样直接返回 processing", async () => {
+    const fetchSpy = mock(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && typeof init.body === "string") {
         return { ok: true, json: async () => ({ code: 0 }) };
       }
       return { ok: true, json: async () => ({ code: 0, data: [{ id: "doc_abc" }] }) };
@@ -247,21 +223,10 @@ describe("RagFlowKnowledgeProvider", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  test("addResource 解析 FAIL 抛出异常", async () => {
-    const fetchSpy = mock(async (url: string, init?: RequestInit) => {
-      const urlStr = String(url);
-      if (urlStr.includes("/chunks")) {
+  test("addResource 不因后台解析失败而在创建阶段抛错", async () => {
+    const fetchSpy = mock(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && typeof init.body === "string") {
         return { ok: true, json: async () => ({ code: 0 }) };
-      }
-      // 区分轮询 GET 与上传 POST：两者都命中文档接口
-      if (urlStr.includes("/documents") && !urlStr.includes("/chunks") && init?.method !== "POST") {
-        return {
-          ok: true,
-          json: async () => ({
-            code: 0,
-            data: { docs: [{ id: "doc_fail", run: "FAIL", progress_msg: "File corrupted" }] },
-          }),
-        };
       }
       return { ok: true, json: async () => ({ code: 0, data: [{ id: "doc_fail" }] }) };
     });
@@ -276,7 +241,10 @@ describe("RagFlowKnowledgeProvider", () => {
         filePath: "/tmp/bad.pdf",
         sourceName: "bad.pdf",
       }),
-    ).rejects.toThrow("File corrupted");
+    ).resolves.toMatchObject({
+      remoteId: "doc_fail",
+      status: "processing",
+    });
   });
 
   test("listResources 正确映射 RagFlow run 到接口状态", async () => {

@@ -234,6 +234,8 @@ mock.module("../repositories/environment", () => {
 
 mock.module("../services/knowledge-base", () => ({
   ...actualKnowledgeBaseService,
+  listKnowledgeBasesGlobal: (...args: unknown[]) =>
+    knowledgeBaseServiceRegistry.get("listKnowledgeBasesGlobal")(...args),
   listKnowledgeBasesByTeamId: (...args: unknown[]) =>
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
 }));

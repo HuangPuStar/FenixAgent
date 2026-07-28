@@ -278,7 +278,6 @@ app.post(
 
       if (payload.knowledge !== undefined) {
         await syncAgentKnowledgeBindingsById(
-          authCtx.organizationId,
           agentId,
           normalizeKnowledgeConfig(payload.knowledge) as AgentKnowledgeConfig | null | undefined,
         );
@@ -341,7 +340,6 @@ app.put(
 
       if (payload.knowledge !== undefined) {
         await syncAgentKnowledgeBindingsById(
-          authCtx.organizationId,
           existing.id,
           normalizeKnowledgeConfig(payload.knowledge) as AgentKnowledgeConfig | null | undefined,
         );
