@@ -10,9 +10,19 @@ import {
 } from "../../services/acp-idle-monitor";
 import { getAgentConfigById } from "../../services/config/agent-config";
 import { getCoreRuntime } from "../../services/core-bootstrap";
+import {
+  closeSession,
+  openChat,
+  openSession,
+  processACP,
+  registerSession,
+  setChatAgentInfo,
+  setChatConnectionStatus,
+} from "../../services/session-state-service";
 import { resolveWorkspacePath } from "../../services/workspace-resolver";
 import type { RelayConnectionEntry } from "../../types/store";
 import { findMachineConnectionById, getAgentMachineCache, sendToWs, setAgentMachineCache } from "../acp-ws-handler";
+import { connectAgentRelay } from "../agent-relay";
 import type { WsConnection } from "../ws-types";
 import { RelayConnectionManager, sendToRelayWs } from "./connection-manager";
 import { filterConnectFromFlush } from "./message-router";
@@ -23,27 +33,213 @@ type FullRelayHandle = EngineRelayHandle & {
   ready?: Promise<void>;
 };
 
-/**
- * 通过 CoreRuntimeFacade 连接 Agent relay handle。
- * 共享于 WS relay 和 HTTP OpenAI 端点。
- */
-export async function connectAgentRelay(instanceId: string, sessionId: string): Promise<EngineRelayHandle> {
-  const { getCoreRuntime } = await import("../../services/core-bootstrap");
-  const facade = getCoreRuntime();
-  const handle = await facade.connectInstanceRelay({ instanceId, sessionId });
-  const full = handle as FullRelayHandle;
-  if (full.ready) await full.ready;
-  return handle;
-}
-
 const manager = new RelayConnectionManager();
 
 const RELAY_KEEPALIVE_INTERVAL_MS = 20_000;
 const RELAY_NO_RECONNECT_CLOSE_CODE = 1000;
 const IDLE_RECLAIM_CLOSE_REASON = "instance_idle_reclaimed";
 
+// ── Yjs 迁移：前端不再需要原始 ACP 内容事件转发 ──
+// 消息内容（agent_message_chunk / tool_call 等）已通过 Y.Doc → yjs:update 广播推送。
+// 仅保留前端 ACPProtocol 仍使用的传输层类型 + JSON-RPC 消息。
+const FORWARD_TYPES = new Set(["status", "error", "prompt_complete", "permission_request", "interactive_question"]);
+
+function shouldForwardToFrontend(msgType: string | undefined, message: unknown): boolean {
+  // Yjs 广播消息不在此路径（由 setYjsUpdateHandler 单独广播）
+  if ((message as Record<string, unknown>)?.type === "yjs:update") return false;
+  // JSON-RPC 消息（session/new, session/list 等）仍需转发
+  if ((message as Record<string, unknown>)?.jsonrpc === "2.0") return true;
+  // 传输层白名单
+  return msgType != null && FORWARD_TYPES.has(msgType);
+}
+
 /** relay 设置期间（openLocalRelay 尚未完成）缓存前端消息 */
 const pendingRelayMessages = new Map<string, Array<Record<string, unknown>>>();
+
+// ── JSON-RPC 兼容提取 ──
+// EngineRelay 消息可能是 raw { type, payload } 或 JSON-RPC { jsonrpc: "2.0", ... } 两种格式。
+// session/update 通知中的实际 ACP 事件在 params.update 内。
+
+/** 从消息中提取 JSON-RPC 对象（兼容原始和包裹两种格式） */
+export function extractJsonRpc(msg: Record<string, unknown>): Record<string, unknown> | null {
+  if (msg.jsonrpc === "2.0") return msg;
+  const payload = msg.payload as Record<string, unknown> | undefined;
+  if (payload?.jsonrpc === "2.0") return payload;
+  return null;
+}
+
+/**
+ * 从 EngineRelay 消息中提取 ACP 事件类型和载荷。
+ * 兼容两种消息格式：
+ * 1. 原始引擎格式: { type: "agent_message_chunk", payload: { type: "text", text: "..." } }
+ * 2. JSON-RPC session/update: { jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "...", content: {...} } } }
+ *    （含包裹格式: { type: "session_data", payload: { jsonrpc: "2.0", ... } }）
+ */
+export function extractAcpEvent(
+  rawMessage: unknown,
+  msgType: string | undefined,
+): { type: string; payload?: Record<string, unknown> } {
+  const message = rawMessage as Record<string, unknown>;
+  // 1. 尝试 JSON-RPC session/update 通知提取
+  const rpc = extractJsonRpc(message);
+  if (rpc && rpc.method === "session/update") {
+    const params = rpc.params as Record<string, unknown> | undefined;
+    const update = params?.update as Record<string, unknown> | undefined;
+    if (update?.sessionUpdate) {
+      return {
+        type: update.sessionUpdate as string,
+        payload: update as Record<string, unknown>,
+      };
+    }
+  }
+
+  // 1.5. JSON-RPC 响应中的 prompt 结果：
+  // session-manager 的 JSON-RPC 路径可能将 prompt 结果包装为
+  //   createSuccessResponse(id, result) → { jsonrpc: "2.0", result: { stopReason: ... } }
+  // 当 session_data payload 是此类 JSON-RPC 响应时，提取为 prompt_complete。
+  if (rpc && "result" in rpc) {
+    const result = rpc.result as Record<string, unknown> | undefined;
+    if (result && typeof result === "object" && "stopReason" in result) {
+      return {
+        type: "prompt_complete",
+        payload: result,
+      };
+    }
+  }
+
+  // 2. session_data 包裹格式：{ type: "session_data", payload: { type: "prompt_complete", payload: ... } }
+  // session-manager 将 prompt_complete 等非 JSON-RPC 事件通过
+  //   emit(sessionId, "session_data", { type: "prompt_complete", payload: result })
+  // 发送。需要提取内部嵌套 type，否则 applyACPEvent 收到 type="session_data" 无法匹配任何 handler。
+  // 注意：msgType 为 "session_data" 但 payload 为 JSON-RPC 对象的情况已在步骤 1 处理并返回。
+  const innerPayload = message.payload as Record<string, unknown> | undefined;
+  if (msgType === "session_data" && innerPayload?.type && typeof innerPayload.type === "string") {
+    return {
+      type: innerPayload.type as string,
+      payload: (innerPayload.payload as Record<string, unknown>) ?? innerPayload,
+    };
+  }
+
+  // 3. 回退：原始 EngineRelayMessage 格式 { type, payload }
+  return {
+    type: msgType || "unknown",
+    payload: innerPayload ?? message,
+  };
+}
+
+// ── 简单 JSON 命令 → ACP JSON-RPC 翻译 ──
+// 前端休克疗法后改用 { action, ... } 格式，此处翻译回 ACP JSON-RPC。
+
+export function translateSimpleAction(
+  parsed: Record<string, unknown>,
+  workspacePath?: string | null,
+): Record<string, unknown> {
+  const action = parsed.action as string;
+  switch (action) {
+    case "send_prompt":
+      return { jsonrpc: "2.0", method: "session/prompt", params: { content: parsed.content } };
+    case "cancel":
+      return { jsonrpc: "2.0", method: "session/cancel", params: {} };
+    case "create_session":
+      return { jsonrpc: "2.0", method: "session/new", params: { cwd: workspacePath } };
+    case "load_session":
+      return {
+        jsonrpc: "2.0",
+        method: "session/load",
+        params: { sessionId: parsed.sessionId, cwd: workspacePath },
+      };
+    case "resume_session":
+      return {
+        jsonrpc: "2.0",
+        method: "session/resume",
+        params: { sessionId: parsed.sessionId, cwd: workspacePath },
+      };
+    case "list_sessions":
+      return { jsonrpc: "2.0", method: "session/list", params: {} };
+    case "rename_session":
+      return {
+        jsonrpc: "2.0",
+        method: "session/rename",
+        params: { sessionId: parsed.sessionId, title: parsed.title },
+      };
+    case "delete_session":
+      return {
+        jsonrpc: "2.0",
+        method: "session/delete",
+        params: { sessionId: parsed.sessionId },
+      };
+    case "respond_permission":
+      return {
+        jsonrpc: "2.0",
+        method: "session/permission",
+        params: { requestId: parsed.requestId, optionId: parsed.optionId },
+      };
+    default:
+      return parsed;
+  }
+}
+
+// ── Yjs 会话列表同步 ──
+// 拦截 agent→client 的 session/list 和 session/new JSON-RPC 响应，
+// 将 sessions 数据写入 Yjs Chat Doc，实现前端会话列表的实时同步。
+
+function trySyncSessionsToYjs(entry: RelayConnectionEntry, message: unknown): void {
+  try {
+    // 兼容两种 JSON-RPC 消息格式：
+    //   原始格式：{ jsonrpc: "2.0", result: { ... }, id: 1 }
+    //   包裹格式：{ type: "...", payload: { jsonrpc: "2.0", result: { ... }, id: 1 } }
+    let rpc: Record<string, unknown> | undefined;
+
+    {
+      const msg = message as Record<string, unknown>;
+      if (msg.jsonrpc === "2.0") {
+        rpc = msg;
+      } else {
+        const payload = msg.payload as Record<string, unknown> | undefined;
+        if (payload?.jsonrpc === "2.0") rpc = payload;
+      }
+    }
+
+    if (!rpc || !("result" in rpc)) return;
+
+    const result = rpc.result as Record<string, unknown> | undefined;
+    if (!result || typeof result !== "object") return;
+
+    // session/new — 追加单个新会话
+    const newSessionId = result.sessionId;
+    if (typeof newSessionId === "string" && newSessionId.length > 0) {
+      registerSession(entry.rcsSessionId, {
+        sessionId: newSessionId,
+        title: "",
+        preview: "",
+        status: "active",
+        lastMsgTs: Date.now(),
+      });
+      return;
+    }
+
+    // session/list — 批量同步会话列表
+    const sessions = result.sessions as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(sessions)) return;
+
+    for (const s of sessions) {
+      const sid = s.sessionId as string | undefined;
+      if (!sid) continue;
+      // updatedAt 校验：非法日期字符串（如 "invalid"）会生成 NaN，
+      // new Date(...).getTime() 结果需用 || 兜底避免写入 NaN 到 Yjs
+      const ts = s.updatedAt ? new Date(s.updatedAt as string).getTime() : 0;
+      registerSession(entry.rcsSessionId, {
+        sessionId: sid,
+        title: (s.title as string) || "",
+        preview: "",
+        status: "active",
+        lastMsgTs: ts > 0 ? ts : Date.now(),
+      });
+    }
+  } catch {
+    // 解析失败静默忽略，不影响 relay 转发
+  }
+}
 
 // ────────────────────────────────────────────
 // Relay open / close / message handlers
@@ -55,7 +251,7 @@ export async function handleRelayOpen(
   relayWsId: string,
   agentId: string,
   userId: string,
-  sessionId?: string,
+  rcsSessionId?: string,
 ): Promise<void> {
   log(`Relay connection opened: relayWsId=${relayWsId} agentId=${agentId}`);
 
@@ -88,7 +284,7 @@ export async function handleRelayOpen(
   }
 
   // 统一走 openLocalRelay（通过 ensureRunning → facade），本地和远程均由 core 调度
-  await openLocalRelay(ws, relayWsId, agentId, userId, sessionId ?? relayWsId, env, agentPrompt);
+  await openLocalRelay(ws, relayWsId, agentId, userId, rcsSessionId ?? relayWsId, env, agentPrompt);
 }
 
 async function openLocalRelay(
@@ -96,7 +292,7 @@ async function openLocalRelay(
   relayWsId: string,
   agentId: string,
   userId: string,
-  sessionId: string,
+  rcsSessionId: string,
   _env: EnvironmentRecord,
   agentPrompt?: string,
 ): Promise<void> {
@@ -133,7 +329,7 @@ async function openLocalRelay(
   // 2. 通过 CoreRuntimeFacade 连接 relay handle（先不加入 manager，避免空窗期路由错误）
   let handle: EngineRelayHandle;
   try {
-    handle = await connectAgentRelay(instanceId, sessionId);
+    handle = await connectAgentRelay(instanceId, rcsSessionId);
 
     // WS 在 await 期间关闭 → 清理 handle 并放弃
     if (ws.readyState !== 1) {
@@ -174,7 +370,8 @@ async function openLocalRelay(
     instanceId,
     relayHandle: handle,
     relayUnsub: null,
-    sessionId,
+    rcsSessionId,
+    acpSessionId: null,
     outboundBuffer: [],
     sessionStarted: true,
     workspacePath: resolveWorkspacePath(_env.organizationId ?? userId, _env.userId ?? userId, _env.id),
@@ -182,6 +379,19 @@ async function openLocalRelay(
   manager.add(relayWsId, entry);
   if (instanceId) {
     markInstanceRelayAttached(instanceId);
+  }
+
+  // 5. 初始化 Chat/Session Doc 用于 ACP 状态聚合
+  try {
+    await openChat(rcsSessionId);
+    setChatConnectionStatus(rcsSessionId, { status: "connected", since: Date.now() });
+    setChatAgentInfo(rcsSessionId, {
+      id: agentId,
+      name: agentPrompt?.slice(0, 50) ?? agentId,
+    });
+    await openSession(userId, agentId, rcsSessionId);
+  } catch (err) {
+    logError("[relay] Failed to init session-state:", err);
   }
 
   // 4. 先发送 relay 层的 status（携带 agent_prompt），再注册 onMessage
@@ -232,7 +442,19 @@ async function openLocalRelay(
         });
         return;
       }
-      sendToRelayWs(e.ws, message);
+      // 同步会话列表到 Yjs Chat Doc（旁路，不影响转发）
+      trySyncSessionsToYjs(e, message);
+      // 聚合 ACP 事件到 Session Doc（旁路，不影响转发）
+      try {
+        processACP(e.rcsSessionId, extractAcpEvent(message, msgType));
+      } catch {
+        // 聚合失败不影响 relay 转发
+      }
+      // Yjs 迁移后，消息内容通过 yjs:update 广播推送，不再转发原始 ACP 事件到前端。
+      // 仅保留前端仍需要的传输层消息类型。
+      if (shouldForwardToFrontend(msgType, message)) {
+        sendToRelayWs(e.ws, message);
+      }
     });
   }
 
@@ -318,6 +540,14 @@ export async function handleRelayMessage(
 
   // 通过 CoreRuntimeFacade relay handle 发送（本地和远程统一）
   if (entry.relayHandle) {
+    // ── 简单 JSON 命令 → ACP JSON-RPC 翻译 ──
+    // 前端休克疗法后不再发送 ACP JSON-RPC，改用 { action, ... } 格式。
+    // 此处将其翻译为 ACP JSON-RPC 再转发给 agent。
+    const action = parsed.action as string | undefined;
+    if (action) {
+      parsed = translateSimpleAction(parsed, entry.workspacePath);
+    }
+
     // JSON-RPC 消息（无 type 字段）直接放行，不受 sessionStarted 约束
     const isJsonRpc = (parsed as Record<string, unknown>).jsonrpc === "2.0";
     if (!entry.sessionStarted && !isJsonRpc && parsed.type !== "list_sessions") {
@@ -392,6 +622,13 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
       logError("handleRelayClose: failed to send cancel_pending_permissions", err);
     }
   }
+
+  // 清理 Session Doc 和连接状态
+  closeSession(entry.rcsSessionId).catch(() => {});
+  setChatConnectionStatus(entry.rcsSessionId, {
+    status: "disconnected",
+    since: Date.now(),
+  });
 
   manager.remove(relayWsId);
 }
@@ -564,3 +801,29 @@ function closeRelayByMachine(machineId: string, reason: string): void {
     manager.remove(relayWsId);
   }
 }
+
+// ── Yjs 广播：将所有 Y.Doc 的变更推送给前端 ──
+import { setYjsUpdateHandler } from "../../services/session-state-service";
+
+setYjsUpdateHandler((docName: string, update: Uint8Array) => {
+  const base64 = Buffer.from(update).toString("base64");
+  // 从 docName 提取 rcsSessionId 用于广播过滤
+  let targetRcsSessionId: string | null = null;
+  if (docName.startsWith("chat:")) {
+    targetRcsSessionId = docName.slice(5);
+  } else if (docName.startsWith("session:")) {
+    targetRcsSessionId = docName.slice(8);
+  }
+  for (const [, entry] of manager.entries()) {
+    if (targetRcsSessionId && entry.rcsSessionId !== targetRcsSessionId) continue;
+    try {
+      sendToRelayWs(entry.ws, {
+        type: "yjs:update",
+        docName,
+        data: base64,
+      });
+    } catch {
+      // 单个连接发送失败不影响其他
+    }
+  }
+});
