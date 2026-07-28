@@ -360,7 +360,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
         return status(403, buildError("forbidden", "无权限上传文件"));
       }
-      const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body);
+      const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body as any);
       return { success: true as const, data: result.data };
     },
     {
@@ -390,7 +390,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
       if (!canWrite(row, authCtx.userId, authCtx.role)) {
         return status(403, buildError("forbidden", "无权限上传文件"));
       }
-      const result = await uploadRemoteBundle(row.remoteAppId, request.body);
+      const result = await uploadRemoteBundle(row.remoteAppId, request.body as any);
       return { success: true as const, data: result.data };
     },
     {
@@ -431,7 +431,7 @@ const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
         );
       }
       // 透传 gzip body 到平台，平台做解压 + 探活 + 切换
-      const remote = await deployCustomApp(row.remoteAppId, request.body);
+      const remote = await deployCustomApp(row.remoteAppId, request.body as any);
       // 平台返回的 slot 是 "a" | "b"，DB 与响应 schema 均要求此字面量类型
       const slot = remote.data.slot as "a" | "b";
       // 写入 RCS DB 记录部署元数据（entry_file / slot / deployed_at）

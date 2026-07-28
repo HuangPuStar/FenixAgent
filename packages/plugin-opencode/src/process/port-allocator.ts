@@ -11,7 +11,7 @@ async function defaultProbePort(port: number): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const server = createServer();
 
-    server.once("error", () => {
+    (server as any).once("error", () => {
       resolve(false);
     });
 

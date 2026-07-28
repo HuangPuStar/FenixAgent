@@ -1,5 +1,4 @@
 import type { CoreRuntimeFacade, RuntimeInstanceStatus } from "@fenix/core";
-import { log } from "@fenix/logger";
 import { config } from "../config";
 import { AppError } from "../errors";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";

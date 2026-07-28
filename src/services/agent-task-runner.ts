@@ -161,7 +161,7 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
     proc.stderr?.on("data", (chunk: Buffer | string) => {
       stderr += chunk.toString();
     });
-    proc.on("error", (error: Error) => {
+    (proc as any).on("error", (error: Error) => {
       if (settled) {
         return;
       }
@@ -169,7 +169,7 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
       clearTimers([timeoutHandle, killHandle]);
       reject(error);
     });
-    proc.on("close", (exitCode: number | null) => {
+    (proc as any).on("close", (exitCode: number | null) => {
       if (timedOut) {
         finalize("timeout", "Task execution timed out");
         return;

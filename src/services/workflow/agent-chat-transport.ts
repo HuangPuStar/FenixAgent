@@ -15,7 +15,7 @@ import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { environment } from "../../db/schema";
-import { connectAgentRelay } from "../../transport/relay/relay-handler";
+import { connectAgentRelay } from "../../transport/agent-relay";
 import {
   type AgentSession as ChatAgentSession,
   createAgentSession,
