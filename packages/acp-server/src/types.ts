@@ -19,7 +19,9 @@ export type SessionStatus =
   | "tool-calling"
   | "waiting-user"
   | "error"
-  | "done";
+  | "done"
+  | "ready"
+  | "plan";
 
 export interface LoadingState {
   kind: "session/bootstrap" | "session/respond" | "tool/executing" | "permission/pending";

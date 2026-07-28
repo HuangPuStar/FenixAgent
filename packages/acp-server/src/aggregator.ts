@@ -266,8 +266,8 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         const rawOutput = payload?.rawOutput ?? inner?.rawOutput;
         const rawInput = payload?.rawInput ?? inner?.rawInput;
 
-        // ACP 协议发送 "completed"，YJS 存储使用 "complete"（无 d），归一化
-        const canonicalStatus = status === "completed" ? "complete" : status;
+        // ACP 协议发送 "completed"/"done"，YJS 存储使用 "complete"（无 d），归一化
+        const canonicalStatus = status === "completed" || status === "done" ? "complete" : status;
 
         // Update tools map entry
         const tool = tools.get(id);

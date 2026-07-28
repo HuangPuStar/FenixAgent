@@ -10,6 +10,7 @@ function mapStatus(status: string): ToolCallStatus {
       return "running";
     case "complete":
     case "completed":
+    case "done":
       return "complete";
     case "error":
       return "error";
