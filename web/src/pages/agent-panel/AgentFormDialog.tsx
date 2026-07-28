@@ -306,7 +306,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         }
 
         // 知识库选项
-        const knowledgeOptionsVal = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
+        const knowledgeOptionsVal: KnowledgeBaseInfo[] = Array.isArray(kbData)
+          ? (kbData as unknown as KnowledgeBaseInfo[])
+          : [];
 
         // Skill 选项
         const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
@@ -391,7 +393,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         : [];
 
       const kbData = await unwrap(kbApi.list());
-      const knowledgeOptionsVal = Array.isArray(kbData) ? (kbData as unknown as KnowledgeBaseInfo[]) : [];
+      const knowledgeOptionsVal: KnowledgeBaseInfo[] = Array.isArray(kbData)
+        ? (kbData as unknown as KnowledgeBaseInfo[])
+        : [];
 
       const skillsData = await unwrap(skillConfigApi.list());
       const skillOptionsVal = normalizeSkillOptionsPayload(skillsData);
