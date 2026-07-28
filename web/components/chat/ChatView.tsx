@@ -142,32 +142,40 @@ function entrySpacing(entries: ThreadEntry[], index: number): string {
 // 单条目渲染器
 // =============================================================================
 
-const EntryRenderer = React.memo(function EntryRenderer({
-  entry,
-  isLoading,
-  onPermissionRespond,
-  sessionId,
-  envId,
-}: {
-  entry: ThreadEntry;
-  isLoading: boolean;
-  onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
-  sessionId?: string;
-  envId?: string;
-}) {
-  switch (entry.type) {
-    case "user_message":
-      return <UserBubble entry={entry} />;
-    case "assistant_message":
-      return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
-    case "tool_call":
-      return <ToolCallGroup entries={[entry as ToolCallEntry]} onPermissionRespond={onPermissionRespond} />;
-    case "plan":
-      return <PlanDisplay entry={entry as PlanDisplayEntry} />;
-    default:
-      return null;
-  }
-});
+const EntryRenderer = React.memo(
+  function EntryRenderer({
+    entry,
+    isLoading,
+    onPermissionRespond,
+    sessionId,
+    envId,
+  }: {
+    entry: ThreadEntry;
+    isLoading: boolean;
+    onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
+    sessionId?: string;
+    envId?: string;
+  }) {
+    switch (entry.type) {
+      case "user_message":
+        return <UserBubble entry={entry} />;
+      case "assistant_message":
+        return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
+      case "tool_call":
+        return <ToolCallGroup entries={[entry as ToolCallEntry]} onPermissionRespond={onPermissionRespond} />;
+      case "plan":
+        return <PlanDisplay entry={entry as PlanDisplayEntry} />;
+      default:
+        return null;
+    }
+  },
+  // P0-3: custom comparator excluding onPermissionRespond (always a new reference from inline arrow)
+  (prev, next) =>
+    prev.entry === next.entry &&
+    prev.isLoading === next.isLoading &&
+    prev.sessionId === next.sessionId &&
+    prev.envId === next.envId,
+);
 
 // =============================================================================
 // 工具调用分组逻辑

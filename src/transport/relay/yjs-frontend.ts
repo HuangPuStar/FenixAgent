@@ -207,19 +207,29 @@ export function sendToYjsWs(ws: WsConnection, data: unknown): void {
 /** 已注册广播的 Y.Doc 名称集合（防重复注册） */
 const registeredDocNames = new Set<string>();
 
+// P0-1: 微任务批处理 — 同一 tick 内收集增量更新，合并后一次广播
+const updateBuffers = new Map<string, Uint8Array[]>();
+const pendingDocNames = new Set<string>();
+let flushScheduled = false;
+
 /** 清理已注册的 Y.Doc 名称（在 session doc 销毁/重建前调用，确保新 doc 能重新注册广播） */
 export function unregisterYjsDocListener(docName: string): void {
   registeredDocNames.delete(docName);
 }
 
-/** 给 Y.Doc 绑定 update 监听，变更时广播给匹配 rcsSessionId 的前端 WS 客户端 */
-export function registerYjsDocListener(ydoc: import("yjs").Doc, docName: string): void {
-  if (registeredDocNames.has(docName)) return;
-  registeredDocNames.add(docName);
-  ydoc.on("update", (update: Uint8Array) => {
-    const base64 = Buffer.from(update).toString("base64");
+/** 批量合并并广播 — 在 queueMicrotask 回调中执行 */
+function flushBroadcastsNow() {
+  flushScheduled = false;
+  for (const docName of pendingDocNames) {
+    const buffers = updateBuffers.get(docName);
+    if (!buffers || buffers.length === 0) continue;
+
+    // 合并：单 buffer 直传，多 buffer 调用 Y.mergeUpdates
+    const merged = buffers.length > 1 ? Y.mergeUpdates(buffers) : buffers[0];
+    const base64 = Buffer.from(merged).toString("base64");
     const msg = { type: "yjs:update", docName, data: base64 };
-    // 从 docName 提取 rcsSessionId 用于广播过滤
+
+    // 路由逻辑（与现有 registerYjsDocListener 中的 pattern 完全一致）
     let targetRcsSessionId: string | null = null;
     if (docName.startsWith("chat:")) {
       targetRcsSessionId = docName.slice(5);
@@ -233,6 +243,30 @@ export function registerYjsDocListener(ydoc: import("yjs").Doc, docName: string)
       } catch {
         // 单连接失败不阻塞
       }
+    }
+  }
+  pendingDocNames.clear();
+  updateBuffers.clear();
+}
+
+/** 给 Y.Doc 绑定 update 监听，变更时广播给匹配 rcsSessionId 的前端 WS 客户端 */
+export function registerYjsDocListener(ydoc: import("yjs").Doc, docName: string): void {
+  if (registeredDocNames.has(docName)) return;
+  registeredDocNames.add(docName);
+  ydoc.on("update", (update: Uint8Array) => {
+    // 推入缓冲区
+    let buffers = updateBuffers.get(docName);
+    if (!buffers) {
+      buffers = [];
+      updateBuffers.set(docName, buffers);
+    }
+    buffers.push(update);
+    pendingDocNames.add(docName);
+
+    // 调度合并广播（幂等：同一 tick 内多次 update 只调度一次 queueMicrotask）
+    if (!flushScheduled) {
+      flushScheduled = true;
+      queueMicrotask(flushBroadcastsNow);
     }
   });
 }
@@ -301,7 +335,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
           (e) => e.agentId === shared.agentId && e.instanceId === shared.instanceId && e.acpSessionId === msgSessionId,
         );
         if (!anyMatch) {
-          log(`[YJS-FE] ignoring stale event for session ${msgSessionId} (no active client matching)`);
           return;
         }
       }
@@ -369,7 +402,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
         const cmds = update.availableCommands as Array<{ name: string; description?: string }> | undefined;
         if (cmds && cmds.length > 0) {
           setChatAvailableCommands(shared.rcsSessionId, cmds);
-          log(`[YJS-FE] availableCommands written: ${cmds.length} commands`);
         }
       }
     }
@@ -395,9 +427,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
     }
     if (pcUsage) {
       setChatTokenUsage(shared.rcsSessionId, pcUsage);
-      log(
-        `[YJS-FE] tokenUsage written: total=${pcUsage.totalTokens ?? 0} input=${pcUsage.inputTokens ?? 0} output=${pcUsage.outputTokens ?? 0}`,
-      );
     }
 
     // ── agent status → 标记就绪 + 自动发送 list_sessions ──
@@ -407,7 +436,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
       const caps = capsPayload?.capabilities as Record<string, unknown> | undefined;
       if (caps) {
         setChatCapabilities(shared.rcsSessionId, caps);
-        log(`[YJS-FE] capabilities written to chat doc`);
       }
 
       // 提取 agentInfo 写入 Chat Doc（含 model 信息）
@@ -419,7 +447,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
           name: (agentInfoData.name as string) || shared.agentId,
           model: modelInfo ? { id: modelInfo.id || "", name: modelInfo.name || "" } : undefined,
         });
-        log(`[YJS-FE] agentInfo updated from status: model=${modelInfo?.name ?? "(none)"}`);
       }
 
       // 标记所有匹配 entry 的 agentStatusReceived
@@ -431,11 +458,9 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
       });
 
       if (needsListSessions) {
-        log(`[YJS-FE] agent status received, triggering list_sessions`);
         try {
           const listRpc = translateSimpleAction({ action: "list_sessions" }, shared.workspacePath);
           shared.handle.send(listRpc as unknown as { type: string; payload?: unknown });
-          log(`[YJS-FE] → agent: auto list_sessions (agent ready)`);
         } catch (err) {
           logError("[YJS-FE] auto list_sessions send failed:", err);
         }
@@ -488,7 +513,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
               const latestSid = sorted[0]?.sessionId as string | undefined;
               if (latestSid) {
                 setChatActiveSession(shared.rcsSessionId, latestSid);
-                log(`[YJS-FE] auto-selected active session: ${latestSid}`);
               }
             }
           }
@@ -506,8 +530,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
       // session/new 或 session/load 响应
       const newSessionId = result.sessionId;
       if (typeof newSessionId === "string" && newSessionId.length > 0) {
-        log(`[YJS-FE] session sync: new/load sessionId=${newSessionId} (ACP)`);
-
         const rawConfigOpts = result.configOptions as Array<Record<string, unknown>> | undefined;
         const resultModels = (result.models ?? extractModelStateFromConfigOptions(rawConfigOpts)) as
           | { currentModelId: string; availableModels: Array<{ modelId: string; name: string }> }
@@ -522,15 +544,9 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
           | undefined;
         if (resultModels) {
           setChatModelState(shared.rcsSessionId, resultModels);
-          log(
-            `[YJS-FE] modelState written: currentModelId=${resultModels.currentModelId}, availableModels=${resultModels.availableModels.length}`,
-          );
         }
         if (resultModes) {
           setChatModeState(shared.rcsSessionId, resultModes);
-          log(
-            `[YJS-FE] modeState written: currentModeId=${resultModes.currentModeId}, availableModes=${resultModes.availableModes.length}`,
-          );
         }
 
         // 用 RCS session ID 打开 Session Doc (C2 fix)
@@ -579,9 +595,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
             docName: `session:${shared.rcsSessionId}`,
             data: sessionBase64,
           });
-          log(
-            `[YJS-FE] pushed session init state to all matched clients, acpSessionId=${newSessionId}, size=${sessionSnapshot.length}`,
-          );
         } catch (e) {
           logError("[YJS-FE] Failed to push session init state:", e);
         }
@@ -591,7 +604,6 @@ function createSharedMessageHandler(shared: SharedRelayState): (message: { type:
       // session/list 响应
       const sessions = result.sessions as Array<Record<string, unknown>> | undefined;
       if (!Array.isArray(sessions)) return;
-      log(`[YJS-FE] session sync: list count=${sessions.length}`);
       for (const s of sessions) {
         const sid = s.sessionId as string | undefined;
         if (!sid) continue;
@@ -822,11 +834,9 @@ export async function handleYjsWsOpen(
         const action = parsed.action as string | undefined;
         if (action) {
           if (action === "list_sessions") {
-            log(`[YJS-FE] flush skip list_sessions: agent not ready yet, will auto-send on status`);
             continue;
           }
           const rpc = translateSimpleAction(parsed, entry.workspacePath);
-          log(`[YJS-FE] flush → agent: action=${action}`);
           entry.relayHandle.send(rpc as unknown as { type: string; payload?: unknown });
         }
       } catch (err) {
@@ -846,7 +856,6 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
     const buffer = pendingBuffers.get(wsId);
     if (buffer) {
       buffer.push(data);
-      log(`[YJS-FE] buffered msg (pending count=${buffer.length})`);
     }
     return;
   }
@@ -871,7 +880,6 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
     // 【关键】list_sessions：agent 还未就绪时跳过，等 status 到达后自动发送
     // 这避免了 agent 未初始化时返回 JSON-RPC 错误（我的 handler 只处理 result 路径）
     if (action === "list_sessions" && !entry.agentStatusReceived) {
-      log(`[YJS-FE] defer list_sessions: agent not ready yet, will auto-send on status`);
       return;
     }
     // 【关键】load_session 和 create_session 执行前先更新 entry.acpSessionId，
@@ -882,7 +890,6 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
 
       if (action === "load_session") {
         const rawSid = parsed.sessionId;
-        log(`[YJS-FE] load_session request: sessionId=${rawSid} (type=${typeof rawSid})`);
         if (typeof rawSid !== "string" || rawSid.length === 0) {
           logError("[YJS-FE] load_session rejected: invalid sessionId", rawSid);
           sendToYjsWs(ws, {
@@ -959,15 +966,12 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
           type: "user_message_chunk",
           payload: { content: { type: "text", text } },
         });
-        log(`[YJS-FE] wrote user_message_chunk to rcsSessionId=${entry.rcsSessionId} (${text.length} chars)`);
       }
     }
 
     const rpc = translateSimpleAction(parsed, entry.workspacePath);
-    log(`[YJS-FE] → agent: action=${action} acpSessionId=${entry.acpSessionId}`);
     try {
       entry.relayHandle.send(rpc as unknown as { type: string; payload?: unknown });
-      log(`[YJS-FE] → agent: sent OK`);
     } catch (err) {
       logError("[YJS-FE] relay handle send error:", err);
       sendToYjsWs(ws, { type: "error", payload: { message: "Agent connection error" } });
@@ -979,7 +983,6 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
     if (action === "cancel" && entry.acpSessionId) {
       try {
         processACP(entry.rcsSessionId, { type: "agent_message_complete", payload: {} });
-        log(`[YJS-FE] cancel: cleared loading on rcsSessionId=${entry.rcsSessionId}`);
       } catch (err) {
         logError("[YJS-FE] cancel: failed to clear session loading:", err);
       }

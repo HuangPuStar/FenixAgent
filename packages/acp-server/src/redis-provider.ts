@@ -14,6 +14,10 @@ export function createRedisProvider(
   const redisKey = `${REDIS_KEY_PREFIX}${docName}`;
   const channel = `${REDIS_CHANNEL_PREFIX}${docName}`;
 
+  // P0: 全量快照计数器 — 每 N 次增量写入一次 Y.encodeStateAsUpdate 全量快照
+  let updateCount = 0;
+  const FULL_SNAPSHOT_INTERVAL = 50;
+
   // ioredis Cluster supports pub/sub at runtime but TypeScript types differ;
   // cast to Redis for method access (same pattern as KeyvRedis in cache.ts).
   // biome-ignore lint/suspicious/noExplicitAny: Cluster pub/sub methods match Redis at runtime
@@ -41,7 +45,20 @@ export function createRedisProvider(
       // 还在等远程加载，忽略本地 update
       return;
     }
-    r.set(redisKey, Buffer.from(update)).catch(() => {});
+    updateCount++;
+    // ISSUE-4 fix: full snapshot every N updates with try/catch defense
+    if (updateCount >= FULL_SNAPSHOT_INTERVAL) {
+      updateCount = 0;
+      try {
+        const fullState = Y.encodeStateAsUpdate(ydoc);
+        r.set(redisKey, Buffer.from(fullState)).catch(() => {});
+      } catch (e) {
+        console.warn(`[redis-provider] encodeStateAsUpdate failed for ${docName}:`, e);
+      }
+    } else {
+      // 非快照周期：写增量 delta 到 Redis
+      r.set(redisKey, Buffer.from(update)).catch(() => {});
+    }
     r.publish(channel, Buffer.from(update)).catch(() => {});
   };
   ydoc.on("update", onUpdate);

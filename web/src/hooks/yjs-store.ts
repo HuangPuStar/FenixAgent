@@ -27,6 +27,50 @@ export interface YjsStore<T> {
 type UpdateHandler = (update: Uint8Array, origin: unknown, doc: Y.Doc) => void;
 
 /**
+ * P0-3: 快照缓存键 — 从 snapshot 提取关键字段计算排重 key。
+ * 仅比对会影响 UI 渲染的字段，避免大型数组的深度遍历。
+ *
+ * 此为 Session Doc 默认 key 函数。Chat Doc 应使用自己的 key 提取逻辑。
+ */
+export function computeSessionSnapshotKey(s: Record<string, unknown>): string {
+  const structured = s.structuredMessages as { type?: string; id?: string; status?: string }[] | undefined;
+  return JSON.stringify({
+    msgsLen: (s.messages as unknown[])?.length ?? 0,
+    strMsgLen: structured?.length ?? 0,
+    toolStatuses:
+      structured
+        ?.filter((m) => m.type === "tool_call")
+        .map((m) => `${m.id}:${m.status}`)
+        .join(",") ?? "",
+    streamingText: (s.streaming as { text?: string } | null)?.text ?? "",
+    streamingReasoning: (s.streaming as { reasoning?: string } | null)?.reasoning ?? "",
+    status: (s.status as string) ?? "",
+    loadingKind: (s.loading as { kind?: string } | null)?.kind ?? "",
+  });
+}
+
+/**
+ * Chat Doc 快照缓存键 — 追踪 session 列表、活跃 session、连接状态等 Chat 级别变更。
+ */
+export function computeChatSnapshotKey(s: Record<string, unknown>): string {
+  const sessions = s.sessions as unknown[] | undefined;
+  const conn = s.connection as { status?: string } | undefined;
+  return JSON.stringify({
+    sessionsLen: sessions?.length ?? 0,
+    activeSessionId: (s.activeSessionId as string) ?? "",
+    connectionStatus: conn?.status ?? "disconnected",
+    currentModelId: (s.modelState as { currentModelId?: string } | null)?.currentModelId ?? "",
+    availModelsLen: (s.modelState as { availableModels?: unknown[] } | null)?.availableModels?.length ?? 0,
+    currentModeId: (s.modeState as { currentModeId?: string } | null)?.currentModeId ?? "",
+    availModesLen: (s.modeState as { availableModes?: unknown[] } | null)?.availableModes?.length ?? 0,
+    cmdsLen: (s.availableCommands as unknown[])?.length ?? 0,
+    totalTokens: (s.tokenUsage as { totalTokens?: number } | null)?.totalTokens ?? 0,
+    capabilitiesKeys: s.capabilities ? Object.keys(s.capabilities as Record<string, unknown>).length : 0,
+    isSwitchingSession: (s.isSwitchingSession as boolean) ? 1 : 0,
+  });
+}
+
+/**
  * 创建 Yjs 外部 store
  *
  * @param computeSnapshot - 纯函数，从给定 Y.Doc 计算业务快照
@@ -41,7 +85,11 @@ type UpdateHandler = (update: Uint8Array, origin: unknown, doc: Y.Doc) => void;
  *   }
  *   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
  */
-export function createYjsStore<T>(computeSnapshot: (ydoc: Y.Doc) => T, initialSnapshot: T): YjsStore<T> {
+export function createYjsStore<T>(
+  computeSnapshot: (ydoc: Y.Doc) => T,
+  initialSnapshot: T,
+  computeSnapshotKey: (s: Record<string, unknown>) => string = computeSessionSnapshotKey,
+): YjsStore<T> {
   // 内部状态
   let ydoc: Y.Doc | null = null; // 当前活跃的 Y.Doc
   let snapshot: T = initialSnapshot; // 最新计算的快照
@@ -49,6 +97,9 @@ export function createYjsStore<T>(computeSnapshot: (ydoc: Y.Doc) => T, initialSn
   const listeners = new Set<() => void>(); // React 注册的 listener 集合
   let activeKey = ""; // 当前活跃的 key（幂等保护：相同 key 重复 switchDoc 是 no-op）
   let cleanupFn: (() => void) | null = null; // createDoc 返回的可选清理函数
+
+  // P0-3: snapshot caching — only notify React when computed snapshot actually changes
+  let prevSnapshotKey = "";
 
   function notify() {
     // 遍历 listeners 通知 React（React 会批量处理重渲染）
@@ -60,7 +111,11 @@ export function createYjsStore<T>(computeSnapshot: (ydoc: Y.Doc) => T, initialSn
   /** 在 update 事件回调中重算快照并通知 React */
   function recompute() {
     if (!ydoc) return;
-    snapshot = computeSnapshot(ydoc);
+    const next = computeSnapshot(ydoc);
+    const nextKey = computeSnapshotKey(next as unknown as Record<string, unknown>);
+    if (nextKey === prevSnapshotKey) return; // no change, skip notify
+    prevSnapshotKey = nextKey;
+    snapshot = next;
     notify();
   }
 
@@ -127,6 +182,7 @@ export function createYjsStore<T>(computeSnapshot: (ydoc: Y.Doc) => T, initialSn
 
     // 4. 立即计算初始快照
     snapshot = computeSnapshot(ydoc);
+    prevSnapshotKey = "";
     notify();
   }
 

@@ -144,10 +144,9 @@ export function setChatTokenUsage(
 export async function openSession(userId: string, agentId: string, rcsSessionId: string): Promise<SessionDoc> {
   const existing = sessionDocs.get(rcsSessionId);
   if (existing) {
-    // 清除缓存会话可能遗留的脏 loading 状态。
+    // 清除缓存会话可能遗留的脏 loading 状态
     const meta = existing.ydoc.getMap("meta");
     if (meta.get("loading") !== null) {
-      console.log(`[SessionState] openSession(hit): clearing stale loading for ${rcsSessionId}`);
       meta.set("loading", null);
     }
     return existing;
@@ -164,13 +163,9 @@ export async function openSession(userId: string, agentId: string, rcsSessionId:
 
   const doc = loadSessionDoc(rcsSessionId, redis);
   // 清除从 Redis 加载可能遗留的脏 loading 状态。
-  // 注意：loadSessionDoc 内部通过 RedisProvider 异步加载 Redis 数据（getBuffer → Y.applyUpdate），
-  // 若在此时同步清除 loading，Redis 异步回调可能在之后执行并用旧状态覆盖掉 null 值。
-  // 因此用 setImmediate（Node）/ setTimeout(0)（Bun）将清除动作推迟到下一个 macrotask，
-  // 确保先行的 Redis getBuffer.then（microtask）先执行完毕。
+  // 用 setTimeout(0)（Bun）将清除动作推迟到下一个 macrotask，确保先行的 Redis getBuffer.then（microtask）先执行完毕。
   const scheduleClear = () => {
     doc.ydoc.getMap("meta").set("loading", null);
-    console.log(`[SessionState] openSession(new): deferred clear loading for ${rcsSessionId}`);
   };
   if (typeof setImmediate === "function") {
     setImmediate(scheduleClear);
@@ -284,15 +279,7 @@ export function handlePermissionResolution(
 export function registerSession(rcsSessionId: string, summary: SessionSummary): void {
   const doc = chatDocs.get(rcsSessionId);
   if (doc) {
-    // 🔍 DEBUG: 打印写入的 session 数据
-    console.debug(
-      `[YJS-WRITE] registerSession rcsSessionId=${rcsSessionId} sessionId=${summary.sessionId} title="${summary.title}" status=${summary.status}`,
-    );
     addSession(doc.ydoc, summary);
-  } else {
-    console.debug(
-      `[YJS-WRITE] registerSession rcsSessionId=${rcsSessionId} sessionId=${summary.sessionId} SKIP (no ChatDoc)`,
-    );
   }
 }
 

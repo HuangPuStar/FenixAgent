@@ -129,7 +129,6 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         }
         meta.set("status", "done");
         meta.set("loading", null);
-        console.log(`[ACP-Agg] prompt_complete: cleared loading for session`);
         meta.set("updatedAt", Date.now());
         break;
       }
@@ -384,7 +383,6 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
           // 终端/空闲状态清除 loading，确保切换回已完成会话时不会显示加载态
           if (update === "done" || update === "idle" || update === "error") {
             meta.set("loading", null);
-            console.log(`[ACP-Agg] session_update ${update}: cleared loading`);
           }
         }
         meta.set("updatedAt", Date.now());
@@ -396,7 +394,6 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
       case "error": {
         meta.set("status", "error");
         meta.set("loading", null);
-        console.log(`[ACP-Agg] ${event.type}: cleared loading`);
         meta.set("updatedAt", Date.now());
         break;
       }
@@ -444,7 +441,6 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
           label: "Agent is thinking...",
           since: Date.now(),
         });
-        console.log("[ACP-Agg] user_message_chunk: set loading");
         meta.set("updatedAt", Date.now());
 
         // Phase C: 结构化消息 — user_message 条目
