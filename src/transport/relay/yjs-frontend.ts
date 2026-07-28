@@ -21,7 +21,7 @@ import { environmentRepo } from "../../repositories/environment";
 import { markInstanceRelayAttached, markInstanceRelayDetached } from "../../services/acp-idle-monitor";
 import { getRedisConnection } from "../../services/cache";
 import {
-  closeSession,
+  clearSessionDocContent,
   getChat,
   openChat,
   openSession,
@@ -909,6 +909,7 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
     if (action === "load_session" || action === "create_session") {
       // load_session: 前端传的是目标 ACP session ID
       // create_session: 前端不传 sessionId，agent 响应后会更新
+
       if (action === "load_session") {
         const rawSid = parsed.sessionId;
         log(`[YJS-FE] load_session request: sessionId=${rawSid} (type=${typeof rawSid})`);
@@ -920,29 +921,29 @@ export async function handleYjsWsMessage(ws: WsConnection, wsId: string, data: s
           });
           return;
         }
-        const targetSid = rawSid;
-
-        // 销毁目标 Session Doc（内存 + Redis），防止 agent 回放历史时消息重复。
-        // 会话 doc 按 rcsSessionId 存储，清理时使用 rcsSessionId 作为 key。
-        // 如果多次 load 同一 rcsSession，先清除旧数据再重建。
-        log(`[YJS-FE] clearing session doc for load: rcsSessionId=${entry.rcsSessionId} targetSid=${targetSid}`);
-        await closeSession(entry.rcsSessionId);
-        unregisterYjsDocListener(`session:${entry.rcsSessionId}`);
-        const redis = getRedisConnection();
-        if (redis) {
-          await redis.del(`yjs:session:${entry.rcsSessionId}`).catch((err) => {
-            logError(`[YJS-FE] Failed to clear Redis for session ${entry.rcsSessionId}:`, err);
-          });
-        }
-        log(`[YJS-FE] pre-creating session doc for load: rcsSessionId=${entry.rcsSessionId}`);
-        entry.acpSessionId = targetSid;
-        try {
-          const sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
-          registerYjsDocListener(sessionDoc.ydoc, `session:${entry.rcsSessionId}`);
-        } catch (err) {
-          logError("[YJS-FE] Failed to pre-create session doc:", err);
-        }
+        entry.acpSessionId = rawSid;
       }
+
+      // 确保 Session Doc 在内存（已存在则复用，不存在则创建），
+      // 然后 Y.Doc 事务内原地清空内容，替代 destroy+recreate，消除竞态。
+      let sessionDoc: Awaited<ReturnType<typeof openSession>>;
+      try {
+        sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+      } catch (err) {
+        logError("[YJS-FE] Failed to open session doc for clear:", err);
+        return;
+      }
+      clearSessionDocContent(entry.rcsSessionId);
+
+      // 同步清空 Redis，避免重启后被旧数据覆盖
+      const redis = getRedisConnection();
+      if (redis) {
+        const cleared = Y.encodeStateAsUpdate(sessionDoc.ydoc);
+        redis.set(`yjs:session:${entry.rcsSessionId}`, Buffer.from(cleared).toString("base64")).catch(() => {});
+      }
+
+      // 注册监听（已注册则跳过）
+      registerYjsDocListener(sessionDoc.ydoc, `session:${entry.rcsSessionId}`);
     }
 
     // 【用户消息写入 Session Doc】send_prompt 时提取 content 中的 text，先写后发

@@ -235,6 +235,30 @@ export async function closeSession(rcsSessionId: string): Promise<void> {
   }
 }
 
+/**
+ * 在 Y.Doc 事务内原地清空 Session Doc 的全部内容。
+ * 用于会话切换（load/create）时重置状态，避免 destroy+recreate 的竞态。
+ */
+export function clearSessionDocContent(rcsSessionId: string): void {
+  const doc = sessionDocs.get(rcsSessionId);
+  if (!doc) return;
+  doc.ydoc.transact(() => {
+    const messages = doc.ydoc.getArray("messages");
+    messages.delete(0, messages.length);
+    const structuredMessages = doc.ydoc.getArray("structuredMessages");
+    structuredMessages.delete(0, structuredMessages.length);
+    const streaming = doc.ydoc.getMap("streaming");
+    streaming.clear();
+    const tools = doc.ydoc.getMap("tools");
+    tools.clear();
+    const artifacts = doc.ydoc.getArray("artifacts");
+    artifacts.delete(0, artifacts.length);
+    const meta = doc.ydoc.getMap("meta");
+    meta.set("status", "idle");
+    meta.set("loading", null);
+  });
+}
+
 // ── 用户操作 ──
 
 export function registerUserMessage(rcsSessionId: string, content: string): void {
