@@ -312,6 +312,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [onRespondPermission],
   );
 
+  // Stable callback matching ChatView's onPermissionRespond signature (3-param)
+  const handlePermissionRespond = useCallback(
+    (requestId: string, optionId: string | null, _optionKind: string | null) => {
+      handlePermissionResponse(requestId, optionId);
+    },
+    [handlePermissionResponse],
+  );
+
   // =============================================================================
   // Render helpers
   // =============================================================================
@@ -458,9 +466,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         <ChatView
           entries={renderEntries}
           isLoading={isLoading && !sessionReady ? false : isLoading}
-          onPermissionRespond={(requestId, optionId) => {
-            handlePermissionResponse(requestId, optionId);
-          }}
+          onPermissionRespond={handlePermissionRespond}
           emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
           emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}

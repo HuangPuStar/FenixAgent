@@ -3,7 +3,8 @@
 import type { ChatStateSnapshot, ConnectionStatus, SessionSummary } from "@fenix/acp-server";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
-import { computeChatSnapshotKey, createYjsStore } from "./yjs-store";
+import { stableKey } from "./yjs-snapshot-key";
+import { createYjsStore } from "./yjs-store";
 
 /** 从 Y.Doc 同步读取 ChatStateSnapshot（纯函数，无副作用） */
 function computeChatSnapshot(ydoc: Y.Doc): ChatStateSnapshot {
@@ -115,6 +116,14 @@ function computeChatSnapshot(ydoc: Y.Doc): ChatStateSnapshot {
   };
 }
 
+/**
+ * Chat 领域快照去重 key — 覆盖全部 UI 字段。
+ * 使用 stableKey 对整个快照做稳定序列化，确保任意 UI 相关字段变化都会触发通知。
+ */
+function getChatSnapshotKey(s: ChatStateSnapshot): string {
+  return stableKey(s);
+}
+
 function getInitialChatSnapshot(): ChatStateSnapshot {
   return {
     agentInfo: { id: "", name: "" },
@@ -143,7 +152,7 @@ export function useChatState(rcsSessionId: string) {
     storeRef.current = createYjsStore<ChatStateSnapshot>(
       computeChatSnapshot,
       getInitialChatSnapshot(),
-      computeChatSnapshotKey,
+      getChatSnapshotKey,
     );
   }
   const store = storeRef.current;

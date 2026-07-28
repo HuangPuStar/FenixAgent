@@ -10,6 +10,7 @@ import type {
 } from "@fenix/acp-server";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
+import { stableKey } from "./yjs-snapshot-key";
 import { createYjsStore } from "./yjs-store";
 
 /** 从 Y.Doc 同步读取 SessionStateSnapshot（纯函数，无副作用，不捕获外部 key） */
@@ -123,6 +124,15 @@ function computeSessionSnapshot(ydoc: Y.Doc): SessionStateSnapshot {
   };
 }
 
+/**
+ * Session 领域快照去重 key — 覆盖全部 UI 字段（含 messages content、
+ * tool_call output/status、streaming、permission、loading 等）。
+ * 使用 stableKey 对整个快照做稳定序列化，任意 UI 字段变化都会触发通知。
+ */
+function getSessionSnapshotKey(s: SessionStateSnapshot): string {
+  return stableKey(s);
+}
+
 function getInitialSessionSnapshot(rcsSessionId: string): SessionStateSnapshot {
   return {
     acpSessionId: rcsSessionId,
@@ -151,6 +161,7 @@ export function useSessionState(rcsSessionId: string) {
     storeRef.current = createYjsStore<SessionStateSnapshot>(
       computeSessionSnapshot,
       getInitialSessionSnapshot(rcsSessionId),
+      getSessionSnapshotKey,
     );
   }
   const store = storeRef.current;
@@ -172,18 +183,6 @@ export function useSessionState(rcsSessionId: string) {
 
   // 3. useSyncExternalStore — subscribe 和 getSnapshot 是稳定引用
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
-
-  // debug: 每次 YJS 状态更新时打印工具调用的原始数据
-  useEffect(() => {
-    const sm = state.structuredMessages;
-    if (sm.length === 0) return;
-    const toolMsgs = sm.filter((m) => m.type === "tool_call");
-    if (toolMsgs.length === 0) return;
-    console.group(`%c[YJS-DEBUG] sm=${sm.length} tool=${toolMsgs.length}`, "color: #e07b00; font-weight: bold");
-    console.log("structuredMessages →", toolMsgs);
-    console.log("state.tools →", [...state.tools.entries()]);
-    console.groupEnd();
-  }, [state.structuredMessages, state.tools]);
 
   // 4. 组件卸载时清理 store
   useEffect(() => {

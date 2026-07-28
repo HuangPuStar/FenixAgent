@@ -100,10 +100,11 @@ export const ChatView = React.memo(
       </Conversation>
     );
   },
-  // P0-3: 仅比较稳定引用字段；onPermissionRespond 始终是新引用，排除
+  // 比较所有 prop 引用（含 onPermissionRespond），因为调用方现在传入稳定 useCallback
   (prev, next) =>
     prev.entries === next.entries &&
     prev.isLoading === next.isLoading &&
+    prev.onPermissionRespond === next.onPermissionRespond &&
     prev.emptyTitle === next.emptyTitle &&
     prev.emptyDescription === next.emptyDescription &&
     prev.agentName === next.agentName &&
@@ -169,10 +170,11 @@ const EntryRenderer = React.memo(
         return null;
     }
   },
-  // P0-3: custom comparator excluding onPermissionRespond (always a new reference from inline arrow)
+  // 比较所有 prop 引用（含 onPermissionRespond），调用方传入稳定 useCallback
   (prev, next) =>
     prev.entry === next.entry &&
     prev.isLoading === next.isLoading &&
+    prev.onPermissionRespond === next.onPermissionRespond &&
     prev.sessionId === next.sessionId &&
     prev.envId === next.envId,
 );

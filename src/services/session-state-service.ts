@@ -30,7 +30,6 @@ import {
   updateSession,
 } from "@fenix/acp-server";
 import { log, error as logError } from "@fenix/logger";
-import type { Redis } from "ioredis";
 import type * as Y from "yjs";
 import { getRedisConnection } from "./cache";
 
@@ -141,7 +140,7 @@ export function setChatTokenUsage(
 // ── Session 级别 ──
 
 /** 注意: openSession 不再自动创建 Chat Doc。调用方必须确保 openChat(rcsSessionId) 已调用。 */
-export async function openSession(userId: string, agentId: string, rcsSessionId: string): Promise<SessionDoc> {
+export async function openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
   const existing = sessionDocs.get(rcsSessionId);
   if (existing) {
     // 清除缓存会话可能遗留的脏 loading 状态
@@ -232,26 +231,34 @@ export async function closeSession(rcsSessionId: string): Promise<void> {
 
 /**
  * 在 Y.Doc 事务内原地清空 Session Doc 的全部内容。
+ * 供真实文档和持久化前的克隆快照共用，确保清空规则一致。
+ */
+export function clearSessionYDocContent(ydoc: Y.Doc): void {
+  ydoc.transact(() => {
+    const messages = ydoc.getArray("messages");
+    messages.delete(0, messages.length);
+    const structuredMessages = ydoc.getArray("structuredMessages");
+    structuredMessages.delete(0, structuredMessages.length);
+    const streaming = ydoc.getMap("streaming");
+    streaming.clear();
+    const tools = ydoc.getMap("tools");
+    tools.clear();
+    const artifacts = ydoc.getArray("artifacts");
+    artifacts.delete(0, artifacts.length);
+    const meta = ydoc.getMap("meta");
+    meta.set("status", "idle");
+    meta.set("loading", null);
+  });
+}
+
+/**
+ * 在 Y.Doc 事务内原地清空 Session Doc 的全部内容。
  * 用于会话切换（load/create）时重置状态，避免 destroy+recreate 的竞态。
  */
 export function clearSessionDocContent(rcsSessionId: string): void {
   const doc = sessionDocs.get(rcsSessionId);
   if (!doc) return;
-  doc.ydoc.transact(() => {
-    const messages = doc.ydoc.getArray("messages");
-    messages.delete(0, messages.length);
-    const structuredMessages = doc.ydoc.getArray("structuredMessages");
-    structuredMessages.delete(0, structuredMessages.length);
-    const streaming = doc.ydoc.getMap("streaming");
-    streaming.clear();
-    const tools = doc.ydoc.getMap("tools");
-    tools.clear();
-    const artifacts = doc.ydoc.getArray("artifacts");
-    artifacts.delete(0, artifacts.length);
-    const meta = doc.ydoc.getMap("meta");
-    meta.set("status", "idle");
-    meta.set("loading", null);
-  });
+  clearSessionYDocContent(doc.ydoc);
 }
 
 // ── 用户操作 ──

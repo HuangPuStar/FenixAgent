@@ -15,7 +15,12 @@ import {
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
-import { handleYjsWsClose, handleYjsWsMessage, handleYjsWsOpen } from "../../transport/relay/yjs-frontend";
+import {
+  createDeterministicRcsSessionId,
+  handleYjsWsClose,
+  handleYjsWsMessage,
+  handleYjsWsOpen,
+} from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
@@ -287,12 +292,19 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
       const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
-      const sessionId = (ws.data.query?.sessionId as string | undefined) ?? null;
+      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId);
+
+      const env = await environmentRepo.getById(agentId);
+      const authCtx = authResult.authContext;
+      if (!env || !authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
 
       log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId}`);
 
       try {
-        await handleYjsWsOpen(adaptWs(ws), yjsWsId, userId, agentId, sessionId);
+        await handleYjsWsOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);
