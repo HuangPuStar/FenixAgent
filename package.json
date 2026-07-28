@@ -119,6 +119,7 @@
     "use-stick-to-bottom": "^1.1.4",
     "uuid": "^14.0.0",
     "vitepress-mermaid-renderer": "^1.1.27",
+    "yjs": "^13.6.31",
     "zod": "^4.4.3"
   },
   "devDependencies": {

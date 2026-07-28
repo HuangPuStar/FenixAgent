@@ -12,8 +12,6 @@ RUN apt-get install -y --no-install-recommends \
        python3 python3-pip python3-venv \
        curl jq git ripgrep zip unzip
 RUN rm -rf /var/lib/apt/lists/*
-RUN printf 'registry=%s\n' \
-    'https://registry.npmmirror.com/' > /root/.npmrc
 
 # 安装 Claude Code (CCB) 和 ACP Runtime CLI
 RUN npm install -g claude-code-best@2.8.1 @fenix-agent/acp-runtime-cli
