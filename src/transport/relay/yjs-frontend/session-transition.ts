@@ -83,6 +83,9 @@ export class SessionTransition {
       entry.acpSessionId = sessionId;
       entry.sessionLoaded = true;
       this.dependencies.syncSessionId(entry, sessionId);
+      // P1: 此处 return true 会向 agent 发送 session/load RPC，可能触发全量回放。
+      // 如果 Session Doc 已有内容（来自之前的回放），其他客户端会收到重复消息。
+      // 若未来观察到多客户端重复消息，改为 return false 即可（快照已在内存中）。
       return true;
     }
 
