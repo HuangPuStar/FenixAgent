@@ -50,17 +50,20 @@ export function addSession(ydoc: Y.Doc, session: SessionSummary): void {
  * 无差异时跳过事务，避免空轮询触发不必要的 yjs:update 广播。
  */
 export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
+  if (sessions.length === 0) return;
+
   const sessionsArray = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
 
-  // 快速差异检测：数量不等或有新增/删除则一定有变化
-  if (sessionsArray.length === sessions.length) {
-    const existingIndex = new Map<string, Y.Map<unknown>>();
-    for (let i = 0; i < sessionsArray.length; i++) {
-      const s = sessionsArray.get(i);
-      const id = s.get("sessionId") as string | undefined;
-      if (id) existingIndex.set(id, s);
-    }
+  // 构建已有 session 索引（差异检测和事务复用同一份）
+  const existingIndex = new Map<string, Y.Map<unknown>>();
+  for (let i = 0; i < sessionsArray.length; i++) {
+    const s = sessionsArray.get(i);
+    const id = s.get("sessionId") as string | undefined;
+    if (id) existingIndex.set(id, s);
+  }
 
+  // 快速差异检测：数量相同、ID 集合相同、各字段均无变化 → 跳过事务
+  if (sessionsArray.length === sessions.length) {
     let hasChanges = false;
     for (const session of sessions) {
       const existing = existingIndex.get(session.sessionId);
@@ -80,34 +83,24 @@ export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
         break;
       }
     }
-    if (!hasChanges) {
-      // 数量相同、ID 集合相同、各字段均无变化 → 跳过事务
-      return;
-    }
+    if (!hasChanges) return;
   }
 
   ydoc.transact(() => {
-    const sessionsArray = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
-    const existingById = new Map<string, number>();
-
-    for (let i = 0; i < sessionsArray.length; i++) {
-      const id = sessionsArray.get(i).get("sessionId") as string | undefined;
-      if (id) existingById.set(id, i);
-    }
-
     const incoming = new Set<string>();
 
     for (const session of sessions) {
       incoming.add(session.sessionId);
-      const idx = existingById.get(session.sessionId);
-      if (idx !== undefined) {
-        const s = sessionsArray.get(idx);
-        s.set("title", session.title);
-        s.set("preview", session.preview);
-        s.set("status", session.status);
-        s.set("lastMsgTs", session.lastMsgTs);
-        if (session.cwd) s.set("cwd", session.cwd);
-        if (session.updatedAt) s.set("updatedAt", session.updatedAt);
+      const existing = existingIndex.get(session.sessionId);
+      if (existing) {
+        // 复用差异检测的 Y.Map 引用原地更新
+        existing.set("title", session.title);
+        existing.set("preview", session.preview);
+        existing.set("status", session.status);
+        existing.set("lastMsgTs", session.lastMsgTs);
+        // 使用显式 set(null) 替代 truthy check，支持清除字段
+        existing.set("cwd", session.cwd ?? null);
+        existing.set("updatedAt", session.updatedAt ?? null);
       } else {
         const map = new Y.Map<unknown>();
         map.set("sessionId", session.sessionId);

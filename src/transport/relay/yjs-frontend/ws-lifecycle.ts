@@ -379,6 +379,11 @@ export class WsLifecycle {
       shared.sessionListTimer = undefined;
     }
     try {
+      this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
+    } catch {
+      /* ignore */
+    }
+    try {
       shared.unsubscribe?.();
     } catch {
       /* ignore */

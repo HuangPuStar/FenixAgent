@@ -344,7 +344,7 @@ export function hasSessionDocContent(rcsSessionId: string): boolean {
 // ── 用户操作 ──
 
 export function registerUserMessage(rcsSessionId: string, content: string): void {
-  processACP(rcsSessionId, { type: "user_message", payload: { text: content } });
+  processACP(rcsSessionId, { type: "user_message_chunk", payload: { content: { type: "text", text: content } } });
 }
 
 export function handlePermissionRequest(rcsSessionId: string, perm: PermissionRequest): void {
