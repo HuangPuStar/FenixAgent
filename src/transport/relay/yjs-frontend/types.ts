@@ -40,4 +40,6 @@ export interface SharedRelay {
   workspacePath: string;
   /** session/list 定时轮询器，用于同步 agent 侧 session 变更到 Chat Doc */
   sessionListTimer?: ReturnType<typeof setInterval>;
+  /** 销毁标志，timer 回调中检查避免被 GC 前仍发送 RPC */
+  destroyed?: boolean;
 }

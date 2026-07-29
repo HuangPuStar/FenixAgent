@@ -243,28 +243,37 @@ function flushACPBatch(rcsSessionId: string): void {
   const doc = sessionDocs.get(rcsSessionId);
   if (!doc || batch.events.length === 0) return;
 
-  if (batch.events.length === 1) {
-    applyACPEvent(doc.ydoc, batch.events[0]);
-  } else {
-    // 多个事件合并到一个 Y.Doc 事务，N 个 session/update 帧 → 1 个 yjs:update
-    doc.ydoc.transact(() => {
-      for (const event of batch.events) {
-        applyACPEvent(doc.ydoc, event);
-      }
-    });
+  try {
+    if (batch.events.length === 1) {
+      applyACPEvent(doc.ydoc, batch.events[0]);
+    } else {
+      // 多个事件合并到一个 Y.Doc 事务，N 个 session/update 帧 → 1 个 yjs:update
+      doc.ydoc.transact(() => {
+        for (const event of batch.events) {
+          applyACPEvent(doc.ydoc, event);
+        }
+      });
+    }
+  } catch (err) {
+    logError(`[session-state] flushACPBatch failed for ${rcsSessionId}, ${batch.events.length} events lost`, err);
   }
 }
 
 export function processACP(rcsSessionId: string, event: ACPEvent): void {
   const doc = sessionDocs.get(rcsSessionId);
   if (!doc) {
-    log(`[session-state] Session ${rcsSessionId} not in memory, skipping ACP event`);
+    log(`[session-state] Session ${rcsSessionId} not in memory, skipping ACP event type=${event.type}`);
     return;
   }
 
   // 控制类事件直接应用，不参与批处理。但必须先刷新 pending 内容批次，保证顺序
   if (!BATCHABLE_EVENT_TYPES.has(event.type)) {
-    flushACPBatch(rcsSessionId);
+    // flush 失败不阻止控制事件 apply，避免前端 loading 状态卡住
+    try {
+      flushACPBatch(rcsSessionId);
+    } catch (err) {
+      logError(`[session-state] flushACPBatch failed before control event ${event.type}:`, err);
+    }
     applyACPEvent(doc.ydoc, event);
     return;
   }
@@ -289,10 +298,11 @@ export function cancelACPBatch(rcsSessionId: string): void {
 
 export async function closeSession(rcsSessionId: string): Promise<void> {
   cancelACPBatch(rcsSessionId);
+  // 提前从 Map 删除阻止新事件写入正在 destroy 的 Doc
   const doc = sessionDocs.get(rcsSessionId);
+  sessionDocs.delete(rcsSessionId);
   if (doc) {
     await doc.destroy();
-    sessionDocs.delete(rcsSessionId);
   }
 }
 
@@ -400,8 +410,9 @@ export function getSessionYdoc(rcsSessionId: string): Y.Doc | undefined {
 // ── 清理 ──
 
 export async function closeAll(): Promise<void> {
-  // 清理未刷新的 ACP 批次
-  for (const rcsSessionId of acpBatchBuffers.keys()) {
+  // 快照 keys，避免迭代期间 cancelACPBatch 修改 Map
+  const batchKeys = [...acpBatchBuffers.keys()];
+  for (const rcsSessionId of batchKeys) {
     cancelACPBatch(rcsSessionId);
   }
 

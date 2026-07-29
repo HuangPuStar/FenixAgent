@@ -241,6 +241,7 @@ export class WsLifecycle {
       }
       // 启动 session/list 定时轮询，同步 agent 侧 session 变更
       shared.sessionListTimer = setInterval(() => {
+        if (shared.destroyed) return;
         if (!registry.hasStatusReceived(shared.agentId, shared.instanceId)) return;
         try {
           shared.handle.send(translateSimpleAction({ action: "list_sessions" }, shared.workspacePath) as never);
@@ -374,6 +375,7 @@ export class WsLifecycle {
 
   private closeReleasedRelay(shared: SharedRelay | undefined): void {
     if (!shared) return;
+    shared.destroyed = true;
     if (shared.sessionListTimer) {
       clearInterval(shared.sessionListTimer);
       shared.sessionListTimer = undefined;

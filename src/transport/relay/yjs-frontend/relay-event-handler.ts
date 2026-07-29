@@ -126,8 +126,9 @@ export class RelayEventHandler {
 
     try {
       this.dependencies.processACP(shared.rcsSessionId, extractAcpEvent(raw, msgType));
-    } catch {
-      // 聚合失败不阻塞
+    } catch (err) {
+      // 聚合失败不阻塞 relay 消息流转，但上报供排查
+      this.dependencies.reportError("[YJS-FE] processACP failed, ACP event skipped:", err);
     }
 
     const sessionRpc = extractJsonRpc(raw);
