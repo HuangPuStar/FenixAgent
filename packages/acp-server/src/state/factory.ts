@@ -2,8 +2,8 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { createRedisProvider } from "./redis-provider";
-import type { ChatDoc, RedisProvider, SessionDoc } from "./types";
+import { createRedisProvider } from "../persist/redis";
+import type { ChatDoc, RedisProvider, SessionDoc } from "../types";
 
 /** Redis 连接类型（单实例或集群） */
 type RedisConn = Redis | Cluster;

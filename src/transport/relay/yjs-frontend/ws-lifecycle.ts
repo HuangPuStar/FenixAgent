@@ -1,6 +1,7 @@
+import type { DocManager } from "@fenix/acp-server";
+import { createDeterministicRcsSessionId, translateSimpleAction } from "@fenix/acp-server";
 import { AppError } from "../../../errors";
 import type { WsConnection } from "../../ws-types";
-import { translateSimpleAction } from "./action-translator";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { RelayEventHandler } from "./relay-event-handler";
 import { InvalidSessionIdError, type SessionTransition } from "./session-transition";
@@ -10,24 +11,13 @@ import type { YjsBroadcaster } from "./yjs-broadcaster";
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更到 Chat Doc */
 const SESSION_LIST_POLL_INTERVAL = 10_000;
-
-/**
- * 生成服务端控制的 RCS 会话标识。
- *
- * 环境和用户 ID 都是无格式约束的字符串；分别使用完整 UTF-8 的 base64url 编码，
- * 再以不属于 base64url 字母表的 `.` 分隔，使结果可逆且不引入截断或哈希碰撞风险。
- */
-export function createDeterministicRcsSessionId(
-  agentId: string,
-  userId: string,
-  _clientSessionId?: string | null,
-): string {
-  return `rcs_${Buffer.from(agentId, "utf8").toString("base64url")}.${Buffer.from(userId, "utf8").toString("base64url")}`;
-}
+/** 兜底 JSON-RPC id 计数器，当 SharedRelay 不可用时使用 */
+let entryRelayNextId = 0;
 
 export type ForwardYjsActionDependencies = {
   workspacePath: string | null;
   send: (message: Record<string, unknown>) => Promise<void> | void;
+  getNextRpcId: () => number;
   transition: Pick<SessionTransition, "beforeForward" | "afterForward">;
   sendError: (data: unknown) => void;
   reportError: (message: string, error: unknown) => void;
@@ -58,7 +48,7 @@ export async function forwardYjsAction(
     return;
   }
 
-  const rpc = translateSimpleAction(action, dependencies.workspacePath);
+  const rpc = translateSimpleAction(action, dependencies.workspacePath, dependencies.getNextRpcId());
   try {
     await dependencies.send(rpc);
   } catch (err) {
@@ -101,13 +91,7 @@ export interface WsLifecycleDependencies {
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
   ensureRunning: (userId: string, agentId: string, mode: "interactive") => Promise<{ instance: { id: string } }>;
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<SharedRelay["handle"]>;
-  openChat: (rcsSessionId: string) => Promise<{ ydoc: import("yjs").Doc }>;
-  openSession: (userId: string, agentId: string, rcsSessionId: string) => Promise<{ ydoc: import("yjs").Doc }>;
-  setChatAgentInfo: (rcsSessionId: string, info: { id: string; name: string }) => void | Promise<void>;
-  setChatConnectionStatus: (
-    rcsSessionId: string,
-    status: { status: "connected" | "connecting" | "disconnected"; since: number },
-  ) => void;
+  docManager: DocManager;
   markRelayAttached: (instanceId: string) => void;
   markRelayDetached: (instanceId: string) => void;
   reportLog: (message: string) => void;
@@ -194,6 +178,7 @@ export class WsLifecycle {
           instanceId,
           rcsSessionId: resolvedRcsSessionId,
           workspacePath,
+          nextRpcId: 0,
         };
         const fullHandle = handle as SharedRelay["handle"] & {
           onMessage?: (callback: ReturnType<RelayEventHandler["createMessageHandler"]>) => () => void;
@@ -230,9 +215,9 @@ export class WsLifecycle {
       this.dependencies.markRelayAttached(instanceId);
       shared.idleMonitorAttached = true;
       try {
-        const chatDoc = await this.dependencies.openChat(shared.rcsSessionId);
+        const chatDoc = await this.dependencies.docManager.openChat(shared.rcsSessionId);
         broadcaster.registerYjsDocListener(chatDoc.ydoc, `chat:${shared.rcsSessionId}`);
-        await this.dependencies.setChatAgentInfo(shared.rcsSessionId, {
+        await this.dependencies.docManager.setChatAgentInfo(shared.rcsSessionId, {
           id: agentId,
           name: environment.machineName ?? agentId,
         });
@@ -244,7 +229,9 @@ export class WsLifecycle {
         if (shared.destroyed) return;
         if (!registry.hasStatusReceived(shared.agentId, shared.instanceId)) return;
         try {
-          shared.handle.send(translateSimpleAction({ action: "list_sessions" }, shared.workspacePath) as never);
+          shared.handle.send(
+            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+          );
         } catch {
           /* 轮询失败静默忽略，下个周期重试 */
         }
@@ -291,9 +278,12 @@ export class WsLifecycle {
     };
     registry.addClient(wsId, entry);
 
-    this.dependencies.setChatConnectionStatus(shared.rcsSessionId, { status: "connected", since: Date.now() });
+    this.dependencies.docManager.setChatConnectionStatus(shared.rcsSessionId, {
+      status: "connected",
+      since: Date.now(),
+    });
     try {
-      const chatDoc = await this.dependencies.openChat(shared.rcsSessionId);
+      const chatDoc = await this.dependencies.docManager.openChat(shared.rcsSessionId);
       broadcaster.sendSnapshot(ws, chatDoc.ydoc, `chat:${shared.rcsSessionId}`);
       const activeSessionId = chatDoc.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
       if (activeSessionId) entry.acpSessionId = activeSessionId;
@@ -301,7 +291,7 @@ export class WsLifecycle {
       this.dependencies.reportError("[YJS-FE] Failed to push chat init state:", err);
     }
     try {
-      const sessionDoc = await this.dependencies.openSession(userId, agentId, shared.rcsSessionId);
+      const sessionDoc = await this.dependencies.docManager.openSession(userId, agentId, shared.rcsSessionId);
       broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
       broadcaster.sendSnapshot(ws, sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
     } catch (err) {
@@ -398,9 +388,11 @@ export class WsLifecycle {
   }
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
+    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId);
     await forwardYjsAction(entry, action, {
       workspacePath: entry.workspacePath,
       send: (message) => entry.relayHandle.send(message as never),
+      getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
       transition: this.dependencies.transition,
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
@@ -408,9 +400,11 @@ export class WsLifecycle {
   }
 
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {
+    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId);
     await flushPendingYjsActions(entry, pending, {
       workspacePath: entry.workspacePath,
       send: (message) => entry.relayHandle.send(message as never),
+      getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
       transition: this.dependencies.transition,
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,

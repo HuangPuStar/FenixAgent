@@ -1,14 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { createDeterministicRcsSessionId, DocManager } from "@fenix/acp-server";
 import * as Y from "yjs";
 import { AppError } from "../errors";
 import { ConnectionRegistry } from "../transport/relay/yjs-frontend/connection-registry";
 import { RelayEventHandler } from "../transport/relay/yjs-frontend/relay-event-handler";
 import type { ClientConnection, RelayMessage, SharedRelay } from "../transport/relay/yjs-frontend/types";
-import {
-  createDeterministicRcsSessionId,
-  WsLifecycle,
-  type WsLifecycleDependencies,
-} from "../transport/relay/yjs-frontend/ws-lifecycle";
+import { WsLifecycle, type WsLifecycleDependencies } from "../transport/relay/yjs-frontend/ws-lifecycle";
 import { YjsBroadcaster } from "../transport/relay/yjs-frontend/yjs-broadcaster";
 import type { WsConnection } from "../transport/ws-types";
 
@@ -36,6 +33,7 @@ function createSharedRelay(handle: SharedRelay["handle"]): SharedRelay {
     instanceId: "instance-1",
     rcsSessionId: "rcs-1",
     workspacePath: "/workspace",
+    nextRpcId: 0,
   };
 }
 
@@ -45,10 +43,8 @@ function createRelayEvents(
   processed: string[],
   reportError: (message: string, error: unknown) => void = () => {},
 ): RelayEventHandler {
-  return new RelayEventHandler({
-    registry,
-    broadcaster,
-    processACP: (_sessionId, event) => processed.push(event.type),
+  const mockDocManager = {
+    processACP: (_sessionId: string, event: unknown) => processed.push((event as { type: string }).type),
     setChatConnectionStatus: () => {},
     setChatAvailableCommands: () => {},
     setChatTokenUsage: () => {},
@@ -61,6 +57,12 @@ function createRelayEvents(
     setChatActiveSession: () => {},
     getChat: () => undefined,
     openSession: async () => ({ ydoc: new Y.Doc() }),
+  } as unknown as DocManager;
+
+  return new RelayEventHandler({
+    docManager: mockDocManager,
+    registry,
+    broadcaster,
     registerYjsDocListener: () => {},
     reportError,
   });
@@ -71,8 +73,18 @@ function createLifecycle(
   broadcaster: YjsBroadcaster,
   relayEvents: RelayEventHandler,
   overrides: Partial<WsLifecycleDependencies> = {},
+  docManagerOverrides: Record<string, unknown> = {},
 ): WsLifecycle {
+  const mockDocManager = {
+    openChat: async () => ({ ydoc: new Y.Doc() }),
+    openSession: async () => ({ ydoc: new Y.Doc() }),
+    setChatAgentInfo: () => {},
+    setChatConnectionStatus: () => {},
+    ...docManagerOverrides,
+  } as unknown as DocManager;
+
   return new WsLifecycle({
+    docManager: mockDocManager,
     registry,
     broadcaster,
     relayEvents,
@@ -82,10 +94,6 @@ function createLifecycle(
     resolveWorkspacePath: () => "/workspace",
     ensureRunning: async () => ({ instance: { id: "instance-1" } }),
     connectAgentRelay: async () => ({ state: "open", send() {}, close() {} }) as never,
-    openChat: async () => ({ ydoc: new Y.Doc() }),
-    openSession: async () => ({ ydoc: new Y.Doc() }),
-    setChatAgentInfo: () => {},
-    setChatConnectionStatus: () => {},
     markRelayAttached: () => {},
     markRelayDetached: () => {},
     reportLog: () => {},
@@ -262,24 +270,31 @@ describe("YJS frontend internal handlers", () => {
     const snapshot = deferred<{ ydoc: Y.Doc }>();
     const sent: unknown[] = [];
     let openChatCalls = 0;
-    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
-      connectAgentRelay: async () =>
-        ({
-          state: "open",
-          send(message: unknown) {
-            sent.push(message);
-          },
-          close() {},
-        }) as never,
-      openChat: async () => {
-        openChatCalls += 1;
-        if (openChatCalls === 2) {
-          snapshotStarted.resolve();
-          return snapshot.promise;
-        }
-        return { ydoc: new Y.Doc() };
+    const lifecycle = createLifecycle(
+      registry,
+      broadcaster,
+      relayEvents,
+      {
+        connectAgentRelay: async () =>
+          ({
+            state: "open",
+            send(message: unknown) {
+              sent.push(message);
+            },
+            close() {},
+          }) as never,
       },
-    });
+      {
+        openChat: async () => {
+          openChatCalls += 1;
+          if (openChatCalls === 2) {
+            snapshotStarted.resolve();
+            return snapshot.promise;
+          }
+          return { ydoc: new Y.Doc() };
+        },
+      },
+    );
     const ws = createWs();
     const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
     await snapshotStarted.promise;
@@ -384,11 +399,11 @@ describe("YJS frontend internal handlers", () => {
     const firstUserId = "user-12345678-alpha";
     const secondUserId = "user-12345678-bravo";
 
-    expect(createDeterministicRcsSessionId(agentId, firstUserId, "client-session-a")).toBe(
+    expect(createDeterministicRcsSessionId(agentId, firstUserId)).toBe(
       "rcs_YWdlbnQtc2hhcmVkLXByZWZpeA.dXNlci0xMjM0NTY3OC1hbHBoYQ",
     );
-    expect(createDeterministicRcsSessionId(agentId, firstUserId, "client-session-a")).toBe(
-      createDeterministicRcsSessionId(agentId, firstUserId, "client-session-b"),
+    expect(createDeterministicRcsSessionId(agentId, firstUserId)).toBe(
+      createDeterministicRcsSessionId(agentId, firstUserId),
     );
     expect(createDeterministicRcsSessionId(agentId, firstUserId)).not.toBe(
       createDeterministicRcsSessionId(agentId, secondUserId),
@@ -550,9 +565,7 @@ describe("YJS frontend internal handlers", () => {
   test("broadcasts relay error messages to all users of the same instance", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
-    const handler = new RelayEventHandler({
-      registry,
-      broadcaster,
+    const mockDocManager = {
       processACP: () => {},
       setChatConnectionStatus: () => {},
       setChatAvailableCommands: () => {},
@@ -566,6 +579,11 @@ describe("YJS frontend internal handlers", () => {
       setChatActiveSession: () => {},
       getChat: () => undefined,
       openSession: async () => ({ ydoc: new Y.Doc() }),
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
       registerYjsDocListener: () => {},
       reportError: () => {},
     });
@@ -619,6 +637,7 @@ describe("YJS frontend internal handlers", () => {
       instanceId: "instance-1",
       rcsSessionId: "rcs-a",
       workspacePath: "/workspace",
+      nextRpcId: 0,
     };
     await handler.createMessageHandler(relay)({
       type: "error",
@@ -634,9 +653,7 @@ describe("YJS frontend internal handlers", () => {
   test("session/new from user-a does not overwrite user-b's acpSessionId", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
-    const handler = new RelayEventHandler({
-      registry,
-      broadcaster,
+    const mockDocManager2 = {
       processACP: () => {},
       setChatConnectionStatus: () => {},
       setChatAvailableCommands: () => {},
@@ -650,6 +667,11 @@ describe("YJS frontend internal handlers", () => {
       setChatActiveSession: () => {},
       getChat: () => undefined,
       openSession: async () => ({ ydoc: new Y.Doc() }),
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager2,
+      registry,
+      broadcaster,
       registerYjsDocListener: () => {},
       reportError: () => {},
     });
@@ -699,6 +721,7 @@ describe("YJS frontend internal handlers", () => {
       instanceId: "instance-1",
       rcsSessionId: "rcs-a",
       workspacePath: "/workspace",
+      nextRpcId: 0,
     };
     await handler.createMessageHandler(relay)({
       jsonrpc: "2.0",
@@ -761,6 +784,7 @@ describe("YJS frontend internal handlers", () => {
       instanceId: "instance-1",
       rcsSessionId: "rcs-a",
       workspacePath: "/workspace",
+      nextRpcId: 0,
     };
 
     // user-a 的 update 带 user-a 没有 acpSessionId（null），即使 user-b 有 active session 也不应被过滤。

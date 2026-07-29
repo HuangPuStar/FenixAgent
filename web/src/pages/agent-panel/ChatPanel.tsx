@@ -1,3 +1,4 @@
+import { createDeterministicRcsSessionId } from "@fenix/acp-server";
 import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/useSessions";
-import { createDeterministicRcsSessionId } from "../../hooks/yjs-rcs-id";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { buildYjsUrl, createYjsWs, type YjsWsState } from "../../yjs/yjs-ws";

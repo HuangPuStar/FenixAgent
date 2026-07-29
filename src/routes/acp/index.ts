@@ -15,12 +15,7 @@ import {
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
-import {
-  createDeterministicRcsSessionId,
-  handleYjsWsClose,
-  handleYjsWsMessage,
-  handleYjsWsOpen,
-} from "../../transport/relay/yjs-frontend";
+import { createDeterministicRcsSessionId, lifecycle } from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
@@ -304,7 +299,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId}`);
 
       try {
-        await handleYjsWsOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId);
+        await lifecycle.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);
@@ -324,14 +319,14 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
         const text = typeof data === "string" ? data : JSON.stringify(data);
-        handleYjsWsMessage(adaptWs(ws), yjsWsId, text);
+        lifecycle.handleMessage(adaptWs(ws), yjsWsId, text);
       }
     },
     close(ws) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
-        handleYjsWsClose(yjsWsId);
+        lifecycle.handleClose(yjsWsId);
       }
     },
   });

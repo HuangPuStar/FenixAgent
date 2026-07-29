@@ -33,6 +33,7 @@ function createSharedRelay(overrides: Partial<SharedRelay> = {}): SharedRelay {
     instanceId: "instance-1",
     rcsSessionId: "rcs-1",
     workspacePath: "/workspace",
+    nextRpcId: 0,
     ...overrides,
   };
 }

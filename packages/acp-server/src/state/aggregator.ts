@@ -1,6 +1,6 @@
 // packages/acp-server/src/aggregator.ts
 import * as Y from "yjs";
-import type { ACPEvent } from "./types";
+import type { ACPEvent } from "../types";
 
 /**
  * 处理一个 ACP 事件，在其对应的 Session Doc 上执行状态变更。

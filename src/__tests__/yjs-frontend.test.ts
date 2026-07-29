@@ -1,17 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import {
-  handleYjsWsClose,
-  handleYjsWsMessage,
-  handleYjsWsOpen,
-  translateSimpleAction,
-} from "../transport/relay/yjs-frontend";
+import { translateSimpleAction } from "../transport/relay/yjs-frontend";
 
-describe("translateSimpleAction compatibility facade", () => {
-  // 稳定 facade 必须继续暴露路由所需的 WS 生命周期 handlers 与 action 翻译器。
-  test("exports websocket lifecycle handlers", () => {
-    expect(handleYjsWsOpen).toBeFunction();
-    expect(handleYjsWsMessage).toBeFunction();
-    expect(handleYjsWsClose).toBeFunction();
+describe("translateSimpleAction", () => {
+  // translateSimpleAction 须继续从 yjs-frontend index 重新导出，供路由使用。
+  test("exports translateSimpleAction", () => {
     expect(translateSimpleAction).toBeFunction();
   });
 
@@ -20,8 +12,8 @@ describe("translateSimpleAction compatibility facade", () => {
     const firstWorkspacePath = "/tmp/fenix-workspaces/org_001/user_001/env_001";
     const secondWorkspacePath = "/tmp/fenix-workspaces/org_001/user_001/env_002";
 
-    const firstRpc = translateSimpleAction({ action: "list_sessions" }, firstWorkspacePath);
-    const secondRpc = translateSimpleAction({ action: "list_sessions" }, secondWorkspacePath);
+    const firstRpc = translateSimpleAction({ action: "list_sessions" }, firstWorkspacePath, 1);
+    const secondRpc = translateSimpleAction({ action: "list_sessions" }, secondWorkspacePath, 1);
 
     expect(firstRpc).toMatchObject({
       jsonrpc: "2.0",

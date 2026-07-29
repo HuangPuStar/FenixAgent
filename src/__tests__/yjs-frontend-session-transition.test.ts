@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { DocManager } from "@fenix/acp-server";
 import * as Y from "yjs";
 import { persistClearedSessionSnapshot } from "../transport/relay/yjs-frontend";
 import {
@@ -11,6 +12,7 @@ import {
 const entry = (overrides: Partial<SessionTransitionEntry> = {}): SessionTransitionEntry => ({
   userId: "user-1",
   agentId: "agent-1",
+  instanceId: "instance-1",
   rcsSessionId: "rcs-1",
   acpSessionId: null,
   agentStatusReceived: true,
@@ -83,20 +85,26 @@ class SnapshotRedisDouble {
 function createDependencies() {
   const calls: string[] = [];
   const events: Array<{ rcsSessionId: string; type: string; payload: Record<string, unknown> }> = [];
-  const dependencies: SessionTransitionDependencies = {
+  const mockDocManager = {
     openSession: async () => {
       calls.push("open");
     },
     clearSessionDocContent: () => {
       calls.push("clear");
     },
+    hasSessionDocContent: () => false,
+    processACP: (rcsSessionId: string, event: { type: string; payload: Record<string, unknown> }) => {
+      calls.push(`process:${event.type}`);
+      events.push({ rcsSessionId, ...event });
+    },
+  } as unknown as DocManager;
+  const dependencies: SessionTransitionDependencies = {
+    docManager: mockDocManager,
     prepareClearSessionSnapshot: async () => {
       calls.push("prepare");
     },
-    hasSessionDocContent: () => false,
-    processACP: (rcsSessionId, event) => {
-      calls.push(`process:${event.type}`);
-      events.push({ rcsSessionId, ...event });
+    syncSessionId: () => {
+      calls.push("sync");
     },
     reportError: (message) => {
       calls.push(`error:${message}`);
@@ -230,7 +238,7 @@ describe("SessionTransition", () => {
 
     expect(await beforeForward).toBe(true);
     expect(completed).toBe(true);
-    expect(calls).toEqual(["prepare", "clear"]);
+    expect(calls).toEqual(["prepare", "clear", "sync"]);
     expect(connection.acpSessionId).toBe("session-new");
   });
 

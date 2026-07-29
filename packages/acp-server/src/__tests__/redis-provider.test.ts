@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { createRedisProvider, persistYjsClearedSnapshotWithCas } from "../redis-provider";
+import { createRedisProvider, persistYjsClearedSnapshotWithCas } from "../persist/redis";
 
 type MessageListener = (channel: Buffer | string, message: Buffer) => void;
 type ErrorListener = () => void;

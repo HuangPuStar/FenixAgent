@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DocManager } from "@fenix/acp-server";
 import { flushPendingYjsActions, forwardYjsAction } from "../transport/relay/yjs-frontend";
 import {
   SessionTransition,
@@ -6,10 +7,13 @@ import {
   type SessionTransitionEntry,
 } from "../transport/relay/yjs-frontend/session-transition";
 
+let testRpcId = 0;
+
 function createEntry(): SessionTransitionEntry {
   return {
     userId: "user-1",
     agentId: "agent-1",
+    instanceId: "instance-1",
     rcsSessionId: "rcs-1",
     acpSessionId: "session-1",
     agentStatusReceived: true,
@@ -19,13 +23,16 @@ function createEntry(): SessionTransitionEntry {
 
 function createTransition(events: string[], overrides: Partial<SessionTransitionDependencies> = {}): SessionTransition {
   const dependencies: SessionTransitionDependencies = {
-    openSession: async () => undefined,
-    clearSessionDocContent: () => {},
+    docManager: {
+      openSession: async () => undefined,
+      clearSessionDocContent: () => {},
+      hasSessionDocContent: () => false,
+      processACP: (_rcsSessionId: string, event: any) => {
+        events.push(event.type);
+      },
+    } as unknown as DocManager,
     prepareClearSessionSnapshot: async () => {},
-    hasSessionDocContent: () => false,
-    processACP: (_rcsSessionId, event) => {
-      events.push(event.type);
-    },
+    syncSessionId: () => {},
     reportError: () => {},
     ...overrides,
   };
@@ -56,6 +63,7 @@ describe("forwardYjsAction", () => {
         send: () => sendResult.promise,
         transition: createTransition(events),
         sendError: () => {},
+        getNextRpcId: () => ++testRpcId,
         reportError: () => {},
       },
     );
@@ -82,6 +90,7 @@ describe("forwardYjsAction", () => {
         send: () => sendResult.promise,
         transition: createTransition(events),
         sendError: (error) => errors.push(error),
+        getNextRpcId: () => ++testRpcId,
         reportError: () => {},
       },
     );
@@ -101,9 +110,14 @@ describe("forwardYjsAction", () => {
     let clearCalls = 0;
     const connection = createEntry();
     const transition = createTransition([], {
-      clearSessionDocContent: () => {
-        clearCalls += 1;
-      },
+      docManager: {
+        openSession: async () => undefined,
+        clearSessionDocContent: () => {
+          clearCalls += 1;
+        },
+        hasSessionDocContent: () => false,
+        processACP: () => {},
+      } as unknown as DocManager,
       prepareClearSessionSnapshot: async () => {
         throw new Error("Redis unavailable");
       },
@@ -119,6 +133,7 @@ describe("forwardYjsAction", () => {
         },
         transition,
         sendError: (error) => errors.push(error),
+        getNextRpcId: () => ++testRpcId,
         reportError: (message, error) => logs.push({ message, error }),
       },
     );
@@ -142,6 +157,7 @@ describe("forwardYjsAction", () => {
         send: () => {},
         transition: createTransition(events),
         sendError: () => {},
+        getNextRpcId: () => ++testRpcId,
         reportError: () => {},
       },
     );
@@ -179,6 +195,7 @@ describe("forwardYjsAction", () => {
         sendError: (error) => {
           errors.push(error);
         },
+        getNextRpcId: () => ++testRpcId,
         reportError: (message, error) => {
           logs.push({ message, error });
         },

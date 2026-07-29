@@ -4,9 +4,8 @@
 //   快照未变时不额外通知；不参与 snapshot 的字段变化不通知。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createYjsStore, stableKey } from "@fenix/acp-server";
 import * as Y from "yjs";
-import { stableKey } from "../hooks/yjs-snapshot-key";
-import { createYjsStore } from "../hooks/yjs-store";
 
 // ── 辅助类型和函数 ──
 

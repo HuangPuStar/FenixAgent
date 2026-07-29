@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { clearSessionYDocContent } from "@fenix/acp-server";
 import * as Y from "yjs";
-import { clearSessionYDocContent } from "../services/session-state-service";
 
 describe("clearSessionYDocContent", () => {
   // 清空规则必须同时覆盖旧消息、结构化消息、流式状态、工具、产物及元数据状态。

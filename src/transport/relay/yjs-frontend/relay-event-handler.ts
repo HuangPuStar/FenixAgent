@@ -1,6 +1,10 @@
+import type { DocManager } from "@fenix/acp-server";
+import {
+  extractModelStateFromConfigOptions,
+  extractModeStateFromConfigOptions,
+  translateSimpleAction,
+} from "@fenix/acp-server";
 import { extractAcpEvent, extractJsonRpc } from "../relay-handler";
-import { translateSimpleAction } from "./action-translator";
-import { extractModelStateFromConfigOptions, extractModeStateFromConfigOptions } from "./config-options";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ClientConnection, RelayMessage, SharedRelay } from "./types";
 import type { YjsBroadcaster } from "./yjs-broadcaster";
@@ -8,56 +12,7 @@ import type { YjsBroadcaster } from "./yjs-broadcaster";
 export interface RelayEventHandlerDependencies {
   registry: ConnectionRegistry;
   broadcaster: YjsBroadcaster;
-  processACP: (rcsSessionId: string, event: ReturnType<typeof extractAcpEvent>) => void;
-  setChatConnectionStatus: (
-    rcsSessionId: string,
-    status: { status: "connected" | "connecting" | "disconnected"; since: number },
-  ) => void;
-  setChatAvailableCommands: (rcsSessionId: string, commands: Array<{ name: string; description?: string }>) => void;
-  setChatTokenUsage: (
-    rcsSessionId: string,
-    usage: { totalTokens?: number; inputTokens?: number; outputTokens?: number },
-  ) => void;
-  setChatCapabilities: (rcsSessionId: string, capabilities: Record<string, unknown>) => void;
-  setChatAgentInfo: (
-    rcsSessionId: string,
-    info: { id: string; name: string; model?: { id: string; name: string } },
-  ) => void;
-  setChatModelState: (
-    rcsSessionId: string,
-    state: NonNullable<ReturnType<typeof extractModelStateFromConfigOptions>>,
-  ) => void;
-  setChatModeState: (
-    rcsSessionId: string,
-    state: NonNullable<ReturnType<typeof extractModeStateFromConfigOptions>>,
-  ) => void;
-  registerSession: (
-    rcsSessionId: string,
-    session: {
-      sessionId: string;
-      title: string;
-      preview: string;
-      status: "active";
-      lastMsgTs: number;
-      updatedAt: string;
-    },
-  ) => void;
-  setChatActiveSession: (rcsSessionId: string, sessionId: string) => void;
-  getChat: (
-    rcsSessionId: string,
-  ) => { ydoc: { getMap: (name: string) => { get: (key: string) => unknown } } } | undefined;
-  openSession: (userId: string, agentId: string, rcsSessionId: string) => Promise<{ ydoc: import("yjs").Doc }>;
-  syncChatSessions: (
-    rcsSessionId: string,
-    sessions: Array<{
-      sessionId: string;
-      title: string;
-      preview: string;
-      status: "active";
-      lastMsgTs: number;
-      updatedAt: string;
-    }>,
-  ) => void;
+  docManager: DocManager;
   registerYjsDocListener: (ydoc: import("yjs").Doc, docName: string) => void;
   reportError: (message: string, error: unknown) => void;
 }
@@ -91,7 +46,10 @@ export class RelayEventHandler {
     }
 
     if (msgType === "relay_closed") {
-      this.dependencies.setChatConnectionStatus(shared.rcsSessionId, { status: "disconnected", since: Date.now() });
+      this.dependencies.docManager.setChatConnectionStatus(shared.rcsSessionId, {
+        status: "disconnected",
+        since: Date.now(),
+      });
       const entries: ClientConnection[] = [];
       registry.forEachByInstance(shared.agentId, shared.instanceId, (entry) => entries.push(entry));
       for (const entry of entries) {
@@ -114,7 +72,10 @@ export class RelayEventHandler {
 
     if (msgType === "error") {
       this.dependencies.reportError("[YJS-FE] agent error", { messageType: msgType, instanceId: shared.instanceId });
-      this.dependencies.setChatConnectionStatus(shared.rcsSessionId, { status: "disconnected", since: Date.now() });
+      this.dependencies.docManager.setChatConnectionStatus(shared.rcsSessionId, {
+        status: "disconnected",
+        since: Date.now(),
+      });
       this.sendToMatchingClients(shared, raw);
       return;
     }
@@ -125,7 +86,7 @@ export class RelayEventHandler {
     }
 
     try {
-      this.dependencies.processACP(shared.rcsSessionId, extractAcpEvent(raw, msgType));
+      this.dependencies.docManager.processACP(shared.rcsSessionId, extractAcpEvent(raw, msgType));
     } catch (err) {
       // 聚合失败不阻塞 relay 消息流转，但上报供排查
       this.dependencies.reportError("[YJS-FE] processACP failed, ACP event skipped:", err);
@@ -136,7 +97,8 @@ export class RelayEventHandler {
       const update = (sessionRpc.params as Record<string, unknown>).update as Record<string, unknown>;
       if (update.sessionUpdate === "available_commands_update") {
         const commands = update.availableCommands as Array<{ name: string; description?: string }> | undefined;
-        if (commands && commands.length > 0) this.dependencies.setChatAvailableCommands(shared.rcsSessionId, commands);
+        if (commands && commands.length > 0)
+          this.dependencies.docManager.setChatAvailableCommands(shared.rcsSessionId, commands);
       }
     }
 
@@ -151,16 +113,16 @@ export class RelayEventHandler {
     }
     if (!usage && msgType === "prompt_complete")
       usage = (raw.payload as Record<string, unknown>)?.usage as typeof usage;
-    if (usage) this.dependencies.setChatTokenUsage(shared.rcsSessionId, usage);
+    if (usage) this.dependencies.docManager.setChatTokenUsage(shared.rcsSessionId, usage);
 
     if (msgType === "status") {
       const payload = raw.payload as Record<string, unknown> | undefined;
       const capabilities = payload?.capabilities as Record<string, unknown> | undefined;
-      if (capabilities) this.dependencies.setChatCapabilities(shared.rcsSessionId, capabilities);
+      if (capabilities) this.dependencies.docManager.setChatCapabilities(shared.rcsSessionId, capabilities);
       const agentInfo = payload?.agentInfo as Record<string, unknown> | undefined;
       if (agentInfo) {
         const model = agentInfo.model as { id?: string; name?: string } | undefined;
-        this.dependencies.setChatAgentInfo(shared.rcsSessionId, {
+        this.dependencies.docManager.setChatAgentInfo(shared.rcsSessionId, {
           id: shared.agentId,
           name: (agentInfo.name as string) || shared.agentId,
           model: model ? { id: model.id || "", name: model.name || "" } : undefined,
@@ -172,7 +134,9 @@ export class RelayEventHandler {
       });
       if (needsListSessions) {
         try {
-          await shared.handle.send(translateSimpleAction({ action: "list_sessions" }, shared.workspacePath) as never);
+          await shared.handle.send(
+            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+          );
         } catch (err) {
           this.dependencies.reportError(
             `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
@@ -194,7 +158,7 @@ export class RelayEventHandler {
         const sessions = listPayload.sessions as Array<Record<string, unknown>> | undefined;
         if (Array.isArray(sessions)) {
           this.syncSessions(shared.rcsSessionId, sessions);
-          const chatDoc = this.dependencies.getChat(shared.rcsSessionId);
+          const chatDoc = this.dependencies.docManager.getChat(shared.rcsSessionId);
           const activeSessionId = chatDoc?.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
           if (!activeSessionId) {
             const latestSessionId = [...sessions].sort((a, b) => {
@@ -202,7 +166,8 @@ export class RelayEventHandler {
               const bTime = b.updatedAt ? new Date(b.updatedAt as string).getTime() : 0;
               return bTime - aTime;
             })[0]?.sessionId as string | undefined;
-            if (latestSessionId) this.dependencies.setChatActiveSession(shared.rcsSessionId, latestSessionId);
+            if (latestSessionId)
+              this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, latestSessionId);
           }
           return;
         }
@@ -223,9 +188,13 @@ export class RelayEventHandler {
           | NonNullable<ReturnType<typeof extractModeStateFromConfigOptions>>
           | null
           | undefined;
-        if (models) this.dependencies.setChatModelState(shared.rcsSessionId, models);
-        if (modes) this.dependencies.setChatModeState(shared.rcsSessionId, modes);
-        const sessionDoc = await this.dependencies.openSession(shared.userId, shared.agentId, shared.rcsSessionId);
+        if (models) this.dependencies.docManager.setChatModelState(shared.rcsSessionId, models);
+        if (modes) this.dependencies.docManager.setChatModeState(shared.rcsSessionId, modes);
+        const sessionDoc = await this.dependencies.docManager.openSession(
+          shared.userId,
+          shared.agentId,
+          shared.rcsSessionId,
+        );
         this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
         const currentSessionId = registry.findActiveSessionIdByUser(shared.agentId, shared.instanceId, shared.userId);
         const isNewSession = currentSessionId !== newSessionId;
@@ -234,7 +203,7 @@ export class RelayEventHandler {
         });
         if (isNewSession) {
           const now = Date.now();
-          this.dependencies.registerSession(shared.rcsSessionId, {
+          this.dependencies.docManager.registerSession(shared.rcsSessionId, {
             sessionId: newSessionId,
             title: "",
             preview: "",
@@ -243,9 +212,9 @@ export class RelayEventHandler {
             updatedAt: new Date(now).toISOString(),
           });
         }
-        this.dependencies.setChatActiveSession(shared.rcsSessionId, newSessionId);
+        this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
         if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
-          this.dependencies.processACP(shared.rcsSessionId, {
+          this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",
             payload: { sessionUpdate: "ready" },
           });
@@ -285,7 +254,7 @@ export class RelayEventHandler {
         };
       });
     if (summaries.length > 0) {
-      this.dependencies.syncChatSessions(rcsSessionId, summaries);
+      this.dependencies.docManager.syncChatSessions(rcsSessionId, summaries);
     }
   }
 }

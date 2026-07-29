@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { translateSimpleAction } from "../transport/relay/yjs-frontend/action-translator";
+import { translateSimpleAction } from "@fenix/acp-server";
 
 describe("translateSimpleAction", () => {
   // 每个已支持的前端 action 都应映射到既有的 ACP method 和参数形状
@@ -47,7 +47,7 @@ describe("translateSimpleAction", () => {
     ];
 
     for (const { action, method, params } of cases) {
-      expect(translateSimpleAction(action, workspacePath)).toMatchObject({
+      expect(translateSimpleAction(action, workspacePath, 1)).toMatchObject({
         jsonrpc: "2.0",
         method,
         params,
@@ -59,6 +59,6 @@ describe("translateSimpleAction", () => {
   test("passes through unknown actions unchanged", () => {
     const action = { action: "custom_action", payload: { enabled: true } };
 
-    expect(translateSimpleAction(action)).toBe(action);
+    expect(translateSimpleAction(action, undefined, 1)).toBe(action);
   });
 });

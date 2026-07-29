@@ -42,4 +42,6 @@ export interface SharedRelay {
   sessionListTimer?: ReturnType<typeof setInterval>;
   /** 销毁标志，timer 回调中检查避免被 GC 前仍发送 RPC */
   destroyed?: boolean;
+  /** JSON-RPC 请求 id 递增计数器，保证同一 instance 下 translateSimpleAction 生成唯一 id */
+  nextRpcId: number;
 }

@@ -1,3 +1,5 @@
+import type { DocManager } from "@fenix/acp-server";
+
 export class InvalidSessionIdError extends Error {
   constructor(readonly sessionId: unknown) {
     super("load_session requires a valid sessionId");
@@ -8,6 +10,7 @@ export class InvalidSessionIdError extends Error {
 export interface SessionTransitionEntry {
   userId: string;
   agentId: string;
+  instanceId: string;
   rcsSessionId: string;
   acpSessionId: string | null;
   agentStatusReceived: boolean;
@@ -16,11 +19,10 @@ export interface SessionTransitionEntry {
 }
 
 export interface SessionTransitionDependencies {
-  openSession: (userId: string, agentId: string, rcsSessionId: string) => Promise<unknown>;
-  clearSessionDocContent: (rcsSessionId: string) => void;
+  docManager: DocManager;
   prepareClearSessionSnapshot: (entry: SessionTransitionEntry) => Promise<void>;
-  processACP: (rcsSessionId: string, event: { type: string; payload: Record<string, unknown> }) => void;
-  hasSessionDocContent: (rcsSessionId: string) => boolean;
+  /** 会话切换（load/create）后同步 acpSessionId 到同一 instance+user 的所有客户端 */
+  syncSessionId: (entry: SessionTransitionEntry, newSessionId: string) => void;
   reportError: (message: string, error: unknown) => void;
 }
 
@@ -59,7 +61,7 @@ export class SessionTransition {
     if (action.action !== "cancel" || !entry.acpSessionId) return;
 
     try {
-      this.dependencies.processACP(entry.rcsSessionId, { type: "agent_message_complete", payload: {} });
+      this.dependencies.docManager.processACP(entry.rcsSessionId, { type: "agent_message_complete", payload: {} });
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] cancel: failed to clear session loading:", err);
     }
@@ -77,23 +79,25 @@ export class SessionTransition {
 
     // 防御：首次 load_session 且 Session Doc 已有内容时，
     // 说明是重连场景下 acpSessionId 恢复失败，不应清空已有消息。
-    if (!entry.sessionLoaded && this.dependencies.hasSessionDocContent(entry.rcsSessionId)) {
+    if (!entry.sessionLoaded && this.dependencies.docManager.hasSessionDocContent(entry.rcsSessionId)) {
       entry.acpSessionId = sessionId;
       entry.sessionLoaded = true;
+      this.dependencies.syncSessionId(entry, sessionId);
       return true;
     }
 
     await this.dependencies.prepareClearSessionSnapshot(entry);
-    this.dependencies.clearSessionDocContent(entry.rcsSessionId);
+    this.dependencies.docManager.clearSessionDocContent(entry.rcsSessionId);
     entry.acpSessionId = sessionId;
     entry.sessionLoaded = true;
+    this.dependencies.syncSessionId(entry, sessionId);
     return true;
   }
 
   private async prepareCreateSession(entry: SessionTransitionEntry): Promise<boolean> {
-    await this.dependencies.openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+    await this.dependencies.docManager.openSession(entry.userId, entry.agentId, entry.rcsSessionId);
     await this.dependencies.prepareClearSessionSnapshot(entry);
-    this.dependencies.clearSessionDocContent(entry.rcsSessionId);
+    this.dependencies.docManager.clearSessionDocContent(entry.rcsSessionId);
     return true;
   }
 
@@ -102,12 +106,12 @@ export class SessionTransition {
     if (!text) return;
 
     try {
-      await this.dependencies.openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+      await this.dependencies.docManager.openSession(entry.userId, entry.agentId, entry.rcsSessionId);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] Failed to ensure session doc for user message:", err);
     }
 
-    this.dependencies.processACP(entry.rcsSessionId, {
+    this.dependencies.docManager.processACP(entry.rcsSessionId, {
       type: "user_message_chunk",
       payload: { content: { type: "text", text } },
     });

@@ -1,10 +1,9 @@
 // web/src/hooks/use-chat-state.ts
 
 import type { ChatStateSnapshot, ConnectionStatus, SessionSummary } from "@fenix/acp-server";
+import { createYjsStore, stableKey } from "@fenix/acp-server";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
-import { stableKey } from "./yjs-snapshot-key";
-import { createYjsStore } from "./yjs-store";
 
 /** 从 Y.Doc 同步读取 ChatStateSnapshot（纯函数，无副作用） */
 function computeChatSnapshot(ydoc: Y.Doc): ChatStateSnapshot {

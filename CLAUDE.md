@@ -1,6 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working in this repository.
+1. 架构设计优先，维护优良的设计
+   1. 后端关注分布式性能，多租户、多用户设计，接口并发压力及规范性。
+   2. 后端需要维护数据流的纯净性，在数据传递时尽可能维护数据的独立转化
+   3. 前端关注渲染压力及异步状态管理，并发请求数目，UI 结构，UX 完整性
+2. 编码工作永远以架构为先， 功能要优先划分模块，代码要优先根据功能细分文件，一个文件的代码行数不可超过 500 行，
+3. 极度厌恶代码重复，尽可能复用模块和功能，实在需要重复的部分，需要写注释标注
+
 
 > ⚡ 速查：提交前 `bun run precheck` / 改前端后 `bun run build:web` / 改 schema 后 `bun run db:generate --name <name>` + `bun run db:migrate` / 先看下方“高风险陷阱”
 

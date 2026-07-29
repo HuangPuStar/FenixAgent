@@ -1,6 +1,6 @@
 // packages/acp-server/src/chat-writer.ts
 import * as Y from "yjs";
-import type { AgentInfo, ConnectionStatus, PermissionRequest, SessionSummary } from "./types";
+import type { AgentInfo, ConnectionStatus, PermissionRequest, SessionSummary } from "../types";
 
 export function setConnectionStatus(ydoc: Y.Doc, status: ConnectionStatus): void {
   ydoc.transact(() => {
@@ -258,5 +258,19 @@ export function setTokenUsage(
     if (usage.totalTokens != null) map.set("totalTokens", usage.totalTokens);
     if (usage.inputTokens != null) map.set("inputTokens", usage.inputTokens);
     if (usage.outputTokens != null) map.set("outputTokens", usage.outputTokens);
+  });
+}
+
+/** 在 Y.Doc 事务内原地清空 Session Doc 的全部内容，避免 destroy+recreate 的竞态。 */
+export function clearSessionYDocContent(ydoc: Y.Doc): void {
+  ydoc.transact(() => {
+    ydoc.getArray("messages").delete(0, ydoc.getArray("messages").length);
+    ydoc.getArray("structuredMessages").delete(0, ydoc.getArray("structuredMessages").length);
+    ydoc.getMap("streaming").clear();
+    ydoc.getMap("tools").clear();
+    ydoc.getArray("artifacts").delete(0, ydoc.getArray("artifacts").length);
+    const meta = ydoc.getMap("meta");
+    meta.set("status", "idle");
+    meta.set("loading", null);
   });
 }

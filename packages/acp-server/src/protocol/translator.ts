@@ -1,16 +1,23 @@
-/** JSON-RPC 请求 id 计数器（无 id 的请求被当作 notification，agent 不会返回 result） */
-let rpcIdSeq = 0;
+// packages/acp-server/src/action-translator.ts
+// 前端 action → ACP JSON-RPC 翻译。
+// 纯函数，不依赖任何 I/O 或框架。
 
 /**
  * 将前端的简化操作转换为 ACP JSON-RPC 请求。
- * workspacePath 始终由服务端根据已认证的 environment 解析，不能信任浏览器传入的路径。
+ *
+ * workspacePath 由服务端根据已认证的 environment 解析，不可信任浏览器传入的值。
+ *
+ * @param parsed  前端发来的 { action, ... }
+ * @param workspacePath 环境工作目录（服务端解析后注入）
+ * @param rpcId   JSON-RPC 请求 id。调用方必须提供，避免消息被当作 notification 而非 request。
  */
 export function translateSimpleAction(
   parsed: Record<string, unknown>,
-  workspacePath?: string | null,
+  workspacePath: string | null | undefined,
+  rpcId: number,
 ): Record<string, unknown> {
   const action = parsed.action as string;
-  const id = ++rpcIdSeq;
+  const id = rpcId;
   switch (action) {
     case "send_prompt":
       return { jsonrpc: "2.0", id, method: "session/prompt", params: { content: parsed.content } };

@@ -8,10 +8,9 @@ import type {
   StructuredMessage,
   ToolRun,
 } from "@fenix/acp-server";
+import { createYjsStore, stableKey } from "@fenix/acp-server";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
-import { stableKey } from "./yjs-snapshot-key";
-import { createYjsStore } from "./yjs-store";
 
 /** 从 Y.Doc 同步读取 SessionStateSnapshot（纯函数，无副作用，不捕获外部 key） */
 function computeSessionSnapshot(ydoc: Y.Doc): SessionStateSnapshot {

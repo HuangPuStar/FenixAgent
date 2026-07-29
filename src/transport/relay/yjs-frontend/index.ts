@@ -1,29 +1,11 @@
-import { persistYjsClearedSnapshotWithCas } from "@fenix/acp-server";
+import { clearSessionYDocContent, persistYjsClearedSnapshotWithCas } from "@fenix/acp-server";
 import { log, error as logError } from "@fenix/logger";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { environmentRepo } from "../../../repositories/environment";
 import { markInstanceRelayAttached, markInstanceRelayDetached } from "../../../services/acp-idle-monitor";
 import { getRedisConnection } from "../../../services/cache";
-import {
-  clearSessionDocContent,
-  clearSessionYDocContent,
-  getChat,
-  hasSessionDocContent,
-  openChat,
-  openSession,
-  processACP,
-  registerSession,
-  setChatActiveSession,
-  setChatAgentInfo,
-  setChatAvailableCommands,
-  setChatCapabilities,
-  setChatConnectionStatus,
-  setChatModelState,
-  setChatModeState,
-  setChatTokenUsage,
-  syncChatSessions,
-} from "../../../services/session-state-service";
+import { docManager } from "../../../services/doc-manager-instance";
 import { resolveWorkspacePath } from "../../../services/workspace-resolver";
 import { ConnectionRegistry } from "./connection-registry";
 import { RelayEventHandler } from "./relay-event-handler";
@@ -31,9 +13,8 @@ import { SessionTransition } from "./session-transition";
 import { WsLifecycle } from "./ws-lifecycle";
 import { YjsBroadcaster } from "./yjs-broadcaster";
 
-export { translateSimpleAction } from "./action-translator";
+export { createDeterministicRcsSessionId, translateSimpleAction } from "@fenix/acp-server";
 export {
-  createDeterministicRcsSessionId,
   type ForwardYjsActionDependencies,
   flushPendingYjsActions,
   forwardYjsAction,
@@ -56,34 +37,27 @@ export async function persistClearedSessionSnapshot(
 const registry = new ConnectionRegistry();
 const broadcaster = new YjsBroadcaster(registry);
 const sessionTransition = new SessionTransition({
-  openSession,
-  clearSessionDocContent,
-  hasSessionDocContent,
+  docManager,
   prepareClearSessionSnapshot: async (entry) => {
     const redis = getRedisConnection();
     if (!redis) return;
-    const sessionDoc = await openSession(entry.userId, entry.agentId, entry.rcsSessionId);
+    const sessionDoc = await docManager.openSession(entry.userId, entry.agentId, entry.rcsSessionId);
     await persistClearedSessionSnapshot(redis, `yjs:session:${entry.rcsSessionId}`, sessionDoc.ydoc);
   },
-  processACP,
+  syncSessionId: (entry, newSessionId) => {
+    // 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端，
+    // 防止多客户端场景下一个客户端切会话后其他客户端因 acpSessionId 不匹配而看到空白
+    registry.forEachByInstanceUser(entry.agentId, entry.instanceId, entry.userId, (other) => {
+      other.acpSessionId = newSessionId;
+      other.sessionLoaded = true;
+    });
+  },
   reportError: logError,
 });
 const relayEvents = new RelayEventHandler({
   registry,
   broadcaster,
-  processACP,
-  setChatConnectionStatus,
-  setChatAvailableCommands,
-  setChatTokenUsage,
-  setChatCapabilities,
-  setChatAgentInfo,
-  setChatModelState,
-  setChatModeState,
-  registerSession,
-  setChatActiveSession,
-  getChat,
-  openSession,
-  syncChatSessions,
+  docManager,
   registerYjsDocListener: broadcaster.registerYjsDocListener.bind(broadcaster),
   reportError: logError,
 });
@@ -92,6 +66,7 @@ const lifecycle = new WsLifecycle({
   broadcaster,
   relayEvents,
   transition: sessionTransition,
+  docManager,
   getEnvironment: environmentRepo.getById.bind(environmentRepo),
   // 路由已使用 authContext 验证组织成员资格；这里仅作为纵深防御，不能把组织环境误当成个人环境。
   // 组织环境由 route 的 authContext 决定访问权；无 owner 的历史/桥接环境可继续访问。
@@ -104,10 +79,6 @@ const lifecycle = new WsLifecycle({
     (await import("../../../services/instance")).ensureRunning(userId, agentId, mode),
   connectAgentRelay: async (instanceId, rcsSessionId) =>
     (await import("../../agent-relay")).connectAgentRelay(instanceId, rcsSessionId),
-  openChat,
-  openSession,
-  setChatAgentInfo,
-  setChatConnectionStatus,
   markRelayAttached: markInstanceRelayAttached,
   markRelayDetached: markInstanceRelayDetached,
   reportLog: log,
@@ -115,15 +86,4 @@ const lifecycle = new WsLifecycle({
   maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
 });
 
-/** 兼容现有路由的稳定 facade 导出。 */
-export const handleYjsWsOpen = lifecycle.handleOpen.bind(lifecycle);
-/** 兼容现有路由的稳定 facade 导出。 */
-export const handleYjsWsMessage = lifecycle.handleMessage.bind(lifecycle);
-/** 兼容现有路由的稳定 facade 导出。 */
-export const handleYjsWsClose = lifecycle.handleClose.bind(lifecycle);
-/** 兼容既有调用方的 WebSocket 发送 helper。 */
-export const sendToYjsWs = broadcaster.sendToYjsWs.bind(broadcaster);
-/** 兼容既有调用方的 Y.Doc 监听注册 helper。 */
-export const registerYjsDocListener = broadcaster.registerYjsDocListener.bind(broadcaster);
-/** 兼容既有调用方的 Y.Doc 监听注销 helper。 */
-export const unregisterYjsDocListener = broadcaster.unregisterYjsDocListener.bind(broadcaster);
+export { lifecycle };

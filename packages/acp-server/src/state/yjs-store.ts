@@ -24,7 +24,7 @@ export interface YjsStore<T> {
 /**
  * 监听 Y.Doc 的 update 事件的回调类型
  */
-type UpdateHandler = (update: Uint8Array, origin: unknown, doc: Y.Doc) => void;
+export type UpdateHandler = (update: Uint8Array, origin: unknown, doc: Y.Doc) => void;
 
 /**
  * 创建 Yjs 外部 store

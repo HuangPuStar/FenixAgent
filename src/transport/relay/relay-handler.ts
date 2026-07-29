@@ -10,15 +10,7 @@ import {
 } from "../../services/acp-idle-monitor";
 import { getAgentConfigById } from "../../services/config/agent-config";
 import { getCoreRuntime } from "../../services/core-bootstrap";
-import {
-  closeSession,
-  openChat,
-  openSession,
-  processACP,
-  registerSession,
-  setChatAgentInfo,
-  setChatConnectionStatus,
-} from "../../services/session-state-service";
+import { docManager } from "../../services/doc-manager-instance";
 import { resolveWorkspacePath } from "../../services/workspace-resolver";
 import type { RelayConnectionEntry } from "../../types/store";
 import { findMachineConnectionById, getAgentMachineCache, sendToWs, setAgentMachineCache } from "../acp-ws-handler";
@@ -130,47 +122,55 @@ export function extractAcpEvent(
 // ── 简单 JSON 命令 → ACP JSON-RPC 翻译 ──
 // 前端休克疗法后改用 { action, ... } 格式，此处翻译回 ACP JSON-RPC。
 
+let relayRpcId = 0;
+
 export function translateSimpleAction(
   parsed: Record<string, unknown>,
   workspacePath?: string | null,
 ): Record<string, unknown> {
   const action = parsed.action as string;
+  const id = ++relayRpcId;
   switch (action) {
     case "send_prompt":
-      return { jsonrpc: "2.0", method: "session/prompt", params: { content: parsed.content } };
+      return { jsonrpc: "2.0", id, method: "session/prompt", params: { content: parsed.content } };
     case "cancel":
-      return { jsonrpc: "2.0", method: "session/cancel", params: {} };
+      return { jsonrpc: "2.0", id, method: "session/cancel", params: {} };
     case "create_session":
-      return { jsonrpc: "2.0", method: "session/new", params: { cwd: workspacePath } };
+      return { jsonrpc: "2.0", id, method: "session/new", params: { cwd: workspacePath } };
     case "load_session":
       return {
         jsonrpc: "2.0",
+        id,
         method: "session/load",
         params: { sessionId: parsed.sessionId, cwd: workspacePath },
       };
     case "resume_session":
       return {
         jsonrpc: "2.0",
+        id,
         method: "session/resume",
         params: { sessionId: parsed.sessionId, cwd: workspacePath },
       };
     case "list_sessions":
-      return { jsonrpc: "2.0", method: "session/list", params: {} };
+      return { jsonrpc: "2.0", id, method: "session/list", params: {} };
     case "rename_session":
       return {
         jsonrpc: "2.0",
+        id,
         method: "session/rename",
         params: { sessionId: parsed.sessionId, title: parsed.title },
       };
     case "delete_session":
       return {
         jsonrpc: "2.0",
+        id,
         method: "session/delete",
         params: { sessionId: parsed.sessionId },
       };
     case "respond_permission":
       return {
         jsonrpc: "2.0",
+        id,
         method: "session/permission",
         params: { requestId: parsed.requestId, optionId: parsed.optionId },
       };
@@ -208,7 +208,7 @@ function trySyncSessionsToYjs(entry: RelayConnectionEntry, message: unknown): vo
     // session/new — 追加单个新会话
     const newSessionId = result.sessionId;
     if (typeof newSessionId === "string" && newSessionId.length > 0) {
-      registerSession(entry.rcsSessionId, {
+      docManager.registerSession(entry.rcsSessionId, {
         sessionId: newSessionId,
         title: "",
         preview: "",
@@ -228,7 +228,7 @@ function trySyncSessionsToYjs(entry: RelayConnectionEntry, message: unknown): vo
       // updatedAt 校验：非法日期字符串（如 "invalid"）会生成 NaN，
       // new Date(...).getTime() 结果需用 || 兜底避免写入 NaN 到 Yjs
       const ts = s.updatedAt ? new Date(s.updatedAt as string).getTime() : 0;
-      registerSession(entry.rcsSessionId, {
+      docManager.registerSession(entry.rcsSessionId, {
         sessionId: sid,
         title: (s.title as string) || "",
         preview: "",
@@ -383,13 +383,13 @@ async function openLocalRelay(
 
   // 5. 初始化 Chat/Session Doc 用于 ACP 状态聚合
   try {
-    await openChat(rcsSessionId);
-    setChatConnectionStatus(rcsSessionId, { status: "connected", since: Date.now() });
-    setChatAgentInfo(rcsSessionId, {
+    await docManager.openChat(rcsSessionId);
+    docManager.setChatConnectionStatus(rcsSessionId, { status: "connected", since: Date.now() });
+    docManager.setChatAgentInfo(rcsSessionId, {
       id: agentId,
       name: agentPrompt?.slice(0, 50) ?? agentId,
     });
-    await openSession(userId, agentId, rcsSessionId);
+    await docManager.openSession(userId, agentId, rcsSessionId);
   } catch (err) {
     logError("[relay] Failed to init session-state:", err);
   }
@@ -446,7 +446,7 @@ async function openLocalRelay(
       trySyncSessionsToYjs(e, message);
       // 聚合 ACP 事件到 Session Doc（旁路，不影响转发）
       try {
-        processACP(e.rcsSessionId, extractAcpEvent(message, msgType));
+        docManager.processACP(e.rcsSessionId, extractAcpEvent(message, msgType));
       } catch {
         // 聚合失败不影响 relay 转发
       }
@@ -624,8 +624,8 @@ export function handleRelayClose(_ws: WsConnection, relayWsId: string, code?: nu
   }
 
   // 清理 Session Doc 和连接状态
-  closeSession(entry.rcsSessionId).catch(() => {});
-  setChatConnectionStatus(entry.rcsSessionId, {
+  docManager.closeSession(entry.rcsSessionId).catch(() => {});
+  docManager.setChatConnectionStatus(entry.rcsSessionId, {
     status: "disconnected",
     since: Date.now(),
   });
@@ -803,9 +803,7 @@ function closeRelayByMachine(machineId: string, reason: string): void {
 }
 
 // ── Yjs 广播：将所有 Y.Doc 的变更推送给前端 ──
-import { setYjsUpdateHandler } from "../../services/session-state-service";
-
-setYjsUpdateHandler((docName: string, update: Uint8Array) => {
+docManager.setBroadcastHandler((docName: string, update: Uint8Array) => {
   const base64 = Buffer.from(update).toString("base64");
   // 从 docName 提取 rcsSessionId 用于广播过滤
   let targetRcsSessionId: string | null = null;

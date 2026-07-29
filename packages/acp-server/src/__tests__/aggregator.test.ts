@@ -1,7 +1,7 @@
 // packages/acp-server/src/__tests__/aggregator.test.ts
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { applyACPEvent } from "../aggregator";
+import { applyACPEvent } from "../state/aggregator";
 
 let ydoc: Y.Doc;
 

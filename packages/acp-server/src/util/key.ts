@@ -1,6 +1,6 @@
-// web/src/hooks/yjs-snapshot-key.ts
+// packages/acp-server/src/yjs-snapshot-key.ts
 // 稳定序列化 key 函数 — 递归处理 Map、数组、普通对象，按 key 排序，用 JSON.stringify 输出。
-// 用于 snapshot 去重：同一 key 表示 UI 语义未变，跳过 React 重渲染通知。
+// 用于 Yjs snapshot 去重：同一 key 表示 UI 语义未变，跳过重渲染通知。
 
 /**
  * 对任意 JSON-like 值（含 Map、Array、object）做稳定序列化。

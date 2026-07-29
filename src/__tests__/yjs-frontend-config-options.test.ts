@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  extractModelStateFromConfigOptions,
-  extractModeStateFromConfigOptions,
-} from "../transport/relay/yjs-frontend/config-options";
+import { extractModelStateFromConfigOptions, extractModeStateFromConfigOptions } from "@fenix/acp-server";
 
 describe("config options state extraction", () => {
   // group 内的模型选项应被拍平，并保留选中模型

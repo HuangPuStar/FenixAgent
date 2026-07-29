@@ -9,7 +9,7 @@ import {
   setAgentInfo,
   setConnectionStatus,
   updateSession,
-} from "../chat-writer";
+} from "../state/chat-writer";
 
 let ydoc: Y.Doc;
 

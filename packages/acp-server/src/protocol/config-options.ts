@@ -1,3 +1,7 @@
+// packages/acp-server/src/config-options.ts
+// 从 ACP agent status/configOptions 中提取 model/mode 选择状态。
+// 纯函数，不依赖任何 I/O 或框架。
+
 /** 从 configOptions 中提取模型选择状态（SDK 0.28+ 无独立 models 字段） */
 export function extractModelStateFromConfigOptions(
   configOptions: Array<Record<string, unknown>> | undefined,
