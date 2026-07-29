@@ -396,6 +396,10 @@ export const MessageResponse = memo(
     const allowedTags = useMemo(() => {
       const base: Record<string, string[]> = {
         iframe: ["src", "width", "height", "title", "sandbox", "loading"],
+        video: ["src"],
+        source: ["src"],
+        track: ["src"],
+        audio: ["src"],
       };
       const registered = getRegisteredAllowedTags();
       return { ...base, ...registered };
@@ -413,6 +417,43 @@ export const MessageResponse = memo(
           />
         ),
         iframe: (props: Record<string, unknown>) => <IframePreview {...props} />,
+        video: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
+          <a
+            href={src as string}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
+          >
+            {(children as React.ReactNode) || (src as string)}
+          </a>
+        ),
+        audio: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
+          <a
+            href={src as string}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
+          >
+            {(children as React.ReactNode) || (src as string)}
+          </a>
+        ),
+        a: ({ href, children, className: _cx, ...rest }: Record<string, unknown>) => {
+          const hrefStr = typeof href === "string" ? href : "";
+          const safeProps = Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)));
+          return (
+            <a
+              href={hrefStr}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+              {...safeProps}
+            >
+              {children as React.ReactNode}
+            </a>
+          );
+        },
       };
       const registered = getRegisteredComponents();
       return { ...base, ...registered } as Components;

@@ -354,6 +354,7 @@ export async function createKnowledgeBaseRecord(
     remoteAccountId: effectiveUserId,
     remoteUserId: effectiveUserId,
   });
+  const effectiveChunkMethod = input.parseMethod === "builtin" ? input.chunkMethod?.trim() || null : null;
   const effectiveParseType = input.parseMethod === "pipeline" ? 2 : input.parseMethod === "builtin" ? 1 : null;
   const effectivePipelineId =
     input.parseMethod === "pipeline" && input.pipelineId?.trim() ? input.pipelineId.trim() : null;
@@ -365,6 +366,7 @@ export async function createKnowledgeBaseRecord(
     description: input.description?.trim() || undefined,
     parseType: effectiveParseType,
     pipelineId: effectivePipelineId,
+    chunkMethod: effectiveChunkMethod,
     apiKey: input.apiKey,
   });
 

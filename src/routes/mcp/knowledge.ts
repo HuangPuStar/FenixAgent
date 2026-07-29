@@ -32,7 +32,7 @@ function createKnowledgeMcpServer(environment: {
     "kb_search",
     {
       description:
-        "在 Agent 绑定的知识库中进行语义检索。返回结果中每条包含：title（文档名）、kbName（知识库名称）、snippet（命中内容）、score（相关度）、resourceId（文档ID，用于 citation 链接）、knowledgeBaseId（知识库ID，用于 citation 链接）。支持相似度阈值、向量/关键词权重、Rerank 重排序、跨语言检索、知识图谱增强检索、元数据过滤等高级参数。回答时请使用 /citation/ 链接格式标注来源，例如：[📎 合同库·模板.pdf](/citation/{resourceId}/{knowledgeBaseId})",
+        "在 Agent 绑定的知识库中进行语义检索。返回结果中每条包含：title（文档名）、kbName（知识库名称）、snippet（命中内容）、score（相关度）。支持相似度阈值、向量/关键词权重、Rerank 重排序、跨语言检索、知识图谱增强检索、元数据过滤等高级参数。",
       inputSchema: {
         query: z.string().min(1).describe("检索查询文本，支持自然语言。"),
         topK: z.number().int().min(1).max(50).optional().describe("返回的 top 结果数量，默认 5，最大 50。"),
