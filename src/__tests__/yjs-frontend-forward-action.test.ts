@@ -13,6 +13,7 @@ function createEntry(): SessionTransitionEntry {
     rcsSessionId: "rcs-1",
     acpSessionId: "session-1",
     agentStatusReceived: true,
+    sessionLoaded: false,
   };
 }
 
@@ -21,6 +22,7 @@ function createTransition(events: string[], overrides: Partial<SessionTransition
     openSession: async () => undefined,
     clearSessionDocContent: () => {},
     prepareClearSessionSnapshot: async () => {},
+    hasSessionDocContent: () => false,
     processACP: (_rcsSessionId, event) => {
       events.push(event.type);
     },

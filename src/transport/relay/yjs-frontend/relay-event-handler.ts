@@ -47,6 +47,17 @@ export interface RelayEventHandlerDependencies {
     rcsSessionId: string,
   ) => { ydoc: { getMap: (name: string) => { get: (key: string) => unknown } } } | undefined;
   openSession: (userId: string, agentId: string, rcsSessionId: string) => Promise<{ ydoc: import("yjs").Doc }>;
+  syncChatSessions: (
+    rcsSessionId: string,
+    sessions: Array<{
+      sessionId: string;
+      title: string;
+      preview: string;
+      status: "active";
+      lastMsgTs: number;
+      updatedAt: string;
+    }>,
+  ) => void;
   registerYjsDocListener: (ydoc: import("yjs").Doc, docName: string) => void;
   reportError: (message: string, error: unknown) => void;
 }
@@ -259,18 +270,21 @@ export class RelayEventHandler {
   }
 
   private syncSessions(rcsSessionId: string, sessions: Array<Record<string, unknown>>): void {
-    for (const session of sessions) {
-      const sessionId = session.sessionId as string | undefined;
-      if (!sessionId) continue;
-      const timestamp = session.updatedAt ? new Date(session.updatedAt as string).getTime() : 0;
-      this.dependencies.registerSession(rcsSessionId, {
-        sessionId,
-        title: (session.title as string) || "",
-        preview: "",
-        status: "active",
-        lastMsgTs: timestamp > 0 ? timestamp : Date.now(),
-        updatedAt: (session.updatedAt as string) || new Date().toISOString(),
+    const summaries = sessions
+      .filter((s): s is Record<string, unknown> & { sessionId: string } => typeof s.sessionId === "string")
+      .map((s) => {
+        const timestamp = s.updatedAt ? new Date(s.updatedAt as string).getTime() : 0;
+        return {
+          sessionId: s.sessionId,
+          title: (s.title as string) || "",
+          preview: "",
+          status: "active" as const,
+          lastMsgTs: timestamp > 0 ? timestamp : Date.now(),
+          updatedAt: (s.updatedAt as string) || new Date().toISOString(),
+        };
       });
+    if (summaries.length > 0) {
+      this.dependencies.syncChatSessions(rcsSessionId, summaries);
     }
   }
 }

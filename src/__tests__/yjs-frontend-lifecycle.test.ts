@@ -57,6 +57,7 @@ function createRelayEvents(
     setChatModelState: () => {},
     setChatModeState: () => {},
     registerSession: () => {},
+    syncChatSessions: () => {},
     setChatActiveSession: () => {},
     getChat: () => undefined,
     openSession: async () => ({ ydoc: new Y.Doc() }),
@@ -125,6 +126,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
 
     await handler.createMessageHandler(createSharedRelay({ state: "open", send() {}, close() {} }))({
@@ -415,6 +417,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
     const raw = { type: messageType, payload: { secret: "agent-secret" }, error: "agent-secret" };
 
@@ -453,6 +456,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: false,
+      sessionLoaded: false,
     });
 
     await handler.createMessageHandler(
@@ -558,6 +562,7 @@ describe("YJS frontend internal handlers", () => {
       setChatModelState: () => {},
       setChatModeState: () => {},
       registerSession: () => {},
+      syncChatSessions: () => {},
       setChatActiveSession: () => {},
       getChat: () => undefined,
       openSession: async () => ({ ydoc: new Y.Doc() }),
@@ -581,6 +586,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-2", {
       ws: ws2,
@@ -597,6 +603,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
 
     const relay: SharedRelay = {
@@ -639,6 +646,7 @@ describe("YJS frontend internal handlers", () => {
       setChatModelState: () => {},
       setChatModeState: () => {},
       registerSession: () => {},
+      syncChatSessions: () => {},
       setChatActiveSession: () => {},
       getChat: () => undefined,
       openSession: async () => ({ ydoc: new Y.Doc() }),
@@ -662,6 +670,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
       ws: wsB,
@@ -678,6 +687,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
 
     const relay: SharedRelay = {
@@ -722,6 +732,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
       ws: createWs(),
@@ -738,6 +749,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      sessionLoaded: false,
     } satisfies ClientConnection);
 
     const relay: SharedRelay = {

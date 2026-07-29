@@ -8,6 +8,8 @@ import type { ClientConnection, SharedRelay } from "./types";
 import type { YjsBroadcaster } from "./yjs-broadcaster";
 
 const KEEPALIVE_INTERVAL = 30_000;
+/** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更到 Chat Doc */
+const SESSION_LIST_POLL_INTERVAL = 10_000;
 
 /**
  * 生成服务端控制的 RCS 会话标识。
@@ -237,6 +239,15 @@ export class WsLifecycle {
       } catch (err) {
         this.dependencies.reportError("[YJS-FE] Failed to init chat doc:", err);
       }
+      // 启动 session/list 定时轮询，同步 agent 侧 session 变更
+      shared.sessionListTimer = setInterval(() => {
+        if (!registry.hasStatusReceived(shared.agentId, shared.instanceId)) return;
+        try {
+          shared.handle.send(translateSimpleAction({ action: "list_sessions" }, shared.workspacePath) as never);
+        } catch {
+          /* 轮询失败静默忽略，下个周期重试 */
+        }
+      }, SESSION_LIST_POLL_INTERVAL);
     }
 
     if (ws.readyState !== 1 || !registry.canPromotePending(wsId, maxClients)) {
@@ -270,6 +281,7 @@ export class WsLifecycle {
       instanceId,
       rcsSessionId: shared.rcsSessionId,
       acpSessionId: null,
+      sessionLoaded: false,
       workspacePath: shared.workspacePath,
       openTime: Date.now(),
       pendingMessages: [],
@@ -362,6 +374,10 @@ export class WsLifecycle {
 
   private closeReleasedRelay(shared: SharedRelay | undefined): void {
     if (!shared) return;
+    if (shared.sessionListTimer) {
+      clearInterval(shared.sessionListTimer);
+      shared.sessionListTimer = undefined;
+    }
     try {
       shared.unsubscribe?.();
     } catch {

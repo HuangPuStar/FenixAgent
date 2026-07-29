@@ -14,6 +14,7 @@ const entry = (overrides: Partial<SessionTransitionEntry> = {}): SessionTransiti
   rcsSessionId: "rcs-1",
   acpSessionId: null,
   agentStatusReceived: true,
+  sessionLoaded: false,
   ...overrides,
 });
 
@@ -92,6 +93,7 @@ function createDependencies() {
     prepareClearSessionSnapshot: async () => {
       calls.push("prepare");
     },
+    hasSessionDocContent: () => false,
     processACP: (rcsSessionId, event) => {
       calls.push(`process:${event.type}`);
       events.push({ rcsSessionId, ...event });

@@ -11,6 +11,8 @@ export interface SessionTransitionEntry {
   rcsSessionId: string;
   acpSessionId: string | null;
   agentStatusReceived: boolean;
+  /** 是否已执行过至少一次 load_session（用于区分重连首次加载 vs 后续正常切换） */
+  sessionLoaded: boolean;
 }
 
 export interface SessionTransitionDependencies {
@@ -18,6 +20,7 @@ export interface SessionTransitionDependencies {
   clearSessionDocContent: (rcsSessionId: string) => void;
   prepareClearSessionSnapshot: (entry: SessionTransitionEntry) => Promise<void>;
   processACP: (rcsSessionId: string, event: { type: string; payload: Record<string, unknown> }) => void;
+  hasSessionDocContent: (rcsSessionId: string) => boolean;
   reportError: (message: string, error: unknown) => void;
 }
 
@@ -72,9 +75,18 @@ export class SessionTransition {
       return false;
     }
 
+    // 防御：首次 load_session 且 Session Doc 已有内容时，
+    // 说明是重连场景下 acpSessionId 恢复失败，不应清空已有消息。
+    if (!entry.sessionLoaded && this.dependencies.hasSessionDocContent(entry.rcsSessionId)) {
+      entry.acpSessionId = sessionId;
+      entry.sessionLoaded = true;
+      return true;
+    }
+
     await this.dependencies.prepareClearSessionSnapshot(entry);
     this.dependencies.clearSessionDocContent(entry.rcsSessionId);
     entry.acpSessionId = sessionId;
+    entry.sessionLoaded = true;
     return true;
   }
 

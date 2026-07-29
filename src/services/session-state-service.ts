@@ -27,6 +27,7 @@ import {
   setModeState,
   setSwitchingSession,
   setTokenUsage,
+  syncSessions,
   updateSession,
 } from "@fenix/acp-server";
 import { log, error as logError } from "@fenix/logger";
@@ -212,16 +213,82 @@ export async function switchSession(
   setActiveSession(chatDoc.ydoc, acpSessionId);
 }
 
+// ── ACP 事件微批次合并 ──
+
+/** 合并窗口（毫秒）。session/load 回放时多条消息可落入同一窗口合并为一个 yjs:update。 */
+const ACP_BATCH_WINDOW_MS = 16;
+
+/** 可合并的事件类型：内容类事件。控制类事件（session_update/error 等）必须立即生效。 */
+const BATCHABLE_EVENT_TYPES = new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "agent_message_complete",
+  "prompt_complete",
+  "user_message_chunk",
+  "tool_call",
+  "tool_call_result",
+  "tool_call_error",
+  "tool_call_update",
+  "plan",
+]);
+
+const acpBatchBuffers = new Map<string, { events: ACPEvent[]; timer: ReturnType<typeof setTimeout> }>();
+
+function flushACPBatch(rcsSessionId: string): void {
+  const batch = acpBatchBuffers.get(rcsSessionId);
+  if (!batch) return;
+  acpBatchBuffers.delete(rcsSessionId);
+  clearTimeout(batch.timer);
+
+  const doc = sessionDocs.get(rcsSessionId);
+  if (!doc || batch.events.length === 0) return;
+
+  if (batch.events.length === 1) {
+    applyACPEvent(doc.ydoc, batch.events[0]);
+  } else {
+    // 多个事件合并到一个 Y.Doc 事务，N 个 session/update 帧 → 1 个 yjs:update
+    doc.ydoc.transact(() => {
+      for (const event of batch.events) {
+        applyACPEvent(doc.ydoc, event);
+      }
+    });
+  }
+}
+
 export function processACP(rcsSessionId: string, event: ACPEvent): void {
   const doc = sessionDocs.get(rcsSessionId);
   if (!doc) {
     log(`[session-state] Session ${rcsSessionId} not in memory, skipping ACP event`);
     return;
   }
-  applyACPEvent(doc.ydoc, event);
+
+  // 控制类事件直接应用，不参与批处理。但必须先刷新 pending 内容批次，保证顺序
+  if (!BATCHABLE_EVENT_TYPES.has(event.type)) {
+    flushACPBatch(rcsSessionId);
+    applyACPEvent(doc.ydoc, event);
+    return;
+  }
+
+  const existing = acpBatchBuffers.get(rcsSessionId);
+  if (existing) {
+    existing.events.push(event);
+    return;
+  }
+
+  const timer = setTimeout(() => flushACPBatch(rcsSessionId), ACP_BATCH_WINDOW_MS);
+  acpBatchBuffers.set(rcsSessionId, { events: [event], timer });
+}
+
+export function cancelACPBatch(rcsSessionId: string): void {
+  const batch = acpBatchBuffers.get(rcsSessionId);
+  if (batch) {
+    clearTimeout(batch.timer);
+    acpBatchBuffers.delete(rcsSessionId);
+  }
 }
 
 export async function closeSession(rcsSessionId: string): Promise<void> {
+  cancelACPBatch(rcsSessionId);
   const doc = sessionDocs.get(rcsSessionId);
   if (doc) {
     await doc.destroy();
@@ -261,6 +328,19 @@ export function clearSessionDocContent(rcsSessionId: string): void {
   clearSessionYDocContent(doc.ydoc);
 }
 
+/**
+ * 检查 Session Doc 是否包含实际消息内容。
+ * 判断依据：legacy messages 数组或 Phase C structuredMessages 数组任一非空。
+ */
+export function hasSessionDocContent(rcsSessionId: string): boolean {
+  const doc = sessionDocs.get(rcsSessionId);
+  if (!doc) return false;
+  const messages = doc.ydoc.getArray("messages");
+  if (messages.length > 0) return true;
+  const structuredMessages = doc.ydoc.getArray("structuredMessages");
+  return structuredMessages.length > 0;
+}
+
 // ── 用户操作 ──
 
 export function registerUserMessage(rcsSessionId: string, content: string): void {
@@ -290,6 +370,14 @@ export function registerSession(rcsSessionId: string, summary: SessionSummary): 
   }
 }
 
+/** 全量同步 session 列表到 Chat Doc（增/改/删）。供 session/list 轮询使用。 */
+export function syncChatSessions(rcsSessionId: string, sessions: SessionSummary[]): void {
+  const doc = chatDocs.get(rcsSessionId);
+  if (doc) {
+    syncSessions(doc.ydoc, sessions);
+  }
+}
+
 /** 设置当前激活的 session（写 activeSessionId 到 Chat Doc） */
 export function setChatActiveSession(rcsSessionId: string, acpSessionId: string): void {
   const doc = chatDocs.get(rcsSessionId);
@@ -312,6 +400,11 @@ export function getSessionYdoc(rcsSessionId: string): Y.Doc | undefined {
 // ── 清理 ──
 
 export async function closeAll(): Promise<void> {
+  // 清理未刷新的 ACP 批次
+  for (const rcsSessionId of acpBatchBuffers.keys()) {
+    cancelACPBatch(rcsSessionId);
+  }
+
   for (const doc of sessionDocs.values()) {
     await doc.destroy();
   }

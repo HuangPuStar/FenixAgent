@@ -15,6 +15,8 @@ export interface ClientConnection {
   rcsSessionId: string;
   /** 当前活跃的 ACP 会话标识符 (ses_xxx)，session/new、session/load 后更新；初始为 null */
   acpSessionId: string | null;
+  /** 是否已执行过至少一次 load_session（用于区分重连首次加载 vs 后续正常切换） */
+  sessionLoaded: boolean;
   workspacePath: string | null;
   openTime: number;
   pendingMessages: string[];
@@ -36,4 +38,6 @@ export interface SharedRelay {
   rcsSessionId: string;
   /** 服务端根据 environment 解析的工作目录，供 ACP session RPC 使用 */
   workspacePath: string;
+  /** session/list 定时轮询器，用于同步 agent 侧 session 变更到 Chat Doc */
+  sessionListTimer?: ReturnType<typeof setInterval>;
 }

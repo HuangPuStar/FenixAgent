@@ -9,6 +9,7 @@ import {
   clearSessionDocContent,
   clearSessionYDocContent,
   getChat,
+  hasSessionDocContent,
   openChat,
   openSession,
   processACP,
@@ -21,6 +22,7 @@ import {
   setChatModelState,
   setChatModeState,
   setChatTokenUsage,
+  syncChatSessions,
 } from "../../../services/session-state-service";
 import { resolveWorkspacePath } from "../../../services/workspace-resolver";
 import { ConnectionRegistry } from "./connection-registry";
@@ -56,6 +58,7 @@ const broadcaster = new YjsBroadcaster(registry);
 const sessionTransition = new SessionTransition({
   openSession,
   clearSessionDocContent,
+  hasSessionDocContent,
   prepareClearSessionSnapshot: async (entry) => {
     const redis = getRedisConnection();
     if (!redis) return;
@@ -80,6 +83,7 @@ const relayEvents = new RelayEventHandler({
   setChatActiveSession,
   getChat,
   openSession,
+  syncChatSessions,
   registerYjsDocListener: broadcaster.registerYjsDocListener.bind(broadcaster),
   reportError: logError,
 });

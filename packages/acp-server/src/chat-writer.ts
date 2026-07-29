@@ -44,6 +44,93 @@ export function addSession(ydoc: Y.Doc, session: SessionSummary): void {
   });
 }
 
+/**
+ * 全量同步 session 列表到 Chat Doc。
+ * 在单个 Y.Doc 事务内完成增/改/删，确保 Yjs update 事件原子触发。
+ * 无差异时跳过事务，避免空轮询触发不必要的 yjs:update 广播。
+ */
+export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
+  const sessionsArray = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
+
+  // 快速差异检测：数量不等或有新增/删除则一定有变化
+  if (sessionsArray.length === sessions.length) {
+    const existingIndex = new Map<string, Y.Map<unknown>>();
+    for (let i = 0; i < sessionsArray.length; i++) {
+      const s = sessionsArray.get(i);
+      const id = s.get("sessionId") as string | undefined;
+      if (id) existingIndex.set(id, s);
+    }
+
+    let hasChanges = false;
+    for (const session of sessions) {
+      const existing = existingIndex.get(session.sessionId);
+      if (!existing) {
+        hasChanges = true;
+        break;
+      }
+      if (
+        existing.get("title") !== session.title ||
+        existing.get("preview") !== session.preview ||
+        existing.get("status") !== session.status ||
+        existing.get("lastMsgTs") !== session.lastMsgTs ||
+        existing.get("cwd") !== (session.cwd ?? null) ||
+        existing.get("updatedAt") !== (session.updatedAt ?? null)
+      ) {
+        hasChanges = true;
+        break;
+      }
+    }
+    if (!hasChanges) {
+      // 数量相同、ID 集合相同、各字段均无变化 → 跳过事务
+      return;
+    }
+  }
+
+  ydoc.transact(() => {
+    const sessionsArray = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
+    const existingById = new Map<string, number>();
+
+    for (let i = 0; i < sessionsArray.length; i++) {
+      const id = sessionsArray.get(i).get("sessionId") as string | undefined;
+      if (id) existingById.set(id, i);
+    }
+
+    const incoming = new Set<string>();
+
+    for (const session of sessions) {
+      incoming.add(session.sessionId);
+      const idx = existingById.get(session.sessionId);
+      if (idx !== undefined) {
+        const s = sessionsArray.get(idx);
+        s.set("title", session.title);
+        s.set("preview", session.preview);
+        s.set("status", session.status);
+        s.set("lastMsgTs", session.lastMsgTs);
+        if (session.cwd) s.set("cwd", session.cwd);
+        if (session.updatedAt) s.set("updatedAt", session.updatedAt);
+      } else {
+        const map = new Y.Map<unknown>();
+        map.set("sessionId", session.sessionId);
+        map.set("title", session.title);
+        map.set("preview", session.preview);
+        map.set("status", session.status);
+        map.set("lastMsgTs", session.lastMsgTs);
+        if (session.cwd) map.set("cwd", session.cwd);
+        if (session.updatedAt) map.set("updatedAt", session.updatedAt);
+        sessionsArray.push([map]);
+      }
+    }
+
+    // 删除不在传入列表中的冗余 session
+    for (let i = sessionsArray.length - 1; i >= 0; i--) {
+      const id = sessionsArray.get(i).get("sessionId") as string | undefined;
+      if (id && !incoming.has(id)) {
+        sessionsArray.delete(i, 1);
+      }
+    }
+  });
+}
+
 export function updateSession(ydoc: Y.Doc, acpSessionId: string, patch: Partial<SessionSummary>): void {
   ydoc.transact(() => {
     const sessions = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
