@@ -3,7 +3,6 @@ import { Paperclip, Send, Sparkles, Square } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ACPClient } from "../../src/acp/client";
 import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { fileApi } from "../../src/api/files";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
@@ -11,7 +10,6 @@ import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
-import { ModelSelectorPopover } from "../model-selector/ModelSelectorPopover";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CommandMenu } from "./CommandMenu";
@@ -43,10 +41,9 @@ interface ChatComposerProps {
   commands?: AvailableCommand[];
   /** 环境 ID，用于文件上传/浏览（workspace 按环境隔离） */
   envId?: string;
-  /** ACP 客户端实例，用于获取 Agent 能力。
-   *  Task 3 骨架阶段未使用；Task 5 接入 ModelSelectorPopover 时才会真正调用 client。 */
-  client?: ACPClient;
-  /** 可用会话模式列表（Task 5 元信息条用到） */
+  /** 当前模型名称（通过 Chat Doc 同步） */
+  modelName?: string;
+  /** 可用会话模式列表 */
   availableModes?: SessionMode[];
   /** 当前会话模式 ID（Task 5 元信息条用到） */
   currentModeId?: string | null;
@@ -58,8 +55,6 @@ interface ChatComposerProps {
   onNewSession?: () => void;
   /** 是否显示新建会话按钮（Task 5 元信息条用到） */
   showNewSession?: boolean;
-  /** 当前模型名称（YJS 传输模式下通过 Chat Doc 同步，不依赖 ACPClient） */
-  modelName?: string;
   className?: string;
 }
 
@@ -68,7 +63,7 @@ interface ChatComposerProps {
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
  * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
- * SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
+ * SessionModeSelector / 模型名称 / token 统计 / 新会话 / 发送。
  */
 export function ChatComposer({
   onSubmit,
@@ -79,7 +74,6 @@ export function ChatComposer({
   supportsImages = false,
   commands,
   envId,
-  client,
   availableModes,
   currentModeId,
   onModeChange,
@@ -612,9 +606,7 @@ export function ChatComposer({
               />
             )}
 
-            {client ? (
-              <ModelSelectorPopover client={client} />
-            ) : modelName ? (
+            {modelName ? (
               <span
                 className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground select-none"
                 title={modelName}
