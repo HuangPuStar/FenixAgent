@@ -109,10 +109,13 @@ export function ACPMain({
   // 防抖：sessions 增量更新可能分多次到达（list_sessions 返回 N 条 registerSession 逐条广播），
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 防止空会话时重复发送 create_session
+  const autoCreateTriggeredRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 连接重建时需重置 bootstrap 状态
   useEffect(() => {
     sessionEnteredRef.current = false;
+    autoCreateTriggeredRef.current = false;
     if (bootstrapTimerRef.current) {
       clearTimeout(bootstrapTimerRef.current);
       bootstrapTimerRef.current = null;
@@ -235,8 +238,11 @@ export function ACPMain({
         return;
       }
 
-      // 尚无会话 → 不自动创建，等待后端 session_list 响应设置 activeSessionId 后再进入。
-      // 若确实无历史会话，用户主动输入消息时 ChatInterface 会触发 create_session。
+      // 无历史会话 → 自动创建新会话，让前端直接进入可输入状态
+      if (!autoCreateTriggeredRef.current) {
+        autoCreateTriggeredRef.current = true;
+        handleCreateSession();
+      }
     }, 300);
 
     return () => {
@@ -245,7 +251,7 @@ export function ACPMain({
         bootstrapTimerRef.current = null;
       }
     };
-  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession]);
+  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession, handleCreateSession]);
 
   // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
   // 当服务端 session_list 响应到达并设置 activeSessionId 后，
@@ -350,7 +356,6 @@ export function ACPMain({
             onPromptComplete={onPromptComplete}
             sessionState={sessionState}
             chatState={chatState}
-            connectionState={connectionState}
             onSendPrompt={handleSendPrompt}
             onCancel={handleCancel}
             onCreateSession={handleCreateSession}
