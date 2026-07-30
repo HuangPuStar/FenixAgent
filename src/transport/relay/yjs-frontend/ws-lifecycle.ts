@@ -287,7 +287,7 @@ export class WsLifecycle {
       pendingMessages: [],
       relayReady: false,
       agentStatusReceived: false,
-      lastClientKeepalive: Date.now(),
+      lastClientKeepalive: 0,
     };
     registry.addClient(wsId, entry);
 

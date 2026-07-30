@@ -16,7 +16,7 @@ const entry = (overrides: Partial<SessionTransitionEntry> = {}): SessionTransiti
   rcsSessionId: "rcs-1",
   acpSessionId: null,
   agentStatusReceived: true,
-  lastClientKeepalive: Date.now(),
+  lastClientKeepalive: 0,
   sessionLoaded: false,
   ...overrides,
 });

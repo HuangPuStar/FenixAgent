@@ -18,7 +18,7 @@ function createClient(overrides: Partial<ClientConnection> = {}): ClientConnecti
     pendingMessages: [],
     relayReady: true,
     agentStatusReceived: false,
-    lastClientKeepalive: Date.now(),
+    lastClientKeepalive: 0,
     sessionLoaded: false,
     ...overrides,
   };
