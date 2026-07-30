@@ -136,6 +136,21 @@ export class ConnectionRegistry {
     return false;
   }
 
+  /** 检查指定用户的 status 是否已收到（同一实例不同用户各自独立） */
+  hasStatusReceivedByUser(agentId: string, instanceId: string, userId: string): boolean {
+    for (const client of this.clients.values()) {
+      if (
+        client.agentId === agentId &&
+        client.instanceId === instanceId &&
+        client.userId === userId &&
+        client.agentStatusReceived
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private makeRelayKey(instanceId: string, userId: string): string {
     return `${instanceId}:${userId}`;
   }

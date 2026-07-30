@@ -69,6 +69,8 @@ interface ChatInterfaceProps {
   sessionState?: SessionStateSnapshot | null;
   /** Yjs Chat 级状态快照 — 替代旧 session 创建/切换/权限 handler */
   chatState?: ChatStateSnapshot;
+  /** YJS WebSocket 连接状态 — 来自 ChatPanel，比 chatState.connection.status 更可靠 */
+  connectionState?: string;
 
   // ── Callbacks（替代 client 方法）──
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
@@ -112,6 +114,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onPromptComplete: _onPromptComplete,
     sessionState,
     chatState,
+    connectionState,
     onSendPrompt,
     onCancel,
     onCreateSession,
@@ -139,6 +142,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   // 从 Yjs sessionState 计算会话是否就绪
   const sessionReady = !!sessionState && sessionState.status !== "idle";
+
+  // 连接就绪：优先使用 ChatPanel 传入的 connectionState（YJS WS 直连状态），
+  // 回退到 chatState.connection.status（Y.Doc 同步状态，对 remote machine 可能延迟）
+  const connectionReady = connectionState === "connected" || chatState?.connection?.status === "connected";
 
   // 从 Yjs structuredMessages 计算渲染用的 ThreadEntry[]
   const renderEntries: ThreadEntry[] = useMemo(() => {
@@ -503,8 +510,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               onSubmit={handleChatInputSubmit}
               isLoading={isLoading}
               onInterrupt={handleCancel}
-              disabled={!sessionReady}
-              placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
+              disabled={!connectionReady}
+              placeholder={connectionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
               supportsImages={supportsImages}
               commands={availableCommands.length > 0 ? availableCommands : undefined}
               envId={agentId}

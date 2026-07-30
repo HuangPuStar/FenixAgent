@@ -134,15 +134,6 @@ export class RelayEventHandler {
           model: model ? { id: model.id || "", name: model.name || "" } : undefined,
         });
       }
-      // DEBUG: Agent status 就绪 — 打印当前 chat 状态快照
-      console.log("[YJS-DEBUG:SERVER] agent status received:", {
-        userId: shared.userId,
-        agentId: shared.agentId,
-        rcsSessionId: shared.rcsSessionId,
-        capabilities: capabilities ? Object.keys(capabilities) : null,
-        agentName: agentInfo?.name || shared.agentId,
-        ts: Date.now(),
-      });
       const needsListSessions = !registry.hasStatusReceivedByUser(shared.agentId, shared.instanceId, shared.userId);
       registry.forEachByInstanceUser(shared.agentId, shared.instanceId, shared.userId, (entry) => {
         entry.agentStatusReceived = true;
@@ -173,15 +164,6 @@ export class RelayEventHandler {
         const sessions = listPayload.sessions as Array<Record<string, unknown>> | undefined;
         if (Array.isArray(sessions)) {
           this.syncSessions(shared.rcsSessionId, sessions);
-          // DEBUG: 会话列表同步完成
-          console.log("[YJS-DEBUG:SERVER] sessions synced:", {
-            userId: shared.userId,
-            agentId: shared.agentId,
-            rcsSessionId: shared.rcsSessionId,
-            sessionCount: sessions.length,
-            sessions: sessions.map((s) => ({ id: s.sessionId, title: s.title, updatedAt: s.updatedAt })),
-            ts: Date.now(),
-          });
           const chatDoc = this.dependencies.docManager.getChat(shared.rcsSessionId);
           const activeSessionId = chatDoc?.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
           if (!activeSessionId) {
@@ -237,17 +219,6 @@ export class RelayEventHandler {
           });
         }
         this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
-        // DEBUG: 新会话已创建/加载
-        console.log("[YJS-DEBUG:SERVER] session activated:", {
-          userId: shared.userId,
-          agentId: shared.agentId,
-          rcsSessionId: shared.rcsSessionId,
-          acpSessionId: newSessionId,
-          isNew: isNewSession,
-          models,
-          modes,
-          ts: Date.now(),
-        });
         if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
           this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",

@@ -95,10 +95,11 @@ export function createYjsStore<T>(
     // sessionId guard: 仅当 update 所属 sessionId 匹配当前 Y.Doc 记录的 sessionId 时才应用
     if (sessionId) {
       const docSid = ydoc.getMap("meta").get("acpSessionId") as string | undefined;
-      if (docSid && docSid !== sessionId) return;
+      if (docSid && docSid !== sessionId) {
+        return;
+      }
     }
 
-    // Y.applyUpdate 在内部 transaction 中完成，结束后 update 事件同步触发
     Y.applyUpdate(ydoc, update);
   }
 

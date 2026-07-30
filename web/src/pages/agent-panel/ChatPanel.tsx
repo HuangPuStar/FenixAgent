@@ -154,8 +154,6 @@ export function ChatPanel({
         }
       },
       onConnectionState: (state: YjsWsState) => {
-        // DEBUG: 打印连接状态变化
-        console.log("[YJS-DEBUG] ChatPanel connection state:", { state, ts: Date.now() });
         if (state === "connecting") setConnectionState("connecting");
         else if (state === "connected") {
           setConnectionState("connected");
@@ -178,14 +176,6 @@ export function ChatPanel({
       yjsWsRef.current = null;
     };
   }, [agentId, sessionId, reconnectKey, chatApplyUpdate, sessionApplyUpdate]);
-
-  // DEBUG: 打印 Chat 和 Session 完整状态快照（仅在变化时）
-  useEffect(() => {
-    console.log("[YJS-DEBUG] chatState:", chatState);
-  }, [chatState]);
-  useEffect(() => {
-    console.log("[YJS-DEBUG] sessionState:", sessionState);
-  }, [sessionState]);
 
   // 发送简单 JSON 命令（替代 client 方法调用）
   const sendViaWs = useCallback((data: Record<string, unknown>) => {

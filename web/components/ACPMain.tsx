@@ -350,6 +350,7 @@ export function ACPMain({
             onPromptComplete={onPromptComplete}
             sessionState={sessionState}
             chatState={chatState}
+            connectionState={connectionState}
             onSendPrompt={handleSendPrompt}
             onCancel={handleCancel}
             onCreateSession={handleCreateSession}

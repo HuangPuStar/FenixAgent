@@ -21,7 +21,8 @@ export class YjsBroadcaster {
   }
 
   sendSnapshot(ws: WsConnection, ydoc: Y.Doc, docName: string): void {
-    this.sendToYjsWs(ws, this.createUpdateMessage(ydoc, docName));
+    const msg = this.createUpdateMessage(ydoc, docName);
+    this.sendToYjsWs(ws, msg);
   }
 
   broadcastSnapshot(ydoc: Y.Doc, docName: string): void {
@@ -81,11 +82,12 @@ export class YjsBroadcaster {
   }
 
   private broadcastUpdate(docName: string, update: Uint8Array): void {
-    this.broadcastMessage(docName, {
-      type: "yjs:update",
+    const message = {
+      type: "yjs:update" as const,
       docName,
       data: Buffer.from(update).toString("base64"),
-    });
+    };
+    this.broadcastMessage(docName, message);
   }
 
   private createUpdateMessage(ydoc: Y.Doc, docName: string) {
