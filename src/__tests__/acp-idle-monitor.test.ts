@@ -208,8 +208,8 @@ describe("acp idle monitor", () => {
     expect(stopCalls).toEqual([{ instanceId: "inst_idle", organizationId: "org-1" }]);
   });
 
-  // 即使 relay 仍存在，只要长时间没有 ACP 业务活动，也会触发硬超时回收
-  test("runAcpIdleMonitorSweep stops instances with stale ACP activity even when relay is attached", async () => {
+  // 前端保持连接时（relay_count > 0），不应触发任何超时回收
+  test("runAcpIdleMonitorSweep does NOT stop instances with active relay connections even when activity is stale", async () => {
     const stopCalls: Array<{ instanceId: string; organizationId: string }> = [];
     const staleInstance = makeInstance("inst_stale", "env-1");
     globalInstanceRegistry.register(staleInstance.id, {
@@ -238,6 +238,7 @@ describe("acp idle monitor", () => {
     });
 
     await runAcpIdleMonitorSweep(1000 + 3601 * 1000);
-    expect(stopCalls).toEqual([{ instanceId: "inst_stale", organizationId: "org-1" }]);
+    // relay_count > 0 时不应回收，即使用户长时间未活动
+    expect(stopCalls).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ import { registry } from "./yjs-frontend";
 
 /** 关闭指定实例的所有前端 yjs WS 连接（替代原 relay ConnectionManager 遍历） */
 export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
-  registry.closeClientsByInstance(instanceId, 1000, "instance_idle_reclaimed");
+  registry.closeClientsByInstance(instanceId, 4001, "instance_idle_reclaimed");
 }
 
 /** 关闭所有前端 yjs WS 连接（graceful shutdown） */

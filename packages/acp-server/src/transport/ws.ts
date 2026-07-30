@@ -2,6 +2,9 @@
 // 同构 Yjs WebSocket 客户端，兼容浏览器和 Bun。
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
+/** 服务端主动关闭时指示前端不应自动重连的关闭码 */
+const NO_RECONNECT_CODES = new Set([4001]);
+
 /** 重连间隔（指数退避），单位毫秒 */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
@@ -95,9 +98,14 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       ws = null;
       setState("disconnected");
+      // 服务端主动关闭码（如 4001 idle_reclaim）不触发自动重连
+      if (NO_RECONNECT_CODES.has(event.code)) {
+        console.info(`[yjs-ws] Server closed with code ${event.code}, skipping reconnect. reason: ${event.reason}`);
+        return;
+      }
       scheduleReconnect();
     };
 

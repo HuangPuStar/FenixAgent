@@ -14,9 +14,14 @@ import type { InstanceSupplement } from "../types/store";
  * - 纯内存存储，不解决重启问题
  */
 export class InstanceRegistry {
+  /** 空闲回收关闭码，前端识别此码后跳过自动重连。 */
+  static readonly IDLE_RECLAIM_CLOSE_CODE = 4001;
+
   private supplements = new Map<string, InstanceSupplement>();
   private envCounters = new Map<string, number>();
   private byEnvironment = new Map<string, Set<string>>();
+  /** 环境级 idle-kill 冷却期：environmentId → 冷却结束时间戳 (ms) */
+  private idleKillCooldowns = new Map<string, number>();
 
   /** 注册实例补充信息 */
   register(instanceId: string, supplement: InstanceSupplement): void {
@@ -117,6 +122,7 @@ export class InstanceRegistry {
     this.supplements.clear();
     this.envCounters.clear();
     this.byEnvironment.clear();
+    this.idleKillCooldowns.clear();
   }
 
   /** 返回所有注册条目的迭代器 */
@@ -127,6 +133,38 @@ export class InstanceRegistry {
   /** 已注册实例总数 */
   get size(): number {
     return this.supplements.size;
+  }
+
+  /**
+   * 标记环境进入 idle-kill 冷却期，防止前端重连后立即 spawn 新实例。
+   * 冷却时长应略大于前端最大重连退避间隔（默认 30s），确保重连风暴结束后冷却才解除。
+   * @param environmentId 被空闲回收的环境 ID
+   * @param cooldownMs 冷却时长（毫秒），默认 60s
+   */
+  markIdleKillCooldown(environmentId: string, cooldownMs = 60_000): void {
+    this.idleKillCooldowns.set(environmentId, Date.now() + cooldownMs);
+  }
+
+  /**
+   * 检查指定环境是否处于 idle-kill 冷却期内。
+   * @returns 剩余冷却时间（ms），不在冷却期内则为 0
+   */
+  checkIdleKillCooldown(environmentId: string, now = Date.now()): number {
+    const until = this.idleKillCooldowns.get(environmentId);
+    if (!until) return 0;
+    if (now >= until) {
+      this.idleKillCooldowns.delete(environmentId);
+      return 0;
+    }
+    return until - now;
+  }
+
+  /**
+   * 手动清除指定环境的 idle-kill 冷却期。
+   * 用于 stopInstance 异常失败时回滚冷却标记，避免环境级硬空窗。
+   */
+  clearIdleKillCooldown(environmentId: string): void {
+    this.idleKillCooldowns.delete(environmentId);
   }
 
   /**

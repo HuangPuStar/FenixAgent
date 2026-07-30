@@ -70,7 +70,7 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
     user: null,
     spawn_source: null,
     // 缺少 supplement 时无法可靠推导活动信息；这里保守给默认值，
-    // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+    // 仅用于"统计所有实例"场景，避免 runtime 活跃实例被整体漏掉。
     last_activity_at: createdAtSeconds,
     relay_count: 0,
     last_relay_detached_at: null,
@@ -107,13 +107,14 @@ export function listInstanceActivitySnapshots(
         continue;
       } else {
         // 没有 supplement 时无法可靠推导活动信息；这里保守给默认值，
-        // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+        // 仅用于"统计所有实例"场景，避免 runtime 活跃实例被整体漏掉。
         results.push(toFallbackActivityInfo(snapshot));
         continue;
       }
     }
     if (organizationId && supplement.organizationId !== organizationId) continue;
-    const instance = _deps.getInstance(snapshot.instanceId, supplement.userId);
+
+    const instance = _deps.getInstance(snapshot.instanceId);
     if (!instance) continue;
     results.push(
       toInstanceActivityInfo(instance, supplement, config.acpIdleTimeoutSeconds, config.acpActivityTimeoutSeconds, now),
@@ -153,6 +154,48 @@ export async function listInstanceActivitySnapshotsWithUsers(
   });
 }
 
+/** 冷却时长（毫秒），应大于前端最大重连退避间隔（30s）以防止重连风暴后立即 spawn。 */
+const IDLE_KILL_COOLDOWN_MS = 60_000;
+
+/**
+ * 执行空闲实例的停止 + 冷却注册。
+ *
+ * 顺序设计（先注册冷却、再断开前端、最后停止实例）：
+ * 1. markIdleKillCooldown — 先设置冷却期，消除「前端收到 close 重连时冷却尚未注册」窗口
+ * 2. closeRelayConnectionsForIdleReclaim — 关闭前端 WS，触发 4001 关闭码
+ * 3. stopInstance — 停止 Agent 进程；异常失败时回滚冷却期，避免环境级 60s 空窗
+ */
+async function killAndCooldown(
+  snapshot: InstanceActivityInfo,
+  supplement: NonNullable<ReturnType<typeof globalInstanceRegistry.get>>,
+  reason: "inactive" | "idle",
+): Promise<void> {
+  // 1. 先注册冷却期
+  if (snapshot.environment_id) {
+    globalInstanceRegistry.markIdleKillCooldown(snapshot.environment_id, IDLE_KILL_COOLDOWN_MS);
+    logger.info(
+      `[ACP-IDLE] Marked cooldown for env=${snapshot.environment_id} instanceId=${snapshot.id} reason=${reason}`,
+    );
+  }
+
+  // 2. 再断前端连接
+  const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
+  closeRelayConnectionsForIdleReclaim(snapshot.id);
+
+  // 3. 停止实例
+  const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
+  if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
+    logger.error(
+      `[ACP-IDLE] Failed to stop ${reason} instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
+    );
+    // 异常失败时回滚冷却期，避免环境级 60s 硬空窗
+    if (snapshot.environment_id) {
+      globalInstanceRegistry.clearIdleKillCooldown(snapshot.environment_id);
+      logger.info(`[ACP-IDLE] Cooldown rolled back for env=${snapshot.environment_id} due to stop failure`);
+    }
+  }
+}
+
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */
 export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
   const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
@@ -161,36 +204,34 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
   for (const snapshot of snapshots) {
     const supplement = globalInstanceRegistry.get(snapshot.id);
     if (!supplement) continue;
+
+    // 前端保持连接（页面打开中，含 display:none 的隐藏标签页）时，
+    // 实例应视为"使用中"，不触发任何超时回收。
+    if (snapshot.relay_count > 0) continue;
+
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
     if (inactiveTooLong) {
       logger.info(
         `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${config.acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
-      const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
-      closeRelayConnectionsForIdleReclaim(snapshot.id);
-      const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
-      if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
-        logger.error(
-          `[ACP-IDLE] Failed to stop inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
-        );
+      try {
+        await killAndCooldown(snapshot, supplement, "inactive");
+      } catch (err) {
+        logger.error(`[ACP-IDLE] killAndCooldown failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
       }
       continue;
     }
 
-    if (snapshot.relay_count > 0) continue;
     const idleSince = Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0);
     if (now - idleSince < idleTimeoutMs) continue;
 
     logger.info(
       `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${config.acpIdleTimeoutSeconds}s`,
     );
-    const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
-    closeRelayConnectionsForIdleReclaim(snapshot.id);
-    const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
-    if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
-      logger.error(
-        `[ACP-IDLE] Failed to stop idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
-      );
+    try {
+      await killAndCooldown(snapshot, supplement, "idle");
+    } catch (err) {
+      logger.error(`[ACP-IDLE] killAndCooldown failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
     }
   }
 }

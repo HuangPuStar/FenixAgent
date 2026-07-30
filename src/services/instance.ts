@@ -436,6 +436,19 @@ export async function ensureRunning(
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
 
+  // 检查是否处于 idle-kill 冷却期。
+  // 仅 interactive（前端聊天）来源受此限制，workflow / api 等系统调用不受阻隔。
+  if (source === "interactive") {
+    const cooldownRemaining = registry.checkIdleKillCooldown(environmentId);
+    if (cooldownRemaining > 0) {
+      throw new AppError(
+        `实例处于空闲回收冷却期，${Math.ceil(cooldownRemaining / 1000)}s 后可重试`,
+        "IDLE_KILL_COOLDOWN",
+        503,
+      );
+    }
+  }
+
   const env = await environmentRepo.getById(environmentId);
   if (!env) throw new NotFoundError("Environment not found");
 

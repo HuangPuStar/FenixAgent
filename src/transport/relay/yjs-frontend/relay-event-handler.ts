@@ -4,6 +4,7 @@ import {
   extractModeStateFromConfigOptions,
   translateSimpleAction,
 } from "@fenix/acp-server";
+import { touchInstanceActivity } from "../../../services/acp-idle-monitor";
 import { extractAcpEvent, extractJsonRpc } from "../relay-handler";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ClientConnection, RelayMessage, SharedRelay } from "./types";
@@ -36,7 +37,12 @@ export class RelayEventHandler {
     const msgType = raw.type as string | undefined;
     const { registry } = this.dependencies;
 
+    // 每次从 Agent 收到消息时更新活跃时间，防止实例在活跃对话中被空闲回收
+    // touchInstanceActivity 内部已过滤 keep_alive/ heartbeat/ping/pong 等保活消息
+    touchInstanceActivity(shared.instanceId, raw);
+
     const rpcCheck = extractJsonRpc(raw);
+
     if (rpcCheck?.method === "session/update") {
       const msgSessionId = (rpcCheck.params as Record<string, unknown> | undefined)?.sessionId as string | undefined;
       if (msgSessionId) {
@@ -128,8 +134,17 @@ export class RelayEventHandler {
           model: model ? { id: model.id || "", name: model.name || "" } : undefined,
         });
       }
-      const needsListSessions = !registry.hasStatusReceived(shared.agentId, shared.instanceId);
-      registry.forEachByInstance(shared.agentId, shared.instanceId, (entry) => {
+      // DEBUG: Agent status 就绪 — 打印当前 chat 状态快照
+      console.log("[YJS-DEBUG:SERVER] agent status received:", {
+        userId: shared.userId,
+        agentId: shared.agentId,
+        rcsSessionId: shared.rcsSessionId,
+        capabilities: capabilities ? Object.keys(capabilities) : null,
+        agentName: agentInfo?.name || shared.agentId,
+        ts: Date.now(),
+      });
+      const needsListSessions = !registry.hasStatusReceivedByUser(shared.agentId, shared.instanceId, shared.userId);
+      registry.forEachByInstanceUser(shared.agentId, shared.instanceId, shared.userId, (entry) => {
         entry.agentStatusReceived = true;
       });
       if (needsListSessions) {
@@ -158,6 +173,15 @@ export class RelayEventHandler {
         const sessions = listPayload.sessions as Array<Record<string, unknown>> | undefined;
         if (Array.isArray(sessions)) {
           this.syncSessions(shared.rcsSessionId, sessions);
+          // DEBUG: 会话列表同步完成
+          console.log("[YJS-DEBUG:SERVER] sessions synced:", {
+            userId: shared.userId,
+            agentId: shared.agentId,
+            rcsSessionId: shared.rcsSessionId,
+            sessionCount: sessions.length,
+            sessions: sessions.map((s) => ({ id: s.sessionId, title: s.title, updatedAt: s.updatedAt })),
+            ts: Date.now(),
+          });
           const chatDoc = this.dependencies.docManager.getChat(shared.rcsSessionId);
           const activeSessionId = chatDoc?.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
           if (!activeSessionId) {
@@ -213,6 +237,17 @@ export class RelayEventHandler {
           });
         }
         this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
+        // DEBUG: 新会话已创建/加载
+        console.log("[YJS-DEBUG:SERVER] session activated:", {
+          userId: shared.userId,
+          agentId: shared.agentId,
+          rcsSessionId: shared.rcsSessionId,
+          acpSessionId: newSessionId,
+          isNew: isNewSession,
+          models,
+          modes,
+          ts: Date.now(),
+        });
         if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
           this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",

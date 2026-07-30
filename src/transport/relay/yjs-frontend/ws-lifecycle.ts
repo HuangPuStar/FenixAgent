@@ -146,6 +146,14 @@ export class WsLifecycle {
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);
+      if (err instanceof AppError && err.code === "IDLE_KILL_COOLDOWN") {
+        broadcaster.sendToYjsWs(ws, {
+          type: "error",
+          payload: { code: "idle_kill_cooldown", message: `实例处于空闲回收冷却期，${err.message}` },
+        });
+        ws.close(4001, "idle_kill_cooldown");
+        return;
+      }
       if (err instanceof AppError && err.code === "MACHINE_OFFLINE") {
         broadcaster.sendToYjsWs(ws, {
           type: "error",
@@ -227,7 +235,7 @@ export class WsLifecycle {
       // 启动 session/list 定时轮询，同步 agent 侧 session 变更
       shared.sessionListTimer = setInterval(() => {
         if (shared.destroyed) return;
-        if (!registry.hasStatusReceived(shared.agentId, shared.instanceId)) return;
+        if (!registry.hasStatusReceivedByUser(shared.agentId, shared.instanceId, shared.userId)) return;
         try {
           shared.handle.send(
             translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
