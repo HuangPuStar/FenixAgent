@@ -198,18 +198,14 @@ export class ConnectionRegistry {
     return shared;
   }
 
-  /** 关闭指定 instance 的所有客户端连接 */
-  closeClientsByInstance(instanceId: string, code?: number, reason?: string): void {
-    for (const [_wsId, client] of this.clients) {
-      if (client.instanceId === instanceId) {
-        try {
-          client.relayUnsub?.();
-          client.relayHandle?.close?.(code ?? 1000, reason ?? "instance closed");
-        } catch {
-          // ignore
-        }
-        clearInterval(client.keepalive);
-        this.clients.delete(_wsId);
+  /** 请求指定 instance 的客户端关闭；实际资源释放统一由 WsLifecycle.handleClose 完成。 */
+  closeClientsByInstance(instanceId: string, code = 1000, reason = "instance closed"): void {
+    for (const client of this.clients.values()) {
+      if (client.instanceId !== instanceId) continue;
+      try {
+        client.ws.close(code, reason);
+      } catch {
+        // 单连接失败不阻塞其他客户端关闭
       }
     }
   }

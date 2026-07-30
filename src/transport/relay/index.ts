@@ -15,15 +15,9 @@ export function closeAllRelayConnections(): void {
   registry.closeAll(1001, "server_shutdown");
 }
 
-/** machine 断连后关闭关联的前端 yjs WS 连接 */
-export function handleMachineDisconnected(_machineId: string): void {
-  // TODO: 实现通过 machineId 查找并关闭前端 yjs 连接
-  // 目前 yjs-frontend ConnectionRegistry 不追踪 machineId，暂时关闭所有连接
-  registry.closeAll(4500, "machine unavailable");
-}
-
-/** machine 重连后关闭关联的旧前端 yjs WS 连接 */
-export function handleMachineReconnect(_machineId: string): void {
-  // TODO: 实现通过 machineId 查找并关闭前端 yjs 连接
-  registry.closeAll(4500, "machine reconnected");
+/** 精确关闭指定实例的前端 yjs WS；machine 生命周期调用方须在删除 runtime 实例前捕获实例 ID。 */
+export function closeClientsForMachineInstances(instanceIds: readonly string[], reason: string): void {
+  for (const instanceId of instanceIds) {
+    registry.closeClientsByInstance(instanceId, 4500, reason);
+  }
 }

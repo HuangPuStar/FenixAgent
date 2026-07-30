@@ -65,6 +65,36 @@ describe("ConnectionRegistry", () => {
     expect(visited).toEqual(["rcs-target", "rcs-target"]);
   });
 
+  // machine 清理必须通知浏览器重连；共享 relay 的引用释放仍由 WS close 生命周期统一处理。
+  test("closes matching client sockets without releasing relays directly", () => {
+    const registry = new ConnectionRegistry();
+    let closeCalls = 0;
+    let relayCloseCalls = 0;
+    const client = createClient({
+      ws: {
+        readyState: 1,
+        send() {},
+        close() {
+          closeCalls++;
+        },
+      },
+      relayHandle: {
+        state: "open",
+        send() {},
+        close() {
+          relayCloseCalls++;
+        },
+      },
+    });
+    registry.addClient("ws-1", client);
+
+    registry.closeClientsByInstance("instance-1", 4500, "machine unavailable");
+
+    expect(closeCalls).toBe(1);
+    expect(relayCloseCalls).toBe(0);
+    expect(registry.getClient("ws-1")).toBe(client);
+  });
+
   // 同一实例的 shared relay 获取必须复用原对象并递增引用计数。
   test("acquires an existing shared relay by reference", () => {
     const registry = new ConnectionRegistry();

@@ -170,6 +170,58 @@ describe("YJS frontend internal handlers", () => {
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
   });
 
+  // 新建共享 relay 时必须先执行 ACP connect 握手，远端 dispatcher 才会回传 status 并允许后续 session/list。
+  test("sends connect once before exposing a newly created shared relay", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const sent: unknown[] = [];
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          send(message: unknown) {
+            sent.push(message);
+          },
+          close() {},
+        }) as never,
+    });
+
+    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(sent).toEqual([{ type: "connect" }]);
+    lifecycle.handleClose("ws-1");
+  });
+
+  // connect 的同步 status 回包必须在 client 登记后处理，否则 list_sessions 会永久被状态门禁拦截。
+  test("registers the client before a synchronous connect status reply", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    let listener: ((message: RelayMessage) => Promise<void>) | undefined;
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          onMessage(callback: (message: RelayMessage) => Promise<void>) {
+            listener = callback;
+            return () => {};
+          },
+          send(message: { type?: string }) {
+            if (message.type === "connect") {
+              void listener?.({ type: "status", payload: { connected: true } });
+            }
+          },
+          close() {},
+        }) as never,
+    });
+
+    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(registry.hasStatusReceived("agent-1", "instance-1")).toBe(true);
+    lifecycle.handleClose("ws-1");
+  });
+
   // 并发打开同一实例只能建立一个 relay 和一个监听器，引用应由两个客户端共同持有。
   test("shares one in-flight relay acquisition between simultaneous opens", async () => {
     const registry = new ConnectionRegistry();

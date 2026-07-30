@@ -8,6 +8,16 @@ if [ ! -s .env ]; then
   exit 1
 fi
 
+# 留档旧日志。使用 rename 而非截断，避免仍被 tee 持有的文件描述符在归档文件中留下 NUL 空洞。
+LOG_FILE="workspaces/server-dev.log"
+if [ -f "$LOG_FILE" ]; then
+  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+  ARCHIVE="workspaces/server-dev-${TIMESTAMP}.log"
+  mv "$LOG_FILE" "$ARCHIVE"
+  : > "$LOG_FILE"
+  echo "📋 日志已留档: $ARCHIVE"
+fi
+
 for port in 3000 $(seq 8888 8900); do
   pids=$(lsof -ti :"$port" 2>/dev/null || true)
   if [ -n "$pids" ]; then

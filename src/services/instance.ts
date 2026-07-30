@@ -6,7 +6,7 @@ import { config, getBaseUrl } from "../config";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
-import { findMachineConnectionById } from "../transport/acp-ws-handler";
+import { findMachineConnectionById, setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config/index";
@@ -244,6 +244,10 @@ export async function spawnInstanceFromEnvironment(
       throw new NotFoundError(`AgentConfig '${agentConfigId}' not found`);
     }
     agentMachineId = resolvedAgentConfig.machineId ?? null;
+    // 缓存 agentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用
+    if (agentMachineId) {
+      setAgentMachineCache(environmentId, agentMachineId);
+    }
     log(
       `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelId='${resolvedAgentConfig.modelId ?? ""}', machineId='${agentMachineId ?? ""}'`,
     );

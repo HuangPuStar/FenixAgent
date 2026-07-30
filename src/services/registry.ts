@@ -188,9 +188,9 @@ export async function registerMachine(params: {
 
     const now = new Date();
 
-    // 已在线：不允许另一个 client 接管
+    // server 重启后 DB 状态可能过期，允许重连
     if (existing[0].status === "online") {
-      throw new Error(`machine id '${params.machineId}' is already online`);
+      log(`[registry] machine id '${params.machineId}' was already online (stale), allowing reconnection`);
     }
 
     const isFirstRegistration = existing[0].status === "pending";

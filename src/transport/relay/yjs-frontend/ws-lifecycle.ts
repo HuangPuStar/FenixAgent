@@ -299,6 +299,18 @@ export class WsLifecycle {
     }
 
     entry.relayReady = true;
+
+    // 远端 AcpDispatcher 仅在收到 connect 后回传 status。此时 client 已登记且初始快照已发送，
+    // 同步回包也能解除 session/list 的状态门禁。
+    try {
+      await shared.handle.send({ type: "connect" } as never);
+    } catch (err) {
+      this.reportError("[YJS-FE] relay connect handshake failed:", err);
+      broadcaster.sendToYjsWs(ws, { type: "error", payload: { message: "Agent connection error" } });
+      ws.close(1011, "relay handshake failed");
+      return;
+    }
+
     const pending = registry.consumePending(wsId);
     if (pending?.length) await this.flushPending(entry, pending, ws);
   }

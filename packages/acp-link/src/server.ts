@@ -302,10 +302,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data as string);
-        // ── ACP 调试日志 ──
-        if (msg.type !== "heartbeat" && msg.type !== "keep_alive") {
-          console.log("[acp-client] ← RCS:", JSON.stringify(msg).slice(0, 500));
-        }
         switch (msg.type) {
           case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
@@ -611,8 +607,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             if (sessId) {
               instanceMgr.setSessionId(instId, sessId);
             }
-            // ── ACP 调试日志 ──
-            console.log("[acp-client] relay → dispatcher:", JSON.stringify(relayPayload).slice(0, 500));
             if (instanceMgr.hasInstance(instId)) {
               const dispatcher = instanceMgr.getDispatcher(instId);
               if (dispatcher) {
