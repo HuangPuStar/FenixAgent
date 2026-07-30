@@ -57,6 +57,21 @@ export function ChatPanel({
   // Session Doc — 按 RCS session ID 命名
   const { state: sessionState, applyUpdate: sessionApplyUpdate } = useSessionState(rcsSessionKey ?? "__placeholder__");
 
+  // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
+  const yjsChatRef = useRef(chatState);
+  const yjsSessionRef = useRef(sessionState);
+  yjsChatRef.current = chatState;
+  yjsSessionRef.current = sessionState;
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__yjs_dump__ = () => {
+      console.log("── YJS Chat State ──", yjsChatRef.current);
+      console.log("── YJS Session State ──", yjsSessionRef.current);
+    };
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__yjs_dump__;
+    };
+  }, []);
+
   // Buffer: 缓存每个 session 的最后一次 yjs:update，用于 acpSessionId 切换后重放
   // 解决竞态条件：session 数据可能在 useSessionState 切换到正确 Y.Doc 之前到达，
   // 此时数据被应用到旧的 placeholder Y.Doc → 切换后被销毁 → 需要重放
