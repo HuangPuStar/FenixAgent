@@ -340,6 +340,12 @@ export class WsLifecycle {
       return;
     }
     if (parsed.type === "keep_alive") return;
+    if (parsed.type === "page_visible") {
+      const entry = this.dependencies.registry.getClient(wsId);
+      if (!entry) return;
+      this.toggleKeepalive(entry, wsId, parsed.value === true);
+      return;
+    }
     if (parsed.action) await this.forward(entry, parsed, ws);
   }
 
@@ -352,6 +358,26 @@ export class WsLifecycle {
     this.releaseRelay(entry.instanceId, entry.userId);
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
     this.dependencies.reportLog(`[YJS-FE] Disconnected: wsId=${wsId} agentId=${entry.agentId} duration=${duration}s`);
+  }
+
+  /**
+   * 根据前端 page_visible 通知开关 keepalive 定时器。
+   * 页面隐藏（display:none/非活跃 tab）时停发 keep_alive，可见时恢复 30s 心跳。
+   */
+  private toggleKeepalive(entry: ClientConnection, wsId: string, visible: boolean): void {
+    const { broadcaster, registry } = this.dependencies;
+    clearInterval(entry.keepalive);
+    if (visible) {
+      entry.keepalive = setInterval(() => {
+        const client = registry.getClient(wsId);
+        if (client?.ws.readyState !== 1) {
+          clearInterval(entry.keepalive);
+          return;
+        }
+        broadcaster.sendToYjsWs(client.ws, { type: "keep_alive" });
+      }, KEEPALIVE_INTERVAL);
+    }
+    // 隐藏时 entry.keepalive 保留已清除的 id，handleClose 的 clearInterval 为安全 no-op
   }
 
   private reportError(message: string, error: unknown): void {

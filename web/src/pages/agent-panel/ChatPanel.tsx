@@ -105,6 +105,15 @@ export function ChatPanel({
     setReconnectKey((k) => k + 1);
   }, [agentId, connectionState, pageVisible]);
 
+  // pageVisible 或连接状态变化时通知服务端，控制 keepalive 发送
+  // connectionState 用于捕获 WS 重连/首次连接完成时同步 visibility 状态
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 连接就绪后发送初始状态
+  useEffect(() => {
+    const yjsWs = yjsWsRef.current;
+    if (!yjsWs?.isConnected()) return;
+    yjsWs.send({ type: "page_visible", value: pageVisible });
+  }, [pageVisible, connectionState]);
+
   // 创建 YjsWs 连接
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey 变更时需强制重建连接
   useLayoutEffect(() => {
@@ -137,6 +146,8 @@ export function ChatPanel({
         }
       },
       onConnectionState: (state: YjsWsState) => {
+        // DEBUG: 打印连接状态变化
+        console.log("[YJS-DEBUG] ChatPanel connection state:", { state, ts: Date.now() });
         if (state === "connecting") setConnectionState("connecting");
         else if (state === "connected") {
           setConnectionState("connected");
@@ -159,6 +170,14 @@ export function ChatPanel({
       yjsWsRef.current = null;
     };
   }, [agentId, sessionId, reconnectKey, chatApplyUpdate, sessionApplyUpdate]);
+
+  // DEBUG: 打印 Chat 和 Session 完整状态快照（仅在变化时）
+  useEffect(() => {
+    console.log("[YJS-DEBUG] chatState:", chatState);
+  }, [chatState]);
+  useEffect(() => {
+    console.log("[YJS-DEBUG] sessionState:", sessionState);
+  }, [sessionState]);
 
   // 发送简单 JSON 命令（替代 client 方法调用）
   const sendViaWs = useCallback((data: Record<string, unknown>) => {
