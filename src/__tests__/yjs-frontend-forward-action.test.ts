@@ -17,6 +17,7 @@ function createEntry(): SessionTransitionEntry {
     rcsSessionId: "rcs-1",
     acpSessionId: "session-1",
     agentStatusReceived: true,
+    lastClientKeepalive: Date.now(),
     sessionLoaded: false,
   };
 }

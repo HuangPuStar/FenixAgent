@@ -16,6 +16,7 @@ const entry = (overrides: Partial<SessionTransitionEntry> = {}): SessionTransiti
   rcsSessionId: "rcs-1",
   acpSessionId: null,
   agentStatusReceived: true,
+  lastClientKeepalive: Date.now(),
   sessionLoaded: false,
   ...overrides,
 });
@@ -276,9 +277,12 @@ describe("SessionTransition", () => {
     const { calls, dependencies } = createDependencies();
     const transition = new SessionTransition(dependencies);
 
-    const shouldForward = await transition.beforeForward(entry({ agentStatusReceived: false }), {
-      action: "list_sessions",
-    });
+    const shouldForward = await transition.beforeForward(
+      entry({ agentStatusReceived: false, lastClientKeepalive: Date.now() }),
+      {
+        action: "list_sessions",
+      },
+    );
 
     expect(shouldForward).toBe(false);
     expect(calls).toEqual([]);

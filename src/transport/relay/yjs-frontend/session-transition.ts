@@ -16,6 +16,7 @@ export interface SessionTransitionEntry {
   agentStatusReceived: boolean;
   /** 是否已执行过至少一次 load_session（用于区分重连首次加载 vs 后续正常切换） */
   sessionLoaded: boolean;
+  lastClientKeepalive: number;
 }
 
 export interface SessionTransitionDependencies {

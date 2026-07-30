@@ -105,13 +105,21 @@ export function ChatPanel({
     setReconnectKey((k) => k + 1);
   }, [agentId, connectionState, pageVisible]);
 
-  // pageVisible 或连接状态变化时通知服务端，控制 keepalive 发送
-  // connectionState 用于捕获 WS 重连/首次连接完成时同步 visibility 状态
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 连接就绪后发送初始状态
+  // pageVisible 为 false（display:none/非活跃tab）时停发客户端 keep_alive
+  // 服务端据此判断是否应发送其自身的 keepalive 心跳
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 就绪后启动 keepalive
   useEffect(() => {
-    const yjsWs = yjsWsRef.current;
-    if (!yjsWs?.isConnected()) return;
-    yjsWs.send({ type: "page_visible", value: pageVisible });
+    if (!yjsWsRef.current?.isConnected()) return;
+    if (!pageVisible) return;
+    const ws = yjsWsRef.current;
+    const interval = setInterval(() => {
+      if (!ws.isConnected()) {
+        clearInterval(interval);
+        return;
+      }
+      ws.send({ type: "keep_alive" });
+    }, 30_000);
+    return () => clearInterval(interval);
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接

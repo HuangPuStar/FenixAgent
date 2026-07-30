@@ -134,6 +134,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
 
@@ -484,6 +485,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
     const raw = { type: messageType, payload: { secret: "agent-secret" }, error: "agent-secret" };
@@ -523,6 +525,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: false,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     });
 
@@ -656,6 +659,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-2", {
@@ -673,6 +677,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
 
@@ -744,6 +749,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
@@ -761,6 +767,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
 
@@ -807,6 +814,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
@@ -824,6 +832,7 @@ describe("YJS frontend internal handlers", () => {
       pendingMessages: [],
       relayReady: true,
       agentStatusReceived: true,
+      lastClientKeepalive: Date.now(),
       sessionLoaded: false,
     } satisfies ClientConnection);
 
