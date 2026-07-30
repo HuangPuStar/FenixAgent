@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetAllStubs, stubDb, stubRegistry } from "../test-utils/helpers";
 
 beforeEach(() => {
   resetAllStubs();
   stubDb({});
+  setTestAuth({
+    user: { id: "owner-1", email: "owner@fenix.com", name: "owner" },
+    authContext: { organizationId: "org-1", userId: "owner-1", role: "owner" },
+  });
+});
+
+afterEach(() => {
+  resetTestAuth();
 });
 
 describe("registry schema 文件", () => {
@@ -53,6 +62,105 @@ describe("registry 路由文件", () => {
     const mod = await import("../routes/web/registry");
     expect(mod.default).toBeDefined();
     expect(typeof mod.default.handle).toBe("function");
+  });
+
+  // 在线机器删除时应返回 409，前端据此提示“先下线或解除引用”。
+  test("DELETE /registry/machines/:id maps online conflict to 409", async () => {
+    stubRegistry({
+      deleteMachine: async () => {
+        throw new Error("machine 'mach-online' is online and cannot be deleted");
+      },
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-online", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: {
+        code: "CONFLICT",
+        message: "machine 'mach-online' is online and cannot be deleted",
+      },
+    });
+  });
+
+  // 删除成功时返回 deleted=true，供前端刷新列表。
+  test("DELETE /registry/machines/:id returns deleted=true", async () => {
+    stubRegistry({
+      deleteMachine: async () => ({ deleted: true as const }),
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-offline", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: {
+        deleted: true,
+      },
+    });
+  });
+
+  // 更新接口返回基础机器信息，不应错误要求 recentEvents。
+  test("PATCH /registry/machines/:id accepts machine record response without recentEvents", async () => {
+    stubRegistry({
+      updateMachine: async () => ({
+        id: "mach-1",
+        organizationId: "org-1",
+        userId: null,
+        agentName: "opencode",
+        name: "builder-01",
+        status: "offline",
+        machineInfo: null,
+        labels: ["sandbox"],
+        maxSessions: 5,
+        heartbeatIntervalMs: 30000,
+        lastHeartbeatAt: null,
+        registeredAt: new Date("2026-07-30T02:00:00.000Z"),
+        createdAt: new Date("2026-07-30T02:00:00.000Z"),
+        updatedAt: new Date("2026-07-30T02:10:00.000Z"),
+      }),
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "builder-01" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: {
+        id: "mach-1",
+        organizationId: "org-1",
+        userId: null,
+        agentName: "opencode",
+        name: "builder-01",
+        status: "offline",
+        machineInfo: null,
+        labels: ["sandbox"],
+        maxSessions: 5,
+        heartbeatIntervalMs: 30000,
+        lastHeartbeatAt: null,
+        registeredAt: 1785376800,
+        createdAt: 1785376800,
+        updatedAt: 1785377400,
+      },
+    });
   });
 });
 

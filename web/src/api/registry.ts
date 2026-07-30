@@ -93,6 +93,22 @@ export interface CreateMachineResponse {
   initCommand: string;
 }
 
+/** 更新机器请求 */
+export interface UpdateMachineRequest {
+  /** 机器显示名称 */
+  name?: string;
+  /** 标签列表 */
+  labels?: string[];
+  /** 引擎名称 */
+  agentName?: string;
+}
+
+/** 删除机器响应 */
+export interface DeleteMachineResponse {
+  /** 删除成功标记 */
+  deleted: true;
+}
+
 /** 事件列表查询参数 */
 export interface EventListQuery {
   /** 分页大小，默认 20 */
@@ -137,4 +153,20 @@ export const registryApi = {
    */
   create: (body: CreateMachineRequest) =>
     request<CreateMachineResponse>("/web/registry/machines", { method: "POST", body }),
+
+  /**
+   * 更新机器展示信息。
+   *
+   * 支持修改名称、标签和引擎类型。
+   */
+  update: (id: string, body: UpdateMachineRequest) =>
+    request<MachineDetail>("/web/registry/machines/:id", { method: "PATCH", params: { id }, body }),
+
+  /**
+   * 删除机器。
+   *
+   * 仅当机器离线且未被任何配置引用时允许删除。
+   */
+  remove: (id: string) =>
+    request<DeleteMachineResponse>("/web/registry/machines/:id", { method: "DELETE", params: { id } }),
 };

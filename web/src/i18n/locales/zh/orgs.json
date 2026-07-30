@@ -100,6 +100,20 @@
     "resultDesc": "请将以下信息发送给机器管理员，在客户端设置环境变量后启动 acp-runtime。",
     "initCommand": "初始化命令"
   },
+  "editMachineDialog": {
+    "title": "编辑机器",
+    "name": "机器名称",
+    "namePlaceholder": "例如 sandbox-01",
+    "labels": "标签",
+    "labelsPlaceholder": "逗号分隔，例如 sandbox,production",
+    "agentName": "引擎类型"
+  },
+  "deleteMachineDialog": {
+    "title": "确认删除机器",
+    "description": "即将删除机器「{{name}}」。如果机器在线或仍被引用，删除会被拒绝。",
+    "confirmDelete": "确认删除",
+    "deleting": "删除中..."
+  },
   "toast": {
     "loadDetailFailed": "加载组织详情失败",
     "createSuccess": "组织创建成功",
@@ -115,7 +129,11 @@
     "deleteSuccess": "组织已删除",
     "deleteFailed": "删除组织失败",
     "machineCreateSuccess": "机器{{name}}已创建（ID: {{id}}）",
-    "machineCreateFailed": "创建机器失败"
+    "machineCreateFailed": "创建机器失败",
+    "machineUpdateSuccess": "机器已更新",
+    "machineUpdateFailed": "更新机器失败",
+    "machineDeleteSuccess": "机器已删除",
+    "machineDeleteFailed": "删除机器失败"
   },
   "error": {
     "operationFailed": "操作失败"
