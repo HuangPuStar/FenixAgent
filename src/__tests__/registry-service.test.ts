@@ -110,3 +110,10 @@ describe("updateMachine 函数", () => {
     expect(typeof updateMachine).toBe("function");
   });
 });
+
+describe("deleteMachine 函数", () => {
+  test("deleteMachine 函数已导出", async () => {
+    const { deleteMachine } = await import("../services/registry");
+    expect(typeof deleteMachine).toBe("function");
+  });
+});

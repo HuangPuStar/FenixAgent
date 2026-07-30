@@ -85,6 +85,9 @@ export function AgentOrganizationsPage() {
 
   // 新增机器弹窗
   const [machineCreateOpen, setMachineCreateOpen] = useState(false);
+  const [machineEditOpen, setMachineEditOpen] = useState(false);
+  const [machineDeleteTarget, setMachineDeleteTarget] = useState<MachineRecord | null>(null);
+  const [machineEditTarget, setMachineEditTarget] = useState<MachineRecord | null>(null);
   const [machineFormName, setMachineFormName] = useState("");
   const [machineFormLabels, setMachineFormLabels] = useState("");
   const [machineFormAgentName, setMachineFormAgentName] = useState("opencode");
@@ -132,6 +135,43 @@ export function AgentOrganizationsPage() {
       onError: (err) => {
         console.error(err);
         toast.error(t("toast.machineCreateFailed"));
+      },
+    },
+  );
+
+  const { run: runUpdateMachine, loading: updateMachineLoading } = useRequest(
+    (machineId: string, name: string, labels: string[], agentName: string) =>
+      unwrap(registryApi.update(machineId, { name, labels, agentName })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.machineUpdateSuccess"));
+        setMachineEditOpen(false);
+        setMachineEditTarget(null);
+        setMachineFormName("");
+        setMachineFormLabels("");
+        setMachineFormAgentName("opencode");
+        refreshMachines();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(err instanceof Error ? err.message : t("toast.machineUpdateFailed"));
+      },
+    },
+  );
+
+  const { run: runDeleteMachine, loading: deleteMachineLoading } = useRequest(
+    (machineId: string) => unwrap(registryApi.remove(machineId)),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.machineDeleteSuccess"));
+        setMachineDeleteTarget(null);
+        refreshMachines();
+      },
+      onError: (err) => {
+        console.error(err);
+        toast.error(err instanceof Error ? err.message : t("toast.machineDeleteFailed"));
       },
     },
   );
@@ -318,6 +358,26 @@ export function AgentOrganizationsPage() {
 
   const members = (detail?.members ?? []) as unknown as OrgMember[];
   const showCandidateResults = debouncedAddMemberKeyword.length >= 3;
+
+  function resetMachineForm() {
+    setMachineFormName("");
+    setMachineFormLabels("");
+    setMachineFormAgentName("opencode");
+  }
+
+  function openCreateMachineDialog() {
+    setMachineCreateResult(null);
+    resetMachineForm();
+    setMachineCreateOpen(true);
+  }
+
+  function openEditMachineDialog(machineRecord: MachineRecord) {
+    setMachineEditTarget(machineRecord);
+    setMachineFormName(machineRecord.name ?? "");
+    setMachineFormLabels((machineRecord.labels ?? []).filter(Boolean).join(", "));
+    setMachineFormAgentName(machineRecord.agentName);
+    setMachineEditOpen(true);
+  }
 
   return (
     <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
@@ -554,17 +614,7 @@ export function AgentOrganizationsPage() {
                   </h3>
                   <div className="flex items-center gap-2">
                     {canManage && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setMachineCreateResult(null);
-                          setMachineFormName("");
-                          setMachineFormLabels("");
-                          setMachineFormAgentName("opencode");
-                          setMachineCreateOpen(true);
-                        }}
-                      >
+                      <Button size="sm" variant="outline" onClick={openCreateMachineDialog}>
                         <Plus className="w-3.5 h-3.5 mr-1.5" />
                         {t("addMachine")}
                       </Button>
@@ -617,6 +667,26 @@ export function AgentOrganizationsPage() {
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </Button>
+                        {canManage && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-text-dim hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                              onClick={() => openEditMachineDialog(m)}
+                            >
+                              {t("edit")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-text-dim hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                              onClick={() => setMachineDeleteTarget(m)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </>
+                        )}
                         {m.labels && m.labels.length > 0 && (
                           <div className="flex items-center gap-1 shrink-0">
                             {m.labels
@@ -901,9 +971,7 @@ export function AgentOrganizationsPage() {
           if (!open) {
             setMachineCreateOpen(false);
             setMachineCreateResult(null);
-            setMachineFormName("");
-            setMachineFormLabels("");
-            setMachineFormAgentName("opencode");
+            resetMachineForm();
           }
         }}
       >
@@ -957,9 +1025,7 @@ export function AgentOrganizationsPage() {
                   onClick={() => {
                     setMachineCreateOpen(false);
                     setMachineCreateResult(null);
-                    setMachineFormName("");
-                    setMachineFormLabels("");
-                    setMachineFormAgentName("opencode");
+                    resetMachineForm();
                   }}
                 >
                   {t("done")}
@@ -1027,6 +1093,99 @@ export function AgentOrganizationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={machineEditOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMachineEditOpen(false);
+            setMachineEditTarget(null);
+            resetMachineForm();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("editMachineDialog.title")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.name")}</label>
+              <Input
+                className="mt-1"
+                value={machineFormName}
+                onChange={(e) => setMachineFormName(e.target.value)}
+                placeholder={t("editMachineDialog.namePlaceholder")}
+                maxLength={64}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.labels")}</label>
+              <Input
+                className="mt-1"
+                value={machineFormLabels}
+                onChange={(e) => setMachineFormLabels(e.target.value)}
+                placeholder={t("editMachineDialog.labelsPlaceholder")}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.agentName")}</label>
+              <select
+                value={machineFormAgentName}
+                onChange={(e) => setMachineFormAgentName(e.target.value)}
+                className="mt-1 w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                <option value="opencode">OpenCode</option>
+                <option value="ccb">CCB</option>
+                <option value="claude-code">Claude Code</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMachineEditOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                if (!machineEditTarget) return;
+                const name = machineFormName.trim();
+                if (!name) return;
+                const labels = machineFormLabels
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                runUpdateMachine(machineEditTarget.id, name, labels, machineFormAgentName);
+              }}
+              disabled={updateMachineLoading || !machineFormName.trim()}
+            >
+              {updateMachineLoading ? t("saving") : t("save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!machineDeleteTarget} onOpenChange={(open) => !open && setMachineDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteMachineDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("deleteMachineDialog.description", {
+                name: machineDeleteTarget?.name || machineDeleteTarget?.id,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => machineDeleteTarget && runDeleteMachine(machineDeleteTarget.id)}
+              disabled={deleteMachineLoading}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {deleteMachineLoading ? t("deleteMachineDialog.deleting") : t("deleteMachineDialog.confirmDelete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

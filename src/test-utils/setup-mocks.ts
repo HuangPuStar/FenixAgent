@@ -251,6 +251,7 @@ const REGISTRY_KEYS = [
   "getMachine",
   "listEvents",
   "createMachine",
+  "deleteMachine",
   "registerMachine",
   "disconnectMachine",
   "markHeartbeatTimeout",

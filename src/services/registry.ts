@@ -1,7 +1,7 @@
 import { log } from "@fenix/logger";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { agentConfig, machine, registryEvent } from "../db/schema";
+import { agentConfig, machine, organization, registryEvent } from "../db/schema";
 import type { AuthContext } from "../plugins/auth";
 
 function genId(prefix: string): string {
@@ -306,6 +306,50 @@ export async function updateMachine(
 
   const updated = await db.select().from(machine).where(eq(machine.id, id)).limit(1);
   return updated[0];
+}
+
+/**
+ * 删除机器前执行安全校验：
+ * 1. 在线机器不可删除，避免删除后仍保留活跃连接。
+ * 2. 被 Agent 配置或组织默认引擎引用的机器不可删除，避免产生悬空 machineId。
+ */
+export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ deleted: true }> {
+  const rows = await db
+    .select()
+    .from(machine)
+    .where(and(eq(machine.id, id), or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId))))
+    .limit(1);
+
+  const record = rows[0];
+  if (!record) {
+    throw new Error(`machine '${id}' not found`);
+  }
+
+  if (record.status === "online") {
+    throw new Error(`machine '${id}' is online and cannot be deleted`);
+  }
+
+  const referencedAgents = await db
+    .select()
+    .from(agentConfig)
+    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.machineId, id)))
+    .limit(1);
+  if (referencedAgents.length > 0) {
+    throw new Error(`machine '${id}' is still referenced by agent configs`);
+  }
+
+  const orgRows = await db.select().from(organization).where(eq(organization.id, ctx.organizationId)).limit(1);
+  const metadata = orgRows[0]?.metadata;
+  const defaultMachineId =
+    metadata && typeof metadata === "object"
+      ? (((metadata as { defaultEngine?: { machineId?: string } }).defaultEngine?.machineId ?? "") as string)
+      : "";
+  if (defaultMachineId === id) {
+    throw new Error(`machine '${id}' is still referenced by organization default engine`);
+  }
+
+  await db.delete(machine).where(eq(machine.id, id));
+  return { deleted: true };
 }
 
 /** 按 agentName 匹配 agentConfig 并绑定 machineId */

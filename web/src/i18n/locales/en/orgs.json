@@ -100,6 +100,20 @@
     "resultDesc": "Share the following information with the machine administrator. Set the environment variables on the client before starting acp-runtime.",
     "initCommand": "Init Command"
   },
+  "editMachineDialog": {
+    "title": "Edit Machine",
+    "name": "Machine Name",
+    "namePlaceholder": "e.g. sandbox-01",
+    "labels": "Labels",
+    "labelsPlaceholder": "Comma separated, e.g. sandbox,production",
+    "agentName": "Engine Type"
+  },
+  "deleteMachineDialog": {
+    "title": "Confirm Delete Machine",
+    "description": "You are about to delete machine \"{{name}}\". The request will be rejected if it is online or still referenced.",
+    "confirmDelete": "Confirm Delete",
+    "deleting": "Deleting..."
+  },
   "toast": {
     "loadDetailFailed": "Failed to load organization details",
     "createSuccess": "Organization created",
@@ -115,7 +129,11 @@
     "deleteSuccess": "Organization deleted",
     "deleteFailed": "Failed to delete organization",
     "machineCreateSuccess": "Machine {{name}} created (ID: {{id}})",
-    "machineCreateFailed": "Failed to create machine"
+    "machineCreateFailed": "Failed to create machine",
+    "machineUpdateSuccess": "Machine updated",
+    "machineUpdateFailed": "Failed to update machine",
+    "machineDeleteSuccess": "Machine deleted",
+    "machineDeleteFailed": "Failed to delete machine"
   },
   "error": {
     "operationFailed": "Operation failed"

@@ -5,14 +5,23 @@ import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateMachineResponseSchema,
   CreateMachineSchema,
+  DeleteMachineResponseSchema,
   EventQuerySchema,
   MachineDetailResponseSchema,
   MachineListResponseSchema,
+  MachineMutateResponseSchema,
   MachineQuerySchema,
   RegistryEventListResponseSchema,
   UpdateMachineSchema,
 } from "../../schemas/registry.schema";
-import { createMachine, getMachine, listEvents, listMachines, updateMachine } from "../../services/registry";
+import {
+  createMachine,
+  deleteMachine,
+  getMachine,
+  listEvents,
+  listMachines,
+  updateMachine,
+} from "../../services/registry";
 
 const logger = createLogger("registry");
 
@@ -54,9 +63,11 @@ function serializeEvent<T extends Record<string, unknown>>(row: T): T {
 
 const app = new Elysia({ name: "web-registry" }).use(authGuardPlugin).model({
   "create-machine-response": WebOkSchema(CreateMachineResponseSchema),
+  "delete-machine-response": WebOkSchema(DeleteMachineResponseSchema),
   "event-query": EventQuerySchema,
   "machine-list-response": MachineListResponseSchema,
   "machine-detail-response": MachineDetailResponseSchema,
+  "machine-mutate-response": MachineMutateResponseSchema,
   "machine-query": MachineQuerySchema,
   "registry-event-list-response": RegistryEventListResponseSchema,
   "update-machine-body": UpdateMachineSchema,
@@ -204,7 +215,7 @@ app.patch(
     sessionAuth: true,
     body: UpdateMachineSchema,
     response: {
-      200: "machine-detail-response",
+      200: "machine-mutate-response",
       404: WebErrSchema,
       500: WebErrSchema,
     },
@@ -212,6 +223,42 @@ app.patch(
       tags: ["Registry"],
       summary: "更新机器",
       description: "更新机器名称、标签和引擎类型。仅限组织管理员操作。",
+    },
+  },
+);
+
+app.delete(
+  "/registry/machines/:id",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, status }: any) => {
+    const authCtx = store.authContext!;
+    try {
+      const result = await deleteMachine(authCtx, params.id);
+      return { success: true, data: result };
+    } catch (err: unknown) {
+      logger.error("Failed to delete machine", err);
+      const msg = internalErrorMessage(err);
+      if (msg.includes("not found")) {
+        return status(404, { success: false, error: { code: "NOT_FOUND", message: msg } });
+      }
+      if (msg.includes("is online") || msg.includes("is still referenced")) {
+        return status(409, { success: false, error: { code: "CONFLICT", message: msg } });
+      }
+      return status(500, { success: false, error: { code: "INTERNAL_ERROR", message: msg } });
+    }
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: "delete-machine-response",
+      404: WebErrSchema,
+      409: WebErrSchema,
+      500: WebErrSchema,
+    },
+    detail: {
+      tags: ["Registry"],
+      summary: "删除机器",
+      description: "删除离线且未被任何配置引用的机器。在线机器或被引用的机器会返回冲突错误。",
     },
   },
 );

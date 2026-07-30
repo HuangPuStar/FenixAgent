@@ -47,6 +47,9 @@ export const MachineDetailResponseSchema = WebOkSchema(MachineDetailSchema.descr
   "机器详情响应。",
 );
 
+/** 机器更新响应 */
+export const MachineMutateResponseSchema = WebOkSchema(MachineSchema.describe("机器信息。")).describe("机器更新响应。");
+
 /** 机器事件列表数据 */
 export const RegistryEventListDataSchema = z.object({
   items: RegistryEventSchema.array().describe("事件列表。"),
@@ -94,16 +97,23 @@ export const CreateMachineResponseSchema = z.object({
   initCommand: z.string().describe("客户端初始化命令"),
 });
 
+/** 删除机器响应 */
+export const DeleteMachineResponseSchema = z.object({
+  deleted: z.literal(true).describe("删除成功标记。"),
+});
+
 export type Machine = z.infer<typeof MachineSchema>;
 export type MachineDetail = z.infer<typeof MachineDetailSchema>;
 export type RegistryEvent = z.infer<typeof RegistryEventSchema>;
 export type MachineListData = z.infer<typeof MachineListDataSchema>;
 export type MachineListResponse = z.infer<typeof MachineListResponseSchema>;
 export type MachineDetailResponse = z.infer<typeof MachineDetailResponseSchema>;
+export type MachineMutateResponse = z.infer<typeof MachineMutateResponseSchema>;
 export type RegistryEventListData = z.infer<typeof RegistryEventListDataSchema>;
 export type RegistryEventListResponse = z.infer<typeof RegistryEventListResponseSchema>;
 export type MachineQuery = z.infer<typeof MachineQuerySchema>;
 export type EventQuery = z.infer<typeof EventQuerySchema>;
 export type CreateMachine = z.infer<typeof CreateMachineSchema>;
 export type CreateMachineResponse = z.infer<typeof CreateMachineResponseSchema>;
+export type DeleteMachineResponse = z.infer<typeof DeleteMachineResponseSchema>;
 export type UpdateMachineInput = z.infer<typeof UpdateMachineSchema>;
