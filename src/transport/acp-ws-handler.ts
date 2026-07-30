@@ -153,7 +153,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (!result.isNew) {
-      import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
+      import("./relay").then(({ handleMachineReconnect }) => {
         handleMachineReconnect(result.id);
       });
     }
@@ -336,7 +336,7 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     );
     // 即使有新连接接管，仍需关闭旧 relay 连接，让前端重连使用新 transport
     // 跳过 DB/core 清理（新连接已接管），但必须触发 relay 层刷新
-    import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
+    import("./relay").then(({ handleMachineReconnect }) => {
       handleMachineReconnect(machineId);
     });
     return;
@@ -353,7 +353,7 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     const facade = getCoreRuntime();
     globalInstanceRegistry.reconcile(() => facade.listInstances());
   });
-  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+  import("./relay").then(({ handleMachineDisconnected }) => {
     logger.info(`[MACHINE-CLEANUP] Calling handleMachineDisconnected for machineId=${machineId}`);
     handleMachineDisconnected(machineId);
   });
@@ -398,7 +398,7 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
 
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
-  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
+  import("./relay").then(({ handleMachineDisconnected }) => {
     handleMachineDisconnected(machineId);
   });
 }

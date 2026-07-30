@@ -246,3 +246,87 @@ IMChannel 包含：
 - 认证层：session 存 activeTeamId，支持切换团队
 - 路由层：handler 使用 teamId 替代 userId
 - 前端：团队管理 UI、团队切换、资源列表按团队过滤
+
+---
+
+## 改动 13：前端 WS 通道从 Relay+YJS 双通道收拢为单 /acp/yjs 通道
+
+**状态**：✅ 已实施
+
+**现状**：
+
+设计文档（`docs/design/acp-workflow-tech-stack.md`）和部分架构文档（`docs/arch/05-chat.md`、`docs/arch/tech-stack-frontend.md`）仍然描述前端使用两条并行 WS 通道：
+
+| 通道 | 端点 | 职责 |
+|---|---|---|
+| Relay 路径 | `/acp/relay/:agentId` | ACPClient 通过 WebSocket 传输 ACP JSON-RPC 协议 |
+| YJS 路径 | `/acp/yjs/:agentId` | 轻量 WS → Yjs CRDT 增量同步 |
+
+**实际上，架构已演进为单条 `/acp/yjs/{agentId}` WS 统一通道**：
+
+- 前端唯一 WS 连接在 `ChatPanel` 中通过 `buildYjsUrl()` + `createYjsWs()` 创建（`web/src/pages/agent-panel/ChatPanel.tsx:120`），连接 `/acp/yjs/{agentId}`
+- `createRelayClient()` 和 `buildRelayUrl()`（`web/src/acp/relay-client.ts`）已无前端调用点，属于死代码
+- `/acp/relay/:agentId` 路由定义仍在 `src/routes/acp/index.ts:175`，但前端不再连接
+- `yjs:update` 消息由 `YjsBroadcaster`（`src/transport/relay/yjs-frontend/yjs-broadcaster.ts:83`）通过 `/acp/yjs/` 连接池广播
+- relay WS 的 `shouldForwardToFrontend` 明确过滤 `yjs:update`（`src/transport/relay/relay-handler.ts:41`）
+
+**目标**：文档和代码保持一致。删除过时的双通道描述，清理死代码。
+
+**影响**：
+
+#### 前端 🗑️ 死代码
+
+| 文件 | 内容 |
+|---|---|
+| `web/src/acp/relay-client.ts` | `buildRelayUrl`、`createRelayClient`（无调用点） |
+| `web/src/acp/index.ts` | `relay-client` 的 re-export |
+
+#### 后端 🗑️ 死代码（可安全删除）
+
+| 文件/位置 | 内容 |
+|---|---|
+| `routes/acp/index.ts:176-257` | `/acp/relay/:agentId` 路由定义 |
+| `schemas/acp.schema.ts:26-30` | `AcpRelayQuerySchema` |
+| `transport/relay/connection-manager.ts` | **整个文件** (`RelayConnectionManager` + `sendToRelayWs`) |
+| `transport/relay/message-router.ts` | **整个文件** (5 个函数，生产代码零调用) |
+| `relay-handler.ts:39-46` | `shouldForwardToFrontend` |
+| `relay-handler.ts:49` | `pendingRelayMessages` Map |
+| `relay-handler.ts:127-180` | `translateSimpleAction` 副本（`@fenix/acp-server` 已有替代实现） |
+| `relay-handler.ts:186-242` | `trySyncSessionsToYjs` |
+| `relay-handler.ts:249-490` | `handleRelayOpen` + `openLocalRelay` |
+| `relay-handler.ts:493-591` | `handleRelayMessage` |
+| `relay-handler.ts:594-634` | `handleRelayClose` |
+| `types/store.ts:47-78` | `RelayConnectionEntry` + `ManagedConnection` 类型定义 |
+| `__tests__/relay-connection-manager.test.ts` | 关联测试文件 |
+| `__tests__/relay-message-router.test.ts` | 关联测试文件 |
+| `__tests__/relay-handler-machine.test.ts` | 关联测试文件 |
+| `transport/relay/index.ts` | 清理死代码导出 |
+
+#### 后端 ⚠️ 冗余（仍有调用但实际无消费者，运行期空操作）
+
+| 调用点 | 原因 |
+|---|---|
+| `relay-handler.ts:806-827` `docManager.setBroadcastHandler` | 向空的 `RelayConnectionManager` 广播 yjs:update，每次 Y.Doc update 产生无意义的 base64 序列化开销 |
+| `closeRelayConnectionsForIdleReclaim` | `acp-idle-monitor.ts` 调用 → 遍历空 `RelayConnectionManager` |
+| `closeAllRelayConnections` | graceful shutdown 调用 → 同上 |
+| `handleMachineDisconnected` | `acp-ws-handler.ts` 调用 → 同上 |
+| `handleMachineReconnect` | 同上 |
+
+> 💡 冗余函数需迁移到 yjs-frontend 的 `ConnectionRegistry` 实现等效功能。
+
+#### 后端 ✅ 需保留（yjs-frontend 复用或机器侧 relay）
+
+| 函数 | 复用方 |
+|---|---|
+| `extractJsonRpc` | `yjs-frontend/relay-event-handler.ts` |
+| `extractAcpEvent` | `yjs-frontend/relay-event-handler.ts` |
+| `AcpRelayParamsSchema` | `/acp/yjs/:agentId` 路由 |
+| `sendToAgentWs`、`sendToInstanceRelay`、`closeInstanceRelay` 等 | `hermes-client.ts`（机器侧） |
+
+#### 文档更新
+
+- `docs/design/acp-workflow-tech-stack.md` — ✅ 已更新为单 `/acp/yjs` 通道描述
+- `docs/arch/05-chat.md` — 第 117-163 行更新 relay-client 相关描述
+- `docs/arch/tech-stack-frontend.md` — 第 102-106 行更新前端连接描述
+- `docs/arch/tech-stack-overview.md` — 移除 `/acp/relay` 相关连线
+- `docs/developer/arch/*` — 同步更新 `/acp/relay` 引用

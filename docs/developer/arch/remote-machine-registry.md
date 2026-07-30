@@ -302,7 +302,7 @@ performMachineCleanup()
     ├── disconnectMachine()        → DB: status=offline + disconnect 事件
     ├── unregisterRemoteNode()     → Core: 下线节点 + 清理实例
     ├── stopHeartbeat()            → 清除心跳定时器
-    └── handleMachineDisconnected() → 关闭前端 relay
+    └── handleMachineDisconnected() → 关闭前端 yjs WS 连接
 ```
 
 ---

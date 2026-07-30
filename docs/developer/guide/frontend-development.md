@@ -16,7 +16,7 @@ web/
 │   ├── pages/              # 页面组件（agent-panel / workflow / hindsight / login）
 │   ├── hooks/              # 自定义 hooks（useAuth、useSSE、useACPConnection 等 12 个）
 │   ├── api/                # API 建模层（按资源域分文件：tasks.ts / skills.ts / sites.ts 等）
-│   ├── acp/                # ACP 协议客户端（client.ts、relay-client.ts、types.ts）
+│   ├── acp/                # ACP 协议客户端（client.ts、types.ts）
 │   ├── lib/                # 工具函数（form-utils、retry、token-stats、theme 等）
 │   ├── i18n/               # i18n 配置 + locales/{en,zh}/ 翻译文件
 │   ├── types/              # 全局类型定义
@@ -559,7 +559,7 @@ export const taskApi = {
 | 文件名 kebab-case | 与路由路径一致 | `knowledge-bases.ts`、`workflow-defs.ts` |
 | 导出对象 camelCase + `Api` 后缀 | 避免与类型名冲突 | `knowledgeBaseApi`、`workflowApi` |
 | REST 模块放 `api/` 根 | 标准 CRUD 接口 | `api/tasks.ts`、`api/skills.ts` |
-| SSE/WS 传输模块放 `acp/` | 非 REST 协议，独立管理 | `acp/client.ts`、`acp/relay-client.ts` |
+| SSE/WS 传输模块放 `acp/` | 非 REST 协议，独立管理 | `acp/client.ts` |
 
 ### 5.6 域模块一览
 

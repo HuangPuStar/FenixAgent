@@ -86,4 +86,4 @@ const lifecycle = new WsLifecycle({
   maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
 });
 
-export { lifecycle };
+export { lifecycle, registry };

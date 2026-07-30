@@ -197,4 +197,41 @@ export class ConnectionRegistry {
     this.sharedRelays.delete(relayKey);
     return shared;
   }
+
+  /** 关闭指定 instance 的所有客户端连接 */
+  closeClientsByInstance(instanceId: string, code?: number, reason?: string): void {
+    for (const [_wsId, client] of this.clients) {
+      if (client.instanceId === instanceId) {
+        try {
+          client.relayUnsub?.();
+          client.relayHandle?.close?.(code ?? 1000, reason ?? "instance closed");
+        } catch {
+          // ignore
+        }
+        clearInterval(client.keepalive);
+        this.clients.delete(_wsId);
+      }
+    }
+  }
+
+  /** 关闭所有客户端连接（graceful shutdown） */
+  closeAll(code?: number, reason?: string): void {
+    for (const [, client] of this.clients) {
+      try {
+        client.relayUnsub?.();
+        client.relayHandle?.close?.(code ?? 1001, reason ?? "server_shutdown");
+      } catch {
+        // ignore
+      }
+      clearInterval(client.keepalive);
+    }
+    this.clients.clear();
+  }
+
+  /** 迭代所有客户端（用于外部关闭逻辑） */
+  forEachAllClients(callback: (client: ClientConnection) => void): void {
+    for (const client of this.clients.values()) {
+      callback(client);
+    }
+  }
 }

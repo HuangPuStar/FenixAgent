@@ -5,7 +5,6 @@
  * should reference these types instead of defining their own.
  */
 
-import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { RemoteTransport } from "@fenix/remote-runtime";
 import type { WsConnection } from "../transport/ws-types";
 
@@ -37,44 +36,6 @@ export interface AcpConnectionEntry {
   onSessionMessage?: (sessionId: string, type: string, payload: unknown) => void;
   /** 远程 transport 实例（由 registerRemoteNode 设置），用于将消息路由到 core remote-runtime */
   remoteTransport?: RemoteTransport;
-}
-
-// ────────────────────────────────────────────
-// Relay Connection
-// Extracted from: src/transport/relay/connection-manager.ts
-// ────────────────────────────────────────────
-
-/** Per-connection state for frontend relay connections (`/acp/relay/:agentId`) */
-export interface RelayConnectionEntry {
-  agentId: string;
-  userId: string;
-  unsub: (() => void) | null;
-  keepalive: ReturnType<typeof setInterval> | null;
-  ws: WsConnection;
-  openTime: number;
-  instanceId: string | null;
-  relayHandle: EngineRelayHandle | null;
-  relayUnsub: (() => void) | null;
-  /** RCS 层会话标识符 (rcs_xxx)，连接生命周期内不变 */
-  rcsSessionId: string;
-  /** 当前活跃的 ACP 会话标识符 (ses_xxx)，在 session/new、session/load 后更新；初始为 null */
-  acpSessionId: string | null;
-  outboundBuffer: Record<string, unknown>[];
-  /** 等待 session_started 确认后才能转发消息 */
-  sessionStarted?: boolean;
-  /** machine 断连后标记为待重连，保持 relay WS 连接不关 */
-  pendingReconnect?: boolean;
-  /** 主动关闭 relay 的原因，用于抑制后续兜底 close 行为。 */
-  closingReason?: "idle_reclaim";
-  /** machine 连接的 wsId，用于断连后恢复 onSessionMessage 回调 */
-  machineWsId?: string;
-  /** 本地 agent 的 workspace 路径，用于 JSON-RPC session cwd 注入 */
-  workspacePath?: string;
-}
-
-/** RelayConnectionEntry + wsId for managed connections */
-export interface ManagedConnection extends RelayConnectionEntry {
-  wsId: string;
 }
 
 // ────────────────────────────────────────────

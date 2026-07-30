@@ -6,7 +6,6 @@ export {
   AcpAgentSchema,
   AcpRegistrySecretQuerySchema,
   AcpRelayParamsSchema,
-  AcpRelayQuerySchema,
 } from "./acp.schema";
 export {
   type AgentGenerationResponse,

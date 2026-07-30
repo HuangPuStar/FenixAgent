@@ -12,281 +12,233 @@
 8. **为未来维护者保留上下文**：代码、注释、测试和架构文档是跨越时间的协作媒介。非显然的设计决策、兼容约束、已知缺陷和临时方案，必须记录原因、影响范围、潜在风险及移除条件；技术债务应关联可追踪任务，关键架构决策应同步到 ADR，禁止留下缺少上下文的 `TODO`。
 9. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
 
+> **变更速查**：提交前运行 `bun run precheck`；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <name>` 和 `bun run db:migrate`。
 
-> ⚡ 速查：提交前 `bun run precheck` / 改前端后 `bun run build:web` / 改 schema 后 `bun run db:generate --name <name>` + `bun run db:migrate` / 先看下方“高风险陷阱”
-
-## 规范入口
+## 文档使用与规范入口
 
 - 前端开发规范：`docs/developer/guide/frontend-development.md`
-  - 覆盖前端目录结构、路由导航、状态管理、组件、API、i18n、样式规范
+  - 覆盖目录结构、路由、状态管理、组件、API、i18n、样式和安全规范。
 - 后端开发规范：`docs/developer/guide/backend-development.md`
-  - 覆盖后端目录分层、数据库、API、注释、日志规范
-- 本文件只保留高频速查、跨前后端约束、项目特有 gotcha
-- 若本文件与更细粒度规范冲突，以离代码更近、约束更具体的文档为准
+  - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
+- 架构说明：`docs/arch/`；设计方案：`docs/design/`；关键且长期有效的架构决策应记录为 ADR（`docs/adr/` 不存在时，在实际产生首个 ADR 时再创建）。
+- 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
+- 规则冲突时，以离代码更近、约束更具体且与当前实现一致的文档为准；若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
 
-## 项目概览
+## 项目与架构地图
 
-FenixAgent 是基于 Elysia + Bun 的 ACP Agent 平台，前端为 React 19 + Vite，数据库为 PostgreSQL + Drizzle ORM。
+FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
-- 主要能力：多租户组织、Agent 配置、ACP 实时通信、工作流、知识库、定时任务、IM 通道
-- 依赖结构：`web/` 没有独立 `package.json`，前后端依赖统一在根 `package.json`
-- workspace 包：`packages/` 下当前有 11 个内部包
+- 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
+- 根目录 `package.json` 是前后端统一依赖清单；`web/` 没有独立 `package.json`。
+- `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
-## 仓库结构
+### 后端地图
 
-### 后端
+- `src/index.ts`：服务入口和装配层。
+- `src/routes/web/`：控制台内部 API。
+- `src/routes/api/`：对外稳定 API / OpenAPI。
+- `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
+- `src/services/`：领域规则、业务编排、事务边界和外部能力调用。
+- `src/repositories/`：数据访问层。
+- `src/schemas/`：请求、响应和配置 schema。
+- `src/transport/`：WebSocket、SSE、relay 和 EventBus。
+- `src/db/schema.ts`：数据库 schema 真相来源。
+- `src/__tests__/`、`src/test-utils/`：后端测试和测试基础设施。
 
-- `src/index.ts`：服务入口
-- `src/routes/web/`：控制台内部 API
-- `src/routes/api/`：对外 OpenAPI
-- `src/routes/acp/`：ACP WebSocket / relay
-- `src/routes/mcp/`：MCP 入口
-- `src/routes/hooks.ts`：Webhook
-- `src/services/`：业务逻辑
-- `src/repositories/`：数据访问层
-- `src/schemas/`：请求/响应 schema
-- `src/transport/`：WS / SSE / relay / EventBus
-- `src/db/`：Drizzle schema 和数据库接入
-- `src/__tests__/`：后端测试
+### 前端地图
 
-### 前端
+- `web/src/routes/`：TanStack Router 文件路由；Agent 面板页面位于 `web/src/routes/agent/_panel/`；`routeTree.gen.ts` 为生成文件，严禁手改。
+- `web/src/pages/`：页面和业务容器。
+- `web/components/`：通用 UI 与业务组件。
+- `web/src/api/`：前端 API 建模层。
+- `web/src/acp/`：ACP 客户端。
+- `web/src/i18n/`：国际化配置与语言资源。
+- `web/src/__tests__/`：前端关键流程测试。
 
-- `web/src/routes/`：TanStack Router 文件路由
-- `web/src/pages/`：页面组件
-- `web/components/`：通用组件
-- `web/src/api/`：前端 API 模块
-- `web/src/acp/`：ACP 客户端
-- `web/src/i18n/`：国际化
-- `web/src/__tests__/`：前端测试
+## 开发工作流
 
-## 常用命令
+### 计划阶段
+
+进入编码前必须：
+
+1. 确认需求、领域术语、模块边界、数据流和向后兼容要求。
+2. 查找已有实现、公共接口和相邻模块，优先深化现有模块，不并行创建第二套能力。
+3. 明确多租户隔离、权限校验、并发与失败路径。
+4. 定义验证方式、可观测信号和回滚路径。
+5. 涉及长期架构决策时同步规划 `docs/arch/`、`docs/design/` 或 ADR 更新。
+
+### 常用命令
 
 ```bash
 bun run dev                         # 后端开发
 bun run dev:web                     # 前端开发
-bun run build:web                   # 前端生产构建；改前端后必须执行
-bun run docs:dev                    # 本地文档开发
+bun run build:web                   # 前端生产构建
+bun run docs:dev                    # 文档开发
 bun run docs:build                  # 文档构建
-bun run precheck                    # 提交前必跑：格式化、排序、类型和 lint 检查
+bun run precheck                    # format、import-sort、server/web tsc、lint、后端测试
 bun run check:deps                  # 依赖健康检查
 bun run db:generate --name <name>   # 生成 Drizzle 迁移
 bun run db:migrate                  # 执行迁移
 ```
 
-### 测试
+### 按变更类型验证
 
-```bash
-bun test src/__tests__/
-bun test src/__tests__/store.test.ts
-bun test web/src/__tests__/
-bun test web/src/__tests__/config-mcp-page.test.ts
-```
+- 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
+- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `web/dist/` 挂载静态资源。
+- 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
+- 文档站点改动：运行 `bun run docs:build`。
+- `precheck` 必须全绿才能提交；它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建。
 
-## 前端速查
+## 架构边界与模块契约
 
-- 路由：TanStack Router，新增页面放 `web/src/routes/agent/_panel/`
-- 导航：只能用 `<Link to>`、`useNavigate()`、`router.invalidate()`
-- 禁止：`window.location.href`、`window.location.replace`、`window.location.reload`、`window.history.pushState`
-- `routeTree.gen.ts` 严禁手改
-- 数据获取优先遵循前端规范；当前项目已大量使用 `ahooks` `useRequest`
-- i18n：`web/` 下用户可见字符串一律走 `t()`，不要在 JSX 里硬编码
-- UI：
-  - 基础组件优先复用 `web/components/ui/`
-  - 通用图标只用 `lucide-react`
-  - 模型品牌图标统一通过 `web/components/model-icon/ModelIcon.tsx`
-- API：
-  - 前端请求统一走 `web/src/api/request.ts`
-  - `request<T>()` 已自动做路径参数、query、JSON、错误标准化、响应解包
-  - `/web/config/*` 多为 action 风格；其他 `/web/*` 可能是 RESTful 或混用，写前先对照后端路由
-- 路径别名：
-  - `@/src` → `web/src`
-  - `@/components` → `web/components`
-  - `@server` → `../src`
+### 后端分层
 
-## 后端速查
+默认依赖方向：`routes -> services -> repositories -> db`，`services -> packages/*`，`routes -> schemas`。
 
-- 分层默认遵循：`routes -> services -> repositories -> db`
-- route 只做协议接入、鉴权、参数校验、响应映射
-- service 负责业务编排、事务边界、跨表操作、外部调用
-- repository 只做数据访问，不承载业务规则
-- 数据库读写、查询条件拼装等 DB 操作默认收敛到 `repositories` 方便复用；`routes` 层一定不能直接访问 `db`
-- `/web/*`：
-  - 给控制台前端使用
-  - 默认返回 `{ success, data }` 或 `{ success: false, error }`
-- `/api/*`：
-  - 给外部系统和 API Key 调用方使用
-  - 必须优先保证向后兼容
-- 内部协议能力不要混进 `/web` 或 `/api`，应放 `acp`、`mcp`、`hooks`、`skills` 等独立前缀
-- 新接口默认同时补齐 OpenAPI 元数据：`detail`、`params`、`query`、`headers`、`body`、`response`
-- schema 定义放 `src/schemas/`，不要在 route 内联复杂结构
+- route 只负责协议接入、鉴权、参数校验和响应映射，不得直接访问 `db`。
+- service 负责领域规则、业务编排、事务边界、跨表操作和外部调用。
+- repository 只负责持久化和查询条件封装，不承载业务规则。
+- 新增数据库操作应收敛到 repository；历史 service 直连 DB 的写法不得继续扩散。
+- 禁止反向依赖和跨层复用内部实现，例如 repository 调用 service/route，或一个 route 导入另一个 route 的业务逻辑。
+- schema 放在 `src/schemas/`，复杂请求/响应结构不得内联在 route 中。
 
-### Agent 通信：统一 service 层（重要）
+### API 与数据模型边界
 
-Agent 通信的 ACP 协议栈只有一套权威实现，所有入口必须复用，禁止各自重写。
+- `/web/*` 服务控制台前端，默认响应 `{ success, data }` 或 `{ success: false, error }`。
+- `/api/*` 服务外部系统和 API Key 调用方，优先保证向后兼容。
+- ACP、MCP、hooks、skills 等内部协议能力使用独立前缀，不得混入 `/web` 或 `/api`。
+- 新接口默认补齐 OpenAPI 的 `detail`、`params`、`query`、`headers`、`body` 和 `response`。
+- 协议 DTO、领域对象、数据库记录和前端 ViewModel 在边界处独立转换；前端类型必须对应后端真实返回，禁止增加“幻影字段”。
+- 前端 URL 统一使用 `/web/*`，不得新增历史 `/v1`、`/v2` 前缀。
+- `POST /web/config/:module` 保持既有 action 风格；同一路由文件可能混用 RESTful 与 action 风格，修改前必须核对实际协议，不得擅自统一。
 
-| 组件 | 文件 | 角色 |
-|------|------|------|
-| `agent-chat-service` | `src/services/agent-chat-service.ts` | **权威 ACP 服务层**：提供 `createAgentSession`（封装 relay handle）、`startPromptTurn`（session/new → PromptTurn）、`openAgentSession`（一站式 spawn → relay → turn）。所有入口共用 |
-| `agent-chat-transport` | `src/services/workflow/agent-chat-transport.ts` | Workflow 的 `Transport` 适配器：内部调用 `ensureRunning` + `connectAgentRelay` + `createAgentSession` + `startPromptTurn`，通过 `PromptTurn.events()` 收集流式输出，适配为 `Transport` 接口 |
-| `openai-chat.ts` | `src/routes/api/openai-chat.ts` | OpenAI HTTP 兼容端点：直接调用 `openAgentSession` |
-| `acp/relay` WS 端点 | `src/routes/acp/` + `src/transport/relay/` | 前端 Chat UI 的 WS relay：走 `connectAgentRelay` + 独立的 session 管理 |
+### 前端边界与体验
 
-**关键约束**：
+- 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
+- 请求统一通过 `web/src/api/request.ts`；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
+- 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
+- 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
+- 基础组件优先复用 `web/components/ui/`；通用图标使用 `lucide-react`；模型品牌图标使用 `web/components/model-icon/ModelIcon.tsx`。
+- 纯逻辑模块不得依赖 UI 图标包；特别是不得让后端或纯逻辑测试间接加载 `@lobehub/icons`。
+- 页面流程必须覆盖 loading、empty、error、retry、success feedback 和可访问性状态。
+- 路径别名：`@/src` → `web/src`，`@/components` → `web/components`，`@server` → `../src`。
 
-1. **不要绕过 `agent-chat-service` 自己写 ACP 协议。** 已删除的 `acp-transport.ts`（467 行独立 JSON-RPC 实现）就是反面案例。
-2. relay 消息统一用 `extractJsonRpc()` 模式解析，兼容两种格式：
-   - 原始 JSON-RPC：`{ jsonrpc: "2.0", method/result, ... }`
-   - 包裹格式：`{ type: "...", payload: { jsonrpc: "2.0", ... } }`
-3. session_update 通知的文本在 `params.update.sessionUpdate` 路径，不要到 `payload.update` 查找。
-4. 实例策略有两条路径，不可混用：
-   - `ensureRunning("system", envId)`：workflow 场景，复用已有实例，workflow 结束后统一销毁
-   - `spawnInstanceFromEnvironment(userId, agentId)`：HTTP API 场景，每次新建独立实例，dispose 时销毁
+### Agent 通信权威路径
 
-## 数据库与迁移
+Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须复用，不得再创建独立 JSON-RPC 协议栈。
 
-- Schema 真相来源：`src/db/schema.ts`
-- 默认流程：
-  1. 修改 `src/db/schema.ts`
-  2. `bun run db:generate --name <name>`
-  3. `bun run db:migrate`
-  4. 提交 `drizzle/` 整个目录
-- 生产迁移入口：`scripts/migrate.ts` 构建出的 `migrate.js`
-- 禁止：
-  - 手写 SQL 迁移绕过 Drizzle
-  - 在生产环境使用 `db:push`
-  - 提交迁移时漏掉 `drizzle/meta/*`
+| 场景 | 权威实现 | 生命周期 |
+|------|----------|----------|
+| HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | route 调用 `openAgentSession`；service 执行 `createAgentSession` → `startPromptTurn`，每次创建独立实例并在 dispose 时销毁 |
+| Workflow | `src/services/workflow/agent-chat-transport.ts` | 通过 `ensureRunning`、`connectAgentRelay` 复用实例，再适配 `agent-chat-service` 的 `PromptTurn` |
+| 前端交互式 Chat | `src/transport/relay/yjs-frontend/` | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/acp-server` translator |
 
-## 测试约束
+- relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
+- `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
+- 实例策略不可混用：Workflow / 交互式路径通过 `ensureRunning(...)` 复用实例；`openAgentSession` 通过 `spawnInstanceFromEnvironment(...)` 创建独立实例并负责销毁。
+- 不得恢复已删除的独立 `acp-transport.ts` 或在新入口中复制 session/new、session/load、session/prompt 的完整协议流程。
 
-- 后端测试在 `src/__tests__/`
-- 前端测试在 `web/src/__tests__/`
-- 禁止在测试文件中直接用 `mock.module()`；优先复用 `src/test-utils/`
-- 前端只测关键流程，不写纯 UI 结构断言和类型检查测试
-- 每个 `test(...)` 上方补一行中文注释
+## 领域不变量与高风险约束
 
-## 高风险陷阱
+### 认证、组织与密钥
 
-### 通用
+- 普通 HTTP / WebSocket 请求先尝试 better-auth session cookie；无 session 时依次尝试 Environment Secret 和 better-auth API Key。
+- 系统 API 使用独立的 `RCS_SYSTEM_API_KEYS`；`RCS_API_KEYS` 当前用于 skill 下载 token 的 HMAC 签名，不得混作普通请求认证规则。
+- active organization 提取优先级：`x-active-org-id` header → `activeOrganizationId` query → `active_org_id` cookie。
+- API Key 的组织上下文必须由 key metadata 恢复并重新校验成员关系；校验异常时保守拒绝。
+- 测试可使用 `setTestAuth()`、`setTestOrgContext()` 注入上下文，测试结束必须 reset，避免状态泄漏。
+- 密钥、token、密码和连接串不得写入源码、fixture、日志或错误响应。
 
-1. `bun run precheck` 是提交前第一标准。
-2. 修改前端后必须执行 `bun run build:web`，因为后端静态挂载 `web/dist/`。
-3. `web/` 没有独立依赖清单，安装和升级依赖都在根目录执行。
-4. Bash 进入子目录后容易发生相对路径漂移，尽量用仓库根目录绝对路径。
+### Workspace 与远程文件
+
+- workspace 路径运行时通过 `resolveWorkspacePath(organizationId, userId, environmentId)` 计算：`{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}`。
+- DB `workspacePath` 是历史字段，不得用于推导真实目录。
+- 浏览器传入的 workspace/cwd 不可信；ACP action 的 `cwd` 必须由服务端根据已认证 environment 注入。
+- 文件 API 使用 RCS session/environment 上下文，不得把 ACP `ses_*` 当作 RCS 标识。
+- `getRemoteMachineId` 优先读取 agent config 的 `machineId`，否则 fallback 到 `RCS_DEFAULT_MACHINE_ID`；无 `agentConfigId` 的 ACP/Bridge environment 同样必须执行 fallback。
+- 配置了远程 machine 但 file-ws 未连接时必须返回明确错误，不得静默回退到本地 FS，避免远程/本地文件分裂。
+- `FilePickerDialog` 的文件空间固定在 `user/` 作用域；所有用户路径必须经过既有规范化和越界检查。
+
+### Skill、Agent 模板与 Permission
+
+- Skill 是 PostgreSQL 元数据、源目录和归档文件的组合存储；创建或导入必须通过 `setSkill` / `importSkillDirectories` 完成完整编排。
+- 直接调用底层 `upsertSkill` 只更新元数据，不能替代文件写入、归档和失败回滚。
+- Agent 模板位于 `.agents/agents/`，格式为 Markdown + YAML frontmatter，解析必须使用 `gray-matter`，不得手写正则。
+- Permission action 只有 `ask` / `allow` / `deny`；规则型工具支持全局三态或 glob pattern 映射，开关型工具只支持三态字符串。
 
 ### ACP / Runtime
 
-1. `acp-link` 本地 WS 始终需要认证，relay 要从 stdout 捕获自动生成的 token。
-2. 服务重启不会自动清理旧 `acp-link` 进程，残留端口会触发 `EADDRINUSE`。
-3. relay 断连只断 WS，不会杀掉 agent 子进程。
-4. relay 必须转发 agent `status`，前端依赖 `status.capabilities` 判断能力。
-5. ACP session id 是 `ses_xxx`，RCS session id 是 `session_xxx` / `cse_xxx`；文件 API 必须使用 RCS id。
-6. **session/update 二级结构**：`update.sessionUpdate` 是事件类型字符串（如 `"agent_message_chunk"`），`update.content` 是载荷对象（`{ type, text }`）。**不要把事件类型值当 key 写**（如 `update.agent_message_chunk`）。写 ACP 消息处理代码前，先 `grep agent_message_chunk` 看已有消费者做参照。
-7. **`getRemoteMachineId` 允许无 `agentConfigId` 的 environment**：ACP/Bridge 注册路径（`registerEnvironment`、`createTemporaryEnvironment`）创建的环境没有 `agentConfigId`。`getRemoteMachineId` 不能对这类环境直接返回 null——必须先查 `agentConfigId`，不存在则 fallback 到 `config.defaultMachineId`，否则设了 `RCS_DEFAULT_MACHINE_ID` 文件操作也会落到本地 FS。
-
-### Workspace / Skill
-
-1. workspace 路径运行时实时计算：`{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}`。
-2. 不要依赖 DB `workspacePath` 历史字段推导真实目录。
-3. Skill 是 PG 元数据 + 文件系统双存储；必须通过 `setSkill` 或 `importSkillDirectories` 创建。
-4. 直接调 `upsertSkill` 只会写 DB，不会把 skill 下发到文件系统。
-
-### API / 前后端联动
-
-1. 前端 URL 必须走 `/web/*`，不要再写历史 `/v1`、`/v2` 前缀。
-2. 配置接口 `POST /web/config/:module` 仍是 action 风格，不要擅自改成新协议。
-3. 同一个后端路由文件里可能混用 RESTful 和 action 风格，写前先看实际 route。
-4. 前端类型要和后端真实返回保持一致，不要补“幻影字段”。
-5. 允许空字符串的默认值必须优先使用 `??`，不要用 `||`。
-
-### 前端实现
-
-1. `routeTree.gen.ts` 严禁手改。
-2. Sidebar 导航项必须有 `to` 字段。
-3. `FilePickerDialog` 上传目标始终是 `user/`。
-4. `@lobehub/icons` 不要被后端或纯逻辑测试间接加载；纯工具逻辑要拆到不依赖 UI 的独立模块。
-5. 代码库里仍可能有少量历史写法与规范不一致；新改动按规范收敛，不要继续扩散旧模式。
-6. **i18n 插值语法**：i18n 配置（`web/src/i18n/index.ts:160`）未自定义 prefix/suffix，必须用 `{{var}}`（双花括号），`{var}` 会被当字面文本。写翻译前先看同 namespace 已有占位符写法做参照。
+- `acp-link` 本地 WebSocket 始终需要认证，relay token 由启动流程从 stdout 获取，不得硬编码或记录。
+- 服务重启不会自动清理旧 `acp-link` 进程；排查 `EADDRINUSE` 时先确认残留进程和端口归属。
+- relay 断连只关闭连接，不等于终止 Agent 子进程；实例释放必须走对应生命周期管理。
+- relay 必须传递 Agent `status`，前端依赖 `status.capabilities` 决定可用能力。
+- ID 体系不可混用：ACP session ID 为 `ses_*`；RCS session ID 由 `createDeterministicRcsSessionId(agentId, userId)` 生成，格式为 `rcs_*`。
 
 ### YJS / Chat
 
-1. **`rcsSessionId` 必须确定性生成**。使用 `agentId+userId` 拼接而非 `Date.now()` 随机值。页面刷新后同一用户同一 agent 复用相同 ID，Session Doc 在内存中持久存在。随机 ID 会导致旧 Doc 不可达、工具调用/流式状态全丢。
-2. **Session Doc 初始快照必须在 `handleYjsWsOpen` 时推送**。重连客户端只收到 Chat Doc 快照，若不同步推送 Session Doc 快照，消息区域为空直到 agent 回放。与 Chat Doc 快照一并在 `entry.relayReady=true` 之前发送。
-3. **重连后 `entry.acpSessionId` 必须从 Chat Doc 恢复**。新建 entry 时 `acpSessionId` 初始为 `null`，若不从 `chatMeta.activeSessionId` 恢复，后续 `load_session` 的 `isSameSession` 检查（`null === ses_xxx`）必定为 false → 误清 Session Doc → 多窗口工具调用消失。
-4. **同 session 的 `load_session` 必须 skip agent 回放**。`isSameSession=true` 时直接 `return`，不向 agent 发送 `session/load` RPC。否则 agent 全量回放消息 → `processACP` 追加到 Session Doc → 其他在线客户端收到重复消息。
-5. **`session/list` 必须注入 `cwd`**。YJS 前端没有旧 relay 的二次注入逻辑，必须在 `translateSimpleAction` 阶段就带 `cwd`，否则不同 environment 的会话列表会串数据。
-6. **ID 体系不可混**：ACP session id 是 `ses_xxx`，RCS session id 是 `rcs_xxx`。文件 API 用 RCS id，ACP JSON-RPC 用 ACP ses_ id。
-7. **Y.Doc 广播按 `rcsSessionId` 隔离，不发全局**。docName 格式 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，`registerYjsDocListener` 从 docName 提取目标 ID 只发匹配客户端。
-8. **用户消息只由后端写入 Y.Doc**。前端不维护 `localUserEntries`。Agent 回显会导致双写。
-9. **Session Doc 清洁用 `clearSessionDocContent`（Y.Doc 事务内清空）而非 `closeSession`+`openSession`（destroy+recreate）**。`handleYjsWsMessage` 是 fire-and-forget async，destroy→recreate 间隙 agent 回放事件可写入错误 Doc。原地清空无竞态、不重注册 listener。
-10. **`create_session` 也清空 Session Doc**。新建会话时旧消息若不清理，新旧 ACP session 消息叠加导致 chat 越来越长。
-11. **Agent status 到达前不发 `list_sessions`**，否则收到空列表。
-12. **Instance 级别 relay handle 共享**。同一 Agent 多标签页共享一个 relay handle，断开计数归零才销毁。
-13. **WS 背压与连接防护**：`sendToYjsWs` bufferedAmount > 64KB 跳过；连接数上限 200（`YJS_MAX_CLIENTS`）。
-14. **ChatView 用 `React.memo`**，comparator 排除 `onPermissionRespond`（始终新引用）。`EntryRenderer` 同步加 memo。
+以下约束共同保证刷新恢复、多标签页一致性和消息不重复：
 
-## 项目特有约束
+1. `rcsSessionId` 必须确定性生成，不得使用 `Date.now()` 或随机值，否则刷新后旧 Y.Doc 不可达。
+2. WebSocket open 时必须在 `relayReady = true` 前发送 Chat Doc 和 Session Doc 初始快照。
+3. 重连时必须从 `chatMeta.activeSessionId` 恢复 `entry.acpSessionId`；同一 ACP session 的 `load_session` 必须跳过 Agent 全量回放。
+4. `session/list`、`session/new`、`session/load` 和 `session/resume` 的 `cwd` 必须由服务端 translator 注入；Agent status 到达前不得发送 `list_sessions`。
+5. Y.Doc 名称使用 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，广播必须按 `rcsSessionId` 隔离，禁止全局广播会话数据。
+6. 用户消息只由后端写入 Y.Doc；前端不得维护第二份 `localUserEntries`，否则 Agent 回显会造成双写。
+7. 清理会话内容使用 `clearSessionDocContent` 在原 Y.Doc 事务中完成；禁止通过 destroy + recreate 制造异步竞态。`create_session` 同样必须先清空旧 Session Doc。
+8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
+9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
+10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。
 
-### 认证与组织
+## 数据库与迁移
 
-- 认证优先级：better-auth session cookie → API Key → Environment Secret → 全局 `RCS_API_KEYS`
-- 组织 ID 提取优先级：`x-active-org-id` header → query → cookie
-- 测试可通过 `setTestAuth()` 和 `setTestOrgContext()` 绕过
+- Schema 真相来源是 `src/db/schema.ts`。
+- 标准流程：修改 schema → `bun run db:generate --name <name>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 运行相关测试和 `bun run precheck`。
+- 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
+- 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
+- 迁移设计必须考虑已有数据、锁范围、回滚或补偿策略，以及多实例并发启动时的幂等性。
+- 生产迁移入口为 `scripts/migrate.ts` 构建出的 `migrate.js`。
 
-### Agent 模板
+## 质量、测试与长期维护
 
-- 模板目录：`.agents/agents/`
-- 文件格式：Markdown + YAML frontmatter
-- 解析方式：必须使用 `gray-matter`，禁止手写正则
+### 测试
 
-### Permission 系统
+- 后端测试位于 `src/__tests__/`，前端测试位于 `web/src/__tests__/`。
+- 优先复用 `src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
+- 每个 `test(...)` 上方添加一行中文注释，说明行为和业务意图。
+- 前端只测试关键交互、状态和数据流，不编写纯 UI 结构断言或仅重复类型检查的测试。
+- 并发、重连、权限、租户隔离、迁移和失败回滚必须覆盖关键边界测试。
 
-- 三态：`ask` / `allow` / `deny`
-- 规则型工具支持通配符
-- 开关型工具只支持三态
+### 代码与注释
 
-### 代码质量红线
+- TypeScript 业务代码禁止 `as any`；确因第三方类型缺陷需要规避时，使用最小范围的类型收窄或带原因的行级 ignore。
+- Zod 使用 `zod/v4`。
+- 允许空字符串的默认值使用 `??`，不得使用会吞掉空字符串的 `||`。
+- `catch` 必须保留诊断上下文，不得吞错；对外错误不得泄露敏感信息或内部实现。
+- 公共函数、公共方法、导出工具和类型定义应有清晰文档注释。
+- 注释解释设计原因、边界条件、兼容约束、风险和临时取舍，不重复代码表面行为。
+- 已知缺陷或临时方案必须记录影响范围、风险、移除条件和可追踪任务；关键架构选择同步到架构文档或 ADR。
 
-**precheck 必须全绿才能提交。** `bun run precheck` 分为 6 个子步骤：format → import-sort → tsc (server) → tsc (web) → lint → test，任一步骤失败即为不通过。
+### 命名与 Git
 
-- **禁止以"预存问题"为由跳过修复**：precheck 报出的 lint/typecheck 错误须在提交前清理。若错误确实不在本次改动范围内（如其他文件的历史遗留），仍需尽量修复——`biome --write --unsafe` 可秒修绝大多数 FIXABLE 问题。
-- **禁止新增任何 typecheck 错误**：写新代码或修改接口后，确保 `tsc` 两个目标均 0 error。
-- **禁止新增任何 lint 错误**：linter 的 error 和 warning 都必须清零（info 级别除外）。若引入的 warning 是误报（如 Elysia 路由 handler 的 `noExplicitAny`），需在行级添加 `// biome-ignore` 注释说明原因。
+- 文件使用 kebab-case，组件使用 PascalCase，函数使用 camelCase，常量使用 UPPER_SNAKE_CASE。
+- 提交信息使用 Angular 风格：`feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:`，标题使用中文。
+- 未经明确要求不得创建 commit；代码改动提交前必须运行 `bun run precheck`，前端改动还必须运行 `bun run build:web`。
 
-## 代码风格
+### 质量红线
 
-### 注释与文档注释
-
-- 注释只写真正有价值的信息：设计原因、边界条件、兼容性、临时取舍
-- 公共函数、公共方法、导出工具、类型定义应有清晰文档注释
-- 复杂函数可按阶段补少量结构性注释，但不要重复代码表面含义
-
-### TypeScript
-
-- Zod 使用 `zod/v4`
-- 业务代码禁止 `as any`
-- 允许空字符串的默认值优先用 `??`
-- `catch` 块必须保留足够上下文，避免吞错
-
-### 命名
-
-- 文件：kebab-case
-- 组件：PascalCase
-- 函数：camelCase
-- 常量：UPPER_SNAKE_CASE
-
-### Git
-
-- 提交风格：Angular 风格 `feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:`
-- 标题用中文
-- 代码改动提交前必须先跑 `bun run precheck`
+- 不得新增 typecheck、lint 或测试错误；linter warning 也必须清零（info 除外）。
+- `precheck` 报错必须处理后才能宣称完成；若失败来自与当前改动无关且无法安全修复的工作区状态，应明确报告证据和影响，不得以“历史问题”为由宣称检查通过。
+- 自动修复工具只能用于已审查范围；不得为了通过检查而无边界改写无关文件。
+- 每条变更都应能追溯到需求、架构约束、缺陷修复或必要验证，禁止顺手重构无关代码。
 
 ## 环境变量
 
-- `DATABASE_URL`
-- `RCS_SECRET_<name>`
-- `SKILL_DIR`，默认 `./data/skills`
-- `WORKSPACE_ROOT`，默认 `./workspaces`
-- `RCS_SYSTEM_ADMIN_PASSWORD_FILE`，默认 `data/password.txt`
-- `RCS_ACP_IDLE_TIMEOUT_SECONDS`
-- `RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS`
-- `RCS_ACP_ACTIVITY_TIMEOUT_SECONDS`
+环境变量的类型、默认值和必填性以 `src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是当前唯一在 YJS transport 中直接读取的兼容变量，后续调整时应收敛到 `src/env.ts`。关键变量：
+
+- 必填：`DATABASE_URL`、`RCS_API_KEYS`。
+- 系统 API：`RCS_SYSTEM_API_KEYS`。
+- 存储与密钥引用：`SKILL_DIR`（默认 `./data/skills`）、`WORKSPACE_ROOT`（默认运行目录下的 `workspaces`）、`RCS_REDIS_URL`；provider 等配置通过 `{env:RCS_SECRET_<name>}` 引用环境密钥。
+- 系统管理：`RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `./data/password.txt`）。
+- Agent 路由：`RCS_DEFAULT_MACHINE_ID`、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`。
+- 并发与生命周期：`RCS_AGENT_MAX_CONCURRENCY`、`RCS_USER_AGENT_MAX_CONCURRENCY`、`RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`、`RCS_ACP_IDLE_TIMEOUT_SECONDS`、`RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS`、`RCS_ACP_ACTIVITY_TIMEOUT_SECONDS`。
+- YJS：`YJS_MAX_CLIENTS`（代码默认 200）。
