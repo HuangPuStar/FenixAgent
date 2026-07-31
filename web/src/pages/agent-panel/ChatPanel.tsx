@@ -1,8 +1,9 @@
 import { createDeterministicRcsSessionId } from "@fenix/acp-server";
-import { Bot, Loader2 } from "lucide-react";
+import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ACPMain } from "@/components/ACPMain";
+import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
@@ -35,8 +36,19 @@ export function ChatPanel({
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
+  // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS 连接。
+  // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
+  // WS 客户端不会自动重连，必须由用户手动触发。
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
+
+  // 手动重连：立即进入 connecting 状态并递增计数器，useLayoutEffect 清理旧连接后重新建连
+  const handleReconnect = useCallback(() => {
+    setConnectionState("connecting");
+    setError(null);
+    setReconnectAttempt((n) => n + 1);
+  }, []);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   const { data: session } = useSession();
@@ -103,6 +115,7 @@ export function ChatPanel({
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectAttempt 仅作为手动重连触发器，未在 effect 内读取
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
@@ -154,7 +167,8 @@ export function ChatPanel({
       yjsWs.disconnect();
       yjsWsRef.current = null;
     };
-  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate]);
+    // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复
+  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate, reconnectAttempt]);
 
   // 发送简单 JSON 命令（替代 client 方法调用）
   const sendViaWs = useCallback((data: Record<string, unknown>) => {
@@ -237,6 +251,10 @@ export function ChatPanel({
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>
         <p className="desc">{desc}</p>
+        <Button variant="outline" onClick={handleReconnect} className="mt-2">
+          <RefreshCw className="h-4 w-4" />
+          {t("reconnect")}
+        </Button>
       </div>
     );
   }
@@ -285,6 +303,10 @@ export function ChatPanel({
     <div className="agent-welcome-empty">
       <p className="title">{t("agentDisconnected")}</p>
       <p className="desc">{t("agentOfflineDesc")}</p>
+      <Button variant="outline" onClick={handleReconnect} className="mt-2">
+        <RefreshCw className="h-4 w-4" />
+        {t("reconnect")}
+      </Button>
     </div>
   );
 }
