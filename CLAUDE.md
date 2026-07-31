@@ -172,7 +172,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 服务重启不会自动清理旧 `acp-link` 进程；排查 `EADDRINUSE` 时先确认残留进程和端口归属。
 - relay 断连只关闭连接，不等于终止 Agent 子进程；实例释放必须走对应生命周期管理。
 - relay 必须传递 Agent `status`，前端依赖 `status.capabilities` 决定可用能力。
-- ID 体系不可混用：ACP session ID 为 `ses_*`；RCS session ID 由 `createDeterministicRcsSessionId(agentId, userId)` 生成，格式为 `rcs_*`。
+- ID 体系不可混用：ACP session ID 为 `ses_*`；RCS session ID 由 `createDeterministicRcsSessionId(agentId, userId[, sessionId])` 生成，格式为 `rcs_*`。多实例场景下应传入 DB 会话 ID（`sessionId`）以实现 YJS doc 隔离。
 
 ### YJS / Chat
 

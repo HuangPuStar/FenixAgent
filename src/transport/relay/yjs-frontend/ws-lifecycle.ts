@@ -91,7 +91,12 @@ export interface WsLifecycleDependencies {
     environment: { organizationId?: string | null; machineName?: string | null; userId?: string | null },
   ) => boolean;
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
-  ensureRunning: (userId: string, agentId: string, mode: "interactive") => Promise<{ instance: { id: string } }>;
+  ensureRunning: (
+    userId: string,
+    agentId: string,
+    mode: "interactive",
+    instanceNumber?: number,
+  ) => Promise<{ instance: { id: string } }>;
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<SharedRelay["handle"]>;
   docManager: DocManager;
   markRelayAttached: (instanceId: string) => void;
@@ -99,6 +104,8 @@ export interface WsLifecycleDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
+  /** 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接 */
+  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number>;
 }
 
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
@@ -111,6 +118,7 @@ export class WsLifecycle {
     userId: string,
     agentId: string,
     rcsSessionId: string | null,
+    sessionId?: string,
   ): Promise<void> {
     const { registry, broadcaster } = this.dependencies;
     const maxClients = this.dependencies.maxClients();
@@ -142,9 +150,23 @@ export class WsLifecycle {
 
     const orgId = environment.organizationId ?? userId;
     const workspacePath = this.dependencies.resolveWorkspacePath(orgId, userId, agentId);
+
+    // 多实例隔离：从 URL sessionId 解析对应的 instance 编号，确保连到正确的 instance
+    let resolvedInstanceNumber: number | undefined;
+    if (sessionId) {
+      try {
+        resolvedInstanceNumber = await this.dependencies.resolveInstanceNumberFromSession(sessionId);
+      } catch (err) {
+        this.rejectOpen(ws, wsId, 4004, "session not found", "Session not found");
+        this.reportError("[YJS-FE] Failed to resolve session instance:", err);
+        return;
+      }
+    }
+
     let instanceId: string;
     try {
-      instanceId = (await this.dependencies.ensureRunning(userId, agentId, "interactive")).instance.id;
+      instanceId = (await this.dependencies.ensureRunning(userId, agentId, "interactive", resolvedInstanceNumber))
+        .instance.id;
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);

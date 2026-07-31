@@ -42,9 +42,13 @@ export function ChatPanel({
   const { data: session } = useSession();
   const userId = session?.user?.id ?? "unknown";
 
-  // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId 确定性生成)
+  // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
-  const rcsSessionKey = agentId && userId !== "unknown" ? createDeterministicRcsSessionId(agentId, userId) : undefined;
+  // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
+  const rcsSessionKey =
+    agentId && userId !== "unknown"
+      ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined)
+      : undefined;
 
   // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
   const chatHookKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;

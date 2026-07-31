@@ -431,6 +431,7 @@ export async function ensureRunning(
   userId: string,
   environmentId: string,
   source: InstanceSpawnSource = "interactive",
+  instanceNumber?: number,
 ): Promise<EnsureRunningResult> {
   // 检查是否处于 idle-kill 冷却期。
   // 仅 interactive（前端聊天）来源受此限制，workflow / api 等系统调用不受阻隔。
@@ -446,6 +447,30 @@ export async function ensureRunning(
   }
 
   const runningInstances = getRunningInstancesByEnvironment(environmentId);
+
+  // 指定了 instanceNumber：精准匹配该编号的运行实例
+  if (instanceNumber !== undefined) {
+    const targetInstance = runningInstances.find((i) => i.instanceNumber === instanceNumber);
+    if (targetInstance) return { instance: targetInstance, status: "reused" };
+
+    // 目标实例未运行，尝试新启
+    const env = await environmentRepo.getById(environmentId);
+    if (!env) throw new NotFoundError("Environment not found");
+
+    if (!env.autoStart) {
+      throw new AppError(`实例 ${instanceNumber} 未运行且 autoStart 已禁用`, "AUTO_START_DISABLED", 409);
+    }
+
+    const currentRunning = getRunningInstancesByEnvironment(environmentId);
+    if (currentRunning.length >= env.maxSessions) {
+      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
+    }
+
+    const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
+    return { instance, status: "spawned" };
+  }
+
+  // 未指定 instanceNumber：复用第一个运行实例
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
 

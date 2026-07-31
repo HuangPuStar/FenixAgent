@@ -75,8 +75,8 @@ const lifecycle = new WsLifecycle({
       ? true
       : !environment.userId || environment.userId === userId,
   resolveWorkspacePath,
-  ensureRunning: async (userId, agentId, mode) =>
-    (await import("../../../services/instance")).ensureRunning(userId, agentId, mode),
+  ensureRunning: async (userId, agentId, mode, instanceNumber) =>
+    (await import("../../../services/instance")).ensureRunning(userId, agentId, mode, instanceNumber),
   connectAgentRelay: async (instanceId, rcsSessionId) =>
     (await import("../../agent-relay")).connectAgentRelay(instanceId, rcsSessionId),
   markRelayAttached: markInstanceRelayAttached,
@@ -84,6 +84,15 @@ const lifecycle = new WsLifecycle({
   reportLog: log,
   reportError: logError,
   maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
+  resolveInstanceNumberFromSession: async (sessionId: string) => {
+    // 从 DB session 标题 "Instance N" 解析实例编号，用于多实例 YJS doc 隔离
+    const { _sessionRepo } = await import("../../../services/session");
+    const session = await _sessionRepo.getById(sessionId);
+    if (!session?.title) throw new Error(`Session ${sessionId} not found`);
+    const match = session.title.match(/^Instance (\d+)$/);
+    if (!match) throw new Error(`Invalid session title: ${session.title}`);
+    return parseInt(match[1], 10);
+  },
 });
 
 export { lifecycle, registry };

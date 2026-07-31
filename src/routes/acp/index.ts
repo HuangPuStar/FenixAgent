@@ -196,7 +196,11 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
       const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
-      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId);
+      // 从 query 参数读取 sessionId（DB 会话标识），
+      // 用于在多实例场景下隔离不同实例的 YJS doc。
+      const url = new URL(ws.data.request.url);
+      const sessionId = url.searchParams.get("sessionId") || undefined;
+      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId, sessionId);
 
       const env = await environmentRepo.getById(agentId);
       const authCtx = authResult.authContext;
@@ -205,10 +209,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         return;
       }
 
-      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId}`);
+      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} sessionId=${sessionId ?? "none"}`);
 
       try {
-        await lifecycle.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId);
+        await lifecycle.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId, sessionId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);

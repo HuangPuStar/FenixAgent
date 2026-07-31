@@ -99,6 +99,7 @@ function createLifecycle(
     reportLog: () => {},
     reportError: () => {},
     maxClients: () => 10,
+    resolveInstanceNumberFromSession: async () => 0,
     ...overrides,
   });
 }
