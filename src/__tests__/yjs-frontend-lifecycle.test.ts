@@ -274,7 +274,7 @@ describe("YJS frontend internal handlers", () => {
     expect(connectCalls).toBe(1);
     expect(onMessageCalls).toBe(1);
     expect(attachCalls).toBe(1);
-    expect(registry.getShared("instance-1", "user-1")?.refCount).toBe(2);
+    expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(2);
     lifecycle.handleClose("ws-1");
     expect(unsubscribeCalls).toBe(0);
     expect(closeCalls).toBe(0);
@@ -310,7 +310,7 @@ describe("YJS frontend internal handlers", () => {
 
     expect(ensureCalls).toBe(1);
     expect(connectCalls).toBe(1);
-    expect(registry.getShared("instance-1", "user-1")?.refCount).toBe(1);
+    expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(1);
     expect(JSON.parse(ws2.messages[0] ?? "{}")).toMatchObject({ payload: { code: "too_many_connections" } });
     lifecycle.handleClose("ws-1");
   });
@@ -568,8 +568,8 @@ describe("YJS frontend internal handlers", () => {
     expect(openedRcsSessionIds).toHaveLength(2);
     expect(openedRcsSessionIds[0]).not.toBe(openedRcsSessionIds[1]);
 
-    const relayA = registry.getShared("instance-1", "user-a");
-    const relayB = registry.getShared("instance-1", "user-b");
+    const relayA = registry.getShared("instance-1", "user-a", openedRcsSessionIds[0]!);
+    const relayB = registry.getShared("instance-1", "user-b", openedRcsSessionIds[1]!);
     expect(relayA).toBeDefined();
     expect(relayB).toBeDefined();
     expect(relayA).not.toBe(relayB);
@@ -602,18 +602,18 @@ describe("YJS frontend internal handlers", () => {
     await lifecycle.handleOpen(ws1, "ws-1", "user-a", "agent-1", null);
     await lifecycle.handleOpen(ws2, "ws-2", "user-b", "agent-1", null);
 
-    const relayA = registry.getShared("instance-1", "user-a");
-    const relayB = registry.getShared("instance-1", "user-b");
+    const relayA = registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h");
+    const relayB = registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i");
     expect(relayA).toBeDefined();
     expect(relayB).toBeDefined();
 
     lifecycle.handleClose("ws-1");
-    expect(registry.getShared("instance-1", "user-a")).toBeUndefined();
-    expect(registry.getShared("instance-1", "user-b")).toBeDefined();
+    expect(registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeDefined();
     expect(closeCalls).toBe(1);
 
     lifecycle.handleClose("ws-2");
-    expect(registry.getShared("instance-1", "user-b")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeUndefined();
     expect(closeCalls).toBe(2);
   });
 

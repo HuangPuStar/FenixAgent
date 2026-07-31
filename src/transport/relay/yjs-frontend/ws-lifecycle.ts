@@ -199,7 +199,7 @@ export class WsLifecycle {
     const resolvedRcsSessionId = rcsSessionId ?? createDeterministicRcsSessionId(agentId, userId);
     let acquired: { shared: SharedRelay; created: boolean };
     try {
-      acquired = await registry.acquireRelay(instanceId, userId, async () => {
+      acquired = await registry.acquireRelay(instanceId, userId, resolvedRcsSessionId, async () => {
         const handle = await this.dependencies.connectAgentRelay(instanceId, resolvedRcsSessionId);
         const shared: SharedRelay = {
           handle,
@@ -239,7 +239,7 @@ export class WsLifecycle {
     const { shared } = acquired;
     if (ws.readyState !== 1 || !registry.canPromotePending(wsId, maxClients)) {
       registry.discardPending(wsId);
-      this.releaseRelay(instanceId, userId);
+      this.releaseRelay(instanceId, userId, resolvedRcsSessionId);
       return;
     }
 
@@ -272,7 +272,7 @@ export class WsLifecycle {
 
     if (ws.readyState !== 1 || !registry.canPromotePending(wsId, maxClients)) {
       registry.discardPending(wsId);
-      this.releaseRelay(instanceId, userId);
+      this.releaseRelay(instanceId, userId, resolvedRcsSessionId);
       if (ws.readyState === 1) {
         broadcaster.sendToYjsWs(ws, {
           type: "error",
@@ -380,7 +380,7 @@ export class WsLifecycle {
     const entry = registry.removeClient(wsId);
     if (!entry) return;
     clearInterval(entry.keepalive);
-    this.releaseRelay(entry.instanceId, entry.userId);
+    this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
     this.dependencies.reportLog(`[YJS-FE] Disconnected: wsId=${wsId} agentId=${entry.agentId} duration=${duration}s`);
   }
@@ -407,8 +407,8 @@ export class WsLifecycle {
     }
   }
 
-  private releaseRelay(instanceId: string, userId: string): void {
-    const released = this.dependencies.registry.release(instanceId, userId);
+  private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
+    const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);
     if (!released) return;
     this.closeReleasedRelay(released);
     if (released.idleMonitorAttached) this.dependencies.markRelayDetached(instanceId);
@@ -439,7 +439,7 @@ export class WsLifecycle {
   }
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
-    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId);
+    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
     await forwardYjsAction(entry, action, {
       workspacePath: entry.workspacePath,
       send: (message) => entry.relayHandle.send(message as never),
@@ -451,7 +451,7 @@ export class WsLifecycle {
   }
 
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {
-    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId);
+    const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
     await flushPendingYjsActions(entry, pending, {
       workspacePath: entry.workspacePath,
       send: (message) => entry.relayHandle.send(message as never),

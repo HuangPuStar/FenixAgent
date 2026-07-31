@@ -102,7 +102,7 @@ describe("ConnectionRegistry", () => {
     const shared = createSharedRelay();
     registry.addShared(shared);
 
-    expect(registry.acquireExisting("instance-1", "user-1")).toBe(shared);
+    expect(registry.acquireExisting("instance-1", "user-1", "rcs-1")).toBe(shared);
     expect(shared.refCount).toBe(2);
   });
 
@@ -112,10 +112,10 @@ describe("ConnectionRegistry", () => {
     const shared = createSharedRelay({ refCount: 2 });
     registry.addShared(shared);
 
-    expect(registry.release("instance-1", "user-1")).toBeUndefined();
+    expect(registry.release("instance-1", "user-1", "rcs-1")).toBeUndefined();
     expect(shared.refCount).toBe(1);
-    expect(registry.getShared("instance-1", "user-1")).toBe(shared);
-    expect(registry.release("instance-1", "user-1")).toBe(shared);
-    expect(registry.getShared("instance-1", "user-1")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-1", "rcs-1")).toBe(shared);
+    expect(registry.release("instance-1", "user-1", "rcs-1")).toBe(shared);
+    expect(registry.getShared("instance-1", "user-1", "rcs-1")).toBeUndefined();
   });
 });

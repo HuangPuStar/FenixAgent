@@ -151,20 +151,21 @@ export class ConnectionRegistry {
     return false;
   }
 
-  private makeRelayKey(instanceId: string, userId: string): string {
-    return `${instanceId}:${userId}`;
+  private makeRelayKey(instanceId: string, userId: string, rcsSessionId: string): string {
+    // 多实例隔离：rcsSessionId 纳入 relay key，确保同一 instance 不同 session 各自拥有独立 relay
+    return `${instanceId}:${userId}:${rcsSessionId}`;
   }
 
-  getShared(instanceId: string, userId: string): SharedRelay | undefined {
-    return this.sharedRelays.get(this.makeRelayKey(instanceId, userId));
+  getShared(instanceId: string, userId: string, rcsSessionId: string): SharedRelay | undefined {
+    return this.sharedRelays.get(this.makeRelayKey(instanceId, userId, rcsSessionId));
   }
 
   addShared(shared: SharedRelay): void {
-    this.sharedRelays.set(this.makeRelayKey(shared.instanceId, shared.userId), shared);
+    this.sharedRelays.set(this.makeRelayKey(shared.instanceId, shared.userId, shared.rcsSessionId), shared);
   }
 
-  acquireExisting(instanceId: string, userId: string): SharedRelay | undefined {
-    const shared = this.sharedRelays.get(this.makeRelayKey(instanceId, userId));
+  acquireExisting(instanceId: string, userId: string, rcsSessionId: string): SharedRelay | undefined {
+    const shared = this.sharedRelays.get(this.makeRelayKey(instanceId, userId, rcsSessionId));
     if (shared) shared.refCount++;
     return shared;
   }
@@ -172,9 +173,10 @@ export class ConnectionRegistry {
   async acquireRelay(
     instanceId: string,
     userId: string,
+    rcsSessionId: string,
     factory: () => Promise<SharedRelay>,
   ): Promise<{ shared: SharedRelay; created: boolean }> {
-    const relayKey = this.makeRelayKey(instanceId, userId);
+    const relayKey = this.makeRelayKey(instanceId, userId, rcsSessionId);
     const existing = this.sharedRelays.get(relayKey);
     if (existing) {
       existing.refCount++;
@@ -201,8 +203,8 @@ export class ConnectionRegistry {
     return { shared, created };
   }
 
-  release(instanceId: string, userId: string): SharedRelay | undefined {
-    const relayKey = this.makeRelayKey(instanceId, userId);
+  release(instanceId: string, userId: string, rcsSessionId: string): SharedRelay | undefined {
+    const relayKey = this.makeRelayKey(instanceId, userId, rcsSessionId);
     const shared = this.sharedRelays.get(relayKey);
     if (!shared) return;
 
