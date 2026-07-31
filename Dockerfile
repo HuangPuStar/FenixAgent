@@ -9,12 +9,14 @@ COPY packages ./packages
 RUN bun install --frozen-lockfile
 
 FROM deps AS build
+ARG GIT_COMMIT_SHA=unknown
 COPY tsconfig.json tsconfig.base.json ./
 COPY src ./src
 COPY web ./web
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
-RUN bun build src/index.ts --target=bun --sourcemap=external --outdir dist
+RUN bun build src/index.ts --target=bun --sourcemap=external --outdir dist \
+    --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
 

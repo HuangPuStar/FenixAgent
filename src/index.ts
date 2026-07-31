@@ -34,6 +34,7 @@ import skillDownloadRoutes from "./routes/skills";
 import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
+import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
 import { initCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
@@ -48,6 +49,8 @@ import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
+
+const startedAt = new Date().toISOString();
 
 await initDb();
 startupLog.info("Database initialized");
@@ -150,7 +153,7 @@ const app = new Elysia()
     }
   })
   // Health check
-  .get("/health", () => ({ status: "ok", version: config.version }))
+  .get("/health", () => ({ ...buildHealthInfo(startedAt), version: config.version }))
   .get(
     "/",
     ({ set }) => {
