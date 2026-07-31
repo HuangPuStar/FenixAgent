@@ -563,8 +563,11 @@ describe("YJS frontend internal handlers", () => {
     );
   });
 
-  // agent 原始错误仍需透传给客户端，但 reportError 不能含有 agent payload 中的敏感信息。
-  test.each(["error", "session_error"])("does not report raw %s payloads", async (messageType) => {
+  // Agent 原始错误不得泄露到浏览器，且仅向当前 RCS 会话发送固定的安全错误。
+  test.each([
+    ["error", "agent_error", "Agent request failed"],
+    ["session_error", "session_error", "Agent session request failed"],
+  ])("redacts %s payloads before sending them to the current RCS session", async (messageType, code, message) => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const reports: Array<[string, unknown]> = [];
@@ -600,7 +603,7 @@ describe("YJS frontend internal handlers", () => {
         { messageType, instanceId: "instance-1" },
       ],
     ]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual(raw);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({ type: "error", payload: { code, message } });
   });
 
   // status 自动 list_sessions 的 Promise 拒绝必须被等待、捕获并以安全上下文记录。
@@ -716,8 +719,8 @@ describe("YJS frontend internal handlers", () => {
     expect(closeCalls).toBe(2);
   });
 
-  // relay event handler 广播仍发送给同 instance 的所有用户（error/session_error 等消息按 instance 维度广播保持不变）。
-  test("broadcasts relay error messages to all users of the same instance", async () => {
+  // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
+  test("sends relay error messages only to the matching RCS session", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const mockDocManager = {
@@ -802,12 +805,15 @@ describe("YJS frontend internal handlers", () => {
     } as unknown as RelayMessage);
 
     expect(ws1.messages.length).toBeGreaterThanOrEqual(1);
-    expect(ws2.messages.length).toBeGreaterThanOrEqual(1);
-    expect(ws1.messages).toEqual(ws2.messages);
+    expect(ws2.messages).toHaveLength(0);
+    expect(JSON.parse(ws1.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "agent_error", message: "Agent request failed" },
+    });
   });
 
-  // 两个用户连接同一实例后，user-a 的 session/new 结果不覆写 user-b 的 acpSessionId。
-  test("session/new from user-a does not overwrite user-b's acpSessionId", async () => {
+  // 同一用户的不同 RCS 会话中，session/new 只能更新当前 RCS 的 ACP session ID。
+  test("session/new does not overwrite another RCS session for the same user", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const mockDocManager2 = {
@@ -836,7 +842,7 @@ describe("YJS frontend internal handlers", () => {
     const wsB = createWs();
     registry.addClient("ws-a", {
       ws: wsA,
-      userId: "user-a",
+      userId: "user-1",
       agentId: "agent-1",
       relayHandle: { state: "open", send() {}, close() {} },
       relayUnsub: null,
@@ -854,7 +860,7 @@ describe("YJS frontend internal handlers", () => {
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
       ws: wsB,
-      userId: "user-b",
+      userId: "user-1",
       agentId: "agent-1",
       relayHandle: { state: "open", send() {}, close() {} },
       relayUnsub: null,
@@ -875,7 +881,7 @@ describe("YJS frontend internal handlers", () => {
       handle: { state: "open", send: async () => {}, close() {} },
       unsubscribe: null,
       refCount: 1,
-      userId: "user-a",
+      userId: "user-1",
       agentId: "agent-1",
       instanceId: "instance-1",
       rcsSessionId: "rcs-a",
@@ -892,8 +898,8 @@ describe("YJS frontend internal handlers", () => {
     expect(registry.getClient("ws-b")?.acpSessionId).toBe("ses-user-b");
   });
 
-  // user-a 的 session/update 不被 user-b 的 active session 过滤掉。
-  test("session/update from shared relay of user-a is not filtered by user-b's active session id", async () => {
+  // 同一用户的不同 RCS 会话中，session/update 只能以当前 RCS 的 ACP session 过滤。
+  test("session/update is not filtered by another RCS session for the same user", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const processed: string[] = [];
@@ -901,7 +907,7 @@ describe("YJS frontend internal handlers", () => {
     const wsA = createWs();
     registry.addClient("ws-a", {
       ws: wsA,
-      userId: "user-a",
+      userId: "user-1",
       agentId: "agent-1",
       relayHandle: { state: "open", send() {}, close() {} },
       relayUnsub: null,
@@ -919,7 +925,7 @@ describe("YJS frontend internal handlers", () => {
     } satisfies ClientConnection);
     registry.addClient("ws-b", {
       ws: createWs(),
-      userId: "user-b",
+      userId: "user-1",
       agentId: "agent-1",
       relayHandle: { state: "open", send() {}, close() {} },
       relayUnsub: null,
@@ -940,7 +946,7 @@ describe("YJS frontend internal handlers", () => {
       handle: { state: "open", send: async () => {}, close() {} },
       unsubscribe: null,
       refCount: 1,
-      userId: "user-a",
+      userId: "user-1",
       agentId: "agent-1",
       instanceId: "instance-1",
       rcsSessionId: "rcs-a",
@@ -948,7 +954,7 @@ describe("YJS frontend internal handlers", () => {
       nextRpcId: 0,
     };
 
-    // user-a 的 update 带 user-a 没有 acpSessionId（null），即使 user-b 有 active session 也不应被过滤。
+    // 当前 RCS 没有 active session，即使同用户另一个 RCS 有 active session 也不应被过滤。
     await handler.createMessageHandler(relay)({
       jsonrpc: "2.0",
       method: "session/update",
@@ -956,5 +962,41 @@ describe("YJS frontend internal handlers", () => {
     } as unknown as RelayMessage);
 
     expect(processed).toEqual(["agent_message_chunk"]);
+  });
+
+  // 同一用户的不同 RCS 会话中，status 只能解除当前 RCS 的 session/list 门禁。
+  test("status does not mark another RCS session as initialized for the same user", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const handler = createRelayEvents(registry, broadcaster, []);
+    const client = (rcsSessionId: string): ClientConnection => ({
+      ws: createWs(),
+      userId: "user-1",
+      agentId: "agent-1",
+      relayHandle: { state: "open", send() {}, close() {} },
+      relayUnsub: null,
+      keepalive: 0 as unknown as ReturnType<typeof setInterval>,
+      instanceId: "instance-1",
+      rcsSessionId,
+      acpSessionId: null,
+      workspacePath: "/workspace",
+      openTime: Date.now(),
+      pendingMessages: [],
+      relayReady: true,
+      agentStatusReceived: false,
+      lastClientKeepalive: 0,
+      sessionLoaded: false,
+    });
+    registry.addClient("ws-a", client("rcs-a"));
+    registry.addClient("ws-b", client("rcs-b"));
+    const sent: unknown[] = [];
+    const relay = createSharedRelay({ state: "open", send: async (message) => void sent.push(message), close() {} });
+    relay.rcsSessionId = "rcs-a";
+
+    await handler.createMessageHandler(relay)({ type: "status", payload: { capabilities: {} } } as RelayMessage);
+
+    expect(registry.getClient("ws-a")?.agentStatusReceived).toBe(true);
+    expect(registry.getClient("ws-b")?.agentStatusReceived).toBe(false);
+    expect(sent).toHaveLength(1);
   });
 });

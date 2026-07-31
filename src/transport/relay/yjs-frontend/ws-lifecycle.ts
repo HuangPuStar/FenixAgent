@@ -251,7 +251,7 @@ export class WsLifecycle {
       // 启动 session/list 定时轮询，同步 agent 侧 session 变更
       shared.sessionListTimer = setInterval(() => {
         if (shared.destroyed) return;
-        if (!registry.hasStatusReceivedByUser(shared.agentId, shared.instanceId, shared.userId)) return;
+        if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) return;
         try {
           shared.handle.send(
             translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,

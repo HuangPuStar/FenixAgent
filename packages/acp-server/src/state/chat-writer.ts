@@ -50,8 +50,6 @@ export function addSession(ydoc: Y.Doc, session: SessionSummary): void {
  * 无差异时跳过事务，避免空轮询触发不必要的 yjs:update 广播。
  */
 export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
-  if (sessions.length === 0) return;
-
   const sessionsArray = ydoc.getArray("sessions") as Y.Array<Y.Map<unknown>>;
 
   // 构建已有 session 索引（差异检测和事务复用同一份）
@@ -62,9 +60,10 @@ export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
     if (id) existingIndex.set(id, s);
   }
 
-  // 快速差异检测：数量相同、ID 集合相同、各字段均无变化 → 跳过事务
+  // 快速差异检测：数量相同、ID 集合相同、各字段及 active session 均无变化 → 跳过事务
   if (sessionsArray.length === sessions.length) {
-    let hasChanges = false;
+    const activeSessionId = ydoc.getMap("chatMeta").get("activeSessionId") as string | null | undefined;
+    let hasChanges = Boolean(activeSessionId && !sessions.some((session) => session.sessionId === activeSessionId));
     for (const session of sessions) {
       const existing = existingIndex.get(session.sessionId);
       if (!existing) {
@@ -120,6 +119,14 @@ export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
       if (id && !incoming.has(id)) {
         sessionsArray.delete(i, 1);
       }
+    }
+
+    // 权威快照不再包含当前 active session 时，必须清除陈旧引用。
+    const chatMeta = ydoc.getMap("chatMeta");
+    const activeSessionId = chatMeta.get("activeSessionId") as string | null | undefined;
+    if (activeSessionId && !incoming.has(activeSessionId)) {
+      chatMeta.set("activeSessionId", null);
+      chatMeta.set("isSwitchingSession", false);
     }
   });
 }

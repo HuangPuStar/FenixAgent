@@ -1,7 +1,7 @@
 // packages/acp-server/src/state/doc-manager.ts
 
 import type { Cluster, Redis } from "ioredis";
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import type {
   ACPEvent,
   AgentInfo,

@@ -10,7 +10,7 @@ import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/useSessions";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
-import { buildYjsUrl, createYjsWs, type YjsWsState } from "../../yjs/yjs-ws";
+import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
 
 type WsConnectionState = "disconnected" | "connecting" | "connected" | "error";
 
@@ -35,7 +35,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
-  const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS 连接。
   // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
   // WS 客户端不会自动重连，必须由用户手动触发。
@@ -46,7 +46,7 @@ export function ChatPanel({
   // 手动重连：立即进入 connecting 状态并递增计数器，useLayoutEffect 清理旧连接后重新建连
   const handleReconnect = useCallback(() => {
     setConnectionState("connecting");
-    setError(null);
+    setErrorCode(null);
     setReconnectAttempt((n) => n + 1);
   }, []);
 
@@ -119,12 +119,12 @@ export function ChatPanel({
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
-      setError(null);
+      setErrorCode(null);
       return;
     }
 
     setConnectionState("connecting");
-    setError(null);
+    setErrorCode(null);
 
     const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
 
@@ -145,6 +145,13 @@ export function ChatPanel({
           console.warn("[Yjs] Failed to apply update:", err);
         }
       },
+      onError: (error) => {
+        if (error.code) setErrorCode(error.code);
+      },
+      onClose: ({ code }) => {
+        const terminalErrorCode = getTerminalYjsWsErrorCode(code);
+        if (terminalErrorCode) setErrorCode(terminalErrorCode);
+      },
       onConnectionState: (state: YjsWsState) => {
         if (state === "connecting") setConnectionState("connecting");
         else if (state === "connected") {
@@ -156,7 +163,11 @@ export function ChatPanel({
 
           // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
           // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
-        } else setConnectionState("disconnected");
+        } else if (state === "error") {
+          setConnectionState("error");
+        } else {
+          setConnectionState("disconnected");
+        }
       },
     });
 
@@ -172,6 +183,7 @@ export function ChatPanel({
 
   // 发送简单 JSON 命令（替代 client 方法调用）
   const sendViaWs = useCallback((data: Record<string, unknown>) => {
+    setErrorCode(null);
     yjsWsRef.current?.send(data);
   }, []);
 
@@ -239,14 +251,17 @@ export function ChatPanel({
 
   // 错误状态
   if (connectionState === "error") {
-    const isMachineUnavailable = error === "machine_unavailable";
-    const isIdleReclaimed = error === "instance_idle_reclaimed";
+    const isMachineUnavailable = errorCode === "machine_unavailable";
+    const isIdleReclaimed = errorCode === "instance_idle_reclaimed";
+    const isKeepaliveTimeout = errorCode === "client_keepalive_timeout";
     const title = isMachineUnavailable ? t("machineUnavailable") : t("agentDisconnected");
     const desc = isMachineUnavailable
       ? t("machineUnavailableDesc")
       : isIdleReclaimed
-        ? t("agentOfflineDesc")
-        : error || t("agentOfflineDesc");
+        ? t("instanceIdleReclaimedDesc")
+        : isKeepaliveTimeout
+          ? t("clientKeepaliveTimeoutDesc")
+          : t("agentOfflineDesc");
     return (
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>
@@ -273,6 +288,14 @@ export function ChatPanel({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
+        {errorCode && (
+          <div
+            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {t("agentRequestFailedDesc")}
+          </div>
+        )}
         <ACPMain
           agentId={agentId}
           initialCwd={initialCwd}

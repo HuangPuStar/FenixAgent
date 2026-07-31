@@ -40,6 +40,10 @@ class FakeWebSocket {
     this.onclose?.({ code, reason } as CloseEvent);
   }
 
+  receiveFromServer(data: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+
   send(_data: string): void {}
 }
 
@@ -89,7 +93,7 @@ function runNextTimer(): void {
   if (!timer.cleared) timer.callback();
 }
 
-function createClient(onConnectionState?: (state: "connecting" | "connected" | "disconnected") => void) {
+function createClient(onConnectionState?: (state: "connecting" | "connected" | "disconnected" | "error") => void) {
   return createYjsWsClient({
     url: "ws://example.test/acp/yjs/agent_1",
     onYjsUpdate: () => {},
@@ -194,6 +198,42 @@ describe("createYjsWsClient", () => {
     oldSocket?.closeFromServer();
 
     expect(states).toEqual(["connecting", "disconnected", "connecting", "connected"]);
+    expect(timers).toHaveLength(0);
+  });
+
+  // 服务端 error 帧必须透传安全的 code 和 message，不能被当作 Yjs update 丢弃。
+  test("forwards server error frames to onError", () => {
+    const errors: Array<{ code?: string; message?: string }> = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onError: (error) => errors.push(error),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "error",
+      payload: { code: "machine_unavailable", message: "Agent connection error" },
+    });
+
+    expect(errors).toEqual([{ code: "machine_unavailable", message: "Agent connection error" }]);
+  });
+
+  // 终端关闭码必须向上层提供 code 和 reason，并切换为 error 状态而不是继续自动重连。
+  test("reports terminal close details and stops reconnecting", () => {
+    const states: string[] = [];
+    const closes: Array<{ code: number; reason: string }> = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onConnectionState: (state) => states.push(state),
+      onClose: (close) => closes.push(close),
+    });
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4001, "instance_idle_reclaimed");
+
+    expect(closes).toEqual([{ code: 4001, reason: "instance_idle_reclaimed" }]);
+    expect(states).toEqual(["connecting", "error"]);
     expect(timers).toHaveLength(0);
   });
 

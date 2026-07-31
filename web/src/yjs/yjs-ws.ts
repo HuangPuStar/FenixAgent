@@ -4,10 +4,19 @@
  * WS 连接/重连/消息解析委托给 @fenix/acp-server 的同构实现。
  */
 
-import { createYjsWsClient, type YjsWsOptions, type YjsWsState } from "@fenix/acp-server";
+import { createYjsWsClient, type YjsWsClient, type YjsWsOptions, type YjsWsState } from "@fenix/acp-server";
 
 /** Re-export 类型，保持上游调用方无需改动 */
 export type { YjsWsState };
+
+export type YjsTerminalErrorCode = "instance_idle_reclaimed" | "machine_unavailable" | "client_keepalive_timeout";
+
+export function getTerminalYjsWsErrorCode(code: number): YjsTerminalErrorCode | null {
+  if (code === 4001) return "instance_idle_reclaimed";
+  if (code === 4500) return "machine_unavailable";
+  if (code === 4501) return "client_keepalive_timeout";
+  return null;
+}
 
 /** Build the YJS WebSocket URL for a given agent */
 export function buildYjsUrl(agentId: string, sessionId?: string): string {
@@ -25,6 +34,6 @@ export function buildYjsUrl(agentId: string, sessionId?: string): string {
   return qs ? `${base}?${qs}` : base;
 }
 
-export function createYjsWs(options: Pick<YjsWsOptions, "onYjsUpdate" | "onConnectionState"> & { url: string }) {
+export function createYjsWs(options: YjsWsOptions): YjsWsClient {
   return createYjsWsClient(options);
 }

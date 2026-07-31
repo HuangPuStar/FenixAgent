@@ -8,6 +8,7 @@ import {
   setActiveSession,
   setAgentInfo,
   setConnectionStatus,
+  syncSessions,
   updateSession,
 } from "../state/chat-writer";
 
@@ -66,6 +67,30 @@ test("addSession appends to sessions array and deduplicates", () => {
   const s0 = sessions[0] as any;
   expect(s0.get("sessionId")).toBe("ses_1");
   expect(s0.get("title")).toBe("Session 1");
+});
+
+// Agent 返回空 session 列表时必须删除 Chat Doc 中所有已经不存在的会话，并清除 active session。
+test("syncSessions clears existing sessions and the stale active session when the authoritative list is empty", () => {
+  addSession(ydoc, {
+    sessionId: "ses_1",
+    title: "Session 1",
+    preview: "first",
+    status: "active",
+    lastMsgTs: 100,
+  });
+  addSession(ydoc, {
+    sessionId: "ses_2",
+    title: "Session 2",
+    preview: "second",
+    status: "idle",
+    lastMsgTs: 200,
+  });
+  setActiveSession(ydoc, "ses_1");
+
+  syncSessions(ydoc, []);
+
+  expect(ydoc.getArray("sessions").length).toBe(0);
+  expect(ydoc.getMap("chatMeta").get("activeSessionId")).toBeNull();
 });
 
 // updateSession 更新已有 session

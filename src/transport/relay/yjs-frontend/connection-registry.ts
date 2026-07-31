@@ -100,6 +100,22 @@ export class ConnectionRegistry {
     }
   }
 
+  /** 返回同一 RCS 会话当前绑定的 ACP session ID。 */
+  findActiveSessionIdByRcsSession(rcsSessionId: string): string | undefined {
+    for (const client of this.clients.values()) {
+      if (client.rcsSessionId === rcsSessionId) return client.acpSessionId ?? undefined;
+    }
+    return;
+  }
+
+  /** 检查同一 RCS 会话是否已有客户端收到 Agent status。 */
+  hasStatusReceivedByRcsSession(rcsSessionId: string): boolean {
+    for (const client of this.clients.values()) {
+      if (client.rcsSessionId === rcsSessionId && client.agentStatusReceived) return true;
+    }
+    return false;
+  }
+
   findActiveSessionId(agentId: string, instanceId: string): string | undefined {
     for (const client of this.clients.values()) {
       if (client.agentId === agentId && client.instanceId === instanceId) {

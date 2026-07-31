@@ -45,9 +45,9 @@ const sessionTransition = new SessionTransition({
     await persistClearedSessionSnapshot(redis, `yjs:session:${entry.rcsSessionId}`, sessionDoc.ydoc);
   },
   syncSessionId: (entry, newSessionId) => {
-    // 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端，
-    // 防止多客户端场景下一个客户端切会话后其他客户端因 acpSessionId 不匹配而看到空白
-    registry.forEachByInstanceUser(entry.agentId, entry.instanceId, entry.userId, (other) => {
+    // 会话切换后同步 ACP session ID 到同一 RCS 会话的所有客户端，
+    // 使同一会话的多标签页保持一致，且不污染其他 RCS 会话。
+    registry.forEachByRcsSession(entry.rcsSessionId, (other) => {
       other.acpSessionId = newSessionId;
       other.sessionLoaded = true;
     });

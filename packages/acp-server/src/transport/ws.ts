@@ -4,7 +4,7 @@
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set([
-  4001, // idle reclaim / cooldown
+  4001, // instance idle/activity reclaim
   4500, // machine_unavailable
   4501, // client_keepalive_timeout
 ]);
@@ -12,7 +12,17 @@ const NO_RECONNECT_CODES = new Set([
 /** 重连间隔（指数退避），单位毫秒 */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
-export type YjsWsState = "connecting" | "connected" | "disconnected";
+export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
+
+export interface YjsWsError {
+  code?: string;
+  message?: string;
+}
+
+export interface YjsWsClose {
+  code: number;
+  reason: string;
+}
 
 export interface YjsWsOptions {
   /** WS 连接地址（由调用方构造，适配不同端口/环境） */
@@ -21,6 +31,10 @@ export interface YjsWsOptions {
   onYjsUpdate: (docName: string, data: Uint8Array) => void;
   /** 连接状态变化回调 */
   onConnectionState?: (state: YjsWsState) => void;
+  /** 收到服务端安全错误帧时回调 */
+  onError?: (error: YjsWsError) => void;
+  /** 连接关闭时回调关闭码与原因 */
+  onClose?: (close: YjsWsClose) => void;
 }
 
 export interface YjsWsClient {
@@ -52,7 +66,7 @@ export interface YjsWsClient {
  * ```
  */
 export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
-  const { url, onYjsUpdate, onConnectionState } = options;
+  const { url, onYjsUpdate, onConnectionState, onError, onClose } = options;
 
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
@@ -91,6 +105,17 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       if (destroyed || ws !== socket) return;
       try {
         const msg = JSON.parse(event.data as string) as Record<string, unknown>;
+        if (msg.type === "error") {
+          const payload = msg.payload;
+          if (payload && typeof payload === "object") {
+            const record = payload as Record<string, unknown>;
+            onError?.({
+              code: typeof record.code === "string" ? record.code : undefined,
+              message: typeof record.message === "string" ? record.message : undefined,
+            });
+          }
+          return;
+        }
         if (msg.type === "yjs:update") {
           const docName = msg.docName as string;
           const base64 = msg.data as string;
@@ -108,12 +133,14 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     socket.onclose = (event: CloseEvent) => {
       if (destroyed || ws !== socket) return;
       ws = null;
-      setState("disconnected");
-      // 服务端主动关闭码（如 4001 idle_reclaim）不触发自动重连
+      const close = { code: event.code, reason: event.reason };
+      onClose?.(close);
+      // 服务端主动关闭码表示当前连接不可自动恢复，交由上层提供手动恢复入口。
       if (NO_RECONNECT_CODES.has(event.code)) {
-        console.info(`[yjs-ws] Server closed with code ${event.code}, skipping reconnect. reason: ${event.reason}`);
+        setState("error");
         return;
       }
+      setState("disconnected");
       scheduleReconnect();
     };
 

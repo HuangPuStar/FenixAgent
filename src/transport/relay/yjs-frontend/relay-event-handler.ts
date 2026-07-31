@@ -7,7 +7,7 @@ import {
 import { touchInstanceActivity } from "../../../services/acp-idle-monitor";
 import { extractAcpEvent, extractJsonRpc } from "../relay-handler";
 import type { ConnectionRegistry } from "./connection-registry";
-import type { ClientConnection, RelayMessage, SharedRelay } from "./types";
+import type { RelayMessage, SharedRelay } from "./types";
 import type { YjsBroadcaster } from "./yjs-broadcaster";
 
 export interface RelayEventHandlerDependencies {
@@ -46,7 +46,7 @@ export class RelayEventHandler {
     if (rpcCheck?.method === "session/update") {
       const msgSessionId = (rpcCheck.params as Record<string, unknown> | undefined)?.sessionId as string | undefined;
       if (msgSessionId) {
-        const activeSessionId = registry.findActiveSessionIdByUser(shared.agentId, shared.instanceId, shared.userId);
+        const activeSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
         if (activeSessionId && activeSessionId !== msgSessionId) return;
       }
     }
@@ -56,13 +56,11 @@ export class RelayEventHandler {
         status: "disconnected",
         since: Date.now(),
       });
-      const entries: ClientConnection[] = [];
-      registry.forEachByInstance(shared.agentId, shared.instanceId, (entry) => entries.push(entry));
-      for (const entry of entries) {
+      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
         try {
           this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
             type: "error",
-            payload: { message: "Agent connection lost" },
+            payload: { code: "agent_connection_lost", message: "Agent connection lost" },
           });
         } catch {
           /* ignore */
@@ -72,23 +70,20 @@ export class RelayEventHandler {
         } catch {
           /* ignore */
         }
-      }
+      });
       return;
     }
 
     if (msgType === "error") {
       this.dependencies.reportError("[YJS-FE] agent error", { messageType: msgType, instanceId: shared.instanceId });
-      this.dependencies.docManager.setChatConnectionStatus(shared.rcsSessionId, {
-        status: "disconnected",
-        since: Date.now(),
-      });
-      this.sendToMatchingClients(shared, raw);
+      this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
       return;
     }
 
     if (msgType === "session_error") {
       this.dependencies.reportError("[YJS-FE] session error", { messageType: msgType, instanceId: shared.instanceId });
-      this.sendToMatchingClients(shared, raw);
+      this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
+      return;
     }
 
     try {
@@ -134,8 +129,8 @@ export class RelayEventHandler {
           model: model ? { id: model.id || "", name: model.name || "" } : undefined,
         });
       }
-      const needsListSessions = !registry.hasStatusReceivedByUser(shared.agentId, shared.instanceId, shared.userId);
-      registry.forEachByInstanceUser(shared.agentId, shared.instanceId, shared.userId, (entry) => {
+      const needsListSessions = !registry.hasStatusReceivedByRcsSession(shared.rcsSessionId);
+      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
         entry.agentStatusReceived = true;
       });
       if (needsListSessions) {
@@ -162,8 +157,7 @@ export class RelayEventHandler {
       }
       if (listPayload) {
         const sessions = listPayload.sessions as Array<Record<string, unknown>> | undefined;
-        if (Array.isArray(sessions)) {
-          this.syncSessions(shared.rcsSessionId, sessions);
+        if (Array.isArray(sessions) && this.syncSessions(shared, sessions)) {
           const chatDoc = this.dependencies.docManager.getChat(shared.rcsSessionId);
           const activeSessionId = chatDoc?.ydoc.getMap("chatMeta").get("activeSessionId") as string | undefined;
           if (!activeSessionId) {
@@ -202,9 +196,9 @@ export class RelayEventHandler {
           shared.rcsSessionId,
         );
         this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
-        const currentSessionId = registry.findActiveSessionIdByUser(shared.agentId, shared.instanceId, shared.userId);
+        const currentSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
         const isNewSession = currentSessionId !== newSessionId;
-        registry.forEachByInstanceUser(shared.agentId, shared.instanceId, shared.userId, (entry) => {
+        registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
           entry.acpSessionId = newSessionId;
         });
         if (isNewSession) {
@@ -233,34 +227,49 @@ export class RelayEventHandler {
         return;
       }
       const sessions = result.sessions as Array<Record<string, unknown>> | undefined;
-      if (Array.isArray(sessions)) this.syncSessions(shared.rcsSessionId, sessions);
+      if (Array.isArray(sessions)) this.syncSessions(shared, sessions);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] session sync failed:", err);
     }
   }
 
-  private sendToMatchingClients(shared: SharedRelay, data: unknown): void {
-    this.dependencies.registry.forEachByInstance(shared.agentId, shared.instanceId, (entry) => {
-      this.dependencies.broadcaster.sendToYjsWs(entry.ws, data);
+  private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
+    this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+      this.dependencies.broadcaster.sendToYjsWs(entry.ws, { type: "error", payload: { code, message } });
     });
   }
 
-  private syncSessions(rcsSessionId: string, sessions: Array<Record<string, unknown>>): void {
-    const summaries = sessions
-      .filter((s): s is Record<string, unknown> & { sessionId: string } => typeof s.sessionId === "string")
-      .map((s) => {
-        const timestamp = s.updatedAt ? new Date(s.updatedAt as string).getTime() : 0;
-        return {
-          sessionId: s.sessionId,
-          title: (s.title as string) || "",
-          preview: "",
-          status: "active" as const,
-          lastMsgTs: timestamp > 0 ? timestamp : Date.now(),
-          updatedAt: (s.updatedAt as string) || new Date().toISOString(),
-        };
+  private syncSessions(shared: SharedRelay, sessions: Array<Record<string, unknown>>): boolean {
+    const validSessions = sessions.filter(
+      (session): session is Record<string, unknown> & { sessionId: string } =>
+        typeof session.sessionId === "string" && session.sessionId.length > 0,
+    );
+    if (validSessions.length !== sessions.length) {
+      this.dependencies.reportError("[YJS-FE] session list rejected: invalid session summary", {
+        rcsSessionId: shared.rcsSessionId,
       });
-    if (summaries.length > 0) {
-      this.dependencies.docManager.syncChatSessions(rcsSessionId, summaries);
+      return false;
     }
+
+    const summaries = validSessions.map((s) => {
+      const timestamp = s.updatedAt ? new Date(s.updatedAt as string).getTime() : 0;
+      return {
+        sessionId: s.sessionId,
+        title: (s.title as string) || "",
+        preview: "",
+        status: "active" as const,
+        lastMsgTs: timestamp > 0 ? timestamp : Date.now(),
+        updatedAt: (s.updatedAt as string) || new Date().toISOString(),
+      };
+    });
+    this.dependencies.docManager.syncChatSessions(shared.rcsSessionId, summaries);
+    const activeSessionId = this.dependencies.registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
+    if (activeSessionId && !summaries.some((summary) => summary.sessionId === activeSessionId)) {
+      this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+        entry.acpSessionId = null;
+        entry.sessionLoaded = false;
+      });
+    }
+    return true;
   }
 }

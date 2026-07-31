@@ -1,2 +1,8 @@
-export type { YjsWsClient, YjsWsOptions, YjsWsState } from "./ws";
-export { createYjsWsClient } from "./ws";
+export {
+  createYjsWsClient,
+  type YjsWsClient,
+  type YjsWsClose,
+  type YjsWsError,
+  type YjsWsOptions,
+  type YjsWsState,
+} from "./ws";
