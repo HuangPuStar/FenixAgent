@@ -111,6 +111,85 @@ describe("registry 路由文件", () => {
     });
   });
 
+  // 非当前组织的机器更新应表现为 not found，避免越权修改。
+  test("PATCH /registry/machines/:id maps foreign machine to 404", async () => {
+    stubRegistry({
+      updateMachine: async () => {
+        throw new Error("machine 'mach-foreign' not found");
+      },
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-foreign", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "builder-02" }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: {
+        code: "NOT_FOUND",
+        message: "machine 'mach-foreign' not found",
+      },
+    });
+  });
+
+  // 非当前组织的机器删除应表现为 not found，避免越权删除。
+  test("DELETE /registry/machines/:id maps foreign machine to 404", async () => {
+    stubRegistry({
+      deleteMachine: async () => {
+        throw new Error("machine 'mach-foreign' not found");
+      },
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-foreign", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: {
+        code: "NOT_FOUND",
+        message: "machine 'mach-foreign' not found",
+      },
+    });
+  });
+
+  // 公共机器仅允许查看，不允许修改，避免把共享资源当成个人机器编辑。
+  test("PATCH /registry/machines/:id maps public machine to 404", async () => {
+    stubRegistry({
+      updateMachine: async () => {
+        throw new Error("machine 'mach-public' not found");
+      },
+    });
+    const mod = await import("../routes/web/registry");
+
+    const response = await mod.default.handle(
+      new Request("http://localhost/registry/machines/mach-public", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "shared-builder" }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: {
+        code: "NOT_FOUND",
+        message: "machine 'mach-public' not found",
+      },
+    });
+  });
+
   // 更新接口返回基础机器信息，不应错误要求 recentEvents。
   test("PATCH /registry/machines/:id accepts machine record response without recentEvents", async () => {
     stubRegistry({

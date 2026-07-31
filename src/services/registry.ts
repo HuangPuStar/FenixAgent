@@ -8,6 +8,13 @@ function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
 }
 
+function buildMachineOwnershipConditions(ctx: AuthContext) {
+  return [
+    eq(machine.organizationId, ctx.organizationId),
+    or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
+  ] as const;
+}
+
 export async function listMachines(
   ctx: AuthContext,
   filters: { status?: "online" | "offline"; labels?: string[]; limit?: number; offset?: number },
@@ -287,10 +294,11 @@ export async function updateMachine(
   id: string,
   params: { name?: string; labels?: string[]; agentName?: string },
 ): Promise<typeof machine.$inferSelect> {
+  const ownershipConditions = buildMachineOwnershipConditions(ctx);
   const rows = await db
     .select()
     .from(machine)
-    .where(and(eq(machine.id, id), or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId))))
+    .where(and(eq(machine.id, id), ...ownershipConditions))
     .limit(1);
 
   if (rows.length === 0) {
@@ -302,9 +310,16 @@ export async function updateMachine(
   if (params.labels !== undefined) updates.labels = params.labels;
   if (params.agentName !== undefined) updates.agentName = params.agentName;
 
-  await db.update(machine).set(updates).where(eq(machine.id, id));
+  await db
+    .update(machine)
+    .set(updates)
+    .where(and(eq(machine.id, id), ...ownershipConditions));
 
-  const updated = await db.select().from(machine).where(eq(machine.id, id)).limit(1);
+  const updated = await db
+    .select()
+    .from(machine)
+    .where(and(eq(machine.id, id), ...ownershipConditions))
+    .limit(1);
   return updated[0];
 }
 
@@ -314,10 +329,11 @@ export async function updateMachine(
  * 2. 被 Agent 配置或组织默认引擎引用的机器不可删除，避免产生悬空 machineId。
  */
 export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ deleted: true }> {
+  const ownershipConditions = buildMachineOwnershipConditions(ctx);
   const rows = await db
     .select()
     .from(machine)
-    .where(and(eq(machine.id, id), or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId))))
+    .where(and(eq(machine.id, id), ...ownershipConditions))
     .limit(1);
 
   const record = rows[0];
@@ -348,7 +364,7 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
     throw new Error(`machine '${id}' is still referenced by organization default engine`);
   }
 
-  await db.delete(machine).where(eq(machine.id, id));
+  await db.delete(machine).where(and(eq(machine.id, id), ...ownershipConditions));
   return { deleted: true };
 }
 
