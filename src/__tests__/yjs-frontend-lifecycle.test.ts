@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { createDeterministicRcsSessionId, DocManager } from "@fenix/acp-server";
 import * as Y from "yjs";
 import { AppError } from "../errors";
@@ -8,6 +8,44 @@ import type { ClientConnection, RelayMessage, SharedRelay } from "../transport/r
 import { WsLifecycle, type WsLifecycleDependencies } from "../transport/relay/yjs-frontend/ws-lifecycle";
 import { YjsBroadcaster } from "../transport/relay/yjs-frontend/yjs-broadcaster";
 import type { WsConnection } from "../transport/ws-types";
+
+type ScheduledInterval = {
+  callback: () => void;
+  cleared: boolean;
+  delay: number | undefined;
+};
+
+const originalSetInterval = Object.getOwnPropertyDescriptor(globalThis, "setInterval");
+const originalClearInterval = Object.getOwnPropertyDescriptor(globalThis, "clearInterval");
+const originalDateNow = Object.getOwnPropertyDescriptor(Date, "now");
+let intervals: ScheduledInterval[] = [];
+
+function installIntervalFakes(now: () => number): void {
+  intervals = [];
+  Object.defineProperty(globalThis, "setInterval", {
+    configurable: true,
+    value: (callback: () => void, delay?: number) => {
+      const interval = { callback, cleared: false, delay };
+      intervals.push(interval);
+      return interval;
+    },
+  });
+  Object.defineProperty(globalThis, "clearInterval", {
+    configurable: true,
+    value: (interval: ScheduledInterval) => {
+      interval.cleared = true;
+    },
+  });
+  Object.defineProperty(Date, "now", { configurable: true, value: now });
+}
+
+function restoreProperty(target: object, name: PropertyKey, descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor) {
+    Object.defineProperty(target, name, descriptor);
+  } else {
+    Reflect.deleteProperty(target, name);
+  }
+}
 
 function createWs(): WsConnection & { messages: string[]; closed: Array<[number | undefined, string | undefined]> } {
   return {
@@ -113,6 +151,67 @@ function deferred<T>() {
 }
 
 describe("YJS frontend internal handlers", () => {
+  afterEach(() => {
+    restoreProperty(globalThis, "setInterval", originalSetInterval);
+    restoreProperty(globalThis, "clearInterval", originalClearInterval);
+    restoreProperty(Date, "now", originalDateNow);
+  });
+
+  // 客户端 keep_alive 会续期，页面可见期间不会因连接建立时间到期而关闭。
+  test("renews the YJS WS keepalive timeout after a client keep_alive", async () => {
+    let now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents);
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const keepalive = intervals.find((interval) => interval.delay === 30_000);
+
+    now = 1_050_000;
+    await lifecycle.handleMessage(ws, "ws-1", JSON.stringify({ type: "keep_alive" }));
+    now = 1_100_000;
+    keepalive?.callback();
+
+    expect(ws.closed).toEqual([]);
+
+    now = 1_110_001;
+    keepalive?.callback();
+
+    expect(ws.closed).toEqual([[4501, "client keepalive timeout"]]);
+  });
+
+  // 新连接从客户端登记时刻开始计时：首个 30 秒周期仍保活，连续 60 秒未收到客户端 keep_alive 才关闭。
+  test("closes the YJS WS only after the client keepalive timeout elapses from registration", async () => {
+    let now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents);
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const keepalive = intervals.find((interval) => interval.delay === 30_000);
+    expect(keepalive).toBeDefined();
+
+    now = 1_030_000;
+    keepalive?.callback();
+
+    expect(ws.closed).toEqual([]);
+    expect(ws.messages.map((message) => JSON.parse(message))).toContainEqual({ type: "keep_alive" });
+
+    now = 1_060_000;
+    keepalive?.callback();
+
+    expect(ws.closed).toEqual([[4501, "client keepalive timeout"]]);
+    expect(
+      ws.messages.map((message) => JSON.parse(message)).filter((message) => message.type === "keep_alive"),
+    ).toHaveLength(1);
+  });
+
   // 过期 ACP session 的 update 必须在共享 relay 消费边界丢弃，不能进入 processACP。
   test("relay event handler filters stale session updates", async () => {
     const registry = new ConnectionRegistry();

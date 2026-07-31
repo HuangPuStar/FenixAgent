@@ -283,14 +283,19 @@ export class WsLifecycle {
       return;
     }
 
+    const openedAt = Date.now();
     const keepalive = setInterval(() => {
       const entry = registry.getClient(wsId);
       if (entry?.ws.readyState !== 1) {
         clearInterval(keepalive);
         return;
       }
-      // 客户端超时未发送 keep_alive → 页面隐藏，跳过服务端心跳
-      if (Date.now() - entry.lastClientKeepalive > CLIENT_KEEPALIVE_TIMEOUT) return;
+      // 客户端超时未发送 keep_alive → 关闭连接并由 handleClose 统一释放资源
+      if (Date.now() - entry.lastClientKeepalive >= CLIENT_KEEPALIVE_TIMEOUT) {
+        clearInterval(keepalive);
+        entry.ws.close(4501, "client keepalive timeout");
+        return;
+      }
       broadcaster.sendToYjsWs(entry.ws, { type: "keep_alive" });
     }, KEEPALIVE_INTERVAL);
     const entry: ClientConnection = {
@@ -305,11 +310,11 @@ export class WsLifecycle {
       acpSessionId: null,
       sessionLoaded: false,
       workspacePath: shared.workspacePath,
-      openTime: Date.now(),
+      openTime: openedAt,
       pendingMessages: [],
       relayReady: false,
       agentStatusReceived: false,
-      lastClientKeepalive: 0,
+      lastClientKeepalive: openedAt,
     };
     registry.addClient(wsId, entry);
 

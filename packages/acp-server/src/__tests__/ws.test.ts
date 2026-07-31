@@ -214,4 +214,13 @@ describe("createYjsWsClient", () => {
 
     expect(timers).toHaveLength(0);
   });
+
+  // 服务端因客户端 keepalive 超时关闭时，客户端必须终止且不得排队自动重连。
+  test("4501 关闭码不自动重连", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4501, "client keepalive timeout");
+
+    expect(timers).toHaveLength(0);
+  });
 });

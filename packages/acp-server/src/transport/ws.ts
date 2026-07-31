@@ -6,6 +6,7 @@
 const NO_RECONNECT_CODES = new Set([
   4001, // idle reclaim / cooldown
   4500, // machine_unavailable
+  4501, // client_keepalive_timeout
 ]);
 
 /** 重连间隔（指数退避），单位毫秒 */
