@@ -2,8 +2,11 @@
 // 同构 Yjs WebSocket 客户端，兼容浏览器和 Bun。
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
-/** 服务端主动关闭时指示前端不应自动重连的关闭码 */
-const NO_RECONNECT_CODES = new Set([4001]);
+/** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
+const NO_RECONNECT_CODES = new Set([
+  4001, // idle reclaim / cooldown
+  4500, // machine_unavailable
+]);
 
 /** 重连间隔（指数退避），单位毫秒 */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -74,14 +77,17 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
     setState("connecting");
-    ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    ws = socket;
 
-    ws.onopen = () => {
+    socket.onopen = () => {
+      if (destroyed || ws !== socket) return;
       reconnectDelayIdx = 0;
       setState("connected");
     };
 
-    ws.onmessage = (event: MessageEvent) => {
+    socket.onmessage = (event: MessageEvent) => {
+      if (destroyed || ws !== socket) return;
       try {
         const msg = JSON.parse(event.data as string) as Record<string, unknown>;
         if (msg.type === "yjs:update") {
@@ -98,7 +104,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       }
     };
 
-    ws.onclose = (event: CloseEvent) => {
+    socket.onclose = (event: CloseEvent) => {
+      if (destroyed || ws !== socket) return;
       ws = null;
       setState("disconnected");
       // 服务端主动关闭码（如 4001 idle_reclaim）不触发自动重连
@@ -109,7 +116,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       scheduleReconnect();
     };
 
-    ws.onerror = () => {
+    socket.onerror = () => {
+      if (destroyed || ws !== socket) return;
       // onclose 会跟随触发，统一处理
     };
   }

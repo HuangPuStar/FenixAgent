@@ -1,9 +1,8 @@
 import { createDeterministicRcsSessionId } from "@fenix/acp-server";
-import { Bot, Loader2, RefreshCw } from "lucide-react";
+import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ACPMain } from "@/components/ACPMain";
-import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
@@ -37,10 +36,7 @@ export function ChatPanel({
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
-  const [reconnectKey, setReconnectKey] = useState(0);
-  const lastReconnectRef = useRef(0);
   const pageVisible = useChatPageVisible();
-  const prevPageVisibleRef = useRef(pageVisible);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   const { data: session } = useSession();
@@ -86,47 +82,12 @@ export function ChatPanel({
     }
   }, [rcsSessionKey, sessionApplyUpdate]);
 
-  // 监听实例重启事件，强制重连（带最小间隔防止风暴）
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { envId } = (e as CustomEvent<{ envId: string }>).detail;
-      if (envId === agentId) {
-        const now = Date.now();
-        const elapsed = now - lastReconnectRef.current;
-        // Minimum 2s between reconnects
-        if (elapsed < 2000) return;
-        lastReconnectRef.current = now;
-        setReconnectKey((k) => k + 1);
-      }
-    };
-    window.addEventListener("agent:reconnect", handler);
-    return () => window.removeEventListener("agent:reconnect", handler);
-  }, [agentId]);
-
-  // 面板从隐藏切回可见时，若当前断开则重连
-  useEffect(() => {
-    const becameVisible = !prevPageVisibleRef.current && pageVisible;
-    prevPageVisibleRef.current = pageVisible;
-    if (!becameVisible || !agentId) return;
-
-    const shouldReconnect = connectionState === "disconnected";
-    if (!shouldReconnect) return;
-
-    const now = Date.now();
-    const elapsed = now - lastReconnectRef.current;
-    if (elapsed < 2000) return;
-    lastReconnectRef.current = now;
-    setError(null);
-    setReconnectKey((k) => k + 1);
-  }, [agentId, connectionState, pageVisible]);
-
-  // pageVisible 为 false（display:none/非活跃tab）时停发客户端 keep_alive
-  // 服务端据此判断是否应发送其自身的 keepalive 心跳
+  // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
   // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 就绪后启动 keepalive
   useEffect(() => {
-    if (!yjsWsRef.current?.isConnected()) return;
     if (!pageVisible) return;
     const ws = yjsWsRef.current;
+    if (!ws?.isConnected()) return;
     const interval = setInterval(() => {
       if (!ws.isConnected()) {
         clearInterval(interval);
@@ -138,7 +99,6 @@ export function ChatPanel({
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey 变更时需强制重建连接
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
@@ -190,7 +150,7 @@ export function ChatPanel({
       yjsWs.disconnect();
       yjsWsRef.current = null;
     };
-  }, [agentId, sessionId, reconnectKey, chatApplyUpdate, sessionApplyUpdate]);
+  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate]);
 
   // 发送简单 JSON 命令（替代 client 方法调用）
   const sendViaWs = useCallback((data: Record<string, unknown>) => {
@@ -248,17 +208,6 @@ export function ChatPanel({
     [sendViaWs],
   );
 
-  // 手动重连
-  const handleManualReconnect = () => {
-    const now = Date.now();
-    const elapsed = now - lastReconnectRef.current;
-    if (elapsed < 2000) return;
-    lastReconnectRef.current = now;
-    setError(null);
-    setConnectionState("connecting");
-    setReconnectKey((k) => k + 1);
-  };
-
   // 未选中实例 → 欢迎空状态
   if (!agentId) {
     return (
@@ -284,10 +233,6 @@ export function ChatPanel({
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>
         <p className="desc">{desc}</p>
-        <Button onClick={handleManualReconnect} variant="default" className="mt-4">
-          <RefreshCw className="h-4 w-4" />
-          {t("reconnect")}
-        </Button>
       </div>
     );
   }
