@@ -170,14 +170,6 @@ export class WsLifecycle {
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);
-      if (err instanceof AppError && err.code === "IDLE_KILL_COOLDOWN") {
-        broadcaster.sendToYjsWs(ws, {
-          type: "error",
-          payload: { code: "idle_kill_cooldown", message: `实例处于空闲回收冷却期，${err.message}` },
-        });
-        ws.close(4001, "idle_kill_cooldown");
-        return;
-      }
       if (err instanceof AppError && err.code === "MACHINE_OFFLINE") {
         broadcaster.sendToYjsWs(ws, {
           type: "error",
