@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
 import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
+import { useSession } from "@/src/lib/auth-client";
 import { useOrg } from "../../../contexts/OrgContext";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 
@@ -55,6 +56,8 @@ function nameToSlug(name: string): string {
 export function AgentOrganizationsPage() {
   const { t } = useTranslation("orgs");
   const { org: currentOrg, refreshOrgs } = useOrg();
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id ?? null;
 
   // 默认引擎设置
   const [defaultMachineId, setDefaultMachineId] = useState<string>("local");
@@ -359,6 +362,12 @@ export function AgentOrganizationsPage() {
   const members = (detail?.members ?? []) as unknown as OrgMember[];
   const showCandidateResults = debouncedAddMemberKeyword.length >= 3;
 
+  function canOperateMachine(machineRecord: MachineRecord): boolean {
+    if (!canManage || !selectedOrgId || !currentUserId) return false;
+    if (machineRecord.organizationId !== selectedOrgId) return false;
+    return machineRecord.userId === null || machineRecord.userId === currentUserId;
+  }
+
   function resetMachineForm() {
     setMachineFormName("");
     setMachineFormLabels("");
@@ -372,6 +381,7 @@ export function AgentOrganizationsPage() {
   }
 
   function openEditMachineDialog(machineRecord: MachineRecord) {
+    if (!canOperateMachine(machineRecord)) return;
     setMachineEditTarget(machineRecord);
     setMachineFormName(machineRecord.name ?? "");
     setMachineFormLabels((machineRecord.labels ?? []).filter(Boolean).join(", "));
@@ -629,6 +639,7 @@ export function AgentOrganizationsPage() {
                   {machines.map((m: MachineRecord) => {
                     const isOnline = m.status === "online";
                     const hostname = (m.machineInfo?.hostname as string | undefined) ?? m.agentName;
+                    const canOperateCurrentMachine = canOperateMachine(m);
                     return (
                       <div
                         key={m.id}
@@ -667,7 +678,7 @@ export function AgentOrganizationsPage() {
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </Button>
-                        {canManage && (
+                        {canOperateCurrentMachine && (
                           <>
                             <Button
                               variant="ghost"
@@ -681,7 +692,10 @@ export function AgentOrganizationsPage() {
                               variant="ghost"
                               size="xs"
                               className="text-text-dim hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                              onClick={() => setMachineDeleteTarget(m)}
+                              onClick={() => {
+                                if (!canOperateCurrentMachine) return;
+                                setMachineDeleteTarget(m);
+                              }}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
