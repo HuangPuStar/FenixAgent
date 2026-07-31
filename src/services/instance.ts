@@ -463,6 +463,8 @@ export async function ensureRunning(
 
     const currentRunning = getRunningInstancesByEnvironment(environmentId);
     if (currentRunning.length >= env.maxSessions) {
+      // 目标实例未运行且已达上限时，回退到首个运行实例（relay key 已做隔离，共享实例不会串数据）
+      if (currentRunning[0]) return { instance: currentRunning[0], status: "reused" };
       throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
     }
 
