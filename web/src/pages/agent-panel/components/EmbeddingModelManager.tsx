@@ -43,9 +43,15 @@ interface EmbeddingModelManagerProps {
   canManage: boolean;
   /** 是否在 Dialog 内渲染（隐藏标题副文案，避免与 Dialog 重复） */
   inDialog?: boolean;
+  /**
+   * 模型集合发生变更（增删供应商、切换模型 active/inactive）后的回调。
+   * 父层可用它刷新「创建知识库」表单的嵌入模型可选项，避免新建时仍展示
+   * 已屏蔽的模型或缺失新增的模型。
+   */
+  onModelsChanged?: () => void;
 }
 
-export function EmbeddingModelManager({ canManage, inDialog }: EmbeddingModelManagerProps) {
+export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: EmbeddingModelManagerProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -74,6 +80,7 @@ export function EmbeddingModelManager({ canManage, inDialog }: EmbeddingModelMan
       await unwrap(embeddingModelApi.delete({ provider: inst.provider, instanceName: inst.instanceName }));
       toast.success("已删除实例");
       setRefreshKey((k) => k + 1);
+      onModelsChanged?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "删除失败");
     }
@@ -141,13 +148,21 @@ export function EmbeddingModelManager({ canManage, inDialog }: EmbeddingModelMan
                 provider={p}
                 canManage={canManage}
                 onDeleteInstance={handleDeleteInstance}
+                onModelsChanged={onModelsChanged}
               />
             ))}
           </div>
         </div>
       )}
 
-      <AddProviderDialog open={addOpen} onOpenChange={setAddOpen} onAdded={() => setRefreshKey((k) => k + 1)} />
+      <AddProviderDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onAdded={() => {
+          setRefreshKey((k) => k + 1);
+          onModelsChanged?.();
+        }}
+      />
     </div>
   );
 }
@@ -158,9 +173,10 @@ interface ProviderRowProps {
   provider: ConfiguredProviderNode;
   canManage: boolean;
   onDeleteInstance: (inst: ConfiguredInstanceNode) => void;
+  onModelsChanged?: () => void;
 }
 
-function ProviderRow({ provider, canManage, onDeleteInstance }: ProviderRowProps) {
+function ProviderRow({ provider, canManage, onDeleteInstance, onModelsChanged }: ProviderRowProps) {
   const [expanded, setExpanded] = useState(false);
   const instances = provider.instances ?? [];
   const totalModels = instances.reduce((s, i) => s + (i.models?.length ?? 0), 0);
@@ -194,6 +210,7 @@ function ProviderRow({ provider, canManage, onDeleteInstance }: ProviderRowProps
               instance={inst}
               canManage={canManage}
               onDelete={() => onDeleteInstance(inst)}
+              onModelsChanged={onModelsChanged}
             />
           ))}
         </div>
@@ -208,9 +225,10 @@ interface InstanceRowProps {
   instance: ConfiguredInstanceNode;
   canManage: boolean;
   onDelete: () => void;
+  onModelsChanged?: () => void;
 }
 
-function InstanceRow({ instance, canManage, onDelete }: InstanceRowProps) {
+function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: InstanceRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [togglingModel, setTogglingModel] = useState<string | null>(null);
   const models: InstanceModelOption[] = instance.models ?? [];
@@ -235,6 +253,8 @@ function InstanceRow({ instance, canManage, onDelete }: InstanceRowProps) {
       );
       setModelStatus((prev) => ({ ...prev, [m.name]: nextActive ? "active" : "inactive" }));
       toast.success(nextActive ? "已启用该模型" : "已屏蔽该模型（新建知识库时将不可见）");
+      // 通知父层刷新「创建知识库」表单选项，使屏蔽/启用立即反映到嵌入模型下拉
+      onModelsChanged?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "操作失败");
     } finally {

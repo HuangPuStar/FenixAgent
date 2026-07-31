@@ -343,7 +343,7 @@ export function AgentKnowledgeBasesPage() {
   }, []);
   const items: KnowledgeBaseInfo[] = Array.isArray(listData) ? listData : [];
 
-  const { data: formOptions } = useRequest(() => unwrap(kbApi.getFormOptions()), {
+  const { data: formOptions, refresh: refreshFormOptions } = useRequest(() => unwrap(kbApi.getFormOptions()), {
     refreshDeps: [],
     onError: (err) => {
       // 选项拉取失败仅记录，不弹 toast——表单仍可用（分块方法是静态兜底）
@@ -409,8 +409,10 @@ export function AgentKnowledgeBasesPage() {
     (id: string, payload: { name: string; description?: string }) => unwrap(kbApi.update({ id }, payload)),
     {
       manual: true,
-      onSuccess: () => {
+      onSuccess: (updated, [id]) => {
         setDialogOpen(false);
+        // 用后端返回的最新数据同步详情头部，避免改名/改描述后需刷新才生效
+        setSelectedDetail((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
         refresh();
       },
       onError: (err) => {
@@ -794,7 +796,7 @@ export function AgentKnowledgeBasesPage() {
             <DialogDescription className="text-[12px]">管理 RAGFlow 租户下的向量模型。</DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
-            <EmbeddingModelManager canManage={canManage} inDialog />
+            <EmbeddingModelManager canManage={canManage} inDialog onModelsChanged={refreshFormOptions} />
           </div>
         </DialogContent>
       </Dialog>
