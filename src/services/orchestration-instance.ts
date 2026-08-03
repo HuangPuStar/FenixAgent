@@ -126,7 +126,10 @@ export async function spawnInstanceViaController(
     throw err;
   }
 
-  registerSupplement(envId, userId, instance.instanceId, source);
+  // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
+  // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
+  // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
+  await registerSupplement(envId, userId, instance.instanceId, source);
   return instance;
 }
 
