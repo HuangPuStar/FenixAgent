@@ -45,12 +45,13 @@ export interface SpawnInstanceViaControllerOptions {
  * 通过 core runtime 真正启动 Agent 进程。
  *
  * nodeId 三选一（对齐旧 services/instance.ts 的节点选择逻辑）：
- *   1. 环境解析出的 machineId（agent_config.machineId → config.defaultMachineId，
- *      由编排域 EnvironmentRepo 完成 fallback）；
+ *   1. 环境解析出的 machineId（agent_config.machineId → config.defaultMachineId →
+ *      local-default，由编排域 EnvironmentRepo 完成 fallback）；
  *   2. config.defaultMachineId（防御性兜底）；
  *   3. "local-default"（本地节点）。
- * 注意：编排域路径下环境无 machineId 时 controller.spawnInstance 会先抛
- * LaunchSpecBuildError，因此走到本函数时第 2/3 分支实际不可达，保留以对齐旧逻辑。
+ * 注意：环境无 machineId 且本地执行被禁用（RCS_DISABLE_LOCAL_EXECUTION）时，
+ * controller.spawnInstance 会先抛 LaunchSpecBuildError，因此走到本函数时
+ * 第 2/3 分支仅在配置缺失或本地执行场景下可达，保留以对齐旧逻辑。
  *
  * @param launchSpec 编排域 LaunchSpec（仅取 environmentId/userId，运行时字段从 DB 重建）
  * @param instanceId 编排域 Instance 的 instanceId（与 core 实例一一对应）
@@ -197,9 +198,8 @@ async function buildAgentLaunchSpecForCore(
     // 注意：编排域 controller.spawnInstance 的 LaunchSpecBuilder 会在更早阶段对
     // 无 agentConfigId 环境抛 LaunchSpecBuildError(422)，本分支通常不可达，仅作为
     // 防御性对齐保留（若编排域侧未来放宽构建约束，此处行为仍与旧路径一致）。
-    // 另一剩余差异：无 agentConfigId 且无 RCS_DEFAULT_MACHINE_ID 时旧路径可走
-    // local-default，而编排域路径在 controller 阶段即拒绝——这是编排域"环境须解析出
-    // machineId"的设计约束，不做绕过。
+    // 无 agentConfigId 且无 machine 配置时：EnvironmentRepo 回退 local-default
+    // （本地执行未禁用），与旧路径行为一致；禁用本地执行时 controller 阶段即拒绝。
     return buildBasicLaunchSpec({
       organizationId: env.organizationId ?? launchSpec.userId,
       userId: launchSpec.userId,

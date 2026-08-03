@@ -17,7 +17,11 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    * machineId 解析优先级（与旧 services/instance.ts 的节点选择逻辑一致）：
    *   1. environment.agentConfigId → agent_config.machineId（leftJoin 一次取出）；
    *   2. config.defaultMachineId（RCS_DEFAULT_MACHINE_ID 环境变量）；
-   *   3. 都没有则为 null，由编排域决定默认节点。
+   *   3. 本地执行占位节点 "local-default"（RCS_DISABLE_LOCAL_EXECUTION 未设置时），
+   *      与旧路径 nodeId 三选一（agent config 绑定 > 系统默认 > local-default）一致；
+   *   4. 禁用本地执行且无任何 machine 配置时为 null，编排域视为配置错误拒绝启动。
+   * 占位节点由宿主侧本地节点服务（src/services/local-node-service.ts）供给，
+   * core 侧在 disableLocalExecution 时同样不注册 local-default 节点。
    */
   async getEnvironment(envId: string): Promise<EnvironmentData | null> {
     const rows = await db
@@ -42,7 +46,12 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
       id: row.id,
       organizationId: row.organizationId,
       agentConfigId: row.agentConfigId,
-      machineId: row.configMachineId ?? config.defaultMachineId ?? null,
+      machineId:
+        row.configMachineId ??
+        config.defaultMachineId ??
+        // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
+        // 无兜底，编排域 AgentController 会以配置错误拒绝启动。
+        (config.disableLocalExecution ? null : "local-default"),
       // environment.maxSessions 即编排域的并发上限语义。
       maxConcurrency: row.maxSessions,
       autoStart: row.autoStart ?? false,
