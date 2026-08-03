@@ -19,10 +19,6 @@ export class RemoteRelayHandle implements EngineRelayHandle {
       const payload = msg.payload as Record<string, unknown> | undefined;
       if (!payload || typeof payload !== "object") return;
 
-      console.error(
-        `[workflow] RemoteRelayHandle onSessionMessage: instId=${instId} listeners=${this.messageListeners.size} payloadType=${typeof payload.type === "string" ? payload.type : "jsonrpc"} id=${payload.id ?? "n/a"} method=${payload.method ?? "n/a"}`,
-      );
-
       // 传输层消息（status/error/pong 等）：直接透传
       if (typeof payload.type === "string") {
         for (const listener of this.messageListeners) {
@@ -56,7 +52,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     if (this._state !== "open") {
       throw new Error("RemoteRelayHandle is closed");
     }
-    logger.info("→ agent relay", { instanceId: this.instanceId, payload: JSON.stringify(message).slice(0, 300) });
+    logger.info("→ agent relay", { instanceId: this.instanceId, messageType: message.type });
     this.transport.send({
       type: "relay",
       instance_id: this.instanceId,

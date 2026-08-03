@@ -3,7 +3,7 @@ import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { environment } from "../db/schema";
-import { connectAgentRelay } from "../transport/relay/relay-handler";
+import { connectAgentRelay } from "../transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/store";
 import { createWebEnvironment } from "./environment-web";
 import { spawnInstanceFromEnvironment, stopInstance } from "./instance";

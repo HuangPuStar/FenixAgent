@@ -70,7 +70,7 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
     user: null,
     spawn_source: null,
     // 缺少 supplement 时无法可靠推导活动信息；这里保守给默认值，
-    // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+    // 仅用于"统计所有实例"场景，避免 runtime 活跃实例被整体漏掉。
     last_activity_at: createdAtSeconds,
     relay_count: 0,
     last_relay_detached_at: null,
@@ -107,13 +107,14 @@ export function listInstanceActivitySnapshots(
         continue;
       } else {
         // 没有 supplement 时无法可靠推导活动信息；这里保守给默认值，
-        // 仅用于“统计所有实例”场景，避免 runtime 活跃实例被整体漏掉。
+        // 仅用于"统计所有实例"场景，避免 runtime 活跃实例被整体漏掉。
         results.push(toFallbackActivityInfo(snapshot));
         continue;
       }
     }
     if (organizationId && supplement.organizationId !== organizationId) continue;
-    const instance = _deps.getInstance(snapshot.instanceId, supplement.userId);
+
+    const instance = _deps.getInstance(snapshot.instanceId);
     if (!instance) continue;
     results.push(
       toInstanceActivityInfo(instance, supplement, config.acpIdleTimeoutSeconds, config.acpActivityTimeoutSeconds, now),
@@ -153,6 +154,23 @@ export async function listInstanceActivitySnapshotsWithUsers(
   });
 }
 
+/** 关闭前端 relay 并停止满足回收条件的实例。 */
+async function reclaimInstance(
+  snapshot: InstanceActivityInfo,
+  supplement: NonNullable<ReturnType<typeof globalInstanceRegistry.get>>,
+  reason: "inactive" | "idle",
+): Promise<void> {
+  const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
+  closeRelayConnectionsForIdleReclaim(snapshot.id);
+
+  const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
+  if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
+    logger.error(
+      `[ACP-IDLE] Failed to stop ${reason} instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
+    );
+  }
+}
+
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */
 export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
   const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
@@ -161,36 +179,37 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
   for (const snapshot of snapshots) {
     const supplement = globalInstanceRegistry.get(snapshot.id);
     if (!supplement) continue;
+
+    // activity 回收与 relay 是否存在无关：前端保持连接（页面打开中）但 Agent
+    // 长时间无业务消息（卡死、失去响应、relay 状态异常）时，仍按硬超时回收，
+    // 避免实例因 relay_count 永不归零而失去自动回收出口。
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
     if (inactiveTooLong) {
       logger.info(
         `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${config.acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
-      const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
-      closeRelayConnectionsForIdleReclaim(snapshot.id);
-      const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
-      if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
-        logger.error(
-          `[ACP-IDLE] Failed to stop inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
-        );
+      try {
+        await reclaimInstance(snapshot, supplement, "inactive");
+      } catch (err) {
+        logger.error(`[ACP-IDLE] reclaimInstance failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
       }
       continue;
     }
 
+    // 只有无前端 relay 时才按 idle 回收：relay_count > 0 只阻止 idle 回收，
+    // 不能阻止 activity 回收（见上方判断）。
     if (snapshot.relay_count > 0) continue;
+
     const idleSince = Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0);
     if (now - idleSince < idleTimeoutMs) continue;
 
     logger.info(
       `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${config.acpIdleTimeoutSeconds}s`,
     );
-    const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
-    closeRelayConnectionsForIdleReclaim(snapshot.id);
-    const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);
-    if (!result.ok && result.error !== "Already stopped" && result.error !== "Instance not found") {
-      logger.error(
-        `[ACP-IDLE] Failed to stop idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""}: ${result.error}`,
-      );
+    try {
+      await reclaimInstance(snapshot, supplement, "idle");
+    } catch (err) {
+      logger.error(`[ACP-IDLE] reclaimInstance failed for ${snapshot.id}:`, err instanceof Error ? err : undefined);
     }
   }
 }

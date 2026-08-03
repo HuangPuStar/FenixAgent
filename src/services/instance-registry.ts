@@ -14,6 +14,9 @@ import type { InstanceSupplement } from "../types/store";
  * - 纯内存存储，不解决重启问题
  */
 export class InstanceRegistry {
+  /** 空闲回收关闭码，前端识别此码后跳过自动重连。 */
+  static readonly IDLE_RECLAIM_CLOSE_CODE = 4001;
+
   private supplements = new Map<string, InstanceSupplement>();
   private envCounters = new Map<string, number>();
   private byEnvironment = new Map<string, Set<string>>();

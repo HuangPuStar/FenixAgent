@@ -147,14 +147,24 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     entry.machineId = result.id;
     logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
+    // registerRemoteNode 会删除该 machine 上的旧 core 实例；提前捕获，供 relay 层精确关闭旧前端连接。
+    const facade = getCoreRuntime();
+    const replacedInstanceIds =
+      !result.isNew && facade
+        ? facade
+            .listInstances()
+            .filter((instance) => instance.nodeId === result.id)
+            .map((instance) => instance.instanceId)
+        : [];
+
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     const engineTypes = supportedEngineTypes.map((e) => e.type);
     registerRemoteNode(result.id, entry.ws, entry, engineTypes);
 
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
-    if (!result.isNew) {
-      import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
-        handleMachineReconnect(result.id);
+    if (replacedInstanceIds.length > 0) {
+      import("./relay").then(({ closeClientsForMachineInstances }) => {
+        closeClientsForMachineInstances(replacedInstanceIds, "machine reconnected");
       });
     }
 
@@ -255,7 +265,6 @@ export async function handleAcpWsMessage(
           type: msg.type,
           machineId: entry.machineId,
           instanceId: (msg as Record<string, unknown>).instance_id,
-          payload: JSON.stringify(msg).slice(0, 300),
         });
         entry.remoteTransport.injectMessage(msg as unknown as import("@fenix/remote-runtime").TransportMessage);
         continue;
@@ -281,7 +290,6 @@ export async function handleAcpWsMessage(
         type: msg.type,
         machineId: entry.machineId,
         sessionId,
-        payload: JSON.stringify(msg).slice(0, 300),
       });
       if (sessionId) {
         const listener = entry.sessionMessageListeners?.get(sessionId);
@@ -334,17 +342,15 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     logger.info(
       `[MACHINE-CLEANUP] Machine ${machineId} has newer active connection (wsId=${activeConn.wsId}) — closing stale relay connections`,
     );
-    // 即使有新连接接管，仍需关闭旧 relay 连接，让前端重连使用新 transport
-    // 跳过 DB/core 清理（新连接已接管），但必须触发 relay 层刷新
-    import("./relay/relay-handler").then(({ handleMachineReconnect }) => {
-      handleMachineReconnect(machineId);
-    });
     return;
   }
 
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
-  // 无其他活跃连接，执行完整断连清理
+  const instanceIds = getCoreRuntime()
+    .listInstances()
+    .filter((instance) => instance.nodeId === machineId)
+    .map((instance) => instance.instanceId);
   handleMachineDisconnect(entry, reason).catch(() => {});
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
@@ -353,9 +359,9 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     const facade = getCoreRuntime();
     globalInstanceRegistry.reconcile(() => facade.listInstances());
   });
-  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
-    logger.info(`[MACHINE-CLEANUP] Calling handleMachineDisconnected for machineId=${machineId}`);
-    handleMachineDisconnected(machineId);
+  import("./relay").then(({ closeClientsForMachineInstances }) => {
+    logger.info(`[MACHINE-CLEANUP] Closing frontend clients for machineId=${machineId}`);
+    closeClientsForMachineInstances(instanceIds, "machine unavailable");
   });
 }
 
@@ -396,10 +402,15 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
     logError("Machine disconnect error:", err);
   });
 
+  const instanceIds = getCoreRuntime()
+    .listInstances()
+    .filter((instance) => instance.nodeId === machineId)
+    .map((instance) => instance.instanceId);
+
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
-  import("./relay/relay-handler").then(({ handleMachineDisconnected }) => {
-    handleMachineDisconnected(machineId);
+  import("./relay").then(({ closeClientsForMachineInstances }) => {
+    closeClientsForMachineInstances(instanceIds, "machine unavailable");
   });
 }
 

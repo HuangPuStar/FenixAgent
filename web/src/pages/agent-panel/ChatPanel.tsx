@@ -1,21 +1,25 @@
+import { createDeterministicRcsSessionId } from "@fenix/acp-server";
 import { Bot, Loader2, RefreshCw } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ACPMain } from "@/components/ACPMain";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { type ACPClient, DisconnectRequestedError } from "../../acp/client";
-import { createRelayClient } from "../../acp/relay-client";
-import type { ConnectionState } from "../../acp/types";
+import { useChatState } from "../../hooks/use-chat-state";
+import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/useSessions";
 import { NS } from "../../i18n";
+import { useSession } from "../../lib/auth-client";
+import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
+import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
+
+type WsConnectionState = ChatWsConnectionState;
 
 interface ChatPanelProps {
   agentId: string | null;
   sessionId?: string | null;
   initialCwd?: string;
   hideSidebar?: boolean;
-  onClientChange?: (client: ACPClient | null) => void;
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
@@ -26,112 +30,228 @@ export function ChatPanel({
   sessionId,
   initialCwd,
   hideSidebar,
-  onClientChange,
   scenePrompt,
   contextKey,
   onPromptComplete,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [client, setClient] = useState<ACPClient | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
-  const [error, setError] = useState<string | null>(null);
-  const clientRef = useRef<ACPClient | null>(null);
-  const [reconnectKey, setReconnectKey] = useState(0);
-  const lastReconnectRef = useRef(0);
+  const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS 连接。
+  // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
+  // WS 客户端不会自动重连，必须由用户手动触发。
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
-  const prevPageVisibleRef = useRef(pageVisible);
 
-  // 监听实例重启事件，强制重连（带最小间隔防止风暴）
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { envId } = (e as CustomEvent<{ envId: string }>).detail;
-      if (envId === agentId) {
-        const now = Date.now();
-        const elapsed = now - lastReconnectRef.current;
-        // Minimum 2s between reconnects
-        if (elapsed < 2000) return;
-        lastReconnectRef.current = now;
-        setReconnectKey((k) => k + 1);
-      }
-    };
-    window.addEventListener("agent:reconnect", handler);
-    return () => window.removeEventListener("agent:reconnect", handler);
-  }, [agentId]);
-
-  // 面板从隐藏切回可见时，仅对 idle reclaim 的断开态（后端自动关闭长时间不活跃的实例）自动补连一次。
-  // 其他错误仍按原状保留，避免把非预期错误都吞成自动重试。
-  useEffect(() => {
-    const becameVisible = !prevPageVisibleRef.current && pageVisible;
-    prevPageVisibleRef.current = pageVisible;
-    if (!becameVisible || !agentId) {
-      return;
-    }
-
-    const shouldReconnect = connectionState === "error" && error === "instance_idle_reclaimed";
-    if (!shouldReconnect) {
-      return;
-    }
-
-    const now = Date.now();
-    const elapsed = now - lastReconnectRef.current;
-    if (elapsed < 2000) return;
-    lastReconnectRef.current = now;
-    setError(null);
+  // 手动重连：立即进入 connecting 状态并递增计数器，useLayoutEffect 清理旧连接后重新建连
+  const handleReconnect = useCallback(() => {
     setConnectionState("connecting");
-    setReconnectKey((k) => k + 1);
-  }, [agentId, connectionState, error, pageVisible]);
+    setErrorCode(null);
+    setReconnectAttempt((n) => n + 1);
+  }, []);
 
-  // 使用 useLayoutEffect 在 paint 前同步重置状态，避免切换 agent / 重连时闪烁过时 UI
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey 变更时需强制重建连接
+  // 缓存 ChatPanel 从后台切回前台且连接已断开时，自动触发一次与「重连」按钮等价的重连：
+  // 后台期间实例可能已被 idle/activity 回收（4001）或客户端 keepalive 超时（4501）断开，
+  // 这两类终态关闭码不会触发 YJS 客户端自动重连；切回前台时后端已通过 enter/ensureRunning
+  // 恢复实例，前端需重建 WS 才能恢复连接。machine_unavailable（4500）保留手动重试。
+  const previousPageVisibleRef = useRef(pageVisible);
+  useEffect(() => {
+    const wasVisible = previousPageVisibleRef.current;
+    previousPageVisibleRef.current = pageVisible;
+    if (!shouldAutoReconnectOnVisible(wasVisible, pageVisible, connectionState, errorCode)) return;
+    setConnectionState("connecting");
+    setErrorCode(null);
+    setReconnectAttempt((n) => n + 1);
+  }, [pageVisible, connectionState, errorCode]);
+
+  // ── Yjs 被动观察（旁路，不改变现有逻辑）──
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? "unknown";
+
+  // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
+  // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
+  // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
+  const rcsSessionKey =
+    agentId && userId !== "unknown"
+      ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined)
+      : undefined;
+
+  // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
+  const chatHookKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
+  const { state: chatState, applyUpdate: chatApplyUpdate } = useChatState(chatHookKey);
+
+  // Session Doc — 按 RCS session ID 命名
+  const { state: sessionState, applyUpdate: sessionApplyUpdate } = useSessionState(rcsSessionKey ?? "__placeholder__");
+
+  // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
+  const yjsChatRef = useRef(chatState);
+  const yjsSessionRef = useRef(sessionState);
+  yjsChatRef.current = chatState;
+  yjsSessionRef.current = sessionState;
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__yjs_dump__ = () => {
+      console.log("── YJS Chat State ──", yjsChatRef.current);
+      console.log("── YJS Session State ──", yjsSessionRef.current);
+    };
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__yjs_dump__;
+    };
+  }, []);
+
+  // Buffer: 缓存每个 session 的最后一次 yjs:update，用于 acpSessionId 切换后重放
+  // 解决竞态条件：session 数据可能在 useSessionState 切换到正确 Y.Doc 之前到达，
+  // 此时数据被应用到旧的 placeholder Y.Doc → 切换后被销毁 → 需要重放
+  const sessionLatestUpdateRef = useRef<Map<string, Uint8Array>>(new Map());
+
+  // 当 rcsSessionKey 切换后，重放宽存的 session 更新 (H1 fix)
+  useEffect(() => {
+    if (!rcsSessionKey) return;
+    const cached = sessionLatestUpdateRef.current.get(rcsSessionKey);
+    if (cached) {
+      sessionApplyUpdate(cached, rcsSessionKey);
+    }
+  }, [rcsSessionKey, sessionApplyUpdate]);
+
+  // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 就绪后启动 keepalive
+  useEffect(() => {
+    if (!pageVisible) return;
+    const ws = yjsWsRef.current;
+    if (!ws?.isConnected()) return;
+    const interval = setInterval(() => {
+      if (!ws.isConnected()) {
+        clearInterval(interval);
+        return;
+      }
+      ws.send({ type: "keep_alive" });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [pageVisible, connectionState]);
+
+  // 创建 YjsWs 连接
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectAttempt 仅作为手动重连触发器，未在 effect 内读取
   useLayoutEffect(() => {
     if (!agentId) {
-      setClient(null);
       setConnectionState("disconnected");
-      setError(null);
-      onClientChange?.(null);
+      setErrorCode(null);
       return;
     }
 
-    // 切换 agent 或手动重连时，立即进入 connecting，清空旧 error
-    // 否则旧 error 会留在 state 中，导致渲染时短暂显示上一个 agent 的错误页面
     setConnectionState("connecting");
-    setError(null);
+    setErrorCode(null);
 
-    const relayClient = createRelayClient(agentId, sessionId ?? undefined);
+    const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
 
-    relayClient.setConnectionStateHandler((state, err) => {
-      setConnectionState(state);
-      setError(err || null);
+    const yjsWs = createYjsWs({
+      url: relayUrl,
+      onYjsUpdate: (docName, data) => {
+        try {
+          if (docName.startsWith("chat:")) {
+            chatApplyUpdate(data);
+          } else if (docName.startsWith("session:")) {
+            const sessId = docName.replace("session:", "");
+            // 缓存最新更新（用于 acpSessionId 切换后重放）
+            sessionLatestUpdateRef.current.set(sessId, data);
+            // sessionApplyUpdate 内部通过 Y.Doc meta 校验 sessionId，无需额外 guard
+            sessionApplyUpdate(data, sessId);
+          }
+        } catch (err) {
+          console.warn("[Yjs] Failed to apply update:", err);
+        }
+      },
+      onError: (error) => {
+        if (error.code) setErrorCode(error.code);
+      },
+      onClose: ({ code }) => {
+        const terminalErrorCode = getTerminalYjsWsErrorCode(code);
+        if (terminalErrorCode) setErrorCode(terminalErrorCode);
+      },
+      onConnectionState: (state: YjsWsState) => {
+        if (state === "connecting") setConnectionState("connecting");
+        else if (state === "connected") {
+          setConnectionState("connected");
+
+          // 发送 list_sessions 获取历史会话列表
+          // 注意：RCS session ID (session_xxx) ≠ ACP session ID (ses_xxx)，不能直接 load_session
+          yjsWsRef.current?.send({ action: "list_sessions" });
+
+          // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
+          // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
+        } else if (state === "error") {
+          setConnectionState("error");
+        } else {
+          setConnectionState("disconnected");
+        }
+      },
     });
 
-    relayClient.connect().catch((e: unknown) => {
-      if (e instanceof DisconnectRequestedError) return;
-      setError((e as Error).message);
-      setConnectionState("error");
-    });
-
-    clientRef.current = relayClient;
-    setClient(relayClient);
-    onClientChange?.(relayClient);
+    yjsWs.connect();
+    yjsWsRef.current = yjsWs;
 
     return () => {
-      relayClient.disconnect();
-      clientRef.current = null;
-      setClient(null);
-      onClientChange?.(null);
+      yjsWs.disconnect();
+      yjsWsRef.current = null;
     };
-  }, [agentId, sessionId, onClientChange, reconnectKey]);
+    // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复
+  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate, reconnectAttempt]);
 
-  // 手动重连：立即进入 connecting，再递增 reconnectKey 触发 useLayoutEffect 重建连接
-  const handleManualReconnect = () => {
-    const now = Date.now();
-    const elapsed = now - lastReconnectRef.current;
-    if (elapsed < 2000) return;
-    lastReconnectRef.current = now;
-    setError(null);
-    setConnectionState("connecting");
-    setReconnectKey((k) => k + 1);
-  };
+  // 发送简单 JSON 命令（替代 client 方法调用）
+  const sendViaWs = useCallback((data: Record<string, unknown>) => {
+    setErrorCode(null);
+    yjsWsRef.current?.send(data);
+  }, []);
+
+  // 从 chatState 提取 ACPMain 需要的派生状态
+  const derivedState = useMemo(() => {
+    const caps = chatState.capabilities;
+    const ms = chatState.modelState;
+    const mds = chatState.modeState;
+
+    const promptCaps = caps?.promptCapabilities as { image?: boolean } | undefined;
+    const supportsImages = promptCaps?.image === true;
+
+    const modelName = ms
+      ? ms.availableModels.find((m: { modelId: string; name: string }) => m.modelId === ms.currentModelId)?.name
+      : // modelState 为空时回退到 agentInfo.model（来自 status 消息）
+        (chatState.agentInfo?.model?.name as string) || undefined;
+
+    return {
+      supportsImages,
+      modelName,
+      supportsLoadSession: !!(caps?.loadSession || caps?.sessionCapabilities),
+      availableCommands: chatState.availableCommands,
+      availableModes: mds?.availableModes ?? [],
+      currentModeId: mds?.currentModeId ?? null,
+      supportsModeSelection: mds != null && (mds.availableModes?.length ?? 0) > 0,
+      tokenUsage: chatState.tokenUsage,
+    };
+  }, [
+    chatState.capabilities,
+    chatState.modelState,
+    chatState.modeState,
+    chatState.availableCommands,
+    chatState.agentInfo,
+    chatState.tokenUsage,
+  ]);
+
+  // 为 ACPMain 提供的出站回调
+  const callbacks = useMemo(
+    () => ({
+      onSendPrompt: (contentBlocks: unknown[]) => sendViaWs({ action: "send_prompt", content: contentBlocks }),
+      onCancel: () => sendViaWs({ action: "cancel" }),
+      onCreateSession: () => sendViaWs({ action: "create_session" }),
+      onLoadSession: (sid: string) => sendViaWs({ action: "load_session", sessionId: sid }),
+      onResumeSession: (sid: string) => sendViaWs({ action: "resume_session", sessionId: sid }),
+      onListSessions: () => sendViaWs({ action: "list_sessions" }),
+      onRenameSession: (sid: string, title: string) => sendViaWs({ action: "rename_session", sessionId: sid, title }),
+      onDeleteSession: (sid: string) => sendViaWs({ action: "delete_session", sessionId: sid }),
+      onRespondPermission: (requestId: string, optionId: string | null) =>
+        sendViaWs({ action: "respond_permission", requestId, optionId }),
+      onSetMode: (modeId: string) => sendViaWs({ action: "set_session_mode", modeId }),
+    }),
+    [sendViaWs],
+  );
 
   // 未选中实例 → 欢迎空状态
   if (!agentId) {
@@ -144,33 +264,33 @@ export function ChatPanel({
     );
   }
 
-  // 错误状态：优先判断，client 可能仍存在（远程节点被动断开时 useLayoutEffect 未重新执行）
-  // 此时不能进入 "已连接" 或 "连接中"，必须显示错误页面 + 重连按钮
+  // 错误状态
   if (connectionState === "error") {
-    const isMachineUnavailable = error === "machine_unavailable";
-    const isIdleReclaimed = error === "instance_idle_reclaimed";
+    const isMachineUnavailable = errorCode === "machine_unavailable";
+    const isIdleReclaimed = errorCode === "instance_idle_reclaimed";
+    const isKeepaliveTimeout = errorCode === "client_keepalive_timeout";
     const title = isMachineUnavailable ? t("machineUnavailable") : t("agentDisconnected");
     const desc = isMachineUnavailable
       ? t("machineUnavailableDesc")
       : isIdleReclaimed
-        ? t("agentOfflineDesc")
-        : error || t("agentOfflineDesc");
+        ? t("instanceIdleReclaimedDesc")
+        : isKeepaliveTimeout
+          ? t("clientKeepaliveTimeoutDesc")
+          : t("agentOfflineDesc");
     return (
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>
         <p className="desc">{desc}</p>
-        {isMachineUnavailable && (
-          <Button onClick={handleManualReconnect} variant="default" className="mt-4">
-            <RefreshCw className="h-4 w-4" />
-            {t("reconnect")}
-          </Button>
-        )}
+        <Button variant="outline" onClick={handleReconnect} className="mt-2">
+          <RefreshCw className="h-4 w-4" />
+          {t("reconnect")}
+        </Button>
       </div>
     );
   }
 
-  // 连接中或 client 未初始化（包括切换 agent / 手动重连期间 client 被清空的过渡帧）
-  if (connectionState === "connecting" || !client) {
+  // 连接中
+  if (connectionState === "connecting") {
     return (
       <div className="agent-welcome-empty">
         <Loader2 className="h-8 w-8 animate-spin text-brand" />
@@ -183,8 +303,15 @@ export function ChatPanel({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
+        {errorCode && (
+          <div
+            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {t("agentRequestFailedDesc")}
+          </div>
+        )}
         <ACPMain
-          client={client}
           agentId={agentId}
           initialCwd={initialCwd}
           hideSidebar={hideSidebar}
@@ -192,6 +319,18 @@ export function ChatPanel({
           scenePrompt={scenePrompt}
           contextKey={contextKey}
           onPromptComplete={onPromptComplete}
+          chatState={chatState}
+          sessionState={sessionState}
+          connectionState={connectionState}
+          supportsImages={derivedState.supportsImages}
+          supportsLoadSession={derivedState.supportsLoadSession}
+          modelName={derivedState.modelName}
+          tokenUsage={derivedState.tokenUsage}
+          availableCommands={derivedState.availableCommands}
+          availableModes={derivedState.availableModes}
+          currentModeId={derivedState.currentModeId}
+          supportsModeSelection={derivedState.supportsModeSelection}
+          {...callbacks}
         />
       </TooltipProvider>
     );
@@ -202,6 +341,10 @@ export function ChatPanel({
     <div className="agent-welcome-empty">
       <p className="title">{t("agentDisconnected")}</p>
       <p className="desc">{t("agentOfflineDesc")}</p>
+      <Button variant="outline" onClick={handleReconnect} className="mt-2">
+        <RefreshCw className="h-4 w-4" />
+        {t("reconnect")}
+      </Button>
     </div>
   );
 }

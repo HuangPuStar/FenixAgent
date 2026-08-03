@@ -167,7 +167,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       const fileName = fileNameMatch?.[1]?.replace(/['"]/g, "") ?? "document";
       const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
 
-      return { content: response.body, contentType, fileName };
+      return { content: response.body as ReadableStream<Uint8Array>, contentType, fileName };
     } finally {
       clearTimeout(timeout);
     }

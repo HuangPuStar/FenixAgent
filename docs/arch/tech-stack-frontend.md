@@ -97,14 +97,12 @@
 
 Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-transport.ts`）接入后端 SSE 事件流，而非默认的 HTTP stream。`rcs-chat-adapter.ts` 负责将后端会话事件转换为 AI SDK 的 thread entries。
 
-### ACP 协议客户端
+### ACP/YJS 通信通道
 
-前端通过 ACP relay（`web/src/acp/relay-client.ts`）连接后端 WebSocket 中继：
+前端通过单条 `/acp/yjs/:agentId` WebSocket 连接后端，使用 YJS CRDT 进行增量数据同步：
 
-- **`buildRelayUrl()`**：自动拼装协议、主机、组织 ID、session ID 参数
-- **`createRelayClient()`**：创建 WebSocket 连接，订阅 agent 事件
-- **事件订阅**：`web/src/acp/client.ts` 封装 `acp-link/client`，提供 ACPClient 和所有事件 handler 类型
-- **Relay 断连**：前端断连只关 WebSocket，不终止后端 agent 子进程
+- **`buildYjsUrl()`** / **`createYjsWs()`**：`web/src/yjs/yjs-ws.ts` 中封装，自动拼装协议、主机、agentId 参数
+- **ChatPanel**：前端 WS 唯一入口，在挂载时创建连接
 
 ---
 
@@ -124,7 +122,7 @@ web/
     hooks/           — 自定义 hooks（useAuth、useSSE、useACPConnection、useBackoffRetry 等 12 个）
     lib/             — 工具函数（form-utils、retry、token-stats、app-brand、theme、password-crypto 等）
     api/             — API 客户端 + SDK 实例化（sdk.ts）
-    acp/             — ACP 协议客户端（client.ts、relay-client.ts、types.ts）
+    acp/             — ACP 协议客户端（client.ts、types.ts）
     i18n/            — i18n 配置 + locales/{en,zh}/ 翻译文件
     types/           — 全局类型定义
     __tests__/       — 前端测试（50+ 测试文件）

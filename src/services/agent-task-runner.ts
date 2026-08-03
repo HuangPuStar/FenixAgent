@@ -161,7 +161,8 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
     proc.stderr?.on("data", (chunk: Buffer | string) => {
       stderr += chunk.toString();
     });
-    proc.on("error", (error: Error) => {
+    // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 error
+    (proc as any).on("error", (error: Error) => {
       if (settled) {
         return;
       }
@@ -169,7 +170,8 @@ export async function runAgentTask(input: RunAgentTaskInput): Promise<AgentTaskR
       clearTimers([timeoutHandle, killHandle]);
       reject(error);
     });
-    proc.on("close", (exitCode: number | null) => {
+    // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 close
+    (proc as any).on("close", (exitCode: number | null) => {
       if (timedOut) {
         finalize("timeout", "Task execution timed out");
         return;

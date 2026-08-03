@@ -6,15 +6,10 @@ import { AppError } from "../../errors";
 import type { RequestAuthResult } from "../../plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
-import {
-  AcpAgentListResponseSchema,
-  AcpRegistrySecretQuerySchema,
-  AcpRelayParamsSchema,
-  AcpRelayQuerySchema,
-} from "../../schemas";
+import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
-import { handleRelayClose, handleRelayMessage, handleRelayOpen } from "../../transport/relay";
+import { createDeterministicRcsSessionId, lifecycle } from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
@@ -49,7 +44,6 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
   .model({
     "acp-agent-list-response": AcpAgentListResponseSchema,
     "acp-relay-params": AcpRelayParamsSchema,
-    "acp-relay-query": AcpRelayQuerySchema,
     "acp-registry-secret-query": AcpRegistrySecretQuerySchema,
   })
 
@@ -171,86 +165,81 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     },
   })
 
-  /** WS /acp/relay/:agentId — WebSocket relay for frontend to interact with an agent */
-  .ws("/relay/:agentId", {
+  /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
+  .ws("/yjs/:agentId", {
     detail: {
       tags: ["ACP"],
-      summary: "ACP 前端 Relay WebSocket",
+      summary: "YJS Frontend WebSocket",
       description:
-        "前端通过该 WebSocket 与指定 ACP Agent 建立中继连接。升级时要求已登录会话，服务端会校验 `agentId` 所属组织。可选 query 参数 `sessionId` 用于复用既有会话。",
+        "专用于前端的 YJS WebSocket 端点。仅传输 yjs:update CRDT 增量消息和简单 JSON 出站命令。不涉及 ACP JSON-RPC 协议。",
     },
     params: "acp-relay-params",
-    query: "acp-relay-query",
     async open(ws) {
-      // 在任何 await 之前先挂上 relayWsId，避免前端在握手刚完成时抢先发来的
-      // ping/connect 消息进入 message 分支后拿不到 ws 级别的 relay 标识，产生误报日志。
-      const relayWsId = `relay_${uuid().replace(/-/g, "")}`;
+      const yjsWsId = `yjs_${uuid().replace(/-/g, "")}`;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      (ws.data as any).__relayWsId = relayWsId;
+      (ws.data as any).__yjsWsId = yjsWsId;
 
       let authResult: RequestAuthResult | null = null;
       try {
         authResult = await authenticateRequest(ws.data.request);
       } catch (err) {
         if (err instanceof AppError && err.code === "RATE_LIMITED") {
-          log("[ACP-Relay] Upgrade rejected: API key rate limited");
           adaptWs(ws).close(4008, "rate_limited");
           return;
         }
         throw err;
       }
       if (!authResult?.user) {
-        log("[ACP-Relay] Upgrade rejected: not authenticated");
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
       const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
-      const sessionId = ws.data.query?.sessionId as string | undefined;
+      // 从 query 参数读取 sessionId（DB 会话标识），
+      // 用于在多实例场景下隔离不同实例的 YJS doc。
+      const url = new URL(ws.data.request.url);
+      const sessionId = url.searchParams.get("sessionId") || undefined;
+      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId, sessionId);
 
-      // Verify agent belongs to this user's team
       const env = await environmentRepo.getById(agentId);
-      if (!env) {
-        log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not found`);
-        adaptWs(ws).close(4003, "unauthorized");
-        return;
-      }
-      // 同组织成员允许访问同一组织的 environment（含 ProdView 发布视图场景）；
-      // 仅当跨组织且非本人时拒绝。
       const authCtx = authResult.authContext;
-      if (!authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
-        log(`[ACP-Relay] Upgrade rejected: agent ${agentId} not owned by user ${userId}'s team`);
+      if (!env || !authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
-      log(`[ACP-Relay] Upgrade accepted: relayWsId=${relayWsId} agentId=${agentId}`);
-      handleRelayOpen(adaptWs(ws), relayWsId, agentId, userId, sessionId);
+      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} sessionId=${sessionId ?? "none"}`);
+
+      try {
+        await lifecycle.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId, sessionId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logError(`[YJS-WS] Open failed: ${message}`, err);
+        try {
+          adaptWs(ws).close(1011, "setup failed");
+        } catch {
+          /* ignore */
+        }
+      }
     },
     message(ws, data) {
-      // Elysia's parseMessage auto-parses JSON strings into objects;
-      // pass the already-parsed object directly to avoid redundant stringify→parse.
       if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[ACP-Relay] Message too large: ${data.length} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
-      if (relayWsId) {
-        const payload =
-          typeof data === "object" && data !== null ? (data as Record<string, unknown>) : (data as string);
-        handleRelayMessage(adaptWs(ws), relayWsId, payload);
-      } else {
-        logError(`[ACP-Relay-WS] No relayWsId on ws.data`);
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        const text = typeof data === "string" ? data : JSON.stringify(data);
+        lifecycle.handleMessage(adaptWs(ws), yjsWsId, text);
       }
     },
-    close(ws, code, reason) {
+    close(ws) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
-      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
-      if (relayWsId) {
-        handleRelayClose(adaptWs(ws), relayWsId, code, reason);
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        lifecycle.handleClose(yjsWsId);
       }
     },
   });

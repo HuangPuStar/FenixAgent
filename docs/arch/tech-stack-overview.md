@@ -49,7 +49,7 @@ flowchart TB
     end
 
     FE -->|"HTTP /api /web"| ELYSIA
-    FE <-->|"WS /acp/relay"| TRANSPORT
+    FE <-->|"WS /acp/yjs"| TRANSPORT
     ELYSIA --> PLUGINS
     PLUGINS --> AUTH
     AUTH --> SERVICES
@@ -139,7 +139,7 @@ flowchart LR
     subgraph FE["前端"]
         UI["Chat UI"] --> ACP["ACPClient"]
     end
-    FE <-->|"WS /acp/relay"| RELAY["Relay Handler"]
+    FE <-->|"WS /acp/yjs"| RELAY["YJS WS Handler"]
     RELAY <-->|"内部通信"| INST["@fenix/core<br/>orchestrator"]
     INST -->|"local"| PLUG[Engine Plugin]
     INST -.->|"remote"| MC[Machine acp-link]

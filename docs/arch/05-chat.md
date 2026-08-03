@@ -1,6 +1,6 @@
 # Agent 接口
 
-> 涉及模块：Relay Handler（`src/transport/relay/`）、前端 ACPClient（`web/src/acp/`、`packages/acp-link/`）、ChatInterface（`web/components/ChatInterface.tsx`）
+> 涉及模块：前端 YJS WS（`/acp/yjs`）、ChatInterface（`web/components/ChatInterface.tsx`）
 
 ## 概述
 
@@ -114,12 +114,12 @@ Relay 管理连接计数——前端全部断开后进入空闲观察窗口，�
 
 ## 前端封装
 
-`ChatPanel` 在挂载时通过 `createRelayClient()`（`web/src/acp/relay-client.ts:26`）创建 `ACPClient` 实例，向下传递给 `ChatInterface`。`ChatInterface` 直接注册 ACP 事件 handler——不经过中间 SDK 适配层。
+`ChatPanel` 在挂载时通过 `createYjsWs()` / `buildYjsUrl()`（`web/src/yjs/yjs-ws.ts`）创建单条 YJS WebSocket 连接到 `/acp/yjs/:agentId`。前端不再使用 ACPClient + Relay 双通道——所有 Agent 交互通过 YJS CRDT 增量同步完成。
 
 ```mermaid
 flowchart TB
     subgraph 路由["路由层"]
-        CP[ChatPanel<br/>创建 ACPClient · 管理连接状态]
+        CP[ChatPanel<br/>创建 YJS WS · 管理连接状态]
     end
     subgraph ui["UI 渲染层"]
         AM[ACPMain<br/>会话引导 bootstrap · 布局]
@@ -128,39 +128,30 @@ flowchart TB
     subgraph component["子组件"]
         CV[ChatView · ChatComposer · PermissionPanel · TodoPanel]
     end
-    subgraph acp["ACP 协议栈（packages/acp-link）"]
-        AC["ACPClient<br/>编排 · 会话 · 心跳"]
-        AP["ACPProtocol<br/>JSON-RPC 编解码"]
-        WS["WSTransport<br/>连接 · 重连"]
-    end
     subgraph backend["后端"]
-        RH["Relay Handler"]
+        YJS["YJS WS Handler"]
     end
 
     CP -->|client prop| AM
     AM -->|client prop| CI
     CI --> component
-    CP -->|createRelayClient()| AC
-    AC --> AP --> WS
-    WS -->|ws://.../acp/relay/:agentId| RH
+    CP -->|createYjsWs()| YJS
 ```
 
 **关键组件职责**：
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| ChatPanel | `web/src/pages/agent-panel/ChatPanel.tsx` | 创建 ACPClient、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
+| ChatPanel | `web/src/pages/agent-panel/ChatPanel.tsx` | 创建 YJS WS 连接、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
 | ACPMain | `web/components/ACPMain.tsx` | 会话引导（等待 capabilities → `listSessions` → 自动 `loadSession` 或新建）、管理布局与服务端 RCS Session ID |
 | ChatInterface | `web/components/ChatInterface.tsx` | 核心中枢——注册所有 ACP handler，通过 `applySessionUpdateToEntries()` 将 ACP 事件映射为 `ThreadEntry[]`，管理 isLoading / errorMessage / todoItems 状态 |
 
-**ACP 协议层**：
+**YJS 通信层**：
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| WSTransport | `packages/acp-link/src/client/transport.ts` | WebSocket 生命周期、自动重连（指数退避 + jitter，最多 5 次）、收发原始字符串 |
-| ACPProtocol | `packages/acp-link/src/client/protocol.ts` | 解析原始字符串为传输层消息（status/error/pong）或 JSON-RPC 消息，通知映射为具名事件 |
-| ACPClient | `packages/acp-link/src/client/client.ts` | 组合子模块，暴露 `setXxxHandler` API，管理 JSON-RPC 请求/响应匹配（ACPPending）和心跳 |
-| relay-client | `web/src/acp/relay-client.ts` | 构建 `/acp/relay/:agentId` URL，创建 ACPClient 实例（通过 cookie 认证） |
+| yjs-ws | `web/src/yjs/yjs-ws.ts` | 构建 `/acp/yjs/:agentId` URL，创建单条 YJS WebSocket 连接 |
+| YJS CRDT | `yjs` | 增量同步 Chat Doc / Session Doc，替代原 ACP JSON-RPC 流式推送 |
 
 ## 上下级关系
 

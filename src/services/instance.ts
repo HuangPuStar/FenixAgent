@@ -6,7 +6,7 @@ import { config, getBaseUrl } from "../config";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
-import { findMachineConnectionById } from "../transport/acp-ws-handler";
+import { findMachineConnectionById, setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config/index";
@@ -244,6 +244,10 @@ export async function spawnInstanceFromEnvironment(
       throw new NotFoundError(`AgentConfig '${agentConfigId}' not found`);
     }
     agentMachineId = resolvedAgentConfig.machineId ?? null;
+    // 缓存 agentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用
+    if (agentMachineId) {
+      setAgentMachineCache(environmentId, agentMachineId);
+    }
     log(
       `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelId='${resolvedAgentConfig.modelId ?? ""}', machineId='${agentMachineId ?? ""}'`,
     );
@@ -427,8 +431,35 @@ export async function ensureRunning(
   userId: string,
   environmentId: string,
   source: InstanceSpawnSource = "interactive",
+  instanceNumber?: number,
 ): Promise<EnsureRunningResult> {
   const runningInstances = getRunningInstancesByEnvironment(environmentId);
+
+  // 指定了 instanceNumber：精准匹配该编号的运行实例
+  if (instanceNumber !== undefined) {
+    const targetInstance = runningInstances.find((i) => i.instanceNumber === instanceNumber);
+    if (targetInstance) return { instance: targetInstance, status: "reused" };
+
+    // 目标实例未运行，尝试新启
+    const env = await environmentRepo.getById(environmentId);
+    if (!env) throw new NotFoundError("Environment not found");
+
+    if (!env.autoStart) {
+      throw new AppError(`实例 ${instanceNumber} 未运行且 autoStart 已禁用`, "AUTO_START_DISABLED", 409);
+    }
+
+    const currentRunning = getRunningInstancesByEnvironment(environmentId);
+    if (currentRunning.length >= env.maxSessions) {
+      // 目标实例未运行且已达上限时，回退到首个运行实例（relay key 已做隔离，共享实例不会串数据）
+      if (currentRunning[0]) return { instance: currentRunning[0], status: "reused" };
+      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
+    }
+
+    const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
+    return { instance, status: "spawned" };
+  }
+
+  // 未指定 instanceNumber：复用第一个运行实例
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
 

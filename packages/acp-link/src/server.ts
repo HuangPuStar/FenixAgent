@@ -232,9 +232,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let ws: WebSocket | null = null;
   let fileWs: WebSocket | null = null;
   let fileWsHeartbeat: ReturnType<typeof setInterval> | null = null;
+  let fileWsReconnectAttempt = 0;
+  let fileWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempt = 0;
   const MAX_RECONNECT_MS = 30_000;
+  const MAX_FILE_WS_RECONNECT_MS = 30_000;
   let manualClose = false;
   // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
   let cachedNodeId: string | null = null;
@@ -299,10 +302,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data as string);
-        // ── ACP 调试日志 ──
-        if (msg.type !== "heartbeat" && msg.type !== "keep_alive") {
-          console.log("[acp-client] ← RCS:", JSON.stringify(msg).slice(0, 500));
-        }
         switch (msg.type) {
           case "registered": {
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
@@ -317,9 +316,19 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               }
             }, 30000);
 
+            // Reset file-ws reconnect state on fresh registration
+            if (fileWsReconnectTimer) {
+              clearTimeout(fileWsReconnectTimer);
+              fileWsReconnectTimer = null;
+            }
+            fileWsReconnectAttempt = 0;
+
             // Establish file-ws connection
             // Close existing file-ws before creating a new one (prevents leak on re-register)
             if (fileWs) {
+              // Detach onclose to prevent stale handler from scheduling reconnect
+              fileWs.onclose = null;
+              fileWs.onerror = null;
               try {
                 fileWs.close();
               } catch {
@@ -333,8 +342,14 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             }
             const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
             const connectFileWs = () => {
+              fileWsReconnectTimer = null;
               if (manualClose) return;
-              fileWs = new WebSocket(fileWsUrl);
+              try {
+                fileWs = new WebSocket(fileWsUrl);
+              } catch (err) {
+                console.error("[acp-client] Failed to create file-ws:", err);
+                return;
+              }
               fileWs.onopen = () => {
                 console.log("[acp-client] file-ws connected, registering...");
                 if (fileWs && fileWs.readyState === 1) {
@@ -374,7 +389,16 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   fileWsHeartbeat = null;
                 }
                 fileWs = null;
-                // 不自动重连 file-ws，由主 WS 的 registered 回调统一管理
+                if (!manualClose) {
+                  fileWsReconnectAttempt++;
+                  const rawDelay = Math.min(1000 * 2 ** (fileWsReconnectAttempt - 1), MAX_FILE_WS_RECONNECT_MS);
+                  // Full jitter: randomize between 50%–100% of raw delay
+                  const delay = Math.round(rawDelay * (0.5 + Math.random() * 0.5));
+                  console.log(
+                    `[acp-client] file-ws disconnected, reconnecting in ${delay}ms (attempt ${fileWsReconnectAttempt})`,
+                  );
+                  fileWsReconnectTimer = setTimeout(connectFileWs, delay);
+                }
               };
               fileWs.onerror = () => {
                 // onclose will handle
@@ -583,8 +607,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             if (sessId) {
               instanceMgr.setSessionId(instId, sessId);
             }
-            // ── ACP 调试日志 ──
-            console.log("[acp-client] relay → dispatcher:", JSON.stringify(relayPayload).slice(0, 500));
             if (instanceMgr.hasInstance(instId)) {
               const dispatcher = instanceMgr.getDispatcher(instId);
               if (dispatcher) {
@@ -621,6 +643,28 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
+
+      // 主 WS 断连时一并清理 file-ws 状态，防止 file-ws 作为"僵尸"存活
+      if (fileWsReconnectTimer) {
+        clearTimeout(fileWsReconnectTimer);
+        fileWsReconnectTimer = null;
+      }
+      if (fileWsHeartbeat) {
+        clearInterval(fileWsHeartbeat);
+        fileWsHeartbeat = null;
+      }
+      if (fileWs) {
+        fileWs.onclose = null;
+        fileWs.onerror = null;
+        try {
+          fileWs.close();
+        } catch {
+          /* ignore */
+        }
+        fileWs = null;
+      }
+      fileWsReconnectAttempt = 0;
+
       if (manualClose) return;
 
       // 提供有意义的断连原因提示
@@ -657,9 +701,17 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   return {
     close: () => {
       manualClose = true;
+      if (fileWsReconnectTimer) {
+        clearTimeout(fileWsReconnectTimer);
+        fileWsReconnectTimer = null;
+      }
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
-      fileWs?.close();
+      if (fileWs) {
+        fileWs.onclose = null;
+        fileWs.onerror = null;
+        fileWs.close();
+      }
       sessionMgr.stopAll();
       ws?.close();
     },
@@ -887,7 +939,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.process = agentProcess;
 
-      agentProcess.on("exit", (code) => {
+      // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcessByStdio 不继承 EventEmitter，需 cast 监听 exit
+      (agentProcess as any).on("exit", (code: number | null) => {
         console.log("agent process exited:", code);
         if (state.process === agentProcess) {
           state.process = null;

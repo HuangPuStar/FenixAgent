@@ -11,7 +11,8 @@ async function defaultProbePort(port: number): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const server = createServer();
 
-    server.once("error", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: Bun.Server 不继承 EventEmitter，需 cast 监听 error
+    (server as any).once("error", () => {
       resolve(false);
     });
 
