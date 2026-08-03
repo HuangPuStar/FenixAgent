@@ -9,6 +9,8 @@ function buildConfig(env: Env) {
     host: env.RCS_HOST,
     baseUrl: env.RCS_BASE_URL,
     skillDir: resolve(env.SKILL_DIR ?? "./data/skills"),
+    /** Workspace 根目录，默认运行目录下 workspaces；与 workspace-resolver 的默认值保持一致。 */
+    workspaceRoot: resolve(env.WORKSPACE_ROOT ?? "./workspaces"),
     systemAdminPasswordFile: resolve(env.RCS_SYSTEM_ADMIN_PASSWORD_FILE ?? "./data/password.txt"),
     pollTimeout: env.RCS_POLL_TIMEOUT,
     heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,

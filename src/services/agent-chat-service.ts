@@ -6,7 +6,7 @@ import { environment } from "../db/schema";
 import { connectAgentRelay } from "../transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/store";
 import { createWebEnvironment } from "./environment-web";
-import { spawnInstanceFromEnvironment, stopInstance } from "./instance";
+import { spawnInstanceViaController, stopInstanceViaController } from "./orchestration-instance";
 
 // ── 类型 ──
 
@@ -302,26 +302,29 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
   }
 
   // 2. 基于解析出的 environmentId 启动实例
-  const instance = await spawnInstanceFromEnvironment(input.userId, environmentId, undefined, {
-    source: input.startSource,
-  });
-  log(`[agent-chat] Instance spawned: instanceId=${instance.id}`);
+  // I4 调用方迁移：经编排域 AgentController（orchestration-instance 桥接层）
+  // 替代旧 spawnInstanceFromEnvironment —— controller.spawnInstance 负责环境校验/
+  // 并发检查/节点获取/Instance 创建，桥接层再调 core launchInstance 真实启动进程。
+  // startSource 透传以保留 RCS supplement 的 spawn_source 审计字段。
+  const instance = await spawnInstanceViaController(environmentId, input.userId, input.startSource);
+  log(`[agent-chat] Instance spawned: instanceId=${instance.instanceId}`);
 
   // 3. 连接 relay
-  const handle = await connectAgentRelay(instance.id, input.sessionId ?? "");
-  log(`[agent-chat] Relay connected: instanceId=${instance.id}`);
+  const handle = await connectAgentRelay(instance.instanceId, input.sessionId ?? "");
+  log(`[agent-chat] Relay connected: instanceId=${instance.instanceId}`);
 
-  // 4. 创建 AgentSession（dispose 时销毁实例，走完整 stopInstance 以确保 registry 清理）
+  // 4. 创建 AgentSession（dispose 时销毁实例；stopInstanceViaController 组合
+  //    controller.stopInstance + core 进程停止 + registry 清理，确保无进程残留）
   const session = createAgentSession({
     relayHandle: handle,
-    instanceId: instance.id,
+    instanceId: instance.instanceId,
     stopInstance: async () => {
-      await stopInstance(instance.id, input.organizationId);
+      await stopInstanceViaController(instance.instanceId);
     },
   });
 
   // 5. 创建 ACP session + PromptTurn
   const { turn } = await startPromptTurn({ session, sessionId: input.sessionId });
 
-  return { turn, instanceId: instance.id };
+  return { turn, instanceId: instance.instanceId };
 }

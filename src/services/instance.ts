@@ -1,3 +1,12 @@
+// ────────────────────────────────────────────
+// 编排域重构保留说明（I4：旧代码删除与精简）
+// ────────────────────────────────────────────
+// 此文件作为现有运行时路径保留：spawnInstanceFromEnvironment / ensureRunning / stopInstance
+// 等仍被 Phase C 迁移后的调用方（agent-chat-service、workflow/agent-chat-transport、
+// api-instance、hermes/meta-agent、yjs-frontend、routes/web/instances、src/index.ts 的
+// stopAllInstances）依赖，并承载 agent-concurrency / instance-registry / acp-idle-monitor
+// 的核心运行时状态。其行为已被新包（packages/orchestration AgentController）逐步接管但
+// 尚未完全替换，运行时注册表职责也未迁移，删除会破坏实例启动 / 复用 / 回收 / 监控链路。
 import { randomBytes } from "node:crypto";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { log, error as logError } from "@fenix/logger";
@@ -12,8 +21,10 @@ import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
+import { createInstanceSessionId } from "./instance-session";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
-import { _sessionRepo } from "./session";
+import { getOrchestrationController } from "./orchestration-bootstrap";
+import { stopInstanceViaController } from "./orchestration-instance";
 
 // ────────────────────────────────────────────
 // 公共类型
@@ -380,6 +391,24 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   if (!sup) return { ok: false, error: "Instance not found" };
   if (sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
 
+  // 编排域联动（I4）：实例由编排域 AgentController 创建（活跃表中有记录）时，
+  // 委托 stopInstanceViaController 完成 controller.stopInstance（活跃表移除 +
+  // 节点引用归还）+ core 停止 + supplement 清理。空闲回收（acp-idle-monitor）
+  // 也走本函数；若不联动，编排域活跃表会残留僵尸条目且节点引用永不归还，
+  // 环境并发额度被永久占用直到重启。
+  const controller = getOrchestrationController();
+  const isOrchestrationInstance = controller.listInstances().some((inst) => inst.instanceId === id);
+  if (isOrchestrationInstance) {
+    try {
+      await stopInstanceViaController(id);
+      return { ok: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logError(`[Instance] Failed to stop orchestration instance ${id}:`, err);
+      return { ok: false, error: message };
+    }
+  }
+
   const facade = getCoreRuntime();
   const snapshot = facade.getInstance(id);
   if (!snapshot) {
@@ -512,21 +541,9 @@ export async function enterEnvironment(
     inst = result.instance;
   }
 
-  // 为该实例查找或创建独立 session（多实例场景下每个实例需要独立 session）
-  const sessions = await _sessionRepo.listByEnvironment(environmentId);
-  const existingSession = sessions.find((s) => s.title === `Instance ${inst.instanceNumber}`);
-  let sessionId: string;
-  if (existingSession) {
-    sessionId = existingSession.id;
-  } else {
-    const session = await _sessionRepo.create({
-      environmentId,
-      title: `Instance ${inst.instanceNumber}`,
-      source: "web",
-      userId,
-    });
-    sessionId = session.id;
-  }
+  // 为该实例生成确定性会话 ID（agent_session 表已废弃，不再持久化 "Instance N" 标题会话）。
+  // 同一环境 + 同一实例编号始终得到相同 ID；前端透传后在 YJS WS 连接时解析实例编号。
+  const sessionId = createInstanceSessionId(environmentId, inst.instanceNumber);
 
   return {
     session_id: sessionId,

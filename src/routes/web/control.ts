@@ -2,10 +2,11 @@ import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
-import { environmentRepo, sessionRepo } from "../../repositories";
+import { environmentRepo } from "../../repositories";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
+import { parseInstanceSessionId } from "../../services/instance-session";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
 
@@ -37,25 +38,37 @@ async function checkOwnership(
       response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
     };
   }
-  // 验证 session 所属环境属于当前组织
-  const session = await sessionRepo.getById(resolvedSessionId);
-  if (!session) {
+  // 验证 session 所属环境属于当前组织。
+  // agent_session 表已废弃，环境归属从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析；
+  // 无法解析（历史 session_* 格式或任意 ID）时保守拒绝，防止跨组织/伪造会话标识访问。
+  const parsed = parseInstanceSessionId(resolvedSessionId);
+  if (!parsed) {
     return {
       error: true,
-      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
+      response: errorFn(403, {
+        success: false,
+        error: { code: "forbidden", message: "Session does not belong to your organization" },
+      }),
     };
   }
-  if (session.environmentId) {
-    const env = await environmentRepo.getById(session.environmentId);
-    if (env?.organizationId && env.organizationId !== orgId) {
-      return {
-        error: true,
-        response: errorFn(403, {
-          success: false,
-          error: { code: "forbidden", message: "Not your organization's session" },
-        }),
-      };
-    }
+  const env = await environmentRepo.getById(parsed.environmentId);
+  if (!env) {
+    return {
+      error: true,
+      response: errorFn(403, {
+        success: false,
+        error: { code: "forbidden", message: "Session does not belong to your organization" },
+      }),
+    };
+  }
+  if (env.organizationId && env.organizationId !== orgId) {
+    return {
+      error: true,
+      response: errorFn(403, {
+        success: false,
+        error: { code: "forbidden", message: "Not your organization's session" },
+      }),
+    };
   }
   const activeSession = await getSession(resolvedSessionId);
   if (!activeSession) {

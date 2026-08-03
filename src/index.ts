@@ -7,8 +7,7 @@ const startupLog = createLogger("rcs");
 
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
-import { db, initDb, client as pgClient } from "./db";
-import { agentSession } from "./db/schema";
+import { initDb, client as pgClient } from "./db";
 import { validateEnv } from "./env";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
@@ -65,12 +64,6 @@ startupLog.info(`System admin ready: ${systemAdmin.email}`);
 // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
 await runDataMigrations();
 startupLog.info("Data migrations completed");
-
-// 重启时重置所有 agent_session 状态为 idle
-// WebSocket/EventBus 已断开，之前的运行状态不再有效
-import { sql } from "drizzle-orm";
-
-await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).where(sql`1=1`);
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");

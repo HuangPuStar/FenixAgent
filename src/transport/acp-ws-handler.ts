@@ -6,6 +6,7 @@ import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
 import type { AcpConnectionEntry } from "../types/store";
+import { agentNodeService, dispatchAgentNodeWsClose, wsToAgentNodeSocket } from "./agent-node-bridge";
 import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
@@ -160,6 +161,20 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     const engineTypes = supportedEngineTypes.map((e) => e.type);
     registerRemoteNode(result.id, entry.ws, entry, engineTypes);
+
+    // 接入编排域 AgentNodeService：machine 注册成功后由新包管理节点生命周期。
+    // 编排域接入失败不阻断机器注册（relay / core 通道不依赖编排域节点），记录诊断即可。
+    // 竞态防护：registerMachine 的 await 期间 WS 可能已关闭（handleAcpWsClose 已删
+    // entry，且此时 entry.machineId 尚为 null 不会触发清理），用已关闭的 socket 建节点
+    // 会让节点以死信道进入 connected 且永远收不到 close 事件（事件已过），导致节点
+    // 永久 stuck；关闭中的连接不接入编排域，等待机器重连。
+    if (entry.ws.readyState === 1) {
+      try {
+        agentNodeService.handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
+      } catch (err) {
+        logError("AgentNodeService handleIncomingConnection error:", err);
+      }
+    }
 
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (replacedInstanceIds.length > 0) {
@@ -345,6 +360,11 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     return;
   }
 
+  // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并调度自动重连）。
+  // 必须放在快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用为
+  // connected，旧 socket 的 close 事件不应把节点打断为 disconnected。
+  dispatchAgentNodeWsClose(entry.ws);
+
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
   const instanceIds = getCoreRuntime()
@@ -521,6 +541,8 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.isMachine && entry.machineId) {
+        // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 幂等）
+        dispatchAgentNodeWsClose(entry.ws);
         disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
       }
     } catch {

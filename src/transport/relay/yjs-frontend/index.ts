@@ -6,6 +6,7 @@ import { environmentRepo } from "../../../repositories/environment";
 import { markInstanceRelayAttached, markInstanceRelayDetached } from "../../../services/acp-idle-monitor";
 import { getRedisConnection } from "../../../services/cache";
 import { docManager } from "../../../services/doc-manager-instance";
+import { parseInstanceSessionId } from "../../../services/instance-session";
 import { resolveWorkspacePath } from "../../../services/workspace-resolver";
 import { ConnectionRegistry } from "./connection-registry";
 import { RelayEventHandler } from "./relay-event-handler";
@@ -75,6 +76,9 @@ const lifecycle = new WsLifecycle({
       ? true
       : !environment.userId || environment.userId === userId,
   resolveWorkspacePath,
+  // I4 调用方迁移说明：YJS 前端 Chat 走 Chat 域重构（ChatChannelController），
+  // 不在编排域重构 I4 范围内（I4 文档：如已在 I3 范围外则保留现有逻辑），
+  // 继续复用旧 ensureRunning 的实例复用语义；Phase D 随 Chat 域重构一并迁移。
   ensureRunning: async (userId, agentId, mode, instanceNumber) =>
     (await import("../../../services/instance")).ensureRunning(userId, agentId, mode, instanceNumber),
   connectAgentRelay: async (instanceId, rcsSessionId) =>
@@ -85,13 +89,11 @@ const lifecycle = new WsLifecycle({
   reportError: logError,
   maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
   resolveInstanceNumberFromSession: async (sessionId: string) => {
-    // 从 DB session 标题 "Instance N" 解析实例编号，用于多实例 YJS doc 隔离
-    const { _sessionRepo } = await import("../../../services/session");
-    const session = await _sessionRepo.getById(sessionId);
-    if (!session?.title) throw new Error(`Session ${sessionId} not found`);
-    const match = session.title.match(/^Instance (\d+)$/);
-    if (!match) throw new Error(`Invalid session title: ${session.title}`);
-    return parseInt(match[1], 10);
+    // 从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析实例编号；
+    // agent_session 表已废弃，不再查 DB 标题。
+    const parsed = parseInstanceSessionId(sessionId);
+    if (!parsed) throw new Error(`Invalid instance session id: ${sessionId}`);
+    return parsed.instanceNumber;
   },
 });
 
