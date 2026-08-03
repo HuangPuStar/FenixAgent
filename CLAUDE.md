@@ -135,7 +135,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
 - `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
-- 实例策略不可混用：Workflow / 交互式路径通过 `ensureRunning(...)` 复用实例；`openAgentSession` 通过 `spawnInstanceFromEnvironment(...)` 创建独立实例并负责销毁。
+- 实例策略不可混用：Workflow / 交互式路径通过 `ensureRunning(...)` 复用实例；`openAgentSession` 通过 `spawnInstanceViaController(...)`（`src/services/orchestration-instance.ts`）创建独立实例并负责销毁。
 - 不得恢复已删除的独立 `acp-transport.ts` 或在新入口中复制 session/new、session/load、session/prompt 的完整协议流程。
 
 ## 领域不变量与高风险约束

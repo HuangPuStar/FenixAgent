@@ -40,7 +40,7 @@ export interface PromptTurn {
 
 /**
  * 基于已有的 EngineRelayHandle 创建 AgentSession。
- * 调用方负责实例创建（ensureRunning / spawnInstanceFromEnvironment）。
+ * 调用方负责实例创建（ensureRunning / spawnInstanceViaController）。
  */
 export function createAgentSession(config: {
   relayHandle: EngineRelayHandle;

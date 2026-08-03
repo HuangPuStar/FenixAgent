@@ -1,30 +1,29 @@
 // ────────────────────────────────────────────
 // 编排域重构保留说明（I4：旧代码删除与精简）
 // ────────────────────────────────────────────
-// 此文件作为现有运行时路径保留：spawnInstanceFromEnvironment / ensureRunning / stopInstance
-// 等仍被 Phase C 迁移后的调用方（agent-chat-service、workflow/agent-chat-transport、
-// api-instance、hermes/meta-agent、yjs-frontend、routes/web/instances、src/index.ts 的
-// stopAllInstances）依赖，并承载 agent-concurrency / instance-registry / acp-idle-monitor
-// 的核心运行时状态。其行为已被新包（packages/orchestration AgentController）逐步接管但
-// 尚未完全替换，运行时注册表职责也未迁移，删除会破坏实例启动 / 复用 / 回收 / 监控链路。
-import { randomBytes } from "node:crypto";
+// 实例生命周期（启动/停止）已统一收敛到编排域：启动走 orchestration-instance 的
+// spawnInstanceViaController（controller.spawnInstance 环境校验/并发治理/节点获取 →
+// core launchInstance → registerSupplement），停止走 stopInstanceViaController
+// （活跃表移除 + 节点引用归还 → core 停止 → supplement 清理）。本文件不再承载
+// 启动/停止的完整实现，仅保留：
+//   1. RCS 业务查询层（listInstances / getInstance / findRunningInstanceByEnvironment
+//      等，读 core 运行时快照 + globalInstanceRegistry supplement）；
+//   2. ensureRunning / enterEnvironment 的会话语义（复用运行实例、autoStart /
+//      maxSessions 检查，spawn 分支委托编排域入口）；
+//   3. stopInstance / stopAllInstances 作为编排域停止入口的薄委托层，保留组织归属
+//      校验与"已停止幂等"语义，供 web DELETE / acp-idle-monitor / graceful shutdown 使用。
+// 旧 spawnInstanceFromEnvironment / findInstanceBySessionId / SpawnInstanceOptions
+// 已在休克疗法中删除，不再恢复。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
-import { log, error as logError } from "@fenix/logger";
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { config, getBaseUrl } from "../config";
+import { error as logError } from "@fenix/logger";
 import { AppError, NotFoundError } from "../errors";
-import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
-import { findMachineConnectionById, setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
-import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
-import { getReadableAgentConfigById } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
 import { createInstanceSessionId } from "./instance-session";
-import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { getOrchestrationController } from "./orchestration-bootstrap";
-import { stopInstanceViaController } from "./orchestration-instance";
+import { spawnInstanceViaController, stopInstanceViaController } from "./orchestration-instance";
 
 // ────────────────────────────────────────────
 // 公共类型
@@ -97,11 +96,6 @@ export interface InstanceActivityInfo extends InstanceInfo {
 export interface EnsureRunningResult {
   instance: SpawnedInstance;
   status: "reused" | "spawned";
-}
-
-export interface SpawnInstanceOptions {
-  extraEnv?: Record<string, string>;
-  source: InstanceSpawnSource;
 }
 
 // ────────────────────────────────────────────
@@ -254,129 +248,6 @@ function filterInstances(
   });
 }
 
-/**
- * 基于 environment 配置启动一个新实例。
- *
- * 绑定了 agentConfig 时走完整资源解析；未绑定时只注入一个最小 LaunchSpec，
- * 让环境仍可启动，但不会偷偷继承 prompt / skills / MCP 等额外配置。
- *
- * 这条“无 AgentConfig”分支主要给系统级环境使用，例如平台自举阶段的
- * meta-agent。这里把场景约束放在 instance 层，而不是 launch-spec builder，
- * 避免底层组装器耦合具体业务概念。
- */
-export async function spawnInstanceFromEnvironment(
-  userId: string,
-  environmentId: string,
-  prefetchedEnv?: EnvironmentRecord,
-  options: SpawnInstanceOptions = { source: "interactive" },
-): Promise<SpawnedInstance> {
-  assertAgentConcurrencyAvailable(userId, options.source);
-  const env = prefetchedEnv ?? (await environmentRepo.getById(environmentId));
-  if (!env) throw new NotFoundError("Environment not found");
-  log(
-    `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}', org='${env.organizationId ?? ""}', user='${userId}', agentConfigId='${env.agentConfigId ?? ""}'`,
-  );
-
-  // Phase 1: 注入平台级环境变量，调用方仍可通过 extraEnv 覆盖这些默认值。
-  // USER_META_USER_ID/ORG_ID 取 environment 记录中的所有者；
-  // meta-agent 等共享环境会在 ensureMetaEnvironment 中通过 extraEnv 覆盖为当前请求者的 ctx。
-  const platformEnv: Record<string, string> = {
-    USER_META_API_KEY: env.secret,
-    USER_META_BASE_URL: getBaseUrl(),
-    USER_META_USER_ID: env.userId ?? userId,
-    USER_META_ORG_ID: env.organizationId ?? "",
-  };
-  const mergedExtraEnv = { ...platformEnv, ...options.extraEnv };
-
-  // Phase 2: 有 agentConfig 时走完整 builder；没有时降级为最小可运行配置。
-  let agentMachineId: string | null = null;
-  const launchContext = {
-    organizationId: env.organizationId ?? userId,
-    userId: env.userId ?? userId,
-    environmentId,
-    extraEnv: mergedExtraEnv,
-  };
-  let launchSpec: AgentLaunchSpec;
-  let resolvedAgentConfig: Awaited<ReturnType<typeof getReadableAgentConfigById>> = null;
-  if (env.agentConfigId) {
-    const agentConfigId = env.agentConfigId;
-    const accessCtx = { organizationId: env.organizationId ?? "", userId, role: "owner" as const };
-    resolvedAgentConfig = await getReadableAgentConfigById(accessCtx, agentConfigId);
-    if (!resolvedAgentConfig) {
-      logError(
-        `[instance] spawnInstanceFromEnvironment: agentConfigId='${agentConfigId}' not found for environmentId='${environmentId}', org='${env.organizationId ?? ""}'`,
-      );
-      throw new NotFoundError(`AgentConfig '${agentConfigId}' not found`);
-    }
-    agentMachineId = resolvedAgentConfig.machineId ?? null;
-    // 缓存 agentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用
-    if (agentMachineId) {
-      setAgentMachineCache(environmentId, agentMachineId);
-    }
-    log(
-      `[instance] spawnInstanceFromEnvironment: resolved agentConfig id='${resolvedAgentConfig.id}', sourceOrg='${resolvedAgentConfig.organizationId}', modelId='${resolvedAgentConfig.modelId ?? ""}', machineId='${agentMachineId ?? ""}'`,
-    );
-    launchSpec = await buildLaunchSpec({
-      ...launchContext,
-      agentConfig: resolvedAgentConfig,
-      environmentSecret: env.secret,
-    });
-  } else {
-    log(
-      `[instance] spawnInstanceFromEnvironment: environmentId='${environmentId}' has no agentConfigId, fallback to minimal launch spec`,
-    );
-    launchSpec = await buildBasicLaunchSpec(launchContext);
-  }
-  log(
-    `[instance] spawnInstanceFromEnvironment: launchSpec.model provider='${launchSpec.model.provider}', model='${launchSpec.model.model}', modelName='${launchSpec.model.modelName ?? ""}', baseUrl='${launchSpec.model.baseUrl}', hasApiKey=${Boolean(launchSpec.model.apiKey)}`,
-  );
-
-  const instanceId = `inst_${randomBytes(8).toString("hex")}`;
-  const instanceNumber = registry.nextInstanceNumber(environmentId);
-
-  // machineId 缺失时按优先级选择执行节点：
-  // agent config 绑定 > 系统环境变量 > local-default
-  let nodeId = "local-default";
-  if (agentMachineId) {
-    nodeId = agentMachineId;
-  } else if (config.defaultMachineId) {
-    nodeId = config.defaultMachineId;
-  }
-
-  // 远程节点启动前连接检查
-  if (nodeId !== "local-default") {
-    const machineConn = findMachineConnectionById(nodeId);
-    if (!machineConn) {
-      throw new AppError(`远程节点 '${nodeId}' 未连接，无法启动实例`, "MACHINE_OFFLINE", 503);
-    }
-  }
-
-  // 委托 core 执行 launch
-  // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定
-  const facade = getCoreRuntime();
-  let snapshot: Awaited<ReturnType<typeof facade.launchInstance>>;
-  if (nodeId === "local-default") {
-    const engineType = config.defaultEngineType ?? "opencode";
-    snapshot = await facade.launchInstance({ instanceId, engineType, nodeId, launchSpec });
-  } else {
-    snapshot = await facade.launchInstance({ instanceId, nodeId, launchSpec });
-  }
-
-  const supplement: InstanceSupplement = {
-    userId,
-    environmentId,
-    instanceNumber,
-    organizationId: env.organizationId ?? userId,
-    spawnSource: options.source,
-    lastActivityAt: Date.now(),
-    relayCount: 0,
-    lastRelayDetachedAt: Date.now(),
-  };
-  registry.register(instanceId, supplement);
-
-  return toSpawnedInstance(snapshot, supplement);
-}
-
 /** 按 organizationId 过滤实例 */
 function filterInstancesWithTeamId(organizationId: string): SpawnedInstance[] {
   return filterInstances((_s, sup) => sup.organizationId === organizationId);
@@ -391,10 +262,6 @@ export function findRunningInstanceByEnvironment(environmentId: string, userId?:
     (s, sup) => sup.environmentId === environmentId && s.status === "running" && (!userId || sup.userId === userId),
   );
   return results[0];
-}
-
-export function findInstanceBySessionId(_sessionId: string): SpawnedInstance | undefined {
-  return;
 }
 
 export function listInstancesByEnvironment(environmentId: string): SpawnedInstance[] {
@@ -445,67 +312,57 @@ export async function stopInstance(id: string, organizationId: string): Promise<
   if (!sup) return { ok: false, error: "Instance not found" };
   if (sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
 
-  // 编排域联动（I4）：实例由编排域 AgentController 创建（活跃表中有记录）时，
-  // 委托 stopInstanceViaController 完成 controller.stopInstance（活跃表移除 +
-  // 节点引用归还）+ core 停止 + supplement 清理。空闲回收（acp-idle-monitor）
-  // 也走本函数；若不联动，编排域活跃表会残留僵尸条目且节点引用永不归还，
-  // 环境并发额度被永久占用直到重启。
+  // 休克疗法（I4）：实例生命周期统一收敛到编排域，旧 core fallback 分支已删除。
+  // controller 活跃表无记录即视为实例已不存在——部署后不存在非编排域实例，
+  // 语义收紧是预期结果（web DELETE 由 404/403 兜底，acp-idle-monitor 静默跳过）。
   const controller = getOrchestrationController();
   const isOrchestrationInstance = controller.listInstances().some((inst) => inst.instanceId === id);
-  if (isOrchestrationInstance) {
-    try {
-      await stopInstanceViaController(id);
-      return { ok: true };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logError(`[Instance] Failed to stop orchestration instance ${id}:`, err);
-      return { ok: false, error: message };
-    }
-  }
-
-  const facade = getCoreRuntime();
-  const snapshot = facade.getInstance(id);
-  if (!snapshot) {
-    registry.unregister(id);
+  if (!isOrchestrationInstance) {
     return { ok: false, error: "Instance not found" };
-  }
-  if (snapshot.status === "stopped" || snapshot.status === "stopping") {
-    registry.unregister(id);
-    return { ok: false, error: "Already stopped" };
   }
 
   try {
-    await facade.stopInstance(id);
-    registry.unregister(id);
-    // 清理环境级计数器：无活跃实例时释放 Map 条目
-    const remaining = getRunningInstancesByEnvironment(sup.environmentId);
-    if (remaining.length === 0) {
-      registry.deleteCounter(sup.environmentId);
-    }
-    log(`[Instance] Stopped instance ${id}`);
+    // stopInstanceViaController 内部对 controller.stopInstance / core stopInstance
+    // 均幂等吞错，因此重复停止编排域实例仍返回成功——保持 web DELETE
+    // "已停止 → 200" 的语义（原 "Already stopped" 分支由编排域幂等取代）。
+    await stopInstanceViaController(id);
     return { ok: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    logError(`[Instance] Failed to stop instance ${id}:`, err);
-    // 无论 facade.stopInstance 是否成功，实例已不可用，清理 supplement
-    registry.unregister(id);
+    logError(`[Instance] Failed to stop orchestration instance ${id}:`, err);
     return { ok: false, error: message };
   }
 }
 
 export async function stopAllInstances(): Promise<void> {
-  const facade = getCoreRuntime();
-  const active = facade.listInstances().filter((s) => s.status !== "stopped" && s.status !== "stopping");
-
-  // 并行停止所有活跃实例（每个实例独立，互不依赖）
+  // 休克疗法（I4）：优先遍历编排域活跃表走 stopInstanceViaController（活跃表移除 +
+  // 节点引用归还 + core 停止 + supplement 清理，内部对已停止实例幂等吞错），
+  // 再兜底 core 中非编排域残留实例，最后清空 supplement 注册表。
+  const controller = getOrchestrationController();
+  const orchestrationIds = controller.listInstances().map((inst) => inst.instanceId);
   await Promise.all(
-    active.map(async (snapshot) => {
+    orchestrationIds.map(async (instanceId) => {
       try {
-        await facade.stopInstance(snapshot.instanceId);
+        await stopInstanceViaController(instanceId);
       } catch (err: unknown) {
-        logError(`[Instance] Failed to stop ${snapshot.instanceId}:`, err);
+        logError(`[Instance] Failed to stop orchestration instance ${instanceId}:`, err);
       }
     }),
+  );
+
+  // 兜底：core 中仍活跃且不在编排域活跃表的实例（旧路径遗留，部署后不存在）
+  const facade = getCoreRuntime();
+  await Promise.all(
+    facade
+      .listInstances()
+      .filter((s) => s.status !== "stopped" && s.status !== "stopping" && !orchestrationIds.includes(s.instanceId))
+      .map(async (snapshot) => {
+        try {
+          await facade.stopInstance(snapshot.instanceId);
+        } catch (err: unknown) {
+          logError(`[Instance] Failed to stop ${snapshot.instanceId}:`, err);
+        }
+      }),
   );
   registry.clear();
 }
@@ -538,7 +395,7 @@ export async function ensureRunning(
       throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
     }
 
-    const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
+    const instance = await spawnViaOrchestration(userId, environmentId, source);
     return { instance, status: "spawned" };
   }
 
@@ -561,8 +418,32 @@ export async function ensureRunning(
     throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
   }
 
-  const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
+  const instance = await spawnViaOrchestration(userId, environmentId, source);
   return { instance, status: "spawned" };
+}
+
+/**
+ * 编排域启动并组装 RCS SpawnedInstance（ensureRunning 的 spawn 分支专用）。
+ *
+ * spawnInstanceViaController 内部已完成 core launchInstance + registerSupplement，
+ * 因此 getInstance 必然命中；防御性判空用于在编排域未来调整注册时机时快速定位，
+ * 而不是静默返回空实例导致调用方解引用崩溃。
+ */
+async function spawnViaOrchestration(
+  userId: string,
+  environmentId: string,
+  source: InstanceSpawnSource,
+): Promise<SpawnedInstance> {
+  const orchestrationInstance = await spawnInstanceViaController(environmentId, userId, source);
+  const instance = getInstance(orchestrationInstance.instanceId);
+  if (!instance) {
+    throw new AppError(
+      `Instance '${orchestrationInstance.instanceId}' spawned but missing from runtime registry`,
+      "INSTANCE_NOT_VISIBLE",
+      500,
+    );
+  }
+  return instance;
 }
 
 // ────────────────────────────────────────────

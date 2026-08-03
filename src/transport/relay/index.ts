@@ -1,4 +1,3 @@
-export { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment } from "../../services/instance";
 export { sendToAgentWs } from "../acp-ws-handler";
 export { closeInstanceRelay, extractAcpEvent, extractJsonRpc, sendToInstanceRelay } from "./relay-handler";
 

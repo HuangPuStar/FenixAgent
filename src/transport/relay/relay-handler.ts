@@ -3,8 +3,7 @@ import { findMachineConnectionById, sendToWs } from "../acp-ws-handler";
 
 // ── JSON-RPC 兼容提取 ──
 // 编排域重构保留说明（I4）：extractJsonRpc/extractAcpEvent 是消息格式兼容层（原始格式 +
-// JSON-RPC + 包裹格式），yjs-frontend / hermes 依赖，不可删除；下方 re-export 供
-// hermes / meta-agent 经 relay barrel 使用。
+// JSON-RPC + 包裹格式），yjs-frontend / hermes 依赖，不可删除。
 // EngineRelay 消息可能是 raw { type, payload } 或 JSON-RPC { jsonrpc: "2.0", ... } 两种格式。
 // session/update 通知中的实际 ACP 事件在 params.update 内。
 
@@ -77,8 +76,6 @@ export function extractAcpEvent(
 
 // ── 兼容层：保留机器侧 relay 函数 ──
 // 这些函数被 hermes-client.ts 使用，用于向远程机器发送消息。
-
-export { findRunningInstanceByEnvironment, spawnInstanceFromEnvironment } from "../../services/instance";
 
 /** 关闭指定 machine 的 relay */
 export function closeInstanceRelay(instanceId: string): void {

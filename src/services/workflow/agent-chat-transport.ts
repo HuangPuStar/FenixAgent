@@ -268,12 +268,13 @@ class AgentChatTransport implements Transport {
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
 
     // 2. 确保实例运行
-    // I4 调用方迁移说明：Workflow 编排（实例复用语义）在编排域重构 PRD 中
-    // Out of Scope，保留 ensureRunning 而非迁移到 controller.spawnInstance——
-    // 后者无复用语义且受 maxConcurrency 限制（总是创建新实例），替换会改变
-    // Transport 接口行为（每次 connect 新建实例）。配套的 cleanupSpawnedEnvironments
-    // （workflow/index.ts）继续使用旧 stopInstance 停止本路径创建的实例；
-    // 两者将在 Phase D 删除旧 instance.ts 时一并处理。
+    // I4 调用方迁移说明：Workflow 编排保留 ensureRunning 的会话语义（复用运行实例，
+    // autoStart / maxSessions 检查），而非迁移到 controller.spawnInstance——后者无
+    // 复用语义且受 maxConcurrency 限制（总是创建新实例），替换会改变 Transport 接口
+    // 行为（每次 connect 新建实例）。ensureRunning 内部的 spawn 分支已收敛到编排域
+    // 入口 spawnInstanceViaController（instance.ts 的私有 helper）；配套的
+    // cleanupSpawnedEnvironments（workflow/index.ts）继续使用 stopInstance（编排域
+    // 薄委托）停止本路径创建的实例，语义不变。
     const { instance, status } = await ensureRunning("system", envRow.id, "system");
     if (status === "spawned") {
       options?.spawnedEnvIds?.add(envRow.id);
