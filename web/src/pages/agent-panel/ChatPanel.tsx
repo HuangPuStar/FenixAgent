@@ -11,8 +11,9 @@ import { useChatPageVisible } from "../../hooks/useSessions";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
+import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
 
-type WsConnectionState = "disconnected" | "connecting" | "connected" | "error";
+type WsConnectionState = ChatWsConnectionState;
 
 interface ChatPanelProps {
   agentId: string | null;
@@ -49,6 +50,20 @@ export function ChatPanel({
     setErrorCode(null);
     setReconnectAttempt((n) => n + 1);
   }, []);
+
+  // 缓存 ChatPanel 从后台切回前台且连接已断开时，自动触发一次与「重连」按钮等价的重连：
+  // 后台期间实例可能已被 idle/activity 回收（4001）或客户端 keepalive 超时（4501）断开，
+  // 这两类终态关闭码不会触发 YJS 客户端自动重连；切回前台时后端已通过 enter/ensureRunning
+  // 恢复实例，前端需重建 WS 才能恢复连接。machine_unavailable（4500）保留手动重试。
+  const previousPageVisibleRef = useRef(pageVisible);
+  useEffect(() => {
+    const wasVisible = previousPageVisibleRef.current;
+    previousPageVisibleRef.current = pageVisible;
+    if (!shouldAutoReconnectOnVisible(wasVisible, pageVisible, connectionState, errorCode)) return;
+    setConnectionState("connecting");
+    setErrorCode(null);
+    setReconnectAttempt((n) => n + 1);
+  }, [pageVisible, connectionState, errorCode]);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   const { data: session } = useSession();

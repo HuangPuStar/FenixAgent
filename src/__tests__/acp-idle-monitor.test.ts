@@ -208,8 +208,9 @@ describe("acp idle monitor", () => {
     expect(stopCalls).toEqual([{ instanceId: "inst_idle", organizationId: "org-1" }]);
   });
 
-  // 前端保持连接时（relay_count > 0），不应触发任何超时回收
-  test("runAcpIdleMonitorSweep does NOT stop instances with active relay connections even when activity is stale", async () => {
+  // 前端保持连接（relay_count > 0）但业务活动超过 activity timeout 时，
+  // 仍应按 inactive 回收——activity 回收与 relay 是否存在无关
+  test("runAcpIdleMonitorSweep stops stale instances even with active relay connections", async () => {
     const stopCalls: Array<{ instanceId: string; organizationId: string }> = [];
     const staleInstance = makeInstance("inst_stale", "env-1");
     globalInstanceRegistry.register(staleInstance.id, {
@@ -238,7 +239,41 @@ describe("acp idle monitor", () => {
     });
 
     await runAcpIdleMonitorSweep(1000 + 3601 * 1000);
-    // relay_count > 0 时不应回收，即使用户长时间未活动
+    // relay_count > 0 不能阻止 activity 回收：业务无活动超过硬超时仍应回收
+    expect(stopCalls).toEqual([{ instanceId: "inst_stale", organizationId: "org-1" }]);
+  });
+
+  // 前端保持连接且业务活动未超时（relay_count > 0）时，不应触发 idle 回收
+  test("runAcpIdleMonitorSweep does NOT stop active relay instance when activity is fresh", async () => {
+    const stopCalls: Array<{ instanceId: string; organizationId: string }> = [];
+    const activeInstance = makeInstance("inst_active_relay", "env-1");
+    globalInstanceRegistry.register(activeInstance.id, {
+      userId: "user-1",
+      environmentId: "env-1",
+      instanceNumber: 1,
+      organizationId: "org-1",
+      spawnSource: "interactive",
+      lastActivityAt: 1000,
+      relayCount: 1,
+      lastRelayDetachedAt: null,
+    });
+    setAcpIdleMonitorDeps({
+      getCoreRuntime: () =>
+        ({
+          listInstances: () => [{ instanceId: activeInstance.id, status: "running" }],
+        }) as unknown as ReturnType<typeof import("../services/core-bootstrap").getCoreRuntime>,
+      getInstance: (instanceId: string) => {
+        if (instanceId === activeInstance.id) return activeInstance;
+        return;
+      },
+      stopInstance: async (instanceId: string, organizationId: string) => {
+        stopCalls.push({ instanceId, organizationId });
+        return { ok: true as const };
+      },
+    });
+
+    // 业务活动刚刷新（1s 前），且 relay 保持连接：idle 与 activity 均不满足回收条件
+    await runAcpIdleMonitorSweep(1000 + 1000);
     expect(stopCalls).toEqual([]);
   });
 });

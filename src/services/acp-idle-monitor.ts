@@ -180,10 +180,9 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
     const supplement = globalInstanceRegistry.get(snapshot.id);
     if (!supplement) continue;
 
-    // 前端保持连接（页面打开中，含 display:none 的隐藏标签页）时，
-    // 实例应视为"使用中"，不触发任何超时回收。
-    if (snapshot.relay_count > 0) continue;
-
+    // activity 回收与 relay 是否存在无关：前端保持连接（页面打开中）但 Agent
+    // 长时间无业务消息（卡死、失去响应、relay 状态异常）时，仍按硬超时回收，
+    // 避免实例因 relay_count 永不归零而失去自动回收出口。
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
     if (inactiveTooLong) {
       logger.info(
@@ -196,6 +195,10 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
       }
       continue;
     }
+
+    // 只有无前端 relay 时才按 idle 回收：relay_count > 0 只阻止 idle 回收，
+    // 不能阻止 activity 回收（见上方判断）。
+    if (snapshot.relay_count > 0) continue;
 
     const idleSince = Math.max(supplement.lastActivityAt, supplement.lastRelayDetachedAt ?? 0);
     if (now - idleSince < idleTimeoutMs) continue;
