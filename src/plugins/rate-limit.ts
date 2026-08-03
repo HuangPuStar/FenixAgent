@@ -12,7 +12,10 @@ function getClientId(request: Request): string {
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
-export const rateLimitPlugin = new Elysia({ name: "rate-limit" }).onBeforeHandle(({ request }) => {
+// 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 scope 为 global/scoped 的
+// hook，onBeforeHandle 默认 scope 是 local，缺省时限流对主 app 路由从未生效
+// （2026-08 修复 errorPlugin 同类问题时经实验确认 105 连发全部放行）。
+export const rateLimitPlugin = new Elysia({ name: "rate-limit" }).onBeforeHandle({ as: "global" }, ({ request }) => {
   // 测试环境跳过限流
   if (process.env.NODE_ENV === "test" || (typeof Bun !== "undefined" && !!Bun.env.BUN_TEST)) {
     return;

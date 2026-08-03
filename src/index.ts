@@ -13,7 +13,7 @@ import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
@@ -113,7 +113,13 @@ const app = new Elysia()
   .onBeforeHandle(logRequest)
   .onAfterHandle(logResponse)
   .onAfterHandle(injectRequestId)
-  .onError(({ request, error, set }) => logError({ request, error, set }))
+  // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
+  // 在链中先执行，命中时返回 index.html 终止链；errorPlugin 对所有错误返回 JSON
+  // 响应，若在其后注册 SPA fallback 永远轮不到执行。
+  .use(ctrlStaticPlugin)
+  // 错误日志合并进 errorPlugin 内部处理（先映射 set.status 再写日志），
+  // 不能挂在这里的 onError：errorPlugin 返回映射响应会终止 onError 链，
+  // 且其前的 hook 读不到最终状态，日志会丢失或记录错误状态。
   .use(errorPlugin)
   .use(rateLimitPlugin)
   // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
@@ -163,8 +169,6 @@ const app = new Elysia()
   )
   // better-auth handler
   .use(authPlugin)
-  // Static files under /ctrl
-  .use(ctrlStaticPlugin)
   // Web control panel routes
   .use(webApp)
   // Token-protected skill archive download for plugins/runtimes

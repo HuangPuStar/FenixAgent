@@ -378,19 +378,6 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
     uuid: null as string | null,
     authContext: null as AuthContext | null,
   })
-  .onError(({ error, set }) => {
-    if (error instanceof AppError) {
-      set.status = error.statusCode;
-      return { error: { type: error.code, message: error.message } };
-    }
-    // DrizzleQueryError wrapping PostgreSQL errors
-    const msg = error instanceof Error ? (error.cause as { message?: string })?.message || error.message : "";
-    // PostgreSQL invalid UUID format → treat as not found
-    if (msg.includes("invalid input syntax for type uuid")) {
-      set.status = 404;
-      return { error: { type: "NOT_FOUND", message: "Resource not found" } };
-    }
-  })
   .macro({
     sessionAuth(enabled: boolean) {
       if (!enabled) return {};
