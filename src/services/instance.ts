@@ -58,6 +58,24 @@ export interface InstanceInfo {
   created_at: number;
 }
 
+/**
+ * toInstanceInfo 的输入视图：兼容旧路径 SpawnedInstance（id 字段）与编排域
+ * Instance（instanceId 字段 + status() 方法）。编排域 Instance 数据面不携带
+ * port/error/createdAt/instanceNumber 等展示字段，由 toInstanceInfo 实现从
+ * core 运行时快照与 RCS supplement 补全，仍缺失时兜底默认值。
+ */
+export interface InstanceInfoSource {
+  id?: string;
+  instanceId?: string;
+  environmentId?: string;
+  status?: InstanceInfo["status"] | (() => InstanceInfo["status"]);
+  port?: number;
+  error?: string | null;
+  sessionId?: string;
+  instanceNumber?: number;
+  createdAt?: Date;
+}
+
 export interface InstanceActivityInfo extends InstanceInfo {
   user: {
     id: string;
@@ -133,21 +151,57 @@ function toSpawnedInstance(snapshot: RuntimeInstanceSnapshot, supplement: Instan
  *
  * 这里保留 snake_case，避免路由层直接暴露内部 camelCase 结构，
  * 否则会和 Elysia 的 response schema 校验发生偏差。
+ *
+ * 输入兼容两类来源：
+ *   1. SpawnedInstance（旧路径实例，字段完整）；
+ *   2. 编排域 Instance 的最小视图（仅 instanceId + environmentId + status()），
+ *      其 port/error/createdAt/instanceNumber 由实现从 core 运行时快照与
+ *      RCS supplement 补全，两者都缺失时（如启动回滚竞态）兜底默认值。
  */
-export function toInstanceInfo(instance: SpawnedInstance): InstanceInfo {
+export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): InstanceInfo {
+  // 编排域 Instance 仅有 instanceId（无 id），SpawnedInstance 仅有 id；
+  // 两者都存在时优先 instanceId（编排域路径的权威标识）。
+  const instanceId = "instanceId" in instance ? instance.instanceId : undefined;
+  const id = instanceId ?? instance.id ?? "";
   const environmentId = instance.environmentId ?? null;
+  const status = typeof instance.status === "function" ? instance.status() : (instance.status ?? "starting");
+
+  let port = instance.port ?? 0;
+  let error = instance.error ?? null;
+  const sessionId = instance.sessionId ?? null;
+  let instanceNumber = instance.instanceNumber ?? 0;
+  let createdAt = instance.createdAt;
+
+  // 编排域 Instance 分支（仅 instanceId、无 id 字段）：core 快照补 port/error/createdAt，
+  // supplement 补 instanceNumber。SpawnedInstance 必带 id，不会进入此分支。
+  if (instanceId !== undefined && instance.id === undefined) {
+    const snapshot = getCoreRuntime()
+      .listInstances()
+      .find((s) => s.instanceId === instanceId);
+    if (snapshot) {
+      const meta = snapshot.pluginMetadata ?? {};
+      port = typeof meta.port === "number" ? meta.port : 0;
+      error = snapshot.errorMessage ?? null;
+      createdAt = snapshot.createdAt;
+    }
+    const sup = registry.get(instanceId);
+    if (sup) {
+      instanceNumber = sup.instanceNumber;
+    }
+  }
+
   return {
-    id: instance.id,
-    port: instance.port,
-    status: instance.status,
-    error: instance.error,
+    id,
+    port,
+    status,
+    error,
     // 现有 API 契约要求 group_id 必填；当前实例域里没有独立 group 概念，
     // 这里沿用 environmentId 作为兼容值，后续若拆分语义需同步调整 schema 与客户端。
     group_id: environmentId ?? "",
     environment_id: environmentId,
-    session_id: instance.sessionId ?? null,
-    instance_number: instance.instanceNumber,
-    created_at: Math.floor(instance.createdAt.getTime() / 1000),
+    session_id: sessionId,
+    instance_number: instanceNumber,
+    created_at: createdAt ? Math.floor(createdAt.getTime() / 1000) : 0,
   };
 }
 

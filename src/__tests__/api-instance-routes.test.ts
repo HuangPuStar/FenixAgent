@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
+import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
 const testConnectRoute = test.skipIf(process.env.RUN_SKIP_TEST !== "1");
@@ -12,6 +13,12 @@ function request(path: string, init?: RequestInit) {
 
 describe("API Instance Routes", () => {
   beforeEach(() => {
+    resetAllStubs();
+    // getRunningInstancesByEnvironment 依赖 core runtime 的实例快照；
+    // core-bootstrap 已在 setup-mocks.ts 中 preload mock，这里提供可控的空快照
+    stubCoreBootstrap({
+      getCoreRuntime: () => ({ listInstances: () => [] }),
+    });
     setTestAuth({
       user: { id: "user-1", email: "user@test.com", name: "Tester" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
@@ -25,7 +32,7 @@ describe("API Instance Routes", () => {
         throw new Error("not stubbed");
       },
       getRunningInstancesByEnvironment: () => [],
-      spawnInstanceFromEnvironment: async () => {
+      spawnInstanceViaController: async () => {
         throw new Error("not stubbed");
       },
     });
@@ -67,11 +74,10 @@ describe("API Instance Routes", () => {
           status: "active",
         }) as never,
       getRunningInstancesByEnvironment: () => [],
-      spawnInstanceFromEnvironment: async () =>
+      spawnInstanceViaController: async () =>
         ({
-          id: "inst-created",
+          instanceId: "inst-created",
           environmentId: "env-created",
-          status: "running",
         }) as never,
     });
 

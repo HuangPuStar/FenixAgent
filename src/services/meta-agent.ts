@@ -14,11 +14,11 @@ import { join } from "node:path";
 import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
-import { spawnInstanceFromEnvironment } from "../transport/relay";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
+import { spawnInstanceViaController } from "./orchestration-instance";
 import { setPublicRead } from "./resource-permission";
 import { getGlobalSkillsDir, setSkill } from "./skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
@@ -380,13 +380,10 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   const existing = await findMetaEnvironment(ctx);
   if (existing) {
     try {
-      const inst = await spawnInstanceFromEnvironment(ctx.userId, existing.id, undefined, {
-        extraEnv,
-        source: "system",
-      });
+      const inst = await spawnInstanceViaController(existing.id, ctx.userId, "system", { extraEnv });
       return {
         environmentId: existing.id,
-        instanceId: inst.id,
+        instanceId: inst.instanceId,
         status: "reused",
         apiKey,
       };
@@ -408,13 +405,10 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   });
 
   try {
-    const inst = await spawnInstanceFromEnvironment(ctx.userId, env.id, undefined, {
-      extraEnv,
-      source: "system",
-    });
+    const inst = await spawnInstanceViaController(env.id, ctx.userId, "system", { extraEnv });
     return {
       environmentId: env.id,
-      instanceId: inst.id,
+      instanceId: inst.instanceId,
       status: "created",
       apiKey,
     };

@@ -11,7 +11,8 @@ import {
 import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-monitor";
 import { getCoreRuntime } from "../../services/core-bootstrap";
 import { getOwnedEnvironment } from "../../services/environment";
-import { spawnInstanceFromEnvironment, stopInstance, toInstanceInfo } from "../../services/instance";
+import { stopInstance, toInstanceInfo } from "../../services/instance";
+import { spawnInstanceViaController } from "../../services/orchestration-instance";
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "instance-activity-query": InstanceActivityQuerySchema,
@@ -62,7 +63,8 @@ app.post(
       throw err;
     }
 
-    const instance = await spawnInstanceFromEnvironment(user.id, b.environmentId, undefined, { source: "interactive" });
+    // 编排域启动入口：envId 在前，source 为 interactive；toInstanceInfo 已兼容编排域 Instance（仅 instanceId）
+    const instance = await spawnInstanceViaController(b.environmentId, user.id, "interactive");
     return { success: true as const, data: toInstanceInfo(instance) };
   },
   {

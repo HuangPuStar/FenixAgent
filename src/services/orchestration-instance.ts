@@ -17,16 +17,29 @@ import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "../config";
-import { AppError, NotFoundError } from "../errors";
+import { NotFoundError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
 import { environmentOrchestrationRepo, environmentRepo } from "../repositories";
+import { setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
-import { buildLaunchSpec } from "./launch-spec-builder";
+import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
+
+/**
+ * spawnInstanceViaController 的可选参数。
+ */
+export interface SpawnInstanceViaControllerOptions {
+  /**
+   * 调用方环境变量覆盖，对齐旧路径 `{ ...platformEnv, ...extraEnv }` 的合并语义
+   * （调用方显式传入的同名变量优先）。meta-agent 用它把共享 meta env 上的
+   * USER_META_API_KEY / USER_META_USER_ID / USER_META_ORG_ID 覆盖为当前请求者上下文。
+   */
+  extraEnv?: Record<string, string>;
+}
 
 /**
  * 通过 core runtime 真正启动 Agent 进程。
@@ -41,12 +54,17 @@ import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from ".
  *
  * @param launchSpec 编排域 LaunchSpec（仅取 environmentId/userId，运行时字段从 DB 重建）
  * @param instanceId 编排域 Instance 的 instanceId（与 core 实例一一对应）
+ * @param extraEnv 调用方环境变量覆盖，透传给 buildAgentLaunchSpecForCore
  */
-export async function spawnInstanceViaCore(launchSpec: LaunchSpec, instanceId: string): Promise<void> {
+export async function spawnInstanceViaCore(
+  launchSpec: LaunchSpec,
+  instanceId: string,
+  extraEnv?: Record<string, string>,
+): Promise<void> {
   const envData = await environmentOrchestrationRepo.getEnvironment(launchSpec.environmentId);
   const nodeId = envData?.machineId ?? config.defaultMachineId ?? "local-default";
 
-  const agentLaunchSpec = await buildAgentLaunchSpecForCore(launchSpec);
+  const agentLaunchSpec = await buildAgentLaunchSpecForCore(launchSpec, extraEnv);
 
   const facade = getCoreRuntime();
   try {
@@ -74,11 +92,13 @@ export async function spawnInstanceViaCore(launchSpec: LaunchSpec, instanceId: s
  *
  * @param source 实例启动来源，透传给 RCS supplement（spawn_source 审计字段），
  *               对齐旧 spawnInstanceFromEnvironment 的语义。
+ * @param options 可选参数，extraEnv 按旧路径语义合并覆盖到 platformEnv。
  */
 export async function spawnInstanceViaController(
   envId: string,
   userId: string,
   source: InstanceSpawnSource = "interactive",
+  options: SpawnInstanceViaControllerOptions = {},
 ): Promise<Instance> {
   // 平台级/用户级并发治理：与旧 spawnInstanceFromEnvironment 首行语义对齐，
   // 保证 RCS_AGENT_MAX_CONCURRENCY / RCS_USER_AGENT_MAX_CONCURRENCY 在
@@ -92,7 +112,7 @@ export async function spawnInstanceViaController(
     // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
     // I4 过渡期可接受：两次构建均为只读 DB 查询；Phase C 后由包内统一。
     const launchSpec = await getOrchestrationLaunchSpecBuilder().build(envId, userId);
-    await spawnInstanceViaCore(launchSpec, instance.instanceId);
+    await spawnInstanceViaCore(launchSpec, instance.instanceId, options.extraEnv);
   } catch (err) {
     // 回滚：core 启动失败（如远程节点离线）时清理编排域状态——活跃表条目 +
     // ensureNode 引用计数。否则实例仍计入环境并发额度（maxConcurrency=1 时一次
@@ -146,20 +166,48 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
  *
  * 编排域数据面（扁平聚合）不含 model 密钥 / skills 下载地址 / MCP 详细配置，
  * 复用旧 buildLaunchSpec 从 DB 完整解析，保证与既有 spawnInstanceFromEnvironment
- * 路径产出的运行时配置一致。platformEnv（USER_META_*）注入也与之对齐。
+ * 路径产出的运行时配置一致。platformEnv（USER_META_*）注入也与之对齐，
+ * extraEnv 可覆盖同名默认值。
+ *
+ * @param extraEnv 调用方环境变量覆盖，按旧路径 `{ ...platformEnv, ...extraEnv }`
+ *                 语义合并（显式传入的同名变量优先）。
  */
-async function buildAgentLaunchSpecForCore(launchSpec: LaunchSpec): Promise<AgentLaunchSpec> {
+async function buildAgentLaunchSpecForCore(
+  launchSpec: LaunchSpec,
+  extraEnv?: Record<string, string>,
+): Promise<AgentLaunchSpec> {
   const env = await environmentRepo.getById(launchSpec.environmentId);
   if (!env) {
     throw new NotFoundError(`Environment '${launchSpec.environmentId}' not found`);
   }
+
+  const platformEnv: Record<string, string> = {
+    USER_META_API_KEY: env.secret,
+    USER_META_BASE_URL: getBaseUrl(),
+    USER_META_USER_ID: env.userId ?? launchSpec.userId,
+    USER_META_ORG_ID: env.organizationId ?? "",
+  };
+  // 对齐旧路径：调用方显式传入的同名环境变量优先
+  const mergedExtraEnv = { ...platformEnv, ...extraEnv };
+
   if (!env.agentConfigId) {
-    throw new AppError(
-      `Environment '${launchSpec.environmentId}' has no agentConfigId configured`,
-      "INVALID_CONFIG",
-      400,
-    );
+    // 无 agentConfigId 环境（历史遗留 / 系统级环境）走最小 LaunchSpec，等价旧路径
+    // spawnInstanceFromEnvironment 的 buildBasicLaunchSpec 分支——不继承
+    // prompt / skills / MCP 等额外配置。
+    // 注意：编排域 controller.spawnInstance 的 LaunchSpecBuilder 会在更早阶段对
+    // 无 agentConfigId 环境抛 LaunchSpecBuildError(422)，本分支通常不可达，仅作为
+    // 防御性对齐保留（若编排域侧未来放宽构建约束，此处行为仍与旧路径一致）。
+    // 另一剩余差异：无 agentConfigId 且无 RCS_DEFAULT_MACHINE_ID 时旧路径可走
+    // local-default，而编排域路径在 controller 阶段即拒绝——这是编排域"环境须解析出
+    // machineId"的设计约束，不做绕过。
+    return buildBasicLaunchSpec({
+      organizationId: env.organizationId ?? launchSpec.userId,
+      userId: launchSpec.userId,
+      environmentId: launchSpec.environmentId,
+      extraEnv: mergedExtraEnv,
+    });
   }
+
   const accessCtx: AuthContext = {
     organizationId: env.organizationId ?? "",
     userId: launchSpec.userId,
@@ -169,20 +217,19 @@ async function buildAgentLaunchSpecForCore(launchSpec: LaunchSpec): Promise<Agen
   if (!agentConfig) {
     throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);
   }
+  // 缓存 environmentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用；
+  // 与旧路径 spawnInstanceFromEnvironment 的 setAgentMachineCache 语义对齐。
+  if (agentConfig.machineId) {
+    setAgentMachineCache(launchSpec.environmentId, agentConfig.machineId);
+  }
 
-  const platformEnv: Record<string, string> = {
-    USER_META_API_KEY: env.secret,
-    USER_META_BASE_URL: getBaseUrl(),
-    USER_META_USER_ID: env.userId ?? launchSpec.userId,
-    USER_META_ORG_ID: env.organizationId ?? "",
-  };
   return buildLaunchSpec({
     organizationId: env.organizationId ?? launchSpec.userId,
     userId: launchSpec.userId,
     environmentId: launchSpec.environmentId,
     agentConfig,
     environmentSecret: env.secret,
-    extraEnv: platformEnv,
+    extraEnv: mergedExtraEnv,
   });
 }
 

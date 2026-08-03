@@ -3,11 +3,8 @@ import type { AuthContext } from "../plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { getReadableAgentConfigById } from "./config";
 import { createWebEnvironment } from "./environment-web";
-import {
-  getRunningInstancesByEnvironment,
-  groupActiveInstancesByEnvironment,
-  spawnInstanceFromEnvironment,
-} from "./instance";
+import { getRunningInstancesByEnvironment, groupActiveInstancesByEnvironment } from "./instance";
+import { spawnInstanceViaController } from "./orchestration-instance";
 
 type InstanceDeps = {
   createWebEnvironment: typeof createWebEnvironment;
@@ -15,7 +12,7 @@ type InstanceDeps = {
   getRunningInstancesByEnvironment: typeof getRunningInstancesByEnvironment;
   groupActiveInstancesByEnvironment: typeof groupActiveInstancesByEnvironment;
   listEnvironmentsByOrganizationId: typeof environmentRepo.listByOrganizationId;
-  spawnInstanceFromEnvironment: typeof spawnInstanceFromEnvironment;
+  spawnInstanceViaController: typeof spawnInstanceViaController;
 };
 
 const defaultDeps: InstanceDeps = {
@@ -25,7 +22,7 @@ const defaultDeps: InstanceDeps = {
   groupActiveInstancesByEnvironment,
   listEnvironmentsByOrganizationId: async (organizationId: string) =>
     environmentRepo.listByOrganizationId(organizationId),
-  spawnInstanceFromEnvironment,
+  spawnInstanceViaController,
 };
 
 let deps: InstanceDeps = defaultDeps;
@@ -116,15 +113,16 @@ export async function connectAgentInstance(
   }
 
   const runningInstances = deps.getRunningInstancesByEnvironment(environment.id);
-  const instance =
-    !options.preferNewInstance && runningInstances[0]
-      ? runningInstances[0]
-      : await deps.spawnInstanceFromEnvironment(ctx.userId, environment.id, environment, { source: "interactive" });
+  const runningInstance = !options.preferNewInstance ? runningInstances[0] : undefined;
+  const instance = runningInstance
+    ? runningInstance
+    : await deps.spawnInstanceViaController(environment.id, ctx.userId, "interactive");
 
   return {
     agentConfigId: agent.id,
     environmentId: environment.id,
-    instanceId: instance.id,
+    // runningInstance 为旧 SpawnedInstance（.id），spawn 分支为编排域 Instance（.instanceId）
+    instanceId: "id" in instance ? instance.id : instance.instanceId,
     relay: { wsUrl: `/acp/relay/${environment.id}` },
   };
 }

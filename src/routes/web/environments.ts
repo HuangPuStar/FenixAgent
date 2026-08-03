@@ -25,7 +25,8 @@ import {
   sanitizeResponse,
   updateWebEnvironment,
 } from "../../services/environment";
-import { enterEnvironment, listInstancesResponse, spawnInstanceFromEnvironment } from "../../services/instance";
+import { enterEnvironment, listInstancesResponse } from "../../services/instance";
+import { spawnInstanceViaController } from "../../services/orchestration-instance";
 
 const logger = createLogger("env-route");
 
@@ -102,7 +103,7 @@ app.post(
     }
 
     if (b.autoStart && record.userId) {
-      spawnInstanceFromEnvironment(record.userId, record.id, undefined, { source: "interactive" })
+      spawnInstanceViaController(record.id, record.userId, "interactive")
         .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
         .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
     }
