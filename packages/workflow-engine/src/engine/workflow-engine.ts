@@ -80,8 +80,15 @@ export interface WorkflowEngine {
   /** 取消运行 */
   cancel(runId: string): Promise<void>;
 
-  /** 审批节点通过 */
-  approveNode(runId: string, nodeId: string, token: string, data?: unknown): Promise<void>;
+  /**
+   * 审批节点通过。
+   *
+   * 返回本次恢复段调度的最终结果：`spawnedInstanceIds` 为该恢复段实际新 spawn 的
+   * 实例 ID（复用实例不计入）。挂起前段的实例由首次 `runAsync` 结果携带并在宿主
+   * 清理；恢复段实例仅在此返回值中出现，由宿主负责停止，否则泄漏至 idle 回收
+   * （C-P2.1）。再次 SUSPENDED 时 run 仍保留在 activeRuns 中，可继续审批。
+   */
+  approveNode(runId: string, nodeId: string, token: string, data?: unknown): Promise<DAGRunResult>;
 
   /** 获取运行状态快照 */
   getRunStatus(runId: string): Promise<DAGSnapshot | null>;
@@ -330,7 +337,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     activeRun.cancellation.cancel();
   }
 
-  async function approveNode(runId: string, nodeId: string, token: string, data?: unknown): Promise<void> {
+  async function approveNode(runId: string, nodeId: string, token: string, data?: unknown): Promise<DAGRunResult> {
     // 1. 验证 token
     const { valid, expired } = verifyApprovalToken(token, runId, nodeId, hmacSecret);
     if (!valid) {
@@ -343,9 +350,9 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     // 2. 查找活跃运行
     const activeRun = activeRuns.get(runId);
     if (!activeRun) {
-      // 非活跃运行：尝试通过 recover 恢复
-      await recoverFromApproval(runId, nodeId, data);
-      return;
+      // 非活跃运行：尝试通过 recover 恢复（recoverFromApproval 内部必然抛错，
+      // 提示调用方使用 recover()；返回值仅用于类型收窄，不会真正到达）
+      return recoverFromApproval(runId, nodeId, data);
     }
 
     // 3. 活跃运行：发射 audit.approved 事件并重新调度
@@ -413,10 +420,14 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     if (result.status !== "SUSPENDED") {
       activeRuns.delete(runId);
     }
+
+    // 返回恢复段结果：spawnedInstanceIds 是该段新 spawn 的实例（全新 Set），
+    // 由宿主 approve 入口调用 cleanupSpawnedInstances 停止，否则实例泄漏
+    return result;
   }
 
-  /** 非活跃运行的审批恢复 */
-  async function recoverFromApproval(runId: string, nodeId: string, data?: unknown): Promise<void> {
+  /** 非活跃运行的审批恢复（始终抛错提示调用方使用 recover()） */
+  async function recoverFromApproval(runId: string, nodeId: string, data?: unknown): Promise<DAGRunResult> {
     const snapshot = await storage.getLatestSnapshot(runId);
     if (!snapshot) {
       throw new WorkflowError(`No snapshot found for run ${runId}`, WorkflowErrorCode.RECOVERY_ERROR, { runId });

@@ -14,7 +14,9 @@
  * 断言埋点效果（不 mock 模块）。
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
+import type { AgentController } from "@fenix/orchestration";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
 import { markInstanceRelayAttached } from "../services/acp-idle-monitor";
@@ -24,7 +26,10 @@ import {
   type PromptTurn,
 } from "../services/agent-chat-service";
 import { globalInstanceRegistry } from "../services/instance-registry";
+import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
 import { AgentChatSessionAdapter } from "../services/workflow/agent-chat-transport";
+import { acquireInstanceLease, clearInstanceLeases, hasActiveInstanceLease } from "../services/workflow/instance-lease";
+import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 import type { InstanceSupplement } from "../types/store";
 
 // ---------- 测试专用 FakeTurn ----------
@@ -32,6 +37,7 @@ import type { InstanceSupplement } from "../types/store";
 /** 测试专用 PromptTurn：消息可手动 push，未结束且队列为空时挂起 */
 class FakeTurn implements PromptTurn {
   promptCalls = 0;
+  releaseCalls = 0;
   private queue: EngineRelayMessage[] = [];
   private ended = false;
   private failure: Error | null = null;
@@ -76,6 +82,11 @@ class FakeTurn implements PromptTurn {
   dispose(): Promise<void> {
     return Promise.resolve();
   }
+
+  /** 注销 listener（C-P2.3）：记录调用次数，断言 Adapter.dispose 触发 release */
+  release(): void {
+    this.releaseCalls++;
+  }
 }
 
 /** 按 EngineRelayHandle 最小字段构造 chat AgentSession（Adapter 取 instanceId 字段） */
@@ -114,6 +125,7 @@ const IDLE_SINCE_BASELINE = Date.now() - 60_000;
 describe("AgentChatSessionAdapter", () => {
   beforeEach(() => {
     globalInstanceRegistry.clear();
+    clearInstanceLeases();
     // 模拟 spawn 后 60s 无任何观测信号的 supplement（C-P1.4 受害场景的初始状态）
     globalInstanceRegistry.register(
       "inst-test",
@@ -345,5 +357,208 @@ describe("AgentChatSessionAdapter", () => {
 
     const result = await promise;
     expect(result.exit_code).toBe(0);
+  });
+
+  // C-P2.3：turn.release 必须注销 createPromptTurn 注册的 relay listener，
+  // 否则同实例 N 次 run 累积 N 个死 listener（各持 ≤5000 条事件队列）
+  test("turn.release 注销 relay listener（真实 createPromptTurn + onMessage handle）", async () => {
+    let listener: ((msg: EngineRelayMessage) => void) | null = null;
+    let unsubCalled = 0;
+    const session: ChatAgentSession = {
+      instanceId: "inst-test",
+      dispose: async () => {},
+      relayHandle: {
+        state: "open",
+        send: () => {},
+        close: () => {},
+        onMessage: (l: (msg: EngineRelayMessage) => void) => {
+          listener = l;
+          return () => {
+            unsubCalled++;
+            // 模拟 relay-handle 的 Set.delete 语义：注销后再次删除是 no-op
+            listener = null;
+          };
+        },
+      } as ChatAgentSession["relayHandle"],
+    };
+    const turn = createPromptTurn(session, "ses-test");
+    // createPromptTurn 构造时同步调用 onMessage 注册监听器
+    expect(listener).not.toBeNull();
+
+    turn.release();
+
+    expect(unsubCalled).toBe(1);
+    expect(listener).toBeNull();
+  });
+
+  // C-P2.3：release 幂等——engine finally 与未来其他释放路径重复调用安全，
+  // 不因重复注销抛错或产生副作用
+  test("release 幂等：两次调用不抛错且 listener 保持注销", async () => {
+    let listener: ((msg: EngineRelayMessage) => void) | null = null;
+    const session: ChatAgentSession = {
+      instanceId: "inst-test",
+      dispose: async () => {},
+      relayHandle: {
+        state: "open",
+        send: () => {},
+        close: () => {},
+        onMessage: (l: (msg: EngineRelayMessage) => void) => {
+          listener = l;
+          return () => {
+            listener = null;
+          };
+        },
+      } as ChatAgentSession["relayHandle"],
+    };
+    const turn = createPromptTurn(session, "ses-test");
+    expect(listener).not.toBeNull();
+
+    turn.release();
+    turn.release();
+
+    expect(listener).toBeNull();
+  });
+
+  // C-P2.3：Adapter.dispose 只注销 listener，不触碰共享 relay handle——
+  // handle 被关闭会导致同 run 其他节点 / 并发 run 的 send 抛 "Relay is closed"
+  test("adapter.dispose 触发 turn.release 且不关闭 relay handle", async () => {
+    const turn = new FakeTurn();
+    const chatSession = makeFakeChatSession();
+    let closed = 0;
+    chatSession.relayHandle.close = () => {
+      closed++;
+    };
+    const adapter = new AgentChatSessionAdapter(turn, chatSession, 1000);
+
+    await adapter.dispose();
+
+    expect(turn.releaseCalls).toBe(1);
+    expect(closed).toBe(0);
+  });
+
+  // C-P1.1-R：execute 正常结束后归还租约（与 connect 的 acquire 配对），
+  // 创建者 cleanup 的租约守卫放行停止
+  test("execute 正常结束 → 租约释放", async () => {
+    acquireInstanceLease("inst-test");
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+
+    const promise = adapter.execute({ prompt: "x" });
+    turn.push({ jsonrpc: "2.0", result: { stopReason: "end_turn" } } as unknown as EngineRelayMessage);
+    await promise;
+
+    expect(hasActiveInstanceLease("inst-test")).toBe(false);
+  });
+
+  // C-P1.1-R：execute 超时兜底触发后归还租约，超时实例不残留租约条目
+  test("execute 超时 → 租约释放", async () => {
+    acquireInstanceLease("inst-test");
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 30);
+
+    const promise = adapter.execute({ prompt: "x" });
+
+    await expect(promise).rejects.toMatchObject({
+      name: "WorkflowError",
+      code: WorkflowErrorCode.NODE_TIMEOUT,
+    });
+    expect(hasActiveInstanceLease("inst-test")).toBe(false);
+  });
+
+  // C-P1.1-R：事件流抛错（reject 路径）同样归还租约，失败路径不泄漏租约
+  test("execute 事件流抛错 → 租约释放", async () => {
+    acquireInstanceLease("inst-test");
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+
+    const promise = adapter.execute({ prompt: "x" });
+    turn.fail(new Error("relay stream broken"));
+
+    await expect(promise).rejects.toThrow("relay stream broken");
+    expect(hasActiveInstanceLease("inst-test")).toBe(false);
+  });
+
+  // C-P1.1-R：execute 被 abort 后归还租约，abort 路径不残留租约
+  test("execute 被 abort → 租约释放", async () => {
+    acquireInstanceLease("inst-test");
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+    const controller = new AbortController();
+
+    const promise = adapter.execute({ prompt: "x", signal: controller.signal });
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(hasActiveInstanceLease("inst-test")).toBe(false);
+  });
+});
+
+// C-P2.4：workflow run 中 relay_closed（进程崩溃）必须触发本地实例级死亡清理，
+// 否则死实例状态恒 running、被 ensureRunning 无限复用且持续占并发额度
+describe("AgentChatSessionAdapter relay death cleanup", () => {
+  /** 记录 controller.stopInstance 调用（清理触发的证据）。 */
+  const controllerStopCalls: string[] = [];
+
+  const fakeFacade = {
+    getInstance: () =>
+      ({
+        instanceId: "inst-test",
+        engineType: "opencode",
+        nodeId: "local-default",
+        status: "running",
+        launchSpec: {},
+        relayConnected: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }) as unknown as RuntimeInstanceSnapshot,
+    stopInstance: async () => {},
+  } as unknown as CoreRuntimeFacade;
+
+  const fakeController = {
+    listInstances: () => [{ instanceId: "inst-test" }],
+    stopInstance: async (instanceId: string) => {
+      controllerStopCalls.push(instanceId);
+    },
+  } as unknown as AgentController;
+
+  beforeEach(() => {
+    controllerStopCalls.length = 0;
+    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    setOrchestrationInstanceDeps({ getOrchestrationController: () => fakeController });
+  });
+
+  afterEach(() => {
+    resetOrchestrationInstanceDeps();
+    resetAllStubs();
+  });
+
+  // workflow run 进行中收到 relay_closed：本地实例死亡信号，清理须触发；
+  // 失败结果（exit_code=1）与清理互不阻塞
+  test("workflow run 中 relay_closed 到达 → 本地实例触发 terminateLocalDeadInstance", async () => {
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+
+    const promise = adapter.execute({ prompt: "x" });
+    turn.push({ type: "relay_closed", payload: { code: "relay_disconnected" } });
+
+    const result = await promise;
+    expect(result.exit_code).toBe(1);
+    // terminateLocalDeadInstance 为 fire-and-forget，等其微任务链完成
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controllerStopCalls).toEqual(["inst-test"]);
+  });
+
+  // 主动关闭路径（dispose 先注销 listener）不得触发死亡清理：
+  // 钉住"relay_closed 送达监听器即意外断连"的判定边界（C-P2.4）
+  test("run 正常结束（无 relay_closed）→ 不触发清理", async () => {
+    const turn = new FakeTurn();
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+
+    const promise = adapter.execute({ prompt: "x" });
+    turn.push({ jsonrpc: "2.0", result: { stopReason: "end_turn" } } as unknown as EngineRelayMessage);
+
+    await promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controllerStopCalls).toEqual([]);
   });
 });

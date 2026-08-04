@@ -140,13 +140,22 @@ app.post(
           const nodeId = payload.nodeId as string;
           const token = payload.token as string;
           const data = payload.data as unknown;
-          await engine.approveNode(runId, nodeId, token, data);
+          const dagResult = await engine.approveNode(runId, nodeId, token, data);
           const approveWorkflowId = payload.workflowId as string | undefined;
           if (approveWorkflowId) {
             publishWorkflowEvent(approveWorkflowId, "workflow.run_status_changed", {
               runId,
               dagStatus: "RUNNING",
             });
+          }
+          // 清理本恢复段新 spawn 的环境实例（独立 try-catch，清理失败只记日志，
+          // 不改变审批成功响应；与 run action 的后台清理同构，见 C-P2.1）
+          if (dagResult.spawnedInstanceIds && dagResult.spawnedInstanceIds.length > 0) {
+            try {
+              await cleanupSpawnedInstances(new Set(dagResult.spawnedInstanceIds), authCtx.organizationId);
+            } catch (err) {
+              logger.error(`approve cleanup failed: runId=${runId}`, err);
+            }
           }
           return { success: true, data: null };
         }

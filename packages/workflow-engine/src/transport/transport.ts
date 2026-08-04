@@ -34,6 +34,13 @@ export interface AgentResponse {
 /** Agent 会话 — 单次连接内可多次执行请求 */
 export interface AgentSession {
   execute(request: AgentRequest): Promise<AgentResponse>;
+  /**
+   * 释放本次会话持有的资源（如注册的消息监听器）。可选：由 Transport 实现决定是否实现。
+   * 注意：不承诺关闭底层连接或销毁实例——复用语义由 Transport 实现负责。
+   * 设计原因（C-P2.3）：engine 对每次 connect 产生的会话负责释放，避免
+   * 同实例复用场景下每次 run 累积一个死 listener。
+   */
+  dispose?(): Promise<void>;
 }
 
 /** Transport — 连接管理 + 会话创建 */

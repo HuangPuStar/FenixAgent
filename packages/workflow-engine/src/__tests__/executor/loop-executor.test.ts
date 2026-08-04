@@ -365,4 +365,43 @@ describe("LoopExecutor", () => {
     expect(output.exit_code).toBe(0);
     expect(callCount).toBe(2); // iter0: go!=stop→true→继续; iter1: stop!=stop→false→退出
   });
+
+  // loop 迭代内 agent 节点 spawn 的实例写入父级集合（C-P2.2 同根因，引用透传）
+  test("loop 迭代内 agent 节点 spawn 的实例写入父级集合", async () => {
+    let receivedCtx: NodeExecutionContext | undefined;
+    const agentExecutor: NodeExecutor = {
+      async execute(_node: NodeDef, execCtx: NodeExecutionContext): Promise<NodeOutput> {
+        // 模拟真实 transport 的 spawn 记账语义：spawn 时写入运行级集合
+        receivedCtx = execCtx;
+        execCtx.spawnedInstanceIds?.add("inst_loop_iter");
+        return {
+          stdout: JSON.stringify({ value: "done" }),
+          json: { value: "done" },
+          exit_code: 0,
+        };
+      },
+    };
+
+    registry.register("agent", agentExecutor);
+    const executor = new LoopExecutor("test-loop-run-001", registry);
+    const parentSet = new Set<string>();
+    const ctx = makeCtx({ spawnedInstanceIds: parentSet });
+
+    // 首次迭代即退出：value == "done" → 条件 false → 不再继续
+    const node = loopNode({
+      max_iterations: 10,
+      condition: '${{ nodes.step1.output.value != "done" }}',
+      body: {
+        nodes: [{ id: "step1", type: "agent", agent: "default", prompt: "hi" }],
+      },
+    });
+
+    const output = await executor.execute(node, ctx);
+
+    expect(output.exit_code).toBe(0);
+    // 迭代子 DAG 内 agent 节点 spawn 的实例必须出现在父级集合（不再泄漏至 idle 回收）
+    expect(parentSet.has("inst_loop_iter")).toBe(true);
+    // 透传的是同一引用而非复制
+    expect(receivedCtx?.spawnedInstanceIds).toBe(parentSet);
+  });
 });

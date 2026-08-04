@@ -311,12 +311,21 @@ app.post(
     const payload = body as typeof WorkflowApproveRequestBodySchema._output;
 
     try {
-      await engine.approveNode(runId, payload.nodeId, payload.token, payload.data);
+      const dagResult = await engine.approveNode(runId, payload.nodeId, payload.token, payload.data);
       if (payload.workflowId) {
         publishWorkflowEvent(payload.workflowId, "workflow.run_status_changed", {
           runId,
           dagStatus: "RUNNING",
         });
+      }
+      // 清理本恢复段新 spawn 的环境实例（独立 try-catch，清理失败只记日志，
+      // 不改变审批成功响应；与 run 分支的后台清理同构，见 C-P2.1）
+      if (dagResult.spawnedInstanceIds && dagResult.spawnedInstanceIds.length > 0) {
+        try {
+          await cleanupSpawnedInstances(new Set(dagResult.spawnedInstanceIds), authCtx.organizationId);
+        } catch (err) {
+          logger.error(`approve cleanup failed: runId=${runId}`, err);
+        }
       }
       return { success: true, data: null };
     } catch (err: unknown) {

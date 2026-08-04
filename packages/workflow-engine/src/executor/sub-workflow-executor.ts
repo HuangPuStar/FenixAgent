@@ -113,6 +113,12 @@ export class SubWorkflowExecutor implements NodeExecutor {
         secrets: ctx.secrets,
         nodeExecutor: this.registry,
         cancellation: subCancellation,
+        // C-P2.2：透传父级 spawnedInstanceIds 集合（同一可变引用）——子 DAG 内
+        // agent 节点 spawn 的实例直接写入父级集合，run 结束后统一由
+        // cleanupSpawnedInstances 清理；复用实例不记账，与顶层语义一致。
+        // 不合并 result.spawnedInstanceIds：子 DAG 完成前已通过引用同步写入，
+        // 失败/取消/ignore_errors 路径自动覆盖，避免多路径合并漏分支。
+        spawnedInstanceIds: ctx.spawnedInstanceIds,
       });
 
       const result = await scheduler.run();

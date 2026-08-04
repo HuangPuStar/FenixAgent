@@ -309,22 +309,31 @@ export function getInstance(id: string, userId?: string): SpawnedInstance | unde
 
 export async function stopInstance(id: string, organizationId: string): Promise<{ ok: boolean; error?: string }> {
   const sup = registry.get(id);
-  if (!sup) return { ok: false, error: "Instance not found" };
-  if (sup.organizationId !== organizationId) return { ok: false, error: "Not your instance" };
+  // 多租户：仅对已知实例做归属校验；无 supplement 的实例（已停止/从未存在）
+  // 无法归属，按幂等语义直接视为目标状态已达成，不泄漏实例存在性信息。
+  if (sup && sup.organizationId !== organizationId) {
+    return { ok: false, error: "Not your instance" };
+  }
 
-  // 休克疗法（I4）：实例生命周期统一收敛到编排域，旧 core fallback 分支已删除。
-  // controller 活跃表无记录即视为实例已不存在——部署后不存在非编排域实例，
-  // 语义收紧是预期结果（web DELETE 由 404/403 兜底，acp-idle-monitor 静默跳过）。
+  // 三侧状态收敛（AE-P2.1）：supplement / controller 活跃表 / core 快照任一存在
+  // 即执行幂等停止。stopInstanceViaController 内部对 controller.stopInstance、
+  // core stopInstance 与 supplement 清理均幂等吞错（orchestration-instance.ts:184-205），
+  // 因此重复 DELETE 与三侧状态分裂残留（如 workflow cleanup 跳过的孤儿 supplement）
+  // 都能安全收敛，不再有前置短路导致"已停止实例二次 DELETE 404"的契约矛盾。
   const controller = getOrchestrationController();
   const isOrchestrationInstance = controller.listInstances().some((inst) => inst.instanceId === id);
-  if (!isOrchestrationInstance) {
-    return { ok: false, error: "Instance not found" };
+  const coreHasInstance = getCoreRuntime()
+    .listInstances()
+    .some((s) => s.instanceId === id);
+
+  if (!sup && !isOrchestrationInstance && !coreHasInstance) {
+    // 无墓碑可区分"已停止"与"从未存在"（停止路径会清空三侧状态）：统一按
+    // ensure-stopped 语义返回 "Already stopped"，由 web DELETE 映射 200，
+    // 符合 RFC 7231 幂等 DELETE（目标终态即不存在）。
+    return { ok: false, error: "Already stopped" };
   }
 
   try {
-    // stopInstanceViaController 内部对 controller.stopInstance / core stopInstance
-    // 均幂等吞错，因此重复停止编排域实例仍返回成功——保持 web DELETE
-    // "已停止 → 200" 的语义（原 "Already stopped" 分支由编排域幂等取代）。
     await stopInstanceViaController(id);
     return { ok: true };
   } catch (err: unknown) {

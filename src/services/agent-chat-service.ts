@@ -64,6 +64,14 @@ export interface PromptTurn {
   prompt(promptContent: Array<{ type: string; text: string; resource?: unknown }>): void;
   /** session/update 事件流 + session/prompt response */
   events(): AsyncIterable<EngineRelayMessage>;
+  /**
+   * 注销注册在 relay handle 上的消息监听器并结束事件流。
+   * 与 dispose 的区别：release 不关闭 relay handle、不停止实例。
+   * 设计原因（C-P2.3）：Workflow 路径复用共享 relay handle（instance-orchestrator 按
+   * 实例复用），dispose 的 session.dispose() 会关闭共享连接，破坏并发 run / 同 run
+   * 多节点复用语义；但 listener 若不注销，同实例 N 次 run 会累积 N 个死 listener。
+   */
+  release(): void;
   /** 释放资源（关闭 relay handle + stop instance） */
   dispose(): Promise<void>;
 }
@@ -202,6 +210,23 @@ export function createPromptTurn(session: AgentSession, sessionId: string): Prom
     },
   };
 
+  // 释放内部状态：注销 relay 监听器并结束事件流。
+  // 独立于 dispose 拆出（C-P2.3）：Workflow 路径复用共享 relay handle，只能注销
+  // 本 turn 的 listener，不能关闭 handle / 停止实例；openai-chat / scheduler 路径
+  // 仍通过 dispose 一并释放。release 天然幂等——done 赋值、listeners.delete、
+  // resolveNext 置 null 均幂等，engine finally 与未来其他释放路径重复调用安全。
+  const release = (): void => {
+    done = true;
+    resolveNext?.({ value: undefined, done: true });
+    for (const fn of cleanupFns) {
+      try {
+        fn();
+      } catch {
+        // 单个 cleanup 失败不应阻止后续清理
+      }
+    }
+  };
+
   return {
     prompt(promptContent) {
       log(`[openai] Sending session/prompt: sessionId=${sessionId} turnId=${turnId}`);
@@ -219,16 +244,10 @@ export function createPromptTurn(session: AgentSession, sessionId: string): Prom
       return eventsIterable;
     },
 
+    release,
+
     async dispose() {
-      done = true;
-      resolveNext?.({ value: undefined, done: true });
-      for (const fn of cleanupFns) {
-        try {
-          fn();
-        } catch {
-          // 单个 cleanup 失败不应阻止后续清理
-        }
-      }
+      release();
       await session.dispose();
     },
   };

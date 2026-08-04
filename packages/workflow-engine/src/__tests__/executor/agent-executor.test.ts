@@ -19,6 +19,7 @@ class FakeTransport implements Transport {
   private lastRequests: Map<string, AgentRequest> = new Map();
   private shouldThrow: Error | null = null;
   private lastConnectOptions: { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined;
+  private disposedSessions: string[] = [];
 
   /** 设置指定 agent 的响应 */
   setResponse(agentId: string, response: AgentResponse): void {
@@ -38,6 +39,11 @@ class FakeTransport implements Transport {
   /** 获取最近一次 connect 的 options（验证 spawnedInstanceIds 透传） */
   getLastConnectOptions(): { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined {
     return this.lastConnectOptions;
+  }
+
+  /** 获取已被 dispose 的 session 列表（按 agentId 记录，C-P2.3） */
+  getDisposedSessions(): string[] {
+    return this.disposedSessions;
   }
 
   /** 设置下一次连接时抛出的错误 */
@@ -61,6 +67,9 @@ class FakeTransport implements Transport {
         const response = this.responses.get(agentId);
         if (!response) throw new Error(`No response configured for agent: ${agentId}`);
         return response;
+      },
+      dispose: async () => {
+        this.disposedSessions.push(agentId);
       },
     };
   }
@@ -400,6 +409,56 @@ describe("AgentExecutor retry", () => {
     const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-agent" });
     const retryEvents = events.filter((e) => e.type === "node.retrying");
     expect(retryEvents.length).toBe(0);
+  });
+});
+
+// ========== 会话释放测试（C-P2.3） ==========
+
+describe("AgentExecutor session disposal", () => {
+  let transport: FakeTransport;
+  let executor: AgentExecutor;
+
+  beforeEach(() => {
+    transport = new FakeTransport();
+    executor = new AgentExecutor(transport);
+  });
+
+  // C-P2.3：engine 对每次 connect 的会话负责释放，杜绝同实例复用场景下
+  // 每次 run 累积一个死 listener
+  test("正常执行后 session.dispose 被调用", async () => {
+    transport.setResponse("default", { stdout: "ok", exit_code: 0, messages: [] });
+
+    const ctx = makeCtx();
+    const node = agentNode("test");
+    await executor.execute(node, ctx);
+
+    expect(transport.getDisposedSessions()).toEqual(["default"]);
+  });
+
+  // C-P2.3：失败/重试路径同样释放——每个 attempt 重新 connect 新 session，
+  // 失败后 finally 释放，不因重试累积死 listener
+  test("execute 抛错后每次 attempt 的 session 均被 dispose", async () => {
+    const ctx = makeCtx();
+    const node = agentNode("fail", {
+      agent: "no-response",
+      retry: { count: 1, delay: 50, backoff: "fixed" },
+    });
+
+    await expect(executor.execute(node, ctx)).rejects.toThrow();
+
+    // retry.count=1 → maxAttempts=2，两次 attempt 各 connect 一个 session 并释放
+    expect(transport.getDisposedSessions()).toEqual(["no-response", "no-response"]);
+  });
+
+  // C-P2.3：connect 抛错时无 session 产生，dispose 调用为空操作、不产生副作用
+  test("connect 抛错时 dispose 不被调用", async () => {
+    transport.setThrowError(new Error("connect failed"));
+
+    const ctx = makeCtx();
+    const node = agentNode("test", { retry: { count: 0 } });
+
+    await expect(executor.execute(node, ctx)).rejects.toThrow("connect failed");
+    expect(transport.getDisposedSessions()).toEqual([]);
   });
 });
 

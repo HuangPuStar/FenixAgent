@@ -14,6 +14,11 @@
  *     常驻）；
  *   - 其他 machineId 原样委托真实 AgentNodeService（远程机器 WS 节点）。
  *
+ * 注意：local-default 节点"恒 connected"是有意语义——本地执行能力（进程内
+ * acp-link server）不会随单个实例崩溃消失，且节点为 N:1 共享（一个 stub socket
+ * 承载全部本地实例），节点级断连会把健康实例一并误标 error。实例级死亡处理
+ * 见 orchestration-instance.terminateLocalDeadInstance（由 relay 死亡信号触发）。
+ *
  * 编排域语义保持：无 machineId 且本地执行被禁用（RCS_DISABLE_LOCAL_EXECUTION）
  * 时，EnvironmentRepo 返回 machineId=null，AgentController 仍以配置错误拒绝启动。
  */
