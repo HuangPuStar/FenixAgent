@@ -9,6 +9,10 @@
  *     机器在线节点保留以复用（关闭 connected 节点会切断机器真实 WS，见 E-P1.1），
  *     新引用到达时取消
  *   - 节点进入 closed 终态后移出管理集合，允许后续新连接重建节点
+ *
+ * E-P2.2 方案 A：断连即停止重连（onAutoReconnectStopped 由 AgentNode 在断连时
+ * 立即触发），机器重连完全由远端 Machine 驱动——新连接到达后
+ * handleIncomingConnection 复用节点并恢复 connected。
  */
 
 import { AgentNodeUnavailableError } from "../errors";
@@ -18,8 +22,6 @@ import {
   type AgentNodeOptions,
   type AgentNodeServiceConfig,
   type AgentNodeSocket,
-  DEFAULT_CONNECT_TIMEOUT_MS,
-  DEFAULT_RECONNECT_DELAY_MS,
   DEFAULT_SCHEDULER,
   type TimerScheduler,
 } from "./types";
@@ -30,16 +32,10 @@ export class AgentNodeService {
   readonly #refCounts = new Map<string, number>();
   readonly #idleTimers = new Map<string, unknown>();
   readonly #idleTimeoutMs: number;
-  readonly #maxRetries: number;
-  readonly #reconnectDelayMs: number;
-  readonly #connectTimeoutMs: number;
   readonly #scheduler: TimerScheduler;
 
   constructor(config: AgentNodeServiceConfig) {
     this.#idleTimeoutMs = config.idleTimeoutMs;
-    this.#maxRetries = config.maxRetries;
-    this.#reconnectDelayMs = config.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
-    this.#connectTimeoutMs = config.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
     this.#scheduler = config.scheduler ?? DEFAULT_SCHEDULER;
   }
 
@@ -115,8 +111,9 @@ export class AgentNodeService {
    * 宿主通知机器断连（无 WS close 事件可依赖时使用，如 sweep 清理路径——
    * 宿主连接表中已无该 machine 的 entry，无法反查 socket 适配器）。
    * 语义与 socket close/error 事件驱动的 _handleDisconnected 完全一致：
-   * connected → disconnected（调度自动重连）、connecting → uninitialized、
-   * closing → closeConfirmed；节点不存在或已断连时幂等忽略，重复调用安全。
+   * connected → disconnected（停止重连尝试，等待机器主动重连）、connecting →
+   * uninitialized、closing → closeConfirmed；节点不存在或已断连时幂等忽略，
+   * 重复调用安全。
    */
   notifyNodeDisconnected(machineId: string): void {
     this.#nodes.get(machineId)?._handleDisconnected();
@@ -157,15 +154,12 @@ export class AgentNodeService {
     return {
       machineId,
       socket,
-      connectTimeoutMs: this.#connectTimeoutMs,
-      maxRetries: this.#maxRetries,
-      reconnectDelayMs: this.#reconnectDelayMs,
-      scheduler: this.#scheduler,
       onStatusChange,
-      // 自动重连停止（耗尽或重连失败）且无实例引用时直接关闭节点（uninitialized /
-      // disconnected 态下 close 不触碰底层 WS，只推进 FSM 到 closed），由
-      // onStatusChange 的 closed 分支移出管理集合；有引用时保留节点，等待引用
-      // 归零后的正常空闲回收。
+      // E-P2.2 方案 A：断连即触发（AgentNode 在 connected 断连 / connecting 失败时
+      // 立即调用），此时若无实例引用则直接关闭节点（disconnected 态下 close 不触碰
+      // 底层 WS，只推进 FSM 到 closed），由 onStatusChange 的 closed 分支移出管理
+      // 集合；有引用时保留节点，等待引用归零后的正常空闲回收。机器重连由
+      // handleIncomingConnection 恢复，不依赖本回调。
       onAutoReconnectStopped: () => {
         const refCount = this.#refCounts.get(machineId) ?? 0;
         const node = this.#nodes.get(machineId);
@@ -184,7 +178,7 @@ export class AgentNodeService {
       const node = this.#nodes.get(machineId);
       if (node === undefined) return;
       // 机器仍在线（connected）时保留节点：节点生命周期应跟随机器 WS（断连 →
-      // 自动重连耗尽 → onAutoReconnectStopped 回收），实例引用归零不等于机器下线。
+      // onAutoReconnectStopped 立即回收），实例引用归零不等于机器下线。
       // 关闭 connected 节点会经 AgentNode.close() 的 connected 分支触发 socket.close()，
       // 关闭机器与宿主的唯一真实 WS 信道，造成每 idleTimeoutMs 一次的断连-重连风暴
       // （E-P1.1）。这里只回收已断连节点，且不重启定时器——connected 节点的后续

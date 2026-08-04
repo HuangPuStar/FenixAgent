@@ -3,8 +3,10 @@
  *
  * 职责：
  *   - 持有 WS 信道（{@link AgentNodeSocket} 抽象，不依赖具体 ws 库）
- *   - 维护 FSM 状态：uninitialized → connecting → connected，意外断连进入
- *     disconnected 并由内部定时器自动重连（对象不销毁），主动关闭走 closing → closed
+ *   - 维护 FSM 状态：uninitialized → connecting → connected；意外断连进入
+ *     disconnected 并立即停止重连尝试（E-P2.2 方案 A：重连完全由远端 Machine
+ *     驱动，机器通过新连接到达后由 AgentNodeService 调用 _attachSocket +
+ *     _handleConnected 恢复），主动关闭走 closing → closed
  *   - 提供 send / close / status，以及供 AgentNodeService 驱动的内部钩子
  *
  * 关键规则：仅 connected 状态下 send 合法，其余状态抛
@@ -18,14 +20,7 @@ import type { LaunchSpec } from "../launch-spec/types";
 import type { AgentNodeStatus } from "../types/domain";
 import type { AgentNodeEvent } from "./agent-node-fsm";
 import { AgentNodeFsm } from "./agent-node-fsm";
-import {
-  type AgentNodeOptions,
-  type AgentNodeSocket,
-  DEFAULT_CONNECT_TIMEOUT_MS,
-  DEFAULT_RECONNECT_DELAY_MS,
-  DEFAULT_SCHEDULER,
-  type TimerScheduler,
-} from "./types";
+import { type AgentNodeOptions, type AgentNodeSocket } from "./types";
 
 /** AgentNode 生命周期管理类。 */
 export class AgentNode {
@@ -34,22 +29,11 @@ export class AgentNode {
 
   #fsm = new AgentNodeFsm();
   #socket: AgentNodeSocket | null = null;
-  #connectTimeoutMs: number;
-  #maxRetries: number;
-  #reconnectDelayMs: number;
-  #scheduler: TimerScheduler;
   #onStatusChange?: (status: AgentNodeStatus, previous: AgentNodeStatus) => void;
   #onAutoReconnectStopped?: () => void;
-  #reconnectTimer: unknown = null;
-  #connectTimer: unknown = null;
-  #retryCount = 0;
 
   constructor(options: AgentNodeOptions) {
     this.machineId = options.machineId;
-    this.#connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
-    this.#maxRetries = options.maxRetries ?? 0;
-    this.#reconnectDelayMs = options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
-    this.#scheduler = options.scheduler ?? DEFAULT_SCHEDULER;
     this.#onStatusChange = options.onStatusChange;
     this.#onAutoReconnectStopped = options.onAutoReconnectStopped;
     this._attachSocket(options.socket);
@@ -80,8 +64,6 @@ export class AgentNode {
       return;
     }
     this.#transition("closeRequested");
-    this.#clearConnectTimer();
-    this.#clearReconnectTimer();
     if (status === "connected") {
       // 等待 socket close 事件确认（_handleDisconnected 中推进 closeConfirmed）
       this.#socket?.close();
@@ -103,31 +85,35 @@ export class AgentNode {
       case "destroyed":
         return; // 关闭竞态 / 终态
       case "uninitialized":
+        this.#transition("connect"); // → connecting
+        this.#transition("open"); // → connected
+        return;
       case "disconnected":
-        this.#transition("connect");
-        break;
+        // E-P2.2 方案 A：断连后不再自动重连；机器新连接到达（handleIncomingConnection
+        // 复用节点并 attach 新 socket）时，open 即恢复 connected
+        this.#transition("open"); // → connected
+        return;
       case "connecting":
-        break;
+        this.#transition("open"); // → connected
+        return;
     }
-    this.#transition("open");
-    this.#retryCount = 0;
-    this.#clearConnectTimer();
-    this.#clearReconnectTimer();
   }
 
   /**
    * WS close / error 回调：按当前状态分派。
-   * connected → disconnected 并调度自动重连；connecting → 连接失败回退
-   * uninitialized；closing → closeConfirmed 完成关闭；其余状态幂等忽略。
+   * connected → disconnected 并立即通知宿主（自动重连停止信号）；connecting →
+   * 连接失败回退 uninitialized；closing → closeConfirmed 完成关闭；其余状态幂等忽略。
    */
   _handleDisconnected(): void {
     switch (this.status()) {
       case "connected":
         this.#transition("disconnect");
-        this.#scheduleReconnect();
+        // E-P2.2 方案 A：server 端不做自动重连，断连即停止重连尝试。重连完全由
+        // 远端 Machine 驱动（acp-link 主动连回宿主，handleIncomingConnection 恢复），
+        // 宿主据此回收无实例引用的节点。
+        this.#notifyAutoReconnectStopped();
         break;
       case "connecting":
-        this.#clearConnectTimer();
         this.#transition("fail");
         // 连接失败回退 uninitialized：不再自动重试，通知宿主（重连停止信号）
         this.#notifyAutoReconnectStopped();
@@ -144,12 +130,18 @@ export class AgentNode {
    * 替换 WS 信道并重新绑定事件（AgentNodeService 复用节点时调用）。
    * 旧信道（若存在且不同）会被关闭；旧信道迟到的事件因 `#socket` 身份守卫被忽略，
    * 不会误伤新信道。
+   *
+   * 关闭顺序必须「先替换 #socket 再 close 旧信道」：Mock/真实 socket 的 close()
+   * 可能同步触发 onClose，若先 close 后替换，身份守卫尚未生效，旧信道的断连事件会
+   * 把节点打断为 disconnected 并触发回收（E-P2.2 方案 A 下无引用节点断连即回收），
+   * 快速重连（新连接到达时旧连接才关闭）场景会把复用节点直接回收为 closed。
    */
   _attachSocket(socket: AgentNodeSocket): void {
-    if (this.#socket !== null && this.#socket !== socket) {
-      this.#socket.close();
-    }
+    const previous = this.#socket;
     this.#socket = socket;
+    if (previous !== null && previous !== socket) {
+      previous.close();
+    }
     socket.onOpen(() => {
       if (this.#socket === socket) this._handleConnected();
     });
@@ -182,59 +174,12 @@ export class AgentNode {
     this.#onStatusChange?.(next, previous);
   }
 
-  /** 断连后调度一次自动重连；重试次数用尽后保持 disconnected，不再重试。 */
-  #scheduleReconnect(): void {
-    this.#clearReconnectTimer();
-    if (this.#retryCount >= this.#maxRetries) {
-      // 重试耗尽：通知宿主（AgentNodeService 据此在无实例引用时回收节点，
-      // 避免断连后永久滞留 disconnected 状态占用管理集合）。
-      this.#notifyAutoReconnectStopped();
-      return;
-    }
-    this.#retryCount += 1;
-    this.#reconnectTimer = this.#scheduler.setTimeout(() => {
-      this.#reconnectTimer = null;
-      if (this.status() !== "disconnected") {
-        return;
-      }
-      this.#transition("connect");
-      this.#startConnectTimer();
-    }, this.#reconnectDelayMs);
-  }
-
-  /** 进入 connecting 后启动连接超时；超时仍无 open 则回退 uninitialized。 */
-  #startConnectTimer(): void {
-    this.#clearConnectTimer();
-    this.#connectTimer = this.#scheduler.setTimeout(() => {
-      this.#connectTimer = null;
-      if (this.status() !== "connecting") {
-        return;
-      }
-      this.#transition("fail");
-      // 重连超时回退 uninitialized：不再自动重试，通知宿主（重连停止信号）
-      this.#notifyAutoReconnectStopped();
-    }, this.#connectTimeoutMs);
-  }
-
   /**
-   * 通知宿主自动重连已停止（重试耗尽或重连失败回退 uninitialized）。
-   * 节点此后不再自动恢复，宿主可据此回收无实例引用的节点。
+   * 通知宿主自动重连已停止（E-P2.2 方案 A：connected 断连或 connecting 失败时立即触发）。
+   * 节点此后不再自动恢复，等待远端 Machine 主动重连（handleIncomingConnection）；
+   * 宿主可据此回收无实例引用的节点。
    */
   #notifyAutoReconnectStopped(): void {
     this.#onAutoReconnectStopped?.();
-  }
-
-  #clearConnectTimer(): void {
-    if (this.#connectTimer !== null) {
-      this.#scheduler.clearTimeout(this.#connectTimer);
-      this.#connectTimer = null;
-    }
-  }
-
-  #clearReconnectTimer(): void {
-    if (this.#reconnectTimer !== null) {
-      this.#scheduler.clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
   }
 }

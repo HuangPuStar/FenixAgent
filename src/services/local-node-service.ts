@@ -70,10 +70,9 @@ export class LocalNodeAwareService implements AgentNodeServicePort {
         const node = new AgentNode({
           machineId,
           socket: new LocalStubSocket(),
-          // 本地节点无断连概念，禁止自动重连
-          maxRetries: 0,
         });
-        // 本地执行视为常驻在线：直接推进 connected，无连接超时/重连定时器
+        // 本地执行视为常驻在线：直接推进 connected（本地 stub 信道永不触发断连事件，
+        // E-P2.2 方案 A 移除重连配置后本地节点本就无需重连语义）
         node._handleConnected();
         this.#localNode = node;
       }

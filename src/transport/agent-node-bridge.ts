@@ -4,15 +4,15 @@
  *
  * 职责：
  *   - 创建并持有 AgentNodeService 单例：idleTimeoutMs 取
- *     `config.acpIdleTimeoutSeconds * 1000`（与旧 acp-idle-monitor 的回收语义对齐），
- *     maxRetries 取 3（断连后至多自动重试 3 次，之后保持 disconnected 等待宿主重连）
+ *     `config.acpIdleTimeoutSeconds * 1000`（与旧 acp-idle-monitor 的回收语义对齐）；
+ *     E-P2.2 方案 A：server 端不做自动重连，断连即停止，重连由远端 Machine 驱动
  *   - 把现有 {@link WsConnection} 适配为 {@link AgentNodeSocket}：send 帧格式与
  *     `acp-ws-handler.sendToWs` 一致（JSON.stringify + "\n"），close 保证最终触发
  *     onClose（AgentNode 依赖该回调完成 closing → closed 确认）
  *   - 事件分发：WsConnection 接口本身没有 open/close/error 事件（route 层在
  *     onOpen/onClose 回调中驱动），断连时由 acp-ws-handler 显式调用
  *     {@link dispatchAgentNodeWsClose}，触发 AgentNode 的 `_handleDisconnected`
- *     （进入 disconnected 并调度自动重连）。open 事件无需分发：
+ *     （进入 disconnected 并停止重连尝试，等待机器主动重连）。open 事件无需分发：
  *     handleIncomingConnection 内部已把节点视为已打开。
  */
 
@@ -30,7 +30,6 @@ export function createAgentNodeService(): AgentNodeService {
   const idleTimeoutSeconds = Number.isFinite(config.acpIdleTimeoutSeconds) ? config.acpIdleTimeoutSeconds : 300;
   return new AgentNodeService({
     idleTimeoutMs: idleTimeoutSeconds * 1000,
-    maxRetries: 3,
   });
 }
 

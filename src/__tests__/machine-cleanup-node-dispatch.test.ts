@@ -54,10 +54,13 @@ afterEach(() => {
 
 describe("triggerMachineCleanupByMachineId 编排域节点通知", () => {
   // sweep 路径主验收：清理入口必须把 stale connected 节点纠正为 disconnected，
-  // ensureNode 不再放行 spawn 走死信道（E-P2.1）
+  // ensureNode 不再放行 spawn 走死信道（E-P2.1）。
+  // E-P2.2 方案 A：无引用节点断连即回收（断连即终态），先 ensureNode 占引用
+  // 以验证 disconnected 停留态。
   test("sweep 清理路径把 stale connected 节点纠正为 disconnected", async () => {
     const socket = new MockSocket();
     registeredNode = getAgentNodeService().handleIncomingConnection("e2p1-cleanup-m1", socket);
+    getAgentNodeService().ensureNode("e2p1-cleanup-m1");
     expect(registeredNode.status()).toBe("connected");
 
     const { triggerMachineCleanupByMachineId } = await import("../transport/acp-ws-handler");

@@ -11,11 +11,6 @@ import type { AgentNode } from "./agent-node";
 
 export type { AgentNodeStatus };
 
-/** 默认连接建立超时：10s。 */
-export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
-/** 默认自动重连间隔：1s。 */
-export const DEFAULT_RECONNECT_DELAY_MS = 1_000;
-
 /** 定时器抽象：允许测试注入手动调度器，避免依赖真实时钟。 */
 export interface TimerScheduler {
   /** 调度一个延迟任务，返回可传给 {@link clearTimeout} 的句柄。 */
@@ -57,19 +52,11 @@ export interface AgentNodeOptions {
   machineId: string;
   /** 初始 WS 信道。 */
   socket: AgentNodeSocket;
-  /** 连接建立超时（ms），默认 {@link DEFAULT_CONNECT_TIMEOUT_MS}。 */
-  connectTimeoutMs?: number;
-  /** 意外断连后的自动重连最大次数，默认 0（不重连）。 */
-  maxRetries?: number;
-  /** 自动重连间隔（ms），默认 {@link DEFAULT_RECONNECT_DELAY_MS}。 */
-  reconnectDelayMs?: number;
-  /** 定时器抽象，默认使用全局 setTimeout/clearTimeout。 */
-  scheduler?: TimerScheduler;
   /** 状态变化回调（含状态变化前后的值），供 AgentNodeService 做资源回收。 */
   onStatusChange?: (status: AgentNodeStatus, previous: AgentNodeStatus) => void;
   /**
-   * 自动重连停止回调：重试耗尽（保持 disconnected）或重连失败（回退 uninitialized）
-   * 时触发，节点此后不再自动恢复；宿主可据此回收无实例引用的节点。
+   * 自动重连停止回调（E-P2.2 方案 A：connected 断连或 connecting 失败时立即触发）。
+   * 节点此后不再自动恢复，等待远端 Machine 主动重连；宿主可据此回收无实例引用的节点。
    */
   onAutoReconnectStopped?: () => void;
 }
@@ -78,12 +65,6 @@ export interface AgentNodeOptions {
 export interface AgentNodeServiceConfig {
   /** 引用计数归零后等待多久触发节点关闭回收（ms）。 */
   idleTimeoutMs: number;
-  /** 每个 AgentNode 的自动重连最大次数（创建节点时透传给 AgentNode）。 */
-  maxRetries: number;
-  /** 自动重连间隔（ms），默认 {@link DEFAULT_RECONNECT_DELAY_MS}。 */
-  reconnectDelayMs?: number;
-  /** 连接建立超时（ms），默认 {@link DEFAULT_CONNECT_TIMEOUT_MS}。 */
-  connectTimeoutMs?: number;
   /** 定时器抽象，默认使用全局 setTimeout/clearTimeout。 */
   scheduler?: TimerScheduler;
 }

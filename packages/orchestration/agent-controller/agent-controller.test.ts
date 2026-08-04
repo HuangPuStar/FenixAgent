@@ -150,7 +150,7 @@ class MockScheduler implements TimerScheduler {
 /** 构建一个已 connected 的 AgentNode（真实 FSM + Mock WS 信道）。 */
 function createConnectedNode(machineId: string): { node: AgentNode; socket: MockSocket } {
   const socket = new MockSocket();
-  const node = new AgentNode({ machineId, socket, maxRetries: 0 });
+  const node = new AgentNode({ machineId, socket });
   node._handleConnected();
   return { node, socket };
 }
@@ -221,8 +221,6 @@ function setupWithRealNodeService(scheduler: TimerScheduler): {
 } {
   const service = new AgentNodeService({
     idleTimeoutMs: 100,
-    maxRetries: 0,
-    reconnectDelayMs: 10,
     scheduler,
   });
   const socket = new MockSocket();

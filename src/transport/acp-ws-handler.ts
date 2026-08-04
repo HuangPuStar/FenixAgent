@@ -365,7 +365,8 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     return;
   }
 
-  // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并调度自动重连）。
+  // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并停止
+  // 重连尝试，等待机器主动重连；E-P2.2 方案 A）。
   // 必须放在快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用为
   // connected，旧 socket 的 close 事件不应把节点打断为 disconnected。
   dispatchAgentNodeWsClose(entry.ws);

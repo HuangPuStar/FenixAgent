@@ -85,17 +85,21 @@ describe("agent-node-bridge", () => {
   });
 
   // sweep 清理路径无 WsConnection 可引用，dispatchAgentNodeDisconnect 按 machineId
-  // 通知：connected 节点必须进入 disconnected（与 dispatchAgentNodeWsClose 等效）
+  // 通知：connected 节点必须进入 disconnected（与 dispatchAgentNodeWsClose 等效）。
+  // E-P2.2 方案 A：无引用节点断连即回收（断连即终态），先 ensureNode 占引用
+  // 以验证 disconnected 停留态；无引用断连即回收的路径由 agent-node-service 测试覆盖。
   test("dispatchAgentNodeDisconnect：connected 节点进入 disconnected", () => {
     const service = getAgentNodeService();
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("e2p1-bridge-m1", socket);
+    service.ensureNode("e2p1-bridge-m1");
     expect(node.status()).toBe("connected");
 
     dispatchAgentNodeDisconnect("e2p1-bridge-m1");
     expect(node.status()).toBe("disconnected");
 
     // 收尾：断开态 close 只推进 FSM，不触碰 WS 信道
+    service.releaseNode("e2p1-bridge-m1");
     node.close();
   });
 

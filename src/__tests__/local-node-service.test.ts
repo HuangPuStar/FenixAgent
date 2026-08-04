@@ -38,7 +38,7 @@ class FakeNodeService implements AgentNodeServicePort {
 
   ensureNode(machineId: string): AgentNode {
     this.ensureCalls.push(machineId);
-    const node = new AgentNode({ machineId, socket: new MockSocket(), maxRetries: 0 });
+    const node = new AgentNode({ machineId, socket: new MockSocket() });
     node._handleConnected();
     return node;
   }

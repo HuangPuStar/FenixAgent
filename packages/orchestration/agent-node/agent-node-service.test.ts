@@ -93,14 +93,11 @@ class MockScheduler implements TimerScheduler {
   }
 }
 
-function createNode(socket: AgentNodeSocket, scheduler: MockScheduler, maxRetries = 3): AgentNode {
+function createNode(socket: AgentNodeSocket, options?: { onAutoReconnectStopped?: () => void }): AgentNode {
   return new AgentNode({
     machineId: "m1",
     socket,
-    scheduler,
-    maxRetries,
-    reconnectDelayMs: 10,
-    connectTimeoutMs: 100,
+    ...options,
   });
 }
 
@@ -120,46 +117,56 @@ describe("AgentNodeFsm", () => {
     expect(() => fsm.transition("open")).toThrow(IllegalStateTransitionError);
   });
 
-  test("合法转换：uninitialized → connecting → connected → disconnected → connecting 全链路", () => {
+  // E-P2.2 方案 A：disconnected 不接受 connect（server 不自动重连），
+  // 仅接受机器新连接到达时的 open 被动恢复
+  test("合法转换：uninitialized → connecting → connected → disconnected → open 恢复全链路", () => {
     const fsm = new AgentNodeFsm();
     expect(fsm.transition("connect")).toBe("connecting");
     expect(fsm.transition("open")).toBe("connected");
     expect(fsm.transition("disconnect")).toBe("disconnected");
-    expect(fsm.transition("connect")).toBe("connecting");
+    expect(fsm.transition("open")).toBe("connected");
+  });
+
+  test("非法转换：disconnected 状态调用 connect() 抛 IllegalStateTransitionError（方案 A 无自动重连）", () => {
+    const fsm = new AgentNodeFsm("disconnected");
+    expect(() => fsm.transition("connect")).toThrow(IllegalStateTransitionError);
   });
 });
 
 describe("AgentNode", () => {
   test("正常创建：WS 打开后状态为 connected，send 可发送数据", () => {
     const socket = new MockSocket();
-    const node = createNode(socket, new MockScheduler());
+    const node = createNode(socket);
     node._handleConnected();
     expect(node.status()).toBe("connected");
     node.send({ type: "ping" });
     expect(socket.sent).toEqual([{ type: "ping" }]);
   });
 
-  test("状态转换：意外断连进入 disconnected 并自动重连回到 connected", () => {
-    const scheduler = new MockScheduler();
+  // E-P2.2 方案 A：server 端不做自动重连，断连即停留在 disconnected 并通知宿主；
+  // 恢复完全由远端 Machine 驱动（_attachSocket 新信道 + open）
+  test("断连后不自动重连：保持 disconnected，机器新连接（attach + open）恢复 connected", () => {
+    let stopped = 0;
     const socket = new MockSocket();
-    const node = createNode(socket, scheduler);
+    const node = createNode(socket, { onAutoReconnectStopped: () => (stopped += 1) });
     node._handleConnected();
     expect(node.status()).toBe("connected");
 
     socket.simulateClose();
     expect(node.status()).toBe("disconnected");
-    expect(scheduler.pendingCount()).toBe(1); // 已调度自动重连
+    expect(stopped).toBe(1); // 断连立即触发自动重连停止信号
+    expect(node.status()).toBe("disconnected"); // 不再有任何定时器驱动状态
 
-    scheduler.fireNext(); // 重连任务触发 → connecting
-    expect(node.status()).toBe("connecting");
-    socket.simulateOpen(); // 新连接建立 → connected
+    const socket2 = new MockSocket();
+    node._attachSocket(socket2); // 机器新连接到达（handleIncomingConnection 复用分支）
+    node._handleConnected();
     expect(node.status()).toBe("connected");
-    expect(scheduler.pendingCount()).toBe(0); // 连接超时定时器已清理
+    expect(socket.closed).toBe(true); // 旧信道被关闭
   });
 
   test("主动关闭：connected → close() → closing → closed（等待 WS close 确认）", () => {
     const socket = new DeferredCloseSocket();
-    const node = createNode(socket, new MockScheduler());
+    const node = createNode(socket);
     node._handleConnected();
     node.close();
     expect(node.status()).toBe("closing");
@@ -169,90 +176,29 @@ describe("AgentNode", () => {
     expect(node.status()).toBe("closed");
   });
 
-  test("重连期间：disconnected 状态下 send() 抛 AgentNodeUnavailableError", () => {
+  test("断连期间：disconnected 状态下 send() 抛 AgentNodeUnavailableError", () => {
     const socket = new MockSocket();
-    const node = createNode(socket, new MockScheduler());
+    const node = createNode(socket);
     node._handleConnected();
     socket.simulateClose();
     expect(node.status()).toBe("disconnected");
     expect(() => node.send({ type: "pong" })).toThrow(AgentNodeUnavailableError);
   });
 
-  test("连接失败：connecting 时 error 回退 uninitialized，不再调度重连", () => {
-    const scheduler = new MockScheduler();
-    const socket = new MockSocket();
-    const node = createNode(socket, scheduler);
-    node._handleConnected();
-    socket.simulateClose(); // → disconnected + 调度重连
-    scheduler.fireNext(); // → connecting
-    expect(node.status()).toBe("connecting");
-
-    socket.simulateError(); // 重连失败
-    expect(node.status()).toBe("uninitialized");
-    expect(scheduler.pendingCount()).toBe(0);
-  });
-
-  test("连接超时：connecting 超过超时阈值后回退 uninitialized", () => {
-    const scheduler = new MockScheduler();
-    const socket = new MockSocket();
-    const node = createNode(socket, scheduler);
-    node._handleConnected();
-    socket.simulateClose();
-    scheduler.fireNext(); // → connecting，并启动连接超时定时器
-    expect(node.status()).toBe("connecting");
-
-    scheduler.fireNext(); // 连接超时任务
-    expect(node.status()).toBe("uninitialized");
-  });
-
-  test("重试耗尽：maxRetries=0 首次断连即触发 onAutoReconnectStopped，不再调度重连", () => {
-    const scheduler = new MockScheduler();
+  // E-P2.2 方案 A：断连即触发 onAutoReconnectStopped，不再有重试额度 / 定时器
+  test("断连立即触发 onAutoReconnectStopped（无重试配置）", () => {
     let stopped = 0;
     const socket = new MockSocket();
-    const node = new AgentNode({
-      machineId: "m1",
-      socket,
-      scheduler,
-      maxRetries: 0,
-      reconnectDelayMs: 10,
-      connectTimeoutMs: 100,
+    const node = createNode(socket, {
       onAutoReconnectStopped: () => {
         stopped += 1;
       },
     });
     node._handleConnected();
 
-    socket.simulateClose(); // 断连：重试额度为 0，立即耗尽
+    socket.simulateClose(); // 断连：无重试，立即停止
     expect(stopped).toBe(1);
     expect(node.status()).toBe("disconnected");
-    expect(scheduler.pendingCount()).toBe(0); // 不再调度重连
-  });
-
-  test("重连失败：connecting 失败回退 uninitialized 时触发 onAutoReconnectStopped", () => {
-    const scheduler = new MockScheduler();
-    let stopped = 0;
-    const socket = new MockSocket();
-    const node = new AgentNode({
-      machineId: "m1",
-      socket,
-      scheduler,
-      maxRetries: 3,
-      reconnectDelayMs: 10,
-      connectTimeoutMs: 100,
-      onAutoReconnectStopped: () => {
-        stopped += 1;
-      },
-    });
-    node._handleConnected();
-
-    socket.simulateClose(); // 断连 → 调度重连
-    scheduler.fireNext(); // → connecting
-    expect(node.status()).toBe("connecting");
-
-    socket.simulateError(); // 重连失败 → uninitialized，自动重连停止
-    expect(stopped).toBe(1);
-    expect(node.status()).toBe("uninitialized");
-    expect(scheduler.pendingCount()).toBe(0);
   });
 });
 
@@ -260,9 +206,6 @@ describe("AgentNodeService", () => {
   function createService(scheduler: MockScheduler): AgentNodeService {
     return new AgentNodeService({
       idleTimeoutMs: 100,
-      maxRetries: 3,
-      reconnectDelayMs: 10,
-      connectTimeoutMs: 100,
       scheduler,
     });
   }
@@ -276,7 +219,9 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(1);
   });
 
-  test("未引用 connected 节点：空闲超时后保留（生命周期跟随 WS），断连耗尽后才回收", () => {
+  // E-P2.2 方案 A：机器断连（无引用）→ onAutoReconnectStopped 立即回收，不再
+  // 等待空转定时器；connected 节点仍由空闲回收保留（E-P1.1 回归）
+  test("未引用 connected 节点：空闲超时后保留（生命周期跟随 WS），断连立即回收", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket = new MockSocket();
@@ -290,10 +235,8 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(1);
     expect(socket.closed).toBe(false);
 
-    // 机器断连 → 自动重连失败耗尽 → 节点回收（非 connected 节点 close 不触碰 WS）
-    socket.simulateClose(); // → disconnected + 调度重连
-    scheduler.fireNext(); // 重连任务 → connecting
-    socket.simulateError(); // 重连失败 → uninitialized → onAutoReconnectStopped → close
+    // 机器断连 → 无引用 → 立即关闭并移出（断连态 close 不触碰 WS）
+    socket.simulateClose();
     expect(node.status()).toBe("closed");
     expect(service.activeCount()).toBe(0);
     expect(socket.closed).toBe(false); // 断连态回收只推进 FSM，不调用 socket.close()
@@ -306,11 +249,12 @@ describe("AgentNodeService", () => {
 
   // 断连节点不得放行：机器断连（disconnected）后 ensureNode 必须抛
   // AgentNodeUnavailableError，否则 spawn 会走死信道在 core 侧落成 NODE_OFFLINE(500)
-  // （A-P1.2 回归点）
+  // （A-P1.2 回归点）；先占住引用以观察 disconnected 保留态（无引用时断连即回收）
   test("ensureNode 拒绝 disconnected 节点并抛 AgentNodeUnavailableError", () => {
     const service = createService(new MockScheduler());
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1：断连后节点保留
     expect(node.status()).toBe("connected");
 
     socket.simulateClose(); // 机器断连 → disconnected
@@ -318,34 +262,9 @@ describe("AgentNodeService", () => {
     expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
   });
 
-  // 重连窗口内 connecting 节点同样拒绝：FSM 空转重连期间 WS 未真正可用，放行必然失败。
-  // 先 ensureNode 占住引用：否则无引用空闲回收任务先于重连任务触发，会把节点 close
-  test("ensureNode 拒绝 connecting 节点", () => {
-    const scheduler = new MockScheduler();
-    const service = createService(scheduler);
-    const socket = new MockSocket();
-    const node = service.handleIncomingConnection("m1", socket);
-    service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
-    socket.simulateClose(); // → disconnected + 调度重连
-    scheduler.fireNext(); // 重连任务 → connecting
-    expect(node.status()).toBe("connecting");
-    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
-  });
-
-  // 重连失败回退 uninitialized 的节点同样拒绝（与 disconnected 同语义，覆盖 E-P2.2
-  // 的 spawn 放行半：自动重连停止后节点不可承载新实例）
-  test("ensureNode 拒绝 uninitialized 节点", () => {
-    const scheduler = new MockScheduler();
-    const service = createService(scheduler);
-    const socket = new MockSocket();
-    const node = service.handleIncomingConnection("m1", socket);
-    service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
-    socket.simulateClose(); // → disconnected
-    scheduler.fireNext(); // → connecting
-    socket.simulateError(); // 重连失败 → uninitialized
-    expect(node.status()).toBe("uninitialized");
-    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
-  });
+  // E-P2.2 方案 A：连接建立后节点只可能处于 connected / disconnected（connecting 为
+  // 瞬态、uninitialized 仅存在于构造时），disconnected 拒绝测试已覆盖非 connected
+  // 放行拒绝语义；connecting/uninitialized 的 FSM 转换仍由 AgentNodeFsm 单测覆盖。
 
   // 错误 message 不得包含 machineId：message 会经 errorPlugin 原样进入响应体，
   // 泄漏 machineId 违反「对外错误不得泄漏敏感信息」约束
@@ -357,12 +276,13 @@ describe("AgentNodeService", () => {
     expect(() => service.ensureNode("m1")).toThrow(expect.not.stringContaining("m1"));
   });
 
-  // 机器重连后恢复放行：断连 → handleIncomingConnection 复用节点 → ensureNode 成功
+  // 机器重连后恢复放行：断连（有引用保留）→ handleIncomingConnection 复用节点 → ensureNode 成功
   // （重连语义不变：节点生命周期跟随机器 WS，重连即恢复）
   test("断连后机器重连（节点复用）ensureNode 恢复放行", () => {
     const service = createService(new MockScheduler());
     const socket1 = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket1);
+    service.ensureNode("m1"); // 引用 +1：断连后节点保留等待重连
     socket1.simulateClose(); // 断连
     expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
 
@@ -381,12 +301,11 @@ describe("AgentNodeService", () => {
     const socket = new MockSocket();
     service.handleIncomingConnection("m1", socket);
     service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
-    socket.simulateClose(); // 断连 → 调度重连
+    socket.simulateClose(); // 断连（有引用 → 节点保留，onAutoReconnectStopped 不关闭）
 
     expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError); // 拒绝路径不得再 +1
 
     service.releaseNode("m1"); // 归还唯一引用 → 计数归零 → 启动空闲回收
-    scheduler.fireNext(); // 重连任务 → connecting
     scheduler.fireNext(); // 空闲回收 → 非 connected 节点关闭并移出管理集合
     expect(service.activeCount()).toBe(0);
     expect(socket.closed).toBe(false); // 断连态回收只推进 FSM，不调用 socket.close()
@@ -438,18 +357,16 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(1);
   });
 
-  test("自动重连停止：仍有引用时节点保留，引用归零后由空闲回收关闭", () => {
+  // E-P2.2 方案 A：断连（有引用）即停止重连并保留节点，引用归零后由空闲回收关闭
+  test("断连停止重连：仍有引用时节点保留，引用归零后由空闲回收关闭", () => {
     const scheduler = new MockScheduler();
-    const service = createService(scheduler); // maxRetries: 3
+    const service = createService(scheduler);
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
     service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
 
-    // 断连 → 重连 → 重连失败（connecting error 回退 uninitialized）→ 自动重连停止
-    socket.simulateClose();
-    scheduler.fireNext(); // 重连任务 → connecting
-    socket.simulateError(); // 重连失败
-    expect(node.status()).toBe("uninitialized");
+    socket.simulateClose(); // 断连 → onAutoReconnectStopped（有引用 → 节点保留）
+    expect(node.status()).toBe("disconnected");
     expect(service.activeCount()).toBe(1); // 仍有引用，节点保留
 
     // 引用归零 → 空闲回收关闭节点并移出管理集合
@@ -473,21 +390,21 @@ describe("AgentNodeService", () => {
     expect(node2.status()).toBe("connected");
   });
 
-  test("回收后重建：已断连节点经空闲回收移出管理，新连接创建全新节点", () => {
+  test("回收后重建：断连（无引用）即回收移出管理，新连接创建全新节点", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket1 = new MockSocket();
     const node1 = service.handleIncomingConnection("m1", socket1);
     service.ensureNode("m1");
-    service.releaseNode("m1"); // 引用归零 → 启动空闲回收（任务先于重连任务注册）
+    service.releaseNode("m1"); // 引用归零 → 启动空闲回收
 
-    // 机器断连：节点进入 disconnected 并调度自动重连；空闲超时先触发，
-    // 节点非 connected → close 直接推进 closed（不触碰 WS 信道）
+    // 机器断连且无引用：onAutoReconnectStopped 立即关闭节点（不触碰 WS 信道），
+    // 无需等待空闲超时；closed 后移出管理集合并取消空闲定时器
     socket1.simulateClose();
-    scheduler.fireNext(); // 空闲回收 → node1 closed
     expect(node1.status()).toBe("closed");
     expect(service.activeCount()).toBe(0);
     expect(socket1.closed).toBe(false); // 断连态回收不调用 socket.close()
+    expect(scheduler.pendingCount()).toBe(0); // 节点移除后空闲定时器已取消
 
     const socket2 = new MockSocket();
     const node2 = service.handleIncomingConnection("m1", socket2);
@@ -501,25 +418,25 @@ describe("AgentNodeService.notifyNodeDisconnected", () => {
   function createService(scheduler: MockScheduler): AgentNodeService {
     return new AgentNodeService({
       idleTimeoutMs: 100,
-      maxRetries: 3,
-      reconnectDelayMs: 10,
-      connectTimeoutMs: 100,
       scheduler,
     });
   }
 
   // 宿主 sweep 清理路径无 entry.ws 可引用，只能按 machineId 通知断连：
-  // connected 节点必须进入 disconnected 并调度自动重连（与 WS close 事件同语义）
-  test("notifyNodeDisconnected：connected 节点进入 disconnected 并调度自动重连", () => {
+  // connected 节点必须进入 disconnected 且不再调度任何定时器（E-P2.2 方案 A，
+  // 与 WS close 事件同语义）；先占住引用以观察 disconnected 保留态（无引用时
+  // 断连会立即回收）
+  test("notifyNodeDisconnected：connected 节点进入 disconnected 且不调度定时器", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1：断连后节点保留（等待引用归零回收）
     expect(node.status()).toBe("connected");
 
     service.notifyNodeDisconnected("m1");
     expect(node.status()).toBe("disconnected");
-    expect(scheduler.pendingCount()).toBeGreaterThanOrEqual(1); // 自动重连已调度
+    expect(scheduler.pendingCount()).toBe(0); // 无自动重连定时器（方案 A）
   });
 
   // sweep 每 60s 巡检，服务重启后 DB 残留 online 的 machine 未必有节点：
@@ -531,12 +448,13 @@ describe("AgentNodeService.notifyNodeDisconnected", () => {
   });
 
   // sweep 与 WS close 事件可能并发触发通知：已断连节点重复通知必须幂等，
-  // 不得抛 IllegalStateTransitionError
+  // 不得抛 IllegalStateTransitionError（先占住引用使断连后节点保留）
   test("notifyNodeDisconnected：已断连节点重复通知幂等", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1：断连后节点保留
     socket.simulateClose(); // WS close 先到达 → disconnected
     expect(node.status()).toBe("disconnected");
 
@@ -563,9 +481,11 @@ describe("AgentNodeService.notifyNodeDisconnected", () => {
   test("notifyNodeDisconnected 后 ensureNode 拒绝", () => {
     const service = createService(new MockScheduler());
     const socket = new MockSocket();
-    service.handleIncomingConnection("m1", socket);
+    const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1：sweep 通知后节点保留但不得放行
 
     service.notifyNodeDisconnected("m1");
+    expect(node.status()).toBe("disconnected");
     expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
     expect(() => service.ensureNode("m1")).toThrow(expect.not.stringContaining("m1"));
   });
