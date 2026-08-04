@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, PlanEntry, ToolCallContent } from "../acp/types";
+import type { PermissionOption, PlanEntry, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";

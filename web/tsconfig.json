@@ -19,7 +19,7 @@
     "paths": {
       "@/*": ["./*"],
       "@server/*": ["../../src/*"],
-      "@fenix/acp-server": ["../packages/acp-server/src/index.ts"]
+      "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"]
     }
   },
   "include": ["src", "components"],

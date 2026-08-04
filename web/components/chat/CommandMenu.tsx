@@ -1,7 +1,7 @@
+import type { AvailableCommand } from "@fenix/chat-channel";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AvailableCommand } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";

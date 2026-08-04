@@ -1,10 +1,10 @@
 /**
  * 项目专属 Yjs WS 适配层。
  * URL 构造逻辑保留在此文件（依赖浏览器 API）；
- * WS 连接/重连/消息解析委托给 @fenix/acp-server 的同构实现。
+ * WS 连接/重连/消息解析委托给 @fenix/chat-channel 的同构实现。
  */
 
-import { createYjsWsClient, type YjsWsClient, type YjsWsOptions, type YjsWsState } from "@fenix/acp-server";
+import { createYjsWsClient, type YjsWsClient, type YjsWsOptions, type YjsWsState } from "@fenix/chat-channel";
 
 /** Re-export 类型，保持上游调用方无需改动 */
 export type { YjsWsState };

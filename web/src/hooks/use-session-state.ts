@@ -1,199 +1,237 @@
 // web/src/hooks/use-session-state.ts
+// 订阅两份 Y.Doc 派生 SessionStateSnapshot（展示形状保持，数据来源切到新 schema）：
+// - Chat Doc（chat:{rcsSessionId}）= 消息时间线：entries/blocks/toolCalls
+// - Session Doc（session:{rcsSessionId}）= 会话元信息：session.activeTurn*/agent
+//
+// 职责错位纠正后时间线在 Chat Doc；applyUpdate 按 docName 前缀路由到内部 store。
 
-import type {
-  ArtifactRef,
-  LoadingState,
-  SessionStateSnapshot,
-  SessionStatus,
-  StructuredMessage,
-  ToolRun,
-} from "@fenix/acp-server";
-import { createYjsStore, stableKey } from "@fenix/acp-server";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import type { SessionStateSnapshot, SessionStatus, TurnStatus } from "@fenix/chat-channel";
+import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
+import { chatDocEntriesToStructuredMessages } from "../lib/structured-to-thread";
 
-/** 从 Y.Doc 同步读取 SessionStateSnapshot（纯函数，无副作用，不捕获外部 key） */
-function computeSessionSnapshot(ydoc: Y.Doc): SessionStateSnapshot {
-  const meta = ydoc.getMap("meta");
-  const messages = ydoc.getArray("messages");
-  const streaming = ydoc.getMap("streaming");
-  const tools = ydoc.getMap("tools") as Y.Map<Y.Map<unknown>>;
-  const artifacts = ydoc.getArray("artifacts");
-  const structuredMessagesArray = ydoc.getArray("structuredMessages") as Y.Array<Y.Map<unknown>>;
+// ── Chat Doc 派生：时间线（消息/工具/资源）──
 
-  const rawLoading = meta.get("loading") as Record<string, unknown> | null;
+interface SessionTimelineSnapshot {
+  structuredMessages: SessionStateSnapshot["structuredMessages"];
+  streaming: SessionStateSnapshot["streaming"];
+  tools: SessionStateSnapshot["tools"];
+  artifacts: SessionStateSnapshot["artifacts"];
+  messages: SessionStateSnapshot["messages"];
+}
 
-  return {
-    acpSessionId: (meta.get("acpSessionId") as string) || "",
-    status: (meta.get("status") as SessionStatus) || "idle",
-    loading: rawLoading
-      ? {
-          kind: rawLoading.kind as LoadingState["kind"],
-          label: rawLoading.label as string | undefined,
-          since: rawLoading.since as number,
-        }
-      : null,
-    messages: (messages.toArray() as Y.Map<unknown>[]).map((m) => ({
-      role: (m.get("role") as "user" | "assistant") || "assistant",
-      content: (m.get("content") as string) || "",
-      seq: (m.get("seq") as number) || 0,
-      ts: (m.get("ts") as number) || 0,
-    })),
-    streaming: streaming.size
-      ? {
-          text: (streaming.get("text") as string) || "",
-          reasoning: (streaming.get("reasoning") as string) || "",
-        }
-      : null,
-    tools: new Map(
-      Array.from(tools.entries()).map(([k, v]) => [
-        k,
-        {
-          name: (v.get("name") as string) || "",
-          status: (v.get("status") as ToolRun["status"]) || "running",
-          input: v.get("input"),
-          output: v.get("output"),
-          startedAt: (v.get("startedAt") as number) || 0,
-        },
-      ]),
-    ),
-    artifacts: (artifacts.toArray() as Y.Map<unknown>[]).map((a) => ({
-      kind: (a.get("kind") as ArtifactRef["kind"]) || "url",
-      url: (a.get("url") as string) || "",
-      title: (a.get("title") as string) || "",
-      seq: (a.get("seq") as number) || 0,
-    })),
-    structuredMessages: (structuredMessagesArray.toArray() as Y.Map<unknown>[])
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: returns undefined for unknown types, filtered by .filter(Boolean)
-      .map((m) => {
-        const t = m.get("type") as string;
-        if (t === "assistant_message") {
-          const rawChunks = (m.get("chunks") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "assistant_message" as const,
-            id: (m.get("id") as string) || "",
-            chunks: rawChunks.map((c) => ({
-              type: (c.get("type") as "thought" | "message") || "message",
-              text: (c.get("text") as string) || "",
-            })),
-            seq: (m.get("seq") as number) || 0,
-            ts: (m.get("ts") as number) || 0,
-          } as StructuredMessage;
-        }
-        if (t === "tool_call") {
-          const rawContent = (m.get("content") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "tool_call" as const,
-            id: (m.get("id") as string) || "",
-            title: (m.get("title") as string) || "",
-            status: (m.get("status") as string) || "running",
-            content: rawContent.map((c) => ({
-              type: (c.get("type") as string) || "content",
-              content: c.get("content") as Record<string, unknown> | undefined,
-              path: c.get("path") as string | undefined,
-            })),
-            rawInput: m.get("rawInput") as Record<string, unknown> | undefined,
-            rawOutput: m.get("rawOutput") as Record<string, unknown> | undefined,
-          } as StructuredMessage;
-        }
-        if (t === "user_message") {
-          return {
-            type: "user_message" as const,
-            id: (m.get("id") as string) || "",
-            content: (m.get("content") as string) || "",
-            seq: (m.get("seq") as number) || 0,
-            ts: (m.get("ts") as number) || 0,
-          } as StructuredMessage;
-        }
-        if (t === "plan") {
-          const rawEntries = (m.get("entries") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "plan" as const,
-            id: (m.get("id") as string) || "",
-            entries: rawEntries.map((e) => ({
-              content: (e.get("content") as string) || "",
-              priority: (e.get("priority") as "high" | "medium" | "low") || "medium",
-              status: (e.get("status") as "pending" | "in_progress" | "completed") || "pending",
-            })),
-          } as StructuredMessage;
-        }
-        return;
+/** 从 Chat Doc 派生时间线快照（纯函数，无副作用） */
+function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
+  const root = ydoc.getMap("root");
+  const order = (root.get("entryOrder") as Y.Array<string> | undefined) ?? new Y.Array<string>();
+  const entries = (root.get("entries") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  const toolCalls = (root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+
+  const structuredMessages = chatDocEntriesToStructuredMessages(ydoc);
+
+  // messages：按时间线顺序的扁平消息（含 user/assistant 文本）
+  const messages: SessionStateSnapshot["messages"] = [];
+  let streaming: SessionStateSnapshot["streaming"] = null;
+
+  for (const entryId of order.toArray()) {
+    const entry = entries.get(entryId);
+    if (!entry) continue;
+    const kind = entry.get("kind") as string | undefined;
+    const role = entry.get("role") as string | undefined;
+    const status = entry.get("status") as string | undefined;
+    const blocks = (entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+    const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
+    if (kind !== "message") continue;
+
+    const text = blockOrder
+      .map((blockId) => {
+        const block = blocks.get(blockId);
+        const blockType = block?.get("type");
+        const blockText = block?.get("text");
+        return blockType === "text" && blockText instanceof Y.Text ? blockText.toString() : "";
       })
-      .filter(Boolean) as StructuredMessage[],
-  };
-}
+      .filter(Boolean)
+      .join("\n");
 
-/**
- * Session 领域快照去重 key — 覆盖全部 UI 字段（含 messages content、
- * tool_call output/status、streaming、permission、loading 等）。
- * 使用 stableKey 对整个快照做稳定序列化，任意 UI 字段变化都会触发通知。
- */
-function getSessionSnapshotKey(s: SessionStateSnapshot): string {
-  return stableKey(s);
-}
+    messages.push({
+      role: (role === "user" ? "user" : "assistant") as "user" | "assistant",
+      content: text,
+      seq: messages.length,
+      ts: entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now(),
+    });
 
-function getInitialSessionSnapshot(rcsSessionId: string): SessionStateSnapshot {
-  return {
-    acpSessionId: rcsSessionId,
-    status: "idle",
-    loading: null,
-    messages: [],
-    streaming: null,
-    tools: new Map(),
-    artifacts: [],
-    structuredMessages: [],
-  };
-}
-
-/**
- * 订阅指定 ACP Session 的状态。
- *
- * 使用 useSyncExternalStore + createYjsStore 替代 useState + useEffect + Y.Doc.observe 模式：
- * - getSnapshot 在渲染期间同步执行，消除"幽灵消息"的 stale frame 问题
- * - Y.Doc 的 update 事件统一监听所有变更
- * - rcsSessionId 变化时同步切换 Y.Doc（在渲染函数体内，非 useEffect）
- */
-export function useSessionState(rcsSessionId: string) {
-  // 1. 创建 store 实例（per-component-instance，通过 ref lazy init 保持稳定）
-  const storeRef = useRef<ReturnType<typeof createYjsStore<SessionStateSnapshot>> | null>(null);
-  if (!storeRef.current) {
-    storeRef.current = createYjsStore<SessionStateSnapshot>(
-      computeSessionSnapshot,
-      getInitialSessionSnapshot(rcsSessionId),
-      getSessionSnapshotKey,
-    );
+    // 流式状态：status === streaming 的 assistant entry 的 text/reasoning 增量
+    if (status === "streaming" && role === "assistant") {
+      let textChunk = "";
+      let reasoningChunk = "";
+      for (const blockId of blockOrder) {
+        const block = blocks.get(blockId);
+        if (!block) continue;
+        const blockType = block.get("type") as string | undefined;
+        const blockText = block.get("text");
+        const value = blockText instanceof Y.Text ? blockText.toString() : "";
+        if (blockType === "text") textChunk = value;
+        else if (blockType === "reasoning") reasoningChunk = value;
+      }
+      streaming = { text: textChunk, reasoning: reasoningChunk };
+    }
   }
-  const store = storeRef.current;
 
-  // 2. key 变化时同步切换 Y.Doc（在渲染期间，非 useEffect）
-  //    使用 prevKeyRef 做幂等保护：相同 key 重复切换是 no-op（Strict Mode / Concurrent Mode 安全）
-  //    注意：prevKeyRef 必须初始化为 null（非 rcsSessionId），否则首次渲染时 key 相等，switchDoc 被跳过
-  const prevKeyRef = useRef<string | null>(null);
-  if (prevKeyRef.current !== rcsSessionId) {
-    prevKeyRef.current = rcsSessionId;
-
-    store.switchDoc(rcsSessionId, () => {
-      const ydoc = new Y.Doc();
-      // meta.acpSessionId 字段名不变，但值变为 rcsSessionId（与 doc-factory 保持一致）
-      ydoc.getMap("meta").set("acpSessionId", rcsSessionId);
-      return { ydoc };
+  // tools：toolCalls 投影
+  const tools: SessionStateSnapshot["tools"] = new Map();
+  for (const [toolCallId, tool] of toolCalls.entries()) {
+    tools.set(toolCallId, {
+      name: (tool.get("name") as string) || "",
+      status: mapToolRunStatus((tool.get("status") as string) || "running"),
+      input: tool.get("arguments"),
+      output: tool.get("result"),
+      startedAt: 0,
     });
   }
 
-  // 3. useSyncExternalStore — subscribe 和 getSnapshot 是稳定引用
-  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  // artifacts：resource 块（受授权资源引用）
+  const artifacts: SessionStateSnapshot["artifacts"] = [];
+  for (const entryId of order.toArray()) {
+    const entry = entries.get(entryId);
+    if (!entry) continue;
+    const blocks = (entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+    for (const block of blocks.values()) {
+      if (block.get("type") !== "resource") continue;
+      const mediaType = (block.get("mediaType") as string) || "";
+      artifacts.push({
+        kind: mediaType.startsWith("image/") ? "image" : "file",
+        url: (block.get("resourceId") as string) || "",
+        title: (block.get("name") as string) || "",
+        seq: artifacts.length,
+      });
+    }
+  }
 
-  // 4. 组件卸载时清理 store
+  return { structuredMessages, streaming, tools, artifacts, messages };
+}
+
+/** ToolCallProjection 状态 → ToolRun 状态 */
+function mapToolRunStatus(status: string): "running" | "done" | "error" {
+  if (status === "completed") return "done";
+  if (status === "error") return "error";
+  if (status === "cancelled") return "done";
+  return "running";
+}
+
+// ── Session Doc 派生：元信息（turn 状态/agent）──
+
+interface SessionMetaSnapshot {
+  acpSessionId: string;
+  turnStatus: TurnStatus | null;
+  turnUpdatedAt: number | null;
+}
+
+function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
+  const root = ydoc.getMap("root");
+  const session = (root.get("session") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
+  const agent = (root.get("agent") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
+  return {
+    acpSessionId: (agent.get("acpSessionId") as string | undefined) ?? "",
+    turnStatus: (session.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
+    turnUpdatedAt: (session.get("activeTurnUpdatedAt") as number | undefined) ?? null,
+  };
+}
+
+/** Turn 状态机 → 展示状态（accepting→思考中、awaiting_permission→等待授权、running→回复中…） */
+function mapTurnStatus(turnStatus: TurnStatus | null): SessionStatus {
+  switch (turnStatus) {
+    case "accepting":
+      return "loading";
+    case "running":
+      return "responding";
+    case "awaiting_permission":
+      return "waiting-user";
+    case "cancelling":
+      return "loading";
+    case "completed":
+    case "cancelled":
+    case "interrupted":
+      return "done";
+    case "failed":
+      return "error";
+    default:
+      return "idle";
+  }
+}
+
+// ── 合并快照 ──
+
+function computeSessionSnapshot(timeline: SessionTimelineSnapshot, meta: SessionMetaSnapshot): SessionStateSnapshot {
+  const turnStatus = meta.turnStatus;
+  return {
+    acpSessionId: meta.acpSessionId,
+    status: mapTurnStatus(turnStatus),
+    loading:
+      turnStatus === "accepting" || turnStatus === "cancelling"
+        ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }
+        : null,
+    messages: timeline.messages,
+    structuredMessages: timeline.structuredMessages,
+    streaming: timeline.streaming,
+    tools: timeline.tools,
+    artifacts: timeline.artifacts,
+  };
+}
+
+/**
+ * 订阅指定 RCS 会话的会话状态（时间线 + turn 元信息）。
+ * 内部双 store（Chat Doc / Session Doc），applyUpdate(docName, data) 按前缀路由。
+ */
+export function useSessionState(rcsSessionId: string) {
+  const storeRef = useRef<{
+    chat: YjsStore<SessionTimelineSnapshot>;
+    meta: YjsStore<SessionMetaSnapshot>;
+  } | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = {
+      chat: createYjsStore<SessionTimelineSnapshot>(
+        computeTimelineSnapshot,
+        { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] },
+        (s) => stableKey(s),
+      ),
+      meta: createYjsStore<SessionMetaSnapshot>(
+        computeMetaSnapshot,
+        { acpSessionId: "", turnStatus: null, turnUpdatedAt: null },
+        (s) => stableKey(s),
+      ),
+    };
+  }
+  const stores = storeRef.current;
+
+  const prevKeyRef = useRef<string | null>(null);
+  if (prevKeyRef.current !== rcsSessionId) {
+    prevKeyRef.current = rcsSessionId;
+    for (const store of [stores.chat, stores.meta]) {
+      store.switchDoc(rcsSessionId, () => {
+        const ydoc = new Y.Doc();
+        return { ydoc };
+      });
+    }
+  }
+
+  const timeline = useSyncExternalStore(stores.chat.subscribe, stores.chat.getSnapshot);
+  const meta = useSyncExternalStore(stores.meta.subscribe, stores.meta.getSnapshot);
+  const state = useMemo(() => computeSessionSnapshot(timeline, meta), [timeline, meta]);
+
   useEffect(() => {
-    return () => store.destroy();
-  }, [store]);
+    return () => {
+      stores.chat.destroy();
+      stores.meta.destroy();
+    };
+  }, [stores]);
 
-  // 5. applyUpdate — 向后兼容
   const applyUpdate = useCallback(
-    (update: Uint8Array, sessionId?: string) => {
-      store.applyUpdate(update, sessionId);
+    (docName: string, data: Uint8Array) => {
+      if (docName.startsWith("chat:")) stores.chat.applyUpdate(data);
+      else stores.meta.applyUpdate(data);
     },
-    [store],
+    [stores],
   );
 
   return { state, applyUpdate };

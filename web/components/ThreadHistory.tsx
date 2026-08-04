@@ -1,7 +1,6 @@
-import type { SessionSummary } from "@fenix/acp-server";
+import type { AgentSessionInfo, SessionSummary } from "@fenix/chat-channel";
 import { Clock, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AgentSessionInfo } from "../src/acp/types";
 import { cn } from "../src/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";

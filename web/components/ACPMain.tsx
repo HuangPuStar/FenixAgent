@@ -1,9 +1,15 @@
-import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/acp-server";
+import type {
+  AgentSessionInfo,
+  AvailableCommand,
+  ChatStateSnapshot,
+  ContentBlock,
+  SessionMode,
+  SessionStateSnapshot,
+} from "@fenix/chat-channel";
 import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AgentSessionInfo, AvailableCommand, ContentBlock, SessionMode } from "../src/acp/types";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";

@@ -1,4 +1,4 @@
-import { createDeterministicRcsSessionId } from "@fenix/acp-server";
+import { type ActionAck, createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -104,12 +104,40 @@ export function ChatPanel({
   // 此时数据被应用到旧的 placeholder Y.Doc → 切换后被销毁 → 需要重放
   const sessionLatestUpdateRef = useRef<Map<string, Uint8Array>>(new Map());
 
+  // ── Action commandId（C3：幂等键，同会话唯一）──
+  // 同一 action 意图（action + 业务参数）重试复用同一 commandId；
+  // 收到 action_ack（committed/duplicate）后释放缓存，避免同意图的后续操作被服务端永久去重。
+  const commandIdCacheRef = useRef<Map<string, string>>(new Map());
+
+  const commandKey = useCallback((data: Record<string, unknown>): string => {
+    const { action, commandId: _ignored, ...rest } = data;
+    return `${String(action)}|${JSON.stringify(rest)}`;
+  }, []);
+
+  const handleActionAck = useCallback((ack: ActionAck) => {
+    for (const [key, id] of commandIdCacheRef.current) {
+      if (id === ack.commandId) commandIdCacheRef.current.delete(key);
+    }
+  }, []);
+
+  // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId
+  const sendViaWs = useCallback(
+    (data: Record<string, unknown>) => {
+      setErrorCode(null);
+      const key = commandKey(data);
+      const commandId = commandIdCacheRef.current.get(key) ?? crypto.randomUUID();
+      commandIdCacheRef.current.set(key, commandId);
+      yjsWsRef.current?.send({ ...data, commandId });
+    },
+    [commandKey],
+  );
+
   // 当 rcsSessionKey 切换后，重放宽存的 session 更新 (H1 fix)
   useEffect(() => {
     if (!rcsSessionKey) return;
     const cached = sessionLatestUpdateRef.current.get(rcsSessionKey);
     if (cached) {
-      sessionApplyUpdate(cached, rcsSessionKey);
+      sessionApplyUpdate(`session:${rcsSessionKey}`, cached);
     }
   }, [rcsSessionKey, sessionApplyUpdate]);
 
@@ -147,15 +175,14 @@ export function ChatPanel({
       url: relayUrl,
       onYjsUpdate: (docName, data) => {
         try {
-          if (docName.startsWith("chat:")) {
-            chatApplyUpdate(data);
-          } else if (docName.startsWith("session:")) {
+          // 两个 hook 各自内部按 docName 前缀路由到 Chat Doc / Session Doc store
+          chatApplyUpdate(docName, data);
+          if (docName.startsWith("session:")) {
             const sessId = docName.replace("session:", "");
             // 缓存最新更新（用于 acpSessionId 切换后重放）
             sessionLatestUpdateRef.current.set(sessId, data);
-            // sessionApplyUpdate 内部通过 Y.Doc meta 校验 sessionId，无需额外 guard
-            sessionApplyUpdate(data, sessId);
           }
+          sessionApplyUpdate(docName, data);
         } catch (err) {
           console.warn("[Yjs] Failed to apply update:", err);
         }
@@ -174,7 +201,7 @@ export function ChatPanel({
 
           // 发送 list_sessions 获取历史会话列表
           // 注意：RCS session ID (session_xxx) ≠ ACP session ID (ses_xxx)，不能直接 load_session
-          yjsWsRef.current?.send({ action: "list_sessions" });
+          sendViaWs({ action: "list_sessions" });
 
           // 自动创建会话逻辑已移至 ACPMain bootstrap（防抖 300ms），
           // 不再使用盲等定时器，避免与 list_sessions 响应产生竞态
@@ -184,6 +211,7 @@ export function ChatPanel({
           setConnectionState("disconnected");
         }
       },
+      onActionAck: handleActionAck,
     });
 
     yjsWs.connect();
@@ -193,14 +221,9 @@ export function ChatPanel({
       yjsWs.disconnect();
       yjsWsRef.current = null;
     };
-    // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复
-  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate, reconnectAttempt]);
-
-  // 发送简单 JSON 命令（替代 client 方法调用）
-  const sendViaWs = useCallback((data: Record<string, unknown>) => {
-    setErrorCode(null);
-    yjsWsRef.current?.send(data);
-  }, []);
+    // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
+    // sendViaWs / handleActionAck 为稳定 useCallback（依赖 commandKey/空），加入不会触发重建
+  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate, reconnectAttempt, sendViaWs, handleActionAck]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
   const derivedState = useMemo(() => {

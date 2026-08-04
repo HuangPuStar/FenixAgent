@@ -1,8 +1,8 @@
+import type { AgentSessionInfo } from "@fenix/chat-channel";
 import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, Search, Trash2, X } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AgentSessionInfo } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

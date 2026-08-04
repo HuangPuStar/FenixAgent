@@ -1,6 +1,6 @@
+import type { ModelInfo } from "@fenix/chat-channel";
 import { Check } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ModelInfo } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 

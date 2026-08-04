@@ -1,9 +1,17 @@
-import type { ChatStateSnapshot, SessionStateSnapshot, StructuredMessage } from "@fenix/acp-server";
+import type {
+  AvailableCommand,
+  ChatStateSnapshot,
+  ContentBlock,
+  ImageContent,
+  PromptUsage,
+  SessionMode,
+  SessionStateSnapshot,
+  StructuredMessage,
+} from "@fenix/chat-channel";
 import imageCompression from "browser-image-compression";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AvailableCommand, ContentBlock, ImageContent, PromptUsage, SessionMode } from "../src/acp/types";
 import { flushContext } from "../src/lib/context-queue";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";

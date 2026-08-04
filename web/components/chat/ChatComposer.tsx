@@ -1,9 +1,9 @@
+import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
 import imageCompression from "browser-image-compression";
 import { Paperclip, Send, Sparkles, Square } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AvailableCommand, SessionMode } from "../../src/acp/types";
 import { fileApi } from "../../src/api/files";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import type { TokenStats } from "../../src/lib/token-stats";
