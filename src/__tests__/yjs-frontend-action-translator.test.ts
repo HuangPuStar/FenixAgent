@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { translateSimpleAction } from "@fenix/acp-server";
+import { translateSimpleAction } from "@fenix/chat-channel";
 
 describe("translateSimpleAction", () => {
   // 每个已支持的前端 action 都应映射到既有的 ACP method 和参数形状
@@ -38,11 +38,6 @@ describe("translateSimpleAction", () => {
         method: "session/delete",
         params: { sessionId: "session-delete" },
       },
-      {
-        action: { action: "respond_permission", requestId: "request-1", optionId: "allow" },
-        method: "session/permission",
-        params: { requestId: "request-1", optionId: "allow" },
-      },
       { action: { action: "set_session_mode", modeId: "plan" }, method: "session/setMode", params: { modeId: "plan" } },
     ];
 
@@ -53,6 +48,35 @@ describe("translateSimpleAction", () => {
         params,
       });
     }
+  });
+
+  // respond_permission 必须以 JSON-RPC 响应形态发送（id = requestId，result 携带 outcome），
+  // 与 acp-link client.respondToPermission 对齐：acp-link server/dispatcher 只解析
+  // "result" in msg 的响应，旧 session/permission 请求形态会落 Method not found（C5 修复）
+  test("translates respond_permission into a JSON-RPC response with outcome", () => {
+    const workspacePath = "/workspace/project";
+    const allow = translateSimpleAction(
+      { action: "respond_permission", requestId: "request-1", optionId: "allow" },
+      workspacePath,
+      1,
+    );
+    expect(allow).toEqual({
+      jsonrpc: "2.0",
+      id: "request-1",
+      result: { outcome: { outcome: "selected", optionId: "allow" } },
+    });
+
+    // optionId 为空/缺省 → cancelled（前端 deny 约定传 null）
+    const deny = translateSimpleAction(
+      { action: "respond_permission", requestId: "request-1", optionId: null },
+      workspacePath,
+      1,
+    );
+    expect(deny).toEqual({
+      jsonrpc: "2.0",
+      id: "request-1",
+      result: { outcome: { outcome: "cancelled" } },
+    });
   });
 
   // 不认识的 action 必须保持原始对象透传，供现有调用方自行处理

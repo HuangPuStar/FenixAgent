@@ -20,7 +20,7 @@ import type { LaunchSpec } from "../launch-spec/types";
 import type { AgentNodeStatus } from "../types/domain";
 import type { AgentNodeEvent } from "./agent-node-fsm";
 import { AgentNodeFsm } from "./agent-node-fsm";
-import { type AgentNodeOptions, type AgentNodeSocket } from "./types";
+import type { AgentNodeOptions, AgentNodeSocket } from "./types";
 
 /** AgentNode 生命周期管理类。 */
 export class AgentNode {

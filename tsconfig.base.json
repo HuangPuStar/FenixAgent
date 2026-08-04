@@ -10,7 +10,7 @@
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
       "@fenix/remote-runtime": ["./packages/remote-runtime/src/index.ts"],
       "@fenix/logger": ["./packages/logger/src/index.ts"],
-      "@fenix/acp-server": ["./packages/acp-server/src/index.ts"]
+      "@fenix/chat-channel": ["./packages/chat-channel/src/index.ts"]
     },
     "target": "ES2022",
     "module": "ES2022",

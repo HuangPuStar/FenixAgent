@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractModelStateFromConfigOptions, extractModeStateFromConfigOptions } from "@fenix/acp-server";
+import { extractModelStateFromConfigOptions, extractModeStateFromConfigOptions } from "@fenix/chat-channel";
 
 describe("config options state extraction", () => {
   // group 内的模型选项应被拍平，并保留选中模型

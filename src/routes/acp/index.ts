@@ -1,3 +1,4 @@
+import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
@@ -7,6 +8,7 @@ import type { RequestAuthResult } from "../../plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
+import { getChatChannelController } from "../../services/chat-channel-bootstrap";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import {
@@ -14,7 +16,6 @@ import {
   handleExternalRelayMessage,
   handleExternalRelayOpen,
 } from "../../transport/relay/external-relay";
-import { createDeterministicRcsSessionId, lifecycle } from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB */
@@ -217,7 +218,14 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} sessionId=${sessionId ?? "none"}`);
 
       try {
-        await lifecycle.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, rcsSessionId, sessionId);
+        await getChatChannelController().gateway.handleOpen(
+          adaptWs(ws),
+          yjsWsId,
+          userId,
+          agentId,
+          rcsSessionId,
+          sessionId,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);
@@ -237,14 +245,14 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
         const text = typeof data === "string" ? data : JSON.stringify(data);
-        lifecycle.handleMessage(adaptWs(ws), yjsWsId, text);
+        getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, text);
       }
     },
     close(ws) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
-        lifecycle.handleClose(yjsWsId);
+        getChatChannelController().gateway.handleClose(yjsWsId);
       }
     },
   })

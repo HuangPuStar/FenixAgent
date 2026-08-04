@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { translateSimpleAction } from "../transport/relay/yjs-frontend";
+import { translateSimpleAction } from "@fenix/chat-channel";
 
 describe("translateSimpleAction", () => {
-  // translateSimpleAction 须继续从 yjs-frontend index 重新导出，供路由使用。
+  // translateSimpleAction 由 @fenix/chat-channel 包导出（C2 迁入），路由经包内 protocol 使用。
   test("exports translateSimpleAction", () => {
     expect(translateSimpleAction).toBeFunction();
   });

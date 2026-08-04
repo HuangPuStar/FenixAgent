@@ -1,6 +1,10 @@
+// src/services/chat-channel-error-classify.ts
+// Chat 域桥接层的 spawn 错误分类（C7 迁移自 src/transport/relay/yjs-frontend/offline-error.ts，
+// 随 yjs-frontend 目录删除收拢到桥接层；语义原样保留）。
+
 import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
-import { AppError } from "../../../errors";
+import { AppError } from "../errors";
 
 /**
  * YJS 前端 WS 打开阶段的 spawn 错误分类（机器离线 + 确定性永久失败）。
