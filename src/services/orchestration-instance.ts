@@ -19,19 +19,19 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "../config";
 import { NotFoundError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
-import { environmentOrchestrationRepo, environmentRepo } from "../repositories";
+import { environmentRepo } from "../repositories";
 import { setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
-import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
+import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
+import { LOCAL_DEFAULT_NODE_ID } from "./local-node-service";
 import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
 
 const _deps = {
   environmentRepo,
-  environmentOrchestrationRepo,
   // 内部函数引用：默认走真实 DB 构建；测试注入假实现以隔离 DB
   buildAgentLaunchSpecForCore,
   getOrchestrationController,
@@ -64,29 +64,28 @@ export interface SpawnInstanceViaControllerOptions {
 /**
  * 通过 core runtime 真正启动 Agent 进程。
  *
- * nodeId 三选一（对齐旧 services/instance.ts 的节点选择逻辑）：
- *   1. 环境解析出的 machineId（agent_config.machineId → config.defaultMachineId →
- *      local-default，由编排域 EnvironmentRepo 完成 fallback）；
- *   2. config.defaultMachineId（防御性兜底）；
- *   3. "local-default"（本地节点）。
- * 注意：环境无 machineId 且本地执行被禁用（RCS_DISABLE_LOCAL_EXECUTION）时，
- * controller.spawnInstance 会先抛 LaunchSpecBuildError，因此走到本函数时
- * 第 2/3 分支仅在配置缺失或本地执行场景下可达，保留以对齐旧逻辑。
+ * nodeId 直接取 `Instance.machineId`：它是 controller.spawnInstance 内部同一次
+ * environmentRepo.getEnvironment 解析出的 machineId（fallback 链 agent_config.machineId
+ * → config.defaultMachineId → local-default 由宿主 EnvironmentRepo 完成），与
+ * ensureNode 的节点获取严格同源。不得在本函数内重读 env 重新解析——否则与 controller
+ * 形成两次读取，期间 agent_config.machineId 被修改时，refCount 会记在旧节点而实例
+ * 实际启动在新节点（A-P2.2 TOCTOU）。
+ *
+ * local-default 分支：engineType 仅 local 执行时由上层传入（config.defaultEngineType）；
+ * remote 时不传，由 machine 端自行决定（对齐旧 services/instance.ts 的节点选择逻辑）。
  *
  * @param launchSpec 编排域 LaunchSpec（仅取 environmentId/userId，运行时字段从 DB 重建）
  * @param instanceId 编排域 Instance 的 instanceId（与 core 实例一一对应）
+ * @param machineId controller 已解析的节点标识（Instance.machineId 快照，禁止重读 env 推导）
  * @param extraEnv 调用方环境变量覆盖，透传给 buildAgentLaunchSpecForCore
  */
 export async function spawnInstanceViaCore(
   launchSpec: LaunchSpec,
   instanceId: string,
+  machineId: string,
   extraEnv?: Record<string, string>,
 ): Promise<void> {
-  const envData = await _deps.environmentOrchestrationRepo.getEnvironment(launchSpec.environmentId);
-  // machineId 输入依赖 environmentOrchestrationRepo 已做空串归一：空串视为未绑定并走
-  // fallback 链（agent config machineId → defaultMachineId → local-default），本行
-  // ?? 链只防御 getEnvironment 返回 null 的极端情况（记录在并发中被删除）。
-  const nodeId = envData?.machineId ?? config.defaultMachineId ?? "local-default";
+  const nodeId = machineId;
 
   const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(launchSpec, extraEnv);
 
@@ -127,37 +126,51 @@ export async function spawnInstanceViaController(
   // 平台级/用户级并发治理：与旧 spawnInstanceFromEnvironment 首行语义对齐，
   // 保证 RCS_AGENT_MAX_CONCURRENCY / RCS_USER_AGENT_MAX_CONCURRENCY 在
   // 编排域路径下仍然生效（controller 内部只检查环境级 maxConcurrency）。
-  assertAgentConcurrencyAvailable(userId, source);
-
-  const controller = _deps.getOrchestrationController();
-  const instance = await controller.spawnInstance(envId, userId);
-
+  // 检查与 in-flight 预留合并为同一同步段（beginSpawnReservation 内部无 await），
+  // 消除 "检查 → registerSupplement 注册" 窗口内并发不可见导致的同用户超发
+  // （A-P2.1）；finally 兜底释放保证失败路径不永久占用额度。
+  const reservation = beginSpawnReservation(userId, source);
   try {
-    // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
-    // I4 过渡期可接受：两次构建均为只读 DB 查询；Phase C 后由包内统一。
-    const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
-    await spawnInstanceViaCore(launchSpec, instance.instanceId, options.extraEnv);
-    // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
-    // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
-    // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
-    // 必须与 launch 同处 try：此处失败时 core 进程已启动、controller 活跃表已注册、
-    // 节点 refCount 已 +1；若不做回滚，实例无 supplement，idle 监控（按 supplement
-    // 判断）永不回收，成为仅 stopAllInstances 可清的永久孤儿。
-    await registerSupplement(envId, userId, instance.instanceId, source);
-  } catch (err) {
-    // 回滚三侧状态：controller 活跃表 + 节点引用归还（controller.stopInstance）、
-    // core 进程（facade.stopInstance）、supplement 清理。stopInstanceViaController
-    // 对两处 stop 均幂等吞错：launch 失败（core 无实例）与 supplement 注册失败
-    // （registry 无条目）两种场景同样安全。
-    try {
-      await stopInstanceViaController(instance.instanceId);
-    } catch (rollbackErr) {
-      logError(`[orchestration-instance] rollback stopInstance failed: instanceId=${instance.instanceId}`, rollbackErr);
-    }
-    throw err;
-  }
+    const controller = _deps.getOrchestrationController();
+    const instance = await controller.spawnInstance(envId, userId);
 
-  return instance;
+    try {
+      // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
+      // I4 过渡期可接受：两次构建均为只读 DB 查询；Phase C 后由包内统一。
+      const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
+      // instance.machineId 与 controller 内部 ensureNode 使用同一快照（同一次 env 读取的
+      // 解析结果），保证 refCount 节点与 core nodeId 一致（A-P2.2）；禁止改回重读 env。
+      await spawnInstanceViaCore(launchSpec, instance.instanceId, instance.machineId, options.extraEnv);
+      // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
+      // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
+      // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
+      // 必须与 launch 同处 try：此处失败时 core 进程已启动、controller 活跃表已注册、
+      // 节点 refCount 已 +1；若不做回滚，实例无 supplement，idle 监控（按 supplement
+      // 判断）永不回收，成为仅 stopAllInstances 可清的永久孤儿。
+      await registerSupplement(envId, userId, instance.instanceId, source);
+    } catch (err) {
+      // 回滚三侧状态：controller 活跃表 + 节点引用归还（controller.stopInstance）、
+      // core 进程（facade.stopInstance）、supplement 清理。stopInstanceViaController
+      // 对两处 stop 均幂等吞错：launch 失败（core 无实例）与 supplement 注册失败
+      // （registry 无条目）两种场景同样安全。
+      try {
+        await stopInstanceViaController(instance.instanceId);
+      } catch (rollbackErr) {
+        logError(
+          `[orchestration-instance] rollback stopInstance failed: instanceId=${instance.instanceId}`,
+          rollbackErr,
+        );
+      }
+      throw err;
+    }
+
+    return instance;
+  } finally {
+    // 成功：registerSupplement 已完成，实例已计入正式统计，释放后口径无缝切换；
+    // 失败（含 controller.spawnInstance 抛错，原 try 外路径）：实例不存在，
+    // 释放避免额度永久占用。release 按引用幂等。
+    releaseSpawnReservation(reservation);
+  }
 }
 
 /**
@@ -189,6 +202,57 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
   if (sup) {
     globalInstanceRegistry.unregister(instanceId);
     globalInstanceRegistry.deleteCounter(sup.environmentId);
+  }
+}
+
+/**
+ * 本地实例死亡清理的去重集合：同一实例并发到达多个死亡信号时只执行一次。
+ */
+const localDeadCleanupInFlight = new Set<string>();
+
+/**
+ * 清理已确认死亡的本地实例（C-P2.4）。
+ *
+ * 设计原因：local-default 节点是 N:1 共享节点（一个 stub socket 承载全部本地实例，
+ * 见 local-node-service.ts），实例状态由节点状态推导（instance.ts:66-71），节点级
+ * 断连会把健康本地实例一并标记 error 甚至误杀，因此死亡处理必须落在实例粒度。
+ * 本函数是远程机器断连清理（orchestration-machine-cleanup）的本地对应物，差异仅在
+ * 于按实例而非按机器匹配，且由 relay 死亡信号触发而非机器 WS 关闭触发。
+ *
+ * 前置校验（任一不满足即静默跳过，保证幂等与不误伤）：
+ *   1. core 快照存在且 nodeId === "local-default"（远程实例由 E-P0.1 机器级清理覆盖）；
+ *   2. 快照状态为 running 或 error（error 覆盖 connectRelay 失败被 markInstanceError
+ *      的实例——该状态被 idle monitor 默认 sweep 排除，是唯一的永久泄漏路径）；
+ *   3. 实例仍在编排域活跃表（已被 stop/清理的实例跳过，避免重复 stop 的噪音日志）。
+ *
+ * fire-and-forget 语义：本函数永不抛错（校验与清理均在 try 内，失败吞错并记日志）；
+ * 清理失败保留实例由 idle monitor 兜底。
+ *
+ * 已知限制：无任何 relay 消费者且进程死亡的本地实例（无人连接、relay handle 不存在）
+ * 不产生死亡信号，仍由 idle monitor 300s 兜底回收——该场景无用户可见影响；
+ * 移除条件：core 暴露进程退出事件（onInstanceExited）后切换到该信号。
+ */
+export async function terminateLocalDeadInstance(instanceId: string): Promise<void> {
+  // 1. 去重：并发死亡信号（yjs + workflow 同 handle 同时触发）只清理一次
+  if (localDeadCleanupInFlight.has(instanceId)) return;
+  try {
+    const snapshot = getCoreRuntime().getInstance(instanceId);
+    if (!snapshot || snapshot.nodeId !== LOCAL_DEFAULT_NODE_ID) return;
+    if (snapshot.status !== "running" && snapshot.status !== "error") return;
+    const controller = _deps.getOrchestrationController();
+    if (!controller.listInstances().some((inst) => inst.instanceId === instanceId)) return;
+
+    localDeadCleanupInFlight.add(instanceId);
+    try {
+      await stopInstanceViaController(instanceId);
+      log(`[local-relay-death] terminated dead local instance ${instanceId}`);
+    } finally {
+      localDeadCleanupInFlight.delete(instanceId);
+    }
+  } catch (err) {
+    // 校验或清理过程中的任何异常都不得向上传播（fire-and-forget），
+    // 由 idle monitor 兜底回收，避免死亡信号处理本身造成新的失败
+    logError(`[local-relay-death] cleanup failed for ${instanceId}:`, err);
   }
 }
 

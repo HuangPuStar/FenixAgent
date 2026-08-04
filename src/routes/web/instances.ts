@@ -91,14 +91,15 @@ app.delete(
     const result = await stopInstance(params.id, authCtx.organizationId);
 
     if (!result.ok) {
-      const isAlreadyStopped = result.error === "Already stopped";
-      if (isAlreadyStopped) {
-        getCoreRuntime().deleteInstance(params.id);
+      // "Already stopped" 是幂等终态（重复删除 / 从未存在 / 三侧已无痕）：按成功返回。
+      // 该分支三侧状态全无，deleteInstance 调用必然 no-op 且误导"清理了东西"，故不调用
+      //（AE-P2.1：原 404 映射与死代码分支一并移除）。
+      if (result.error === "Already stopped") {
         return { success: true as const, data: null };
       }
-      const status = result.error === "Instance not found" ? 404 : 403;
-      const code = status === 404 ? "NOT_FOUND" : "FORBIDDEN";
-      return error(status, { success: false, error: { code, message: result.error! } });
+      // 其余失败（跨组织访问或停止过程真实异常）统一 403；"Instance not found" 已随
+      // 幂等语义不再产生，404 分支删除。
+      return error(403, { success: false, error: { code: "FORBIDDEN", message: result.error! } });
     }
 
     getCoreRuntime().deleteInstance(params.id);
@@ -109,12 +110,11 @@ app.delete(
     response: {
       200: WebOkSchema(z.null().describe("实例删除成功后固定返回 null。")).describe("删除实例响应。"),
       403: WebErrSchema,
-      404: WebErrSchema,
     },
     detail: {
       tags: ["Instances"],
       summary: "删除实例",
-      description: "停止并移除指定实例；如果实例已停止，会执行一次清理并返回成功。",
+      description: "停止并移除指定实例；对已停止或不存在的实例幂等返回成功（重复删除不报错）。",
     },
   },
 );

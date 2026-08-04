@@ -141,3 +141,13 @@ export function dispatchAgentNodeWsClose(ws: WsConnection): void {
   if (!adapter) return;
   adapter.emitClose();
 }
+
+/**
+ * 按 machineId 分发机器断连事件（无 WsConnection 可引用时使用，如
+ * registry-heartbeat sweep 清理路径：connections 中已无该 machine 的 entry）。
+ * 与 dispatchAgentNodeWsClose 等效——最终都触发 AgentNode._handleDisconnected；
+ * 节点未管理 / 已断连时幂等忽略。
+ */
+export function dispatchAgentNodeDisconnect(machineId: string): void {
+  getAgentNodeService().notifyNodeDisconnected(machineId);
+}

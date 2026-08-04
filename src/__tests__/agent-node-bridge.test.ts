@@ -10,7 +10,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AgentNodeSocket } from "@fenix/orchestration";
 import { config, setConfig } from "../config";
-import { createAgentNodeService, getAgentNodeService } from "../transport/agent-node-bridge";
+import {
+  createAgentNodeService,
+  dispatchAgentNodeDisconnect,
+  getAgentNodeService,
+} from "../transport/agent-node-bridge";
 
 /** 最小 AgentNodeSocket：close 立即确认。 */
 class MockSocket implements AgentNodeSocket {
@@ -78,5 +82,26 @@ describe("agent-node-bridge", () => {
     const a = getAgentNodeService();
     const b = getAgentNodeService();
     expect(a).toBe(b);
+  });
+
+  // sweep 清理路径无 WsConnection 可引用，dispatchAgentNodeDisconnect 按 machineId
+  // 通知：connected 节点必须进入 disconnected（与 dispatchAgentNodeWsClose 等效）
+  test("dispatchAgentNodeDisconnect：connected 节点进入 disconnected", () => {
+    const service = getAgentNodeService();
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("e2p1-bridge-m1", socket);
+    expect(node.status()).toBe("connected");
+
+    dispatchAgentNodeDisconnect("e2p1-bridge-m1");
+    expect(node.status()).toBe("disconnected");
+
+    // 收尾：断开态 close 只推进 FSM，不触碰 WS 信道
+    node.close();
+  });
+
+  // sweep 巡检可能命中从未建立连接的 machine（服务重启后 DB 残留 online）：
+  // 未管理 machineId 必须幂等忽略，不得抛错
+  test("dispatchAgentNodeDisconnect：未管理 machineId 不抛错", () => {
+    expect(() => dispatchAgentNodeDisconnect("e2p1-bridge-ghost")).not.toThrow();
   });
 });

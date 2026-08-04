@@ -111,6 +111,17 @@ export class AgentNodeService {
     }
   }
 
+  /**
+   * 宿主通知机器断连（无 WS close 事件可依赖时使用，如 sweep 清理路径——
+   * 宿主连接表中已无该 machine 的 entry，无法反查 socket 适配器）。
+   * 语义与 socket close/error 事件驱动的 _handleDisconnected 完全一致：
+   * connected → disconnected（调度自动重连）、connecting → uninitialized、
+   * closing → closeConfirmed；节点不存在或已断连时幂等忽略，重复调用安全。
+   */
+  notifyNodeDisconnected(machineId: string): void {
+    this.#nodes.get(machineId)?._handleDisconnected();
+  }
+
   /** 当前管理的 AgentNode 数（已关闭节点会自动移出）。 */
   activeCount(): number {
     return this.#nodes.size;

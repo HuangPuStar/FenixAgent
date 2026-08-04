@@ -7,7 +7,7 @@
  * 永不回收，实例成为仅 stopAllInstances 可清的永久孤儿。
  *
  * 注入方式（禁 mock.module，全部用既有 seam）：
- *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / environmentOrchestrationRepo /
+ *   - setOrchestrationInstanceDeps：覆盖 environmentRepo /
  *     getOrchestrationController / getOrchestrationLaunchSpecBuilder；
  *   - 保留真实 buildAgentLaunchSpecForCore（无 agentConfigId 环境走 buildBasicLaunchSpec
  *     分支，需 stubDb 提供 provider/model 行），使 environmentRepo.getById 的
@@ -23,7 +23,6 @@ import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@
 import { config, setConfig } from "../config";
 import { provider } from "../db/schema";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../repositories/environment";
-import type { PgEnvironmentOrchestrationRepo } from "../repositories/environment-orchestration";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -54,7 +53,13 @@ let launchShouldFail = false;
 
 const fakeController = {
   spawnInstance: async (_envId: string, _userId: string) =>
-    ({ instanceId: INSTANCE_ID, environmentId: ENV_ID, userId: USER_ID }) as unknown as Instance,
+    // machineId 为 local-default：走本地 launch 分支，避免远程节点依赖
+    ({
+      instanceId: INSTANCE_ID,
+      environmentId: ENV_ID,
+      userId: USER_ID,
+      machineId: "local-default",
+    }) as unknown as Instance,
   stopInstance: async (instanceId: string) => {
     controllerStopCalls.push(instanceId);
   },
@@ -64,11 +69,6 @@ const fakeLaunchSpecBuilder = {
   build: async (_envId: string, _userId: string) =>
     ({ environmentId: ENV_ID, userId: USER_ID }) as unknown as LaunchSpec,
 } as unknown as LaunchSpecBuilder;
-
-const fakeEnvironmentOrchestrationRepo = {
-  // machineId 固定为 local-default：走本地 launch 分支，避免远程节点依赖
-  getEnvironment: async (_envId: string) => ({ machineId: "local-default" }),
-} as unknown as PgEnvironmentOrchestrationRepo;
 
 const fakeEnvironmentRepo = {
   getById: async (_id: string) => {
@@ -159,7 +159,6 @@ describe("spawnInstanceViaController rollback", () => {
     });
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
-      environmentOrchestrationRepo: fakeEnvironmentOrchestrationRepo,
       getOrchestrationController: () => fakeController,
       getOrchestrationLaunchSpecBuilder: () => fakeLaunchSpecBuilder,
     });

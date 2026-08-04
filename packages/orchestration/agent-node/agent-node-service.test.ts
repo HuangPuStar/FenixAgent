@@ -496,3 +496,77 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(1);
   });
 });
+
+describe("AgentNodeService.notifyNodeDisconnected", () => {
+  function createService(scheduler: MockScheduler): AgentNodeService {
+    return new AgentNodeService({
+      idleTimeoutMs: 100,
+      maxRetries: 3,
+      reconnectDelayMs: 10,
+      connectTimeoutMs: 100,
+      scheduler,
+    });
+  }
+
+  // 宿主 sweep 清理路径无 entry.ws 可引用，只能按 machineId 通知断连：
+  // connected 节点必须进入 disconnected 并调度自动重连（与 WS close 事件同语义）
+  test("notifyNodeDisconnected：connected 节点进入 disconnected 并调度自动重连", () => {
+    const scheduler = new MockScheduler();
+    const service = createService(scheduler);
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    expect(node.status()).toBe("connected");
+
+    service.notifyNodeDisconnected("m1");
+    expect(node.status()).toBe("disconnected");
+    expect(scheduler.pendingCount()).toBeGreaterThanOrEqual(1); // 自动重连已调度
+  });
+
+  // sweep 每 60s 巡检，服务重启后 DB 残留 online 的 machine 未必有节点：
+  // 未管理 machineId 必须幂等忽略，不得抛错
+  test("notifyNodeDisconnected：未管理的 machineId 不抛错", () => {
+    const service = createService(new MockScheduler());
+    expect(() => service.notifyNodeDisconnected("m-unknown")).not.toThrow();
+    expect(service.activeCount()).toBe(0);
+  });
+
+  // sweep 与 WS close 事件可能并发触发通知：已断连节点重复通知必须幂等，
+  // 不得抛 IllegalStateTransitionError
+  test("notifyNodeDisconnected：已断连节点重复通知幂等", () => {
+    const scheduler = new MockScheduler();
+    const service = createService(scheduler);
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    socket.simulateClose(); // WS close 先到达 → disconnected
+    expect(node.status()).toBe("disconnected");
+
+    expect(() => service.notifyNodeDisconnected("m1")).not.toThrow();
+    expect(node.status()).toBe("disconnected");
+  });
+
+  // 主动关闭中间态（closing）的通知与 WS close 确认同语义：推进 closed，
+  // 节点随后移出管理集合
+  test("notifyNodeDisconnected：closing 节点推进 closed", () => {
+    const service = createService(new MockScheduler());
+    const socket = new DeferredCloseSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    node.close(); // → closing（DeferredCloseSocket 不立即确认）
+    expect(node.status()).toBe("closing");
+
+    service.notifyNodeDisconnected("m1"); // 等价于 WS close 确认
+    expect(node.status()).toBe("closed");
+    expect(service.activeCount()).toBe(0);
+  });
+
+  // 通知后 ensureNode 必须拒绝：sweep 已判定机器断连，节点 stale connected 时
+  // 放行 spawn 会走死信道（E-P2.1 主验收点）；message 不得含 machineId（脱敏约束）
+  test("notifyNodeDisconnected 后 ensureNode 拒绝", () => {
+    const service = createService(new MockScheduler());
+    const socket = new MockSocket();
+    service.handleIncomingConnection("m1", socket);
+
+    service.notifyNodeDisconnected("m1");
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+    expect(() => service.ensureNode("m1")).toThrow(expect.not.stringContaining("m1"));
+  });
+});

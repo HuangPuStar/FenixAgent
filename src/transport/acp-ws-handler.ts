@@ -6,7 +6,12 @@ import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
 import type { AcpConnectionEntry } from "../types/store";
-import { dispatchAgentNodeWsClose, getAgentNodeService, wsToAgentNodeSocket } from "./agent-node-bridge";
+import {
+  dispatchAgentNodeDisconnect,
+  dispatchAgentNodeWsClose,
+  getAgentNodeService,
+  wsToAgentNodeSocket,
+} from "./agent-node-bridge";
 import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
@@ -416,6 +421,12 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   // 先检查是否有活跃连接（可能已重连）
   const activeConn = findMachineConnectionById(machineId);
   if (activeConn) return;
+
+  // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 语义一致，
+  // 置于快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用
+  // 为 connected，不得再打断）。sweep 路径无 entry.ws 可引用，走 machineId 维度
+  // 通知（幂等：节点未管理或已断连时忽略）。
+  dispatchAgentNodeDisconnect(machineId);
 
   // 更新 DB 状态
   disconnectMachine(machineId, reason).catch((err) => {
