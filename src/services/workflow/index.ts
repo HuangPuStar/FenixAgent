@@ -14,7 +14,7 @@
 import { createLogger } from "@fenix/logger";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
-import { getRunningInstancesByEnvironment, stopInstance } from "../instance";
+import { stopInstance } from "../instance";
 import { createAgentChatTransport } from "./agent-chat-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
 import { createPgStorageAdapter } from "./pg-storage-adapter";
@@ -29,16 +29,22 @@ interface TeamRuntime {
 // 每个 team 一个 (engine, transport) 对，lazy 创建、互相隔离
 const teamRuntimes = new Map<string, TeamRuntime>();
 
-/** workflow 结束后销毁期间启动的实例 */
-export async function cleanupSpawnedEnvironments(envIds: Set<string>, organizationId: string): Promise<void> {
-  for (const envId of envIds) {
+/**
+ * workflow 结束后停止本次 run 实际创建（spawned）的实例。
+ *
+ * 入参是 Transport 层记录的 instanceId 集合（agent-chat-transport 在 ensureRunning
+ * 返回 status === "spawned" 时写入），而非 envId——按 envId 查询会误杀同环境内
+ * 其他 run / 用户交互启动的实例（C-P1.1）。复用的实例不归本 run 所有，交给创建者
+ * 清理或 acp-idle-monitor 空闲回收。
+ */
+export async function cleanupSpawnedInstances(instanceIds: Set<string>, organizationId: string): Promise<void> {
+  for (const instanceId of instanceIds) {
     try {
-      const instances = getRunningInstancesByEnvironment(envId);
-      for (const inst of instances) {
-        await stopInstance(inst.id, organizationId);
-      }
+      await stopInstance(instanceId, organizationId);
     } catch (err) {
-      logger.error(`Failed to stop environment: envId=${envId}`, err);
+      // 单个实例停止失败不中断其余清理；stopInstance 对不存在/跨 org 实例返回
+      // ok:false 不抛错，此处仅兜底意外异常
+      logger.error(`Failed to stop spawned instance: instanceId=${instanceId}`, err);
     }
   }
 }

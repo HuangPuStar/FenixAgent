@@ -17,7 +17,7 @@ import {
   resolveWorkflowExecutionVersion,
 } from "../../repositories/workflow-def";
 import type { ApiWorkflowExecuteRequestBody } from "../../schemas/api-workflow.schema";
-import { cleanupSpawnedEnvironments, getTeamEngine } from "./index";
+import { cleanupSpawnedInstances, getTeamEngine } from "./index";
 import { resolveYaml } from "./resolve-yaml";
 
 const logger = createLogger("wf-execute");
@@ -106,9 +106,9 @@ export async function executeWorkflow(
       } catch (err) {
         logger.error(`workflow execute background update failed: runId=${runId}`, err);
       }
-      if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+      if (r.spawnedInstanceIds && r.spawnedInstanceIds.length > 0) {
         try {
-          await cleanupSpawnedEnvironments(new Set(r.spawnedEnvIds), organizationId);
+          await cleanupSpawnedInstances(new Set(r.spawnedInstanceIds), organizationId);
         } catch (err) {
           logger.error(`workflow execute background cleanup failed: runId=${runId}`, err);
         }

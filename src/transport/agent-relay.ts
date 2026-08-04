@@ -8,7 +8,7 @@
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 
 /** EngineRelayHandle 的扩展类型（含 onMessage / ready） */
-type FullRelayHandle = EngineRelayHandle & {
+export type FullRelayHandle = EngineRelayHandle & {
   onMessage?: (listener: (message: { type: string; payload?: unknown }) => void) => () => void;
   ready?: Promise<void>;
 };

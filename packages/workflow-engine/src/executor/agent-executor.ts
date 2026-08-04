@@ -122,8 +122,13 @@ export class AgentExecutor implements NodeExecutor {
           });
         }
 
-        // WorkflowError 中的 DAG_CANCELLED 也不重试（来自 transport 内部的 abort 处理）
-        if (error instanceof WorkflowError && error.code === WorkflowErrorCode.DAG_CANCELLED) {
+        // WorkflowError 中的 DAG_CANCELLED / NODE_TIMEOUT 不重试：
+        // NODE_TIMEOUT 来自 transport 超时兜底（agent-chat-transport），与节点级 abort 超时
+        // （上方 signal.aborted 分支）同语义；其余 executor（process/python/remote）已一致。
+        if (
+          error instanceof WorkflowError &&
+          (error.code === WorkflowErrorCode.DAG_CANCELLED || error.code === WorkflowErrorCode.NODE_TIMEOUT)
+        ) {
           throw error;
         }
 
@@ -156,7 +161,7 @@ export class AgentExecutor implements NodeExecutor {
     // 连接 Transport（resolvedAgent 是环境名称，Transport 层负责解析为 envId）
     console.error(`[workflow] AgentExecutor connecting: nodeId=${node.id} agent=${resolvedAgent}`);
     const session = await this.transport.connect(resolvedAgent, {
-      spawnedEnvIds: ctx.spawnedEnvIds,
+      spawnedInstanceIds: ctx.spawnedInstanceIds,
     });
 
     console.error(

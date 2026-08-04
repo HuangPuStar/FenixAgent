@@ -38,7 +38,7 @@ export interface AgentSession {
 
 /** Transport — 连接管理 + 会话创建 */
 export interface Transport {
-  connect(agentId: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession>;
+  connect(agentId: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession>;
   disconnect?(): Promise<void>;
   isReady?(): boolean;
 }

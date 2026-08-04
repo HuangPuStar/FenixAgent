@@ -1196,14 +1196,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         .filter((c) => c.type === "text")
         .map((c) => (c as { text: string }).text)
         .join(" ");
+      // 优先按请求携带的 sessionId 路由（并发 run 各自会话）；
+      // yjs 前端 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话，保持向后兼容
+      const promptSessionId = (params.sessionId as string | undefined) ?? state.sessionId;
       console.log("[acp-server] prompt:", {
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         id,
         text: promptText.slice(0, 200),
         blocks: content.length,
       });
       const result = await state.connection.prompt({
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         prompt: content as acp.ContentBlock[],
       });
 

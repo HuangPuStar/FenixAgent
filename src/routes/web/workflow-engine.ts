@@ -14,7 +14,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { WebErrSchema } from "../../schemas/common.schema";
-import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
+import { cleanupSpawnedInstances, getTeamEngine } from "../../services/workflow";
 import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
@@ -78,9 +78,9 @@ app.post(
                 logger.error(`run background workflowId update failed: runId=${runId}`, err);
               }
               // 清理本次运行启动的环境实例（独立 try-catch，避免清理失败再次抛出未捕获 rejection）
-              if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+              if (r.spawnedInstanceIds && r.spawnedInstanceIds.length > 0) {
                 try {
-                  await cleanupSpawnedEnvironments(new Set(r.spawnedEnvIds), authCtx.organizationId);
+                  await cleanupSpawnedInstances(new Set(r.spawnedInstanceIds), authCtx.organizationId);
                 } catch (err) {
                   logger.error(`run background cleanup failed: runId=${runId}`, err);
                 }

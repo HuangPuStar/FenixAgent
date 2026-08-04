@@ -31,8 +31,8 @@ export interface NodeExecutionContext {
   resolvedInputs: Record<string, unknown>;
   signal: AbortSignal;
   storage: StorageAdapter;
-  /** 收集本次运行启动的 Environment ID */
-  spawnedEnvIds?: Set<string>;
+  /** 收集本次运行实际启动的实例 ID（复用不记录） */
+  spawnedInstanceIds?: Set<string>;
 }
 
 /** 节点执行器接口 — 各节点类型实现此接口 */
@@ -68,8 +68,8 @@ export interface SchedulerContext {
   initialNodeStates?: Map<string, NodeStatus>;
   /** 恢复时注入的初始节点输出 */
   initialNodeOutputs?: Map<string, NodeOutput>;
-  /** 收集本次运行启动的 Environment ID（由 Transport 层通过回调注入） */
-  spawnedEnvIds?: Set<string>;
+  /** 收集本次运行实际启动的实例 ID（复用不记录；由 Transport 层通过回调注入） */
+  spawnedInstanceIds?: Set<string>;
 }
 
 // ---------- 调度结果 ----------
@@ -80,8 +80,8 @@ export interface DAGRunResult {
   summary: RunSummary;
   /** 节点输出快照：用于同步调用方在 DAG 完成后立即读取最终节点结果。 */
   outputs?: Record<string, NodeOutput>;
-  /** 本次运行期间启动的 Environment ID 列表 */
-  spawnedEnvIds?: string[];
+  /** 本次运行期间实际启动的实例 ID 列表（复用实例不计入） */
+  spawnedInstanceIds?: string[];
 }
 
 // ---------- DAGScheduler ----------
@@ -236,7 +236,7 @@ export class DAGScheduler {
         summary,
         // storage 持久化可能在不同适配器上存在可见性延迟；返回内存中的最终输出给同步 API 直接使用。
         outputs: Object.fromEntries(this.nodeOutputs.entries()),
-        spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
+        spawnedInstanceIds: this.ctx.spawnedInstanceIds ? [...this.ctx.spawnedInstanceIds] : [],
       };
     } catch (error) {
       // 未预期的异常 → ERROR 状态
@@ -250,7 +250,7 @@ export class DAGScheduler {
         summary,
         // 即使 DAG 异常，也保留已完成节点输出，便于调用方排查失败前的执行结果。
         outputs: Object.fromEntries(this.nodeOutputs.entries()),
-        spawnedEnvIds: this.ctx.spawnedEnvIds ? [...this.ctx.spawnedEnvIds] : [],
+        spawnedInstanceIds: this.ctx.spawnedInstanceIds ? [...this.ctx.spawnedInstanceIds] : [],
       };
     }
   }
@@ -311,7 +311,7 @@ export class DAGScheduler {
         resolvedInputs,
         signal: this.ctx.cancellation.signal,
         storage: this.ctx.storage,
-        spawnedEnvIds: this.ctx.spawnedEnvIds,
+        spawnedInstanceIds: this.ctx.spawnedInstanceIds,
       };
 
       // 执行节点（执行器内部发射 node.started / node.completed 事件）

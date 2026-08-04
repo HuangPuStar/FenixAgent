@@ -6,7 +6,7 @@ import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agen
 import { ProtocolAdapter } from "./protocol-adapter.js";
 
 /** 会话状态 */
-interface SessionState {
+export interface SessionState {
   sessionId: string;
   cwd: string;
   createdAt: number;
@@ -26,6 +26,33 @@ const CC_MODES = [
   { modeId: "plan", name: "Plan", description: "Plan mode, no actual operations" },
   { modeId: "dontAsk", name: "Don't Ask", description: "Don't ask, just execute" },
 ];
+
+// sessionId 生成：时间戳 + 模块级自增计数。
+// 并发 newSession 同毫秒调用时，仅 Date.now() 会生成相同 sessionId，
+// 导致两个 run 拿到同一会话；自增后缀保证进程内唯一。
+let sessionIdSeq = 0;
+function nextSessionId(): string {
+  sessionIdSeq += 1;
+  return `claude_${Date.now()}_${sessionIdSeq}`;
+}
+
+/**
+ * 解析一次 prompt 调用的目标会话。
+ *
+ * 并发 run 各自在 session/prompt 请求中携带 sessionId（server.ts 已按
+ * params.sessionId 路由）；未携带时（yjs 前端路径）沿用连接级当前会话。
+ * 只读取、不写回 activeSessionId，避免并发下互相覆盖共享上下文。
+ */
+export function resolvePromptTargetSession(
+  params: Record<string, unknown>,
+  sessions: Map<string, SessionState>,
+  activeSessionId: string | null,
+): { targetSessionId: string | null; targetSession: SessionState | undefined } {
+  const requestedSessionId = (params.sessionId as string | undefined) ?? activeSessionId;
+  const targetSession = requestedSessionId ? sessions.get(requestedSessionId) : undefined;
+  const targetSessionId = targetSession ? requestedSessionId : activeSessionId;
+  return { targetSessionId, targetSession };
+}
 
 /** Claude Code 支持的模型列表（从环境变量读取，或使用默认值） */
 function buildAvailableModels(): Array<{ modelId: string; name: string }> {
@@ -251,7 +278,7 @@ export function createClaudeAcpConnection(
     },
 
     async newSession(_params: Record<string, unknown>) {
-      const sessionId = `claude_${Date.now()}`;
+      const sessionId = nextSessionId();
       const title = (_params?.title as string) || `Conversation ${sessions.size + 1}`;
       const state: SessionState = { sessionId, cwd, createdAt: Date.now(), title };
       sessions.set(sessionId, state);
@@ -270,10 +297,15 @@ export function createClaudeAcpConnection(
       const text = blocks.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const _msgId = (params as Record<string, unknown>).id as string | number | undefined;
 
+      // 并发 run 各自携带 sessionId；此处解析本次调用的目标会话。
+      // 不写回 activeSessionId：并发下写回会让共享状态指向最后调用者，
+      // 导致 update 通知/权限请求等标记错误的会话
+      const { targetSessionId, targetSession } = resolvePromptTargetSession(params, sessions, activeSessionId);
+
       // 自动标题
-      if (activeSessionId) {
-        const s = sessions.get(activeSessionId);
-        if (s?.title.startsWith("Conversation ") && text.trim()) {
+      if (targetSession) {
+        const s = targetSession;
+        if (s.title.startsWith("Conversation ") && text.trim()) {
           s.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? "…" : "");
         }
       }
@@ -299,7 +331,7 @@ export function createClaudeAcpConnection(
         send({
           type: "permission_request",
           payload: {
-            sessionId: activeSessionId!,
+            sessionId: targetSessionId!,
             requestId,
             options: [
               { kind: "allow_always", label: "Always Allow", optionId: "allow_always" },
@@ -318,7 +350,7 @@ export function createClaudeAcpConnection(
           : { behavior: "deny" as const, message: "User denied permission" };
       };
 
-      const isFollowUp = activeSessionId ? sessions.get(activeSessionId)?.ccSessionId != null : false;
+      const isFollowUp = targetSession?.ccSessionId != null;
 
       // 加载历史 session 时用 resume 回放消息；follow-up 用 continue
       const resumeId = pendingResumeSessionId;
@@ -326,13 +358,13 @@ export function createClaudeAcpConnection(
 
       // 每个 RCS session 使用独立的 CC SDK cwd，避免所有 session 共享同一个 CC 内部 session
       let sessionCwd = cwd;
-      if (activeSessionId) {
-        const sess = sessions.get(activeSessionId);
+      if (targetSessionId) {
+        const sess = sessions.get(targetSessionId);
         if (sess?.sessionCwd) {
           sessionCwd = sess.sessionCwd;
         } else if (!resumeId && !isFollowUp) {
           // 新 session：创建隔离目录
-          sessionCwd = await ensureSessionDir(cwd, activeSessionId);
+          sessionCwd = await ensureSessionDir(cwd, targetSessionId);
           if (sess) {
             sess.sessionCwd = sessionCwd;
             saveSessionState(cwd, sess);
@@ -384,19 +416,18 @@ export function createClaudeAcpConnection(
         if (type === "prompt_complete") return;
         // 跳过 resume 回放的历史消息（已由 unstable_resumeSession 发送到前端）
         if (skipReplay && (type === "user_message_chunk" || type === "agent_message_chunk")) return;
-        sendJsonRpc(null, { sessionId: activeSessionId!, update: { sessionUpdate: type, content: payload } });
+        sendJsonRpc(null, { sessionId: targetSessionId!, update: { sessionUpdate: type, content: payload } });
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
       for await (const msg of q) {
         adapter.handleSdkOutput(msg);
         if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
           const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
-          if (ccSid && activeSessionId) {
-            const st = sessions.get(activeSessionId);
-            if (st) {
-              st.ccSessionId = ccSid;
-              saveSessionState(cwd, st);
-            }
+          // ccSessionId 必须写回本次调用的目标会话，否则并发 run 会把 SDK 会话
+          // UUID 写到别的 session，后续 resume 时用错会话
+          if (ccSid && targetSession) {
+            targetSession.ccSessionId = ccSid;
+            saveSessionState(cwd, targetSession);
           }
         }
         if (msg.type === "assistant") {
@@ -422,7 +453,7 @@ export function createClaudeAcpConnection(
               send({
                 type: "interactive_question",
                 payload: {
-                  sessionId: activeSessionId!,
+                  sessionId: targetSessionId!,
                   questionId: iqaId,
                   toolId,
                   toolName: "AskUserQuestion",

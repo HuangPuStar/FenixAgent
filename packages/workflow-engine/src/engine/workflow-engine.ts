@@ -221,7 +221,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         secrets,
         nodeExecutor: registry,
         cancellation,
-        spawnedEnvIds: new Set<string>(),
+        spawnedInstanceIds: new Set<string>(),
       };
 
       activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
@@ -292,7 +292,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       secrets,
       nodeExecutor: registry,
       cancellation,
-      spawnedEnvIds: new Set<string>(),
+      spawnedInstanceIds: new Set<string>(),
     };
 
     activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
@@ -403,7 +403,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       cancellation: activeRun.cancellation,
       initialNodeStates: nodeStates,
       initialNodeOutputs: nodeOutputs,
-      spawnedEnvIds: new Set<string>(),
+      spawnedInstanceIds: new Set<string>(),
     };
 
     const scheduler = new DAGScheduler(context);
@@ -562,7 +562,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         secrets,
         nodeExecutor: registry,
         cancellation,
-        spawnedEnvIds: new Set<string>(),
+        spawnedInstanceIds: new Set<string>(),
       };
 
       result = await recoverRun(context);
@@ -691,7 +691,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         cancellation,
         initialNodeStates: nodeStates,
         initialNodeOutputs: nodeOutputs,
-        spawnedEnvIds: new Set<string>(),
+        spawnedInstanceIds: new Set<string>(),
       };
 
       const scheduler = new DAGScheduler(context);

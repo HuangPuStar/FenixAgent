@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "bun:test";
 import { AuditExecutor, verifyApprovalToken } from "../../executor/awaitable-executor";
 import { resolveTemplate } from "../../parser/expression-parser";
 import { CancellationManager } from "../../scheduler/cancellation";
-import type { NodeExecutionContext, NodeExecutor } from "../../scheduler/dag-scheduler";
+import type { NodeExecutionContext, NodeExecutor, SchedulerContext } from "../../scheduler/dag-scheduler";
 import { DAGScheduler, SuspendedError } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
 import type { AuditNodeDef, CustomNodeDef, NodeDef, ShellNodeDef, WorkflowDef } from "../../types/dag";
@@ -70,6 +70,10 @@ class MockNodeExecutor implements NodeExecutor {
   async execute(node: NodeDef, ctx: NodeExecutionContext): Promise<NodeOutput> {
     this.executionOrder.push(node.id);
     this.startTimes.set(node.id, Date.now());
+
+    // 模拟真实 Transport 层：spawn 时把 instanceId 写入运行级集合（C-P1.1 语义，
+    // 复用不写入）；仅当调度上下文注入了集合时生效，不影响其他测试
+    ctx.spawnedInstanceIds?.add(`inst_${node.id}`);
 
     // 发射 node.started 事件（模拟真实执行器行为）
     await ctx.storage.appendEvent({
@@ -1134,4 +1138,38 @@ test("custom 节点 script 无 env 时求值结果 env 为空对象", () => {
 
   expect(resolvedScript.content).toContain("workdir=/data/test");
   expect(resolvedScript.env).toEqual({});
+});
+
+// ---------- spawnedInstanceIds 聚合 ----------
+
+// 成功路径：调度上下文预填的实例与节点执行期间新增的实例应聚合进 DAGRunResult
+test("成功 DAG 的 spawnedInstanceIds 聚合预填与执行期间新增的实例", async () => {
+  const nodes: NodeDef[] = [shellNode("A"), shellNode("B", ["A"])];
+  const ctx: SchedulerContext = {
+    ...makeContext(executor, nodes),
+    spawnedInstanceIds: new Set(["inst_prefilled"]),
+  };
+  const scheduler = new DAGScheduler(ctx);
+
+  const result = await scheduler.run();
+
+  expect(result.status).toBe("SUCCESS");
+  // Set 按插入序迭代：预填在前，节点执行新增在后（A→B 串行，顺序确定）
+  expect(result.spawnedInstanceIds).toEqual(["inst_prefilled", "inst_A", "inst_B"]);
+});
+
+// 失败路径：节点失败（FAILED）时 spawnedInstanceIds 仍聚合，保证失败 run 也清理
+test("失败 DAG 的 spawnedInstanceIds 仍聚合已记录实例", async () => {
+  const nodes: NodeDef[] = [shellNode("A")];
+  executor.setError("A", new Error("A failed"));
+  const ctx: SchedulerContext = {
+    ...makeContext(executor, nodes),
+    spawnedInstanceIds: new Set(["inst_prefilled"]),
+  };
+  const scheduler = new DAGScheduler(ctx);
+
+  const result = await scheduler.run();
+
+  expect(result.status).toBe("FAILED");
+  expect(result.spawnedInstanceIds).toEqual(["inst_prefilled", "inst_A"]);
 });
