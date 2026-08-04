@@ -71,7 +71,7 @@ class AgentNodeService {
 
 **回收策略**：
 - 引用计数：每个 `ensureNode` +1，每个 `releaseNode` -1
-- 空闲超时：引用计数归零后启动定时器，超时后 `agentNode.close()`
+- 空闲超时：引用计数归零后启动定时器；超时后仅对已断连（非 connected）节点执行 `agentNode.close()`，机器在线节点保留——关闭 connected 节点会切断机器真实 WS，造成断连-重连风暴（见审计报告 E-P1.1）
 - 新 `ensureNode` 到达时取消回收定时器
 
 ### 5. 测试
@@ -82,7 +82,7 @@ class AgentNodeService {
 - 正常创建：Machine 连接 → 生成 AgentNode → connected
 - 状态转换：connected → disconnected → connecting（自动重连）
 - 主动关闭：connected → close() → closing → closed
-- 引用计数：ensure ×3 → release ×3 → 空闲超时 → destroyed
+- 引用计数：ensure ×3 → release ×3 → 空闲超时后 connected 节点保留复用（E-P1.1 回归）
 - 重连期间：disconnected 状态下的 send() 抛错
 - 非法转换：connected 状态调用 connect() 抛错
 - 并发连接：同一 machineId 第二个 connection 复用已有 AgentNode
