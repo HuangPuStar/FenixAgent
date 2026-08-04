@@ -269,14 +269,31 @@ export function ChatPanel({
     const isMachineUnavailable = errorCode === "machine_unavailable";
     const isIdleReclaimed = errorCode === "instance_idle_reclaimed";
     const isKeepaliveTimeout = errorCode === "client_keepalive_timeout";
-    const title = isMachineUnavailable ? t("machineUnavailable") : t("agentDisconnected");
-    const desc = isMachineUnavailable
-      ? t("machineUnavailableDesc")
-      : isIdleReclaimed
-        ? t("instanceIdleReclaimedDesc")
-        : isKeepaliveTimeout
-          ? t("clientKeepaliveTimeoutDesc")
-          : t("agentOfflineDesc");
+    const isAutoStartDisabled = errorCode === "auto_start_disabled";
+    const isMaxSessionsReached = errorCode === "max_sessions_reached";
+    const isLaunchSpecBuildFailed = errorCode === "launch_spec_build_failed";
+    const isSpawnRejected = isAutoStartDisabled || isMaxSessionsReached || isLaunchSpecBuildFailed;
+    const isEnvironmentUnavailable = errorCode === "environment_unavailable";
+    const title = isEnvironmentUnavailable
+      ? t("environmentUnavailable")
+      : isMachineUnavailable || isSpawnRejected
+        ? t("instanceStartFailed")
+        : t("agentDisconnected");
+    const desc = isEnvironmentUnavailable
+      ? t("environmentUnavailableDesc")
+      : isMachineUnavailable
+        ? t("machineUnavailableDesc")
+        : isAutoStartDisabled
+          ? t("autoStartDisabledDesc")
+          : isMaxSessionsReached
+            ? t("maxSessionsReachedDesc")
+            : isLaunchSpecBuildFailed
+              ? t("launchSpecBuildFailedDesc")
+              : isIdleReclaimed
+                ? t("instanceIdleReclaimedDesc")
+                : isKeepaliveTimeout
+                  ? t("clientKeepaliveTimeoutDesc")
+                  : t("agentOfflineDesc");
     return (
       <div className="agent-welcome-empty">
         <p className="title">{title}</p>

@@ -16,6 +16,11 @@ test("maps 4501 to client_keepalive_timeout", () => {
   expect(getTerminalYjsWsErrorCode(4501)).toBe("client_keepalive_timeout");
 });
 
+// 会话/环境引用失效（4004，如 env 已删除）应提示环境不可用，而不是继续无限重连。
+test("maps 4004 to environment_unavailable", () => {
+  expect(getTerminalYjsWsErrorCode(4004)).toBe("environment_unavailable");
+});
+
 // 非终端关闭码应继续使用普通断线流程。
 test("returns null for non-terminal close codes", () => {
   expect(getTerminalYjsWsErrorCode(1006)).toBeNull();

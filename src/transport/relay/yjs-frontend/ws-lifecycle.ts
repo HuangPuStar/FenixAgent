@@ -2,7 +2,7 @@ import type { DocManager } from "@fenix/acp-server";
 import { createDeterministicRcsSessionId, translateSimpleAction } from "@fenix/acp-server";
 import type { WsConnection } from "../../ws-types";
 import type { ConnectionRegistry } from "./connection-registry";
-import { isMachineOfflineError } from "./offline-error";
+import { classifyPermanentSpawnFailure, isMachineOfflineError } from "./offline-error";
 import type { RelayEventHandler } from "./relay-event-handler";
 import { InvalidSessionIdError, type SessionTransition } from "./session-transition";
 import type { ClientConnection, SharedRelay } from "./types";
@@ -157,9 +157,12 @@ export class WsLifecycle {
       try {
         resolvedInstanceNumber = await this.dependencies.resolveInstanceNumberFromSession(sessionId);
       } catch (err) {
-        this.rejectOpen(ws, wsId, 4004, "session not found", "Session not found");
+        // 坏 sessionId（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）视为可恢复：
+        // 忽略该参数按默认路径继续连接，连接建立后由 ACP 层 list_sessions/create_session 重建会话；
+        // 不得以 4004 拒绝——4004 不在客户端终态码集合，会触发相同 URL 的无限重连。
+        // 4004 仅保留给 env not found（重试相同 URL 永远失败）等不可恢复场景。
+        // 错误详情已脱敏（不含 sessionId），只进服务端日志。
         this.reportError("[YJS-FE] Failed to resolve session instance:", err);
-        return;
       }
     }
 
@@ -179,6 +182,18 @@ export class WsLifecycle {
           payload: { code: "machine_unavailable", message: "Agent connection error" },
         });
         ws.close(4500, "machine offline");
+        return;
+      }
+      // 配置性永久失败（autoStart 关闭 / maxSessions 上限 / launch spec 构建失败）→ 4502 终态：
+      // 重连不改变失败条件，须停止自动重连；具体原因由 payload.code 提供给客户端展示，
+      // message 保持脱敏通用文案，不泄漏 envId/machineId/实例编号。
+      const permanentCode = classifyPermanentSpawnFailure(err);
+      if (permanentCode) {
+        broadcaster.sendToYjsWs(ws, {
+          type: "error",
+          payload: { code: permanentCode, message: "Agent connection error" },
+        });
+        ws.close(4502, "spawn rejected");
         return;
       }
       broadcaster.sendToYjsWs(ws, { type: "error", payload: { message: "Agent connection error" } });
@@ -327,7 +342,11 @@ export class WsLifecycle {
     }
     try {
       const sessionDoc = await this.dependencies.docManager.openSession(userId, agentId, shared.rcsSessionId);
-      broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
+      // openSession 挂起期间连接可能已被 handleClose 释放（refCount 归零 → closeReleasedRelay
+      // 已置 destroyed 并注销）；此刻再注册会产生无注销点的僵尸监听器，守卫必须在 await 之后判断。
+      if (!shared.destroyed) {
+        broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
+      }
       broadcaster.sendSnapshot(ws, sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] Failed to push session init state:", err);
@@ -423,6 +442,10 @@ export class WsLifecycle {
     }
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
+      // session: 监听器由 handleOpen 与本文件的 relay-event-handler 按 docName 注册，
+      // 必须与 chat: 一起在 relay 释放时注销；否则 registeredDocs 条目与 Y.Doc 上的
+      // update 闭包互相强引用、永不回收，长期运行内存增长（审计 B-P2.3）。
+      this.dependencies.broadcaster.unregisterYjsDocListener(`session:${shared.rcsSessionId}`);
     } catch {
       /* ignore */
     }

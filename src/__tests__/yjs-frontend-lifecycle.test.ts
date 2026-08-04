@@ -1,9 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createDeterministicRcsSessionId, DocManager } from "@fenix/acp-server";
-import { CoreRuntimeError } from "@fenix/core";
-import { AgentNodeUnavailableError } from "@fenix/orchestration";
+import { CoreRuntimeError, type CoreRuntimeFacade, type RuntimeInstanceSnapshot } from "@fenix/core";
+import { type AgentController, AgentNodeUnavailableError, LaunchSpecBuildError } from "@fenix/orchestration";
 import * as Y from "yjs";
 import { AppError } from "../errors";
+import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
+import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 import { ConnectionRegistry } from "../transport/relay/yjs-frontend/connection-registry";
 import { RelayEventHandler } from "../transport/relay/yjs-frontend/relay-event-handler";
 import type { ClientConnection, RelayMessage, SharedRelay } from "../transport/relay/yjs-frontend/types";
@@ -330,11 +332,11 @@ describe("YJS frontend internal handlers", () => {
     expect(ws.messages.join("")).not.toContain("mach_x");
   });
 
-  // 负例：非机器离线的 spawn 失败（AUTO_START_DISABLED 永久失败、普通 Error）必须仍走
-  // 1011 通用分支，钉住判定边界，防止错误分类面过度扩大把非离线错误变成 4500 终态。
-  test("keeps 1011 generic branch for non-offline spawn failures", async () => {
+  // 负例：瞬时/未知的 spawn 失败（INSTANCE_NOT_VISIBLE 防御分支、普通 Error）必须仍走
+  // 1011 通用分支，钉住判定边界，防止错误分类面过度扩大把非永久失败变成终态。
+  test("keeps 1011 generic branch for non-permanent spawn failures", async () => {
     for (const thrown of [
-      new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409),
+      new AppError("Instance 'i-1' spawned but missing from runtime registry", "INSTANCE_NOT_VISIBLE", 500),
       new Error("boom"),
     ]) {
       const registry = new ConnectionRegistry();
@@ -355,6 +357,130 @@ describe("YJS frontend internal handlers", () => {
       });
       expect(ws.closed).toEqual([[1011, "spawn failed"]]);
     }
+  });
+
+  // autoStart 关闭是配置态，重连不会改变配置：必须 close 4502 进入终态停止自动重连，
+  // 错误帧携带 auto_start_disabled 诊断码，message 保持脱敏（实例编号只进服务端日志）。
+  test("closes 4502 with auto_start_disabled when ensureRunning throws AUTO_START_DISABLED", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const errors: unknown[] = [];
+    const thrown = new AppError("实例 2 未运行且 autoStart 已禁用", "AUTO_START_DISABLED", 409);
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      ensureRunning: async () => {
+        throw thrown;
+      },
+      reportError: (_message, error) => errors.push(error),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(errors).toEqual([thrown]);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "auto_start_disabled", message: "Agent connection error" },
+    });
+    expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
+    // 客户端帧不得泄漏实例编号与原始诊断文案
+    expect(ws.messages.join("")).not.toContain("autoStart");
+    expect(ws.messages.join("")).not.toContain("2");
+  });
+
+  // maxSessions 上限是配置态，重连不会释放实例：同样 close 4502 终态并携带诊断码。
+  test("closes 4502 with max_sessions_reached when ensureRunning throws MAX_SESSIONS_REACHED", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const errors: unknown[] = [];
+    const thrown = new AppError("已达到最大实例数 3", "MAX_SESSIONS_REACHED", 409);
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      ensureRunning: async () => {
+        throw thrown;
+      },
+      reportError: (_message, error) => errors.push(error),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(errors).toEqual([thrown]);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "max_sessions_reached", message: "Agent connection error" },
+    });
+    expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
+  });
+
+  // launch spec 构建条件是配置态（如 RCS_DISABLE_LOCAL_EXECUTION 且无远程机器），
+  // 每次 spawn 必然失败：编排域 LaunchSpecBuildError 同样坍缩为 4502 终态。
+  test("closes 4502 with launch_spec_build_failed on LaunchSpecBuildError", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const errors: unknown[] = [];
+    const thrown = new LaunchSpecBuildError("Cannot spawn instance: environment 'env-1' has no machineId configured");
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      ensureRunning: async () => {
+        throw thrown;
+      },
+      reportError: (_message, error) => errors.push(error),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(errors).toEqual([thrown]);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "launch_spec_build_failed", message: "Agent connection error" },
+    });
+    expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
+    // 客户端帧不得泄漏 envId 与原始诊断文案
+    expect(ws.messages.join("")).not.toContain("env-1");
+    expect(ws.messages.join("")).not.toContain("machineId");
+  });
+
+  // 坏 sessionId（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）应降级为默认实例继续连接，
+  // 连接建立后由 ACP 层重建会话；不得以 4004 拒绝连接（4004 不在客户端终态码集合，会触发相同 URL 无限重连）。
+  test("degrades to the default instance when the sessionId cannot be resolved", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const seen: Array<number | undefined> = [];
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      resolveInstanceNumberFromSession: async () => {
+        throw new Error("Invalid instance session id");
+      },
+      ensureRunning: async (_userId, _agentId, _mode, instanceNumber) => {
+        seen.push(instanceNumber);
+        return { instance: { id: "instance-1" } };
+      },
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1", "ses_inst_env_9");
+
+    expect(ws.closed).toEqual([]);
+    expect(seen).toEqual([undefined]);
+    expect(registry.getClient("ws-1")).toBeDefined();
+  });
+
+  // 环境不存在是不可恢复的引用失效：必须保持 4004 终态关闭（配合客户端 NO_RECONNECT_CODES 停止自动重连），
+  // 钉住该行为防止回归为无限重连。
+  test("keeps closing 4004 when the environment no longer exists", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      getEnvironment: async () => undefined,
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(ws.closed).toEqual([[4004, "env not found"]]);
   });
 
   // 新建共享 relay 时必须先执行 ACP connect 握手，远端 dispatcher 才会回传 status 并允许后续 session/list。
@@ -1084,5 +1210,200 @@ describe("YJS frontend internal handlers", () => {
     expect(registry.getClient("ws-a")?.agentStatusReceived).toBe(true);
     expect(registry.getClient("ws-b")?.agentStatusReceived).toBe(false);
     expect(sent).toHaveLength(1);
+  });
+
+  // 最后一个客户端断开后，session: 与 chat: 的 broadcaster 监听器必须同时注销，
+  // 否则 registeredDocs 条目与 Y.Doc 的 update 闭包互相强引用、长期运行内存增长（B-P2.3）。
+  test("unregisters both session: and chat: broadcaster listeners when the relay is released", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const unregistered: string[] = [];
+    const origUnregister = broadcaster.unregisterYjsDocListener.bind(broadcaster);
+    broadcaster.unregisterYjsDocListener = (docName) => {
+      unregistered.push(docName);
+      origUnregister(docName);
+    };
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents);
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    lifecycle.handleClose("ws-1");
+
+    expect(unregistered).toContain("chat:rcs-1");
+    expect(unregistered).toContain("session:rcs-1");
+  });
+
+  // openSession 挂起期间连接被断开（relay 已释放并置 destroyed）时，恢复后不得补注册
+  // session: 监听器，避免产生无注销点的僵尸条目（B-P2.3 竞态窗口）。
+  test("does not register the session: listener after the relay was released while openSession was pending", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const registered: string[] = [];
+    const origRegister = broadcaster.registerYjsDocListener.bind(broadcaster);
+    broadcaster.registerYjsDocListener = (ydoc, docName) => {
+      registered.push(docName);
+      origRegister(ydoc, docName);
+    };
+    // 等待 handleOpen 真正挂起在 openSession（此时 entry 已 addClient、refCount 已持有），
+    // 才能命中「释放后补注册」的竞态窗口；过早断开会被 handleOpen 中更早的容量检查拦截。
+    const sessionStarted = deferred<void>();
+    const sessionPending = deferred<{ ydoc: Y.Doc }>();
+    const lifecycle = createLifecycle(
+      registry,
+      broadcaster,
+      relayEvents,
+      {},
+      {
+        openSession: () => {
+          sessionStarted.resolve();
+          return sessionPending.promise;
+        },
+      },
+    );
+    const ws = createWs();
+    const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    await sessionStarted.promise;
+
+    lifecycle.handleClose("ws-1");
+    sessionPending.resolve({ ydoc: new Y.Doc() });
+    await opening;
+
+    expect(registered).toContain("chat:rcs-1");
+    expect(registered).not.toContain("session:rcs-1");
+  });
+
+  // relay 已释放（destroyed=true）后，relay-event-handler 收到 session/new result 不得补注册
+  // session: 监听器：relay 已销毁，注册只会留下无注销点的僵尸条目（B-P2.3 竞态窗口）。
+  test("does not register the session: listener from session/new after the relay was destroyed", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const registered: string[] = [];
+    const mockDocManager = {
+      processACP: () => {},
+      setChatConnectionStatus: () => {},
+      setChatAvailableCommands: () => {},
+      setChatTokenUsage: () => {},
+      setChatCapabilities: () => {},
+      setChatAgentInfo: () => {},
+      setChatModelState: () => {},
+      setChatModeState: () => {},
+      registerSession: () => {},
+      syncChatSessions: () => {},
+      setChatActiveSession: () => {},
+      getChat: () => undefined,
+      openSession: async () => ({ ydoc: new Y.Doc() }),
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
+      registerYjsDocListener: (_ydoc, docName) => {
+        registered.push(docName);
+      },
+      reportError: () => {},
+    });
+    const shared = { ...createSharedRelay({ state: "open", send() {}, close() {} }), destroyed: true };
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses_new", configOptions: [] },
+    } as unknown as RelayMessage);
+
+    expect(registered).toEqual([]);
+  });
+});
+
+// C-P2.4：交互式 Chat 中 relay_closed（进程崩溃）必须触发本地实例级死亡清理，
+// 否则死实例状态恒 running、被 ensureRunning 无限复用且持续占并发额度；
+// 远程实例由 terminateLocalDeadInstance 的 nodeId 校验排除
+describe("RelayEventHandler relay death cleanup", () => {
+  /** 记录 controller.stopInstance 调用（清理触发的证据）。 */
+  const controllerStopCalls: string[] = [];
+
+  const fakeFacade = {
+    getInstance: () =>
+      ({
+        instanceId: "instance-1",
+        engineType: "opencode",
+        nodeId: "local-default",
+        status: "running",
+        launchSpec: {},
+        relayConnected: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }) as unknown as RuntimeInstanceSnapshot,
+    stopInstance: async () => {},
+  } as unknown as CoreRuntimeFacade;
+
+  const fakeController = {
+    listInstances: () => [{ instanceId: "instance-1" }],
+    stopInstance: async (instanceId: string) => {
+      controllerStopCalls.push(instanceId);
+    },
+  } as unknown as AgentController;
+
+  beforeEach(() => {
+    controllerStopCalls.length = 0;
+    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    setOrchestrationInstanceDeps({ getOrchestrationController: () => fakeController });
+  });
+
+  afterEach(() => {
+    resetOrchestrationInstanceDeps();
+    resetAllStubs();
+  });
+
+  // 交互式 Chat 中 relay 意外关闭：本地实例死亡信号，须触发实例级清理；
+  // 客户端 ws 关闭（1011）与清理互不阻塞
+  test("交互式 Chat 中 relay_closed → 本地实例触发 terminateLocalDeadInstance", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const handler = createRelayEvents(registry, broadcaster, []);
+
+    await handler.createMessageHandler(createSharedRelay({ state: "open", send() {}, close() {} }))({
+      type: "relay_closed",
+      payload: { code: "relay_disconnected" },
+    } as unknown as RelayMessage);
+
+    // terminateLocalDeadInstance 为 fire-and-forget，等其微任务链完成
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controllerStopCalls).toEqual(["instance-1"]);
+  });
+
+  // 远程实例的 relay_closed 由 E-P0.1 机器级断连清理覆盖，
+  // 本地死亡钩子必须静默跳过，避免与机器级清理双重 stop
+  test("远程实例 relay_closed → 不触发清理", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const handler = createRelayEvents(registry, broadcaster, []);
+    // 覆盖 fakeFacade.getInstance 返回远程快照（nodeId 校验回归）
+    stubCoreBootstrap({
+      getCoreRuntime: () =>
+        ({
+          getInstance: () =>
+            ({
+              instanceId: "instance-1",
+              engineType: "opencode",
+              nodeId: "mach_remote",
+              status: "running",
+              launchSpec: {},
+              relayConnected: false,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }) as unknown as RuntimeInstanceSnapshot,
+          stopInstance: async () => {},
+        }) as unknown as CoreRuntimeFacade,
+    });
+
+    await handler.createMessageHandler(createSharedRelay({ state: "open", send() {}, close() {} }))({
+      type: "relay_closed",
+      payload: { code: "relay_disconnected" },
+    } as unknown as RelayMessage);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controllerStopCalls).toEqual([]);
   });
 });

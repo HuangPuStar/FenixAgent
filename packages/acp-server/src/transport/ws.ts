@@ -5,8 +5,10 @@
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set([
   4001, // instance idle/activity reclaim
+  4004, // 会话/环境引用失效（env 已删除）：重试相同 URL 永远失败
   4500, // machine_unavailable
   4501, // client_keepalive_timeout
+  4502, // spawn_rejected（配置性永久失败：autoStart 关闭 / maxSessions 上限 / launch spec 构建失败）
 ]);
 
 /** 重连间隔（指数退避），单位毫秒 */

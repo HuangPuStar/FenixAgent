@@ -263,4 +263,26 @@ describe("createYjsWsClient", () => {
 
     expect(timers).toHaveLength(0);
   });
+
+  // spawn 被配置性永久失败拒绝（autoStart 关闭等）时，重连不会改变失败条件，
+  // 客户端必须停止自动重连并交由上层展示手动重试入口。
+  test("4502 关闭码不自动重连", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4502, "spawn rejected");
+
+    expect(timers).toHaveLength(0);
+  });
+
+  // 会话/环境引用失效（4004，如 env 已删除）时，重试相同 URL 永远失败：
+  // 客户端必须停止自动重连并进入 error 终态，交由上层展示手动恢复入口。
+  test("4004 关闭码不自动重连且进入 error 终态", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4004, "env not found");
+
+    expect(states).toEqual(["connecting", "error"]);
+    expect(timers).toHaveLength(0);
+  });
 });

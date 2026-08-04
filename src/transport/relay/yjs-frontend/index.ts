@@ -92,7 +92,8 @@ const lifecycle = new WsLifecycle({
     // 从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析实例编号；
     // agent_session 表已废弃，不再查 DB 标题。
     const parsed = parseInstanceSessionId(sessionId);
-    if (!parsed) throw new Error(`Invalid instance session id: ${sessionId}`);
+    // message 不得包含 sessionId：其可含 envId 等标识，进入日志即构成敏感信息泄漏
+    if (!parsed) throw new Error("Invalid instance session id");
     return parsed.instanceNumber;
   },
 });

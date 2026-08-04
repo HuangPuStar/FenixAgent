@@ -5,6 +5,7 @@ import {
   translateSimpleAction,
 } from "@fenix/acp-server";
 import { touchInstanceActivity } from "../../../services/acp-idle-monitor";
+import { terminateLocalDeadInstance } from "../../../services/orchestration-instance";
 import { extractAcpEvent, extractJsonRpc } from "../relay-handler";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { RelayMessage, SharedRelay } from "./types";
@@ -52,6 +53,11 @@ export class RelayEventHandler {
     }
 
     if (msgType === "relay_closed") {
+      // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
+      // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
+      // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
+      // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
+      void terminateLocalDeadInstance(shared.instanceId);
       this.dependencies.docManager.setChatConnectionStatus(shared.rcsSessionId, {
         status: "disconnected",
         since: Date.now(),
@@ -195,6 +201,9 @@ export class RelayEventHandler {
           shared.agentId,
           shared.rcsSessionId,
         );
+        // await 挂起期间 relay 可能已因全部客户端断开而释放（closeReleasedRelay 已置 destroyed 并注销），
+        // 跳过注册避免产生无注销点的僵尸监听器；relay 已销毁时后续 session 同步也无接收者。
+        if (shared.destroyed) return;
         this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
         const currentSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
         const isNewSession = currentSessionId !== newSessionId;
