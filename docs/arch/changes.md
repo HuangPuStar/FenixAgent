@@ -291,7 +291,7 @@ IMChannel 包含：
 | `transport/relay/message-router.ts` | **整个文件** (5 个函数，生产代码零调用) |
 | `relay-handler.ts:39-46` | `shouldForwardToFrontend` |
 | `relay-handler.ts:49` | `pendingRelayMessages` Map |
-| `relay-handler.ts:127-180` | `translateSimpleAction` 副本（`@fenix/acp-server` 已有替代实现） |
+| `relay-handler.ts:127-180` | `translateSimpleAction` 副本（`@fenix/chat-channel` 已有替代实现） |
 | `relay-handler.ts:186-242` | `trySyncSessionsToYjs` |
 | `relay-handler.ts:249-490` | `handleRelayOpen` + `openLocalRelay` |
 | `relay-handler.ts:493-591` | `handleRelayMessage` |
@@ -330,3 +330,48 @@ IMChannel 包含：
 - `docs/arch/tech-stack-frontend.md` — 第 102-106 行更新前端连接描述
 - `docs/arch/tech-stack-overview.md` — 移除 `/acp/relay` 相关连线
 - `docs/developer/arch/*` — 同步更新 `/acp/relay` 引用
+
+---
+
+## 改动 14：Chat 域独立包 chat-channel（合并 acp-server）
+
+**状态**：✅ 已实施（C1 切片，prefactor）
+
+**现状**：Chat 域逻辑横跨 `packages/acp-server`（protocol / state / persist / transport / util）与 `src/transport/relay/yjs-frontend/`，包名与目标架构（`docs/arch/19-yjs-chat-streaming.md`）不一致。
+
+**目标**：建立 `packages/chat-channel` 大包（与 `packages/orchestration` 同级），原 `acp-server` 包全部能力原样迁入（逻辑零改动），删除原包，全部引用同批迁移到 `@fenix/chat-channel`；新增 `src/channel/` 控制面占位目录（后续 C3/C6 填充）。`web/src/acp/` 与 `yjs-frontend/` 的迁移分别在 C2、C3/C6 处理。
+
+**影响**：
+- 包：`packages/chat-channel`（`@fenix/chat-channel`），`test`/`typecheck` 脚本与原包一致；`packages/acp-server` 删除，不留兼容壳
+- 配置：`tsconfig.base.json`、`web/tsconfig.json`、`web/vite.config.ts` 的路径别名同步更新
+- 引用迁移：`src/`、`web/`、`src/__tests__/`、`web/src/__tests__/` 约 20 处 import 及当前状态文档（CLAUDE.md、19-yjs-chat-streaming、changes.md、协议/技术栈文档）全部改为 `@fenix/chat-channel`
+- 历史过渡文档（C1 issue 与 2026-07-24 acp-server 设计文档）保留「原 @fenix/acp-server」表述，作为合并前历史记录
+- `bun.lock` 同步；CI 的 Package tests（`bun test packages/`）自动覆盖新包
+
+---
+
+## 改动 15：Chat 域实现基线落地（协议、schema、状态机、权限 CAS、断链语义）
+
+**状态**：✅ 已实施（C2–C8 切片，`refactor/yjs` 分支）
+
+**现状（重构前）**：`docs/arch/19-yjs-chat-streaming.md` 是目标设计基线，与代码存在系统性差距——Y.Doc schema 与文档契约不符且 Doc 职责错位（`chat:` 装状态、`session:` 装时间线）、聚合层直接消费文档明令禁止的 `agent_message_chunk` 私有帧、无 Action/Ack 协议与 `commandId` 幂等、无显式 Turn 状态机、权限解析无 CAS 保护、Chat 域逻辑横跨包与宿主且 `yjs-frontend/` 直接耦合 `environmentRepo` / `resolveWorkspacePath` / `acp-idle-monitor` / `cache`。
+
+**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`spec/global/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
+
+**实施内容**：
+
+1. **包合并（C1，改动 14 完成）**：`packages/acp-server` 全量能力迁入 `packages/chat-channel`（`@fenix/chat-channel`），不留兼容壳；`web/src/acp/` 删除，11 个组件 import 直接指向包导出。
+2. **Y.Doc schema 一次性切换（C2，Q4）**：Chat Doc `chat:{rcsSessionId}` = 消息时间线（`schemaVersion` / `projectionVersion` / `entryOrder` / `entries` / `toolCalls`），Session Doc `session:{rcsSessionId}` = 会话元信息 / Agent 状态（`session` / `agent` / `pendingPermissions`）；纠正 Doc 职责错位；旧字段全部删除，**无兼容窗口、不做双读双写**；加载路径幂等补齐新结构骨架。
+3. **ACP 聚合边界（C2，Q6）**：`protocol/acp-channel.ts` 是唯一协议边界——acp-link 私有帧（`agent_message_chunk` / `agent_thought_chunk` / `prompt_complete` 等）与 JSON-RPC `session/update` 帧在此规范化为统一事件（保留原始 + 包裹双格式兼容）；聚合层只消费规范化事件，删除旧类型消费路径；acp-link 与 Agent 部署零改动。
+4. **Action / Ack 协议（C3，Q5/Q9）**：`channel/` 新增控制面——Gateway / SessionChannel / CommandCoordinator；`commandId` 幂等去重（每 `rcsSessionId` 进程内 Map，随实例生命周期释放）、`accepted → committed → duplicate` 两阶段 Ack、`ActionError` 稳定错误码、`expectedProjectionVersion` 服务端校验（VERSION_CONFLICT）；前端只新增 `commandId` 字段（UUID，重试复用），`protocolVersion` / `client` / `sessionId` 由服务端按会话绑定补充。
+5. **Turn 状态机（C4，Q7）**：`accepting → running → awaiting_permission → cancelling → cancelled/interrupted/failed/completed` 为权威，终态不可逆；`interrupted` 由实例失联（`relay_closed`）或取消超时（10s 兜底）触发；删除会话级扁平 `status` 枚举，前端由 `session.activeTurn.turnStatus` 派生展示状态。
+6. **权限 CAS（C5，Q8）**：`pendingPermissions` 迁入 Session Doc；解析走 CAS（`state/permission.ts`，仅 `pending → resolved` 原子迁移一次，迁移成功才向 Agent 发 `permission.resolve`）；权限请求/会话切换/断链附带过期终态迁移（默认 5min）。
+7. **连接生命周期与两类断链（C6，Q13）**：`ws-lifecycle` 语义原样迁移、结构重组（YJS 快照时序、64 KB 背压、`YJS_MAX_CLIENTS` 200 配额、rpcId 管理不重写）；前端断开仅释放连接级资源与 relay 引用计数，Instance ACP session 存活时重连同步当前实时 Y.Doc；`relay_closed` 删除该 `rcsSessionId` 的 Chat Doc / Session Doc / 广播订阅（先注销监听再销毁 Doc，杜绝僵尸监听器）并触发实例级回收；与 19 号文档 §4.1 的 YJS sync 握手差异记为二期优化项。
+8. **宿主桥接（C7，Q10）**：包内 `ChatChannelDependencies` 接口 + `src/services/chat-channel-bootstrap.ts` 装配单例（`getChatChannelController()` / `resetChatChannelBootstrap()` 供测试）；`src/transport/relay/yjs-frontend/` 与 facade 删除，`src/routes/acp/index.ts` 改调桥接；包内无对 `src/` 宿主的直接 import。
+9. **不实现项（Q5 评审决策）**：事件日志体系（`eventId` / `eventSeq` 不建模）与 `SessionLeaseManager` 租约不实现——YJS CRDT 已保证文档一致性，防重复副作用由 `commandId` 去重承担；`leaseEpoch` 类型占位，为多节点部署预留。
+
+**影响**：
+- 文档：`docs/arch/19-yjs-chat-streaming.md` 升级为"实现基线"（状态头、§2.3 模块表、§4 流程、§5.4、§6.2、§7.1/7.2、§8.2、§11、§15 修订）；`docs/arch/changes.md` 本次记录；`packages/chat-channel/README.md` 就位（原 acp-server README 内容并入并更新新语义）
+- 测试：包内测试（`packages/chat-channel/src/**/*.test.ts`，协议层 seam + 假连接对象，无真实 WS/Agent）覆盖 `commandId` 去重、版本冲突、权限 CAS、Turn 状态机、两类断链、背压、广播隔离；既有 `src/__tests__/yjs-frontend-*.test.ts` 迁移/清理
+- 行为不变：`agent-chat-service.ts`（HTTP 单轮）与 workflow 路径仅迁移 import，对外契约不变
+- 遗留（二期）：YJS sync 增量握手对齐（Q13）、`expectedProjectionVersion` 前端乐观并发增强与冲突重试 UI、跨节点 Redis 租约 / 事件日志持久化
