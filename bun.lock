@@ -154,10 +154,12 @@
         "acp-link": "workspace:*",
       },
     },
-    "packages/acp-server": {
-      "name": "@fenix/acp-server",
+    "packages/chat-channel": {
+      "name": "@fenix/chat-channel",
       "version": "0.1.0",
       "dependencies": {
+        "@fenix/plugin-sdk": "workspace:*",
+        "acp-link": "workspace:*",
         "ioredis": "^5.10.1",
         "yjs": "^13.6.21",
       },
@@ -570,9 +572,9 @@
 
     "@fenix-agent/acp-runtime-cli": ["@fenix-agent/acp-runtime-cli@workspace:packages/acp-runtime-cli"],
 
-    "@fenix/acp-server": ["@fenix/acp-server@workspace:packages/acp-server"],
-
     "@fenix/ccb": ["@fenix/ccb@workspace:packages/plugin-ccb"],
+
+    "@fenix/chat-channel": ["@fenix/chat-channel@workspace:packages/chat-channel"],
 
     "@fenix/claude-code": ["@fenix/claude-code@workspace:packages/plugin-claude-code"],
 
