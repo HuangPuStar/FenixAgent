@@ -113,8 +113,46 @@ export class AgentController {
     if (instance === undefined) {
       throw new OrchestrationError(`Instance '${instanceId}' not found`, "INSTANCE_NOT_FOUND");
     }
+    this.#terminateInstance(instance);
+  }
+
+  /**
+   * 批量终止指定机器上的全部活跃实例（机器断连/重连删除 core 实例时宿主调用）。
+   *
+   * 背景：机器断连/重连路径（core-bootstrap.unregisterRemoteNode /
+   * registerRemoteNode 重连分支）只删除 core 实例与 supplement，若不同步清理
+   * 本活跃表，幽灵实例会永久计入环境并发额度（maxConcurrency=1 时环境永久
+   * 无法再 spawn），且节点引用计数残留导致空闲回收不触发（E-P0.1）。
+   *
+   * 与 stopInstance 的语义差异：批量场景无"目标不存在"概念，不抛
+   * INSTANCE_NOT_FOUND；重复调用幂等（表内无匹配实例时直接返回 0）。
+   * @param machineId 目标机器 ID（与 Instance.machineId 匹配）
+   * @returns 实际清理的实例数
+   */
+  stopInstancesByMachineId(machineId: string): number {
+    let removed = 0;
+    // 快照遍历：终止过程会从活跃表删除条目，迭代中删除可变 Map 不安全
+    for (const instance of [...this.#instances.values()]) {
+      if (instance.machineId !== machineId) continue;
+      this.#terminateInstance(instance);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  /** 列出当前所有活跃实例（已停止的实例不包含在内）。 */
+  listInstances(): Instance[] {
+    return [...this.#instances.values()].filter((instance) => instance.status() !== "stopped");
+  }
+
+  /**
+   * 终止单个实例的公共收尾：通知 Agent 停止（仅节点 connected 时发停止帧）、
+   * 移出活跃表并归还节点引用。stopInstance 与 stopInstancesByMachineId 共用。
+   * 引用归还失败（节点已被外部关闭/空闲回收）时忽略，实例停止本身已成功。
+   */
+  #terminateInstance(instance: Instance): void {
     instance.stop();
-    this.#instances.delete(instanceId);
+    this.#instances.delete(instance.instanceId);
     // 归还 AgentNode 引用（与 spawnInstance 的 ensureNode 配对）；引用归零后由
     // AgentNodeService 按空闲超时回收节点。
     try {
@@ -122,10 +160,5 @@ export class AgentController {
     } catch {
       // 节点已不在管理集合（如已被空闲回收或外部关闭）时忽略，实例停止本身已成功
     }
-  }
-
-  /** 列出当前所有活跃实例（已停止的实例不包含在内）。 */
-  listInstances(): Instance[] {
-    return [...this.#instances.values()].filter((instance) => instance.status() !== "stopped");
   }
 }

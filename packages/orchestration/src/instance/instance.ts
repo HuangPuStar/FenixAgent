@@ -92,9 +92,15 @@ export class Instance {
       return;
     }
     if (this.#agentNode.status() === "connected") {
-      // 停止帧字段用 snake_case instance_id：与机器端（acp-link server.ts 的
-      // instanceMgr.stop(msg.instance_id)）的协议约定一致，camelCase 会被机器忽略。
-      this.#agentNode.send({ type: "stop", instance_id: this.instanceId });
+      try {
+        // 停止帧字段用 snake_case instance_id：与机器端（acp-link server.ts 的
+        // instanceMgr.stop(msg.instance_id)）的协议约定一致，camelCase 会被机器忽略。
+        this.#agentNode.send({ type: "stop", instance_id: this.instanceId });
+      } catch {
+        // 停止帧发送失败（断连窗口 / stale connected 信道不可用）：不阻断停止流程，
+        // 仍标记终止，由上层 stopInstance 继续完成 core 停止与节点引用归还；
+        // 否则 send 抛错会让 AgentController.stopInstance 中断，产生幽灵活跃表残留。
+      }
     }
     this.#terminated = true;
   }

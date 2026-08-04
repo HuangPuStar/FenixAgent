@@ -1,8 +1,8 @@
 import type { DocManager } from "@fenix/acp-server";
 import { createDeterministicRcsSessionId, translateSimpleAction } from "@fenix/acp-server";
-import { AppError } from "../../../errors";
 import type { WsConnection } from "../../ws-types";
 import type { ConnectionRegistry } from "./connection-registry";
+import { isMachineOfflineError } from "./offline-error";
 import type { RelayEventHandler } from "./relay-event-handler";
 import { InvalidSessionIdError, type SessionTransition } from "./session-transition";
 import type { ClientConnection, SharedRelay } from "./types";
@@ -170,7 +170,10 @@ export class WsLifecycle {
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);
-      if (err instanceof AppError && err.code === "MACHINE_OFFLINE") {
+      // 机器离线（MACHINE_OFFLINE / AGENT_NODE_UNAVAILABLE / NODE_OFFLINE / NODE_NOT_FOUND）
+      // 进入终态：close 4500 使客户端停止自动重连并展示 machine_unavailable 手动重试 UI。
+      // 判定逻辑见 offline-error.ts；其余 spawn 失败仍走 1011 通用分支。
+      if (isMachineOfflineError(err)) {
         broadcaster.sendToYjsWs(ws, {
           type: "error",
           payload: { code: "machine_unavailable", message: "Agent connection error" },

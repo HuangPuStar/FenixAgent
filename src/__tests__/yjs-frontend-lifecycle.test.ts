@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createDeterministicRcsSessionId, DocManager } from "@fenix/acp-server";
+import { CoreRuntimeError } from "@fenix/core";
+import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import * as Y from "yjs";
 import { AppError } from "../errors";
 import { ConnectionRegistry } from "../transport/relay/yjs-frontend/connection-registry";
@@ -247,15 +249,17 @@ describe("YJS frontend internal handlers", () => {
     expect(processed).toEqual([]);
   });
 
-  // MACHINE_OFFLINE 必须使用已导入的 AppError 分支，并且不得把内部错误详情回传给客户端。
-  test("reports AppError connection failures with a safe client error", async () => {
+  // 兼容形态：直接抛 AppError MACHINE_OFFLINE（历史/外部调用方形态）仍走 4500 终态，
+  // 错误详情（message 含敏感诊断）只进服务端日志，客户端帧恒为脱敏文案。
+  test("reports AppError MACHINE_OFFLINE connection failures with a safe client error", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);
     const errors: unknown[] = [];
+    const thrown = new AppError("machine secret diagnostic", "MACHINE_OFFLINE", 503);
     const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
       ensureRunning: async () => {
-        throw new AppError("machine secret diagnostic", "MACHINE_OFFLINE", 503);
+        throw thrown;
       },
       reportError: (_message, error) => errors.push(error),
     });
@@ -263,12 +267,94 @@ describe("YJS frontend internal handlers", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toHaveLength(1);
+    expect(errors).toEqual([thrown]);
     expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
       type: "error",
       payload: { code: "machine_unavailable", message: "Agent connection error" },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
+  });
+
+  // 真实形态一：ensureNode 抛 AgentNodeUnavailableError（节点未注册/已回收/未 connected），
+  // 等价机器不可达 → 4500 终态；message 中的 machineId 与状态详情不得泄漏给客户端。
+  test("closes 4500 and masks details when ensureNode throws AgentNodeUnavailableError", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const errors: unknown[] = [];
+    const thrown = new AgentNodeUnavailableError("Agent node for machine mach_x is unavailable");
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      ensureRunning: async () => {
+        throw thrown;
+      },
+      reportError: (_message, error) => errors.push(error),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(errors).toEqual([thrown]);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "machine_unavailable", message: "Agent connection error" },
+    });
+    expect(ws.closed).toEqual([[4500, "machine offline"]]);
+    // 客户端帧不得出现 machineId 与原始诊断文案（machine_unavailable 为合法脱敏错误码，不在此列）
+    expect(ws.messages.join("")).not.toContain("mach_x");
+  });
+
+  // 真实形态二：core launch 竞态窗口抛 CoreRuntimeError NODE_OFFLINE（ensureNode 放行后
+  // 机器断连，core 节点已被置 offline）→ 同样 4500 终态且不泄漏 nodeId。
+  test("closes 4500 when core launch fails with NODE_OFFLINE in the disconnect race window", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const errors: unknown[] = [];
+    const thrown = new CoreRuntimeError("NODE_OFFLINE", "Core node is offline: mach_x");
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      ensureRunning: async () => {
+        throw thrown;
+      },
+      reportError: (_message, error) => errors.push(error),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+    expect(errors).toEqual([thrown]);
+    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      type: "error",
+      payload: { code: "machine_unavailable", message: "Agent connection error" },
+    });
+    expect(ws.closed).toEqual([[4500, "machine offline"]]);
+    expect(ws.messages.join("")).not.toContain("mach_x");
+  });
+
+  // 负例：非机器离线的 spawn 失败（AUTO_START_DISABLED 永久失败、普通 Error）必须仍走
+  // 1011 通用分支，钉住判定边界，防止错误分类面过度扩大把非离线错误变成 4500 终态。
+  test("keeps 1011 generic branch for non-offline spawn failures", async () => {
+    for (const thrown of [
+      new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409),
+      new Error("boom"),
+    ]) {
+      const registry = new ConnectionRegistry();
+      const broadcaster = new YjsBroadcaster(registry);
+      const relayEvents = createRelayEvents(registry, broadcaster, []);
+      const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+        ensureRunning: async () => {
+          throw thrown;
+        },
+      });
+      const ws = createWs();
+
+      await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+
+      expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+        type: "error",
+        payload: { message: "Agent connection error" },
+      });
+      expect(ws.closed).toEqual([[1011, "spawn failed"]]);
+    }
   });
 
   // 新建共享 relay 时必须先执行 ACP connect 握手，远端 dispatcher 才会回传 status 并允许后续 session/list。

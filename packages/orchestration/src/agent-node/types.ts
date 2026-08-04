@@ -95,7 +95,10 @@ export interface AgentNodeServiceConfig {
  * 避免上层耦合具体类的私有实现细节。
  */
 export interface AgentNodeServicePort {
-  /** 获取 AgentNode（引用计数 +1）；节点不存在或已关闭时抛 AgentNodeUnavailableError。 */
+  /**
+   * 获取 AgentNode（引用计数 +1）；节点不存在或未处于 connected 状态
+   * （未连接 / 断连 / 重连中 / 关闭中）时抛 AgentNodeUnavailableError。
+   */
   ensureNode(machineId: string): AgentNode;
   /** 归还节点引用（计数 -1）；节点未被管理时抛 AgentNodeUnavailableError。 */
   releaseNode(machineId: string): void;

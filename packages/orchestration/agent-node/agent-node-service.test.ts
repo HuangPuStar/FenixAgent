@@ -276,18 +276,27 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(1);
   });
 
-  test("未引用节点：连接后从未 ensureNode，空闲超时后关闭并移出管理集合", () => {
+  test("未引用 connected 节点：空闲超时后保留（生命周期跟随 WS），断连耗尽后才回收", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
 
-    // 无引用计数时立即启动空闲回收，避免零引用节点永久滞留管理集合
+    // 无引用计数时立即启动空闲回收，但机器在线（connected）节点只保留不关闭：
+    // 关闭会切断机器真实 WS，造成每 idleTimeoutMs 一次的断连-重连风暴（E-P1.1）
     expect(scheduler.pendingCount()).toBe(1);
-    scheduler.fireNext(); // 空闲超时 → 关闭节点
+    scheduler.fireNext(); // 空闲超时 → connected 节点保留
+    expect(node.status()).toBe("connected");
+    expect(service.activeCount()).toBe(1);
+    expect(socket.closed).toBe(false);
 
+    // 机器断连 → 自动重连失败耗尽 → 节点回收（非 connected 节点 close 不触碰 WS）
+    socket.simulateClose(); // → disconnected + 调度重连
+    scheduler.fireNext(); // 重连任务 → connecting
+    socket.simulateError(); // 重连失败 → uninitialized → onAutoReconnectStopped → close
     expect(node.status()).toBe("closed");
     expect(service.activeCount()).toBe(0);
+    expect(socket.closed).toBe(false); // 断连态回收只推进 FSM，不调用 socket.close()
   });
 
   test("ensureNode：节点不存在时抛 AgentNodeUnavailableError", () => {
@@ -295,7 +304,95 @@ describe("AgentNodeService", () => {
     expect(() => service.ensureNode("ghost")).toThrow(AgentNodeUnavailableError);
   });
 
-  test("引用计数：ensure ×3 → release ×3 归零后空闲超时回收节点", () => {
+  // 断连节点不得放行：机器断连（disconnected）后 ensureNode 必须抛
+  // AgentNodeUnavailableError，否则 spawn 会走死信道在 core 侧落成 NODE_OFFLINE(500)
+  // （A-P1.2 回归点）
+  test("ensureNode 拒绝 disconnected 节点并抛 AgentNodeUnavailableError", () => {
+    const service = createService(new MockScheduler());
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    expect(node.status()).toBe("connected");
+
+    socket.simulateClose(); // 机器断连 → disconnected
+    expect(node.status()).toBe("disconnected");
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+  });
+
+  // 重连窗口内 connecting 节点同样拒绝：FSM 空转重连期间 WS 未真正可用，放行必然失败。
+  // 先 ensureNode 占住引用：否则无引用空闲回收任务先于重连任务触发，会把节点 close
+  test("ensureNode 拒绝 connecting 节点", () => {
+    const scheduler = new MockScheduler();
+    const service = createService(scheduler);
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
+    socket.simulateClose(); // → disconnected + 调度重连
+    scheduler.fireNext(); // 重连任务 → connecting
+    expect(node.status()).toBe("connecting");
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+  });
+
+  // 重连失败回退 uninitialized 的节点同样拒绝（与 disconnected 同语义，覆盖 E-P2.2
+  // 的 spawn 放行半：自动重连停止后节点不可承载新实例）
+  test("ensureNode 拒绝 uninitialized 节点", () => {
+    const scheduler = new MockScheduler();
+    const service = createService(scheduler);
+    const socket = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
+    socket.simulateClose(); // → disconnected
+    scheduler.fireNext(); // → connecting
+    socket.simulateError(); // 重连失败 → uninitialized
+    expect(node.status()).toBe("uninitialized");
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+  });
+
+  // 错误 message 不得包含 machineId：message 会经 errorPlugin 原样进入响应体，
+  // 泄漏 machineId 违反「对外错误不得泄漏敏感信息」约束
+  test("ensureNode 错误 message 不含 machineId", () => {
+    const service = createService(new MockScheduler());
+    const socket = new MockSocket();
+    service.handleIncomingConnection("m1", socket);
+    socket.simulateClose();
+    expect(() => service.ensureNode("m1")).toThrow(expect.not.stringContaining("m1"));
+  });
+
+  // 机器重连后恢复放行：断连 → handleIncomingConnection 复用节点 → ensureNode 成功
+  // （重连语义不变：节点生命周期跟随机器 WS，重连即恢复）
+  test("断连后机器重连（节点复用）ensureNode 恢复放行", () => {
+    const service = createService(new MockScheduler());
+    const socket1 = new MockSocket();
+    const node = service.handleIncomingConnection("m1", socket1);
+    socket1.simulateClose(); // 断连
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+
+    const socket2 = new MockSocket();
+    service.handleIncomingConnection("m1", socket2); // 机器重连 → 复用节点恢复 connected
+    expect(node.status()).toBe("connected");
+    expect(service.ensureNode("m1")).toBe(node);
+  });
+
+  // 引用计数不泄漏：拒绝路径不得 +1（ensureNode 先检查后递增），否则 releaseNode
+  // 归零回收逻辑会被跳过，节点永久滞留管理集合。通过「拒绝后归还唯一引用 →
+  // 空闲回收触发并关闭节点」的行为链验证
+  test("ensureNode 拒绝时引用计数不变", () => {
+    const scheduler = new MockScheduler();
+    const service = createService(scheduler);
+    const socket = new MockSocket();
+    service.handleIncomingConnection("m1", socket);
+    service.ensureNode("m1"); // 引用 +1，取消未引用空闲定时器
+    socket.simulateClose(); // 断连 → 调度重连
+
+    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError); // 拒绝路径不得再 +1
+
+    service.releaseNode("m1"); // 归还唯一引用 → 计数归零 → 启动空闲回收
+    scheduler.fireNext(); // 重连任务 → connecting
+    scheduler.fireNext(); // 空闲回收 → 非 connected 节点关闭并移出管理集合
+    expect(service.activeCount()).toBe(0);
+    expect(socket.closed).toBe(false); // 断连态回收只推进 FSM，不调用 socket.close()
+  });
+
+  test("引用归零后空闲超时：connected 节点保留且不关闭 WS 信道，新 ensureNode 直接复用同一节点", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket = new MockSocket();
@@ -314,10 +411,14 @@ describe("AgentNodeService", () => {
     service.releaseNode("m1");
     expect(scheduler.pendingCount()).toBe(1); // 归零后启动空闲回收
 
-    scheduler.fireNext(); // 空闲超时 → 节点关闭
-    expect(node.status()).toBe("closed");
-    expect(service.activeCount()).toBe(0);
-    expect(() => service.ensureNode("m1")).toThrow(AgentNodeUnavailableError);
+    // 机器在线（connected）节点不被空闲回收关闭，WS 信道保持（E-P1.1 回归）
+    scheduler.fireNext();
+    expect(node.status()).toBe("connected");
+    expect(socket.closed).toBe(false);
+    expect(service.activeCount()).toBe(1);
+
+    // 新引用直接复用同一节点，不抛 AgentNodeUnavailableError
+    expect(service.ensureNode("m1")).toBe(node);
   });
 
   test("空闲回收取消：归零后新 ensureNode 到达取消定时器，节点保持可用", () => {
@@ -372,15 +473,21 @@ describe("AgentNodeService", () => {
     expect(node2.status()).toBe("connected");
   });
 
-  test("回收后重建：closed 节点移出管理，新连接创建全新节点", () => {
+  test("回收后重建：已断连节点经空闲回收移出管理，新连接创建全新节点", () => {
     const scheduler = new MockScheduler();
     const service = createService(scheduler);
     const socket1 = new MockSocket();
     const node1 = service.handleIncomingConnection("m1", socket1);
     service.ensureNode("m1");
-    service.releaseNode("m1");
+    service.releaseNode("m1"); // 引用归零 → 启动空闲回收（任务先于重连任务注册）
+
+    // 机器断连：节点进入 disconnected 并调度自动重连；空闲超时先触发，
+    // 节点非 connected → close 直接推进 closed（不触碰 WS 信道）
+    socket1.simulateClose();
     scheduler.fireNext(); // 空闲回收 → node1 closed
+    expect(node1.status()).toBe("closed");
     expect(service.activeCount()).toBe(0);
+    expect(socket1.closed).toBe(false); // 断连态回收不调用 socket.close()
 
     const socket2 = new MockSocket();
     const node2 = service.handleIncomingConnection("m1", socket2);

@@ -17,7 +17,7 @@
  */
 
 import { error as logError } from "@fenix/logger";
-import { AgentNodeService, type AgentNodeSocket } from "@fenix/orchestration";
+import { AgentNodeService, type AgentNodeSocket, AgentNodeUnavailableError } from "@fenix/orchestration";
 import { config } from "../config";
 import type { WsConnection } from "./ws-types";
 
@@ -69,7 +69,12 @@ class WsAgentNodeSocket implements AgentNodeSocket {
 
   /** 发送数据帧；帧格式与 acp-ws-handler.sendToWs 保持一致（NDJSON）。 */
   send(data: unknown): void {
-    if (this.#ws.readyState !== 1) return;
+    // readyState!==1（断连/关闭中）时静默丢弃会让调用方误以为消息可达（停止帧丢失
+    // 无回执）。显式抛错保证「断连即失败」，与 AgentNode.send 的 connected 门禁语义
+    // 一致；sweep 路径未透传断连事件导致节点 stale connected 时，此处是最后防线。
+    if (this.#ws.readyState !== 1) {
+      throw new AgentNodeUnavailableError("Agent node socket is not open");
+    }
     try {
       this.#ws.send(`${JSON.stringify(data)}\n`);
     } catch (err) {

@@ -9,7 +9,8 @@
 import { describe, expect, test } from "bun:test";
 import { AgentController } from "../src/agent-controller";
 import { AgentNode } from "../src/agent-node/agent-node";
-import type { AgentNodeSocket } from "../src/agent-node/types";
+import { AgentNodeService } from "../src/agent-node/agent-node-service";
+import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
 import {
   AgentNodeUnavailableError,
   ConcurrencyExceededError,
@@ -104,7 +105,8 @@ class MockAgentEngineRepo implements AgentEngineRepo {
 /** Mock AgentNodeService：从预置节点表返回 AgentNode，缺失时抛 AgentNodeUnavailableError。 */
 class MockAgentNodeService {
   readonly nodes = new Map<string, AgentNode>();
-  readonly released = new Set<string>();
+  /** 每台机器的引用归还次数（Map 计数而非 Set 去重：断言"每实例归还一次"）。 */
+  readonly releasedCounts = new Map<string, number>();
 
   ensureNode(machineId: string): AgentNode {
     const node = this.nodes.get(machineId);
@@ -115,7 +117,33 @@ class MockAgentNodeService {
   }
 
   releaseNode(machineId: string): void {
-    this.released.add(machineId);
+    this.releasedCounts.set(machineId, (this.releasedCounts.get(machineId) ?? 0) + 1);
+  }
+}
+
+/** Mock 定时器：任务手动触发，支持取消标记（语义与 agent-node-service.test.ts 一致）。 */
+class MockScheduler implements TimerScheduler {
+  #tasks: { handler: () => void; cancelled: boolean }[] = [];
+
+  setTimeout(handler: () => void): unknown {
+    const task = { handler, cancelled: false };
+    this.#tasks.push(task);
+    return task;
+  }
+
+  clearTimeout(handle: unknown): void {
+    (handle as { cancelled: boolean }).cancelled = true;
+  }
+
+  /** 触发下一个未取消的任务，返回是否真的有任务被执行。 */
+  fireNext(): boolean {
+    const task = this.#tasks.find((t) => !t.cancelled);
+    if (task === undefined) {
+      return false;
+    }
+    task.cancelled = true;
+    task.handler();
+    return true;
   }
 }
 
@@ -127,13 +155,12 @@ function createConnectedNode(machineId: string): { node: AgentNode; socket: Mock
   return { node, socket };
 }
 
-/** 标准测试夹具：预置 env/cfg/engine/machine 数据，返回注入好依赖的 controller。 */
-function setup() {
-  const envRepo = new MockEnvironmentRepo();
-  const configRepo = new MockAgentConfigRepo();
-  const engineRepo = new MockAgentEngineRepo();
-  const nodeService = new MockAgentNodeService();
-
+/** 预置 env1/cfg1/engine1 标准数据（setup 与真实节点服务夹具共用）。 */
+function seedStandardData(
+  envRepo: MockEnvironmentRepo,
+  configRepo: MockAgentConfigRepo,
+  engineRepo: MockAgentEngineRepo,
+): void {
   envRepo.envs.set("env1", {
     id: "env1",
     organizationId: "org1",
@@ -154,6 +181,16 @@ function setup() {
     knowledgeBases: [],
   });
   engineRepo.engines.set("engine1", { id: "engine1", type: "opencode", version: "1.0" });
+}
+
+/** 标准测试夹具：预置 env/cfg/engine/machine 数据，返回注入好依赖的 controller。 */
+function setup() {
+  const envRepo = new MockEnvironmentRepo();
+  const configRepo = new MockAgentConfigRepo();
+  const engineRepo = new MockAgentEngineRepo();
+  const nodeService = new MockAgentNodeService();
+
+  seedStandardData(envRepo, configRepo, engineRepo);
 
   const { node, socket } = createConnectedNode("m1");
   nodeService.nodes.set("m1", node);
@@ -170,6 +207,44 @@ function setup() {
   });
 
   return { controller, envRepo, configRepo, engineRepo, nodeService, node, socket };
+}
+
+/**
+ * 真实 AgentNodeService 夹具：机器 m1 已通过 handleIncomingConnection 连接
+ * （引用计数 0），返回注入真实节点服务的 controller，供空闲回收 / 停止帧用例使用。
+ */
+function setupWithRealNodeService(scheduler: TimerScheduler): {
+  controller: AgentController;
+  service: AgentNodeService;
+  socket: MockSocket;
+  envRepo: MockEnvironmentRepo;
+} {
+  const service = new AgentNodeService({
+    idleTimeoutMs: 100,
+    maxRetries: 0,
+    reconnectDelayMs: 10,
+    scheduler,
+  });
+  const socket = new MockSocket();
+  service.handleIncomingConnection("m1", socket);
+
+  const envRepo = new MockEnvironmentRepo();
+  const configRepo = new MockAgentConfigRepo();
+  const engineRepo = new MockAgentEngineRepo();
+  seedStandardData(envRepo, configRepo, engineRepo);
+
+  const builder = new LaunchSpecBuilder({
+    agentConfigRepo: configRepo,
+    environmentRepo: envRepo,
+    agentEngineRepo: engineRepo,
+  });
+  const controller = new AgentController({
+    agentNodeService: service,
+    launchSpecBuilder: builder,
+    environmentRepo: envRepo,
+  });
+
+  return { controller, service, socket, envRepo };
 }
 
 describe("AgentController.spawnInstance", () => {
@@ -324,7 +399,7 @@ describe("AgentController.stopInstance / listInstances", () => {
     await controller.stopInstance(a.instanceId);
     expect(controller.listInstances()).toHaveLength(1);
     expect(a.status()).toBe("stopped");
-    expect(nodeService.released.has("m1")).toBe(true); // 引用已归还，等待空闲回收
+    expect(nodeService.releasedCounts.get("m1")).toBe(1); // 引用已归还，等待空闲回收
 
     // 已停止的实例不再占用并发额度，可以再次 spawn
     const c = await controller.spawnInstance("env1", "user1");
@@ -332,5 +407,100 @@ describe("AgentController.stopInstance / listInstances", () => {
     expect(c.instanceId).not.toBe(a.instanceId);
 
     await expect(controller.stopInstance(a.instanceId)).rejects.toThrow(OrchestrationError);
+  });
+});
+
+describe("AgentController.stopInstancesByMachineId", () => {
+  test("清理目标机器全部实例并每实例归还一次节点引用", async () => {
+    const { controller, envRepo, nodeService } = setup();
+    envRepo.envs.get("env1")!.maxConcurrency = 2; // 放宽并发限制以便同机器承载 2 个实例
+    envRepo.envs.set("env2", {
+      id: "env2",
+      organizationId: "org1",
+      agentConfigId: "cfg1",
+      machineId: "m2",
+      maxConcurrency: 1,
+      autoStart: true,
+    });
+    const { node: node2 } = createConnectedNode("m2");
+    nodeService.nodes.set("m2", node2);
+
+    const m1a = await controller.spawnInstance("env1", "user1");
+    const m1b = await controller.spawnInstance("env1", "user1");
+    const m2 = await controller.spawnInstance("env2", "user1");
+    expect(controller.listInstances()).toHaveLength(3);
+
+    const removed = controller.stopInstancesByMachineId("m1");
+
+    // 只清理 m1 的实例，m2 实例保留；每个实例归还一次节点引用（计数而非去重）
+    expect(removed).toBe(2);
+    expect(controller.listInstances().map((i) => i.instanceId)).toEqual([m2.instanceId]);
+    expect(m1a.status()).toBe("stopped");
+    expect(m1b.status()).toBe("stopped");
+    expect(nodeService.releasedCounts.get("m1")).toBe(2);
+    expect(nodeService.releasedCounts.get("m2")).toBeUndefined();
+  });
+
+  test("无匹配机器时返回 0 且不抛错", async () => {
+    const { controller } = setup();
+    await controller.spawnInstance("env1", "user1");
+
+    // m2 机器无任何实例：批量清理无"目标不存在"概念，返回 0 且不抛错
+    expect(controller.stopInstancesByMachineId("m2")).toBe(0);
+    expect(controller.listInstances()).toHaveLength(1);
+  });
+
+  test("重复调用幂等：第二次调用返回 0 且不抛错", async () => {
+    const { controller, envRepo, nodeService } = setup();
+    envRepo.envs.get("env1")!.maxConcurrency = 2;
+    await controller.spawnInstance("env1", "user1");
+    await controller.spawnInstance("env1", "user1");
+
+    expect(controller.stopInstancesByMachineId("m1")).toBe(2);
+    // 活跃表已空：重复清理幂等返回 0（宿主断连/心跳超时先后触发时不会重复计数）
+    expect(controller.stopInstancesByMachineId("m1")).toBe(0);
+    expect(nodeService.releasedCounts.get("m1")).toBe(2);
+  });
+
+  test("节点已断开时清理不发停止帧", async () => {
+    const { controller, service, socket } = setupWithRealNodeService(new MockScheduler());
+    const instance = await controller.spawnInstance("env1", "user1");
+
+    socket.close(); // 模拟机器断连（dispatchAgentNodeWsClose → disconnected）
+    expect(instance.status()).toBe("error");
+
+    controller.stopInstancesByMachineId("m1");
+
+    // 断连后节点非 connected，stop() 的停止帧发送门禁（instance.ts）不触发
+    expect(socket.sent).toEqual([]);
+    expect(controller.listInstances()).toHaveLength(0);
+    expect(service.activeCount()).toBe(1); // 节点仍在管理集合，等待引用归零后的空闲回收
+  });
+
+  test("节点 connected 时清理发送停止帧（复用 stopInstance 语义）", async () => {
+    const { controller, socket } = setupWithRealNodeService(new MockScheduler());
+    const instance = await controller.spawnInstance("env1", "user1");
+
+    controller.stopInstancesByMachineId("m1");
+
+    // 停止帧携带 instance_id（机器端协议字段），与 stopInstance 语义一致
+    expect(socket.sent).toEqual([{ type: "stop", instance_id: instance.instanceId }]);
+    expect(instance.status()).toBe("stopped");
+  });
+
+  test("引用归零后空闲回收触发并关闭节点（幽灵实例解毒）", async () => {
+    const scheduler = new MockScheduler();
+    const { controller, service, socket, envRepo } = setupWithRealNodeService(scheduler);
+    envRepo.envs.get("env1")!.maxConcurrency = 2;
+
+    await controller.spawnInstance("env1", "user1");
+    await controller.spawnInstance("env1", "user1");
+    socket.close(); // 模拟机器断连
+    controller.stopInstancesByMachineId("m1");
+    expect(service.activeCount()).toBe(1); // 节点尚未被空闲回收
+
+    // 引用归零后空闲回收定时器启动：触发后节点关闭并移出管理集合（不再滞留）
+    expect(scheduler.fireNext()).toBe(true);
+    expect(service.activeCount()).toBe(0);
   });
 });
