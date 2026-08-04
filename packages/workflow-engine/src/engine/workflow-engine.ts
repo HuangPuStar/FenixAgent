@@ -60,6 +60,15 @@ export interface DryRunResult {
   };
 }
 
+/**
+ * run 执行选项（C-P2.5）：携带触发者身份，供宿主配额桶归属。
+ * userId 未传（如 webhook 匿名触发、从快照恢复）时由宿主回退 "system"。
+ */
+export interface RunOptions {
+  /** 工作流触发者 userId；实例按此 ID 计入用户级并发配额桶 */
+  userId?: string;
+}
+
 /** 工作流引擎实例 */
 export interface WorkflowEngine {
   /** 解析 YAML 为 WorkflowDef */
@@ -69,10 +78,17 @@ export interface WorkflowEngine {
   validate(def: WorkflowDef): ValidationResult;
 
   /** 执行工作流（阻塞，返回最终结果） */
-  run(yaml: string, params?: Record<string, unknown>): Promise<DAGRunResult>;
+  run(yaml: string, params?: Record<string, unknown>, opts?: RunOptions): Promise<DAGRunResult>;
 
   /** 异步启动工作流，立即返回 runId 和结果 Promise */
-  runAsync(yaml: string, params?: Record<string, unknown>): { runId: string; result: Promise<DAGRunResult> };
+  runAsync(
+    yaml: string,
+    params?: Record<string, unknown>,
+    opts?: RunOptions,
+  ): {
+    runId: string;
+    result: Promise<DAGRunResult>;
+  };
 
   /** 干运行 — 校验 + 展示执行计划，不实际执行 */
   dryRun(yaml: string): DryRunResult;
@@ -103,10 +119,10 @@ export interface WorkflowEngine {
   getPendingApprovals(runId: string): Promise<PendingApproval[]>;
 
   /** 从快照恢复运行 */
-  recover(runId: string, yaml: string): Promise<DAGRunResult>;
+  recover(runId: string, yaml: string, opts?: RunOptions): Promise<DAGRunResult>;
 
   /** 从指定节点重新运行（保留上游输出，目标节点及下游重新执行） */
-  rerunFrom(prevRunId: string, yaml: string, fromNodeId: string): Promise<DAGRunResult>;
+  rerunFrom(prevRunId: string, yaml: string, fromNodeId: string, opts?: RunOptions): Promise<DAGRunResult>;
 }
 
 // ---------- 活跃运行记录 ----------
@@ -116,6 +132,8 @@ interface ActiveRun {
   workflowDef: WorkflowDef;
   params: Record<string, unknown>;
   secrets: Record<string, string>;
+  /** 触发者 userId（C-P2.5）：审批恢复段继续按原触发者配额；未传为 undefined */
+  userId?: string;
 }
 
 // ---------- createWorkflowEngine ----------
@@ -166,8 +184,8 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     return validateDAG(def);
   }
 
-  async function run(yaml: string, params: Record<string, unknown> = {}): Promise<DAGRunResult> {
-    const { runId, context } = await prepareRun(yaml, params);
+  async function run(yaml: string, params: Record<string, unknown> = {}, opts?: RunOptions): Promise<DAGRunResult> {
+    const { runId, context } = await prepareRun(yaml, params, opts);
 
     let result: DAGRunResult | undefined;
     try {
@@ -184,6 +202,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
   function runAsync(
     yaml: string,
     params: Record<string, unknown> = {},
+    opts?: RunOptions,
   ): { runId: string; result: Promise<DAGRunResult> } {
     const runId = `run_${nanoid(10)}`;
 
@@ -229,9 +248,16 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         nodeExecutor: registry,
         cancellation,
         spawnedInstanceIds: new Set<string>(),
+        callerUserId: opts?.userId,
       };
 
-      activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
+      activeRuns.set(runId, {
+        cancellation,
+        workflowDef: validation.def,
+        params: resolvedParams,
+        secrets,
+        userId: opts?.userId,
+      });
 
       let result: DAGRunResult | undefined;
       try {
@@ -258,6 +284,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
   async function prepareRun(
     yaml: string,
     params: Record<string, unknown> = {},
+    opts?: RunOptions,
   ): Promise<{ runId: string; context: SchedulerContext }> {
     const def = parse(yaml, defaultCwd);
     const validation = validate(def);
@@ -300,9 +327,16 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       nodeExecutor: registry,
       cancellation,
       spawnedInstanceIds: new Set<string>(),
+      callerUserId: opts?.userId,
     };
 
-    activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
+    activeRuns.set(runId, {
+      cancellation,
+      workflowDef: validation.def,
+      params: resolvedParams,
+      secrets,
+      userId: opts?.userId,
+    });
 
     return { runId, context };
   }
@@ -411,6 +445,8 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       initialNodeStates: nodeStates,
       initialNodeOutputs: nodeOutputs,
       spawnedInstanceIds: new Set<string>(),
+      // C-P2.5：恢复段继续按原触发者配额（activeRun 保存的 userId）
+      callerUserId: activeRun.userId,
     };
 
     const scheduler = new DAGScheduler(context);
@@ -515,7 +551,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     return pending;
   }
 
-  async function recover(runId: string, yaml: string): Promise<DAGRunResult> {
+  async function recover(runId: string, yaml: string, opts?: RunOptions): Promise<DAGRunResult> {
     const def = parse(yaml, defaultCwd);
     const validation = validate(def);
     if (!validation.valid) {
@@ -560,8 +596,15 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     const registry = buildRegistry(runId, baseDir);
     const cancellation = new CancellationManager();
 
-    // 存储为活跃运行
-    activeRuns.set(runId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
+    // 存储为活跃运行（C-P2.5：快照不持久化 userId，由调用方按当前请求上下文传入；
+    // 未传则恢复段 fallback "system"）
+    activeRuns.set(runId, {
+      cancellation,
+      workflowDef: validation.def,
+      params: resolvedParams,
+      secrets,
+      userId: opts?.userId,
+    });
 
     let result: DAGRunResult | undefined;
     try {
@@ -574,6 +617,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         nodeExecutor: registry,
         cancellation,
         spawnedInstanceIds: new Set<string>(),
+        callerUserId: opts?.userId,
       };
 
       result = await recoverRun(context);
@@ -586,7 +630,12 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     }
   }
 
-  async function rerunFrom(prevRunId: string, yaml: string, fromNodeId: string): Promise<DAGRunResult> {
+  async function rerunFrom(
+    prevRunId: string,
+    yaml: string,
+    fromNodeId: string,
+    opts?: RunOptions,
+  ): Promise<DAGRunResult> {
     const def = parse(yaml, defaultCwd);
     const validation = validate(def);
     if (!validation.valid) {
@@ -688,7 +737,13 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       }
     }
 
-    activeRuns.set(newRunId, { cancellation, workflowDef: validation.def, params: resolvedParams, secrets });
+    activeRuns.set(newRunId, {
+      cancellation,
+      workflowDef: validation.def,
+      params: resolvedParams,
+      secrets,
+      userId: opts?.userId,
+    });
 
     let result: DAGRunResult | undefined;
     try {
@@ -703,6 +758,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         initialNodeStates: nodeStates,
         initialNodeOutputs: nodeOutputs,
         spawnedInstanceIds: new Set<string>(),
+        callerUserId: opts?.userId,
       };
 
       const scheduler = new DAGScheduler(context);

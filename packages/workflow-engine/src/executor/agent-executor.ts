@@ -162,6 +162,8 @@ export class AgentExecutor implements NodeExecutor {
     console.error(`[workflow] AgentExecutor connecting: nodeId=${node.id} agent=${resolvedAgent}`);
     const session = await this.transport.connect(resolvedAgent, {
       spawnedInstanceIds: ctx.spawnedInstanceIds,
+      // C-P2.5：触发者 userId 透传，宿主 ensureRunning 按此计入用户配额桶
+      userId: ctx.callerUserId,
     });
 
     try {

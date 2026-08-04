@@ -33,6 +33,8 @@ export interface NodeExecutionContext {
   storage: StorageAdapter;
   /** 收集本次运行实际启动的实例 ID（复用不记录） */
   spawnedInstanceIds?: Set<string>;
+  /** 工作流触发者 userId（C-P2.5）：透传给 Transport.connect 供配额桶归属 */
+  callerUserId?: string;
 }
 
 /** 节点执行器接口 — 各节点类型实现此接口 */
@@ -70,6 +72,8 @@ export interface SchedulerContext {
   initialNodeOutputs?: Map<string, NodeOutput>;
   /** 收集本次运行实际启动的实例 ID（复用不记录；由 Transport 层通过回调注入） */
   spawnedInstanceIds?: Set<string>;
+  /** 工作流触发者 userId（C-P2.5）：经 NodeExecutionContext 透传给 Transport.connect */
+  callerUserId?: string;
 }
 
 // ---------- 调度结果 ----------
@@ -312,6 +316,7 @@ export class DAGScheduler {
         signal: this.ctx.cancellation.signal,
         storage: this.ctx.storage,
         spawnedInstanceIds: this.ctx.spawnedInstanceIds,
+        callerUserId: this.ctx.callerUserId,
       };
 
       // 执行节点（执行器内部发射 node.started / node.completed 事件）

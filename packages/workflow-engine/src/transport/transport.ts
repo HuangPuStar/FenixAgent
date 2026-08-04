@@ -45,7 +45,19 @@ export interface AgentSession {
 
 /** Transport — 连接管理 + 会话创建 */
 export interface Transport {
-  connect(agentId: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession>;
+  connect(
+    agentId: string,
+    options?: {
+      cwd?: string;
+      /** 本次运行实际启动的实例 ID（复用不记录；供宿主清理） */
+      spawnedInstanceIds?: Set<string>;
+      /**
+       * 工作流触发者 userId（C-P2.5）：透传给宿主 ensureRunning 的配额桶归属。
+       * 未传（如 webhook 匿名触发）时由宿主回退 "system"。
+       */
+      userId?: string;
+    },
+  ): Promise<AgentSession>;
   disconnect?(): Promise<void>;
   isReady?(): boolean;
 }

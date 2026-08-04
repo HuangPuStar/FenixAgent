@@ -70,11 +70,14 @@ async function resolveExecutionVersion(
 
 /**
  * 执行指定工作流并返回结果。
+ *
+ * @param userId 触发者 userId（C-P2.5）：透传至 runAsync，实例计入该用户配额桶
  */
 export async function executeWorkflow(
   organizationId: string,
   workflowId: string,
   body: ApiWorkflowExecuteRequestBody,
+  userId?: string,
 ): Promise<WorkflowExecuteSyncResult | WorkflowExecuteAsyncResult> {
   const engine = getTeamEngine(organizationId);
 
@@ -96,7 +99,7 @@ export async function executeWorkflow(
   const def = engine.parse(yaml);
   const endNode = def.nodes.find((n) => n.type === "end");
 
-  const { runId, result } = engine.runAsync(yaml, body.inputs);
+  const { runId, result } = engine.runAsync(yaml, body.inputs, { userId });
 
   // 后台收尾
   result.then(

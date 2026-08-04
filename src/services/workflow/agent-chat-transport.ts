@@ -335,7 +335,10 @@ class AgentChatTransport implements Transport {
     this.organizationId = organizationId;
   }
 
-  async connect(envName: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession> {
+  async connect(
+    envName: string,
+    options?: { cwd?: string; spawnedInstanceIds?: Set<string>; userId?: string },
+  ): Promise<AgentSession> {
     logger.debug(`connect start: envName=${envName}`);
 
     // 1. 按 name + orgId 查 Environment
@@ -358,7 +361,11 @@ class AgentChatTransport implements Transport {
     // 不清理，语义与实现一致。C-P1.1-R 补充：reused 实例同样占一份租约
     // （acquireInstanceLease），cleanup 按租约守卫跳过有使用者的实例，最后使用者
     // 释放后由 acp-idle-monitor 空闲回收兜底。
-    const { instance, status } = await ensureRunning("system", envRow.id, "system");
+    // C-P2.5：实例按触发者 userId 计入用户级并发配额桶（agent-concurrency 按 userId
+    // 聚合），不再统一挂 "system" 跨租户共享配额；无触发者（webhook 匿名触发、
+    // 快照恢复无 userId）时回退 "system"。source 保持 "system"：仅影响 scheduled
+    // 桶判断（RCS_SCHEDULED_AGENT_MAX_CONCURRENCY），与用户桶无关。
+    const { instance, status } = await ensureRunning(options?.userId ?? "system", envRow.id, "system");
     // 无论 spawned / reused 先占租约：实例被选中即视为在使用，消除"创建者先结束
     // 连坐使用者"的竞态窗口（B 已选中 X 但尚未 attach 时 A 的 cleanup 误停 X）。
     acquireInstanceLease(instance.id);

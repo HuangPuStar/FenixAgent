@@ -119,6 +119,8 @@ export class SubWorkflowExecutor implements NodeExecutor {
         // 不合并 result.spawnedInstanceIds：子 DAG 完成前已通过引用同步写入，
         // 失败/取消/ignore_errors 路径自动覆盖，避免多路径合并漏分支。
         spawnedInstanceIds: ctx.spawnedInstanceIds,
+        // C-P2.5：子流程 agent 节点沿用父流程触发者身份，实例仍计入原用户配额桶
+        callerUserId: ctx.callerUserId,
       });
 
       const result = await scheduler.run();

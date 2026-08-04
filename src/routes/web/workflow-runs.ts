@@ -115,7 +115,8 @@ app.post(
       }
       const params = payload.params as Record<string, unknown> | undefined;
       const workflowId = payload.workflowId;
-      const { runId, result } = engine.runAsync(yaml, params);
+      // C-P2.5：触发者 userId 透传，实例计入该用户配额桶
+      const { runId, result } = engine.runAsync(yaml, params, { userId: authCtx.userId });
       // 发布 run_started SSE 事件（runId 已知）
       if (workflowId) {
         publishWorkflowEvent(workflowId, "workflow.run_started", { runId });
@@ -545,7 +546,8 @@ app.post(
     const payload = body as typeof WorkflowRecoverRequestBodySchema._output;
 
     try {
-      const result = await engine.recover(runId, payload.yaml);
+      // C-P2.5：恢复段按当前请求用户配额
+      const result = await engine.recover(runId, payload.yaml, { userId: authCtx.userId });
       return { success: true, data: result };
     } catch (err: unknown) {
       if (err instanceof WorkflowError) {
@@ -590,7 +592,8 @@ app.post(
     const payload = body as typeof WorkflowRerunRequestBodySchema._output;
 
     try {
-      const result = await engine.rerunFrom(runId, payload.yaml, payload.fromNodeId);
+      // C-P2.5：重跑段按当前触发者配额
+      const result = await engine.rerunFrom(runId, payload.yaml, payload.fromNodeId, { userId: authCtx.userId });
       // 回写 workflowId 到新 run 的快照
       if (payload.workflowId) {
         await db
