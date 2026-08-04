@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
-import { useChatPageVisible } from "../../hooks/useSessions";
+import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";

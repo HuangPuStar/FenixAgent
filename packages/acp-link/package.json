@@ -1,13 +1,10 @@
 {
   "name": "acp-link",
   "version": "2.0.0",
-  "description": "ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket, with RCS registry client mode",
+  "description": "ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket",
   "author": "fenix",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "acp-link": "./dist/acp-link.js"
-  },
   "main": "./src/server.ts",
   "exports": {
     ".": {
@@ -44,20 +41,13 @@
     }
   },
   "files": [
-    "dist",
     "src",
     "!src/__tests__",
     "!src/adapter-*.ts"
   ],
-  "scripts": {
-    "build": "bun build ./src/cli/bin.ts --outfile ./dist/acp-link.js --target=node",
-    "dev": "bun run src/cli/bin.ts ccb-bun -- --acp",
-    "prepublishOnly": "bun run build"
-  },
+  "scripts": {},
   "devDependencies": {
     "@agentclientprotocol/sdk": "^1.2.0",
-    "@stricli/auto-complete": "^1.2.4",
-    "@stricli/core": "^1.2.4",
     "ws": "^8.18.0",
     "@types/ws": "^8.18.1",
     "@types/bun": "^1.3.12",

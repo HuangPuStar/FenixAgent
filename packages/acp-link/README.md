@@ -1,125 +1,175 @@
 # acp-link
 
-ACP proxy server that bridges WebSocket clients to ACP (Agent Client Protocol) agents.
+ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket.
 
-> Source code adapted from [chrome-acp](https://github.com/Areo-Joe/chrome-acp).
-
-## Installation
-
-### From source
+## 安装
 
 ```bash
-# From monorepo root
-bun install
+bun add acp-link
 ```
 
-## Usage
+## 编程接口
 
-```bash
-# Via global install
-acp-link /path/to/agent
+有两种运行模式：
 
-# Via source
-bun src/cli/bin.ts /path/to/agent
+### Server 模式（标准用法）
+
+在本进程中启动 WebSocket 服务器，直接管理 agent 子进程。这是包作为依赖被引用时的典型用法：
+
+```ts
+import { createAcpServer, type ServerConfig } from "acp-link";
+
+const config: ServerConfig = {
+  port: 9315,
+  host: "127.0.0.1",
+  command: "opencode",          // 可执行文件名
+  args: ["acp"],                // 传给 agent 的参数
+  cwd: "/path/to/workspace",    // 工作目录
+  env: { OPENAI_API_KEY: "..." },
+  agentType: "opencode",        // "opencode" | "ccb" | "claude-code"
+};
+
+const server = createAcpServer(config);
+// server.close() 关闭服务
 ```
 
-### Examples
+### Client 模式
 
-```bash
-# Basic usage
-acp-link /path/to/agent
+不启动本地服务器，而是作为客户端连接到远程 RCS 注册中心。仅 CLI 独立二进制使用：
 
-# With custom port and host
-acp-link --port 9000 --host 0.0.0.0 /path/to/agent
+```ts
+import { createAcpClient } from "acp-link";
 
-# With debug logging
-acp-link --debug /path/to/agent
-
-# Enable HTTPS with self-signed certificate
-acp-link --https /path/to/agent
-
-# Disable authentication (dangerous)
-acp-link --no-auth /path/to/agent
-
-# Register to RCS with a specific channel group
-acp-link --group my-team /path/to/agent
-
-# Pass arguments to the agent (use -- to separate)
-acp-link /path/to/agent -- --verbose --model gpt-4
+const client = createAcpClient({
+  port: 9315,
+  host: "127.0.0.1",
+  command: "opencode",
+  args: ["acp"],
+  cwd: "/path/to/workspace",
+  agentType: "opencode",
+  rcsUrl: "ws://rcs.example.com:3000",   // RCS 服务地址
+  rcsSecret: "your-rcs-token",           // RCS 认证密钥
+  tenantId: "org-123",                   // 租户 ID（可选）
+  userId: "user-456",                    // 用户 ID（可选）
+  labels: ["production"],                // 机器标签（可选）
+  name: "My Machine",                    // 机器显示名（可选）
+});
+// client.close() 断开连接
 ```
 
-## CLI Reference
+`startServer(config)` 会根据 `config.rcsUrl` 是否存在自动选择模式，仅供 CLI 入口使用。
 
-```
-USAGE
-  acp-link [--port value] [--host value] [--debug] [--no-auth] [--https] [--group value] <command>...
-  acp-link --help
-  acp-link --version
+### 使用 ACP 消息分发器
 
-FLAGS
-       [--port]     Port to listen on                  [default = 9315]
-       [--host]     Host to bind to                    [default = localhost]
-       [--debug]    Enable debug logging to file
-       [--no-auth]  Disable authentication (dangerous)
-       [--https]    Enable HTTPS with self-signed cert
-       [--group]    Channel group ID for RCS registration (letters, digits, hyphens, underscores only)
-    -h  --help      Print help information and exit
-    -v  --version   Print version information and exit
+`AcpDispatcher` 提供与具体传输层无关的 ACP 协议消息处理，常用于在已有 WebSocket 连接的 handler 中嵌入 ACP 能力：
 
-ARGUMENTS
-  command...  Agent command followed by its arguments
-```
+```ts
+import { AcpDispatcher, createAcpSessionState } from "acp-link/acp-dispatcher";
 
-## How It Works
+const state = createAcpSessionState();
+const dispatcher = new AcpDispatcher(state, {
+  send: (msg) => ws.send(JSON.stringify(msg)),
+  workspace: "/path/to/workspace",
+  onControlResponse: (requestId, approved, extra) => {
+    // 处理来自前端的权限响应
+  },
+  onPermissionOutcome: (requestId, outcome) => {
+    // 将权限结果路由回 spawnAcpAgent 的待决 Promise
+  },
+});
 
-1. Listens for WebSocket connections from clients
-2. When a "connect" message is received, spawns the configured ACP agent as a subprocess
-3. Bridges messages between the WebSocket (client) and stdin/stdout (agent via ACP protocol)
-4. Supports session management: create, load, resume, list sessions
-5. Handles permission approval flow and heartbeat keepalive
-
-## Authentication
-
-By default, a random token is auto-generated on startup. Connect to the
-WebSocket endpoint without putting the token in the URL:
-
-```
-ws://localhost:9315/ws
+// 处理来自 WebSocket 的原始消息
+await dispatcher.handleMessage(rawMessage);
 ```
 
-Set `ACP_AUTH_TOKEN` env var to use a fixed token, or use `--no-auth` to
-disable (not recommended). Clients that cannot send an `Authorization` header
-must send the token in a WebSocket subprotocol named
-`rcs.auth.<base64url-token>`.
+### 前端 ACP 客户端
 
-## RCS Upstream
+```ts
+import { ACPClient, DisconnectRequestedError } from "acp-link/client";
+import type {
+  ConnectionStateHandler,
+  SessionUpdateHandler,
+  PermissionRequestHandler,
+} from "acp-link/client";
 
-acp-link can register to a Remote Control Server (RCS) for remote access. Set the following environment variables:
+const client = new ACPClient("ws://localhost:9315/ws");
 
-| Variable | Description |
-|----------|-------------|
-| `ACP_RCS_URL` | RCS server URL (e.g. `http://rcs.example.com:3000`) |
-| `ACP_RCS_TOKEN` | API token for RCS authentication |
-| `ACP_RCS_GROUP` | Channel group ID to lock the agent into (letters, digits, `-`, `_` only) |
+client.onConnectionStateChange((state, error) => {
+  console.log("Connection:", state);
+});
 
-You can also use `--group <id>` on the CLI. The CLI flag takes priority over the env var.
+client.onSessionUpdate((sessionId, update) => {
+  console.log("Session update:", sessionId, update);
+});
 
-## Manager UI
+client.onPermissionRequest((request) => {
+  // 展示权限请求 UI，调用 client.respondToPermission(...) 响应
+});
 
-通过 `--manager` flag 启动独立的管理服务（不启动代理）：
-
-```bash
-# 启动 Manager（默认端口 9315）
-acp-link --manager
-
-# 指定端口
-acp-link --manager --port 3210
+await client.connect();
+await client.createSession({ cwd: "/path/to/workspace" });
+await client.sendPrompt([{ type: "text", text: "Hello!" }]);
 ```
 
-在浏览器打开 `http://localhost:<port>` 即可访问管理界面，创建、停止、删除多个 acp-link 子进程实例并实时查看日志。
+### 引擎 Handler 开发
 
-通过 Manager UI 创建的子进程会自动跳过 Manager UI。
+实现自定义 Agent 引擎时，需要暴露 `EngineHandler` 接口：
 
-## License
+```ts
+import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
+import { AcpDispatcher } from "acp-link/acp-dispatcher";
 
-MIT
+export function createMyEngineHandler(): EngineHandler {
+  return {
+    start(ctx: EngineStartContext) {
+      // ctx.relay.send(...) — 向客户端发送消息
+      // ctx.agentConfig — 当前 agent 配置
+      // ctx.sessions — session 管理
+      return {
+        stop() { /* 清理逻辑 */ },
+      };
+    },
+  };
+}
+```
+
+### 辅助工具
+
+```ts
+// 解析可执行文件路径
+import { resolveExecutable } from "acp-link/client/resolve-executable";
+
+// 启动 ACP agent 子进程（opencode / ccb）
+import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
+
+// 创建 Claude Code 的 ACP 连接适配器
+import { createClaudeAcpConnection } from "acp-link/client/claude-acp-adapter";
+```
+
+### 类型导出
+
+```ts
+import type {
+  AgentCapabilities,
+  PromptCapabilities,
+  PermissionRequestPayload,
+  InteractiveQuestionPayload,
+  SessionUpdate,
+  ContentBlock,
+} from "acp-link/types";
+```
+
+## 模块导出一览
+
+| 入口 | 说明 |
+|------|------|
+| `acp-link` | `createAcpServer`, `createAcpClient`, `startServer`, `ServerConfig`, `AcpServerHandle` |
+| `acp-link/acp-dispatcher` | `AcpDispatcher`, `createAcpSessionState`, `AcpSessionState` |
+| `acp-link/client` | `ACPClient`, `DisconnectRequestedError`, 事件类型 |
+| `acp-link/client/acp-spawn-helper` | `spawnAcpAgent` |
+| `acp-link/client/claude-acp-adapter` | `createClaudeAcpConnection` |
+| `acp-link/client/instance-manager` | `InstanceManager`, `EngineHandler`, `EngineStartContext` |
+| `acp-link/client/resolve-executable` | `resolveExecutable` |
+| `acp-link/types` | 所有公共类型定义 |
+
+
