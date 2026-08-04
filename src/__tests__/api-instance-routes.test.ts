@@ -5,7 +5,6 @@ import { setTestOrgContext } from "../services/org-context";
 import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
-const testConnectRoute = test.skipIf(process.env.RUN_SKIP_TEST !== "1");
 
 function request(path: string, init?: RequestInit) {
   return apiInstanceRoute.handle(new Request(`http://localhost${path}`, init));
@@ -45,7 +44,7 @@ describe("API Instance Routes", () => {
   });
 
   // connect 接口应支持外部共享 Agent，并为当前用户创建独立 runtime environment。
-  testConnectRoute("POST /api/agents/:agentId/instances/connect creates user runtime for shared agent", async () => {
+  test("POST /api/agents/:agentId/instances/connect creates user runtime for shared agent", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({

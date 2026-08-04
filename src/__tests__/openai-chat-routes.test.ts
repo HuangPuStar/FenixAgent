@@ -38,9 +38,35 @@ describe("OpenAI Chat Routes", () => {
     expect(res.status).toBe(400);
   });
 
-  // stream=true 返回 text/event-stream（跳过 — Elysia handle() blocks on ReadableStream）
-  test.skip("stream=true 返回 text/event-stream Content-Type", async () => {
-    // 实际 stream 行为通过 bash test-openai-chat.sh 手动验证
+  // stream=true 应返回 text/event-stream，事件流结束（收到 stopReason）后流正常关闭。
+  // 历史版本因 Elysia handle() 消费 ReadableStream 导致挂起而跳过，当前事件流立即结束可安全断言。
+  test("stream=true 返回 text/event-stream Content-Type", async () => {
+    setOpenAIChatRouteDeps({
+      openAgentSession: async () => ({
+        instanceId: "inst-stream",
+        turn: {
+          prompt: () => {},
+          events: async function* () {
+            yield { jsonrpc: "2.0", result: { stopReason: "end_turn" } };
+          },
+          dispose: async () => {},
+        } as never,
+      }),
+    });
+
+    const res = await request("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+    const text = await res.text();
+    expect(text).toContain("data: [DONE]");
   });
 
   // OpenAI 兼容入口启动实例时应显式标记为 interactive
