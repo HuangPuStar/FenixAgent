@@ -6,7 +6,7 @@ import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
 import type { AcpConnectionEntry } from "../types/store";
-import { agentNodeService, dispatchAgentNodeWsClose, wsToAgentNodeSocket } from "./agent-node-bridge";
+import { dispatchAgentNodeWsClose, getAgentNodeService, wsToAgentNodeSocket } from "./agent-node-bridge";
 import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
@@ -170,7 +170,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     // 永久 stuck；关闭中的连接不接入编排域，等待机器重连。
     if (entry.ws.readyState === 1) {
       try {
-        agentNodeService.handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
+        getAgentNodeService().handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
       } catch (err) {
         logError("AgentNodeService handleIncomingConnection error:", err);
       }

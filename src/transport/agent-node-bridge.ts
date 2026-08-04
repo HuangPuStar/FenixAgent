@@ -23,14 +23,32 @@ import type { WsConnection } from "./ws-types";
 
 /** 创建编排域 AgentNodeService 单例（可按需重复调用，但宿主应复用导出单例）。 */
 export function createAgentNodeService(): AgentNodeService {
+  // 防御：本模块可能早于 applyEnv(validateEnv()) 被求值（index.ts 静态导入在
+  // 顶层代码之前执行），此时 config.acpIdleTimeoutSeconds 为 undefined，
+  // undefined * 1000 = NaN 会让 setTimeout(fn, NaN) 立即触发——机器注册后瞬间被
+  // 空闲回收关闭。兜底 300s 与 env.ts 的 zod default 保持一致。
+  const idleTimeoutSeconds = Number.isFinite(config.acpIdleTimeoutSeconds) ? config.acpIdleTimeoutSeconds : 300;
   return new AgentNodeService({
-    idleTimeoutMs: config.acpIdleTimeoutSeconds * 1000,
+    idleTimeoutMs: idleTimeoutSeconds * 1000,
     maxRetries: 3,
   });
 }
 
-/** 编排域 AgentNodeService 单例：machine 连接接入、节点生命周期与空闲回收的统一入口。 */
-export const agentNodeService = createAgentNodeService();
+let agentNodeServiceInstance: AgentNodeService | null = null;
+
+/**
+ * 编排域 AgentNodeService 惰性单例：machine 连接接入、节点生命周期与空闲回收的统一入口。
+ *
+ * 必须惰性创建：模块加载即执行（静态导入提升），早于 index.ts 的
+ * applyEnv(validateEnv())；此时读取 config.acpIdleTimeoutSeconds 会得到 undefined
+ * （NaN 定时器导致注册后立即断连）。首次调用发生在请求处理期，config 已就绪。
+ */
+export function getAgentNodeService(): AgentNodeService {
+  if (agentNodeServiceInstance === null) {
+    agentNodeServiceInstance = createAgentNodeService();
+  }
+  return agentNodeServiceInstance;
+}
 
 /** 已适配的 socket 注册表：以 WsConnection 对象为键，供事件分发时反查。 */
 const adapters = new WeakMap<WsConnection, WsAgentNodeSocket>();

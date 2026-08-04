@@ -19,7 +19,7 @@
  */
 
 import { AgentNode, type AgentNodeServicePort, type AgentNodeSocket } from "@fenix/orchestration";
-import { agentNodeService } from "../transport/agent-node-bridge";
+import { getAgentNodeService } from "../transport/agent-node-bridge";
 
 /** 本地执行占位节点 ID（与旧路径 nodeId 兜底语义一致，core 侧同名注册）。 */
 export const LOCAL_DEFAULT_NODE_ID = "local-default";
@@ -52,11 +52,11 @@ class LocalStubSocket implements AgentNodeSocket {
 
 /** 本地节点感知的 AgentNodeService 包装：local-default 分流，其余委托。 */
 export class LocalNodeAwareService implements AgentNodeServicePort {
-  readonly #delegate: AgentNodeServicePort;
+  readonly #getDelegate: () => AgentNodeServicePort;
   #localNode: AgentNode | null = null;
 
-  constructor(delegate: AgentNodeServicePort) {
-    this.#delegate = delegate;
+  constructor(getDelegate: () => AgentNodeServicePort) {
+    this.#getDelegate = getDelegate;
   }
 
   ensureNode(machineId: string): AgentNode {
@@ -74,16 +74,16 @@ export class LocalNodeAwareService implements AgentNodeServicePort {
       }
       return this.#localNode;
     }
-    return this.#delegate.ensureNode(machineId);
+    return this.#getDelegate().ensureNode(machineId);
   }
 
   releaseNode(machineId: string): void {
     if (machineId === LOCAL_DEFAULT_NODE_ID) {
       return;
     }
-    this.#delegate.releaseNode(machineId);
+    this.#getDelegate().releaseNode(machineId);
   }
 }
 
 /** 本地节点感知的 AgentNodeService 单例（编排域装配层注入 AgentController）。 */
-export const localNodeAwareAgentNodeService = new LocalNodeAwareService(agentNodeService);
+export const localNodeAwareAgentNodeService = new LocalNodeAwareService(getAgentNodeService);
