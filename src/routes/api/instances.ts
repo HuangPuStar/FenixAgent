@@ -1,5 +1,7 @@
+import { OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import * as z from "zod/v4";
+import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
 import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
 import {
   ApiInstanceAgentConfigParamsSchema,
@@ -17,14 +19,26 @@ const ApiErrorResponseSchema = z.object({
 });
 
 function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
+  // OrchestrationError 不是 AppError（无 statusCode 字段），此前落入兜底 500 并
+  // 原样返回 message（D-P2.2）。这里统一经编排域映射（src/errors/orchestration-http.ts，
+  // 与 errorPlugin 共用单一真相来源）：status 按错误码映射，message 用通用模板
+  // 替换 —— 编排域错误可能携带 envId/machineId（如 ConcurrencyExceededError 拼接
+  // 环境 ID），直出会泄漏内部资源标识；code 保留机器码供外部客户端分类。
+  if (error instanceof OrchestrationError) {
+    const { status, message } = mapOrchestrationErrorToHttp(error);
+    return { status, body: { error: { code: error.code, message } } };
+  }
   if (error instanceof Error && "statusCode" in error && "code" in error) {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;
     const code = typeof error.code === "string" ? error.code : "INTERNAL_ERROR";
     return { status: statusCode, body: { error: { code, message: error.message } } };
   }
+  // 兜底不再拼接 error.message：CoreRuntimeError 等未知错误可能携带
+  // nodeId/machineId（如 "Core node is offline: ${nodeId}"），原样返回会泄漏
+  // 内部标识；完整诊断由调用方（route）的服务端日志保留。
   return {
     status: 500,
-    body: { error: { code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "Unknown error" } },
+    body: { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
   };
 }
 
@@ -54,7 +68,10 @@ app.post(
       200: "api-instance-connect-response",
       401: ApiErrorResponseSchema,
       404: ApiErrorResponseSchema,
+      409: ApiErrorResponseSchema,
+      422: ApiErrorResponseSchema,
       500: ApiErrorResponseSchema,
+      503: ApiErrorResponseSchema,
     },
     detail: {
       tags: ["External Instance"],

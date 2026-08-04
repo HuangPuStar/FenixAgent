@@ -29,6 +29,26 @@ import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
 
+const _deps = {
+  environmentRepo,
+  environmentOrchestrationRepo,
+  // 内部函数引用：默认走真实 DB 构建；测试注入假实现以隔离 DB
+  buildAgentLaunchSpecForCore,
+  getOrchestrationController,
+  getOrchestrationLaunchSpecBuilder,
+};
+const _defaultDeps = { ..._deps };
+
+/** 测试用：覆盖内部依赖，避免 mock.module。 */
+export function setOrchestrationInstanceDeps(overrides: Partial<typeof _deps>): void {
+  Object.assign(_deps, overrides);
+}
+
+/** 测试用：恢复默认依赖。 */
+export function resetOrchestrationInstanceDeps(): void {
+  Object.assign(_deps, _defaultDeps);
+}
+
 /**
  * spawnInstanceViaController 的可选参数。
  */
@@ -62,13 +82,13 @@ export async function spawnInstanceViaCore(
   instanceId: string,
   extraEnv?: Record<string, string>,
 ): Promise<void> {
-  const envData = await environmentOrchestrationRepo.getEnvironment(launchSpec.environmentId);
+  const envData = await _deps.environmentOrchestrationRepo.getEnvironment(launchSpec.environmentId);
   // machineId 输入依赖 environmentOrchestrationRepo 已做空串归一：空串视为未绑定并走
   // fallback 链（agent config machineId → defaultMachineId → local-default），本行
   // ?? 链只防御 getEnvironment 返回 null 的极端情况（记录在并发中被删除）。
   const nodeId = envData?.machineId ?? config.defaultMachineId ?? "local-default";
 
-  const agentLaunchSpec = await buildAgentLaunchSpecForCore(launchSpec, extraEnv);
+  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(launchSpec, extraEnv);
 
   const facade = getCoreRuntime();
   try {
@@ -109,30 +129,34 @@ export async function spawnInstanceViaController(
   // 编排域路径下仍然生效（controller 内部只检查环境级 maxConcurrency）。
   assertAgentConcurrencyAvailable(userId, source);
 
-  const controller = getOrchestrationController();
+  const controller = _deps.getOrchestrationController();
   const instance = await controller.spawnInstance(envId, userId);
 
   try {
     // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
     // I4 过渡期可接受：两次构建均为只读 DB 查询；Phase C 后由包内统一。
-    const launchSpec = await getOrchestrationLaunchSpecBuilder().build(envId, userId);
+    const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
     await spawnInstanceViaCore(launchSpec, instance.instanceId, options.extraEnv);
+    // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
+    // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
+    // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
+    // 必须与 launch 同处 try：此处失败时 core 进程已启动、controller 活跃表已注册、
+    // 节点 refCount 已 +1；若不做回滚，实例无 supplement，idle 监控（按 supplement
+    // 判断）永不回收，成为仅 stopAllInstances 可清的永久孤儿。
+    await registerSupplement(envId, userId, instance.instanceId, source);
   } catch (err) {
-    // 回滚：core 启动失败（如远程节点离线）时清理编排域状态——活跃表条目 +
-    // ensureNode 引用计数。否则实例仍计入环境并发额度（maxConcurrency=1 时一次
-    // 失败启动后环境永久无法再启动），且节点引用永不清零导致空闲回收不触发。
+    // 回滚三侧状态：controller 活跃表 + 节点引用归还（controller.stopInstance）、
+    // core 进程（facade.stopInstance）、supplement 清理。stopInstanceViaController
+    // 对两处 stop 均幂等吞错：launch 失败（core 无实例）与 supplement 注册失败
+    // （registry 无条目）两种场景同样安全。
     try {
-      await controller.stopInstance(instance.instanceId);
+      await stopInstanceViaController(instance.instanceId);
     } catch (rollbackErr) {
       logError(`[orchestration-instance] rollback stopInstance failed: instanceId=${instance.instanceId}`, rollbackErr);
     }
     throw err;
   }
 
-  // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
-  // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
-  // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
-  await registerSupplement(envId, userId, instance.instanceId, source);
   return instance;
 }
 
@@ -147,7 +171,7 @@ export async function spawnInstanceViaController(
  */
 export async function stopInstanceViaController(instanceId: string): Promise<void> {
   const sup = globalInstanceRegistry.get(instanceId);
-  const controller = getOrchestrationController();
+  const controller = _deps.getOrchestrationController();
   try {
     await controller.stopInstance(instanceId);
   } catch (err) {
@@ -183,7 +207,7 @@ async function buildAgentLaunchSpecForCore(
   launchSpec: LaunchSpec,
   extraEnv?: Record<string, string>,
 ): Promise<AgentLaunchSpec> {
-  const env = await environmentRepo.getById(launchSpec.environmentId);
+  const env = await _deps.environmentRepo.getById(launchSpec.environmentId);
   if (!env) {
     throw new NotFoundError(`Environment '${launchSpec.environmentId}' not found`);
   }
@@ -245,6 +269,10 @@ async function buildAgentLaunchSpecForCore(
  * core 只维护运行时快照，RCS 侧的前端实例列表、活动观测、空闲回收都依赖
  * globalInstanceRegistry 的 supplement；缺失会导致启动后的实例不可见、
  * 机器回传消息无法关联活动。
+ *
+ * 失败语义：本函数失败（env DB 查询抛错）由调用方 spawnInstanceViaController
+ * 的 try/catch 回滚整个实例（controller 活跃表 + core 进程 + supplement 三侧）。
+ * envCounter 在 getById 之后才递增，故失败时无编号残留，无需补偿。
  */
 async function registerSupplement(
   envId: string,
@@ -252,7 +280,7 @@ async function registerSupplement(
   instanceId: string,
   source: InstanceSpawnSource,
 ): Promise<void> {
-  const env = await environmentRepo.getById(envId);
+  const env = await _deps.environmentRepo.getById(envId);
   const supplement: InstanceSupplement = {
     userId,
     environmentId: envId,

@@ -117,12 +117,15 @@ export async function connectAgentInstance(
   const instance = runningInstance
     ? runningInstance
     : await deps.spawnInstanceViaController(environment.id, ctx.userId, "interactive");
+  // runningInstance 为旧 SpawnedInstance（.id），spawn 分支为编排域 Instance（.instanceId）
+  const instanceId = "id" in instance ? instance.id : instance.instanceId;
 
   return {
     agentConfigId: agent.id,
     environmentId: environment.id,
-    // runningInstance 为旧 SpawnedInstance（.id），spawn 分支为编排域 Instance（.instanceId）
-    instanceId: "id" in instance ? instance.id : instance.instanceId,
-    relay: { wsUrl: `/acp/relay/${environment.id}` },
+    instanceId,
+    // instanceId 附带为 query：/acp/relay 端点多实例环境下据此精确连接，
+    // 避免「第一个 running 实例」歧义；不带 query 的旧式直连仍有 fallback。
+    relay: { wsUrl: `/acp/relay/${environment.id}?instanceId=${instanceId}` },
   };
 }

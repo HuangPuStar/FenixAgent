@@ -9,6 +9,11 @@ import { environmentRepo } from "../../repositories";
 import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
+import {
+  handleExternalRelayClose,
+  handleExternalRelayMessage,
+  handleExternalRelayOpen,
+} from "../../transport/relay/external-relay";
 import { createDeterministicRcsSessionId, lifecycle } from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
 
@@ -240,6 +245,68 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
         lifecycle.handleClose(yjsWsId);
+      }
+    },
+  })
+
+  /** WS /acp/relay/:agentId — 供 API Key 外部客户端经 connect API 建立 ACP JSON-RPC 中继 */
+  .ws("/relay/:agentId", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 外部客户端 Relay WebSocket",
+      description:
+        "供 API Key 外部客户端经 connect API 获取 wsUrl 后建立 ACP JSON-RPC 中继。服务端仅做传输层转发，不实现会话协议；query 可选携带 instanceId，用于多实例环境精确指定实例。",
+    },
+    params: "acp-relay-params",
+    async open(ws) {
+      const relayWsId = `ext_relay_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__relayWsId = relayWsId;
+
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user || !authResult.authContext) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      // query 携带的 instanceId 用于多实例环境精确连接（connect API 返回的 wsUrl 已附带）；
+      // 解析放在路由层，handler 只接收解析结果，便于脱离 Elysia 单测。
+      const url = new URL(ws.data.request.url);
+      const requestedInstanceId = url.searchParams.get("instanceId") || undefined;
+      await handleExternalRelayOpen(
+        adaptWs(ws),
+        relayWsId,
+        ws.data.params.agentId,
+        authResult.authContext,
+        requestedInstanceId,
+      );
+    },
+    message(ws, data) {
+      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+        logError(`[External-Relay] Message too large: ${data.length} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        handleExternalRelayMessage(adaptWs(ws), relayWsId, data as string | Record<string, unknown>);
+      }
+    },
+    close(ws) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        handleExternalRelayClose(adaptWs(ws), relayWsId);
       }
     },
   });

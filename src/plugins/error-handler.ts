@@ -1,20 +1,9 @@
+import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
 import Elysia, { ValidationError } from "elysia";
 import { AppError } from "../errors";
+import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
 import { logError } from "./logger";
-
-/**
- * 编排域错误码 → HTTP 状态映射。
- * OrchestrationError 不是 AppError，无 statusCode 字段，必须在此显式映射，
- * 否则编排域错误（环境不存在/并发超限/节点离线等）会全部落为 500。
- */
-const ORCHESTRATION_STATUS_MAP: Record<string, number> = {
-  ENVIRONMENT_NOT_FOUND: 404,
-  CONCURRENCY_EXCEEDED: 409,
-  LAUNCH_SPEC_BUILD_FAILED: 422,
-  AGENT_NODE_UNAVAILABLE: 503,
-  MACHINE_OFFLINE: 503,
-};
 
 // 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 plugin 中 scope 为
 // global/scoped 的 hook，onError 默认 scope 是 local，缺省时本插件对主 app
@@ -34,11 +23,24 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
       return { error: { type: error.code, message: error.message } };
     }
 
-    // 编排域错误：按稳定错误码映射 HTTP 状态（未映射的 code 保守落 500）
+    // 编排域错误：按稳定错误码映射 HTTP 状态（未映射的 code 保守落 500）。
+    // message 必须脱敏 —— 编排域错误可能携带 envId/machineId（如 agent-controller
+    // 的 ConcurrencyExceededError 拼接环境 ID），原样返回会泄漏内部资源标识；
+    // 映射规则与 /api/instances 共用 src/errors/orchestration-http.ts 单一真相来源。
     if (error instanceof OrchestrationError) {
-      set.status = ORCHESTRATION_STATUS_MAP[error.code] ?? 500;
+      const { status, message } = mapOrchestrationErrorToHttp(error);
+      set.status = status;
       logError({ request, error, set });
-      return { error: { type: error.code, message: error.message } };
+      return { error: { type: error.code, message } };
+    }
+
+    // Core 运行时错误：NODE_OFFLINE 出现在 ensureNode 检查通过后、core launch 前断连的
+    // 竞态窗口（毫秒级）。语义同为机器离线，映射 503 并统一错误码；原始 message 含
+    // nodeId/machineId，必须脱敏（诊断信息由 logError 保留在服务端日志）。
+    if (isCoreRuntimeError(error) && error.code === "NODE_OFFLINE") {
+      set.status = 503;
+      logError({ request, error, set });
+      return { error: { type: "AGENT_NODE_UNAVAILABLE", message: "Agent node is offline" } };
     }
 
     // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON
@@ -71,7 +73,12 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
 
     const status = code === "NOT_FOUND" ? 404 : 500;
     const type = code === "NOT_FOUND" ? "NOT_FOUND" : "INTERNAL_ERROR";
-    const message = error instanceof Error ? error.message : String(error);
+    // 500 兜底 message 固定通用文案：未知错误可能携带 nodeId/machineId 等内部标识
+    // （如 CoreRuntimeError "Core node is offline: ${nodeId}"），原样回传会泄漏；
+    // 完整诊断由 logError 保留在服务端日志。Elysia 404 的 message 是固定
+    // "NOT_FOUND" 文本（无内部信息），保留原样不影响脱敏。
+    const message =
+      type === "NOT_FOUND" ? (error instanceof Error ? error.message : String(error)) : "Internal server error";
 
     set.status = status;
     logError({ request, error, set });
