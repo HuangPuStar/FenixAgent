@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { validateEnv } from "../env";
+import { findDeprecatedEnvVars, validateEnv } from "../env";
 
 // 环境变量校验：必填项缺失时报错
 describe("env validation", () => {
@@ -138,5 +138,30 @@ describe("env validation", () => {
     process.env.RCS_API_KEYS = "test-key";
     process.env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY = "0";
     expect(() => validateEnv()).toThrow(/RCS_SCHEDULED_AGENT_MAX_CONCURRENCY/);
+  });
+
+  // 空串 RCS_DEFAULT_MACHINE_ID（compose ${VAR:-} 空默认值透传）应视为未设置，
+  // 而不是触发 mach_ 前缀 regex 校验导致服务拒绝启动（断裂点 1 配套修复）。
+  test("RCS_DEFAULT_MACHINE_ID 为空串时视为未设置", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_DEFAULT_MACHINE_ID = "";
+    const env = validateEnv();
+    expect(env.RCS_DEFAULT_MACHINE_ID).toBeUndefined();
+  });
+
+  // findDeprecatedEnvVars：未设置旧变量时返回空数组，不产生告警
+  test("findDeprecatedEnvVars 未设置 RCS_DEFAULT_MACHINE_TYPE 时为空数组", () => {
+    delete process.env.RCS_DEFAULT_MACHINE_TYPE;
+    expect(findDeprecatedEnvVars()).toEqual([]);
+  });
+
+  // findDeprecatedEnvVars：设置 RCS_DEFAULT_MACHINE_TYPE（死配置）时返回替换建议，
+  // 供 index.ts 启动告警（断裂点 1 的可见性修复）。
+  test("findDeprecatedEnvVars 设置 RCS_DEFAULT_MACHINE_TYPE 时返回替换建议", () => {
+    process.env.RCS_DEFAULT_MACHINE_TYPE = "ccb";
+    expect(findDeprecatedEnvVars()).toEqual([
+      { name: "RCS_DEFAULT_MACHINE_TYPE", replacement: "RCS_DEFAULT_ENGINE_TYPE" },
+    ]);
   });
 });

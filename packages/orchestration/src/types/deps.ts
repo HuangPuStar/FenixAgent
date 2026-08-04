@@ -30,7 +30,13 @@ export interface EnvironmentData {
   id: string;
   /** 所属组织，LaunchSpec 的 workspace 路径按 `{root}/{organizationId}/{userId}/{environmentId}` 计算。 */
   organizationId: string;
-  agentConfigId: string;
+  /**
+   * 绑定的 Agent 配置 ID；null 表示环境未绑定（ACP/Bridge 注册路径创建的环境）。
+   * 宿主 Repo 不得因 agentConfigId 缺失而返回 null——agentConfig 必填约束由
+   * LaunchSpecBuilder 在 build 时校验（LaunchSpecBuildError），machineId fallback
+   * 仍须正常执行。
+   */
+  agentConfigId: string | null;
   /** 目标机器；宿主 Repo 实现负责默认值 fallback，编排域不读取环境变量。 */
   machineId: string | null;
   maxConcurrency: number;

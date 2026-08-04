@@ -12,10 +12,16 @@ import { agentConfig, environment } from "../db/schema";
  */
 export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
   /**
-   * 按环境 ID 读取环境数据；记录不存在或未绑定 agentConfigId 时返回 `null`。
+   * 按环境 ID 读取环境数据；仅记录不存在时返回 `null`。
+   *
+   * 无 agentConfigId 的环境（ACP/Bridge 注册路径创建）不在此拒绝：编排域
+   * LaunchSpecBuilder 的 agentConfig 必填约束在 spawn 层兜底（LaunchSpecBuildError
+   * → 422），这里只需保证 machineId 仍按 fallback 链解析，与
+   * src/services/remote-file-service.ts 的 getRemoteMachineId 语义对齐。
    *
    * machineId 解析优先级（与旧 services/instance.ts 的节点选择逻辑一致）：
-   *   1. environment.agentConfigId → agent_config.machineId（leftJoin 一次取出）；
+   *   1. environment.agentConfigId → agent_config.machineId（leftJoin 一次取出，
+   *      空串视为未绑定，见下方 `||` 注释）；
    *   2. config.defaultMachineId（RCS_DEFAULT_MACHINE_ID 环境变量）；
    *   3. 本地执行占位节点 "local-default"（RCS_DISABLE_LOCAL_EXECUTION 未设置时），
    *      与旧路径 nodeId 三选一（agent config 绑定 > 系统默认 > local-default）一致；
@@ -38,15 +44,21 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
       .limit(1);
 
     const row = rows[0];
-    // 记录不存在，或未绑定 AgentConfig（旧的无配置最小启动路径不在编排域范围内）。
-    if (!row?.agentConfigId) return null;
+    // 仅记录不存在时返回 null。无 agentConfigId 的环境（ACP/Bridge 注册路径创建）不再在此
+    // 拒绝（断裂点 5）：machineId fallback 仍需执行，agentConfig 必填约束由编排域
+    // LaunchSpecBuilder 在 spawn 层兜底（错误从 404 变为 422，见类注释）。
+    if (!row) return null;
 
     return {
       id: row.id,
       organizationId: row.organizationId,
       agentConfigId: row.agentConfigId,
       machineId:
-        row.configMachineId ??
+        // `||`（而非 `??`）是有意为之：空串表示"未绑定"（请求体直传 machineId:"" 或历史
+        // 脏数据），须与 null 同样走 fallback 链；`??` 只归一 null/undefined，会把空串当
+        // 合法绑定值透传导致 ensureNode 启动失败。与 CLAUDE.md 默认 `??` 惯例相悖处，
+        // 以"空串 = 未绑定"这一旧路径 falsy 语义（0dcb2e2d 前）为准。
+        (row.configMachineId || null) ??
         config.defaultMachineId ??
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。

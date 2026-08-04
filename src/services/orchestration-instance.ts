@@ -63,6 +63,9 @@ export async function spawnInstanceViaCore(
   extraEnv?: Record<string, string>,
 ): Promise<void> {
   const envData = await environmentOrchestrationRepo.getEnvironment(launchSpec.environmentId);
+  // machineId 输入依赖 environmentOrchestrationRepo 已做空串归一：空串视为未绑定并走
+  // fallback 链（agent config machineId → defaultMachineId → local-default），本行
+  // ?? 链只防御 getEnvironment 返回 null 的极端情况（记录在并发中被删除）。
   const nodeId = envData?.machineId ?? config.defaultMachineId ?? "local-default";
 
   const agentLaunchSpec = await buildAgentLaunchSpecForCore(launchSpec, extraEnv);

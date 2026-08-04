@@ -12,6 +12,7 @@
 
 1. **Machine fallback**：agent config `machineId` 为空时，使用 `RCS_DEFAULT_MACHINE_ID` 指定的远程机器，而非 `local-default`
 2. **Engine type fallback**：agent config `engineType` 为空时，使用 `RCS_DEFAULT_ENGINE_TYPE` 指定的引擎类型，而非硬编码 `"opencode"`
+   > **c71ee18c（07-23）后语义收窄**：`RCS_DEFAULT_ENGINE_TYPE` 仅对 **local 执行**生效；远程执行不再传 engineType，引擎由机器端 `AGENT_TYPE` 唯一控制（见 3.2）。
 
 ## 不改的内容
 
@@ -100,6 +101,11 @@ const engineType = (resolvedAgentConfig as Record<string, unknown> | null)?.engi
 
 **优先级**：agent config 指定 > `RCS_DEFAULT_ENGINE_TYPE` > `"opencode"`
 
+> **c71ee18c（07-23）后仅 local 生效**：`spawnInstanceViaCore` 的 remote 分支不传
+> engineType，远程执行引擎由机器端 `AGENT_TYPE`（acp-runtime-cli `bin.ts`，默认
+> `"opencode"`）唯一控制。本节的 engineType 决策链只作用于 local-default 节点。
+> 服务端无法（也不应）强制指定远程引擎——如需变更远程引擎，改机器端 `AGENT_TYPE`。
+
 `config` 通过已有的 `../config` 导入路径访问。
 
 ### 4. 文件改动清单
@@ -117,7 +123,8 @@ const engineType = (resolvedAgentConfig as Record<string, unknown> | null)?.engi
 | 场景 | 预期行为 |
 |------|----------|
 | 两个变量均未设置 | 完全向后兼容，等同现状 |
-| fallback machine 离线 | 抛出 `MACHINE_OFFLINE`（503），不复用现有错误码 |
+| fallback machine 离线 | 抛出 `AGENT_NODE_UNAVAILABLE`（503），不复用现有错误码（c71ee18c 后 `MACHINE_OFFLINE` 已不再抛出，HTTP 映射仍为 503） |
+| 远程执行引擎来源 | 机器端 `AGENT_TYPE` 唯一控制；`RCS_DEFAULT_ENGINE_TYPE` 不生效 |
 | `RCS_DEFAULT_MACHINE_ID` 格式非法 | 启动时 env 校验失败，进程退出 |
 | `RCS_DEFAULT_ENGINE_TYPE` 非法值 | 启动时 env 校验失败，进程退出 |
 | agent config 显式指定 machineId / engineType | 环境变量不生效，agent config 优先 |

@@ -8,7 +8,7 @@ const startupLog = createLogger("rcs");
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
-import { validateEnv } from "./env";
+import { findDeprecatedEnvVars, validateEnv } from "./env";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
@@ -56,6 +56,15 @@ startupLog.info("Database initialized");
 
 const env = validateEnv();
 applyEnv(env);
+
+// 废弃环境变量启动告警：RCS_DEFAULT_MACHINE_TYPE 是 637a4cef 引入的死配置，服务端从未读取，
+// 且 c71ee18c 后 ENGINE_TYPE 仅对 local 执行生效（远程引擎由机器端 AGENT_TYPE 唯一控制）。
+// 部署侧配置了旧变量时显式提示，避免死配置被 zod strip 静默丢弃。
+for (const { name, replacement } of findDeprecatedEnvVars()) {
+  startupLog.warn(
+    `Deprecated environment variable ${name} is ignored; use ${replacement} instead (local execution only, remote engine is controlled by machine-side AGENT_TYPE)`,
+  );
+}
 
 // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
 const systemAdmin = await ensureSystemAdmin();

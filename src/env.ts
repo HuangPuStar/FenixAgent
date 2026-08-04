@@ -72,10 +72,15 @@ const envSchema = z.object({
 
   // ── 可选：引擎 ──
   // 默认 fallback 机器 ID。agent config 未绑定 machineId 时使用此机器替代 local-default
-  RCS_DEFAULT_MACHINE_ID: z
-    .string()
-    .regex(/^mach_/, "RCS_DEFAULT_MACHINE_ID must start with 'mach_'")
-    .optional(),
+  // preprocess 归一空串：docker-compose 的 `${RCS_DEFAULT_MACHINE_ID:-}` 在 .env 未设置时
+  // 会透传空串（而非 undefined），若不归一将触发下方 regex 校验导致服务拒绝启动。
+  RCS_DEFAULT_MACHINE_ID: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z
+      .string()
+      .regex(/^mach_/, "RCS_DEFAULT_MACHINE_ID must start with 'mach_'")
+      .optional(),
+  ),
 
   // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
   RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
@@ -112,4 +117,18 @@ export function validateEnv(): Env {
     process.exit(1);
   }
   return result.data;
+}
+
+/**
+ * 查找仍被设置但已被新变量取代的废弃环境变量。
+ *
+ * 仅硬编码维护一条映射（RCS_DEFAULT_MACHINE_TYPE → RCS_DEFAULT_ENGINE_TYPE）：
+ * 不做通用扫描——代码无法区分"历史上存在过的变量"与"用户拼写错误的变量"，
+ * 通用扫描会产生大量误报。新增废弃变量时必须在此显式登记。
+ * 该函数为纯函数，由 index.ts 启动时调用输出告警；不放 validateEnv 内是因为
+ * validateEnv 被测试直接调用，告警日志会污染测试输出。
+ */
+export function findDeprecatedEnvVars(): Array<{ name: string; replacement: string }> {
+  const DEPRECATED_ENV_MAP = [{ name: "RCS_DEFAULT_MACHINE_TYPE", replacement: "RCS_DEFAULT_ENGINE_TYPE" }] as const;
+  return DEPRECATED_ENV_MAP.filter(({ name }) => process.env[name] !== undefined);
 }

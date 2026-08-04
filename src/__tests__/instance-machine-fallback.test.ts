@@ -46,6 +46,7 @@ describe("instance machine/engine fallback", () => {
   });
 
   // remote 执行时不传递 engineType（agent 绑定场景）
+  // c71ee18c 设计意图，非缺陷：引擎控制权下放机器端 AGENT_TYPE，服务端不传 engineType
   test("remote 执行时 engineType 始终为 undefined", () => {
     const resolvedNodeId: string = "mach_remote_01";
     const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;

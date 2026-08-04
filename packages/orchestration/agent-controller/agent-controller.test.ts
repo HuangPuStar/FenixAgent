@@ -69,9 +69,17 @@ class MockSocket implements AgentNodeSocket {
 /** 内存版环境仓库：仅按 ID 返回预置数据，无持久化。 */
 class MockEnvironmentRepo implements EnvironmentRepo {
   readonly envs = new Map<string, EnvironmentData>();
+  /** 模拟宿主 Repo（environment-orchestration.ts）的默认机器 fallback：machineId 为空时回退到该值。 */
+  defaultMachineId: string | null = null;
 
   getEnvironment(envId: string): Promise<EnvironmentData | null> {
-    return Promise.resolve(this.envs.get(envId) ?? null);
+    const env = this.envs.get(envId) ?? null;
+    // 模拟宿主 Repo 的空串/空值归一：未绑定 machineId 时回退默认机器。
+    // 编排域不读取环境变量，fallback 责任全部在宿主 Repo，此处仅还原其对外语义。
+    if (env !== null && !env.machineId && this.defaultMachineId !== null) {
+      return Promise.resolve({ ...env, machineId: this.defaultMachineId });
+    }
+    return Promise.resolve(env);
   }
 }
 
@@ -212,11 +220,47 @@ describe("AgentController.spawnInstance", () => {
     await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(LaunchSpecBuildError);
   });
 
-  test("环境缺少 machineId：配置视为不完整，抛 LaunchSpecBuildError", async () => {
+  test("环境缺少 machineId 且宿主无默认机器：编排域以配置错误拒绝，抛 LaunchSpecBuildError", async () => {
+    // 断裂点 4 修复后，宿主 Repo 负责把空串/空 machineId 归一到 fallback 链；
+    // 此用例覆盖宿主 fallback 后仍为 null 的场景（禁用本地执行且无默认机器），
+    // 此时编排域不再有任何可执行节点，以配置错误拒绝启动（防御性兜底）。
     const { controller, envRepo } = setup();
-    envRepo.envs.get("env1")!.machineId = null;
+    envRepo.envs.get("env1")!.machineId = null; // 宿主 fallback 后仍无机器（本地执行被禁用）
 
     await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(LaunchSpecBuildError);
+  });
+
+  test("环境缺少 machineId 但宿主提供默认机器：fallback 到默认机器正常 spawn", async () => {
+    // 模拟宿主 Repo（environment-orchestration.ts）的 defaultMachineId fallback：
+    // agent config 未绑定 machineId 时回退到 RCS_DEFAULT_MACHINE_ID 指定机器，
+    // 而不是直接抛配置错误（对齐 getRemoteMachineId 的节点选择语义）。
+    const { controller, envRepo } = setup();
+    envRepo.defaultMachineId = "m1"; // 宿主 RCS_DEFAULT_MACHINE_ID
+    envRepo.envs.get("env1")!.machineId = null; // agent config 未绑定 machineId
+
+    const instance = await controller.spawnInstance("env1", "user1");
+
+    expect(instance.machineId).toBe("m1");
+    expect(instance.status()).toBe("running");
+  });
+
+  test("无 agentConfigId 环境：不再被 EnvironmentNotFoundError 拒绝，错误下沉为 LaunchSpecBuildError", async () => {
+    // 断裂点 5 修复后，宿主 Repo 对无 agentConfigId 环境（ACP/Bridge 注册路径创建）
+    // 返回数据而非 null；agentConfig 必填约束由 LaunchSpecBuilder 在 spawn 层兜底，
+    // 因此错误从 404（EnvironmentNotFoundError）变为 422（LaunchSpecBuildError），
+    // 不再把"未绑定配置"误判为"环境不存在"。
+    const { controller, envRepo } = setup();
+    envRepo.envs.set("env-acp", {
+      id: "env-acp",
+      organizationId: "org1",
+      agentConfigId: null, // ACP/Bridge 注册路径创建的环境无 agentConfigId
+      machineId: "m1",
+      maxConcurrency: 1,
+      autoStart: false,
+    });
+
+    await expect(controller.spawnInstance("env-acp", "user1")).rejects.toThrow(LaunchSpecBuildError);
+    await expect(controller.spawnInstance("env-acp", "user1")).rejects.not.toThrow(EnvironmentNotFoundError);
   });
 });
 
