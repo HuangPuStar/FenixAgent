@@ -229,6 +229,45 @@ describe("RelayEventHandler", () => {
 
     expect(registered).toEqual([]);
   });
+
+  // session/new、load 响应携带的 models/modes（acp-link 已从 configOptions 提取，
+  // SDK 0.28+ 无独立 models 字段）必须随 session_updated 投影到 Session Doc session map，
+  // 前端据此显示模型名与模式选择器（C 回归：此前 result 分支丢弃该元数据）。
+  test("session/new result projects models and modes into the session doc", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        sessionId: "ses-new",
+        models: {
+          currentModelId: "model-b",
+          availableModels: [
+            { modelId: "model-a", name: "Model A" },
+            { modelId: "model-b", name: "Model B" },
+          ],
+        },
+        modes: {
+          currentModeId: "code",
+          availableModes: [{ id: "code", name: "Code", description: "Code mode" }],
+        },
+      },
+    } as unknown as RelayMessage);
+
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    const modelState = session.get("modelState") as Y.Map<unknown>;
+    expect(modelState.get("currentModelId")).toBe("model-b");
+    const models = modelState.get("availableModels") as Y.Array<Y.Map<unknown>>;
+    expect(models.length).toBe(2);
+    expect(models.get(1)?.get("name")).toBe("Model B");
+    const modeState = session.get("modeState") as Y.Map<unknown>;
+    expect(modeState.get("currentModeId")).toBe("code");
+    expect((modeState.get("availableModes") as Y.Array<Y.Map<unknown>>).length).toBe(1);
+  });
 });
 
 // 回放窗口（replayWindowUntil）：load/resume 成功后短暂开启，窗口内无活动 turn 可写时

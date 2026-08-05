@@ -3,9 +3,10 @@
 // - Chat Doc（chat:{rcsSessionId}）：token 用量（turn 完成时写入 assistant entry）
 // - Session Doc（session:{rcsSessionId}）：session/agent/pendingPermissions
 //
-// 旧字段（agentInfo/sessions/chatMeta/connection/modelState/modeState/availableCommands）
-// 已从 Y.Doc schema 删除；此处按新结构派生，无法派生的字段给保守默认值
-// （模型/模式/命令选择属协议配置，C3+ 阶段由控制面另行提供）。
+// 旧字段（agentInfo/sessions/chatMeta/connection/availableCommands）已从 Y.Doc schema
+// 删除；此处按新结构派生，无法派生的字段给保守默认值。
+// modelState/modeState 为会话级元数据：session/new、load 响应的 models/modes 经
+// 聚合层投影到 Session Doc session map，此处从嵌套 Y.Map/Y.Array 转换回展示形状。
 
 import type { AgentInfo, ChatStateSnapshot } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
@@ -43,12 +44,55 @@ function computeTokenSnapshot(ydoc: Y.Doc): ChatTokenSnapshot {
 
 // ── Session Doc 派生：会话元信息 + Agent 状态 + 权限 ──
 
+/** 从 Session Doc session map 读取 Model 状态（嵌套 Y.Map/Y.Array 结构 → plain object） */
+function readModelState(session: Y.Map<unknown> | undefined): ChatStateSnapshot["modelState"] {
+  const raw = session?.get("modelState");
+  if (!(raw instanceof Y.Map)) return null;
+  const currentModelId = raw.get("currentModelId");
+  const models = raw.get("availableModels");
+  if (typeof currentModelId !== "string" || !(models instanceof Y.Array)) return null;
+  const availableModels: Array<{ modelId: string; name: string }> = [];
+  for (const m of models) {
+    if (!(m instanceof Y.Map)) continue;
+    availableModels.push({
+      modelId: String(m.get("modelId") ?? ""),
+      name: String(m.get("name") ?? ""),
+    });
+  }
+  if (availableModels.length === 0) return null;
+  return { currentModelId, availableModels };
+}
+
+/** 从 Session Doc session map 读取 Mode 状态（嵌套 Y.Map/Y.Array 结构 → plain object） */
+function readModeState(session: Y.Map<unknown> | undefined): ChatStateSnapshot["modeState"] {
+  const raw = session?.get("modeState");
+  if (!(raw instanceof Y.Map)) return null;
+  const currentModeId = raw.get("currentModeId");
+  const modes = raw.get("availableModes");
+  if (typeof currentModeId !== "string" || !(modes instanceof Y.Array)) return null;
+  const availableModes: Array<{ id: string; name: string; description?: string | null }> = [];
+  for (const m of modes) {
+    if (!(m instanceof Y.Map)) continue;
+    availableModes.push({
+      id: String(m.get("id") ?? ""),
+      name: String(m.get("name") ?? ""),
+      description: (m.get("description") as string | null | undefined) ?? null,
+    });
+  }
+  if (availableModes.length === 0) return null;
+  return { currentModeId, availableModes };
+}
+
 interface ChatMetaSnapshot {
   sessionId: string;
   title: string | null;
   status: string;
   instanceId: string | null;
   acpSessionId: string | null;
+  /** 当前会话的 Model 状态（session/new、load 响应投影，会话级元数据） */
+  modelState: ChatStateSnapshot["modelState"];
+  /** 当前会话的 Mode 状态 */
+  modeState: ChatStateSnapshot["modeState"];
   capabilities: Record<string, boolean> | null;
   permissions: ChatStateSnapshot["permissions"];
   /** 会话列表（Session Doc sessions 投影派生；含当前会话兜底） */
@@ -131,6 +175,8 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
     instanceId: (agent?.get("instanceId") as string | null | undefined) ?? null,
     acpSessionId: (agent?.get("acpSessionId") as string | null | undefined) ?? null,
     capabilities,
+    modelState: readModelState(session),
+    modeState: readModeState(session),
     permissions,
     sessions,
   };
@@ -152,9 +198,9 @@ function computeChatSnapshot(token: ChatTokenSnapshot, meta: ChatMetaSnapshot): 
     permissions: meta.permissions,
     isSwitchingSession: false,
     capabilities: meta.capabilities,
-    // 以下字段已从 Y.Doc schema 删除（模型/模式/命令选择），保守默认值：
-    modelState: null,
-    modeState: null,
+    modelState: meta.modelState,
+    modeState: meta.modeState,
+    // 以下字段已从 Y.Doc schema 删除（命令选择），保守默认值：
     availableCommands: [],
     tokenUsage: token.tokenUsage,
   };
@@ -181,6 +227,8 @@ export function useChatState(rcsSessionId: string) {
           instanceId: null,
           acpSessionId: null,
           capabilities: null,
+          modelState: null,
+          modeState: null,
           permissions: [],
           sessions: [],
         },

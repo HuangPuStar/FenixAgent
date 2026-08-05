@@ -25,6 +25,8 @@ import {
   setEntryStatus,
   setEntryTokenUsage,
   setSessionInfo,
+  setSessionModelState,
+  setSessionModeState,
   upsertPendingPermission,
   upsertToolCall,
 } from "./chat-writer";
@@ -378,6 +380,14 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
     patch.status = update.sessionUpdate;
   }
   setSessionInfo(pair.session, patch);
+  // model/mode 状态：session/new、load 响应携带（acp-link 已从 configOptions 提取），
+  // 会话级元数据，随 session_updated 一起投影（切换会话时随 session map 清空重建）
+  if (update.modelState && typeof update.modelState === "object") {
+    setSessionModelState(pair.session, update.modelState as Parameters<typeof setSessionModelState>[1]);
+  }
+  if (update.modeState && typeof update.modeState === "object") {
+    setSessionModeState(pair.session, update.modeState as Parameters<typeof setSessionModeState>[1]);
+  }
   return { applied: true };
 }
 

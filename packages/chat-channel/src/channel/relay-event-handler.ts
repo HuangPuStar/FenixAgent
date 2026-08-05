@@ -251,10 +251,18 @@ export class RelayEventHandler {
         registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
           entry.acpSessionId = newSessionId;
         });
-        // 会话元信息（sessionId/status）经规范化事件写入 Session Doc session
+        // 会话元信息（sessionId/status）经规范化事件写入 Session Doc session；
+        // model/mode 来自 session/new、load 响应（acp-link 已从 configOptions 提取
+        // models/modes 字段，SDK 0.28+ 无独立 models 字段），投影为会话级元数据，
+        // 前端据此显示模型名与模式选择器
         this.dispatch(shared, {
           type: "session_updated",
-          update: { sessionId: newSessionId, status: "ready" },
+          update: {
+            sessionId: newSessionId,
+            status: "ready",
+            ...(result.models && typeof result.models === "object" ? { modelState: result.models } : {}),
+            ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
+          },
           content: null,
         });
         try {

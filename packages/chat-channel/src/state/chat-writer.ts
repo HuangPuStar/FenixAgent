@@ -286,6 +286,47 @@ export function setSessionInfo(ydoc: Y.Doc, patch: Record<string, unknown>): voi
   session.set("updatedAt", new Date().toISOString());
 }
 
+/** 覆盖式写入会话 Model 状态（session/new、load 响应的 models 提取结果，会话级元数据） */
+export function setSessionModelState(
+  ydoc: Y.Doc,
+  state: { currentModelId: string; availableModels: Array<{ modelId: string; name: string }> },
+): void {
+  const session = getSessionInfo(ydoc);
+  const models = new Y.Array<Y.Map<unknown>>();
+  for (const m of state.availableModels) {
+    const entry = new Y.Map<unknown>();
+    entry.set("modelId", m.modelId);
+    entry.set("name", m.name);
+    models.push([entry]);
+  }
+  const modelState = new Y.Map<unknown>();
+  modelState.set("currentModelId", state.currentModelId);
+  modelState.set("availableModels", models);
+  session.set("modelState", modelState);
+  session.set("updatedAt", new Date().toISOString());
+}
+
+/** 覆盖式写入会话 Mode 状态（session/new、load 响应的 modes 提取结果，会话级元数据） */
+export function setSessionModeState(
+  ydoc: Y.Doc,
+  state: { currentModeId: string; availableModes: Array<{ id: string; name: string; description?: string | null }> },
+): void {
+  const session = getSessionInfo(ydoc);
+  const modes = new Y.Array<Y.Map<unknown>>();
+  for (const m of state.availableModes) {
+    const entry = new Y.Map<unknown>();
+    entry.set("id", m.id);
+    entry.set("name", m.name);
+    entry.set("description", m.description ?? null);
+    modes.push([entry]);
+  }
+  const modeState = new Y.Map<unknown>();
+  modeState.set("currentModeId", state.currentModeId);
+  modeState.set("availableModes", modes);
+  session.set("modeState", modeState);
+  session.set("updatedAt", new Date().toISOString());
+}
+
 /** 覆盖式写入 Agent 状态（capabilities 为 Y.Map<boolean>） */
 export function setAgentStatus(
   ydoc: Y.Doc,

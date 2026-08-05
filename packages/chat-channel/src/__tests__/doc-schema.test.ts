@@ -98,6 +98,47 @@ test("session doc has no timeline fields", () => {
   }
 });
 
+// session_updated 携带 models/modes（session/new、load 响应）→ Session Doc session map
+// 投影 modelState/modeState（会话级元数据：前端模型名与模式选择器的数据源）
+test("session_updated with models/modes projects model and mode state", () => {
+  applyNormalizedEvent(pair, {
+    type: "session_updated",
+    update: {
+      sessionId: "ses_1",
+      status: "ready",
+      modelState: {
+        currentModelId: "model-b",
+        availableModels: [
+          { modelId: "model-a", name: "Model A" },
+          { modelId: "model-b", name: "Model B" },
+        ],
+      },
+      modeState: {
+        currentModeId: "code",
+        availableModes: [{ id: "code", name: "Code" }],
+      },
+    },
+    content: null,
+  });
+
+  const session = getSessionRoot(pair.session).get("session") as Y.Map<unknown>;
+  const modelState = session.get("modelState") as Y.Map<unknown>;
+  expect(modelState.get("currentModelId")).toBe("model-b");
+  const models = modelState.get("availableModels") as Y.Array<Y.Map<unknown>>;
+  expect(models.length).toBe(2);
+  expect(models.get(0)?.get("modelId")).toBe("model-a");
+  expect(models.get(1)?.get("name")).toBe("Model B");
+  const modeState = session.get("modeState") as Y.Map<unknown>;
+  expect(modeState.get("currentModeId")).toBe("code");
+  const modes = modeState.get("availableModes") as Y.Array<Y.Map<unknown>>;
+  expect(modes.length).toBe(1);
+  expect(modes.get(0)?.get("id")).toBe("code");
+
+  // 切换会话（clearSessionDocContent）清空 session map：model/mode 随会话重建，不留旧值
+  clearSessionDocContent(pair.session);
+  expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("modelState")).toBeUndefined();
+});
+
 // 每次成功投影后两份 Doc 的 projectionVersion 各 +1（描述镜像进度，与 schemaVersion 无关）
 test("projectionVersion bumps on each applied event", () => {
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
