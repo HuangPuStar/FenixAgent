@@ -9,6 +9,15 @@ import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 
 export type RelayMessage = EngineRelayMessage;
 
+/**
+ * load_session 回放窗口时长（ms）。load/resume 的 RPC 转发时开启（早于 Agent 历史
+ * 回放流到达，JSON-RPC result 分支兜底重置），窗口内且 Chat Doc 无时间线内容时，
+ * 到达的 Agent 历史回放（无头增量流 / 无 turnId user_message）由 relay-event-handler
+ * 补全 turn 上下文投影时间线——无持久化快照时历史恢复的唯一来源；窗口外或
+ * doc 已有内容（重连跳过回放语义）保持原语义由聚合层拒绝。
+ */
+export const REPLAY_WINDOW_MS = 10_000;
+
 /** 最小 WebSocket 连接抽象：与传输框架解耦（Elysia WS / Hono WSContext 适配为同一形状） */
 export interface WsConnection {
   /** 向客户端发送文本数据 */
@@ -68,4 +77,11 @@ export interface SharedRelay {
   destroyed?: boolean;
   /** JSON-RPC 请求 id 递增计数器，保证同一 instance 下 translateSimpleAction 生成唯一 id */
   nextRpcId: number;
+  /**
+   * load_session 回放窗口截止时间戳（ms）。load_session 成功后短暂开启，
+   * 期间到达的无 turnId user_message 由 relay-event-handler 分配回放 turnId，
+   * 使 Agent 全量回放的历史增量能够投影为时间线（无持久化快照时的历史恢复来源）；
+   * 窗口外到达的无 turnId user_message（实时回显）保持原语义丢弃。
+   */
+  replayWindowUntil: number | null;
 }

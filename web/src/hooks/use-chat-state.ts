@@ -21,8 +21,11 @@ interface ChatTokenSnapshot {
 
 function computeTokenSnapshot(ydoc: Y.Doc): ChatTokenSnapshot {
   const root = ydoc.getMap("root");
-  const order = (root.get("entryOrder") as Y.Array<string> | undefined) ?? new Y.Array<string>();
-  const entries = (root.get("entries") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  // Chat Doc 尚未同步（快照未到达）时返回默认值：不得创建未插入 doc 的
+  // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
+  const order = root.get("entryOrder") as Y.Array<string> | undefined;
+  const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
+  if (!order || !entries) return { tokenUsage: null };
 
   // 取最后一个携带 tokenUsage 的 assistant entry（prompt_complete 写入）
   let tokenUsage: ChatTokenSnapshot["tokenUsage"] = null;
@@ -54,44 +57,48 @@ interface ChatMetaSnapshot {
 
 function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
   const root = ydoc.getMap("root");
-  const session = (root.get("session") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
-  const agent = (root.get("agent") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
-  const pending = (root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  // Session Doc 尚未同步（快照未到达）时字段缺失按默认值处理；
+  // 不得用 new Y.Map() 占位后读取（Yjs 抛 "Invalid access: Add Yjs type to a document..."）
+  const session = root.get("session") as Y.Map<unknown> | undefined;
+  const agent = root.get("agent") as Y.Map<unknown> | undefined;
+  const pending = root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined;
 
-  const capsMap = agent.get("capabilities");
+  const capsMap = agent?.get("capabilities");
   const capabilities: Record<string, boolean> | null =
     capsMap instanceof Y.Map && capsMap.size > 0 ? Object.fromEntries(capsMap.entries()) : null;
 
   const permissions: ChatStateSnapshot["permissions"] = [];
-  for (const [permissionId, permission] of pending.entries()) {
-    // Session Doc 三态（pending/resolved/expired）→ 前端展示态：
-    // 只有 pending 可操作；resolved 按 CAS 落盘的 decision 展示 approved/denied
-    // （兼容旧快照：无 decision 字段时 resolved 仍显示 approved）；
-    // expired 一律 denied（后端过期不写 decision，保持 null）
-    const rawStatus = permission.get("status");
-    const decision = permission.get("decision");
-    const displayStatus: "pending" | "approved" | "denied" =
-      rawStatus === "pending"
-        ? "pending"
-        : rawStatus === "resolved"
-          ? decision === "deny"
-            ? "denied"
-            : "approved"
-          : "denied";
-    permissions.push({
-      id: permissionId,
-      tool: (permission.get("title") as string) || "",
-      args: (permission.get("description") as Record<string, unknown> | undefined) ?? undefined,
-      level: "ask",
-      status: displayStatus,
-      ts: permission.get("expiresAt") ? new Date(permission.get("expiresAt") as string).getTime() : 0,
-      options: sessionOptionKindsToPermissionOptions(permission.get("options")),
-    });
+  if (pending) {
+    for (const [permissionId, permission] of pending.entries()) {
+      // Session Doc 三态（pending/resolved/expired）→ 前端展示态：
+      // 只有 pending 可操作；resolved 按 CAS 落盘的 decision 展示 approved/denied
+      // （兼容旧快照：无 decision 字段时 resolved 仍显示 approved）；
+      // expired 一律 denied（后端过期不写 decision，保持 null）
+      const rawStatus = permission.get("status");
+      const decision = permission.get("decision");
+      const displayStatus: "pending" | "approved" | "denied" =
+        rawStatus === "pending"
+          ? "pending"
+          : rawStatus === "resolved"
+            ? decision === "deny"
+              ? "denied"
+              : "approved"
+            : "denied";
+      permissions.push({
+        id: permissionId,
+        tool: (permission.get("title") as string) || "",
+        args: (permission.get("description") as Record<string, unknown> | undefined) ?? undefined,
+        level: "ask",
+        status: displayStatus,
+        ts: permission.get("expiresAt") ? new Date(permission.get("expiresAt") as string).getTime() : 0,
+        options: sessionOptionKindsToPermissionOptions(permission.get("options")),
+      });
+    }
   }
 
   // 会话列表：Session Doc sessions 投影派生（sessionId/title/updatedAt），
   // 无标题/未命名会话不在 agent 列表时以当前会话兜底（status=active）
-  const currentSessionId = session.get("sessionId") as string | undefined;
+  const currentSessionId = session?.get("sessionId") as string | undefined;
   const sessions: ChatStateSnapshot["sessions"] = [];
   const rawSessions = root.get("sessions");
   if (rawSessions instanceof Y.Map) {
@@ -109,7 +116,7 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
   if (currentSessionId && !sessions.some((s) => s.sessionId === currentSessionId)) {
     sessions.unshift({
       sessionId: currentSessionId,
-      title: (session.get("title") as string | null | undefined) ?? "",
+      title: (session?.get("title") as string | null | undefined) ?? "",
       preview: "",
       status: "active",
       lastMsgTs: 0,
@@ -119,10 +126,10 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
 
   return {
     sessionId: currentSessionId ?? "",
-    title: (session.get("title") as string | null | undefined) ?? null,
-    status: (session.get("status") as string | undefined) ?? "initializing",
-    instanceId: (agent.get("instanceId") as string | null | undefined) ?? null,
-    acpSessionId: (agent.get("acpSessionId") as string | null | undefined) ?? null,
+    title: (session?.get("title") as string | null | undefined) ?? null,
+    status: (session?.get("status") as string | undefined) ?? "initializing",
+    instanceId: (agent?.get("instanceId") as string | null | undefined) ?? null,
+    acpSessionId: (agent?.get("acpSessionId") as string | null | undefined) ?? null,
     capabilities,
     permissions,
     sessions,

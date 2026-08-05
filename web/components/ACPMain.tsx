@@ -115,13 +115,10 @@ export function ACPMain({
   // 防抖：sessions 增量更新可能分多次到达（list_sessions 返回 N 条 registerSession 逐条广播），
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 防止空会话时重复发送 create_session
-  const autoCreateTriggeredRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 连接重建时需重置 bootstrap 状态
   useEffect(() => {
     sessionEnteredRef.current = false;
-    autoCreateTriggeredRef.current = false;
     if (bootstrapTimerRef.current) {
       clearTimeout(bootstrapTimerRef.current);
       bootstrapTimerRef.current = null;
@@ -203,7 +200,10 @@ export function ACPMain({
 
   // Bootstrap: 通过 YJS chatState 获取会话列表，自动进入最近会话。
   // 使用防抖避免增量更新分片到达时的过早触发（如 list_sessions 逐条 broadcast）。
-  // 会话为空时不自动创建新会话，等待后端 session_list 设置 activeSessionId。
+  // 会话为空时不自动创建新会话：连接建立瞬间（300ms 防抖窗口内）list_sessions
+  // 响应通常尚未到达（agent 初始化 + 列表查询约 1s），此时自动 create_session 会
+  // 制造"假空"会话竞态（有历史会话却新建空会话，页面无数据）。等待列表到达后本
+  // effect 因 sessions 依赖变化重新触发并加载最新会话；agent 确无会话时由用户手动新建。
   useEffect(() => {
     if (connectionState !== "connected") return;
     if (sessionEnteredRef.current) return;
@@ -244,11 +244,8 @@ export function ACPMain({
         return;
       }
 
-      // 无历史会话 → 自动创建新会话，让前端直接进入可输入状态
-      if (!autoCreateTriggeredRef.current) {
-        autoCreateTriggeredRef.current = true;
-        handleCreateSession();
-      }
+      // 无历史会话：不自动创建（list_sessions 响应可能尚未到达，见 effect 头注释），
+      // 等待 sessions 更新重新触发本 effect；确无会话时由用户通过侧边栏手动新建。
     }, 300);
 
     return () => {
@@ -257,7 +254,7 @@ export function ACPMain({
         bootstrapTimerRef.current = null;
       }
     };
-  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession, handleCreateSession]);
+  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession]);
 
   // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
   // 当服务端 session_list 响应到达并设置 activeSessionId 后，

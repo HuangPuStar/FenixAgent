@@ -35,7 +35,9 @@ describe("Gateway shared relay", () => {
     lifecycle.handleClose("ws-1");
   });
 
-  // connect 的同步 status 回包必须在 client 登记后处理，否则 list_sessions 会永久被状态门禁拦截。
+  // connect 的同步就绪 status 回包（带 capabilities）必须在 client 登记后处理，
+  // 否则 forEachByRcsSession 找不到客户端、agentStatusReceived 不被标记，
+  // list_sessions 会永久被状态门禁拦截。
   test("registers the client before a synchronous connect status reply", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
@@ -51,7 +53,7 @@ describe("Gateway shared relay", () => {
           },
           send(message: { type?: string }) {
             if (message.type === "connect") {
-              void listener?.({ type: "status", payload: { connected: true } });
+              void listener?.({ type: "status", payload: { connected: true, capabilities: { loadSession: true } } });
             }
           },
           close() {},

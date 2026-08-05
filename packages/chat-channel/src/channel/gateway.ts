@@ -21,7 +21,7 @@ import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import type { ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import { type ClientConnection, REPLAY_WINDOW_MS, type SharedRelay, type WsConnection } from "./connection-types";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 
@@ -183,6 +183,7 @@ export class Gateway {
           rcsSessionId: resolvedRcsSessionId,
           workspacePath,
           nextRpcId: 0,
+          replayWindowUntil: null,
         };
         const fullHandle = handle as ClientConnection["relayHandle"] & {
           onMessage?: (callback: ReturnType<RelayEventHandler["createMessageHandler"]>) => () => void;
@@ -432,6 +433,12 @@ export class Gateway {
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
+    // load/resume 会话会触发 Agent 历史回放，且回放流可能先于 JSON-RPC result 到达
+    // （agent 在 loadSession resolve 前推送历史增量）；转发 RPC 前开启回放窗口，
+    // 使 relay-event-handler 能投影无头回放增量（JSON-RPC result 分支兜底重置窗口）。
+    if (shared && (action.action === "load_session" || action.action === "resume_session")) {
+      shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
+    }
     await forwardYjsAction(this.toSessionConnection(entry, shared), action, {
       sessionChannel: this.dependencies.sessionChannel,
       sendAck: (ack) => this.dependencies.broadcaster.sendToYjsWs(ws, ack),

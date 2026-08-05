@@ -24,9 +24,15 @@ interface SessionTimelineSnapshot {
 /** 从 Chat Doc 派生时间线快照（纯函数，无副作用） */
 function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
   const root = ydoc.getMap("root");
-  const order = (root.get("entryOrder") as Y.Array<string> | undefined) ?? new Y.Array<string>();
-  const entries = (root.get("entries") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
-  const toolCalls = (root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  const order = root.get("entryOrder") as Y.Array<string> | undefined;
+  const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
+  const toolCalls = root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined;
+
+  // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
+  // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
+  if (!order || !entries) {
+    return { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] };
+  }
 
   const structuredMessages = chatDocEntriesToStructuredMessages(ydoc);
 
@@ -40,13 +46,13 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
     const kind = entry.get("kind") as string | undefined;
     const role = entry.get("role") as string | undefined;
     const status = entry.get("status") as string | undefined;
-    const blocks = (entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
     const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
     if (kind !== "message") continue;
 
     const text = blockOrder
       .map((blockId) => {
-        const block = blocks.get(blockId);
+        const block = blocks?.get(blockId);
         const blockType = block?.get("type");
         const blockText = block?.get("text");
         return blockType === "text" && blockText instanceof Y.Text ? blockText.toString() : "";
@@ -66,7 +72,7 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
       let textChunk = "";
       let reasoningChunk = "";
       for (const blockId of blockOrder) {
-        const block = blocks.get(blockId);
+        const block = blocks?.get(blockId);
         if (!block) continue;
         const blockType = block.get("type") as string | undefined;
         const blockText = block.get("text");
@@ -80,14 +86,16 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
 
   // tools：toolCalls 投影
   const tools: SessionStateSnapshot["tools"] = new Map();
-  for (const [toolCallId, tool] of toolCalls.entries()) {
-    tools.set(toolCallId, {
-      name: (tool.get("name") as string) || "",
-      status: mapToolRunStatus((tool.get("status") as string) || "running"),
-      input: tool.get("arguments"),
-      output: tool.get("result"),
-      startedAt: 0,
-    });
+  if (toolCalls) {
+    for (const [toolCallId, tool] of toolCalls.entries()) {
+      tools.set(toolCallId, {
+        name: (tool.get("name") as string) || "",
+        status: mapToolRunStatus((tool.get("status") as string) || "running"),
+        input: tool.get("arguments"),
+        output: tool.get("result"),
+        startedAt: 0,
+      });
+    }
   }
 
   // artifacts：resource 块（受授权资源引用）
@@ -95,8 +103,8 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
   for (const entryId of order.toArray()) {
     const entry = entries.get(entryId);
     if (!entry) continue;
-    const blocks = (entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
-    for (const block of blocks.values()) {
+    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
+    for (const block of blocks?.values() ?? []) {
       if (block.get("type") !== "resource") continue;
       const mediaType = (block.get("mediaType") as string) || "";
       artifacts.push({
@@ -131,20 +139,24 @@ interface SessionMetaSnapshot {
 
 function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   const root = ydoc.getMap("root");
-  const session = (root.get("session") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
-  const agent = (root.get("agent") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
-  const pending = (root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  // Session Doc 尚未同步（快照未到达）时字段缺失按默认值处理；
+  // 不得用 new Y.Map() 占位后读取（Yjs 抛 "Invalid access: Add Yjs type to a document..."）
+  const session = root.get("session") as Y.Map<unknown> | undefined;
+  const agent = root.get("agent") as Y.Map<unknown> | undefined;
+  const pending = root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined;
 
   // 行内权限按钮数据源：Session Doc 的 options（3 值 kind）翻译为 acp-link PermissionOption[]
   const permissionOptions = new Map<string, PermissionOption[]>();
-  for (const [permissionId, permission] of pending.entries()) {
-    permissionOptions.set(permissionId, sessionOptionKindsToPermissionOptions(permission.get("options")));
+  if (pending) {
+    for (const [permissionId, permission] of pending.entries()) {
+      permissionOptions.set(permissionId, sessionOptionKindsToPermissionOptions(permission.get("options")));
+    }
   }
 
   return {
-    acpSessionId: (agent.get("acpSessionId") as string | undefined) ?? "",
-    turnStatus: (session.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
-    turnUpdatedAt: (session.get("activeTurnUpdatedAt") as number | undefined) ?? null,
+    acpSessionId: (agent?.get("acpSessionId") as string | undefined) ?? "",
+    turnStatus: (session?.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
+    turnUpdatedAt: (session?.get("activeTurnUpdatedAt") as number | undefined) ?? null,
     permissionOptions,
   };
 }

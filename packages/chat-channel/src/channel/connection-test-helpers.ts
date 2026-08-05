@@ -49,6 +49,7 @@ export function createSharedRelay(overrides: Partial<SharedRelay> = {}): SharedR
     rcsSessionId: "rcs-1",
     workspacePath: "/workspace",
     nextRpcId: 0,
+    replayWindowUntil: null,
     ...overrides,
   };
 }
@@ -148,6 +149,8 @@ export function createRelayEvents(
   const docManager = {
     processNormalizedEvent: (_sessionId: string, event: { type: string }) => processed.push(event.type),
     openSession: async () => ({ ydoc: new Y.Doc() }),
+    // 回放窗口判断需要读取聚合层活动 turn；默认 mock 无 Session Doc 时视为无活动 turn
+    getSessionYdoc: () => undefined,
   } as unknown as DocManager;
   return new RelayEventHandler({
     docManager,

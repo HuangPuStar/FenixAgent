@@ -168,9 +168,13 @@ function blockText(block: Y.Map<unknown> | undefined): string {
 /** 从 Chat Doc 按 entryOrder 顺序派生 StructuredMessage[]（保持既有展示形状） */
 export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessage[] {
   const root = getChatRoot(ydoc);
-  const order = (root.get("entryOrder") as Y.Array<string> | undefined) ?? new Y.Array<string>();
-  const entries = (root.get("entries") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
-  const toolCalls = (root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+  const order = root.get("entryOrder") as Y.Array<string> | undefined;
+  const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
+  const toolCalls = root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined;
+
+  // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
+  // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
+  if (!order || !entries) return [];
 
   const messages: StructuredMessage[] = [];
   const entryIds = order.toArray();
@@ -182,12 +186,12 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
     const kind = entry.get("kind") as string | undefined;
     const role = entry.get("role") as string | undefined;
     const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
-    const blocks = (entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
     const ts = entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now();
 
     if (kind === "message" && role === "user") {
       const content = blockOrder
-        .map((blockId) => blockText(blocks.get(blockId)))
+        .map((blockId) => blockText(blocks?.get(blockId)))
         .filter(Boolean)
         .join("\n");
       messages.push({ type: "user_message", id: entryId, content, seq, ts });
@@ -198,7 +202,7 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
       const chunks: AssistantChunk[] = [];
       // 遍历 blockOrder 保持输出顺序：reasoning → thought 块，text → message 块
       for (const blockId of blockOrder) {
-        const block = blocks.get(blockId);
+        const block = blocks?.get(blockId);
         if (!block) continue;
         const blockType = block.get("type") as string | undefined;
         const text = blockText(block);
@@ -210,12 +214,12 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
 
     // 工具调用：assistant entry 内的 tool_call block 按出现顺序投影为独立条目
     for (const blockId of blockOrder) {
-      const block = blocks.get(blockId);
+      const block = blocks?.get(blockId);
       if (!block) continue;
       if (block.get("type") !== "tool_call") continue;
       const toolCallId = block.get("toolCallId") as string | undefined;
       if (!toolCallId) continue;
-      const tool = toolCalls.get(toolCallId);
+      const tool = toolCalls?.get(toolCallId);
       if (!tool) continue;
 
       const status = (tool.get("status") as string) || "running";

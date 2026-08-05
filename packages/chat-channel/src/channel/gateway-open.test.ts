@@ -456,3 +456,49 @@ describe("Gateway handleOpen", () => {
     expect(ws.closed).toEqual([[1011, "spawn failed"]]);
   });
 });
+
+// 回放窗口开启：load/resume 会话的 RPC 转发必须早于 Agent 回放流开启窗口
+// （agent 在 loadSession resolve 前推送历史增量，result 分支兜底重置）。
+describe("Gateway replay window", () => {
+  // load_session action 转发时开启回放窗口。
+  test("load_session opens the replay window before forwarding the RPC", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createGateway(registry, broadcaster, relayEvents);
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const shared = registry.getShared("instance-1", "user-1", "rcs-1");
+    expect(shared?.replayWindowUntil).toBeNull();
+
+    await lifecycle.handleMessage(
+      ws,
+      "ws-1",
+      JSON.stringify({ action: "load_session", commandId: "cmd-1", sessionId: "ses-1" }),
+    );
+
+    expect(shared?.replayWindowUntil).not.toBeNull();
+    expect(shared!.replayWindowUntil!).toBeGreaterThan(Date.now());
+  });
+
+  // resume_session 与 load_session 同样触发历史回放，窗口必须同步开启。
+  test("resume_session opens the replay window before forwarding the RPC", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createGateway(registry, broadcaster, relayEvents);
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const shared = registry.getShared("instance-1", "user-1", "rcs-1");
+
+    await lifecycle.handleMessage(
+      ws,
+      "ws-1",
+      JSON.stringify({ action: "resume_session", commandId: "cmd-2", sessionId: "ses-2" }),
+    );
+
+    expect(shared?.replayWindowUntil).not.toBeNull();
+  });
+});

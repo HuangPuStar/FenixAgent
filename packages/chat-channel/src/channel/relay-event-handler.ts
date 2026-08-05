@@ -10,11 +10,50 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
-import type { NormalizedEvent } from "../schema";
+import { type NormalizedEvent, type NormalizedEventType, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
 import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import type { RelayMessage, SharedRelay } from "./connection-types";
+import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+
+/** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
+const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
+  "reasoning_delta",
+  "message_delta",
+  "tool_call_started",
+  "tool_call_updated",
+  "tool_call_completed",
+  "tool_call_failed",
+  "permission_requested",
+]);
+
+/** 生成回放 turnId（turn_replay_ 前缀与实时 turn 区分，便于日志排查） */
+function createReplayTurnId(): string {
+  return `turn_replay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 读取聚合层活动 turn（Session Doc root.session.activeTurnId/Status 为权威，与 chat-writer 一致） */
+function readActiveTurn(
+  docManager: DocManager,
+  rcsSessionId: string,
+): { turnId: string | null; turnStatus: TurnStatus | null } {
+  const sessionYdoc = docManager.getSessionYdoc(rcsSessionId);
+  if (!sessionYdoc) return { turnId: null, turnStatus: null };
+  const session = sessionYdoc.getMap("root").get("session") as Y.Map<unknown> | undefined;
+  if (!session) return { turnId: null, turnStatus: null };
+  const turnId = session.get("activeTurnId");
+  const turnStatus = session.get("activeTurnStatus");
+  return {
+    turnId: typeof turnId === "string" && turnId.length > 0 ? turnId : null,
+    turnStatus: (turnStatus as TurnStatus | null | undefined) ?? null,
+  };
+}
+
+/** 与聚合层 canWriteToTurn 一致的写入判定：turn 是否仍可接受内容增量 */
+function isTurnWritable(status: TurnStatus | null): boolean {
+  if (!status || status === "cancelling") return false;
+  return !TURN_TERMINAL_STATUSES.has(status);
+}
 
 export interface RelayEventHandlerDependencies {
   registry: ConnectionRegistry;
@@ -125,7 +164,7 @@ export class RelayEventHandler {
     // 规范化事件投递：acp-link 私有帧在此边界翻译为 session/update 语义
     const normalized = normalizeAcpMessage(raw, msgType);
     if (normalized) {
-      this.dispatch(shared, normalized);
+      this.dispatchReplayAware(shared, normalized);
     }
 
     if (msgType === "status") {
@@ -133,34 +172,60 @@ export class RelayEventHandler {
       // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
       // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
       // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）
-      const capabilities = payload?.capabilities as Record<string, boolean> | undefined;
+      const capabilities = payload?.capabilities as Record<string, boolean> | null | undefined;
+      // 注意：capabilities 可能是 null（acp-link 连接后立即 resend 的 status 中
+      // state.agentCapabilities 尚未初始化），不能用 !== undefined 判定，必须排除 null
+      const hasCapabilities = capabilities != null && Object.keys(capabilities).length > 0;
+      // agent 未就绪的 status（capabilities 为空：acp-link 在 SDK 连接后立即 resend
+      // status，早于 initialize 完成）不得视为就绪——标记 agentStatusReceived 会让前端
+      // list_sessions 守卫放行、自动 list_sessions 也会发出，但 agent 尚未初始化会丢弃
+      // 请求（无响应），前端 bootstrap 误判无会话并自动创建空会话（冷启动后页面为空的
+      // 根因之一）。仅就绪 status（capabilities 非空）才标记就绪并触发列表同步；
+      // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
+      // 初始化完成后的就绪 status 再同步。
+      if (hasCapabilities) {
+        this.dispatch(shared, {
+          type: "agent_status",
+          update: {
+            instanceId: shared.instanceId,
+            acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
+            status: "ready",
+            capabilities,
+            lastActivityAt: new Date().toISOString(),
+          },
+          content: null,
+        });
+        const needsListSessions = !registry.hasStatusReceivedByRcsSession(shared.rcsSessionId);
+        registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+          entry.agentStatusReceived = true;
+        });
+        if (needsListSessions) {
+          try {
+            await shared.handle.send(
+              translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+            );
+          } catch (err) {
+            this.dependencies.reportError(
+              `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
+              err,
+            );
+          }
+        }
+        return;
+      }
+      // 未就绪 status：仅投影实例信息（status=initializing），不标记
+      // agentStatusReceived、不触发 list_sessions（agent 初始化完成前列表不可信）
       this.dispatch(shared, {
         type: "agent_status",
         update: {
           instanceId: shared.instanceId,
           acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
-          status: "ready",
+          status: "initializing",
           capabilities,
           lastActivityAt: new Date().toISOString(),
         },
         content: null,
       });
-      const needsListSessions = !registry.hasStatusReceivedByRcsSession(shared.rcsSessionId);
-      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-        entry.agentStatusReceived = true;
-      });
-      if (needsListSessions) {
-        try {
-          await shared.handle.send(
-            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
-          );
-        } catch (err) {
-          this.dependencies.reportError(
-            `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
-            err,
-          );
-        }
-      }
       return;
     }
 
@@ -171,6 +236,9 @@ export class RelayEventHandler {
       if (!result || typeof result !== "object") return;
       const newSessionId = result.sessionId;
       if (typeof newSessionId === "string" && newSessionId.length > 0) {
+        // load/resume 成功后开启回放窗口：Agent 即将回放历史增量（无持久化快照时
+        // 历史恢复的唯一来源），窗口内由 dispatchReplayAware 补全 turn 上下文投影时间线
+        shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
         const sessionDoc = await this.dependencies.docManager.openSession(
           shared.userId,
           shared.agentId,
@@ -199,6 +267,38 @@ export class RelayEventHandler {
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] session sync failed:", err);
     }
+  }
+
+  /**
+   * 回放窗口内的事件投递：Agent 历史回放（load/resume 后）在聚合层 turn 状态机下
+   * 没有可写的 turn 上下文，直接投递会被全部拒绝（前端时间线为空）。窗口内且 Chat Doc
+   * 无时间线内容时（无持久化快照 / 会话切换已清空）为两类回放形态补全 turn 上下文，
+   * 窗口外或 doc 已有内容（重连跳过回放语义，避免重复）保持原语义由聚合层拒绝：
+   * - user_message 无 turnId（全量回放开头）且无活动 turn 可写 → 分配回放 turnId；
+   * - 增量类事件无活动 turn 可写（中断 turn 的无头回放）→ 先合成空文本回放 turn。
+   * 实时流 agent 回显（聚合层已有可写 turn，如 registerUserMessage 创建的 turn）不干预，
+   * 仍由聚合层拒绝，避免用户消息双写。
+   */
+  private dispatchReplayAware(shared: SharedRelay, event: NormalizedEvent): void {
+    const inReplayWindow = shared.replayWindowUntil !== null && Date.now() < shared.replayWindowUntil;
+    // doc 已有时间线内容时不开投影：重连场景的 load_session 回放应被跳过（聚合层拒绝），
+    // 否则多客户端会收到重复历史（session-channel prepareLoadSession 路径 1 的 P1 注释）
+    if (inReplayWindow && !this.dependencies.docManager.hasSessionDocContent(shared.rcsSessionId)) {
+      const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
+      if (event.type === "user_message" && !event.turnId && !isTurnWritable(active.turnStatus)) {
+        event = { ...event, turnId: createReplayTurnId() };
+      } else if (REPLAY_NEEDS_TURN.has(event.type) && !isTurnWritable(active.turnStatus)) {
+        // 无头回放：增量无 user_message 开头（中断 turn 的回放），先合成空文本回放 turn
+        this.dispatch(shared, {
+          type: "user_message",
+          update: {},
+          content: null,
+          acpSessionId: event.acpSessionId,
+          turnId: createReplayTurnId(),
+        });
+      }
+    }
+    this.dispatch(shared, event);
   }
 
   /** 投递规范化事件到聚合层（binding 不存在时由 docManager 丢弃） */
