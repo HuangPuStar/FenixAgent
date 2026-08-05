@@ -1,8 +1,8 @@
-// packages/acp-server/src/yjs-ws-client.ts
+// packages/chat-channel/src/transport/ws.ts
 // 同构 Yjs WebSocket 客户端，兼容浏览器和 Bun。
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
-import type { ActionAck } from "../channel/types";
+import type { ActionAck, ActionError } from "../channel/types";
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set([
@@ -41,6 +41,8 @@ export interface YjsWsOptions {
   onClose?: (close: YjsWsClose) => void;
   /** 收到 action_ack 时回调（commandId 幂等响应；前端据此释放重试 ID 缓存） */
   onActionAck?: (ack: ActionAck) => void;
+  /** 收到 action_error 帧时回调（commandId 幂等失败响应；前端据此释放重试 ID 缓存并展示错误） */
+  onActionError?: (error: ActionError) => void;
 }
 
 export interface YjsWsClient {
@@ -72,7 +74,7 @@ export interface YjsWsClient {
  * ```
  */
 export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
-  const { url, onYjsUpdate, onConnectionState, onError, onClose, onActionAck } = options;
+  const { url, onYjsUpdate, onConnectionState, onError, onClose, onActionAck, onActionError } = options;
 
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
@@ -133,6 +135,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         }
         if (msg.type === "action_ack") {
           onActionAck?.(msg as unknown as ActionAck);
+          return;
+        }
+        if (msg.type === "action_error") {
+          onActionError?.(msg as unknown as ActionError);
+          return;
         }
       } catch {
         console.warn("[yjs-ws] failed to parse msg:", (event.data as string)?.slice(0, 100));

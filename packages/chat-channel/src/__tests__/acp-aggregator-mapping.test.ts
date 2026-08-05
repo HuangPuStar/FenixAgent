@@ -7,7 +7,14 @@ import * as Y from "yjs";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
 import { type NormalizedEvent, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
-import { getEntry, getEntryOrder, getPendingPermissions, getSessionInfo, getToolCallsMap } from "../state/chat-writer";
+import {
+  getEntry,
+  getEntryOrder,
+  getPendingPermissions,
+  getSessionInfo,
+  getSessionRoot,
+  getToolCallsMap,
+} from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
 
 let pair: DocPair;
@@ -114,6 +121,21 @@ test("permission resolve is CAS — only first resolution applies", () => {
 
   const pending = getPendingPermissions(pair.session);
   expect(pending.get("p1")?.get("status")).toBe("resolved");
+  // CAS 成功后 decision 落盘（allow → "allow"）
+  expect(pending.get("p1")?.get("decision")).toBe("allow");
+});
+
+// permission_resolved 携带 deny 决策时 decision 落盘为 "deny"
+test("permission resolve with deny decision persists decision as deny", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(pair, event("permission_requested", { permissionId: "p1", title: "Approve" }));
+  applyNormalizedEvent(pair, event("permission_resolved", { permissionId: "p1", decision: "deny" }));
+
+  const pending = getPendingPermissions(pair.session);
+  expect(pending.get("p1")?.get("status")).toBe("resolved");
+  expect(pending.get("p1")?.get("decision")).toBe("deny");
+  // deny 收敛：关联工具调用 cancelled（无 toolCallId 时仅 turn 状态收敛）
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("running");
 });
 
 // user_message 缺少 turnId 时被拒绝（缺少必要关联信息拒绝投影）
@@ -180,6 +202,64 @@ test("JSON-RPC session/update wrapped format normalizes to delta", () => {
 test("keepalive and unknown frames are rejected by ACPChannel", () => {
   expect(normalizeAcpMessage({ type: "keep_alive" }, "keep_alive")).toBeNull();
   expect(normalizeAcpMessage({ type: "weird", payload: { x: 1 } }, "weird")).toBeNull();
+});
+
+// session/list 响应（真实形状 1：session_data 包裹 JSON-RPC success）→ session_list 事件
+test("session/list wrapped JSON-RPC response normalizes to session_list", () => {
+  const normalized = normalizeAcpMessage({
+    type: "session_data",
+    payload: {
+      jsonrpc: "2.0",
+      id: "1",
+      result: {
+        sessions: [{ sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" }],
+        nextCursor: null,
+        _meta: {},
+      },
+    },
+  });
+  expect(normalized?.type).toBe("session_list");
+  expect(normalized?.update.sessions).toEqual([
+    { sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" },
+  ]);
+  expect(normalized?.content).toBeNull();
+});
+
+// session/list 响应（真实形状 2：裸 JSON-RPC success，实例路径）→ session_list 事件
+test("session/list bare JSON-RPC response normalizes to session_list", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    id: "1",
+    result: { sessions: [{ sessionId: "ses_2", title: "B" }] },
+  });
+  expect(normalized?.type).toBe("session_list");
+  expect(normalized?.update.sessions).toEqual([{ sessionId: "ses_2", title: "B" }]);
+});
+
+// result 不含 sessions 数组的 JSON-RPC 响应保持原行为（null，不误判为 session_list）
+test("JSON-RPC result without sessions array stays null", () => {
+  expect(normalizeAcpMessage({ jsonrpc: "2.0", id: "9", result: { ok: true } })).toBeNull();
+});
+
+// session_list 聚合幂等：同列表应用两次不重复追加；缺失字段条目跳过
+test("session_list aggregation is idempotent and skips malformed entries", () => {
+  const list = [
+    { sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" },
+    { sessionId: "ses_2", title: "B" },
+  ];
+  applyNormalizedEvent(pair, event("session_list", { sessions: list }));
+  applyNormalizedEvent(pair, event("session_list", { sessions: list }));
+
+  const sessions = getSessionRoot(pair.session).get("sessions") as Y.Map<Y.Map<unknown>>;
+  expect(sessions.size).toBe(2);
+
+  // 无 sessionId / 非对象的条目跳过
+  applyNormalizedEvent(pair, event("session_list", { sessions: [...list, { title: "no-id" }, 42] }));
+  expect(sessions.size).toBe(2);
+
+  // sessions 字段缺失 → 拒绝
+  const missing = applyNormalizedEvent(pair, event("session_list", { nope: true }));
+  expect(missing.applied).toBe(false);
 });
 
 // 规范化事件中的 acpSessionId 不参与 Y.Doc 寻址（只做 binding 校验）

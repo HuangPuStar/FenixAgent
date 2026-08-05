@@ -11,8 +11,12 @@
 
 /** Chat Doc 结构版本（schemaVersion，描述结构而非投影进度） */
 export const CHAT_DOC_SCHEMA_VERSION = 2;
-/** Session Doc 结构版本 */
-export const SESSION_DOC_SCHEMA_VERSION = 2;
+/**
+ * Session Doc 结构版本。3：新增根级 sessions 投影位（agent 级会话列表）。
+ * loadSessionDoc 以 schemaVersion 判空触发 initSessionDocStructure 幂等补结构，
+ * Redis 旧快照（v2）恢复后自动补齐 sessions map。
+ */
+export const SESSION_DOC_SCHEMA_VERSION = 3;
 /** Chat Doc 初始投影版本（每次成功投影后 +1，见 bumpProjectionVersion） */
 export const INITIAL_PROJECTION_VERSION = 1;
 
@@ -118,6 +122,19 @@ export interface PermissionProjection {
   options: PermissionOptionKind[];
   status: PermissionStatus;
   expiresAt: string;
+  /**
+   * 决议结果：CAS 迁移成功后写入（allow/deny）；upsert 创建时为 null；
+   * expired 不写（保持 null）。前端按此展示 approved/denied。
+   */
+  decision: "allow" | "deny" | null;
+}
+
+/** 会话列表投影条目（agent 级会话摘要，随 list_sessions 响应全量同步；按 sessionId 键控） */
+export interface SessionSummaryProjection {
+  sessionId: string;
+  title: string | null;
+  cwd: string | null;
+  updatedAt: string | null;
 }
 
 // ── 规范化事件（ACPChannel 输出，聚合层唯一消费输入）──
@@ -145,7 +162,8 @@ export type NormalizedEventType =
   | "turn_interrupted"
   | "plan"
   | "session_updated"
-  | "agent_status";
+  | "agent_status"
+  | "session_list";
 
 /**
  * 规范化事件：聚合层唯一允许消费的 ACP 入站形态。

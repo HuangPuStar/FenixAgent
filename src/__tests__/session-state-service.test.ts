@@ -35,7 +35,8 @@ describe("clearSessionDocContent", () => {
     expect((session.getMap("root").get("pendingPermissions") as Y.Map<unknown>).size).toBe(0);
     // 骨架保留：schemaVersion 与根键集合不变
     expect(getChatRoot(chat).get("schemaVersion")).toBe(2);
-    expect(getSessionRoot(session).get("schemaVersion")).toBe(2);
+    // Session Doc v3：新增根级 sessions 投影位（clearSessionDocContent 保留该 agent 级数据）
+    expect(getSessionRoot(session).get("schemaVersion")).toBe(3);
     expect(typeof getChatRoot(chat).get("projectionVersion")).toBe("number");
   });
 });

@@ -7,10 +7,11 @@
 // 已从 Y.Doc schema 删除；此处按新结构派生，无法派生的字段给保守默认值
 // （模型/模式/命令选择属协议配置，C3+ 阶段由控制面另行提供）。
 
-import type { AgentInfo, ChatStateSnapshot, SessionSummary } from "@fenix/chat-channel";
+import type { AgentInfo, ChatStateSnapshot } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
+import { sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
 
 // ── Chat Doc 派生：token 用量（turn 终态写入 assistant entry 的 tokenUsage）──
 
@@ -47,6 +48,8 @@ interface ChatMetaSnapshot {
   acpSessionId: string | null;
   capabilities: Record<string, boolean> | null;
   permissions: ChatStateSnapshot["permissions"];
+  /** 会话列表（Session Doc sessions 投影派生；含当前会话兜底） */
+  sessions: ChatStateSnapshot["sessions"];
 }
 
 function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
@@ -62,11 +65,19 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
   const permissions: ChatStateSnapshot["permissions"] = [];
   for (const [permissionId, permission] of pending.entries()) {
     // Session Doc 三态（pending/resolved/expired）→ 前端展示态：
-    // 只有 pending 可操作；resolved/expired 均视为已处理（"只能解决一次"前端体现），
-    // 后端 CAS 兜底保证重复响应不生效
+    // 只有 pending 可操作；resolved 按 CAS 落盘的 decision 展示 approved/denied
+    // （兼容旧快照：无 decision 字段时 resolved 仍显示 approved）；
+    // expired 一律 denied（后端过期不写 decision，保持 null）
     const rawStatus = permission.get("status");
+    const decision = permission.get("decision");
     const displayStatus: "pending" | "approved" | "denied" =
-      rawStatus === "pending" ? "pending" : rawStatus === "resolved" ? "approved" : "denied";
+      rawStatus === "pending"
+        ? "pending"
+        : rawStatus === "resolved"
+          ? decision === "deny"
+            ? "denied"
+            : "approved"
+          : "denied";
     permissions.push({
       id: permissionId,
       tool: (permission.get("title") as string) || "",
@@ -74,17 +85,47 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
       level: "ask",
       status: displayStatus,
       ts: permission.get("expiresAt") ? new Date(permission.get("expiresAt") as string).getTime() : 0,
+      options: sessionOptionKindsToPermissionOptions(permission.get("options")),
+    });
+  }
+
+  // 会话列表：Session Doc sessions 投影派生（sessionId/title/updatedAt），
+  // 无标题/未命名会话不在 agent 列表时以当前会话兜底（status=active）
+  const currentSessionId = session.get("sessionId") as string | undefined;
+  const sessions: ChatStateSnapshot["sessions"] = [];
+  const rawSessions = root.get("sessions");
+  if (rawSessions instanceof Y.Map) {
+    for (const [sessionId, entry] of rawSessions.entries()) {
+      sessions.push({
+        sessionId,
+        title: (entry.get("title") as string | null | undefined) ?? "",
+        preview: "",
+        status: sessionId === currentSessionId ? "active" : "idle",
+        lastMsgTs: 0,
+        updatedAt: (entry.get("updatedAt") as string | undefined) ?? undefined,
+      });
+    }
+  }
+  if (currentSessionId && !sessions.some((s) => s.sessionId === currentSessionId)) {
+    sessions.unshift({
+      sessionId: currentSessionId,
+      title: (session.get("title") as string | null | undefined) ?? "",
+      preview: "",
+      status: "active",
+      lastMsgTs: 0,
+      updatedAt: undefined,
     });
   }
 
   return {
-    sessionId: (session.get("sessionId") as string | undefined) ?? "",
+    sessionId: currentSessionId ?? "",
     title: (session.get("title") as string | null | undefined) ?? null,
     status: (session.get("status") as string | undefined) ?? "initializing",
     instanceId: (agent.get("instanceId") as string | null | undefined) ?? null,
     acpSessionId: (agent.get("acpSessionId") as string | null | undefined) ?? null,
     capabilities,
     permissions,
+    sessions,
   };
 }
 
@@ -95,22 +136,10 @@ function computeChatSnapshot(token: ChatTokenSnapshot, meta: ChatMetaSnapshot): 
     id: meta.instanceId ?? meta.acpSessionId ?? "",
     name: "",
   };
-  const sessions: SessionSummary[] = meta.sessionId
-    ? [
-        {
-          sessionId: meta.sessionId,
-          title: meta.title ?? "",
-          preview: "",
-          status: meta.status === "ready" ? "active" : "idle",
-          lastMsgTs: 0,
-          updatedAt: undefined,
-        },
-      ]
-    : [];
 
   return {
     agentInfo,
-    sessions,
+    sessions: meta.sessions,
     activeSessionId: meta.sessionId,
     connection: { status: "disconnected", since: 0 },
     permissions: meta.permissions,
@@ -146,6 +175,7 @@ export function useChatState(rcsSessionId: string) {
           acpSessionId: null,
           capabilities: null,
           permissions: [],
+          sessions: [],
         },
         (s) => stableKey(s),
       ),
@@ -169,11 +199,20 @@ export function useChatState(rcsSessionId: string) {
   const state = useMemo(() => computeChatSnapshot(token, meta), [token, meta]);
 
   useEffect(() => {
+    // StrictMode 双挂载：首次 cleanup 已 destroy store（activeKey 重置为 ""），
+    // 重挂载时 prevKeyRef 幂等保护会跳过渲染期 switchDoc，必须在此显式重建当前 doc。
+    // 正常挂载时渲染期 switchDoc 已设置 activeKey，此处调用为 no-op（幂等安全）。
+    for (const store of [stores.chat, stores.meta]) {
+      store.switchDoc(rcsSessionId, () => {
+        const ydoc = new Y.Doc();
+        return { ydoc };
+      });
+    }
     return () => {
       stores.chat.destroy();
       stores.meta.destroy();
     };
-  }, [stores]);
+  }, [stores, rcsSessionId]);
 
   const applyUpdate = useCallback(
     (docName: string, data: Uint8Array) => {

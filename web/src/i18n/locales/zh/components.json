@@ -515,6 +515,7 @@
   },
   "permissionPanel": {
     "allow": "允许",
+    "allowSession": "允许本次会话",
     "deny": "拒绝"
   },
   "sessionModeSelector": {

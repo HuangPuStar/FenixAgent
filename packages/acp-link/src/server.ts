@@ -241,6 +241,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let manualClose = false;
   // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
   let cachedNodeId: string | null = null;
+  // 实例 start 完成前到达的 connect 帧缓存（instId → payload）。
+  // relay 的 connect 帧只在实例 dispatcher 就绪后才会被消费；若在前端建连
+  // （spawn + connection.initialize 耗时秒级）期间到达，会被静默丢弃，
+  // 导致 status（含 capabilities）永不发送、前端能力信息缺失（"not supported"）。
+  // start 成功后补发缓存帧，保证能力信息最终到达前端。
+  const pendingConnects = new Map<string, unknown>();
 
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
@@ -561,6 +567,27 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   capabilities: result.capabilities,
                 }),
               );
+              // 补发 start 完成前缓存的 connect 帧：dispatcher 此刻已就绪，
+              // 重放后回传 status（含 capabilities），避免前端能力信息永久缺失。
+              const pendingConnect = pendingConnects.get(instId);
+              if (pendingConnect) {
+                pendingConnects.delete(instId);
+                const dispatcher = instanceMgr.getDispatcher(instId);
+                if (dispatcher) {
+                  try {
+                    await dispatcher.handleMessage(pendingConnect);
+                  } catch (err) {
+                    ws!.send(
+                      JSON.stringify({
+                        type: "relay",
+                        instance_id: instId,
+                        session_id: instanceMgr.getSessionId(instId) ?? instId,
+                        payload: createErrorResponse(null, -32603, (err as Error).message),
+                      }),
+                    );
+                  }
+                }
+              }
             } catch (err) {
               ws!.send(
                 JSON.stringify({
@@ -622,6 +649,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                     }),
                   );
                 }
+              } else if ((relayPayload as { type?: string })?.type === "connect") {
+                // dispatcher 尚未就绪（实例仍在 start：spawn 子进程 + initialize 握手）：
+                // connect 帧必须先缓存，start 完成后补发，否则 status 永不发送。
+                // 仅缓存 connect（幂等握手），其余消息在 dispatcher 就绪前没有消费者，直接忽略。
+                pendingConnects.set(instId, relayPayload);
               }
             } else {
               sessionMgr.sendData(sessId, relayPayload);

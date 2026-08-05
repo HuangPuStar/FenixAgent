@@ -35,6 +35,7 @@ import {
   type DocPair,
   expireTurnPermissions,
 } from "./permission";
+import { applySessionList } from "./session-list";
 
 export type { DocPair } from "./permission";
 
@@ -214,6 +215,8 @@ function applyPermissionRequested(pair: DocPair, event: NormalizedEvent): ApplyR
     description: typeof event.update.description === "string" ? event.update.description : null,
     options,
     status: "pending",
+    // 请求时刻无决议，CAS 迁移（permission_resolved）成功后由 permission.ts 写入
+    decision: null,
     expiresAt:
       typeof event.update.expiresAt === "string"
         ? event.update.expiresAt
@@ -351,11 +354,15 @@ function applyPlan(pair: DocPair, event: NormalizedEvent): ApplyResult {
 function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult {
   if (event.type === "agent_status") {
     const update = event.update;
+    const caps = update.capabilities as Record<string, boolean> | undefined;
+    // 空/缺失 capabilities 不覆盖已有能力：status 可能先于能力就绪到达（实例
+    // start 竞态，acp-link 侧以 connect 帧缓存补发兜底），覆盖会永久清空前端
+    // 能力信息（表现为 "Loading or resuming sessions is not supported"）
     setAgentStatus(pair.session, {
       instanceId: typeof update.instanceId === "string" ? update.instanceId : null,
       acpSessionId: typeof update.acpSessionId === "string" ? update.acpSessionId : null,
       status: typeof update.status === "string" ? update.status : "ready",
-      capabilities: (update.capabilities as Record<string, boolean> | undefined) ?? {},
+      capabilities: caps && typeof caps === "object" && Object.keys(caps).length > 0 ? caps : undefined,
       lastActivityAt: typeof update.lastActivityAt === "string" ? update.lastActivityAt : new Date().toISOString(),
     });
     return { applied: true };
@@ -446,6 +453,10 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
         case "session_updated":
         case "agent_status":
           result = applySessionControl(pair, event);
+          break;
+        case "session_list":
+          // 会话列表不依赖 turn，与其他控制事件并列；实现见 state/session-list.ts
+          result = applySessionList(pair, event);
           break;
         default: {
           // 防御：新加的规范化类型未实现处理时拒绝，不静默吞掉

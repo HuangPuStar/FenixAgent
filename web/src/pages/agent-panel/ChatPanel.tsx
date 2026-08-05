@@ -1,4 +1,4 @@
-import { type ActionAck, createDeterministicRcsSessionId } from "@fenix/chat-channel";
+import { type ActionAck, type ActionError, createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,6 +37,10 @@ export function ChatPanel({
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
+  // 避免单动作失败触发整屏错误态
+  const [actionError, setActionError] = useState<ActionError | null>(null);
+  const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS 连接。
   // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
   // WS 客户端不会自动重连，必须由用户手动触发。
@@ -49,6 +53,20 @@ export function ChatPanel({
     setConnectionState("connecting");
     setErrorCode(null);
     setReconnectAttempt((n) => n + 1);
+  }, []);
+
+  /** 展示 action_error transient banner（5s 自动清除），重复错误重置计时 */
+  const showActionError = useCallback((err: ActionError) => {
+    setActionError(err);
+    if (actionErrorTimerRef.current) clearTimeout(actionErrorTimerRef.current);
+    actionErrorTimerRef.current = setTimeout(() => setActionError(null), 5000);
+  }, []);
+
+  // 卸载清理 banner 计时器，避免卸载后 setState
+  useEffect(() => {
+    return () => {
+      if (actionErrorTimerRef.current) clearTimeout(actionErrorTimerRef.current);
+    };
   }, []);
 
   // 缓存 ChatPanel 从后台切回前台且连接已断开时，自动触发一次与「重连」按钮等价的重连：
@@ -99,14 +117,10 @@ export function ChatPanel({
     };
   }, []);
 
-  // Buffer: 缓存每个 session 的最后一次 yjs:update，用于 acpSessionId 切换后重放
-  // 解决竞态条件：session 数据可能在 useSessionState 切换到正确 Y.Doc 之前到达，
-  // 此时数据被应用到旧的 placeholder Y.Doc → 切换后被销毁 → 需要重放
-  const sessionLatestUpdateRef = useRef<Map<string, Uint8Array>>(new Map());
-
   // ── Action commandId（C3：幂等键，同会话唯一）──
   // 同一 action 意图（action + 业务参数）重试复用同一 commandId；
-  // 收到 action_ack（committed/duplicate）后释放缓存，避免同意图的后续操作被服务端永久去重。
+  // 收到 action_ack（committed/duplicate）或 action_error 后释放缓存，
+  // 避免同意图的后续操作被服务端永久去重。
   const commandIdCacheRef = useRef<Map<string, string>>(new Map());
 
   const commandKey = useCallback((data: Record<string, unknown>): string => {
@@ -114,11 +128,21 @@ export function ChatPanel({
     return `${String(action)}|${JSON.stringify(rest)}`;
   }, []);
 
-  const handleActionAck = useCallback((ack: ActionAck) => {
+  /** 释放 commandId 缓存（按 commandId 反查 key）。仅 committed/duplicate/action_error 后调用。 */
+  const releaseCommandId = useCallback((commandId: string) => {
     for (const [key, id] of commandIdCacheRef.current) {
-      if (id === ack.commandId) commandIdCacheRef.current.delete(key);
+      if (id === commandId) commandIdCacheRef.current.delete(key);
     }
   }, []);
+
+  const handleActionAck = useCallback(
+    (ack: ActionAck) => {
+      // accepted 仅表示入队（服务端去重表中为 in_flight），commandId 必须保留供重试复用；
+      // committed/duplicate 才释放（实现与注释对齐）
+      if (ack.status === "committed" || ack.status === "duplicate") releaseCommandId(ack.commandId);
+    },
+    [releaseCommandId],
+  );
 
   // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId
   const sendViaWs = useCallback(
@@ -131,15 +155,6 @@ export function ChatPanel({
     },
     [commandKey],
   );
-
-  // 当 rcsSessionKey 切换后，重放宽存的 session 更新 (H1 fix)
-  useEffect(() => {
-    if (!rcsSessionKey) return;
-    const cached = sessionLatestUpdateRef.current.get(rcsSessionKey);
-    if (cached) {
-      sessionApplyUpdate(`session:${rcsSessionKey}`, cached);
-    }
-  }, [rcsSessionKey, sessionApplyUpdate]);
 
   // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
   // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 就绪后启动 keepalive
@@ -169,6 +184,12 @@ export function ChatPanel({
     setConnectionState("connecting");
     setErrorCode(null);
 
+    // 建连守卫：userId 异步到达前 rcsSessionKey 未就绪，若此时建连，
+    // 服务端快照会落入 __pending_* 占位 doc，switchDoc 后丢失（竞态根因）。
+    // key 就绪后 deps 变化触发本 effect 重建连接，快照必然落入正确 key 的 doc。
+    // 注意：auth 悬挂（key 永不到达）时 UI 停留在 connecting，属于可接受行为。
+    if (!rcsSessionKey) return;
+
     const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
 
     const yjsWs = createYjsWs({
@@ -177,11 +198,6 @@ export function ChatPanel({
         try {
           // 两个 hook 各自内部按 docName 前缀路由到 Chat Doc / Session Doc store
           chatApplyUpdate(docName, data);
-          if (docName.startsWith("session:")) {
-            const sessId = docName.replace("session:", "");
-            // 缓存最新更新（用于 acpSessionId 切换后重放）
-            sessionLatestUpdateRef.current.set(sessId, data);
-          }
           sessionApplyUpdate(docName, data);
         } catch (err) {
           console.warn("[Yjs] Failed to apply update:", err);
@@ -212,6 +228,12 @@ export function ChatPanel({
         }
       },
       onActionAck: handleActionAck,
+      onActionError: (err) => {
+        // 服务端错误路径已 clearDedup：释放缓存使同意图重试生成新 commandId，
+        // 避免跨轮复用歧义；同时展示 transient banner（不污染 errorCode 连接状态机）
+        releaseCommandId(err.commandId);
+        showActionError(err);
+      },
     });
 
     yjsWs.connect();
@@ -222,8 +244,20 @@ export function ChatPanel({
       yjsWsRef.current = null;
     };
     // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
-    // sendViaWs / handleActionAck 为稳定 useCallback（依赖 commandKey/空），加入不会触发重建
-  }, [agentId, sessionId, chatApplyUpdate, sessionApplyUpdate, reconnectAttempt, sendViaWs, handleActionAck]);
+    // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
+    // rcsSessionKey 变化触发重建（建连守卫，见上）
+  }, [
+    agentId,
+    sessionId,
+    rcsSessionKey,
+    chatApplyUpdate,
+    sessionApplyUpdate,
+    reconnectAttempt,
+    sendViaWs,
+    handleActionAck,
+    releaseCommandId,
+    showActionError,
+  ]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
   const derivedState = useMemo(() => {
@@ -349,6 +383,16 @@ export function ChatPanel({
             role="alert"
           >
             {t("agentRequestFailedDesc")}
+          </div>
+        )}
+        {actionError && (
+          <div
+            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {actionError.retryable
+              ? t("actionErrorRetryableDesc", { message: actionError.message })
+              : t("actionErrorFatalDesc", { message: actionError.message })}
           </div>
         )}
         <ACPMain

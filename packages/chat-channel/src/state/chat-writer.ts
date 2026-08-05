@@ -15,6 +15,7 @@ import {
   INITIAL_PROJECTION_VERSION,
   type PermissionProjection,
   SESSION_DOC_SCHEMA_VERSION,
+  type SessionSummaryProjection,
   type TurnStatus,
 } from "../schema";
 
@@ -59,6 +60,11 @@ export function getPendingPermissions(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return getSessionRoot(ydoc).get("pendingPermissions") as Y.Map<Y.Map<unknown>>;
 }
 
+/** Session Doc 根级会话列表投影（agent 级会话摘要，随 list_sessions 响应全量同步） */
+export function getSessionsMap(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
+  return getSessionRoot(ydoc).get("sessions") as Y.Map<Y.Map<unknown>>;
+}
+
 // ── 结构初始化（幂等：重复初始化不破坏已有内容）──
 
 /** 初始化 Chat Doc 结构（新建或旧 schema 升级路径） */
@@ -101,6 +107,9 @@ export function initSessionDocStructure(ydoc: Y.Doc): void {
     }
     if (!(root.get("pendingPermissions") instanceof Y.Map)) {
       root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
+    }
+    if (!(root.get("sessions") instanceof Y.Map)) {
+      root.set("sessions", new Y.Map<Y.Map<unknown>>());
     }
   });
 }
@@ -344,6 +353,7 @@ export function upsertPendingPermission(ydoc: Y.Doc, projection: PermissionProje
   map.set("description", projection.description ?? null);
   map.set("options", projection.options);
   map.set("status", projection.status);
+  map.set("decision", projection.decision);
   map.set("expiresAt", projection.expiresAt);
   pending.set(projection.permissionId, map);
 }
@@ -362,15 +372,45 @@ export function clearChatDocContent(ydoc: Y.Doc): void {
   });
 }
 
-/** 清空 Session Doc 内容（session/agent/pendingPermissions），保留 schema 骨架 */
+/** 清空 Session Doc 内容（session/agent/pendingPermissions），保留 schema 骨架与 sessions 投影 */
 export function clearSessionDocContent(ydoc: Y.Doc): void {
   ydoc.transact(() => {
     const root = getSessionRoot(ydoc);
     root.set("session", new Y.Map<unknown>());
     root.set("agent", new Y.Map<unknown>());
     root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
+    // sessions 是 agent 级数据（跨会话切换不清空，避免侧边栏闪空），随 list_sessions 轮询刷新
     bumpProjectionVersion(root);
   });
+}
+
+/**
+ * 全量同步会话列表（幂等）：按 sessionId upsert，删除不在列表中的旧条目。
+ * 保证 10s 轮询重复响应不重复追加、agent 侧删除可自愈。
+ */
+export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection[]): void {
+  const sessions = getSessionsMap(ydoc);
+  const incoming = new Set<string>();
+  for (const s of summaries) {
+    incoming.add(s.sessionId);
+    const existing = sessions.get(s.sessionId);
+    if (existing) {
+      if (typeof s.title === "string" && existing.get("title") !== s.title) existing.set("title", s.title);
+      if (typeof s.cwd === "string" && existing.get("cwd") !== s.cwd) existing.set("cwd", s.cwd);
+      if (typeof s.updatedAt === "string" && existing.get("updatedAt") !== s.updatedAt)
+        existing.set("updatedAt", s.updatedAt);
+      continue;
+    }
+    const entry = new Y.Map<unknown>();
+    entry.set("sessionId", s.sessionId);
+    entry.set("title", s.title ?? null);
+    entry.set("cwd", s.cwd ?? null);
+    entry.set("updatedAt", s.updatedAt ?? null);
+    sessions.set(s.sessionId, entry);
+  }
+  for (const sessionId of Array.from(sessions.keys())) {
+    if (!incoming.has(sessionId)) sessions.delete(sessionId);
+  }
 }
 
 /** Chat Doc 是否包含时间线内容（用于重连时判断是否需要跳过全量回放） */

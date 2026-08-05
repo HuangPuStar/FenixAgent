@@ -5,11 +5,11 @@
 //
 // 职责错位纠正后时间线在 Chat Doc；applyUpdate 按 docName 前缀路由到内部 store。
 
-import type { SessionStateSnapshot, SessionStatus, TurnStatus } from "@fenix/chat-channel";
+import type { PermissionOption, SessionStateSnapshot, SessionStatus, TurnStatus } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
-import { chatDocEntriesToStructuredMessages } from "../lib/structured-to-thread";
+import { chatDocEntriesToStructuredMessages, sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
 
 // ── Chat Doc 派生：时间线（消息/工具/资源）──
 
@@ -125,16 +125,27 @@ interface SessionMetaSnapshot {
   acpSessionId: string;
   turnStatus: TurnStatus | null;
   turnUpdatedAt: number | null;
+  /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
+  permissionOptions: Map<string, PermissionOption[]>;
 }
 
 function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   const root = ydoc.getMap("root");
   const session = (root.get("session") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
   const agent = (root.get("agent") as Y.Map<unknown> | undefined) ?? new Y.Map<unknown>();
+  const pending = (root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined) ?? new Y.Map<Y.Map<unknown>>();
+
+  // 行内权限按钮数据源：Session Doc 的 options（3 值 kind）翻译为 acp-link PermissionOption[]
+  const permissionOptions = new Map<string, PermissionOption[]>();
+  for (const [permissionId, permission] of pending.entries()) {
+    permissionOptions.set(permissionId, sessionOptionKindsToPermissionOptions(permission.get("options")));
+  }
+
   return {
     acpSessionId: (agent.get("acpSessionId") as string | undefined) ?? "",
     turnStatus: (session.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
     turnUpdatedAt: (session.get("activeTurnUpdatedAt") as number | undefined) ?? null,
+    permissionOptions,
   };
 }
 
@@ -164,6 +175,17 @@ function mapTurnStatus(turnStatus: TurnStatus | null): SessionStatus {
 
 function computeSessionSnapshot(timeline: SessionTimelineSnapshot, meta: SessionMetaSnapshot): SessionStateSnapshot {
   const turnStatus = meta.turnStatus;
+  // 按 permissionRequest.requestId 合并 Session Doc 的真实选项（Chat Doc 侧为占位空数组）
+  const structuredMessages = timeline.structuredMessages.map((m) => {
+    if (m.type !== "tool_call" || !m.permissionRequest) return m;
+    return {
+      ...m,
+      permissionRequest: {
+        requestId: m.permissionRequest.requestId,
+        options: meta.permissionOptions.get(m.permissionRequest.requestId) ?? [],
+      },
+    };
+  });
   return {
     acpSessionId: meta.acpSessionId,
     status: mapTurnStatus(turnStatus),
@@ -172,7 +194,7 @@ function computeSessionSnapshot(timeline: SessionTimelineSnapshot, meta: Session
         ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }
         : null,
     messages: timeline.messages,
-    structuredMessages: timeline.structuredMessages,
+    structuredMessages,
     streaming: timeline.streaming,
     tools: timeline.tools,
     artifacts: timeline.artifacts,
@@ -197,7 +219,7 @@ export function useSessionState(rcsSessionId: string) {
       ),
       meta: createYjsStore<SessionMetaSnapshot>(
         computeMetaSnapshot,
-        { acpSessionId: "", turnStatus: null, turnUpdatedAt: null },
+        { acpSessionId: "", turnStatus: null, turnUpdatedAt: null, permissionOptions: new Map() },
         (s) => stableKey(s),
       ),
     };
@@ -220,11 +242,20 @@ export function useSessionState(rcsSessionId: string) {
   const state = useMemo(() => computeSessionSnapshot(timeline, meta), [timeline, meta]);
 
   useEffect(() => {
+    // StrictMode 双挂载：首次 cleanup 已 destroy store（activeKey 重置为 ""），
+    // 重挂载时 prevKeyRef 幂等保护会跳过渲染期 switchDoc，必须在此显式重建当前 doc。
+    // 正常挂载时渲染期 switchDoc 已设置 activeKey，此处调用为 no-op（幂等安全）。
+    for (const store of [stores.chat, stores.meta]) {
+      store.switchDoc(rcsSessionId, () => {
+        const ydoc = new Y.Doc();
+        return { ydoc };
+      });
+    }
     return () => {
       stores.chat.destroy();
       stores.meta.destroy();
     };
-  }, [stores]);
+  }, [stores, rcsSessionId]);
 
   const applyUpdate = useCallback(
     (docName: string, data: Uint8Array) => {

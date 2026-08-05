@@ -44,6 +44,8 @@
   "instanceIdleReclaimedDesc": "Agent 实例因长时间无活动已回收，请点击重连重新启动。",
   "clientKeepaliveTimeoutDesc": "连接长时间未保持活动，请点击重连恢复对话。",
   "agentRequestFailedDesc": "操作未完成，请重试；连接仍可继续使用。",
+  "actionErrorRetryableDesc": "操作失败，请稍后重试：{{message}}",
+  "actionErrorFatalDesc": "操作失败：{{message}}",
   "reconnect": "重连",
   "reconnecting": "重连中...",
   "connecting": "正在连接...",

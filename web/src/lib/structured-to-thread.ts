@@ -5,9 +5,46 @@
 // Chat Doc → 展示层 StructuredMessage[]（保持既有 StructuredMessage 形状，
 // 使 structuredToThreadEntries 与上层组件无需感知 schema 变化）。
 
-import type { StructuredMessage } from "@fenix/chat-channel";
+import type { PermissionOption, StructuredMessage } from "@fenix/chat-channel";
+// 直接引用 i18next 全局实例（web/src/i18n/index.ts 在此实例上注册各语言资源）：
+// 不 import "../i18n" 模块 —— 测试环境有测试文件 mock.module 该模块为无 default
+// 导出的假模块，静态 import 链会触发 "Missing default export"。
+import i18n from "i18next";
 import * as Y from "yjs";
 import type { AssistantChunk, PlanDisplayEntry, ThreadEntry, ToolCallData, ToolCallStatus } from "./types";
+
+/**
+ * Session Doc 三态权限选项（allow_once/allow_session/deny）→ acp-link PermissionOption[]。
+ * 仅用于展示翻译：optionId 保留 Session Doc 语义字符串（后端 CAS 以 deny/reject 前缀判拒，
+ * 控制面 respond_permission 原样回传），kind 映射到最近邻 acp-link 枚举以驱动按钮样式。
+ */
+export function sessionOptionKindsToPermissionOptions(rawOptions: unknown): PermissionOption[] {
+  const kinds = Array.isArray(rawOptions) ? rawOptions : [];
+  const result: PermissionOption[] = [];
+  for (const kind of kinds) {
+    if (kind === "allow_once") {
+      result.push({
+        optionId: "allow_once",
+        // i18next 未初始化（如测试环境）时 t 返回 undefined，回退 key 保证按钮文案非空
+        name: i18n.t("permissionPanel.allow", { ns: "components" }) ?? "permissionPanel.allow",
+        kind: "allow_once",
+      });
+    } else if (kind === "allow_session") {
+      result.push({
+        optionId: "allow_session",
+        name: i18n.t("permissionPanel.allowSession", { ns: "components" }) ?? "permissionPanel.allowSession",
+        kind: "allow_always",
+      });
+    } else if (kind === "deny") {
+      result.push({
+        optionId: "deny",
+        name: i18n.t("permissionPanel.deny", { ns: "components" }) ?? "permissionPanel.deny",
+        kind: "reject_once",
+      });
+    }
+  }
+  return result;
+}
 
 function mapStatus(status: string): ToolCallStatus {
   switch (status) {
@@ -193,6 +230,9 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
         rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
       };
       if (permissionId) {
+        // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
+        // 此处保持占位空数组，真实选项由 use-session-state 合并层
+        // （meta.permissionOptions → computeSessionSnapshot）按 requestId 覆盖
         message.permissionRequest = { requestId: permissionId, options: [] };
       }
       messages.push(message);

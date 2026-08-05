@@ -342,6 +342,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         toolName: p.tool,
         toolInput: (p.args as Record<string, unknown>) ?? {},
         description: p.tool,
+        // 统一面板当前仍渲染 allow/deny 两键；options 透传供面板后续消费（二期）
+        options: p.options,
       }));
   }, [chatState?.permissions]);
 

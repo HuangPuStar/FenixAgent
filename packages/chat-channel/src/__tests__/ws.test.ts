@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ActionError } from "../channel/types";
 import { createYjsWsClient } from "../transport/ws";
 
 type ScheduledTimer = {
@@ -217,6 +218,54 @@ describe("createYjsWsClient", () => {
     });
 
     expect(errors).toEqual([{ code: "machine_unavailable", message: "Agent connection error" }]);
+  });
+
+  // action_error 帧必须透传完整 ActionError 对象给 onActionError，
+  // 且不触发 onYjsUpdate / onError（错误分流，避免误判为连接级错误）。
+  test("forwards action_error frames to onActionError without touching other callbacks", () => {
+    const actionErrors: ActionError[] = [];
+    const yjsUpdates: string[] = [];
+    const wsErrors: Array<{ code?: string; message?: string }> = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: (docName) => yjsUpdates.push(docName),
+      onError: (error) => wsErrors.push(error),
+      onActionError: (error) => actionErrors.push(error),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "action_error",
+      commandId: "c1",
+      code: "RATE_LIMITED",
+      message: "too many requests",
+      retryable: true,
+    });
+
+    expect(actionErrors).toEqual([
+      {
+        type: "action_error",
+        commandId: "c1",
+        code: "RATE_LIMITED",
+        message: "too many requests",
+        retryable: true,
+      },
+    ]);
+    expect(yjsUpdates).toHaveLength(0);
+    expect(wsErrors).toHaveLength(0);
+  });
+
+  // 未注册 onActionError 时 action_error 帧静默忽略（不抛错、不影响其他分支）。
+  test("action_error frames are ignored when onActionError is absent", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "action_error",
+      commandId: "c1",
+      code: "AGENT_UNAVAILABLE",
+      message: "agent offline",
+      retryable: true,
+    });
   });
 
   // 终端关闭码必须向上层提供 code 和 reason，并切换为 error 状态而不是继续自动重连。

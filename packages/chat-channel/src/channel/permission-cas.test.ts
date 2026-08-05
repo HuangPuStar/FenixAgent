@@ -168,6 +168,8 @@ describe("permission CAS (C5)", () => {
     // Session Doc 投影为 resolved（前端 filter pending 后不再显示）
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1");
     expect(getPendingPermissions(sessionDoc!).get("p1")?.get("status")).toBe("resolved");
+    // CAS 成功后 decision 落盘：allow → "allow"
+    expect(getPendingPermissions(sessionDoc!).get("p1")?.get("decision")).toBe("allow");
   });
 
   // 未知 permissionId（不存在于 pendingPermissions）时 CAS 失败：不发 resolve、幂等成功
@@ -199,6 +201,8 @@ describe("permission CAS (C5)", () => {
     expect(relayMessages[0]?.result.outcome).toEqual({ outcome: "cancelled" });
     const tool = getToolCallsMap(harness.docManager.getChatYdoc("rcs-1")!).get("t1");
     expect(tool?.get("status")).toBe("cancelled");
+    // deny 决议（optionId 为 null）→ decision 落盘 "deny"
+    expect(getPendingPermissions(harness.docManager.getSessionYdoc("rcs-1")!).get("p1")?.get("decision")).toBe("deny");
     // turn 无其他 pending → 恢复 running（C4 语义：deny 后 Agent 决定是否继续）
     expect(getSessionInfo(harness.docManager.getSessionYdoc("rcs-1")!).get("activeTurnStatus")).toBe("running");
   });
@@ -213,6 +217,8 @@ describe("permission CAS (C5)", () => {
 
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1")!;
     expect(getPendingPermissions(sessionDoc).get("p1")?.get("status")).toBe("expired");
+    // expired 路径不写 decision（保持 upsert 时的 null），前端 expired → denied 映射不变
+    expect(getPendingPermissions(sessionDoc).get("p1")?.get("decision")).toBeNull();
     expect(getSessionInfo(sessionDoc).get("activeTurnStatus")).toBe("cancelled");
     expect(getToolCallsMap(harness.docManager.getChatYdoc("rcs-1")!).get("t1")?.get("status")).toBe("cancelled");
 

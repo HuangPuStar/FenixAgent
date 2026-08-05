@@ -69,6 +69,8 @@ export interface PermissionRequest {
   level: "ask";
   status: "pending" | "approved" | "denied";
   ts: number;
+  /** 可用选项（统一面板透传给 PermissionPanel；行内按钮路径见 use-session-state 的 permissionOptions 合并） */
+  options: PermissionOption[];
 }
 
 // ── Doc 包装类型 ──

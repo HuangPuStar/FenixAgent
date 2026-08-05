@@ -41,14 +41,16 @@ export function applyPermissionResolution(pair: DocPair, permissionId: string, d
       // 双重条件：CAS 要求存在且仍为 pending（permission 收窄供后续 set 使用）
       if (status !== "pending" || permission === undefined) return;
       permission.set("status", "resolved");
+      // 条目级 deny 判定与 acp-link client.respondToPermission 对齐：optionId 为空（null）即取消；
+      // "deny"/"reject" 前缀显式拒绝，其余（allow 等）视为允许
+      const denied = decision === null || decision.startsWith("deny") || decision.startsWith("reject");
+      // decision 落盘供前端展示（expired 路径不写，保持 null）
+      permission.set("decision", denied ? "deny" : "allow");
       migrated = true;
 
       const toolCallId =
         typeof permission.get("toolCallId") === "string" ? (permission.get("toolCallId") as string) : null;
       if (toolCallId) {
-        // deny 语义与 acp-link client.respondToPermission 对齐：optionId 为空（null）即取消；
-        // "deny"/"reject" 前缀显式拒绝，其余（allow 等）视为允许
-        const denied = decision === null || decision.startsWith("deny") || decision.startsWith("reject");
         setToolCallStatus(pair.chat, toolCallId, denied ? "cancelled" : "running");
       }
 

@@ -48,6 +48,7 @@ export {
   SESSION_DOC_SCHEMA_VERSION,
   type SessionDocStatus,
   type SessionInfoProjection,
+  type SessionSummaryProjection,
   type ToolCallProjection,
   type ToolCallStatus,
   TURN_TERMINAL_STATUSES,

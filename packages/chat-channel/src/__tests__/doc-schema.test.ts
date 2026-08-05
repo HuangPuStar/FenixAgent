@@ -51,9 +51,16 @@ test("chat doc root contains only timeline fields", () => {
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(1);
 });
 
-// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions）
+// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions/sessions）
 test("session doc root contains only metadata fields", () => {
-  expect(sessionRootKeys()).toEqual(["agent", "pendingPermissions", "projectionVersion", "schemaVersion", "session"]);
+  expect(sessionRootKeys()).toEqual([
+    "agent",
+    "pendingPermissions",
+    "projectionVersion",
+    "schemaVersion",
+    "session",
+    "sessions",
+  ]);
   expect(getSessionRoot(pair.session).get("schemaVersion")).toBe(SESSION_DOC_SCHEMA_VERSION);
 });
 
@@ -185,6 +192,8 @@ test("permission request projects to session doc pendingPermissions", () => {
   expect(permission.get("options")).toEqual(["allow_once", "deny"]);
   expect(permission.get("turnId")).toBe("turn_1");
   expect(permission.get("toolCallId")).toBe("t1");
+  // 请求时刻无决议：decision 必须为 null（CAS 迁移成功后由 permission.ts 写入）
+  expect(permission.get("decision")).toBeNull();
 });
 
 // Agent 状态与能力投影到 Session Doc agent
@@ -231,5 +240,66 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
   expect(getChatRoot(pair.chat).get("planSeq")).toBeUndefined();
   // projectionVersion 演进
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBeGreaterThan(chatVersionBefore);
-  expect(sessionRootKeys()).toEqual(["agent", "pendingPermissions", "projectionVersion", "schemaVersion", "session"]);
+  // sessions 是 agent 级投影，清理后保留（键集不变）；内容断言见 session_list 用例
+  expect(sessionRootKeys()).toEqual([
+    "agent",
+    "pendingPermissions",
+    "projectionVersion",
+    "schemaVersion",
+    "session",
+    "sessions",
+  ]);
+});
+
+// session_list 事件：全量同步到 Session Doc sessions 投影（字段、幂等、删除自愈、clear 保留）
+test("session_list syncs sessions map with idempotent full sync", () => {
+  const listResponse = (sessions: Array<Record<string, unknown>>) => event("session_list", { sessions });
+
+  // 首次同步：两条会话
+  applyNormalizedEvent(
+    pair,
+    listResponse([
+      { sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" },
+      { sessionId: "ses_2", title: "B", cwd: "/tmp/b", updatedAt: "2026-08-05T00:01:00.000Z" },
+    ]),
+  );
+  const sessions = getSessionRoot(pair.session).get("sessions") as Y.Map<Y.Map<unknown>>;
+  expect(sessions.size).toBe(2);
+  const ses1 = sessions.get("ses_1")!;
+  expect(ses1.get("sessionId")).toBe("ses_1");
+  expect(ses1.get("title")).toBe("A");
+  expect(ses1.get("cwd")).toBeNull();
+  expect(ses1.get("updatedAt")).toBe("2026-08-05T00:00:00.000Z");
+  expect(sessions.get("ses_2")?.get("cwd")).toBe("/tmp/b");
+
+  // 重放同一响应：幂等，不重复追加
+  applyNormalizedEvent(
+    pair,
+    listResponse([
+      { sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" },
+      { sessionId: "ses_2", title: "B", cwd: "/tmp/b", updatedAt: "2026-08-05T00:01:00.000Z" },
+    ]),
+  );
+  expect(sessions.size).toBe(2);
+
+  // 响应去掉 ses_2 → 全量同步删除旧条目（agent 侧删除自愈）
+  applyNormalizedEvent(pair, listResponse([{ sessionId: "ses_1", title: "A" }]));
+  expect(sessions.size).toBe(1);
+  expect(sessions.has("ses_2")).toBe(false);
+
+  // 缺失 sessionId 的条目被跳过
+  applyNormalizedEvent(pair, listResponse([{ sessionId: "ses_1", title: "A" }, { title: "no-id" }]));
+  expect(sessions.size).toBe(1);
+
+  // clearSessionDocContent 保留 sessions（agent 级数据，跨会话切换不闪空）
+  clearSessionDocContent(pair.session);
+  expect(sessions.size).toBe(1);
+  expect(sessionRootKeys()).toEqual([
+    "agent",
+    "pendingPermissions",
+    "projectionVersion",
+    "schemaVersion",
+    "session",
+    "sessions",
+  ]);
 });

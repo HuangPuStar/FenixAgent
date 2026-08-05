@@ -202,6 +202,12 @@ export function normalizeAcpMessage(rawMessage: unknown, msgType?: string): Norm
     if (result && typeof result === "object" && result.cancelled === true) {
       return { type: "turn_cancelled", update: result, content: null, acpSessionId };
     }
+    // session/list 响应：shared-proc 与实例路径都以 JSON-RPC success 形态到达
+    // （extractJsonRpc 兼容包裹 session_data 与裸 jsonrpc 两种），聚合层投影到
+    // Session Doc sessions 映射（10s 轮询全量同步，幂等）
+    if (result && typeof result === "object" && Array.isArray(result.sessions)) {
+      return { type: "session_list", update: result, content: null, acpSessionId };
+    }
     return null;
   }
 

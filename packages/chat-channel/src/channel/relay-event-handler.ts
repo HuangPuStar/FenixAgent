@@ -130,6 +130,9 @@ export class RelayEventHandler {
 
     if (msgType === "status") {
       const payload = raw.payload as Record<string, unknown> | undefined;
+      // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
+      // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
+      // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）
       const capabilities = payload?.capabilities as Record<string, boolean> | undefined;
       this.dispatch(shared, {
         type: "agent_status",
@@ -137,7 +140,7 @@ export class RelayEventHandler {
           instanceId: shared.instanceId,
           acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
           status: "ready",
-          capabilities: capabilities ?? {},
+          capabilities,
           lastActivityAt: new Date().toISOString(),
         },
         content: null,
