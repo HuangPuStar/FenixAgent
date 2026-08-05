@@ -372,12 +372,22 @@ export function clearChatDocContent(ydoc: Y.Doc): void {
   });
 }
 
-/** 清空 Session Doc 内容（session/agent/pendingPermissions），保留 schema 骨架与 sessions 投影 */
+/**
+ * 清空 Session Doc 内容（session/pendingPermissions），保留 schema 骨架、sessions 投影与 agent 状态。
+ * agent 是实例级状态（capabilities/instanceId/status），跨会话切换必须保留：agent 仅在连接/
+ * initialize 时发送 status 帧，切换会话（load/create）后不会重新投影；清空会导致 capabilities
+ * 永久丢失，前端 supportsLoadSession 变 false，切换会话报 "Loading or resuming sessions is
+ * not supported"（会话切换回归）。仅清除会话绑定的 acpSessionId（切换后旧值失效；前端不消费，
+ * 权威值在服务端 registry）。
+ */
 export function clearSessionDocContent(ydoc: Y.Doc): void {
   ydoc.transact(() => {
     const root = getSessionRoot(ydoc);
     root.set("session", new Y.Map<unknown>());
-    root.set("agent", new Y.Map<unknown>());
+    const agent = root.get("agent");
+    if (agent instanceof Y.Map) {
+      agent.delete("acpSessionId");
+    }
     root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
     // sessions 是 agent 级数据（跨会话切换不清空，避免侧边栏闪空），随 list_sessions 轮询刷新
     bumpProjectionVersion(root);
