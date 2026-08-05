@@ -404,3 +404,35 @@ IMChannel 包含：
 3. §11 教训清单与 §12 T9 的审计报告/验收点引用改为内联描述。
 
 **影响**：纯文档修订，无代码/行为变化；docs 站点构建不受影响。
+
+---
+
+## 改动 17：文件系统操作传递权威文档与 file-ws v2 协议设计（12-files.md 重写）
+
+**状态**：📝 设计已确认，待实施（2026-08-05）
+
+**现状（修订前）**：文件系统操作传递的生命线（file-ws 信道）未在任何权威文档中定义——19 号文档只覆盖 YJS Chat 流式，20 号文档只覆盖 acp-ws（AgentNode）编排域；`12-files.md` 停留在旧模块风格且描述已过时（路由写的是 `/user`、`/user-file`，实际代码已迁移到 `/web/environments/:id/fs/*`）。代码调研确认现有 file-ws 传递存在 9 个设计缺陷（D1–D9）：register 身份仅自报不与 acp-ws 注册表对账、keep_alive 无超时巡检（僵尸连接永久占索引）、无领域幂等键（断连重试重复执行写操作）、pending 无界、远程分支 path 零校验、机器健康状态无聚合、读文件静默 fallback 掩盖错误语义等。
+
+**目标**：12-files.md 重写为文件系统操作传递的权威实现基线（对齐 19/20 号文档风格），补出两条生命线（file-ws 信道生命周期、文件操作请求-响应），并基于缺陷清单完成 file-ws v2 协议设计（评审待办，暂不实施）。
+
+**实施内容**（纯文档）：
+
+1. **§1 总体架构**：重写为**理想态架构图**（AgentFileService 统一执行面 + 防缓存双机制），附现状→理想态差异表；范围限定为服务端契约（主服务 + 远端 Machine），不覆盖前端消费方式。
+2. **§2 AgentFileService（统一文件服务层）**：内部结构细化——入口（认证上下文）/ 路由决策 / 路径校验 / 后端适配执行 / 指纹派生 / 错误映射 / 变更事件发布七个子模块（职责表 + 子模块图）；统一接口（10 操作）+ LocalBackend/RemoteBackend 映射表 + 统一契约（路径校验、错误码 `file_service_unavailable`、响应结构、变更事件），路由层消灭 `if (machineId)` 双分支（D10）。
+3. **§3 路由契约**：`/web/environments/:id/fs/*` 十个端点表（含远程支持矩阵）+ machineId 回退链与拒绝静默回退；旧 `/user`、`/user-file` 前缀标记废弃。
+4. **§4 防缓存与一致性机制**（D11）：ETag 条件请求（read 文件指纹 / list 条目指纹 / tree 弱校验，`Cache-Control: no-cache`）+ `file_changed` 变更事件（机器端写操作后经 file-ws 推送 → EventBus 按 environmentId 路由广播，本地写由 AgentFileService 直发）+ 并发写 If-Match（v2 可选）。
+5. **§5 file-ws 信道生命周期生命线**：机器侧连接时序图（register → 同机器替换 → keep_alive → 断连清理）。
+6. **§6 文件操作请求-响应生命线**：路由 → AgentFileService → service → file-ws 往返时序图（request_id、60s/120s 超时、断连 reject pending），标注理想态差异。
+7. **§7 file-ws v2 协议设计**：连接身份绑定（D1）、op_id 幂等（D3）、重连请求迁移、心跳僵尸回收（D2）、file_changed 事件帧（§7.5）、背压（D4）、路径前置校验（D5/D7）、读 mode 显式（D9）、远程 zip（§7.9）。
+8. **§8 安全边界 + §9 缺陷对照（D1–D11，新增 D10 双路径、D11 无缓存）+ §10 实施计划**（P0 止血 / P1 统一执行面+缓存 / P2 一致性增强 / 二期分块）。
+9. **附录 A**：废弃路由表与替代关系。
+10. 20 号文档头部定位行补充交叉引用（文件操作信道 → 12-files.md）。
+
+**对抗审查修订（2026-08-05，plan subagent 对抗审查 + 用户决策）**：
+
+- **阻断项**：新增 §4.3 file-events 独立 WS 订阅端点契约（订阅/事件/失效/降级帧、鉴权、限频、异步发布——修复 D13）；§7.1 身份绑定对账查询面定为 **core runtime node**（registerRemoteNode 产物）、删除 node_id、4004 语义与机器侧重连时序契约（跨仓库）。
+- **严重项**：§5 现状描述修正（register 替换先删登记再 close → pending 悬挂至超时，与代码对齐，新增 D3 前置修复）；§7.6 载荷治理（WS 32MB maxPayload + 解析前检查，修复 Elysia 自动 parse 绕过 10MB 限制；upload 降为 20MB；zip 分块回传——D12）；§7.3 断连窗口兜底（重连注册成功广播 `invalidate_all`，修复 S3/D14）。
+- **联动核心**：§1 机器能力矩阵（acp 可达 × file 可达 2×2，降级由本文档表达不扩展 20 号状态机）；§7.4 巡检独立遍历 machineFileWsIndex（不复用 startMachineSweep 的 online 集合——C5）；§4.4 澄清环境级回退链排他、"本地+远程混合"不成立（C14）；§4.2 tree 指纹加路径排序 hash 修复 rename 304 误判（C8）；§4.1 目标修订（本地外部变更 ≤ 30s 明确接受边界）。
+- **19/20 号文档联动**：20 号 §5 补"先 acp-ws 后 file-ws"重连顺序跨仓库契约 + §6 补 performMachineCleanup 不触碰 file-ws 的状态分裂说明；19 号 §2.3 补传输层边界（file_changed 不经 YJS/relay 通道）+ §5.2 资源引用语义（路径字符串引用、上传与消息引用无事务）。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建通过。理想态设计（§2/§4/§7）为评审待办，实施时按 §10 拆分提交并同步更新文档状态。修订记录：统一层命名从 FileService 改为 AgentFileService，删除前端消费相关章节（文档范围限定服务端契约）。

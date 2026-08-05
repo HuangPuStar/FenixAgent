@@ -118,6 +118,8 @@ flowchart TB
 | `SessionLeaseManager` | **占位，不实现**（Q5 评审决策：YJS CRDT 已保证文档一致性，`commandId` 去重承担防重复副作用；`leaseEpoch` 类型占位） | 租约获取、续期、释放与 fencing token | 会话内容存储 |
 | `Instance 生命周期` | 编排域 `packages/orchestration`（AgentController + AgentNode/AgentNodeService，见 `docs/arch/20-orchestration-management.md`）；宿主 `ensureRunning`（`src/services/instance.ts`）经桥接注入 | Agent 实例复用 / 创建（仅新建时检查并发配额）、共享 relay 连接、空闲回收 | 浏览器会话状态 |
 
+**传输层边界（12-files.md 联动）**：`file_changed` 等文件变更事件**不**经 YJS/relay 通道（本文档广播按 `rcsSessionId` 隔离，禁止全局广播会话数据）——由文件域独立 WS 端点 `/web/file-events` 承载、按 environmentId 路由，见 `docs/arch/12-files.md` §4.3。ACP 会话内的工具事件（如 `read_file` 调用记录）仍走本通道，与文件系统事件互不混流。
+
 ## 3. 领域模型与标识体系
 
 ### 3.1 聚合与实体
@@ -465,6 +467,7 @@ interface ToolCallProjection {
 - 根对象、`entries`、`blocks`、`toolCalls` 使用 `Y.Map`；顺序索引使用 `Y.Array<string>`。
 - 流式文本使用 `Y.Text`，避免每个 token 替换完整字符串。
 - 大型二进制、附件和超大工具结果只保存受授权的资源引用，不嵌入 Y.Doc。
+- **资源引用语义（12-files.md 联动）**：`resource` ContentBlock 保存的是**路径字符串引用**（上传走 `/web/environments/:id/fs/*` 文件 API），不是内容快照；上传成功与消息引用**无事务**——"文件已传但消息引用失败"可发生，引用由服务端渲染时按路径校验（404 时资源块展示为缺失）。上传与文件变更事件见 `docs/arch/12-files.md` §4。
 - `entryOrder` 与 `entries` 分离，便于稳定定位、局部更新和未来分页。
 - 删除采用领域 tombstone 或保留删除事件；不要由客户端物理删除权威记录。
 

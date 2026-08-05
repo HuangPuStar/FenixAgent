@@ -2,7 +2,7 @@
 
 > 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿）
 > 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`src/transport/relay/external-relay.ts`）的创建、连接和生命周期。
-> 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`。
+> 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`；文件操作信道（file-ws，与 acp-ws 平行的机器级信道）见 `docs/arch/12-files.md`。
 > 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
 > 约定：本文档从"目标设计基线"修订为"已验证实现基线"，描述与代码一致的真实架构；代码演进偏离时，先更新本文档再改代码。关键实现文件以相对路径引用（行号不维护，以语义为准）。
 
@@ -237,6 +237,7 @@ stateDiagram-v2
 - `AgentNode` 是唯一的远端连接拥有者；Instance 只能调用 `send()`/`stop()`，不能自行创建、替换或关闭底层 WS。
 - 一个 AgentNode 可为多个已授权 Instance 提供信道；停止帧必须携带目标 `instanceId`（snake_case），避免同节点运行串扰。
 - **断连即失败（E-P2.1 教训）**：`WsAgentNodeSocket.send` 在 `readyState !== 1` 时抛 `AgentNodeUnavailableError`，禁止静默丢弃（静默丢包会让停止帧无回执、调用方误以为可达）。
+- **文件信道联动（12-files.md 交叉引用）**：机器还有第二条平行信道 `/acp/file-ws`（文件操作）。**重连顺序是跨仓库契约**：机器侧先连 `/acp/ws` 完成 `registerMachine` + `registerRemoteNode`，再连 `/acp/file-ws`；file-ws register 对账 core runtime node，未注册 → 4004 退避重试。服务端不承诺重连，恢复完全由机器驱动（同 E-P2.2）。file-ws 的生命周期、断连语义与能力降级见 `docs/arch/12-files.md` §5/§7。
 
 ## 6. 三侧状态对账（断连语义的根）
 
@@ -253,6 +254,8 @@ stateDiagram-v2
 **断连对账例外（D15 记录）**：机器不可达时无法走正常停止链，断连清理直接 `runtime.deleteInstance` + 删表 + 活跃表清理，绕过 `Instance.stop()` 的远端停止帧——这是唯一允许绕过正常生命周期路径的场景。
 
 **已知缺口（R4）**：sweep 路径 `triggerMachineCleanupByMachineId`（entry 已消失时）未执行 `globalInstanceRegistry.reconcile`，与 `performMachineCleanup` 不一致，可能残留孤儿 supplement（量级小，属状态不一致，见 §11）。
+
+**文件信道联动（对抗审查确认）**：`performMachineCleanup`（acp-ws 断连清理）**不触碰 file-ws 索引**——机器可能处于"acp-ws 断连（实例已清理、DB offline）但 file-ws 存活（文件操作继续可用）"的状态。该状态与"file 降级"（acp-ws 正常、file-ws 断连）组成 2×2 能力矩阵，由 `docs/arch/12-files.md` §1（能力矩阵）与 §7.4（degraded 事件）独立表达，**不扩展本文档机器状态机**（pending/online/offline 保持）。
 
 ## 7. 消费者边界
 
