@@ -5,7 +5,13 @@
  * 后端路由前缀为 /web/environments/:id/fs，本模块内部拼接完整路径。
  */
 
-import { request } from "./request";
+import { request, UPLOAD_TIMEOUT_MS, WRITE_TIMEOUT_MS } from "./request";
+
+/**
+ * 单次上传大小上限（100MB），与后端保持一致的同源常量。
+ * 业务侧统一引用本常量，禁止硬编码（docs/arch/12-files.md §10 P1-12 ⑤）。
+ */
+export const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
 
 /** 目录列表单条记录 */
 interface FileEntry {
@@ -89,10 +95,13 @@ export const fsApi = {
    * @param subpath - 文件路径（相对于 workspace 根）
    */
   readFile: (id: string, subpath: string) =>
-    request<FileContent | undefined>(`/web/environments/:id/fs/${subpath}`, { params: { id } }),
+    request<FileContent | undefined>(`/web/environments/:id/fs/${subpath}`, {
+      params: { id },
+    }),
 
   /**
    * 上传文件到 workspace 指定目录。
+   * 上传超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param fd - 包含文件及相关路径信息的 FormData 对象
    */
@@ -101,10 +110,13 @@ export const fsApi = {
       method: "POST",
       params: { id },
       body: fd,
+      timeout: UPLOAD_TIMEOUT_MS,
+      opId: crypto.randomUUID(),
     }),
 
   /**
    * 写入文本内容到 workspace 的指定文件。
+   * 写操作超时与后端 file_op 对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param subpath - 文件路径（相对于 workspace 根）
    * @param content - 要写入的文本内容
@@ -114,10 +126,13 @@ export const fsApi = {
       method: "PUT",
       params: { id },
       body: { content },
+      timeout: WRITE_TIMEOUT_MS,
+      opId: crypto.randomUUID(),
     }),
 
   /**
    * 重命名或移动 workspace 中的文件或目录。
+   * 写操作超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param oldPath - 原路径
    * @param newPath - 新路径（完整路径，非仅文件名）
@@ -127,10 +142,13 @@ export const fsApi = {
       method: "POST",
       params: { id },
       body: { oldPath, newPath },
+      timeout: WRITE_TIMEOUT_MS,
+      opId: crypto.randomUUID(),
     }),
 
   /**
    * 在 workspace 中创建新目录。
+   * 写操作超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param path - 要创建的目录路径（相对于 workspace 根）
    */
@@ -139,10 +157,13 @@ export const fsApi = {
       method: "POST",
       params: { id },
       body: { path },
+      timeout: WRITE_TIMEOUT_MS,
+      opId: crypto.randomUUID(),
     }),
 
   /**
    * 批量删除 workspace 中的文件。
+   * 写操作超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param paths - 待删除的文件路径数组
    */
@@ -151,5 +172,7 @@ export const fsApi = {
       method: "DELETE",
       params: { id },
       body: { paths },
+      timeout: WRITE_TIMEOUT_MS,
+      opId: crypto.randomUUID(),
     }),
 };

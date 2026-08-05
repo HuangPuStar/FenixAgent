@@ -55,7 +55,7 @@ export async function unwrap<T>(resp: Promise<ApiResponse<T>>): Promise<T> {
   return data as T;
 }
 
-interface RequestOptions extends Omit<RequestInit, "body"> {
+interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
   /** 路径参数 :id 插值 */
   params?: Record<string, string>;
   /** 查询参数自动拼装 */
@@ -66,13 +66,29 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   timeout?: number;
   /** 外部取消信号 */
   signal?: AbortSignal;
+  /**
+   * 文件写操作幂等 ID，透传 X-File-Op-Id 头（docs/arch/12-files.md §7.2）。
+   * 网络错误/超时自动重试会复用同一 opId，服务端据此幂等去重；busy/4xx/5xx 不重试。
+   */
+  opId?: string;
+  /** 请求头透传（如 If-None-Match 条件请求）；与内部注入头合并，冲突时以本字段为准 */
+  headers?: HeadersInit;
 }
 
 const DEFAULT_TIMEOUT = 30_000;
 
+/**
+ * 文件写操作超时（ms）。与后端 file_op 60s 对齐并留有余量，
+ * 写操作前端超时不得短于后端，否则慢写会被前端提前掐断（docs/arch/12-files.md §10 P1-12 D19）。
+ */
+export const WRITE_TIMEOUT_MS = 120_000;
+
+/** 文件上传超时（ms）。与后端 upload 120s 对齐（docs/arch/12-files.md §10 P1-12 D19）。 */
+export const UPLOAD_TIMEOUT_MS = 120_000;
+
 /** 统一请求函数。自动处理路径参数、查询参数、JSON 序列化、超时、错误标准化。 */
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
-  const { params, query, body, timeout = DEFAULT_TIMEOUT, signal: externalSignal, ...init } = options;
+  const { params, query, body, timeout = DEFAULT_TIMEOUT, signal: externalSignal, opId, ...init } = options;
 
   // 路径参数插值：/web/tasks/:id → /web/tasks/abc
   let resolvedUrl = url;
@@ -92,14 +108,11 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     if (qs) resolvedUrl += `?${qs}`;
   }
 
-  // 超时控制 + 外部 AbortSignal 合并
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  const combinedSignal = externalSignal ? anySignal(controller.signal, externalSignal) : controller.signal;
-
   // 请求体序列化：普通对象 → JSON，FormData/Blob 直传
   let resolvedBody: BodyInit | undefined;
   const headers: Record<string, string> = {};
+  // opId 透传 X-File-Op-Id：写操作幂等契约的 HTTP 载体（docs/arch/12-files.md §7.2）
+  if (opId) headers["x-file-op-id"] = opId;
   if (body !== undefined) {
     if (body instanceof FormData || body instanceof Blob) {
       resolvedBody = body;
@@ -109,66 +122,126 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     }
   }
 
-  try {
-    const r = await fetch(resolvedUrl, {
-      credentials: "include",
-      signal: combinedSignal,
-      headers: { ...headers, ...Object.fromEntries(new Headers(init.headers).entries()) },
-      ...init,
-      body: resolvedBody,
-    });
-    clearTimeout(timeoutId);
+  /**
+   * 单次请求执行。网络错误/超时抛 NetworkError（上层可自动重试）；
+   * HTTP 错误状态码与业务错误走正常返回路径（busy/4xx/5xx 不重试）。
+   */
+  const execute = async (): Promise<ApiResponse<T>> => {
+    // 超时控制 + 外部 AbortSignal 合并
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
+    const combinedSignal = externalSignal ? anySignal(controller.signal, externalSignal) : controller.signal;
 
-    // 非 JSON Content-Type（如文件下载）通常不解析 body，但部分接口（如 FormData 上传）
-    // 后端可能遗漏 Content-Type，此时仍尝试按 JSON 解析。
-    const ct = r.headers.get("content-type") ?? "";
-    if (!ct.includes("application/json")) {
-      if (!r.ok) {
-        console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status}`);
-        return { success: false, error: { code: statusToCode(r.status), message: `请求失败 (${r.status})` } };
-      }
-      // 试探性 JSON 解析：后端可能在二进制上传响应中漏掉 Content-Type
-      try {
-        const text = await r.text();
-        const json = JSON.parse(text) as Record<string, unknown>;
-        if (typeof json.success === "boolean") {
-          if (json.success === false) {
-            console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
-            return { success: false, error: normalizeErrorResponse(json?.error, r.status) };
-          }
-          return { success: true, data: ("data" in json ? json.data : json) as unknown as T };
+    try {
+      const r = await fetch(resolvedUrl, {
+        credentials: "include",
+        signal: combinedSignal,
+        headers: {
+          ...headers,
+          ...Object.fromEntries(new Headers(init.headers).entries()),
+        },
+        ...init,
+        body: resolvedBody,
+      });
+      clearTimeout(timeoutId);
+
+      // 非 JSON Content-Type（如文件下载）通常不解析 body，但部分接口（如 FormData 上传）
+      // 后端可能遗漏 Content-Type，此时仍尝试按 JSON 解析。
+      const ct = r.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        if (!r.ok) {
+          console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status}`);
+          return {
+            success: false,
+            error: {
+              code: statusToCode(r.status),
+              message: `请求失败 (${r.status})`,
+            },
+          };
         }
-      } catch {
-        // 不是 JSON，继续后续错误处理
+        // 试探性 JSON 解析：后端可能在二进制上传响应中漏掉 Content-Type
+        try {
+          const text = await r.text();
+          const json = JSON.parse(text) as Record<string, unknown>;
+          if (typeof json.success === "boolean") {
+            if (json.success === false) {
+              console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
+              return {
+                success: false,
+                error: normalizeErrorResponse(json?.error, r.status),
+              };
+            }
+            return {
+              success: true,
+              data: ("data" in json ? json.data : json) as unknown as T,
+            };
+          }
+        } catch {
+          // 不是 JSON，继续后续错误处理
+        }
+        // 响应虽然是 200 但既不是 JSON 也没带 success 字段，视为服务端异常
+        console.error(
+          `[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status} — 响应格式异常，Content-Type: ${ct}`,
+        );
+        return {
+          success: false,
+          error: {
+            code: "SERVER_ERROR",
+            message: `服务器返回了意外的响应格式`,
+          },
+        };
       }
-      // 响应虽然是 200 但既不是 JSON 也没带 success 字段，视为服务端异常
-      console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status} — 响应格式异常，Content-Type: ${ct}`);
-      return { success: false, error: { code: "SERVER_ERROR", message: `服务器返回了意外的响应格式` } };
-    }
 
-    const json: Record<string, unknown> = await r.json();
-    if (!r.ok || json.success === false) {
-      console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
-      const baseError = normalizeErrorResponse(json?.error, r.status);
-      // 保留后端附加的 data 字段（如 Skill 上传冲突的 conflicts + allowedStrategies）
-      return {
-        success: false,
-        error: json?.data !== undefined ? { ...baseError, data: json.data } : baseError,
-      };
+      const json: Record<string, unknown> = await r.json();
+      if (!r.ok || json.success === false) {
+        console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
+        const baseError = normalizeErrorResponse(json?.error, r.status);
+        // 保留后端附加的 data 字段（如 Skill 上传冲突的 conflicts + allowedStrategies）
+        return {
+          success: false,
+          error: json?.data !== undefined ? { ...baseError, data: json.data } : baseError,
+        };
+      }
+      // 统一解包 data 字段，兼容无 data 包裹的响应。
+      // 使用 "data" in json 而非 json.data ?? json，因为在 data 为 null 时（如 getRunStatus、getOutput），
+      // ?? 会错误地回退到整个响应对象，导致调用方收到非 null 值而产生逻辑错误。
+      return { success: true, data: ("data" in json ? json.data : json) as T };
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if ((err as Error).name === "AbortError") {
+        // 外部主动取消不重试；仅超时属于可重试的网络类错误
+        if (!timedOut) {
+          return {
+            success: false,
+            error: { code: "NETWORK_ERROR", message: "请求超时或已取消" },
+          };
+        }
+        throw new NetworkError("请求超时");
+      }
+      throw new NetworkError("网络异常，请检查连接");
     }
-    // 统一解包 data 字段，兼容无 data 包裹的响应。
-    // 使用 "data" in json 而非 json.data ?? json，因为在 data 为 null 时（如 getRunStatus、getOutput），
-    // ?? 会错误地回退到整个响应对象，导致调用方收到非 null 值而产生逻辑错误。
-    return { success: true, data: ("data" in json ? json.data : json) as T };
+  };
+
+  try {
+    return await execute();
   } catch (err) {
-    clearTimeout(timeoutId);
-    if ((err as Error).name === "AbortError") {
-      return { success: false, error: { code: "NETWORK_ERROR", message: "请求超时或已取消" } };
-    }
+    // 写操作（带 opId）在网络错误/超时时自动重试 1 次并复用同一 opId，服务端据此幂等去重；
+    // busy/4xx/5xx 等 HTTP 错误已走正常返回路径，不会进入此处
+    const message = err instanceof NetworkError ? err.message : "网络异常，请检查连接";
     console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, err);
-    return { success: false, error: { code: "NETWORK_ERROR", message: "网络异常，请检查连接" } };
+    return { success: false, error: { code: "NETWORK_ERROR", message } };
   }
 }
+
+/**
+ * 网络类可重试错误（超时或网络不通），由 request 内部抛出并消费；
+ * HTTP 错误状态码与业务错误走正常返回路径，不属于此类。
+ */
+class NetworkError extends Error {}
 
 /**
  * 将后端错误响应标准化为 { code, message } 格式。

@@ -1,13 +1,16 @@
-import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+// /web/environments/:id/fs/* —— 文件系统操作（收敛无分支，W5b，P1-7b）
+// 路由层只做协议接入（认证、参数提取、multipart 解析）与统一错误映射；
+// 本地/远程执行收敛到 AgentFileService 门面（docs/arch/12-files.md §2），
+// 不再出现 if (machineId) 双分支。错误码统一为 §2.4 契约表：
+// 400 validation_error / 404 not_found / 413 payload_too_large /
+// 422 config_error / 429 busy(+Retry-After) / 503 file_service_unavailable。
+
 import Elysia from "elysia";
-import { NotFoundError } from "../../errors";
-import { authGuardPlugin } from "../../plugins/auth";
-import { OkResponseSchema } from "../../schemas/common.schema";
+import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
 import {
   BatchDeleteRequestSchema,
   BatchDeleteResponseSchema,
+  DeleteFileResponseSchema,
   FileContentSchema,
   FileListResponseSchema,
   FileUploadResponseSchema,
@@ -19,34 +22,14 @@ import {
   TreeResponseSchema,
   WriteFileRequestSchema,
 } from "../../schemas/file.schema";
-import { getOwnedEnvironment } from "../../services/environment-core";
+import { gate, normalizeUploadRelativePath } from "../../services/agent-file-service";
 import {
-  getRemoteMachineId,
-  remoteDeleteFile,
-  remoteListDir,
-  remoteMkdir,
-  remoteReadBinaryFile,
-  remoteReadFile,
-  remoteRename,
-  remoteTree,
-  remoteUploadFiles,
-  remoteWriteFile,
-} from "../../services/remote-file-service";
-import {
-  createFileStream,
-  deleteFile,
-  deleteNode,
-  getMimeType,
-  isTextExtension,
-  isTextFile,
-  listDirectory,
-  listPathsRecursive,
-  mkdirp,
-  readFileContent,
-  renamePath,
-  resolveWorkspacePath,
-  writeFileContent,
-} from "../../services/workspace-fs";
+  type FileAuthContext,
+  FileServiceError,
+  type FileWriteOptions,
+  type ReadMode,
+} from "../../services/file-types";
+import { computeListFingerprint, computeReadFingerprint, computeTreeFingerprint } from "../../services/workspace-fs";
 
 const app = new Elysia({ name: "web-fs", prefix: "/environments" }).use(authGuardPlugin).model({
   "tree-response": TreeResponseSchema,
@@ -55,7 +38,7 @@ const app = new Elysia({ name: "web-fs", prefix: "/environments" }).use(authGuar
   "file-upload-response": FileUploadResponseSchema,
   "file-write-result": FileWriteResultSchema,
   "write-file-request": WriteFileRequestSchema,
-  "delete-file-response": OkResponseSchema,
+  "delete-file-response": DeleteFileResponseSchema,
   "rename-request": RenameRequestSchema,
   "rename-response": RenameResponseSchema,
   "mkdir-request": MkdirRequestSchema,
@@ -64,52 +47,128 @@ const app = new Elysia({ name: "web-fs", prefix: "/environments" }).use(authGuar
   "batch-delete-response": BatchDeleteResponseSchema,
 });
 
-async function requireEnv(
-  envId: string,
-  orgId: string,
-  userId: string,
-  errorFn: (status: number, body: unknown) => Response,
-) {
-  try {
-    return await getOwnedEnvironment(envId, orgId, userId);
-  } catch (e) {
-    if (e instanceof NotFoundError) {
-      return errorFn(404, { error: { type: "not_found", message: "环境不存在" } });
-    }
-    throw e;
+// ── 公共辅助 ────────────────────────────────────────────────────
+
+/** 由已认证上下文构造门面认证上下文：actorId=userId、source=user
+ * （写操作审计字段契约先行，P2-18 落地时前端可传 instanceId/source）。 */
+function fileAuthContext(authCtx: AuthContext, user: { id: string }): FileAuthContext {
+  return {
+    organizationId: authCtx.organizationId,
+    userId: user.id,
+    role: authCtx.role,
+    actorId: user.id,
+    source: "user",
+  };
+}
+
+/** FileServiceError → 统一错误响应参数（§2.4 错误码表）；busy 附 Retry-After: 1
+ * （瞬时容量问题，调用方按该头退避，不得自行重试）。409 version_conflict 附带
+ * currentVersion（§4.4 覆盖可感知性：当前 ETag/mtime 供消费者提示与重试）。
+ * 非门面错误返回 null（调用方重新抛出，交由全局错误处理，不吞未预期异常；
+ * 诊断日志在门面内已保留）。 */
+function toFileError(err: unknown): {
+  status: number;
+  body: { error: { type: string; message: string }; currentVersion?: { etag: string; mtimeMs: number; size: number } };
+  retryAfter?: string;
+} | null {
+  if (!(err instanceof FileServiceError)) return null;
+  return {
+    status: err.statusCode,
+    body: {
+      error: { type: err.type, message: err.message },
+      ...(err.currentVersion ? { currentVersion: err.currentVersion } : {}),
+    },
+    retryAfter: err.type === "busy" ? "1" : undefined,
+  };
+}
+
+/** busy 响应：429 + Retry-After: 1。Elysia 的 error() 无法附加自定义头，
+ * 此处用独立 Response 构造（rate-limit 插件同款模式）。 */
+function busyErrorResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "Retry-After": "1" },
+  });
+}
+
+// ── 写端点 op_id / If-Match 契约（W12b，§7.2 幂等 + §4.4 条件写）──
+
+/** 写端点统一选项解析：X-File-Op-Id（幂等键）+ If-Match（读时 ETag，条件写）。
+ *  两者均可选；都未提供时返回 undefined（行为与现状完全一致）。 */
+function writeOptionsFrom(headers: Record<string, string | undefined>): FileWriteOptions | undefined {
+  const opId = headers["x-file-op-id"];
+  const ifMatch = headers["if-match"];
+  if (!opId && !ifMatch) return;
+  return { ...(opId ? { opId } : {}), ...(ifMatch ? { ifMatch } : {}) };
+}
+
+/** 响应回显 op_id（§7.2 契约：成功与错误响应均原样回显，消费者据此识别幂等重试；
+ *  未携带 X-File-Op-Id 时响应与现状完全一致）。const 类型参数保留字面量类型，
+ *  使返回结构能匹配 response schema 的 literal 字段（success/ok）。 */
+function withOpId<const T extends object>(payload: T, opId: string | undefined): T | (T & { op_id: string }) {
+  return opId ? { ...payload, op_id: opId } : payload;
+}
+
+/** 写端点统一错误响应：FileServiceError → 统一错误码 + op_id 回显；busy 附 Retry-After；
+ *  非门面错误重新抛出（诊断日志在门面内已保留）。 */
+function writeErrorResponse(
+  e: unknown,
+  opId: string | undefined,
+  errorFn: (status: number, value: unknown) => Response,
+): Response {
+  const fe = toFileError(e);
+  if (!fe) throw e;
+  const body = withOpId(fe.body, opId);
+  return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, body) : errorFn(fe.status, body);
+}
+
+// ── ETag 条件请求（§4.2，W13' 读侧）────────────────────────────
+
+/** If-None-Match 比较（HTTP 条件请求语义）：支持 `*` 与逗号分隔多值列表；
+ *  单值弱比较——剥离 `W/` 前缀与引号后按字符串相等判定（`W/"x"` 与 `"x"` 视为命中）。 */
+function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const trimmed = ifNoneMatch.trim();
+  if (trimmed === "*") return true;
+  const normalize = (v: string) => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
+  return trimmed.split(",").some((part) => normalize(part) === normalize(etag));
+}
+
+/** 统一条件请求响应（tree/list/read 共用）：
+ *  先执行操作、后比对——304 不省服务端扫描（无状态设计，docs/arch/12-files.md §4.2 诚实边界）。
+ *  命中 If-None-Match → 304（无 body，响应头保留 ETag 供客户端更新缓存）；
+ *  未命中 → 200 + ETag + Cache-Control: no-cache（文件 API 一律不允许过期复用）。
+ *  set 取 Elysia 上下文（headers 值类型为 string|number，与 HTTPHeaders 一致）。 */
+function conditionalResponse(
+  set: { headers: Record<string, string | number> },
+  etag: string,
+  ifNoneMatch: string | undefined,
+  payload: () => unknown,
+): Response | unknown {
+  set.headers.ETag = etag;
+  set.headers["Cache-Control"] = "no-cache";
+  if (etagMatches(ifNoneMatch, etag)) {
+    return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-cache" } });
   }
+  return payload();
 }
 
 // GET /:id/fs/tree — 递归扫描 workspace 树（黑名单过滤）
 app.get(
   "/:id/fs/tree",
-  async ({ store, params, error }) => {
+  async ({ store, params, headers, set, error }) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const env = await requireEnv(params.id, authCtx.organizationId, user.id, error);
-    if (env instanceof Response) return env;
-
-    // 远程环境：通过 file-ws 代理
-    const machineId = await getRemoteMachineId(params.id);
-    if (machineId) {
-      try {
-        const { paths, mtimes, errors } = await remoteTree(machineId, params.id);
-        return { success: true, data: { paths, mtimes, errors } };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote tree operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
+    try {
+      const result = await gate(params.id, fileAuthContext(authCtx, user)).tree();
+      // 树指纹：路径 hash + max(mtime) + 路径数；mtimes 缺失（远程弱指纹）时退化为路径 hash
+      const etag = computeTreeFingerprint(result.paths, result.mtimes);
+      return conditionalResponse(set, etag, headers["if-none-match"], () => ({ success: true, data: result }));
+    } catch (e) {
+      const fe = toFileError(e);
+      if (!fe) throw e;
+      return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, fe.body) : error(fe.status, fe.body);
     }
-
-    const resolved = await resolveWorkspacePath(params.id, ".");
-    if (!resolved) return error(404, { error: { type: "not_found", message: "工作区不存在" } });
-    const { entries, errors } = await listPathsRecursive(resolved.workspaceDir);
-    const paths = entries.map((e) => e.path);
-    const mtimes: Record<string, number> = {};
-    for (const e of entries) {
-      if (e.mtime > 0) mtimes[e.path] = e.mtime;
-    }
-    return { success: true, data: { paths, mtimes, errors: errors.length > 0 ? errors : undefined } };
   },
   {
     sessionAuth: true,
@@ -124,34 +183,23 @@ app.get(
 // GET /:id/fs — 列目录
 app.get(
   "/:id/fs",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, query, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, query, headers, set, error }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, user.id, error);
-    const queryPath = (query as Record<string, string | undefined>)?.path || ".";
-
-    // 远程环境
-    const machineId = await getRemoteMachineId(envId);
-    if (machineId) {
-      try {
-        const entries = await remoteListDir(machineId, envId, queryPath);
-        return { success: true, data: { entries } };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
+    // query path 缺失或为空串时默认工作区根（与历史行为一致；空串对列目录无意义）
+    const rawPath = (query as Record<string, string | undefined>)?.path;
+    const queryPath = rawPath === undefined || rawPath === "" ? "." : rawPath;
+    try {
+      const entries = await gate(params.id, fileAuthContext(authCtx, user)).list(queryPath);
+      // 目录条目指纹：hash(name+type+size+modifiedAt)；modifiedAt 全 0（远程弱指纹）退化为 hash(name+type+size)
+      const etag = computeListFingerprint(entries);
+      return conditionalResponse(set, etag, headers["if-none-match"], () => ({ success: true, data: { entries } }));
+    } catch (e) {
+      const fe = toFileError(e);
+      if (!fe) throw e;
+      return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, fe.body) : error(fe.status, fe.body);
     }
-
-    const result = await resolveWorkspacePath(envId, queryPath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
-    const info = await stat(result.resolved);
-    if (!info.isDirectory()) return error(400, { error: { type: "validation_error", message: "Not a directory" } });
-
-    const items = await listDirectory(result.resolved, result.userDir, result.workspaceDir);
-    return { success: true, data: { entries: items } };
   },
   {
     sessionAuth: true,
@@ -166,12 +214,10 @@ app.get(
 // GET /:id/fs/* — 读文件
 app.get(
   "/:id/fs/*",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, query, error, set }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, query, headers, error, set }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, user.id, error);
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     let rawFilePath = (params as any)["*"] as string;
     // 浏览器发送的 URL 中非 ASCII 字符会被 percent-encode，Elysia 的 memoirist 路由
@@ -182,89 +228,69 @@ app.get(
     } catch {
       // 已经解码，直接使用
     }
-    const preview = (query as Record<string, string | undefined>)?.preview === "true";
-
-    // 远程环境
-    const machineId = await getRemoteMachineId(envId);
-    if (machineId) {
-      try {
-        if (preview) {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
-          const buffer = Buffer.from(binResult.data, "base64");
-          set.headers["Content-Type"] = binResult.mimeType || "application/octet-stream";
-          set.headers["Content-Security-Policy"] =
-            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *";
-          return new Response(buffer);
-        }
-        // 非预览：先尝试文本，失败则走二进制下载
-        try {
-          const textResult = await remoteReadFile(machineId, envId, rawFilePath);
-          return {
-            success: true,
-            data: {
-              name: textResult.name,
-              path: textResult.path,
-              content: textResult.content,
-              size: textResult.size,
-              encoding: "utf-8",
-            },
-          };
-        } catch {
-          const binResult = await remoteReadBinaryFile(machineId, envId, rawFilePath);
-          const buffer = Buffer.from(binResult.data, "base64");
-          set.headers["Content-Disposition"] = `attachment; filename="${binResult.name}"`;
-          set.headers["Content-Type"] = "application/octet-stream";
-          return new Response(buffer);
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
+    // mode 显式（§7.8 移除静默回退）：未传时保留 preview 兼容（true → binary）；
+    // 两者都未提供 → auto（与历史默认一致）。非法 mode 显式拒绝，不猜测语义。
+    const queryRecord = query as Record<string, string | undefined>;
+    const preview = queryRecord?.preview === "true";
+    const rawMode = queryRecord?.mode;
+    let mode: ReadMode;
+    if (rawMode === undefined) mode = preview ? "binary" : "auto";
+    else if (rawMode === "text" || rawMode === "binary" || rawMode === "auto") mode = rawMode;
+    else {
+      return error(400, {
+        error: { type: "validation_error", message: "mode must be one of: text, binary, auto" },
+      });
     }
-
-    const result = await resolveWorkspacePath(envId, rawFilePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
-    const { resolved, displayPath } = result;
-    let info: Awaited<ReturnType<typeof stat>>;
     try {
-      info = await stat(resolved);
-    } catch {
-      return error(404, { error: { type: "not_found", message: "File not found" } });
+      const result = await gate(params.id, fileAuthContext(authCtx, user)).read(rawFilePath, mode);
+      // read 指纹：size-mtimeMs；远程无 mtime → size-only 弱指纹（弱指纹注释见 computeReadFingerprint）
+      const etag = computeReadFingerprint(result.size, result.mtimeMs);
+      set.headers.ETag = etag;
+      set.headers["Cache-Control"] = "no-cache";
+      if (etagMatches(headers["if-none-match"], etag)) {
+        // 304：丢弃未消费的本地读流（createReadStream 已打开 fd），避免 fd 泄漏
+        if ("stream" in result) (result.stream as { destroy?: () => void }).destroy?.();
+        return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "no-cache" } });
+      }
+      if (result.type === "text") {
+        return {
+          success: true,
+          data: {
+            name: result.name,
+            path: result.path,
+            content: result.content,
+            size: result.size,
+            encoding: result.encoding,
+            type: result.type,
+          },
+        };
+      }
+      // 二进制流响应（preview 或下载，含 §7.8 auto 回退 binary）：一律显式标记
+      // X-File-Type: binary——消费者据此区分「JSON 文本响应」与「二进制流响应」；
+      // preview 流与 auto 回退流无法经此头区分（区分回退来源需机器端错误码，二期）
+      set.headers["X-File-Type"] = "binary";
+      if (preview) {
+        set.headers["Content-Type"] = result.mimeType || "application/octet-stream";
+        set.headers["Content-Security-Policy"] =
+          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *";
+        // biome-ignore lint/suspicious/noExplicitAny: NodeJS.ReadableStream 与 Response body 类型不匹配（历史惯例）
+        return new Response(result.stream as any);
+      }
+      // 二进制下载：中文文件名 RFC 5987 编码
+      const hasNonAscii = [...result.name].some((c) => c.charCodeAt(0) > 127);
+      const encodedFileName = encodeURIComponent(result.name);
+      const contentDisp = hasNonAscii
+        ? `attachment; filename*=UTF-8''${encodedFileName}`
+        : `attachment; filename="${result.name}"`;
+      set.headers["Content-Disposition"] = contentDisp;
+      set.headers["Content-Type"] = "application/octet-stream";
+      // biome-ignore lint/suspicious/noExplicitAny: NodeJS.ReadableStream 与 Response body 类型不匹配（历史惯例）
+      return new Response(result.stream as any);
+    } catch (e) {
+      const fe = toFileError(e);
+      if (!fe) throw e;
+      return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, fe.body) : error(fe.status, fe.body);
     }
-    if (info.isDirectory())
-      return error(400, { error: { type: "validation_error", message: "Path is a directory, use list endpoint" } });
-
-    const lastDot = rawFilePath.lastIndexOf(".");
-    const lastSlash = rawFilePath.lastIndexOf("/");
-    const ext = lastDot > lastSlash ? rawFilePath.substring(lastDot) : "";
-
-    if (preview) {
-      set.headers["Content-Type"] = getMimeType(ext);
-      set.headers["Content-Security-Policy"] =
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * blob:; connect-src *";
-      // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
-      return new Response(createFileStream(resolved) as any);
-    }
-
-    const textFile = isTextExtension(ext) || (!ext && (await isTextFile(resolved)));
-    const fileName = rawFilePath.substring(rawFilePath.lastIndexOf("/") + 1);
-
-    if (textFile) {
-      const { content, size } = await readFileContent(resolved);
-      return { success: true, data: { name: fileName, path: displayPath, content, size, encoding: "utf-8" } };
-    }
-
-    // 中文文件名 RFC 5987 编码
-    const hasNonAscii = [...fileName].some((c) => c.charCodeAt(0) > 127);
-    const encodedFileName = encodeURIComponent(fileName);
-    const contentDisp = hasNonAscii
-      ? `attachment; filename*=UTF-8''${encodedFileName}`
-      : `attachment; filename="${fileName}"`;
-    set.headers["Content-Disposition"] = contentDisp;
-    set.headers["Content-Type"] = "application/octet-stream";
-    // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch with Response constructor
-    return new Response(createFileStream(resolved) as any);
   },
   {
     sessionAuth: true,
@@ -273,7 +299,7 @@ app.get(
       tags: ["FS"],
       summary: "读取 workspace 文件内容",
       description:
-        "读取指定文件。文本文件默认返回 JSON 内容；当 preview=true 或目标为二进制文件时，接口会直接返回文件流而不是 JSON。",
+        "读取指定文件。mode 显式指定 text/binary/auto（默认 auto，preview=true 兼容为 binary 流预览）；文本返回 JSON，二进制返回文件流。",
     },
   },
 );
@@ -281,12 +307,12 @@ app.get(
 // POST /:id/fs/* — 上传文件
 app.post(
   "/:id/fs/*",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, request, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, request, headers, error }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, user.id, error);
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     let rawDirPath = ((params as any)["*"] as string) || "";
     try {
@@ -298,73 +324,58 @@ app.post(
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     if (!files || files.length === 0)
-      return error(400, { error: { type: "validation_error", message: "No files provided" } });
+      return error(400, withOpId({ error: { type: "validation_error", message: "No files provided" } }, opId));
 
     // 解析相对路径数组（文件夹上传时由前端传入）
     const rawPaths = formData.get("relativePaths");
     let relativePaths: string[] = [];
     if (rawPaths && typeof rawPaths === "string") {
       try {
-        relativePaths = JSON.parse(rawPaths);
+        const parsed: unknown = JSON.parse(rawPaths);
+        // 只接受数组；非数组 JSON（如 "null"/数字/字符串）视为未提供，
+        // 否则后续 for..of 对 null/数字迭代会抛 TypeError 变成 500。
+        relativePaths = Array.isArray(parsed) ? (parsed as string[]) : [];
       } catch {
         relativePaths = [];
       }
     }
 
-    // 远程环境
-    const machineId = await getRemoteMachineId(envId);
-    if (machineId) {
-      try {
-        const remoteFiles = await Promise.all(
-          files.map(async (file, i) => {
-            const buffer = Buffer.from(await file.arrayBuffer());
-            if (buffer.length > 100 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 100MB limit`);
-            return {
-              name: file.name,
-              content: buffer.toString("base64"),
-              relativePath: relativePaths[i] || file.name,
-            };
-          }),
+    // 整批校验 relativePaths 的全部条目（W2 语义随迁）：门面只校验与文件
+    // 一一对应的条目，未消费的多余条目若非法也必须整批拒绝（避免"部分文件
+    // 已落盘后才发现路径越界"）；规则单一来源仍是门面导出的校验函数。
+    for (const relPath of relativePaths) {
+      if (normalizeUploadRelativePath(relPath) === null) {
+        return error(
+          400,
+          withOpId(
+            {
+              error: {
+                type: "validation_error",
+                message: "Invalid relativePath: must be a relative path without '..' segments or control characters",
+              },
+            },
+            opId,
+          ),
         );
-        const result = await remoteUploadFiles(machineId, envId, rawDirPath, remoteFiles);
-        return { success: true, data: result };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
       }
     }
 
-    const result = await resolveWorkspacePath(envId, rawDirPath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
-    const { resolved } = result;
-    const { mkdir, writeFile: writeFileAsync } = await import("node:fs/promises");
-    await mkdir(resolved, { recursive: true });
-
-    const uploaded: Array<{ name: string; path: string; size: number }> = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]!;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      if (buffer.length > 100 * 1024 * 1024) {
-        return error(413, { error: { type: "validation_error", message: `File ${file.name} exceeds 100MB limit` } });
-      }
-
-      // 如果有对应的相对路径，保留目录结构；否则直接用文件名
-      const relPath = relativePaths[i] || file.name;
-      const destPath = join(resolved, relPath);
-      const destDir = dirname(destPath);
-      await mkdir(destDir, { recursive: true });
-      await writeFileAsync(destPath, buffer);
-
-      uploaded.push({
-        name: file.name,
-        path: rawDirPath ? `${rawDirPath}/${relPath}` : relPath,
-        size: buffer.length,
-      });
+    try {
+      const inputs = await Promise.all(
+        files.map(async (file, i) => ({
+          // Bun 对空 multipart filename 返回 undefined（而非空串），兜底为空串
+          // 使门面的空文件名校验（400）生效，避免 undefined.trim() 抛 TypeError 变 500
+          name: file.name ?? "",
+          content: Buffer.from(await file.arrayBuffer()),
+          // 数组短于文件列表时缺失项为 undefined → 门面回退 file.name
+          relativePath: relativePaths[i],
+        })),
+      );
+      const result = await gate(params.id, fileAuthContext(authCtx, user)).upload(rawDirPath, inputs, options);
+      return withOpId({ success: true, data: result }, opId);
+    } catch (e) {
+      return writeErrorResponse(e, opId, error);
     }
-    return new Response(JSON.stringify({ success: true, data: { files: uploaded } }), {
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-    });
   },
   {
     sessionAuth: true,
@@ -379,12 +390,12 @@ app.post(
 // PUT /:id/fs/* — 写入文件内容
 app.put(
   "/:id/fs/*",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, body, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, body, headers, error }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, user.id, error);
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     let rawFilePath = (params as any)["*"] as string;
     try {
@@ -395,30 +406,20 @@ app.put(
 
     const b = body as { content?: string };
     if (typeof b.content !== "string")
-      return error(400, { error: { type: "validation_error", message: "content field required" } });
+      return error(400, withOpId({ error: { type: "validation_error", message: "content field required" } }, opId));
 
     if (b.content.length > 100 * 1024 * 1024)
-      return error(413, { error: { type: "validation_error", message: "Content exceeds 100MB limit" } });
+      return error(
+        413,
+        withOpId({ error: { type: "validation_error", message: "Content exceeds 100MB limit" } }, opId),
+      );
 
-    // 远程环境
-    const machineId = await getRemoteMachineId(envId);
-    if (machineId) {
-      try {
-        const result = await remoteWriteFile(machineId, envId, rawFilePath, b.content);
-        return { success: true, data: result };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
+    try {
+      const result = await gate(params.id, fileAuthContext(authCtx, user)).write(rawFilePath, b.content, options);
+      return withOpId({ success: true, data: result }, opId);
+    } catch (e) {
+      return writeErrorResponse(e, opId, error);
     }
-
-    const result = await resolveWorkspacePath(envId, rawFilePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
-    await writeFileContent(result.resolved, b.content);
-
-    const fileName = rawFilePath.substring(rawFilePath.lastIndexOf("/") + 1);
-    return { success: true, data: { name: fileName, path: rawFilePath, size: Buffer.byteLength(b.content) } };
   },
   {
     sessionAuth: true,
@@ -435,12 +436,12 @@ app.put(
 // DELETE /:id/fs/* — 删除文件
 app.delete(
   "/:id/fs/*",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, params, error }: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, headers, error }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const envId = params.id;
-    await requireEnv(envId, authCtx.organizationId, user.id, error);
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
     let rawFilePath = (params as any)["*"] as string;
     try {
@@ -449,33 +450,18 @@ app.delete(
       /* 已解码 */
     }
 
-    // 远程环境
-    const machineId = await getRemoteMachineId(envId);
-    if (machineId) {
-      try {
-        await remoteDeleteFile(machineId, envId, rawFilePath);
-        return { success: true, data: { ok: true } };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote file operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
-    }
-
-    const result = await resolveWorkspacePath(envId, rawFilePath);
-    if (!result) return error(404, { error: { type: "not_found", message: "Environment not found" } });
-
     try {
-      const info = await stat(result.resolved);
-      if (info.isDirectory()) {
-        await deleteNode(result.resolved);
-        return { success: true, data: { ok: true } };
-      }
-    } catch {
-      return error(404, { error: { type: "not_found", message: "File not found" } });
+      await gate(params.id, fileAuthContext(authCtx, user)).delete(rawFilePath, options);
+      return withOpId({ success: true, data: { ok: true } }, opId);
+    } catch (e) {
+      // 与其他写端点不同，此处内联错误映射而非复用 writeErrorResponse：
+      // Elysia 的 delete 方法强制 InlineHandler（无 NonMacro 分支），handler 返回
+      // `Promise<Response | 字面量>` 时仅内联 error() 能通过类型推断（Elysia 3.x 类型怪癖）
+      const fe = toFileError(e);
+      if (!fe) throw e;
+      const body = withOpId(fe.body, opId);
+      return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, body) : error(fe.status, body);
     }
-
-    await deleteFile(result.resolved);
-    return { success: true, data: { ok: true } };
   },
   {
     sessionAuth: true,
@@ -491,29 +477,18 @@ app.delete(
 // POST /:id/fs/mkdir — 创建目录
 app.post(
   "/:id/fs/mkdir",
-  async ({ store, params, body, error }) => {
+  async ({ store, params, body, headers, error }) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    await requireEnv(params.id, authCtx.organizationId, user.id, error);
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     const { path } = body as { path: string };
-
-    // 远程环境
-    const machineId = await getRemoteMachineId(params.id);
-    if (machineId) {
-      try {
-        await remoteMkdir(machineId, params.id, path);
-        return { success: true, data: { path } };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote mkdir operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
+    try {
+      await gate(params.id, fileAuthContext(authCtx, user)).mkdir(path, options);
+      return withOpId({ success: true, data: { path } }, opId);
+    } catch (e) {
+      return writeErrorResponse(e, opId, error);
     }
-
-    const resolved = await resolveWorkspacePath(params.id, path);
-    if (!resolved) return error(400, { error: { type: "validation_error", message: "Invalid path" } });
-
-    await mkdirp(resolved.resolved);
-    return { success: true, data: { path } };
   },
   {
     sessionAuth: true,
@@ -529,38 +504,18 @@ app.post(
 // POST /:id/fs/rename — 重命名/移动
 app.post(
   "/:id/fs/rename",
-  async ({ store, params, body, error }) => {
+  async ({ store, params, body, headers, error }) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    await requireEnv(params.id, authCtx.organizationId, user.id, error);
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     const { oldPath, newPath } = body as { oldPath: string; newPath: string };
-
-    // 远程环境
-    const machineId = await getRemoteMachineId(params.id);
-    if (machineId) {
-      try {
-        await remoteRename(machineId, params.id, oldPath, newPath);
-        return { success: true, data: { oldPath, newPath } };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Remote rename operation failed";
-        return error(503, { error: { type: "remote_error", message } });
-      }
-    }
-
-    const oldResolved = await resolveWorkspacePath(params.id, oldPath);
-    if (!oldResolved) return error(404, { error: { type: "not_found", message: "Source not found" } });
-
     try {
-      await stat(oldResolved.resolved);
-    } catch {
-      return error(404, { error: { type: "not_found", message: "Source not found" } });
+      await gate(params.id, fileAuthContext(authCtx, user)).rename(oldPath, newPath, options);
+      return withOpId({ success: true, data: { oldPath, newPath } }, opId);
+    } catch (e) {
+      return writeErrorResponse(e, opId, error);
     }
-
-    const newResolved = await resolveWorkspacePath(params.id, newPath);
-    if (!newResolved) return error(400, { error: { type: "validation_error", message: "Invalid destination" } });
-
-    await renamePath(oldResolved.resolved, newResolved.resolved);
-    return { success: true, data: { oldPath, newPath } };
   },
   {
     sessionAuth: true,
@@ -576,51 +531,34 @@ app.post(
 // DELETE /:id/fs/batch — 批量删除
 app.delete(
   "/:id/fs/batch",
-  async ({ store, params, body, error }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, body, headers, error }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    await requireEnv(params.id, authCtx.organizationId, user.id, error);
+    // opId/ifMatch 对整批生效：单条 If-Match 不匹配的路径进 failed 列表（尽量删除
+    // + 分别报告契约），op_id 在整批成功/错误响应中回显（§7.2 幂等重试标识）
+    const options = writeOptionsFrom(headers as Record<string, string | undefined>);
+    const opId = options?.opId;
     const { paths } = body as { paths: string[] };
+    const deleted: string[] = [];
+    const failed: Array<{ path: string; error: string }> = [];
 
-    // 远程环境
-    const machineId = await getRemoteMachineId(params.id);
-    if (machineId) {
-      const deleted: string[] = [];
-      const failed: Array<{ path: string; error: string }> = [];
+    // 逐条执行并收集失败：批量删除的契约是"尽量删除 + 分别报告"，单条失败不中断整批。
+    // 门面已把每条的诊断写入服务端日志，此处只透传面向用户的 message。
+    const fs = gate(params.id, fileAuthContext(authCtx, user));
+    try {
       for (const p of paths) {
         try {
-          await remoteDeleteFile(machineId, params.id, p);
+          await fs.delete(p, options);
           deleted.push(p);
         } catch (e) {
           failed.push({ path: p, error: e instanceof Error ? e.message : "Unknown error" });
         }
       }
-      return { success: true, data: { deleted, failed } };
+      return withOpId({ success: true, data: { deleted, failed } }, opId);
+    } catch (e) {
+      return writeErrorResponse(e, opId, error);
     }
-
-    const deleted: string[] = [];
-    const failed: Array<{ path: string; error: string }> = [];
-
-    for (const p of paths) {
-      try {
-        const resolved = await resolveWorkspacePath(params.id, p);
-        if (!resolved) {
-          failed.push({ path: p, error: "Not found" });
-          continue;
-        }
-        const info = await stat(resolved.resolved);
-        if (info.isDirectory()) {
-          await deleteNode(resolved.resolved);
-        } else {
-          await deleteFile(resolved.resolved);
-        }
-        deleted.push(p);
-      } catch (e) {
-        failed.push({ path: p, error: e instanceof Error ? e.message : "Unknown error" });
-      }
-    }
-
-    return { success: true, data: { deleted, failed } };
   },
   {
     sessionAuth: true,
@@ -636,53 +574,33 @@ app.delete(
 // GET /:id/fs/download-zip — 打包下载目录
 app.get(
   "/:id/fs/download-zip",
-  async ({ store, params, query, error, set }) => {
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
+  async ({ store, params, query, error, set }: any) => {
     const authCtx = store.authContext!;
     const user = store.user!;
-    const env = await requireEnv(params.id, authCtx.organizationId, user.id, error);
-    if (env instanceof Response) return env;
-
-    // 远程环境暂不支持打包下载
-    const machineId = await getRemoteMachineId(params.id);
-    if (machineId) {
-      return error(501, {
-        error: { type: "not_implemented", message: "远程环境暂不支持目录打包下载" },
-      });
-    }
-
     const path = (query as Record<string, string | undefined>)?.path;
     if (!path) return error(400, { error: { type: "validation_error", message: "path query parameter required" } });
 
-    const resolved = await resolveWorkspacePath(params.id, path);
-    if (!resolved) return error(404, { error: { type: "not_found", message: "Path not found" } });
-
     try {
-      const info = await stat(resolved.resolved);
-      if (!info.isDirectory())
-        return error(400, { error: { type: "validation_error", message: "Path is not a directory" } });
-    } catch {
-      return error(404, { error: { type: "not_found", message: "Path not found" } });
+      const stream = await gate(params.id, fileAuthContext(authCtx, user)).downloadZip(path);
+      const dirName = path.split("/").filter(Boolean).pop() || "download";
+      set.headers["Content-Type"] = "application/zip";
+      set.headers["Content-Disposition"] = `attachment; filename="${dirName}.zip"`;
+      // biome-ignore lint/suspicious/noExplicitAny: NodeJS.ReadableStream 与 Response body 类型不匹配（历史惯例）
+      return new Response(stream as any);
+    } catch (e) {
+      const fe = toFileError(e);
+      if (!fe) throw e;
+      return fe.retryAfter !== undefined ? busyErrorResponse(fe.status, fe.body) : error(fe.status, fe.body);
     }
-
-    const dirName = path.split("/").filter(Boolean).pop() || "download";
-    set.headers["Content-Type"] = "application/zip";
-    set.headers["Content-Disposition"] = `attachment; filename="${dirName}.zip"`;
-
-    // 使用系统 zip 命令流式打包，零内存占用
-    const zipProcess = spawn("zip", ["-r", "-q", "-", "."], {
-      cwd: resolved.resolved,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-
-    // biome-ignore lint/suspicious/noExplicitAny: ReadableStream type mismatch
-    return new Response(zipProcess.stdout as any);
   },
   {
     sessionAuth: true,
     detail: {
       tags: ["FS"],
       summary: "下载目录压缩包",
-      description: "将 workspace 内指定目录打包为 zip 文件并直接返回下载流；当前仅支持本地环境。",
+      description:
+        "将 workspace 内指定目录打包为 zip 文件并直接返回下载流；远程环境支持取决于机器端 zip 能力（未就绪时返回 501）。",
     },
   },
 );

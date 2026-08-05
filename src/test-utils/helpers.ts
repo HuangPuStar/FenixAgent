@@ -36,6 +36,7 @@ export {
   stubEnvironmentRepo,
   stubEnvironmentService,
   stubEnvironmentWeb,
+  stubFileWsHandler,
   stubInstance,
   stubKnowledgeBaseService,
   stubLaunchSpecBuilder,

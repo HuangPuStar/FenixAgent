@@ -35,6 +35,36 @@ const envSchema = z.object({
   RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
 
+  // ── 可选：file-ws 心跳巡检（P0-1）──
+  // keep_alive 间隔 ≤30s 是跨仓库软契约（acp-link 独立仓库），3 倍间隔（90s）判定僵尸；
+  // 巡检间隔 30s。默认关闭：旧机器端未实现 keep_alive 或间隔 >90s 时会被误判僵尸，
+  // 需灰度逐步开启（见 docs/arch/12-files.md §7.4）。
+  RCS_FILE_WS_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
+  RCS_FILE_WS_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+  RCS_FILE_WS_SWEEP_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
+  // ── 可选：file-ws 载荷上限（P1-11a，D12）──
+  // file-ws 单帧最大载荷 32MB（§7.6）：远程 upload 单文件 20MB → base64 帧 ~27MB < 32MB。
+  // 默认值须与 src/transport/file-ws-payload.ts 的 DEFAULT_FILE_WS_MAX_PAYLOAD_MB 保持一致。
+  RCS_FILE_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(32),
+
+  // ── 可选：file-ws 身份绑定（P2-14，§7.1）──
+  // register 对账 core runtime node 注册（registerRemoteNode 产物），未知 machine
+  // 严格模式 close(4404)；默认 false（宽松）放行 + 告警。两阶段过渡软开关：
+  // 旧机器端（acp-link）无 4404 退避语义、可能 file-ws 先连，服务端先上严格校验会
+  // 硬阻塞旧机器端——须机器端先行升级后再开启（见 docs/arch/12-files.md §7.1/§10）。
+  RCS_FILE_WS_IDENTITY_STRICT: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
+  // ── 可选：file-events 订阅端点（P1-6b）──
+  // 服务级连接上限，与 YJS_MAX_CLIENTS 分池（互不挤占）；超限 close 1013。
+  RCS_FILE_EVENTS_MAX_CLIENTS: z.coerce.number().int().positive().default(200),
+
   // ── 可选：知识库（RagFlow）──
   RAGFLOW_API_URL: z.string().default("http://localhost:9380"),
   RAGFLOW_API_KEY: z.string().default(""),

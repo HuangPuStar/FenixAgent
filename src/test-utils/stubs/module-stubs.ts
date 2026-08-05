@@ -84,6 +84,11 @@ export function resetEnvironmentRepoStub() {
   _environmentRepoStub = null;
 }
 
+// ../transport/file-ws-handler — 文件信道 handler，1 个测试文件使用（W5a 起）
+// 注意：这是「部分 mock」（setup-mocks.ts 注册），未配置 stub 时回退真实实现，
+// 因此 file-ws-handler.test.ts 无需配置即可保持原有行为。
+export const fileWsHandlerRegistry = createStubRegistry("fileWsHandler", false);
+
 // ── 便捷函数导出（对齐已有的 stub 命名风格）──
 
 export const stubRepositories = repositoriesRegistry.stub;
@@ -106,6 +111,7 @@ export const stubEnvironmentService = environmentServiceRegistry.stub;
 export const stubKnowledgeBaseService = knowledgeBaseServiceRegistry.stub;
 export const stubPgStorageAdapter = pgStorageAdapterRegistry.stub;
 export const stubCustomTools = customToolsRegistry.stub;
+export const stubFileWsHandler = fileWsHandlerRegistry.stub;
 
 // ── 重置函数 ──
 
@@ -130,4 +136,5 @@ export function resetModuleStubs() {
   knowledgeBaseServiceRegistry.reset();
   pgStorageAdapterRegistry.reset();
   customToolsRegistry.reset();
+  fileWsHandlerRegistry.reset();
 }

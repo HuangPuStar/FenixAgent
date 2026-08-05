@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -126,6 +127,56 @@ export function getMimeType(ext: string): string {
 /** 扩展名是否为文本类型 */
 export function isTextExtension(ext: string): boolean {
   return TEXT_EXTENSIONS.has(ext);
+}
+
+// ── ETag 指纹（§4.2 条件请求；W13' 读侧，跨 plan 契约）─────────────
+
+/** 稳定字符串 hash（sha1 仅作变更指纹，非安全用途，不涉及敏感数据） */
+function hashOf(input: string): string {
+  return createHash("sha1").update(input).digest("hex");
+}
+
+/**
+ * tree 指纹：路径排序 hash + max(mtimeMs) + 路径数。
+ * 路径集合参与 hash 使 rename 必然改变指纹（修复"仅 max mtime + 条数"下
+ * rename 前后 mtime 恰巧相同导致的 304 误判）；max(mtimeMs) 是内容变更的
+ * 弱校验（文件内容变化但 mtime 未更新的极端场景无法感知，属 §4.2 接受的边界）。
+ * mtimes 缺失（远程弱指纹：机器端暂不返回 mtime，补全属跨仓库增强）时退化为
+ * 路径 hash + 路径数，max 恒 0——格式与强指纹一致，机器端补齐后 ETag 自然失效一次。
+ * 返回值即 HTTP ETag 标准格式（带引号）。
+ */
+export function computeTreeFingerprint(paths: string[], mtimes?: Record<string, number>): string {
+  const pathHash = hashOf([...paths].sort().join("\n"));
+  let maxMtime = 0;
+  if (mtimes) for (const t of Object.values(mtimes)) if (t > maxMtime) maxMtime = t;
+  return `"${pathHash}-${maxMtime}-${paths.length}"`;
+}
+
+/**
+ * list 指纹：hash(name+type+size+modifiedAt) + 条数。
+ * modifiedAt 全部为 0/缺失（远程弱指纹）时退化为 hash(name+type+size) + 条数；
+ * 同一来源的条目不会出现混合状态，按"存在任一 >0 的 modifiedAt"整体判定即可。
+ * 返回值即 HTTP ETag 标准格式（带引号）。
+ */
+export function computeListFingerprint(
+  entries: Array<{ name: string; type: string; size: number; modifiedAt?: number }>,
+): string {
+  const hasMtime = entries.some((e) => (e.modifiedAt ?? 0) > 0);
+  const lines = entries.map((e) => {
+    const base = `${e.name}|${e.type}|${e.size}`;
+    return hasMtime ? `${base}|${e.modifiedAt ?? 0}` : base;
+  });
+  return `"${hashOf(lines.join("\n"))}-${lines.length}"`;
+}
+
+/**
+ * read 指纹："<size>-<mtimeMs>"（标准文件指纹）。
+ * mtimeMs 缺失（远程数据源无 mtime，机器端补全属跨仓库增强）时退化为 size-only
+ * 弱指纹 "<size>"——同一大小内容变更无法感知，属 §4.2 接受的边界。
+ * 返回值即 HTTP ETag 标准格式（带引号）。
+ */
+export function computeReadFingerprint(size: number, mtimeMs?: number): string {
+  return mtimeMs !== undefined && mtimeMs > 0 ? `"${size}-${mtimeMs}"` : `"${size}"`;
 }
 
 // ── Path resolution ──────────────────────────────────────────────────────────

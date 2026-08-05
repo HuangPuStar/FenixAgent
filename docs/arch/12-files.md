@@ -169,7 +169,7 @@ interface AgentFileService {
 | 响应结构 | 全部 `{ success, data }`，backend 差异不外泄（不出现 `remote_error` 之类的 backend 专属类型）；`/api/*` 文件面（第三套实现 `api-workspace.ts`）收敛到本契约时另行评估（§10） |
 | 变更事件 | 任何 backend 的写操作成功都由 AgentFileService 统一发布 `file_changed`（含 `source`/`actorId`，§4.3） |
 | 条件请求 | 所有读操作由 AgentFileService 统一派生 ETag（§4.2） |
-| **能力上限不对称条款** | 本地/远程的**能力上限差异必须显式声明**（如 upload：本地 100MB、远程 v2 20MB；zip：远程 ≤100MB），不落入"消费者无感"承诺——无感指结构，不是能力。差异需在响应或文档可查（§7.6） |
+| **能力上限不对称条款** | 本地/远程的**能力上限差异必须显式声明**（如 upload：本地 100MB、远程 20MB**【已实施**：远程 >20MB 上传返回 413 `payload_too_large`，破坏性契约变更（>20MB 从可上传变 413）声明见 §7.6**】**；zip：远程 ≤100MB），不落入"消费者无感"承诺——无感指结构，不是能力。差异需在响应或文档可查（§7.6） |
 
 **machineId 配置校验（v2，区分三种根因）**：`getRemoteMachineId` 增加 DB 存在性校验——machineId 不存在于组织 → `422 config_error`（message 提示去管理面检查配置）；存在但 file-ws 未连 → `503 file_service_unavailable`（现状三种根因都归 503，误导排障）。
 
@@ -184,7 +184,7 @@ interface AgentFileService {
 | GET | `/fs/tree` | 递归文件树（黑名单过滤 + mtime） | ETag 条件请求；超大目录分页/深度限制逃生舱（§4.2） |
 | GET | `/fs` | 列目录，`?path=` 相对路径 | ETag 条件请求 |
 | GET | `/fs/*` | 读文件：`?preview=true` 二进制预览；否则 `mode` 显式（v2 移除静默回退） | ETag 条件请求 |
-| POST | `/fs/*` | 上传（multipart / 相对路径数组），本地 100MB / 远程 v2 20MB（§7.6） | 写后广播变更 |
+| POST | `/fs/*` | 上传（multipart / 相对路径数组），本地 100MB / 远程 20MB（已实施，超限 413，§7.6） | 写后广播变更 |
 | PUT | `/fs/*` | 写入文本内容 | 写后广播变更 |
 | DELETE | `/fs/*` | 删除单个文件（v2 明确目录递归语义） | 写后广播变更 |
 | POST | `/fs/mkdir` | 创建目录 | 写后广播变更 |

@@ -12,14 +12,49 @@ import { getChatChannelController } from "../../services/chat-channel-bootstrap"
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import {
+  checkParsedObjectSize,
+  checkWsMessageSize,
+  estimateWsMessageBytes,
+  parseFileWsMessage,
+} from "../../transport/file-ws-payload";
+import {
   handleExternalRelayClose,
   handleExternalRelayMessage,
   handleExternalRelayOpen,
 } from "../../transport/relay/external-relay";
 import type { WsConnection } from "../../transport/ws-types";
 
-/** Maximum WebSocket message size: 10 MB */
+/** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */
 const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
+
+/**
+ * 统一尺寸检查（acp-ws / yjs / relay 共用，10MB 上限不变）。
+ *
+ * 字符串按 UTF-8 字节、二进制帧按 byteLength；object 帧（Elysia 默认
+ * `createWSMessageParser` 已把 `{` 开头单行 JSON 自动 parse 成对象）必须补
+ * 重序列化检查——仅 `typeof === "string"` 检查会绕过（D12 残留），
+ * 而 uWS 全局 maxPayloadLength 已放宽到 32MB（file-ws 需要），
+ * 若不补检查，本端点真实上限将从 16MB 静默变为 32MB。
+ */
+function isOverWsLimit(data: unknown): boolean {
+  return (
+    checkWsMessageSize(data as string | Uint8Array, MAX_WS_MESSAGE_SIZE) ||
+    checkParsedObjectSize(data, MAX_WS_MESSAGE_SIZE)
+  );
+}
+
+/**
+ * file-ws 单帧最大载荷（字节），来源 `RCS_FILE_WS_MAX_PAYLOAD_MB`（默认 32MB，§7.6）。
+ *
+ * 惰性求值并缓存：本模块在 index.ts 的 `applyEnv(validateEnv())` 之前被静态 import，
+ * 且 validateEnv 在测试环境缺少必填变量时会抛错，不能在模块顶层调用；
+ * 首次消息到达时 env 已校验完毕，取一次后缓存。
+ */
+let fileWsMaxPayloadBytes: number | null = null;
+function getFileWsMaxPayloadBytes(): number {
+  fileWsMaxPayloadBytes ??= validateEnv().RCS_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024;
+  return fileWsMaxPayloadBytes;
+}
 
 /** Adapt Elysia WS to WsConnection interface */
 // biome-ignore lint/suspicious/noExplicitAny: Elysia WS type not directly compatible with WsConnection
@@ -104,8 +139,8 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     message(ws, data) {
       // Elysia's parseMessage auto-parses JSON strings into objects;
       // pass the already-parsed object directly to avoid redundant stringify→parse.
-      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[ACP-WS] Message too large: ${data.length} bytes`);
+      if (isOverWsLimit(data)) {
+        logError(`[ACP-WS] Message too large: ${estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
@@ -133,6 +168,25 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         "供远端运行时执行文件读写操作的 WebSocket 端点。连接时同样要求 query 参数 `secret` 与服务端 `REGISTRY_SECRET` 匹配，消息帧格式由远程文件协议决定。",
     },
     query: "acp-registry-secret-query",
+    parse(ws, message) {
+      // 解析前显式检查（D12）：Elysia 的 createWSMessageParser 会在自定义 parse 之前
+      // 对 `{` 开头字符串先做 JSON.parse，大 JSON 帧全量进内存后 10MB 上限形同虚设。
+      // 此处先按真实字节数检查，超限 close(1009)（uWS 语义：消息过大）；未超原样返回，
+      // 阻止 Elysia 默认 parse 破坏 NDJSON 多行帧（整帧 parse 必失败，单对象帧会被
+      // parse 成 object 改变分发语义——NDJSON 逐行解析统一在 message 回调完成）。
+      // 返回空串哨兵：close 后 Elysia 仍会分发本条消息，空串经 parseFileWsMessage
+      // 解析出 0 条消息，超大帧不会进入业务处理。
+      // 已知框架限制（记录在案）：单行 JSON 对象帧会被默认 parser 提前 parse 成
+      // object，到不了本函数的字符串检查——该路径由 uWS 全局 maxPayloadLength
+      // （src/index.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
+      // file-ws 32MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
+      if (typeof message === "string" && checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
+        logError(`[File-WS] Message too large: ${Buffer.byteLength(message)} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return "";
+      }
+      return message;
+    },
     async open(ws) {
       const url = new URL(ws.data.request.url);
       const secret = url.searchParams.get("secret");
@@ -151,15 +205,17 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       handleFileWsOpen(adaptWs(ws), wsId);
     },
     message(ws, data) {
-      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[File-WS] Message too large: ${data.length} bytes`);
-        adaptWs(ws).close(1009, "message too large");
-        return;
-      }
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__fileWsId as string | undefined;
-      if (wsId) {
+      if (!wsId) return;
+      if (typeof data !== "string") {
+        // 防御分支：parse 钩子已把文本帧归一为字符串，此处仅兜底二进制等异常帧
         handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+        return;
+      }
+      // NDJSON 逐行解析（坏行记日志跳过，不中断整批），逐条分发；尺寸检查已在 parse 钩子完成
+      for (const msg of parseFileWsMessage(data)) {
+        handleFileWsMessage(adaptWs(ws), wsId, msg);
       }
     },
     close(ws, _code, _reason) {
@@ -237,7 +293,8 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       }
     },
     message(ws, data) {
-      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
+      if (isOverWsLimit(data)) {
+        logError(`[YJS-WS] Message too large: ${estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
@@ -299,8 +356,8 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       );
     },
     message(ws, data) {
-      if (typeof data === "string" && data.length > MAX_WS_MESSAGE_SIZE) {
-        logError(`[External-Relay] Message too large: ${data.length} bytes`);
+      if (isOverWsLimit(data)) {
+        logError(`[External-Relay] Message too large: ${estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }

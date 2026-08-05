@@ -6,6 +6,7 @@ import webBranding from "./branding";
 import webChannels from "./channels";
 import webConfig from "./config";
 import webEnvironments from "./environments";
+import webFileEvents from "./file-events";
 import webFiles from "./files";
 import webFs from "./fs";
 import webHindsight from "./hindsight";
@@ -34,6 +35,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webConfig)
   .use(webFiles)
   .use(webFs)
+  .use(webFileEvents)
   .use(webInstances)
   .use(webHindsight)
   .use(webKnowledgeBases)

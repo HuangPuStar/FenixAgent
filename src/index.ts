@@ -5,6 +5,7 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
@@ -46,7 +47,7 @@ import { ensureSystemAdmin } from "./services/system-admin";
 import { startScheduler, stopScheduler } from "./services/task";
 import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
-import { closeAllFileWsConnections } from "./transport/file-ws-handler";
+import { closeAllFileWsConnections, stopFileWsSweep } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
 const startedAt = new Date().toISOString();
@@ -112,6 +113,14 @@ if (ragflowHealth.ok) {
 import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
   startMachineSweep(60_000);
 });
+// file-ws 僵尸连接巡检（P0-1）：独立于 startMachineSweep——后者只查 DB 中 status=online
+// 的机器（registry-heartbeat.ts），覆盖不到 file-ws 的 half-open 僵尸。默认关闭，
+// 灰度防误杀旧机器端（keep_alive 缺失或间隔 >90s），开启时按配置间隔巡检。
+if (config.fileWsSweepEnabled) {
+  import("./transport/file-ws-handler").then(({ startFileWsSweep }) => {
+    startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
+  });
+}
 startAcpIdleMonitor();
 
 const app = new Elysia()
@@ -214,7 +223,24 @@ export type App = typeof app;
 
 // app.listen() 设置 app.server（WebSocket 升级需要），同时 export default
 // 供 Eden Treaty treaty<App>() 做类型推断
-app.listen({ port, hostname: host });
+app.listen({
+  port,
+  hostname: host,
+  // file-ws 载荷治理（§7.6，P1-11a）：Bun 默认 maxPayloadLength 为 16MB，uWS 层会先于
+  // JS 层检查拒绝 16-32MB 的 file-ws 帧（20MB upload → ~27MB base64），32MB 上限形同虚设。
+  // Bun 的 maxPayloadLength 是全局配置（Elysia 1.4.28 .ws() 路由级不透传，仅全局可设），
+  // 放宽后 acp-ws / yjs / relay 仍由各自 JS 层 10MB 检查（MAX_WS_MESSAGE_SIZE）拦截：
+  // 字符串/二进制帧按字节检查，object 帧（Elysia 默认 parse 产物）重序列化后检查
+  // （src/routes/acp/index.ts isOverWsLimit），有效限制不变；file-ws 的 32MB 显式检查
+  // 在 acp/index.ts 的 parse 钩子（解析前）+ uWS 全局上限（单行 JSON 帧路径）。
+  websocket: {
+    // Elysia 的 Partial<Serve> 类型要求完整 WebSocketHandler（message 必填），但运行时
+    // 与 Elysia 自带消息分发器合并（adapter/bun 合并顺序 options 最后，仅补充字段）——
+    // 若按类型补写 message 会覆盖分发器导致全部 WS 端点消息无法分发。第三方类型缺陷，
+    // 最小范围断言规避，不引入其他字段。
+    maxPayloadLength: env.RCS_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024,
+  } as unknown as WebSocketHandler<unknown>,
+});
 export default app;
 
 // Graceful shutdown
@@ -225,6 +251,8 @@ async function gracefulShutdown(signal: string) {
   stopAcpIdleMonitor();
   closeAllRelayConnections();
   closeAllAcpConnections();
+  // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
+  stopFileWsSweep();
   closeAllFileWsConnections();
   await stopAllInstances();
   stopScheduler();
