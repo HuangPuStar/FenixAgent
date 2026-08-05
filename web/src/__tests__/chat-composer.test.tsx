@@ -91,4 +91,150 @@ describe("ChatComposer", () => {
     expect(html).not.toContain("chatComposer.skillButton");
     expect(html).not.toContain("chatComposer.fileButton");
   });
+
+  // 断点 1 修复：canCancel（accepting/running/awaiting_permission）时按钮渲染 Square 停止图标，
+  // 输出过程中（running，isLoading=false）停止按钮也必须可见
+  test("renders Square stop icon when canCancel is true", async () => {
+    const { ChatComposer } = await import("../../components/chat/ChatComposer");
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
+    );
+    expect(html).toContain("lucide-square");
+    expect(html).not.toContain("lucide-send");
+  });
+
+  // canCancel 时停止按钮可点击（不带 disabled）——running 输出期间可随时中断
+  test("stop button is enabled when canCancel is true", async () => {
+    const { ChatComposer } = await import("../../components/chat/ChatComposer");
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
+    );
+    expect(html).not.toContain('disabled=""');
+  });
+
+  // cancelling（isLoading 且 canCancel=false）：渲染 Square 且 disabled，防止重复点发重取消
+  test("renders disabled Square when isLoading and canCancel is false (cancelling)", async () => {
+    const { ChatComposer } = await import("../../components/chat/ChatComposer");
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} isLoading={true} canCancel={false} onInterrupt={() => {}} />,
+    );
+    expect(html).toContain("lucide-square");
+    expect(html).toContain('disabled=""');
+  });
+
+  // 默认状态（无 canCancel/isLoading）渲染 Send 图标——回归保护，与既有行为一致
+  test("renders Send icon by default", async () => {
+    const { ChatComposer } = await import("../../components/chat/ChatComposer");
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} />);
+    expect(html).toContain("lucide-send");
+    expect(html).not.toContain("lucide-square");
+  });
+});
+
+// ── 交互测试（happy-dom + react-dom/client）──
+// 补 P2-5：SSR 字符串断言只验证了渲染结果，未覆盖 onClick 分支。
+// 以下用例直接渲染并点击按钮，验证 canCancel 时点击走 onInterrupt 而非 handleSubmit。
+
+import { expect as domExpect, test as domTest } from "bun:test";
+import { Window } from "happy-dom";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+
+/** ChatComposer 的 props 类型（类型空间 import，不产生运行时加载） */
+type ComposerProps = Parameters<typeof import("../../components/chat/ChatComposer")["ChatComposer"]>[0];
+
+// 告知 React 当前为测试环境，消除 act() 警告
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// 设置最小 DOM 环境（react-dom/client 在 CI CJS 构建下模块加载时需要 window）
+const win = new Window();
+const g = globalThis as Record<string, unknown>;
+if (!g.window) g.window = win;
+if (!g.document) g.document = win.document;
+if (!g.navigator) g.navigator = win.navigator;
+// happy-dom querySelectorAll 选择器解析需要 window.SyntaxError（workflow-runs-page.test.tsx 同款处理）
+if (!(win as unknown as Record<string, unknown>).SyntaxError) {
+  (win as unknown as Record<string, unknown>).SyntaxError = SyntaxError;
+}
+
+/** 客户端渲染 ChatComposer，返回容器与卸载函数 */
+async function renderComposer(props: ComposerProps): Promise<{
+  container: HTMLElement;
+  unmount: () => void;
+}> {
+  const { ChatComposer } = await import("../../components/chat/ChatComposer");
+  const container = win.document.createElement("div");
+  const root: Root = createRoot(container as unknown as HTMLElement);
+  act(() => {
+    root.render(createElement(ChatComposer, props));
+  });
+  return { container: container as unknown as HTMLElement, unmount: () => act(() => root.unmount()) };
+}
+
+/** 找到发送/停止按钮（含 lucide 图标的 button） */
+function findActionButton(container: HTMLElement): HTMLElement | null {
+  return (
+    Array.from(container.querySelectorAll("button")).find((b) =>
+      b.querySelector("svg.lucide-send, svg.lucide-square"),
+    ) ?? null
+  );
+}
+
+describe("ChatComposer interaction", () => {
+  // canCancel（running 输出中）时点击按钮：只触发 onInterrupt，不触发 onSubmit——
+  // 这是断点 1 的核心交互：输出期间点停止必须走取消链路而不是重发消息
+  domTest("click calls onInterrupt when canCancel is true", async () => {
+    let submitCalls = 0;
+    let interruptCalls = 0;
+    const { container, unmount } = await renderComposer({
+      onSubmit: () => {
+        submitCalls += 1;
+      },
+      onInterrupt: () => {
+        interruptCalls += 1;
+      },
+      canCancel: true,
+    });
+    try {
+      const button = findActionButton(container);
+      domExpect(button).not.toBeNull();
+      domExpect(button?.querySelector("svg.lucide-square")).not.toBeNull();
+      act(() => {
+        button?.click();
+      });
+      domExpect(interruptCalls).toBe(1);
+      domExpect(submitCalls).toBe(0);
+    } finally {
+      unmount();
+    }
+  });
+
+  // cancelling（isLoading 且 canCancel=false，取消已发出）时按钮禁用：
+  // 点击无任何动作，防止重复点触发无意义的重发 cancel RPC
+  domTest("click is no-op when cancelling (isLoading && !canCancel)", async () => {
+    let submitCalls = 0;
+    let interruptCalls = 0;
+    const { container, unmount } = await renderComposer({
+      onSubmit: () => {
+        submitCalls += 1;
+      },
+      onInterrupt: () => {
+        interruptCalls += 1;
+      },
+      isLoading: true,
+      canCancel: false,
+    });
+    try {
+      const button = findActionButton(container);
+      domExpect(button).not.toBeNull();
+      domExpect(button?.hasAttribute("disabled")).toBe(true);
+      act(() => {
+        button?.click();
+      });
+      domExpect(interruptCalls).toBe(0);
+      domExpect(submitCalls).toBe(0);
+    } finally {
+      unmount();
+    }
+  });
 });

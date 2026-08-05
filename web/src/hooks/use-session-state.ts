@@ -183,9 +183,26 @@ function mapTurnStatus(turnStatus: TurnStatus | null): SessionStatus {
   }
 }
 
+/**
+ * turn 是否可发起取消：accepting（消息刚发出）/ running（输出中）/ awaiting_permission（权限卡住）。
+ * 与 loading 正交：loading 表示"思考/取消中"的加载态，canCancel 表示"此刻点停止按钮有对象可取消"。
+ * cancelling（取消已发出）与全部终态不可再取消。
+ */
+export function deriveCanCancel(turnStatus: TurnStatus | null): boolean {
+  return turnStatus === "accepting" || turnStatus === "running" || turnStatus === "awaiting_permission";
+}
+
 // ── 合并快照 ──
 
-function computeSessionSnapshot(timeline: SessionTimelineSnapshot, meta: SessionMetaSnapshot): SessionStateSnapshot {
+/**
+ * 合并时间线 + 会话元信息为展示快照（纯函数，无副作用）。
+ * 导出仅供测试：直接构造输入验证 loading / canCancel / status 等派生字段的共存关系
+ * （如 running 输出期间 loading 为 null 但 canCancel 为 true）。
+ */
+export function computeSessionSnapshot(
+  timeline: SessionTimelineSnapshot,
+  meta: SessionMetaSnapshot,
+): SessionStateSnapshot {
   const turnStatus = meta.turnStatus;
   // 按 permissionRequest.requestId 合并 Session Doc 的真实选项（Chat Doc 侧为占位空数组）
   const structuredMessages = timeline.structuredMessages.map((m) => {
@@ -201,6 +218,7 @@ function computeSessionSnapshot(timeline: SessionTimelineSnapshot, meta: Session
   return {
     acpSessionId: meta.acpSessionId,
     status: mapTurnStatus(turnStatus),
+    canCancel: deriveCanCancel(turnStatus),
     loading:
       turnStatus === "accepting" || turnStatus === "cancelling"
         ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }

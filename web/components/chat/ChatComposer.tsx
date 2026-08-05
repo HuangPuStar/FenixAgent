@@ -33,6 +33,8 @@ interface ChatComposerProps {
   onSubmit: (message: ChatInputMessage) => void;
   isLoading?: boolean;
   onInterrupt?: () => void;
+  /** turn 是否可中断（accepting/running/awaiting_permission），仅驱动停止按钮；默认 false */
+  canCancel?: boolean;
   disabled?: boolean;
   placeholder?: string;
   /** 是否支持图片上传 */
@@ -69,6 +71,7 @@ export function ChatComposer({
   onSubmit,
   isLoading = false,
   onInterrupt,
+  canCancel = false,
   disabled = false,
   placeholder,
   supportsImages = false,
@@ -85,6 +88,15 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const { t } = useTranslation("components");
   const _placeholder = placeholder ?? t("chatInput.placeholder");
+
+  // 发送/停止按钮派生状态（与 loading 正交）：
+  // - canCancel（accepting/running/awaiting_permission）→ 显示停止图标且可点击（本修复核心：
+  //   running 输出期间 loading 为 null，按钮原逻辑会退回 Send 导致无法中断）；
+  // - isCancelling（isLoading 且不可取消 ⟺ turn === cancelling，取消已发出）→ 显示停止但禁用，
+  //   防止重复点触发无意义的重发 cancel RPC；
+  // - 其余状态 → 发送按钮，按 canSend 决定可点。
+  const isCancelling = isLoading && !canCancel;
+  const showStop = canCancel || isCancelling;
 
   // ---------------------------------------------------------------------------
   // State — 从 ChatInput 原样迁移
@@ -579,18 +591,18 @@ export function ChatComposer({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={isLoading ? onInterrupt : handleSubmit}
-              disabled={!isLoading && !canSend}
+              onClick={canCancel ? onInterrupt : handleSubmit}
+              disabled={isCancelling || (!canCancel && !canSend)}
               className={cn(
                 "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
-                isLoading
+                showStop
                   ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
                   : canSend
                     ? "bg-brand text-white hover:bg-brand-light"
                     : "bg-surface-3 text-text-muted",
               )}
             >
-              {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
+              {showStop ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
 
