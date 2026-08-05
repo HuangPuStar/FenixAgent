@@ -1,0 +1,25 @@
+services:
+  opensandbox-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${OPENSANDBOX_SERVER_IMAGE:-aos/opensandbox-server:latest}
+    command:
+      - opensandbox-server
+      - --config
+      - /etc/opensandbox/sandbox.toml
+    privileged: true
+    cgroup: host
+    ports:
+      - "${OPENSANDBOX_SERVER_PORT:-8090}:8080"
+      - "${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}:${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}"
+    volumes:
+      - docker-data:/var/lib/docker
+      - ./workspace/sandboxes:/workspace/sandboxes
+      - ./offline:/offline:ro
+      - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+      - ./data:/root/.opensandbox
+    restart: unless-stopped
+
+volumes:
+  docker-data:
