@@ -237,7 +237,7 @@ stateDiagram-v2
 - `AgentNode` 是唯一的远端连接拥有者；Instance 只能调用 `send()`/`stop()`，不能自行创建、替换或关闭底层 WS。
 - 一个 AgentNode 可为多个已授权 Instance 提供信道；停止帧必须携带目标 `instanceId`（snake_case），避免同节点运行串扰。
 - **断连即失败（E-P2.1 教训）**：`WsAgentNodeSocket.send` 在 `readyState !== 1` 时抛 `AgentNodeUnavailableError`，禁止静默丢弃（静默丢包会让停止帧无回执、调用方误以为可达）。
-- **文件信道联动（12-files.md 交叉引用）**：机器还有第二条平行信道 `/acp/file-ws`（文件操作）。**重连顺序是跨仓库契约**：机器侧先连 `/acp/ws` 完成 `registerMachine` + `registerRemoteNode`，再连 `/acp/file-ws`；file-ws register 对账 core runtime node，未注册 → 4004 退避重试。服务端不承诺重连，恢复完全由机器驱动（同 E-P2.2）。file-ws 的生命周期、断连语义与能力降级见 `docs/arch/12-files.md` §5/§7。
+- **文件信道联动（12-files.md 交叉引用）**：机器还有第二条平行信道 `/acp/file-ws`（文件操作）。**重连顺序是跨仓库契约**：机器侧先连 `/acp/ws` 完成 `registerMachine` + `registerRemoteNode`，再连 `/acp/file-ws`；file-ws register 对账 core runtime node，未注册 → close(4404) 退避重试（4404 与 YJS 4004"环境不存在=终态"语义区分，见 12-files.md §7.1）。服务端不承诺重连，恢复完全由机器驱动（同 E-P2.2）。file-ws 的生命周期、断连语义与能力降级见 `docs/arch/12-files.md` §5/§7。
 
 ## 6. 三侧状态对账（断连语义的根）
 
