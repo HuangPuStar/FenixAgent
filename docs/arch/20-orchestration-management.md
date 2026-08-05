@@ -1,9 +1,9 @@
 # AgentController 编排域架构（实现基线）
 
-> 状态：实现基线（2026-08-04，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿）
-> 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`external-relay.ts`）的创建、连接和生命周期。
+> 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿）
+> 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`src/transport/relay/external-relay.ts`）的创建、连接和生命周期。
 > 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`。
-> 配套文档：`docs/arch/agent-controller-consumers-audit.md`（消费者审计报告与验收点）、`docs/arch/pending-design-decisions.md`（E-P2.2 断连终态、C-P2.5 用户配额决策）、`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。
+> 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
 > 约定：本文档从"目标设计基线"修订为"已验证实现基线"，描述与代码一致的真实架构；代码演进偏离时，先更新本文档再改代码。关键实现文件以相对路径引用（行号不维护，以语义为准）。
 
 ## 1. 总体架构
@@ -261,7 +261,7 @@ stateDiagram-v2
 | 场景 | 入口 | 实例语义 |
 |---|---|---|
 | A. HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` → `spawnInstanceViaController` | 每次独立实例，dispose 销毁 |
-| B. 前端交互式 Chat | `/acp/yjs/:agentId` → `ws-lifecycle.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
+| B. 前端交互式 Chat | `/acp/yjs/:agentId`（`src/routes/acp/index.ts`）→ `gateway.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
 | C. Workflow | `workflow/agent-chat-transport.ts` → `ensureRunning(userId, ...)` → `connectAgentRelay` | 复用，不随单次执行销毁，租约保护 |
 | D. 外部 API + meta-agent | `api-instance.ts` / `meta-agent.ts` → `spawnInstanceViaController` | 每次独立实例 |
 | E. 停止 / 回收 / 断连 | `instance.ts` stopInstance / `acp-idle-monitor.ts` / `acp-ws-handler.ts` 机器清理 | AgentNode FSM + 断连对账 |
@@ -318,7 +318,7 @@ stateDiagram-v2
 
 ### 场景 B：前端交互式 Chat
 
-浏览器 WS 打开 → `ws-lifecycle.handleOpen` → `ensureRunning`（不存在则创建）→ Chat Doc / Session Doc 初始快照 → `relayReady`。实例复用语义与 YJS 不变量（rcsSessionId 确定性、cwd 注入、status 门禁、广播隔离）见 `19-yjs-chat-streaming.md`。
+浏览器 WS 打开（`/acp/yjs/:agentId`，`src/routes/acp/index.ts` → `gateway.handleOpen`）→ `ensureRunning`（不存在则创建）→ Chat Doc / Session Doc 初始快照 → `relayReady`。实例复用语义与 YJS 不变量（rcsSessionId 确定性、cwd 注入、status 门禁、广播隔离）见 `19-yjs-chat-streaming.md`。
 
 ### 场景 C：Workflow 复用与清理
 
@@ -349,7 +349,7 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 
 ## 11. 本次重构经验教训（bug 修复模式）
 
-以下模式来自重构后消费者审计（`agent-controller-consumers-audit.md`）与 P0-P2 修复批次，是编排域维护的**防复发清单**：
+以下模式来自重构后消费者审计（审计报告内容已并入本文档 §7 消费者边界与 §12 技术债）与 P0-P2 修复批次，是编排域维护的**防复发清单**：
 
 1. **三侧状态不一致 = 幽灵实例**（E-P0.1）：任何清理路径漏掉 controller 活跃表 / core 快照 / supplement 任一侧，都会造成"额度被占、API 404、refCount 残留"。所有清理必须走统一收敛入口。
 2. **错误被吞 = 静默故障**（E-P2.1）：`send` 静默丢弃、路由 catch 扁平化、`relay_closed` 未识别，都是"无异常无回执"的静默故障。断连/发送失败必须显式抛错或产生有界失败。
@@ -373,6 +373,6 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 | T6 | meta-agent 吞错 | P2 | `meta-agent.ts` ensure 路径 `catch { return { environmentId, status } }` 吞掉 spawn 错误，success:true 无 instanceId（D-P2.1，审计后未修复）。修复：错误上抛或响应携带错误码 |
 | T7 | 环境级 maxConcurrency 写死 1000 | P2 | D-P2.3 有意保留；Web 控制台提供 maxSessions 配置入口后恢复 DB 读取，并同步补环境级 reservation（A-P2.1 教训） |
 | T8 | local stub 恒 connected | 已知限制 | `local-node-service.ts` 占位节点不触发节点级断连（N:1 共享节点语义）；无 relay 消费者且进程死亡的本地实例靠 idle 300s 兜底。移除条件：core 暴露进程退出事件 |
-| T9 | 测试缺口 | P2 | 以下修复无测试保护：D-P2.1（meta 堆积）、C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（验收点 12 单侧）、C-P2.5（配额桶归属） |
+| T9 | 测试缺口 | P2 | 以下修复无测试保护：D-P2.1（meta 堆积）、C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（重连分支"先清理再接受新连接"仅有单侧测试）、C-P2.5（配额桶归属） |
 
 > 验证记录：2026-08-04 校验，215 个相关测试全绿，server / orchestration / web 三侧 tsc 通过；本表 T1-T5 为校验中新发现（已交叉验证），T6/T7 为审计已知未修复项。

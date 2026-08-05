@@ -375,3 +375,32 @@ IMChannel 包含：
 - 测试：包内测试（`packages/chat-channel/src/**/*.test.ts`，协议层 seam + 假连接对象，无真实 WS/Agent）覆盖 `commandId` 去重、版本冲突、权限 CAS、Turn 状态机、两类断链、背压、广播隔离；既有 `src/__tests__/yjs-frontend-*.test.ts` 迁移/清理
 - 行为不变：`agent-chat-service.ts`（HTTP 单轮）与 workflow 路径仅迁移 import，对外契约不变
 - 遗留（二期）：YJS sync 增量握手对齐（Q13）、`expectedProjectionVersion` 前端乐观并发增强与冲突重试 UI、跨节点 Redis 租约 / 事件日志持久化
+
+---
+
+## 改动 16：19/20 号文档二次对齐（实现基线与代码一致化）
+
+**状态**：✅ 已实施（2026-08-05，`refactor/yjs` 分支）
+
+**现状（修订前）**：c95e1f0a 把 20 号文档升级为实现基线后，19 号文档仍残留旧架构概念与编号错乱：§1 架构图沿用 `InstanceManager` / `ACP Gateway` 旧模型、`ensureRunning(environmentId, agentConfigId)` 签名过时、`### 7.1` 位于 `## 8` 之下等多处章节编号错乱、Session Doc schema 缺 `activeTurn` / `sessions` / `decision` 字段；20 号文档头部与正文引用了两份已不存在/从未存在的文档（`agent-controller-consumers-audit.md` 已被 c95e1f0a 删除、`pending-design-decisions.md` 从未创建），且引用已删除的 `ws-lifecycle.handleOpen`。
+
+**目标**：19 号文档全面对齐 `refactor/yjs` 分支当前实现（`packages/chat-channel` + 宿主桥接 + 编排域），20 号文档清除失效引用并把必要内容内联。
+
+**实施内容**（19 号文档）：
+
+1. **§1 架构图重构**：`AgentController / InstanceManager / ACP Gateway` 旧子图替换为 ChatChannelController（控制面）+ state + protocol（ACPChannel 入站 / Translator 出站）+ 宿主桥接（chat-channel-bootstrap / ensureRunning / connectAgentRelay）+ 编排域（AgentController / AgentNode）双层结构，与 20 号文档一致。
+2. **§2.3 模块表**：新增 `ChatChannelController`（`channel/controller.ts` 装配点）、`Translator`（出站 action → ACP JSON-RPC，cwd/rpcId 注入）行；`InstanceManager` 行改为编排域 AgentController + AgentNode/AgentNodeService + 宿主 ensureRunning；RelayEventHandler 行补充 `relay_closed` 实例级回收（`terminateLocalDeadInstance`）。
+3. **§4.1 连接建立**：时序改写为实际实现（配额 → 授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → 共享 relay → 快照 → connect 握手 → flush 缓冲）；新增终态关闭码表（4500 机器离线 / 4502 配置失败 / 4501 keepalive 超时 / 1011、1013）与共享 relay 引用计数语义。
+4. **§4.2/4.3/4.4 流程**：ensureRunning 签名修正；load/resume 补充回放窗口（`REPLAY_WINDOW_MS` 10s，无头历史回放投影）与会话切换清理（CAS 快照 + `clearSessionDocContent` + `syncSessionId`）；命令出站路径改经 Translator → 共享 relay。
+5. **§5.2/5.3 schema**：补充 `CHAT_DOC_SCHEMA_VERSION = 2` / `SESSION_DOC_SCHEMA_VERSION = 3`；Session Doc 增加 `activeTurn`、`sessions` 投影位与 `decision` 字段；§5.4 澄清旧 `sessions` 字段与新投影位同名不同义。
+6. **§6.2/6.3/6.5**：补充 Translator 出站边界、`session/list` 轮询投影（10s 全量同步）、`relay_closed` 双清理语义。
+7. **章节编号修正**：`7.1/7.2 → 8.1/8.2`、`8.1/8.2/8.3 → 9.1/9.2/9.3`、`11.1/11.2 → 12.1/12.2`；删除 §10 尾部与 §4.1 重复的过时差异注。
+8. **§11/§13/§14/§15**：补充回放窗口、keep_alive 心跳与关闭码、失败矩阵终态码语义、场景 A/K 的 ensureRunning 触发时机与签名；决策摘要新增共享 relay 引用计数、回放窗口、实例生命周期归编排域三条。
+
+**实施内容**（20 号文档）：
+
+1. 头部"配套文档"删除两份失效引用（审计报告与待决决策内容已并入正文 §5/§2.2，注明不再单独成文）。
+2. §7 表格 B 行与 §9 场景 B 的 `ws-lifecycle.handleOpen` 修正为 `/acp/yjs/:agentId`（`src/routes/acp/index.ts`）→ `gateway.handleOpen`。
+3. §11 教训清单与 §12 T9 的审计报告/验收点引用改为内联描述。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建不受影响。

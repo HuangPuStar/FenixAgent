@@ -1,11 +1,11 @@
 # Chat 流式对话全链路架构
 # YJS Chat Streaming 实现基线
 
-> 状态：实现基线（2026-08-04，对齐 `refactor/yjs` 分支，C1–C7 切片完成后升级；包内测试与后端测试全绿）
+> 状态：实现基线（2026-08-05 修订，对齐 `refactor/yjs` 分支当前实现；包内测试与后端测试全绿）
 > 范围：浏览器 → 主服务 → Machine 的流式对话链路、关键实体生命周期、数据归属与隔离、典型用户场景。
 > 定位：本文档描述**已验证实现**，是前端交互式 Chat（YJS 路径）的权威架构契约。代码演进偏离时，先更新本文档再改代码；关键实现文件以相对路径引用（行号不维护，以语义为准）。
-> 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`src/services/chat-channel-bootstrap.ts`）；模块归属见 §2.3 实现位置列。
-> 实现差异速览（评审决策，详见对应章节）：事件日志与租约不实现（Q5，§7.2/§8.2）、Y.Doc schema 一次性切换无兼容窗口（Q4，§5.4）、ACP 私有帧在 ACPChannel 边界内规范化为事件（Q6，§6.2）、前端信封只发 `commandId`（Q9，§7.1）、连接建立时序与本文档描述的 YJS sync 握手不同（Q13，§4.1，二期优化项）。
+> 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`src/services/chat-channel-bootstrap.ts` 装配单例 + `src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
+> 实现差异速览（评审决策，详见对应章节）：事件日志与租约不实现（Q5，§7.2/§8.2）、Y.Doc schema 一次性切换无兼容窗口（Q4，§5.4）、ACP 私有帧在 ACPChannel 边界内规范化为事件（Q6，§6.2）、前端信封只发 `commandId`（Q9，§7.1）、连接建立时序为快照推送 + connect 握手（Q13，§4.1，YJS sync 增量握手对齐为二期优化项）。
 
 ## 1. 总体架构
 
@@ -30,22 +30,20 @@ flowchart TB
         TR["EventAggregator\naggregator.ts"]
         DM["DocManager\ndoc-manager.ts"]
         BB["YjsBroadcaster\nbroadcaster.ts"]
-        LM["SessionLeaseManager\n（占位，不实现）"]
     end
     subgraph Protocol["协议基础\n（packages/chat-channel/src/protocol/）"]
-        ACPC["ACPChannel\nacp-channel.ts"]
+        TRL["Translator\ntranslator.ts\n出站：action → ACP JSON-RPC"]
+        ACPC["ACPChannel\nacp-channel.ts\n入站：私有帧 / session/update → 规范化事件"]
     end
-    subgraph InstanceLayer["AgentController"]
-        IM["InstanceManager"]
-        INST["Instance"]
-        EC["Environment"]
-        AC["AgentConfig"]
-        AGW["ACP Gateway"]:::transport
+    subgraph Host["宿主桥接（src/services/ + src/routes/acp/）"]
+        HOST["chat-channel-bootstrap\nChatChannelDependencies 装配"]
+        ENSURE["ensureRunning\n（编排域复用 / 创建实例）"]
+        RELAY["connectAgentRelay\n共享 relay 连接"]
     end
-    IM -->|"管理：拉起 / 回收"| INST
-    INST -->|"归属"| EC
-    EC -->|"引用"| AC
-    INST -->|"持有"| AGW
+    subgraph Orchestration["编排域\n（packages/orchestration，见 20 号文档）"]
+        CTRL["AgentController\nspawn / stop / list"]
+        ANODE["AgentNode / AgentNodeService\n节点连接与引用计数"]
+    end
 
     subgraph Machine["Machine"]
         RT["Machine Runtime"]
@@ -58,18 +56,23 @@ flowchart TB
     CP -->|"actions"| YW
     YG <-->|" "| SC
     SC -->|"校验后的 command"| CC
-    CC -->|"串行化 Agent 命令"| ACPC
-    CC -.->|"租约（占位，不实现）"| LM
+    CC -->|"串行化 Agent 命令"| TRL
+    TRL -->|"ACP JSON-RPC（cwd 注入）"| REH
     CC -->|"用户消息 / 命令状态"| TR
-    REH <-->|"command / ACP 数据"| AGW
-    AGW <-->|"ACP WS"| RT
+    REH <-->|"command / ACP 数据（共享 relay）"| HOST
+    HOST -->|"实例复用 / 创建"| ENSURE
+    ENSURE -->|"复用"| CTRL
+    CTRL -->|"记账"| ANODE
+    HOST -->|"relay 连接"| RELAY
+    RELAY -->|"信道"| ANODE
+    ANODE -->|"ACP WS"| RT
     RT -->|"管理：拉起 / 回收"| AD
     AD <-->|"ACP 协议"| AG
-    CC -.->|"ensureRunning"| IM
     REH -->|"规范化 Agent events"| TR
     TR -->|"归并为实时状态更新"| DM
     DM -->|"实时 update"| BB
     BB -->|"本节点与跨节点广播"| SC
+    ACPC -.->|"入站规范化（REH 内部调用）"| REH
     YW <-->|"action / keep_alive / yjs:update"| YG
 
 ```
@@ -80,7 +83,7 @@ flowchart TB
 
 1. **业务事实由服务端单写**：浏览器可以提交意图，但不能直接写入共享 Chat Doc。用户消息、Agent 消息、工具调用和会话状态仅由当前会话的服务端写入者提交。
 2. **YJS 是实时状态投影，不是业务命令总线**：YJS Update 用于同步已经确认的会话事实；创建会话、发送消息、取消生成、权限应答等操作使用显式 Action。
-3. **Instance ACP session data 是实时恢复真相，Y.Doc 是随实例生命周期存在的镜像**：Durable Store 仅保存业务会话元数据；Redis 只承担有界热缓存和连接协调，均不能恢复已断链实例的 YJS 状态。
+3. **Instance ACP session data 是实时恢复真相，Y.Doc 是随实例生命周期存在的镜像**：Durable Store 仅保存业务会话元数据；Redis 承担有界热缓存、跨节点同步与 Session Doc 快照持久化（`persist/redis.ts` CAS 写入，会话切换前的并发安全清理用），均不能恢复已断链实例的 YJS 状态。
 4. **同一 Instance ACP session 的消息按其协议顺序处理**：服务端必须将其数据单写入对应 `rcsSessionId` 的 Y.Doc，避免重连或复用实例产生混写。
 5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端通过 `commandId`、`turnId` 和状态机实现幂等。
 6. **流式增量可丢、最终状态不可丢**：短暂的 token delta 可以合并；turn 完成、错误、取消、工具调用和权限决策必须可靠落盘。
@@ -94,24 +97,26 @@ flowchart TB
 | 控制面 | `create_session`、`load_session`、`send_message`、`cancel_turn`、`permission_response` | Action Ack / Error | 强校验、幂等、可审计 |
 | 数据面 | YJS state vector、当前 Doc、incremental update | Chat Doc / Session Doc 更新 | 仅镜像存活 Instance ACP session 的当前状态 |
 | Agent 协议面 | ACP command | ACP event | 单会话有序、可取消、超时明确 |
-| 生命周期面 | `ensureRunning`、keep-alive、dispose（租约占位） | instance/session status | 防泄漏、资源有界 |
+| 生命周期面 | `ensureRunning`、keep-alive、relay 引用计数释放 | instance/session status | 防泄漏、资源有界 |
 
 ### 2.3 模块职责
 
-实现位置均为 `packages/chat-channel/src/` 下的相对路径；宿主侧只有 `src/services/chat-channel-bootstrap.ts` 装配单例。
+实现位置均为 `packages/chat-channel/src/` 下的相对路径；宿主侧只有 `src/services/chat-channel-bootstrap.ts` 装配单例（`ChatChannelController` 构造器注入，`getChatChannelController()` 惰性单例）与 `src/routes/acp/index.ts` WS 端点装配。
 
 | 模块 | 实现位置 | 单一职责 | 不应承担 |
 |---|---|---|---|
-| `Yjs Gateway` | `channel/gateway.ts` + `channel/connection-registry.ts` | 认证、连接限流、协议解码、心跳与背压 | 领域状态变更、Agent 编排 |
-| `SessionChannel` | `channel/session-channel.ts` | 将连接绑定至安全上下文和会话频道，路由 Action/Update | 直接调用 Agent Engine |
+| `ChatChannelController` | `channel/controller.ts` | Chat 域控制面单例组装点：持有 Gateway / ConnectionRegistry / SessionChannel / RelayEventHandler / Broadcaster | 不直接调用宿主服务、不承载协议实现 |
+| `Yjs Gateway` | `channel/gateway.ts` + `channel/connection-registry.ts` | 认证、连接限流、协议解码、心跳与背压；open/message/close 生命周期编排；共享 relay 引用计数 | 领域状态变更、Agent 编排 |
+| `SessionChannel` | `channel/session-channel.ts` | 将连接绑定至安全上下文和会话频道，路由 Action/Update，`normalizeAction` 服务端补全信封，会话切换与清理 | 直接调用 Agent Engine |
 | `CommandCoordinator` | `channel/command-coordinator.ts` | Action 校验、`commandId` 幂等、单写约束、会话状态机、命令串行化 | 解析厂商特定 ACP 事件 |
-| `ACPChannel` | `protocol/acp-channel.ts` | 入站消息规范化边界：acp-link 私有帧与 JSON-RPC 帧翻译为规范化事件、双格式兼容 | 持久化 Chat Doc |
-| `RelayEventHandler` | `channel/relay-event-handler.ts` | 共享 relay 唯一入站消费者；断链（`relay_closed`）触发实例级回收与实时资源删除 | 业务去重 |
-| `EventAggregator` | `state/aggregator.ts` | 将规范化事件聚合为稳定 Y.Doc 投影，节流 token 更新 | 连接管理 |
-| `DocManager` | `state/doc-manager.ts` + `state/chat-writer.ts` + `state/factory.ts` | 维护 Instance ACP session 的实时 Y.Doc 镜像、微批次合并、生成 update | 处理未经确认的客户端业务写入、持久化或恢复旧 Y.Doc |
+| `ACPChannel` | `protocol/acp-channel.ts` | 入站消息规范化边界：acp-link 私有帧与 JSON-RPC 帧翻译为规范化事件、双格式兼容（`extractJsonRpc` / `extractAcpEvent`） | 持久化 Chat Doc |
+| `Translator` | `protocol/translator.ts` | 出站翻译：前端 action → ACP JSON-RPC（`translateSimpleAction`，cwd 由服务端注入）；ACP RPC 请求携带 rpcId | 解析入站事件 |
+| `RelayEventHandler` | `channel/relay-event-handler.ts` | 共享 relay 唯一入站消费者；断链（`relay_closed`）触发实例级回收（`terminateLocalDeadInstance` 注入）与本节点实时资源删除 | 业务去重 |
+| `EventAggregator` | `state/aggregator.ts` | 将规范化事件聚合为稳定 Y.Doc 投影，节流 token 更新（16ms 合并窗口） | 连接管理 |
+| `DocManager` | `state/doc-manager.ts` + `state/chat-writer.ts` + `state/factory.ts` | 维护 Instance ACP session 的实时 Y.Doc 镜像、微批次合并、生成 update、可选 Redis 持久化 | 处理未经确认的客户端业务写入、持久化或恢复旧 Y.Doc |
 | `YjsBroadcaster` | `channel/broadcaster.ts` | 本节点 fan-out、更新合并、慢消费者背压（64 KB 阈值） | 业务去重 |
 | `SessionLeaseManager` | **占位，不实现**（Q5 评审决策：YJS CRDT 已保证文档一致性，`commandId` 去重承担防重复副作用；`leaseEpoch` 类型占位） | 租约获取、续期、释放与 fencing token | 会话内容存储 |
-| `InstanceManager` | 编排域 `packages/orchestration`（见 `docs/arch/20-orchestration-management.md`） | Agent 实例拉起、复用、健康检查、空闲回收 | 浏览器会话状态 |
+| `Instance 生命周期` | 编排域 `packages/orchestration`（AgentController + AgentNode/AgentNodeService，见 `docs/arch/20-orchestration-management.md`）；宿主 `ensureRunning`（`src/services/instance.ts`）经桥接注入 | Agent 实例复用 / 创建（仅新建时检查并发配额）、共享 relay 连接、空闲回收 | 浏览器会话状态 |
 
 ## 3. 领域模型与标识体系
 
@@ -189,7 +194,7 @@ classDiagram
 
 - `sessionId`：平台持久化的业务会话标识，用于保存会话记录及建立前端 Agent 实例状态的确定性输入；本身不作为 YJS 或 relay 的隔离命名空间。
 - `rcsSessionId`：由服务端基于 `agentId`、`userId` 及必要时的 `sessionId` 确定性生成的前端 Agent 实例标识；它是 YJS Doc、relay handle、广播频道、缓存及会话级资源隔离的唯一命名空间。
-- `instanceId`：AgentController 管理的运行实例标识，仅用于向目标实例投递命令和维护实例生命周期；不是前端 Agent 实例或 YJS 隔离键。
+- `instanceId`：编排域（AgentController，见 20 号文档）记账的运行实例标识；宿主 `ensureRunning` 返回，gateway 以 `instanceId + userId + rcsSessionId` 建立共享 relay，仅用于命令投递和实例生命周期；不是前端 Agent 实例或 YJS 隔离键。
 - `acpSessionId`：Agent Engine 的 ACP 协议会话标识，仅用于 ACPChannel/relay 链接中的会话定位与消息投递；不可充当平台或 YJS 隔离标识。
 - `connectionId`：单个 WebSocket 连接标识；仅用于诊断和连接级限流。
 - `clientId`：浏览器安装或标签页实例标识；不具备授权能力。
@@ -203,7 +208,23 @@ classDiagram
 
 ### 4.1 建立连接与初始同步
 
-> **实现差异（Q13，二期优化项）**：当前实现不采用 `server_hello` / `sync_step_1` / `sync_step_2` / `sync_ready` 的 YJS sync 增量握手。实际时序（`channel/gateway.ts` `handleOpen`）为：认证/授权与配额检查 → `ensureRunning` → 获取/共享 relay → 打开 Chat Doc 与 Session Doc 并注册广播监听 → 直接推送两份 Doc 的全量快照（`yjs:update` snapshot）→ `relayReady = true` → 发送 `connect` 握手（远端据此回传 Agent status）→ flush 连接期间缓冲的 Action。`relayReady` 前到达的客户端消息进入有界缓冲，`relayReady` 后按 Action 处理。YJS sync 增量握手对齐为二期优化项。
+> **实现差异（Q13，二期优化项）**：当前实现不采用 `server_hello` / `sync_step_1` / `sync_step_2` / `sync_ready` 的 YJS sync 增量握手。实际时序（`channel/gateway.ts` `handleOpen`）为：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → `acquireRelay`（共享 relay：同一 `instanceId + userId` 多标签页复用，引用计数）→ 首个客户端打开 Chat Doc 并注册广播监听 + 启动 session/list 轮询 → 登记客户端（`relayReady = false`，消息进入有界缓冲）→ 推送两份 Doc 的全量快照（`yjs:update` snapshot）→ `relayReady = true` → 发送 `connect` 握手（远端据此回传 Agent status）→ flush 连接期间缓冲的 Action。`relayReady` 前到达的客户端消息进入有界缓冲，`relayReady` 后按 Action 处理。YJS sync 增量握手对齐为二期优化项。
+
+**建立失败的终态关闭码**（`channel/gateway.ts`，客户端据此决定是否自动重连）：
+
+| 关闭码 | 触发条件 | 客户端行为 |
+|---|---|---|
+| 4500 | 机器离线（`MACHINE_OFFLINE` / `AGENT_NODE_UNAVAILABLE` 等，宿主 `isMachineOffline` 判定） | 停止自动重连，展示手动重试 UI |
+| 4502 | 配置性永久失败（autoStart 关闭 / maxSessions 上限 / launch spec 构建失败，宿主 `classifyPermanentSpawnFailure`） | 停止自动重连（重连不改变失败条件） |
+| 4501 | 客户端 keep_alive 超时（页面隐藏等） | 不在后台自动重连，可见时手动重连 |
+| 1011 / 1013 | 通用失败 / 连接配额超限 | 可按退避策略重连 |
+| 4004 | 环境不存在（env not found，重试相同 URL 永远失败） | 终态，不重试 |
+
+**4004 只留给不可恢复场景（防无限重连）**：`resolveInstanceNumberFromSession` 解析失败（历史 `session_*` 书签、ACP `ses_*` 混入、实例回收后编号失效）视为**可恢复**——忽略该参数按默认路径继续连接，连接建立后由 ACP 层 `list_sessions` / `create_session` 重建会话；不得以 4004 拒绝。4004 不在客户端终态码集合，若用于可恢复场景会触发相同 URL 的无限重连；错误详情脱敏，只进服务端日志。
+
+**共享 relay 语义**：`ConnectionRegistry` 按 `instanceId + userId + rcsSessionId` 管理 `SharedRelay` 引用计数——同组多标签页共享同一 relay handle 与入站监听，引用计数归零才释放（YJS 不变量 8）。首个客户端建立时 `markRelayAttached`（idle 监控附着），并启动 `session/list` 定时轮询（Agent status 到达前不发送，`translateSimpleAction` 注入 cwd 与 rpcId）。
+
+**多实例隔离**：URL query 携带 DB `sessionId` 时，宿主 `resolveInstanceNumberFromSession` 解析出 instance 编号（`rcsSessionId = createDeterministicRcsSessionId(agentId, userId, sessionId)` 已按 sessionId 区分），`ensureRunning` 据此连接到正确的实例，保证不同实例的 YJS doc 不混写。
 
 ```mermaid
 sequenceDiagram
@@ -211,37 +232,31 @@ sequenceDiagram
     participant UI as Browser UI
     participant YC as YjsWsClient
     participant GW as Yjs Gateway
-    participant SC as SessionChannel
     participant DM as DocManager
-    participant ACP as ACPChannel
+    participant IB as 宿主桥接（ensureRunning / connectAgentRelay）
 
     UI->>YC: connect(rcsSessionId, auth context)
     YC->>GW: WebSocket upgrade + protocol version
-    GW->>GW: authenticate + authorize + quota check
-    GW->>SC: attach(connectionId, tenant, rcsSessionId)
-    SC->>DM: open(rcsSessionId, tenant)
-    alt Instance ACP session 存活且 Doc 已在内存
-        DM-->>SC: current docs + version
-    else Instance ACP session 存活但 Doc 尚未初始化
-        DM->>ACP: read current ACP session data
-        ACP-->>DM: current session data
-        DM->>DM: create current real-time docs
-        DM-->>SC: current docs + version
-    else Instance ACP session 不可用
-        DM->>DM: clear rcsSessionId real-time resources
-        DM-->>SC: session_not_live
+    GW->>GW: 连接配额检查 + authenticate + authorize
+    GW->>IB: ensureRunning(userId, agentId, "interactive", instanceNumber?)
+    IB-->>GW: instanceId（复用或新建）
+    GW->>IB: connectAgentRelay(instanceId, rcsSessionId)
+    IB-->>GW: relay handle（共享，引用计数 +1）
+    GW->>DM: open(rcsSessionId) 打开 / 恢复两份 Doc
+    DM-->>GW: current docs
+    alt 首个客户端
+        GW->>GW: 注册 Chat Doc 广播监听 + 启动 session/list 轮询
     end
-    SC-->>YC: server_hello(capabilities, heartbeat, limits)
-    YC->>SC: sync_step_1(state vectors)
-    SC-->>YC: sync_step_2(missing updates or current Doc)
-    SC-->>YC: sync_ready(serverVersion)
-    YC->>YC: relayReady = true
+    GW-->>YC: 推送 Chat Doc / Session Doc 全量快照（yjs:update）
+    GW->>GW: relayReady = true
+    GW->>IB: 发送 connect 握手（远端回传 Agent status）
+    GW->>GW: flush 缓冲 Action
     YC-->>UI: stores hydrated
 ```
 
 **约束：**
 
-- `sync_ready` 之前 UI 可以读取本地缓存，但不得把会话视为在线可写。
+- `relayReady` 之前 UI 可以读取本地缓存，但不得把会话视为在线可写。
 - 服务端必须先完成 Chat Doc 与 Session Doc 的同步，再接受依赖当前状态的 Action。（实现等价：两份 Doc 快照推送完成后才置 `relayReady`，之前只缓冲不处理。）
 - 客户端上传的 state vector 只是同步提示，不是业务版本或授权依据。
 - 协议协商失败应返回稳定错误码并关闭连接，不得静默降级成未知语义。
@@ -252,24 +267,31 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant B as Browser
+    participant GW as Yjs Gateway
     participant CC as CommandCoordinator
-    participant IM as InstanceManager
-    participant ACP as ACPChannel
+    participant IB as 宿主桥接（ensureRunning / connectAgentRelay）
+    participant RL as 共享 relay
+    participant TR as Translator
     participant DM as DocManager
 
-    B->>CC: load_session(commandId, sessionId)
+    B->>GW: load_session(commandId, sessionId)
+    GW->>GW: relayReady 后转发（此前缓冲）；load/resume 转发前开启回放窗口
+    GW->>CC: handleAction（normalizeAction 服务端补全信封）
     CC->>CC: authz + idempotency + state validation
-    CC->>IM: ensureRunning(environmentId, agentConfigId)
-    IM-->>CC: instanceId + ACP gateway
-    CC->>ACP: load/resume(acpSessionId?, serverResolvedCwd)
-    ACP-->>CC: loaded(acpSessionId, capabilities)
-    CC->>DM: 投影会话状态到 Session Doc（cwd 服务端注入）
+    Note over GW: ensureRunning 已在 handleOpen 完成；relay 已共享
+    CC->>TR: translateSimpleAction(load_session, cwd, rpcId)
+    TR->>RL: ACP session/load（cwd 服务端注入）
+    RL-->>CC: loaded(acpSessionId, capabilities)
+    CC->>DM: 投影会话状态到 Session Doc（会话切换先清空旧投影）
     DM-->>B: yjs:update(session status/capabilities)
     CC-->>B: action_ack(commandId, committedVersion)
 ```
 
-- `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖。
-- 能恢复既有 `acpSessionId` 时优先恢复；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
+- 实例生命周期在连接建立时完成：`ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`src/services/instance.ts`，经桥接注入）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
+- `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
+- **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：load/resume 转发时开启，窗口内且 Chat Doc 无时间线内容时，先于 JSON-RPC result 到达的 Agent 历史回放流（无头增量 / 无 turnId user_message）由 `relay-event-handler` 合成回放 turn 投影时间线——无持久化快照时历史恢复的唯一来源；窗口外或 Doc 已有内容（重连跳过回放语义）由聚合层拒绝。
+- **会话切换（switch session）**：`SessionChannel` 先 `prepareClearSessionSnapshot`（CAS 持久化清空后的 Session Doc 快照）再 `clearSessionDocContent` 清空两份 Doc，随后 `syncSessionId` 把新 `acpSessionId` 同步给同 `rcsSessionId` 的所有客户端（多标签页一致，不污染其他 rcsSessionId）；create_session 同批清空。
+- 能恢复既有 `acpSessionId` 时优先恢复（从 Session Doc `session.sessionId` 反查 binding）；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
 - Agent capability 未确认前，相关 Action 必须拒绝或排队在有界队列中。
 
 ### 4.3 发送消息与流式响应
@@ -280,7 +302,8 @@ sequenceDiagram
     participant B as Browser
     participant CC as CommandCoordinator
     participant DM as DocManager
-    participant ACP as ACPChannel
+    participant TR as Translator
+    participant RL as 共享 relay
     participant EA as EventAggregator
     participant AG as Agent Engine
 
@@ -290,17 +313,18 @@ sequenceDiagram
     CC->>DM: 写入用户 entry + 开启 turn（服务端单写）
     DM-->>B: yjs:update(user entry + running turn)
     CC-->>B: action_ack(commandId, turnId, committedVersion)
-    CC->>ACP: prompt(turnId, normalized content)
-    ACP->>AG: ACP session/prompt
+    CC->>TR: translateSimpleAction(send_prompt, cwd, rpcId)
+    TR->>RL: ACP session/prompt
+    RL->>AG: ACP session/prompt
     loop streaming
-        AG-->>ACP: message/tool/status delta
-        ACP-->>EA: normalized ACP event(turnId)
+        AG-->>RL: message/tool/status delta
+        RL-->>EA: normalized ACP event(turnId)
         EA->>EA: validate order + coalesce within budget
         EA->>DM: apply normalized ACP state batch
         DM-->>B: yjs:update(agent entry deltas)
     end
-    AG-->>ACP: turn terminal event
-    ACP-->>EA: completed/error/cancelled
+    AG-->>RL: turn terminal event
+    RL-->>EA: completed/error/cancelled
     EA->>DM: apply turn terminal state
     DM-->>B: yjs:update(final entry + terminal status)
 ```
@@ -321,17 +345,19 @@ sequenceDiagram
     autonumber
     participant B as Browser
     participant CC as CommandCoordinator
-    participant ACP as ACPChannel
+    participant TR as Translator
+    participant RL as 共享 relay
     participant DM as DocManager
 
     B->>CC: cancel_turn(commandId, turnId)
     CC->>CC: authorize + dedupe + validate active turn
     CC->>DM: turn → cancelling（状态机权威）
-    CC->>ACP: cancel(turnId)
+    CC->>TR: translateSimpleAction(cancel, sessionId, rpcId)
+    TR->>RL: ACP session/cancel（携带目标 sessionId，精确路由）
     alt Agent 确认取消
-        ACP-->>CC: cancelled
+        RL-->>CC: cancelled
         CC->>DM: turn → cancelled（终态）
-    else 超时或连接丢失
+    else 超时（10s 兜底）或连接丢失
         CC->>DM: turn → interrupted（终态，取消超时兜底）
         CC->>CC: quarantine late events by turn state
     end
@@ -350,21 +376,20 @@ sequenceDiagram
     participant N1 as Service Node A
     participant R as Redis PubSub
     participant N2 as Service Node B
-    participant ACP as Instance ACP session
 
     C1->>N1: attach rcsSessionId + state vectors
     C2->>N2: attach same rcsSessionId + state vectors
     N1->>R: subscribe(rcsSessionId channel)
     N2->>R: subscribe(rcsSessionId channel)
-    N1->>ACP: receive current session data
+    N1->>N1: 本地投影 ACP session data → Y.Doc（当前节点写入者）
     N1->>R: publish(rcsSessionId, update)
-    R-->>N2: update notification
-    N2->>ACP: read current session data when needed
+    R-->>N2: update notification（Redis provider 订阅）
+    N2->>N2: applyUpdate 到本地 Y.Doc
     N2-->>C2: yjs:update
     C1--xN1: network lost
     C1->>N2: reconnect + state vectors
     alt Instance ACP session 仍存活
-        N2->>ACP: read current session data
+        N2->>N2: 从 Redis 加载 / 恢复当前 Y.Doc
         N2-->>C1: current Doc
     else Instance ACP session 已断链
         N2->>N2: clear rcsSessionId real-time resources
@@ -391,6 +416,8 @@ sequenceDiagram
 拆分的原因是隔离高频内容流与低频控制状态，降低订阅和同步成本。两份 Doc 都是 Instance ACP session data 的实时镜像，不是持久化恢复源；跨文档更新按 ACP 会话内事件顺序应用，不依赖 YJS 跨 Doc transaction。
 
 ### 5.2 Chat Doc schema
+
+当前结构版本 `CHAT_DOC_SCHEMA_VERSION = 2`（`packages/chat-channel/src/schema.ts`，真相来源）：
 
 ```ts
 interface ChatDocRoot {
@@ -443,6 +470,8 @@ interface ToolCallProjection {
 
 ### 5.3 Session Doc schema
 
+当前结构版本 `SESSION_DOC_SCHEMA_VERSION = 3`（v3 新增根级 `sessions` 投影位；`loadSessionDoc` 以 schemaVersion 判空触发幂等补结构，Redis 旧快照（v2）恢复后自动补齐）：
+
 ```ts
 interface SessionDocRoot {
   schemaVersion: number;
@@ -465,7 +494,13 @@ interface SessionDocRoot {
     lastActivityAt: string | null;
     publicError: PublicError | null;
   };
+  activeTurn: {
+    turnId: string | null;
+    turnStatus: "accepting" | "running" | "awaiting_permission" | "cancelling" | "cancelled" | "interrupted" | "failed" | "completed" | null;
+    updatedAt: number | null;
+  } | null;
   pendingPermissions: Record<string, PermissionProjection>;
+  sessions: Record<string, SessionSummaryProjection>;
 }
 
 interface PermissionProjection {
@@ -477,16 +512,28 @@ interface PermissionProjection {
   options: Array<"allow_once" | "allow_session" | "deny">;
   status: "pending" | "resolved" | "expired";
   expiresAt: string;
+  /** 决议结果：CAS 迁移成功后写入（allow/deny）；expired 不写保持 null。前端据此展示 approved/denied */
+  decision: "allow" | "deny" | null;
+}
+
+interface SessionSummaryProjection {
+  sessionId: string;
+  title: string | null;
+  updatedAt: number | null;
+  lastMessageAt: number | null;
+  // 其他 agent 侧会话摘要字段（session_list 响应投影，全量同步幂等）
 }
 ```
 
-`organizationId`、完整授权规则、密钥、内部错误、原始凭证和机器连接信息不得进入 Y.Doc。租户上下文由服务端连接绑定提供，而不是由文档字段声明。
+- `session.activeTurn`（turnId / turnStatus / updatedAt）是活动 turn 的权威投影，前端由 `turnStatus` 派生展示状态；会话级扁平 status 枚举已删除（Turn 状态机见 §8.1）。
+- `sessions` 是 agent 级会话列表投影：`session/list` 轮询（10s）响应全量同步（幂等），响应中不存在的旧条目被删除（agent 侧删除可自愈）。
+- `organizationId`、完整授权规则、密钥、内部错误、原始凭证和机器连接信息不得进入 Y.Doc。租户上下文由服务端连接绑定提供，而不是由文档字段声明。
 
 ### 5.4 Schema 演进
 
 - `schemaVersion` 描述结构版本，`projectionVersion` 描述当前 Instance ACP session data 已镜像到 Y.Doc 的进度，两者不可混用。
 - 服务端升级实时 schema 时，应为仍存活的 Instance ACP session 以兼容方式更新 Y.Doc（实现为 `state/factory.ts` / `chat-writer.ts` 的幂等结构初始化：旧结构或空 Doc 补齐新骨架，不破坏已存在的同版本结构）；客户端只能消费服务端声明支持的版本。
-- 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `sessions` / `chatMeta` / `connection` / `permissions` / `capabilities` / `modelState` / `modeState` / `availableCommands` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。
+- 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `chatMeta` / `connection` / `permissions` / `capabilities` / `modelState` / `modeState` / `availableCommands` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。旧 Chat Doc 的 `sessions` 字段一并删除；Session Doc 当前 `sessions` 投影位（v3）是新的 agent 级会话列表，与旧字段同名不同义。
 - Doc 更新失败时仅将当前实时链接标记为 `degraded` 并报警；实例 ACP session 仍是权威状态，重连或新建实例时不得依赖旧 Y.Doc 继续写入。
 
 ## 6. ACP 到 YJS 状态聚合
@@ -534,9 +581,10 @@ flowchart LR
 
 1. `ACPChannel`（`protocol/acp-channel.ts`）先使用既有 `extractJsonRpc()` 兼容原始 JSON-RPC 与包裹格式（`{ type, payload: { jsonrpc: "2.0", ... } }`）；随后把 acp-link 私有帧（`agent_message_chunk` / `agent_thought_chunk` / `prompt_complete` / `tool_call_*` / `permission_*` 等）翻译为规范化事件（Q6）。聚合层只消费规范化事件，**不接受私有帧类型**。
 2. 事件类型从规范化事件读取（`session/update` 语义：增量、内容块、终态），文本内容通常位于同一 `update.content`。不得把 `sessionUpdate` 自身当作文本。
-3. `acpSessionId` 只能在服务端维护的、当前 Instance ACP session 的 binding 中反查 `rcsSessionId`。浏览器提供的 `rcsSessionId`、ACP 帧携带的任意额外上下文字段均不能覆盖该 binding。（实现：`channel/relay-event-handler.ts` 在投递前校验帧携带的 sessionId 与 binding 一致，不一致直接丢弃。）
-4. 聚合后的状态仅写入 binding 对应的 `chat:{rcsSessionId}` 与 `session:{rcsSessionId}`。`acpSessionId` 只用于协议投递，不能成为 YJS Doc 名称、广播频道或缓存键。
-5. binding 不存在、已解绑、Instance ACP session 已断链，或 `rcsSessionId` 的实时资源已删除时，立即丢弃事件；不得重新创建旧 Doc，也不得缓存给未来实例使用。
+3. **出站翻译边界**：`Translator`（`protocol/translator.ts` `translateSimpleAction`）把前端 action 翻译为 ACP JSON-RPC（`session/prompt` / `session/cancel` / `session/load` / `session/resume` / `session/new` / `session/list` / `permission` 响应等），`cwd` 由服务端按已认证 environment 注入，`rpcId` 由连接持有者分配（避免消息被当作 notification）；`cancel` 携带目标 `sessionId`，dispatcher 据此精确路由。
+4. `acpSessionId` 只能在服务端维护的、当前 Instance ACP session 的 binding 中反查 `rcsSessionId`。浏览器提供的 `rcsSessionId`、ACP 帧携带的任意额外上下文字段均不能覆盖该 binding。（实现：`channel/relay-event-handler.ts` 在投递前校验帧携带的 sessionId 与 binding 一致，不一致直接丢弃。）
+5. 聚合后的状态仅写入 binding 对应的 `chat:{rcsSessionId}` 与 `session:{rcsSessionId}`。`acpSessionId` 只用于协议投递，不能成为 YJS Doc 名称、广播频道或缓存键。
+6. binding 不存在、已解绑、Instance ACP session 已断链，或 `rcsSessionId` 的实时资源已删除时，立即丢弃事件；不得重新创建旧 Doc，也不得缓存给未来实例使用。
 
 ### 6.3 规范化状态映射
 
@@ -547,9 +595,10 @@ flowchart LR
 | Agent 文本增量 | Chat Doc 的当前 assistant `Y.Text` | 追加到当前 `entryId/blockId`；没有活跃 assistant entry 时创建一个 |
 | 思考/推理增量 | Chat Doc 的 reasoning block | 按产品可见性写入 `summary` 或 `hidden`，不得把隐藏内容发送给无权客户端 |
 | 工具调用开始、更新、完成 | Chat Doc 的 `toolCalls` | 按 `toolCallId` upsert；结构化状态立即同步，超大结果仅保留受授权资源引用 |
-| 权限请求、解决或过期 | Session Doc 的 `pendingPermissions` | 按 `permissionId` upsert；选项、状态和过期时间由服务端规范化 |
+| 权限请求、解决或过期 | Session Doc 的 `pendingPermissions` | 按 `permissionId` upsert；选项、状态和过期时间由服务端规范化；决议结果写 `decision` |
 | Agent status、capabilities、session info | Session Doc 的 `agent` / `session` | 覆盖当前状态；能力未确认前保持不可用 |
-| turn 完成、失败、取消或中断 | Chat Doc entry 与 Session Doc 活动 turn | 终态立即写入，清除 `activeTurnId`，之后的同 turn 增量直接丢弃 |
+| `session/list` 响应 | Session Doc 的 `sessions` | 全量同步（幂等，10s 轮询）；响应中不存在的旧条目删除（`state/session-list.ts`） |
+| turn 完成、失败、取消或中断 | Chat Doc entry 与 Session Doc 活动 turn | 终态立即写入，清除 `activeTurn`，之后的同 turn 增量直接丢弃 |
 
 映射必须是幂等的：重放同一 ACP 帧不应重复创建 Entry、工具调用或权限请求。聚合器以 `turnId`、`entryId`、`toolCallId`、`permissionId` 和终态状态机确定写入目标；缺少必要关联信息的帧拒绝投影并记录脱敏诊断。
 
@@ -563,7 +612,7 @@ flowchart LR
 
 ### 6.5 断链与清理
 
-Instance ACP session 断链或实例回收时，聚合器必须先停止接收该 binding 的新事件并取消其 `rcsSessionId` 待 flush 批次，再删除 Chat Doc、Session Doc、relay handle、广播订阅和热缓存。已排队或晚到的 ACP 帧均丢弃。
+Instance ACP session 断链（`relay_closed`）或实例回收时，`RelayEventHandler` 触发两类清理：宿主侧实例级回收（`terminateLocalDeadInstance` 注入，内部校验 nodeId，远程实例由机器级清理覆盖）与本节点实时资源删除（Chat Doc、Session Doc、广播订阅，先注销监听再销毁 Doc，杜绝僵尸监听器）。聚合器停止接收该 binding 的新事件并取消其 `rcsSessionId` 待 flush 批次；已排队或晚到的 ACP 帧均丢弃。
 
 前端 WebSocket/relay 断开不触发聚合器取消批次或删除 Y.Doc；只要同一 Instance ACP session 仍存活，聚合器继续维护该 `rcsSessionId` 的实时镜像。新的 Instance ACP session 即使复用确定性 `rcsSessionId`，也只能创建新的空批次和当前实时投影，绝不得接续旧批次或旧 Y.Doc。
 
@@ -614,6 +663,8 @@ interface ActionError {
 
 `accepted` 只表示进入有界处理队列，`committed` 才表示业务事实已持久化。客户端在超时后可使用相同 `commandId` 重发，不得换 ID 猜测执行结果。**`commandId` 去重表**（`channel/command-coordinator.ts`，每 `rcsSessionId` 进程内 Map，随实例生命周期释放）覆盖客户端最大重试窗口：已提交命令重发返回原 Ack（`duplicate`），不重复调用 Agent；执行失败清除去重记录，允许重发重新执行。
 
+**转发失败兜底**（`channel/action-forward.ts` `forwardYjsAction`）：Action 到达 SessionChannel 前抛错（含 relay 发送失败）时，回退为脱敏 `AGENT_UNAVAILABLE` 错误（`retryable: true`），诊断上下文只进服务端日志；`relayReady` 前缓冲的消息在连接就绪后重放（`list_sessions` 跳过——连接建立后由 status 触发）。
+
 ### 7.2 领域事件 envelope
 
 > **评审决策（Q5）：事件日志体系不实现**。`eventId` / `eventSeq` 不显式建模、无事件日志持久化；`leaseEpoch` 为类型占位（运行时恒为固定值）。理由：YJS 底层 CRDT 已保证文档并发写收敛与顺序；单实例部署下进程内天然单写；"防重复副作用"由 `commandId` 去重表承担。以下类型与事件族仅作为协议形态参考，不作为实现契约。
@@ -646,7 +697,7 @@ interface SessionEvent<TType extends string, TPayload> {
 
 ## 8. 状态机与并发规则
 
-### 7.1 Turn 状态机
+### 8.1 Turn 状态机
 
 ```mermaid
 stateDiagram-v2
@@ -671,7 +722,7 @@ stateDiagram-v2
 
 终态不可逆。恢复执行必须创建显式的新 turn（事件日志体系未实现，不依赖 reconciliation 事件），不能把已终止 turn 改回 `running`。状态机权威实现位于 `state/aggregator.ts`（`applyNormalizedEvent` 守卫）与 `channel/session-channel.ts`（取消超时 → `interrupted` 兜底）；Session Doc 的 `session.activeTurn`（`turnId` + `turnStatus` + 时间戳）为权威，前端由 `turnStatus` 派生展示状态。
 
-### 7.2 并发控制
+### 8.2 并发控制
 
 1. 同一 `rcsSessionId` 的命令按有界队列严格串行执行（`channel/command-coordinator.ts`，队列上限默认 64，超出返回 `RATE_LIMITED`）；`eventSeq` 事件日志未实现（Q5），串行性由进程内队列保证。
 2. 默认每个会话仅允许一个活动 turn；若未来支持并行 turn，必须先引入独立 branch/thread 聚合，不能直接放宽约束。
@@ -682,7 +733,7 @@ stateDiagram-v2
 
 ## 9. 运行时权威性与断链
 
-### 8.1 数据权威顺序
+### 9.1 数据权威顺序
 
 实时对话状态按以下顺序归属：
 
@@ -694,14 +745,14 @@ Instance ACP session data（权威状态）
 
 YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent 状态的持久化真相。`rcsSessionId` 仅在对应 Instance ACP session 存活期间，为该前端 Agent 实例的实时资源提供隔离命名空间。
 
-### 8.2 两类断链
+### 9.2 两类断链
 
 | 断链对象 | YJS 处理 | 后续行为 | 实现位置 |
 |---|---|---|---|
 | 前端 WebSocket / relay 断开 | 不对 `rcsSessionId` 执行任何 YJS 状态清理 | Instance ACP session 存活时，客户端重连后同步当前实时 Y.Doc | `channel/gateway.ts` `handleClose` → `releaseRelay`（仅释放连接级资源与 relay 引用计数；Doc 保留） |
 | Instance ACP session 断链或实例回收 | 删除该 `rcsSessionId` 的 Chat Doc、Session Doc、relay handle、广播订阅和热缓存 | 后续启动或连接的是新的 Instance ACP session，并创建新的 YJS 实时投影；不加载旧 Y.Doc | `channel/relay-event-handler.ts` `relay_closed` 分支（先注销广播监听再销毁 Doc，杜绝僵尸监听器） |
 
-### 8.3 运行时更新
+### 9.3 运行时更新
 
 服务端将当前 Instance ACP session data 转换并单写入 Y.Doc，再通过 ACPChannel / relay 广播给同一 `rcsSessionId` 下的前端连接。前端不得直接写入业务内容。
 
@@ -717,20 +768,20 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 - 对消息发送、连接、同步流量、工具调用和权限应答分别限流；租户、用户、会话和连接四级配额同时生效。
 - 导出、删除和保留策略作用于业务会话记录、附件与缓存；删除任务应可审计且最终清除所有派生副本。
 
-> 注：连接建立时序与 §4.1 描述的 YJS sync 握手存在实现差异（当前为全量快照推送），对齐为二期优化项（Q13），详见 §4.1 差异标注。
-
 ## 11. 背压、超时与资源治理
 
 - 每连接维护有界发送队列。超过软阈值（64 KB）时合并 update 或跳过发送（客户端重连后经快照重新同步）；超过硬阈值时以可恢复错误关闭连接。（实现：`channel/broadcaster.ts` `sendToYjsWs` 的 `bufferedAmount > 64 KB` 跳过发送 + `Y.mergeUpdates` 合并；`YJS_MAX_CLIENTS` 默认 200 连接配额在 `channel/connection-registry.ts` 与 `channel/gateway.ts`。）
 - ACP 读取循环与客户端广播解耦，单个浏览器永远不能阻塞 Agent stdout/WebSocket 消费。
-- `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时 → `expired`，见 `channel/session-channel.ts`。）
+- `send_message`、Agent 启动、首 token、turn 总时长、工具执行、权限等待和取消分别配置超时，避免用一个总超时掩盖阶段故障。（已实现：取消超时 10s → `interrupted`、权限请求超时默认 5min → `expired`，见 `channel/session-channel.ts`。）
 - 会话队列、事件批次、Y.Doc 大小、单消息大小、工具结果和附件均有硬上限。（已实现：每 `rcsSessionId` 命令队列上限 64、Action payload 上限 1 MB，见 `channel/command-coordinator.ts`。）
-- Agent 实例按租户与用户并发配额治理；空闲回收必须确保无活动 turn、无待处理权限和无未提交事件。
-- 服务关闭时停止接收新 Action，完成或中断在途提交，释放租约（占位），然后关闭连接和实例引用。
+- **回放窗口**（`channel/connection-types.ts` `REPLAY_WINDOW_MS`，10s）：`load_session` / `resume_session` 转发时开启，用于承接先于 JSON-RPC result 到达的 Agent 历史回放流（见 §4.2）；窗口外或 Chat Doc 已有内容时保持聚合层拒绝语义。
+- **keep_alive 心跳**（`channel/gateway.ts`）：服务端周期性下发 `keep_alive`，客户端超时未回（页面隐藏等）以 4501 关闭，不在后台自动重连；连接建立失败以 4500 / 4502 / 1011 终态或可重连码关闭（见 §4.1）。
+- Agent 实例按租户与用户并发配额治理；空闲回收必须确保无活动 turn、无待处理权限和无未提交事件（实例级活跃由 `touchInstanceActivity` 观测，见 20 号文档 §7）。
+- 服务关闭时停止接收新 Action，完成或中断在途提交，释放 relay 引用与实例引用，然后关闭连接。
 
 ## 12. 可观测性与 SLO
 
-### 11.1 关键指标
+### 12.1 关键指标
 
 - 连接：在线连接数、认证失败、重连率、心跳超时、背压断连。
 - 同步：初始同步耗时、当前 Doc 大小、update 大小/频率、连接重同步耗时。
@@ -739,7 +790,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 - 一致性：命令去重命中、晚到 ACP 消息丢弃、YJS 镜像失败、Instance ACP session 断链数量。
 - 资源：每会话 Doc 内存、广播队列深度、事件批次大小、Redis/Durable Store 延迟。
 
-### 11.2 Trace 与日志关联
+### 12.2 Trace 与日志关联
 
 统一携带 `traceId`、`organizationId`（可哈希）、`sessionId`、`rcsSessionId`、`turnId`、`commandId`、`instanceId`、`acpSessionId` 和 `connectionId`。从浏览器 Action 到 Agent command、ACP session data 更新及 YJS 广播形成一条 trace，但正文和敏感参数不进入 span attribute。
 
@@ -758,7 +809,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 | 服务节点崩溃 | 短暂重连或实例断开 | 能重新连接仍存活的 Instance ACP session 时同步其当前 Y.Doc；否则清理 YJS 实时状态 | 不伪造完成 |
 | Redis 不可用 | 跨节点实时广播受限 | 降级或关闭受影响连接；不得以 Redis 恢复旧 Y.Doc | ACP session data 不被缓存替代 |
 | Durable Store 不可用 | 不影响已运行实例的实时流 | 不把业务持久化故障伪装成 YJS 恢复；按业务存储策略处理 | YJS 不承担持久化真相 |
-| Agent 启动失败 | Session `degraded`，允许重试 | 不创建 YJS 实时投影，记录脱敏原因 | 不产生幽灵实例 |
+| Agent 启动失败 | 连接以终态码关闭（4500 机器离线 / 4502 配置性失败），前端展示对应 UI | 不创建 YJS 实时投影，记录脱敏原因；客户端停止或按退避策略重连（§4.1） | 不产生幽灵实例 |
 | ACP 中途断开 | 当前交互中断 | 删除该 `rcsSessionId` 的 YJS 实时资源，丢弃晚到 ACP 消息 | 不伪造完成 |
 | 慢消费者 | 短暂落后后重新同步当前 Doc | 合并更新或断开重连 | 不影响 Agent 与其他用户 |
 | 客户端重复 Action | 返回原结果 | `commandId` 去重 | 副作用一次 |
@@ -779,7 +830,7 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 
 ### 场景 A：首次进入会话
 
-用户打开 ChatPanel 后先看到 loading；认证、授权和两份 Doc 同步完成后进入 ready。Agent 尚未启动不影响浏览历史；第一次需要 Agent 的 Action 才触发 `ensureRunning`。失败时显示可重试错误，不清空已有消息。
+用户打开 ChatPanel 后先看到 loading；认证、授权、`ensureRunning`（连接建立时执行，复用或创建实例）和两份 Doc 快照同步完成后进入 ready。Agent 尚未启动不影响浏览历史；`ensureRunning` 只在连接建立时执行一次，后续 Action 不再创建实例。建立失败时按关闭码展示对应状态（4500 机器离线手动重试 / 4502 配置失败 / 其他可重试），不清空已有消息。
 
 ### 场景 B：发送消息并收到流式回复
 
@@ -821,9 +872,9 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 
 ### 场景 K：并发受限时建立 YJS 链接
 
-用户进入 ChatPanel 时，服务端先按可信的 `environmentId + agentConfigId` 执行 `ensureRunning`：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
+用户进入 ChatPanel 时，服务端在 WS 建立流程中按可信的 `userId + agentId` 执行 `ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`src/services/instance.ts`，经桥接注入）：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限（编排域配额，见 20 号文档 §8.2）。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
 
-实例可用后，前端再以 `rcsSessionId` 建立 YJS 链接；YJS 连接数另受 `YJS_MAX_CLIENTS` 限制。任一限制拒绝时，服务端返回明确错误并关闭或拒绝本次链接；前端显示失败状态，不自动排队、轮询或无限重试，也不得影响已有 `rcsSessionId` 的连接和投影。
+实例可用后，前端再以 `rcsSessionId` 建立 YJS 链接；YJS 连接数另受 `YJS_MAX_CLIENTS` 限制。任一限制拒绝时，服务端返回明确错误并关闭或拒绝本次链接（终态关闭码见 §4.1）；前端显示失败状态，不自动排队、轮询或无限重试，也不得影响已有 `rcsSessionId` 的连接和投影。
 
 ### 场景 L：实例回收后的 YJS 链接恢复
 
@@ -841,5 +892,8 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 6. **单活动 turn**作为当前领域不变量；并行对话未来通过 branch/thread 模型显式引入。
 7. **至少一次传输 + 幂等命令**替代对网络“恰好一次”的不现实假设。
 8. **不可证明的恢复不自动重放 prompt**，优先避免重复外部副作用。
+9. **共享 relay 引用计数**：同一 `instanceId + userId` 的多标签页共享 relay handle 与入站监听，引用计数归零才释放——实例连接级资源有界，会话切换不重建 relay。
+10. **回放窗口承接历史回放流**：load/resume 转发的 10s 回放窗口（`REPLAY_WINDOW_MS`）让先于 JSON-RPC result 到达的无头 Agent 历史增量可投影为时间线，是刷新恢复的兜底来源；窗口外保持聚合层拒绝语义，不伪造会话连续。
+11. **实例生命周期归编排域**：Chat 域经 `ensureRunning` / `connectAgentRelay` 消费实例，创建与销毁由编排域契约负责（见 20 号文档），Chat 域不直接触碰 spawn/stop。
 
 以上约束共同定义当前实现形态：YJS 提供低延迟、多端一致的交互投影；`commandId` 去重与 Turn 状态机提供恰好一次与终态收敛；ACPChannel 隔离 Agent 协议；各层都能独立演进，而不破坏会话事实的一致性。
