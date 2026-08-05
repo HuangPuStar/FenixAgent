@@ -296,7 +296,10 @@ export function ChatPanel({
   const callbacks = useMemo(
     () => ({
       onSendPrompt: (contentBlocks: unknown[]) => sendViaWs({ action: "send_prompt", content: contentBlocks }),
-      onCancel: () => sendViaWs({ action: "cancel" }),
+      // cancel 携带当前 ACP sessionId：服务端（translator → dispatcher）据此精确路由到
+      // 对应 session 的活跃 query，多会话并发下避免取消落在错误的 query；空字符串
+      // （会话未建立）时省略字段，服务端 fallback 当前会话（向后兼容旧客户端）。
+      onCancel: () => sendViaWs({ action: "cancel", sessionId: sessionState.acpSessionId || undefined }),
       onCreateSession: () => sendViaWs({ action: "create_session" }),
       onLoadSession: (sid: string) => sendViaWs({ action: "load_session", sessionId: sid }),
       onResumeSession: (sid: string) => sendViaWs({ action: "resume_session", sessionId: sid }),
@@ -307,7 +310,7 @@ export function ChatPanel({
         sendViaWs({ action: "respond_permission", requestId, optionId }),
       onSetMode: (modeId: string) => sendViaWs({ action: "set_session_mode", modeId }),
     }),
-    [sendViaWs],
+    [sendViaWs, sessionState.acpSessionId],
   );
 
   // 未选中实例 → 欢迎空状态

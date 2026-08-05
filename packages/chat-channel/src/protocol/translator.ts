@@ -22,7 +22,10 @@ export function translateSimpleAction(
     case "send_prompt":
       return { jsonrpc: "2.0", id, method: "session/prompt", params: { content: parsed.content } };
     case "cancel":
-      return { jsonrpc: "2.0", id, method: "session/cancel", params: {} };
+      // 携带目标 sessionId（前端来自 sessionState.acpSessionId），dispatcher 据此
+      // 精确路由到 adapter 注册表中对应 session 的 query；旧客户端不带时字段缺失，
+      // dispatcher fallback 到当前会话（向后兼容）。
+      return { jsonrpc: "2.0", id, method: "session/cancel", params: { sessionId: parsed.sessionId } };
     case "create_session":
       return { jsonrpc: "2.0", id, method: "session/new", params: { cwd: workspacePath } };
     case "load_session":

@@ -227,7 +227,7 @@ export class AcpDispatcher {
           await this.handlePrompt(id, params as { content: ContentBlock[] });
           break;
         case ACP_METHOD.SESSION_CANCEL:
-          await this.handleCancel(id);
+          await this.handleCancel(id, params as { sessionId?: string } | undefined);
           break;
         case ACP_METHOD.SESSION_SET_MODEL:
           await this.handleSetSessionModel(id, params as { modelId: string });
@@ -323,14 +323,19 @@ export class AcpDispatcher {
     this.send(createSuccessResponse(id, { acknowledged: true }));
   }
 
-  private async handleCancel(id: number | string): Promise<void> {
+  /**
+   * 处理 session/cancel。params.sessionId 透传 RPC 中的目标会话（多会话并发下
+   * cancel 必须精确路由到对应 session 的 query）；旧客户端不携带时 fallback
+   * 当前会话（state.sessionId），保持向后兼容。
+   */
+  private async handleCancel(id: number | string, params: { sessionId?: string } = {}): Promise<void> {
     if (!this.state.connection || !this.state.sessionId) {
       this.send(createSuccessResponse(id, { cancelled: false }));
       return;
     }
     cancelPendingPermissions(this.state);
     try {
-      await this.state.connection.cancel({ sessionId: this.state.sessionId });
+      await this.state.connection.cancel({ sessionId: params.sessionId ?? this.state.sessionId });
       this.send(createSuccessResponse(id, { cancelled: true }));
     } catch (error) {
       this.send(createErrorResponse(id, -32603, `Cancel failed: ${(error as Error).message}`));

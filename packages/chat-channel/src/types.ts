@@ -146,6 +146,9 @@ export interface SessionStateSnapshot {
   acpSessionId: string;
   status: SessionStatus;
   loading: LoadingState | null;
+  /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮，
+   *  与 loading 正交：running 输出期间 loading 为 null，但停止按钮必须保持可用 */
+  canCancel: boolean;
   messages: SessionMessage[];
   structuredMessages: StructuredMessage[];
   streaming: { text: string; reasoning: string } | null;

@@ -212,9 +212,11 @@ export class SessionChannel {
       throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
     }
 
-    if (command.type === "cancel" && connection.acpSessionId) {
-      // 取消流程进入状态机（聚合层权威）：turn → cancelling（非终态），晚到增量自此丢弃；
-      // Agent 确认取消（turn_cancelled）或取消超时（turn_interrupted）收敛到终态。
+    if (command.type === "cancel") {
+      // 取消流程无条件进入状态机（聚合层权威）：turn → cancelling（非终态），晚到增量自此丢弃。
+      // - acpSessionId 非空：正常路径，Agent 确认（turn_cancelled）或取消超时（turn_interrupted）收敛终态；
+      // - acpSessionId 为 null（session/new 的 RPC 往返尚未完成）：Agent 回 {cancelled:false}
+      //   且无任何终态事件，必须 arm 取消超时兜底，否则 turn 永久卡 accepting（loading 卡死）。
       docManager.processNormalizedEvent(connection.rcsSessionId, {
         type: "turn_cancel_requested",
         update: {},
