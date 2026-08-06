@@ -4,8 +4,10 @@
 // 职责错位纠正：Chat Doc `chat:{rcsSessionId}` = 消息时间线（高频），
 // Session Doc `session:{rcsSessionId}` = 会话元信息 / Agent 状态（低频）。
 // 旧字段（agentInfo/sessions/chatMeta/connection/permissions/capabilities/
-// modelState/modeState/availableCommands/tokenUsage/messages/streaming/tools/
-// artifacts/structuredMessages）全部删除，无兼容窗口。
+// tokenUsage/messages/streaming/tools/artifacts/structuredMessages）全部删除，
+// 无兼容窗口；modelState/modeState/availableCommands 以新结构恢复为 Session Doc
+// session map 的会话级元数据投影（session/new、load 响应与 available_commands_update
+// 通知经聚合层写入，见 state/aggregator.ts applySessionControl）。
 
 // ── 版本 ──
 

@@ -536,7 +536,7 @@ interface SessionSummaryProjection {
 
 - `schemaVersion` 描述结构版本，`projectionVersion` 描述当前 Instance ACP session data 已镜像到 Y.Doc 的进度，两者不可混用。
 - 服务端升级实时 schema 时，应为仍存活的 Instance ACP session 以兼容方式更新 Y.Doc（实现为 `state/factory.ts` / `chat-writer.ts` 的幂等结构初始化：旧结构或空 Doc 补齐新骨架，不破坏已存在的同版本结构）；客户端只能消费服务端声明支持的版本。
-- 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `chatMeta` / `connection` / `permissions` / `capabilities` / `modelState` / `modeState` / `availableCommands` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。旧 Chat Doc 的 `sessions` 字段一并删除；Session Doc 当前 `sessions` 投影位（v3）是新的 agent 级会话列表，与旧字段同名不同义。
+- 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `chatMeta` / `connection` / `permissions` / `capabilities` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。`modelState` / `modeState` / `availableCommands` 属会话级元数据，以新结构投影到 Session Doc `session` map（models/modes 来自 session/new、load 响应，命令列表来自 `available_commands_update` 通知，见 `state/aggregator.ts` `applySessionControl`）。旧 Chat Doc 的 `sessions` 字段一并删除；Session Doc 当前 `sessions` 投影位（v3）是新的 agent 级会话列表，与旧字段同名不同义。
 - Doc 更新失败时仅将当前实时链接标记为 `degraded` 并报警；实例 ACP session 仍是权威状态，重连或新建实例时不得依赖旧 Y.Doc 继续写入。
 
 ## 6. ACP 到 YJS 状态聚合

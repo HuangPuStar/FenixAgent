@@ -139,6 +139,34 @@ test("session_updated with models/modes projects model and mode state", () => {
   expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("modelState")).toBeUndefined();
 });
 
+// available_commands_update（agent 启动后下发）→ Session Doc session map 投影，
+// 切换会话时随 session map 清空，不留旧会话的命令
+test("session_updated with availableCommands projects commands and clears on session switch", () => {
+  applyNormalizedEvent(pair, {
+    type: "session_updated",
+    update: {
+      sessionId: "ses_1",
+      status: "ready",
+      availableCommands: [
+        { name: "help", description: "Show help", input: { hint: "command name" } },
+        { name: "clear", description: "Clear chat" },
+      ],
+    },
+    content: null,
+  });
+
+  const session = getSessionRoot(pair.session).get("session") as Y.Map<unknown>;
+  const availableCommands = session.get("availableCommands") as Y.Array<Y.Map<unknown>>;
+  expect(availableCommands.length).toBe(2);
+  expect(availableCommands.get(0)?.get("name")).toBe("help");
+  expect(availableCommands.get(0)?.get("input")).toEqual({ hint: "command name" });
+  expect(availableCommands.get(1)?.get("description")).toBe("Clear chat");
+
+  // 切换会话（clearSessionDocContent）清空 session map：命令随会话重建，不留旧值
+  clearSessionDocContent(pair.session);
+  expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("availableCommands")).toBeUndefined();
+});
+
 // 每次成功投影后两份 Doc 的 projectionVersion 各 +1（描述镜像进度，与 schemaVersion 无关）
 test("projectionVersion bumps on each applied event", () => {
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));

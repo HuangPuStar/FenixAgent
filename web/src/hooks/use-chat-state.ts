@@ -3,10 +3,11 @@
 // - Chat Doc（chat:{rcsSessionId}）：token 用量（turn 完成时写入 assistant entry）
 // - Session Doc（session:{rcsSessionId}）：session/agent/pendingPermissions
 //
-// 旧字段（agentInfo/sessions/chatMeta/connection/availableCommands）已从 Y.Doc schema
-// 删除；此处按新结构派生，无法派生的字段给保守默认值。
-// modelState/modeState 为会话级元数据：session/new、load 响应的 models/modes 经
-// 聚合层投影到 Session Doc session map，此处从嵌套 Y.Map/Y.Array 转换回展示形状。
+// 旧字段（agentInfo/sessions/chatMeta/connection）已从 Y.Doc schema 删除；
+// 此处按新结构派生，无法派生的字段给保守默认值。
+// modelState/modeState/availableCommands 为会话级元数据：session/new、load 响应的
+// models/modes 与 available_commands_update 通知经聚合层投影到 Session Doc session map，
+// 此处从嵌套 Y.Map/Y.Array 转换回展示形状。
 
 import type { AgentInfo, ChatStateSnapshot } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
@@ -83,6 +84,28 @@ function readModeState(session: Y.Map<unknown> | undefined): ChatStateSnapshot["
   return { currentModeId, availableModes };
 }
 
+/** 从 Session Doc session map 读取可用命令列表（available_commands_update 投影，slash 命令菜单数据源） */
+function readAvailableCommands(session: Y.Map<unknown> | undefined): ChatStateSnapshot["availableCommands"] {
+  const raw = session?.get("availableCommands");
+  if (!(raw instanceof Y.Array)) return [];
+  const commands: ChatStateSnapshot["availableCommands"] = [];
+  for (const c of raw) {
+    if (!(c instanceof Y.Map)) continue;
+    // input 存储形状为 null 或 { hint }，读取时 null 直接省略字段（与 acp-link
+    // AvailableCommand 展示类型一致，避免 null 泄漏到 UI 层）
+    const input = c.get("input");
+    const cmd: ChatStateSnapshot["availableCommands"][number] = {
+      name: String(c.get("name") ?? ""),
+      description: String(c.get("description") ?? ""),
+    };
+    if (input && typeof input === "object") {
+      cmd.input = { hint: String((input as { hint?: unknown }).hint ?? "") };
+    }
+    commands.push(cmd);
+  }
+  return commands;
+}
+
 interface ChatMetaSnapshot {
   sessionId: string;
   title: string | null;
@@ -93,6 +116,8 @@ interface ChatMetaSnapshot {
   modelState: ChatStateSnapshot["modelState"];
   /** 当前会话的 Mode 状态 */
   modeState: ChatStateSnapshot["modeState"];
+  /** 当前会话的可用命令列表 */
+  availableCommands: ChatStateSnapshot["availableCommands"];
   capabilities: Record<string, boolean> | null;
   permissions: ChatStateSnapshot["permissions"];
   /** 会话列表（Session Doc sessions 投影派生；含当前会话兜底） */
@@ -177,6 +202,7 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
     capabilities,
     modelState: readModelState(session),
     modeState: readModeState(session),
+    availableCommands: readAvailableCommands(session),
     permissions,
     sessions,
   };
@@ -200,8 +226,7 @@ function computeChatSnapshot(token: ChatTokenSnapshot, meta: ChatMetaSnapshot): 
     capabilities: meta.capabilities,
     modelState: meta.modelState,
     modeState: meta.modeState,
-    // 以下字段已从 Y.Doc schema 删除（命令选择），保守默认值：
-    availableCommands: [],
+    availableCommands: meta.availableCommands,
     tokenUsage: token.tokenUsage,
   };
 }
@@ -229,6 +254,7 @@ export function useChatState(rcsSessionId: string) {
           capabilities: null,
           modelState: null,
           modeState: null,
+          availableCommands: [],
           permissions: [],
           sessions: [],
         },

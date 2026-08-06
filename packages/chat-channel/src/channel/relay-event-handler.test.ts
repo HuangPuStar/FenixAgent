@@ -268,6 +268,38 @@ describe("RelayEventHandler", () => {
     expect(modeState.get("currentModeId")).toBe("code");
     expect((modeState.get("availableModes") as Y.Array<Y.Map<unknown>>).length).toBe(1);
   });
+
+  // available_commands_update 通知（agent 启动后下发）经 ACPChannel 翻译为
+  // session_updated 后投影到 Session Doc session map，前端 slash 命令菜单的数据源
+  // （YJS 重构时被切断的链路，聚合层投影恢复）
+  test("available_commands_update notification projects commands into the session doc", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-cmds" }));
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-cmds",
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [
+            { name: "help", description: "Show help" },
+            { name: "clear", description: "Clear chat", input: { hint: "no args" } },
+          ],
+        },
+      },
+    } as unknown as RelayMessage);
+
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    const availableCommands = session.get("availableCommands") as Y.Array<Y.Map<unknown>>;
+    expect(availableCommands.length).toBe(2);
+    expect(availableCommands.get(0)?.get("name")).toBe("help");
+    expect(availableCommands.get(1)?.get("input")).toEqual({ hint: "no args" });
+  });
 });
 
 // 回放窗口（replayWindowUntil）：load/resume 成功后短暂开启，窗口内无活动 turn 可写时

@@ -89,6 +89,7 @@ const PRIVATE_FRAME_TO_NORMALIZED: Record<string, NormalizedEventType> = {
   permission_response: "permission_resolved",
   session_update: "session_updated",
   plan: "plan",
+  available_commands_update: "session_updated",
 };
 
 /** 提取规范化事件类型（sessionUpdate 值 → 规范化类型；tool_call 系列在 normalize 中细分） */
@@ -114,8 +115,9 @@ function mapSessionUpdateType(sessionUpdate: string): NormalizedEventType | null
     case "plan":
       return "plan";
     case "available_commands_update":
-      // availableCommands 字段已删除，不消费
-      return null;
+      // 命令列表为会话级元数据（与 modelState/modeState 同级），随 session_updated
+      // 投影到 Session Doc session map，前端 slash 命令菜单的数据源（YJS 重构恢复）
+      return "session_updated";
     default:
       return null;
   }

@@ -22,6 +22,7 @@ export {
   setAgentStatus,
   setEntryStatus,
   setEntryTokenUsage,
+  setSessionAvailableCommands,
   setSessionInfo,
   setToolCallStatus,
   type ToolCallInit,

@@ -128,8 +128,8 @@ export interface ChatStateSnapshot {
   modelState: ModelState | null;
   /** 当前 Session 的 Mode 状态 */
   modeState: ModeState | null;
-  /** 可用命令列表 */
-  availableCommands: Array<{ name: string; description: string }>;
+  /** 可用命令列表（available_commands_update 投影到 Session Doc，slash 命令菜单数据源） */
+  availableCommands: Array<{ name: string; description: string; input?: { hint: string } }>;
   /** ACP prompt_complete 返回的真实 token 用量 */
   tokenUsage: TokenUsage | null;
 }

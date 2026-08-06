@@ -327,6 +327,24 @@ export function setSessionModeState(
   session.set("updatedAt", new Date().toISOString());
 }
 
+/** 覆盖式写入会话可用命令列表（available_commands_update 投影，会话级元数据，slash 命令菜单数据源） */
+export function setSessionAvailableCommands(
+  ydoc: Y.Doc,
+  commands: Array<{ name: string; description: string; input?: { hint: string } | null }>,
+): void {
+  const session = getSessionInfo(ydoc);
+  const cmdArray = new Y.Array<Y.Map<unknown>>();
+  for (const c of commands) {
+    const entry = new Y.Map<unknown>();
+    entry.set("name", c.name);
+    entry.set("description", c.description);
+    entry.set("input", c.input ?? null);
+    cmdArray.push([entry]);
+  }
+  session.set("availableCommands", cmdArray);
+  session.set("updatedAt", new Date().toISOString());
+}
+
 /** 覆盖式写入 Agent 状态（capabilities 为 Y.Map<boolean>） */
 export function setAgentStatus(
   ydoc: Y.Doc,

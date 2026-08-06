@@ -24,6 +24,7 @@ import {
   setAgentStatus,
   setEntryStatus,
   setEntryTokenUsage,
+  setSessionAvailableCommands,
   setSessionInfo,
   setSessionModelState,
   setSessionModeState,
@@ -387,6 +388,14 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
   }
   if (update.modeState && typeof update.modeState === "object") {
     setSessionModeState(pair.session, update.modeState as Parameters<typeof setSessionModeState>[1]);
+  }
+  // 可用命令列表：available_commands_update 通知携带（agent 启动后下发），会话级元数据，
+  // 随 session_updated 一起投影（切换会话时随 session map 清空重建）
+  if (Array.isArray(update.availableCommands)) {
+    setSessionAvailableCommands(
+      pair.session,
+      update.availableCommands as Parameters<typeof setSessionAvailableCommands>[1],
+    );
   }
   return { applied: true };
 }
