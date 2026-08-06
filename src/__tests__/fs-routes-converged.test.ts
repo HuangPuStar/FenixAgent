@@ -184,6 +184,52 @@ describe("本地环境（无 machine 配置）", () => {
     ).toBe("PK");
   });
 
+  test("GET /fs 无 path 返回 200：默认列 workspace 根目录", async () => {
+    // F1 回归：user/ 作用域强制删除后，无 path 的 GET /fs 必须默认列根目录
+    // （query path 缺省 → "."），且根目录下 user/ 目录可见（resolveWorkspacePath
+    // 会按需创建 userDir）
+    const response = await handle("/fs");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { entries: Array<{ name: string; type: string }> };
+    };
+    expect(body.success).toBe(true);
+    expect(body.data.entries.map((e) => e.name)).toContain("user");
+  });
+
+  test("非 user 路径（workspace 根 README.md）可写可读", async () => {
+    // F1 回归：workspace 根内全部相对路径均合法，README.md 这类非 user/ 前缀
+    // 路径可写、可读、可入树，不再被 user/ 作用域强制拦截
+    const writeRes = await handle("/fs/README.md", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "# workspace readme" }),
+    });
+    expect(writeRes.status).toBe(200);
+    const writeBody = (await writeRes.json()) as { success: boolean; data: { path: string } };
+    expect(writeBody.data.path).toBe("README.md");
+
+    const readRes = await handle("/fs/README.md");
+    expect(readRes.status).toBe(200);
+    const readBody = (await readRes.json()) as { success: boolean; data: { content: string } };
+    expect(readBody.data.content).toBe("# workspace readme");
+
+    // 根目录列表与树均可见根级 README.md（非 user 条目）
+    const listRes = await handle("/fs");
+    expect(listRes.status).toBe(200);
+    const listBody = (await listRes.json()) as {
+      success: boolean;
+      data: { entries: Array<{ name: string }> };
+    };
+    expect(listBody.data.entries.map((e) => e.name)).toContain("README.md");
+
+    const treeRes = await handle("/fs/tree");
+    expect(treeRes.status).toBe(200);
+    const treeBody = (await treeRes.json()) as { success: boolean; data: { paths: string[] } };
+    expect(treeBody.data.paths).toContain("README.md");
+  });
+
   test("本地错误契约：400（越界/绝对路径）+ 404（环境不可见）", async () => {
     // 本地场景错误码与远程一致（门面统一校验与归属检查，不依赖执行后端）
     await expectCommonErrorContract();

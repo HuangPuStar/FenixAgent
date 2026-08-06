@@ -159,7 +159,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 文件 API 使用 RCS session/environment 上下文，不得把 ACP `ses_*` 当作 RCS 标识。
 - `getRemoteMachineId` 优先读取 agent config 的 `machineId`，否则 fallback 到 `RCS_DEFAULT_MACHINE_ID`；无 `agentConfigId` 的 ACP/Bridge environment 同样必须执行 fallback。
 - 配置了远程 machine 但 file-ws 未连接时必须返回明确错误，不得静默回退到本地 FS，避免远程/本地文件分裂。
-- `FilePickerDialog` 的文件空间固定在 `user/` 作用域；所有用户路径必须经过既有规范化和越界检查。
+- 文件 API 路径为 workspace 根相对路径，必须经过词法校验（绝对路径 / `..` / 控制字符）与 realpath 越界检查（symlink 逃逸防护）。
 
 ### Skill、Agent 模板与 Permission
 

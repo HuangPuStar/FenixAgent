@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  assertSafePath,
-  ENV_SCOPE_PREFIX,
-  hasPathControlCharacter,
-  isPathInScope,
-  normalizeUploadRelativePath,
-} from "../services/file-path-validator";
+import { assertSafePath, hasPathControlCharacter, normalizeUploadRelativePath } from "../services/file-path-validator";
 
 describe("assertSafePath 基础安全校验（D5）", () => {
   test("绝对路径被拒绝（400 validation_error）", () => {
@@ -32,28 +26,13 @@ describe("assertSafePath 基础安全校验（D5）", () => {
     expect(() => assertSafePath("")).not.toThrow();
     expect(() => assertSafePath("   ")).not.toThrow();
   });
-});
 
-describe("assertSafePath 作用域检查（相对路径须落在环境作用域前缀）", () => {
-  test("不提供 scope 时不做作用域检查（基础校验兼容模式）", () => {
-    // scope 可选：upload 的 relativePath 相对 dir 解析，作用域由 dir 控制
+  test("workspace 根内相对路径全部放行（不再强制 user/ 前缀）", () => {
+    // F1 删除全局作用域强制：docs/、user/、根级文件均合法，越界防护由真实路径
+    // 检查（realpath）承担，词法校验仅保留绝对路径 / `..` / 控制字符拦截
     expect(() => assertSafePath("docs/a.txt")).not.toThrow();
-  });
-
-  test("提供 scope 时，不在 user/ 作用域的相对路径被拒绝", () => {
-    // 远程环境路径必须落在环境作用域前缀内（§7.7 与本地约束同构）
-    expect(() => assertSafePath("docs/a.txt", ENV_SCOPE_PREFIX)).toThrowError(
-      expect.objectContaining({ statusCode: 400 }),
-    );
-    expect(() => assertSafePath(".", ENV_SCOPE_PREFIX)).toThrowError();
-    expect(() => assertSafePath("usera.txt", ENV_SCOPE_PREFIX)).toThrowError();
-  });
-
-  test("user/ 前缀与 user 本身通过作用域检查", () => {
-    // 前端路径全部带 user/ 前缀（FilePickerDialog 固定在 user/ 作用域）
-    expect(() => assertSafePath("user", ENV_SCOPE_PREFIX)).not.toThrow();
-    expect(() => assertSafePath("user/a.txt", ENV_SCOPE_PREFIX)).not.toThrow();
-    expect(() => assertSafePath("user/nested/deep.txt", ENV_SCOPE_PREFIX)).not.toThrow();
+    expect(() => assertSafePath("user/a.txt")).not.toThrow();
+    expect(() => assertSafePath("root-level.txt")).not.toThrow();
   });
 });
 
@@ -77,6 +56,12 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
     expect(normalizeUploadRelativePath("a\u0000b.txt")).toBeNull();
   });
 
+  test('"." → null（文件 relativePath 为目录本身触发 EISDIR）', () => {
+    // upload 的 relativePath/file.name 为 "." 时等价于目录本身，落盘触发 EISDIR
+    // 并被 503 兜底误映射；F1 起显式拒绝（"." 作为目录 dir 参数仍合法，不受影响）
+    expect(normalizeUploadRelativePath(".")).toBeNull();
+  });
+
   test("合法相对路径 trim 后返回，反斜杠视为分隔符", () => {
     // 正/反斜杠均视为分隔符（防御 Windows 客户端路径），trim 前后等价
     expect(normalizeUploadRelativePath("  nested/b.txt ")).toBe("nested/b.txt");
@@ -89,7 +74,7 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
   });
 });
 
-describe("hasPathControlCharacter / isPathInScope 纯函数", () => {
+describe("hasPathControlCharacter 纯函数", () => {
   test("控制字符检测覆盖 C0/DEL/C1 区间，普通字符不误报", () => {
     // 码点遍历实现：C0（0x00–0x1F）、DEL（0x7F）、C1（0x80–0x9F）
     expect(hasPathControlCharacter("a\u0000b")).toBe(true);
@@ -98,14 +83,5 @@ describe("hasPathControlCharacter / isPathInScope 纯函数", () => {
     expect(hasPathControlCharacter("a\u009fb")).toBe(true);
     expect(hasPathControlCharacter("normal/file.txt")).toBe(false);
     expect(hasPathControlCharacter("中文文件.txt")).toBe(false);
-  });
-
-  test("isPathInScope：等于 scope 或以 scope/ 开头才通过", () => {
-    // 边界：user、user/ 开头通过；userx、空串不通过
-    expect(isPathInScope("user", "user")).toBe(true);
-    expect(isPathInScope("user/a", "user")).toBe(true);
-    expect(isPathInScope("usera", "user")).toBe(false);
-    expect(isPathInScope("", "user")).toBe(false);
-    expect(isPathInScope("a/user", "user")).toBe(false);
   });
 });

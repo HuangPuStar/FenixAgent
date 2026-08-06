@@ -290,11 +290,39 @@ class LocalBackend implements BackEnd {
     const resolved = await this.resolve(envId, path);
     const info = await this.statOr404(resolved.resolved, "路径不存在");
     if (!info.isDirectory()) throw new ValidationError("目标不是目录");
-    const zipProcess = spawn("zip", ["-r", "-q", "-", "."], {
+    const child = spawn("zip", ["-r", "-q", "-", "."], {
       cwd: resolved.resolved,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    return zipProcess.stdout;
+    // @types/node 22.20.1 缺陷：class EventEmitter 的实例方法声明在 interface 合并中，
+    // `class ChildProcess extends EventEmitter` 的类型丢失 on/once（运行时存在，
+    // Node 25 类型已修复）。最小断言恢复事件 API，不触碰 stdout/kill 等成员。
+    const childEvents = child as unknown as NodeJS.EventEmitter;
+    // 等待 spawn 确认（zip 缺失/不可执行时 error 先于 spawn 触发）：统一映射
+    // 503 file_service_unavailable（§2.4 契约）。不得把 error 留给已返回的流——
+    // headers 发出后无法再返回 JSON 错误，只能中断连接，消费者不可诊断
+    await new Promise<void>((resolveSpawn, reject) => {
+      childEvents.once("spawn", () => resolveSpawn());
+      childEvents.once("error", (err: Error) => {
+        // spawn 失败后 stdout 已无数据，显式销毁避免其 error 事件泄漏为未捕获错误；
+        // 原始错误只进诊断日志（err.message 含命令路径等部署细节，不得泄露给响应）
+        child.stdout.destroy();
+        console.error("downloadZip spawn zip 失败", err);
+        reject(new FileServiceError("目录打包服务暂不可用，请稍后重试", "file_service_unavailable", 503));
+      });
+    });
+    const stream = child.stdout;
+    // 客户端断开（Response body 被 destroy/abort）时流只触发 close 不触发 end，
+    // 此时必须 kill 子进程防悬空；正常打包完成先 end 再 close，不得误 kill
+    // 正常收尾的进程（zip 写完 stdout 后自然退出）
+    let endedNormally = false;
+    stream.once("end", () => {
+      endedNormally = true;
+    });
+    stream.once("close", () => {
+      if (!endedNormally) child.kill();
+    });
+    return stream;
   }
 }
 

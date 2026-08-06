@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
-import { fsApi, MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
+import { buildUploadUrl, fsApi, MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
 import { ApiError, UPLOAD_TIMEOUT_MS, unwrap } from "@/src/api/request";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
@@ -257,7 +257,9 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const url = targetDir ? `/web/environments/${envId}/fs/${targetDir}` : `/web/environments/${envId}/fs`;
+          // 未选中目录（targetDir 为空）时上传到 workspace 根：必须保留尾斜杠（/fs/），
+          // 否则 Elysia splat 路由不匹配空段返回 404；与 fsApi.upload 共用同一拼装逻辑
+          const url = buildUploadUrl(envId, targetDir);
           // 写操作幂等契约的 HTTP 载体：每次上传生成一个 opId，超时/断网后调用方重发可被服务端去重
           const opId = crypto.randomUUID();
 

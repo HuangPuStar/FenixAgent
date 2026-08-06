@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { environmentRepo } from "../repositories";
 import { resolveWorkspacePath as computeWorkspacePath } from "./workspace-resolver";
 
@@ -190,7 +190,7 @@ export type ResolvedWorkspacePath = {
 
 /**
  * 将环境 ID + 相对路径解析为绝对文件系统路径。
- * 返回 null 表示环境不存在或路径越界。
+ * 返回 null 表示环境不存在或路径越界（含 symlink 逃逸）。
  */
 export async function resolveWorkspacePath(
   environmentId: string,
@@ -217,9 +217,52 @@ export async function resolveWorkspacePath(
   const relativeToBase = relative(baseDir, resolvedPath);
   if (relativeToBase.startsWith("..") || isAbsolute(relativeToBase)) return null;
 
+  // symlink 逃逸防护：词法包含检查无法识别 `user/link → /tmp/outside` 这类重定向，
+  // 必须以 realpath 真实路径校验（基准本身用 realpath 规范化，WORKSPACE_ROOT 可能为 symlink）
+  const realBase = await realpath(workspaceDir);
+  if (!(await isRealPathInside(realBase, resolvedPath))) return null;
+
   const displayPath = userScoped ? (relativeToBase ? `user/${relativeToBase}` : "user") : relativeToBase || ".";
 
   return { workspaceDir, userDir, resolved: resolvedPath, displayPath };
+}
+
+/** fs 系统错误（携带 errno code，如 ENOENT/EACCES）的类型守卫 */
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
+
+/**
+ * 校验目标真实路径（跟随 symlink）是否落在 realBase 目录树内，防 symlink 逃逸。
+ * - 目标存在（读/stat/list）：直接 realpath 目标，解析结果须等于 realBase 或在
+ *   `realBase/` 前缀内；
+ * - 目标不存在（写/upload/mkdir/delete 目标）：逐级向上找最近存在的祖先，祖先的
+ *   真实位置即创建操作的落点，同样须落在 realBase 内；
+ * - broken symlink（存在但 realpath 失败）或非 ENOENT 系统错误（EACCES 等）：
+ *   真实落点无法确认，保守拒绝。
+ * 返回 false 表示越界或无法确认；调用方沿用 resolveWorkspacePath 的 null 契约。
+ */
+async function isRealPathInside(realBase: string, resolved: string): Promise<boolean> {
+  let probe = resolved;
+  for (;;) {
+    try {
+      const real = await realpath(probe);
+      return real === realBase || real.startsWith(`${realBase}${sep}`);
+    } catch (err) {
+      // 仅路径段缺失（ENOENT/ENOTDIR）可向上回溯；其余错误保守拒绝
+      if (!isErrnoException(err) || (err.code !== "ENOENT" && err.code !== "ENOTDIR")) return false;
+      try {
+        await lstat(probe);
+        // probe 存在但 realpath 失败 → broken symlink，真实落点无法确认
+        return false;
+      } catch {
+        // probe 不存在，继续向上找最近存在祖先
+      }
+      const parent = dirname(probe);
+      if (parent === probe) return false;
+      probe = parent;
+    }
+  }
 }
 
 // ── File operations ──────────────────────────────────────────────────────────

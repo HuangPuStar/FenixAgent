@@ -14,7 +14,7 @@ import { AppError, ValidationError } from "../errors";
 import { BusyError } from "../transport/file-ws-requests";
 import { getOwnedEnvironment } from "./environment-core";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
-import { assertSafePath as assertPathSafe, ENV_SCOPE_PREFIX, normalizeUploadRelativePath } from "./file-path-validator";
+import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";
 import {
   type FileAuthContext,
   type FileErrorType,
@@ -34,11 +34,12 @@ import type { FileEntry } from "./workspace-fs";
 const logger = createLogger("agent-file-service");
 
 // ── 路径校验（W6：实现委托 file-path-validator 纯函数，本地/远程同构）───
-/** 统一前置校验（§2.4）：拒绝绝对路径 / `..` 段 / NUL 与控制字符，且相对路径必须落在
- * 环境作用域前缀（user/）内。保持既有签名（路由层契约），scope 强制由门面注入：
- * 远程路径在发送 file_op 前同样经过本校验（D5），避免只依赖机器端自觉。 */
+/** 统一前置校验（§2.4）：拒绝绝对路径 / `..` 段 / NUL 与控制字符。保持既有
+ * 签名（路由层契约）：远程路径在发送 file_op 前同样经过本校验（D5），避免只
+ * 依赖机器端自觉。全局 user/ 作用域强制已删除（F1），workspace 根内全部路径
+ * 均合法，越界防护由真实路径检查（realpath，workspace-fs）承担。 */
 export function assertSafePath(path: string): void {
-  assertPathSafe(path, ENV_SCOPE_PREFIX);
+  assertPathSafe(path);
 }
 
 // upload relativePath 规范化/校验（D16 逃逸修复）——实现迁至 validator，接口不变

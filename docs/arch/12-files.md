@@ -88,7 +88,7 @@ flowchart LR
         direction TB
         GATE["入口：认证上下文校验\n（orgId + userId + envId 归属 + 角色）"]
         DECIDE["路由决策\nresolveExecutionBackend(envId)"]
-        VALIDATE["路径与参数校验\n（绝对路径 / .. / 控制字符 / 作用域 / relativePath 规范化）"]
+        VALIDATE["路径与参数校验\n（绝对路径 / .. / 控制字符 / realpath 越界检查 / relativePath 规范化）"]
         FINGER["指纹派生\nETag（读操作）"]
         MAP["错误映射\n→ 统一错误码"]
         PUB["变更事件发布\npublishFileChanged（含 source/actorId）"]
@@ -157,13 +157,13 @@ interface AgentFileService {
 | stat | `stat` + `isTextFile` | `remoteStat` |
 | downloadZip | 系统 `zip` 流式（本地） | `file_op "zip"`（v2，§7.9；现状 501） |
 
-- 两端**不允许**在接口之外产生额外行为（例如现状"本地校验 user/ 作用域、远程不校验"必须在 AgentFileService 统一层消除，backend 只负责执行）。
+- 两端**不允许**在接口之外产生额外行为（例如现状"本地 realpath 越界检查、远程不校验"必须在 AgentFileService 统一层消除，backend 只负责执行）。
 
 ### 2.4 统一契约（消费者无感保证）
 
 | 契约 | 规则 |
 |---|---|
-| 路径校验 | AgentFileService 统一前置：拒绝绝对路径、`..` 段、NUL/控制字符；相对路径须落在环境作用域；**upload 的 relativePath 先规范化再 join（修复本地 `../` 逃逸，D16）**；校验失败 → `400 validation_error` |
+| 路径校验 | AgentFileService 统一前置：拒绝绝对路径、`..` 段、NUL/控制字符；resolve 后对真实路径做越界检查（realpath，防 symlink 逃逸）；**upload 的 relativePath 先规范化再 join（修复本地 `../` 逃逸，D16）**；校验失败 → `400 validation_error` |
 | 错误码 | `400 validation_error` / `403 forbidden` / `404 not_found` / `413 payload_too_large` / `422 config_error` / `429 busy`（+ `Retry-After`）/ `503 file_service_unavailable`。**现状无 403 角色概念**（`getOwnedEnvironment` 只查归属，成员对共享环境读写自由，权限失败伪装 404）——v2 引入角色化授权，403 与 404 分离（403=有环境但无操作权限，404=环境不存在或不可见） |
 | message 语义 | **message 是面向用户的模板化文案（i18n）**，机器端错误细节只进服务端日志；machineId 为组织可见资源标识可保留（供诊断），机器内部路径/错误栈必须脱敏 |
 | 响应结构 | 全部 `{ success, data }`，backend 差异不外泄（不出现 `remote_error` 之类的 backend 专属类型）；`/api/*` 文件面（第三套实现 `api-workspace.ts`）收敛到本契约时另行评估（§10） |
@@ -448,7 +448,7 @@ sequenceDiagram
 
 ### 7.7 路径越界校验前置（修复 D5）
 
-- 主服务在发送 file_op 前对 `path` 做基础校验：拒绝绝对路径、拒绝 `..` 段、拒绝 NUL 与控制字符；远程环境路径必须为相对路径且落在环境作用域前缀（与本地约束同构）。
+- 主服务在发送 file_op 前对 `path` 做基础校验：拒绝绝对路径、拒绝 `..` 段、拒绝 NUL 与控制字符；resolve 后对真实路径做越界检查（realpath，防 symlink 逃逸，与本地约束同构）。用例：`user/link → /tmp/outside` 的 symlink 下读/写/删/rename 一律拒绝。
 - 机器端承担**最终隔离**（按 environmentId → WorkspaceRef 解析），主服务校验是防线而非依赖。
 - 校验失败返回 400 `validation_error`，不透传机器端。
 - **本地 upload relativePath 越界修复（D16）**：`join(resolved, relPath)` 前必须规范化 + 越界检查（现状 `../` 可逃逸 workspace，现网漏洞）。
@@ -474,7 +474,7 @@ sequenceDiagram
 | 环境归属与角色 | HTTP 层 `getOwnedEnvironment`（现状无角色检查，成员读写自由——v2 引入**角色化授权**，403/404 分离）；file_op 的 environmentId 由服务端从已认证环境派生 | 主服务 |
 | 事件环境声明 | file_changed 仅接受声明 + 记账合并集内的环境（§7.5），限频防刷 | 主服务 |
 | 订阅鉴权 | `file-events` 端点逐环境校验订阅者访问权，拒绝返回 `subscribe_error`（§4.3） | 主服务 |
-| 路径越界 | 本地：`resolveWorkspacePath` 规范化 + user/ 作用域 + **upload relativePath 校验（D16）**；远程：v2 §7.7 前置校验 + 机器端最终隔离；理想态：AgentFileService 统一前置（§2.4） | 主服务 + 机器 |
+| 路径越界 | 本地：`resolveWorkspacePath` 规范化 + realpath 越界检查（symlink 防护）+ **upload relativePath 校验（D16）**；远程：v2 §7.7 前置校验 + 机器端最终隔离；理想态：AgentFileService 统一前置（§2.4） | 主服务 + 机器 |
 | 敏感信息 | message 模板化（i18n），机器端原始错误只进服务端日志；统一错误码（§2.4） | 主服务 |
 | 拒绝回退 | 配置远程但 file-ws 未连 → 503，禁止静默本地执行 | 主服务 |
 | **机器退役联动（运营修订，D18）** | `deleteMachine` 必须清理 file-ws 索引与 core node——**现状退役机器 file-ws 仍存活、文件操作仍可用**，直至 TCP 断开；v2 修复 | 主服务 |
@@ -523,7 +523,7 @@ sequenceDiagram
 
 6. **file-events 订阅端点（D13）**：独立 WS 端点 `/web/file-events`（§4.3 契约：订阅/批量/失效/降级帧、subscribe_error、鉴权、限频、连接上限分池、fan-out 去重、队列生命周期）；**新建异步事件队列**（不得复用现有 EventBus）。验证：订阅者收到按环境路由的事件；无权限环境订阅返回 subscribe_error；慢订阅者不阻塞 file_op_result；队列溢出触发 invalidate_all。
 7. **AgentFileService 收敛双路径（D10）**：新增统一层，`fs.ts` 路由删除 `if (machineId)` 分支，路径校验/错误码/响应结构统一（§2.4）；download-zip 远程 `zip` 操作补齐（§7.9）`[跨仓库]`。验证：同一套路由测试分别对本地/远程环境跑通，错误码一致。
-8. **路径前置校验（D5/D7 校验侧）**：AgentFileService 统一校验（拒绝绝对路径/`..`/控制字符）+ machineId 存在性校验（`422 config_error` vs `503`）。验证：`/fs/../../etc/passwd` 与不存在 machineId 均被拒（本地与远程一致）。
+8. **路径前置校验（D5/D7 校验侧）**：AgentFileService 统一校验（拒绝绝对路径/`..`/控制字符）+ machineId 存在性校验（`422 config_error` vs `503`）。验证：`/fs/../../etc/passwd` 与不存在 machineId 均被拒（本地与远程一致）；symlink 指向 workspace 外 → 拒绝。
 9. **ETag 条件请求（D11 读侧）**：读操作派生 ETag（tree 用路径排序 hash）+ **事件驱动指纹失效** + `Cache-Control: no-cache`；主消费端配套发送 `If-None-Match`。验证：连续两次请求第二次 304；rename 后 tree ETag 变化；不携带头时恒 200。
 10. **file_changed 事件（D11 写侧 + D6 + D20）**：v2 事件帧（含 `source`/`actorId`，§7.5）；突发合并为 `file_changed_batch`；**本地写路径同限频器**；环境声明 + 增量声明 + 主服务记账；register 成功广播 `invalidate_all`（治理三件套：机器级限频 + 抖动 + 订阅方 coalescing）`[跨仓库]`。验证：机器 touch 文件订阅方收到事件；Agent 连写 50 文件收到 batch 而非全量失效；断连重连后收到 invalidate_all；无订阅零开销。
 11. **载荷治理（D12/D8 第一版）**：WS maxPayload 32MB + 解析前显式检查（修复 Elysia 绕过）；远程 upload 上限 100MB → 20MB + 413 用户可读文案；**分块上传（P1 边界）**。验证：>32MB 帧被拒/连接关闭；20MB 上限文案正确；分块上传大文件成功。
@@ -565,5 +565,5 @@ sequenceDiagram
 
 ### A.2 废弃表述
 
-- "文件 API 仅允许操作 user/ 子目录下的内容（本地环境）"——已修订为统一路径校验 + 作用域检查（§2.4），路由不再以 user 为前缀（user/ 作为路径前缀仍有效，见上表）。
+- "文件 API 仅允许操作 user/ 子目录下的内容（本地环境）"——已修订为统一路径校验 + realpath 越界检查（§2.4），路由不再以 user 为前缀（user/ 作为路径前缀仍有效，见上表）。
 - 旧 File WS 描述（"远程机器通过 WebSocket 连接到服务端，发送注册消息完成注册，后续请求-响应"）——已被 §5/§6 生命线取代。

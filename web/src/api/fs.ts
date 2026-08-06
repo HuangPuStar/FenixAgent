@@ -71,6 +71,21 @@ interface BatchDeleteResponse {
   failed: Array<{ path: string; error: string }>;
 }
 
+/**
+ * 拼接文件上传 URL（/web/environments/:id/fs 子路径）。
+ *
+ * Elysia splat 路由不匹配空段：targetDir 为空（上传到 workspace 根）时必须保留尾斜杠
+ * （以 /fs/ 结尾而非 /fs），否则后端返回 404；非空 targetDir 去除前导斜杠后拼接，
+ * 避免 "/docs" 这类输入产生双斜杠。FileTreeTab 的原生 XHR 上传复用本函数，
+ * 保证两条上传路径的 URL 拼装行为一致。
+ * @param id - 环境 ID
+ * @param targetDir - 目标目录（相对于 workspace 根），缺省或空串表示 workspace 根
+ */
+export function buildUploadUrl(id: string, targetDir?: string): string {
+  const dir = targetDir ? targetDir.replace(/^\/+/, "") : "";
+  return `/web/environments/${encodeURIComponent(id)}/fs/${dir}`;
+}
+
 export const fsApi = {
   /**
    * 递归获取 workspace 完整文件树（黑名单过滤）。
@@ -104,11 +119,11 @@ export const fsApi = {
    * 上传超时与后端对齐（120s），并携带自动生成的 opId 供断网重试幂等去重。
    * @param id - 环境 ID
    * @param fd - 包含文件及相关路径信息的 FormData 对象
+   * @param targetDir - 目标目录（相对于 workspace 根），缺省或空串表示 workspace 根
    */
   upload: (id: string, fd: FormData, targetDir?: string) =>
-    request<FileUploadResponse>(`/web/environments/:id/fs/${targetDir ? targetDir.replace(/^\/+/, "") : ""}`, {
+    request<FileUploadResponse>(buildUploadUrl(id, targetDir), {
       method: "POST",
-      params: { id },
       body: fd,
       timeout: UPLOAD_TIMEOUT_MS,
       opId: crypto.randomUUID(),
