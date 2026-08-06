@@ -29,6 +29,7 @@
     "format": "biome format --write src/ web/src/ web/components/ packages/",
     "format:check": "biome format src/ web/src/ web/components/ packages/",
     "precheck": "bun run scripts/ci.ts",
+    "coverage:audit": "bun run scripts/coverage-audit.ts",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",

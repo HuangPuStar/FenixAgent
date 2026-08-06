@@ -66,6 +66,7 @@ export default defineConfig({
           text: "使用指南",
           items: [
             { text: "后端开发规范", link: "/developer/guide/backend-development" },
+            { text: "测试方针与覆盖重点", link: "/developer/guide/testing-strategy" },
             { text: "External API", link: "/developer/guide/external-api" },
             { text: "Agent 管理与会话说明", link: "/developer/guide/external-agent-session-guide" },
             { text: "系统提示词", link: "/developer/guide/system-prompt" },
