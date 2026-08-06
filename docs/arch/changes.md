@@ -450,3 +450,23 @@ IMChannel 包含：
 - **§10 实施计划重排**：新增 P0-4（本地 upload 越界修复）、P0-5（机器退役清理）；P1 新增前端消费配套（用户视角 P0）；分块上传从二期提前到 P1 边界；新增"破坏性升级窗口"小节。
 
 **影响**：纯文档修订，无代码/行为变化；docs 站点构建通过。理想态设计（§2/§4/§7）为评审待办，实施时按 §10 拆分提交并同步更新文档状态。修订记录：统一层命名从 FileService 改为 AgentFileService，删除前端消费相关章节（文档范围限定服务端契约）。
+
+---
+
+## 改动 18：架构文档整顿——08/05 废弃，09 重写对齐 v2
+
+**状态**：✅ 已实施（2026-08-06）
+
+**现状（修订前）**：`08-instance.md` 整篇停留在旧模型（acp-link InstanceManager、prepare/start 协议、RCS 管理 Session），内容已被 20 号文档（实现基线）完整覆盖；`05-chat.md` 半新半旧——传输/协议主体仍是旧 Relay 双通道模型（SSE last-event-id 续传、`web/src/acp/` 封装、`/web/sessions/:id/user/*` 文件 API），已被 19 号文档覆盖；`09-scheduler.md` 描述已下线的 `scheduled_task` 表与已删除的 AgentTaskRunner。
+
+**目标**：被实现基线覆盖的文档删除或收敛，未被覆盖的按代码事实重写。
+
+**实施内容**：
+
+1. **`08-instance.md` 删除**：实例生命周期（spawn/stop/list、回滚、配额）与远程部署（双层启动模型、core runtime 下发 prepare/start）均由 `20-orchestration-management.md` 覆盖；多用户隔离语义见 20 号 §8 与 19 号 §14。导航与交叉引用同步移除。
+2. **`05-chat.md` 收敛重写**：删除被 19 号覆盖的传输层/协议/消息传递描述，保留前端 UI 层独有内容（用户能力表 + 组件地图），并修正过时组件路径（AgentSidebar/ArtifactsPanel 已移至 `web/src/pages/agent-panel/`）与文件 API 引用（`/web/environments/:id/fs/*`）；新增权威边界表（19/20/12 号文档）。
+3. **`09-scheduler.md` 重写**：对齐 `scheduled_task_v2`（HTTP + Agent 双类型，`type`/`definition`/`agentId`/`timeoutSeconds`）、`/tasks/v2` 路由与 `SchedulerService` executor 模式（httpExecutor / agentExecutor）；删除已下线的 `scheduled_task` 表、旧 `/web/tasks` API 与已删除的 AgentTaskRunner 描述。
+4. **术语对齐**：`04-agent-config.md` 与 `06-config-*.md` 的 "LaunchSpec Builder / 交给 @fenix/core 分派" 修正为 `LaunchSpecBuilder`（`packages/orchestration`，见 20 号文档），与实现基线统一。
+5. **交叉引用修正**：`tech-stack-overview.md`、`tech-stack-backend.md` 的实时通信引用从 05 改为 19 号文档；`.vitepress/config.ts` 导航移除 08、05 改名为 "Chat 前端界面"。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。
