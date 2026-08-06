@@ -321,37 +321,7 @@ export const agentKnowledgeBinding = pgTable(
   }),
 );
 
-// 定时任务表（HTTP Cron 触发器）
-export const scheduledTask = pgTable(
-  "scheduled_task",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    cron: varchar("cron").notNull(),
-    timezone: varchar("timezone"),
-    enabled: boolean("enabled").notNull().default(true),
-    // HTTP cron 目标
-    url: text("url").notNull(),
-    method: varchar("method", { length: 10 }).notNull().default("POST"),
-    headers: jsonb("headers"),
-    body: text("body"),
-    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
-    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
-    lastStatus: varchar("last_status"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgIdx: index("idx_scheduled_task_org_id").on(table.organizationId),
-  }),
-);
-
-// 任务执行日志表
+// 任务执行日志表（v2 调度器使用；v1 调度器已下线）
 export const taskExecutionLog = pgTable("task_execution_log", {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id").notNull(),
@@ -368,7 +338,7 @@ export const taskExecutionLog = pgTable("task_execution_log", {
 });
 
 // 定时任务表 v2（HTTP + Agent 双类型）。
-// 旧表 scheduled_task 保留不动，不提供迁移脚本。
+// v1 的 scheduled_task 表已下线（见迁移 remove-scheduled-task-v1），历史数据不迁移。
 export const scheduledTaskV2 = pgTable(
   "scheduled_task_v2",
   {

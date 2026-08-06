@@ -44,7 +44,6 @@ import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
 import { schedulerService } from "./services/scheduler/index";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
-import { startScheduler, stopScheduler } from "./services/task";
 import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
 import { closeAllFileWsConnections, stopFileWsSweep } from "./transport/file-ws-handler";
@@ -78,7 +77,7 @@ startupLog.info("Data migrations completed");
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
 
-await Promise.all([startScheduler(), schedulerService.start()]);
+await schedulerService.start();
 
 try {
   // builtin 资源现在统一托管到系统 admin 组织，不再在启动时遍历所有组织复制副本。
@@ -255,7 +254,6 @@ async function gracefulShutdown(signal: string) {
   stopFileWsSweep();
   closeAllFileWsConnections();
   await stopAllInstances();
-  stopScheduler();
   schedulerService.stop();
   await closeCache();
   await pgClient.end();

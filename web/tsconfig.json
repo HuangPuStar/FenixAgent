@@ -22,6 +22,5 @@
       "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"]
     }
   },
-  "include": ["src", "components"],
-  "exclude": ["src/__tests__/eden-fetch-type-test.ts"]
+  "include": ["src", "components"]
 }

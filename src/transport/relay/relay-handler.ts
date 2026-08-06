@@ -42,7 +42,8 @@ export function sendToInstanceRelay(instanceId: string, data: string): boolean {
 }
 
 // ── Yjs 迁移说明 ──
-// 以下功能已从 RelayConnectionManager 迁移到 yjs-frontend ConnectionRegistry：
-// - closeRelayConnectionsForIdleReclaim → yjsFrontend.closeClientsByInstance
-// - closeAllRelayConnections → yjsFrontend.closeAllClients
-// - handleMachineDisconnected / handleMachineReconnect → yjsFrontend.closeClientsByMachine
+// 以下功能已从 RelayConnectionManager 迁移到 @fenix/chat-channel 的
+// ConnectionRegistry（channel/connection-registry.ts）：
+// - closeRelayConnectionsForIdleReclaim → ConnectionRegistry.closeClientsByInstance
+// - closeAllRelayConnections → ConnectionRegistry.closeAll
+// - handleMachineDisconnected / handleMachineReconnect → ConnectionRegistry.removeClient / closeClientsByInstance

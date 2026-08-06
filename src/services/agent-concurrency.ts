@@ -145,7 +145,8 @@ export function getActiveUserAgentCount(
  * 注意：本函数只读统计、不登记任何 in-flight 状态，单独调用无法消除
  * "检查 → 实例可见" 窗口内的并发不可见（A-P2.1）。spawn 流程必须使用
  * beginSpawnReservation / releaseSpawnReservation 配对，检查与登记在同一
- * 同步段完成。保留本导出仅为兼容既有测试与潜在调用方。
+ * 同步段完成；本函数即 beginSpawnReservation 的前置检查步骤，禁止绕过
+ * reservation 单独调用。
  */
 export function assertAgentConcurrencyAvailable(
   userId: string,

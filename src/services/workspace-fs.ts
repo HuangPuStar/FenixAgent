@@ -99,12 +99,21 @@ const WORKSPACE_BLACKLIST = new Set([
 
 // ── Pure functions ───────────────────────────────────────────────────────────
 
-/** 路径是否属于 user/ 作用域 */
+/**
+ * 路径是否属于 user/ 作用域。
+ * 除 resolveWorkspacePath 内部 user/ 分支外，仍被对外稳定 API
+ * `/api/workspaces`（api-workspace.ts）用于上传路径校验，属对外契约，不得删除。
+ */
 export function isUserPath(path: string): boolean {
   return path === "" || path === "user" || path.startsWith("user/");
 }
 
-/** 将路由通配符路径规范化为 user/ 作用域 */
+/**
+ * 将路由通配符路径规范化为 user/ 作用域。
+ * 12 号文件服务 v2 重构后 v1 路由（files.ts / user-file.ts）已删除，
+ * 此处保留是因为对外稳定 API `/api/workspaces`（api-workspace.ts）仍依赖此转换，
+ * 属对外契约，不得删除；待该 API 迁移后随契约一并下线。
+ */
 export function normalizeUserRoutePath(path: string): string {
   // 解码 URL 编码的字符（如 %28 → (, %E5%9F%83 → 埃）
   let normalized: string;

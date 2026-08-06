@@ -4,7 +4,7 @@ import { Paperclip, Send, Sparkles, Square } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { fileApi } from "../../src/api/files";
+import { fsApi } from "../../src/api/fs";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
@@ -263,7 +263,7 @@ export function ChatComposer({
     [supportsImages],
   );
 
-  // 选择文件（图片走 base64，其他文件上传到 user/ 文件夹）
+  // 选择文件（图片走 base64，其他文件上传到 workspace 根目录）
   const _handleFileSelect = useCallback(async () => {
     if (!fileInputRef.current || !fileWorkspaceId) return;
     const files = fileInputRef.current.files;
@@ -286,7 +286,7 @@ export function ChatComposer({
       setImages((prev) => [...prev, ...newImages]);
     }
 
-    // 非图片：上传到 user/ 文件夹并添加为附件引用
+    // 非图片：上传到 workspace 根目录并添加为附件引用
     if (otherFiles.length > 0) {
       try {
         // 客户端提前校验单文件 + 总量，避免触发服务端 413
@@ -309,10 +309,11 @@ export function ChatComposer({
         for (const file of otherFiles) {
           formData.append("files", file);
         }
-        await fileApi.upload(fileWorkspaceId, formData);
+        // v2 fsApi 未传 targetDir 时上传到 workspace 根，附件 path 为 workspace 相对路径
+        await fsApi.upload(fileWorkspaceId, formData);
         const newAttachments: FileAttachment[] = otherFiles.map((f) => ({
           name: f.name,
-          path: `user/${f.name}`,
+          path: f.name,
         }));
         setAttachments((prev) => {
           const existing = new Set(prev.map((a) => a.path));

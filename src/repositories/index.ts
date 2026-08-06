@@ -38,8 +38,8 @@ export type {
 export { resourcePermissionRepo } from "./resource-permission";
 export type { IShareLinkRepo } from "./share-link";
 export { shareLinkRepo } from "./share-link";
-export type { IScheduledTaskRepo, ITaskExecutionLogRepo, ScheduledTaskRow, TaskExecutionLogRow } from "./task";
-export { scheduledTaskRepo, taskExecutionLogRepo } from "./task";
+export type { ITaskExecutionLogRepo, TaskExecutionLogRow } from "./task";
+export { taskExecutionLogRepo } from "./task";
 export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
 export { findUsersBasicInfoByIds } from "./user";

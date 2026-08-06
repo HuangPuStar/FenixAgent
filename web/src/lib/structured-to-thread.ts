@@ -5,7 +5,13 @@
 // Chat Doc → 展示层 StructuredMessage[]（保持既有 StructuredMessage 形状，
 // 使 structuredToThreadEntries 与上层组件无需感知 schema 变化）。
 
-import type { PermissionOption, StructuredMessage } from "@fenix/chat-channel";
+import {
+  getEntriesMap,
+  getEntryOrder,
+  getToolCallsMap,
+  type PermissionOption,
+  type StructuredMessage,
+} from "@fenix/chat-channel";
 // 直接引用 i18next 全局实例（web/src/i18n/index.ts 在此实例上注册各语言资源）：
 // 不 import "../i18n" 模块 —— 测试环境有测试文件 mock.module 该模块为无 default
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
@@ -153,11 +159,6 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
 // 新 schema 派生：Chat Doc（entries/blocks）→ StructuredMessage[]
 // =============================================================================
 
-/** 读取 Chat Doc 根对象（与后端 factory 物理结构一致） */
-function getChatRoot(ydoc: Y.Doc): Y.Map<unknown> {
-  return ydoc.getMap("root");
-}
-
 /** 提取 block 文本（Y.Text） */
 function blockText(block: Y.Map<unknown> | undefined): string {
   if (!block) return "";
@@ -167,10 +168,11 @@ function blockText(block: Y.Map<unknown> | undefined): string {
 
 /** 从 Chat Doc 按 entryOrder 顺序派生 StructuredMessage[]（保持既有展示形状） */
 export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessage[] {
-  const root = getChatRoot(ydoc);
-  const order = root.get("entryOrder") as Y.Array<string> | undefined;
-  const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
-  const toolCalls = root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined;
+  // 复用 @fenix/chat-channel 的 Chat Doc getters（state/chat-writer.ts），
+  // 与后端 factory/aggregator 保持同一物理映射
+  const order = getEntryOrder(ydoc);
+  const entries = getEntriesMap(ydoc);
+  const toolCalls = getToolCallsMap(ydoc);
 
   // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
   // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）

@@ -130,11 +130,3 @@ export interface PendingPermission {
   description?: string;
   options?: PermissionOption[];
 }
-
-// 会话列表条目（用于 SessionSidebar）
-export interface SessionListItem {
-  id: string;
-  title?: string | null;
-  updatedAt?: string | null;
-  isActive?: boolean;
-}

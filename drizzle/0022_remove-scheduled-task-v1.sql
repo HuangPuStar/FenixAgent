@@ -1,0 +1,1 @@
+DROP TABLE "scheduled_task" CASCADE;

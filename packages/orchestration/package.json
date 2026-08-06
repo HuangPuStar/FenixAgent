@@ -13,8 +13,5 @@
     "build": "bun build src/index.ts --outdir dist --format esm",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test"
-  },
-  "dependencies": {
-    "drizzle-orm": "^0.45.2"
   }
 }
