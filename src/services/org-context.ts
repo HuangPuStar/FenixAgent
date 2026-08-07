@@ -109,7 +109,7 @@ export async function loadOrgContext(user: { id: string }, request: Request): Pr
         headers: request.headers,
       });
       // biome-ignore lint/suspicious/noExplicitAny: better-auth listMembers returns inconsistent shape
-      const memberList: any[] = Array.isArray(memberRes) ? ((memberRes as any)?.members ?? []) : [];
+      const memberList: any[] = Array.isArray(memberRes) ? memberRes : ((memberRes as any)?.members ?? []);
       // biome-ignore lint/suspicious/noExplicitAny: better-auth member objects are untyped
       const me = memberList.find((m: any) => m.userId === user.id);
       if (me) {
