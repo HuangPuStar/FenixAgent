@@ -8,6 +8,7 @@ export const MachineSchema = z.object({
   userId: z.string().nullable().describe("关联用户 ID；未绑定时为 null。"),
   agentName: z.string().describe("机器展示名称。"),
   name: z.string().nullable().describe("用户自定义名称；未设置时为 null。"),
+  type: z.enum(["machine", "sandbox"]).optional().describe("机器节点类型；历史记录缺失时兼容为空。"),
   status: z.string().describe("机器当前状态，例如 online、offline。"),
   machineInfo: z.record(z.string(), z.unknown()).nullable().describe("机器基础信息，例如 hostname、ip、os、arch。"),
   labels: z.string().array().nullable().describe("机器标签列表。"),
@@ -62,6 +63,7 @@ export const RegistryEventListResponseSchema = WebOkSchema(RegistryEventListData
 /** 机器列表查询参数 */
 export const MachineQuerySchema = z.object({
   status: z.string().optional().describe("按机器状态过滤。"),
+  type: z.enum(["machine", "sandbox", "all"]).optional().default("machine").describe("按机器节点类型过滤。"),
   labels: z.string().optional().describe("按逗号分隔的标签过滤。"),
   tenantId: z.string().optional().describe("预留的租户 ID 过滤字段。"),
   userId: z.string().optional().describe("预留的用户 ID 过滤字段。"),

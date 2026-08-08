@@ -35,6 +35,30 @@ function buildConfig(env: Env) {
     userAgentMaxConcurrency: env.RCS_USER_AGENT_MAX_CONCURRENCY,
     /** 定时任务触发的活跃 Agent 实例并发上限。 */
     scheduledAgentMaxConcurrency: env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY,
+    /** 沙盒创建或恢复后等待 ACP Runtime 回连的最长时间（毫秒）。 */
+    sandboxRuntimeConnectTimeoutMs: env.RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS ?? 10000,
+    /** 是否启用沙盒默认策略。 */
+    sandboxEnabled: env.RCS_SANDBOX_ENABLED,
+    /** 未显式指定运行节点时使用的默认沙盒资源池 ID。 */
+    defaultSandboxPoolId: env.RCS_DEFAULT_SANDBOX_POOL_ID,
+    /** 默认沙盒镜像名称。 */
+    defaultSandboxImage: env.RCS_DEFAULT_SANDBOX_IMAGE,
+    /** 默认沙盒资源配置 JSON，包括环境变量和挂载。 */
+    defaultSandboxResourcesJson: env.RCS_DEFAULT_SANDBOX_RESOURCES_JSON,
+    /** Provider 专属的默认配置 JSON。 */
+    defaultSandboxExtraJson: env.RCS_DEFAULT_SANDBOX_EXTRA_JSON,
+    /** OpenSandbox Cluster 服务地址。 */
+    openSandboxClusterUrl: env.RCS_SANDBOX_CLUSTER_URL,
+    /** 调用 OpenSandbox Cluster 使用的 API Key。 */
+    openSandboxClusterApiKey: env.RCS_SANDBOX_CLUSTER_API_KEY,
+    /** Provider 普通请求的超时时间（毫秒）。 */
+    sandboxProviderRequestTimeoutMs: env.RCS_SANDBOX_PROVIDER_REQUEST_TIMEOUT_MS ?? 10000,
+    /** Provider 创建沙盒的超时时间（毫秒）。 */
+    sandboxProviderCreateTimeoutMs: env.RCS_SANDBOX_PROVIDER_CREATE_TIMEOUT_MS ?? 120000,
+    /** Provider 恢复沙盒的超时时间（毫秒）。 */
+    sandboxProviderResumeTimeoutMs: env.RCS_SANDBOX_PROVIDER_RESUME_TIMEOUT_MS ?? 60000,
+    /** Provider 删除沙盒的超时时间（毫秒）。 */
+    sandboxProviderDestroyTimeoutMs: env.RCS_SANDBOX_PROVIDER_DESTROY_TIMEOUT_MS ?? 60000,
     /** acpx-g workflow engine URL for reverse proxy. */
     acpxGUrl: env.ACPX_G_URL,
     /** RagFlow API base URL (e.g. http://localhost:9380). */

@@ -11,13 +11,33 @@ import {
   listReadableResourceRefs,
   setPublicRead,
 } from "../resource-permission";
-import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess } from "./types";
+import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess, AgentNode } from "./types";
 
 // ────────────────────────────────────────────
 // Agent Config 操作
 // ────────────────────────────────────────────
 
-const AGENT_SETTABLE_FIELDS = ["model", "modelId", "prompt", "description", "extra", "machineId", "knowledge"] as const;
+const AGENT_SETTABLE_FIELDS = ["model", "modelId", "prompt", "description", "extra", "agentNode", "knowledge"] as const;
+
+export function normalizeAgentNode(input: unknown): AgentNode | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).length === 0) return {};
+  if (value.kind === "machine" && typeof value.machineId === "string" && value.machineId.length > 0) {
+    return { kind: "machine", machineId: value.machineId };
+  }
+  if (value.kind === "sandbox" && typeof value.sandboxPoolId === "string" && value.sandboxPoolId.length > 0) {
+    return { kind: "sandbox", sandboxPoolId: value.sandboxPoolId };
+  }
+  return null;
+}
+
+export function resolveAgentNode(row: { agentNode?: unknown; machineId: string | null }): AgentNode | null {
+  if (row.agentNode !== null && row.agentNode !== undefined) {
+    return normalizeAgentNode(row.agentNode) ?? (row.machineId ? { kind: "machine", machineId: row.machineId } : {});
+  }
+  return row.machineId ? { kind: "machine", machineId: row.machineId } : {};
+}
 
 /** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
 const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
@@ -135,7 +155,8 @@ function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentCo
   for (const field of AGENT_SETTABLE_FIELDS) {
     if (data[field] !== undefined) {
       const drizzleKey = FIELD_ALIAS[field] ?? field;
-      (set as Record<string, unknown>)[drizzleKey] = data[field] ?? null;
+      (set as Record<string, unknown>)[drizzleKey] =
+        field === "agentNode" ? (normalizeAgentNode(data[field]) ?? {}) : (data[field] ?? null);
     }
   }
   return set;
@@ -240,6 +261,9 @@ function isValidSteps(steps: number): boolean {
 
 /** 校验 agent 数据字段，返回错误码或 null */
 export function validateAgentData(data: Record<string, unknown>): string | null {
+  if (data.agentNode !== undefined && data.agentNode !== null && !normalizeAgentNode(data.agentNode)) {
+    return "INVALID_AGENT_NODE";
+  }
   if (data.mode !== undefined && typeof data.mode === "string" && !isValidMode(data.mode)) return "INVALID_MODE";
   if (data.steps !== undefined && typeof data.steps === "number" && !isValidSteps(data.steps)) return "INVALID_STEPS";
   if (data.temperature !== undefined) {

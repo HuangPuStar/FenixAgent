@@ -23,6 +23,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
+import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
 
@@ -669,6 +670,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
       // 提供有意义的断连原因提示
       if (event.code === 4003) {
+        reconnectScheduler.cancel();
         console.error(
           `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
         );
@@ -676,16 +678,25 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         return;
       }
 
-      // 指数退避重连（不断连不杀子进程）
-      const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
-      reconnectAttempt++;
-      console.log(`[acp-client] disconnected, reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
-      setTimeout(connect, delay);
+      scheduleReconnect("close");
     };
 
     ws.onerror = () => {
-      // ws.onclose 会触发
+      // Node.js WebSocket 在连接不上服务端时可能只触发 error，不触发 close。
+      // 因此 error 也必须进入重连调度，否则服务端重启后 Runtime 会永久离线。
+      scheduleReconnect("error");
     };
+  }
+
+  const reconnectScheduler = createReconnectScheduler({ connect });
+
+  function scheduleReconnect(reason: "close" | "error"): void {
+    if (manualClose) return;
+    const delay = Math.min(1000 * 2 ** reconnectAttempt, MAX_RECONNECT_MS);
+    const scheduled = reconnectScheduler.schedule(delay);
+    if (!scheduled) return;
+    reconnectAttempt++;
+    console.log(`[acp-client] disconnected (${reason}), reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
   }
 
   // 先加载持久化的 node_id，完成后建立连接（确保首次注册即带上 node_id）
@@ -712,6 +723,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         fileWs.onerror = null;
         fileWs.close();
       }
+      reconnectScheduler.cancel();
       sessionMgr.stopAll();
       ws?.close();
     },

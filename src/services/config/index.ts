@@ -10,7 +10,9 @@ export {
   getReadableAgentConfigById,
   isBuiltInAgent,
   listAgentConfigs,
+  normalizeAgentNode,
   normalizeKnowledgeConfig,
+  resolveAgentNode,
   updateAgentConfig,
   validateAgentData,
 } from "./agent-config";
@@ -70,6 +72,7 @@ export type {
   AgentConfigUpsertData,
   AgentExtraConfig,
   AgentKnowledgeConfig,
+  AgentNode,
   McpServerConfig,
   McpServerInfoOutput,
   McpServerSetOptions,

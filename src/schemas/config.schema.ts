@@ -321,6 +321,12 @@ export const AgentRelatedResourceViewSchema = z
   })
   .describe("Agent 关联资源展示视图。");
 
+export const AgentNodeSchema = z.union([
+  z.object({}).strict().describe("未显式指定执行节点，运行时按默认策略解析。"),
+  z.object({ kind: z.literal("machine"), machineId: z.string().min(1) }),
+  z.object({ kind: z.literal("sandbox"), sandboxPoolId: z.string().min(1) }),
+]);
+
 export const AgentInfoSchema = z
   .object({
     id: z.string().optional().describe("Agent 配置 ID。"),
@@ -330,7 +336,7 @@ export const AgentInfoSchema = z
     modelId: z.string().nullable().describe("当前绑定的模型 ID；未设置时为 null。"),
     modelLabel: z.string().nullable().optional().describe("模型展示名称；仅列表场景返回。"),
     description: z.string().nullable().describe("Agent 描述；未设置时为 null。"),
-    machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
+    agentNode: AgentNodeSchema.describe("执行节点；空对象表示运行时按默认策略解析。"),
     knowledgeBaseCount: z.number().describe("绑定的知识库数量。"),
     skillLabels: z.array(AgentLabelSchema).optional().describe("Skill 展示标签列表；仅列表场景返回。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
@@ -351,7 +357,7 @@ export const AgentDetailSchema = z
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
     siteAppIds: z.array(z.string()).optional().describe("绑定的 Site App ID 列表。"),
-    machineId: z.string().nullable().optional().describe("绑定的机器 ID；未设置时为 null。"),
+    agentNode: AgentNodeSchema.describe("执行节点；空对象表示运行时按默认策略解析。"),
     relatedResources: AgentRelatedResourceViewSchema.optional().describe("关联资源的展示视图。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
     enableMemory: z.boolean().optional().describe("是否为该 Agent 启用了 Hindsight 记忆功能。"),

@@ -20,7 +20,7 @@ describe("API Agents Routes", () => {
     });
     setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
     stubConfigPg({
-      AGENT_SETTABLE_FIELDS: ["modelId", "prompt", "description", "extra", "machineId", "knowledge"],
+      AGENT_SETTABLE_FIELDS: ["modelId", "prompt", "description", "extra", "agentNode", "knowledge"],
       listAgentConfigs: async () => [],
       getAgentConfigById: async () => null,
       getReadableAgentConfigById: async () => null,

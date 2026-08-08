@@ -25,6 +25,7 @@ describe("api agent schema", () => {
       prompt: null,
       description: null,
       extra: null,
+      agentNode: {},
       knowledge: {
         knowledgeBaseIds: ["kb-1"],
         policy: {

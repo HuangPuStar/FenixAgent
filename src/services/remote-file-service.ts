@@ -1,37 +1,59 @@
 import { config } from "../config";
 import { AppError } from "../errors";
 import { environmentRepo } from "../repositories";
+import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
+import { findSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-handler";
-import { getAgentConfigById } from "./config/agent-config";
+import { getAgentConfigById, resolveAgentNode } from "./config";
+
+type RemoteMachineResolutionInput = {
+  agentNode: { kind: "machine"; machineId: string } | { kind: "sandbox"; sandboxPoolId: string } | {} | null;
+  sandboxMachineId: string | null;
+  sandboxSelected: boolean;
+  defaultMachineId: string | null;
+};
+
+/** 根据运行节点配置选择文件操作使用的 Machine 身份。 */
+export function selectRemoteMachineId(input: RemoteMachineResolutionInput): string | null {
+  if (input.agentNode && "kind" in input.agentNode && input.agentNode.kind === "machine") {
+    return input.agentNode.machineId;
+  }
+  if (input.sandboxSelected) return input.sandboxMachineId;
+  return input.defaultMachineId;
+}
 
 /**
  * 判断 environment 是否绑定了远程 machine（且 file-ws 已连接）。
- * 优先级：agent config machineId > 系统默认 fallback > null（本地）
+ * 优先级：显式 Machine > Sandbox Instance Machine > 默认 Machine > null（本地）
  *
- * - 无 machineId 配置 → 返回 null（调用方使用本地 FS）
- * - machineId 已配置 + file-ws 已连接 → 返回 machineId（走远程文件操作）
- * - machineId 已配置 + file-ws 未连接 → 抛 AppError（明确拒绝本地回退，
- *   避免"配置了远程机器，用户以为文件在远程，实际落在本地"的分裂场景）
+ * 仅当解析出的 Machine ID 对应 file-ws 已连接时，才返回 machineId（走远程文件操作）。
+ * 若已选择远程 Machine 或 Sandbox，但 file-ws 未连接，则返回明确错误，避免文件落到本地。
  */
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await environmentRepo.getById(envId);
   if (!env) return null;
+  const agentCfg = env.agentConfigId ? await getAgentConfigById(env.agentConfigId) : null;
+  const agentNode = agentCfg ? resolveAgentNode(agentCfg) : {};
+  const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
+  const useDefaultSandbox = agentNode?.kind !== "machine" && !explicitSandboxPoolId && config.sandboxEnabled;
+  const sandboxPoolId = explicitSandboxPoolId ?? (useDefaultSandbox ? config.defaultSandboxPoolId : null);
+  const sandboxSelected = Boolean(explicitSandboxPoolId || (useDefaultSandbox && sandboxPoolId));
 
-  let machineId: string | null = null;
-
-  // 优先级 1：agent config 绑定的 machineId
-  if (env.agentConfigId) {
-    const agentCfg = await getAgentConfigById(env.agentConfigId);
-    machineId = agentCfg?.machineId ?? null;
+  let sandboxMachineId: string | null = null;
+  if (sandboxPoolId && env.userId) {
+    const pool = await findSandboxPoolById(sandboxPoolId);
+    if (pool) {
+      const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, env.userId);
+      sandboxMachineId = instance?.machineId ?? null;
+    }
   }
 
-  // 优先级 2：系统默认 machine（RCS_DEFAULT_MACHINE_ID）
-  // 覆盖两种场景：
-  //   a) environment 无 agentConfigId（如 ACP/Bridge 注册路径创建的环境）
-  //   b) agent config 未绑定 machineId
-  if (!machineId) {
-    machineId = config.defaultMachineId ?? null;
-  }
+  const machineId = selectRemoteMachineId({
+    agentNode,
+    sandboxMachineId,
+    sandboxSelected,
+    defaultMachineId: config.defaultMachineId ?? null,
+  });
 
   // 没有配置 machine → 本地 FS
   if (!machineId) return null;

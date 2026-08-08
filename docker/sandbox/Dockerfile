@@ -21,6 +21,7 @@ RUN printf 'registry=%s\n' \
 
 # 安装 Opencode / ACP Runtime CLI / Hindsight 插件
 RUN npm install -g opencode-ai@1.17.12
+RUN npm install -g @fenix-agent/acp-runtime-cli
 RUN opencode plugin @konghayao/opencode-hindsight -g
 
 RUN mkdir -p /app/workspaces
