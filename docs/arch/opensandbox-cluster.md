@@ -22,7 +22,7 @@ Cluster 不负责：
 - 管理 FenixAgent 的组织、用户和环境数据；
 - 提供 Web 管理界面。
 
-服务代码位于 `packages/opensandbox-cluster`，Docker 部署文件位于 `docker/opensandbox-cluster`。
+Cluster 只认识调用方提供的业务 `sandbox_id`。OpenSandbox Server 返回的 Provider sandbox ID 由上游 Provider 保存和使用；上游通过业务 `sandbox_id` 经过 Cluster 找到绑定的 Server，再将 Provider sandbox ID 放入代理路径访问具体远程沙盒。Cluster 不保存这两个 ID 的对应关系。
 
 ## 2. 总体架构
 
@@ -100,7 +100,7 @@ sandbox_binding.server_id 指向实际承载沙盒的 Server
 - `capacitySandboxes`：所有 Server 的 `maxSandboxes` 之和；
 - `availableSandboxes`：状态为 `active` 且健康状态为 `healthy` 的 Server 剩余容量之和。
 
-当前实现虽然允许保存资源池 `status`，但 `allocate` 尚未根据资源池状态过滤。实际是否允许分配由候选 Server 是否为 `active` 且 `healthy` 决定。
+资源池 `status` 是资源池管理元数据；分配时实际依据资源池下 Server 的 `active`、`healthy` 状态和容量选择可用节点。资源池是否可用不由单独的远程沙盒状态决定。
 
 ### 3.3 opensandbox_server
 
@@ -150,6 +150,8 @@ sandbox_binding.server_id 指向实际承载沙盒的 Server
 - last_error。
 
 binding 写入即计入容量。远程沙盒删除成功后，调用方还需要调用 release 接口删除 binding。
+
+因此，binding 是分布式分配记录，不是远程沙盒生命周期记录。远程沙盒处于创建中、运行中、停止或删除状态，都不会改变 binding；只有调用方明确 release 后，容量才会归还。
 
 同一个 `sandbox_id` 在 Cluster 内全局唯一。如果它已经绑定到其他资源池，重复 allocate 会返回冲突。
 
@@ -246,10 +248,16 @@ Cluster 不会根据当前健康状态重新选择 Server，也不会迁移已�
 }
 ```
 
+Fenix 转换为用户稳定路径后传入 Cluster：
+
+```text
+user-123/ws
+```
+
 Cluster 转发为：
 
 ```text
-{workspace_root}/{sandbox_id}/ws
+{workspace_root}/user-123/ws
 ```
 
 规则：
@@ -257,16 +265,16 @@ Cluster 转发为：
 - `ws`、`/ws`、`./ws` 会归一化到同一个相对路径；
 - host volume 的 `path` 必须是相对 workspace 的路径；
 - Windows drive path、NUL 字节和 `..` 路径穿越会被拒绝；
-- `sandbox_id` 只能包含字母、数字、`.`、`_`、`-`，且不能以特殊字符开头；
+- Cluster 不生成、不保存、不解释 `userId`，也不会把 `sandbox_id` 插入工作区路径；`sandbox_id` 仍只用于 binding 路由和远程沙盒生命周期请求；
 - 只改写 `volume.host.path`，不改写容器内的 `mountPath`；
 - PVC 或其他没有 `host` 对象的 volume 保持原样；
 - 非 JSON 创建请求不会执行 volume 改写。
 
-不同业务镜像的默认容器内 workspace `mountPath` 不由 Cluster 决定，应该由上游调用方根据镜像配置生成；Cluster 只负责宿主机 host path 隔离。
+不同业务镜像的默认容器内 workspace `mountPath` 不由 Cluster 决定，应该由上游调用方根据镜像配置生成；Cluster 只负责宿主机 `workspace_root` 映射和路径安全校验。
 
 ### 4.5 删除流程
 
-Cluster 不自动删除远程沙盒，也不根据远程删除响应自动释放 binding。调用方负责按顺序执行：
+Cluster 不自动删除远程沙盒，也不维护远程沙盒状态。调用方负责先通过业务 `sandbox_id` 代理请求，将 Provider sandbox ID 传给 OpenSandbox Server 完成远程删除；远程删除成功后再释放 binding：
 
 ```text
 DELETE /api/v1/sandboxes/:sandboxId/proxy/...
@@ -459,13 +467,13 @@ DELETE /api/v1/sandboxes/sbi_xxx/proxy/v1/sandboxes/osb_xxx
 ANY /api/v1/servers/:serverId/proxy/*path
 ```
 
-该接口直接按 `server_id` 找到 Server，不做容量分配，也不创建或修改 binding。它和其他接口一样需要 Cluster API Key，当前实现没有额外的管理员角色鉴权。
+该接口直接按 `server_id` 找到 Server，不做容量分配，也不创建或修改 binding。它和其他接口一样需要 Cluster API Key，不承担额外的资源分配职责。
 
 ## 6. 错误和一致性
 
 ### 6.1 错误状态
 
-当前代码实际使用的主要状态码：
+主要状态码：
 
 | 场景 | 状态码 |
 | --- | --- |
@@ -561,43 +569,28 @@ Cluster 只提供资源池和 HTTP 透传能力。上游 Provider 的实际调�
 
 ```text
 首次创建
-  1. POST /api/v1/pools/:poolId/sandboxes/:sandboxId/allocate
-  2. POST /api/v1/sandboxes/:sandboxId/proxy/v1/sandboxes
+  1. POST /api/v1/pools/:poolId/sandboxes/:businessSandboxId/allocate
+  2. POST /api/v1/sandboxes/:businessSandboxId/proxy/v1/sandboxes
+     （请求体由 Provider 负责创建，响应中的 providerSandboxId 由 Provider 保存）
 
 后续 get / resume / exec / 文件 / 端口操作
-  直接调用 sandbox proxy，不重复 allocate
+  直接调用 sandbox proxy，并在路径中使用 providerSandboxId，不重复 allocate
 
 销毁
   1. 通过 sandbox proxy 删除远程沙盒
-  2. 远程删除成功后 DELETE /api/v1/sandboxes/:sandboxId/allocation
+  2. 远程删除成功后 DELETE /api/v1/sandboxes/:businessSandboxId/allocation
 ```
 
 不同业务镜像的默认容器内 workspace 挂载点由上游 Provider 根据镜像配置决定。Cluster 只处理宿主机侧的 workspace 隔离和路径安全。
 
-## 9. 已验证范围和当前限制
+## 9. 架构限制
 
-已完成本地验证：
-
-- DinD OpenSandbox Server 启动和健康检查；
-- 业务沙盒镜像导入 DinD；
-- Cluster Docker 镜像构建、SQLite 初始迁移和健康检查；
-- 资源池创建和 Server 注册；
-- Server 健康检查；
-- allocate 幂等和容量占用；
-- 通过 Cluster 代理创建、查询和执行沙盒命令；
-- 修改 `workspace_root` 后重新创建沙盒；
-- host volume 路径改写并在宿主机验证文件落盘；
-- 远程删除、binding release、Server 和资源池清理。
-
-当前限制：
-
-- 单 Cluster 实例；
-- SQLite，不支持多实例共享调度；
-- 没有后台健康检查；
-- 没有远程沙盒状态同步；
-- 没有自动释放孤儿 binding；
-- 没有自动故障迁移；
-- 没有 Web 管理页面；
-- OpenSandbox Server 节点当前只验证 DinD 部署；
-- 资源池 `status` 当前不会阻止 allocate；
-- `PROXY_CONNECT_TIMEOUT_MS` 当前尚未真正应用到 HTTP 连接建立阶段。
+- Cluster 只负责 Server 选择、绑定和 HTTP 代理，不负责远程沙盒生命周期、状态同步或故障恢复。
+- binding 是容量占用和路由记录，不是远程沙盒状态记录；孤儿 binding 需要由调用方或运维流程显式释放。
+- SQLite 调度锁只适用于单 Cluster 实例；多实例部署需要增加共享数据库或分布式锁协调。
+- 健康状态由注册时和显式健康检查更新，不承担跨节点自动故障迁移。
+- 不提供 Web 管理页面，资源池、Server、绑定和代理能力通过 HTTP API 提供。
+- 节点部署模型以 OpenSandbox Server + DinD 为边界，Server 内部 Docker 运行时不属于 Cluster 的管理范围。
+- 资源池状态字段用于资源池管理，不替代 Server 的容量和健康状态；实际分配由可用 Server 决定。
+- Host volume 只允许落在 Server 注册的 `workspace_root` 范围内；容器内挂载点由上游 Provider 根据业务镜像决定。
+- Cluster 不保存 Provider sandbox ID；上游 Provider 必须持久化业务 sandbox ID 与 Provider sandbox ID 的关联。

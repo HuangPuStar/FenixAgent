@@ -6,6 +6,12 @@ import {
   AgentResourceAccessSchema,
 } from "./config.schema";
 
+const AgentNodeSchema = z.union([
+  z.object({}).strict().describe("未显式指定执行节点，运行时按默认策略解析。"),
+  z.object({ kind: z.literal("machine"), machineId: z.string().min(1) }),
+  z.object({ kind: z.literal("sandbox"), sandboxPoolId: z.string().min(1) }),
+]);
+
 /**
  * 对外 Agent 列表查询参数。
  * 保持分页结构稳定，避免未来补筛选时破坏现有调用方。
@@ -35,7 +41,7 @@ export const ApiAgentUpsertBodySchema = z
     description: z.string().nullable().optional().describe("Agent 描述；传 null 表示清空。"),
     extra: z.record(z.string(), z.unknown()).nullable().optional().describe("额外扩展配置；传 null 表示清空。"),
     knowledge: AgentKnowledgeConfigSchema.nullable().optional().describe("知识库绑定配置；传 null 表示清空。"),
-    machineId: z.string().nullable().optional().describe("绑定的机器 ID；传 null 表示清空。"),
+    agentNode: AgentNodeSchema.optional().describe("执行节点；空对象表示运行时按默认策略解析。"),
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 或 Skill 名称列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
     publicReadable: z.boolean().optional().describe("是否允许其他组织只读访问。"),

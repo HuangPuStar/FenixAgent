@@ -25,6 +25,7 @@ import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import openaiChatRoutes from "./routes/api/openai-chat";
+import apiSandboxRoutes from "./routes/api/sandbox";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiWorkflowRoutes from "./routes/api/workflows";
@@ -41,6 +42,8 @@ import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
+import { registerConfiguredSandboxProviders, sandboxManager } from "./services/sandbox";
+import { initializeDefaultSandboxPool } from "./services/sandbox/sandbox-default-pool";
 import { schedulerService } from "./services/scheduler/index";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
@@ -57,6 +60,7 @@ startupLog.info("Database initialized");
 
 const env = validateEnv();
 applyEnv(env);
+registerConfiguredSandboxProviders();
 
 // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
 const systemAdmin = await ensureSystemAdmin();
@@ -66,6 +70,15 @@ startupLog.info(`System admin ready: ${systemAdmin.email}`);
 await runDataMigrations();
 startupLog.info("Data migrations completed");
 
+try {
+  const defaultPool = await initializeDefaultSandboxPool(config);
+  if (defaultPool) startupLog.info(`Default sandbox pool initialized: ${defaultPool.id}`);
+} catch (error) {
+  startupLog.error("Failed to initialize default sandbox pool", error instanceof Error ? error : undefined);
+}
+
+await sandboxManager.recoverAfterRestart();
+
 // 重启时重置所有 agent_session 状态为 idle
 // WebSocket/EventBus 已断开，之前的运行状态不再有效
 import { sql } from "drizzle-orm";
@@ -74,7 +87,6 @@ await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).whe
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
-
 await Promise.all([startScheduler(), schedulerService.start()]);
 
 try {
@@ -185,6 +197,7 @@ const app = new Elysia()
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
+  .use(apiSandboxRoutes)
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
   .use(apiWorkflowRoutes)

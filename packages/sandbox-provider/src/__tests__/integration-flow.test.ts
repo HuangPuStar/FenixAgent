@@ -12,7 +12,7 @@ const input: SandboxCreateInput = {
     diskGb: 5,
     gpuCount: 0,
     environment: {},
-    volumes: [],
+    volumes: [{ name: "workspace", source: "user-123/ws", target: "/workspace" }],
   },
 };
 
@@ -20,6 +20,7 @@ describe("OpenSandbox Cluster Provider integration flow", () => {
   // Provider 的完整生命周期必须保持 allocate、create、get、resume、destroy、release 顺序。
   test("runs the lifecycle through one cluster binding", async () => {
     const calls: string[] = [];
+    let createBody: Record<string, unknown> | undefined;
     const provider = new OpenSandboxClusterProvider(
       {
         baseUrl: "http://cluster.test",
@@ -44,6 +45,7 @@ describe("OpenSandbox Cluster Provider integration flow", () => {
           return Response.json({ id: "osb-flow-001", status: { state: "Running" } }, { status: 202 });
         }
         if (path.endsWith("/sandboxes") && init?.method === "POST") {
+          createBody = JSON.parse(String(init.body)) as Record<string, unknown>;
           return Response.json({ id: "osb-flow-001", status: { state: "Running" } }, { status: 202 });
         }
         if (path.endsWith("/osb-flow-001") && (!init?.method || init.method === "GET")) {
@@ -57,6 +59,10 @@ describe("OpenSandbox Cluster Provider integration flow", () => {
     await expect(provider.get("osb-flow-001", "sbi-flow-001")).resolves.toMatchObject({ status: "stopped" });
     await expect(provider.resume("osb-flow-001", "sbi-flow-001")).resolves.toMatchObject({ status: "ready" });
     await expect(provider.destroy("osb-flow-001", "sbi-flow-001")).resolves.toBeUndefined();
+
+    expect(createBody?.volumes).toEqual([
+      { name: "workspace", host: { path: "user-123/ws" }, mountPath: "/workspace" },
+    ]);
 
     expect(calls).toEqual([
       "POST /api/v1/pools/pool-flow/sandboxes/sbi-flow-001/allocate",

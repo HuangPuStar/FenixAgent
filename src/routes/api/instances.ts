@@ -8,6 +8,7 @@ import {
   ApiInstanceConnectResponseSchema,
 } from "../../schemas/api-instance.schema";
 import { connectAgentInstance } from "../../services/api-instance";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
 
 const ApiErrorResponseSchema = z.object({
   error: z.object({
@@ -17,6 +18,17 @@ const ApiErrorResponseSchema = z.object({
 });
 
 function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
+  if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
+    return {
+      status: 503,
+      body: {
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: error.message,
+        },
+      },
+    };
+  }
   if (error instanceof Error && "statusCode" in error && "code" in error) {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;
     const code = typeof error.code === "string" ? error.code : "INTERNAL_ERROR";

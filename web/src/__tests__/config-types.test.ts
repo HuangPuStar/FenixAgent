@@ -87,7 +87,7 @@ describe("PermissionConfig types", () => {
       description: "测试Agent",
       extra: { sidebar: { collapsed: false } },
       knowledge: null,
-      machineId: "machine-1",
+      agentNode: { kind: "machine", machineId: "machine-1" },
       skillIds: ["skill-1"],
       mcpIds: ["mcp-1"],
       resourceAccess: {
@@ -102,7 +102,7 @@ describe("PermissionConfig types", () => {
     };
     expect(detail.description).toBe("测试Agent");
     expect(detail.extra).toEqual({ sidebar: { collapsed: false } });
-    expect(detail.machineId).toBe("machine-1");
+    expect(detail.agentNode).toEqual({ kind: "machine", machineId: "machine-1" });
     expect(detail.skillIds).toEqual(["skill-1"]);
     expect(detail.mcpIds).toEqual(["mcp-1"]);
   });
@@ -117,7 +117,7 @@ describe("PermissionConfig types", () => {
       description: null,
       extra: null,
       knowledge: null,
-      machineId: null,
+      agentNode: {},
       skillIds: [],
       mcpIds: [],
       resourceAccess: {
@@ -141,7 +141,7 @@ describe("PermissionConfig types", () => {
       prompt: null,
       description: null,
       knowledge: { knowledgeBaseIds: ["kb-1"] },
-      machineId: "machine-1",
+      agentNode: { kind: "machine", machineId: "machine-1" },
       skillIds: ["skill-1"],
       mcpIds: ["mcp-1"],
       relatedResources: {
@@ -168,6 +168,7 @@ describe("PermissionConfig types", () => {
       modelId: "model_build",
       description: "构建Agent",
       id: "agc_build",
+      agentNode: {},
       knowledgeBaseCount: 0,
       skillLabels: [{ id: "skill-1", label: "deploy-skill" }],
       resourceAccess: {
@@ -191,6 +192,7 @@ describe("PermissionConfig types", () => {
       model: null,
       modelId: null,
       description: null,
+      agentNode: {},
       knowledgeBaseCount: 0,
     };
     expect(info.description).toBeNull();

@@ -37,6 +37,7 @@ import {
   AGENT_SETTABLE_FIELDS,
   isBuiltInAgent,
   normalizeKnowledgeConfig,
+  resolveAgentNode,
   validateAgentData,
 } from "../../services/config/agent-config";
 
@@ -95,7 +96,7 @@ async function toAgentListItem(ctx: AuthContext, agent: Awaited<ReturnType<typeo
     model: agent.model ?? null,
     modelId: agent.modelId ?? null,
     description: agent.description ?? null,
-    machineId: agent.machineId ?? null,
+    agentNode: resolveAgentNode(agent) ?? {},
     knowledgeBaseCount: (await getAgentKnowledgeConfigById(agent.id))?.knowledgeBaseIds.length ?? 0,
     resourceAccess:
       agent.resourceAccess ??
@@ -138,7 +139,7 @@ async function buildAgentDetail(ctx: AuthContext, agentId: string) {
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
     skillIds,
     mcpIds,
-    machineId: agent.machineId ?? null,
+    agentNode: resolveAgentNode(agent) ?? {},
     resourceAccess: agent.resourceAccess,
   };
 }

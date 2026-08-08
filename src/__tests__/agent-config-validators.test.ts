@@ -9,7 +9,7 @@ const { AGENT_SETTABLE_FIELDS, validateAgentData, isBuiltInAgent } = await impor
 describe("AGENT_SETTABLE_FIELDS", () => {
   // 确认已知字段都包含在列表中
   it("包含所���期望的可设置字段", () => {
-    const expected = ["modelId", "prompt", "description", "extra", "machineId", "knowledge"];
+    const expected = ["modelId", "prompt", "description", "extra", "agentNode", "knowledge"];
     for (const field of expected) {
       expect((AGENT_SETTABLE_FIELDS as readonly string[]).includes(field)).toBe(true);
     }

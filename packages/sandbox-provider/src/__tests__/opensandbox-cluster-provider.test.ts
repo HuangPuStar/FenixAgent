@@ -12,7 +12,7 @@ const input: SandboxCreateInput = {
     diskGb: 20,
     gpuCount: 0,
     environment: { LANG: "C.UTF-8" },
-    volumes: [{ name: "workspace", source: "./ws", target: "/workspace" }],
+    volumes: [{ name: "workspace", source: "user-123/ws", target: "/workspace" }],
   },
 };
 
@@ -64,7 +64,7 @@ describe("OpenSandboxClusterProvider contract", () => {
       resourceLimits: { cpu: "2000m", memory: "2048Mi", gpu: "0" },
       env: { LANG: "C.UTF-8" },
     });
-    expect(createBody.volumes).toEqual([{ name: "workspace", host: { path: "./ws" }, mountPath: "/workspace" }]);
+    expect(createBody.volumes).toEqual([{ name: "workspace", host: { path: "user-123/ws" }, mountPath: "/workspace" }]);
   });
 
   // 生命周期请求必须使用业务 ID 定位 Cluster，再使用外部 ID定位 OpenSandbox。

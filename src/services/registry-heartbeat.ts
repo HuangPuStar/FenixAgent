@@ -2,6 +2,7 @@ import { log, error as logError } from "@fenix/logger";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { machine } from "../db/schema";
+import { touchSandboxInstanceHeartbeatByMachineId } from "../repositories/sandbox-instance-repository";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 
 type HeartbeatEntry = {
@@ -35,6 +36,7 @@ export function startHeartbeat(machineId: string, heartbeatIntervalMs: number, o
 
 export async function handleHeartbeat(machineId: string): Promise<void> {
   await updateHeartbeat(machineId);
+  await touchSandboxInstanceHeartbeatByMachineId(machineId);
 
   const entry = heartbeatMap.get(machineId);
   if (entry) {

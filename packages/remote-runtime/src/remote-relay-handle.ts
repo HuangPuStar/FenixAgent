@@ -19,6 +19,14 @@ export class RemoteRelayHandle implements EngineRelayHandle {
       const payload = msg.payload as Record<string, unknown> | undefined;
       if (!payload || typeof payload !== "object") return;
 
+      logger.debug("← agent relay message", {
+        instanceId: instId,
+        listeners: this.messageListeners.size,
+        payloadType: typeof payload.type === "string" ? payload.type : "jsonrpc",
+        id: payload.id ?? "n/a",
+        method: payload.method ?? "n/a",
+      });
+
       // 传输层消息（status/error/pong 等）：直接透传
       if (typeof payload.type === "string") {
         for (const listener of this.messageListeners) {

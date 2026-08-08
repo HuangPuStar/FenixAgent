@@ -34,6 +34,21 @@ const envSchema = z.object({
   RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_ENABLED: z
+    .string()
+    .default("false")
+    .transform((value) => value === "true"),
+  RCS_DEFAULT_SANDBOX_POOL_ID: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_IMAGE: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_RESOURCES_JSON: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_EXTRA_JSON: z.string().min(1).optional(),
+  RCS_SANDBOX_CLUSTER_URL: z.string().min(1).optional(),
+  RCS_SANDBOX_CLUSTER_API_KEY: z.string().min(1).optional(),
+  RCS_SANDBOX_PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_RESUME_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_DESTROY_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
   // ── 可选：知识库（RagFlow）──
   RAGFLOW_API_URL: z.string().default("http://localhost:9380"),

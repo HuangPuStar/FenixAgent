@@ -46,6 +46,7 @@ interface ConfigPgStubs {
   removeAgentSiteApp: StubFn;
   removeModel: StubFn;
   removeModelById: StubFn;
+  resolveAgentNode: StubFn;
   setMcpServerEnabled: StubFn;
   setUserConfig: StubFn;
   syncAgentMcps: StubFn;

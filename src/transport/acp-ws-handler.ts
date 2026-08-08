@@ -160,7 +160,6 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     const engineTypes = supportedEngineTypes.map((e) => e.type);
     registerRemoteNode(result.id, entry.ws, entry, engineTypes);
-
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (replacedInstanceIds.length > 0) {
       import("./relay").then(({ closeClientsForMachineInstances }) => {

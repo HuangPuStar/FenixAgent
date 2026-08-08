@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
+import { SandboxProviderNotConfiguredError } from "../services/sandbox/sandbox-errors";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
 const testConnectRoute = test.skipIf(process.env.RUN_SKIP_TEST !== "1");
@@ -91,5 +92,30 @@ describe("API Instance Routes", () => {
         wsUrl: "/acp/relay/env-created",
       },
     });
+  });
+
+  // Agent 入口的 Provider 未配置错误应返回服务不可用，而不是内部错误。
+  testConnectRoute("POST /api/agents/:agentId/instances/connect maps missing provider to 503", async () => {
+    setApiInstanceDeps({
+      getReadableAgentConfigById: async () =>
+        ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
+      groupActiveInstancesByEnvironment: () => new Map(),
+      listEnvironmentsByOrganizationId: async () => [],
+      createWebEnvironment: async () =>
+        ({ id: "env-sandbox", name: "runtime-sandbox", agentConfigId: "agc-sandbox" }) as never,
+      getRunningInstancesByEnvironment: () => [],
+      spawnInstanceFromEnvironment: async () => {
+        throw new SandboxProviderNotConfiguredError("missing-provider");
+      },
+    });
+
+    const res = await request("/api/agents/agc-sandbox/instances/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const json = await res.json();
+    expect(res.status).toBe(503);
+    expect(json.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 });

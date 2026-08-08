@@ -9,10 +9,12 @@ import { environmentRepo } from "../repositories";
 import { findMachineConnectionById, setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { assertAgentConcurrencyAvailable } from "./agent-concurrency";
-import { getReadableAgentConfigById } from "./config/index";
+import { getReadableAgentConfigById, resolveAgentNode } from "./config/index";
 import { getCoreRuntime } from "./core-bootstrap";
+import { EnvironmentStartupLock } from "./environment-startup-lock";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
+import { sandboxExecutionHandler } from "./sandbox";
 import { _sessionRepo } from "./session";
 
 // ────────────────────────────────────────────
@@ -80,6 +82,7 @@ export interface SpawnInstanceOptions {
 // ────────────────────────────────────────────
 
 const registry = globalInstanceRegistry;
+const environmentStartupLock = new EnvironmentStartupLock();
 
 function mapCoreStatus(status: import("@fenix/core").RuntimeInstanceStatus): SpawnedInstance["status"] {
   switch (status) {
@@ -225,6 +228,7 @@ export async function spawnInstanceFromEnvironment(
 
   // Phase 2: 有 agentConfig 时走完整 builder；没有时降级为最小可运行配置。
   let agentMachineId: string | null = null;
+  let agentSandboxPoolId: string | null = null;
   const launchContext = {
     organizationId: env.organizationId ?? userId,
     userId: env.userId ?? userId,
@@ -243,7 +247,9 @@ export async function spawnInstanceFromEnvironment(
       );
       throw new NotFoundError(`AgentConfig '${agentConfigId}' not found`);
     }
-    agentMachineId = resolvedAgentConfig.machineId ?? null;
+    const agentNode = resolveAgentNode(resolvedAgentConfig);
+    agentMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
+    agentSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
     // 缓存 agentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用
     if (agentMachineId) {
       setAgentMachineCache(environmentId, agentMachineId);
@@ -269,11 +275,29 @@ export async function spawnInstanceFromEnvironment(
   const instanceId = `inst_${randomBytes(8).toString("hex")}`;
   const instanceNumber = registry.nextInstanceNumber(environmentId);
 
-  // machineId 缺失时按优先级选择执行节点：
-  // agent config 绑定 > 系统环境变量 > local-default
+  // 执行节点优先级：显式 sandbox > 显式 machine > 默认 sandbox > 默认 machine > local-default。
   let nodeId = "local-default";
-  if (agentMachineId) {
+  if (agentSandboxPoolId) {
+    const prepared = await sandboxExecutionHandler.prepare({
+      sandboxId: `sbi_${randomBytes(12).toString("hex")}`,
+      sandboxPoolId: agentSandboxPoolId,
+      userId,
+      organizationId: env.organizationId ?? undefined,
+    });
+    nodeId = prepared.nodeId;
+  } else if (agentMachineId) {
     nodeId = agentMachineId;
+  } else if (config.sandboxEnabled) {
+    if (!config.defaultSandboxPoolId) {
+      throw new AppError("沙盒已开启但未配置默认资源池", "SANDBOX_DEFAULT_POOL_MISSING", 503);
+    }
+    const prepared = await sandboxExecutionHandler.prepare({
+      sandboxId: `sbi_${randomBytes(12).toString("hex")}`,
+      sandboxPoolId: config.defaultSandboxPoolId,
+      userId,
+      organizationId: env.organizationId ?? undefined,
+    });
+    nodeId = prepared.nodeId;
   } else if (config.defaultMachineId) {
     nodeId = config.defaultMachineId;
   }
@@ -463,23 +487,28 @@ export async function ensureRunning(
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
 
-  const env = await environmentRepo.getById(environmentId);
-  if (!env) throw new NotFoundError("Environment not found");
+  const startup = await environmentStartupLock.run(environmentId, async () => {
+    // 进入锁后再次检查，避免前一个启动流程刚完成时重复创建实例。
+    const started = getRunningInstancesByEnvironment(environmentId)[0];
+    if (started) return started;
 
-  if (!env.autoStart) {
-    throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
-  }
+    const env = await environmentRepo.getById(environmentId);
+    if (!env) throw new NotFoundError("Environment not found");
 
-  // async gap 后重新检查：await 期间可能有并发请求新启了实例
-  const currentRunning = getRunningInstancesByEnvironment(environmentId);
-  if (currentRunning.length >= env.maxSessions) {
-    // 并发场景下另一个请求可能已启动实例，优先复用
-    if (currentRunning[0]) return { instance: currentRunning[0], status: "reused" };
-    throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
-  }
+    if (!env.autoStart) {
+      throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
+    }
 
-  const instance = await spawnInstanceFromEnvironment(userId, environmentId, env, { source });
-  return { instance, status: "spawned" };
+    const currentRunning = getRunningInstancesByEnvironment(environmentId);
+    if (currentRunning.length >= env.maxSessions) {
+      if (currentRunning[0]) return currentRunning[0];
+      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
+    }
+
+    return spawnInstanceFromEnvironment(userId, environmentId, env, { source });
+  });
+
+  return { instance: startup.value, status: startup.joined ? "reused" : "spawned" };
 }
 
 // ────────────────────────────────────────────
