@@ -2,6 +2,11 @@
 
 本目录提供 OpenSandbox Cluster 的 Docker Compose 部署。Cluster 使用 SQLite 保存资源池、OpenSandbox Server 和 sandbox binding，不挂载 Docker Socket。
 
+单机离线部署和日常运维请参考：
+
+- [`deploy/fenix-integration.md`](deploy/fenix-integration.md)
+- [`deploy/fenix-ops.sh`](deploy/fenix-ops.sh)
+
 ## 启动
 
 ```bash
