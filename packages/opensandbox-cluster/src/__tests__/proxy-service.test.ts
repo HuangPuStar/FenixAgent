@@ -104,7 +104,7 @@ describe("OpenSandbox proxy", () => {
       volumes: [
         {
           name: "workspace",
-          host: { path: "/data/opensandbox/sandboxes/sbi-volume/ws" },
+          host: { path: "/data/opensandbox/sandboxes/ws" },
           mountPath: "/workspace",
         },
       ],

@@ -42,10 +42,16 @@ docker compose up -d --build
 }
 ```
 
-创建沙盒时，调用方可以在 `volumes[*].host.path` 中传入相对路径。Cluster 会在代理到 OpenSandbox Server 前自动加上：
+创建沙盒时，调用方可以在 `volumes[*].host.path` 中传入相对路径。Fenix 等上游业务应先把稳定的用户目录前缀写入路径，例如：
 
 ```text
-{server.workspace_root}/{sandbox_id}/
+user-123/ws
 ```
 
-例如 `ws`、`/ws` 和 `./ws` 都会被改写为 `{server.workspace_root}/{sandbox_id}/ws`。`mountPath` 和 PVC volume 不会被改写，`..` 路径穿越会被拒绝。OpenSandbox Server 节点的 Compose 挂载路径、`sandbox.toml` 的 `storage.allowed_host_paths` 和 Cluster 的 `workspace_root` 必须保持一致。
+Cluster 只负责在代理到 OpenSandbox Server 前拼接：
+
+```text
+{server.workspace_root}/user-123/ws
+```
+
+Cluster 不感知 `userId` 和其他业务语义，也不会把 `sandbox_id` 插入宿主机路径。`ws`、`/ws` 和 `./ws` 都会被规范化为同一个相对路径；`mountPath` 和 PVC volume 不会被改写，`..`、Windows 绝对路径和 NUL 字符会被拒绝。OpenSandbox Server 节点的 Compose 挂载路径、`sandbox.toml` 的 `storage.allowed_host_paths` 和 Cluster 的 `workspace_root` 必须保持一致。

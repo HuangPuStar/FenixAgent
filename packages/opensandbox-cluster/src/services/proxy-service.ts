@@ -44,7 +44,6 @@ export class ProxyService {
         credentials.apiKey,
         request,
         path,
-        sandboxId,
         credentials.workspaceRoot,
       );
     } catch (error) {

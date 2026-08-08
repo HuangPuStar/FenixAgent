@@ -22,20 +22,17 @@ function normalizeRelativePath(value: string): string {
   return normalized === "." ? "" : normalized;
 }
 
-function sandboxWorkspacePath(workspaceRoot: string, sandboxId: string, path: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sandboxId)) {
-    throw new SandboxVolumeRewriteError("sandbox id contains unsupported path characters");
-  }
+function workspacePath(workspaceRoot: string, path: string): string {
   const relativePath = normalizeRelativePath(path);
   const root = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   if (!root.startsWith("/") || root === "/" || root.includes("\0") || root.includes("/../") || root.endsWith("/..")) {
     throw new SandboxVolumeRewriteError("workspace root must be a safe absolute path");
   }
-  return relativePath ? `${root}/${sandboxId}/${relativePath}` : `${root}/${sandboxId}`;
+  return relativePath ? `${root}/${relativePath}` : root;
 }
 
 /** Rewrites caller-provided host volume paths into the configured Server workspace. */
-export function rewriteSandboxCreateBody(body: unknown, sandboxId: string, workspaceRoot: string): unknown {
+export function rewriteSandboxCreateBody(body: unknown, workspaceRoot: string): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new SandboxVolumeRewriteError("sandbox create body must be an object");
   }
@@ -62,7 +59,7 @@ export function rewriteSandboxCreateBody(body: unknown, sandboxId: string, works
         ...item,
         host: {
           ...host,
-          path: sandboxWorkspacePath(workspaceRoot, sandboxId, host.path),
+          path: workspacePath(workspaceRoot, host.path),
         },
       };
     }),

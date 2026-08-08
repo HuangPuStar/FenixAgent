@@ -27,7 +27,6 @@ export class OpenSandboxHttpClient {
     apiKey: string,
     incoming: Request,
     path: string,
-    sandboxId?: string,
     workspaceRoot?: string,
   ): Promise<Response> {
     const incomingUrl = new URL(incoming.url);
@@ -40,7 +39,6 @@ export class OpenSandboxHttpClient {
     let body: string | ReadableStream<Uint8Array> | null | undefined =
       incoming.method === "GET" || incoming.method === "HEAD" ? undefined : incoming.body;
     if (
-      sandboxId &&
       workspaceRoot &&
       isSandboxCreateRequest(incoming.method, path) &&
       incoming.headers.get("content-type")?.includes("application/json")
@@ -51,7 +49,7 @@ export class OpenSandboxHttpClient {
       } catch {
         throw new SandboxVolumeRewriteError("sandbox create body must be valid JSON");
       }
-      body = JSON.stringify(rewriteSandboxCreateBody(requestBody, sandboxId, workspaceRoot));
+      body = JSON.stringify(rewriteSandboxCreateBody(requestBody, workspaceRoot));
       headers.delete("content-length");
     }
     return this.fetchImpl(target, {
