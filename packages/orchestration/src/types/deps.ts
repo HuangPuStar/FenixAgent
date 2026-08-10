@@ -45,7 +45,14 @@ export interface EnvironmentData {
 
 /** 环境仓库：按环境 ID 读取环境数据。 */
 export interface EnvironmentRepo {
-  getEnvironment(envId: string): Promise<EnvironmentData | null>;
+  /**
+   * 读取环境数据；`userId` 为请求者标识（实例资源归属）。
+   *
+   * 宿主 Repo 在解析 machineId 时可用它做资源归属决策（如 sandbox 执行节点按
+   * `pool + userId` 复用实例）；不需要时实现可忽略。调用方（AgentController /
+   * LaunchSpecBuilder）必须透传 spawn 流程的 userId。
+   */
+  getEnvironment(envId: string, userId?: string): Promise<EnvironmentData | null>;
 }
 
 /** 远程 Agent 机器（Machine）的连接元数据。 */

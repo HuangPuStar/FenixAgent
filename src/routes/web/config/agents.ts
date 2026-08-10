@@ -2,16 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { db } from "../../../db";
-import {
-  agentSiteApp,
-  knowledgeBase,
-  machine,
-  mcpServer,
-  model,
-  organization,
-  provider,
-  skill,
-} from "../../../db/schema";
+import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
 import * as agentMemoryConfigRepo from "../../../repositories/agent-memory-config";
@@ -41,10 +32,12 @@ import {
   AGENT_SETTABLE_FIELDS,
   isBuiltInAgent,
   normalizeKnowledgeConfig,
+  resolveAgentNode,
   validateAgentData,
 } from "../../../services/config/agent-config";
 import * as configPg from "../../../services/config/index";
 import { listSkills } from "../../../services/config/skill";
+import type { AgentNode } from "../../../services/config/types";
 import {
   configError,
   configNotFound,
@@ -66,7 +59,7 @@ interface AgentResourceDisplayInput {
   id: string;
   organizationId: string;
   modelId: string | null;
-  machineId: string | null;
+  agentNode: AgentNode;
   resourceAccess?: {
     sourceOrganizationId: string;
   };
@@ -80,7 +73,7 @@ async function buildAgentRelatedResourceView(
 ): Promise<AgentRelatedResourceView> {
   const fallback: AgentRelatedResourceView = {
     modelLabel: agent.modelId ?? null,
-    machineLabel: agent.machineId ?? null,
+    machineLabel: agent.agentNode.kind === "machine" ? agent.agentNode.machineId : null,
     skills: skillIds.map((id) => ({ id, label: id })),
     mcps: mcpIds.map((id) => ({ id, label: id })),
     knowledgeBases: [],
@@ -124,11 +117,11 @@ async function buildAgentRelatedResourceView(
     }
 
     let machineLabel: string | null = null;
-    if (agent.machineId) {
+    if (agent.agentNode.kind === "machine") {
       const machineRows = await db
         .select({ id: machine.id, agentName: machine.agentName, name: machine.name, machineInfo: machine.machineInfo })
         .from(machine)
-        .where(eq(machine.id, agent.machineId))
+        .where(eq(machine.id, agent.agentNode.machineId))
         .limit(1);
       const machineRow = machineRows[0];
       if (machineRow) {
@@ -138,7 +131,7 @@ async function buildAgentRelatedResourceView(
             : "";
         machineLabel = machineRow.name || hostname || machineRow.agentName;
       } else {
-        machineLabel = agent.machineId;
+        machineLabel = agent.agentNode.machineId;
       }
     }
 
@@ -216,7 +209,7 @@ async function handleList(ctx: AuthContext) {
           id: a.id,
           organizationId: a.organizationId,
           modelId: a.modelId ?? null,
-          machineId: a.machineId ?? null,
+          agentNode: resolveAgentNode(a) ?? {},
           resourceAccess: a.resourceAccess,
         },
         skillIds,
@@ -231,7 +224,7 @@ async function handleList(ctx: AuthContext) {
         modelId: a.modelId ?? null,
         modelLabel: relatedResources.modelLabel,
         description: a.description ?? null,
-        machineId: a.machineId ?? null,
+        agentNode: resolveAgentNode(a) ?? {},
         knowledgeBaseCount: (await listAgentKnowledgeBindingsById(a.id)).length,
         skillLabels: relatedResources.skills,
         resourceAccess: a.resourceAccess,
@@ -249,7 +242,12 @@ async function handleGet(ctx: AuthContext, name: string) {
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const mcpIds = await configPg.listAgentMcpIds(agent.id);
   const siteAppIds = await configPg.listAgentSiteAppIds(agent.id);
-  const relatedResources = await buildAgentRelatedResourceView(agent, skillIds, mcpIds, siteAppIds);
+  const relatedResources = await buildAgentRelatedResourceView(
+    { ...agent, agentNode: resolveAgentNode(agent) ?? {} },
+    skillIds,
+    mcpIds,
+    siteAppIds,
+  );
   const knowledge = await getAgentKnowledgeConfigById(agent.id);
 
   return configSuccess({
@@ -262,7 +260,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     description: agent.description ?? null,
     extra: agent.extra ?? null,
     knowledge: normalizeKnowledgeConfig(knowledge ?? null),
-    machineId: agent.machineId ?? null,
+    agentNode: resolveAgentNode(agent) ?? {},
     enableMemory: await isAgentMemoryEnabled(agent.id),
     skillIds,
     mcpIds,
@@ -378,25 +376,6 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
-
-  // 从组织 metadata 读取默认机器设置
-  if (!data.machineId) {
-    try {
-      const [org] = await db
-        .select({ metadata: organization.metadata })
-        .from(organization)
-        .where(eq(organization.id, ctx.organizationId))
-        .limit(1);
-      const defEngine = (org?.metadata as Record<string, unknown> | null)?.defaultEngine as
-        | { machineId?: string }
-        | undefined;
-      if (defEngine?.machineId !== undefined && !data.machineId) {
-        data.machineId = defEngine.machineId || null;
-      }
-    } catch {
-      // 读取失败静默回退，不影响 Agent 创建
-    }
-  }
 
   // 白名单过滤
   const filtered: Record<string, unknown> = {};

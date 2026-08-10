@@ -25,6 +25,7 @@ import apiKnowledgeBaseRoutes from "./routes/api/knowledge-bases";
 import apiMcpRoutes from "./routes/api/mcp";
 import apiModelsRoutes from "./routes/api/models";
 import openaiChatRoutes from "./routes/api/openai-chat";
+import apiSandboxRoutes from "./routes/api/sandbox";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiWorkflowRoutes from "./routes/api/workflows";
@@ -41,6 +42,8 @@ import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
+import { registerConfiguredSandboxProviders, sandboxManager } from "./services/sandbox";
+import { initializeDefaultSandboxPool } from "./services/sandbox/sandbox-default-pool";
 import { schedulerService } from "./services/scheduler/index";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
@@ -56,6 +59,7 @@ startupLog.info("Database initialized");
 
 const env = validateEnv();
 applyEnv(env);
+registerConfiguredSandboxProviders();
 
 // 废弃环境变量启动告警：RCS_DEFAULT_MACHINE_TYPE 是 637a4cef 引入的死配置，服务端从未读取，
 // 且 c71ee18c 后 ENGINE_TYPE 仅对 local 执行生效（远程引擎由机器端 AGENT_TYPE 唯一控制）。
@@ -73,6 +77,17 @@ startupLog.info(`System admin ready: ${systemAdmin.email}`);
 // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
 await runDataMigrations();
 startupLog.info("Data migrations completed");
+
+// 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
+// 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
+try {
+  const defaultPool = await initializeDefaultSandboxPool(config);
+  if (defaultPool) startupLog.info(`Default sandbox pool initialized: ${defaultPool.id}`);
+} catch (error) {
+  startupLog.error("Failed to initialize default sandbox pool", error instanceof Error ? error : undefined);
+}
+
+await sandboxManager.recoverAfterRestart();
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
@@ -199,6 +214,7 @@ const app = new Elysia()
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
+  .use(apiSandboxRoutes)
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
   .use(apiWorkflowRoutes)

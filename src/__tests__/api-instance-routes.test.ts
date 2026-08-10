@@ -3,6 +3,7 @@ import { ConcurrencyExceededError } from "@fenix/orchestration";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
+import { SandboxProviderNotConfiguredError } from "../services/sandbox/sandbox-errors";
 import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
@@ -135,6 +136,34 @@ describe("API Instance Routes", () => {
     expect(json.error.code).toBe("CONCURRENCY_EXCEEDED");
     expect(json.error.message).toBe("Concurrency limit exceeded");
     expect(JSON.stringify(json)).not.toContain("env_x");
+  });
+
+  // Sandbox Provider 未配置错误应返回 503 服务不可用，而不是内部错误。
+  // 与 D-P2.2 的 OrchestrationError 映射不同：sandbox 错误属"服务暂不可用"
+  // 语义，message 为稳定配置提示（不携带内部标识），可直接返回。
+  test("spawnInstanceViaController 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE", async () => {
+    setApiInstanceDeps({
+      getReadableAgentConfigById: async () =>
+        ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
+      groupActiveInstancesByEnvironment: () => new Map(),
+      listEnvironmentsByOrganizationId: async () => [],
+      createWebEnvironment: async () =>
+        ({ id: "env-sandbox", name: "runtime-sandbox", agentConfigId: "agc-sandbox" }) as never,
+      getRunningInstancesByEnvironment: () => [],
+      spawnInstanceViaController: async () => {
+        throw new SandboxProviderNotConfiguredError("missing-provider");
+      },
+    });
+
+    const res = await request("/api/agents/agc-sandbox/instances/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(json.error.code).toBe("SERVICE_UNAVAILABLE");
   });
 
   // D-P2.2：未知错误（如 CoreRuntimeError 500）兜底 message 固定通用文案，

@@ -54,8 +54,9 @@ export class AgentController {
 
   /** 创建 Agent 运行实例（完整 6 步流程，见类注释错误映射）。 */
   async spawnInstance(envId: string, userId: string): Promise<Instance> {
-    // 1. 环境校验
-    const environment = await this.#environmentRepo.getEnvironment(envId);
+    // 1. 环境校验（透传 userId：宿主 Repo 解析 machineId 时可能按用户归属
+    //    准备执行节点，如 sandbox 实例按 pool + userId 复用）
+    const environment = await this.#environmentRepo.getEnvironment(envId, userId);
     if (environment === null) {
       throw new EnvironmentNotFoundError(`Environment '${envId}' not found`);
     }

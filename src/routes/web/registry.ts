@@ -108,6 +108,7 @@ app.get(
     const authCtx = store.authContext!;
     const q = query as {
       status?: string;
+      type?: "machine" | "sandbox" | "all";
       labels?: string;
       tenantId?: string;
       userId?: string;
@@ -125,6 +126,7 @@ app.get(
     try {
       const result = await listMachines(authCtx, {
         status: q.status as "online" | "offline" | undefined,
+        type: q.type ?? "machine",
         labels,
         limit,
         offset,

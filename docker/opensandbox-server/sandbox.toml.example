@@ -1,0 +1,26 @@
+[server]
+# Server 在容器内监听的地址和端口，通常不需要修改。
+host = "0.0.0.0"
+port = 8080
+# Cluster 创建 opensandbox_server 记录时，api_key 必须填写同一个值。
+api_key = "replace-with-a-long-random-api-key"
+
+[runtime]
+# 当前使用 Docker Runtime。
+type = "docker"
+# OpenSandbox 注入每个沙盒的执行代理镜像，负责 exec、文件读写等操作。
+# 它不是用户沙盒镜像，也不是 OpenSandbox Server 镜像；需确保节点可以拉取该镜像。
+execd_image = "opensandbox/execd:v1.0.18"
+
+[docker]
+# 沙盒容器使用的 Docker 网络模式。
+network_mode = "bridge"
+# Cluster 和沙盒调用方可以访问的节点 IP，不能填写容器内部地址。
+host_ip = "192.168.1.20"
+# 沙盒端口范围；必须与 .env 中 SANDBOX_PORT_MIN/MAX 保持一致。
+port_range_min = 10000
+port_range_max = 10100
+
+[storage]
+# DinD 中 Cluster 的 workspace_root 使用 /workspace/sandboxes。
+allowed_host_paths = ["/workspace/sandboxes"]

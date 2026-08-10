@@ -10,6 +10,7 @@ import {
   ApiInstanceConnectResponseSchema,
 } from "../../schemas/api-instance.schema";
 import { connectAgentInstance } from "../../services/api-instance";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
 
 const ApiErrorResponseSchema = z.object({
   error: z.object({
@@ -19,6 +20,19 @@ const ApiErrorResponseSchema = z.object({
 });
 
 function mapApiError(error: unknown): { status: number; body: { error: { code: string; message: string } } } {
+  // Sandbox 服务不可用类错误：Provider 未配置 / Runtime 未就绪 → 503，保持对外
+  // API 语义（外部客户端区分"服务暂不可用"与"内部错误"）。
+  if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
+    return {
+      status: 503,
+      body: {
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: error.message,
+        },
+      },
+    };
+  }
   // OrchestrationError 不是 AppError（无 statusCode 字段），此前落入兜底 500 并
   // 原样返回 message（D-P2.2）。这里统一经编排域映射（src/errors/orchestration-http.ts，
   // 与 errorPlugin 共用单一真相来源）：status 按错误码映射，message 用通用模板

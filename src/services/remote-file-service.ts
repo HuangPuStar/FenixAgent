@@ -4,9 +4,28 @@ import { db } from "../db";
 import { machine } from "../db/schema";
 import { AppError } from "../errors";
 import { environmentRepo } from "../repositories";
+import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
+import { findSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected } from "../transport/file-ws-handler";
 import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";
-import { getAgentConfigById } from "./config/agent-config";
+import { getAgentConfigById, resolveAgentNode } from "./config/agent-config";
+import type { AgentNode } from "./config/types";
+
+type RemoteMachineResolutionInput = {
+  agentNode: AgentNode | null;
+  sandboxMachineId: string | null;
+  sandboxSelected: boolean;
+  defaultMachineId: string | null;
+};
+
+/** 根据运行节点配置选择文件操作使用的 Machine 身份。 */
+export function selectRemoteMachineId(input: RemoteMachineResolutionInput): string | null {
+  if (input.agentNode && "kind" in input.agentNode && input.agentNode.kind === "machine") {
+    return input.agentNode.machineId;
+  }
+  if (input.sandboxSelected) return input.sandboxMachineId;
+  return input.defaultMachineId;
+}
 
 // ── 远程 upload 单文件上限（字节）与 413 文案 ──
 // 权威声明在 file-types.ts（REMOTE_UPLOAD_MAX_BYTES / REMOTE_UPLOAD_LIMIT_MESSAGE）；
@@ -27,8 +46,8 @@ export const REMOTE_ZIP_LIMIT_MESSAGE = "目录打包后超过 20MB（远程环�
 const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)) * 1000;
 
 /**
- * 判断 environment 是否绑定了远程 machine。
- * 优先级：agent config machineId > 系统默认 fallback > null（本地）
+ * 判断 environment 是否绑定了远程 machine（且 file-ws 已连接）。
+ * 优先级：显式 Machine > Sandbox Instance Machine > 默认 Machine > null（本地）
  *
  * 三分语义（§2.4 machineId 配置校验，区分"配置错误"与"连接不可用"）：
  * - 无 machineId 配置 → 返回 null（调用方使用本地 FS）
@@ -42,22 +61,28 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await environmentRepo.getById(envId);
   if (!env) return null;
+  const agentCfg = env.agentConfigId ? await getAgentConfigById(env.agentConfigId) : null;
+  const agentNode = agentCfg ? resolveAgentNode(agentCfg) : {};
+  const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
+  const useDefaultSandbox = agentNode?.kind !== "machine" && !explicitSandboxPoolId && config.sandboxEnabled;
+  const sandboxPoolId = explicitSandboxPoolId ?? (useDefaultSandbox ? config.defaultSandboxPoolId : null);
+  const sandboxSelected = Boolean(explicitSandboxPoolId || (useDefaultSandbox && sandboxPoolId));
 
-  let machineId: string | null = null;
-
-  // 优先级 1：agent config 绑定的 machineId
-  if (env.agentConfigId) {
-    const agentCfg = await getAgentConfigById(env.agentConfigId);
-    machineId = agentCfg?.machineId ?? null;
+  let sandboxMachineId: string | null = null;
+  if (sandboxPoolId && env.userId) {
+    const pool = await findSandboxPoolById(sandboxPoolId);
+    if (pool) {
+      const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, env.userId);
+      sandboxMachineId = instance?.machineId ?? null;
+    }
   }
 
-  // 优先级 2：系统默认 machine（RCS_DEFAULT_MACHINE_ID）
-  // 覆盖两种场景：
-  //   a) environment 无 agentConfigId（如 ACP/Bridge 注册路径创建的环境）
-  //   b) agent config 未绑定 machineId
-  if (!machineId) {
-    machineId = config.defaultMachineId ?? null;
-  }
+  const machineId = selectRemoteMachineId({
+    agentNode,
+    sandboxMachineId,
+    sandboxSelected,
+    defaultMachineId: config.defaultMachineId ?? null,
+  });
 
   // 没有配置 machine → 本地 FS
   if (!machineId) return null;

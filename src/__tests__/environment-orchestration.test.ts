@@ -1,7 +1,7 @@
 // PgEnvironmentOrchestrationRepo 的 machineId fallback 链测试（断裂点 4/5 回归）
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { config, setConfig } from "../config";
-import { PgEnvironmentOrchestrationRepo } from "../repositories/environment-orchestration";
+import { type ExecutionNodeResolver, PgEnvironmentOrchestrationRepo } from "../repositories/environment-orchestration";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
@@ -31,6 +31,8 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
       agentConfigId: "ac-1",
       autoStart: false,
       configMachineId: null,
+      agentNode: null,
+      envUserId: "user-1",
       ...overrides,
     };
   }
@@ -112,4 +114,57 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
 
   // 注：不测 `"  "` 空白串——`||` 下为 truthy，视为合法绑定值原样透传；
   // 空白串归一不在本次范围（实现与 0dcb2e2d 前旧路径 falsy 语义保持一致）。
+
+  // 注入执行节点解析器后（sandbox 适配装配点），resolver 结果优先于默认 fallback 链
+  test("注入 resolver 时优先采用 resolver 解析出的 machineId", async () => {
+    setConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubSelectRows([makeRow({ configMachineId: "mach_bound" })]);
+    repo.setExecutionNodeResolver(async () => "sbx_machine_1");
+
+    const env = await repo.getEnvironment("env-1", "user-1");
+    expect(env?.machineId).toBe("sbx_machine_1");
+  });
+
+  // resolver 返回 null 表示无业务解析结果，回落到默认链（machineId 列 → 默认机器）
+  test("resolver 返回 null 时回落默认 fallback 链", async () => {
+    setConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubSelectRows([makeRow({ configMachineId: "" })]);
+    repo.setExecutionNodeResolver(async () => null);
+
+    const env = await repo.getEnvironment("env-1", "user-1");
+    expect(env?.machineId).toBe("mach_default");
+  });
+
+  // resolver 的入参应包含 userId 与 agentNode 原始 JSON（sandbox 归属与解析输入）
+  test("resolver 收到 userId / agentNode / configMachineId 上下文", async () => {
+    setConfig({ defaultMachineId: undefined, disableLocalExecution: false });
+    stubSelectRows([makeRow({ agentNode: { kind: "sandbox", sandboxPoolId: "pool-1" }, configMachineId: null })]);
+    // 用对象容器保存捕获值：直接捕获到 let 变量会触发 TS 闭包 CFA 窄化（报 never），
+    // 属性访问不受闭包赋值影响，类型始终为声明类型
+    const captured: { input: Parameters<ExecutionNodeResolver>[0] | null } = { input: null };
+    repo.setExecutionNodeResolver(async (input) => {
+      captured.input = input;
+      return null;
+    });
+
+    await repo.getEnvironment("env-1", "user-9");
+    expect(captured.input).not.toBeNull();
+    expect(captured.input?.userId).toBe("user-9");
+    expect(captured.input?.agentNode).toEqual({ kind: "sandbox", sandboxPoolId: "pool-1" });
+    expect(captured.input?.configMachineId).toBeNull();
+  });
+
+  // getEnvironment 不传 userId 时回退环境属主（历史调用方兼容）
+  test("不传 userId 时 resolver 收到环境属主 userId", async () => {
+    setConfig({ defaultMachineId: undefined, disableLocalExecution: false });
+    stubSelectRows([makeRow({ envUserId: "owner-1" })]);
+    let capturedUserId: string | undefined;
+    repo.setExecutionNodeResolver(async (input) => {
+      capturedUserId = input.userId;
+      return null;
+    });
+
+    await repo.getEnvironment("env-1");
+    expect(capturedUserId).toBe("owner-1");
+  });
 });

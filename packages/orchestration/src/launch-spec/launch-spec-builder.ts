@@ -44,7 +44,10 @@ export class LaunchSpecBuilder {
   /** 从 envId + userId 构建完整 LaunchSpec；缺失字段抛 LaunchSpecBuildError（含诊断）。 */
   async build(envId: string, userId: string): Promise<LaunchSpec> {
     // 1. 环境：不存在或缺少配置引用时无法继续
-    const environment = await this.#environmentRepo.getEnvironment(envId);
+    //    透传 userId：宿主 Repo 的 machineId 解析可能依赖请求者（sandbox 归属）。
+    //    两次 getEnvironment（AgentController 步骤 1 + 本处）返回的 machineId 必须
+    //    同源一致：宿主实现须保证同 env + userId 的解析幂等（sandbox 复用）。
+    const environment = await this.#environmentRepo.getEnvironment(envId, userId);
     if (environment === null) {
       throw new LaunchSpecBuildError(`Cannot build launch spec: environment '${envId}' not found`);
     }

@@ -6,6 +6,7 @@ import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
+import { resolveAgentNode } from "./config/agent-config";
 import * as configPg from "./config/index";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
@@ -161,11 +162,12 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   );
   if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
   // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
-  if (agent.machineId) {
+  const agentNode = resolveAgentNode(agent);
+  if (agentNode?.kind === "machine") {
     const m = await db
       .select({ agentName: machine.agentName })
       .from(machine)
-      .where(eq(machine.id, agent.machineId))
+      .where(eq(machine.id, agentNode.machineId))
       .limit(1);
     machineName = m[0]?.agentName ?? undefined;
   }
@@ -234,11 +236,12 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
     patch.agentConfigId = params.agentConfigId;
     let machineName: string | null = null;
-    if (agent.machineId) {
+    const agentNode = resolveAgentNode(agent);
+    if (agentNode?.kind === "machine") {
       const m = await db
         .select({ agentName: machine.agentName })
         .from(machine)
-        .where(eq(machine.id, agent.machineId))
+        .where(eq(machine.id, agentNode.machineId))
         .limit(1);
       machineName = m[0]?.agentName ?? null;
     }

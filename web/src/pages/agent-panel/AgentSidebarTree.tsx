@@ -35,6 +35,7 @@ import { ensureMetaAgent } from "@/src/api/meta-agent";
 import { unwrap } from "@/src/api/request";
 import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
+import { shouldShowRemoteNode } from "../../lib/agent-node";
 import {
   getAgentAccessBadgeKey,
   getAgentConfigLookupKey,
@@ -42,7 +43,7 @@ import {
   isAgentWritable,
 } from "../../lib/agent-resource-access";
 import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
-import type { ResourceAccess } from "../../types/config";
+import type { AgentNode, ResourceAccess } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
@@ -54,7 +55,7 @@ interface AgentConfigItem {
   modelLabel?: string | null;
   description: string | null;
   resourceAccess?: ResourceAccess;
-  machineId?: string | null;
+  agentNode: AgentNode;
 }
 
 interface AgentTreeNode {
@@ -522,10 +523,10 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                   )}
                 </div>
                 {/* 第二行：标识键 + 远程标记 */}
-                {(agentKey || agent.machineId) && (
+                {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
                   <div className="text-[10px] text-text-muted truncate flex items-center gap-1.5">
                     {agentKey && <span className="font-mono truncate">{agentKey}</span>}
-                    {agent.machineId && (
+                    {shouldShowRemoteNode(agent.agentNode) && (
                       <>
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
                         <span className="shrink-0">{t("remoteNode")}</span>

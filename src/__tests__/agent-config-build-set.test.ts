@@ -6,7 +6,7 @@ describe("buildSetFromData 字段映射", () => {
   // AGENT_SETTABLE_FIELDS 包含所有可写字段
   test("AGENT_SETTABLE_FIELDS 覆盖所有已知字段", () => {
     // 当前白名单字段（steps/mode/permission/variant/temperature/topP/top_p/disable/hidden/color 等已迁移到 extra JSONB）
-    const fields = ["model", "modelId", "prompt", "description", "extra", "machineId", "knowledge"];
+    const fields = ["model", "modelId", "prompt", "description", "extra", "agentNode", "knowledge"];
     for (const f of fields) {
       expect((AGENT_SETTABLE_FIELDS as readonly string[]).includes(f)).toBe(true);
     }

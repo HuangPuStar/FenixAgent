@@ -20,6 +20,7 @@ import { AppError, NotFoundError } from "../errors";
 import { environmentRepo } from "../repositories";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { getCoreRuntime } from "./core-bootstrap";
+import { EnvironmentStartupLock } from "./environment-startup-lock";
 import { globalInstanceRegistry } from "./instance-registry";
 import { createInstanceSessionId } from "./instance-session";
 import { getOrchestrationController } from "./orchestration-bootstrap";
@@ -103,6 +104,7 @@ export interface EnsureRunningResult {
 // ────────────────────────────────────────────
 
 const registry = globalInstanceRegistry;
+const environmentStartupLock = new EnvironmentStartupLock();
 
 function mapCoreStatus(status: import("@fenix/core").RuntimeInstanceStatus): SpawnedInstance["status"] {
   switch (status) {
@@ -412,23 +414,30 @@ export async function ensureRunning(
   const existing = runningInstances[0];
   if (existing) return { instance: existing, status: "reused" };
 
-  const env = await environmentRepo.getById(environmentId);
-  if (!env) throw new NotFoundError("Environment not found");
+  const startup = await environmentStartupLock.run(environmentId, async () => {
+    // 进入锁后再次检查，避免前一个启动流程刚完成时重复创建实例。
+    const started = getRunningInstancesByEnvironment(environmentId)[0];
+    if (started) return started;
 
-  if (!env.autoStart) {
-    throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
-  }
+    const env = await environmentRepo.getById(environmentId);
+    if (!env) throw new NotFoundError("Environment not found");
 
-  // async gap 后重新检查：await 期间可能有并发请求新启了实例
-  const currentRunning = getRunningInstancesByEnvironment(environmentId);
-  if (currentRunning.length >= env.maxSessions) {
-    // 并发场景下另一个请求可能已启动实例，优先复用
-    if (currentRunning[0]) return { instance: currentRunning[0], status: "reused" };
-    throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
-  }
+    if (!env.autoStart) {
+      throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
+    }
 
-  const instance = await spawnViaOrchestration(userId, environmentId, source);
-  return { instance, status: "spawned" };
+    const currentRunning = getRunningInstancesByEnvironment(environmentId);
+    if (currentRunning.length >= env.maxSessions) {
+      if (currentRunning[0]) return currentRunning[0];
+      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
+    }
+
+    // 锁回调统一返回 SpawnedInstance，由锁外包装 EnsureRunningResult（joined 判定）
+    const instance = await spawnViaOrchestration(userId, environmentId, source);
+    return instance;
+  });
+
+  return { instance: startup.value, status: startup.joined ? "reused" : "spawned" };
 }
 
 /**

@@ -59,7 +59,7 @@ describe("API agents API key regression", () => {
       });
 
       stubConfigPg({
-        AGENT_SETTABLE_FIELDS: ["modelId", "prompt", "description", "extra", "machineId", "knowledge"],
+        AGENT_SETTABLE_FIELDS: ["modelId", "prompt", "description", "extra", "agentNode", "knowledge"],
         listAgentConfigs: async () => [
           {
             id: "agc-internal",

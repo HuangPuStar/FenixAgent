@@ -202,6 +202,11 @@ export interface ModelConfig {
 
 // --- Agents ---
 
+export type AgentNode =
+  | { kind?: never; machineId?: never; sandboxPoolId?: never }
+  | { kind: "machine"; machineId: string }
+  | { kind: "sandbox"; sandboxPoolId: string };
+
 export interface AgentInfo {
   id: string;
   name: string;
@@ -210,7 +215,7 @@ export interface AgentInfo {
   modelId: string | null;
   modelLabel?: string | null;
   description: string | null;
-  machineId?: string | null;
+  agentNode: AgentNode;
   knowledgeBaseCount: number;
   skillLabels?: Array<{ id: string; label: string }>;
   resourceAccess?: ResourceAccess;
@@ -229,7 +234,7 @@ export interface AgentDetail {
   skillIds?: string[];
   mcpIds?: string[];
   siteAppIds?: string[];
-  machineId?: string | null;
+  agentNode: AgentNode;
   relatedResources?: {
     modelLabel?: string | null;
     machineLabel?: string | null;

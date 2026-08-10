@@ -1,0 +1,16 @@
+services:
+  opensandbox-cluster:
+    build:
+      context: ../..
+      dockerfile: docker/opensandbox-cluster/Dockerfile
+    image: ${OPENSANDBOX_CLUSTER_IMAGE:-aos/opensandbox-cluster:latest}
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      - opensandbox-cluster-data:/data
+    restart: unless-stopped
+
+volumes:
+  opensandbox-cluster-data:

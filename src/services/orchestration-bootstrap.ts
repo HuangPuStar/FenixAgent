@@ -10,12 +10,21 @@
  *
  * 单例缓存是必要的：AgentController 内部维护活跃实例表，多个实例会各自持有一份
  * 互不可见的实例表，导致 stopInstance / listInstances 语义分裂。
+ *
+ * Sandbox 执行节点：编排域 EnvironmentRepo 的 getEnvironment 是本层注入的执行节点
+ * 解析器（见 PgEnvironmentOrchestrationRepo.setExecutionNodeResolver）的唯一装配点。
+ * 解析器承载 sandbox 的业务语义（agentNode 解析 + prepare + 节点优先级），保持
+ * repository 层不依赖 services 层。
  */
 
+import { randomBytes } from "node:crypto";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
 import { config } from "../config";
+import { AppError } from "../errors";
 import { agentConfigRepo, agentEngineRepo, environmentOrchestrationRepo } from "../repositories";
+import { resolveAgentNode } from "./config/agent-config";
 import { localNodeAwareAgentNodeService } from "./local-node-service";
+import { sandboxExecutionHandler } from "./sandbox";
 
 let launchSpecBuilder: LaunchSpecBuilder | null = null;
 
@@ -49,8 +58,77 @@ export function getOrchestrationController(): AgentController {
   return controller;
 }
 
+/**
+ * 准备 sandbox 执行节点并返回其 machineId。
+ *
+ * 幂等性：SandboxManager.createOrReuse 按 provider + pool + userId 复用活跃实例，
+ * 同一环境 + 用户的多次解析（AgentController 与 LaunchSpecBuilder 各调一次
+ * getEnvironment）会命中同一 sandbox 实例，machineId 保持一致（A-P2.2 同源约束）。
+ */
+async function prepareSandboxNode(
+  sandboxPoolId: string,
+  userId: string,
+  organizationId: string | null,
+): Promise<string> {
+  // sandbox 实例按 userId 归属（复用键 + machine 记录），空归属会导致跨请求复用
+  // 与租户隔离失效；调用方（AgentController.spawnInstance）必传 userId，此处防御
+  if (!userId) {
+    throw new AppError("无法为未归属用户准备沙盒执行节点", "SANDBOX_USER_MISSING", 500);
+  }
+  const prepared = await sandboxExecutionHandler.prepare({
+    sandboxId: `sbi_${randomBytes(12).toString("hex")}`,
+    sandboxPoolId,
+    userId,
+    organizationId: organizationId ?? undefined,
+  });
+  return prepared.nodeId;
+}
+
+/**
+ * 装配执行节点解析器：对齐旧 spawnInstanceFromEnvironment 的节点选择逻辑
+ * （显式 sandbox > 显式 machine > 默认 sandbox > 默认 machine > local-default）。
+ *
+ * 返回 null 表示无业务解析结果，由 EnvironmentRepo 走默认 fallback 链
+ * （agent_config.machineId 列 → RCS_DEFAULT_MACHINE_ID → local-default）。
+ */
+function resolveExecutionNode(input: {
+  envId: string;
+  organizationId: string | null;
+  userId?: string;
+  agentNode: unknown;
+  configMachineId: string | null;
+}): Promise<string | null> {
+  const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
+  const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
+  const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
+
+  // 显式 sandbox：环境绑定沙盒资源池，准备执行节点（含 ACP 回连等待）
+  if (explicitSandboxPoolId) {
+    return prepareSandboxNode(explicitSandboxPoolId, input.userId ?? "", input.organizationId);
+  }
+  // 显式 machine：agentNode 中显式声明的机器
+  if (explicitMachineId) {
+    return Promise.resolve(explicitMachineId);
+  }
+  // 默认 sandbox：未显式指定执行节点且启用了沙盒默认策略
+  if (config.sandboxEnabled) {
+    if (!config.defaultSandboxPoolId) {
+      // 与旧路径语义对齐：沙盒已启用但缺少默认资源池属部署配置错误，明确拒绝
+      throw new AppError("沙盒已开启但未配置默认资源池", "SANDBOX_DEFAULT_POOL_MISSING", 503);
+    }
+    return prepareSandboxNode(config.defaultSandboxPoolId, input.userId ?? "", input.organizationId);
+  }
+  // 其余场景交给 repo 默认链（machineId 列 → 系统默认机器 → local-default）
+  return Promise.resolve(null);
+}
+
+// 装配执行节点解析器（幂等：重复调用仅重复赋值同一实现）
+environmentOrchestrationRepo.setExecutionNodeResolver(resolveExecutionNode);
+
 /** 重置单例缓存（仅用于测试）。 */
 export function resetOrchestrationBootstrap(): void {
   controller = null;
   launchSpecBuilder = null;
+  // 测试注入自定义 resolver 后必须重置，避免跨测试污染
+  environmentOrchestrationRepo.setExecutionNodeResolver(resolveExecutionNode);
 }

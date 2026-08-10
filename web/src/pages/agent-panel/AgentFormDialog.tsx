@@ -25,13 +25,19 @@ import { instanceApi } from "@/src/api/instances";
 import { kbApi } from "@/src/api/knowledge-bases";
 import { mcpApi } from "@/src/api/mcp";
 import { modelApi } from "@/src/api/models";
-import { orgApi } from "@/src/api/organizations";
 import { registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
+import { type SandboxPoolOption, sandboxPoolApi } from "@/src/api/sandbox-pools";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { skillConfigApi } from "@/src/api/skills";
-import { useOrg } from "../../contexts/OrgContext";
 import { NS } from "../../i18n";
+import {
+  type AgentNodeSelection,
+  agentNodeToSelection,
+  selectionToAgentNode,
+  selectionToValue,
+  valueToSelection,
+} from "../../lib/agent-node";
 import { canManageAgentSharing, getAgentDisplayName, isAgentWritable } from "../../lib/agent-resource-access";
 import {
   buildAgentPayload,
@@ -47,7 +53,7 @@ import {
   normalizeSkillOptionsPayload,
   type SkillOptionView,
 } from "../../lib/skill-resource-access";
-import type { ModelEntry, ResourceAccess } from "../../types/config";
+import type { AgentNode, ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
 /** Agent 模板（从 API 返回） */
@@ -118,6 +124,8 @@ export function mapModelOptions(available: ModelEntry[]): { value: string; label
 /** 加载表单所有下拉/选项数据及编辑态回显 */
 interface LoadedFormData {
   machineOptions: Array<{ id: string; agentName: string; hostname: string; name: string | null; status: string }>;
+  sandboxPoolOptions: SandboxPoolOption[];
+  sandboxEnabled: boolean;
   siteOptions: SiteOption[];
   hindsightEnabled: boolean;
   modelOptions: Array<{ value: string; label: string }>;
@@ -134,7 +142,7 @@ interface LoadedFormData {
     modelId: string;
     prompt: string;
     description: string;
-    machineId: string;
+    agentNode: AgentNodeSelection;
     resourceAccess?: ResourceAccess;
     publicReadable: boolean;
     relatedResources?: AgentRelatedResourcesView;
@@ -151,7 +159,6 @@ interface LoadedFormData {
 
 export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSuccess, agentName }: AgentFormDialogProps) {
   const isEdit = mode === "edit";
-  const { org } = useOrg();
   const { t } = useTranslation(NS.AGENTS);
   const { t: tAgentPanel } = useTranslation(NS.AGENT_PANEL);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
@@ -165,6 +172,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [machineOptions, setMachineOptions] = useState<
     { id: string; agentName: string; hostname: string; name: string | null; status: string }[]
   >([]);
+  const [sandboxPoolOptions, setSandboxPoolOptions] = useState<SandboxPoolOption[]>([]);
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
 
   // 表单字段 state
   const [formName, setFormName] = useState("");
@@ -177,7 +186,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
   const [formSiteAppIds, setFormSiteAppIds] = useState<string[]>([]);
-  const [formMachineId, setFormMachineId] = useState<string>("local");
+  const [formAgentNode, setFormAgentNode] = useState<AgentNodeSelection>({ kind: "default" });
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
@@ -207,25 +216,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormSkillIds([]);
     setFormMcpIds([]);
     setFormSiteAppIds([]);
-    // 从组织 metadata 读取默认引擎设置
-    if (!isEdit && org?.id) {
-      (async () => {
-        try {
-          const detail = (await unwrap(orgApi.get(org.id))) as unknown as Record<string, unknown>;
-          const metadata = detail.metadata as { defaultEngine?: { machineId?: string } } | null | undefined;
-          const def = metadata?.defaultEngine;
-          if (def?.machineId && def.machineId !== "") {
-            setFormMachineId(def.machineId);
-          } else {
-            setFormMachineId("local");
-          }
-        } catch {
-          setFormMachineId("local");
-        }
-      })();
-    } else {
-      setFormMachineId("local");
-    }
+    setFormAgentNode({ kind: "default" });
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
     setCurrentAgentId(null);
@@ -245,7 +236,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       setFormPublicReadable(false);
       setSelectedTemplateId(null);
     }
-  }, [open, isEdit, defaultName, org?.id]);
+  }, [open, isEdit, defaultName]);
 
   // 主数据加载：下拉选项 + 编辑态回显
   const { loading } = useRequest(
@@ -269,6 +260,16 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         name: m.name,
         status: m.status,
       }));
+
+      let sandboxPoolOptionsVal: SandboxPoolOption[] = [];
+      let sandboxEnabledVal = false;
+      try {
+        const poolData = await unwrap(sandboxPoolApi.list());
+        sandboxEnabledVal = poolData?.enabled === true;
+        sandboxPoolOptionsVal = poolData?.pools ?? [];
+      } catch {
+        // 沙盒配置不可用时不影响 Machine 选项。
+      }
 
       // 可用 sites 选项
       let siteOptionsVal: SiteOption[] = [];
@@ -342,6 +343,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
         return {
           machineOptions: machineOptionsVal,
+          sandboxPoolOptions: sandboxPoolOptionsVal,
+          sandboxEnabled: sandboxEnabledVal,
           siteOptions: siteOptionsVal,
           hindsightEnabled: hindsightEnabledVal,
           modelOptions: mapModelOptions(modelOptionsVal),
@@ -355,7 +358,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             modelId: (d.modelId as string) || "",
             prompt: String(d.prompt ?? ""),
             description: String(d.description ?? ""),
-            machineId: (d.machineId as string) || "local",
+            agentNode: agentNodeToSelection(d.agentNode as AgentNode | null | undefined),
             resourceAccess: d.resourceAccess as ResourceAccess | undefined,
             publicReadable: Boolean((d.resourceAccess as ResourceAccess | undefined)?.publicReadable),
             relatedResources: (d.relatedResources as AgentRelatedResourcesView | undefined) ?? undefined,
@@ -416,6 +419,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
       return {
         machineOptions: machineOptionsVal,
+        sandboxPoolOptions: sandboxPoolOptionsVal,
+        sandboxEnabled: sandboxEnabledVal,
         siteOptions: siteOptionsVal,
         hindsightEnabled: hindsightEnabledVal,
         modelOptions: modelOptionsVal,
@@ -432,6 +437,8 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
       onSuccess: (data) => {
         // 选项 state
         setMachineOptions(data.machineOptions);
+        setSandboxPoolOptions(data.sandboxPoolOptions);
+        setSandboxEnabled(data.sandboxEnabled);
         setSiteOptions(data.siteOptions);
         setHindsightEnabled(data.hindsightEnabled);
         setModelOptions(data.modelOptions);
@@ -448,7 +455,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormModel(es.modelId);
           setFormPrompt(es.prompt);
           setFormDescription(es.description);
-          setFormMachineId(es.machineId);
+          setFormAgentNode(es.agentNode);
           setFormResourceAccess(es.resourceAccess);
           setFormPublicReadable(es.publicReadable);
           setRelatedResources(es.relatedResources);
@@ -503,14 +510,14 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     formModel && relatedResources?.modelLabel && !modelOptions.some((option) => option.value === formModel)
       ? [...modelOptions, { value: formModel, label: relatedResources.modelLabel }]
       : modelOptions;
+  const selectedMachineId = formAgentNode.kind === "machine" ? formAgentNode.machineId : null;
   const effectiveMachineOptions =
-    formMachineId &&
-    formMachineId !== "local" &&
+    selectedMachineId &&
     relatedResources?.machineLabel &&
-    !machineOptions.some((option) => option.id === formMachineId)
+    !machineOptions.some((option) => option.id === selectedMachineId)
       ? [
           ...machineOptions,
-          { id: formMachineId, agentName: relatedResources.machineLabel, hostname: "", name: null, status: "" },
+          { id: selectedMachineId, agentName: relatedResources.machineLabel, hostname: "", name: null, status: "" },
         ]
       : machineOptions;
   const effectiveKnowledgeOptions =
@@ -599,7 +606,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           skillIds: formSkillIds,
           mcpIds: formMcpIds,
           siteAppIds: formSiteAppIds,
-          machineId: formMachineId === "local" ? null : formMachineId,
+          agentNode: selectionToAgentNode(formAgentNode),
           publicReadable: formPublicReadable,
         };
         data.extra = formExtra.trim() ? JSON.parse(formExtra) : null;
@@ -626,7 +633,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           skillIds: formSkillIds,
           mcpIds: formMcpIds,
           siteAppIds: formSiteAppIds,
-          machineId: formMachineId === "local" ? null : formMachineId,
+          agentNode: selectionToAgentNode(formAgentNode),
           publicReadable: formPublicReadable,
         };
         if (formExtra.trim()) {
@@ -828,16 +835,30 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                     />
                   </div>
                   <div>
-                    <Label>{t("form.machine")}</Label>
-                    <Select value={formMachineId} onValueChange={setFormMachineId} disabled={readOnlyAgent}>
+                    <Label>{t("form.executionNode", "运行节点")}</Label>
+                    <Select
+                      value={selectionToValue(formAgentNode)}
+                      onValueChange={(value) => setFormAgentNode(valueToSelection(value))}
+                      disabled={readOnlyAgent}
+                    >
                       <SelectTrigger className="mt-1">
-                        <SelectValue placeholder={t("form.machinePlaceholder")} />
+                        <SelectValue placeholder={t("form.executionNodePlaceholder", "选择运行节点")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="local">{t("form.machineLocal")}</SelectItem>
+                        <SelectItem value="default">
+                          {sandboxEnabled ? t("form.sandboxNode", "沙盒") : t("form.machineNode", "机器")} -{" "}
+                          {t("form.localDefault", "本地默认")}
+                        </SelectItem>
+                        {sandboxEnabled &&
+                          sandboxPoolOptions.length > 0 &&
+                          sandboxPoolOptions.map((pool) => (
+                            <SelectItem key={`sandbox:${pool.id}`} value={`sandbox:${pool.id}`}>
+                              {t("form.sandboxNode", "沙盒")} - {pool.name} ({pool.id})
+                            </SelectItem>
+                          ))}
                         {effectiveMachineOptions.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name || m.hostname || m.agentName} ({m.id.slice(0, 8)}){" "}
+                          <SelectItem key={`machine:${m.id}`} value={`machine:${m.id}`}>
+                            {t("form.machineNode", "机器")} - {m.name || m.hostname || m.agentName} ({m.id.slice(0, 8)}){" "}
                             {m.status === "online"
                               ? tAgentPanel("machineStatus.online", "在线")
                               : tAgentPanel("machineStatus.offline", "离线")}

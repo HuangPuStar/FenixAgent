@@ -9,6 +9,7 @@ coverage
 *.suo
 *.lock
 src/utils/vendor/
+sandbox.toml
 
 # AI tool runtime directories
 .agents/*

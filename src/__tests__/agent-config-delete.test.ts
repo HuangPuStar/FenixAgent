@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { _resetDeps } from "../services/resource-permission";
 import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
@@ -6,6 +7,9 @@ const now = new Date("2026-07-08T00:00:00.000Z");
 describe("deleteAgentConfig", () => {
   beforeEach(() => {
     resetAllStubs();
+    // 模块首载时 resource-permission 的 mock.module 尚未替换（bun 惰性替换），
+    // _deps.repo 绑定的是真实实现；_resetDeps 重新赋值后 stub 才生效
+    _resetDeps();
     stubResourcePermissionRepo({
       listOwnedByOrganization: async () => [],
     });

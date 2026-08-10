@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { agentConfig, machine, organization, registryEvent } from "../db/schema";
 import type { AuthContext } from "../plugins/auth";
+import { markSandboxInstanceReadyByMachineId } from "../repositories/sandbox-instance-repository";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 
 function genId(prefix: string): string {
@@ -18,7 +19,13 @@ function buildMachineOwnershipConditions(ctx: AuthContext) {
 
 export async function listMachines(
   ctx: AuthContext,
-  filters: { status?: "online" | "offline"; labels?: string[]; limit?: number; offset?: number },
+  filters: {
+    status?: "online" | "offline";
+    type?: "machine" | "sandbox" | "all";
+    labels?: string[];
+    limit?: number;
+    offset?: number;
+  },
 ): Promise<{ data: (typeof machine.$inferSelect)[]; total: number }> {
   const conditions = [
     or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId)),
@@ -27,6 +34,10 @@ export async function listMachines(
 
   if (filters.status) {
     conditions.push(eq(machine.status, filters.status));
+  }
+
+  if (filters.type !== "all") {
+    conditions.push(eq(machine.type, filters.type ?? "machine"));
   }
 
   if (filters.labels && filters.labels.length > 0) {
@@ -140,6 +151,7 @@ export async function createMachine(
     userId: null,
     agentName,
     name: params.name,
+    type: "machine",
     status: "pending",
     machineInfo: null,
     labels,
@@ -158,6 +170,38 @@ export async function createMachine(
   ].join(" ");
 
   return { id, name: params.name, status: "pending", initCommand };
+}
+
+/**
+ * 为 Sandbox Instance 预创建一条系统托管的 Machine 身份。
+ *
+ * Sandbox 连接仍然使用现有 Machine 注册协议，因此 Provider 创建前必须先确定稳定的
+ * machine_id；此方法只写入注册元数据，不建立连接，也不生成 Provider 配置。
+ */
+export async function createSandboxMachine(params: {
+  id: string;
+  organizationId: string | null;
+  userId: string;
+  agentName: string;
+}): Promise<void> {
+  const now = new Date();
+
+  await db.insert(machine).values({
+    id: params.id,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    agentName: params.agentName,
+    name: params.id,
+    type: "sandbox",
+    status: "pending",
+    machineInfo: null,
+    labels: [],
+    heartbeatIntervalMs: 30000,
+    lastHeartbeatAt: null,
+    registeredAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 /**
@@ -221,6 +265,7 @@ export async function registerMachine(params: {
       detail: {},
     });
 
+    await markSandboxInstanceReadyByMachineId(params.machineId, now);
     await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
     return { id: params.machineId, isNew: isFirstRegistration };
   }
@@ -253,6 +298,7 @@ export async function registerMachine(params: {
       detail: {},
     });
 
+    await markSandboxInstanceReadyByMachineId(existingId, now);
     await bindAgentConfigs(existingId, params.agentName, params.tenantId);
     return { id: existingId, isNew: false };
   }

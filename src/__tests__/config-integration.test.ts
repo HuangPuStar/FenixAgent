@@ -150,6 +150,15 @@ describe("Config Route Integration", () => {
     expect(json.success).toBe(true);
   });
 
+  // Agent 配置页面使用的 Sandbox Pool 查询接口应挂载在同一 Web Config 路由下。
+  test("sandbox pools 路由可达", async () => {
+    const res = await request("/web/config/sandbox-pools", { method: "GET" });
+    expect(res.status).not.toBe(404);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data).toEqual({ enabled: false, pools: [] });
+  });
+
   test("agents list 返回共享 Agent 的 resourceAccess", async () => {
     stubDb({
       select: () => ({
@@ -254,7 +263,7 @@ describe("Config Route Integration", () => {
 
     expect(json.success).toBe(true);
     expect(json.data.resourceAccess.resourceKey).toBe("org-source/agc-external");
-    expect(json.data.machineId).toBe("machine-1");
+    expect(json.data.agentNode).toEqual({ kind: "machine", machineId: "machine-1" });
   });
 
   test("agents set 缺少 name 时返回校验错误", async () => {

@@ -34,6 +34,21 @@ const envSchema = z.object({
   RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_ENABLED: z
+    .string()
+    .default("false")
+    .transform((value) => value === "true"),
+  RCS_DEFAULT_SANDBOX_POOL_ID: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_IMAGE: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_RESOURCES_JSON: z.string().min(1).optional(),
+  RCS_DEFAULT_SANDBOX_EXTRA_JSON: z.string().min(1).optional(),
+  RCS_SANDBOX_CLUSTER_URL: z.string().min(1).optional(),
+  RCS_SANDBOX_CLUSTER_API_KEY: z.string().min(1).optional(),
+  RCS_SANDBOX_PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_RESUME_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  RCS_SANDBOX_PROVIDER_DESTROY_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
   // ── 可选：file-ws 心跳巡检（P0-1）──
   // keep_alive 间隔 ≤30s 是跨仓库软契约（acp-link 独立仓库），3 倍间隔（90s）判定僵尸；
