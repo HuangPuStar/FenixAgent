@@ -3,6 +3,7 @@ import { OrchestrationError } from "@fenix/orchestration";
 import Elysia, { ValidationError } from "elysia";
 import { AppError } from "../errors";
 import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
 import { logError } from "./logger";
 
 // 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 plugin 中 scope 为
@@ -41,6 +42,18 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
       set.status = 503;
       logError({ request, error, set });
       return { error: { type: "AGENT_NODE_UNAVAILABLE", message: "Agent node is offline" } };
+    }
+
+    // Sandbox 服务不可用类错误（Provider 未配置 / Runtime 未就绪）→ 503：
+    // spawn 路径（/web/*、/api/openai-chat 等未在 route 内本地映射的入口）经本插件
+    // 统一处理，与 /api/instances 的 mapApiError 口径一致（同一底层错误不得在
+    // /api 返回 503、/web 返回 500 的契约分裂）。message 固定文案：
+    // SandboxRuntimeNotReadyError 携带 sbi_* sandboxId、ProviderNotConfigured 携带
+    // providerKey，直出会泄漏内部标识（诊断由 logError 保留）。
+    if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
+      set.status = 503;
+      logError({ request, error, set });
+      return { error: { type: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" } };
     }
 
     // Elysia schema 校验失败 — ValidationError.message 默认是 ZodError 完整序列化 JSON

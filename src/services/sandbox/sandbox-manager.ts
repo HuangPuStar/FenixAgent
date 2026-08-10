@@ -20,7 +20,7 @@ import {
 } from "../../repositories/sandbox-instance-repository";
 import { findReadableSandboxPoolById, findSandboxPoolById } from "../../repositories/sandbox-pool-repository";
 import { unregisterRemoteNode } from "../core-bootstrap";
-import { createSandboxMachine } from "../registry";
+import { createSandboxMachine, deleteSandboxMachine } from "../registry";
 import { stopHeartbeat } from "../registry-heartbeat";
 import {
   getProviderExtra,
@@ -192,13 +192,30 @@ export class SandboxManager {
         updatedAt: createdAt,
       });
     } catch (error) {
+      // machine 行已先插入；无论何种失败（唯一索引冲突 / FK 缺失 / DB 错误），
+      // 本请求都未成功创建 sandbox_instance，machine 行已成孤儿，必须补偿删除
+      //（否则每次失败残留一条无主 mach_sandbox_* 记录，永不清扫）。
+      // 补偿删除为尽力而为：失败仅记日志，不覆盖原始错误（排障需保留真实原因）。
+      await deleteSandboxMachine(machineId).catch((cleanupError: unknown) => {
+        logger.error(
+          `[sandbox] failed to compensate machine '${machineId}' after create failure: ` +
+            (cleanupError instanceof Error ? cleanupError.message : String(cleanupError)),
+        );
+      });
       if (isUniqueConstraintError(error)) {
+        // 并发创建冲突（同一 provider+pool+userId 同时首启）：复用并发方的实例。
+        // 注意并发方的 sandboxId/machineId 与本请求不同，本请求的 machine 行已在上方
+        // 补偿删除，复用不产生双记录。
         const concurrent = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
         if (concurrent) return this.reconcileExisting(concurrent);
+        // 冲突但查不到并发实例（极端竞态）：按冲突上报
+        throw new SandboxInstanceConflictError(
+          error instanceof Error ? error.message : "sandbox instance create conflicted",
+        );
       }
-      throw new SandboxInstanceConflictError(
-        error instanceof Error ? error.message : "sandbox instance create conflicted",
-      );
+      // 非唯一索引冲突的失败（FK 缺失、DB 连接错误等）保留原始错误：
+      // 原实现一律包 SandboxInstanceConflictError 会把 DB 故障误报为"冲突"、误导排障
+      throw error instanceof Error ? error : new Error(String(error));
     }
 
     return this.createRemote(instance);

@@ -363,9 +363,13 @@ class AgentChatTransport implements Transport {
     // 释放后由 acp-idle-monitor 空闲回收兜底。
     // C-P2.5：实例按触发者 userId 计入用户级并发配额桶（agent-concurrency 按 userId
     // 聚合），不再统一挂 "system" 跨租户共享配额；无触发者（webhook 匿名触发、
-    // 快照恢复无 userId）时回退 "system"。source 保持 "system"：仅影响 scheduled
-    // 桶判断（RCS_SCHEDULED_AGENT_MAX_CONCURRENCY），与用户桶无关。
-    const { instance, status } = await ensureRunning(options?.userId ?? "system", envRow.id, "system");
+    // 快照恢复无 userId）时回退到环境属主（envRow.userId，NOT NULL + FK 保证存在）：
+    // ① sandbox 实例按 userId 归属（复用键 + FK user.id），"system" 非真实用户会
+    // FK 失败且每次重试残留 machine 记录；② 文件服务按 env.userId 查 sandbox 实例，
+    // 与 spawn 归属一致才能避免"实例在远程沙箱、文件落本地"的分裂。
+    // source 保持 "system"：仅影响 scheduled 桶判断（RCS_SCHEDULED_AGENT_MAX_CONCURRENCY），
+    // 与用户桶无关。
+    const { instance, status } = await ensureRunning(options?.userId ?? envRow.userId, envRow.id, "system");
     // 无论 spawned / reused 先占租约：实例被选中即视为在使用，消除"创建者先结束
     // 连坐使用者"的竞态窗口（B 已选中 X 但尚未 attach 时 A 的 cleanup 误停 X）。
     acquireInstanceLease(instance.id);

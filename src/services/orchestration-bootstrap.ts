@@ -22,6 +22,7 @@ import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
 import { config } from "../config";
 import { AppError } from "../errors";
 import { agentConfigRepo, agentEngineRepo, environmentOrchestrationRepo } from "../repositories";
+import type { ExecutionNodeResolver } from "../repositories/environment-orchestration";
 import { resolveAgentNode } from "./config/agent-config";
 import { localNodeAwareAgentNodeService } from "./local-node-service";
 import { sandboxExecutionHandler } from "./sandbox";
@@ -85,45 +86,67 @@ async function prepareSandboxNode(
 }
 
 /**
- * 装配执行节点解析器：对齐旧 spawnInstanceFromEnvironment 的节点选择逻辑
- * （显式 sandbox > 显式 machine > 默认 sandbox > 默认 machine > local-default）。
+ * 执行节点解析器工厂（R6）：决策逻辑与依赖分离，便于直接单测。
+ *
+ * 依赖以快照注入（prepareSandbox 实现 + sandbox 开关 + 默认资源池）：
+ * 生产使用 config 单例与 sandboxExecutionHandler；测试注入 fake 依赖即可覆盖
+ * 全部分支，无需触达 DB / provider。
+ *
+ * 解析优先级对齐旧 spawnInstanceFromEnvironment：
+ * 显式 sandbox > 显式 machine > 默认 sandbox > 默认链（null）。
  *
  * 返回 null 表示无业务解析结果，由 EnvironmentRepo 走默认 fallback 链
  * （agentNode 为 null 时 agent_config.machineId 列 → RCS_DEFAULT_MACHINE_ID →
  * local-default；agentNode 存在时跳过列，与 resolveAgentNode 语义对齐）。
  */
-function resolveExecutionNode(input: {
-  envId: string;
-  organizationId: string | null;
-  userId?: string;
-  agentNode: unknown;
-  configMachineId: string | null;
-}): Promise<string | null> {
-  const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
-  const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
-  const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
+export function createExecutionNodeResolver(
+  deps: {
+    prepareSandbox?: (sandboxPoolId: string, userId: string, organizationId: string | null) => Promise<string>;
+    sandboxEnabled?: boolean;
+    defaultSandboxPoolId?: string | null;
+  } = {},
+): ExecutionNodeResolver {
+  const prepareSandbox = deps.prepareSandbox ?? prepareSandboxNode;
+  const sandboxEnabled = deps.sandboxEnabled ?? config.sandboxEnabled;
+  const defaultSandboxPoolId =
+    deps.defaultSandboxPoolId === undefined ? config.defaultSandboxPoolId : deps.defaultSandboxPoolId;
 
-  // 显式 sandbox：环境绑定沙盒资源池，准备执行节点（含 ACP 回连等待）
-  if (explicitSandboxPoolId) {
-    return prepareSandboxNode(explicitSandboxPoolId, input.userId ?? "", input.organizationId);
-  }
-  // 显式 machine：agentNode 中显式声明的机器
-  if (explicitMachineId) {
-    return Promise.resolve(explicitMachineId);
-  }
-  // 默认 sandbox：未显式指定执行节点且启用了沙盒默认策略
-  if (config.sandboxEnabled) {
-    if (!config.defaultSandboxPoolId) {
-      // 与旧路径语义对齐：沙盒已启用但缺少默认资源池属部署配置错误，明确拒绝
-      throw new AppError("沙盒已开启但未配置默认资源池", "SANDBOX_DEFAULT_POOL_MISSING", 503);
+  // async：失败路径（含部署配置错误）统一以 rejected promise 表达，
+  // 调用方 await 语义一致，避免同步 throw 在非 async 调用链中逃逸
+  return async function resolveExecutionNode(input: {
+    envId: string;
+    organizationId: string | null;
+    userId?: string;
+    agentNode: unknown;
+    configMachineId: string | null;
+  }): Promise<string | null> {
+    const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
+    const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
+    const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
+
+    // 显式 sandbox：环境绑定沙盒资源池，准备执行节点（含 ACP 回连等待）
+    if (explicitSandboxPoolId) {
+      return prepareSandbox(explicitSandboxPoolId, input.userId ?? "", input.organizationId);
     }
-    return prepareSandboxNode(config.defaultSandboxPoolId, input.userId ?? "", input.organizationId);
-  }
-  // 其余场景交给 repo 默认链（machineId 列 → 系统默认机器 → local-default）
-  return Promise.resolve(null);
+    // 显式 machine：agentNode 中显式声明的机器
+    if (explicitMachineId) {
+      return Promise.resolve(explicitMachineId);
+    }
+    // 默认 sandbox：未显式指定执行节点且启用了沙盒默认策略
+    if (sandboxEnabled) {
+      if (!defaultSandboxPoolId) {
+        // 与旧路径语义对齐：沙盒已启用但缺少默认资源池属部署配置错误，明确拒绝
+        throw new AppError("沙盒已开启但未配置默认资源池", "SANDBOX_DEFAULT_POOL_MISSING", 503);
+      }
+      return prepareSandbox(defaultSandboxPoolId, input.userId ?? "", input.organizationId);
+    }
+    // 其余场景交给 repo 默认链（machineId 列 → 系统默认机器 → local-default）
+    return Promise.resolve(null);
+  };
 }
 
-// 装配执行节点解析器（幂等：重复调用仅重复赋值同一实现）
+// 默认 resolver 实例（生产装配；幂等：重复调用仅重复赋值同一实现）
+const resolveExecutionNode = createExecutionNodeResolver();
 environmentOrchestrationRepo.setExecutionNodeResolver(resolveExecutionNode);
 
 /** 重置单例缓存（仅用于测试）。 */

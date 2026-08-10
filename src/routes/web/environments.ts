@@ -27,6 +27,7 @@ import {
 } from "../../services/environment";
 import { enterEnvironment, listInstancesResponse } from "../../services/instance";
 import { spawnInstanceViaController } from "../../services/orchestration-instance";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
 
 const logger = createLogger("env-route");
 
@@ -228,6 +229,15 @@ app.post(
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND") {
         return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+      }
+      // Sandbox 服务不可用（Provider 未配置 / Runtime 未就绪）→ 503；本路由有本地
+      // catch 不冒泡 errorPlugin，必须在此处理。message 固定通用文案，不得泄漏
+      // providerKey / sbi_* sandboxId（错误对象携带这些内部标识）。
+      if (err instanceof SandboxProviderNotConfiguredError || err instanceof SandboxRuntimeNotReadyError) {
+        return error(503, {
+          success: false,
+          error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+        });
       }
       return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
     }

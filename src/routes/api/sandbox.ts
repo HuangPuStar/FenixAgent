@@ -31,7 +31,9 @@ export function mapSandboxApiError(error: unknown): {
 } {
   const message = error instanceof Error ? error.message : "Unknown error";
   if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
-    return { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE", message } } };
+    // message 固定通用文案：ProviderNotConfiguredError 携带 providerKey、
+    // RuntimeNotReadyError 携带 sbi_* sandboxId，透传给 /api/system 调用方属泄漏
+    return { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" } } };
   }
   if (error instanceof SandboxProviderError) {
     if (error.code === "NOT_FOUND") {
