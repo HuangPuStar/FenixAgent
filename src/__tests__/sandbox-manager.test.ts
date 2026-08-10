@@ -434,11 +434,15 @@ describe("SandboxManager machine identity", () => {
       machineId: "mach_sandbox_sbi_unchanged",
       resolvedConfig: {
         image: "sandbox:test",
-        resources: {
-          ...resources,
-          environment: { ...resources.environment, RCS_MACHINE_ID: "mach_sandbox_sbi_unchanged" },
-        },
         providerExtra: {},
+        resources: {
+          volumes: [],
+          environment: { LANG: "C.UTF-8", RCS_MACHINE_ID: "mach_sandbox_sbi_unchanged" },
+          gpuCount: 0,
+          diskGb: 5,
+          memoryMb: 512,
+          cpu: 0.5,
+        },
       },
     });
     const changed = makeInstance({
