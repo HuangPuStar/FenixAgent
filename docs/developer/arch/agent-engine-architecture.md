@@ -710,17 +710,17 @@ ENV SUPPORTED_ENGINE_TYPES='[{"type":"opencode"},{"type":"ccb"},{"type":"claude-
 CMD ["bun", "start-remote-runtime.js", "opencode", "acp"]
 
 # docker/sandbox-peri/Dockerfile — peri 专用沙箱
-ENV AGENT_TYPE=peri
+ENV AGENT_TYPE=ccb
 ENV IS_PERI=1
-CMD ["acp-runtime", "peri", "acp"]
+CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
 ```
 
 ### 8.2 沙箱容器模式
 
 `docker/sandbox-peri/` 为 peri 引擎准备了独立的沙箱容器模板：
 - 预装 `peri` CLI（通过官方安装脚本）
-- 预装 `acp-runtime-cli`（`@fenix-agent/acp-runtime-cli`）
-- `CMD ["acp-runtime", "peri", "acp"]` — 自动注册为 peri 引擎 node
+- 本地构建 `acp-runtime-cli`（multi-stage 用 `bun build packages/acp-runtime-cli/src/bin.ts` 产出 bundle，不依赖 npm 发布的 `@fenix-agent/acp-runtime-cli`）
+- `CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]` — 自动注册为 peri 引擎 node
 - `ENV IS_PERI=1` — 额外生成 `.peri/settings.json` 客户端配置
 
 其他沙箱变体：`docker/sandbox/`（opencode）、`docker/sandbox-ccb/`（CCB）结构一致，仅替换 CLI 和 `AGENT_TYPE`。
