@@ -86,6 +86,8 @@ RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/w
 RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
 COPY .agents/agents/ /app/.agents/agents/
 COPY .agents/skills/ /app/.agents/skills/
+COPY fenix-sandbox-ops.sh /app/fenix-sandbox-ops.sh
+RUN chmod +x /app/fenix-sandbox-ops.sh
 
 VOLUME ["/root/.config/opencode", "/root/.local/share/opencode", "/app/data", "/app/workflow", "/app/workspaces"]
 
