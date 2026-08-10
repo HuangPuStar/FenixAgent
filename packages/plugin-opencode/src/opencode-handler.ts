@@ -4,6 +4,7 @@ import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
+import { writeSubagentAgentFiles } from "./runtime/environment-preparer";
 
 /**
  * OpenCode 引擎 handler：spawn opencode acp 子进程，通过 ACP stdio 通信。
@@ -18,6 +19,12 @@ export function createOpencodeHandler(binary?: string, extraArgs?: string[]): En
       const installedSkills = await installSkills(workspace, launchSpec.skills);
       const runtimeConfig = buildOpencodeRuntimeConfig(launchSpec, installedSkills);
       await writeOpencodeConfig(workspace, runtimeConfig);
+      // subagent 定义落盘到 .agents/agents/{name}.md（设计 §4；主 agent 不渲染）。
+      // 空列表也调用：清理上次构建残留的陈旧 subagent 文件（M6）
+      const written = await writeSubagentAgentFiles(workspace, launchSpec.subagents ?? []);
+      if (written.length > 0) {
+        console.log(`[opencode-handler] wrote ${written.length} subagent files under .agents/agents/`);
+      }
     },
 
     async startInstance(ctx: EngineStartContext) {

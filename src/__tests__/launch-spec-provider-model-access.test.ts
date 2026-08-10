@@ -9,6 +9,9 @@ const now = new Date("2026-06-01T00:00:00.000Z");
 function queryResult<T>(rows: T[]) {
   return Object.assign(Promise.resolve(rows), {
     limit: async () => rows,
+    // buildLaunchSpec 的专家引用查询（listExpertIdsByAgent）走 orderBy 链；
+    // stub 默认空结果，orderBy 直接透传（与 config-integration.test.ts 的 chainable 同模式）
+    orderBy: async () => rows,
   });
 }
 

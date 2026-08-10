@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import agentExperts from "./agent-experts";
 import agents from "./agents";
 import mcp from "./mcp";
 import models from "./models";
@@ -12,6 +13,7 @@ const app = new Elysia({ name: "web-config" })
   .use(sandboxPools)
   .use(models)
   .use(agents)
+  .use(agentExperts)
   .use(skills)
   .use(mcp)
   .use(prodViews);

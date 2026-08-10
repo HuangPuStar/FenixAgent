@@ -313,6 +313,8 @@ export interface AgentConfigRowWithAccess {
   name: string;
   prompt: string | null;
   modelId: string | null;
+  /** 预选模型 UUID 列表（运行时切换模型白名单）；null/缺省=未配置保持引擎自报，[]=单模型 */
+  modelIds?: string[] | null;
   model: string | null;
   description: string | null;
   machineId: string | null;

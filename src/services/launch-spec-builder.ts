@@ -8,12 +8,22 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
-import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
+import type { AgentFileSpec, AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { config, getBaseUrl } from "../config";
 import { db } from "../db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
+import {
+  agentConfigMcp,
+  agentConfigSkill,
+  type agentExpert,
+  mcpServer,
+  member,
+  model,
+  provider,
+  skill,
+} from "../db/schema";
 import { AppError } from "../errors";
+import { getExpertsByIds, listExpertIdsByAgent } from "../repositories/agent-expert";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memory";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
@@ -26,6 +36,10 @@ import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./ski
 type LaunchModelProtocol = ModelConfig["protocol"];
 type SkillRow = typeof skill.$inferSelect;
 type McpServerRow = typeof mcpServer.$inferSelect;
+type AgentExpertRow = typeof agentExpert.$inferSelect;
+
+/** 内置专家保留组织标识（与 services/agent-expert-sync.ts 保持一致） */
+const SYSTEM_ORGANIZATION_ID = "system";
 
 function summarizeSkills(skills: SkillRow[]) {
   return skills.map((row) => ({
@@ -399,6 +413,111 @@ async function buildSkillSpecs(agentConfig: AgentConfigDetailWithAccess, skills:
   return resolvedSkills;
 }
 
+/**
+ * 读取 Agent 引用的专家（subagent）行，保持引用顺序。
+ *
+ * 对缺失/不可见/disabled 的引用直接失败（设计 §4：与现有 throwInvalidConfig 风格一致，
+ * 不做半成品静默）；disabled（软删除，决策 D3）的内置专家错误信息引导"复制到本组织"。
+ *
+ * 数据访问收敛到 agent-expert repository（listExpertIdsByAgent + getExpertsByIds），
+ * 不在此处直查中间表（CLAUDE.md 分层约束）。
+ */
+async function loadAgentExperts(
+  agentConfig: AgentConfigDetailWithAccess,
+  organizationId: string,
+): Promise<AgentExpertRow[]> {
+  const expertIds = await listExpertIdsByAgent(agentConfig.id);
+  if (expertIds.length === 0) return [];
+
+  const expertRows = await getExpertsByIds(expertIds);
+  const expertById = new Map(expertRows.map((row) => [row.id, row]));
+  for (const expertId of expertIds) {
+    const row = expertById.get(expertId);
+    if (!row) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' references missing expert`,
+        `[launch-spec-builder] missing expert row for agentConfig='${agentConfig.id}', expertId='${expertId}'`,
+      );
+    }
+    if (row.organizationId !== SYSTEM_ORGANIZATION_ID && row.organizationId !== organizationId) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' references expert not visible to this organization`,
+        `[launch-spec-builder] expert not visible for agentConfig='${agentConfig.id}', expertId='${expertId}', expertOrg='${row.organizationId}', agentOrg='${organizationId}'`,
+      );
+    }
+    if (row.disabled) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' references disabled expert '${row.name}'. Duplicate it to your organization first`,
+        `[launch-spec-builder] disabled expert reference for agentConfig='${agentConfig.id}', expertId='${expertId}', expertName='${row.name}'`,
+      );
+    }
+  }
+  return expertIds.map((expertId) => expertById.get(expertId) as AgentExpertRow);
+}
+
+/**
+ * 解析专家声明的 skill 名称为 SkillConfig 行（组织内查表）。
+ *
+ * 名称是软引用（与 frontmatter skills 同构），解析不到时跳过并告警、不阻塞启动——
+ * 与主 agent 绑定（agentConfigSkill）的硬失败语义区分；跨组织共享 skill 不在本路径
+ * 范围内（launch-spec-builder 不做权限判断，与文件头注释一致）。
+ */
+async function resolveExpertSkillRows(organizationId: string, skillNames: string[]): Promise<SkillRow[]> {
+  const names = [...new Set(skillNames.filter((name) => typeof name === "string" && name.length > 0))];
+  if (names.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(skill)
+    .where(and(eq(skill.organizationId, organizationId), inArray(skill.name, names)));
+  const foundNames = new Set(rows.map((row) => row.name));
+  const missing = names.filter((name) => !foundNames.has(name));
+  if (missing.length > 0) {
+    logError(
+      `[launch-spec-builder] expert skills not found in org '${organizationId}', skipping: ${JSON.stringify(missing)}`,
+    );
+  }
+  return rows;
+}
+
+/** 专家行 → AgentFileSpec（与内置模板解析器字段契约一致，缺省字段不写） */
+function expertToFileSpec(row: AgentExpertRow): AgentFileSpec {
+  return {
+    name: row.name,
+    ...(row.description ? { description: row.description } : {}),
+    prompt: row.prompt,
+    ...(Array.isArray(row.skills) && row.skills.length > 0 ? { skills: row.skills as string[] } : {}),
+    ...(row.model ? { model: row.model } : {}),
+    ...(row.mode ? { mode: row.mode } : {}),
+    ...(row.temperature != null ? { temperature: row.temperature } : {}),
+    ...(row.steps != null ? { steps: row.steps } : {}),
+    ...(row.permission != null ? { permission: row.permission } : {}),
+  };
+}
+
+/** 合并主 agent 绑定 skills 与专家声明 skills（按 id 去重，保持主 agent 绑定顺序优先） */
+function mergeSkillRows(primary: SkillRow[], expertRows: SkillRow[]): SkillRow[] {
+  const seen = new Set<string>();
+  const merged: SkillRow[] = [];
+  for (const row of [...primary, ...expertRows]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    merged.push(row);
+  }
+  return merged;
+}
+
+/** 收集专家声明的 skill 名称（去除空串与重复） */
+function collectExpertSkillNames(experts: AgentExpertRow[]): string[] {
+  const names: string[] = [];
+  for (const expert of experts) {
+    if (!Array.isArray(expert.skills)) continue;
+    for (const name of expert.skills) {
+      if (typeof name === "string" && name.length > 0 && !names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
 /** 构造运行时 LaunchSpec 所需的最小输入，所有资源都从 agentConfig 向外解析。 */
 export interface BuildLaunchSpecInput {
   organizationId: string;
@@ -442,11 +561,12 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
   );
 
   // Phase 1: 先并行拿到构造 launchSpec 的原始资源，确保错误尽早暴露。
-  const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
+  const [model, skillRows, rawMcpServers, knowledgeBindings, experts] = await Promise.all([
     resolveModelConfig(agentConfig),
     loadAgentSkills(agentConfig),
     loadAgentMcpServers(agentConfig),
     listAgentKnowledgeBindingsById(agentConfig.id),
+    loadAgentExperts(agentConfig, organizationId),
   ]);
 
   log(
@@ -475,7 +595,19 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     mcpServers.push(toSdkMcpConfig(row.name, raw, agentConfig.id));
   }
 
-  const skills = await buildSkillSpecs(agentConfig, skillRows);
+  const skills = await buildSkillSpecs(
+    agentConfig,
+    // 主 agent 绑定 skills + 专家声明 skills 合并下发（按 id 去重）
+    mergeSkillRows(skillRows, await resolveExpertSkillRows(organizationId, collectExpertSkillNames(experts))),
+  );
+
+  // 专家 → subagent 渲染文件规格（设计 §4：opencode → .agents/agents/，ccb/claude-code → .claude/agents/）
+  const subagents = experts.map(expertToFileSpec);
+  if (subagents.length > 0) {
+    log(
+      `[launch-spec-builder] buildLaunchSpec: assembled ${subagents.length} subagents for agent='${agentConfig.name}'`,
+    );
+  }
 
   // Knowledge 绑定不是普通 mcpServer 行，而是平台注入的保留 MCP 入口。
   if (knowledgeBindings.length > 0) {
@@ -561,6 +693,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     model,
     skills,
     mcpServers,
+    ...(subagents.length > 0 ? { subagents } : {}),
   };
 }
 
@@ -588,5 +721,7 @@ export async function buildBasicLaunchSpec(input: BuildBasicLaunchSpecInput): Pr
     model: modelConfig,
     skills: [],
     mcpServers: [],
+    // 最小启动路径不携带 subagents（无 AgentConfig 绑定，无专家引用）；
+    // 与 buildLaunchSpec 的形状约定一致：subagents 仅在非空时附加
   };
 }

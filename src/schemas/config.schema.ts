@@ -327,6 +327,17 @@ export const AgentNodeSchema = z.union([
   z.object({ kind: z.literal("sandbox"), sandboxPoolId: z.string().min(1) }),
 ]);
 
+/** 专家摘要（Agent 详情中的 subagents 列表项；不暴露 prompt 等完整内容） */
+export const AgentExpertSummarySchema = z
+  .object({
+    id: z.string().describe("专家 ID。"),
+    name: z.string().describe("专家名称。"),
+    description: z.string().nullable().describe("专家描述；未设置时为 null。"),
+    builtin: z.boolean().describe("是否为系统内置专家。"),
+    disabled: z.boolean().describe("是否已禁用（内置专家软删除标记）。"),
+  })
+  .describe("Agent 引用的专家摘要。");
+
 export const AgentInfoSchema = z
   .object({
     id: z.string().optional().describe("Agent 配置 ID。"),
@@ -357,6 +368,13 @@ export const AgentDetailSchema = z
     skillIds: z.array(z.string()).optional().describe("绑定的 Skill ID 列表。"),
     mcpIds: z.array(z.string()).optional().describe("绑定的 MCP Server ID 列表。"),
     siteAppIds: z.array(z.string()).optional().describe("绑定的 Site App ID 列表。"),
+    expertIds: z.array(z.string()).optional().describe("引用的专家 ID 列表（subagent 定义）。"),
+    subagents: z.array(AgentExpertSummarySchema).optional().describe("引用的专家摘要列表（subagent 定义）。"),
+    modelIds: z
+      .array(z.string())
+      .nullable()
+      .optional()
+      .describe("预选模型 UUID 列表；null=未配置保持引擎自报，[]=单模型。"),
     agentNode: AgentNodeSchema.describe("执行节点；空对象表示运行时按默认策略解析。"),
     relatedResources: AgentRelatedResourceViewSchema.optional().describe("关联资源的展示视图。"),
     resourceAccess: AgentResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
@@ -454,7 +472,54 @@ export const GetAgentResponseSchema = WebOkSchema(
   z.union([AgentListDataSchema, AgentDetailSchema]).describe("Agent 列表数据或单个 Agent 详情。"),
 ).describe("获取 Agent 列表或详情的响应。");
 
-// ── Skills ──
+// ── Agent Expert（专家库）──
+
+/** 专家完整视图（专家库列表/详情响应） */
+export const AgentExpertSchema = z
+  .object({
+    id: z.string().describe("专家 ID。"),
+    name: z.string().describe("专家名称（与 md 文件名对应，(organizationId, name) 唯一）。"),
+    description: z.string().nullable().describe("专家描述；未设置时为 null。"),
+    prompt: z.string().describe("专家 md 正文（subagent 系统提示词）。"),
+    skills: z.array(z.string()).describe("skill 名称列表（与 frontmatter skills 同构）。"),
+    model: z.string().nullable().describe("默认模型业务标识（providerName/modelId）；未设置时为 null。"),
+    mode: z.string().describe("primary | subagent | all。"),
+    temperature: z.number().nullable().describe("采样温度；未设置时为 null。"),
+    steps: z.number().nullable().describe("最大步数；未设置时为 null。"),
+    permission: z.unknown().nullable().describe("ask/allow/deny 规则（预留）。"),
+    builtin: z.boolean().describe("是否为系统内置专家。"),
+    disabled: z.boolean().describe("是否已禁用（仅内置专家使用，决策 D3 软删除）。"),
+    organizationId: z.string().describe("所属组织 ID；内置专家为保留值 system。"),
+    createdAt: z.string().describe("创建时间（ISO 字符串）。"),
+    updatedAt: z.string().describe("更新时间（ISO 字符串）。"),
+  })
+  .describe("专家完整视图。");
+
+export const AgentExpertActionValues = ["list", "create", "update", "delete", "refresh", "duplicate"] as const;
+
+/** POST /config/agent-expert 请求体：action 风格（与设计文档 §3 一致） */
+export const AgentExpertActionBodySchema = z
+  .object({
+    action: z.enum(AgentExpertActionValues).describe("专家库配置动作。"),
+    name: z.string().optional().describe("专家 ID（update/delete/duplicate 使用；list/create/refresh 不需要）。"),
+    data: z.record(z.string(), z.unknown()).optional().describe("create/update 的专家字段载荷。"),
+    includeDisabled: z.boolean().optional().describe("list 时是否包含已禁用（软删除）的内置专家。"),
+  })
+  .describe("专家库配置请求体。");
+
+export const AgentExpertListResponseSchema = WebOkSchema(
+  z.object({ experts: z.array(AgentExpertSchema).describe("当前组织可见的专家列表。") }),
+).describe("专家列表响应。");
+
+export const AgentExpertMutationResponseSchema = WebOkSchema(
+  z.object({ expert: AgentExpertSchema.describe("操作后的专家完整视图。") }),
+).describe("专家创建/更新/复制响应。");
+
+export const AgentExpertDeleteResponseSchema = WebOkSchema(z.null()).describe("专家删除响应。");
+
+export const AgentExpertRefreshResponseSchema = WebOkSchema(
+  z.object({ refreshed: z.boolean().describe("是否完成一次内置专家同步。") }),
+).describe("专家 refresh 响应。");
 
 export const SkillInfoSchema = z
   .object({

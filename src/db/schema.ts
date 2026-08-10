@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -500,6 +501,12 @@ export const agentConfig = pgTable(
     model: varchar("model"),
     // 运行时正式使用 modelId 关联模型表主键。
     modelId: uuid("model_id").references(() => model.id, { onDelete: "set null" }),
+    // 预选模型列表（uuid[]）：运行时切换模型的白名单。
+    // NULL = 未配置，保持引擎自报的 availableModels；[] = 单模型 agent；
+    // 非空 = 用户可在该列表内切换（默认模型 modelId 必须 ∈ modelIds）。
+    // 不使用数组上的外键（PG 不支持数组列 REFERENCES），引用完整性由
+    // 应用层校验 + launch 时过滤失效项兜底（见 launch-spec-builder 与 agents 路由）。
+    modelIds: uuid("model_ids").array(),
     prompt: text("prompt"),
     description: text("description"),
     machineId: text("machine_id").references(() => machine.id, { onDelete: "set null" }),
@@ -512,6 +519,68 @@ export const agentConfig = pgTable(
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_agent_config_org_name").on(table.organizationId, table.name),
+  }),
+);
+
+// 专家（agent_expert）：subagent 定义的 JSON 化存储，一条记录 = 一个
+// `.agents/agents/*.md` 模板文件的等价物（frontmatter 字段 + 正文）。
+// 内置专家由 `.agents/agents/*.md` 启动同步而来，organizationId 使用保留值 "system"
+// （决策 D1），对所有组织只读；组织自建专家按 organizationId 隔离。
+export const agentExpert = pgTable(
+  "agent_expert",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // 组织隔离；系统内置专家使用保留值 "system"（决策 D1），无 FK 以允许该保留字。
+    organizationId: text("organization_id").notNull(),
+    // 创建者，内置为 null
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    // 与 md 文件名对应，(organizationId, name) 唯一
+    name: varchar("name").notNull(),
+    description: text("description"),
+    // md 正文
+    prompt: text("prompt").notNull(),
+    // string[]，skill 名称（与 frontmatter skills 同构，构建时按组织解析为 SkillConfig）
+    skills: jsonb("skills"),
+    // 业务标识 providerName/modelId（默认模型，可选）
+    model: varchar("model"),
+    // primary | subagent | all
+    mode: varchar("mode").notNull().default("subagent"),
+    temperature: doublePrecision("temperature"),
+    steps: integer("steps"),
+    // ask/allow/deny 规则（预留）
+    permission: jsonb("permission"),
+    // 是否系统内置
+    builtin: boolean("builtin").notNull().default(false),
+    // 软删除（仅内置专家使用，决策 D3：模板文件删除 → disabled，不物理删除）
+    disabled: boolean("disabled").notNull().default(false),
+    // 预留可变扩展
+    extra: jsonb("extra"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    orgNameIdx: uniqueIndex("idx_agent_expert_org_name").on(table.organizationId, table.name),
+  }),
+);
+
+// Agent↔Expert 多对多关联：一个主 Agent 引用多个专家为 subagent；一个专家可被
+// 多个主 Agent 共享。中间表由 DB 兜底引用完整性（级联删除双向生效），
+// 与 agentConfigSkill / agentConfigMcp / agentConfigSiteApp 模式一致。
+export const agentConfigExpert = pgTable(
+  "agent_config_expert",
+  {
+    agentConfigId: uuid("agent_config_id")
+      .notNull()
+      .references(() => agentConfig.id, { onDelete: "cascade" }),
+    expertId: uuid("expert_id")
+      .notNull()
+      .references(() => agentExpert.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_agent_config_expert_pk").on(table.agentConfigId, table.expertId),
+    agentConfigIdx: index("idx_agent_config_expert_agent_config").on(table.agentConfigId),
+    expertIdx: index("idx_agent_config_expert_expert").on(table.expertId),
   }),
 );
 

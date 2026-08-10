@@ -12,8 +12,9 @@
 // 本类不直接 import 任何宿主服务；宿主能力（Redis 快照、多标签页同步、relay 发送）
 // 全部经依赖注入，保证包内可用 fake 依赖独立测试（Q12）。
 
+import type * as Y from "yjs";
 import { translateSimpleAction } from "../protocol/translator";
-import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
+import { bumpProjectionVersion, getSessionInfo, setSessionModelState } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
 import { CommandCoordinator } from "./command-coordinator";
@@ -31,6 +32,20 @@ const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
 
 /** 权限请求超时兜底（毫秒）：与聚合层缺失 expiresAt 时的默认值一致 */
 const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
+
+/** 模型切换回执等待上限（毫秒）：引擎响应丢失（断连等）时 pending 记录由 TTL 清理 */
+const PENDING_MODEL_SWITCH_TTL_MS = 30_000;
+
+/** 未决模型切换的登记上下文（rpcId → PendingModelSwitch） */
+interface PendingModelSwitch {
+  rcsSessionId: string;
+  /** 本次请求切换的模型标识（引擎标识 model.modelId） */
+  modelId: string;
+  /** 切换前 Session Doc 的 currentModelId（引擎拒绝时回滚到该值；null=切换前无模型） */
+  previousModelId: string | null;
+  /** TTL 截止时间戳：引擎响应丢失时由 sweep 清理，防止无界增长 */
+  expiresAt: number;
+}
 
 /** 连接在会话频道上的绑定上下文（多标签页共享同一 rcsSessionId 的频道状态） */
 export interface SessionConnection {
@@ -64,6 +79,20 @@ export interface SessionChannelDependencies {
   cancelTimeoutMs?: number;
   /** 权限请求超时（毫秒）：超过 expiresAt 未响应时迁移 pending → expired，默认 5min */
   permissionTimeoutMs?: number;
+  /**
+   * 切换模型拦截校验（宿主注入，可选）：engine 模型标识（model.modelId）解析回 UUID，
+   * 校验 ∈ agent_config.modelIds 预选列表。校验失败抛 CommandExecutionError（保守拒绝，
+   * 设计 §5.2）；未注入或 modelIds 为 null（未配置预选）时放行（向后兼容存量 agent）。
+   */
+  validateSetSessionModel?: (connection: SessionConnection, modelId: string) => Promise<void>;
+  /**
+   * 预选模型状态解析（宿主注入，可选）：与 RelayEventHandlerDependencies 同名依赖，
+   * 切换成功后用预选列表投影 Session Doc（服务端权威乐观回显）。返回 null 表示未配置。
+   */
+  resolvePresetModelState?: (
+    rcsSessionId: string,
+    agentId: string,
+  ) => Promise<{ currentModelId: string; availableModels: Array<{ modelId: string; name: string }> } | null>;
 }
 
 export class SessionChannel {
@@ -74,7 +103,13 @@ export class SessionChannel {
   private readonly cancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** 权限过期定时器（rcsSessionId → permissionId → timer），disposeRcsSession 时全部释放 */
   private readonly permissionTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
-
+  /**
+   * 未决的模型切换（rpcId → 上下文）：relay 发送成功后登记，引擎 JSON-RPC 回执
+   * （成功/失败）到达时清理；失败帧按 rpcId 回滚乐观投影（设计 §5.3）。
+   * rpcId 为 JSON-RPC id（连接级递增计数器），跨连接可能重复——回滚时以
+   * "当前投影仍是失败模型"为条件，避免误伤后发成功的切换。
+   */
+  private readonly pendingModelSwitches = new Map<number | string, PendingModelSwitch>();
   constructor(private readonly dependencies: SessionChannelDependencies) {
     this.coordinator = new CommandCoordinator({
       executeCommand: (command) => this.executeCommand(command),
@@ -115,6 +150,10 @@ export class SessionChannel {
     if (permTimers) {
       for (const t of permTimers.values()) clearTimeout(t);
       this.permissionTimers.delete(rcsSessionId);
+    }
+    // 清理该会话未决的模型切换记录（引擎回执可能永不到达）
+    for (const [rpcId, pending] of this.pendingModelSwitches) {
+      if (pending.rcsSessionId === rcsSessionId) this.pendingModelSwitches.delete(rpcId);
     }
     this.activeConnections.delete(rcsSessionId);
     this.coordinator.disposeRcsSession(rcsSessionId);
@@ -202,14 +241,45 @@ export class SessionChannel {
       if (!this.resolvePermissionViaCas(connection, command.payload)) return {};
     }
 
+    if (command.type === "set_session_model") {
+      // 运行时切换模型拦截（设计 §5.2 服务端权威）：校验失败抛 CommandExecutionError，
+      // coordinator 转为 action_error 回显前端；modelIds===null 的存量 agent 放行
+      const modelId = typeof command.payload.modelId === "string" ? command.payload.modelId : "";
+      if (!modelId) {
+        throw new CommandExecutionError("INVALID_STATE", "set_session_model requires a valid modelId", false);
+      }
+      if (this.dependencies.validateSetSessionModel) {
+        await this.dependencies.validateSetSessionModel(connection, modelId);
+      }
+    }
+
     // cwd 由服务端根据已认证 environment 注入（translateSimpleAction 内完成），
     // 浏览器传入的 workspace/cwd 不可信（CLAUDE.md 不变量）。
-    const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, connection.getNextRpcId());
+    // rpcId 单独捕获：set_session_model 需用同一 id 登记 pending，等待引擎回执
+    const rpcId = connection.getNextRpcId();
+    const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, rpcId);
     try {
       await connection.sendToRelay(rpc);
     } catch (err) {
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
       throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+    }
+
+    if (command.type === "set_session_model") {
+      // 服务端权威乐观回显（设计 §5.3 / C4 补建链路）：machine 端 set_session_model
+      // 成功后仅回 JSON-RPC success response（relay-event-handler 不处理无 sessionId 的
+      // result），此处把切换结果投影进 Session Doc，前端 modelState 即时更新；
+      // 引擎拒绝（error response）时由 handleModelSwitchResponse 按 rpcId 回滚投影
+      const modelId = typeof command.payload.modelId === "string" ? command.payload.modelId : "";
+      const sessionYdoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
+      this.pendingModelSwitches.set(rpcId, {
+        rcsSessionId: connection.rcsSessionId,
+        modelId,
+        previousModelId: this.readCurrentModelId(sessionYdoc),
+        expiresAt: Date.now() + PENDING_MODEL_SWITCH_TTL_MS,
+      });
+      this.sweepPendingModelSwitches();
+      await this.projectModelSwitch(connection, modelId);
     }
 
     if (command.type === "cancel") {
@@ -304,6 +374,103 @@ export class SessionChannel {
       this.dependencies.reportError("[SessionChannel] Failed to ensure session doc for user message:", err);
     }
     return this.dependencies.docManager.registerUserMessage(connection.rcsSessionId, text);
+  }
+
+  // ── 模型切换投影（设计 §5.3 / C4）──
+
+  /** 从 Session Doc 现有 modelState 读取 currentModelId（无 modelState 时返回 null） */
+  private readCurrentModelId(sessionYdoc: Y.Doc | null | undefined): string | null {
+    if (!sessionYdoc) return null;
+    const sessionMap = sessionYdoc.getMap("root").get("session") as Y.Map<unknown> | undefined;
+    const modelState = sessionMap?.get("modelState") as Y.Map<unknown> | undefined;
+    const current = modelState?.get("currentModelId");
+    return typeof current === "string" ? current : null;
+  }
+
+  /** 清理已过期的未决模型切换记录（TTL 兜底：引擎回执丢失时防止无界增长） */
+  private sweepPendingModelSwitches(): void {
+    const now = Date.now();
+    for (const [rpcId, pending] of this.pendingModelSwitches) {
+      if (pending.expiresAt < now) this.pendingModelSwitches.delete(rpcId);
+    }
+  }
+
+  /**
+   * 引擎 JSON-RPC 回执（relay-event-handler 经 onRpcResponse 注入）：
+   * - ok（result 帧）→ 乐观投影已生效，仅清理 pending；
+   * - 失败（error 帧）→ 回滚乐观投影到切换前模型（设计 §5.3 兜底：引擎侧可能
+   *   因 availableModels 差异拒绝预选内模型，不能放任前端展示未生效的切换）。
+   * 回滚条件：当前投影仍为失败模型。期间若有后续切换成功（投影已为其他模型），
+   * 说明引擎状态与投影一致，不回滚。
+   */
+  handleModelSwitchResponse(rpcId: number | string, ok: boolean): void {
+    const pending = this.pendingModelSwitches.get(rpcId);
+    if (!pending) return;
+    this.pendingModelSwitches.delete(rpcId);
+    if (ok) return;
+
+    const sessionYdoc = this.dependencies.docManager.getSessionYdoc(pending.rcsSessionId);
+    if (!sessionYdoc) return;
+    if (this.readCurrentModelId(sessionYdoc) !== pending.modelId) return;
+    const availableModels = this.readExistingAvailableModels(sessionYdoc);
+    if (!pending.previousModelId || !availableModels) {
+      this.dependencies.reportError(
+        `[SessionChannel] model switch rejected but no previous state to restore: rcsSessionId=${pending.rcsSessionId}, modelId=${pending.modelId}`,
+        new Error("missing previous model state"),
+      );
+      return;
+    }
+    setSessionModelState(sessionYdoc, { currentModelId: pending.previousModelId, availableModels });
+    bumpProjectionVersion(sessionYdoc.getMap("root"));
+  }
+
+  /** 从 Session Doc 现有 modelState 解包 availableModels（Y.Array<Y.Map> → 普通数组） */
+  private readExistingAvailableModels(sessionYdoc: Y.Doc | null): Array<{ modelId: string; name: string }> | null {
+    if (!sessionYdoc) return null;
+    const sessionMap = sessionYdoc.getMap("root").get("session") as Y.Map<unknown> | undefined;
+    const modelState = sessionMap?.get("modelState") as Y.Map<unknown> | undefined;
+    const available = modelState?.get("availableModels") as Y.Array<Y.Map<unknown>> | undefined;
+    if (!available || typeof available.forEach !== "function") return null;
+    const result: Array<{ modelId: string; name: string }> = [];
+    available.forEach((entry) => {
+      const modelId = entry.get("modelId");
+      const name = entry.get("name");
+      if (typeof modelId === "string") {
+        result.push({ modelId, name: typeof name === "string" ? name : modelId });
+      }
+    });
+    return result;
+  }
+
+  /**
+   * 切换模型成功后将结果投影进 Session Doc（服务端权威乐观回显）：
+   * - 预选列表已配置（resolvePresetModelState 返回非 null）→ 用预选列表覆盖
+   *   availableModels（currentModelId 取新模型标识；与预选注入逻辑一致）；
+   * - 未配置预选 → 保留引擎当前 availableModels，仅更新 currentModelId。
+   * 投影失败仅告警不抛出（relay 已发送成功，不能回滚引擎侧切换）。
+   */
+  private async projectModelSwitch(connection: SessionConnection, modelId: string): Promise<void> {
+    try {
+      let availableModels: Array<{ modelId: string; name: string }> | null = null;
+      if (this.dependencies.resolvePresetModelState) {
+        const preset = await this.dependencies.resolvePresetModelState(connection.rcsSessionId, connection.agentId);
+        if (preset) availableModels = preset.availableModels;
+      }
+      const sessionYdoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
+      if (!sessionYdoc) return;
+      const finalAvailable = availableModels ?? this.readExistingAvailableModels(sessionYdoc);
+      if (!finalAvailable) return;
+      // 新模型不在当前列表（预选解析失败等极端情况）：保留引擎 currentModelId 不覆盖，
+      // 避免前端展示引擎不存在的模型
+      if (!finalAvailable.some((m) => m.modelId === modelId)) return;
+      setSessionModelState(sessionYdoc, { currentModelId: modelId, availableModels: finalAvailable });
+      bumpProjectionVersion(sessionYdoc.getMap("root"));
+    } catch (err) {
+      this.dependencies.reportError(
+        `[SessionChannel] model switch projection failed: rcsSessionId=${connection.rcsSessionId}`,
+        err,
+      );
+    }
   }
 
   // ── 权限 CAS（C5）──

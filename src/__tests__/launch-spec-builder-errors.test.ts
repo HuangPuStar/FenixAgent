@@ -13,6 +13,15 @@ function queryResult<T>(rows: T[]) {
   });
 }
 
+/** 支持 orderBy 的链式结果（专家引用查询经 listExpertIdsByAgent 走 orderBy 链）；
+ * 与 queryResult 一样可 await，同时提供 orderBy/limit 两个链式方法 */
+function queryChain<T>(rows: T[]) {
+  return Object.assign(Promise.resolve(rows), {
+    orderBy: () => Promise.resolve(rows),
+    limit: async () => rows,
+  });
+}
+
 function createAgentConfig(overrides: Record<string, unknown> = {}) {
   return {
     id: "agc_demo",
@@ -191,7 +200,7 @@ describe("launch spec builder errors", () => {
                 }),
               };
             }
-            return queryResult([]);
+            return queryChain([]);
           },
         }),
       }),
@@ -250,7 +259,7 @@ describe("launch spec builder errors", () => {
               ]);
             }
             if (table === agentConfigSkill || table === agentConfigMcp || table === mcpServer) return queryResult([]);
-            return queryResult([]);
+            return queryChain([]);
           },
         }),
       }),
@@ -327,7 +336,7 @@ describe("launch spec builder errors", () => {
                 },
               ]);
             }
-            return queryResult([]);
+            return queryChain([]);
           },
         }),
       }),

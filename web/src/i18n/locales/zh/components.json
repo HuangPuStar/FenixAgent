@@ -525,6 +525,9 @@
   "sessionModeSelector": {
     "default": "默认"
   },
+  "sessionModelSelector": {
+    "default": "默认"
+  },
   "modelIconMap": {
     "qwen": "Qwen / 通义千问"
   }

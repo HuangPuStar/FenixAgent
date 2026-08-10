@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CommandMenu } from "./CommandMenu";
 import { FilePickerPanel } from "./FilePickerPanel";
+import { SessionModelSelector } from "./SessionModelSelector";
 import { SessionModeSelector } from "./SessionModeSelector";
 import { useDragUpload } from "./useDragUpload";
 
@@ -51,6 +52,12 @@ interface ChatComposerProps {
   currentModeId?: string | null;
   /** 模式切换回调（Task 5 元信息条用到） */
   onModeChange?: (modeId: string) => void;
+  /** 可用模型列表（会话级 modelState，设计 §5.3） */
+  availableModels?: Array<{ modelId: string; name: string }>;
+  /** 当前模型 ID */
+  currentModelId?: string | null;
+  /** 模型切换回调（发 set_session_model，服务端拦截校验预选列表） */
+  onModelChange?: (modelId: string) => void;
   /** Token 统计信息（Task 5 元信息条用到） */
   tokenStats?: TokenStats;
   /** 新建会话回调（Task 5 元信息条用到） */
@@ -80,6 +87,9 @@ export function ChatComposer({
   availableModes,
   currentModeId,
   onModeChange,
+  availableModels,
+  currentModelId,
+  onModelChange,
   tokenStats,
   onNewSession,
   showNewSession,
@@ -609,7 +619,7 @@ export function ChatComposer({
 
           {/* 底部元信息条 —— flex-wrap 允许数据多时换行到第二行 */}
           <div className="chat-composer-meta flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[11px]">
-            {/* 左侧：模式 + 模型（纯展示，不提供下拉切换） */}
+            {/* 左侧：模式（纯展示，readOnly 保留既有语义）+ 模型（可切换下拉，设计 §5.3） */}
             {availableModes && availableModes.length > 0 && (
               <SessionModeSelector
                 modes={availableModes}
@@ -619,7 +629,16 @@ export function ChatComposer({
               />
             )}
 
-            {modelName ? (
+            {availableModels && availableModels.length > 0 && (
+              <SessionModelSelector
+                models={availableModels}
+                currentModelId={currentModelId ?? null}
+                onModelChange={onModelChange ?? (() => {})}
+              />
+            )}
+
+            {/* 静态模型名仅在下拉不可用时展示（避免与 SessionModelSelector 重复显示） */}
+            {modelName && (!availableModels || availableModels.length === 0) ? (
               <span
                 className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground select-none"
                 title={modelName}

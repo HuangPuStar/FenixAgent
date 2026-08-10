@@ -1,4 +1,5 @@
 import type { AuthContext } from "../plugins/auth";
+import { syncBuiltinExperts } from "./agent-expert-sync";
 import { syncBuiltinSkillsToSystemAdmin } from "./meta-agent";
 import { ensureSystemAdmin } from "./system-admin";
 
@@ -30,17 +31,22 @@ async function syncBuiltinSkills(
  * 启动期统一 builtin 编排入口。
  *
  * 这个文件故意不放在 `meta-agent.ts` 中，因为后续 builtin 资源可能不止 skill。
- * 当前它只负责串起“系统 admin 就绪”与“builtin skill 托管到系统组织”两步，
+ * 当前它负责串起“系统 admin 就绪”与“builtin skill 托管到系统组织”两步，
  * 后续如果新增 builtin provider / template，也应该在这里继续扩展。
  */
 export async function syncBuiltin(
   deps: {
     ensureSystemAdmin?: typeof ensureSystemAdmin;
     syncBuiltinSkillsToSystemAdmin?: (ctx: AuthContext) => Promise<void>;
+    syncBuiltinExperts?: typeof syncBuiltinExperts;
   } = {},
 ): Promise<void> {
   const ctx = await resolveSystemBuiltinContext({ ensureSystemAdmin: deps.ensureSystemAdmin });
   await syncBuiltinSkills(ctx, {
     syncBuiltinSkillsToSystemAdmin: deps.syncBuiltinSkillsToSystemAdmin,
   });
+  // 内置专家（agent_expert system 行）由 .agents/agents/*.md 种子同步：
+  // 幂等、失败仅告警不抛出（syncBuiltinExperts 内部已逐文件容错）
+  const syncExperts = deps.syncBuiltinExperts ?? syncBuiltinExperts;
+  await syncExperts();
 }

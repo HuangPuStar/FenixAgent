@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { agentExpertApi } from "@/src/api/agent-experts";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
@@ -53,7 +54,7 @@ import {
   normalizeSkillOptionsPayload,
   type SkillOptionView,
 } from "../../lib/skill-resource-access";
-import type { AgentNode, ModelEntry, ResourceAccess } from "../../types/config";
+import type { AgentExpert, AgentNode, ModelEntry, ResourceAccess } from "../../types/config";
 import type { KnowledgeBaseInfo } from "../../types/knowledge";
 
 /** Agent 模板（从 API 返回） */
@@ -133,6 +134,8 @@ interface LoadedFormData {
   skillOptions: SkillOptionView[];
   mcpOptions: AgentMcpOption[];
   templates: AgentTemplate[];
+  /** 专家选项（内置 + 本组织，默认排除 disabled） */
+  expertOptions?: AgentExpert[];
   // 创建模式：预选第一个模型
   initialModel?: string;
   // 编辑模式
@@ -152,6 +155,9 @@ interface LoadedFormData {
     skillIds: string[];
     mcpIds: string[];
     siteAppIds: string[];
+    expertIds: string[];
+    /** 预选模型 UUID 列表；null=未配置（存量，保持引擎自报） */
+    modelIds: string[] | null;
     enableMemory: boolean;
     extra: unknown | null;
   };
@@ -186,6 +192,14 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const [formSkillIds, setFormSkillIds] = useState<string[]>([]);
   const [formMcpIds, setFormMcpIds] = useState<string[]>([]);
   const [formSiteAppIds, setFormSiteAppIds] = useState<string[]>([]);
+  // 专家（subagent）引用与预选模型（设计 §3/§5）
+  const [formExpertIds, setFormExpertIds] = useState<string[]>([]);
+  const [expertOptions, setExpertOptions] = useState<AgentExpert[]>([]);
+  const [expertsExpanded, setExpertsExpanded] = useState(false);
+  const [formModelIds, setFormModelIds] = useState<string[]>([]);
+  /** 是否显式配置过预选列表（区分存量 null 与空数组单模型，保存时决定是否传 modelIds） */
+  const [presetTouched, setPresetTouched] = useState(false);
+  const [presetExpanded, setPresetExpanded] = useState(false);
   const [formAgentNode, setFormAgentNode] = useState<AgentNodeSelection>({ kind: "default" });
   const [formResourceAccess, setFormResourceAccess] = useState<ResourceAccess | undefined>(undefined);
   const [formPublicReadable, setFormPublicReadable] = useState(false);
@@ -216,6 +230,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
     setFormSkillIds([]);
     setFormMcpIds([]);
     setFormSiteAppIds([]);
+    setFormExpertIds([]);
+    setFormModelIds([]);
+    setPresetTouched(false);
+    setExpertsExpanded(false);
+    setPresetExpanded(false);
     setFormAgentNode({ kind: "default" });
     setFormResourceAccess(undefined);
     setFormPublicReadable(false);
@@ -341,6 +360,15 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
 
         const knowledgeState = buildKnowledgeFormState(d as Parameters<typeof buildKnowledgeFormState>[0]);
 
+        // 专家选项（内置 + 本组织，默认排除 disabled）
+        let expertOptionsVal: AgentExpert[] = [];
+        try {
+          const expertsData = await unwrap(agentExpertApi.list(true));
+          expertOptionsVal = expertsData?.experts ?? [];
+        } catch (err) {
+          console.warn("[AgentFormDialog] 加载专家选项失败", err);
+        }
+
         return {
           machineOptions: machineOptionsVal,
           sandboxPoolOptions: sandboxPoolOptionsVal,
@@ -352,6 +380,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           skillOptions: skillOptionsVal,
           mcpOptions: mcpOptionsVal,
           templates: templatesVal,
+          expertOptions: expertOptionsVal,
           editState: {
             agentId: (d.id as string) ?? null,
             displayName: String(d.name ?? agentName ?? ""),
@@ -368,6 +397,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
             skillIds: Array.isArray(d.skillIds) ? (d.skillIds as string[]) : [],
             mcpIds: Array.isArray(d.mcpIds) ? (d.mcpIds as string[]) : [],
             siteAppIds: Array.isArray(d.siteAppIds) ? (d.siteAppIds as string[]) : [],
+            expertIds: Array.isArray(d.expertIds) ? (d.expertIds as string[]) : [],
+            // 预选模型回显：null/undefined（存量未配置）统一归一为 null，
+            // 表单留空且不标记 touched，保存时不传 modelIds 保持引擎自报
+            modelIds: Array.isArray(d.modelIds) ? (d.modelIds as string[]) : null,
             enableMemory: enableMemoryVal,
             extra: d.extra ?? null,
           },
@@ -417,6 +450,15 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         ),
       );
 
+      // 专家选项（创建模式同样需要，内置 + 本组织，默认排除 disabled）
+      let expertOptionsVal: AgentExpert[] = [];
+      try {
+        const expertsData = await unwrap(agentExpertApi.list(true));
+        expertOptionsVal = expertsData?.experts ?? [];
+      } catch (err) {
+        console.warn("[AgentFormDialog] 加载专家选项失败", err);
+      }
+
       return {
         machineOptions: machineOptionsVal,
         sandboxPoolOptions: sandboxPoolOptionsVal,
@@ -428,6 +470,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         skillOptions: skillOptionsVal,
         mcpOptions: mcpOptionsVal,
         templates: templatesVal,
+        expertOptions: expertOptionsVal,
         initialModel: modelOptionsVal[0]?.value || "",
       };
     },
@@ -446,6 +489,7 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         setSkillOptions(data.skillOptions);
         setMcpOptions(data.mcpOptions);
         setTemplates(data.templates);
+        if (data.expertOptions) setExpertOptions(data.expertOptions);
 
         if (data.editState) {
           // 编辑模式：填充表单
@@ -465,6 +509,11 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
           setFormSkillIds(es.skillIds);
           setFormMcpIds(es.mcpIds);
           setFormSiteAppIds(es.siteAppIds);
+          setFormExpertIds(es.expertIds);
+          // 预选模型回显：null（存量未配置）→ 表单留空且不标记 touched，
+          // 保存时不传 modelIds 保持引擎自报（兼容不变量，避免 null 被改写成 []）
+          setFormModelIds(es.modelIds ?? []);
+          setPresetTouched(es.modelIds !== null);
           setFormEnableMemory(es.enableMemory);
           setFormExtra(es.extra ? JSON.stringify(es.extra, null, 2) : "");
         } else if (!isEdit) {
@@ -500,8 +549,14 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         return false;
       }
     }
+    // 预选模型一致性（设计 §5.1）：预选列表非空时默认模型必须 ∈ 预选；
+    // 空数组 = 单模型（默认模型即唯一模型），存量 null 不参与校验
+    if (presetTouched && formModelIds.length > 0 && formModel && !formModelIds.includes(formModel)) {
+      toast.error(t("form.defaultModelNotInPresetError"));
+      return false;
+    }
     return true;
-  }, [isEdit, formName, formKnowledgeMaxResults, formExtra, t]);
+  }, [isEdit, formName, formKnowledgeMaxResults, formExtra, presetTouched, formModelIds, formModel, t]);
 
   const agentIdentityName = agentName ?? formName ?? "agent";
   const readOnlyAgent = isEdit && !isAgentWritable({ name: agentIdentityName, resourceAccess: formResourceAccess });
@@ -574,6 +629,25 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         ]
       : mcpOptions;
 
+  // 复制 disabled 内置专家到本组织（设计 §2 恢复路径 / 决策 D3）：duplicate 成功后
+  // 把复制出的组织自建专家加入选项并自动选中，替代原不可引用的内置行
+  const handleDuplicateExpert = useCallback(
+    async (expertId: string) => {
+      try {
+        const result = await unwrap(agentExpertApi.duplicate(expertId));
+        if (!result?.expert) return;
+        const copy = result.expert;
+        setExpertOptions((current) => [...current.filter((e) => e.id !== copy.id), copy]);
+        setFormExpertIds((current) => (current.includes(copy.id) ? current : [...current, copy.id]));
+        setExpertsExpanded(false);
+        toast.success(t("experts.duplicateSuccess", { expert: copy.name }));
+      } catch (err) {
+        toast.error(t("experts.duplicateFailed", { message: err instanceof Error ? err.message : String(err) }));
+      }
+    },
+    [t],
+  );
+
   // 保存（创建/更新）
   const { run: runSave, loading: formSaving } = useRequest(
     async () => {
@@ -595,6 +669,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         const data: Record<string, unknown> = {
           ...buildAgentPayload({
             modelId: formModel,
+            modelIds: formModelIds,
+            presetTouched,
+            expertIds: formExpertIds,
             prompt: formPrompt,
             description: formDescription,
             knowledge: {
@@ -622,6 +699,9 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
         const createPayload: Record<string, unknown> = {
           ...buildAgentPayload({
             modelId: formModel,
+            modelIds: formModelIds,
+            presetTouched,
+            expertIds: formExpertIds,
             prompt: formPrompt,
             description: formDescription,
             knowledge: {
@@ -714,6 +794,12 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
   const title = isEdit ? (readOnlyAgent ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle");
   const confirmLabel = formSaving ? "..." : isEdit ? t("actions.save") : t("dialog.createConfirm");
   const selectedModelLabel = effectiveModelOptions.find((option) => option.value === formModel)?.label;
+  // 预选模型联动（设计 §5.1）：预选列表非空时默认模型单选只展示预选内的模型；
+  // 未配置预选（存量 null）或空数组（单模型）时退化为全量模型单选
+  const defaultModelOptions =
+    presetTouched && formModelIds.length > 0
+      ? effectiveModelOptions.filter((option) => formModelIds.includes(option.value))
+      : effectiveModelOptions;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -815,13 +901,103 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {effectiveModelOptions.map((m) => (
+                        {defaultModelOptions.map((m) => (
                           <SelectItem key={m.value} value={m.value}>
                             {m.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  {/* 预选模型（运行时切换白名单，设计 §5）：多选 + 默认模型单选联动 */}
+                  <div className="rounded-lg border border-border-subtle p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-bright">{t("presetModels.tabTitle")}</p>
+                        <p className="text-xs text-text-muted">
+                          {presetTouched && formModelIds.length === 0
+                            ? t("presetModels.singleModelHint")
+                            : t("presetModels.selectedCount", { count: formModelIds.length })}
+                        </p>
+                      </div>
+                      {!readOnlyAgent && (
+                        <button
+                          type="button"
+                          onClick={() => setPresetExpanded(!presetExpanded)}
+                          className="rounded-md p-1 hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+                          aria-expanded={presetExpanded}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {/* 已选预选模型 badge */}
+                    {formModelIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {formModelIds.map((mid) => {
+                          const model = effectiveModelOptions.find((option) => option.value === mid);
+                          return (
+                            <span
+                              key={mid}
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary text-xs px-2 py-0.5"
+                            >
+                              {model?.label ?? mid}
+                              {!readOnlyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPresetTouched(true);
+                                    setFormModelIds((cur) => cur.filter((id) => id !== mid));
+                                  }}
+                                  className="hover:text-text-bright"
+                                  aria-label={t("presetModels.removeModel", { model: model?.label ?? mid })}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* 展开的预选模型列表 */}
+                    {presetExpanded && (
+                      <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
+                        {effectiveModelOptions.length === 0 ? (
+                          <p className="text-sm text-text-muted">{t("presetModels.noOptions")}</p>
+                        ) : (
+                          effectiveModelOptions.map((item) => {
+                            const checked = formModelIds.includes(item.value);
+                            return (
+                              <label
+                                key={item.value}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                              >
+                                <div>
+                                  <p className="font-medium text-text-bright">{item.label}</p>
+                                  {item.value === formModel && (
+                                    <p className="text-xs text-text-muted">{t("presetModels.defaultBadge")}</p>
+                                  )}
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnlyAgent}
+                                  onChange={(e) => {
+                                    setPresetTouched(true);
+                                    setFormModelIds((current) =>
+                                      e.target.checked
+                                        ? [...current, item.value]
+                                        : current.filter((id) => id !== item.value),
+                                    );
+                                  }}
+                                />
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>{t("form.prompt")}</Label>
@@ -987,6 +1163,131 @@ export function AgentFormDialog({ open, onOpenChange, mode, defaultName, onSucce
                                   onChange={(e) => {
                                     setFormSkillIds((current) =>
                                       e.target.checked ? [...current, value] : current.filter((id) => id !== value),
+                                    );
+                                  }}
+                                />
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* 专家（Subagent）绑定 - 折叠展示（设计 §3：引用专家为 subagent） */}
+                  <div className="rounded-lg border border-border-subtle p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-bright">{t("experts.tabTitle")}</p>
+                        <p className="text-xs text-text-muted">
+                          {t("experts.selectedCount", { count: formExpertIds.length })}
+                        </p>
+                      </div>
+                      {!readOnlyAgent && (
+                        <button
+                          type="button"
+                          onClick={() => setExpertsExpanded(!expertsExpanded)}
+                          className="rounded-md p-1 hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+                          aria-expanded={expertsExpanded}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {/* 已选专家 badge */}
+                    {formExpertIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {formExpertIds.map((eid) => {
+                          const expert = expertOptions.find((item) => item.id === eid);
+                          return (
+                            <span
+                              key={eid}
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary text-xs px-2 py-0.5"
+                            >
+                              {expert?.name ?? eid}
+                              {expert?.builtin && (
+                                <span className="text-[10px] text-text-muted">{t("experts.builtinBadge")}</span>
+                              )}
+                              {!readOnlyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFormExpertIds((cur) => cur.filter((id) => id !== eid))}
+                                  className="hover:text-text-bright"
+                                  aria-label={t("experts.removeExpert", { expert: expert?.name ?? eid })}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* 展开的完整专家列表（含 disabled 内置专家：展示"复制到本组织"恢复路径，设计 §2/D3） */}
+                    {expertsExpanded && (
+                      <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
+                        {expertOptions.length === 0 ? (
+                          <p className="text-sm text-text-muted">{t("experts.noOptions")}</p>
+                        ) : (
+                          expertOptions.map((item) => {
+                            const checked = formExpertIds.includes(item.id);
+                            // disabled 内置专家（源文件缺失，决策 D3 软删除）：不可直接引用，
+                            // 仅提供"复制到本组织"恢复路径
+                            if (item.disabled) {
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm opacity-70"
+                                >
+                                  <div>
+                                    <p className="font-medium text-text-bright">
+                                      {item.name}
+                                      <span className="ml-1.5 text-[10px] text-text-muted">
+                                        {t("experts.disabledBadge")}
+                                      </span>
+                                    </p>
+                                    {item.description && (
+                                      <p className="text-xs text-text-muted line-clamp-2">{item.description}</p>
+                                    )}
+                                  </div>
+                                  {!readOnlyAgent && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDuplicateExpert(item.id)}
+                                      className="shrink-0"
+                                    >
+                                      {t("experts.duplicateAction")}
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <label
+                                key={item.id}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm"
+                              >
+                                <div>
+                                  <p className="font-medium text-text-bright">
+                                    {item.name}
+                                    {item.builtin && (
+                                      <span className="ml-1.5 text-[10px] text-text-muted">
+                                        {t("experts.builtinBadge")}
+                                      </span>
+                                    )}
+                                  </p>
+                                  {item.description && (
+                                    <p className="text-xs text-text-muted line-clamp-2">{item.description}</p>
+                                  )}
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnlyAgent}
+                                  onChange={(e) => {
+                                    setFormExpertIds((current) =>
+                                      e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
                                     );
                                   }}
                                 />

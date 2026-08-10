@@ -58,6 +58,13 @@ export interface ChatChannelDependencies {
   log: (message: string) => void;
   /** 错误日志（宿主 error 语义，保留诊断上下文、对外脱敏） */
   reportError: (message: string, error: unknown) => void;
+  /** 切换模型拦截校验（可选，设计 §5.2）：engine 模型标识解析回 UUID 校验 ∈ 预选列表 */
+  validateSetSessionModel?: (connection: SessionConnection, modelId: string) => Promise<void>;
+  /** 预选模型状态解析（可选，设计 §5.1）：agent_config.modelIds → 会话级 modelState */
+  resolvePresetModelState?: (
+    rcsSessionId: string,
+    agentId: string,
+  ) => Promise<{ currentModelId: string; availableModels: Array<{ modelId: string; name: string }> } | null>;
 }
 
 /** Chat 域控制面组装：持有网关入口与连接注册表（供宿主关闭连接）。 */
@@ -83,6 +90,13 @@ export class ChatChannelController {
         });
       },
       reportError: dependencies.reportError,
+      // 模型切换拦截与预选注入（设计 §5）：宿主可选注入，未配置预选时放行
+      ...(dependencies.validateSetSessionModel
+        ? { validateSetSessionModel: dependencies.validateSetSessionModel }
+        : {}),
+      ...(dependencies.resolvePresetModelState
+        ? { resolvePresetModelState: dependencies.resolvePresetModelState }
+        : {}),
     });
     this.relayEvents = new RelayEventHandler({
       registry: this.registry,
@@ -92,6 +106,11 @@ export class ChatChannelController {
       reportError: dependencies.reportError,
       touchInstanceActivity: dependencies.touchInstanceActivity,
       terminateLocalDeadInstance: dependencies.terminateLocalDeadInstance,
+      ...(dependencies.resolvePresetModelState
+        ? { resolvePresetModelState: dependencies.resolvePresetModelState }
+        : {}),
+      // 命令回执（set_session_model 等）转发到 SessionChannel 处理模型切换回滚
+      onRpcResponse: (rpcId, ok) => this.sessionChannel.handleModelSwitchResponse(rpcId, ok),
     });
     this.gateway = new Gateway({
       registry: this.registry,

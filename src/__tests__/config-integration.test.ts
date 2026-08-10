@@ -250,6 +250,7 @@ describe("Config Route Integration", () => {
       select: () => {
         const chainable = {
           where: () => chainable,
+          orderBy: () => chainable,
           limit: () => chainable,
           // biome-ignore lint/suspicious/noThenProperty: 链式查询 mock 需要 thenable 支持 await
           then: (resolve: (v: unknown[]) => void) => resolve([]),

@@ -86,6 +86,9 @@ describe("Agent knowledge form helpers", () => {
   test("保存时提交 payload 包含 knowledge.knowledgeBaseIds 与 policy.maxResults", () => {
     const payload = buildAgentPayload({
       modelId: "model-1",
+      modelIds: [],
+      presetTouched: false,
+      expertIds: [],
       prompt: "",
       description: "agent desc",
       knowledge: {

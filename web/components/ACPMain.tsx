@@ -53,6 +53,11 @@ interface ACPMainProps {
   currentModeId?: string | null;
   onSetMode?: (modeId: string) => void;
   supportsModeSelection?: boolean;
+  /** 模型切换（设计 §5.3）：与 mode 选择同构的会话级模型下拉 */
+  availableModels?: Array<{ modelId: string; name: string }>;
+  currentModelId?: string | null;
+  onSetModel?: (modelId: string) => void;
+  supportsModelSelection?: boolean;
   modelName?: string;
   tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
 }
@@ -91,6 +96,10 @@ export function ACPMain({
   currentModeId = null,
   onSetMode = () => {},
   supportsModeSelection = false,
+  availableModels = [],
+  currentModelId = null,
+  onSetModel = () => {},
+  supportsModelSelection = false,
   modelName,
   tokenUsage,
 }: ACPMainProps) {
@@ -368,6 +377,10 @@ export function ACPMain({
             currentModeId={currentModeId}
             onSetMode={onSetMode}
             supportsModeSelection={supportsModeSelection}
+            availableModels={availableModels}
+            currentModelId={currentModelId}
+            onSetModel={onSetModel}
+            supportsModelSelection={supportsModelSelection}
             supportsImages={supportsImages}
             modelName={modelName}
             tokenUsage={tokenUsage}

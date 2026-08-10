@@ -84,7 +84,8 @@
     "disableTitle": "Agent is completely unavailable, cannot be used in UI or API",
     "extraLabel": "Extra Config (JSON)",
     "extraPlaceholder": "Optional, extra config in JSON format, e.g. {\"plugin\": {\"name\": \"...\"}}",
-    "extraValidationError": "Invalid JSON format for extra config"
+    "extraValidationError": "Invalid JSON format for extra config",
+    "defaultModelNotInPresetError": "Default model must be one of the preset models (when a preset list is set)"
   },
   "knowledge": {
     "bindTitle": "Bind Knowledge Bases",
@@ -147,5 +148,24 @@
     "custom": "Custom"
   },
   "loadFailed": "Failed to load agents",
-  "enterFailed": "Failed to enter agent"
+  "enterFailed": "Failed to enter agent",
+  "experts": {
+    "tabTitle": "Subagents",
+    "selectedCount": "{{count}} experts selected",
+    "noOptions": "No experts available",
+    "builtinBadge": "Built-in",
+    "removeExpert": "Remove expert {{expert}}",
+    "disabledBadge": "Disabled (source file missing)",
+    "duplicateAction": "Copy to organization",
+    "duplicateSuccess": "Expert {{expert}} copied to your organization",
+    "duplicateFailed": "Failed to copy expert: {{message}}"
+  },
+  "presetModels": {
+    "tabTitle": "Preset Models",
+    "selectedCount": "{{count}} models selected",
+    "singleModelHint": "Single-model agent: only the default model is available",
+    "noOptions": "No models available",
+    "defaultBadge": "Default",
+    "removeModel": "Remove model {{model}}"
+  }
 }

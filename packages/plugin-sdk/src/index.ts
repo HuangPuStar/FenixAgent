@@ -1,6 +1,8 @@
 /**
  * `@fenix/plugin-sdk` 的公共导出面。
  */
+export type { AgentFileSpec } from "./agent-file-spec";
+export { renderAgentFileMarkdown } from "./agent-file-spec";
 export type {
   AgentConfig,
   AgentLaunchSpec,

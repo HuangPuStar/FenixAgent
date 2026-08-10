@@ -5,6 +5,8 @@
  * 插件基于这些配置完成环境变量和运行前资源准备。
  */
 
+import type { AgentFileSpec } from "./agent-file-spec";
+
 /**
  * Agent 配置。
  */
@@ -93,4 +95,11 @@ export interface AgentLaunchSpec {
   model: ModelConfig;
   skills: SkillConfig[];
   mcpServers: McpServerConfig[];
+  /**
+   * subagent 定义（主 agent 引用的专家渲染文件规格）。
+   * 可选字段：最小启动路径（buildBasicLaunchSpec）不携带；
+   * 引擎插件 prepareWorkspace 按各自约定落盘（opencode → .agents/agents/，
+   * ccb/claude-code → .claude/agents/），主 agent 本身不渲染。
+   */
+  subagents?: AgentFileSpec[];
 }

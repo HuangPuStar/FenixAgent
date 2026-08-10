@@ -10,6 +10,14 @@ export interface AgentTemplate {
   description: string;
   prompt: string;
   skills: string[];
+  /** 业务标识 providerName/modelId（默认模型，可选；专家库内置同步时写入 agent_expert.model） */
+  model?: string;
+  /** primary | subagent | all */
+  mode?: string;
+  temperature?: number;
+  steps?: number;
+  /** ask/allow/deny 规则（预留） */
+  permission?: unknown;
 }
 
 let cachedTemplates: AgentTemplate[] | null = null;
@@ -52,6 +60,12 @@ export function loadAgentTemplates(): AgentTemplate[] {
       description: (data.description as string) ?? "",
       prompt: content.trim(),
       skills: Array.isArray(skillsRaw) ? (skillsRaw as string[]) : [],
+      // 专家库字段：与 agent_expert 表列一一对应（缺失时保持 undefined，不写空值）
+      ...(typeof data.model === "string" && data.model.length > 0 ? { model: data.model } : {}),
+      ...(typeof data.mode === "string" && data.mode.length > 0 ? { mode: data.mode } : {}),
+      ...(typeof data.temperature === "number" ? { temperature: data.temperature } : {}),
+      ...(typeof data.steps === "number" ? { steps: data.steps } : {}),
+      ...(data.permission !== undefined ? { permission: data.permission } : {}),
     };
   });
 

@@ -221,12 +221,23 @@ export interface AgentInfo {
   resourceAccess?: ResourceAccess;
 }
 
+/** Agent 引用的专家摘要（subagent 定义；不暴露 prompt 等完整内容） */
+export interface AgentExpertSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  builtin: boolean;
+  disabled: boolean;
+}
+
 export interface AgentDetail {
   id?: string;
   name: string;
   builtIn: boolean;
   model: string | null;
   modelId: string | null;
+  /** 预选模型 UUID 列表（运行时切换模型白名单）；null=未配置保持引擎自报，[]=单模型 */
+  modelIds?: string[] | null;
   prompt: string | null;
   description: string | null;
   extra?: Record<string, unknown> | null;
@@ -234,6 +245,10 @@ export interface AgentDetail {
   skillIds?: string[];
   mcpIds?: string[];
   siteAppIds?: string[];
+  /** 引用的专家 ID 列表（subagent 定义） */
+  expertIds?: string[];
+  /** 引用的专家摘要列表（subagent 定义） */
+  subagents?: AgentExpertSummary[];
   agentNode: AgentNode;
   relatedResources?: {
     modelLabel?: string | null;
@@ -245,6 +260,29 @@ export interface AgentDetail {
   };
   resourceAccess?: ResourceAccess;
   enableMemory?: boolean;
+}
+
+/** 专家完整视图（专家库列表/详情响应；与后端 AgentExpertSchema 一一对应） */
+export interface AgentExpert {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  skills: string[];
+  /** 默认模型业务标识 providerName/modelId；未设置时为 null */
+  model: string | null;
+  /** primary | subagent | all */
+  mode: string;
+  temperature: number | null;
+  steps: number | null;
+  /** ask/allow/deny 规则（预留） */
+  permission: unknown;
+  builtin: boolean;
+  disabled: boolean;
+  /** 所属组织 ID；内置专家为保留值 system */
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // --- Skills ---

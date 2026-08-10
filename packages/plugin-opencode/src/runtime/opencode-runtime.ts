@@ -13,7 +13,7 @@ import type {
 import { AcpLinkProcessManager, type ManagedAcpLinkProcess } from "../process/acp-link-process-manager";
 import { createPortAllocator, type PortAllocator } from "../process/port-allocator";
 import { createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
-import { prepareWorkspaceEnvironment } from "./environment-preparer";
+import { prepareWorkspaceEnvironment, writeSubagentAgentFiles } from "./environment-preparer";
 import { buildOpencodeRuntimeConfig, type InstalledSkillReference, type OpencodeRuntimeConfig } from "./runtime-config";
 import { installSkills, type SkillInstallerDependencies } from "./skill-installer";
 
@@ -134,6 +134,9 @@ export function createOpencodeRuntime(dependencies: OpencodeRuntimeDependencies 
         input.launchSpec.env ? { ...input.launchSpec.env } : {},
         installedSkills,
       );
+      // subagent 定义落盘到 .agents/agents/{name}.md（设计 §4；远程端与宿主路径保持一致）。
+      // 空列表也调用：清理上次构建残留的陈旧 subagent 文件（M6）
+      await writeSubagentAgentFiles(workspacePath, input.launchSpec.subagents ?? []);
 
       state.launchSpec = input.launchSpec;
       state.workspace = workspacePath;

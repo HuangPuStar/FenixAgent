@@ -84,7 +84,8 @@
     "disableTitle": "Agent 完全不可用，无法在界面或 API 中使用",
     "extraLabel": "扩展配置 (JSON)",
     "extraPlaceholder": "可选，JSON 格式的扩展配置，例如 {\"plugin\": {\"name\": \"...\"}}",
-    "extraValidationError": "扩展配置 JSON 格式无效"
+    "extraValidationError": "扩展配置 JSON 格式无效",
+    "defaultModelNotInPresetError": "默认模型必须是预选模型之一（预选列表非空时）"
   },
   "knowledge": {
     "bindTitle": "绑定知识库",
@@ -147,5 +148,24 @@
     "custom": "自定义"
   },
   "loadFailed": "加载智能体失败",
-  "enterFailed": "进入智能体失败"
+  "enterFailed": "进入智能体失败",
+  "experts": {
+    "tabTitle": "绑定专家（Subagent）",
+    "selectedCount": "已选择 {{count}} 个专家",
+    "noOptions": "暂无可用专家",
+    "builtinBadge": "系统内置",
+    "removeExpert": "移除专家 {{expert}}",
+    "disabledBadge": "已禁用（源文件缺失）",
+    "duplicateAction": "复制到本组织",
+    "duplicateSuccess": "已复制专家 {{expert}} 到本组织",
+    "duplicateFailed": "复制专家失败：{{message}}"
+  },
+  "presetModels": {
+    "tabTitle": "预选模型（运行时切换白名单）",
+    "selectedCount": "已选择 {{count}} 个模型",
+    "singleModelHint": "单模型 Agent：仅默认模型可用",
+    "noOptions": "暂无可用模型",
+    "defaultBadge": "默认模型",
+    "removeModel": "移除模型 {{model}}"
+  }
 }

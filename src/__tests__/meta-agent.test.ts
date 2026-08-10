@@ -8,6 +8,9 @@ describe("syncBuiltin", () => {
     const syncBuiltinSkillsToSystemAdminSpy = mock(
       async (_ctx: { organizationId: string; userId: string; role: "owner" | "admin" | "member" }) => {},
     );
+    // 内置专家同步独立于本测试关注点：注入 no-op 避免触达真实 DB（全量测试环境下
+    // db 可能被其他用例 stub，真实 syncBuiltinExperts 会因 stub 链不完整而失败）
+    const syncBuiltinExpertsSpy = mock(async () => {});
 
     await syncBuiltin({
       ensureSystemAdmin: async () => ({
@@ -17,7 +20,10 @@ describe("syncBuiltin", () => {
         organization: { id: "org_admin", slug: "admin" },
       }),
       syncBuiltinSkillsToSystemAdmin: syncBuiltinSkillsToSystemAdminSpy,
+      syncBuiltinExperts: syncBuiltinExpertsSpy,
     });
+
+    expect(syncBuiltinExpertsSpy).toHaveBeenCalledTimes(1);
 
     expect(syncBuiltinSkillsToSystemAdminSpy).toHaveBeenCalledTimes(1);
     const firstCtx = syncBuiltinSkillsToSystemAdminSpy.mock.calls[0]?.[0];

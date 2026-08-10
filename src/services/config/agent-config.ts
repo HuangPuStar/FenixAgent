@@ -17,7 +17,16 @@ import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess, AgentNode }
 // Agent Config 操作
 // ────────────────────────────────────────────
 
-const AGENT_SETTABLE_FIELDS = ["model", "modelId", "prompt", "description", "extra", "agentNode", "knowledge"] as const;
+const AGENT_SETTABLE_FIELDS = [
+  "model",
+  "modelId",
+  "modelIds",
+  "prompt",
+  "description",
+  "extra",
+  "agentNode",
+  "knowledge",
+] as const;
 
 export function normalizeAgentNode(input: unknown): AgentNode | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -251,11 +260,16 @@ type PermissionAction = "ask" | "allow" | "deny";
 
 const BUILT_IN_AGENTS = new Set(["build", "plan", "general", "explore", "title", "summary", "compaction", "meta"]);
 
-function isValidMode(mode: string): boolean {
+/**
+ * 校验 mode 三态（primary/subagent/all）。
+ * 导出供专家库（agent_expert.mode）复用同一语义，避免两处校验漂移。
+ */
+export function isValidMode(mode: string): boolean {
   return ["primary", "subagent", "all"].includes(mode);
 }
 
-function isValidSteps(steps: number): boolean {
+/** 校验 steps 范围（1-1000 整数）；导出供专家库复用。 */
+export function isValidSteps(steps: number): boolean {
   return Number.isInteger(steps) && steps >= 1 && steps <= 1000;
 }
 

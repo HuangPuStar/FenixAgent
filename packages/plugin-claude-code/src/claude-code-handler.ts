@@ -9,6 +9,7 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { createClaudeAcpConnection } from "acp-link/client/claude-acp-adapter";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
+import { writeSubagentAgentFiles } from "./runtime/environment";
 
 /**
  * Claude Code 引擎 handler：SDK query() 方式，不 spawn 子进程。
@@ -31,6 +32,13 @@ export function createClaudeCodeHandler(): EngineHandler {
         const { writeClaudeMd } = await import("@fenix/claude-code");
         await writeClaudeMd(workspace, launchSpec.agent.prompt);
         console.log("[claude-code-handler] wrote CLAUDE.md");
+      }
+
+      // subagent 定义落盘到 .claude/agents/{name}.md（设计 §4；主 agent 不渲染）。
+      // 空列表也调用：清理上次构建残留的陈旧 subagent 文件（M6）
+      const written = await writeSubagentAgentFiles(workspace, launchSpec.subagents ?? []);
+      if (written.length > 0) {
+        console.log(`[claude-code-handler] wrote ${written.length} subagent files under .claude/agents/`);
       }
     },
 

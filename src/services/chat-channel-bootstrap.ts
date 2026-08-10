@@ -9,11 +9,21 @@
 // 单例缓存是必要的：SessionChannel 构造时会向 DocManager 注册权限请求回调（单槽位
 // 装配点），重复构造会覆盖前者导致权限超时迁移失效，因此一个进程内至多一个控制器。
 
-import type { ChatChannelDependencies } from "@fenix/chat-channel";
-import { ChatChannelController, clearSessionDocContent, persistYjsClearedSnapshotWithCas } from "@fenix/chat-channel";
+import type { ActionErrorCode, ChatChannelDependencies } from "@fenix/chat-channel";
+import {
+  ChatChannelController,
+  CommandExecutionError,
+  clearSessionDocContent,
+  persistYjsClearedSnapshotWithCas,
+} from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import {
+  findModelPresetRowsByEngineId,
+  getAgentModelPreset,
+  getModelPresetRowsByIds,
+} from "../repositories/agent-config";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "./acp-idle-monitor";
@@ -135,7 +145,147 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     maxClients: deps.maxClients,
     log: deps.log,
     reportError: deps.logError,
+    // 预选模型注入（设计 §5.1 服务端权威）：session/new、load、resume 时用
+    // agent_config.modelIds 覆盖引擎自报的 availableModels（value=引擎标识
+    // model.modelId，name=displayName），引擎与前端天然只见预选范围
+    resolvePresetModelState: async (rcsSessionId, agentId) => {
+      try {
+        return await resolvePresetModelState(agentId);
+      } catch (err) {
+        // 预选解析失败不阻塞会话建立：回退引擎自报（与 launch 过滤失效项同语义）
+        deps.logError(
+          `[chat-bootstrap] resolvePresetModelState failed: rcsSessionId=${rcsSessionId}, agentId=${agentId}`,
+          err,
+        );
+        return null;
+      }
+    },
+    // 切换模型拦截（设计 §5.2 保守拒绝）：engine 标识反查 UUID 校验 ∈ 预选列表；
+    // modelIds===null（未配置预选）的存量 agent 放行，保持向后兼容
+    validateSetSessionModel: async (connection, modelId) => {
+      const env = await deps.environmentRepo.getById(connection.agentId);
+      if (!env?.agentConfigId) return;
+      const preset = await getAgentModelPreset(env.agentConfigId);
+      if (!preset || preset.modelIds === null) return;
+      let candidates: Array<{ id: string; modelId: string }>;
+      if (preset.modelIds.length === 0) {
+        // 单模型 agent（modelIds=[]）：候选行仅默认模型（引擎标识反查无意义，
+        // 直接按默认模型 UUID 读取），其余模型保守拒绝
+        candidates = preset.modelId ? await getModelPresetRowsByIds([preset.modelId]) : [];
+      } else {
+        // 引擎标识反查 UUID（model.modelId 跨 provider 可能重复，返回全部候选）
+        candidates = await findModelPresetRowsByEngineId(modelId);
+      }
+      const rejection = evaluateModelSwitchPermission(preset, candidates, modelId);
+      if (rejection) {
+        // 错误消息仅含 modelId 标识与稳定错误码，不泄露内部实现
+        throw new CommandExecutionError(rejection.code, rejection.message, false);
+      }
+    },
   };
+}
+
+/**
+ * 模型切换权限纯决策（设计 §5.2 保守拒绝）。独立导出便于单元测试：
+ * 给定预选配置与引擎标识候选行，返回拒绝原因（null=放行）。
+ *
+ * 规则：
+ * - modelIds 非空：候选行（按引擎标识反查）任一命中预选 UUID → 放行；
+ * - modelIds=[]（单模型 agent）：仅当 modelId 命中默认模型行 → 放行；
+ * - 候选行为空（引擎标识不存在 / 默认模型已删除）→ INVALID_STATE（Unknown model）。
+ */
+export function evaluateModelSwitchPermission(
+  preset: { modelIds: string[] | null; modelId: string | null },
+  candidates: Array<{ id: string; modelId: string }>,
+  modelId: string,
+): { code: ActionErrorCode; message: string } | null {
+  if (!preset.modelIds || preset.modelIds.length === 0) {
+    const defaultRow = candidates.find((row) => row.id === preset.modelId);
+    if (defaultRow && defaultRow.modelId === modelId) return null;
+    return {
+      code: "FORBIDDEN",
+      message: `Model '${modelId}' is not available: this agent is locked to a single model`,
+    };
+  }
+  if (candidates.length === 0) {
+    return { code: "INVALID_STATE", message: "Unknown model" };
+  }
+  const allowed = new Set(preset.modelIds);
+  if (candidates.some((row) => allowed.has(row.id))) return null;
+  return { code: "FORBIDDEN", message: `Model '${modelId}' is not in the preset model list` };
+}
+
+/**
+ * 解析 agent_config 预选模型为会话级 modelState（设计 §5.1）。
+ *
+ * 规则：
+ * - modelIds===null（未配置）→ 返回 null（保持引擎自报，存量 agent 零影响）；
+ * - modelIds===[] → 单模型 agent：仅默认模型（currentModelId=默认模型引擎标识）；
+ * - 非空列表 → 按 modelIds 顺序解析（value=model.modelId，name=displayName ?? modelId）；
+ *   默认模型（agentConfig.modelId）不在列表 → 过滤 + 告警（设计 §6 纵深防御）；
+ *   被删除的模型引用 → 过滤 + 告警，不阻塞。
+ */
+async function resolvePresetModelState(
+  agentId: string,
+): Promise<{ currentModelId: string; availableModels: Array<{ modelId: string; name: string }> } | null> {
+  // 与 validateSetSessionModel 同一注入源（deps.environmentRepo），测试注入 fake 时行为一致
+  const env = await deps.environmentRepo.getById(agentId);
+  if (!env?.agentConfigId) return null;
+  const preset = await getAgentModelPreset(env.agentConfigId);
+  if (!preset || preset.modelIds === null) return null;
+
+  const toEntry = (row: { modelId: string; displayName: string | null }) => ({
+    modelId: row.modelId,
+    name: row.displayName ?? row.modelId,
+  });
+
+  if (preset.modelIds.length === 0) {
+    // 单模型 agent：仅默认模型；默认模型缺失/已删 → 告警并回退引擎自报（无可用预选）
+    if (!preset.modelId) {
+      logError(`[chat-bootstrap] preset model list is empty and no default model for agentConfig env '${agentId}'`);
+      return null;
+    }
+    const defaultRows = await getModelPresetRowsByIds([preset.modelId]);
+    const defaultRow = defaultRows[0];
+    if (!defaultRow) {
+      logError(`[chat-bootstrap] default model '${preset.modelId}' no longer exists for env '${agentId}'`);
+      return null;
+    }
+    return { currentModelId: defaultRow.modelId, availableModels: [toEntry(defaultRow)] };
+  }
+
+  // 非空预选列表：按 modelIds 顺序解析，过滤失效项（模型被删）并告警
+  const rows = await getModelPresetRowsByIds(preset.modelIds);
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  const availableModels: Array<{ modelId: string; name: string }> = [];
+  for (const id of preset.modelIds) {
+    const row = rowById.get(id);
+    if (!row) {
+      logError(`[chat-bootstrap] preset model '${id}' no longer exists for env '${agentId}', filtering out`);
+      continue;
+    }
+    availableModels.push(toEntry(row));
+  }
+  if (availableModels.length === 0) {
+    logError(
+      `[chat-bootstrap] all preset models are gone for env '${agentId}', falling back to engine reported models`,
+    );
+    return null;
+  }
+
+  // currentModelId=默认模型；默认不在列表（数据矛盾）→ 取列表第一项 + 告警（设计 §6）
+  let currentModelId = availableModels[0].modelId;
+  if (preset.modelId) {
+    const defaultRow = rowById.get(preset.modelId);
+    if (defaultRow && availableModels.some((m) => m.modelId === defaultRow.modelId)) {
+      currentModelId = defaultRow.modelId;
+    } else {
+      logError(
+        `[chat-bootstrap] default model '${preset.modelId}' not in preset list for env '${agentId}', falling back to first preset`,
+      );
+    }
+  }
+  return { currentModelId, availableModels };
 }
 
 let controller: ChatChannelController | null = null;

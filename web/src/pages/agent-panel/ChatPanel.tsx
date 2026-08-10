@@ -281,6 +281,10 @@ export function ChatPanel({
       availableModes: mds?.availableModes ?? [],
       currentModeId: mds?.currentModeId ?? null,
       supportsModeSelection: mds != null && (mds.availableModes?.length ?? 0) > 0,
+      // 模型切换（设计 §5.3）：modelState 存在且有可用列表才渲染下拉
+      availableModels: ms?.availableModels ?? [],
+      currentModelId: ms?.currentModelId ?? null,
+      supportsModelSelection: ms != null && (ms.availableModels?.length ?? 0) > 0,
       tokenUsage: chatState.tokenUsage,
     };
   }, [
@@ -309,6 +313,9 @@ export function ChatPanel({
       onRespondPermission: (requestId: string, optionId: string | null) =>
         sendViaWs({ action: "respond_permission", requestId, optionId }),
       onSetMode: (modeId: string) => sendViaWs({ action: "set_session_mode", modeId }),
+      // 运行时切换模型（设计 §5.3）：同会话内切换，服务端拦截校验预选列表，
+      // 成功后经 SessionChannel 投影回 Session Doc 回显
+      onSetModel: (modelId: string) => sendViaWs({ action: "set_session_model", modelId }),
     }),
     [sendViaWs, sessionState.acpSessionId],
   );
@@ -417,6 +424,9 @@ export function ChatPanel({
           availableModes={derivedState.availableModes}
           currentModeId={derivedState.currentModeId}
           supportsModeSelection={derivedState.supportsModeSelection}
+          availableModels={derivedState.availableModels}
+          currentModelId={derivedState.currentModelId}
+          supportsModelSelection={derivedState.supportsModelSelection}
           {...callbacks}
         />
       </TooltipProvider>

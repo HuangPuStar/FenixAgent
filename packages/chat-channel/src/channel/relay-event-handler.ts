@@ -65,6 +65,21 @@ export interface RelayEventHandlerDependencies {
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
   /** 本地死实例回收（宿主注入：内部校验 nodeId，远程实例由机器级清理覆盖） */
   terminateLocalDeadInstance: (instanceId: string) => void;
+  /**
+   * 预选模型状态解析（宿主注入，可选）：agent_config.modelIds 预选列表 → 会话级
+   * modelState（设计 §5.1 服务端权威）。返回 null 表示未配置预选（保持引擎自报）；
+   * 非 null 时覆盖 session/new、load、resume 响应中的引擎自报 availableModels。
+   */
+  resolvePresetModelState?: (
+    rcsSessionId: string,
+    agentId: string,
+  ) => Promise<{ currentModelId: string; availableModels: Array<{ modelId: string; name: string }> } | null>;
+  /**
+   * JSON-RPC 命令回执（宿主注入，可选）：带 id 的 result/error 帧（无 method）通知
+   * 发起方。当前唯一消费方是 SessionChannel 的模型切换回滚（设计 §5.3）：引擎拒绝
+   * set_session_model 时按 rpcId 回滚乐观投影。
+   */
+  onRpcResponse?: (rpcId: number | string, ok: boolean) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
@@ -100,6 +115,28 @@ export class RelayEventHandler {
         const activeSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
         if (activeSessionId && activeSessionId !== msgSessionId) return;
       }
+    }
+
+    // JSON-RPC 命令回执（带 id、无 method 的 result/error 帧）：不投递到聚合层；
+    // 通知发起方（当前为 SessionChannel 模型切换回滚，设计 §5.3）。引擎可能在
+    // 预选注入前/后基于自身 availableModels 拒绝 set_session_model，必须让乐观
+    // 投影有机会回滚，否则前端展示未生效的切换。
+    // 例外：session/new、load、resume 的结果帧含 result.sessionId，走下方会话同步
+    // 逻辑（开回放窗口 + 投影 modelState），不属于命令回执。
+    const rpcSessionResult = rpcCheck?.result as Record<string, unknown> | undefined;
+    const isSessionSyncResult =
+      rpcCheck?.result !== undefined &&
+      typeof rpcSessionResult?.sessionId === "string" &&
+      rpcSessionResult.sessionId.length > 0;
+    if (rpcCheck && rpcCheck.id !== undefined && rpcCheck.id !== null && !rpcCheck.method && !isSessionSyncResult) {
+      if (this.dependencies.onRpcResponse) {
+        try {
+          this.dependencies.onRpcResponse(rpcCheck.id as number | string, !rpcCheck.error);
+        } catch (err) {
+          this.dependencies.reportError("[YJS-FE] onRpcResponse failed", err);
+        }
+      }
+      return;
     }
 
     if (msgType === "relay_closed") {
@@ -255,12 +292,26 @@ export class RelayEventHandler {
         // model/mode 来自 session/new、load 响应（acp-link 已从 configOptions 提取
         // models/modes 字段，SDK 0.28+ 无独立 models 字段），投影为会话级元数据，
         // 前端据此显示模型名与模式选择器
+        let modelState: unknown = result.models && typeof result.models === "object" ? result.models : undefined;
+        // 预选模型注入（设计 §5.1 服务端权威）：agent_config.modelIds 配置时覆盖引擎自报，
+        // 引擎与前端天然只见预选范围；未配置（返回 null）保持引擎自报
+        if (this.dependencies.resolvePresetModelState) {
+          try {
+            const preset = await this.dependencies.resolvePresetModelState(shared.rcsSessionId, shared.agentId);
+            if (preset) modelState = preset;
+          } catch (err) {
+            this.dependencies.reportError(
+              `[YJS-FE] resolvePresetModelState failed: rcsSessionId=${shared.rcsSessionId}`,
+              err,
+            );
+          }
+        }
         this.dispatch(shared, {
           type: "session_updated",
           update: {
             sessionId: newSessionId,
             status: "ready",
-            ...(result.models && typeof result.models === "object" ? { modelState: result.models } : {}),
+            ...(modelState !== undefined ? { modelState } : {}),
             ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
           },
           content: null,

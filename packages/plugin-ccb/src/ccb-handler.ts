@@ -10,6 +10,7 @@ import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
+import { writeSubagentAgentFiles } from "./runtime/environment-preparer";
 
 /**
  * ccb 引擎 handler：spawn ccb --acp 子进程，通过 ACP stdio 通信。
@@ -36,6 +37,13 @@ export function createCcbHandler(): EngineHandler {
         const { writeClaudeMd } = await import("@fenix/ccb");
         await writeClaudeMd(workspace, launchSpec.agent.prompt);
         console.log("[ccb-handler] wrote CLAUDE.md");
+      }
+
+      // subagent 定义落盘到 .claude/agents/{name}.md（设计 §4；主 agent 不渲染）。
+      // 空列表也调用：清理上次构建残留的陈旧 subagent 文件（M6）
+      const written = await writeSubagentAgentFiles(workspace, launchSpec.subagents ?? []);
+      if (written.length > 0) {
+        console.log(`[ccb-handler] wrote ${written.length} subagent files under .claude/agents/`);
       }
 
       await writePeriSettings(workspace, launchSpec);

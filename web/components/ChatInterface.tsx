@@ -91,6 +91,12 @@ interface ChatInterfaceProps {
   onSetMode: (modeId: string) => void;
   supportsModeSelection: boolean;
 
+  // ── 模型切换（设计 §5.3，与 mode 选择同构）──
+  availableModels: Array<{ modelId: string; name: string }>;
+  currentModelId: string | null;
+  onSetModel: (modelId: string) => void;
+  supportsModelSelection: boolean;
+
   // ── 提升的状态（原从 client 直接读）──
   supportsImages: boolean;
   modelName: string | undefined;
@@ -129,6 +135,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     currentModeId,
     onSetMode,
     supportsModeSelection: _supportsModeSelection,
+    availableModels,
+    currentModelId,
+    onSetModel,
+    supportsModelSelection: _supportsModelSelection,
     supportsImages,
     modelName,
     tokenUsage,
@@ -527,6 +537,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               availableModes={availableModes}
               currentModeId={currentModeId}
               onModeChange={onSetMode}
+              availableModels={availableModels}
+              currentModelId={currentModelId}
+              onModelChange={onSetModel}
               tokenStats={tokenStats}
               onNewSession={handleNewSession}
               showNewSession={renderEntries.length > 0}

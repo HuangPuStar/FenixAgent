@@ -16,6 +16,7 @@ export const KNOWN_ACTION_TYPES = [
   "delete_session",
   "respond_permission",
   "set_session_mode",
+  "set_session_model",
 ] as const;
 
 export type ActionType = (typeof KNOWN_ACTION_TYPES)[number];

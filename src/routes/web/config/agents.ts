@@ -5,6 +5,8 @@ import { db } from "../../../db";
 import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
 import { AppError } from "../../../errors";
 import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { listModelIdsByProviderIds } from "../../../repositories/agent-config";
+import { getExpertsByIds, listExpertIdsByAgent, syncAgentExperts } from "../../../repositories/agent-expert";
 import * as agentMemoryConfigRepo from "../../../repositories/agent-memory-config";
 import { WebErrSchema } from "../../../schemas/common.schema";
 import {
@@ -35,7 +37,9 @@ import {
   resolveAgentNode,
   validateAgentData,
 } from "../../../services/config/agent-config";
+import { validateExpertModelBusinessId } from "../../../services/config/agent-expert";
 import * as configPg from "../../../services/config/index";
+import { listReadableProviders } from "../../../services/config/provider";
 import { listSkills } from "../../../services/config/skill";
 import type { AgentNode } from "../../../services/config/types";
 import {
@@ -242,6 +246,9 @@ async function handleGet(ctx: AuthContext, name: string) {
   const skillIds = await configPg.listAgentSkillIds(agent.id);
   const mcpIds = await configPg.listAgentMcpIds(agent.id);
   const siteAppIds = await configPg.listAgentSiteAppIds(agent.id);
+  const expertIds = await listExpertIdsByAgent(agent.id);
+  const experts = await getExpertsByIds(expertIds);
+  const expertById = new Map(experts.map((expert) => [expert.id, expert]));
   const relatedResources = await buildAgentRelatedResourceView(
     { ...agent, agentNode: resolveAgentNode(agent) ?? {} },
     skillIds,
@@ -256,6 +263,7 @@ async function handleGet(ctx: AuthContext, name: string) {
     builtIn: isBuiltInAgent(agent.name),
     model: agent.model ?? null,
     modelId: agent.modelId ?? null,
+    modelIds: agent.modelIds ?? null,
     prompt: agent.prompt ?? null,
     description: agent.description ?? null,
     extra: agent.extra ?? null,
@@ -265,12 +273,23 @@ async function handleGet(ctx: AuthContext, name: string) {
     skillIds,
     mcpIds,
     siteAppIds,
+    expertIds,
+    subagents: expertIds.map((id) => {
+      const expert = expertById.get(id);
+      return {
+        id,
+        name: expert?.name ?? id,
+        description: expert?.description ?? null,
+        builtin: expert?.builtin ?? false,
+        disabled: expert?.disabled ?? false,
+      };
+    }),
     relatedResources,
     resourceAccess: agent.resourceAccess,
   });
 }
 
-/** 更新 agent 配置，并同步 knowledge / skills / MCP 等关联资源。 */
+/** 更新 agent 配置，并同步 knowledge / skills / MCP / experts / modelIds 等关联资源。 */
 async function handleSet(ctx: AuthContext, name: string, data: Record<string, unknown>) {
   const validation = validateAgentData(data);
   if (validation) return configValidationError(validation);
@@ -281,15 +300,7 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  // 白名单过滤
-  const filtered: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
-      filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
-    }
-  }
-
-  // 检查 agent 是否存在且当前组织可写
+  // 检查 agent 是否存在且当前组织可写（默认模型一致性校验需要存量 modelId，必须先取）
   let existing: Awaited<ReturnType<typeof configPg.assertAgentConfigInternalWritable>> | null = null;
   try {
     existing = await configPg.assertAgentConfigInternalWritable(ctx, name);
@@ -300,6 +311,41 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     throw error_;
   }
   if (!existing) return configNotFound(`Agent '${name}' not found`);
+
+  // 专家引用与预选模型在更新前整体校验（与既有知识库绑定校验同层级）
+  let resolvedExpertIds: string[] | undefined;
+  if (data.expertIds !== undefined) {
+    const rawIds = Array.isArray(data.expertIds) ? (data.expertIds as string[]) : [];
+    const resolved = await resolveExpertIds(ctx, rawIds);
+    if (!resolved.ok) return configError(resolved.error.code, resolved.error.message);
+    resolvedExpertIds = resolved.ids;
+  }
+  let resolvedModelIds: string[] | undefined;
+  if (data.modelIds !== undefined) {
+    const rawIds = Array.isArray(data.modelIds) ? (data.modelIds as string[]) : [];
+    const resolved = await resolveModelIds(ctx, rawIds);
+    if (!resolved.ok) return configError(resolved.error.code, resolved.error.message);
+    resolvedModelIds = resolved.ids;
+    // 结果态默认模型 = 本次请求的 modelId ?? 存量默认模型（设计 §5.1 不变量）：
+    // 客户端只改 modelIds 未带 modelId 时，存量默认模型同样必须 ∈ 新预选列表，
+    // 不在其中 → 报错而非静默保留违反不变量的状态
+    const resultModelId = data.modelId !== undefined ? data.modelId : existing.modelId;
+    const defaultConflict = validateDefaultModelInPreset(resultModelId, resolved.ids);
+    if (defaultConflict) return configValidationError(defaultConflict);
+  }
+
+  // 白名单过滤
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
+      filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
+    }
+  }
+  // 预选模型按校验后的规范值持久化（去重、已过滤非法 UUID），不直接落原始数组
+  if (resolvedModelIds !== undefined) {
+    filtered.modelIds = resolvedModelIds;
+  }
+
   const updateData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filtered)) {
     if (key === "knowledge" && value == null) {
@@ -333,6 +379,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
         Array.isArray(data.siteAppIds) ? (data.siteAppIds as string[]) : [],
       );
     }
+    if (resolvedExpertIds !== undefined) {
+      await syncAgentExperts(updatedAgent.id, resolvedExpertIds);
+    }
   }
 
   return configSuccess({ name, ...filtered, resourceAccess: updatedAgent?.resourceAccess });
@@ -340,6 +389,91 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
 /** UUID 格式正则 */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 解析并校验专家引用列表：必须是 UUID，且对当前组织可见（内置 system 或本组织）且未禁用。
+ * 校验失败返回错误响应（跨组织/disabled 引用保守拒绝，设计 §3 引用校验）。
+ */
+async function resolveExpertIds(
+  ctx: AuthContext,
+  rawIds: string[],
+): Promise<{ ok: true; ids: string[] } | { ok: false; error: { code: string; message: string } }> {
+  const ids = [...new Set(rawIds)].filter((id) => UUID_RE.test(id));
+  if (ids.length !== new Set(rawIds).size) {
+    return { ok: false, error: { code: "INVALID_STATE", message: "Expert ids must be valid UUIDs" } };
+  }
+  if (ids.length === 0) return { ok: true, ids: [] };
+
+  const rows = await getExpertsByIds(ids);
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  for (const id of ids) {
+    const row = rowById.get(id);
+    if (!row) {
+      return { ok: false, error: { code: "NOT_FOUND", message: `Expert '${id}' not found` } };
+    }
+    if (row.organizationId !== "system" && row.organizationId !== ctx.organizationId) {
+      return {
+        ok: false,
+        error: { code: "INVALID_STATE", message: `Expert '${id}' is not visible to this organization` },
+      };
+    }
+    if (row.disabled) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_STATE",
+          message: `Expert '${row.name}' is disabled, duplicate it to your organization first`,
+        },
+      };
+    }
+    // 专家默认模型业务标识（providerName/modelId）必须在当前组织可解析（设计 §6）：
+    // 解析失败在创建/更新 agent 时明确报错，不静默 fallback 到引擎运行时
+    if (row.model) {
+      const modelError = await validateExpertModelBusinessId(ctx, row.model);
+      if (modelError) {
+        return { ok: false, error: { code: "VALIDATION_ERROR", message: `Expert '${row.name}': ${modelError}` } };
+      }
+    }
+  }
+  return { ok: true, ids };
+}
+
+/**
+ * 解析并校验预选模型列表：必须是 UUID 且属于当前组织可读的 provider。
+ * 校验失败返回错误响应；模型被删除后残留由 launch 时过滤 + 告警兜底（设计 §6）。
+ */
+async function resolveModelIds(
+  ctx: AuthContext,
+  rawIds: string[],
+): Promise<{ ok: true; ids: string[] } | { ok: false; error: { code: string; message: string } }> {
+  const ids = [...new Set(rawIds)];
+  if (ids.some((id) => !UUID_RE.test(id))) {
+    return { ok: false, error: { code: "VALIDATION_ERROR", message: "Model ids must be valid UUIDs" } };
+  }
+  if (ids.length === 0) return { ok: true, ids: [] };
+
+  // 与前端模型下拉一致：仅当前组织可读（含共享）provider 下的模型
+  const providers = await listReadableProviders(ctx);
+  const providerIds = providers.map((p) => p.id);
+  if (providerIds.length === 0) {
+    return { ok: false, error: { code: "NOT_FOUND", message: "No readable model providers" } };
+  }
+  const readableIds = new Set(await listModelIdsByProviderIds(providerIds));
+  const missing = ids.filter((id) => !readableIds.has(id));
+  if (missing.length > 0) {
+    return { ok: false, error: { code: "NOT_FOUND", message: `Models not readable: ${missing.join(", ")}` } };
+  }
+  return { ok: true, ids };
+}
+
+/** 校验默认模型与预选列表的一致性：modelIds 非空时 modelId 必须 ∈ modelIds（设计 §5.1） */
+function validateDefaultModelInPreset(modelId: unknown, modelIds: string[]): string | null {
+  if (modelIds.length === 0 || modelId === undefined || modelId === null || modelId === "") return null;
+  if (typeof modelId !== "string" || !modelIds.includes(modelId)) {
+    return "Default model must be one of the preset model ids";
+  }
+  return null;
+}
 
 /**
  * 将 skill 标识符数组（可能是 UUID 或名称）统一解析为 UUID。
@@ -377,12 +511,38 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   if (validation) return configValidationError(validation);
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
+  // 专家引用与预选模型在创建前整体校验
+  let resolvedExpertIds: string[] | undefined;
+  if (data.expertIds !== undefined) {
+    const rawIds = Array.isArray(data.expertIds) ? (data.expertIds as string[]) : [];
+    const resolved = await resolveExpertIds(ctx, rawIds);
+    if (!resolved.ok) return configError(resolved.error.code, resolved.error.message);
+    resolvedExpertIds = resolved.ids;
+  }
+  let resolvedModelIds: string[] | undefined;
+  if (data.modelIds !== undefined) {
+    const rawIds = Array.isArray(data.modelIds) ? (data.modelIds as string[]) : [];
+    const resolved = await resolveModelIds(ctx, rawIds);
+    if (!resolved.ok) return configError(resolved.error.code, resolved.error.message);
+    resolvedModelIds = resolved.ids;
+    const defaultConflict = validateDefaultModelInPreset(data.modelId, resolved.ids);
+    if (defaultConflict) return configValidationError(defaultConflict);
+    // 创建路径：预选列表非空但未指定默认模型 → 报错（设计 §5.1：不隐式选默认）
+    if (resolved.ids.length > 0 && (data.modelId === undefined || data.modelId === null || data.modelId === "")) {
+      return configValidationError("Default model is required when preset model ids are configured");
+    }
+  }
+
   // 白名单过滤
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (AGENT_SETTABLE_FIELDS.includes(key as (typeof AGENT_SETTABLE_FIELDS)[number])) {
       filtered[key] = key === "knowledge" ? normalizeKnowledgeConfig(value) : value;
     }
+  }
+  // 预选模型按校验后的规范值持久化（去重、已过滤非法 UUID），不直接落原始数组
+  if (resolvedModelIds !== undefined) {
+    filtered.modelIds = resolvedModelIds;
   }
 
   // 检查是否已存在
@@ -412,6 +572,9 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
         createdAgent.id,
         Array.isArray(data.siteAppIds) ? (data.siteAppIds as string[]) : [],
       );
+    }
+    if (resolvedExpertIds !== undefined) {
+      await syncAgentExperts(createdAgent.id, resolvedExpertIds);
     }
   }
 

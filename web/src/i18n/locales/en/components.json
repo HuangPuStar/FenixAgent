@@ -525,6 +525,9 @@
   "sessionModeSelector": {
     "default": "Default"
   },
+  "sessionModelSelector": {
+    "default": "Default"
+  },
   "modelIconMap": {
     "qwen": "Qwen / Tongyi Qianwen"
   }

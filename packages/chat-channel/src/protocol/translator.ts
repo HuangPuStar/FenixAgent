@@ -75,6 +75,15 @@ export function translateSimpleAction(
         method: "session/setMode",
         params: { modeId: parsed.modeId },
       };
+    case "set_session_model":
+      // 运行时切换模型（同会话内，后续轮次生效）：machine 端 AcpDispatcher 校验
+      // 引擎自报 availableModels 后透传引擎；预选列表校验在 SessionChannel 拦截层完成
+      return {
+        jsonrpc: "2.0",
+        id,
+        method: "session/setModel",
+        params: { modelId: parsed.modelId },
+      };
     default:
       return parsed;
   }

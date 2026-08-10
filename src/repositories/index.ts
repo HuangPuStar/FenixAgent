@@ -1,5 +1,23 @@
 export { agentConfigRepo } from "./agent-config";
 export { agentEngineRepo } from "./agent-engine";
+export type {
+  AgentExpertInsert,
+  AgentExpertRow,
+} from "./agent-expert";
+export {
+  createExpert,
+  deleteExpert,
+  getExpertById,
+  getExpertByName,
+  getExpertsByIds,
+  listAllBuiltinExperts,
+  listExpertIdsByAgent,
+  listVisibleExperts,
+  setExpertDisabled,
+  syncAgentExperts,
+  updateExpert,
+  upsertExpertByOrgName,
+} from "./agent-expert";
 export { agentMachineRepo } from "./agent-machine";
 export type { AgentSiteAppInsert, AgentSiteAppRow, Visibility } from "./agent-site-app";
 export { agentSiteAppRepo } from "./agent-site-app";

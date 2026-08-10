@@ -1,5 +1,5 @@
 import { type AgentConfigData, type AgentConfigRepo, LaunchSpecBuildError } from "@fenix/orchestration";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   agentConfig,
@@ -103,3 +103,72 @@ export class PgAgentConfigRepo implements AgentConfigRepo {
 
 /** 编排域 AgentConfigRepo 单例。 */
 export const agentConfigRepo = new PgAgentConfigRepo();
+
+// ────────────────────────────────────────────
+// 运行时模型切换（设计 §5）查询
+// ────────────────────────────────────────────
+
+/** 模型预选查询结果行（modelId=引擎标识，displayName=展示名） */
+export interface AgentModelPresetRow {
+  id: string;
+  /** 引擎模型标识（model.modelId，与 availableModels 的 value 一致） */
+  modelId: string;
+  /** 展示名（displayName，可为 null 时回退 modelId） */
+  displayName: string | null;
+}
+
+/** 读取 agent_config 的模型预选配置（modelIds 预选列表 + modelId 默认模型 UUID） */
+export async function getAgentModelPreset(
+  configId: string,
+): Promise<{ modelIds: string[] | null; modelId: string | null } | null> {
+  const rows = await db
+    .select({ modelIds: agentConfig.modelIds, modelId: agentConfig.modelId })
+    .from(agentConfig)
+    .where(eq(agentConfig.id, configId))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return { modelIds: rows[0].modelIds ?? null, modelId: rows[0].modelId };
+}
+
+/** 按 UUID 批量读取模型行（含引擎标识与展示名；provider 归属由调用方上下文决定） */
+export async function getModelPresetRowsByIds(ids: string[]): Promise<AgentModelPresetRow[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ id: model.id, modelId: model.modelId, displayName: model.displayName })
+    .from(model)
+    .where(inArray(model.id, ids));
+  return rows;
+}
+
+/** 按引擎标识反查模型行（model.modelId 非全局唯一，跨 provider 可能重复，返回全部） */
+export async function findModelPresetRowsByEngineId(engineModelId: string): Promise<AgentModelPresetRow[]> {
+  const rows = await db
+    .select({ id: model.id, modelId: model.modelId, displayName: model.displayName })
+    .from(model)
+    .where(eq(model.modelId, engineModelId));
+  return rows;
+}
+
+/** 按 provider 集合读取模型 ID（agents 路由解析预选模型白名单用；空集合直接返回空） */
+export async function listModelIdsByProviderIds(providerIds: string[]): Promise<string[]> {
+  if (providerIds.length === 0) return [];
+  const rows = await db.select({ id: model.id }).from(model).where(inArray(model.providerId, providerIds));
+  return rows.map((row) => row.id);
+}
+
+/**
+ * 按 provider 集合 + 引擎标识读取模型行（专家默认模型业务标识解析用）。
+ * 业务标识格式为 providerName/modelId：provider 先按 name/displayName 匹配，
+ * 再在该 provider 下按 model.modelId（引擎标识）匹配。
+ */
+export async function findModelsByProviderIdsAndEngineId(
+  providerIds: string[],
+  engineModelId: string,
+): Promise<AgentModelPresetRow[]> {
+  if (providerIds.length === 0) return [];
+  const rows = await db
+    .select({ id: model.id, modelId: model.modelId, displayName: model.displayName })
+    .from(model)
+    .where(and(inArray(model.providerId, providerIds), eq(model.modelId, engineModelId)));
+  return rows;
+}
