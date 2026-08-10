@@ -89,7 +89,8 @@ async function prepareSandboxNode(
  * （显式 sandbox > 显式 machine > 默认 sandbox > 默认 machine > local-default）。
  *
  * 返回 null 表示无业务解析结果，由 EnvironmentRepo 走默认 fallback 链
- * （agent_config.machineId 列 → RCS_DEFAULT_MACHINE_ID → local-default）。
+ * （agentNode 为 null 时 agent_config.machineId 列 → RCS_DEFAULT_MACHINE_ID →
+ * local-default；agentNode 存在时跳过列，与 resolveAgentNode 语义对齐）。
  */
 function resolveExecutionNode(input: {
   envId: string;

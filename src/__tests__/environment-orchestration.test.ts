@@ -112,6 +112,26 @@ describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
     expect(env?.machineId).toBe("mach_bound");
   });
 
+  // agentNode 存在（含空对象 {}，表示"显式清空"）时忽略 machineId 列：
+  // 与 resolveAgentNode 权威语义对齐，防止 spawn 用列、文件路径忽略列的分裂
+  // （合并 main Sandbox 后引入的语义偏移回归）
+  test("agentNode 为空对象时忽略 machineId 列走默认机器", async () => {
+    setConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubSelectRows([makeRow({ configMachineId: "mach_bound", agentNode: {} })]);
+
+    const env = await repo.getEnvironment("env-1");
+    expect(env?.machineId).toBe("mach_default");
+  });
+
+  // agentNode 为 null（历史数据）时 machineId 列照常生效
+  test("agentNode 为 null 时 machineId 列照常生效", async () => {
+    setConfig({ defaultMachineId: "mach_default", disableLocalExecution: false });
+    stubSelectRows([makeRow({ configMachineId: "mach_bound", agentNode: null })]);
+
+    const env = await repo.getEnvironment("env-1");
+    expect(env?.machineId).toBe("mach_bound");
+  });
+
   // 注：不测 `"  "` 空白串——`||` 下为 truthy，视为合法绑定值原样透传；
   // 空白串归一不在本次范围（实现与 0dcb2e2d 前旧路径 falsy 语义保持一致）。
 

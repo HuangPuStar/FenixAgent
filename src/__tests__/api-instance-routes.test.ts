@@ -3,7 +3,7 @@ import { ConcurrencyExceededError } from "@fenix/orchestration";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
-import { SandboxProviderNotConfiguredError } from "../services/sandbox/sandbox-errors";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
 import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
@@ -140,8 +140,9 @@ describe("API Instance Routes", () => {
 
   // Sandbox Provider 未配置错误应返回 503 服务不可用，而不是内部错误。
   // 与 D-P2.2 的 OrchestrationError 映射不同：sandbox 错误属"服务暂不可用"
-  // 语义，message 为稳定配置提示（不携带内部标识），可直接返回。
-  test("spawnInstanceViaController 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE", async () => {
+  // 语义；message 固定通用文案 —— ProviderNotConfiguredError 携带 providerKey，
+  // 直出会向外部 API Key 调用方泄漏内部标识（main 遗留透传，合并后已脱敏）。
+  test("spawnInstanceViaController 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE 且 message 脱敏", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
@@ -164,6 +165,36 @@ describe("API Instance Routes", () => {
 
     expect(res.status).toBe(503);
     expect(json.error.code).toBe("SERVICE_UNAVAILABLE");
+    // 脱敏断言：providerKey 不得出现在对外响应
+    expect(json.error.message).not.toContain("missing-provider");
+  });
+
+  // Sandbox Runtime 未就绪错误同样返回 503；message 固定文案，
+  // 不得泄漏 sbi_* sandboxId（main 遗留透传点，合并后已脱敏）。
+  test("spawnInstanceViaController 抛 SandboxRuntimeNotReadyError 返回 503 且不泄漏 sandboxId", async () => {
+    setApiInstanceDeps({
+      getReadableAgentConfigById: async () =>
+        ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
+      groupActiveInstancesByEnvironment: () => new Map(),
+      listEnvironmentsByOrganizationId: async () => [],
+      createWebEnvironment: async () =>
+        ({ id: "env-sandbox", name: "runtime-sandbox", agentConfigId: "agc-sandbox" }) as never,
+      getRunningInstancesByEnvironment: () => [],
+      spawnInstanceViaController: async () => {
+        throw new SandboxRuntimeNotReadyError("sbi_secret_sandbox_1");
+      },
+    });
+
+    const res = await request("/api/agents/agc-sandbox/instances/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(json.error.code).toBe("SERVICE_UNAVAILABLE");
+    expect(json.error.message).not.toContain("sbi_secret_sandbox_1");
   });
 
   // D-P2.2：未知错误（如 CoreRuntimeError 500）兜底 message 固定通用文案，

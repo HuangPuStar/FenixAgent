@@ -48,7 +48,8 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    * machineId 解析优先级（与旧 services/instance.ts 的节点选择逻辑一致）：
    *   1. 注入的 executionNodeResolver（agentNode 显式 sandbox / machine 解析，
    *      见 orchestration-bootstrap 装配实现；sandbox 分支会准备执行节点）；
-   *   2. environment.agentConfigId → agent_config.machineId（leftJoin 一次取出，
+   *   2. agent_config.machineId 列（仅 agentNode 为 null 时生效 —— agentNode 存在
+   *      即权威，与 resolveAgentNode 语义对齐，避免 spawn/文件路径分裂；
    *      空串视为未绑定，见下方 `||` 注释）；
    *   3. config.defaultMachineId（RCS_DEFAULT_MACHINE_ID 环境变量）；
    *   4. 本地执行占位节点 "local-default"（RCS_DISABLE_LOCAL_EXECUTION 未设置时），
@@ -101,7 +102,12 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         // 脏数据），须与 null 同样走 fallback 链；`??` 只归一 null/undefined，会把空串当
         // 合法绑定值透传导致 ensureNode 启动失败。与 CLAUDE.md 默认 `??` 惯例相悖处，
         // 以"空串 = 未绑定"这一旧路径 falsy 语义（0dcb2e2d 前）为准。
-        (row.configMachineId || null) ??
+        //
+        // agentNode 非 null 时跳过 machineId 列：与 resolveAgentNode 的权威语义对齐
+        // （agent_config.agentNode 存在即权威，空对象 {} 表示"显式清空"也应忽略历史列，
+        // 否则 spawn 用列、文件路径忽略列会分裂，实例在列绑定机器上运行而文件操作
+        // 落到默认机器/本地）。agentNode 为 null（历史数据、合并前恒为 null）时列照常生效。
+        (row.agentNode == null ? row.configMachineId || null : null) ??
         config.defaultMachineId ??
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。

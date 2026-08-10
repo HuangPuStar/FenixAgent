@@ -416,8 +416,13 @@ export async function ensureRunning(
 
   const startup = await environmentStartupLock.run(environmentId, async () => {
     // 进入锁后再次检查，避免前一个启动流程刚完成时重复创建实例。
+    // 锁回调返回 { instance, spawned }：spawned=false 表示复用了锁内已存在的
+    // 实例（前一个启动流程刚完成、或 maxSessions 回退），必须与真正新启的
+    // 实例区分 —— 若外层统一标 "spawned"，workflow 的 cleanupSpawnedInstances
+    // 会把复用的共享实例记入 spawnedInstanceIds 并在 run 结束时误杀
+    // （agent-chat-transport 按 status === "spawned" 记录待清理实例）。
     const started = getRunningInstancesByEnvironment(environmentId)[0];
-    if (started) return started;
+    if (started) return { instance: started, spawned: false };
 
     const env = await environmentRepo.getById(environmentId);
     if (!env) throw new NotFoundError("Environment not found");
@@ -428,16 +433,18 @@ export async function ensureRunning(
 
     const currentRunning = getRunningInstancesByEnvironment(environmentId);
     if (currentRunning.length >= env.maxSessions) {
-      if (currentRunning[0]) return currentRunning[0];
+      if (currentRunning[0]) return { instance: currentRunning[0], spawned: false };
       throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
     }
 
-    // 锁回调统一返回 SpawnedInstance，由锁外包装 EnsureRunningResult（joined 判定）
     const instance = await spawnViaOrchestration(userId, environmentId, source);
-    return instance;
+    return { instance, spawned: true };
   });
 
-  return { instance: startup.value, status: startup.joined ? "reused" : "spawned" };
+  return {
+    instance: startup.value.instance,
+    status: startup.joined || !startup.value.spawned ? "reused" : "spawned",
+  };
 }
 
 /**
