@@ -117,28 +117,6 @@ export class RelayEventHandler {
       }
     }
 
-    // JSON-RPC 命令回执（带 id、无 method 的 result/error 帧）：不投递到聚合层；
-    // 通知发起方（当前为 SessionChannel 模型切换回滚，设计 §5.3）。引擎可能在
-    // 预选注入前/后基于自身 availableModels 拒绝 set_session_model，必须让乐观
-    // 投影有机会回滚，否则前端展示未生效的切换。
-    // 例外：session/new、load、resume 的结果帧含 result.sessionId，走下方会话同步
-    // 逻辑（开回放窗口 + 投影 modelState），不属于命令回执。
-    const rpcSessionResult = rpcCheck?.result as Record<string, unknown> | undefined;
-    const isSessionSyncResult =
-      rpcCheck?.result !== undefined &&
-      typeof rpcSessionResult?.sessionId === "string" &&
-      rpcSessionResult.sessionId.length > 0;
-    if (rpcCheck && rpcCheck.id !== undefined && rpcCheck.id !== null && !rpcCheck.method && !isSessionSyncResult) {
-      if (this.dependencies.onRpcResponse) {
-        try {
-          this.dependencies.onRpcResponse(rpcCheck.id as number | string, !rpcCheck.error);
-        } catch (err) {
-          this.dependencies.reportError("[YJS-FE] onRpcResponse failed", err);
-        }
-      }
-      return;
-    }
-
     if (msgType === "relay_closed") {
       // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
       // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
@@ -202,6 +180,40 @@ export class RelayEventHandler {
     const normalized = normalizeAcpMessage(raw, msgType);
     if (normalized) {
       this.dispatchReplayAware(shared, normalized);
+    }
+
+    // JSON-RPC 命令回执（带 id、无 method 的 result/error 帧）：仅当该帧无法规范化
+    // 为聚合层事件时才拦截，通知发起方（当前为 SessionChannel 模型切换回滚，设计 §5.3）。
+    // 引擎可能在预选注入前/后基于自身 availableModels 拒绝 set_session_model，必须让
+    // 乐观投影有机会回滚，否则前端展示未生效的切换。
+    // 注意：不得无条件拦截所有 id-bearing 响应——prompt 结果帧（result.stopReason →
+    // turn_completed/turn_cancelled）、cancel 确认（result.cancelled === true）与
+    // session/list 响应（result.sessions）依赖 normalizeAcpMessage 派发终态/同步事件；
+    // 提前 return 会导致聚合层 turn 永不终结、前端一直等待（回归修复：拦截条件前置
+    // 判断 !normalized，规范化事件优先派发，仅残留的命令回执走 onRpcResponse）。
+    // 例外：session/new、load、resume 的结果帧含 result.sessionId，走下方会话同步
+    // 逻辑（开回放窗口 + 投影 modelState），不属于命令回执。
+    const rpcSessionResult = rpcCheck?.result as Record<string, unknown> | undefined;
+    const isSessionSyncResult =
+      rpcCheck?.result !== undefined &&
+      typeof rpcSessionResult?.sessionId === "string" &&
+      rpcSessionResult.sessionId.length > 0;
+    if (
+      !normalized &&
+      rpcCheck &&
+      rpcCheck.id !== undefined &&
+      rpcCheck.id !== null &&
+      !rpcCheck.method &&
+      !isSessionSyncResult
+    ) {
+      if (this.dependencies.onRpcResponse) {
+        try {
+          this.dependencies.onRpcResponse(rpcCheck.id as number | string, !rpcCheck.error);
+        } catch (err) {
+          this.dependencies.reportError("[YJS-FE] onRpcResponse failed", err);
+        }
+      }
+      return;
     }
 
     if (msgType === "status") {
