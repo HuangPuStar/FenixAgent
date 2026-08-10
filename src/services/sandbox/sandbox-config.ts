@@ -7,6 +7,8 @@ export type SandboxResolvedConfig = {
   providerExtra: SandboxProviderExtra;
 };
 
+const DEFAULT_SANDBOX_AGENT_TYPE = "opencode";
+
 function normalizeRelativeVolumePath(value: string): string {
   if (value.includes("\0")) throw new Error("sandbox volume path contains a NUL byte");
 
@@ -36,6 +38,13 @@ export function getProviderExtra(extra: unknown, providerKey: string): SandboxPr
   const providerExtra = (extra as Record<string, unknown>)[providerKey];
   if (!providerExtra || typeof providerExtra !== "object" || Array.isArray(providerExtra)) return {};
   return providerExtra as SandboxProviderExtra;
+}
+
+/** 从 Sandbox Pool 的 extra 中读取 Machine 身份使用的 Agent 类型。 */
+export function getSandboxAgentType(extra: unknown): string {
+  if (!extra || typeof extra !== "object" || Array.isArray(extra)) return DEFAULT_SANDBOX_AGENT_TYPE;
+  const agentType = (extra as Record<string, unknown>).agent_type;
+  return typeof agentType === "string" && agentType.length > 0 ? agentType : DEFAULT_SANDBOX_AGENT_TYPE;
 }
 
 /** 校验未知 JSON 是否为完整的 Provider 资源配置。 */

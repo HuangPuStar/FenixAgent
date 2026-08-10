@@ -24,6 +24,7 @@ import { createSandboxMachine } from "../registry";
 import { stopHeartbeat } from "../registry-heartbeat";
 import {
   getProviderExtra,
+  getSandboxAgentType,
   parseSandboxResources,
   resolveSandboxConfig,
   type SandboxResolvedConfig,
@@ -171,7 +172,7 @@ export class SandboxManager {
       id: machineId,
       organizationId: input.organizationId ?? null,
       userId: input.userId,
-      agentName: input.agentName ?? "opencode",
+      agentName: input.agentName ?? getSandboxAgentType(pool.extra),
     });
 
     let instance: SandboxInstance;

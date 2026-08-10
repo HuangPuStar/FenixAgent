@@ -14,6 +14,7 @@ const settings = {
     environment: {},
     volumes: [],
   }),
+  defaultSandboxAgentType: "peri",
   defaultSandboxExtraJson: JSON.stringify({
     "opensandbox-cluster": { entrypoint: ["docker-entrypoint.sh", "acp-runtime", "opencode", "acp"] },
   }),
@@ -60,7 +61,10 @@ describe("default sandbox pool", () => {
       image: "sandbox:v1",
     });
     expect(input?.defaultResources).toEqual(JSON.parse(settings.defaultSandboxResourcesJson));
-    expect(input?.extra).toEqual(JSON.parse(settings.defaultSandboxExtraJson));
+    expect(input?.extra).toEqual({
+      agent_type: "peri",
+      ...JSON.parse(settings.defaultSandboxExtraJson),
+    });
   });
 
   // 非法资源 JSON 必须阻止默认 Pool 初始化，不能静默使用空配置。

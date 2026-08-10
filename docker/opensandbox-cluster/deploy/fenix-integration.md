@@ -208,6 +208,7 @@ RCS_SANDBOX_CLUSTER_URL=http://<宿主机局域网 IP>:8080
 RCS_SANDBOX_CLUSTER_API_KEY=替换为 Cluster API Key
 RCS_DEFAULT_SANDBOX_POOL_ID=default
 RCS_DEFAULT_SANDBOX_IMAGE=ghcr.io/huangpustar/fenixagent-sandbox-peri:v0.4.0-beta.1-peri
+RCS_DEFAULT_SANDBOX_AGENT_TYPE=ccb
 RCS_DEFAULT_SANDBOX_RESOURCES_JSON='{
   "cpu": 2,
   "memoryMb": 512,
@@ -250,10 +251,11 @@ Peri 配置需要将 `RCS_CCB_COMMAND` 设置为 `peri`、`RCS_CCB_ARGS` 设置�
 
 ### 5.2 OpenCode
 
-如果业务沙盒选择 OpenCode，改用下面三项配置：
+如果业务沙盒选择 OpenCode，改用下面四项配置：
 
 ```dotenv
 RCS_DEFAULT_SANDBOX_IMAGE=ghcr.io/huangpustar/fenixagent-sandbox-opencode:v0.4.0-beta.1-opencode
+RCS_DEFAULT_SANDBOX_AGENT_TYPE=opencode
 RCS_DEFAULT_SANDBOX_RESOURCES_JSON='{
   "cpu": 2,
   "memoryMb": 512,
@@ -294,15 +296,15 @@ RCS_DEFAULT_SANDBOX_EXTRA_JSON='{
 }'
 ```
 
-这三个参数共同定义新建沙盒的默认配置：
+这四个参数共同定义新建沙盒的默认配置：
 
 - `RCS_DEFAULT_SANDBOX_IMAGE`：指定实际运行 Agent 的业务沙盒镜像。镜像必须已经导入 OpenSandbox Server 所在 Docker，名称必须与导入时完全一致；它不是 OpenSandbox Server 镜像，也不是 `opensandbox/execd` 镜像。
 - `RCS_DEFAULT_SANDBOX_RESOURCES_JSON`：指定该镜像运行时的 CPU、内存、磁盘、GPU、环境变量和挂载。`environment.RCS_URL` 填写沙盒能够访问到的 Fenix 地址，不能填写沙盒容器内的 `localhost`；`environment.RCS_SECRET` 必须与 Fenix 的 `REGISTRY_SECRET` 一致。Peri 和 OpenCode 的挂载目录不同，必须使用对应示例。
 - `RCS_DEFAULT_SANDBOX_EXTRA_JSON`：指定 OpenSandbox Cluster 的 Provider 专属参数。`entrypoint` 必须与所选业务镜像内实际存在的启动命令匹配：Peri 使用 `peri`，OpenCode 使用 `opencode`。
 
-这三个参数会一起保存到新建 `sandbox_instance` 的配置快照中：`IMAGE` 决定运行哪个镜像，`RESOURCES_JSON` 决定运行资源及挂载，`EXTRA_JSON` 决定 Provider 如何启动该镜像。通常更换业务镜像时，至少需要同步检查这三个参数。
+这四个参数会共同影响新建 Sandbox：`IMAGE` 决定运行哪个镜像，`AGENT_TYPE` 写入 Sandbox Pool 的 `extra.agent_type` 并用于生成 Machine 记录，`RESOURCES_JSON` 决定运行资源及挂载，`EXTRA_JSON` 决定 Provider 如何启动该镜像。通常更换业务镜像时，需要同步检查这四个参数。
 
-本文默认使用 Peri 镜像。使用 OpenCode 时，必须同步替换 `RCS_DEFAULT_SANDBOX_IMAGE`、`RCS_DEFAULT_SANDBOX_RESOURCES_JSON` 和 `RCS_DEFAULT_SANDBOX_EXTRA_JSON`；不能只替换镜像名称。
+本文默认使用 Peri 镜像。使用 OpenCode 时，必须将 `RCS_DEFAULT_SANDBOX_AGENT_TYPE` 改为 `opencode`，并同步替换 `RCS_DEFAULT_SANDBOX_IMAGE`、`RCS_DEFAULT_SANDBOX_RESOURCES_JSON` 和 `RCS_DEFAULT_SANDBOX_EXTRA_JSON`；不能只替换镜像名称。
 
 其中 `volumes.source` 使用逻辑路径名，不要改成宿主机绝对路径；Cluster 会根据 Server 注册的 `workspace_root` 映射实际目录。
 
