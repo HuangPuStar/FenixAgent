@@ -377,7 +377,7 @@ POST   /api/v1/servers/:serverId/health-check
   "pool_id": "pool-default",
   "name": "Node 1",
   "base_url": "http://node-1:8090",
-  "workspace_root": "/workspace/sandboxes",
+  "workspace_root": "/workspace",
   "api_key": "replace-with-server-api-key",
   "max_sandboxes": 10
 }
@@ -390,7 +390,7 @@ POST   /api/v1/servers/:serverId/health-check
   "pool_id": "pool-default",
   "name": "Node 1 Updated",
   "base_url": "http://node-1:8090",
-  "workspace_root": "/workspace/sandboxes",
+  "workspace_root": "/workspace",
   "api_key": "new-server-api-key",
   "max_sandboxes": 10,
   "status": "active"
@@ -405,7 +405,7 @@ Server 查询响应不会包含 `apiKeyCiphertext` 或明文 API Key，字段示
   "poolId": "pool-default",
   "name": "Node 1",
   "baseUrl": "http://node-1:8090",
-  "workspaceRoot": "/workspace/sandboxes",
+  "workspaceRoot": "/workspace",
   "maxSandboxes": 10,
   "status": "active",
   "healthStatus": "healthy",
@@ -554,14 +554,14 @@ docker/opensandbox-server/docker-compose.dind.yml
         v
 OpenSandbox Server 容器
   |-- /var/lib/docker  -> docker-data volume
-  |-- /workspace/sandboxes -> ./workspace/sandboxes
+  |-- /workspace -> ./workspace
   `-- /offline -> ./offline
         |
         v
     DinD daemon -> Sandbox containers
 ```
 
-节点注册时，`workspace_root`、`sandbox.toml` 的 `allowed_host_paths` 和 Compose 内的容器路径必须一致。当前示例统一为 `/workspace/sandboxes`。
+节点注册时，`workspace_root`、`sandbox.toml` 的 `allowed_host_paths` 和 Compose 内的容器路径必须一致。当前示例统一为 `/workspace`。
 
 ## 8. FenixAgent 调用顺序
 
