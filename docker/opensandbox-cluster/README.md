@@ -5,7 +5,7 @@
 单机离线部署和日常运维请参考：
 
 - [`deploy/fenix-integration.md`](deploy/fenix-integration.md)
-- [`deploy/fenix-ops.sh`](deploy/fenix-ops.sh)
+- [`fenix-sandbox-ops.sh`](../../fenix-sandbox-ops.sh)
 
 ## 启动
 

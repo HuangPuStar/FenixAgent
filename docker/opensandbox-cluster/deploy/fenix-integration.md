@@ -99,7 +99,7 @@ mkdir -p offline
 - FenixAgent 部署文件和 Fenix 镜像；
 - `docker/opensandbox-cluster/`；
 - `docker/opensandbox-server/`；
-- `docker/opensandbox-cluster/deploy/fenix-ops.sh`；
+- `fenix-sandbox-ops.sh`（或直接使用 Fenix 镜像中的 `/app/fenix-sandbox-ops.sh`）；
 - `offline/fenix-opensandbox-images.tar`。
 - `offline/business-sandbox-images.tar`。
 
@@ -209,18 +209,21 @@ docker compose up -d
 curl -fsS http://127.0.0.1:8080/health
 ```
 
-使用运维脚本创建默认资源池并注册 Server。脚本会在注册 Server 后自动执行健康检查：
+使用运维脚本创建默认资源池并注册 Server。脚本会在注册 Server 后自动执行健康检查。
+
+如果在 Fenix 镜像容器内运行 `/app/fenix-sandbox-ops.sh`，脚本会直接读取容器已有的 `RCS_SANDBOX_CLUSTER_URL` 和 `RCS_SANDBOX_CLUSTER_API_KEY`，无需再次设置。以下环境变量仅适用于在宿主机或其他独立环境中运行脚本的场景：
 
 ```bash
-cd deploy
-export CLUSTER_URL=http://127.0.0.1:8080
-export CLUSTER_API_KEY='替换为 Cluster API Key'
+# 独立环境中没有这2个环境变量，需要手动设置
+# export RCS_SANDBOX_CLUSTER_URL=http://127.0.0.1:8080
+# export RCS_SANDBOX_CLUSTER_API_KEY='替换为 Cluster API Key'
+
 export SERVER_API_KEY='替换为 Server API Key'
 
-./fenix-ops.sh cluster pool create \
+./fenix-sandbox-ops.sh cluster pool create \
   '{"id":"default","name":"default"}'
 
-./fenix-ops.sh cluster server create \
+./fenix-sandbox-ops.sh cluster server create \
   "{\"id\":\"server-1\",\"pool_id\":\"default\",\"name\":\"server-1\",\"base_url\":\"http://192.168.1.20:8090\",\"workspace_root\":\"/workspace/sandboxes\",\"api_key\":\"$SERVER_API_KEY\",\"max_sandboxes\":10}"
 ```
 
@@ -269,24 +272,17 @@ docker compose up -d
 curl -fsS http://127.0.0.1:3000/health
 ```
 
-使用 `./fenix-ops.sh fenix sandbox rebuild` 或 `./fenix-ops.sh fenix sandbox delete` 等系统级沙盒运维命令前，将 Fenix 的 `RCS_SYSTEM_API_KEYS` 中任意一个值导出为 `FENIX_SYSTEM_API_KEY`：
-
-```bash
-export FENIX_SYSTEM_API_KEY='RCS_SYSTEM_API_KEYS 中的任意一个值'
-```
-
-这个密钥只用于请求 Fenix 的系统级沙盒运维接口，与 Cluster API Key 不是同一个密钥。
-
 ## 7. 日常运维操作
 
-先配置运维脚本需要的环境变量：
+在 Fenix 镜像容器中运行 `/app/fenix-sandbox-ops.sh` 时，Cluster 和 Fenix 相关配置会直接复用容器已有的环境变量，无需额外设置。只有在宿主机或其他独立环境运行脚本时，才需要通过项目根目录 `.env` 或 shell 环境变量提供这些配置；shell 环境变量优先于 `.env`：
 
 ```bash
-cd docker/opensandbox-cluster/deploy
-export CLUSTER_URL=http://127.0.0.1:8080
-export CLUSTER_API_KEY='Cluster API Key'
-export FENIX_URL=http://127.0.0.1:3000
-export FENIX_SYSTEM_API_KEY='Fenix 系统 API Key'
+# 独立环境中没有以下4个环境变量时，需要手动设置；Fenix 镜像容器内无需重复设置
+# export RCS_SANDBOX_CLUSTER_URL=http://127.0.0.1:8080
+# export RCS_SANDBOX_CLUSTER_API_KEY='Cluster API Key'
+# export RCS_BASE_URL=http://127.0.0.1:3000
+# export RCS_SYSTEM_API_KEYS='Fenix 系统 API Key'
+
 export POOL_ID='资源池 ID'
 export SERVER_ID='Server ID'
 export SERVER_UPDATE_FILE='./server-update.json'
@@ -298,24 +294,24 @@ export USER_ID='用户 ID'
 
 ```bash
 # 检查 Cluster 服务是否健康
-./fenix-ops.sh health cluster
+./fenix-sandbox-ops.sh health cluster
 # 检查 Fenix 服务是否健康
-./fenix-ops.sh health fenix
+./fenix-sandbox-ops.sh health fenix
 # 主动检查指定 OpenSandbox Server，并同步其健康状态
-./fenix-ops.sh cluster server health-check "${SERVER_ID}"
+./fenix-sandbox-ops.sh cluster server health-check "${SERVER_ID}"
 ```
 
 ### 7.2 Cluster 资源池
 
 ```bash
 # 查询全部资源池
-./fenix-ops.sh cluster pool list
+./fenix-sandbox-ops.sh cluster pool list
 # 查询指定资源池详情
-./fenix-ops.sh cluster pool get "${POOL_ID}"
+./fenix-sandbox-ops.sh cluster pool get "${POOL_ID}"
 # 修改指定资源池的名称或状态
-./fenix-ops.sh cluster pool update "${POOL_ID}" "{\"name\":\"${POOL_ID}\",\"status\":\"active\"}"
+./fenix-sandbox-ops.sh cluster pool update "${POOL_ID}" "{\"name\":\"${POOL_ID}\",\"status\":\"active\"}"
 # 删除指定资源池；--yes 表示跳过交互确认
-./fenix-ops.sh cluster pool delete "${POOL_ID}" --yes
+./fenix-sandbox-ops.sh cluster pool delete "${POOL_ID}" --yes
 ```
 
 资源池存在 Fenix 沙盒实例记录时，Cluster 会拒绝删除资源池。
@@ -324,17 +320,17 @@ export USER_ID='用户 ID'
 
 ```bash
 # 查询全部 OpenSandbox Server
-./fenix-ops.sh cluster server list
+./fenix-sandbox-ops.sh cluster server list
 # 查询指定资源池下的 Server
-./fenix-ops.sh cluster server list "${POOL_ID}"
+./fenix-sandbox-ops.sh cluster server list "${POOL_ID}"
 # 查询指定 Server 详情
-./fenix-ops.sh cluster server get "${SERVER_ID}"
+./fenix-sandbox-ops.sh cluster server get "${SERVER_ID}"
 # 使用 JSON 文件更新 Server 配置
-./fenix-ops.sh cluster server update "${SERVER_ID}" @"${SERVER_UPDATE_FILE}"
+./fenix-sandbox-ops.sh cluster server update "${SERVER_ID}" @"${SERVER_UPDATE_FILE}"
 # 检查 Server 的 OpenSandbox Server 接口是否可访问，并同步健康状态
-./fenix-ops.sh cluster server health-check "${SERVER_ID}"
+./fenix-sandbox-ops.sh cluster server health-check "${SERVER_ID}"
 # 删除指定 Server；--yes 表示跳过交互确认
-./fenix-ops.sh cluster server delete "${SERVER_ID}" --yes
+./fenix-sandbox-ops.sh cluster server delete "${SERVER_ID}" --yes
 ```
 
 `server-update.json` 示例：
@@ -354,21 +350,21 @@ export USER_ID='用户 ID'
 
 ```bash
 # 查询全部 Sandbox Instance
-./fenix-ops.sh fenix sandbox list
+./fenix-sandbox-ops.sh fenix sandbox list
 # 按资源池和状态筛选 Sandbox Instance
-./fenix-ops.sh fenix sandbox list "sandbox_pool_id=${POOL_ID}&status=ready"
+./fenix-sandbox-ops.sh fenix sandbox list "sandbox_pool_id=${POOL_ID}&status=ready"
 # 查询指定 Sandbox Instance 详情
-./fenix-ops.sh fenix sandbox get "${SANDBOX_INSTANCE_ID}"
+./fenix-sandbox-ops.sh fenix sandbox get "${SANDBOX_INSTANCE_ID}"
 # 预览指定资源池中需要重建的 Instance，不执行删除和重建
-./fenix-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --dry-run
+./fenix-sandbox-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --dry-run
 # 重建指定资源池中配置已变化的全部 Instance
-./fenix-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --yes
+./fenix-sandbox-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --yes
 # 重建指定 Sandbox Instance
-./fenix-ops.sh fenix sandbox rebuild-instance "${POOL_ID}" "${SANDBOX_INSTANCE_ID}" --yes
+./fenix-sandbox-ops.sh fenix sandbox rebuild-instance "${POOL_ID}" "${SANDBOX_INSTANCE_ID}" --yes
 # 重建指定用户在资源池中的 Sandbox Instance
-./fenix-ops.sh fenix sandbox rebuild-user "${POOL_ID}" "${USER_ID}" --yes
+./fenix-sandbox-ops.sh fenix sandbox rebuild-user "${POOL_ID}" "${USER_ID}" --yes
 # 删除指定 Sandbox Instance 及其关联的 Provider 沙盒
-./fenix-ops.sh fenix sandbox delete "${SANDBOX_INSTANCE_ID}" --yes
+./fenix-sandbox-ops.sh fenix sandbox delete "${SANDBOX_INSTANCE_ID}" --yes
 ```
 
 修改资源池或单个 Instance 的沙盒配置时，变更只会写入数据库配置，不会直接修改正在运行的 Provider 沙盒，也不会自动重启它。要让配置对已有实例生效，需要执行 `rebuild`。在用户下次进入 Agent 时，按新配置创建或启动沙盒。
