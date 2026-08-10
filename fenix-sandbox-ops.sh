@@ -4,41 +4,77 @@
 # 所有接口都通过现有 HTTP API 调用，不直接操作数据库。
 set -euo pipefail
 
-CLUSTER_URL="${CLUSTER_URL:-http://127.0.0.1:8080}"
-FENIX_URL="${FENIX_URL:-http://127.0.0.1:3000}"
-CLUSTER_API_KEY="${CLUSTER_API_KEY:-}"
-FENIX_SYSTEM_API_KEY="${FENIX_SYSTEM_API_KEY:-}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+load_dotenv() {
+  local env_file="$1"
+  local line name value first_char last_char
+
+  [[ -f "$env_file" ]] || return 0
+
+  # 只解析脚本需要的 KEY=VALUE 行，不执行 .env 中的任意内容。
+  # 这样可以兼容包含多行提示文本或其他应用配置的项目级 .env。
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?(RCS_SANDBOX_CLUSTER_URL|RCS_BASE_URL|RCS_SANDBOX_CLUSTER_API_KEY|RCS_SYSTEM_API_KEYS)[[:space:]]*=(.*)$ ]]; then
+      name="${BASH_REMATCH[2]}"
+      value="${BASH_REMATCH[3]}"
+      value="${value#"${value%%[![:space:]]*}"}"
+      value="${value%"${value##*[![:space:]]}"}"
+      if (( ${#value} >= 2 )); then
+        first_char="${value:0:1}"
+        last_char="${value: -1}"
+        if [[ ( "$first_char" == '"' && "$last_char" == '"' ) || ( "$first_char" == "'" && "$last_char" == "'" ) ]]; then
+          value="${value:1:${#value}-2}"
+        fi
+      fi
+      case "$name" in
+        RCS_SANDBOX_CLUSTER_URL) [[ ${RCS_SANDBOX_CLUSTER_URL+x} ]] && continue ;;
+        RCS_BASE_URL) [[ ${RCS_BASE_URL+x} ]] && continue ;;
+        RCS_SANDBOX_CLUSTER_API_KEY) [[ ${RCS_SANDBOX_CLUSTER_API_KEY+x} ]] && continue ;;
+        RCS_SYSTEM_API_KEYS) [[ ${RCS_SYSTEM_API_KEYS+x} ]] && continue ;;
+      esac
+      printf -v "$name" '%s' "$value"
+    fi
+  done < "$env_file"
+}
+
+load_dotenv "$SCRIPT_DIR/.env"
+
+RCS_SANDBOX_CLUSTER_URL="${RCS_SANDBOX_CLUSTER_URL:-http://127.0.0.1:8080}"
+RCS_BASE_URL="${RCS_BASE_URL:-http://127.0.0.1:3000}"
+RCS_SANDBOX_CLUSTER_API_KEY="${RCS_SANDBOX_CLUSTER_API_KEY:-}"
+RCS_SYSTEM_API_KEYS="${RCS_SYSTEM_API_KEYS:-}"
 
 usage() {
   cat <<'EOF'
 用法：
-  fenix-ops.sh health cluster|fenix
+  fenix-sandbox-ops.sh health cluster|fenix
 
-  fenix-ops.sh cluster pool list
-  fenix-ops.sh cluster pool get <pool_id>
-  fenix-ops.sh cluster pool create <json|@file>
-  fenix-ops.sh cluster pool update <pool_id> <json|@file>
-  fenix-ops.sh cluster pool delete <pool_id> [--yes]
+  fenix-sandbox-ops.sh cluster pool list
+  fenix-sandbox-ops.sh cluster pool get <pool_id>
+  fenix-sandbox-ops.sh cluster pool create <json|@file>
+  fenix-sandbox-ops.sh cluster pool update <pool_id> <json|@file>
+  fenix-sandbox-ops.sh cluster pool delete <pool_id> [--yes]
 
-  fenix-ops.sh cluster server list [pool_id]
-  fenix-ops.sh cluster server get <server_id>
-  fenix-ops.sh cluster server create <json|@file>
-  fenix-ops.sh cluster server update <server_id> <json|@file>
-  fenix-ops.sh cluster server delete <server_id> [--yes]
-  fenix-ops.sh cluster server health-check <server_id>
+  fenix-sandbox-ops.sh cluster server list [pool_id]
+  fenix-sandbox-ops.sh cluster server get <server_id>
+  fenix-sandbox-ops.sh cluster server create <json|@file>
+  fenix-sandbox-ops.sh cluster server update <server_id> <json|@file>
+  fenix-sandbox-ops.sh cluster server delete <server_id> [--yes]
+  fenix-sandbox-ops.sh cluster server health-check <server_id>
 
-  fenix-ops.sh fenix sandbox list [query]
-  fenix-ops.sh fenix sandbox get <instance_id>
-  fenix-ops.sh fenix sandbox delete <instance_id> [--yes]
-  fenix-ops.sh fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]
-  fenix-ops.sh fenix sandbox rebuild-instance <pool_id> <instance_id> [--dry-run] [--yes]
-  fenix-ops.sh fenix sandbox rebuild-user <pool_id> <user_id> [--dry-run] [--yes]
+  fenix-sandbox-ops.sh fenix sandbox list [query]
+  fenix-sandbox-ops.sh fenix sandbox get <instance_id>
+  fenix-sandbox-ops.sh fenix sandbox delete <instance_id> [--yes]
+  fenix-sandbox-ops.sh fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]
+  fenix-sandbox-ops.sh fenix sandbox rebuild-instance <pool_id> <instance_id> [--dry-run] [--yes]
+  fenix-sandbox-ops.sh fenix sandbox rebuild-user <pool_id> <user_id> [--dry-run] [--yes]
 
 环境变量：
-  CLUSTER_URL             Cluster 地址（默认：http://127.0.0.1:8080）
-  CLUSTER_API_KEY         Cluster 服务 API Key
-  FENIX_URL               Fenix 地址（默认：http://127.0.0.1:3000）
-  FENIX_SYSTEM_API_KEY    Fenix 的 RCS_SYSTEM_API_KEYS 值
+  RCS_SANDBOX_CLUSTER_URL       Cluster 地址（默认：http://127.0.0.1:8080）
+  RCS_SANDBOX_CLUSTER_API_KEY   Cluster 服务 API Key
+  RCS_BASE_URL                  Fenix 地址（默认：http://127.0.0.1:3000）
+  RCS_SYSTEM_API_KEYS           Fenix 系统 API Key（逗号分隔时使用第一个）
 
 JSON 参数支持直接传 JSON，也支持传入 @/path/to/body.json 文件。
 EOF
@@ -52,10 +88,10 @@ die() {
 require_key() {
   case "$1" in
     cluster)
-      [[ -n "$CLUSTER_API_KEY" ]] || die "必须配置 CLUSTER_API_KEY"
+      [[ -n "$RCS_SANDBOX_CLUSTER_API_KEY" ]] || die "必须配置 RCS_SANDBOX_CLUSTER_API_KEY"
       ;;
     fenix)
-      [[ -n "$FENIX_SYSTEM_API_KEY" ]] || die "必须配置 FENIX_SYSTEM_API_KEY"
+      [[ -n "$RCS_SYSTEM_API_KEYS" ]] || die "必须配置 RCS_SYSTEM_API_KEYS"
       ;;
   esac
 }
@@ -79,12 +115,12 @@ request() {
 
   if [[ "$service" == "cluster" ]]; then
     require_key cluster
-    base_url="${CLUSTER_URL%/}"
-    api_key="$CLUSTER_API_KEY"
+    base_url="${RCS_SANDBOX_CLUSTER_URL%/}"
+    api_key="$RCS_SANDBOX_CLUSTER_API_KEY"
   else
     require_key fenix
-    base_url="${FENIX_URL%/}"
-    api_key="$FENIX_SYSTEM_API_KEY"
+    base_url="${RCS_BASE_URL%/}"
+    api_key="${RCS_SYSTEM_API_KEYS%%,*}"
   fi
 
   if [[ -n "$body" ]]; then
@@ -121,8 +157,8 @@ confirm() {
 
 health() {
   case "${1:-}" in
-    cluster) curl -fsS "${CLUSTER_URL%/}/health"; printf '\n' ;;
-    fenix) curl -fsS "${FENIX_URL%/}/health"; printf '\n' ;;
+    cluster) curl -fsS "${RCS_SANDBOX_CLUSTER_URL%/}/health"; printf '\n' ;;
+    fenix) curl -fsS "${RCS_BASE_URL%/}/health"; printf '\n' ;;
     *) die "health 参数必须是 cluster 或 fenix" ;;
   esac
 }
