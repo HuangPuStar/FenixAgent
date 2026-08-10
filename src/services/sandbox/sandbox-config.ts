@@ -7,6 +7,8 @@ export type SandboxResolvedConfig = {
   providerExtra: SandboxProviderExtra;
 };
 
+const DEFAULT_SANDBOX_AGENT_TYPE = "opencode";
+
 function normalizeRelativeVolumePath(value: string): string {
   if (value.includes("\0")) throw new Error("sandbox volume path contains a NUL byte");
 
@@ -36,6 +38,41 @@ export function getProviderExtra(extra: unknown, providerKey: string): SandboxPr
   const providerExtra = (extra as Record<string, unknown>)[providerKey];
   if (!providerExtra || typeof providerExtra !== "object" || Array.isArray(providerExtra)) return {};
   return providerExtra as SandboxProviderExtra;
+}
+
+/** 从 Sandbox Pool 的 extra 中读取 Machine 身份使用的 Agent 类型。 */
+export function getSandboxAgentType(extra: unknown): string {
+  if (!extra || typeof extra !== "object" || Array.isArray(extra)) return DEFAULT_SANDBOX_AGENT_TYPE;
+  const agentType = (extra as Record<string, unknown>).agent_type;
+  return typeof agentType === "string" && agentType.length > 0 ? agentType : DEFAULT_SANDBOX_AGENT_TYPE;
+}
+
+/** 比较 JSON 配置内容，忽略数据库 JSONB 往返造成的对象键顺序变化。 */
+export function sandboxConfigsEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+
+  const leftIsArray = Array.isArray(left);
+  const rightIsArray = Array.isArray(right);
+  if (leftIsArray !== rightIsArray) return false;
+
+  if (leftIsArray && rightIsArray) {
+    const leftItems = left as unknown[];
+    const rightItems = right as unknown[];
+    return (
+      leftItems.length === rightItems.length &&
+      leftItems.every((item, index) => sandboxConfigsEqual(item, rightItems[index]))
+    );
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key, index) => key === rightKeys[index] && sandboxConfigsEqual(leftRecord[key], rightRecord[key]))
+  );
 }
 
 /** 校验未知 JSON 是否为完整的 Provider 资源配置。 */

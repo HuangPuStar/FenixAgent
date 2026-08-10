@@ -24,7 +24,7 @@ services:
       start_period: 10s
     volumes:
       - docker-data:/var/lib/docker
-      - ./workspace/sandboxes:/workspace/sandboxes
+      - ./workspace:/workspace
       - ./offline:/offline:ro
       - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
       - ./data:/root/.opensandbox

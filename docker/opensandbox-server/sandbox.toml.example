@@ -22,5 +22,5 @@ port_range_min = 10000
 port_range_max = 10100
 
 [storage]
-# DinD 中 Cluster 的 workspace_root 使用 /workspace/sandboxes。
-allowed_host_paths = ["/workspace/sandboxes"]
+# DinD 中 Cluster 的 workspace_root 使用 /workspace。
+allowed_host_paths = ["/workspace"]

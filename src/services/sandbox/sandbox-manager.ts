@@ -24,9 +24,11 @@ import { createSandboxMachine } from "../registry";
 import { stopHeartbeat } from "../registry-heartbeat";
 import {
   getProviderExtra,
+  getSandboxAgentType,
   parseSandboxResources,
   resolveSandboxConfig,
   type SandboxResolvedConfig,
+  sandboxConfigsEqual,
 } from "./sandbox-config";
 import { SandboxInstanceConflictError, type SandboxInstanceStatus, SandboxStateError } from "./sandbox-errors";
 import type { SandboxProviderRegistry } from "./sandbox-provider-registry";
@@ -171,7 +173,7 @@ export class SandboxManager {
       id: machineId,
       organizationId: input.organizationId ?? null,
       userId: input.userId,
-      agentName: input.agentName ?? "opencode",
+      agentName: input.agentName ?? getSandboxAgentType(pool.extra),
     });
 
     let instance: SandboxInstance;
@@ -317,7 +319,7 @@ export class SandboxManager {
       ),
       instance.machineId,
     );
-    const changed = JSON.stringify(instance.resolvedConfig) !== JSON.stringify(nextConfig);
+    const changed = !sandboxConfigsEqual(instance.resolvedConfig, nextConfig);
     if (!changed) {
       const updated = await this.instances.update(id, instance.status, {
         resourceOverrides,
@@ -392,7 +394,7 @@ export class SandboxManager {
         ),
         instance.machineId,
       );
-      const changed = JSON.stringify(instance.resolvedConfig) !== JSON.stringify(nextConfig);
+      const changed = !sandboxConfigsEqual(instance.resolvedConfig, nextConfig);
       const item = { instanceId: instance.id, changed, previousConfig: instance.resolvedConfig, nextConfig };
       if (!changed) {
         continue;

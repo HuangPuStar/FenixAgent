@@ -6,6 +6,7 @@ export type SandboxDefaultPoolSettings = {
   sandboxEnabled: boolean;
   defaultSandboxPoolId?: string;
   defaultSandboxImage?: string;
+  defaultSandboxAgentType?: string;
   defaultSandboxResourcesJson?: string;
   defaultSandboxExtraJson?: string;
 };
@@ -44,6 +45,8 @@ export async function initializeDefaultSandboxPool(
   if (!extra || typeof extra !== "object" || Array.isArray(extra)) {
     throw new Error("sandbox pool extra must be an object");
   }
+
+  extra = { ...extra, agent_type: settings.defaultSandboxAgentType ?? "opencode" };
 
   return repository.upsert({
     id: settings.defaultSandboxPoolId,

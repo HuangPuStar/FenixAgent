@@ -43,6 +43,8 @@ function buildConfig(env: Env) {
     defaultSandboxPoolId: env.RCS_DEFAULT_SANDBOX_POOL_ID,
     /** 默认沙盒镜像名称。 */
     defaultSandboxImage: env.RCS_DEFAULT_SANDBOX_IMAGE,
+    /** 默认沙盒 Agent 类型，写入默认 Pool 并用于生成 Sandbox Machine 身份。 */
+    defaultSandboxAgentType: env.RCS_DEFAULT_SANDBOX_AGENT_TYPE,
     /** 默认沙盒资源配置 JSON，包括环境变量和挂载。 */
     defaultSandboxResourcesJson: env.RCS_DEFAULT_SANDBOX_RESOURCES_JSON,
     /** Provider 专属的默认配置 JSON。 */

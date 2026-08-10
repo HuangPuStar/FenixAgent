@@ -38,7 +38,7 @@ docker compose up -d --build
 
 ```json
 {
-  "workspace_root": "/workspace/sandboxes"
+  "workspace_root": "/workspace"
 }
 ```
 

@@ -55,7 +55,7 @@ curl -X POST "$CLUSTER_URL/api/v1/servers" \
     "pool_id":"pool-default",
     "name":"Node 1",
     "base_url":"http://node-1:8090",
-    "workspace_root":"/workspace/sandboxes",
+    "workspace_root":"/workspace",
     "api_key":"replace-with-server-api-key",
     "max_sandboxes":10
   }'

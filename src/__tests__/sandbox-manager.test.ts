@@ -95,6 +95,50 @@ describe("SandboxManager machine identity", () => {
     );
   });
 
+  // 创建 Sandbox Machine 时应使用资源池声明的 Agent 类型，而不是固定写入 opencode。
+  test("uses the agent type configured by the sandbox pool", async () => {
+    let machineInput: Record<string, unknown> | undefined;
+    const periPool = { ...pool, extra: { agent_type: "peri" } } as SandboxPool;
+    const instance = makeInstance({ resolvedConfig: undefined as never });
+    stubRegistry({
+      createSandboxMachine: async (input: Record<string, unknown>) => {
+        machineInput = input;
+      },
+    });
+
+    const manager = new SandboxManager({
+      pools: { findById: async () => periPool },
+      instances: {
+        findActive: async () => null,
+        create: async (input) => {
+          Object.assign(instance, input);
+          return instance;
+        },
+        findByIdForUser: async () => instance,
+        update: async (_id: string, status: string, patch?: Record<string, unknown>) =>
+          Object.assign(instance, { status, ...patch }),
+      },
+      providers: {
+        get: () => ({
+          create: async () => ({ sandboxId: "provider-sandbox", status: "creating" as const }),
+          get: async () => null,
+          resume: async () => ({ sandboxId: "provider-sandbox", status: "ready" as const }),
+          destroy: async () => {},
+        }),
+      } as never,
+    });
+
+    await manager.createOrReuse({
+      sandboxId: "sbi_test",
+      poolId: "pool_default",
+      providerKey: "test-provider",
+      userId: "user_test",
+      template: { type: "image", value: "ignored" },
+    });
+
+    expect(machineInput?.agentName).toBe("peri");
+  });
+
   // 创建 Instance 时，Provider 必须收到稳定用户目录下的宿主机逻辑路径。
   test("passes the stable user workspace path when creating a sandbox", async () => {
     let providerInput: Record<string, unknown> | undefined;
@@ -390,11 +434,15 @@ describe("SandboxManager machine identity", () => {
       machineId: "mach_sandbox_sbi_unchanged",
       resolvedConfig: {
         image: "sandbox:test",
-        resources: {
-          ...resources,
-          environment: { ...resources.environment, RCS_MACHINE_ID: "mach_sandbox_sbi_unchanged" },
-        },
         providerExtra: {},
+        resources: {
+          volumes: [],
+          environment: { LANG: "C.UTF-8", RCS_MACHINE_ID: "mach_sandbox_sbi_unchanged" },
+          gpuCount: 0,
+          diskGb: 5,
+          memoryMb: 512,
+          cpu: 0.5,
+        },
       },
     });
     const changed = makeInstance({

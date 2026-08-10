@@ -1,0 +1,52 @@
+services:
+  opensandbox-cluster:
+    image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.1.0
+    ports:
+      - "${OPENSANDBOX_CLUSTER_PORT:-8080}:8080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_PATH: /data/opensandbox-cluster.db
+      CLUSTER_SERVICE_API_KEY: ${CLUSTER_SERVICE_API_KEY:?CLUSTER_SERVICE_API_KEY is required}
+      SERVER_API_KEY_ENCRYPTION_KEY: ${SERVER_API_KEY_ENCRYPTION_KEY:?SERVER_API_KEY_ENCRYPTION_KEY is required}
+      PROXY_CONNECT_TIMEOUT_MS: ${PROXY_CONNECT_TIMEOUT_MS:-3000}
+      PROXY_RESPONSE_TIMEOUT_MS: ${PROXY_RESPONSE_TIMEOUT_MS:-120000}
+    volumes:
+      - ./opensandbox-cluster-data:/data
+    networks:
+      - opensandbox
+    restart: unless-stopped
+
+  opensandbox-server:
+    image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.1.0
+    command:
+      - opensandbox-server
+      - --config
+      - /etc/opensandbox/sandbox.toml
+    privileged: true
+    cgroup: host
+    ports:
+      - "${OPENSANDBOX_SERVER_PORT:-8090}:8080"
+      - "${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}:${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    volumes:
+      - ./opensandbox-server-docker-data:/var/lib/docker
+      - ./workspace:/workspace
+      - ./offline:/offline:ro
+      - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+      - ./data:/root/.opensandbox
+    networks:
+      - opensandbox
+    restart: unless-stopped
+
+networks:
+  opensandbox:
+    name: opensandbox
