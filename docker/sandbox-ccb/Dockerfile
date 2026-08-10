@@ -1,3 +1,13 @@
+# ── 本地构建 acp-runtime-cli（不依赖 npm 发布的 @fenix-agent/acp-runtime-cli）──
+FROM oven/bun:1 AS acp-runtime-build
+WORKDIR /build
+COPY package.json bun.lock ./
+COPY packages ./packages
+RUN bun install --frozen-lockfile
+# bundle 为独立 JS（含 acp-link 与 workspace 引擎依赖），运行时只需 bun
+RUN bun build packages/acp-runtime-cli/src/bin.ts --target=bun \
+    --outfile /tmp/acp-runtime/dist/bin.js
+
 # ── CCB Sandbox 运行时 (Node.js) ────────────────────────
 FROM node:22-bookworm-slim
 WORKDIR /app/workspaces
@@ -15,8 +25,12 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN printf 'registry=%s\n' \
     'https://registry.npmmirror.com/' > /root/.npmrc
 
-# 安装 Claude Code (CCB) 和 ACP Runtime CLI
-RUN npm install -g claude-code-best@2.8.1 @fenix-agent/acp-runtime-cli
+# bun 运行时：本地构建的 bundle 使用 Bun.serve，需以 bun 执行
+COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-runtime.js
+
+# 安装 Claude Code (CCB)
+RUN npm install -g claude-code-best@2.8.1
 
 # 安装 CCB Hindsight 记忆插件
 RUN ccb plugin marketplace add vectorize-io/hindsight && ccb plugin install hindsight-memory
@@ -30,4 +44,4 @@ ENV AGENT_TYPE=ccb
 # IS_PERI=1 时额外生成 .peri/settings.json（Peri 客户端模式），默认 0
 ENV IS_PERI=0
 # acp-runtime 启动 CCB agent 并注册到 RCS
-CMD ["acp-runtime", "ccb", "--acp"]
+CMD ["bun", "/usr/local/bin/acp-runtime.js", "ccb", "--acp"]

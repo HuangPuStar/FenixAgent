@@ -1,3 +1,13 @@
+# ── 本地构建 acp-runtime-cli（不依赖 npm 发布的 @fenix-agent/acp-runtime-cli）──
+FROM oven/bun:1 AS acp-runtime-build
+WORKDIR /build
+COPY package.json bun.lock ./
+COPY packages ./packages
+RUN bun install --frozen-lockfile
+# bundle 为独立 JS（含 acp-link 与 workspace 引擎依赖），运行时只需 bun
+RUN bun build packages/acp-runtime-cli/src/bin.ts --target=bun \
+    --outfile /tmp/acp-runtime/dist/bin.js
+
 # ── Opencode Sandbox 运行时 (Node.js) ────────────────────────
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
@@ -19,9 +29,12 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN printf 'registry=%s\n' \
     'https://registry.npmmirror.com/' > /root/.npmrc
 
-# 安装 Opencode / ACP Runtime CLI / Hindsight 插件
+# bun 运行时：本地构建的 bundle 使用 Bun.serve，需以 bun 执行
+COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-runtime.js
+
+# 安装 Opencode / Hindsight 插件
 RUN npm install -g opencode-ai@1.17.12
-RUN npm install -g @fenix-agent/acp-runtime-cli
 RUN opencode plugin @konghayao/opencode-hindsight -g
 
 RUN mkdir -p /app/workspaces
@@ -29,4 +42,4 @@ VOLUME ["/app/workspaces"]
 
 ENV AGENT_TYPE=opencode
 # acp-runtime 启动 opencode agent 并注册到 RCS
-CMD ["acp-runtime", "opencode", "acp"]
+CMD ["bun", "/usr/local/bin/acp-runtime.js", "opencode", "acp"]
