@@ -93,6 +93,7 @@ const WORKSPACE_BLACKLIST = new Set([
   ".opencode",
   ".claude",
   ".peri",
+  ".mcp.json",
   "CLAUDE.md",
   ".tmp",
   "tmp",
