@@ -3,6 +3,7 @@ import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, Search, Trash2,
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { stripHtmlTags } from "../../src/lib/strip-html-tags";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -75,12 +76,12 @@ export function ChatHeader({
     }
   }, [forceOpen]);
 
-  // 当前会话标题：从 sessions 中按 activeSessionId 命中；缺失则用默认文案兜底
+  // 当前会话标题：从 sessions 中按 activeSessionId 命中；剔除 HTML 标签后为空则用默认文案兜底
   const activeSession = useMemo(
     () => sessions.find((s) => s.sessionId === activeSessionId) ?? null,
     [sessions, activeSessionId],
   );
-  const activeTitle = activeSession?.title?.trim() || t("chatHeader.newSession");
+  const activeTitle = stripHtmlTags(activeSession?.title?.trim() || "") || t("chatHeader.newSession");
 
   // 搜索过滤 + 按"今天/昨天/更早"分组（共享 SidebarSessionList 同款逻辑）
   const filteredSessions = useMemo(() => {
@@ -297,6 +298,8 @@ export function ChatHeader({
                   {group.sessions.map((session) => {
                     const isActive = session.sessionId === activeSessionId;
                     const isEditing = editingId === session.sessionId;
+                    // 标题清洗：剔除混入的 HTML 标签（如 <system-reminder>），清洗后为空则回退到"新会话"占位
+                    const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
 
                     // 内联重命名模式
                     if (isEditing) {
@@ -339,11 +342,11 @@ export function ChatHeader({
                               ? "text-text-primary hover:bg-transparent"
                               : "text-text-secondary hover:text-text-primary hover:bg-transparent",
                           )}
-                          title={session.title || session.sessionId}
+                          title={displayTitle || session.sessionId}
                         >
                           <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
                           <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">
-                            {session.title?.trim() ? session.title : t("acpMain.newSession")}
+                            {displayTitle}
                           </span>
                           {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
                         </Button>

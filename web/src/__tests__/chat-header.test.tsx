@@ -76,4 +76,41 @@ describe("ChatHeader", () => {
       );
     }).not.toThrow();
   });
+
+  // 顶部当前会话标题应剔除 <system-reminder> 等 HTML 标签（含块内内容），只保留纯文本
+  test("strips HTML tags from active session title", async () => {
+    const { ChatHeader } = await import("../../components/chat/ChatHeader");
+    const html = ReactDOMServer.renderToString(
+      <ChatHeader
+        activeSessionId="s1"
+        onSelectSession={() => {}}
+        sessions={[
+          {
+            sessionId: "s1",
+            title: "修复登录 <system-reminder>先看日志</system-reminder>",
+            updatedAt: new Date().toISOString(),
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain("修复登录");
+    expect(html).not.toContain("&lt;system-reminder");
+    expect(html).not.toContain("<system-reminder>");
+    expect(html).not.toContain("先看日志");
+  });
+
+  // 标题全部由标签构成时，顶部标题应回退为"新会话"占位而非空
+  test("falls back to new session placeholder when title is only tags", async () => {
+    const { ChatHeader } = await import("../../components/chat/ChatHeader");
+    const html = ReactDOMServer.renderToString(
+      <ChatHeader
+        activeSessionId="s1"
+        onSelectSession={() => {}}
+        sessions={[
+          { sessionId: "s1", title: "<system-reminder></system-reminder>", updatedAt: new Date().toISOString() },
+        ]}
+      />,
+    );
+    expect(html).toContain("chatHeader.newSession");
+  });
 });
