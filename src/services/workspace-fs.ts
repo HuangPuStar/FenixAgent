@@ -91,6 +91,9 @@ const WORKSPACE_BLACKLIST = new Set([
   "coverage",
   ".nyc_output",
   ".opencode",
+  ".claude",
+  ".peri",
+  "CLAUDE.md",
   ".tmp",
   "tmp",
   ".turbo",
@@ -189,6 +192,14 @@ export async function isTextFile(filePath: string): Promise<boolean> {
 /** 判断工作区条目是否在黑名单中 */
 export function shouldHideEntry(_entryPath: string, name: string): boolean {
   return WORKSPACE_BLACKLIST.has(name);
+}
+
+/** 判断相对 workspace 路径是否包含黑名单条目。 */
+export function shouldHidePath(path: string): boolean {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .some((name) => WORKSPACE_BLACKLIST.has(name));
 }
 
 export interface FileEntry {

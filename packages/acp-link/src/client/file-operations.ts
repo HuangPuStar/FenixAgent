@@ -152,6 +152,21 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
+ * @deprecated 文件树展示过滤已统一下沉到主服务 `src/routes/web/fs.ts`；
+ * 如果后续主服务的过滤没有问题，这里可以移除。
+ */
+const HIDDEN_WORKSPACE_ENTRIES = new Set([".opencode", ".claude", ".peri", "CLAUDE.md"]);
+
+/**
+ * @deprecated 文件树展示过滤已统一下沉到主服务 `src/routes/web/fs.ts`；
+ * 如果后续主服务的过滤没有问题，这里可以移除。
+ */
+function shouldHideWorkspaceEntry(fullPath: string): boolean {
+  const name = basename(fullPath);
+  return HIDDEN_WORKSPACE_ENTRIES.has(name);
+}
+
+/**
  * Check if a file is text by reading first 8KB and looking for null bytes.
  * Uses extension hint as a fast path.
  */
@@ -194,8 +209,7 @@ async function opList(workspace: string, params: Record<string, unknown>): Promi
   for (const entry of names) {
     const fullPath = join(dirPath, entry.name);
 
-    // Hide .opencode at workspace root
-    if (basename(fullPath) === ".opencode" && resolve(fullPath, "..") === workspace) continue;
+    if (shouldHideWorkspaceEntry(fullPath)) continue;
 
     const entryPath = relative(workspace, fullPath);
 
@@ -358,8 +372,7 @@ async function opTree(
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      // Hide .opencode at workspace root
-      if (basename(fullPath) === ".opencode" && resolve(fullPath, "..") === workspace) continue;
+      if (shouldHideWorkspaceEntry(fullPath)) continue;
 
       const relPath = relative(workspace, fullPath);
       paths.push(entry.isDirectory() ? `${relPath}/` : relPath);
