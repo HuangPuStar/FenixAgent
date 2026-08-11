@@ -131,6 +131,19 @@ export function classifyFile(filePath: string): FileCategory {
 }
 
 /**
+ * 获取预览组件使用的文本 MIME 类型。
+ * @open-file-viewer 会把文件名中的 # 当作 URL fragment，导致 #123.txt 的扩展名丢失；
+ * 显式传入文本 MIME 后仍能匹配 textPlugin，同时不需要修改用户看到的原始文件名。
+ */
+export function getPreviewMimeType(filePath: string): string | undefined {
+  const ext = getExtension(filePath);
+  if (MARKDOWN_EXTENSIONS.has(ext)) return "text/markdown";
+  if (HTML_EXTENSIONS.has(ext)) return "text/html";
+  if (CODE_EXTENSIONS.has(ext)) return "text/plain";
+  return undefined;
+}
+
+/**
  * 构建文件预览 URL。
  * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
  * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。

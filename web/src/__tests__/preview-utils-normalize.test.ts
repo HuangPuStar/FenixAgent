@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-const { normalizeToUserPath } = await import("../components/agent-panel/preview/utils");
+const { getPreviewMimeType, normalizeToUserPath } = await import("../components/agent-panel/preview/utils");
+
+describe("getPreviewMimeType — 特殊文件名仍按扩展名识别", () => {
+  // open-file-viewer 会把 # 当成 URL fragment，显式 MIME 可避免 #123.txt 被判定为未知格式
+  test("# 开头的 txt 文件返回文本 MIME", () => {
+    expect(getPreviewMimeType("user/#123.txt")).toBe("text/plain");
+  });
+
+  // 非文本文件不强行覆盖 MIME，继续由预览组件按扩展名和响应类型识别
+  test("非文本文件不返回覆盖 MIME", () => {
+    expect(getPreviewMimeType("user/image.png")).toBeUndefined();
+  });
+});
 
 // =============================================================================
 // normalizeToUserPath() — Agent 工具调用上报路径的规范化

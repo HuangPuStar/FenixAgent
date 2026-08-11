@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
-import { buildPreviewUrl } from "./utils";
+import { buildPreviewUrl, getPreviewMimeType } from "./utils";
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
@@ -72,6 +72,7 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const previewUrl = useMemo(() => buildPreviewUrl(envId, filePath), [envId, filePath]);
   const fileName = useMemo(() => filePath.split("/").pop() ?? filePath, [filePath]);
+  const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
 
   const toolbar = useMemo(
     () => ({
@@ -98,6 +99,7 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
       <FileViewer
         file={previewUrl}
         fileName={fileName}
+        mimeType={mimeType}
         plugins={plugins}
         height="100%"
         toolbar={toolbar}

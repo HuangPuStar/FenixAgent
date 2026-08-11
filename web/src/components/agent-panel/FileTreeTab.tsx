@@ -520,7 +520,27 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) {
-          throw new Error(`Download failed: ${res.status}`);
+          let errorMessage: string | undefined;
+          try {
+            const payload: unknown = await res.clone().json();
+            if (typeof payload === "object" && payload !== null && "error" in payload) {
+              const error = payload.error;
+              if (typeof error === "string") {
+                errorMessage = error;
+              } else if (
+                typeof error === "object" &&
+                error !== null &&
+                "message" in error &&
+                typeof error.message === "string"
+              ) {
+                errorMessage = error.message;
+              }
+            }
+          } catch {
+            // 非 JSON 响应没有结构化错误信息，继续使用状态码提示。
+          }
+
+          throw new Error(errorMessage || `Download failed: ${res.status}`);
         }
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
@@ -531,8 +551,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
-      } catch {
-        toast.error(t("fileTree.downloadFailed"));
+      } catch (error) {
+        toast.error(error instanceof Error && error.message ? error.message : t("fileTree.downloadFailed"));
       }
     },
     [envId, t],
