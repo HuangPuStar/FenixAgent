@@ -596,6 +596,7 @@ function SidebarSessionList({
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled
                             className="h-6 w-6 p-0 text-text-muted hover:text-brand"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -612,6 +613,7 @@ function SidebarSessionList({
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled
                             className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
                             onClick={(e) => {
                               e.stopPropagation();
