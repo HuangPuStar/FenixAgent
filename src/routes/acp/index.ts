@@ -8,6 +8,7 @@ import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentRepo } from "../../repositories";
 import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
+import { formatFileWsCloseLog } from "../../transport/file-ws-close-log";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import { createDeterministicRcsSessionId, lifecycle } from "../../transport/relay/yjs-frontend";
 import type { WsConnection } from "../../transport/ws-types";
@@ -156,10 +157,11 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
       }
     },
-    close(ws, _code, _reason) {
+    close(ws, code, reason) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__fileWsId as string | undefined;
       if (wsId) {
+        log(formatFileWsCloseLog(wsId, code, reason));
         handleFileWsClose(adaptWs(ws), wsId);
       }
     },

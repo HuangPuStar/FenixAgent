@@ -124,7 +124,12 @@ import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
 });
 startAcpIdleMonitor();
 
-const app = new Elysia()
+const app = new Elysia({
+  websocket: {
+    // file-ws 当前以单条 Base64 JSON 消息传输文件，单位由环境变量配置。
+    maxPayloadLength: config.wsMaxPayloadMb * 1024 * 1024,
+  },
+})
   .use(corsPlugin)
   .use(createExternalOpenApiPlugin(config.version))
   .use(createWebOpenApiPlugin(config.version))

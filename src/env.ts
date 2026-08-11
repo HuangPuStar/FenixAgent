@@ -27,6 +27,7 @@ const envSchema = z.object({
   RCS_HEARTBEAT_INTERVAL: z.coerce.number().int().positive().default(20),
   RCS_WS_IDLE_TIMEOUT: z.coerce.number().int().positive().default(255),
   RCS_WS_KEEPALIVE_INTERVAL: z.coerce.number().int().positive().default(20),
+  RCS_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(128),
   RCS_DISCONNECT_TIMEOUT: z.coerce.number().int().positive().default(120),
   RCS_ACP_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
   RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
