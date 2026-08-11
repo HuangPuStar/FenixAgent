@@ -23,6 +23,7 @@ describe("system admin password file config", () => {
       RCS_HEARTBEAT_INTERVAL: 20,
       RCS_WS_IDLE_TIMEOUT: 255,
       RCS_WS_KEEPALIVE_INTERVAL: 20,
+      RCS_WS_MAX_PAYLOAD_MB: 128,
       RCS_DISCONNECT_TIMEOUT: 120,
       RAGFLOW_API_URL: "http://localhost:9380",
       RAGFLOW_API_KEY: "",

@@ -17,6 +17,8 @@ function buildConfig(env: Env) {
      *  wsKeepaliveInterval * 3 so that application-level keepalive detects dead
      *  connections before Bun closes them. Default 255s (Bun's built-in default). */
     wsIdleTimeout: env.RCS_WS_IDLE_TIMEOUT,
+    /** 单条 WebSocket 消息最大大小（MB），由 Bun 配置入口转换为字节。 */
+    wsMaxPayloadMb: env.RCS_WS_MAX_PAYLOAD_MB,
     /** Server→client keep_alive data-frame interval (seconds). Keeps reverse
      *  proxies from closing idle connections. Default 20s. */
     wsKeepaliveInterval: env.RCS_WS_KEEPALIVE_INTERVAL,
