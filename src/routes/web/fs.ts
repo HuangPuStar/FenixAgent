@@ -45,6 +45,7 @@ import {
   readFileContent,
   renamePath,
   resolveWorkspacePath,
+  shouldHidePath,
   writeFileContent,
 } from "../../services/workspace-fs";
 
@@ -94,7 +95,20 @@ app.get(
     if (machineId) {
       try {
         const { paths, mtimes, errors } = await remoteTree(machineId, params.id);
-        return { success: true, data: { paths, mtimes, errors } };
+        const visiblePaths = paths.filter((path) => !shouldHidePath(path));
+        const visibleMtimes: Record<string, number> = {};
+        for (const [path, mtime] of Object.entries(mtimes ?? {})) {
+          if (!shouldHidePath(path)) visibleMtimes[path] = mtime;
+        }
+        const visibleErrors = errors?.filter(({ path }) => !shouldHidePath(path));
+        return {
+          success: true,
+          data: {
+            paths: visiblePaths,
+            mtimes: visibleMtimes,
+            errors: visibleErrors?.length ? visibleErrors : undefined,
+          },
+        };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote tree operation failed";
         return error(503, { error: { type: "remote_error", message } });
@@ -137,7 +151,10 @@ app.get(
     if (machineId) {
       try {
         const entries = await remoteListDir(machineId, envId, queryPath);
-        return { success: true, data: { entries } };
+        return {
+          success: true,
+          data: { entries: entries.filter((entry) => !shouldHidePath(join(queryPath, entry.name))) },
+        };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Remote file operation failed";
         return error(503, { error: { type: "remote_error", message } });

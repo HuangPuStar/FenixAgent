@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listDirectory, listPathsRecursive, mkdirp, renamePath, shouldHideEntry } from "../services/workspace-fs";
+import {
+  listDirectory,
+  listPathsRecursive,
+  mkdirp,
+  renamePath,
+  shouldHideEntry,
+  shouldHidePath,
+} from "../services/workspace-fs";
 
 describe("workspace-fs tree utilities", () => {
   let baseDir: string;
@@ -90,6 +97,9 @@ describe("workspace-fs blacklist filtering", () => {
     expect(shouldHideEntry("any-path/.vscode", ".vscode")).toBe(true);
     expect(shouldHideEntry("any-path/coverage", "coverage")).toBe(true);
     expect(shouldHideEntry("any-path/.opencode", ".opencode")).toBe(true);
+    expect(shouldHideEntry("any-path/.claude", ".claude")).toBe(true);
+    expect(shouldHideEntry("any-path/.peri", ".peri")).toBe(true);
+    expect(shouldHideEntry("any-path/CLAUDE.md", "CLAUDE.md")).toBe(true);
   });
 
   // shouldHideEntry 对非黑名单名称返回 false
@@ -99,6 +109,14 @@ describe("workspace-fs blacklist filtering", () => {
     expect(shouldHideEntry("any-path/user", "user")).toBe(false);
     expect(shouldHideEntry("any-path/public", "public")).toBe(false);
     expect(shouldHideEntry("any-path/package.json", "package.json")).toBe(false);
+  });
+
+  // shouldHidePath 对黑名单目录下的子路径也返回 true，避免远程树过滤漏掉子文件
+  test("shouldHidePath returns true for descendants of hidden directories", () => {
+    expect(shouldHidePath(".claude/skills/example/SKILL.md")).toBe(true);
+    expect(shouldHidePath("src/.peri/settings.json")).toBe(true);
+    expect(shouldHidePath("docs/CLAUDE.md")).toBe(true);
+    expect(shouldHidePath("src/index.ts")).toBe(false);
   });
 
   let blacklistDir: string;
