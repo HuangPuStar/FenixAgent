@@ -72,6 +72,13 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   };
 }
 
+/**
+ * 额外传递原始文件名，兼容 Bun multipart 解析器丢失 0 字节文件名的情况。
+ */
+function appendUploadFileNames(formData: FormData, files: File[]): void {
+  formData.append("fileNames", JSON.stringify(files.map((file) => file.name)));
+}
+
 /** 工具栏按钮：点击后压制 tooltip，鼠标真正离开再重新进入后才恢复 */
 function ToolbarTip({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -227,6 +234,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         for (const file of files) {
           formData.append("files", file);
         }
+        appendUploadFileNames(formData, files);
 
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -402,6 +410,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       runUpload(formData, selectedDir);
     },
     [envId, runUpload, selectedDir, t],
@@ -451,6 +460,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       runUpload(formData, selectedDir);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
@@ -493,6 +503,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       formData.append("relativePaths", JSON.stringify(relativePaths));
       runUpload(formData, selectedDir);
       if (folderInputRef.current) folderInputRef.current.value = "";

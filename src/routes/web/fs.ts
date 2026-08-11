@@ -328,6 +328,18 @@ app.post(
       }
     }
 
+    // Bun 解析 0 字节 multipart 文件时可能丢失 File.name，使用前端传入的文件名兜底。
+    const rawNames = formData.get("fileNames");
+    let fileNames: string[] = [];
+    if (rawNames && typeof rawNames === "string") {
+      try {
+        const parsed = JSON.parse(rawNames);
+        fileNames = Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === "string") : [];
+      } catch {
+        fileNames = [];
+      }
+    }
+
     // 远程环境
     const machineId = await getRemoteMachineId(envId);
     if (machineId) {
@@ -336,10 +348,13 @@ app.post(
           files.map(async (file, i) => {
             const buffer = Buffer.from(await file.arrayBuffer());
             if (buffer.length > 100 * 1024 * 1024) throw new Error(`File ${file.name} exceeds 100MB limit`);
+            const fileName = file.name || fileNames[i] || relativePaths[i]?.split("/").pop() || "";
+            const relativePath = relativePaths[i] || fileNames[i] || fileName;
+            if (!fileName || !relativePath) throw new Error("Uploaded file name is missing");
             return {
-              name: file.name,
+              name: fileName,
               content: buffer.toString("base64"),
-              relativePath: relativePaths[i] || file.name,
+              relativePath,
             };
           }),
         );
@@ -367,14 +382,18 @@ app.post(
       }
 
       // 如果有对应的相对路径，保留目录结构；否则直接用文件名
-      const relPath = relativePaths[i] || file.name;
+      const fileName = file.name || fileNames[i] || relativePaths[i]?.split("/").pop() || "";
+      const relPath = relativePaths[i] || fileNames[i] || fileName;
+      if (!fileName || !relPath) {
+        return error(400, { error: { type: "validation_error", message: "Uploaded file name is missing" } });
+      }
       const destPath = join(resolved, relPath);
       const destDir = dirname(destPath);
       await mkdir(destDir, { recursive: true });
       await writeFileAsync(destPath, buffer);
 
       uploaded.push({
-        name: file.name,
+        name: fileName,
         path: rawDirPath ? `${rawDirPath}/${relPath}` : relPath,
         size: buffer.length,
       });
