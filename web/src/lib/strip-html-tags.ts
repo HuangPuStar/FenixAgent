@@ -10,6 +10,8 @@
  * - 成对的 `<system-reminder>` 块整体删除，包括块内内容：块内是系统上下文
  *   提示而非标题内容，删除后不残留（如 `<system-reminder>提示</system-reminder>`
  *   → 空）。若未来出现其他同性质的上下文标签块，在此追加即可。
+ * - 截断的 `<system-reminder>` 块从开标签开始删除到字符串结尾，避免标题截断在
+ *   系统上下文内部时残留 `Current permission mode: ...` 等内容。
  * - 其余标签（含孤立标签、带属性的标签）只剔除标签本身，保留标签间文本
  *   （如 `<p class="x"> 修复登录 </p>` → `修复登录`）。
  * - 仅识别形如 `<tag>` / `<tag attr=...>` / `</tag>` 的标签形态，避免误伤
@@ -24,8 +26,23 @@ export function stripHtmlTags(title: string | null | undefined): string {
     title
       // 成对 system-reminder 块（含内容）整体删除
       .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
+      // 截断的 system-reminder 块没有闭标签时，后续内容同样属于系统上下文
+      .replace(/<system-reminder>[\s\S]*$/gi, "")
       // 剔除其余 HTML 标签（含孤立标签），保留标签间文本
       .replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*[^>]*>/g, "")
       .trim()
   );
+}
+
+/**
+ * 移除用户消息中仅供 Agent 使用的 system-reminder 上下文。
+ *
+ * system-reminder 可能在消息持久化前被截断，因此除了完整块，还要丢弃从
+ * 未闭合开标签开始直到字符串结尾的内容，避免展示权限模式等内部信息。
+ */
+export function stripSystemReminderContent(text: string): string {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
+    .replace(/<system-reminder>[\s\S]*$/gi, "")
+    .trimEnd();
 }

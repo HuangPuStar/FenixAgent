@@ -3,6 +3,7 @@ import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useStat
 import { useTranslation } from "react-i18next";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
+import { stripSystemReminderContent } from "../../src/lib/strip-html-tags";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
@@ -25,6 +26,7 @@ interface UserBubbleProps {
 
 export function UserBubble({ entry }: UserBubbleProps) {
   const { t } = useTranslation("components");
+  const visibleContent = stripSystemReminderContent(entry.content ?? "");
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -51,7 +53,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
           </div>
         )}
         {/* 文本内容 — 品牌色淡底 + 折叠 */}
-        {entry.content && (
+        {visibleContent && (
           <div className="relative bg-user-bubble border border-user-bubble-border rounded-2xl overflow-hidden message-bubble-enter">
             <div
               ref={contentRef}
@@ -61,7 +63,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
               )}
               style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
             >
-              {entry.content}
+              {visibleContent}
             </div>
             {/* 折叠渐变遮罩 + 展开按钮 */}
             {!expanded && overflowing && (

@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { stripHtmlTags } from "../lib/strip-html-tags";
+import { stripHtmlTags, stripSystemReminderContent } from "../lib/strip-html-tags";
 
 describe("stripHtmlTags", () => {
   // 剔除成对的 <system-reminder> 块（含块内内容），这是标题最常见的污染源
   test("removes paired system-reminder block including inner content", () => {
     expect(stripHtmlTags("<system-reminder>使用工具前先确认</system-reminder>")).toBe("");
+  });
+
+  // 标题被截断在 system-reminder 块内部时，后续残片也属于系统上下文，不能继续展示。
+  test("removes truncated system-reminder content through the end", () => {
+    expect(stripHtmlTags("修复登录 <system-reminder>\nCurrent permission mode: Byp")).toBe("修复登录");
   });
 
   // 标题为正常文本拼接 system-reminder 块时，保留正常文本
@@ -48,5 +53,23 @@ describe("stripHtmlTags", () => {
   // 普通文本原样保留（含比较符号，不误伤 "a < b" 这类内容）
   test("keeps plain text with comparison operators untouched", () => {
     expect(stripHtmlTags("1 < 2 的含义")).toBe("1 < 2 的含义");
+  });
+});
+
+describe("stripSystemReminderContent", () => {
+  // 用户消息末尾的完整 system-reminder 块不应展示给用户。
+  test("移除用户消息中的完整 system-reminder 块", () => {
+    expect(
+      stripSystemReminderContent(
+        "帮我修复这个问题\n<system-reminder>Current permission mode: Bypass</system-reminder>",
+      ),
+    ).toBe("帮我修复这个问题");
+  });
+
+  // 用户消息被截断在 system-reminder 内部时，截断后的残片也不应展示。
+  test("移除截断的 system-reminder 及其后续内容", () => {
+    expect(stripSystemReminderContent("帮我修复这个问题\n<system-reminder>\nCurrent permission mode: Byp")).toBe(
+      "帮我修复这个问题",
+    );
   });
 });
