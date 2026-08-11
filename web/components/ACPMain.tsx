@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { AgentSessionInfo, AvailableCommand, ContentBlock, SessionMode } from "../src/acp/types";
+import { stripHtmlTags } from "../src/lib/strip-html-tags";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -589,7 +590,8 @@ interface SessionTitleButtonProps {
  */
 function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonProps) {
   const { t } = useTranslation("components");
-  const displayTitle = session.title?.trim() ? session.title : t("acpMain.newSession");
+  // 标题清洗：剔除混入的 HTML 标签（如 <system-reminder>），清洗后为空则回退到"新会话"占位
+  const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
 
   return (
     <Tooltip>
