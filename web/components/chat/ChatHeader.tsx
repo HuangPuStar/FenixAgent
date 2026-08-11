@@ -361,6 +361,7 @@ export function ChatHeader({
                             }}
                             aria-label={t("acpMain.rename")}
                             title={t("acpMain.rename")}
+                            disabled
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
@@ -373,6 +374,7 @@ export function ChatHeader({
                             }}
                             aria-label={t("acpMain.delete")}
                             title={t("acpMain.delete")}
+                            disabled
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
