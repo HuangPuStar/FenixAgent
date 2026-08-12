@@ -1,19 +1,15 @@
 # ── 启动说明 ──────────────────────────────────────────────────────────────
-# 必须先启动主编排（docker-compose.yml），fenix-ver-net 网络必须存在
 # 启动命令：
 #   docker compose -f docker/prod/docker-compose.ragflow.yml --env-file docker/prod/.env.ragflow up -d
 
 networks:
-    fenix-ver-net:
-        external: true
+  ragflow-net:
+    driver: bridge
 
 services:
   ragflow:
-    image: infiniflow/ragflow:v0.25.6
-    container_name: ragflow-prod
+    image: infiniflow/ragflow:v0.26.0
     restart: unless-stopped
-    cpus: 1.5
-    mem_limit: 4.5g
     command:
       - --enable-adminserver
     ports:
@@ -33,18 +29,18 @@ services:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_USER: root
-      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD}
+      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
       MYSQL_DBNAME: rag_flow
       MYSQL_MAX_PACKET: 1073741824
 
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD}
+      REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}
 
       MINIO_HOST: minio
       MINIO_PORT: 9000
-      MINIO_USER: ${RAGFLOW_MINIO_USER}
-      MINIO_PASSWORD: ${RAGFLOW_MINIO_PASSWORD}
+      MINIO_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
+      MINIO_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
 
       INFINITY_HOST: infinity
       INFINITY_THRIFT_PORT: 23817
@@ -64,8 +60,8 @@ services:
       EMBEDDING_BATCH_SIZE: 16
       DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
     volumes:
-      - ragflow_logs:/ragflow/logs
-      - ragflow_data:/ragflow/data
+      - ./ragflow_logs:/ragflow/logs
+      - ./ragflow_data:/ragflow/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -76,16 +72,13 @@ services:
       infinity:
         condition: service_healthy
     networks:
-      - fenix-ver-net
+      - ragflow-net
 
   mysql:
     image: mysql:8.0.39
-    container_name: ragflow-prod-mysql
     restart: unless-stopped
-    cpus: 1
-    mem_limit: 1.5g
     environment:
-      MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
       MYSQL_DATABASE: rag_flow
     command:
       - --max_connections=1000
@@ -97,25 +90,22 @@ services:
     expose:
       - "3306"
     volumes:
-      - ragflow_mysql_data:/var/lib/mysql
+      - ./ragflow_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${RAGFLOW_MYSQL_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}"]
       interval: 10s
       timeout: 10s
       retries: 120
     networks:
-      - fenix-ver-net
+      - ragflow-net
 
   redis:
     image: valkey/valkey:8
-    container_name: ragflow-prod-redis
     restart: unless-stopped
-    cpus: 0.5
-    mem_limit: 512m
     command:
       - redis-server
       - --requirepass
-      - ${RAGFLOW_REDIS_PASSWORD}
+      - ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}
       - --maxmemory
       - 256mb
       - --maxmemory-policy
@@ -123,52 +113,46 @@ services:
     expose:
       - "6379"
     volumes:
-      - ragflow_redis_data:/data
+      - ./ragflow_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${RAGFLOW_REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}", "ping"]
       interval: 10s
       timeout: 10s
       retries: 120
     networks:
-      - fenix-ver-net
+      - ragflow-net
 
   minio:
     image: pgsty/minio:RELEASE.2026-03-25T00-00-00Z
-    container_name: ragflow-prod-minio
     restart: unless-stopped
-    cpus: 0.5
-    mem_limit: 512m
     command: ["server", "--console-address", ":9001", "/data"]
     environment:
-      MINIO_ROOT_USER: ${RAGFLOW_MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${RAGFLOW_MINIO_PASSWORD}
+      MINIO_ROOT_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
+      MINIO_ROOT_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
     expose:
       - "9000"
       - "9001"
     volumes:
-      - ragflow_minio_data:/data
+      - ./ragflow_minio_data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 10s
       retries: 120
     networks:
-      - fenix-ver-net
+      - ragflow-net
 
   infinity:
     image: infiniflow/infinity:v0.7.0
-    container_name: ragflow-prod-infinity
     restart: unless-stopped
-    cpus: 1.5
-    mem_limit: 3g
     command: ["-f", "/infinity_conf.toml"]
     expose:
       - "23817"
       - "23820"
       - "5432"
     volumes:
-      - ragflow_infinity_data:/var/infinity
-      - ../ragflow/infinity_conf.toml:/infinity_conf.toml:ro
+      - ./ragflow_infinity_data:/var/infinity
+      - ./infinity_conf.toml:/infinity_conf.toml:ro
     ulimits:
       nofile:
         soft: 500000
@@ -179,14 +163,6 @@ services:
       timeout: 10s
       retries: 120
     networks:
-      - fenix-ver-net
-
-volumes:
-  ragflow_logs:
-  ragflow_data:
-  ragflow_mysql_data:
-  ragflow_redis_data:
-  ragflow_minio_data:
-  ragflow_infinity_data:
+      - ragflow-net
 
 
