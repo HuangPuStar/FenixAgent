@@ -67,6 +67,22 @@ check (
 
 只有 `resource_id + version` 是通用版本身份。具体资源自己声明作用域、业务字段、审计字段、子表、索引和外键。版本包不建立通用内容表。
 
+### 2.1 落地清单
+
+当前全部需要版本化的资源及作用域：
+
+| 资源 | scope | 聚合子表 / 关联 | 内容对象 |
+|------|-------|-----------------|----------|
+| AgentConfig | `organization_id` | RuntimeConfig、ExpertConfigBinding、ConnectorBinding | 无（纯 PG） |
+| ExpertConfig | `organization_id` | Skill / McpServer / Model 版本化关联 | 无（纯 PG） |
+| Skill | `organization_id` | 无 | S3 zip 对象（`objectKey` 随版本行复制，见 §9） |
+| McpServer | `organization_id` | 无 | 无（纯 PG） |
+| Model | `organization_id` | 无 | 无（纯 PG） |
+| Provider | `organization_id` | 无 | 无（纯 PG） |
+| ConnectorDefinition | `organization_id` | 无 | 无（纯 PG） |
+
+RuntimeConfig 与两类 Binding 是 AgentConfig 的版本化聚合子表，不拥有独立版本链（见 [Agent Config](./04-agent-config.md) 与 [RuntimeConfig](./05-runtime-config.md)）；ExpertConfig 之下的资源边界见 [配置资源系统](./06-config.md)。
+
 `lock_key` 是调用方为一次锁定操作生成的 UUID，只用于网络重试幂等，不参与版本身份或资源引用：
 
 - MAX 行的 `lock_key` 必须为空；
@@ -75,7 +91,7 @@ check (
 - key 的唯一范围是具体作用域和 `resource_id`，不同资源可以复用同一个 UUID；
 - 锁定命令只有“复制当前 MAX 聚合”一种语义，因此不额外保存请求摘要。
 
-### 2.1 审计字段
+### 2.2 审计字段
 
 MAX 可以更新：
 
@@ -234,7 +250,13 @@ lockVersion(resourceId, lockKey)
 
 编辑 MAX 时受控更新 MAX 子表；锁定时只复制当前资源的 MAX 子表。锁定版本的主行、子表和关联提交后均不可修改或补写。
 
-只有真正无固定结构的业务字段才使用 JSONB。外部文件资源的存储、复制和生命周期由该资源单独设计，不进入通用版本包。
+只有真正无固定结构的业务字段才使用 JSONB。外部内容对象的存储、复制和生命周期由该资源单独设计，不进入通用版本包，但其引用指针（如 Skill 的 `objectKey`）是普通业务字段，遵循以下版本语义：
+
+- 编辑 MAX 时内容变化生成新对象，`objectKey` / `contentSha256` / `contentSize` 随 MAX 行更新，旧对象进入可回收集合；
+- 锁定时 `objectKey` 随版本行原样复制，锁定版本指向的对象**永不回收**；
+- 对象回收的存活集 = 该资源全部版本行（MAX + 锁定版本）引用指针的并集。
+
+Skill 的 S3 对象结构、写入编排与回收细则见 [Skill 存储迁移 S3 设计](../design/2026-08-13-skill-s3-storage-design.md)。
 
 ## 10. 不可变性与删除
 

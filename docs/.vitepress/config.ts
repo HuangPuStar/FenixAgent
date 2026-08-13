@@ -102,6 +102,7 @@ export default defineConfig({
           text: "Agent 系统",
           items: [
             { text: "Agent Config", link: "/arch/04-agent-config" },
+            { text: "RuntimeConfig", link: "/arch/05-runtime-config" },
             { text: "AgentController", link: "/arch/20-orchestration-management" },
             { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },
             { text: "文件系统", link: "/arch/12-files" },
@@ -109,13 +110,7 @@ export default defineConfig({
         },
         {
           text: "配置系统",
-          items: [
-            { text: "概览", link: "/arch/06-config" },
-            { text: "模型配置", link: "/arch/06-config-provider" },
-            { text: "Skills 配置", link: "/arch/06-config-skills" },
-            { text: "MCP 配置", link: "/arch/06-config-mcp" },
-            { text: "记忆配置", link: "/arch/06-config-hindsight" },
-          ],
+          items: [{ text: "配置资源系统", link: "/arch/06-config" }],
         },
         {
           text: "通用基础设施",

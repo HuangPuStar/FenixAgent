@@ -127,7 +127,7 @@ Agent 执行期间的权限分两个阶段：**配置期**的权限规则（Agen
 
 ### 4.1 权限规则配置（现状：预留）
 
-权限动作枚举已定义：`PermissionAction = "ask" | "allow" | "deny"`（`src/services/config/types.ts`，开关型工具只支持三态字符串；规则型工具支持全局三态或 glob pattern 映射）。但 AgentConfig 的 `permission` 字段在 schema 中仍为 `z.unknown().nullable()`（"ask/allow/deny 规则（预留）"），规则模型尚未实现。目标设计（`RuntimeConfig.Permission` 新模型）见 [Agent 资源系统重设计](../design/2026-08-11-agent-resource-system-redesign.md)「暂不设计」清单。
+权限动作枚举已定义：`PermissionAction = "ask" | "allow" | "deny"`（`src/services/config/types.ts`，开关型工具只支持三态字符串；规则型工具支持全局三态或 glob pattern 映射）。但 AgentConfig 的 `permission` 字段在 schema 中仍为 `z.unknown().nullable()`（"ask/allow/deny 规则（预留）"），规则模型尚未实现。Permission 作为 RuntimeConfig 组成部分的边界见 [RuntimeConfig](./05-runtime-config.md)；目标设计（`RuntimeConfig.Permission` 新模型）见 [Agent 资源系统重设计](../design/2026-08-11-agent-resource-system-redesign.md)「暂不设计」清单。
 
 ### 4.2 运行时权限请求与响应（已实现）
 
