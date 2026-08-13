@@ -470,3 +470,22 @@ IMChannel 包含：
 5. **交叉引用修正**：`tech-stack-overview.md`、`tech-stack-backend.md` 的实时通信引用从 05 改为 19 号文档；`.vitepress/config.ts` 导航移除 08、05 改名为 "Chat 前端界面"。
 
 **影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。
+
+---
+
+## 改动 19：权限与资源权威文档整合——03/14 合并，05 废弃，09 二次重写
+
+**状态**：✅ 已实施（2026-08-12）
+
+**现状（修订前）**：`03-auth.md`（认证）与 `14-user-org.md`（用户与组织）各自过简且割裂，认证上下文、资源归属与权限模型分散两处；`05-chat.md` 收敛后仅剩前端 UI 组件地图（3.5KB），与 19 号文档重复且信息量不足；`09-scheduler.md` 重写后仍偏简略，agent 执行器复用 Agent 通信线路的语义未展开。
+
+**目标**：认证、组织与资源权限收敛为单一权威文档；重复且无独立价值的 UI 组件地图移除；09 号按权威文档标准重写并明确 Agent 执行线路复用关系。
+
+**实施内容**：
+
+1. **`03-auth.md` + `14-user-org.md` → `03-permission-resource.md`（权限与资源）**：合并认证（Session / Environment Secret / API Key / 机器注册、认证调度器、组织上下文、服务端内部凭证）与组织模型（角色、三层隔离、跨组织分享）；新增 Agent 运行时权限章节（§4：`ask/allow/deny` 规则配置现状为预留，`pendingPermissions` CAS 已实现，见 19 号 §5.3/§8.1）；目标设计（资源系统重设计、Team 取代 User、Permission 新模型）集中到 §5 并标注未实现；`src/plugins/auth.ts` 中 Environment Secret 认证路径为原 03 号缺失内容，本次补入。
+2. **`05-chat.md` 删除**：UI 组件细节归前端实现，不再维护组件清单；导航与交叉引用同步移除。
+3. **`09-scheduler.md` 二次重写**：补充架构图、防重入（`runningTasks` → skipped）与超时/失败路径、任务变更的调度同步、权威边界表；agentExecutor 章节明确**复用 `openAgentSession`（`agent-chat-service.ts`）程序化单轮调用线路**——与交互式 Chat（19 号）共享实例/relay 基础设施但实例策略独立（每次独立实例、dispose 销毁，不走 `ensureRunning` 复用），不创建独立 JSON-RPC 协议栈。
+4. **导航更新**：`.vitepress/config.ts` 侧边栏 "权限与认证" 组改为 "权限与资源"（单条目 03-permission-resource），Agent 系统组移除 "Chat 前端界面"。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。历史改动记录（含本文件）保留旧文件名引用属历史事实，不再回改。

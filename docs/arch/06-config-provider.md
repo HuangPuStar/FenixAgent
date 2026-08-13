@@ -1,40 +1,52 @@
 # Provider & Model
 
-> 涉及模块：Provider 配置服务、Model 配置服务、LaunchSpecBuilder
+> 涉及模块：Provider 配置服务、Model 配置服务、ExpertConfig、LaunchSpecBuilder
+>
+> **状态：目标架构（未实现）**。本文描述 Provider 与 Model 的资源管理；版本能力遵循 [通用资源版本控制](./07-versioning.md)。
 
 ## 概述
 
-Provider 代表一个 AI 服务商（如 OpenAI、Anthropic），Model 是挂在 Provider 下的具体模型（如 gpt-4o、claude-sonnet-4）。AgentConfig 只需引用 Model，运行时系统自动通过 Model → Provider 逐级解析出完整的连接配置。
+Provider 表示一个 AI 服务商连接，Model 表示该服务商提供的具体模型。二者分离后，多个 Model 可以复用同一套协议、地址和密钥配置。
 
 ```mermaid
 flowchart LR
-    AC[Agent Config] -->|modelId| M[Model]
-    M -->|providerId| P[Provider]
-    P -->|"apiKey (占位符解析)"| S["{env:RCS_SECRET_xxx}"]
-    P -->|protocol + baseUrl| L[LaunchSpec]
+    EC[ExpertConfig] -->|选择模型| M[Model]
+    M -->|所属服务商| P[Provider]
+    P -->|解析 SecretRef| S[Secret]
+    M -->|模型能力| L[ModelConfig]
+    P -->|protocol + baseUrl| L
 ```
 
-## Provider
+## Provider 管理
 
-每个 Provider 代表一个 AI 服务商，组织内唯一标识。
+Provider 管理以下业务信息：
 
-**设计决策**：
+- 服务商名称和组织内唯一标识；
+- `openai`、`anthropic` 等受支持协议；
+- `baseUrl` 及协议所需的连接参数；
+- API Key 的 SecretRef，不保存明文；
+- 是否允许跨组织公开读取。
 
-- **API Key 掩码**：响应中不返回完整密钥，仅返回尾部 4 位掩码。短于 4 位统一返回全星号。这是防止密钥泄露的安全措施
-- **占位符解析**：apiKey 字段支持 `{env:RCS_SECRET_<name>}` 占位符，spawn 时由 `resolveApiKey()` 从环境变量读取实际值
-- **协议白名单**：运行时只支持 `openai` 和 `anthropic` 协议，未知协议拒绝启动
-- **跨组织共享**：`publicReadable` 标记后可被其他组织引用（通过复合标识 `来源组织ID/资源UUID`）
+接口响应不得返回完整密钥。密钥展示只提供安全掩码，短于四位的值全部显示为星号。未知协议、非法 URL 或无法解析的 SecretRef 在运行时拒绝使用。
 
-## Model
+## Model 管理
 
-挂在 Provider 下，记录模型的元信息（context limit、cost、modalities 等）。`modelId` 字段即模型的实际标识（如 `deepseek-v4-flash`），spawn 时直接透传给 engine。
+Model 属于一个 Provider，记录服务商模型标识 `modelId` 以及 context limit、cost、modalities 等能力元数据。`modelId` 是透传给 engine 的外部模型名称，不是平台资源 ID。
 
-**可用性缓存**：按组织隔离的 5 分钟 TTL 内存缓存。Provider 变更时强制刷新，保证一致性。
+Model 的能力字段用于模型选择、参数校验和运行时限制。删除或停用 Provider 前必须检查其 Model；删除或停用 Model 前必须检查引用它的 ExpertConfig。
 
-## 与 AgentConfig 的关系
+## 可用性状态
 
-AgentConfig 通过 `modelId` 引用一个 Model。spawn 时 LaunchSpecBuilder 沿着 Model → Provider 链路解析出 `ModelConfig`（含 apiKey、baseUrl、protocol、model），注入到 `AgentLaunchSpec`。详见 [Agent Config 资源引用](./04-agent-config.md)。
+Provider 可用性是对外部服务的运行时观测，不属于 Provider 或 Model 的资源定义。可用性结果按组织和 Provider 引用隔离，并使用短 TTL 缓存；配置变化或显式刷新时使对应缓存失效。
+
+探测失败不改写资源，仅更新观测状态。启动时仍应根据安全策略决定重新校验或直接拒绝。
+
+## 与 ExpertConfig 的关系
+
+ExpertConfig 选择一个 Model。LaunchSpecBuilder 沿 `ExpertConfig → Model → Provider` 解析模型能力、协议、地址和 SecretRef，生成运行时 `ModelConfig`。AgentConfig 不直接选择 Provider 或 Model。
+
+Provider、Model 以及二者之间的引用采用通用版本能力，具体规则不在本领域重复定义。
 
 ## 跨组织共享
 
-Provider 和 Model 支持 `publicReadable` 公开可读。跨组织引用时通过 resourceKey（`来源组织ID/资源UUID`）标识，路由层自动解析。
+Provider 和 Model 可以分别配置公开读取。公开 Model 所引用的 Provider 也必须对使用方可读，否则该 Model 不能被成功解析。保存引用和运行时装配时都必须校验完整链路的可见性。

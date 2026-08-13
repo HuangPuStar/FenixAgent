@@ -95,18 +95,14 @@ export default defineConfig({
           ],
         },
         {
-          text: "权限与认证",
-          items: [
-            { text: "认证系统", link: "/arch/03-auth" },
-            { text: "用户与组织", link: "/arch/14-user-org" },
-          ],
+          text: "权限与资源",
+          items: [{ text: "权限与资源", link: "/arch/03-permission-resource" }],
         },
         {
           text: "Agent 系统",
           items: [
             { text: "Agent Config", link: "/arch/04-agent-config" },
             { text: "AgentController", link: "/arch/20-orchestration-management" },
-            { text: "Chat 前端界面", link: "/arch/05-chat" },
             { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },
             { text: "文件系统", link: "/arch/12-files" },
           ],
@@ -120,6 +116,10 @@ export default defineConfig({
             { text: "MCP 配置", link: "/arch/06-config-mcp" },
             { text: "记忆配置", link: "/arch/06-config-hindsight" },
           ],
+        },
+        {
+          text: "通用基础设施",
+          items: [{ text: "版本化数据管理", link: "/arch/07-versioning" }],
         },
         {
           text: "业务模块",
