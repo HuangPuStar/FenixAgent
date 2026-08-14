@@ -229,7 +229,19 @@ export class Gateway {
       // 启动 session/list 定时轮询，同步 agent 侧 session 变更
       shared.sessionListTimer = setInterval(() => {
         if (shared.destroyed) return;
-        if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) return;
+        if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) {
+          // 门禁卡死可观测性（R3）：status 未就绪时轮询被跳过且不产生异常，
+          // 必须显式计数告警，否则"轮询是否在跑"不可观测。连续 3 次（30s）告警
+          // 一次，之后每 30 次（5min）再报一次防刷屏；成功发送时清零。
+          shared.sessionListSkipCount = (shared.sessionListSkipCount ?? 0) + 1;
+          if (shared.sessionListSkipCount === 3 || shared.sessionListSkipCount % 30 === 0) {
+            this.dependencies.reportLog(
+              `[YJS-FE] session list poll skipped ${shared.sessionListSkipCount} times (agent status not received): rcsSessionId=${shared.rcsSessionId}`,
+            );
+          }
+          return;
+        }
+        shared.sessionListSkipCount = 0;
         try {
           shared.handle.send(
             translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
@@ -411,6 +423,8 @@ export class Gateway {
       clearInterval(shared.sessionListTimer);
       shared.sessionListTimer = undefined;
     }
+    // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
+    shared.pendingSessionSyncIds?.clear();
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
       // session: 监听器由 handleOpen 与 relay-event-handler 按 docName 注册，
@@ -472,6 +486,13 @@ export class Gateway {
       lastClientKeepalive: entry.lastClientKeepalive,
       sendToRelay: (message) => entry.relayHandle.send(message as never),
       getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
+      // 会话同步请求登记到共享 relay：relay-event-handler 的会话同步 result 分支
+      // 按 id 校验响应来源（rename/delete 等响应不得劫持），relay 释放时统一清空
+      registerSessionSyncRpcId: (rpcId) => {
+        if (!shared) return;
+        if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
+        shared.pendingSessionSyncIds.add(rpcId);
+      },
     };
   }
 }

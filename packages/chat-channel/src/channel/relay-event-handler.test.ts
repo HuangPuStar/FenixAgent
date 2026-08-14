@@ -196,10 +196,13 @@ describe("RelayEventHandler", () => {
     });
     registry.addClient("ws-a", createClient({ rcsSessionId: "rcs-a" }));
     registry.addClient("ws-b", createClient({ rcsSessionId: "rcs-b", acpSessionId: "ses-user-b" }));
+    const shared = relayOn("rcs-a");
+    // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
+    shared.pendingSessionSyncIds = new Set([1]);
 
-    await handler.createMessageHandler(relayOn("rcs-a"))({
+    await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
-      method: "session/new",
+      id: 1,
       result: { sessionId: "ses-user-a-new", configOptions: [] },
     } as unknown as RelayMessage);
 
@@ -220,6 +223,8 @@ describe("RelayEventHandler", () => {
       },
     });
     const shared = { ...relayOn("rcs-1"), destroyed: true };
+    // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
+    shared.pendingSessionSyncIds = new Set([1]);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -240,8 +245,11 @@ describe("RelayEventHandler", () => {
     const broadcaster = new YjsBroadcaster(registry);
     const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
     const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+    // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
+    shared.pendingSessionSyncIds = new Set([1]);
 
-    await handler.createMessageHandler(relayOn("rcs-1"))({
+    await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       id: 1,
       result: {
@@ -271,6 +279,66 @@ describe("RelayEventHandler", () => {
     const modeState = session.get("modeState") as Y.Map<unknown>;
     expect(modeState.get("currentModeId")).toBe("code");
     expect((modeState.get("availableModes") as Y.Array<Y.Map<unknown>>).length).toBe(1);
+  });
+
+  // 会话同步分支必须校验在途请求登记（JSON-RPC 响应无 method 字段）：rename 响应
+  // 同样携带 sessionId/title 但未经登记，不得 clobber registry 活跃会话、不得误开
+  // 回放窗口、不得投影 title——否则重命名非当前会话时，活跃会话绑定被改写、
+  // 绑定校验丢弃其全部 session/update 增量（输出流冻结），标题也被错误覆盖（M1）。
+  test("rename result without pending session sync does not hijack the session sync branch", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-current" }));
+    const shared = relayOn("rcs-1");
+
+    // rename 非当前会话 ses-other 的响应：未登记（pendingSessionSyncIds 为空）
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses-other", title: "Renamed" },
+    } as unknown as RelayMessage);
+
+    // 活跃会话绑定不被 clobber、回放窗口不开启、title 不投影
+    expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-current");
+    expect(shared.replayWindowUntil).toBeNull();
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("title")).toBeUndefined();
+  });
+
+  // title 投影语义：空串视为缺省（与 acp-link list 过滤语义一致），不得用空标题
+  // 覆盖已有值；字段缺失时同样保持现有值。防止 agent 返回空标题时侧边栏闪"新会话"。
+  test("session sync result keeps existing title when title is empty or missing", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+
+    // 先以登记过的 id=1 投影 "My Session"
+    shared.pendingSessionSyncIds = new Set([1]);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses-1", title: "My Session" },
+    } as unknown as RelayMessage);
+
+    // title 缺失（id=2）与空串（id=3）都不覆盖现有值
+    shared.pendingSessionSyncIds = new Set([2, 3]);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { sessionId: "ses-1" },
+    } as unknown as RelayMessage);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 3,
+      result: { sessionId: "ses-1", title: "   " },
+    } as unknown as RelayMessage);
+
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("title")).toBe("My Session");
   });
 
   // available_commands_update 通知（agent 启动后下发）经 ACPChannel 翻译为
@@ -346,6 +414,8 @@ describe("RelayEventHandler replay window", () => {
     const { docManager } = await createBoundDocs("rcs-1");
     const handler = createRelayEvents(registry, broadcaster, [], { docManager });
     const shared = relayOn("rcs-1");
+    // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
+    shared.pendingSessionSyncIds = new Set([1]);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",

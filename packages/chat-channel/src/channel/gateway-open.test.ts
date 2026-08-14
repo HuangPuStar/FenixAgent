@@ -502,3 +502,149 @@ describe("Gateway replay window", () => {
     expect(shared?.replayWindowUntil).not.toBeNull();
   });
 });
+
+// 10s session/list 轮询的可观测性：send 失败必须 reportError、destroyed 必须跳过、
+// 门禁未置位的跳过必须计数告警（R3 门禁卡死判定依赖 skip 计数）、relay 释放必须
+// 清除 timer 与在途会话同步登记（防僵尸 timer 与登记残留）。
+describe("Gateway session list polling", () => {
+  // 轮询回调 send 抛错必须经 reportError 暴露（此前静默 catch 会让 sessions map
+  // 长期缺失更新且不可观测），错误消息须带 rcsSessionId 便于定位。
+  test("reports session list poll send failures with the rcs session id", async () => {
+    const now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const reports: Array<[string, unknown]> = [];
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, {
+      reportError: (message, error) => reports.push([message, error]),
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          // 只对 session/list 帧抛错：connect 握手帧（type: "connect"）必须正常发送
+          send(message: Record<string, unknown>) {
+            if (message.method === "session/list") throw new Error("relay handle dead");
+          },
+          close() {},
+        }) as never,
+    });
+    const ws = createWs();
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    // 门禁置位：模拟 agent status 已到达，轮询不再跳过
+    registry.forEachByRcsSession("rcs-1", (entry) => {
+      entry.agentStatusReceived = true;
+    });
+
+    intervals.find((interval) => interval.delay === 10_000)?.callback();
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.[0]).toContain("rcs-1");
+  });
+
+  // relay 已销毁时轮询回调必须跳过发送（closeReleasedRelay 置 destroyed 后，
+  // 即使 timer 因竞态未被清除也不得向已死的 relay 发 RPC）。
+  test("skips the session list poll when the relay is destroyed", async () => {
+    const now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    let sends = 0;
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, {
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          // 只统计 session/list 帧（connect 握手帧 type: "connect" 不计入轮询发送）
+          send(message: Record<string, unknown>) {
+            if (message.method === "session/list") sends += 1;
+          },
+          close() {},
+        }) as never,
+    });
+    const ws = createWs();
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    registry.forEachByRcsSession("rcs-1", (entry) => {
+      entry.agentStatusReceived = true;
+    });
+    const shared = registry.getShared("instance-1", "user-1", "rcs-1");
+    expect(shared).toBeDefined();
+    shared!.destroyed = true;
+
+    intervals.find((interval) => interval.delay === 10_000)?.callback();
+
+    expect(sends).toBe(0);
+  });
+
+  // 门禁未置位时轮询跳过必须可观测（R3：status 未到达导致轮询永久跳过时，
+  // 静默 return 会让"轮询是否在跑"完全不可判定）：连续 3 次（30s）reportLog 一次，
+  // 成功发送后清零重新计数（防刷屏）。
+  test("logs after 3 consecutive skipped polls and resets the counter after a successful send", async () => {
+    const now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const logs: string[] = [];
+    let sends = 0;
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, {
+      reportLog: (message) => logs.push(message),
+      connectAgentRelay: async () =>
+        ({
+          state: "open",
+          // 只统计 session/list 帧（connect 握手帧 type: "connect" 不计入轮询发送）
+          send(message: Record<string, unknown>) {
+            if (message.method === "session/list") sends += 1;
+          },
+          close() {},
+        }) as never,
+    });
+    const ws = createWs();
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const poll = intervals.find((interval) => interval.delay === 10_000);
+
+    // 门禁未置位：前两次跳过不告警，第三次告警，且不发送
+    poll?.callback();
+    poll?.callback();
+    expect(logs).toHaveLength(0);
+    poll?.callback();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("rcs-1");
+    expect(sends).toBe(0);
+
+    // status 到达：恢复发送；随后门禁再失效，计数清零后重新累计到 3 次再次告警
+    registry.forEachByRcsSession("rcs-1", (entry) => {
+      entry.agentStatusReceived = true;
+    });
+    poll?.callback();
+    expect(sends).toBe(1);
+    registry.forEachByRcsSession("rcs-1", (entry) => {
+      entry.agentStatusReceived = false;
+    });
+    poll?.callback();
+    poll?.callback();
+    poll?.callback();
+    expect(logs).toHaveLength(2);
+  });
+
+  // relay 引用计数归零（所有前端连接关闭）时 closeReleasedRelay 必须清除
+  // sessionListTimer 与在途会话同步登记：僵尸 timer 会向已释放的 relay 发 RPC，
+  // 残留登记会让未来的响应校验误判（relay 释放后登记已无消费方）。
+  test("clears the session list timer and pending sync ids when the relay is released", async () => {
+    const now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const lifecycle = createGateway(registry, broadcaster, relayEvents);
+    const ws = createWs();
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const shared = registry.getShared("instance-1", "user-1", "rcs-1");
+    expect(shared).toBeDefined();
+    shared!.pendingSessionSyncIds = new Set([42]);
+
+    await lifecycle.handleClose("ws-1");
+
+    expect(intervals.find((interval) => interval.delay === 10_000)?.cleared).toBe(true);
+    expect(shared!.pendingSessionSyncIds?.size).toBe(0);
+  });
+});

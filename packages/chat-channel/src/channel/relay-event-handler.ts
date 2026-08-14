@@ -284,7 +284,15 @@ export class RelayEventHandler {
       const result = rpc.result as Record<string, unknown> | undefined;
       if (!result || typeof result !== "object") return;
       const newSessionId = result.sessionId;
-      if (typeof newSessionId === "string" && newSessionId.length > 0) {
+      // 会话同步响应身份校验：JSON-RPC 响应帧只有 id 无 method，无法区分响应来源；
+      // 仅放行请求出口登记过的在途 create/load/resume 请求。rename/delete 等其他
+      // 携带 sessionId 的响应未经登记必须拒绝——否则 registry 活跃会话被 clobber、
+      // 绑定校验丢弃当前会话全部增量（重命名非当前会话即冻结当前输出流）、误开
+      // 10s 回放窗口、错误投影 title/status。消费后删除登记，避免 id 空间残留。
+      const rpcId = rpc.id as number | string | null | undefined;
+      const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
+      if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
+      if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
         // load/resume 成功后开启回放窗口：Agent 即将回放历史增量（无持久化快照时
         // 历史恢复的唯一来源），窗口内由 dispatchReplayAware 补全 turn 上下文投影时间线
         shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
@@ -323,10 +331,11 @@ export class RelayEventHandler {
           update: {
             sessionId: newSessionId,
             status: "ready",
-            // title 投影：session/new、load 响应携带 agent 侧标题；缺省时保持
-            // 现有值（清空后为 null，前端兜底显示"新会话"——由后续 session_list
-            // 轮询以权威列表覆盖）
-            ...(typeof result.title === "string" ? { title: result.title } : {}),
+            // title 投影：session/new、load 响应携带 agent 侧标题；空串视为缺省
+            // （与 acp-link list 过滤语义一致），不得用空标题覆盖已有值；缺省时
+            // 保持现有值（清空后为 null，前端兜底显示"新会话"——由后续
+            // session_list 轮询以权威列表覆盖）
+            ...(typeof result.title === "string" && result.title.trim().length > 0 ? { title: result.title } : {}),
             ...(modelState !== undefined ? { modelState } : {}),
             ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
           },
