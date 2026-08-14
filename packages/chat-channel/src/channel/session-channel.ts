@@ -55,6 +55,12 @@ export interface SessionConnection {
    * 等其他携带 sessionId 的响应不得劫持该分支）。可选注入，宿主由 gateway 提供。
    */
   registerSessionSyncRpcId?: (rpcId: number | string) => void;
+  /**
+   * 登记在途 prompt 请求（send_prompt）的 rpcId：Agent 子进程死亡时 acp-link 以
+   * JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛 turn_failed
+   * （防止 loading 永久卡死）。可选注入，宿主由 gateway 提供。
+   */
+  registerPendingPromptId?: (rpcId: number | string) => void;
 }
 
 export interface SessionChannelDependencies {
@@ -219,6 +225,12 @@ export class SessionChannel {
     // 会话增量、误开回放窗口——rename 非当前会话即触发，review M1 加固）。
     if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
       connection.registerSessionSyncRpcId?.(rpc.id as number | string);
+    }
+    // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/
+    // -32603），relay 按 id 匹配登记收敛 turn_failed，否则 turn 永久卡 accepting、
+    // 前端 loading 永不消失（R1：发送后完全无输出、仅刷新恢复）。
+    if (command.type === "send_prompt") {
+      connection.registerPendingPromptId?.(rpc.id as number | string);
     }
     try {
       await connection.sendToRelay(rpc);

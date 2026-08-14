@@ -167,8 +167,35 @@ export class RelayEventHandler {
       this.dispatchReplayAware(shared, normalized);
     }
 
+    // JSON-RPC error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
+    // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
+    // 不关 relay；prompt 请求以 -32000 "No active session" / -32603 "Prompt failed"
+    // 拒绝。静默丢弃会让 turn 永久卡 accepting、前端 loading 永不消失（仅刷新可恢复）。
+    // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛 turn_failed；错误内容
+    // 脱敏，只记录 code，不泄露 acp-link 原始错误。
+    const rpcError = rpcCheck?.error as Record<string, unknown> | undefined;
+    if (rpcError && rpcCheck?.id !== undefined && rpcCheck.id !== null && !rpcCheck.method) {
+      const rpcId = rpcCheck.id as number | string;
+      if (shared.pendingPromptIds?.has(rpcId) === true) {
+        shared.pendingPromptIds?.delete(rpcId);
+        this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
+          instanceId: shared.instanceId,
+          code: rpcError.code,
+        });
+        this.dispatch(shared, { type: "turn_failed", update: { error: "Agent request failed" }, content: null });
+        return;
+      }
+    }
+
     if (msgType === "status") {
       const payload = raw.payload as Record<string, unknown> | undefined;
+      // Agent 断连（acp-link connection.closed → {connected:false}，子进程死亡不
+      // 报错不关 relay）：活动 turn 必须收敛为 interrupted（同 relay_closed 语义），
+      // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
+      // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
+      if (payload?.connected === false) {
+        this.dispatch(shared, { type: "turn_interrupted", update: {}, content: null });
+      }
       // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
       // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
       // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）

@@ -425,6 +425,7 @@ export class Gateway {
     }
     // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
     shared.pendingSessionSyncIds?.clear();
+    shared.pendingPromptIds?.clear();
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
       // session: 监听器由 handleOpen 与 relay-event-handler 按 docName 注册，
@@ -492,6 +493,13 @@ export class Gateway {
         if (!shared) return;
         if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
         shared.pendingSessionSyncIds.add(rpcId);
+      },
+      // prompt 请求登记：relay-event-handler 按 id 匹配 JSON-RPC error 响应收敛
+      // turn_failed（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空
+      registerPendingPromptId: (rpcId) => {
+        if (!shared) return;
+        if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
+        shared.pendingPromptIds.add(rpcId);
       },
     };
   }
