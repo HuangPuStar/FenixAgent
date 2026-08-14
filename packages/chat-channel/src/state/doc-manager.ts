@@ -12,7 +12,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import type * as Y from "yjs";
-import type { NormalizedEvent } from "../schema";
+import { DEFAULT_PERMISSION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
 import { clearChatDocContent, clearSessionDocContent, hasChatDocContent } from "./chat-writer";
@@ -20,9 +20,6 @@ import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./
 
 /** 合并窗口（毫秒）：文本/思考增量可落入同一窗口合并为一个 yjs:update */
 const DEFAULT_BATCH_WINDOW_MS = 16;
-
-/** 权限超时兜底（毫秒）：事件载荷缺失 expiresAt 时与聚合层默认值保持一致 */
-const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
 
 /** 可合并的内容类事件；控制类事件（工具/权限/终态/断链）必须先 flush 再立即写入 */
 const BATCHABLE_EVENT_TYPES = new Set(["message_delta", "reasoning_delta"]);
@@ -171,9 +168,10 @@ export class DocManager {
 
   /**
    * 检查该 rcsSessionId 是否已有时间线内容（重连时判断是否可跳过全量回放）。
-   * 权威依据改为 Chat Doc 的 entryOrder/toolCalls（时间线已迁至 Chat Doc）。
+   * 权威依据是 Chat Doc 的 entryOrder/toolCalls（时间线已迁至 Chat Doc），
+   * 因此方法名反映语义（timeline），不再用可能误导为 Session Doc 的旧名。
    */
-  hasSessionDocContent(rcsSessionId: string): boolean {
+  hasTimelineContent(rcsSessionId: string): boolean {
     const doc = this.chatDocs.get(rcsSessionId);
     if (!doc) return false;
     return hasChatDocContent(doc.ydoc);
@@ -211,13 +209,19 @@ export class DocManager {
     if (!chatDoc || !sessionDoc || batch.events.length === 0) return;
 
     try {
-      for (const event of batch.events) {
-        // 多个事件按顺序投影；单个 yjs:update 的合并由聚合层事务保证
-        const result = applyNormalizedEvent({ chat: chatDoc.ydoc, session: sessionDoc.ydoc }, event);
-        if (!result.applied && result.reason) {
-          this.onLog?.(`[DocManager] event rejected (${event.type}): ${result.reason}`);
-        }
-      }
+      // 窗口内全部事件合并为单个 yjs:update：外层 transact 包裹，聚合层内部的
+      // 嵌套 transact 自动并入同一事务——N 个事件产生 1 次广播而非 N 次。
+      chatDoc.ydoc.transact(() => {
+        sessionDoc.ydoc.transact(() => {
+          for (const event of batch.events) {
+            // 多个事件按顺序投影；幂等性由聚合层各投影的幂等键保证
+            const result = applyNormalizedEvent({ chat: chatDoc.ydoc, session: sessionDoc.ydoc }, event);
+            if (!result.applied && result.reason) {
+              this.onLog?.(`[DocManager] event rejected (${event.type}): ${result.reason}`);
+            }
+          }
+        });
+      });
     } catch (err) {
       this.onError?.(`[DocManager] flushACPBatch failed for ${rcsSessionId}, ${batch.events.length} events lost`, err);
     }

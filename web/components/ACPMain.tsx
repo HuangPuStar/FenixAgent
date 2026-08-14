@@ -276,6 +276,9 @@ export function ACPMain({
   // 当服务端 session_list 响应到达并设置 activeSessionId 后，
   // 需要首次进入该会话，避免前端停留在空状态。
   useEffect(() => {
+    // 连接守卫：断线/重连期间服务端 activeSessionId 可能残留旧值，不得据其进入
+    // 会话（与 bootstrap effect 共享同一守卫，避免两处条件不一致）
+    if (connectionState !== "connected") return;
     const sid = chatState?.activeSessionId;
     if (!sid || sessionEnteredRef.current) return;
     // 确认 sessions 中包含该 activeSessionId 对应的会话
@@ -289,7 +292,7 @@ export function ACPMain({
     } catch (err) {
       console.error("[ACPMain] Delayed session enter failed:", err);
     }
-  }, [chatState?.activeSessionId, sessions, handleSelectSession]);
+  }, [chatState?.activeSessionId, sessions, connectionState, handleSelectSession]);
 
   return (
     // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，

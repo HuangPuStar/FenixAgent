@@ -9,7 +9,15 @@
 //
 // 本模块为纯投影（无 I/O、无日志）；拒绝原因通过返回值交给调用方记录诊断。
 
-import { type NormalizedEvent, type PublicError, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
+import {
+  DEFAULT_PERMISSION_TIMEOUT_MS,
+  type NormalizedEvent,
+  type PublicError,
+  TOOL_TERMINAL_STATUSES,
+  type ToolCallStatus,
+  TURN_TERMINAL_STATUSES,
+  type TurnStatus,
+} from "../schema";
 import {
   addToolCallBlock,
   appendEntryText,
@@ -23,7 +31,6 @@ import {
   setActiveTurn,
   setAgentStatus,
   setEntryStatus,
-  setEntryTokenUsage,
   setSessionAvailableCommands,
   setSessionInfo,
   setSessionModelState,
@@ -31,14 +38,9 @@ import {
   upsertPendingPermission,
   upsertToolCall,
 } from "./chat-writer";
-import {
-  applyPermissionExpiration,
-  applyPermissionResolution,
-  cancelAwaitingToolCalls,
-  type DocPair,
-  expireTurnPermissions,
-} from "./permission";
+import { applyPermissionExpiration, applyPermissionResolution, type DocPair } from "./permission";
 import { applySessionList } from "./session-list";
+import { convergeTurnExit, turnAssistantEntryId } from "./turn-machine";
 
 export type { DocPair } from "./permission";
 
@@ -48,9 +50,10 @@ export interface ApplyResult {
   reason?: string;
 }
 
-/** 用户消息/助手回复的 entryId 派生规则（turn 内稳定，重放不重复创建） */
+/** 用户消息的 entryId 派生规则（turn 内稳定，重放不重复创建） */
 const USER_ENTRY = (turnId: string) => `${turnId}:user`;
-const ASSISTANT_ENTRY = (turnId: string) => `${turnId}:assistant`;
+// assistant entryId 派生统一在 turn-machine（turnAssistantEntryId）：收敛入口
+// 与聚合层共用同一规则，禁止此处再次定义造成派生漂移
 
 /** 提取公共错误（过滤内部细节，仅保留脱敏 code/message） */
 function extractPublicError(update: Record<string, unknown>): PublicError | null {
@@ -100,21 +103,31 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const turnId = event.turnId;
   if (!turnId) return { applied: false, reason: "user_message missing turnId" };
 
-  const active = readActiveTurn(pair.session);
-  // 重放保护：同 turnId 的 user_message 已投影过 → 跳过，不重复创建 Entry
-  if (active.turnId === turnId) return { applied: false, reason: "duplicate turn" };
+  // M2 重放保护：按 user entry 存在性判定（同 turnId 已投影过 → 跳过）。
+  // 不能按 active.turnId === turnId 判定：历史回放/乱序下 active 可能已被更新
+  // turn 接管，按 active 判定会把旧 turn 的历史消息重新投影一遍并把 active
+  // 顶回旧 turn（状态聚合错乱）。
+  if (getEntry(pair.chat, USER_ENTRY(turnId))) {
+    return { applied: false, reason: "duplicate turn" };
+  }
 
-  // 旧 turn 未终结（用户连发/重试/回放历史接续）→ 将旧 assistant entry 收敛：
+  const active = readActiveTurn(pair.session);
+  // 旧 turn 未终结（用户连发/重试/回放历史接续）→ 经统一收敛入口终结（H1）：
+  // assistant entry 终态 + 该 turn 权限失效 + 工具收敛，与终态事件/权限失效
+  // 共用 convergeTurnExit，不在此手写收敛（历史教训：手写只收敛 entry 导致
+  // 旧 turn 权限残留 pending、running 工具永久转圈）。
   // 实时 turn 置 cancelled（用户放弃等待），回放 turn（turn_replay_ 前缀，历史
   // 回显）置 completed——回放中后续 user_message 表明上一段历史已完整结束，
   // 置 cancelled 会让历史消息全部显示"已取消"（状态聚合错乱）。
   // 保证任何时刻只有一个活动 turn（文档 8.2：默认每会话仅一个活动 turn）
   if (active.turnId && active.turnStatus && !TURN_TERMINAL_STATUSES.has(active.turnStatus)) {
-    const oldAssistant = getEntry(pair.chat, ASSISTANT_ENTRY(active.turnId));
-    if (oldAssistant) {
-      const isReplayTurn = active.turnId.startsWith("turn_replay_");
-      setEntryStatus(pair.chat, ASSISTANT_ENTRY(active.turnId), isReplayTurn ? "completed" : "cancelled");
-    }
+    const isReplayTurn = active.turnId.startsWith("turn_replay_");
+    // finalStatus 随后被下方 setActiveTurn(turnId, "accepting") 覆盖（同一事务），
+    // 传入仅为保持收敛入口语义完整；本处收敛的实质是权限/工具清理
+    convergeTurnExit(pair, active.turnId, {
+      finalStatus: isReplayTurn ? "completed" : "cancelled",
+      entryStatus: isReplayTurn ? "completed" : "cancelled",
+    });
   }
 
   const text = extractText(event);
@@ -129,7 +142,7 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
 
   // assistant entry 先置 pending，首个增量到达时转 streaming
   ensureEntry(pair.chat, {
-    entryId: ASSISTANT_ENTRY(turnId),
+    entryId: turnAssistantEntryId(turnId),
     turnId,
     kind: "message",
     role: "assistant",
@@ -145,7 +158,7 @@ function applyDelta(pair: DocPair, event: NormalizedEvent, blockType: "text" | "
   if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
     return { applied: false, reason: "delta after terminal or cancelled turn" };
   }
-  const entryId = ASSISTANT_ENTRY(active.turnId);
+  const entryId = turnAssistantEntryId(active.turnId);
   if (!getEntry(pair.chat, entryId)) {
     return { applied: false, reason: "assistant entry not found" };
   }
@@ -173,6 +186,20 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
     event.update.rawOutput !== undefined
       ? (event.update.rawOutput as Record<string, unknown> | null)
       : ((event.update.output as Record<string, unknown> | null) ?? null);
+
+  // 工具状态不可逆（CAS）：已终态（completed/error/cancelled）的工具不得被迟到的
+  // updated 帧回退（网络乱序/重放下 updated 可能晚于 completed 到达，无条件覆盖会
+  // 让前端工具永久转圈）；同状态重放幂等放行。awaiting_permission → running 属合法
+  // 迁移（权限批准后恢复执行），不在终态集合内不受影响。
+  const existingTool = getToolCallsMap(pair.chat).get(toolCallId);
+  const existingStatus = existingTool?.get("status") as ToolCallStatus | undefined;
+  if (existingStatus && TOOL_TERMINAL_STATUSES.has(existingStatus) && existingStatus !== status) {
+    return {
+      applied: false,
+      reason: `tool status already terminal (${existingStatus})`,
+    };
+  }
+
   upsertToolCall(pair.chat, {
     toolCallId,
     turnId: active.turnId,
@@ -183,9 +210,9 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
   });
 
   // 工具块挂到 assistant entry（幂等：重放不重复添加）
-  const assistantEntry = getEntry(pair.chat, ASSISTANT_ENTRY(active.turnId));
+  const assistantEntry = getEntry(pair.chat, turnAssistantEntryId(active.turnId));
   if (assistantEntry) {
-    addToolCallBlock(pair.chat, ASSISTANT_ENTRY(active.turnId), toolCallId);
+    addToolCallBlock(pair.chat, turnAssistantEntryId(active.turnId), toolCallId);
   }
 
   if (active.turnStatus === "accepting") setActiveTurn(pair.session, active.turnId, "running");
@@ -201,7 +228,10 @@ function applyPermissionRequested(pair: DocPair, event: NormalizedEvent): ApplyR
   const active = readActiveTurn(pair.session);
   // 终态或 cancelling 后的权限请求不投影：turn 已不可恢复执行（C5 失效清理在此边界外）
   if (!canWriteToTurn(active.turnStatus)) {
-    return { applied: false, reason: "permission requested for unwritable turn" };
+    return {
+      applied: false,
+      reason: "permission requested for unwritable turn",
+    };
   }
   const toolCallId = typeof event.update.toolCallId === "string" ? event.update.toolCallId : null;
 
@@ -229,7 +259,7 @@ function applyPermissionRequested(pair: DocPair, event: NormalizedEvent): ApplyR
     expiresAt:
       typeof event.update.expiresAt === "string"
         ? event.update.expiresAt
-        : new Date(Date.now() + 5 * 60_000).toISOString(),
+        : new Date(Date.now() + DEFAULT_PERMISSION_TIMEOUT_MS).toISOString(),
   });
 
   // 关联工具调用进入 awaiting_permission（存在才更新）
@@ -255,7 +285,11 @@ function applyPermissionRequested(pair: DocPair, event: NormalizedEvent): ApplyR
 function applyPermissionResolved(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const permissionId =
     (event.update.permissionId as string | undefined) ?? (event.update.requestId as string | undefined);
-  if (!permissionId) return { applied: false, reason: "permission_resolve missing permissionId" };
+  if (!permissionId)
+    return {
+      applied: false,
+      reason: "permission_resolve missing permissionId",
+    };
 
   const decision =
     (event.update.decision as string | null | undefined) ??
@@ -304,26 +338,11 @@ function applyTurnTerminal(
     return { applied: false, reason: "duplicate terminal" };
   }
 
-  const entryId = ASSISTANT_ENTRY(active.turnId);
-  if (getEntry(pair.chat, entryId)) {
-    if (status === "error") {
-      const publicError = extractPublicError(event.update);
-      const entry = getEntry(pair.chat, entryId);
-      if (entry && publicError) entry.set("error", publicError);
-    }
-    setEntryStatus(
-      pair.chat,
-      entryId,
-      status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
-    );
-  }
-
-  // token 用量（prompt_complete 的 usage）随完成态写入 assistant entry，前端由此派生展示
-  if (status === "completed") {
-    const usage = event.update.usage;
-    setEntryTokenUsage(pair.chat, entryId, usage as Record<string, unknown> | null | undefined);
-  }
-
+  // H1：turn 离开活动态统一经 convergeTurnExit 收敛——assistant entry 终态 +
+  // error/usage 元数据 + activeTurn 终态 + 该 turn 权限失效 + 工具收敛（含
+  // running → cancelled，终态后 running 是死状态）。历史教训：此处曾手写收敛
+  // 且只做 entry + activeTurn，漏掉权限/工具清理——残留 pending 权限可被旧
+  // 决议重新激活，running 工具永久转圈。
   const turnStatus: TurnStatus =
     status === "completed"
       ? "completed"
@@ -332,12 +351,14 @@ function applyTurnTerminal(
         : status === "cancelled"
           ? "cancelled"
           : "interrupted";
-  setActiveTurn(pair.session, active.turnId, turnStatus);
-
-  // C5：turn 终态后该 turn 的权限请求失效（pending → expired）、
-  // 关联的 awaiting_permission 工具调用收敛 cancelled，不残留可授权项
-  expireTurnPermissions(pair, active.turnId);
-  cancelAwaitingToolCalls(pair, active.turnId);
+  convergeTurnExit(pair, active.turnId, {
+    entryStatus: status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
+    finalStatus: turnStatus,
+    meta: {
+      error: status === "error" ? extractPublicError(event.update) : null,
+      usage: status === "completed" ? (event.update.usage as Record<string, unknown> | null) : null,
+    },
+  });
   return { applied: true };
 }
 
@@ -385,15 +406,15 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
     return { applied: true };
   }
 
-  // session_updated：session_info_update（title 等）或扁平 session 状态（ready/initializing）
+  // session_updated：session_info_update（title 等）或扁平 session 状态（status 直接字段）。
+  // 注意：sessionUpdate === "ready"/"initializing" 不会到达这里——acp-channel 的
+  // mapSessionUpdateType 不映射它们（会话级 status 由 session 同步 result 与 status
+  // 帧通过 update.status 字段投影），此处不重复处理。
   const update = event.update;
   const patch: Record<string, unknown> = {};
   if (update.title !== undefined) patch.title = update.title;
   if (update.sessionId !== undefined) patch.sessionId = update.sessionId;
   if (update.status !== undefined) patch.status = update.status;
-  if (update.sessionUpdate === "ready" || update.sessionUpdate === "initializing") {
-    patch.status = update.sessionUpdate;
-  }
   setSessionInfo(pair.session, patch);
   // model/mode 状态：session/new、load 响应携带（acp-link 已从 configOptions 提取），
   // 会话级元数据，随 session_updated 一起投影（切换会话时随 session map 清空重建）
@@ -457,7 +478,10 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           // 与超时定时器共用同一 CAS 入口
           const permissionId = event.update.permissionId as string | undefined;
           if (typeof permissionId !== "string") {
-            result = { applied: false, reason: "permission_expired missing permissionId" };
+            result = {
+              applied: false,
+              reason: "permission_expired missing permissionId",
+            };
             break;
           }
           result = applyPermissionExpiration(pair, permissionId)
@@ -494,7 +518,10 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
         default: {
           // 防御：新加的规范化类型未实现处理时拒绝，不静默吞掉
           const exhaustive: never = event.type;
-          result = { applied: false, reason: `unhandled normalized event: ${String(exhaustive)}` };
+          result = {
+            applied: false,
+            reason: `unhandled normalized event: ${String(exhaustive)}`,
+          };
         }
       }
 

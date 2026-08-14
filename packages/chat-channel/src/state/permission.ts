@@ -19,6 +19,7 @@ import {
   setActiveTurn,
   setToolCallStatus,
 } from "./chat-writer";
+import { convergeTurnExit } from "./turn-machine";
 
 /** 投影目标：同一 rcsSessionId 的两份 Y.Doc */
 export interface DocPair {
@@ -31,6 +32,10 @@ export interface DocPair {
  * 迁移成功后收敛关联状态：deny → 工具调用 cancelled，allow → 恢复 running；
  * turn 停在 awaiting_permission 且无其他 pending 时恢复 running。
  * 重复 resolve（已 resolved / expired / 不存在）返回 false。
+ *
+ * 归属校验：权限按 permission.turnId 收敛，仅当该 turn 仍是 active 时才允许
+ * 恢复/退出 turn 状态机——旧 turn 的迟到决议不得污染恰好停在 awaiting_permission
+ * 的新 turn（跨 turn 污染是权限相关 bug 的反复根因）。
  */
 export function applyPermissionResolution(pair: DocPair, permissionId: string, decision: string | null): boolean {
   let migrated = false;
@@ -48,14 +53,26 @@ export function applyPermissionResolution(pair: DocPair, permissionId: string, d
       permission.set("decision", denied ? "deny" : "allow");
       migrated = true;
 
+      const permissionTurnId =
+        typeof permission.get("turnId") === "string" ? (permission.get("turnId") as string) : null;
       const toolCallId =
         typeof permission.get("toolCallId") === "string" ? (permission.get("toolCallId") as string) : null;
       if (toolCallId) {
-        setToolCallStatus(pair.chat, toolCallId, denied ? "cancelled" : "running");
+        const tool = getToolCallsMap(pair.chat).get(toolCallId);
+        // 工具归属校验（tool.turnId === permission.turnId）：跨 turn 迟到决议
+        // 只收敛自己关联的工具，不触碰其他 turn 的工具状态
+        if (tool && tool.get("turnId") === permissionTurnId) {
+          setToolCallStatus(pair.chat, toolCallId, denied ? "cancelled" : "running");
+        }
       }
 
       const active = readActiveTurn(pair.session);
-      if (active.turnId && active.turnStatus === "awaiting_permission") {
+      // turn 状态机恢复仅限权限所属 turn 与 active 一致时
+      if (
+        permissionTurnId !== null &&
+        active.turnId === permissionTurnId &&
+        active.turnStatus === "awaiting_permission"
+      ) {
         setActiveTurn(
           pair.session,
           active.turnId,
@@ -72,6 +89,10 @@ export function applyPermissionResolution(pair: DocPair, permissionId: string, d
  * 迁移成功后收敛关联状态：关联工具调用 → cancelled；turn 停在 awaiting_permission
  * 且无其他 pending 时 → cancelled（文档 8.1：awaiting_permission → cancelled: deny / expiry）。
  * 超时定时器与 permission_expired 事件共用此入口。
+ *
+ * 归属校验同 applyPermissionResolution：跨 turn 迟到过期不得污染新 turn；
+ * turn 因权限全部失效而退出时经 convergeTurnExit 统一收敛（entry 一并置 cancelled，
+ * 否则 assistant entry 永久 streaming）。
  */
 export function applyPermissionExpiration(pair: DocPair, permissionId: string): boolean {
   let migrated = false;
@@ -83,35 +104,34 @@ export function applyPermissionExpiration(pair: DocPair, permissionId: string): 
       permission.set("status", "expired");
       migrated = true;
 
+      const permissionTurnId =
+        typeof permission.get("turnId") === "string" ? (permission.get("turnId") as string) : null;
       const toolCallId =
         typeof permission.get("toolCallId") === "string" ? (permission.get("toolCallId") as string) : null;
-      if (toolCallId) setToolCallStatus(pair.chat, toolCallId, "cancelled");
+      if (toolCallId) {
+        const tool = getToolCallsMap(pair.chat).get(toolCallId);
+        if (tool && tool.get("turnId") === permissionTurnId) {
+          setToolCallStatus(pair.chat, toolCallId, "cancelled");
+        }
+      }
 
       const active = readActiveTurn(pair.session);
-      if (active.turnId && active.turnStatus === "awaiting_permission") {
-        setActiveTurn(
-          pair.session,
-          active.turnId,
-          hasPendingPermission(pair.session) ? "awaiting_permission" : "cancelled",
-        );
+      if (
+        permissionTurnId !== null &&
+        active.turnId === permissionTurnId &&
+        active.turnStatus === "awaiting_permission"
+      ) {
+        if (hasPendingPermission(pair.session)) {
+          setActiveTurn(pair.session, active.turnId, "awaiting_permission");
+        } else {
+          // 该 turn 的权限全部失效 → turn 退出：经统一收敛入口终结 entry
+          convergeTurnExit(pair, active.turnId, {
+            entryStatus: "cancelled",
+            finalStatus: "cancelled",
+          });
+        }
       }
     });
   });
   return migrated;
-}
-
-/** turn 进入终态时该 turn 的 pending 权限请求失效迁移（expired），不残留 pending 项 */
-export function expireTurnPermissions(pair: DocPair, turnId: string): void {
-  for (const permission of getPendingPermissions(pair.session).values()) {
-    if (permission.get("turnId") !== turnId || permission.get("status") !== "pending") continue;
-    permission.set("status", "expired");
-  }
-}
-
-/** turn 进入终态时仍停留在 awaiting_permission 的工具调用收敛为 cancelled */
-export function cancelAwaitingToolCalls(pair: DocPair, turnId: string): void {
-  for (const tool of getToolCallsMap(pair.chat).values()) {
-    if (tool.get("turnId") !== turnId || tool.get("status") !== "awaiting_permission") continue;
-    tool.set("status", "cancelled");
-  }
 }

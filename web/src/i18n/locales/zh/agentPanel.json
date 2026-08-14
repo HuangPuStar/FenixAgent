@@ -52,6 +52,7 @@
   "reconnect": "重连",
   "reconnecting": "重连中...",
   "reconnectingDesc": "连接已断开，正在自动重连；如长时间未恢复可点击重试",
+  "wsSendFailed": "连接已断开，操作未能发送；请等待重连或点击重连",
   "connecting": "正在连接...",
   "enterFailed": "进入失败",
   "loading_agent_panel": "加载智能体面板...",

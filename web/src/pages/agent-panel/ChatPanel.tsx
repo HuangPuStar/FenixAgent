@@ -2,6 +2,7 @@ import { type ActionAck, type ActionError, createDeterministicRcsSessionId } fro
 import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { ACPMain } from "@/components/ACPMain";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -149,16 +150,31 @@ export function ChatPanel({
     [releaseCommandId],
   );
 
-  // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId
+  // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId。
+  // 返回是否真正发出：WS 未就绪/已断开时返回 false（不静默丢弃——静默失败是
+  // "消息无声消失"的根因），由调用方给出 UI 反馈。
   const sendViaWs = useCallback(
-    (data: Record<string, unknown>) => {
+    (data: Record<string, unknown>): boolean => {
+      const ws = yjsWsRef.current;
+      if (!ws?.isConnected()) return false;
       setErrorCode(null);
       const key = commandKey(data);
       const commandId = commandIdCacheRef.current.get(key) ?? crypto.randomUUID();
       commandIdCacheRef.current.set(key, commandId);
-      yjsWsRef.current?.send({ ...data, commandId });
+      ws.send({ ...data, commandId });
+      return true;
     },
     [commandKey],
+  );
+
+  // 发送动作统一入口：失败（WS 未就绪）时 toast 反馈，避免用户输入无声丢失
+  const sendAction = useCallback(
+    (data: Record<string, unknown>): boolean => {
+      const ok = sendViaWs(data);
+      if (!ok) toast.error(t("wsSendFailed"));
+      return ok;
+    },
+    [sendViaWs, t],
   );
 
   // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
@@ -223,9 +239,12 @@ export function ChatPanel({
         if (terminalErrorCode) {
           setErrorCode(terminalErrorCode);
         } else {
-          // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避），
-          // 标记后 UI 展示"正在自动重连"轻提示；终态断开才需要手动干预。
+          // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避）。
+          // 必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
+          // 断开，sendViaWs 会静默失败（消息无声消失）；disconnected 渲染分支
+          // 由 autoReconnecting 标记展示"正在自动重连"轻提示。
           setAutoReconnecting(true);
+          setConnectionState("disconnected");
         }
       },
       onConnectionState: (state: YjsWsState) => {
@@ -292,8 +311,7 @@ export function ChatPanel({
 
     const modelName = ms
       ? ms.availableModels.find((m: { modelId: string; name: string }) => m.modelId === ms.currentModelId)?.name
-      : // modelState 为空时回退到 agentInfo.model（来自 status 消息）
-        (chatState.agentInfo?.model?.name as string) || undefined;
+      : undefined;
 
     return {
       supportsImages,
@@ -310,34 +328,56 @@ export function ChatPanel({
     chatState.modelState,
     chatState.modeState,
     chatState.availableCommands,
-    chatState.agentInfo,
     chatState.tokenUsage,
   ]);
 
-  // 为 ACPMain 提供的出站回调
+  // 为 ACPMain 提供的出站回调（经 sendAction 统一出口：WS 未就绪时 toast 反馈；
+  // 回调保持 void 签名，与 ACPMainProps 契约一致，boolean 结果不外传）
   const callbacks = useMemo(
     () => ({
-      onSendPrompt: (contentBlocks: unknown[]) =>
+      onSendPrompt: (contentBlocks: unknown[]) => {
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
         // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
         // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
         // （当前 turn 永久 loading 的根因，修复：出站显式绑定目标 session）。
-        sendViaWs({ action: "send_prompt", content: contentBlocks, sessionId: sessionState.acpSessionId || undefined }),
+        sendAction({
+          action: "send_prompt",
+          content: contentBlocks,
+          sessionId: sessionState.acpSessionId || undefined,
+        });
+      },
       // cancel 携带当前 ACP sessionId：服务端（translator → dispatcher）据此精确路由到
       // 对应 session 的活跃 query，多会话并发下避免取消落在错误的 query；空字符串
       // （会话未建立）时省略字段，服务端 fallback 当前会话（向后兼容旧客户端）。
-      onCancel: () => sendViaWs({ action: "cancel", sessionId: sessionState.acpSessionId || undefined }),
-      onCreateSession: () => sendViaWs({ action: "create_session" }),
-      onLoadSession: (sid: string) => sendViaWs({ action: "load_session", sessionId: sid }),
-      onResumeSession: (sid: string) => sendViaWs({ action: "resume_session", sessionId: sid }),
-      onListSessions: () => sendViaWs({ action: "list_sessions" }),
-      onRenameSession: (sid: string, title: string) => sendViaWs({ action: "rename_session", sessionId: sid, title }),
-      onDeleteSession: (sid: string) => sendViaWs({ action: "delete_session", sessionId: sid }),
-      onRespondPermission: (requestId: string, optionId: string | null) =>
-        sendViaWs({ action: "respond_permission", requestId, optionId }),
-      onSetMode: (modeId: string) => sendViaWs({ action: "set_session_mode", modeId }),
+      onCancel: () => {
+        sendAction({ action: "cancel", sessionId: sessionState.acpSessionId || undefined });
+      },
+      onCreateSession: () => {
+        sendAction({ action: "create_session" });
+      },
+      onLoadSession: (sid: string) => {
+        sendAction({ action: "load_session", sessionId: sid });
+      },
+      onResumeSession: (sid: string) => {
+        sendAction({ action: "resume_session", sessionId: sid });
+      },
+      onListSessions: () => {
+        sendAction({ action: "list_sessions" });
+      },
+      onRenameSession: (sid: string, title: string) => {
+        sendAction({ action: "rename_session", sessionId: sid, title });
+      },
+      onDeleteSession: (sid: string) => {
+        sendAction({ action: "delete_session", sessionId: sid });
+      },
+      onRespondPermission: (requestId: string, optionId: string | null) => {
+        sendAction({ action: "respond_permission", requestId, optionId });
+      },
+      onSetMode: (modeId: string) => {
+        sendAction({ action: "set_session_mode", modeId });
+      },
     }),
-    [sendViaWs, sessionState.acpSessionId],
+    [sendAction, sessionState.acpSessionId],
   );
 
   // 未选中实例 → 欢迎空状态
@@ -359,7 +399,10 @@ export function ChatPanel({
     const isAutoStartDisabled = errorCode === "auto_start_disabled";
     const isMaxSessionsReached = errorCode === "max_sessions_reached";
     const isLaunchSpecBuildFailed = errorCode === "launch_spec_build_failed";
-    const isSpawnRejected = isAutoStartDisabled || isMaxSessionsReached || isLaunchSpecBuildFailed;
+    // spawn_rejected 来自 WS close 4502（error 帧未先到时）；error 帧先到则为
+    // auto_start_disabled/max_sessions_reached/launch_spec_build_failed 细分码
+    const isSpawnRejected =
+      isAutoStartDisabled || isMaxSessionsReached || isLaunchSpecBuildFailed || errorCode === "spawn_rejected";
     const isEnvironmentUnavailable = errorCode === "environment_unavailable";
     const title = isEnvironmentUnavailable
       ? t("environmentUnavailable")

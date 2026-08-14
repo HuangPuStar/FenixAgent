@@ -42,7 +42,6 @@ export interface ClientConnection {
   userId: string;
   agentId: string;
   relayHandle: EngineRelayHandle;
-  relayUnsub: (() => void) | null;
   keepalive: ReturnType<typeof setInterval>;
   instanceId: string;
   /** RCS 会话标识符 (rcs_xxx)，连接生命周期内不变 */

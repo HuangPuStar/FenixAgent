@@ -37,9 +37,20 @@ export interface PublicError {
 /** ContentBlock 逻辑类型（物理存储为 Y.Map，流式文本用 Y.Text） */
 export type ContentBlock =
   | { blockId: string; type: "text"; text: string }
-  | { blockId: string; type: "reasoning"; text: string; visibility: "summary" | "hidden" }
+  | {
+      blockId: string;
+      type: "reasoning";
+      text: string;
+      visibility: "summary" | "hidden";
+    }
   | { blockId: string; type: "tool_call"; toolCallId: string }
-  | { blockId: string; type: "resource"; resourceId: string; mediaType: string; name: string };
+  | {
+      blockId: string;
+      type: "resource";
+      resourceId: string;
+      mediaType: string;
+      name: string;
+    };
 
 /** Chat Entry 逻辑类型（物理存储为 Y.Map，blocks 为 Y.Map<Y.Map>，blockOrder 为 Y.Array<string>） */
 export interface ChatEntry {
@@ -73,7 +84,8 @@ export interface ToolCallProjection {
 // ── Session Doc schema（5.3）──
 
 export type SessionDocStatus = "initializing" | "ready" | "running" | "degraded" | "closed";
-export type AgentRuntimeStatus = "offline" | "starting" | "ready" | "busy" | "error";
+/** Agent 运行时状态：initializing 为未就绪 status（capabilities 为空）投影值，就绪后为 ready */
+export type AgentRuntimeStatus = "offline" | "starting" | "initializing" | "ready" | "busy" | "error";
 export type PermissionStatus = "pending" | "resolved" | "expired";
 export type PermissionOptionKind = "allow_once" | "allow_session" | "deny";
 
@@ -88,6 +100,11 @@ export type TurnStatus =
   | "failed"
   | "completed";
 
+/**
+ * Session Doc session map 投影（物理结构为平铺键：
+ * activeTurnId / activeTurnStatus / activeTurnUpdatedAt，
+ * 与 chat-writer.ts setActiveTurn 写入保持一致；无嵌套 activeTurn 对象）。
+ */
 export interface SessionInfoProjection {
   sessionId: string;
   title: string | null;
@@ -95,6 +112,8 @@ export interface SessionInfoProjection {
   environmentId: string;
   agentConfigId: string;
   activeTurnId: string | null;
+  activeTurnStatus: TurnStatus | null;
+  activeTurnUpdatedAt: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -106,13 +125,6 @@ export interface AgentStatusProjection {
   capabilities: Record<string, boolean>;
   lastActivityAt: string | null;
   publicError: PublicError | null;
-}
-
-/** 活动 turn（session.activeTurn 为权威，前端由 turnStatus 派生展示状态） */
-export interface ActiveTurnProjection {
-  turnId: string | null;
-  turnStatus: TurnStatus | null;
-  updatedAt: number | null;
 }
 
 export interface PermissionProjection {
@@ -189,3 +201,14 @@ export const TURN_TERMINAL_STATUSES: ReadonlySet<TurnStatus> = new Set([
   "failed",
   "completed",
 ]);
+
+/** 工具调用终态集合：终态后不得回退（tool_call_updated 重放/乱序时拒绝状态覆盖） */
+export const TOOL_TERMINAL_STATUSES: ReadonlySet<ToolCallStatus> = new Set(["completed", "error", "cancelled"]);
+
+/**
+ * 权限请求默认超时：pending 超时后迁移 expired（CAS）。
+ * 单一真相：聚合层（permission_requested 投影 expiresAt）与超时定时器
+ * （session-channel / doc-manager）必须一致，否则定时器按一个超时、投影按
+ * 另一个超时，前端倒计时与后端失效时刻漂移。
+ */
+export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;

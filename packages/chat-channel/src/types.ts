@@ -5,7 +5,7 @@ import type { SessionDocStatus } from "./schema";
 // ── Session 级别状态 ──
 
 /**
- * 前端展示状态（派生自 Session Doc 的 activeTurn.turnStatus，见 web/src/hooks/use-session-state.ts）。
+ * 前端展示状态（派生自 Session Doc 的 session.activeTurnStatus 平铺键，见 web/src/hooks/use-session-state.ts）。
  * 旧扁平 10 态枚举（thinking/tool-calling/ready/plan 等）已随 Turn 状态机删除，
  * 此类型只保留映射表实际产出的展示值，不再承载执行状态。
  */
@@ -40,18 +40,6 @@ export interface SessionMessage {
 }
 
 // ── Chat 级别状态 ──
-
-export interface ConnectionStatus {
-  status: "disconnected" | "connecting" | "connected";
-  since: number;
-}
-
-export interface AgentInfo {
-  id: string;
-  name: string;
-  avatar?: string;
-  model?: { id: string; name: string };
-}
 
 export interface SessionSummary {
   sessionId: string;
@@ -117,12 +105,9 @@ export interface ModeState {
 // ── React Hook 消费类型 ──
 
 export interface ChatStateSnapshot {
-  agentInfo: AgentInfo;
   sessions: SessionSummary[];
   activeSessionId: string;
-  connection: ConnectionStatus;
   permissions: PermissionRequest[];
-  isSwitchingSession: boolean;
   /** 从 agent status 消息获取的 Agent 能力集 */
   capabilities: CapabilitiesInfo | null;
   /** 当前 Session 的 Model 状态（来自 session/new 或 session/load 响应） */

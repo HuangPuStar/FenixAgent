@@ -13,6 +13,7 @@
 // 全部经依赖注入，保证包内可用 fake 依赖独立测试（Q12）。
 
 import { translateSimpleAction } from "../protocol/translator";
+import { DEFAULT_PERMISSION_TIMEOUT_MS } from "../schema";
 import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
@@ -28,9 +29,6 @@ import {
 
 /** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
 const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
-
-/** 权限请求超时兜底（毫秒）：与聚合层缺失 expiresAt 时的默认值一致 */
-const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
 
 /** 连接在会话频道上的绑定上下文（多标签页共享同一 rcsSessionId 的频道状态） */
 export interface SessionConnection {
@@ -211,7 +209,10 @@ export class SessionChannel {
       // 同一 relay 时该值可能已被其他会话的 load/create 改写，prompt 会落到错误会话
       // 并被接受，当前 turn 永远收不到响应（loading 卡死根因）。以服务端绑定的
       // acpSessionId（load/create 后 syncSessionId 更新）为权威目标。
-      command.payload = { ...command.payload, sessionId: connection.acpSessionId || undefined };
+      command.payload = {
+        ...command.payload,
+        sessionId: connection.acpSessionId || undefined,
+      };
     }
 
     if (command.type === "respond_permission") {
@@ -304,7 +305,7 @@ export class SessionChannel {
 
     // 防御：首次 load_session 且 Chat Doc 已有时间线内容时，
     // 说明是重连场景下 acpSessionId 恢复失败，不应清空已有消息。
-    if (!connection.sessionLoaded && this.dependencies.docManager.hasSessionDocContent(connection.rcsSessionId)) {
+    if (!connection.sessionLoaded && this.dependencies.docManager.hasTimelineContent(connection.rcsSessionId)) {
       connection.acpSessionId = sessionId;
       connection.sessionLoaded = true;
       this.dependencies.syncSessionId(connection, sessionId);

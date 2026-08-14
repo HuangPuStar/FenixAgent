@@ -9,7 +9,7 @@
 // models/modes 与 available_commands_update 通知经聚合层投影到 Session Doc session map，
 // 此处从嵌套 Y.Map/Y.Array 转换回展示形状。
 
-import type { AgentInfo, ChatStateSnapshot } from "@fenix/chat-channel";
+import type { ChatStateSnapshot } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
@@ -214,18 +214,10 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
 // ── 合并快照 ──
 
 function computeChatSnapshot(token: ChatTokenSnapshot, meta: ChatMetaSnapshot): ChatStateSnapshot {
-  const agentInfo: AgentInfo = {
-    id: meta.instanceId ?? meta.acpSessionId ?? "",
-    name: "",
-  };
-
   return {
-    agentInfo,
     sessions: meta.sessions,
     activeSessionId: meta.sessionId,
-    connection: { status: "disconnected", since: 0 },
     permissions: meta.permissions,
-    isSwitchingSession: false,
     capabilities: meta.capabilities,
     modelState: meta.modelState,
     modeState: meta.modeState,

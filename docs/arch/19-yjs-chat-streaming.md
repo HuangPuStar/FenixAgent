@@ -486,22 +486,19 @@ interface SessionDocRoot {
     environmentId: string;
     agentConfigId: string;
     activeTurnId: string | null;
+    activeTurnStatus: "accepting" | "running" | "awaiting_permission" | "cancelling" | "cancelled" | "interrupted" | "failed" | "completed" | null;
+    activeTurnUpdatedAt: number | null;
     createdAt: string;
     updatedAt: string;
   };
   agent: {
     instanceId: string | null;
     acpSessionId: string | null;
-    status: "offline" | "starting" | "ready" | "busy" | "error";
+    status: "offline" | "starting" | "initializing" | "ready" | "busy" | "error";
     capabilities: Record<string, boolean>;
     lastActivityAt: string | null;
     publicError: PublicError | null;
   };
-  activeTurn: {
-    turnId: string | null;
-    turnStatus: "accepting" | "running" | "awaiting_permission" | "cancelling" | "cancelled" | "interrupted" | "failed" | "completed" | null;
-    updatedAt: number | null;
-  } | null;
   pendingPermissions: Record<string, PermissionProjection>;
   sessions: Record<string, SessionSummaryProjection>;
 }
@@ -528,7 +525,7 @@ interface SessionSummaryProjection {
 }
 ```
 
-- `session.activeTurn`（turnId / turnStatus / updatedAt）是活动 turn 的权威投影，前端由 `turnStatus` 派生展示状态；会话级扁平 status 枚举已删除（Turn 状态机见 §8.1）。
+- 活动 turn 以 `session.activeTurnId` / `activeTurnStatus` / `activeTurnUpdatedAt` 三个平铺键投影（无嵌套对象，物理结构与 `state/chat-writer.ts` `setActiveTurn` 一致），前端由 `turnStatus` 派生展示状态；`session.status`（`SessionDocStatus`）保留为会话级生命周期状态（如输入可用性判定），与 turn 状态正交（Turn 状态机见 §8.1）。
 - `sessions` 是 agent 级会话列表投影：`session/list` 轮询（10s）响应全量同步（幂等），响应中不存在的旧条目被删除（agent 侧删除可自愈）。
 - `organizationId`、完整授权规则、密钥、内部错误、原始凭证和机器连接信息不得进入 Y.Doc。租户上下文由服务端连接绑定提供，而不是由文档字段声明。
 
@@ -601,7 +598,7 @@ flowchart LR
 | 权限请求、解决或过期 | Session Doc 的 `pendingPermissions` | 按 `permissionId` upsert；选项、状态和过期时间由服务端规范化；决议结果写 `decision` |
 | Agent status、capabilities、session info | Session Doc 的 `agent` / `session` | 覆盖当前状态；能力未确认前保持不可用 |
 | `session/list` 响应 | Session Doc 的 `sessions` | 全量同步（幂等，10s 轮询）；响应中不存在的旧条目删除（`state/session-list.ts`） |
-| turn 完成、失败、取消或中断 | Chat Doc entry 与 Session Doc 活动 turn | 终态立即写入，清除 `activeTurn`，之后的同 turn 增量直接丢弃 |
+| turn 完成、失败、取消或中断 | Chat Doc entry 与 Session Doc 活动 turn | 终态立即写入，清除活动 turn（`session.activeTurn*` 平铺键置空），之后的同 turn 增量直接丢弃 |
 
 映射必须是幂等的：重放同一 ACP 帧不应重复创建 Entry、工具调用或权限请求。聚合器以 `turnId`、`entryId`、`toolCallId`、`permissionId` 和终态状态机确定写入目标；缺少必要关联信息的帧拒绝投影并记录脱敏诊断。
 
@@ -723,7 +720,7 @@ stateDiagram-v2
     interrupted --> [*]
 ```
 
-终态不可逆。恢复执行必须创建显式的新 turn（事件日志体系未实现，不依赖 reconciliation 事件），不能把已终止 turn 改回 `running`。状态机权威实现位于 `state/aggregator.ts`（`applyNormalizedEvent` 守卫）与 `channel/session-channel.ts`（取消超时 → `interrupted` 兜底）；Session Doc 的 `session.activeTurn`（`turnId` + `turnStatus` + 时间戳）为权威，前端由 `turnStatus` 派生展示状态。
+终态不可逆。恢复执行必须创建显式的新 turn（事件日志体系未实现，不依赖 reconciliation 事件），不能把已终止 turn 改回 `running`。状态机权威实现位于 `state/aggregator.ts`（`applyNormalizedEvent` 守卫）与 `channel/session-channel.ts`（取消超时 → `interrupted` 兜底）；Session Doc 的 `session.activeTurnId` / `activeTurnStatus` / `activeTurnUpdatedAt` 平铺键为权威（见 §5.3），前端由 `turnStatus` 派生展示状态。
 
 ### 8.2 并发控制
 

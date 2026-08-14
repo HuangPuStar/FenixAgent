@@ -17,13 +17,20 @@ export type YjsTerminalErrorCode =
   | "instance_idle_reclaimed"
   | "machine_unavailable"
   | "client_keepalive_timeout"
-  | "environment_unavailable";
+  | "environment_unavailable"
+  | "spawn_rejected"
+  | "too_many_connections";
 
 export function getTerminalYjsWsErrorCode(code: number): YjsTerminalErrorCode | null {
   if (code === 4001) return "instance_idle_reclaimed";
   if (code === 4004) return "environment_unavailable";
   if (code === 4500) return "machine_unavailable";
   if (code === 4501) return "client_keepalive_timeout";
+  // 4502（spawn rejected：autoStart 关闭/maxSessions 上限/launch spec 构建失败）与
+  // 1013（连接数超限）为服务端终态关闭：不得进入自动重连，须手动恢复（否则终态
+  // 断开显示"正在自动重连"误导用户）。
+  if (code === 4502) return "spawn_rejected";
+  if (code === 1013) return "too_many_connections";
   return null;
 }
 

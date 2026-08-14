@@ -287,7 +287,6 @@ export class Gateway {
       userId,
       agentId,
       relayHandle: shared.handle,
-      relayUnsub: null,
       keepalive,
       instanceId,
       rcsSessionId: shared.rcsSessionId,

@@ -30,7 +30,6 @@ export * from "./protocol";
 // ── schema 类型（显式导出，排除 ContentBlock：该名字与 acp-link 协议块类型冲突，
 // 包对外统一为 acp-link 版本，Chat 域内部块类型仍从 schema.ts 直接引用）──
 export {
-  type ActiveTurnProjection,
   type AgentRuntimeStatus,
   type AgentStatusProjection,
   CHAT_DOC_SCHEMA_VERSION,

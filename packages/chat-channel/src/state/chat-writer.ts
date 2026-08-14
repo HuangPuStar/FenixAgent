@@ -378,7 +378,7 @@ export function readActiveTurn(ydoc: Y.Doc): { turnId: string | null; turnStatus
   return { turnId: turnId ?? null, turnStatus: turnStatus ?? null };
 }
 
-/** 写入活动 turn（session.activeTurn 为权威；终态由状态机保证不可逆） */
+/** 写入活动 turn（session.activeTurn* 平铺键为权威；终态由状态机保证不可逆） */
 export function setActiveTurn(ydoc: Y.Doc, turnId: string | null, turnStatus: TurnStatus | null): void {
   const session = getSessionInfo(ydoc);
   session.set("activeTurnId", turnId);

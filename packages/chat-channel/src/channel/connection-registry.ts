@@ -264,7 +264,6 @@ export class ConnectionRegistry {
   closeAll(code?: number, reason?: string): void {
     for (const [, client] of this.clients) {
       try {
-        client.relayUnsub?.();
         client.relayHandle?.close?.(code ?? 1001, reason ?? "server_shutdown");
       } catch {
         // ignore

@@ -60,7 +60,6 @@ export function createClient(overrides: Partial<ClientConnection> = {}): ClientC
     userId: "user-1",
     agentId: "agent-1",
     relayHandle: { state: "open", send() {}, close() {} },
-    relayUnsub: null,
     keepalive: 0 as unknown as ReturnType<typeof setInterval>,
     instanceId: "instance-1",
     rcsSessionId: "rcs-1",
@@ -152,7 +151,7 @@ export function createRelayEvents(
     // 回放窗口判断需要读取聚合层活动 turn；默认 mock 无 Session Doc 时视为无活动 turn
     getSessionYdoc: () => undefined,
     // 回放窗口开启时判定 Chat Doc 是否有内容；默认 mock 无 doc → 视为空（允许合成）
-    hasSessionDocContent: () => false,
+    hasTimelineContent: () => false,
   } as unknown as DocManager;
   return new RelayEventHandler({
     docManager,
@@ -177,7 +176,7 @@ export function createGateway(
     openChat: async () => ({ ydoc: new Y.Doc() }),
     openSession: async () => ({ ydoc: new Y.Doc() }),
     getSessionYdoc: () => undefined,
-    hasSessionDocContent: () => false,
+    hasTimelineContent: () => false,
     ...docManagerOverrides,
   } as unknown as DocManager;
 

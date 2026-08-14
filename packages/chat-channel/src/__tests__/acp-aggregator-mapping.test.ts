@@ -69,6 +69,26 @@ test("replayed tool_call with same toolCallId does not duplicate projection", ()
   expect(blocks.get("tool:t1")).not.toBeUndefined();
 });
 
+// 工具状态不可逆（CAS）：completed 后迟到的 tool_call_updated 不得回退状态——
+// 网络乱序/重放下 updated 帧晚于终态帧到达时，无条件覆盖会让前端工具永久转圈
+test("tool_call_updated cannot revert a terminal tool status", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t1", title: "bash" }));
+  applyNormalizedEvent(pair, event("tool_call_completed", { toolCallId: "t1", title: "bash" }));
+
+  const toolCalls = getToolCallsMap(pair.chat);
+  expect(toolCalls.get("t1")?.get("status")).toBe("completed");
+
+  // 迟到的 updated 帧（running）：拒绝，不回退
+  const reverted = applyNormalizedEvent(pair, event("tool_call_updated", { toolCallId: "t1", title: "bash" }));
+  expect(reverted.applied).toBe(false);
+  expect(toolCalls.get("t1")?.get("status")).toBe("completed");
+
+  // 同状态重放（completed → completed）：幂等放行
+  const replay = applyNormalizedEvent(pair, event("tool_call_completed", { toolCallId: "t1", title: "bash" }));
+  expect(replay.applied).toBe(true);
+});
+
 // 重放同一 permission_requested 帧（同 permissionId）不重复创建权限请求
 test("replayed permission request with same permissionId does not duplicate", () => {
   runTurn(pair, "turn_1");

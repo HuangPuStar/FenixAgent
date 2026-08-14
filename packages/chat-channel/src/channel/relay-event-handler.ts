@@ -119,65 +119,53 @@ export class RelayEventHandler {
     }
 
     if (msgType === "relay_closed") {
-      // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
-      // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
-      // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
-      // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
-      void this.dependencies.terminateLocalDeadInstance(shared.instanceId);
-      // 连接丢失迁移边（文档 8.1）：活动 turn 收敛为 interrupted 终态，
-      // 晚到增量由聚合层丢弃，UI 不会出现"已断连还在输出"
-      this.dispatch(shared, { type: "turn_interrupted", update: {}, content: null });
-      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-        try {
-          this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
-            type: "error",
-            payload: { code: "agent_connection_lost", message: "Agent connection lost" },
-          });
-        } catch {
-          /* ignore */
-        }
-        try {
-          entry.ws.close(1011, "relay handle closed");
-        } catch {
-          /* ignore */
-        }
-      });
-      // Instance ACP session 断链（C6 断链语义二）：删除该 rcsSessionId 的广播订阅与
-      // Chat Doc / Session Doc 热缓存。新实例/新连接将创建全新实时投影，绝不加载旧 Y.Doc。
-      // 先注销广播监听再销毁 Doc：即使客户端 close 事件延迟到达，也不会残留僵尸监听器。
-      try {
-        this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
-        this.dependencies.broadcaster.unregisterYjsDocListener(`session:${shared.rcsSessionId}`);
-      } catch {
-        /* ignore */
-      }
-      try {
-        await this.dependencies.docManager.closeChat(shared.rcsSessionId);
-        await this.dependencies.docManager.closeSession(shared.rcsSessionId);
-      } catch (err) {
-        this.dependencies.reportError(
-          `[YJS-FE] failed to dispose realtime resources: rcsSessionId=${shared.rcsSessionId}`,
-          err,
-        );
-      }
-      return;
+      return this.handleRelayClosed(shared);
     }
 
     if (msgType === "error") {
-      this.dependencies.reportError("[YJS-FE] agent error", { messageType: msgType, instanceId: shared.instanceId });
+      this.dependencies.reportError("[YJS-FE] agent error", {
+        messageType: msgType,
+        instanceId: shared.instanceId,
+      });
       this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
-      this.dispatch(shared, { type: "turn_failed", update: { error: "Agent request failed" }, content: null });
+      this.dispatch(shared, {
+        type: "turn_failed",
+        update: { error: "Agent request failed" },
+        content: null,
+      });
       return;
     }
 
     if (msgType === "session_error") {
-      this.dependencies.reportError("[YJS-FE] session error", { messageType: msgType, instanceId: shared.instanceId });
+      this.dependencies.reportError("[YJS-FE] session error", {
+        messageType: msgType,
+        instanceId: shared.instanceId,
+      });
       this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
-      this.dispatch(shared, { type: "turn_failed", update: { error: "Agent session request failed" }, content: null });
+      this.dispatch(shared, {
+        type: "turn_failed",
+        update: { error: "Agent session request failed" },
+        content: null,
+      });
       return;
     }
 
-    // 规范化事件投递：acp-link 私有帧在此边界翻译为 session/update 语义
+    // 第二级：JSON-RPC 响应帧（id + result/error 且无 method）。通知帧
+    // （method 存在，如 session/update）与无 id 帧不落入此处：
+    // - 通知帧语义是事件，交给第三级规范化投递；
+    // - 无 id 的 result 帧原语义为"无副作用"（登记消费与会话同步都按 id 寻址），
+    //   保持不处理（否则会被 normalize 误投递为 prompt_complete）。
+    if (rpcCheck && !rpcCheck.method && ("result" in rpcCheck || (rpcCheck.error && rpcCheck.id != null))) {
+      return this.handleJsonRpcResponse(shared, raw, msgType, rpcCheck);
+    }
+
+    if (msgType === "status") {
+      return this.handleStatus(shared, raw);
+    }
+
+    // 第三级：规范化事件帧（acp-link 私有帧 / session/update 通知），在此边界
+    // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截
+    // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
     let normalized = normalizeAcpMessage(raw, msgType);
     if (normalized) {
       // 终态归属回传：JSON-RPC prompt 响应帧（result 带 stopReason / error）本身
@@ -186,7 +174,7 @@ export class RelayEventHandler {
       // pendingPromptTurns 登记把 turnId 附加到事件上，聚合层据此校验归属；
       // 非 prompt 响应帧（list_sessions 等）无登记，保持无 turnId 原语义。
       const promptTurnId =
-        normalized && rpcCheck?.id !== undefined && rpcCheck.id !== null
+        rpcCheck?.id !== undefined && rpcCheck.id !== null
           ? shared.pendingPromptTurns?.get(rpcCheck.id as number | string)
           : undefined;
       if (promptTurnId) {
@@ -194,17 +182,163 @@ export class RelayEventHandler {
       }
       this.dispatchReplayAware(shared, normalized);
     }
+  }
 
-    // JSON-RPC error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
+  /**
+   * 本地 relay 意外关闭（进程崩溃/被杀）：实例级清理 + turn 收敛 + Doc 销毁
+   * （C6 断链语义二）。与 gateway 的引用计数释放（断链语义一：保留 Doc 供重连）
+   * 是两条不同 teardown 路径：relay_closed 意味着 Agent 会话已死，必须销毁热缓存，
+   * 新实例/新连接将创建全新实时投影，绝不加载旧 Y.Doc。
+   */
+  private async handleRelayClosed(shared: SharedRelay): Promise<void> {
+    const { registry } = this.dependencies;
+    // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
+    // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
+    // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
+    // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
+    void this.dependencies.terminateLocalDeadInstance(shared.instanceId);
+    // 连接丢失迁移边（文档 8.1）：活动 turn 收敛为 interrupted 终态，
+    // 晚到增量由聚合层丢弃，UI 不会出现"已断连还在输出"
+    this.dispatch(shared, {
+      type: "turn_interrupted",
+      update: {},
+      content: null,
+    });
+    registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+      try {
+        this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
+          type: "error",
+          payload: {
+            code: "agent_connection_lost",
+            message: "Agent connection lost",
+          },
+        });
+      } catch {
+        /* ignore */
+      }
+      try {
+        entry.ws.close(1011, "relay handle closed");
+      } catch {
+        /* ignore */
+      }
+    });
+    // 先注销广播监听再销毁 Doc：即使客户端 close 事件延迟到达，也不会残留僵尸监听器。
+    try {
+      this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
+      this.dependencies.broadcaster.unregisterYjsDocListener(`session:${shared.rcsSessionId}`);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await this.dependencies.docManager.closeChat(shared.rcsSessionId);
+      await this.dependencies.docManager.closeSession(shared.rcsSessionId);
+    } catch (err) {
+      this.dependencies.reportError(
+        `[YJS-FE] failed to dispose realtime resources: rcsSessionId=${shared.rcsSessionId}`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Agent status 帧处理（第二级分派）：断连收敛（connected:false → interrupted）、
+   * capabilities 就绪判定与 agentStatusReceived 标记、首次就绪触发 list_sessions。
+   */
+  private async handleStatus(shared: SharedRelay, raw: Record<string, unknown>): Promise<void> {
+    const { registry } = this.dependencies;
+    const payload = raw.payload as Record<string, unknown> | undefined;
+    // Agent 断连（acp-link connection.closed → {connected:false}，子进程死亡不
+    // 报错不关 relay）：活动 turn 必须收敛为 interrupted（同 relay_closed 语义），
+    // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
+    // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
+    if (payload?.connected === false) {
+      this.dispatch(shared, {
+        type: "turn_interrupted",
+        update: {},
+        content: null,
+      });
+    }
+    // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
+    // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
+    // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）
+    const capabilities = payload?.capabilities as Record<string, boolean> | null | undefined;
+    // 注意：capabilities 可能是 null（acp-link 连接后立即 resend 的 status 中
+    // state.agentCapabilities 尚未初始化），不能用 !== undefined 判定，必须排除 null
+    const hasCapabilities = capabilities != null && Object.keys(capabilities).length > 0;
+    // agent 未就绪的 status（capabilities 为空：acp-link 在 SDK 连接后立即 resend
+    // status，早于 initialize 完成）不得视为就绪——标记 agentStatusReceived 会让前端
+    // list_sessions 守卫放行、自动 list_sessions 也会发出，但 agent 尚未初始化会丢弃
+    // 请求（无响应），前端 bootstrap 误判无会话并自动创建空会话（冷启动后页面为空的
+    // 根因之一）。仅就绪 status（capabilities 非空）才标记就绪并触发列表同步；
+    // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
+    // 初始化完成后的就绪 status 再同步。
+    if (hasCapabilities) {
+      this.dispatch(shared, {
+        type: "agent_status",
+        update: {
+          instanceId: shared.instanceId,
+          acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
+          status: "ready",
+          capabilities,
+          lastActivityAt: new Date().toISOString(),
+        },
+        content: null,
+      });
+      const needsListSessions = !registry.hasStatusReceivedByRcsSession(shared.rcsSessionId);
+      registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+        entry.agentStatusReceived = true;
+      });
+      if (needsListSessions) {
+        try {
+          await shared.handle.send(
+            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+          );
+        } catch (err) {
+          this.dependencies.reportError(
+            `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
+            err,
+          );
+        }
+      }
+      return;
+    }
+    // 未就绪 status：仅投影实例信息（status=initializing），不标记
+    // agentStatusReceived、不触发 list_sessions（agent 初始化完成前列表不可信）
+    this.dispatch(shared, {
+      type: "agent_status",
+      update: {
+        instanceId: shared.instanceId,
+        acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
+        status: "initializing",
+        capabilities,
+        lastActivityAt: new Date().toISOString(),
+      },
+      content: null,
+    });
+  }
+
+  /**
+   * JSON-RPC 响应帧处理（第二级分派）：prompt 结果（error 拒绝登记 / result 完成
+   * 投递）与会话同步 result（create/load/resume）消费。
+   */
+  private async handleJsonRpcResponse(
+    shared: SharedRelay,
+    raw: Record<string, unknown>,
+    msgType: string | undefined,
+    rpcCheck: Record<string, unknown>,
+  ): Promise<void> {
+    const { registry } = this.dependencies;
+    const rpcId = rpcCheck.id as number | string | null | undefined;
+
+    // error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
     // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
     // 不关 relay；prompt 请求以 -32000 "No active session" / -32603 "Prompt failed"
     // 拒绝。静默丢弃会让 turn 永久卡 accepting、前端 loading 永不消失（仅刷新可恢复）。
     // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛 turn_failed；错误内容
-    // 脱敏，只记录 code，不泄露 acp-link 原始错误。
-    const rpcError = rpcCheck?.error as Record<string, unknown> | undefined;
-    if (rpcError && rpcCheck?.id !== undefined && rpcCheck.id !== null && !rpcCheck.method) {
-      const rpcId = rpcCheck.id as number | string;
-      if (shared.pendingPromptIds?.has(rpcId) === true) {
+    // 脱敏，只记录 code，不泄露 acp-link 原始错误。未登记的 error 响应无副作用。
+    if (rpcCheck.error) {
+      const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
+      if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
         shared.pendingPromptIds?.delete(rpcId);
         clearPendingPromptTimeout(shared, rpcId);
         // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
@@ -212,7 +346,7 @@ export class RelayEventHandler {
         shared.pendingPromptTurns?.delete(rpcId);
         this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
           instanceId: shared.instanceId,
-          code: rpcError.code,
+          code: rpcError?.code,
         });
         this.dispatch(shared, {
           type: "turn_failed",
@@ -220,82 +354,27 @@ export class RelayEventHandler {
           content: null,
           turnId,
         });
-        return;
       }
-    }
-
-    if (msgType === "status") {
-      const payload = raw.payload as Record<string, unknown> | undefined;
-      // Agent 断连（acp-link connection.closed → {connected:false}，子进程死亡不
-      // 报错不关 relay）：活动 turn 必须收敛为 interrupted（同 relay_closed 语义），
-      // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
-      // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
-      if (payload?.connected === false) {
-        this.dispatch(shared, { type: "turn_interrupted", update: {}, content: null });
-      }
-      // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
-      // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
-      // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）
-      const capabilities = payload?.capabilities as Record<string, boolean> | null | undefined;
-      // 注意：capabilities 可能是 null（acp-link 连接后立即 resend 的 status 中
-      // state.agentCapabilities 尚未初始化），不能用 !== undefined 判定，必须排除 null
-      const hasCapabilities = capabilities != null && Object.keys(capabilities).length > 0;
-      // agent 未就绪的 status（capabilities 为空：acp-link 在 SDK 连接后立即 resend
-      // status，早于 initialize 完成）不得视为就绪——标记 agentStatusReceived 会让前端
-      // list_sessions 守卫放行、自动 list_sessions 也会发出，但 agent 尚未初始化会丢弃
-      // 请求（无响应），前端 bootstrap 误判无会话并自动创建空会话（冷启动后页面为空的
-      // 根因之一）。仅就绪 status（capabilities 非空）才标记就绪并触发列表同步；
-      // 未就绪 status 只投影实例信息（capabilities 为空聚合层不覆盖），等待 agent
-      // 初始化完成后的就绪 status 再同步。
-      if (hasCapabilities) {
-        this.dispatch(shared, {
-          type: "agent_status",
-          update: {
-            instanceId: shared.instanceId,
-            acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
-            status: "ready",
-            capabilities,
-            lastActivityAt: new Date().toISOString(),
-          },
-          content: null,
-        });
-        const needsListSessions = !registry.hasStatusReceivedByRcsSession(shared.rcsSessionId);
-        registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-          entry.agentStatusReceived = true;
-        });
-        if (needsListSessions) {
-          try {
-            await shared.handle.send(
-              translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
-            );
-          } catch (err) {
-            this.dependencies.reportError(
-              `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
-              err,
-            );
-          }
-        }
-        return;
-      }
-      // 未就绪 status：仅投影实例信息（status=initializing），不标记
-      // agentStatusReceived、不触发 list_sessions（agent 初始化完成前列表不可信）
-      this.dispatch(shared, {
-        type: "agent_status",
-        update: {
-          instanceId: shared.instanceId,
-          acpSessionId: registry.findActiveSessionIdByRcsSession(shared.rcsSessionId) ?? null,
-          status: "initializing",
-          capabilities,
-          lastActivityAt: new Date().toISOString(),
-        },
-        content: null,
-      });
       return;
     }
 
+    // result 响应：先补 prompt 完成投递（原规范化事件投递路径承担：result 带
+    // stopReason 的 prompt 响应 → turn_completed，此投递是结果型响应下 turn 完成的
+    // 唯一事件来源），再消费登记与会话同步——保持原帧处理顺序（投递先于消费）。
+    let normalized = normalizeAcpMessage(raw, msgType);
+    if (normalized) {
+      // 终态归属回传：见 handleMessage 第三级注释（JSON-RPC prompt 响应无 turnId，
+      // 按 pendingPromptTurns 登记附加，聚合层据此校验归属）
+      const promptTurnId = rpcId !== undefined && rpcId !== null ? shared.pendingPromptTurns?.get(rpcId) : undefined;
+      if (promptTurnId) {
+        normalized = { ...normalized, turnId: promptTurnId };
+      }
+      this.dispatchReplayAware(shared, normalized);
+    }
+
     try {
-      const rpc = extractJsonRpc(raw);
-      if (!rpc || !("result" in rpc)) return;
+      const rpc = rpcCheck;
+      if (!("result" in rpc)) return;
       const result = rpc.result as Record<string, unknown> | undefined;
       if (!result || typeof result !== "object") return;
       const newSessionId = result.sessionId;
@@ -304,7 +383,6 @@ export class RelayEventHandler {
       // 携带 sessionId 的响应未经登记必须拒绝——否则 registry 活跃会话被 clobber、
       // 绑定校验丢弃当前会话全部增量（重命名非当前会话即冻结当前输出流）、误开
       // 10s 回放窗口、错误投影 title/status。消费后删除登记，避免 id 空间残留。
-      const rpcId = rpc.id as number | string | null | undefined;
       // prompt 成功响应消费：result 到达说明请求已被 agent 正常处理（即时 ack 或
       // 完成时返回），不再需要超时收敛；同时修复成功路径 pendingPromptIds 残留
       // （此前只有 error 路径消费，成功结果会永久占用登记）。
@@ -375,7 +453,7 @@ export class RelayEventHandler {
     // 窗口开启瞬间判定一次 Chat Doc 是否已有时间线内容（重连跳过回放语义）并缓存：
     // 合成投影本身会写 Chat Doc，若窗口内实时检查，回放自己写入的第一条会把后续
     // 回放帧全部误判为"已有内容"挡住——多轮历史回放只投影第一条（后续全丢）。
-    shared.replaySkipSynthesis = this.dependencies.docManager.hasSessionDocContent(shared.rcsSessionId);
+    shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
     if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
     shared.replayWindowTimer = setTimeout(() => {
       this.convergeReplayWindow(shared);
@@ -425,7 +503,7 @@ export class RelayEventHandler {
     // 缓存判定，窗口内保持一致。
     if (inReplayWindow) {
       if (shared.replaySkipSynthesis === undefined) {
-        shared.replaySkipSynthesis = this.dependencies.docManager.hasSessionDocContent(shared.rcsSessionId);
+        shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
       }
       if (!shared.replaySkipSynthesis) {
         const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
@@ -476,12 +554,20 @@ export class RelayEventHandler {
     this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
       instanceId: shared.instanceId,
     });
-    this.dispatch(shared, { type: "turn_failed", update: { error: "Agent request failed" }, content: null, turnId });
+    this.dispatch(shared, {
+      type: "turn_failed",
+      update: { error: "Agent request failed" },
+      content: null,
+      turnId,
+    });
   }
 
   private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
     this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-      this.dependencies.broadcaster.sendToYjsWs(entry.ws, { type: "error", payload: { code, message } });
+      this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
+        type: "error",
+        payload: { code, message },
+      });
     });
   }
 }

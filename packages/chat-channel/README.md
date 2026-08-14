@@ -135,15 +135,18 @@ function ChatPanel({ agentId }: { agentId: string }) {
   session.artifacts;            // 受授权资源引用
 
   // Session Doc（会话元信息 / Agent 状态）
-  session.status;               // 展示状态（由 activeTurn.turnStatus 派生）
-  session.activeTurn;           // { turnId, turnStatus, updatedAt } 权威活动 turn
+  session.status;               // 展示状态（由 turnStatus 派生）
+  session.turnStatus;           // 权威活动 turn 状态（Session Doc session.activeTurnStatus 平铺投影）
+  session.turnUpdatedAt;        // 活动 turn 更新时间戳（Session Doc session.activeTurnUpdatedAt）
 
   useEffect(() => {
     const client = createYjsWsClient({
       url: buildYjsUrl(agentId),
       onYjsUpdate: (docName, data) => {
-        if (docName.startsWith("chat:")) chatApply(data);
-        else if (docName.startsWith("session:")) sessionApply(data);
+        // applyUpdate 签名 (docName, data)，内部按前缀路由（chat:/session:）；
+        // 两个 hook 各持独立 store，必须都投递，否则对应快照不更新
+        chatApply(docName, data);
+        sessionApply(docName, data);
       },
       onConnectionState: (state) => setConnectionStatus(state),
     });
@@ -227,7 +230,7 @@ import type {
   // Doc schema（5.2/5.3 投影类型）
   ChatEntry, ContentBlock, ToolCallProjection,
   SessionInfoProjection, AgentStatusProjection,
-  ActiveTurnProjection, PermissionProjection, TurnStatus,
+  PermissionProjection, TurnStatus,
   PublicError,
   // 前端快照
   ChatStateSnapshot, SessionStateSnapshot, SessionStatus,

@@ -53,6 +53,7 @@
   "reconnect": "Reconnect",
   "reconnecting": "Reconnecting...",
   "reconnectingDesc": "Connection lost, reconnecting automatically. Click retry if it does not recover.",
+  "wsSendFailed": "Connection lost — the operation was not sent. Wait for reconnect or click reconnect.",
   "connecting": "Connecting...",
   "enterFailed": "Failed to enter instance",
   "loading_agent_panel": "Loading agent panel...",
