@@ -23,6 +23,18 @@ export type ForwardYjsActionDependencies = {
   transition: Pick<SessionTransition, "beforeForward" | "afterForward">;
   sendError: (data: unknown) => void;
   reportError: (message: string, error: unknown) => void;
+  /**
+   * 登记在途会话同步请求（create/load/resume）的 rpcId 与请求类型：响应到达时 relay 的
+   * 会话同步 result 分支按 id 校验（JSON-RPC 响应无 method 字段，rename/delete
+   * 等其他携带 sessionId 的响应不得劫持该分支）。可选注入，宿主由 forward 提供。
+   */
+  registerSessionSyncRpcId?: (rpcId: number | string, kind: "create" | "load" | "resume") => void;
+  /**
+   * 登记在途 prompt 请求（send_prompt）的 rpcId：Agent 子进程死亡时 acp-link 以
+   * JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛 error 事件
+   * （防止 loading 永久卡死）。可选注入，宿主由 forward 提供。
+   */
+  registerPendingPromptId?: (rpcId: number | string) => void;
 };
 
 export async function forwardYjsAction(
@@ -50,7 +62,31 @@ export async function forwardYjsAction(
     return;
   }
 
-  const rpc = translateSimpleAction(action, dependencies.workspacePath, dependencies.getNextRpcId());
+  // send_prompt 出站显式绑定目标 session（服务端权威，浏览器传入值不可信，与 cwd 注入同理）：
+  // prompt 不带 sessionId 时 acp-dispatcher fallback 连接级当前会话——多会话共享同一
+  // relay 时该值可能已被其他会话的 load/create 改写，prompt 会落到错误会话并被接受，
+  // 当前 turn 永远收不到响应（loading 卡死根因）。以服务端绑定的 acpSessionId 为权威目标。
+  let outbound = action;
+  if (action.action === "send_prompt") {
+    outbound = { ...action, sessionId: entry.acpSessionId ?? undefined };
+  }
+  const rpc = translateSimpleAction(outbound, dependencies.workspacePath, dependencies.getNextRpcId());
+  // 会话同步请求登记（create/load/resume）：响应帧只有 id 无 method，relay 的会话
+  // 同步 result 分支仅放行登记过的请求；rename/delete 等其他携带 sessionId 的响应
+  // 不得劫持该分支（否则 registry 活跃会话被 clobber、绑定校验丢弃当前会话增量）。
+  if (action.action === "create_session" || action.action === "load_session" || action.action === "resume_session") {
+    // 登记请求类型：响应分支据此区分 load（历史回放，完成后清 loading）与 resume（恢复
+    // 进行中的 turn，保留 loading）；create 无回放，与 load 同样复位无害。
+    const syncKind =
+      action.action === "create_session" ? "create" : action.action === "resume_session" ? "resume" : "load";
+    dependencies.registerSessionSyncRpcId?.(rpc.id as number | string, syncKind);
+  }
+  // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/-32603），
+  // relay 按 id 匹配登记收敛 error 事件，否则前端 loading 永久卡死（R1：发送后
+  // 完全无输出、仅刷新恢复）。
+  if (action.action === "send_prompt") {
+    dependencies.registerPendingPromptId?.(rpc.id as number | string);
+  }
   try {
     await dependencies.send(rpc);
   } catch (err) {
@@ -104,8 +140,11 @@ export interface WsLifecycleDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
-  /** 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接 */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number>;
+  /**
+   * 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接。
+   * 返回 undefined 表示会话不匹配任何实例编号（单实例普通会话），调用方降级到默认实例。
+   */
+  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | undefined>;
 }
 
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
@@ -251,13 +290,26 @@ export class WsLifecycle {
       // 启动 session/list 定时轮询，同步 agent 侧 session 变更
       shared.sessionListTimer = setInterval(() => {
         if (shared.destroyed) return;
-        if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) return;
+        if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) {
+          // 门禁卡死可观测性：status 未就绪时轮询被跳过且不产生异常，必须显式
+          // 计数告警，否则"轮询是否在跑"不可观测。连续 3 次（30s）告警一次，
+          // 之后每 30 次（5min）再报一次防刷屏；成功发送时清零。
+          shared.sessionListSkipCount = (shared.sessionListSkipCount ?? 0) + 1;
+          if (shared.sessionListSkipCount === 3 || shared.sessionListSkipCount % 30 === 0) {
+            this.dependencies.reportLog(
+              `[YJS-FE] session list poll skipped ${shared.sessionListSkipCount} times (agent status not received): rcsSessionId=${shared.rcsSessionId}`,
+            );
+          }
+          return;
+        }
+        shared.sessionListSkipCount = 0;
         try {
           shared.handle.send(
             translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
           );
-        } catch {
-          /* 轮询失败静默忽略，下个周期重试 */
+        } catch (err) {
+          // 轮询失败不中断连接，但必须暴露（静默失败会导致 sessions 列表长期缺失更新）
+          this.reportError(`[YJS-FE] session list poll failed: rcsSessionId=${shared.rcsSessionId}`, err);
         }
       }, SESSION_LIST_POLL_INTERVAL);
     }
@@ -418,6 +470,9 @@ export class WsLifecycle {
       clearInterval(shared.sessionListTimer);
       shared.sessionListTimer = undefined;
     }
+    // 在途会话同步请求与 prompt 登记随 relay 释放一并清空，避免残留条目无界增长
+    shared.pendingSessionSyncIds?.clear();
+    shared.pendingPromptIds?.clear();
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
     } catch {
@@ -428,11 +483,12 @@ export class WsLifecycle {
     } catch {
       /* ignore */
     }
-    try {
-      shared.handle.close(1000, "all yjs frontend clients disconnected");
-    } catch {
-      /* ignore */
-    }
+    // 不主动关闭 relay handle：前端 WS 断连（刷新/切页/网络抖动）是正常事件，
+    // relay 与 agent 进程、ACP 会话绑定必须跨断连维持。若在此 close，acp-link
+    // 侧 handleDisconnect 会杀掉 agent 子进程并清空连接级 sessionId，重连后
+    // send_prompt 被以 "No active session" 拒绝，对话中断。重连时 orchestrator
+    // 按 state=open 复用同一 handle，agent 进程与会话绑定得以延续。
+    // relay 的最终释放由实例回收路径负责（orchestrator.stop 主动 close handle）。
   }
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
@@ -444,6 +500,21 @@ export class WsLifecycle {
       transition: this.dependencies.transition,
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
+      // 会话同步请求登记到共享 relay：relay-event-handler 的会话同步 result 分支
+      // 按 id 校验响应来源（rename/delete 等响应不得劫持），relay 释放时统一清空。
+      // 附带请求类型供响应分支区分 load（回放后清 loading）与 resume（保留 loading）。
+      registerSessionSyncRpcId: (rpcId, kind) => {
+        if (!shared) return;
+        if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Map();
+        shared.pendingSessionSyncIds.set(rpcId, kind);
+      },
+      // prompt 请求登记：relay-event-handler 按 id 匹配 JSON-RPC error 响应收敛
+      // error 事件（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空
+      registerPendingPromptId: (rpcId) => {
+        if (!shared) return;
+        if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
+        shared.pendingPromptIds.add(rpcId);
+      },
     });
   }
 

@@ -85,12 +85,17 @@ const lifecycle = new WsLifecycle({
   reportError: logError,
   maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
   resolveInstanceNumberFromSession: async (sessionId: string) => {
-    // 从 DB session 标题 "Instance N" 解析实例编号，用于多实例 YJS doc 隔离
+    // 从 DB session 标题 "Instance N" 解析实例编号，用于多实例 YJS doc 隔离。
+    // 标题不匹配（单实例普通会话/历史会话）时返回 undefined（默认实例），不得
+    // 拒绝连接：URL 携带 sessionId 是前端路由的常规状态（侧边栏选择实例/会话后
+    // 刷新），单实例场景下会话标题是普通对话标题，抛错会让 WS 连接直接失败
+    // （close 4004），用户刷新后发送的消息被前端静默丢弃、服务端无感知。
+    // 多实例下不匹配的会话仅出现在异常引用，降级到默认实例可继续使用。
     const { _sessionRepo } = await import("../../../services/session");
     const session = await _sessionRepo.getById(sessionId);
-    if (!session?.title) throw new Error(`Session ${sessionId} not found`);
+    if (!session?.title) return;
     const match = session.title.match(/^Instance (\d+)$/);
-    if (!match) throw new Error(`Invalid session title: ${session.title}`);
+    if (!match) return;
     return parseInt(match[1], 10);
   },
 });

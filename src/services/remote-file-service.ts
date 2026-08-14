@@ -4,10 +4,10 @@ import { environmentRepo } from "../repositories";
 import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
 import { findSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-handler";
-import { getAgentConfigById, resolveAgentNode } from "./config";
+import { type AgentNode, getAgentConfigById, resolveAgentNode } from "./config";
 
 type RemoteMachineResolutionInput = {
-  agentNode: { kind: "machine"; machineId: string } | { kind: "sandbox"; sandboxPoolId: string } | {} | null;
+  agentNode: AgentNode | null;
   sandboxMachineId: string | null;
   sandboxSelected: boolean;
   defaultMachineId: string | null;

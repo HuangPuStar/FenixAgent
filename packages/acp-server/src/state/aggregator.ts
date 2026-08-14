@@ -380,8 +380,10 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         const update = event.payload?.sessionUpdate as string;
         if (update) {
           meta.set("status", update);
-          // 终端/空闲状态清除 loading，确保切换回已完成会话时不会显示加载态
-          if (update === "done" || update === "idle" || update === "error") {
+          // 终端/空闲/就绪状态清除 loading，确保切换回已完成会话（或 load_session
+          // 历史回放完成后）时不会残留加载态。ready 由 relay 在 session/load 响应
+          // 到达时广播，用于复位回放 user_message_chunk 触发的 loading。
+          if (update === "done" || update === "idle" || update === "error" || update === "ready") {
             meta.set("loading", null);
           }
         }

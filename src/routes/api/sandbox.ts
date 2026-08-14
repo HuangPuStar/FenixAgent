@@ -70,6 +70,7 @@ const app = new Elysia({ name: "api-sandbox", prefix: "/api/system" }).use(syste
 
 app.get(
   "/sandbox-pools",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ query, error }: any) => {
     try {
       return await sandboxApi.listPools(query);
@@ -83,6 +84,7 @@ app.get(
 
 app.post(
   "/sandbox-pools",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ body, error }: any) => {
     try {
       return await sandboxApi.createPool(body);
@@ -96,6 +98,7 @@ app.post(
 
 app.get(
   "/sandbox-pools/:poolId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, error }: any) => {
     try {
       return await sandboxApi.getPool(params.poolId);
@@ -109,6 +112,7 @@ app.get(
 
 app.put(
   "/sandbox-pools/:poolId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, body, error }: any) => {
     try {
       return await sandboxApi.updatePool(params.poolId, body);
@@ -122,6 +126,7 @@ app.put(
 
 app.delete(
   "/sandbox-pools/:poolId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, error }: any) => {
     try {
       return await sandboxApi.deletePool(params.poolId);
@@ -135,6 +140,7 @@ app.delete(
 
 app.get(
   "/sandbox-instances",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ query, error }: any) => {
     try {
       return await sandboxApi.listInstances(query);
@@ -148,6 +154,7 @@ app.get(
 
 app.get(
   "/sandbox-instances/:instanceId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, error }: any) => {
     try {
       return await sandboxApi.getInstance(params.instanceId);
@@ -161,6 +168,7 @@ app.get(
 
 app.put(
   "/sandbox-instances/:instanceId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, body, error }: any) => {
     try {
       return await sandboxApi.updateInstance(params.instanceId, body.resourceOverrides);
@@ -174,6 +182,7 @@ app.put(
 
 app.delete(
   "/sandbox-instances/:instanceId",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ params, error }: any) => {
     try {
       return await sandboxApi.deleteInstance(params.instanceId);
@@ -187,6 +196,7 @@ app.delete(
 
 app.post(
   "/sandbox-instances/rebuild",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
   async ({ body, error }: any) => {
     try {
       return await sandboxApi.rebuildInstances(body);

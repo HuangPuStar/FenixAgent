@@ -233,11 +233,14 @@ export class DocManager {
   async openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
     const existing = this.sessionDocs.get(rcsSessionId);
     if (existing) {
-      // 清除缓存会话可能遗留的脏 loading 状态
-      const meta = existing.ydoc.getMap("meta");
-      if (meta.get("loading") !== null) {
-        meta.set("loading", null);
-      }
+      // 缓存命中（前端刷新 / 多标签页重连，服务端进程未重启）时不得清除 loading：
+      // agent 实例此时必然存活（ensureRunning 失败会在 WS 层直接关闭连接，不会走到
+      // 这里），meta.loading 仍代表进行中的 turn。若在此清除，前端刷新后无法从 Y.Doc
+      // 恢复 cancel 按钮与输入禁用态，而 aggregator 只在 user_message_chunk 写入
+      // loading、agent_message_chunk 不会补写，本次 turn 剩余时间内 loading 永久丢失。
+      // 假 loading（agent 已被回收后残留）由以下链路自愈：刷新后 bootstrap 发送
+      // load_session → agent 回放 → session_update done/idle 清除；agent 上报
+      // connected:false 时 relay-event-handler 收敛为 error 事件清除。
       return existing;
     }
 
@@ -250,7 +253,9 @@ export class DocManager {
     }
 
     const doc = loadSessionDoc(rcsSessionId, redis);
-    // 清除从 Redis 加载可能遗留的脏 loading 状态。
+    // 仅 Redis 恢复分支清除 loading：此分支只在服务端进程重启后首次打开会话时命中，
+    // agent 子进程是新 spawn 的，Redis 中残留的 loading 属于已死 turn，保留会永久卡住。
+    // 缓存命中分支（前端刷新）不清 loading，见上方注释。
     // 用 setTimeout(0)（Bun）将清除动作推迟到下一个 macrotask，
     // 确保先行的 Redis getBuffer.then（microtask）先执行完毕。
     const scheduleClear = () => {

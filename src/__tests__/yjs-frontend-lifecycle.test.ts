@@ -92,6 +92,7 @@ function createRelayEvents(
     setChatModeState: () => {},
     registerSession: () => {},
     syncChatSessions: () => {},
+    updateSessionSummary: () => {},
     setChatActiveSession: () => {},
     getChat: () => undefined,
     openSession: async () => ({ ydoc: new Y.Doc() }),
@@ -379,7 +380,9 @@ describe("YJS frontend internal handlers", () => {
     expect(closeCalls).toBe(0);
     lifecycle.handleClose("ws-2");
     expect(unsubscribeCalls).toBe(1);
-    expect(closeCalls).toBe(1);
+    // relay handle 不随客户端断开主动关闭（前端断连是正常事件，handle 由
+    // orchestrator 跨连接复用，最终由实例回收路径关闭）
+    expect(closeCalls).toBe(0);
     expect(detachCalls).toBe(1);
   });
 
@@ -712,11 +715,12 @@ describe("YJS frontend internal handlers", () => {
     lifecycle.handleClose("ws-1");
     expect(registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h")).toBeUndefined();
     expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeDefined();
-    expect(closeCalls).toBe(1);
+    // 自己的引用归零只触发 listener 注销，不主动关闭共享的 relay handle
+    expect(closeCalls).toBe(0);
 
     lifecycle.handleClose("ws-2");
     expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeUndefined();
-    expect(closeCalls).toBe(2);
+    expect(closeCalls).toBe(0);
   });
 
   // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
@@ -887,9 +891,13 @@ describe("YJS frontend internal handlers", () => {
       rcsSessionId: "rcs-a",
       workspacePath: "/workspace",
       nextRpcId: 0,
+      // 模拟 create_session 请求出口已登记在途 rpcId：会话同步 result 分支仅放行
+      // 登记过的响应（JSON-RPC 响应帧只有 id 无 method，防 rename/delete 劫持）
+      pendingSessionSyncIds: new Map([[1, "create"]]),
     };
     await handler.createMessageHandler(relay)({
       jsonrpc: "2.0",
+      id: 1,
       method: "session/new",
       result: { sessionId: "ses-user-a-new" },
     } as unknown as RelayMessage);
@@ -998,5 +1006,399 @@ describe("YJS frontend internal handlers", () => {
     expect(registry.getClient("ws-a")?.agentStatusReceived).toBe(true);
     expect(registry.getClient("ws-b")?.agentStatusReceived).toBe(false);
     expect(sent).toHaveLength(1);
+  });
+
+  // Agent 断连 status（connected:false：子进程死亡/连接关闭，acp-link 只发该帧
+  // 不报错不关 relay）必须收敛活动 turn 为 error 事件（main 无 turn 状态机，
+  // 收敛为 chatMeta status=error + loading 清空），否则前端 loading 永久卡死（R1）。
+  test("status connected:false converges the active turn to an error event", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+
+    await handler.createMessageHandler(createSharedRelay({ state: "open", send() {}, close() {} }))({
+      type: "status",
+      payload: { connected: false },
+    } as unknown as RelayMessage);
+
+    expect(processed).toContain("error");
+  });
+
+  // Agent 子进程死亡后 acp-link 以 JSON-RPC error 响应拒绝 prompt（-32000 "No
+  // active session"），该帧无法归一化为终态事件；relay 必须按在途 prompt 登记
+  // 收敛 error 事件（main 无 turn 状态机），否则前端 loading 永不消失（R1）。
+  // 错误内容脱敏（只记录 code，不泄露 acp-link 原始 message），登记消费后删除。
+  test("prompt error response converges via the pending prompt registration", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const reports: Array<[string, unknown]> = [];
+    const handler = createRelayEvents(registry, broadcaster, processed, (message, error) =>
+      reports.push([message, error]),
+    );
+    const shared = createSharedRelay({ state: "open", send() {}, close() {} });
+    // prompt 请求出口登记（forwardYjsAction send_prompt 分支）
+    shared.pendingPromptIds = new Set([1]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32000, message: "No active session" },
+    } as unknown as RelayMessage);
+
+    expect(processed).toContain("error");
+    expect(shared.pendingPromptIds?.size).toBe(0);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.[0]).toContain("prompt rejected");
+    expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
+  });
+
+  // 未登记的 JSON-RPC error（非 send_prompt 在途请求）不得收敛 turn：
+  // 错误帧只按登记匹配收敛，prompt 之外的错误不派发终态事件。
+  test("unregistered error responses do not converge the turn", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+
+    await handler.createMessageHandler(createSharedRelay({ state: "open", send() {}, close() {} }))({
+      jsonrpc: "2.0",
+      id: 7,
+      error: { code: -32603, message: "Failed to set model" },
+    } as unknown as RelayMessage);
+
+    expect(processed).not.toContain("error");
+  });
+
+  // 会话同步分支必须校验在途请求登记（JSON-RPC 响应无 method 字段）：rename 响应
+  // 同样携带 sessionId/title 但未经登记，不得 clobber registry 活跃会话、不得误开
+  // 回放窗口、不得投影 title——否则重命名非当前会话时活跃会话绑定被改写，绑定校验
+  // 丢弃其全部 session/update 增量（输出流冻结），标题也被错误覆盖（M1）。
+  test("rename result without pending session sync does not hijack the session sync branch", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const calls: string[] = [];
+    const mockDocManager = {
+      processACP: () => {},
+      setChatConnectionStatus: () => {},
+      setChatAvailableCommands: () => {},
+      setChatTokenUsage: () => {},
+      setChatCapabilities: () => {},
+      setChatAgentInfo: () => {},
+      setChatModelState: () => {},
+      setChatModeState: () => {},
+      registerSession: () => calls.push("registerSession"),
+      syncChatSessions: () => {},
+      setChatActiveSession: () => calls.push("setChatActiveSession"),
+      getChat: () => undefined,
+      openSession: async () => {
+        calls.push("openSession");
+        return { ydoc: new Y.Doc() };
+      },
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
+      registerYjsDocListener: () => {},
+      reportError: () => {},
+    });
+    registry.addClient("ws-1", {
+      ws: createWs(),
+      userId: "user-1",
+      agentId: "agent-1",
+      relayHandle: { state: "open", send() {}, close() {} },
+      relayUnsub: null,
+      keepalive: 0 as unknown as ReturnType<typeof setInterval>,
+      instanceId: "instance-1",
+      rcsSessionId: "rcs-1",
+      acpSessionId: "ses-current",
+      workspacePath: "/workspace",
+      openTime: Date.now(),
+      pendingMessages: [],
+      relayReady: true,
+      agentStatusReceived: true,
+      lastClientKeepalive: 0,
+      sessionLoaded: true,
+    } satisfies ClientConnection);
+    const shared = createSharedRelay({ state: "open", send() {}, close() {} });
+
+    // rename 非当前会话 ses-other 的响应：未登记（pendingSessionSyncIds 为空）
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses-other", title: "Renamed" },
+    } as unknown as RelayMessage);
+
+    // 活跃会话绑定不被 clobber、会话同步副作用不触发
+    expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-current");
+    expect(calls).toEqual([]);
+  });
+
+  // title 投影语义：session/new、load 响应携带 agent 侧标题；空串视为缺省（与
+  // acp-link list 过滤语义一致），不得用空标题覆盖；非空标题投影到注册条目。
+  test("session sync result projects title and treats empty title as missing", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const registered: Array<Record<string, unknown>> = [];
+    const mockDocManager = {
+      processACP: () => {},
+      setChatConnectionStatus: () => {},
+      setChatAvailableCommands: () => {},
+      setChatTokenUsage: () => {},
+      setChatCapabilities: () => {},
+      setChatAgentInfo: () => {},
+      setChatModelState: () => {},
+      setChatModeState: () => {},
+      registerSession: (_rcs: string, session: Record<string, unknown>) => registered.push(session),
+      syncChatSessions: () => {},
+      setChatActiveSession: () => {},
+      getChat: () => undefined,
+      openSession: async () => ({ ydoc: new Y.Doc() }),
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
+      registerYjsDocListener: () => {},
+      reportError: () => {},
+    });
+    registry.addClient("ws-1", {
+      ws: createWs(),
+      userId: "user-1",
+      agentId: "agent-1",
+      relayHandle: { state: "open", send() {}, close() {} },
+      relayUnsub: null,
+      keepalive: 0 as unknown as ReturnType<typeof setInterval>,
+      instanceId: "instance-1",
+      rcsSessionId: "rcs-1",
+      acpSessionId: null,
+      workspacePath: "/workspace",
+      openTime: Date.now(),
+      pendingMessages: [],
+      relayReady: true,
+      agentStatusReceived: true,
+      lastClientKeepalive: 0,
+      sessionLoaded: false,
+    } satisfies ClientConnection);
+    const shared = createSharedRelay({ state: "open", send() {}, close() {} });
+
+    // 空串标题（id=1）→ 注册为空串（视为缺省）；非空标题（id=2，新会话）→ 投影
+    shared.pendingSessionSyncIds = new Map([
+      [1, "load"],
+      [2, "create"],
+    ]);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses-1", title: "  " },
+    } as unknown as RelayMessage);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { sessionId: "ses-2", title: "My Session" },
+    } as unknown as RelayMessage);
+
+    expect(registered[0]?.title).toBe("");
+    expect(registered[1]?.title).toBe("My Session");
+    expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-2");
+  });
+
+  // load_session 响应 = 历史回放完成：回放的历史 user_message_chunk 会把 Session Doc
+  // status 置为 loading，此时必须无条件广播 session_update "ready" 复位 loading——
+  // 否则切换会话后前端 isLoading 永久残留（cancel 按钮/输入禁用无法解除）。
+  // resume_session 是恢复进行中的 turn，loading 属于真实状态，不得清除。
+  test("session/load result resets replay loading, session/resume keeps it", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+    const makeSessionDoc = () => {
+      const ydoc = new Y.Doc();
+      // 模拟回放结束时的状态：历史 user_message_chunk 已把 status 置为 loading
+      ydoc.getMap("meta").set("status", "loading");
+      return { ydoc };
+    };
+    const mockDocManager = {
+      processACP: (_rcs: string, event: { type: string; payload?: Record<string, unknown> }) => processed.push(event),
+      setChatActiveSession: () => {},
+      setChatModelState: () => {},
+      setChatModeState: () => {},
+      registerSession: () => {},
+      openSession: async () => makeSessionDoc(),
+    } as unknown as DocManager;
+
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
+      registerYjsDocListener: () => {},
+      reportError: () => {},
+    });
+
+    // load_session 响应：即使 status 为 loading（回放污染）也必须复位
+    // （processACP 还会收到 extractAcpEvent 提取的 unknown 事件，仅断言 session_update）
+    const sharedLoad = createSharedRelay({ state: "open", send() {}, close() {} });
+    sharedLoad.pendingSessionSyncIds = new Map([[1, "load"]]);
+    await handler.createMessageHandler(sharedLoad)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { sessionId: "ses-load" },
+    } as unknown as RelayMessage);
+    expect(processed.filter((event) => event.type === "session_update")).toEqual([
+      { type: "session_update", payload: { sessionUpdate: "ready" } },
+    ]);
+
+    // resume_session 响应：status 为 loading 时保持原行为，不清 loading、不广播 ready
+    processed.length = 0;
+    const sharedResume = createSharedRelay({ state: "open", send() {}, close() {} });
+    sharedResume.pendingSessionSyncIds = new Map([[2, "resume"]]);
+    await handler.createMessageHandler(sharedResume)({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { sessionId: "ses-resume" },
+    } as unknown as RelayMessage);
+    expect(processed.filter((event) => event.type === "session_update")).toEqual([]);
+  });
+
+  // session_info_update 通知是唯一实时标题通道：agent 生成标题后推送（acp-link
+  // 的 session_list 过滤空标题/"New session"前缀，轮询无法带回未命名会话）。
+  // 非空标题必须投影到 Chat Doc sessions；空串/null 视为未生成，保持现有值。
+  test("session_info_update notification projects non-empty title to session summary", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const updates: Array<{ sessionId: string; patch: Record<string, unknown> }> = [];
+    const mockDocManager = {
+      processACP: () => {},
+      setChatConnectionStatus: () => {},
+      setChatAvailableCommands: () => {},
+      setChatTokenUsage: () => {},
+      setChatCapabilities: () => {},
+      setChatAgentInfo: () => {},
+      setChatModelState: () => {},
+      setChatModeState: () => {},
+      registerSession: () => {},
+      syncChatSessions: () => {},
+      updateSessionSummary: (_rcs: string, sessionId: string, patch: Record<string, unknown>) =>
+        updates.push({ sessionId, patch }),
+      setChatActiveSession: () => {},
+      getChat: () => undefined,
+      openSession: async () => ({ ydoc: new Y.Doc() }),
+    } as unknown as DocManager;
+    const handler = new RelayEventHandler({
+      docManager: mockDocManager,
+      registry,
+      broadcaster,
+      registerYjsDocListener: () => {},
+      reportError: () => {},
+    });
+    registry.addClient("ws-1", {
+      ws: createWs(),
+      userId: "user-1",
+      agentId: "agent-1",
+      relayHandle: { state: "open", send() {}, close() {} },
+      relayUnsub: null,
+      keepalive: 0 as unknown as ReturnType<typeof setInterval>,
+      instanceId: "instance-1",
+      rcsSessionId: "rcs-1",
+      acpSessionId: "ses-active",
+      workspacePath: "/workspace",
+      openTime: Date.now(),
+      pendingMessages: [],
+      relayReady: true,
+      agentStatusReceived: true,
+      lastClientKeepalive: 0,
+      sessionLoaded: false,
+    } satisfies ClientConnection);
+    const shared = createSharedRelay({ state: "open", send() {}, close() {} });
+
+    // 非空标题 → 投影到该会话的 summary；空串与 null → 不覆盖（保持现有值）
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { sessionId: "ses-active", update: { sessionUpdate: "session_info_update", title: "重构会话列表" } },
+    } as unknown as RelayMessage);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { sessionId: "ses-active", update: { sessionUpdate: "session_info_update", title: "" } },
+    } as unknown as RelayMessage);
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { sessionId: "ses-active", update: { sessionUpdate: "session_info_update", title: null } },
+    } as unknown as RelayMessage);
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sessionId).toBe("ses-active");
+    expect(updates[0]?.patch).toEqual({ title: "重构会话列表" });
+  });
+
+  // 轮询门禁可观测性：status 未就绪时 session/list 轮询被跳过且不产生异常，必须
+  // 显式计数告警（连续 3 次 reportLog，之后每 30 次再报防刷屏），成功发送时清零
+  // ——否则"轮询是否在跑"不可观测（R3 门禁卡死场景）。
+  test("session list poll reports after consecutive gate skips and clears on success", async () => {
+    const now = 1_000_000;
+    installIntervalFakes(() => now);
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const logs: string[] = [];
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      reportLog: (message) => logs.push(message),
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const poll = intervals.find((interval) => interval.delay === 10_000);
+    expect(poll).toBeDefined();
+
+    // status 未就绪：连续 3 次跳过 → 第 3 次告警一次
+    poll?.callback();
+    poll?.callback();
+    poll?.callback();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("session list poll skipped 3");
+
+    // 第 4 次跳过不重复告警（仅 3 次与每 30 次告警）
+    poll?.callback();
+    expect(logs).toHaveLength(1);
+
+    // status 到达后门禁解除，成功发送清零计数
+    const shared = registry.getShared("instance-1", "user-1", "rcs-1");
+    await relayEvents.createMessageHandler(shared as SharedRelay)({
+      type: "status",
+      payload: { connected: true },
+    } as unknown as RelayMessage);
+    poll?.callback();
+    expect(logs).toHaveLength(1);
+    expect(shared?.sessionListSkipCount).toBe(0);
+
+    lifecycle.handleClose("ws-1");
+  });
+
+  // URL 带普通会话 sessionId（单实例场景，标题非 "Instance N"）时，解析器返回
+  // undefined（默认实例），连接必须成功且 ensureRunning 收到 undefined——抛错会
+  // 让 WS 以 4004 拒绝，用户刷新后 send_prompt 被前端静默丢弃（服务端无感知）。
+  test("allows opening when URL sessionId maps to no instance number", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const instanceNumbers: Array<number | undefined> = [];
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      resolveInstanceNumberFromSession: async () => undefined,
+      ensureRunning: async (_userId, _agentId, _mode, instanceNumber) => {
+        instanceNumbers.push(instanceNumber);
+        return { instance: { id: "instance-1" } };
+      },
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1", "session_abc");
+
+    expect(instanceNumbers).toEqual([undefined]);
+    expect(ws.closed).toEqual([]);
+
+    lifecycle.handleClose("ws-1");
   });
 });

@@ -69,8 +69,10 @@ test("addSession appends to sessions array and deduplicates", () => {
   expect(s0.get("title")).toBe("Session 1");
 });
 
-// Agent 返回空 session 列表时必须删除 Chat Doc 中所有已经不存在的会话，并清除 active session。
-test("syncSessions clears existing sessions and the stale active session when the authoritative list is empty", () => {
+// 空列表保护：agent 重启后列表尚未恢复、或全部条目被 acp-link"空标题"过滤时，
+// 瞬时空响应不得清空已有列表（否则叠加当前会话 title 不投影，侧边栏全部显示
+// "新会话"）；真实删除由非空响应自愈（被删会话不在 incoming 中）
+test("syncSessions keeps existing sessions when the list is empty", () => {
   addSession(ydoc, {
     sessionId: "ses_1",
     title: "Session 1",
@@ -87,10 +89,15 @@ test("syncSessions clears existing sessions and the stale active session when th
   });
   setActiveSession(ydoc, "ses_1");
 
+  // 瞬时空响应：保留已有条目与 active session
   syncSessions(ydoc, []);
 
-  expect(ydoc.getArray("sessions").length).toBe(0);
-  expect(ydoc.getMap("chatMeta").get("activeSessionId")).toBeNull();
+  expect(ydoc.getArray("sessions").length).toBe(2);
+  expect(ydoc.getMap("chatMeta").get("activeSessionId")).toBe("ses_1");
+
+  // 非空响应仍正常删除（agent 侧删除自愈语义不受影响）
+  syncSessions(ydoc, [{ sessionId: "ses_1", title: "Session 1", preview: "first", status: "active", lastMsgTs: 100 }]);
+  expect(ydoc.getArray("sessions").length).toBe(1);
 });
 
 // updateSession 更新已有 session

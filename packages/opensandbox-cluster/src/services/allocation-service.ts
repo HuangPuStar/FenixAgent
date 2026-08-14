@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import type { ClusterDatabase } from "../db/client";
-import { opensandboxServer, sandboxBinding, sandboxPool } from "../db/schema";
+import { opensandboxServer, sandboxPool } from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
 import { SchedulerLock } from "./scheduler-lock";
 

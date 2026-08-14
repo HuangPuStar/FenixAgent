@@ -100,6 +100,18 @@ export class RelayEventHandler {
         const commands = update.availableCommands as Array<{ name: string; description?: string }> | undefined;
         if (commands && commands.length > 0)
           this.dependencies.docManager.setChatAvailableCommands(shared.rcsSessionId, commands);
+      } else if (update.sessionUpdate === "session_info_update") {
+        // 标题投影：agent 生成会话标题后通过 session_info_update 通知推送（如
+        // opencode 首条消息后自动命名）。acp-link 的 session_list 会过滤空标题/
+        // "New session" 前缀的会话，10s 轮询永远无法带回未命名会话；此通知是
+        // 唯一实时标题更新通道，忽略时侧边栏始终显示"新会话"兜底文案。
+        // 仅投影非空标题（空串/null 视为未生成，保持现有值），sessionId 已在
+        // 上方与 registry 活跃会话做过 binding 校验。
+        const msgSessionId = (sessionRpc.params as Record<string, unknown>).sessionId as string | undefined;
+        const title = update.title;
+        if (msgSessionId && typeof title === "string" && title.trim().length > 0) {
+          this.dependencies.docManager.updateSessionSummary(shared.rcsSessionId, msgSessionId, { title });
+        }
       }
     }
 
@@ -116,8 +128,34 @@ export class RelayEventHandler {
       usage = (raw.payload as Record<string, unknown>)?.usage as typeof usage;
     if (usage) this.dependencies.docManager.setChatTokenUsage(shared.rcsSessionId, usage);
 
+    // JSON-RPC error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
+    // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
+    // 不关 relay；prompt 请求以 -32000 "No active session" / -32603 "Prompt failed"
+    // 拒绝。静默丢弃会让 turn 永久卡住、前端 loading 永不消失（仅刷新可恢复）。
+    // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛为 error 事件
+    // （chatMeta status=error + loading 清空）；错误内容脱敏，只记录 code。
+    const rpcError = rpcCheck?.error as Record<string, unknown> | undefined;
+    if (rpcError && rpcCheck?.id !== undefined && rpcCheck.id !== null && !rpcCheck.method) {
+      const rpcId = rpcCheck.id as number | string;
+      if (shared.pendingPromptIds?.has(rpcId) === true) {
+        shared.pendingPromptIds?.delete(rpcId);
+        this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
+          instanceId: shared.instanceId,
+          code: rpcError.code,
+        });
+        this.dependencies.docManager.processACP(shared.rcsSessionId, { type: "error" });
+        return;
+      }
+    }
+
     if (msgType === "status") {
       const payload = raw.payload as Record<string, unknown> | undefined;
+      // Agent 断连（acp-link connection.closed → {connected:false}，子进程死亡不
+      // 报错不关 relay）：活动 turn 必须收敛，否则前端 loading 永久卡死。收敛为
+      // error 事件（chatMeta status=error + loading 清空），晚到增量由聚合层丢弃。
+      if (payload?.connected === false) {
+        this.dependencies.docManager.processACP(shared.rcsSessionId, { type: "error" });
+      }
       const capabilities = payload?.capabilities as Record<string, unknown> | undefined;
       if (capabilities) this.dependencies.docManager.setChatCapabilities(shared.rcsSessionId, capabilities);
       const agentInfo = payload?.agentInfo as Record<string, unknown> | undefined;
@@ -178,7 +216,16 @@ export class RelayEventHandler {
       const result = rpc.result as Record<string, unknown> | undefined;
       if (!result || typeof result !== "object") return;
       const newSessionId = result.sessionId;
-      if (typeof newSessionId === "string" && newSessionId.length > 0) {
+      // 会话同步响应身份校验：JSON-RPC 响应帧只有 id 无 method，无法区分响应来源；
+      // 仅放行请求出口登记过的在途 create/load/resume 请求。rename/delete 等其他
+      // 携带 sessionId 的响应未经登记必须拒绝——否则 registry 活跃会话被 clobber、
+      // 绑定校验丢弃当前会话全部增量、误开回放窗口、错误投影 title/status。
+      // 消费后删除登记，避免 id 空间残留。
+      const rpcId = rpc.id as number | string | null | undefined;
+      const syncKind = rpcId !== undefined && rpcId !== null ? shared.pendingSessionSyncIds?.get(rpcId) : undefined;
+      const syncRequested = syncKind !== undefined;
+      if (syncRequested && rpcId !== undefined && rpcId !== null) shared.pendingSessionSyncIds?.delete(rpcId);
+      if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
         const configOptions = result.configOptions as Array<Record<string, unknown>> | undefined;
         const models = (result.models ?? extractModelStateFromConfigOptions(configOptions)) as
           | NonNullable<ReturnType<typeof extractModelStateFromConfigOptions>>
@@ -205,7 +252,10 @@ export class RelayEventHandler {
           const now = Date.now();
           this.dependencies.docManager.registerSession(shared.rcsSessionId, {
             sessionId: newSessionId,
-            title: "",
+            // title 投影：session/new、load 响应携带 agent 侧标题；空串视为缺省
+            // （与 acp-link list 过滤语义一致），不得用空标题覆盖已有值；缺省时
+            // 保持空串（前端兜底显示"新会话"，由后续 session_list 轮询以权威列表覆盖）
+            title: typeof result.title === "string" && result.title.trim().length > 0 ? result.title : "",
             preview: "",
             status: "active",
             lastMsgTs: now,
@@ -213,7 +263,13 @@ export class RelayEventHandler {
           });
         }
         this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
-        if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
+        // load_session 响应 = 历史回放完成：回放的历史 user_message_chunk 会触发聚合层
+        // 设置 loading（status=loading），此时必须无条件复位——若沿用 status==="idle"
+        // 条件，回放后 status 恒为 loading 而跳过，切换会话后前端 isLoading 永久残留
+        // （cancel 按钮/输入禁用无法解除），且 aggregator 不会为回放消息补发清除。
+        // resume_session 是恢复进行中的 turn，loading 属于真实进行状态，不得清除，
+        // 仍保持 status==="idle" 才复位；create_session 无回放，行为不变。
+        if (syncKind === "load" || sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
           this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",
             payload: { sessionUpdate: "ready" },
@@ -264,7 +320,14 @@ export class RelayEventHandler {
     });
     this.dependencies.docManager.syncChatSessions(shared.rcsSessionId, summaries);
     const activeSessionId = this.dependencies.registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
-    if (activeSessionId && !summaries.some((summary) => summary.sessionId === activeSessionId)) {
+    // 空列表保护：agent 重启后列表尚未恢复、或全部条目被 acp-link"空标题"过滤时，
+    // 瞬时空响应不得清空会话绑定（否则 send_prompt 失去 sessionId 精确路由，串会话）；
+    // 真实删除由非空响应自愈（被删会话不在 incoming 中）
+    if (
+      activeSessionId &&
+      summaries.length > 0 &&
+      !summaries.some((summary) => summary.sessionId === activeSessionId)
+    ) {
       this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
         entry.acpSessionId = null;
         entry.sessionLoaded = false;

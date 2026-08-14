@@ -238,7 +238,13 @@ export function ChatPanel({
   // 为 ACPMain 提供的出站回调
   const callbacks = useMemo(
     () => ({
-      onSendPrompt: (contentBlocks: unknown[]) => sendViaWs({ action: "send_prompt", content: contentBlocks }),
+      onSendPrompt: (contentBlocks: unknown[]) =>
+        // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
+        // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
+        // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
+        // （当前 turn 永久 loading 的根因；服务端 forwardYjsAction 还会以绑定的
+        // acpSessionId 覆盖此值，浏览器值仅作兜底）。
+        sendViaWs({ action: "send_prompt", content: contentBlocks, sessionId: sessionState.acpSessionId || undefined }),
       onCancel: () => sendViaWs({ action: "cancel" }),
       onCreateSession: () => sendViaWs({ action: "create_session" }),
       onLoadSession: (sid: string) => sendViaWs({ action: "load_session", sessionId: sid }),
@@ -250,7 +256,9 @@ export function ChatPanel({
         sendViaWs({ action: "respond_permission", requestId, optionId }),
       onSetMode: (modeId: string) => sendViaWs({ action: "set_session_mode", modeId }),
     }),
-    [sendViaWs],
+    // sessionState.acpSessionId 参与依赖：send_prompt 绑定目标 session，切换会话后
+    // 回调闭包必须拿到最新绑定值，否则仍会发到旧 session（prompt 串会话）
+    [sendViaWs, sessionState.acpSessionId],
   );
 
   // 未选中实例 → 欢迎空状态

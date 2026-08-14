@@ -333,3 +333,178 @@ describe("createYjsStore snapshot 去重", () => {
     expect(store.getSnapshot().messages.length).toBe(2);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// applyUpdate（WS 路径）合并重算行为
+// 回放/流式高峰时同一 tick 的多次 applyUpdate 应合并为一次重算，
+// 且重算在宏任务中执行（不阻塞 WS 接收栈）；快照最终正确。
+// ────────────────────────────────────────────────────────────────────────
+
+describe("createYjsStore applyUpdate 合并重算", () => {
+  let ydoc: Y.Doc;
+  let store: ReturnType<typeof createYjsStore<TestSnapshot>>;
+  let notifyCount: number;
+
+  beforeEach(() => {
+    ydoc = new Y.Doc();
+    notifyCount = 0;
+    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot(), getTestSnapshotKey);
+    store.switchDoc("test", () => ({ ydoc }));
+    store.subscribe(() => {
+      notifyCount++;
+    });
+    notifyCount = 0;
+  });
+
+  afterEach(() => {
+    store.destroy();
+  });
+
+  /** 用独立源 doc 编码一条消息的 update，模拟 WS 增量帧 */
+  function encodeMessageUpdate(role: string, content: string, seq: number): Uint8Array {
+    const src = new Y.Doc();
+    writeMessage(src, role, content, seq);
+    return Y.encodeStateAsUpdate(src);
+  }
+
+  /** 等待宏任务队列中的合并重算执行完毕 */
+  function flushRecompute(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  // 同一 tick 连续 applyUpdate 多条 update，合并为一次重算/通知；
+  // 快照内容为全部 update 应用后的最终状态（无遗漏）
+  test("同一 tick 多条 applyUpdate 合并为一次通知，快照内容完整", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+    store.applyUpdate(encodeMessageUpdate("assistant", "hi there", 1));
+
+    // 宏任务重算前：快照仍是旧值（重算未执行），通知尚未发出
+    expect(notifyCount).toBe(0);
+
+    await flushRecompute();
+
+    expect(notifyCount).toBe(1);
+    // 两条 update 来自不同源 doc（不同 client id），Yjs 按 client/clock 排序，
+    // 合并顺序不保证，按内容集合断言（不依赖下标顺序）
+    const contents = store
+      .getSnapshot()
+      .messages.map((m) => m.content)
+      .sort();
+    expect(contents).toEqual(["hello", "hi there"]);
+  });
+
+  // 本地事务（origin 非 applyUpdate）保持同步重算语义：
+  // 切换 load_session 后服务端回放与本地写入并存时，本地写入立即可见
+  test("本地事务仍同步通知，不受 applyUpdate 合并调度影响", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+
+    ydoc.transact(() => {
+      const messages = ydoc.getArray("messages");
+      const msg = new Y.Map<unknown>();
+      msg.set("role", "assistant");
+      msg.set("content", "sync reply");
+      msg.set("seq", 1);
+      msg.set("ts", Date.now());
+      messages.push([msg]);
+    });
+
+    // 本地事务立即通知
+    expect(notifyCount).toBe(1);
+    expect(store.getSnapshot().messages).toHaveLength(2);
+
+    // 随后宏任务重算执行，快照仍为最终状态（本地 + WS 内容合并无回退）
+    await flushRecompute();
+    expect(store.getSnapshot().messages).toHaveLength(2);
+  });
+
+  // switchDoc 切换后：pending 的合并重算被取消，新 doc 立即呈现空快照；
+  // 旧 doc 的迟到调度不会把内容写入新快照（同栈内可取消，仅一次通知）
+  test("switchDoc 取消 pending 重算，新 doc 同步呈现初始快照", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "stale", 0));
+
+    const nextDoc = new Y.Doc();
+    store.switchDoc("other", () => ({ ydoc: nextDoc }));
+
+    // 渲染期同步重算：立即得到新 doc 的空快照；同栈取消生效，仅 switchDoc 自身通知一次
+    expect(store.getSnapshot().messages).toHaveLength(0);
+    expect(notifyCount).toBe(1);
+
+    await flushRecompute();
+
+    // 旧 doc 的迟到重算被新 doc 状态覆盖（幂等，不产生错误内容）
+    expect(store.getSnapshot().messages).toHaveLength(0);
+  });
+
+  // destroy 后 applyUpdate 与迟到调度均不崩溃，且不通知已清空的 listener
+  test("destroy 后 applyUpdate 安全，且不再通知", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+    store.destroy();
+
+    const snapshotBefore = store.getSnapshot();
+    store.applyUpdate(encodeMessageUpdate("assistant", "late", 1));
+    await flushRecompute();
+
+    // destroy 后快照冻结、无新通知（notifyCount 保持 destroy 前计数）
+    expect(store.getSnapshot()).toBe(snapshotBefore);
+    expect(notifyCount).toBe(0);
+  });
+
+  // 异步路径去重：applyUpdate 应用同一份 update（同 client+clock，Yjs 幂等重放），
+  // 重算 key 不变 → 0 次通知
+  test("applyUpdate 内容未变时异步重算后仍不通知", async () => {
+    const update = encodeMessageUpdate("user", "hello", 0);
+    store.applyUpdate(update);
+    await flushRecompute();
+    expect(notifyCount).toBe(1);
+
+    // 重放同一份 update（服务端重发/幂等帧场景）：Yjs 检测到已存在，内容不变
+    store.applyUpdate(update);
+    await flushRecompute();
+
+    expect(notifyCount).toBe(1);
+  });
+
+  // 慢路径降频：重算耗时超预算后，下一次 applyUpdate 的通知延迟到 50ms 窗口
+  test("重算超预算后切换到慢路径（50ms 窗口合并）", async () => {
+    // 用 busy-loop 模拟高成本重算（稳定超过 12ms 预算）
+    let simulateSlow = false;
+    const slowStore = createYjsStore<TestSnapshot>(
+      (doc) => {
+        if (simulateSlow) {
+          const deadline = performance.now() + 20;
+          while (performance.now() < deadline) {
+            /* busy loop */
+          }
+        }
+        return computeTestSnapshot(doc);
+      },
+      getInitialTestSnapshot(),
+      getTestSnapshotKey,
+    );
+    slowStore.switchDoc("slow", () => ({ ydoc: new Y.Doc() }));
+    let lastNotifyAt = 0;
+    slowStore.subscribe(() => {
+      lastNotifyAt = performance.now();
+    });
+
+    // 第一次 applyUpdate：快路径立即重算，耗时超预算 → 进入慢路径
+    simulateSlow = true;
+    slowStore.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+    await flushRecompute();
+
+    // 第二次 applyUpdate：走 50ms 慢路径窗口，通知应显著晚于宏任务
+    const t0 = performance.now();
+    slowStore.applyUpdate(encodeMessageUpdate("assistant", "hi", 1));
+    await new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        if (lastNotifyAt >= t0) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 2);
+    });
+    expect(lastNotifyAt - t0).toBeGreaterThanOrEqual(40);
+
+    slowStore.destroy();
+  });
+});
