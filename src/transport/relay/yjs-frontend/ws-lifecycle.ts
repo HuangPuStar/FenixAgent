@@ -479,11 +479,12 @@ export class WsLifecycle {
     } catch {
       /* ignore */
     }
-    try {
-      shared.handle.close(1000, "all yjs frontend clients disconnected");
-    } catch {
-      /* ignore */
-    }
+    // 不主动关闭 relay handle：前端 WS 断连（刷新/切页/网络抖动）是正常事件，
+    // relay 与 agent 进程、ACP 会话绑定必须跨断连维持。若在此 close，acp-link
+    // 侧 handleDisconnect 会杀掉 agent 子进程并清空连接级 sessionId，重连后
+    // send_prompt 被以 "No active session" 拒绝，对话中断。重连时 orchestrator
+    // 按 state=open 复用同一 handle，agent 进程与会话绑定得以延续。
+    // relay 的最终释放由实例回收路径负责（orchestrator.stop 主动 close handle）。
   }
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {

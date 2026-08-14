@@ -380,7 +380,9 @@ describe("YJS frontend internal handlers", () => {
     expect(closeCalls).toBe(0);
     lifecycle.handleClose("ws-2");
     expect(unsubscribeCalls).toBe(1);
-    expect(closeCalls).toBe(1);
+    // relay handle 不随客户端断开主动关闭（前端断连是正常事件，handle 由
+    // orchestrator 跨连接复用，最终由实例回收路径关闭）
+    expect(closeCalls).toBe(0);
     expect(detachCalls).toBe(1);
   });
 
@@ -713,11 +715,12 @@ describe("YJS frontend internal handlers", () => {
     lifecycle.handleClose("ws-1");
     expect(registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h")).toBeUndefined();
     expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeDefined();
-    expect(closeCalls).toBe(1);
+    // 自己的引用归零只触发 listener 注销，不主动关闭共享的 relay handle
+    expect(closeCalls).toBe(0);
 
     lifecycle.handleClose("ws-2");
     expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeUndefined();
-    expect(closeCalls).toBe(2);
+    expect(closeCalls).toBe(0);
   });
 
   // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
@@ -1217,7 +1220,7 @@ describe("YJS frontend internal handlers", () => {
       setChatModeState: () => {},
       registerSession: () => {},
       syncChatSessions: () => {},
-      updateSessionSummary: (rcs: string, sessionId: string, patch: Record<string, unknown>) =>
+      updateSessionSummary: (_rcs: string, sessionId: string, patch: Record<string, unknown>) =>
         updates.push({ sessionId, patch }),
       setChatActiveSession: () => {},
       getChat: () => undefined,
@@ -1276,7 +1279,7 @@ describe("YJS frontend internal handlers", () => {
   // 显式计数告警（连续 3 次 reportLog，之后每 30 次再报防刷屏），成功发送时清零
   // ——否则"轮询是否在跑"不可观测（R3 门禁卡死场景）。
   test("session list poll reports after consecutive gate skips and clears on success", async () => {
-    let now = 1_000_000;
+    const now = 1_000_000;
     installIntervalFakes(() => now);
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
