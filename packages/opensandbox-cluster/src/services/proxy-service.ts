@@ -1,7 +1,7 @@
 import { OpenSandboxHttpClient } from "../clients/opensandbox-http-client";
-import { AllocationService } from "./allocation-service";
+import type { AllocationService } from "./allocation-service";
 import { SandboxVolumeRewriteError } from "./sandbox-volume-rewriter";
-import { ServerService } from "./server-service";
+import type { ServerService } from "./server-service";
 
 export class ProxyError extends Error {
   constructor(

@@ -175,7 +175,7 @@ export class OpenSandboxClusterProvider implements SandboxProvider {
   }
 
   private statusOf(error: unknown): number | undefined {
-    if (!error || typeof error !== "object") return undefined;
+    if (!error || typeof error !== "object") return;
     const status = (error as { status?: unknown }).status;
     return typeof status === "number" ? status : undefined;
   }

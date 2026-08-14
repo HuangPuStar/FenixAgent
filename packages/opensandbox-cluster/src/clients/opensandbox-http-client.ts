@@ -17,7 +17,8 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 export class OpenSandboxHttpClient {
   constructor(
-    private readonly connectTimeoutMs: number,
+    // 预留的连接超时参数（当前请求统一使用 responseTimeoutMs），保留签名兼容调用方
+    _connectTimeoutMs: number,
     private readonly responseTimeoutMs: number,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}

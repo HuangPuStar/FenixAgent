@@ -6,12 +6,12 @@ function readGitCommitFromProcess(): string | undefined {
       stderr: "ignore",
     });
 
-    if (result.exitCode !== 0) return undefined;
+    if (result.exitCode !== 0) return;
 
     const commitId = new TextDecoder().decode(result.stdout).trim();
     return commitId ? commitId : undefined;
   } catch {
-    return undefined;
+    return;
   }
 }
 
