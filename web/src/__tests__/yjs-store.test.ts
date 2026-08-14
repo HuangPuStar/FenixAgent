@@ -333,3 +333,111 @@ describe("createYjsStore snapshot 去重", () => {
     expect(store.getSnapshot().messages.length).toBe(2);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// applyUpdate（WS 路径）合并重算行为
+// 回放/流式高峰时同一 tick 的多次 applyUpdate 应合并为一次重算，
+// 且重算在宏任务中执行（不阻塞 WS 接收栈）；快照最终正确。
+// ────────────────────────────────────────────────────────────────────────
+
+describe("createYjsStore applyUpdate 合并重算", () => {
+  let ydoc: Y.Doc;
+  let store: ReturnType<typeof createYjsStore<TestSnapshot>>;
+  let notifyCount: number;
+
+  beforeEach(() => {
+    ydoc = new Y.Doc();
+    notifyCount = 0;
+    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot(), getTestSnapshotKey);
+    store.switchDoc("test", () => ({ ydoc }));
+    store.subscribe(() => {
+      notifyCount++;
+    });
+    notifyCount = 0;
+  });
+
+  afterEach(() => {
+    store.destroy();
+  });
+
+  /** 用独立源 doc 编码一条消息的 update，模拟 WS 增量帧 */
+  function encodeMessageUpdate(role: string, content: string, seq: number): Uint8Array {
+    const src = new Y.Doc();
+    writeMessage(src, role, content, seq);
+    return Y.encodeStateAsUpdate(src);
+  }
+
+  /** 等待宏任务队列中的合并重算执行完毕 */
+  function flushRecompute(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  // 同一 tick 连续 applyUpdate 多条 update，合并为一次重算/通知；
+  // 快照内容为全部 update 应用后的最终状态（无遗漏）
+  test("同一 tick 多条 applyUpdate 合并为一次通知，快照内容完整", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+    store.applyUpdate(encodeMessageUpdate("assistant", "hi there", 1));
+
+    // 宏任务重算前：快照仍是旧值（重算未执行），通知尚未发出
+    expect(notifyCount).toBe(0);
+
+    await flushRecompute();
+
+    expect(notifyCount).toBe(1);
+    expect(store.getSnapshot().messages).toHaveLength(2);
+    expect(store.getSnapshot().messages[1]?.content).toBe("hi there");
+  });
+
+  // 本地事务（origin 非 applyUpdate）保持同步重算语义：
+  // 切换 load_session 后服务端回放与本地写入并存时，本地写入立即可见
+  test("本地事务仍同步通知，不受 applyUpdate 合并调度影响", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+
+    ydoc.transact(() => {
+      const messages = ydoc.getArray("messages");
+      const msg = new Y.Map<unknown>();
+      msg.set("role", "assistant");
+      msg.set("content", "sync reply");
+      msg.set("seq", 1);
+      msg.set("ts", Date.now());
+      messages.push([msg]);
+    });
+
+    // 本地事务立即通知
+    expect(notifyCount).toBe(1);
+    expect(store.getSnapshot().messages).toHaveLength(2);
+
+    // 随后宏任务重算执行，快照仍为最终状态（本地 + WS 内容合并无回退）
+    await flushRecompute();
+    expect(store.getSnapshot().messages).toHaveLength(2);
+  });
+
+  // switchDoc 切换后：pending 的合并重算被取消，新 doc 立即呈现空快照；
+  // 旧 doc 的迟到调度不会把内容写入新快照
+  test("switchDoc 取消 pending 重算，新 doc 同步呈现初始快照", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "stale", 0));
+
+    const nextDoc = new Y.Doc();
+    store.switchDoc("other", () => ({ ydoc: nextDoc }));
+
+    // 渲染期同步重算：立即得到新 doc 的空快照
+    expect(store.getSnapshot().messages).toHaveLength(0);
+
+    await flushRecompute();
+
+    // 旧 doc 的迟到重算被新 doc 状态覆盖（幂等，不产生错误内容）
+    expect(store.getSnapshot().messages).toHaveLength(0);
+  });
+
+  // destroy 后 applyUpdate 与迟到调度均不崩溃
+  test("destroy 后 applyUpdate 安全无副作用", async () => {
+    store.applyUpdate(encodeMessageUpdate("user", "hello", 0));
+    store.destroy();
+
+    store.applyUpdate(encodeMessageUpdate("assistant", "late", 1));
+    await flushRecompute();
+
+    // destroy 已清空 listeners，不抛错即可
+    expect(true).toBe(true);
+  });
+});
