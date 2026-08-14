@@ -321,7 +321,8 @@
   },
   "messageBubble": {
     "expand": "Expand",
-    "uploadedImage": "Uploaded image"
+    "uploadedImage": "Uploaded image",
+    "systemMessage": "System message"
   },
   "planView": {
     "high": "High",
