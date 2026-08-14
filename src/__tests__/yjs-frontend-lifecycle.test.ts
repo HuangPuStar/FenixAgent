@@ -893,7 +893,7 @@ describe("YJS frontend internal handlers", () => {
       nextRpcId: 0,
       // 模拟 create_session 请求出口已登记在途 rpcId：会话同步 result 分支仅放行
       // 登记过的响应（JSON-RPC 响应帧只有 id 无 method，防 rename/delete 劫持）
-      pendingSessionSyncIds: new Map([[1, "create"]]),
+      pendingSessionSyncIds: new Set([1]),
     };
     await handler.createMessageHandler(relay)({
       jsonrpc: "2.0",
@@ -1185,10 +1185,7 @@ describe("YJS frontend internal handlers", () => {
     const shared = createSharedRelay({ state: "open", send() {}, close() {} });
 
     // 空串标题（id=1）→ 注册为空串（视为缺省）；非空标题（id=2，新会话）→ 投影
-    shared.pendingSessionSyncIds = new Map([
-      [1, "load"],
-      [2, "create"],
-    ]);
+    shared.pendingSessionSyncIds = new Set([1, 2]);
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       id: 1,
@@ -1205,27 +1202,22 @@ describe("YJS frontend internal handlers", () => {
     expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-2");
   });
 
-  // load_session 响应 = 历史回放完成：回放的历史 user_message_chunk 会把 Session Doc
-  // status 置为 loading，此时必须无条件广播 session_update "ready" 复位 loading——
-  // 否则切换会话后前端 isLoading 永久残留（cancel 按钮/输入禁用无法解除）。
-  // resume_session 是恢复进行中的 turn，loading 属于真实状态，不得清除。
-  test("session/load result resets replay loading, session/resume keeps it", async () => {
+  // 回放窗口抑制：会话同步请求转发后（replayInProgress=true），来自 agent 的
+  // user_message_chunk 属于 session/load 历史回放（数据重建，不是新 turn），必须带
+  // suppressLoading 抑制其 loading 设置——否则切换会话后 loading 残留、刷新恢复时
+  // 覆盖 doc 中真实进行中的 loading。响应消费后窗口结束并复位。
+  test("replay window suppresses user_message_chunk loading until the sync response", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
-    const processed: Array<{ type: string; payload?: Record<string, unknown> }> = [];
-    const makeSessionDoc = () => {
-      const ydoc = new Y.Doc();
-      // 模拟回放结束时的状态：历史 user_message_chunk 已把 status 置为 loading
-      ydoc.getMap("meta").set("status", "loading");
-      return { ydoc };
-    };
+    const processed: Array<{ event: { type: string }; options?: { suppressLoading?: boolean } }> = [];
     const mockDocManager = {
-      processACP: (_rcs: string, event: { type: string; payload?: Record<string, unknown> }) => processed.push(event),
+      processACP: (_rcs: string, event: { type: string }, options?: { suppressLoading?: boolean }) =>
+        processed.push({ event, options }),
       setChatActiveSession: () => {},
       setChatModelState: () => {},
       setChatModeState: () => {},
       registerSession: () => {},
-      openSession: async () => makeSessionDoc(),
+      openSession: async () => ({ ydoc: new Y.Doc() }),
     } as unknown as DocManager;
 
     const handler = new RelayEventHandler({
@@ -1236,29 +1228,33 @@ describe("YJS frontend internal handlers", () => {
       reportError: () => {},
     });
 
-    // load_session 响应：即使 status 为 loading（回放污染）也必须复位
-    // （processACP 还会收到 extractAcpEvent 提取的 unknown 事件，仅断言 session_update）
-    const sharedLoad = createSharedRelay({ state: "open", send() {}, close() {} });
-    sharedLoad.pendingSessionSyncIds = new Map([[1, "load"]]);
-    await handler.createMessageHandler(sharedLoad)({
+    // 回放窗口内：user_message_chunk 必须带 suppressLoading 抑制 loading
+    const shared = createSharedRelay({ state: "open", send() {}, close() {} });
+    shared.pendingSessionSyncIds = new Set([1]);
+    shared.replayInProgress = true;
+    await handler.createMessageHandler(shared)({
+      type: "session_data",
+      payload: { type: "user_message_chunk", payload: { content: { type: "text", text: "history" } } },
+    } as unknown as RelayMessage);
+    const suppressed = processed.find((item) => item.event.type === "user_message_chunk");
+    expect(suppressed?.options?.suppressLoading).toBe(true);
+
+    // 会话同步响应消费：回放窗口结束，标记复位
+    processed.length = 0;
+    await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       id: 1,
       result: { sessionId: "ses-load" },
     } as unknown as RelayMessage);
-    expect(processed.filter((event) => event.type === "session_update")).toEqual([
-      { type: "session_update", payload: { sessionUpdate: "ready" } },
-    ]);
+    expect(shared.replayInProgress).toBe(false);
 
-    // resume_session 响应：status 为 loading 时保持原行为，不清 loading、不广播 ready
-    processed.length = 0;
-    const sharedResume = createSharedRelay({ state: "open", send() {}, close() {} });
-    sharedResume.pendingSessionSyncIds = new Map([[2, "resume"]]);
-    await handler.createMessageHandler(sharedResume)({
-      jsonrpc: "2.0",
-      id: 2,
-      result: { sessionId: "ses-resume" },
+    // 窗口结束后：新的 user_message_chunk 不再抑制（真实 turn 正常设置 loading）
+    await handler.createMessageHandler(shared)({
+      type: "session_data",
+      payload: { type: "user_message_chunk", payload: { content: { type: "text", text: "new turn" } } },
     } as unknown as RelayMessage);
-    expect(processed.filter((event) => event.type === "session_update")).toEqual([]);
+    const unsuppressed = processed.find((item) => item.event.type === "user_message_chunk");
+    expect(unsuppressed?.options).toBeUndefined();
   });
 
   // session_info_update 通知是唯一实时标题通道：agent 生成标题后推送（acp-link

@@ -87,7 +87,17 @@ export class RelayEventHandler {
     }
 
     try {
-      this.dependencies.docManager.processACP(shared.rcsSessionId, extractAcpEvent(raw, msgType));
+      // 回放窗口内（会话同步请求已转发、响应未到）来自 agent 的 user_message_chunk
+      // 是 session/load 历史回放：数据重建，不是新 turn。聚合层必须抑制其 loading
+      // 设置，否则切换会话后 loading 残留、刷新恢复时覆盖 doc 中真实进行中的 loading。
+      // 用户消息由服务端 writePromptText 直接写入（不走 relay 入口），不受此抑制。
+      const event = extractAcpEvent(raw, msgType);
+      const suppressLoading = shared.replayInProgress === true && event.type === "user_message_chunk";
+      this.dependencies.docManager.processACP(
+        shared.rcsSessionId,
+        event,
+        suppressLoading ? { suppressLoading } : undefined,
+      );
     } catch (err) {
       // 聚合失败不阻塞 relay 消息流转，但上报供排查
       this.dependencies.reportError("[YJS-FE] processACP failed, ACP event skipped:", err);
@@ -222,9 +232,15 @@ export class RelayEventHandler {
       // 绑定校验丢弃当前会话全部增量、误开回放窗口、错误投影 title/status。
       // 消费后删除登记，避免 id 空间残留。
       const rpcId = rpc.id as number | string | null | undefined;
-      const syncKind = rpcId !== undefined && rpcId !== null ? shared.pendingSessionSyncIds?.get(rpcId) : undefined;
-      const syncRequested = syncKind !== undefined;
-      if (syncRequested && rpcId !== undefined && rpcId !== null) shared.pendingSessionSyncIds?.delete(rpcId);
+      const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
+      if (syncRequested) {
+        shared.pendingSessionSyncIds?.delete(rpcId);
+        // 回放窗口随最后一个在途会话同步请求的消费而结束（多标签页并发请求时，
+        // 全部响应到达才复位，避免提前结束抑制窗口）。
+        if (shared.pendingSessionSyncIds && shared.pendingSessionSyncIds.size === 0) {
+          shared.replayInProgress = false;
+        }
+      }
       if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
         const configOptions = result.configOptions as Array<Record<string, unknown>> | undefined;
         const models = (result.models ?? extractModelStateFromConfigOptions(configOptions)) as
@@ -263,13 +279,12 @@ export class RelayEventHandler {
           });
         }
         this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
-        // load_session 响应 = 历史回放完成：回放的历史 user_message_chunk 会触发聚合层
-        // 设置 loading（status=loading），此时必须无条件复位——若沿用 status==="idle"
-        // 条件，回放后 status 恒为 loading 而跳过，切换会话后前端 isLoading 永久残留
-        // （cancel 按钮/输入禁用无法解除），且 aggregator 不会为回放消息补发清除。
-        // resume_session 是恢复进行中的 turn，loading 属于真实进行状态，不得清除，
-        // 仍保持 status==="idle" 才复位；create_session 无回放，行为不变。
-        if (syncKind === "load" || sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
+        // 会话就绪广播：仅当 Session Doc 未被回放污染（status 仍为 idle）时发送。
+        // 回放窗口抑制（replayInProgress）已保证回放的 user_message_chunk 不设置
+        // loading、不把 status 置为 loading——切换会话时回放后保持 idle 发 ready；
+        // 刷新恢复时 doc 中真实进行中的 loading 保留（status 非 idle）则不广播，
+        // 前端凭快照中的 loading 继续显示 cancel 按钮，agent 后续输出不受影响。
+        if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
           this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",
             payload: { sessionUpdate: "ready" },

@@ -9,6 +9,16 @@ export interface ACPEvent {
   sessionId?: string;
 }
 
+/** ACP 事件应用选项（聚合层状态变更的附加控制） */
+export interface ACPApplyOptions {
+  /**
+   * 抑制 user_message_chunk 的 loading 设置。session/load 历史回放窗口内为 true：
+   * 回放的历史用户消息是数据重建，不是新的 turn，不应触发 loading（否则切换会话
+   * 后 loading 残留、刷新恢复时覆盖真实进行中的 loading）。
+   */
+  suppressLoading?: boolean;
+}
+
 // ── Session 级别状态 ──
 
 export type SessionStatus =

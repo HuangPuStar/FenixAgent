@@ -3,6 +3,7 @@
 import type { Cluster, Redis } from "ioredis";
 import type * as Y from "yjs";
 import type {
+  ACPApplyOptions,
   ACPEvent,
   AgentInfo,
   ChatDoc,
@@ -84,7 +85,11 @@ export class DocManager {
   private onError: ((context: string, err: unknown) => void) | undefined;
   private onLog: ((msg: string) => void) | undefined;
   private batchWindowMs: number;
-  private acpBatchBuffers = new Map<string, { events: ACPEvent[]; timer: ReturnType<typeof setTimeout> }>();
+  /** 批缓冲条目：事件与其应用选项（如回放窗口内的 loading 抑制）绑定存储 */
+  private acpBatchBuffers = new Map<
+    string,
+    { events: Array<{ event: ACPEvent; options?: ACPApplyOptions }>; timer: ReturnType<typeof setTimeout> }
+  >();
 
   constructor(options?: DocManagerOptions) {
     this.getRedis = options?.getRedis ?? (() => null);
@@ -375,12 +380,13 @@ export class DocManager {
 
     try {
       if (batch.events.length === 1) {
-        applyACPEvent(doc.ydoc, batch.events[0]);
+        const item = batch.events[0];
+        applyACPEvent(doc.ydoc, item.event, item.options);
       } else {
         // 多个事件合并到一个 Y.Doc 事务，N 个 session/update 帧 → 1 个 yjs:update
         doc.ydoc.transact(() => {
-          for (const event of batch.events) {
-            applyACPEvent(doc.ydoc, event);
+          for (const item of batch.events) {
+            applyACPEvent(doc.ydoc, item.event, item.options);
           }
         });
       }
@@ -402,8 +408,11 @@ export class DocManager {
    * 处理单个 ACP 事件。
    * 内容类事件（消息、工具调用等）进入微批次合并窗口；
    * 控制类事件（session_update、error 等）立即生效。
+   *
+   * @param options.suppressLoading session/load 历史回放窗口内抑制
+   *   user_message_chunk 的 loading 设置（回放消息是数据重建，不是新 turn）。
    */
-  processACP(rcsSessionId: string, event: ACPEvent): void {
+  processACP(rcsSessionId: string, event: ACPEvent, options?: ACPApplyOptions): void {
     const doc = this.sessionDocs.get(rcsSessionId);
     if (!doc) {
       this.onLog?.(`[DocManager] Session ${rcsSessionId} not in memory, skipping ACP event type=${event.type}`);
@@ -417,18 +426,18 @@ export class DocManager {
       } catch (err) {
         this.onError?.(`[DocManager] flushACPBatch failed before control event ${event.type}`, err);
       }
-      applyACPEvent(doc.ydoc, event);
+      applyACPEvent(doc.ydoc, event, options);
       return;
     }
 
     const existing = this.acpBatchBuffers.get(rcsSessionId);
     if (existing) {
-      existing.events.push(event);
+      existing.events.push({ event, options });
       return;
     }
 
     const timer = setTimeout(() => this.flushACPBatch(rcsSessionId), this.batchWindowMs);
-    this.acpBatchBuffers.set(rcsSessionId, { events: [event], timer });
+    this.acpBatchBuffers.set(rcsSessionId, { events: [{ event, options }], timer });
   }
 
   // ── 清理 ──
