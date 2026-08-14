@@ -234,8 +234,9 @@ export class Gateway {
           shared.handle.send(
             translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
           );
-        } catch {
-          /* 轮询失败静默忽略，下个周期重试 */
+        } catch (err) {
+          // 轮询失败不中断连接，但必须暴露（静默失败会导致 sessions map 长期缺失更新）
+          this.dependencies.reportError(`[YJS-FE] session list poll failed: rcsSessionId=${shared.rcsSessionId}`, err);
         }
       }, SESSION_LIST_POLL_INTERVAL);
     }

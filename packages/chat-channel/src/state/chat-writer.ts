@@ -456,6 +456,11 @@ export function clearSessionDocContent(ydoc: Y.Doc): void {
 /**
  * 全量同步会话列表（幂等）：按 sessionId upsert，删除不在列表中的旧条目。
  * 保证 10s 轮询重复响应不重复追加、agent 侧删除可自愈。
+ *
+ * 空列表保护：summaries 为空（agent 重启后列表尚未恢复、或全部条目被 acp-link
+ * 的"空标题/New session"过滤滤掉）时**不清空**已有条目——瞬时空响应会清空
+ * 整个 map，叠加当前会话 title 不投影导致侧边栏全部显示"新会话"；
+ * 真实删除由非空响应自愈（被删会话不在 incoming 中）。
  */
 export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection[]): void {
   const sessions = getSessionsMap(ydoc);
@@ -477,6 +482,7 @@ export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection
     entry.set("updatedAt", s.updatedAt ?? null);
     sessions.set(s.sessionId, entry);
   }
+  if (summaries.length === 0) return; // 空响应不清空（见函数注释）
   for (const sessionId of Array.from(sessions.keys())) {
     if (!incoming.has(sessionId)) sessions.delete(sessionId);
   }

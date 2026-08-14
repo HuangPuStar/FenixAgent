@@ -233,7 +233,9 @@ describe("RelayEventHandler", () => {
   // session/new、load 响应携带的 models/modes（acp-link 已从 configOptions 提取，
   // SDK 0.28+ 无独立 models 字段）必须随 session_updated 投影到 Session Doc session map，
   // 前端据此显示模型名与模式选择器（C 回归：此前 result 分支丢弃该元数据）。
-  test("session/new result projects models and modes into the session doc", async () => {
+  // title 同样必须投影：clearSessionDocContent 每次切换清空 session map，前端兜底
+  // 用 session.title 显示当前会话，缺失会导致侧边栏显示"新会话"。
+  test("session/new result projects models, modes and title into the session doc", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
@@ -244,6 +246,7 @@ describe("RelayEventHandler", () => {
       id: 1,
       result: {
         sessionId: "ses-new",
+        title: "My Session",
         models: {
           currentModelId: "model-b",
           availableModels: [
@@ -259,6 +262,7 @@ describe("RelayEventHandler", () => {
     } as unknown as RelayMessage);
 
     const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("title")).toBe("My Session");
     const modelState = session.get("modelState") as Y.Map<unknown>;
     expect(modelState.get("currentModelId")).toBe("model-b");
     const models = modelState.get("availableModels") as Y.Array<Y.Map<unknown>>;

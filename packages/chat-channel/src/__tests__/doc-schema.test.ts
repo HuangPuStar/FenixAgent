@@ -372,3 +372,31 @@ test("session_list syncs sessions map with idempotent full sync", () => {
     "sessions",
   ]);
 });
+
+// 空列表保护：agent 重启后列表尚未恢复或全部条目被 acp-link"空标题/New session"
+// 过滤时，瞬时空响应不得清空已有条目（否则叠加当前会话 title 缺失，
+// 侧边栏全部显示"新会话"）；真实删除由非空响应自愈
+test("session_list 空列表不清空已有 sessions 条目", () => {
+  applyNormalizedEvent(
+    pair,
+    event("session_list", {
+      sessions: [
+        { sessionId: "ses_1", title: "A" },
+        { sessionId: "ses_2", title: "B" },
+      ],
+    }),
+  );
+  const sessions = getSessionRoot(pair.session).get("sessions") as Y.Map<Y.Map<unknown>>;
+  expect(sessions.size).toBe(2);
+
+  // 空响应：保留已有条目与标题
+  applyNormalizedEvent(pair, event("session_list", { sessions: [] }));
+  expect(sessions.size).toBe(2);
+  expect(sessions.get("ses_1")?.get("title")).toBe("A");
+  expect(sessions.get("ses_2")?.get("title")).toBe("B");
+
+  // 非空响应仍正常删除（agent 侧删除自愈语义不受影响）
+  applyNormalizedEvent(pair, event("session_list", { sessions: [{ sessionId: "ses_1", title: "A" }] }));
+  expect(sessions.size).toBe(1);
+  expect(sessions.has("ses_2")).toBe(false);
+});

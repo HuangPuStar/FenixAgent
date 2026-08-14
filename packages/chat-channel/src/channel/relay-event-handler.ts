@@ -260,6 +260,10 @@ export class RelayEventHandler {
           update: {
             sessionId: newSessionId,
             status: "ready",
+            // title 投影：session/new、load 响应携带 agent 侧标题；缺省时保持
+            // 现有值（清空后为 null，前端兜底显示"新会话"——由后续 session_list
+            // 轮询以权威列表覆盖）
+            ...(typeof result.title === "string" ? { title: result.title } : {}),
             ...(result.models && typeof result.models === "object" ? { modelState: result.models } : {}),
             ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
           },
