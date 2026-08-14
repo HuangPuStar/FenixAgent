@@ -161,6 +161,73 @@ describe("RelayEventHandler", () => {
     expect(reports[0]?.[0]).toBe("[YJS-FE] auto list_sessions send failed: instanceId=instance-1");
   });
 
+  // Agent 断连 status（connected:false：子进程死亡/连接关闭，acp-link 只发该帧
+  // 不报错不关 relay）必须把活动 turn 收敛为 interrupted：否则 turn 永久卡
+  // accepting/running、前端 loading 永不消失、仅刷新可恢复（R1）。
+  test("status connected:false interrupts the active turn", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      type: "status",
+      payload: { connected: false },
+    } as unknown as RelayMessage);
+
+    expect(processed).toContain("turn_interrupted");
+  });
+
+  // Agent 子进程死亡后 acp-link 以 JSON-RPC error 响应拒绝 prompt（-32000 "No
+  // active session"），该帧无法归一化为终态事件；relay 必须按在途 prompt 登记
+  // 收敛 turn_failed，否则 turn 永久卡 accepting、前端 loading 永不消失（R1）。
+  // 错误内容脱敏（不泄露 acp-link 原始 message），登记消费后删除。
+  test("prompt error response converges the turn via the pending prompt registration", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const reports: Array<[string, unknown]> = [];
+    const handler = createRelayEvents(registry, broadcaster, processed, {
+      reportError: (message, error) => reports.push([message, error]),
+    });
+    const shared = relayOn("rcs-1");
+    // prompt 请求出口登记（session-channel send_prompt 分支）
+    shared.pendingPromptIds = new Set([1]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32000, message: "No active session" },
+    } as unknown as RelayMessage);
+
+    expect(processed).toContain("turn_failed");
+    expect(shared.pendingPromptIds?.size).toBe(0);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.[0]).toContain("prompt rejected");
+    expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
+  });
+
+  // 未登记的 JSON-RPC error（如 set_session_model 命令回执）不得收敛 turn：
+  // 模型切换回滚（onRpcResponse）语义保持，prompt 之外的错误不派发终态事件。
+  test("unregistered error responses do not converge the turn", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const rpcResponses: Array<[number | string, boolean]> = [];
+    const handler = createRelayEvents(registry, broadcaster, processed, {
+      onRpcResponse: (id, ok) => rpcResponses.push([id, ok]),
+    });
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      jsonrpc: "2.0",
+      id: 7,
+      error: { code: -32603, message: "Failed to set model" },
+    } as unknown as RelayMessage);
+
+    expect(processed).not.toContain("turn_failed");
+    expect(rpcResponses).toEqual([[7, false]]);
+  });
+
   // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
   test("sends relay error messages only to the matching RCS session", async () => {
     const registry = new ConnectionRegistry();

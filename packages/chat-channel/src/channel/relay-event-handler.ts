@@ -206,9 +206,27 @@ export class RelayEventHandler {
       !rpcCheck.method &&
       !isSessionSyncResult
     ) {
+      // JSON-RPC error 响应（无 result）无法归一化为终态事件：若该 id 是登记过的
+      // 在途 prompt，必须收敛 turn_failed——Agent 子进程死亡时 acp-link 以 -32000
+      // "No active session" / -32603 "Prompt failed" 拒绝 prompt，静默丢弃会让 turn
+      // 永久卡 accepting、前端 loading 永不消失（R1）。set_session_model 等命令回执
+      // （未登记 prompt）仍走 onRpcResponse 模型回滚，不受影响。错误内容脱敏，
+      // 不泄露 acp-link 原始错误。
+      const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
+      // 外层条件已排除 null/undefined；此处按 Set 元素类型收窄（extractJsonRpc 返回 Record<string, unknown>）
+      const rpcId = rpcCheck.id as number | string;
+      const isPromptError = rpcError !== undefined && shared.pendingPromptIds?.has(rpcId) === true;
+      if (isPromptError) {
+        shared.pendingPromptIds?.delete(rpcId);
+        this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
+          instanceId: shared.instanceId,
+          code: rpcError.code,
+        });
+        this.dispatch(shared, { type: "turn_failed", update: { error: "Agent request failed" }, content: null });
+      }
       if (this.dependencies.onRpcResponse) {
         try {
-          this.dependencies.onRpcResponse(rpcCheck.id as number | string, !rpcCheck.error);
+          this.dependencies.onRpcResponse(rpcCheck.id as number | string, !rpcError);
         } catch (err) {
           this.dependencies.reportError("[YJS-FE] onRpcResponse failed", err);
         }
@@ -218,6 +236,13 @@ export class RelayEventHandler {
 
     if (msgType === "status") {
       const payload = raw.payload as Record<string, unknown> | undefined;
+      // Agent 断连（acp-link connection.closed → {connected:false}，子进程死亡不
+      // 报错不关 relay）：活动 turn 必须收敛为 interrupted（同 relay_closed 语义），
+      // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
+      // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
+      if (payload?.connected === false) {
+        this.dispatch(shared, { type: "turn_interrupted", update: {}, content: null });
+      }
       // 保留 capabilities 原始值（可能为 null/undefined）：聚合层仅在非空时投影，
       // 防止实例 start 竞态下空 capabilities 的 status 覆盖已就绪的能力（见 acp-link
       // connect 帧缓存——status 可能先于能力就绪到达，覆盖会永久清空前端能力信息）
