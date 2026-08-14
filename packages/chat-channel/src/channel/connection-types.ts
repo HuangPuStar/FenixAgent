@@ -78,6 +78,15 @@ export interface SharedRelay {
   /** JSON-RPC 请求 id 递增计数器，保证同一 instance 下 translateSimpleAction 生成唯一 id */
   nextRpcId: number;
   /**
+   * 在途会话同步请求（create_session/load_session/resume_session）的 rpcId 集合。
+   * JSON-RPC 响应帧只有 id 无 method，relay 的会话同步 result 分支无法区分响应来源；
+   * rename/delete 等其他携带 sessionId 的响应不得进入该分支（否则 registry 活跃会话
+   * 被 clobber、绑定校验丢弃当前会话增量、误开回放窗口）。请求出口登记、响应消费后删除。
+   */
+  pendingSessionSyncIds?: Set<number | string>;
+  /** session/list 轮询因 status 门禁未置位而连续跳过的次数（连续 3 次告警，成功后清零） */
+  sessionListSkipCount?: number;
+  /**
    * load_session 回放窗口截止时间戳（ms）。load_session 成功后短暂开启，
    * 期间到达的无 turnId user_message 由 relay-event-handler 分配回放 turnId，
    * 使 Agent 全量回放的历史增量能够投影为时间线（无持久化快照时的历史恢复来源）；

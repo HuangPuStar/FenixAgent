@@ -49,6 +49,12 @@ export interface SessionConnection {
   sendToRelay: (message: Record<string, unknown>) => Promise<void> | void;
   /** JSON-RPC id 递增计数器，保证同一 instance 下生成唯一 id */
   getNextRpcId: () => number;
+  /**
+   * 登记在途会话同步请求（create/load/resume）的 rpcId：响应到达时 relay 的
+   * 会话同步 result 分支按 id 校验（JSON-RPC 响应无 method 字段，rename/delete
+   * 等其他携带 sessionId 的响应不得劫持该分支）。可选注入，宿主由 gateway 提供。
+   */
+  registerSessionSyncRpcId?: (rpcId: number | string) => void;
 }
 
 export interface SessionChannelDependencies {
@@ -204,7 +210,16 @@ export class SessionChannel {
 
     // cwd 由服务端根据已认证 environment 注入（translateSimpleAction 内完成），
     // 浏览器传入的 workspace/cwd 不可信（CLAUDE.md 不变量）。
-    const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, connection.getNextRpcId());
+    // rpcId 单独捕获：会话同步请求需用同一 id 登记，等待响应按 id 校验
+    const rpcId = connection.getNextRpcId();
+    const rpc = translateSimpleAction(toLegacyAction(command), connection.workspacePath, rpcId);
+    // 会话同步请求登记（create/load/resume）：响应帧只有 id 无 method，relay 的
+    // 会话同步 result 分支仅放行登记过的请求；rename/delete 等其他携带 sessionId
+    // 的响应不得劫持该分支（否则 registry 活跃会话被 clobber、绑定校验丢弃当前
+    // 会话增量、误开回放窗口——rename 非当前会话即触发，review M1 加固）。
+    if (command.type === "create_session" || command.type === "load_session" || command.type === "resume_session") {
+      connection.registerSessionSyncRpcId?.(rpc.id as number | string);
+    }
     try {
       await connection.sendToRelay(rpc);
     } catch (err) {
