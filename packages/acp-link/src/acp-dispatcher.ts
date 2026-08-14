@@ -224,7 +224,7 @@ export class AcpDispatcher {
           await this.handleNewSession(id, (params ?? {}) as Record<string, unknown>);
           break;
         case ACP_METHOD.SESSION_PROMPT:
-          await this.handlePrompt(id, params as { content: ContentBlock[] });
+          await this.handlePrompt(id, params as { content: ContentBlock[]; sessionId?: string });
           break;
         case ACP_METHOD.SESSION_CANCEL:
           await this.handleCancel(id, params as { sessionId?: string } | undefined);
@@ -297,14 +297,24 @@ export class AcpDispatcher {
     }
   }
 
-  private async handlePrompt(id: number | string, params: { content: ContentBlock[] }): Promise<void> {
-    if (!this.state.connection || !this.state.sessionId) {
+  /**
+   * 处理 session/prompt。params.sessionId 透传 RPC 中的目标会话（与 cancel 对称）：
+   * 多会话共享同一 relay 时连接级 state.sessionId 是单值，可能已被其他会话的
+   * 最后一次操作改写，prompt 不带 sessionId 会落到错误会话且不报错——前端表现为
+   * 当前 turn 永久 loading。旧客户端不携带时 fallback 当前会话（向后兼容）。
+   */
+  private async handlePrompt(
+    id: number | string,
+    params: { content: ContentBlock[]; sessionId?: string },
+  ): Promise<void> {
+    const sessionId = params.sessionId ?? this.state.sessionId;
+    if (!this.state.connection || !sessionId) {
       this.send(createErrorResponse(id, -32000, "No active session"));
       return;
     }
     try {
       const result = await this.state.connection.prompt({
-        sessionId: this.state.sessionId,
+        sessionId,
         prompt: params.content as acp.ContentBlock[],
       });
       this.send(createSuccessResponse(id, result));

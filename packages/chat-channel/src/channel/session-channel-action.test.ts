@@ -143,6 +143,26 @@ describe("SessionChannel action flow", () => {
     expect(readEntryIds(chatDoc as Y.Doc)).toEqual([`${committed?.turnId}:assistant`, `${committed?.turnId}:user`]);
   });
 
+  // send_prompt 出站必须携带服务端绑定的 acpSessionId：多会话共享同一 relay 时
+  // acp-dispatcher 的 fallback（连接级当前会话）可能已被其他会话改写，prompt 会
+  // 落到错误会话且不报错（loading 卡死根因）。绑定会话为权威目标，与 cwd 注入同理。
+  test("send_prompt forwards the bound acpSessionId as the prompt target", async () => {
+    const harness = createHarness();
+    const { connection, relayMessages } = createConnection({ acpSessionId: "ses-bound" });
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+    const sinks = createSinks(harness);
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "send_prompt", commandId: "cmd-1", content: [{ type: "text", text: "hello" }] },
+      sinks,
+    );
+
+    expect(relayMessages).toHaveLength(1);
+    expect(relayMessages[0]?.params).toMatchObject({ sessionId: "ses-bound" });
+  });
+
   // 同一 commandId 重发（超时重试语义）：返回 duplicate、不重复调用 Agent（relay 只发一次）。
   test("retrying the same commandId returns duplicate without re-forwarding to relay", async () => {
     const harness = createHarness();

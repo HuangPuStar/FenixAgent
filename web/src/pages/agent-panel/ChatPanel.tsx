@@ -295,7 +295,12 @@ export function ChatPanel({
   // 为 ACPMain 提供的出站回调
   const callbacks = useMemo(
     () => ({
-      onSendPrompt: (contentBlocks: unknown[]) => sendViaWs({ action: "send_prompt", content: contentBlocks }),
+      onSendPrompt: (contentBlocks: unknown[]) =>
+        // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
+        // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
+        // 会话共享同一 relay 时该值可能已被其他会话改写，prompt 会落到错误会话
+        // （当前 turn 永久 loading 的根因，修复：出站显式绑定目标 session）。
+        sendViaWs({ action: "send_prompt", content: contentBlocks, sessionId: sessionState.acpSessionId || undefined }),
       // cancel 携带当前 ACP sessionId：服务端（translator → dispatcher）据此精确路由到
       // 对应 session 的活跃 query，多会话并发下避免取消落在错误的 query；空字符串
       // （会话未建立）时省略字段，服务端 fallback 当前会话（向后兼容旧客户端）。

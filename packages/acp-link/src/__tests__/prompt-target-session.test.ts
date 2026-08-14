@@ -26,7 +26,7 @@ describe("resolvePromptTargetSession", () => {
     expect(result.targetSession?.sessionId).toBe("claude_2");
   });
 
-  // yjs 前端 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话
+  // 旧客户端/旧版本 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话
   test("prompt 未携带 sessionId 时 fallback 到连接级 activeSessionId", () => {
     const sessions = new Map<string, SessionState>([["claude_cur", makeSessionState("claude_cur")]]);
     const result = resolvePromptTargetSession({}, sessions, "claude_cur");

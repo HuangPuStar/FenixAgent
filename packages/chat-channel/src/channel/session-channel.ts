@@ -204,6 +204,12 @@ export class SessionChannel {
     let turnId: string | undefined;
     if (command.type === "send_prompt") {
       turnId = await this.writePromptText(connection, command.payload.content);
+      // 出站显式绑定目标 session（服务端权威，浏览器传入值不可信，与 cwd 注入同理）：
+      // prompt 不带 sessionId 时 acp-dispatcher fallback 连接级当前会话——多会话共享
+      // 同一 relay 时该值可能已被其他会话的 load/create 改写，prompt 会落到错误会话
+      // 并被接受，当前 turn 永远收不到响应（loading 卡死根因）。以服务端绑定的
+      // acpSessionId（load/create 后 syncSessionId 更新）为权威目标。
+      command.payload = { ...command.payload, sessionId: connection.acpSessionId || undefined };
     }
 
     if (command.type === "respond_permission") {

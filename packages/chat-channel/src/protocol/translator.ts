@@ -20,7 +20,15 @@ export function translateSimpleAction(
   const id = rpcId;
   switch (action) {
     case "send_prompt":
-      return { jsonrpc: "2.0", id, method: "session/prompt", params: { content: parsed.content } };
+      // 携带目标 sessionId（服务端 session-channel 注入，来自绑定的 acpSessionId）：
+      // dispatcher 据此精确路由 prompt；旧客户端不带时字段缺失，dispatcher fallback
+      // 到连接级当前会话（向后兼容，但多会话共享 relay 时可能串会话——见 session-channel）。
+      return {
+        jsonrpc: "2.0",
+        id,
+        method: "session/prompt",
+        params: { content: parsed.content, sessionId: parsed.sessionId },
+      };
     case "cancel":
       // 携带目标 sessionId（前端来自 sessionState.acpSessionId），dispatcher 据此
       // 精确路由到 adapter 注册表中对应 session 的 query；旧客户端不带时字段缺失，
