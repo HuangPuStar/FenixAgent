@@ -1,8 +1,8 @@
+import type { AgentSessionInfo } from "@fenix/chat-channel";
 import { ChevronDown, Loader2, MessageSquare, Pencil, Pin, Plus, Search, Trash2, X } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AgentSessionInfo } from "../../src/acp/types";
 import { stripHtmlTags } from "../../src/lib/strip-html-tags";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
@@ -76,7 +76,7 @@ export function ChatHeader({
     }
   }, [forceOpen]);
 
-  // 当前会话标题：从 sessions 中按 activeSessionId 命中；剔除 HTML 标签后为空则用默认文案兜底
+  // 当前会话标题：从 sessions 中按 activeSessionId 命中；缺失则用默认文案兜底
   const activeSession = useMemo(
     () => sessions.find((s) => s.sessionId === activeSessionId) ?? null,
     [sessions, activeSessionId],
@@ -298,6 +298,7 @@ export function ChatHeader({
                   {group.sessions.map((session) => {
                     const isActive = session.sessionId === activeSessionId;
                     const isEditing = editingId === session.sessionId;
+
                     // 标题清洗：剔除混入的 HTML 标签（如 <system-reminder>），清洗后为空则回退到"新会话"占位
                     const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
 
@@ -342,7 +343,7 @@ export function ChatHeader({
                               ? "text-text-primary hover:bg-transparent"
                               : "text-text-secondary hover:text-text-primary hover:bg-transparent",
                           )}
-                          title={displayTitle || session.sessionId}
+                          title={session.title || session.sessionId}
                         >
                           <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
                           <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">
@@ -361,7 +362,6 @@ export function ChatHeader({
                             }}
                             aria-label={t("acpMain.rename")}
                             title={t("acpMain.rename")}
-                            disabled
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
@@ -374,7 +374,6 @@ export function ChatHeader({
                             }}
                             aria-label={t("acpMain.delete")}
                             title={t("acpMain.delete")}
-                            disabled
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>

@@ -22,7 +22,7 @@ export class ServerService {
   private readonly bindings: BindingRepository;
 
   constructor(
-    private readonly db: ClusterDatabase,
+    db: ClusterDatabase,
     private readonly secretBox: SecretBox,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
@@ -68,7 +68,7 @@ export class ServerService {
 
   update(id: string, input: ServerMutation) {
     const current = this.servers.findById(id);
-    if (!current) return undefined;
+    if (!current) return;
     if (input.pool_id && input.pool_id !== current.poolId && this.bindings.countByServer(id) > 0) {
       throw new ConflictError("server with bindings cannot move pools");
     }
@@ -101,7 +101,7 @@ export class ServerService {
 
   async healthCheck(id: string) {
     const row = this.servers.findById(id);
-    if (!row) return undefined;
+    if (!row) return;
     try {
       const response = await this.fetchImpl(new URL("/health", row.baseUrl), { signal: AbortSignal.timeout(3000) });
       const healthy = response.ok;

@@ -6,15 +6,51 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AgentExecutor } from "../../executor/agent-executor";
 import { createNodeExecutorRegistry, type NodeExecutorRegistry } from "../../executor/node-executor";
 import { ProcessExecutor } from "../../executor/process-executor";
 import { SubWorkflowExecutor } from "../../executor/sub-workflow-executor";
 import type { NodeExecutionContext } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
+import type { AgentResponse, AgentSession, Transport } from "../../transport/transport";
 import type { NodeDef, SubWorkflowNodeDef } from "../../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../../types/errors";
 
 // ---------- 辅助工具 ----------
+
+/**
+ * 测试用 Transport — 模拟真实 transport（agent-chat-transport）的 spawn 记账语义：
+ * connect 时把 instanceId 写入运行级 spawnedInstanceIds 集合（复用不写入）。
+ * 用于验证子流程内 agent 节点 spawn 的实例是否进入父级集合（C-P2.2）。
+ */
+class FakeTransport implements Transport {
+  private response: AgentResponse | null = null;
+  private connectCount = 0;
+  private lastConnectOptions: { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined;
+
+  /** 设置 connect 后的预设响应 */
+  setResponse(response: AgentResponse): void {
+    this.response = response;
+  }
+
+  /** 获取最近一次 connect 的 options（验证 spawnedInstanceIds 透传） */
+  getLastConnectOptions(): { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined {
+    return this.lastConnectOptions;
+  }
+
+  async connect(agentId: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession> {
+    this.lastConnectOptions = options;
+    this.connectCount++;
+    // 模拟真实 transport 语义：spawn 时向运行级集合写入 instanceId
+    options?.spawnedInstanceIds?.add(`inst_${agentId}_${this.connectCount}`);
+    return {
+      execute: async () => {
+        if (!this.response) throw new Error("No response configured");
+        return this.response;
+      },
+    };
+  }
+}
 
 /** 创建测试用的 NodeExecutionContext */
 function makeCtx(overrides?: Partial<NodeExecutionContext>): NodeExecutionContext {
@@ -100,6 +136,17 @@ nodes:
   - id: sub-ref
     type: workflow
     ref: nested-sub.yaml
+`;
+
+/** 含 agent 节点的子工作流 YAML — 用于验证子流程内 spawn 记账（C-P2.2） */
+const AGENT_SUB_WORKFLOW_YAML = `\
+schema_version: "1"
+name: agent-sub
+nodes:
+  - id: agent-step
+    type: agent
+    agent: default
+    prompt: hi
 `;
 
 // ========== SubWorkflowExecutor 测试 ==========
@@ -380,5 +427,137 @@ nodes:
 
     const dagStarted = subEvents.find((e) => e.type === "dag.started");
     expect(dagStarted).toBeTruthy();
+  });
+});
+
+// ========== spawnedInstanceIds 透传（C-P2.2） ==========
+
+describe("SubWorkflowExecutor spawnedInstanceIds", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "wf-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // 子流程内 agent 节点 spawn 的实例应写入父级集合（C-P2.2 核心验收）
+  test("子流程内 agent 节点 spawn 的实例写入父级集合且引用同一", async () => {
+    const transport = new FakeTransport();
+    transport.setResponse({ stdout: "agent done", exit_code: 0, messages: [] });
+    const agentRegistry = createNodeExecutorRegistry();
+    agentRegistry.register("agent", new AgentExecutor(transport));
+
+    const subYamlPath = join(tmpDir, "agent-sub.yaml");
+    writeFileSync(subYamlPath, AGENT_SUB_WORKFLOW_YAML);
+
+    const executor = new SubWorkflowExecutor("parent-run", agentRegistry, tmpDir);
+    const parentSet = new Set<string>();
+    const ctx = makeCtx({ spawnedInstanceIds: parentSet });
+    const node = subWorkflowNode("agent-sub.yaml");
+
+    const output = await executor.execute(node, ctx);
+
+    expect(output.exit_code).toBe(0);
+    // transport 层 spawn 时写入的实例必须出现在父级集合（不再被可选链静默丢弃）
+    expect([...parentSet].some((id) => id.startsWith("inst_default_"))).toBe(true);
+    // 透传的是同一引用而非复制：transport 收到的集合就是父级集合
+    expect(transport.getLastConnectOptions()?.spawnedInstanceIds).toBe(parentSet);
+  });
+
+  // 子流程失败时已 spawn 的实例仍保留在父级集合（失败 run 也清理，不泄漏至 idle 回收）
+  test("子流程失败时已 spawn 的实例仍保留在父级集合", async () => {
+    const transport = new FakeTransport();
+    // exit_code 1 → AgentExecutor 抛 NODE_FAILED → 子 DAG FAILED → 父节点抛 SUB_WORKFLOW_ERROR
+    transport.setResponse({ stdout: "boom", exit_code: 1, messages: [] });
+    const agentRegistry = createNodeExecutorRegistry();
+    agentRegistry.register("agent", new AgentExecutor(transport));
+
+    const subYamlPath = join(tmpDir, "agent-fail.yaml");
+    writeFileSync(subYamlPath, AGENT_SUB_WORKFLOW_YAML);
+
+    const executor = new SubWorkflowExecutor("parent-run", agentRegistry, tmpDir);
+    const parentSet = new Set<string>();
+    const ctx = makeCtx({ spawnedInstanceIds: parentSet });
+    const node = subWorkflowNode("agent-fail.yaml");
+
+    await expect(executor.execute(node, ctx)).rejects.toThrow(WorkflowError);
+
+    // 失败路径下已写入的实例保留在父级集合，run 结束后仍能被 cleanup 停止
+    expect([...parentSet].some((id) => id.startsWith("inst_default_"))).toBe(true);
+  });
+
+  // 嵌套子流程（workflow 内嵌 workflow）最内层 spawn 的实例仍进入顶层集合（多层引用透传）
+  test("嵌套子流程最内层 agent spawn 的实例进入顶层集合", async () => {
+    const transport = new FakeTransport();
+    transport.setResponse({ stdout: "deep agent done", exit_code: 0, messages: [] });
+    const nestedDir = join(tmpDir, "nested-agent");
+    mkdirSync(nestedDir, { recursive: true });
+
+    // 最内层：含 agent 节点的子工作流
+    writeFileSync(join(nestedDir, "inner-agent.yaml"), AGENT_SUB_WORKFLOW_YAML);
+    // 中间层：workflow 节点引用最内层
+    writeFileSync(
+      join(nestedDir, "mid-parent.yaml"),
+      `\
+schema_version: "1"
+name: mid-parent
+nodes:
+  - id: agent-ref
+    type: workflow
+    ref: inner-agent.yaml
+`,
+    );
+    // 最外层：workflow 节点引用中间层
+    writeFileSync(
+      join(nestedDir, "outer.yaml"),
+      `\
+schema_version: "1"
+name: outer
+nodes:
+  - id: call-mid
+    type: workflow
+    ref: mid-parent.yaml
+`,
+    );
+
+    // 嵌套注册表：SubWorkflowExecutor 递归注册（baseDir 指向嵌套目录）+ AgentExecutor
+    const agentRegistry = createNodeExecutorRegistry();
+    agentRegistry.register("workflow", new SubWorkflowExecutor("parent-run", agentRegistry, nestedDir));
+    agentRegistry.register("agent", new AgentExecutor(transport));
+
+    const executor = new SubWorkflowExecutor("parent-run", agentRegistry, nestedDir);
+    const parentSet = new Set<string>();
+    const ctx = makeCtx({ spawnedInstanceIds: parentSet });
+    const node = subWorkflowNode("outer.yaml");
+
+    const output = await executor.execute(node, ctx);
+
+    expect(output.exit_code).toBe(0);
+    // 最内层 agent spawn 的实例必须出现在顶层集合（每层透传同一引用，自动聚合）
+    expect([...parentSet].some((id) => id.startsWith("inst_default_"))).toBe(true);
+  });
+
+  // ctx 未注入 spawnedInstanceIds 时子流程行为不变（向后兼容：可选字段透传 undefined 不抛错）
+  test("ctx 未注入 spawnedInstanceIds 时子流程行为不变", async () => {
+    const transport = new FakeTransport();
+    transport.setResponse({ stdout: "ok", exit_code: 0, messages: [] });
+    const agentRegistry = createNodeExecutorRegistry();
+    agentRegistry.register("agent", new AgentExecutor(transport));
+
+    const subYamlPath = join(tmpDir, "agent-sub.yaml");
+    writeFileSync(subYamlPath, AGENT_SUB_WORKFLOW_YAML);
+
+    const executor = new SubWorkflowExecutor("parent-run", agentRegistry, tmpDir);
+    const ctx = makeCtx(); // 不注入 spawnedInstanceIds
+    const node = subWorkflowNode("agent-sub.yaml");
+
+    const output = await executor.execute(node, ctx);
+
+    // 无集合时 agent 子流程正常执行（transport 记账走可选链兜底，无异常）
+    expect(output.exit_code).toBe(0);
+    expect(output.stdout).toBe("ok");
   });
 });

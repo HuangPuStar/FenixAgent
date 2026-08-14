@@ -221,6 +221,10 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "staleBanner": "文件服务暂时不可用，正在自动重连",
+    "renameFailed": "重命名失败",
+    "mkdirFailed": "创建文件夹失败",
+    "newFileFailed": "创建文件失败",
     "dropToUpload": "释放文件以上传",
     "hintDragUpload": "拖拽上传",
     "hintDoubleClick": "双击预览",
@@ -515,6 +519,7 @@
   },
   "permissionPanel": {
     "allow": "允许",
+    "allowSession": "允许本次会话",
     "deny": "拒绝"
   },
   "sessionModeSelector": {

@@ -1,9 +1,17 @@
-import type { ChatStateSnapshot, SessionStateSnapshot, StructuredMessage } from "@fenix/acp-server";
+import type {
+  AvailableCommand,
+  ChatStateSnapshot,
+  ContentBlock,
+  ImageContent,
+  PromptUsage,
+  SessionMode,
+  SessionStateSnapshot,
+  StructuredMessage,
+} from "@fenix/chat-channel";
 import imageCompression from "browser-image-compression";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AvailableCommand, ContentBlock, ImageContent, PromptUsage, SessionMode } from "../src/acp/types";
 import { flushContext } from "../src/lib/context-queue";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";
@@ -136,6 +144,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   // 从 Yjs sessionState 计算 loading 状态
   const isLoading = sessionState?.loading != null;
+
+  // turn 是否可取消（accepting/running/awaiting_permission）：仅驱动 ChatComposer 停止按钮，
+  // 与 loading 正交——running 输出期间 loading 为 null（按钮原逻辑会退回 Send），
+  // 必须靠 canCancel 让整个输出过程保持可中断
+  const canCancel = sessionState?.canCancel ?? false;
 
   // 从 Yjs sessionState 计算会话是否就绪
   const sessionReady = !!sessionState && sessionState.status !== "idle";
@@ -334,6 +347,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         toolName: p.tool,
         toolInput: (p.args as Record<string, unknown>) ?? {},
         description: p.tool,
+        // 统一面板当前仍渲染 allow/deny 两键；options 透传供面板后续消费（二期）
+        options: p.options,
       }));
   }, [chatState?.permissions]);
 
@@ -503,6 +518,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               onSubmit={handleChatInputSubmit}
               isLoading={isLoading}
               onInterrupt={handleCancel}
+              canCancel={canCancel}
               disabled={!sessionReady}
               placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
               supportsImages={supportsImages}

@@ -122,8 +122,13 @@ export class AgentExecutor implements NodeExecutor {
           });
         }
 
-        // WorkflowError 中的 DAG_CANCELLED 也不重试（来自 transport 内部的 abort 处理）
-        if (error instanceof WorkflowError && error.code === WorkflowErrorCode.DAG_CANCELLED) {
+        // WorkflowError 中的 DAG_CANCELLED / NODE_TIMEOUT 不重试：
+        // NODE_TIMEOUT 来自 transport 超时兜底（agent-chat-transport），与节点级 abort 超时
+        // （上方 signal.aborted 分支）同语义；其余 executor（process/python/remote）已一致。
+        if (
+          error instanceof WorkflowError &&
+          (error.code === WorkflowErrorCode.DAG_CANCELLED || error.code === WorkflowErrorCode.NODE_TIMEOUT)
+        ) {
           throw error;
         }
 
@@ -156,73 +161,87 @@ export class AgentExecutor implements NodeExecutor {
     // 连接 Transport（resolvedAgent 是环境名称，Transport 层负责解析为 envId）
     console.error(`[workflow] AgentExecutor connecting: nodeId=${node.id} agent=${resolvedAgent}`);
     const session = await this.transport.connect(resolvedAgent, {
-      spawnedEnvIds: ctx.spawnedEnvIds,
+      spawnedInstanceIds: ctx.spawnedInstanceIds,
+      // C-P2.5：触发者 userId 透传，宿主 ensureRunning 按此计入用户配额桶
+      userId: ctx.callerUserId,
     });
 
-    console.error(
-      `[workflow] AgentExecutor connected: nodeId=${node.id} signalAborted=${signal.aborted} dagSignalAborted=${ctx.signal.aborted}`,
-    );
-
-    // 使用节点级信号，而非 DAG 级共享信号
-    const request: AgentRequest = {
-      prompt: resolvedPrompt,
-      signal,
-    };
-
-    console.error(`[workflow] AgentExecutor sending prompt: nodeId=${node.id} promptLength=${resolvedPrompt.length}`);
-
-    const response = await session.execute(request);
-
-    const outputSize = Buffer.byteLength(response.stdout);
-
-    if (response.exit_code !== 0) {
-      const errorMessage = response.stdout
-        ? `Agent exited with code ${response.exit_code}: ${response.stdout.slice(0, 500)}`
-        : `Agent exited with code ${response.exit_code}`;
-      await this.emitEvent(ctx, "node.failed", node, {
-        error: errorMessage,
-        exit_code: response.exit_code,
-        stdout: response.stdout,
-      });
-      throw new WorkflowError(errorMessage, WorkflowErrorCode.NODE_FAILED, {
-        node_id: node.id,
-        exit_code: response.exit_code,
-        stdout: response.stdout,
-      });
-    }
-
-    // 构建 json 输出：simplified 始终存在，messages 仅在 output_messages > 0 时回传最后 N 条
-    const outputMessages = node.output_messages ?? 0;
-    const json: Record<string, unknown> = {
-      simplified: response.stdout,
-    };
-    if (outputMessages > 0 && response.messages.length > 0) {
-      json.messages = response.messages.slice(-outputMessages);
-    }
-
-    // 尝试解析 stdout 为 JSON
-    let parsedJson: unknown;
     try {
-      parsedJson = JSON.parse(response.stdout);
-    } catch {
-      // stdout 不是合法 JSON
+      console.error(
+        `[workflow] AgentExecutor connected: nodeId=${node.id} signalAborted=${signal.aborted} dagSignalAborted=${ctx.signal.aborted}`,
+      );
+
+      // 使用节点级信号，而非 DAG 级共享信号
+      const request: AgentRequest = {
+        prompt: resolvedPrompt,
+        signal,
+      };
+
+      console.error(`[workflow] AgentExecutor sending prompt: nodeId=${node.id} promptLength=${resolvedPrompt.length}`);
+
+      const response = await session.execute(request);
+
+      const outputSize = Buffer.byteLength(response.stdout);
+
+      if (response.exit_code !== 0) {
+        const errorMessage = response.stdout
+          ? `Agent exited with code ${response.exit_code}: ${response.stdout.slice(0, 500)}`
+          : `Agent exited with code ${response.exit_code}`;
+        await this.emitEvent(ctx, "node.failed", node, {
+          error: errorMessage,
+          exit_code: response.exit_code,
+          stdout: response.stdout,
+        });
+        throw new WorkflowError(errorMessage, WorkflowErrorCode.NODE_FAILED, {
+          node_id: node.id,
+          exit_code: response.exit_code,
+          stdout: response.stdout,
+        });
+      }
+
+      // 构建 json 输出：simplified 始终存在，messages 仅在 output_messages > 0 时回传最后 N 条
+      const outputMessages = node.output_messages ?? 0;
+      const json: Record<string, unknown> = {
+        simplified: response.stdout,
+      };
+      if (outputMessages > 0 && response.messages.length > 0) {
+        json.messages = response.messages.slice(-outputMessages);
+      }
+
+      // 尝试解析 stdout 为 JSON
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(response.stdout);
+      } catch {
+        // stdout 不是合法 JSON
+      }
+
+      await this.emitEvent(ctx, "node.completed", node, {
+        exit_code: response.exit_code,
+        output_size: outputSize,
+        message_count: response.messages.length,
+        tokens: response.tokens,
+        model: response.model,
+        latency_ms: response.latency_ms,
+      });
+
+      return {
+        stdout: response.stdout,
+        json: parsedJson ?? json,
+        exit_code: response.exit_code,
+        size: outputSize,
+      };
+    } finally {
+      // C-P2.3：会话级 listener 释放。每次 connect 的会话必须释放，否则同实例复用
+      // 场景下 N 次 run 累积 N 个死 listener（各持 ≤5000 条事件队列）。
+      // dispose 失败只记日志，不得掩盖节点执行结果；重试语义天然正确——
+      // 每个 attempt 重新 connect 新 session，失败路径 finally 释放，下个 attempt 是新 listener。
+      try {
+        await session.dispose?.();
+      } catch (disposeErr) {
+        console.error(`[workflow] AgentSession dispose failed: nodeId=${node.id}`, disposeErr);
+      }
     }
-
-    await this.emitEvent(ctx, "node.completed", node, {
-      exit_code: response.exit_code,
-      output_size: outputSize,
-      message_count: response.messages.length,
-      tokens: response.tokens,
-      model: response.model,
-      latency_ms: response.latency_ms,
-    });
-
-    return {
-      stdout: response.stdout,
-      json: parsedJson ?? json,
-      exit_code: response.exit_code,
-      size: outputSize,
-    };
   }
 
   /** 发射事件到 storage */

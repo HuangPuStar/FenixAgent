@@ -1,17 +1,15 @@
+import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
 import imageCompression from "browser-image-compression";
 import { Paperclip, Send, Sparkles, Square } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ACPClient } from "../../src/acp/client";
-import type { AvailableCommand, SessionMode } from "../../src/acp/types";
-import { fileApi } from "../../src/api/files";
+import { fsApi } from "../../src/api/fs";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import type { TokenStats } from "../../src/lib/token-stats";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
-import { ModelSelectorPopover } from "../model-selector/ModelSelectorPopover";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CommandMenu } from "./CommandMenu";
@@ -35,6 +33,8 @@ interface ChatComposerProps {
   onSubmit: (message: ChatInputMessage) => void;
   isLoading?: boolean;
   onInterrupt?: () => void;
+  /** turn 是否可中断（accepting/running/awaiting_permission），仅驱动停止按钮；默认 false */
+  canCancel?: boolean;
   disabled?: boolean;
   placeholder?: string;
   /** 是否支持图片上传 */
@@ -43,10 +43,9 @@ interface ChatComposerProps {
   commands?: AvailableCommand[];
   /** 环境 ID，用于文件上传/浏览（workspace 按环境隔离） */
   envId?: string;
-  /** ACP 客户端实例，用于获取 Agent 能力。
-   *  Task 3 骨架阶段未使用；Task 5 接入 ModelSelectorPopover 时才会真正调用 client。 */
-  client?: ACPClient;
-  /** 可用会话模式列表（Task 5 元信息条用到） */
+  /** 当前模型名称（通过 Chat Doc 同步） */
+  modelName?: string;
+  /** 可用会话模式列表 */
   availableModes?: SessionMode[];
   /** 当前会话模式 ID（Task 5 元信息条用到） */
   currentModeId?: string | null;
@@ -58,8 +57,6 @@ interface ChatComposerProps {
   onNewSession?: () => void;
   /** 是否显示新建会话按钮（Task 5 元信息条用到） */
   showNewSession?: boolean;
-  /** 当前模型名称（YJS 传输模式下通过 Chat Doc 同步，不依赖 ACPClient） */
-  modelName?: string;
   className?: string;
 }
 
@@ -68,18 +65,18 @@ interface ChatComposerProps {
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
  * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
- * SessionModeSelector / ModelSelectorPopover / token 统计 / 新会话 / 发送。
+ * SessionModeSelector / 模型名称 / token 统计 / 新会话 / 发送。
  */
 export function ChatComposer({
   onSubmit,
   isLoading = false,
   onInterrupt,
+  canCancel = false,
   disabled = false,
   placeholder,
   supportsImages = false,
   commands,
   envId,
-  client,
   availableModes,
   currentModeId,
   onModeChange,
@@ -91,6 +88,15 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const { t } = useTranslation("components");
   const _placeholder = placeholder ?? t("chatInput.placeholder");
+
+  // 发送/停止按钮派生状态（与 loading 正交）：
+  // - canCancel（accepting/running/awaiting_permission）→ 显示停止图标且可点击（本修复核心：
+  //   running 输出期间 loading 为 null，按钮原逻辑会退回 Send 导致无法中断）；
+  // - isCancelling（isLoading 且不可取消 ⟺ turn === cancelling，取消已发出）→ 显示停止但禁用，
+  //   防止重复点触发无意义的重发 cancel RPC；
+  // - 其余状态 → 发送按钮，按 canSend 决定可点。
+  const isCancelling = isLoading && !canCancel;
+  const showStop = canCancel || isCancelling;
 
   // ---------------------------------------------------------------------------
   // State — 从 ChatInput 原样迁移
@@ -257,7 +263,7 @@ export function ChatComposer({
     [supportsImages],
   );
 
-  // 选择文件（图片走 base64，其他文件上传到 user/ 文件夹）
+  // 选择文件（图片走 base64，其他文件上传到 workspace 根目录）
   const _handleFileSelect = useCallback(async () => {
     if (!fileInputRef.current || !fileWorkspaceId) return;
     const files = fileInputRef.current.files;
@@ -280,7 +286,7 @@ export function ChatComposer({
       setImages((prev) => [...prev, ...newImages]);
     }
 
-    // 非图片：上传到 user/ 文件夹并添加为附件引用
+    // 非图片：上传到 workspace 根目录并添加为附件引用
     if (otherFiles.length > 0) {
       try {
         // 客户端提前校验单文件 + 总量，避免触发服务端 413
@@ -303,10 +309,11 @@ export function ChatComposer({
         for (const file of otherFiles) {
           formData.append("files", file);
         }
-        await fileApi.upload(fileWorkspaceId, formData);
+        // v2 fsApi 未传 targetDir 时上传到 workspace 根，附件 path 为 workspace 相对路径
+        await fsApi.upload(fileWorkspaceId, formData);
         const newAttachments: FileAttachment[] = otherFiles.map((f) => ({
           name: f.name,
-          path: `user/${f.name}`,
+          path: f.name,
         }));
         setAttachments((prev) => {
           const existing = new Set(prev.map((a) => a.path));
@@ -585,18 +592,18 @@ export function ChatComposer({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={isLoading ? onInterrupt : handleSubmit}
-              disabled={!isLoading && !canSend}
+              onClick={canCancel ? onInterrupt : handleSubmit}
+              disabled={isCancelling || (!canCancel && !canSend)}
               className={cn(
                 "h-9 w-9 shrink-0 p-0 rounded-lg flex items-center justify-center",
-                isLoading
+                showStop
                   ? "bg-text-primary text-surface-2 hover:bg-text-secondary"
                   : canSend
                     ? "bg-brand text-white hover:bg-brand-light"
                     : "bg-surface-3 text-text-muted",
               )}
             >
-              {isLoading ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
+              {showStop ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
 
@@ -612,9 +619,7 @@ export function ChatComposer({
               />
             )}
 
-            {client ? (
-              <ModelSelectorPopover client={client} />
-            ) : modelName ? (
+            {modelName ? (
               <span
                 className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground select-none"
                 title={modelName}

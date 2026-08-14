@@ -221,6 +221,10 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "staleBanner": "File service temporarily unavailable, reconnecting...",
+    "renameFailed": "Rename failed",
+    "mkdirFailed": "Create folder failed",
+    "newFileFailed": "Create file failed",
     "dropToUpload": "Drop files to upload",
     "hintDragUpload": "Drag to upload",
     "hintDoubleClick": "Double-click to preview",
@@ -515,6 +519,7 @@
   },
   "permissionPanel": {
     "allow": "Allow",
+    "allowSession": "Allow Session",
     "deny": "Deny"
   },
   "sessionModeSelector": {

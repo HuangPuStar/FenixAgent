@@ -140,7 +140,7 @@ export function getPreviewMimeType(filePath: string): string | undefined {
   if (MARKDOWN_EXTENSIONS.has(ext)) return "text/markdown";
   if (HTML_EXTENSIONS.has(ext)) return "text/html";
   if (CODE_EXTENSIONS.has(ext)) return "text/plain";
-  return undefined;
+  return;
 }
 
 /**

@@ -16,6 +16,7 @@ import { machine } from "../db/schema";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";
+import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
 
 let facade: CoreRuntimeFacade | null = null;
 
@@ -156,6 +157,9 @@ export function registerRemoteNode(
       globalInstanceRegistry.unregister(instance.instanceId);
       log(`[core-bootstrap] Deleted instance ${instance.instanceId} on reconnected machine ${machineId}`);
     }
+    // 同步清理编排域活跃表与节点引用，否则断连期间残留的幽灵实例会继续计入
+    // 并发额度并阻塞空闲回收（E-P0.1；快速重连短路场景下本分支是唯一入口）
+    cleanupOrchestrationInstancesForMachine(machineId);
     // 注意：不关闭 relay 连接，让前端自动重连 ensureRunning 时使用新 transport
     return;
   }
@@ -186,4 +190,7 @@ export function unregisterRemoteNode(machineId: string): void {
     runtime.deleteInstance(instance.instanceId);
     log(`[core-bootstrap] Deleted instance ${instance.instanceId} on disconnected machine ${machineId}`);
   }
+  // 同步清理编排域活跃表与节点引用，否则断连后幽灵实例永久计入并发额度、
+  // 引用计数残留导致空闲回收不触发（E-P0.1）
+  cleanupOrchestrationInstancesForMachine(machineId);
 }

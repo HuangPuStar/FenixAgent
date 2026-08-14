@@ -12,10 +12,12 @@
 import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
+import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { environment } from "../../db/schema";
 import { connectAgentRelay } from "../../transport/agent-relay";
+import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "../acp-idle-monitor";
 import {
   type AgentSession as ChatAgentSession,
   createAgentSession,
@@ -23,6 +25,8 @@ import {
   startPromptTurn,
 } from "../agent-chat-service";
 import { ensureRunning } from "../instance";
+import { terminateLocalDeadInstance } from "../orchestration-instance";
+import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");
 
@@ -60,12 +64,22 @@ function extractSessionUpdate(rpc: Record<string, unknown>): Record<string, unkn
  * 基于 PromptTurn 的 Agent 会话适配器。
  * 对 workflow engine 暴露 AgentSession.execute() 接口，
  * 内部通过 PromptTurn.events() 迭代收集流式输出。
+ *
+ * 导出供测试直接构造 fake turn 验证 execute 语义（见 src/__tests__/agent-chat-transport.test.ts）。
  */
-class AgentChatSessionAdapter implements AgentSession {
+export class AgentChatSessionAdapter implements AgentSession {
   private readonly turn: PromptTurn;
+  /** 实例 ID：用于 idle/activity 观测埋点（touch / relay attach / detach） */
+  private readonly instanceId: string;
 
-  constructor(turn: PromptTurn, _chatSession: ChatAgentSession) {
+  constructor(
+    turn: PromptTurn,
+    chatSession: ChatAgentSession,
+    /** 执行超时兜底时长（毫秒）；测试注入小值，生产使用 DEFAULT_EXECUTE_TIMEOUT_MS */
+    private readonly timeoutMs: number = DEFAULT_EXECUTE_TIMEOUT_MS,
+  ) {
     this.turn = turn;
+    this.instanceId = chatSession.instanceId;
   }
 
   async execute(request: AgentRequest): Promise<AgentResponse> {
@@ -80,21 +94,32 @@ class AgentChatSessionAdapter implements AgentSession {
     let settled = false;
     let abortCleanup: (() => void) | null = null;
 
-    // 执行超时兜底
-    const timeoutTimer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      abortCleanup?.();
-      logger.error(`Agent execute timed out: timeoutMs=${DEFAULT_EXECUTE_TIMEOUT_MS}`);
-    }, DEFAULT_EXECUTE_TIMEOUT_MS);
-    if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
-
     return new Promise<AgentResponse>((resolve, reject) => {
+      // 执行超时兜底：节点 timeout 配置大于 timeoutMs（如 1200s）时，保证 execute 仍有界失败。
+      // 必须 reject 而非静默置位——否则 Promise 永不 settle，且 settled 会吞掉后续节点 abort
+      //（唯一可用的退出路径被禁用，节点永久挂起）。NODE_TIMEOUT 由 engine 侧不重试。
+      const timeoutTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        // run 结束释放 relay 引用计数，恢复 idle 观察窗口；detach 在实例已
+        // stop（supplement 已 unregister）后执行是 no-op，天然幂等
+        markInstanceRelayDetached(this.instanceId);
+        // 租约配对归还（与 connect 的 acquire 配对）：execute settle 即本次 run
+        // 不再使用实例，cleanup 的租约守卫放行停止
+        releaseInstanceLease(this.instanceId);
+        abortCleanup?.();
+        logger.error(`Agent execute timed out: timeoutMs=${this.timeoutMs}`);
+        reject(new WorkflowError("Agent execute timed out", WorkflowErrorCode.NODE_TIMEOUT));
+      }, this.timeoutMs);
+      if (typeof timeoutTimer.unref === "function") timeoutTimer.unref();
+
       // Abort signal 支持
       if (request.signal) {
         const onAbort = (): void => {
           if (settled) return;
           settled = true;
+          markInstanceRelayDetached(this.instanceId);
+          releaseInstanceLease(this.instanceId);
           clearTimeout(timeoutTimer);
           reject(new DOMException("Request aborted", "AbortError"));
         };
@@ -107,6 +132,8 @@ class AgentChatSessionAdapter implements AgentSession {
         .then((result) => {
           if (settled) return;
           settled = true;
+          markInstanceRelayDetached(this.instanceId);
+          releaseInstanceLease(this.instanceId);
           clearTimeout(timeoutTimer);
           abortCleanup?.();
           resolve(result);
@@ -114,6 +141,8 @@ class AgentChatSessionAdapter implements AgentSession {
         .catch((err) => {
           if (settled) return;
           settled = true;
+          markInstanceRelayDetached(this.instanceId);
+          releaseInstanceLease(this.instanceId);
           clearTimeout(timeoutTimer);
           abortCleanup?.();
           reject(err);
@@ -130,8 +159,13 @@ class AgentChatSessionAdapter implements AgentSession {
     collectedMessages: AgentMessage[],
   ): Promise<AgentResponse> {
     for await (const msg of this.turn.events()) {
-      // 先检测传输层 error（与 JSON-RPC 无关）
+      // 每条 relay 消息都计入业务活跃，防止长任务被 activity 硬超时误杀；
+      // 保活消息由 shouldCountInstanceActivity 内部过滤（acp-idle-monitor），
+      // 卡死实例仍会在 activity 硬超时后被回收，保留兜底语义
       const asAny = msg as unknown as Record<string, unknown>;
+      touchInstanceActivity(this.instanceId, asAny);
+
+      // 先检测传输层 error（与 JSON-RPC 无关）
       if (asAny.type === "error") {
         const errorMsg = (asAny.payload as Record<string, unknown> | undefined)?.message as string | undefined;
         const existing = chunks.join("");
@@ -143,11 +177,46 @@ class AgentChatSessionAdapter implements AgentSession {
         };
       }
 
+      // 传输层 relay 关闭（实例被 idle 回收 / 手动停止 / 机器断连）：relay 不会再推送任何
+      // 消息，不识别会导致事件流永久挂起。与 type==="error" 同模式返回 exit_code=1 失败，
+      // 由 engine 按 NODE_FAILED 走节点重试（relay 瞬断时可自愈）。
+      if (asAny.type === "relay_closed") {
+        // 本地实例 relay 意外关闭：触发实例级清理（C-P2.4）。实例可能被本轮 run 之外
+        // 的进程复用，清理只移除死亡实例本身，不影响同节点其他健康实例；主动关闭
+        // 路径（dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
+        void terminateLocalDeadInstance(this.instanceId);
+        const payload = asAny.payload as Record<string, unknown> | undefined;
+        const code = typeof payload?.code === "string" ? payload.code : "relay_disconnected";
+        const existing = chunks.join("");
+        return {
+          stdout: existing
+            ? `${existing}\n\n[Error] Agent connection closed (${code})`
+            : `[Error] Agent connection closed (${code})`,
+          exit_code: 1,
+          latency_ms: Date.now() - startTime,
+          messages: collectedMessages,
+        };
+      }
+
       // 提取 JSON-RPC 对象（兼容原始和包裹两种格式）
       const rpc = extractJsonRpc(msg);
       if (!rpc) {
         // 非 JSON-RPC 消息（如 status / keepalive），跳过
         continue;
+      }
+
+      // 顶层 JSON-RPC error 响应（{jsonrpc, id, error}，createErrorResponse 形态）：
+      // 无 result 字段，若不单独处理会被静默跳过，run 将挂到执行超时才失败
+      const rpcError = rpc.error as { message?: string } | null | undefined;
+      if (rpcError && typeof rpcError === "object") {
+        const errorMsg = rpcError.message ?? "Agent error";
+        const existing = chunks.join("");
+        return {
+          stdout: existing ? `${existing}\n\n[Error] ${errorMsg}` : `[Error] ${errorMsg}`,
+          exit_code: 1,
+          latency_ms: Date.now() - startTime,
+          messages: collectedMessages,
+        };
       }
 
       // 检测 JSON-RPC 响应（session/prompt 完成信号）
@@ -240,6 +309,17 @@ class AgentChatSessionAdapter implements AgentSession {
       }
     }
   }
+
+  /**
+   * 注销 PromptTurn 注册的 relay listener（C-P2.3）。
+   * 不关闭 relay handle、不停止实例——实例复用语义由 AgentChatTransport / workflow
+   * cleanup 管理，与 execute 内 markInstanceRelayDetached 的引用计数释放正交。
+   * engine 在每次 execute 后调用，防止同实例复用场景下 N 次 run 累积 N 个死 listener。
+   */
+  dispose(): Promise<void> {
+    this.turn.release();
+    return Promise.resolve();
+  }
 }
 
 // ---------- AgentChatTransport ----------
@@ -255,7 +335,10 @@ class AgentChatTransport implements Transport {
     this.organizationId = organizationId;
   }
 
-  async connect(envName: string, options?: { cwd?: string; spawnedEnvIds?: Set<string> }): Promise<AgentSession> {
+  async connect(
+    envName: string,
+    options?: { cwd?: string; spawnedInstanceIds?: Set<string>; userId?: string },
+  ): Promise<AgentSession> {
     logger.debug(`connect start: envName=${envName}`);
 
     // 1. 按 name + orgId 查 Environment
@@ -268,14 +351,49 @@ class AgentChatTransport implements Transport {
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
 
     // 2. 确保实例运行
-    const { instance, status } = await ensureRunning("system", envRow.id, "system");
+    // I4 调用方迁移说明：Workflow 编排保留 ensureRunning 的会话语义（复用运行实例，
+    // autoStart / maxSessions 检查），而非迁移到 controller.spawnInstance——后者无
+    // 复用语义且受 maxConcurrency 限制（总是创建新实例），替换会改变 Transport 接口
+    // 行为（每次 connect 新建实例）。ensureRunning 内部的 spawn 分支已收敛到编排域
+    // 入口 spawnInstanceViaController（instance.ts 的私有 helper）；配套的
+    // cleanupSpawnedInstances（workflow/index.ts）按 instanceId 精确停止本次 run 实际
+    // spawn 的实例（见下方 spawnedInstanceIds 记录），reused 实例不归本 run 所有、
+    // 不清理，语义与实现一致。C-P1.1-R 补充：reused 实例同样占一份租约
+    // （acquireInstanceLease），cleanup 按租约守卫跳过有使用者的实例，最后使用者
+    // 释放后由 acp-idle-monitor 空闲回收兜底。
+    // C-P2.5：实例按触发者 userId 计入用户级并发配额桶（agent-concurrency 按 userId
+    // 聚合），不再统一挂 "system" 跨租户共享配额；无触发者（webhook 匿名触发、
+    // 快照恢复无 userId）时回退到环境属主（envRow.userId，NOT NULL + FK 保证存在）：
+    // ① sandbox 实例按 userId 归属（复用键 + FK user.id），"system" 非真实用户会
+    // FK 失败且每次重试残留 machine 记录；② 文件服务按 env.userId 查 sandbox 实例，
+    // 与 spawn 归属一致才能避免"实例在远程沙箱、文件落本地"的分裂。
+    // source 保持 "system"：仅影响 scheduled 桶判断（RCS_SCHEDULED_AGENT_MAX_CONCURRENCY），
+    // 与用户桶无关。
+    const { instance, status } = await ensureRunning(options?.userId ?? envRow.userId, envRow.id, "system");
+    // 无论 spawned / reused 先占租约：实例被选中即视为在使用，消除"创建者先结束
+    // 连坐使用者"的竞态窗口（B 已选中 X 但尚未 attach 时 A 的 cleanup 误停 X）。
+    acquireInstanceLease(instance.id);
     if (status === "spawned") {
-      options?.spawnedEnvIds?.add(envRow.id);
+      // 记录实例 ID 而非环境 ID：cleanup 按 instanceId 停止，避免按 envId 停止时
+      // 误杀同环境内其他 run 或用户交互启动的实例（C-P1.1）
+      options?.spawnedInstanceIds?.add(instance.id);
     }
 
     // 3. 连接 relay
-    const handle: EngineRelayHandle = await connectAgentRelay(instance.id, "");
+    let handle: EngineRelayHandle;
+    try {
+      handle = await connectAgentRelay(instance.id, "");
+    } catch (err) {
+      // connect 失败：租约配对上方的 acquire 立即归还，实例重新获得清理出口
+      //（否则残留租约条目使 cleanup 永远跳过，实例失去停止路径）
+      releaseInstanceLease(instance.id);
+      throw err;
+    }
     logger.debug(`connect relay ready: envName=${envName} instanceId=${instance.id}`);
+
+    // run 期间实例视为"前台使用"：relayCount>0 阻止 idle 回收（acp-idle-monitor），
+    // activity 硬超时由 execute 内 touchInstanceActivity 维持
+    markInstanceRelayAttached(instance.id);
 
     // 4. 创建 chat AgentSession（不传 stopInstance，实例由 workflow cleanup 统一管理）
     const chatSession = createAgentSession({
@@ -285,7 +403,19 @@ class AgentChatTransport implements Transport {
     });
 
     // 5. 创建 ACP session + PromptTurn
-    const { turn } = await startPromptTurn({ session: chatSession });
+    // startPromptTurn 失败（session/new、session/load 的 rpc error）必须配对释放
+    // attach 的引用计数，否则 relayCount 残留，实例失去 idle 回收出口，只能等
+    // activity 硬超时兜底
+    let turn: PromptTurn;
+    try {
+      ({ turn } = await startPromptTurn({ session: chatSession }));
+    } catch (err) {
+      markInstanceRelayDetached(instance.id);
+      // 租约配对归还（与 acquire 配对）：session/new、session/load 失败时本次
+      // connect 不再持有实例，实例重新获得清理出口
+      releaseInstanceLease(instance.id);
+      throw err;
+    }
     logger.info(`connect done: envName=${envName} instanceId=${instance.id}`);
 
     return new AgentChatSessionAdapter(turn, chatSession);

@@ -4,9 +4,10 @@ import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
 import { ProtocolAdapter } from "./protocol-adapter.js";
+import { ActiveQueryRegistry } from "./query-registry.js";
 
 /** 会话状态 */
-interface SessionState {
+export interface SessionState {
   sessionId: string;
   cwd: string;
   createdAt: number;
@@ -26,6 +27,33 @@ const CC_MODES = [
   { modeId: "plan", name: "Plan", description: "Plan mode, no actual operations" },
   { modeId: "dontAsk", name: "Don't Ask", description: "Don't ask, just execute" },
 ];
+
+// sessionId 生成：时间戳 + 模块级自增计数。
+// 并发 newSession 同毫秒调用时，仅 Date.now() 会生成相同 sessionId，
+// 导致两个 run 拿到同一会话；自增后缀保证进程内唯一。
+let sessionIdSeq = 0;
+function nextSessionId(): string {
+  sessionIdSeq += 1;
+  return `claude_${Date.now()}_${sessionIdSeq}`;
+}
+
+/**
+ * 解析一次 prompt 调用的目标会话。
+ *
+ * 并发 run 各自在 session/prompt 请求中携带 sessionId（server.ts 已按
+ * params.sessionId 路由）；未携带时（yjs 前端路径）沿用连接级当前会话。
+ * 只读取、不写回 activeSessionId，避免并发下互相覆盖共享上下文。
+ */
+export function resolvePromptTargetSession(
+  params: Record<string, unknown>,
+  sessions: Map<string, SessionState>,
+  activeSessionId: string | null,
+): { targetSessionId: string | null; targetSession: SessionState | undefined } {
+  const requestedSessionId = (params.sessionId as string | undefined) ?? activeSessionId;
+  const targetSession = requestedSessionId ? sessions.get(requestedSessionId) : undefined;
+  const targetSessionId = targetSession ? requestedSessionId : activeSessionId;
+  return { targetSessionId, targetSession };
+}
 
 /** Claude Code 支持的模型列表（从环境变量读取，或使用默认值） */
 function buildAvailableModels(): Array<{ modelId: string; name: string }> {
@@ -215,8 +243,12 @@ export function createClaudeAcpConnection(
     string,
     { resolve: (answer: Record<string, unknown>) => void; timer: ReturnType<typeof setTimeout> }
   >();
-  // 当前活跃的 SDK Query 对象（用于 streamInput）
-  let currentQuery: Query | null = null;
+  // 活跃 SDK Query 注册表（按 sessionId 定位）：cancel 携带 sessionId 需精确中断目标 query，
+  // 单字段 currentQuery 在多会话并发（workflow/多标签页）下会被后启动的 query 覆盖。
+  // reportError 用于同 session 双 prompt（协议违规）的覆盖告警，便于定位异常并发。
+  const activeQueries = new ActiveQueryRegistry<Query>({
+    reportError: (message, error) => console.warn(`[claude-acp-adapter] ${message}`, error),
+  });
   // 标记：下次 prompt 需要 resume 的 CC session UUID
   let pendingResumeSessionId: string | null = null;
   // 标记：历史消息已由 unstable_resumeSession 发送到前端，prompt 中跳过 SDK resume 回放
@@ -251,7 +283,7 @@ export function createClaudeAcpConnection(
     },
 
     async newSession(_params: Record<string, unknown>) {
-      const sessionId = `claude_${Date.now()}`;
+      const sessionId = nextSessionId();
       const title = (_params?.title as string) || `Conversation ${sessions.size + 1}`;
       const state: SessionState = { sessionId, cwd, createdAt: Date.now(), title };
       sessions.set(sessionId, state);
@@ -270,10 +302,15 @@ export function createClaudeAcpConnection(
       const text = blocks.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const _msgId = (params as Record<string, unknown>).id as string | number | undefined;
 
+      // 并发 run 各自携带 sessionId；此处解析本次调用的目标会话。
+      // 不写回 activeSessionId：并发下写回会让共享状态指向最后调用者，
+      // 导致 update 通知/权限请求等标记错误的会话
+      const { targetSessionId, targetSession } = resolvePromptTargetSession(params, sessions, activeSessionId);
+
       // 自动标题
-      if (activeSessionId) {
-        const s = sessions.get(activeSessionId);
-        if (s?.title.startsWith("Conversation ") && text.trim()) {
+      if (targetSession) {
+        const s = targetSession;
+        if (s.title.startsWith("Conversation ") && text.trim()) {
           s.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? "…" : "");
         }
       }
@@ -286,20 +323,34 @@ export function createClaudeAcpConnection(
         if (sessionAutoAllow || pendingPermissions.size > 0) {
           return { behavior: "allow" as const, updatedInput: input };
         }
-        const ctxObj = ctx as Record<string, unknown> | undefined;
-        const title = (ctxObj?.title as string) ?? `Claude Code wants to use ${toolName}`;
+        const ctxObj = ctx as { signal?: AbortSignal; title?: string; decisionReason?: string } | undefined;
+        const title = ctxObj?.title ?? `Claude Code wants to use ${toolName}`;
         const requestId = `perm_${Date.now()}_${toolName}`;
         const permissionPromise = new Promise<boolean>((resolve, reject) => {
           const timer = setTimeout(() => {
             pendingPermissions.delete(requestId);
             resolve(true);
           }, 30000);
+          // SDK 的 canUseTool options.signal（见 sdk.d.ts CanUseTool）：CLI 侧 interrupt
+          // 时 SDK 发送 control_cancel_request 触发 abort。permissionPromise 挂起会阻塞
+          // for-await 循环体，interrupt() 不直接穿透 await，不监听将残留挂起最多 30s
+          // （注册表条目未释放）。abort 时立即按拒绝处理：取消中不再执行该工具。
+          const signal = ctxObj?.signal;
+          const onAbort = () => {
+            clearTimeout(timer);
+            pendingPermissions.delete(requestId);
+            resolve(false);
+          };
+          if (signal) {
+            if (signal.aborted) onAbort();
+            else signal.addEventListener("abort", onAbort, { once: true });
+          }
           pendingPermissions.set(requestId, { resolve, reject, timer });
         });
         send({
           type: "permission_request",
           payload: {
-            sessionId: activeSessionId!,
+            sessionId: targetSessionId!,
             requestId,
             options: [
               { kind: "allow_always", label: "Always Allow", optionId: "allow_always" },
@@ -318,7 +369,7 @@ export function createClaudeAcpConnection(
           : { behavior: "deny" as const, message: "User denied permission" };
       };
 
-      const isFollowUp = activeSessionId ? sessions.get(activeSessionId)?.ccSessionId != null : false;
+      const isFollowUp = targetSession?.ccSessionId != null;
 
       // 加载历史 session 时用 resume 回放消息；follow-up 用 continue
       const resumeId = pendingResumeSessionId;
@@ -326,13 +377,13 @@ export function createClaudeAcpConnection(
 
       // 每个 RCS session 使用独立的 CC SDK cwd，避免所有 session 共享同一个 CC 内部 session
       let sessionCwd = cwd;
-      if (activeSessionId) {
-        const sess = sessions.get(activeSessionId);
+      if (targetSessionId) {
+        const sess = sessions.get(targetSessionId);
         if (sess?.sessionCwd) {
           sessionCwd = sess.sessionCwd;
         } else if (!resumeId && !isFollowUp) {
           // 新 session：创建隔离目录
-          sessionCwd = await ensureSessionDir(cwd, activeSessionId);
+          sessionCwd = await ensureSessionDir(cwd, targetSessionId);
           if (sess) {
             sess.sessionCwd = sessionCwd;
             saveSessionState(cwd, sess);
@@ -356,7 +407,7 @@ export function createClaudeAcpConnection(
           pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_CLI_PATH,
         },
       });
-      currentQuery = q;
+      activeQueries.register(targetSessionId, q);
 
       // historyReplayed 时 unstable_resumeSession 已发送历史消息
       // 仍需 streamInput 推送新 prompt，但 ProtocolAdapter 跳过 SDK resume 回放的消息
@@ -384,83 +435,102 @@ export function createClaudeAcpConnection(
         if (type === "prompt_complete") return;
         // 跳过 resume 回放的历史消息（已由 unstable_resumeSession 发送到前端）
         if (skipReplay && (type === "user_message_chunk" || type === "agent_message_chunk")) return;
-        sendJsonRpc(null, { sessionId: activeSessionId!, update: { sessionUpdate: type, content: payload } });
+        sendJsonRpc(null, { sessionId: targetSessionId!, update: { sessionUpdate: type, content: payload } });
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
-      for await (const msg of q) {
-        adapter.handleSdkOutput(msg);
-        if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
-          const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
-          if (ccSid && activeSessionId) {
-            const st = sessions.get(activeSessionId);
-            if (st) {
-              st.ccSessionId = ccSid;
-              saveSessionState(cwd, st);
+      let cancelled = false;
+      try {
+        for await (const msg of q) {
+          adapter.handleSdkOutput(msg);
+          if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
+            const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
+            // ccSessionId 必须写回本次调用的目标会话，否则并发 run 会把 SDK 会话
+            // UUID 写到别的 session，后续 resume 时用错会话
+            if (ccSid && targetSession) {
+              targetSession.ccSessionId = ccSid;
+              saveSessionState(cwd, targetSession);
+            }
+          }
+          if (msg.type === "assistant") {
+            const inner = ((msg as Record<string, unknown>).message ?? msg) as Record<string, unknown>;
+            const innerBlocks = (inner.content ?? []) as Array<Record<string, unknown>>;
+            for (const b of innerBlocks) {
+              if (b.type === "tool_use" && b.name === "AskUserQuestion") {
+                const toolId = b.id as string;
+                const toolInput = (b.input ?? {}) as Record<string, unknown>;
+                const questions = (toolInput.questions ?? []) as Array<{
+                  question: string;
+                  header: string;
+                  options: Array<{ label: string; description: string }>;
+                }>;
+                const iqaId = `iqa_${Date.now()}`;
+                const answerPromise = new Promise<Record<string, unknown>>((resolve) => {
+                  const timer = setTimeout(() => {
+                    interactiveAnswers.delete(iqaId);
+                    resolve({});
+                  }, 60000);
+                  interactiveAnswers.set(iqaId, { resolve, timer });
+                });
+                send({
+                  type: "interactive_question",
+                  payload: {
+                    sessionId: targetSessionId!,
+                    questionId: iqaId,
+                    toolId,
+                    toolName: "AskUserQuestion",
+                    questions,
+                    description: "Please answer the following questions",
+                  },
+                });
+                const answer = await answerPromise;
+                // 通过 streamInput 推答案给 SDK，CC 自动消费
+                const answerQueue = new AsyncQueue<{
+                  type: "user";
+                  message: { role: "user"; content: Array<{ type: "text"; text: string }> };
+                  parent_tool_use_id: string;
+                  tool_use_result?: unknown;
+                }>();
+                answerQueue.push({
+                  type: "user",
+                  message: { role: "user", content: [{ type: "text", text: JSON.stringify(answer) }] },
+                  parent_tool_use_id: toolId,
+                  tool_use_result: answer,
+                });
+                answerQueue.end();
+                try {
+                  await q.streamInput(answerQueue);
+                } catch {}
+                outputBlocks.push(b);
+              } else if (b.type === "text" || b.type === "tool_use") {
+                outputBlocks.push(b);
+              }
             }
           }
         }
-        if (msg.type === "assistant") {
-          const inner = ((msg as Record<string, unknown>).message ?? msg) as Record<string, unknown>;
-          const innerBlocks = (inner.content ?? []) as Array<Record<string, unknown>>;
-          for (const b of innerBlocks) {
-            if (b.type === "tool_use" && b.name === "AskUserQuestion") {
-              const toolId = b.id as string;
-              const toolInput = (b.input ?? {}) as Record<string, unknown>;
-              const questions = (toolInput.questions ?? []) as Array<{
-                question: string;
-                header: string;
-                options: Array<{ label: string; description: string }>;
-              }>;
-              const iqaId = `iqa_${Date.now()}`;
-              const answerPromise = new Promise<Record<string, unknown>>((resolve) => {
-                const timer = setTimeout(() => {
-                  interactiveAnswers.delete(iqaId);
-                  resolve({});
-                }, 60000);
-                interactiveAnswers.set(iqaId, { resolve, timer });
-              });
-              send({
-                type: "interactive_question",
-                payload: {
-                  sessionId: activeSessionId!,
-                  questionId: iqaId,
-                  toolId,
-                  toolName: "AskUserQuestion",
-                  questions,
-                  description: "Please answer the following questions",
-                },
-              });
-              const answer = await answerPromise;
-              // 通过 streamInput 推答案给 SDK，CC 自动消费
-              const answerQueue = new AsyncQueue<{
-                type: "user";
-                message: { role: "user"; content: Array<{ type: "text"; text: string }> };
-                parent_tool_use_id: string;
-                tool_use_result?: unknown;
-              }>();
-              answerQueue.push({
-                type: "user",
-                message: { role: "user", content: [{ type: "text", text: JSON.stringify(answer) }] },
-                parent_tool_use_id: toolId,
-                tool_use_result: answer,
-              });
-              answerQueue.end();
-              try {
-                await currentQuery?.streamInput(answerQueue);
-              } catch {}
-              outputBlocks.push(b);
-            } else if (b.type === "text" || b.type === "tool_use") {
-              outputBlocks.push(b);
-            }
-          }
-        }
+        // 收尾前读取 cancel 标记：本 session 的 query 被 cancel() 中断过则响应
+        // stopReason:"cancelled"（ACP 语义，前端 acp-channel 据此收敛 turn_cancelled 终态），
+        // 未取消的 prompt 保持 end_turn
+        cancelled = activeQueries.peekCancelRequested(targetSessionId);
+      } finally {
+        // 无论正常结束还是异常（CLI 崩溃/OOM）都注销，避免注册表残留 stale 条目：
+        // 残留条目会让后续 cancel 命中已结束的 query 并调用 interrupt()（必然 reject）。
+        // 异常路径不吞错：unregister 后异常继续向上传播，handlePrompt 回 error RPC。
+        activeQueries.unregister(targetSessionId);
       }
-
-      currentQuery = null;
-      return { stopReason: "end_turn" as const, content: outputBlocks };
+      return { stopReason: cancelled ? ("cancelled" as const) : ("end_turn" as const), content: outputBlocks };
     },
 
-    async cancel(_params: Record<string, unknown>) {},
+    async cancel(params: Record<string, unknown>) {
+      // ACP 语义：session/cancel 后 prompt 响应应带 stopReason:"cancelled"。
+      // interrupt() 中断目标 session 的活跃 query；依赖 SDK 行为：interrupt 后
+      // for-await 流正常收尾（query 停止处理并返回控制权，见 sdk.d.ts interrupt()），
+      // 循环结束读取 cancelRequested 标记返回 stopReason:"cancelled"。若未来 SDK 版本
+      // 行为变化（interrupt 后流不关闭），可 fallback Query.close()（进程级强杀，
+      // 会以异常结束 for-await，依赖上方 try/finally 的注销路径）。
+      // 无活跃 query 时 no-op——Agent 侧已无进行中的 turn，无需报错（幂等）
+      const sessionId = (params as { sessionId?: string | null }).sessionId ?? null;
+      await activeQueries.cancel(sessionId);
+    },
 
     /** 返回所有历史会话（不再只返回当前会话） */
     async listSessions(_params: Record<string, unknown>) {

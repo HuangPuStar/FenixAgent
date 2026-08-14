@@ -1,7 +1,7 @@
+import type { PromptUsage } from "@fenix/chat-channel";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { PromptUsage } from "../src/acp/types";
 import type { ThreadEntry, ToolCallEntry } from "../src/lib/types";
 import { cn } from "../src/lib/utils";
 

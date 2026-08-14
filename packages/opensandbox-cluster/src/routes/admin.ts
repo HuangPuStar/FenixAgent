@@ -7,8 +7,8 @@ import {
   type ServerInput,
 } from "../schemas/admin-schemas";
 import { isValidClusterApiKey } from "../security/api-auth";
-import { ConflictError, PoolService } from "../services/pool-service";
-import { ServerService } from "../services/server-service";
+import { ConflictError, type PoolService } from "../services/pool-service";
+import type { ServerService } from "../services/server-service";
 import type { ClusterConfig } from "../types";
 
 export function createAdminRoutes(config: ClusterConfig, pools: PoolService, servers: ServerService) {

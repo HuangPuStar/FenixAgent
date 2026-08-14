@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { SandboxExecutionHandler } from "../services/sandbox/sandbox-execution-handler";
 import { resetAllStubs } from "../test-utils/helpers";
 

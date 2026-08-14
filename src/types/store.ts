@@ -77,17 +77,6 @@ export interface InstanceSupplement {
 }
 
 // ────────────────────────────────────────────
-// Scheduler Job
-// Extracted from: src/services/scheduler.ts
-// ────────────────────────────────────────────
-
-/** Active scheduled job entry */
-export interface ScheduledJobEntry {
-  taskId: string;
-  job: import("node-schedule").Job;
-}
-
-// ────────────────────────────────────────────
 // Rate Limit
 // Extracted from: src/plugins/rate-limit.ts
 // ────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { isValidClusterApiKey } from "../security/api-auth";
-import { ProxyError, ProxyService } from "../services/proxy-service";
+import { ProxyError, type ProxyService } from "../services/proxy-service";
 import type { ClusterConfig } from "../types";
 
 export function handleProxyRequest(

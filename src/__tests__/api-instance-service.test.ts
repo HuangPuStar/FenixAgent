@@ -13,7 +13,7 @@ describe("api instance service", () => {
       getRunningInstancesByEnvironment: () => [],
       groupActiveInstancesByEnvironment: () => new Map(),
       listEnvironmentsByOrganizationId: async () => [],
-      spawnInstanceFromEnvironment: async () => {
+      spawnInstanceViaController: async () => {
         throw new Error("not stubbed");
       },
     });
@@ -43,21 +43,11 @@ describe("api instance service", () => {
           organizationId: "org-1",
           agentConfigId: "agc-1",
         }) as never,
-      spawnInstanceFromEnvironment: async (...args) => {
+      spawnInstanceViaController: async (...args) => {
         spawnCalls.push(args);
         return {
-          id: "inst-created",
-          userId: "user-1",
-          port: 0,
-          pid: null,
-          status: "running",
-          command: "",
-          error: null,
-          apiKey: "",
-          createdAt: new Date("2026-07-23T00:00:00Z"),
-          environmentId: "env-created",
-          instanceNumber: 1,
-        };
+          instanceId: "inst-created",
+        } as never;
       },
     });
 
@@ -65,6 +55,6 @@ describe("api instance service", () => {
 
     expect(result.instanceId).toBe("inst-created");
     expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0]).toMatchObject(["user-1", "env-created", expect.anything(), { source: "interactive" }]);
+    expect(spawnCalls[0]).toMatchObject(["env-created", "user-1", "interactive"]);
   });
 });

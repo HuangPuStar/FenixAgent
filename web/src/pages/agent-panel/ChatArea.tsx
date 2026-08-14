@@ -7,7 +7,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
-import { ChatPageVisibleContext } from "@/src/hooks/useSessions";
+import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
 import { extractChangedFiles } from "@/src/lib/extract-changed-files";
 import type { ThreadEntry } from "@/src/lib/types";
 import { cn } from "@/src/lib/utils";

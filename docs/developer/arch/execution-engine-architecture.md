@@ -68,7 +68,7 @@
 1. 检查是否已有 running 实例 → 如有则**复用**（避免重复启动）
 2. 读取 `EnvironmentRecord`，获取绑定的 `agentConfigId`
 3. 通过 `launch-spec-builder.ts` 将 `AgentConfig` 编译为 `AgentLaunchSpec`（模型、Skill、MCP、SystemPrompt、环境变量）
-4. **确定执行节点**（nodeId）：`agentConfig.machineId` → `RCS_DEFAULT_MACHINE_ID` 环境变量 → `"local-default"`
+4. **确定执行节点**（nodeId）：`agentConfig.machineId` → `RCS_DEFAULT_MACHINE_ID` 环境变量 → `"local-default"`（空串 `machineId` 视为未绑定，与 null 同样走 fallback 链，见 `environment-orchestration.ts` 的 `||` 归一）
 5. 调用 `CoreRuntimeFacade.launchInstance()` 委托 Core 层启动
 6. 注册 `InstanceSupplement` 到 `globalInstanceRegistry`（userId、environmentId、relayCount 等）
 
@@ -131,6 +131,10 @@ WS close / 心跳超时
 ```
 agentConfig.machineId  >  RCS_DEFAULT_MACHINE_ID (env)  >  "local-default"
 ```
+
+其中空串 `machineId`（请求体直传 `machineId:""` 或历史脏数据）与 `null` 同样视为未绑定，
+沿 fallback 链继续解析；`agentConfigId` 缺失的环境（ACP/Bridge 注册路径）不在此拒绝，
+agentConfig 必填约束由 LaunchSpecBuilder 在 spawn 层兜底。
 
 其中 `local-default` 是 RCS 进程内的本地执行节点，使用 EnginePlugin 直接启动进程。
 
@@ -220,8 +224,8 @@ Phase 4: stopInstance
   │   │   │   └─ 确定 nodeId (agentConfig.machineId > default > local-default)
   │   │   │
   │   │   ├─ Layer 2: 远程节点检查
-  │   │   │   ├─ findMachineConnectionById(nodeId) → WS 存活检查
-  │   │   │   └─ 未连接 → MACHINE_OFFLINE 错误 (503)
+  │   │   │   ├─ ensureNode(nodeId) → AgentNodeService 检查 WS 存活
+  │   │   │   └─ 未连接 → AGENT_NODE_UNAVAILABLE 错误 (503)
   │   │   │
   │   │   └─ Layer 3: facade.launchInstance()
   │   │       ├─ InstanceOrchestrator.launch()
@@ -271,7 +275,7 @@ Workflow 节点 / Cron 触发
 | **Machine 注册上线** | 该 machine 上的 agentConfig 可以正常 spawn 实例；Layer 2 将 machine 注册为 remote node，Layer 3 后续可直接调度 |
 | **Machine 心跳超时 / WS 断连** | Layer 2 触发 `performMachineCleanup()` → `unregisterRemoteNode()` → 删除该 node 下所有 Core 实例 → Layer 1 的 `globalInstanceRegistry` 对应记录被清理 → 用户下次进入需要重新 `ensureRunning` |
 | **Machine 重连** | Layer 2 跳过 DB/core 清理，仅清除旧实例让 `ensureRunning` 重新 launch → 前端 relay 自动重连 |
-| **spawn 时 machine 未连接** | Layer 1 在 spawn 前检查 `findMachineConnectionById()` → 抛 `MACHINE_OFFLINE` (503)，阻止启动 |
+| **spawn 时 machine 未连接** | AgentNodeService 的 `ensureNode()` 检查失败 → 抛 `AGENT_NODE_UNAVAILABLE` (503)，阻止启动（c71ee18c 前为 `MACHINE_OFFLINE`，HTTP 映射同为 503） |
 
 ### 6.2 Agent 配置对 Machine 选择的影响
 
@@ -280,7 +284,7 @@ Workflow 节点 / Cron 触发
 | `agentConfig.machineId` | **最高优先级**。绑定到特定 machine 的 Agent 始终在该机器上运行 |
 | `config.defaultMachineId` (环境变量) | 次优先级。Agent 未绑定 machine 时使用 |
 | 无上述配置 | 使用 `local-default` 本地节点 |
-| `agentConfig.engineType` | 决定使用哪个 Engine Plugin。机器注册时需声明支持的 engineTypes，不匹配则调度失败 |
+| `agentConfig.engineType` | local 执行时决定使用哪个 Engine Plugin。remote 节点**跳过 supportsEngine 校验**（`instance-orchestrator.ts:121-133`）：真正引擎在机器端，由 `AGENT_TYPE` 决定，服务端不强制指定（c71ee18c 设计意图） |
 | `environment.maxSessions` | 限制单环境并发实例数，超过则 `ensureRunning` 返回已有实例 |
 
 ### 6.3 空闲监控对实例生命周期的影响

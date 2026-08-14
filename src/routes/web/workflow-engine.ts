@@ -14,7 +14,7 @@ import { authGuardPlugin } from "../../plugins/auth";
 import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { WebErrSchema } from "../../schemas/common.schema";
-import { cleanupSpawnedEnvironments, getTeamEngine } from "../../services/workflow";
+import { cleanupSpawnedInstances, getTeamEngine } from "../../services/workflow";
 import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
@@ -49,7 +49,8 @@ app.post(
           }
           const params = payload.params as Record<string, unknown> | undefined;
           const workflowId = payload.workflowId as string | undefined;
-          const { runId, result } = engine.runAsync(yaml, params);
+          // C-P2.5：触发者 userId 透传，实例计入该用户配额桶
+          const { runId, result } = engine.runAsync(yaml, params, { userId: authCtx.userId });
           // 发布 run_started SSE 事件（runId 已知）
           if (workflowId) {
             publishWorkflowEvent(workflowId, "workflow.run_started", { runId });
@@ -78,9 +79,9 @@ app.post(
                 logger.error(`run background workflowId update failed: runId=${runId}`, err);
               }
               // 清理本次运行启动的环境实例（独立 try-catch，避免清理失败再次抛出未捕获 rejection）
-              if (r.spawnedEnvIds && r.spawnedEnvIds.length > 0) {
+              if (r.spawnedInstanceIds && r.spawnedInstanceIds.length > 0) {
                 try {
-                  await cleanupSpawnedEnvironments(new Set(r.spawnedEnvIds), authCtx.organizationId);
+                  await cleanupSpawnedInstances(new Set(r.spawnedInstanceIds), authCtx.organizationId);
                 } catch (err) {
                   logger.error(`run background cleanup failed: runId=${runId}`, err);
                 }
@@ -140,13 +141,22 @@ app.post(
           const nodeId = payload.nodeId as string;
           const token = payload.token as string;
           const data = payload.data as unknown;
-          await engine.approveNode(runId, nodeId, token, data);
+          const dagResult = await engine.approveNode(runId, nodeId, token, data);
           const approveWorkflowId = payload.workflowId as string | undefined;
           if (approveWorkflowId) {
             publishWorkflowEvent(approveWorkflowId, "workflow.run_status_changed", {
               runId,
               dagStatus: "RUNNING",
             });
+          }
+          // 清理本恢复段新 spawn 的环境实例（独立 try-catch，清理失败只记日志，
+          // 不改变审批成功响应；与 run action 的后台清理同构，见 C-P2.1）
+          if (dagResult.spawnedInstanceIds && dagResult.spawnedInstanceIds.length > 0) {
+            try {
+              await cleanupSpawnedInstances(new Set(dagResult.spawnedInstanceIds), authCtx.organizationId);
+            } catch (err) {
+              logger.error(`approve cleanup failed: runId=${runId}`, err);
+            }
           }
           return { success: true, data: null };
         }
@@ -181,11 +191,11 @@ app.post(
           return { success: true, data: approvals };
         }
 
-        // 从快照恢复运行
+        // 从快照恢复运行（C-P2.5：恢复段按当前请求用户配额）
         case "recover": {
           const runId = payload.runId as string;
           const yaml = payload.yaml as string;
-          const result = await engine.recover(runId, yaml);
+          const result = await engine.recover(runId, yaml, { userId: authCtx.userId });
           return { success: true, data: result };
         }
 
@@ -195,7 +205,8 @@ app.post(
           const fromNodeId = payload.fromNodeId as string;
           const yaml = payload.yaml as string;
           const workflowId = payload.workflowId as string | undefined;
-          const result = await engine.rerunFrom(prevRunId, yaml, fromNodeId);
+          // C-P2.5：重跑段按当前触发者配额
+          const result = await engine.rerunFrom(prevRunId, yaml, fromNodeId, { userId: authCtx.userId });
           // 回写 workflowId 到新 run 的快照
           if (workflowId) {
             await db

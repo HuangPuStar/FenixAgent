@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, PlanEntry, ToolCallContent } from "../acp/types";
+import type { PermissionOption, PlanEntry, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
@@ -129,12 +129,4 @@ export interface PendingPermission {
   toolInput: Record<string, unknown>;
   description?: string;
   options?: PermissionOption[];
-}
-
-// 会话列表条目（用于 SessionSidebar）
-export interface SessionListItem {
-  id: string;
-  title?: string | null;
-  updatedAt?: string | null;
-  isActive?: boolean;
 }

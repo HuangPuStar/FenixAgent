@@ -49,7 +49,7 @@ graph TB
     subgraph packages["📦 内部包"]
         core["@fenix/core<br/><small>CoreRuntimeFacade</small>"]
         pluginSdk["@fenix/plugin-sdk<br/><small>EngineRelayHandle 接口</small>"]
-        acpServer["@fenix/acp-server<br/><small>DocManager + applyACPEvent + 翻译</small>"]
+        acpServer["@fenix/chat-channel<br/><small>DocManager + applyACPEvent + 翻译</small>"]
         acpLink["acp-link<br/><small>stdio↔WS 桥接 + ACPClient</small>"]
     end
 

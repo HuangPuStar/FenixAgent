@@ -1,4 +1,4 @@
-import type { SessionSummary } from "@fenix/acp-server";
+import type { SessionSummary } from "@fenix/chat-channel";
 
 /**
  * 按日期分组的会话列表条目
