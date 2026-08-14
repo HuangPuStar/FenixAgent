@@ -321,6 +321,25 @@ test("session_update idle clears loading", () => {
   expect(meta.get("loading")).toBeNull();
 });
 
+// session_update ready 应清除 loading：session/load 历史回放后 relay 广播 ready，
+// 回放的历史 user_message_chunk 设置的 loading 必须复位，否则切换会话后前端
+// isLoading 永久残留（cancel 按钮/输入禁用无法解除）
+test("session_update ready clears loading", () => {
+  applyACPEvent(ydoc, {
+    type: "user_message_chunk",
+    payload: { content: { type: "text", text: "hello" } },
+  });
+  const meta = ydoc.getMap("meta") as any;
+  expect(meta.get("loading")).not.toBeNull();
+
+  applyACPEvent(ydoc, {
+    type: "session_update",
+    payload: { sessionUpdate: "ready" },
+  });
+  expect(meta.get("loading")).toBeNull();
+  expect(meta.get("status")).toBe("ready");
+});
+
 // session_error / error 应清除 loading
 test("session_error clears loading", () => {
   applyACPEvent(ydoc, {

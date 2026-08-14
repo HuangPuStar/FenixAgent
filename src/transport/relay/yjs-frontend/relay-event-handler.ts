@@ -222,8 +222,9 @@ export class RelayEventHandler {
       // 绑定校验丢弃当前会话全部增量、误开回放窗口、错误投影 title/status。
       // 消费后删除登记，避免 id 空间残留。
       const rpcId = rpc.id as number | string | null | undefined;
-      const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
-      if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
+      const syncKind = rpcId !== undefined && rpcId !== null ? shared.pendingSessionSyncIds?.get(rpcId) : undefined;
+      const syncRequested = syncKind !== undefined;
+      if (syncRequested && rpcId !== undefined && rpcId !== null) shared.pendingSessionSyncIds?.delete(rpcId);
       if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
         const configOptions = result.configOptions as Array<Record<string, unknown>> | undefined;
         const models = (result.models ?? extractModelStateFromConfigOptions(configOptions)) as
@@ -262,7 +263,13 @@ export class RelayEventHandler {
           });
         }
         this.dependencies.docManager.setChatActiveSession(shared.rcsSessionId, newSessionId);
-        if (sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
+        // load_session 响应 = 历史回放完成：回放的历史 user_message_chunk 会触发聚合层
+        // 设置 loading（status=loading），此时必须无条件复位——若沿用 status==="idle"
+        // 条件，回放后 status 恒为 loading 而跳过，切换会话后前端 isLoading 永久残留
+        // （cancel 按钮/输入禁用无法解除），且 aggregator 不会为回放消息补发清除。
+        // resume_session 是恢复进行中的 turn，loading 属于真实进行状态，不得清除，
+        // 仍保持 status==="idle" 才复位；create_session 无回放，行为不变。
+        if (syncKind === "load" || sessionDoc.ydoc.getMap("meta").get("status") === "idle") {
           this.dependencies.docManager.processACP(shared.rcsSessionId, {
             type: "session_update",
             payload: { sessionUpdate: "ready" },

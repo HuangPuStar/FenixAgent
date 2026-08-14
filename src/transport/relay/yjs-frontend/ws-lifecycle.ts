@@ -24,11 +24,11 @@ export type ForwardYjsActionDependencies = {
   sendError: (data: unknown) => void;
   reportError: (message: string, error: unknown) => void;
   /**
-   * 登记在途会话同步请求（create/load/resume）的 rpcId：响应到达时 relay 的
+   * 登记在途会话同步请求（create/load/resume）的 rpcId 与请求类型：响应到达时 relay 的
    * 会话同步 result 分支按 id 校验（JSON-RPC 响应无 method 字段，rename/delete
    * 等其他携带 sessionId 的响应不得劫持该分支）。可选注入，宿主由 forward 提供。
    */
-  registerSessionSyncRpcId?: (rpcId: number | string) => void;
+  registerSessionSyncRpcId?: (rpcId: number | string, kind: "create" | "load" | "resume") => void;
   /**
    * 登记在途 prompt 请求（send_prompt）的 rpcId：Agent 子进程死亡时 acp-link 以
    * JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛 error 事件
@@ -75,7 +75,11 @@ export async function forwardYjsAction(
   // 同步 result 分支仅放行登记过的请求；rename/delete 等其他携带 sessionId 的响应
   // 不得劫持该分支（否则 registry 活跃会话被 clobber、绑定校验丢弃当前会话增量）。
   if (action.action === "create_session" || action.action === "load_session" || action.action === "resume_session") {
-    dependencies.registerSessionSyncRpcId?.(rpc.id as number | string);
+    // 登记请求类型：响应分支据此区分 load（历史回放，完成后清 loading）与 resume（恢复
+    // 进行中的 turn，保留 loading）；create 无回放，与 load 同样复位无害。
+    const syncKind =
+      action.action === "create_session" ? "create" : action.action === "resume_session" ? "resume" : "load";
+    dependencies.registerSessionSyncRpcId?.(rpc.id as number | string, syncKind);
   }
   // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/-32603），
   // relay 按 id 匹配登记收敛 error 事件，否则前端 loading 永久卡死（R1：发送后
@@ -497,11 +501,12 @@ export class WsLifecycle {
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
       // 会话同步请求登记到共享 relay：relay-event-handler 的会话同步 result 分支
-      // 按 id 校验响应来源（rename/delete 等响应不得劫持），relay 释放时统一清空
-      registerSessionSyncRpcId: (rpcId) => {
+      // 按 id 校验响应来源（rename/delete 等响应不得劫持），relay 释放时统一清空。
+      // 附带请求类型供响应分支区分 load（回放后清 loading）与 resume（保留 loading）。
+      registerSessionSyncRpcId: (rpcId, kind) => {
         if (!shared) return;
-        if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
-        shared.pendingSessionSyncIds.add(rpcId);
+        if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Map();
+        shared.pendingSessionSyncIds.set(rpcId, kind);
       },
       // prompt 请求登记：relay-event-handler 按 id 匹配 JSON-RPC error 响应收敛
       // error 事件（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空
