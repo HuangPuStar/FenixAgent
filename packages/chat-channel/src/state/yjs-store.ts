@@ -2,10 +2,12 @@
 // Yjs 外部 store 抽象 — 将 Y.Doc 包装为 subscribe/getSnapshot 模式，供 useSyncExternalStore 使用
 //
 // 性能语义（回放/流式高峰保护）：
-// - applyUpdate（WS 路径）不再同步重算快照，改为合并 + 宏任务调度：
-//   同一 tick 的多次 update 只重算一次，且重算移出 WS 消息接收栈，
-//   避免 load_session 历史回放时逐条全量重算导致主线程 O(n²) 阻塞；
-//   单次重算耗时超过一帧预算（12ms）时自动退避降频到 50ms，空闲后恢复。
+// - applyUpdate（WS 路径）不再同步重算快照，改为宏任务调度：
+//   重算移出 WS 消息接收栈，避免 load_session 历史回放时逐条全量重算
+//   阻塞主线程（O(n²)）。快路径（setTimeout 0）仅合并同一同步栈内的
+//   多次 applyUpdate（WS 每条消息是独立宏任务，跨消息不合并）；
+//   真正降频的是慢路径：单次重算耗时超过一帧预算（12ms）后切换为
+//   50ms 窗口合并重算，回放/流式高峰期间每秒至多约 20 次全量计算。
 // - 本地事务（origin !== APPLY_UPDATE_ORIGIN，如测试直接 ydoc.transact）
 //   保持同步重算语义，快照立即可见。
 
@@ -198,9 +200,14 @@ export function createYjsStore<T>(
 
     // 4. 立即计算初始快照（渲染期同步，保证首次渲染即正确）
     cancelScheduledRecompute();
+    // 新 doc 通常内容少、重算便宜，重置降频状态避免继承旧 doc 的慢路径
+    slowRecompute = false;
     snapshot = computeSnapshot(ydoc);
     prevSnapshotKey = "";
     notify();
+    // 注：若 switchDoc 前已有 setTimeout 回调入队（宏任务已触发），clearTimeout
+    // 无法取消，迟到回调会对新 doc 重算一次并多通知一次——内容正确（与新 doc
+    // 初始快照一致），仅多一次重渲染，属无害行为，非 bug。
   }
 
   function destroy() {
