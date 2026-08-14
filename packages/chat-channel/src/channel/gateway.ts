@@ -21,7 +21,14 @@ import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { type ClientConnection, REPLAY_WINDOW_MS, type SharedRelay, type WsConnection } from "./connection-types";
+import {
+  type ClientConnection,
+  clearPendingPromptTimeout,
+  PROMPT_TIMEOUT_MS,
+  REPLAY_WINDOW_MS,
+  type SharedRelay,
+  type WsConnection,
+} from "./connection-types";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 
@@ -425,7 +432,13 @@ export class Gateway {
     }
     // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
     shared.pendingSessionSyncIds?.clear();
+    // 在途 prompt 登记与超时定时器一并清空：relay 释放后不再需要收敛，
+    // 残留定时器到点会 dispatch 到已销毁的 doc（且引用泄漏）
     shared.pendingPromptIds?.clear();
+    if (shared.pendingPromptTimeouts) {
+      for (const timer of shared.pendingPromptTimeouts.values()) clearTimeout(timer);
+      shared.pendingPromptTimeouts.clear();
+    }
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
       // session: 监听器由 handleOpen 与 relay-event-handler 按 docName 注册，
@@ -495,11 +508,29 @@ export class Gateway {
         shared.pendingSessionSyncIds.add(rpcId);
       },
       // prompt 请求登记：relay-event-handler 按 id 匹配 JSON-RPC error 响应收敛
-      // turn_failed（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空
+      // turn_failed（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空。
+      // 同时启动卡死收敛定时器：到点时若 agent 全程无业务帧（lastInboundAt 距今
+      // ≥ PROMPT_TIMEOUT_MS）则收敛 turn_failed；期间有业务帧（流式输出/事件/
+      // JSON-RPC 响应，保活帧除外——见 relay-event-handler 的 lastInboundAt 刷新）
+      // 则重排等待，不误杀正常的长输出。result/error 响应消费登记时清除定时器。
       registerPendingPromptId: (rpcId) => {
         if (!shared) return;
         if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
         shared.pendingPromptIds.add(rpcId);
+        if (!shared.pendingPromptTimeouts) shared.pendingPromptTimeouts = new Map();
+        const schedule = () => {
+          const timer = setTimeout(() => {
+            if (!shared.pendingPromptIds?.has(rpcId)) return; // 已被 result/error 消费
+            const lastInboundAt = shared.lastInboundAt ?? 0;
+            if (Date.now() - lastInboundAt < PROMPT_TIMEOUT_MS) {
+              schedule(); // agent 仍在活跃输出，重排等待
+              return;
+            }
+            this.dependencies.relayEvents.convergeStuckPrompt(shared, rpcId);
+          }, PROMPT_TIMEOUT_MS);
+          shared.pendingPromptTimeouts?.set(rpcId, timer);
+        };
+        schedule();
       },
     };
   }

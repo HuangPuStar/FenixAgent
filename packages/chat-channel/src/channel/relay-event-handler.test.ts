@@ -224,6 +224,90 @@ describe("RelayEventHandler", () => {
     expect(processed).not.toContain("turn_failed");
   });
 
+  // prompt 静默超时（gateway 定时器到点且 agent 全程无业务帧）时，convergeStuckPrompt
+  // 必须收敛 turn_failed 并消费登记、清除定时器（B 方案：防前端 loading 永久卡死）。
+  test("convergeStuckPrompt converges the turn and clears pending registration", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const reports: Array<[string, unknown]> = [];
+    const handler = createRelayEvents(registry, broadcaster, processed, {
+      reportError: (message, error) => reports.push([message, error]),
+    });
+    const shared = relayOn("rcs-1");
+    const timer = setTimeout(() => {}, 1000);
+    shared.pendingPromptIds = new Set([1]);
+    shared.pendingPromptTimeouts = new Map([[1, timer]]);
+
+    handler.convergeStuckPrompt(shared, 1);
+
+    expect(processed).toContain("turn_failed");
+    expect(shared.pendingPromptIds?.size).toBe(0);
+    expect(shared.pendingPromptTimeouts?.size).toBe(0);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.[0]).toContain("prompt timed out");
+    clearTimeout(timer);
+  });
+
+  // 未登记的超时 id 不得收敛（与 error 路径的登记匹配语义一致），幂等保护。
+  test("convergeStuckPrompt ignores unregistered prompt ids", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+    const shared = relayOn("rcs-1");
+
+    handler.convergeStuckPrompt(shared, 99);
+
+    expect(processed).not.toContain("turn_failed");
+  });
+
+  // prompt 成功路径的 JSON-RPC result 响应（acp-link 的 session/prompt 返回 turnId）
+  // 必须消费在途 prompt 登记并清除定时器，否则登记永久残留（成功路径残留修复）。
+  test("prompt success result consumes the pending prompt registration", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+    const shared = relayOn("rcs-1");
+    const timer = setTimeout(() => {}, 1000);
+    shared.pendingPromptIds = new Set([1]);
+    shared.pendingPromptTimeouts = new Map([[1, timer]]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { turnId: "turn_1" },
+    } as unknown as RelayMessage);
+
+    expect(shared.pendingPromptIds?.size).toBe(0);
+    expect(shared.pendingPromptTimeouts?.size).toBe(0);
+    clearTimeout(timer);
+  });
+
+  // lastInboundAt 只被业务帧刷新（JSON-RPC 帧或非保活私有帧），保活帧不得刷新——
+  // 否则 relay 连接存活期间 prompt 超时判定永不触发（B 方案核心前提）。
+  test("lastInboundAt is refreshed by business frames but not keepalive frames", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const handler = createRelayEvents(registry, broadcaster, processed);
+    const shared = relayOn("rcs-1");
+    const before = Date.now();
+
+    // 保活帧：不刷新
+    await handler.createMessageHandler(shared)({ type: "keep_alive" } as unknown as RelayMessage);
+    expect(shared.lastInboundAt).toBeUndefined();
+
+    // JSON-RPC 帧：刷新
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { sessionId: "ses-1", update: { sessionUpdate: "agent_message_chunk" } },
+    } as unknown as RelayMessage);
+    expect(shared.lastInboundAt).toBeGreaterThanOrEqual(before);
+  });
+
   // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
   test("sends relay error messages only to the matching RCS session", async () => {
     const registry = new ConnectionRegistry();

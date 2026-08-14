@@ -14,7 +14,7 @@ import { type NormalizedEvent, type NormalizedEventType, TURN_TERMINAL_STATUSES,
 import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+import { clearPendingPromptTimeout, REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
@@ -30,6 +30,11 @@ const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
 /** 生成回放 turnId（turn_replay_ 前缀与实时 turn 区分，便于日志排查） */
 function createReplayTurnId(): string {
   return `turn_replay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 保活类消息类型（与 acp-idle-monitor 的 isIgnoredActivityMessageType 规则一致），不计入业务帧 */
+function isKeepaliveMsgType(type: string | undefined): boolean {
+  return type === "keep_alive" || type === "heartbeat" || type === "ping" || type === "pong";
 }
 
 /** 读取聚合层活动 turn（Session Doc root.session.activeTurnId/Status 为权威，与 chat-writer 一致） */
@@ -89,6 +94,14 @@ export class RelayEventHandler {
     // 每次从 Agent 收到消息时更新活跃时间，防止实例在活跃对话中被空闲回收
     // touchInstanceActivity 内部已过滤 keep_alive/ heartbeat/ping/pong 等保活消息
     this.dependencies.touchInstanceActivity(shared.instanceId, raw);
+
+    // 刷新"最后业务入站帧"时间戳：prompt 超时收敛（gateway 定时器）依赖它判断
+    // agent 是否仍在活跃输出。JSON-RPC 帧与保活帧的区分规则与 touchInstanceActivity
+    // 的 shouldCountInstanceActivity 一致——保活帧不刷新，否则 relay 连接存活期间
+    // 超时判定永不触发。流式输出期间增量帧持续刷新，正常长输出不会被误收敛。
+    if (typeof raw.jsonrpc === "string" || !isKeepaliveMsgType(msgType)) {
+      shared.lastInboundAt = Date.now();
+    }
 
     const rpcCheck = extractJsonRpc(raw);
 
@@ -178,6 +191,7 @@ export class RelayEventHandler {
       const rpcId = rpcCheck.id as number | string;
       if (shared.pendingPromptIds?.has(rpcId) === true) {
         shared.pendingPromptIds?.delete(rpcId);
+        clearPendingPromptTimeout(shared, rpcId);
         this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
           instanceId: shared.instanceId,
           code: rpcError.code,
@@ -268,6 +282,13 @@ export class RelayEventHandler {
       // 绑定校验丢弃当前会话全部增量（重命名非当前会话即冻结当前输出流）、误开
       // 10s 回放窗口、错误投影 title/status。消费后删除登记，避免 id 空间残留。
       const rpcId = rpc.id as number | string | null | undefined;
+      // prompt 成功响应消费：result 到达说明请求已被 agent 正常处理（即时 ack 或
+      // 完成时返回），不再需要超时收敛；同时修复成功路径 pendingPromptIds 残留
+      // （此前只有 error 路径消费，成功结果会永久占用登记）。
+      if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
+        shared.pendingPromptIds.delete(rpcId);
+        clearPendingPromptTimeout(shared, rpcId);
+      }
       const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
       if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
       if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
@@ -356,6 +377,21 @@ export class RelayEventHandler {
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
     }
+  }
+
+  /**
+   * 收敛卡死的在途 prompt（gateway 超时定时器到点且 agent 全程静默时调用）。
+   * 消费登记并清除定时器后收敛 turn_failed——与 error 拒绝路径相同的终态语义，
+   * 使前端 loading 不会永久卡死。错误内容脱敏（通用文案），只记录实例上下文。
+   */
+  convergeStuckPrompt(shared: SharedRelay, rpcId: number | string): void {
+    if (!shared.pendingPromptIds?.has(rpcId)) return;
+    shared.pendingPromptIds.delete(rpcId);
+    clearPendingPromptTimeout(shared, rpcId);
+    this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
+      instanceId: shared.instanceId,
+    });
+    this.dispatch(shared, { type: "turn_failed", update: { error: "Agent request failed" }, content: null });
   }
 
   private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
