@@ -122,6 +122,8 @@ interface ChatMetaSnapshot {
   permissions: ChatStateSnapshot["permissions"];
   /** 会话列表（Session Doc sessions 投影派生；含当前会话兜底） */
   sessions: ChatStateSnapshot["sessions"];
+  /** agent 会话列表是否已权威确认（session_list 响应投影过；空列表 ≠ 无会话，见 ChatStateSnapshot 注释） */
+  sessionListLoaded: boolean;
 }
 
 function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
@@ -205,6 +207,7 @@ function computeMetaSnapshot(ydoc: Y.Doc): ChatMetaSnapshot {
     availableCommands: readAvailableCommands(session),
     permissions,
     sessions,
+    sessionListLoaded: root.get("sessionListLoaded") === true,
   };
 }
 
@@ -227,6 +230,7 @@ function computeChatSnapshot(token: ChatTokenSnapshot, meta: ChatMetaSnapshot): 
     modelState: meta.modelState,
     modeState: meta.modeState,
     availableCommands: meta.availableCommands,
+    sessionListLoaded: meta.sessionListLoaded,
     tokenUsage: token.tokenUsage,
   };
 }
@@ -257,6 +261,7 @@ export function useChatState(rcsSessionId: string) {
           availableCommands: [],
           permissions: [],
           sessions: [],
+          sessionListLoaded: false,
         },
         (s) => stableKey(s),
       ),

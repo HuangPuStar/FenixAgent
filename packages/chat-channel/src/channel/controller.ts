@@ -46,8 +46,8 @@ export interface ChatChannelDependencies {
   terminateLocalDeadInstance: (instanceId: string) => void;
   /** Redis 快照持久化（宿主 cache/yjs-store 语义）：会话切换前以 CAS 持久化 Session Doc */
   prepareClearSessionSnapshot: (connection: SessionConnection) => Promise<void>;
-  /** 从 DB sessionId 解析 instance 编号（多实例 YJS doc 隔离） */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number>;
+  /** 从会话标识解析 instance 编号（多实例 YJS doc 隔离）；无法解析返回 null，由 gateway 按默认实例降级 */
+  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | null>;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连 */

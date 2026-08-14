@@ -37,6 +37,7 @@ describe("computeSessionSnapshot", () => {
   test("running 时 loading 为 null 且 canCancel 为 true（输出期间可停止）", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
+      sessionStatus: "ready",
       turnStatus: "running",
       turnUpdatedAt: 123,
       permissionOptions: new Map(),
@@ -52,6 +53,7 @@ describe("computeSessionSnapshot", () => {
   test("accepting 时 loading 非空且 canCancel 为 true", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "",
+      sessionStatus: "ready",
       turnStatus: "accepting",
       turnUpdatedAt: 456,
       permissionOptions: new Map(),
@@ -65,6 +67,7 @@ describe("computeSessionSnapshot", () => {
   test("cancelling 时 loading 非空且 canCancel 为 false", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
+      sessionStatus: "ready",
       turnStatus: "cancelling",
       turnUpdatedAt: 789,
       permissionOptions: new Map(),
@@ -78,6 +81,7 @@ describe("computeSessionSnapshot", () => {
   test("idle 时 loading 为 null 且 canCancel 为 false", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "",
+      sessionStatus: "ready",
       turnStatus: null,
       turnUpdatedAt: null,
       permissionOptions: new Map(),
@@ -85,5 +89,21 @@ describe("computeSessionSnapshot", () => {
     expect(snapshot.loading).toBeNull();
     expect(snapshot.canCancel).toBe(false);
     expect(snapshot.status).toBe("idle");
+  });
+
+  // 会话就绪（sessionStatus=ready）与 turn 状态正交：新会话/加载历史会话后无活动
+  // turn（turnStatus=null → status=idle），sessionReady 判定必须依赖 sessionStatus——
+  // 否则输入框永久禁用，第一条消息永远发不出去（死锁）
+  test("无活动 turn 时 sessionStatus 仍透出 ready（会话就绪判定不依赖 turn 状态）", () => {
+    const snapshot = computeSessionSnapshot(emptyTimeline(), {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready",
+      turnStatus: null,
+      turnUpdatedAt: null,
+      permissionOptions: new Map(),
+    });
+    expect(snapshot.status).toBe("idle");
+    expect(snapshot.sessionStatus).toBe("ready");
+    expect(snapshot.loading).toBeNull();
   });
 });

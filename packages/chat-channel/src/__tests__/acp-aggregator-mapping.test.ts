@@ -295,6 +295,14 @@ test("session_list aggregation is idempotent and skips malformed entries", () =>
   expect(missing.applied).toBe(false);
 });
 
+// session_list 响应（即使空列表）写入列表权威确认标记：前端 bootstrap 据此区分
+// "确认无会话"（可安全自动创建）与"列表未到达"（空列表不可信，不得据空列表创建）
+test("session_list marks sessionListLoaded even when the list is empty", () => {
+  expect(getSessionRoot(pair.session).get("sessionListLoaded")).toBeUndefined();
+  applyNormalizedEvent(pair, event("session_list", { sessions: [] }));
+  expect(getSessionRoot(pair.session).get("sessionListLoaded")).toBe(true);
+});
+
 // 规范化事件中的 acpSessionId 不参与 Y.Doc 寻址（只做 binding 校验）
 test("acpSessionId in event never becomes doc addressing", () => {
   runTurn(pair, "turn_1");
@@ -313,6 +321,34 @@ test("new user message terminates unfinished previous turn", () => {
   const oldAssistant = getEntry(pair.chat, "turn_1:assistant");
   expect(oldAssistant?.get("status")).toBe("cancelled");
   expect(getSessionInfo(pair.session).get("activeTurnId")).toBe("turn_2");
+});
+
+// 连续 prompt 时旧 turn 的迟到终态（携带 turnId 且与当前活动 turn 不一致）不得终结新 turn：
+// 用户连发消息后前一条的 turn_completed 才到达（乱序/回放收敛），若按 active turn 归位
+// 会把新 turn 提前置终态，其后全部增量被 canWriteToTurn 丢弃、答案永远不出现。
+test("terminal with stale turnId does not terminate the new turn", () => {
+  runTurn(pair, "turn_1");
+  // 用户连发第二条消息：turn_1 收敛 cancelled，活动 turn 切到 turn_2
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "again" } }, "turn_2"));
+  expect(getSessionInfo(pair.session).get("activeTurnId")).toBe("turn_2");
+
+  // turn_1 的迟到终态（携带 turnId=turn_1）到达：stale 校验拒绝，活动 turn 保持 accepting
+  applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("accepting");
+
+  // turn_2 的增量仍可写入（未被终态封锁），答案正常投影
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer" } }));
+  expect(getEntry(pair.chat, "turn_2:assistant")?.get("status")).toBe("streaming");
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("running");
+});
+
+// 终态携带的 turnId 与活动 turn 一致时正常应用（归属校验不误伤正确的终态）。
+test("terminal with matching turnId terminates the active turn", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
+  expect(getEntry(pair.chat, "turn_1:assistant")?.get("status")).toBe("completed");
 });
 
 // 终态常量覆盖全部合法终态（供状态机使用方校验）

@@ -369,6 +369,7 @@ test("session_list syncs sessions map with idempotent full sync", () => {
     "projectionVersion",
     "schemaVersion",
     "session",
+    "sessionListLoaded",
     "sessions",
   ]);
 });

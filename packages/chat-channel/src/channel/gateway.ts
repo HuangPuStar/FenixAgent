@@ -21,14 +21,7 @@ import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import {
-  type ClientConnection,
-  clearPendingPromptTimeout,
-  PROMPT_TIMEOUT_MS,
-  REPLAY_WINDOW_MS,
-  type SharedRelay,
-  type WsConnection,
-} from "./connection-types";
+import { type ClientConnection, PROMPT_TIMEOUT_MS, type SharedRelay, type WsConnection } from "./connection-types";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 
@@ -69,8 +62,8 @@ export interface GatewayDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
-  /** 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接 */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number>;
+  /** 从会话标识解析 instance 编号（多实例场景精准连接）；无法解析返回 null，按默认实例降级 */
+  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | null>;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连，展示手动重试 UI） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连分支 */
@@ -120,25 +113,24 @@ export class Gateway {
     const orgId = environment.organizationId ?? userId;
     const workspacePath = this.dependencies.resolveWorkspacePath(orgId, userId, agentId);
 
-    // 多实例隔离：从 URL sessionId 解析对应的 instance 编号，确保连到正确的 instance
-    let resolvedInstanceNumber: number | undefined;
-    if (sessionId) {
-      try {
-        resolvedInstanceNumber = await this.dependencies.resolveInstanceNumberFromSession(sessionId);
-      } catch (err) {
-        // 坏 sessionId（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）视为可恢复：
-        // 忽略该参数按默认路径继续连接，连接建立后由 ACP 层 list_sessions/create_session 重建会话；
-        // 不得以 4004 拒绝——4004 不在客户端终态码集合，会触发相同 URL 的无限重连。
-        // 4004 仅保留给 env not found（重试相同 URL 永远失败）等不可恢复场景。
-        // 错误详情已脱敏（不含 sessionId），只进服务端日志。
-        this.reportError("[YJS-FE] Failed to resolve session instance:", err);
-      }
-    }
+    // 多实例隔离：从 URL sessionId 解析对应的 instance 编号，确保连到正确的实例。
+    // 无法解析（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）是可预期的
+    // 输入形态：resolveInstanceNumberFromSession 返回 null，按默认实例（编号 1）继续
+    // 连接，连接建立后由 ACP 层 list_sessions/create_session 重建会话；不得以 4004
+    // 拒绝——4004 不在客户端终态码集合，会触发相同 URL 的无限重连。
+    // 仅 DB 层异常（查询失败等非预期错误）才进入 catch 保留错误诊断。
+    const resolvedInstanceNumber = sessionId
+      ? await this.dependencies.resolveInstanceNumberFromSession(sessionId).catch((err) => {
+          this.reportError("[YJS-FE] Failed to resolve session instance:", err);
+          return null;
+        })
+      : null;
 
     let instanceId: string;
     try {
-      instanceId = (await this.dependencies.ensureRunning(userId, agentId, "interactive", resolvedInstanceNumber))
-        .instance.id;
+      instanceId = (
+        await this.dependencies.ensureRunning(userId, agentId, "interactive", resolvedInstanceNumber ?? undefined)
+      ).instance.id;
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);
@@ -435,10 +427,17 @@ export class Gateway {
     // 在途 prompt 登记与超时定时器一并清空：relay 释放后不再需要收敛，
     // 残留定时器到点会 dispatch 到已销毁的 doc（且引用泄漏）
     shared.pendingPromptIds?.clear();
+    shared.pendingPromptTurns?.clear();
     if (shared.pendingPromptTimeouts) {
       for (const timer of shared.pendingPromptTimeouts.values()) clearTimeout(timer);
       shared.pendingPromptTimeouts.clear();
     }
+    // 回放窗口定时器一并清理（同泄漏语义），窗口判定缓存随之重置
+    if (shared.replayWindowTimer) {
+      clearTimeout(shared.replayWindowTimer);
+      shared.replayWindowTimer = null;
+    }
+    shared.replaySkipSynthesis = undefined;
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
       // session: 监听器由 handleOpen 与 relay-event-handler 按 docName 注册，
@@ -464,9 +463,10 @@ export class Gateway {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
     // load/resume 会话会触发 Agent 历史回放，且回放流可能先于 JSON-RPC result 到达
     // （agent 在 loadSession resolve 前推送历史增量）；转发 RPC 前开启回放窗口，
-    // 使 relay-event-handler 能投影无头回放增量（JSON-RPC result 分支兜底重置窗口）。
+    // 使 relay-event-handler 能投影无头回放增量（JSON-RPC result 分支兜底重置窗口），
+    // 窗口到期定时器收敛回放 turn 终态（回放流无终态信号）。
     if (shared && (action.action === "load_session" || action.action === "resume_session")) {
-      shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
+      this.dependencies.relayEvents.openReplayWindow(shared);
     }
     await forwardYjsAction(this.toSessionConnection(entry, shared), action, {
       sessionChannel: this.dependencies.sessionChannel,
@@ -513,10 +513,16 @@ export class Gateway {
       // ≥ PROMPT_TIMEOUT_MS）则收敛 turn_failed；期间有业务帧（流式输出/事件/
       // JSON-RPC 响应，保活帧除外——见 relay-event-handler 的 lastInboundAt 刷新）
       // 则重排等待，不误杀正常的长输出。result/error 响应消费登记时清除定时器。
-      registerPendingPromptId: (rpcId) => {
+      registerPendingPrompt: (rpcId, turnId) => {
         if (!shared) return;
         if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
         shared.pendingPromptIds.add(rpcId);
+        // turnId 登记：终态事件按 rpcId 回传归属 turn，聚合层据此校验
+        //（连续 prompt 时旧 turn 的迟到终态不终结新 turn，见 aggregator）
+        if (turnId) {
+          if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
+          shared.pendingPromptTurns.set(rpcId, turnId);
+        }
         if (!shared.pendingPromptTimeouts) shared.pendingPromptTimeouts = new Map();
         const schedule = () => {
           const timer = setTimeout(() => {

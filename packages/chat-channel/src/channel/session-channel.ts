@@ -56,11 +56,13 @@ export interface SessionConnection {
    */
   registerSessionSyncRpcId?: (rpcId: number | string) => void;
   /**
-   * 登记在途 prompt 请求（send_prompt）的 rpcId：Agent 子进程死亡时 acp-link 以
-   * JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛 turn_failed
-   * （防止 loading 永久卡死）。可选注入，宿主由 gateway 提供。
+   * 登记在途 prompt 请求（send_prompt）的 rpcId 与对应 turnId：Agent 子进程死亡时
+   * acp-link 以 JSON-RPC error 响应拒绝 prompt，relay 按 id 匹配该登记并收敛
+   * turn_failed（防止 loading 永久卡死）；turnId 随终态事件回传聚合层，使终态
+   * 归属校验（连续 prompt 时旧 turn 的迟到终态不误伤新 turn）成为可能。
+   * 可选注入，宿主由 gateway 提供。
    */
-  registerPendingPromptId?: (rpcId: number | string) => void;
+  registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
 }
 
 export interface SessionChannelDependencies {
@@ -235,8 +237,10 @@ export class SessionChannel {
     // prompt 请求登记：Agent 子进程死亡时 acp-link 回 JSON-RPC error（-32000/
     // -32603），relay 按 id 匹配登记收敛 turn_failed，否则 turn 永久卡 accepting、
     // 前端 loading 永不消失（R1：发送后完全无输出、仅刷新恢复）。
+    // turnId 一并登记：终态事件按 rpcId 回传 turnId，聚合层据此校验终态归属
+    // （连续 prompt 时旧 turn 的迟到终态不得终结新 turn）。
     if (command.type === "send_prompt") {
-      connection.registerPendingPromptId?.(rpc.id as number | string);
+      connection.registerPendingPrompt?.(rpc.id as number | string, turnId);
     }
     try {
       await connection.sendToRelay(rpc);

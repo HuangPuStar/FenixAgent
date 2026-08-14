@@ -1,5 +1,6 @@
 // packages/acp-server/src/types.ts
 import type * as Y from "yjs";
+import type { SessionDocStatus } from "./schema";
 
 // ── Session 级别状态 ──
 
@@ -130,6 +131,12 @@ export interface ChatStateSnapshot {
   modeState: ModeState | null;
   /** 可用命令列表（available_commands_update 投影到 Session Doc，slash 命令菜单数据源） */
   availableCommands: Array<{ name: string; description: string; input?: { hint: string } }>;
+  /**
+   * agent 会话列表是否已权威确认（session_list 响应投影过）。
+   * false = 列表尚未到达，此时空列表不代表"无会话"（bootstrap 不得据空列表自动创建，
+   * 否则有历史会话时制造"假空"会话）；true = 列表已确认，空列表可安全触发自动创建。
+   */
+  sessionListLoaded: boolean;
   /** ACP prompt_complete 返回的真实 token 用量 */
   tokenUsage: TokenUsage | null;
 }
@@ -144,6 +151,13 @@ export interface TokenUsage {
 export interface SessionStateSnapshot {
   /** 当前快照所属的 ACP Session ID，用于在会话切换时识别和丢弃过期状态 */
   acpSessionId: string;
+  /**
+   * 会话文档级状态（Session Doc session.status，create/load 成功后投影为 "ready"）。
+   * 与 status（turn 展示态）正交：会话就绪判定（输入框可用性）必须依赖此字段，
+   * 而非 turn 状态——无活动 turn 时 turnStatus 恒为 null，用它判定会产生
+   * "新会话永远无法发消息"的死锁。
+   */
+  sessionStatus: SessionDocStatus | null;
   status: SessionStatus;
   loading: LoadingState | null;
   /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮，

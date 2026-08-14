@@ -151,6 +151,8 @@ export function createRelayEvents(
     openSession: async () => ({ ydoc: new Y.Doc() }),
     // 回放窗口判断需要读取聚合层活动 turn；默认 mock 无 Session Doc 时视为无活动 turn
     getSessionYdoc: () => undefined,
+    // 回放窗口开启时判定 Chat Doc 是否有内容；默认 mock 无 doc → 视为空（允许合成）
+    hasSessionDocContent: () => false,
   } as unknown as DocManager;
   return new RelayEventHandler({
     docManager,
@@ -175,6 +177,7 @@ export function createGateway(
     openChat: async () => ({ ydoc: new Y.Doc() }),
     openSession: async () => ({ ydoc: new Y.Doc() }),
     getSessionYdoc: () => undefined,
+    hasSessionDocContent: () => false,
     ...docManagerOverrides,
   } as unknown as DocManager;
 
@@ -195,7 +198,7 @@ export function createGateway(
     reportLog: () => {},
     reportError: () => {},
     maxClients: () => 10,
-    resolveInstanceNumberFromSession: async () => 0,
+    resolveInstanceNumberFromSession: async () => null,
     isMachineOffline: classifier.isMachineOffline,
     classifyPermanentSpawnFailure: classifier.classifyPermanentSpawnFailure,
     ...overrides,

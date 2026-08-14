@@ -101,7 +101,14 @@ export interface SharedRelay {
    */
   pendingPromptIds?: Set<number | string>;
   /**
-   * 在途 prompt 的超时定时器（rpcId → timer）。registerPendingPromptId 登记时启动，
+   * 在途 prompt 请求的 turnId 登记（rpcId → turnId）。聚合层按 active turn 归位
+   * 增量/终态，不校验事件归属 turnId——连续 prompt 时前一条的终态会提前终结
+   * 后一条的 turn（后一条增量全被丢弃）。终态事件按此登记附加 turnId 后，
+   * 聚合层能区分终态归属，stale turn 的迟到终态不再误伤新 turn。
+   */
+  pendingPromptTurns?: Map<number | string, string>;
+  /**
+   * 在途 prompt 的超时定时器（rpcId → timer）。registerPendingPrompt 登记时启动，
    * 到点时若 agent 全程静默（lastInboundAt 距今 ≥ PROMPT_TIMEOUT_MS）收敛 turn_failed，
    * 有业务帧则重排等待；JSON-RPC result/error 消费登记时清除（见 clearPendingPromptTimeout）。
    */
@@ -117,6 +124,23 @@ export interface SharedRelay {
    * 窗口外到达的无 turnId user_message（实时回显）保持原语义丢弃。
    */
   replayWindowUntil: number | null;
+  /**
+   * 回放窗口内合成/分配的回放 turnId（turn_replay_ 前缀，窗口内最后一个）。
+   * 回放流无终态信号（unstable_resumeSession 只回放 chunk 帧），不收敛则回放
+   * turn 永久卡 running、前端一直显示输出中；窗口到期定时器按此 id 收敛 completed。
+   * 期间用户发出新消息（active turn 已被替换）时聚合层按 turnId 归属拒绝该终态，
+   * 不误伤新 turn。
+   */
+  replayTurnId?: string | null;
+  /** 回放窗口到期定时器：到期收敛 replayTurnId 对应回放 turn 并重置窗口 */
+  replayWindowTimer?: ReturnType<typeof setTimeout> | null;
+  /**
+   * 回放窗口开启瞬间"Chat Doc 是否已有时间线内容"的判定缓存（窗口内固定，不实时
+   * 检查）。合成投影本身会写 Chat Doc，实时检查会把回放自己写入的内容误判为
+   * "重连前已有内容"、挡住窗口内后续回放帧（多轮历史回放只投影第一条）。窗口
+   * 开启时判定一次：空 doc（冷启动/切换清空）→ 允许合成；有内容（重连）→ 跳过。
+   */
+  replaySkipSynthesis?: boolean;
 }
 
 /**

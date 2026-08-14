@@ -108,7 +108,11 @@ function readEntryIds(ydoc: Y.Doc): string[] {
  * 轮询等待 activeTurnStatus 变为期望值（替代固定 setTimeout 等待：
  * CI 高负载下固定时长可能不足导致 flaky，轮询以状态变化为收敛条件）。
  */
-async function waitForTurnStatus(sessionDoc: Y.Doc | null, expected: string, timeoutMs = 2000): Promise<void> {
+async function waitForTurnStatus(
+  sessionDoc: Y.Doc | null | undefined,
+  expected: string,
+  timeoutMs = 2000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (getSessionInfo(sessionDoc as Y.Doc).get("activeTurnStatus") === expected) return;

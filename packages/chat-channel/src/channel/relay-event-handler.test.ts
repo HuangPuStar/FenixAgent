@@ -285,9 +285,11 @@ describe("RelayEventHandler", () => {
     clearTimeout(timer);
   });
 
-  // lastInboundAt 只被业务帧刷新（JSON-RPC 帧或非保活私有帧），保活帧不得刷新——
-  // 否则 relay 连接存活期间 prompt 超时判定永不触发（B 方案核心前提）。
-  test("lastInboundAt is refreshed by business frames but not keepalive frames", async () => {
+  // lastInboundAt 只被 agent 输出/事件类帧刷新（session/update 通知与私有帧），
+  // 保活帧与 JSON-RPC 响应帧（result/error）不得刷新——否则 10s 一次的
+  // list_sessions 轮询响应持续刷新时间戳，卡死的 prompt（agent 全程静默）
+  // 永远等不到超时收敛（判定被无限重排，loading 永久）。
+  test("lastInboundAt is refreshed by business frames but not keepalive or JSON-RPC response frames", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const processed: string[] = [];
@@ -299,13 +301,35 @@ describe("RelayEventHandler", () => {
     await handler.createMessageHandler(shared)({ type: "keep_alive" } as unknown as RelayMessage);
     expect(shared.lastInboundAt).toBeUndefined();
 
-    // JSON-RPC 帧：刷新
+    // JSON-RPC 响应帧（list_sessions 轮询 result / prompt error）：不刷新
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 42,
+      result: { sessions: [] },
+    } as unknown as RelayMessage);
+    expect(shared.lastInboundAt).toBeUndefined();
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 43,
+      error: { code: -32000, message: "No active session" },
+    } as unknown as RelayMessage);
+    expect(shared.lastInboundAt).toBeUndefined();
+
+    // JSON-RPC 通知（session/update 流式增量）：刷新
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       method: "session/update",
       params: { sessionId: "ses-1", update: { sessionUpdate: "agent_message_chunk" } },
     } as unknown as RelayMessage);
     expect(shared.lastInboundAt).toBeGreaterThanOrEqual(before);
+
+    // 私有帧（非保活）：刷新
+    const after = shared.lastInboundAt ?? 0;
+    await handler.createMessageHandler(shared)({
+      type: "agent_message_chunk",
+      payload: { type: "text", text: "hi" },
+    } as unknown as RelayMessage);
+    expect(shared.lastInboundAt).toBeGreaterThanOrEqual(after);
   });
 
   // relay 错误只发送给当前 RCS 会话，其他用户或会话不得收到 Agent 错误。
@@ -746,6 +770,85 @@ describe("RelayEventHandler replay window", () => {
     // 不合成新 turn（user entry 保持 1 个），增量写入现有活动 turn
     expect(countEntriesByRole(chatDoc, "user")).toBe(1);
     expect(entriesText(chatDoc, "assistant")).toBe("回放增量");
+  });
+
+  // 回放窗口到期必须收敛回放 turn（completed）：回放流无终态信号
+  // （unstable_resumeSession 只回放 chunk 帧），定时器到点 dispatch turn_completed，
+  // 否则回放 turn 永久卡 running、前端一直显示输出中（合成 turn 的终态唯一来源）。
+  test("replay window expiry converges the replay turn to completed", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, chatDoc, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
+    const shared = relayOn("rcs-1");
+    shared.replayWindowUntil = future;
+
+    // 窗口内无头回放增量合成回放 turn（模拟 load 后历史回放到达）
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "回放思考" } },
+      },
+    } as unknown as RelayMessage);
+    await waitFlush();
+    expect(shared.replayTurnId).not.toBeNull();
+
+    // 窗口到期收敛（定时器回调路径）
+    handler.convergeReplayWindow(shared);
+
+    expect(shared.replayWindowUntil).toBeNull();
+    expect(shared.replayTurnId).toBeNull();
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("activeTurnStatus")).toBe("completed");
+    // assistant entry 收敛终态（非 streaming）
+    const entries = chatDoc.getMap("root").get("entries") as Y.Map<Y.Map<unknown>>;
+    for (const entry of entries.values()) {
+      if (entry.get("role") === "assistant") expect(entry.get("status")).toBe("completed");
+    }
+  });
+
+  // 回放内的后续 user_message（窗口内已有活动回放 turn）同样分配新的回放 turnId：
+  // 不分配会被聚合层以 missing turnId 拒绝而丢失，回放历史中间的用户消息消失；
+  // 旧回放 turn 由聚合层收敛为 completed（回放是自然结束而非用户取消）。
+  test("later user_message inside the replay is assigned a new replay turnId", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, chatDoc, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
+    const shared = relayOn("rcs-1");
+    shared.replayWindowUntil = future;
+
+    const sendReplayUserMessage = async (text: string) => {
+      await handler.createMessageHandler(shared)({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "ses-1",
+          update: { sessionUpdate: "user_message_chunk", content: { type: "text", text } },
+        },
+      } as unknown as RelayMessage);
+    };
+    await sendReplayUserMessage("历史消息一");
+    await sendReplayUserMessage("历史消息二");
+
+    // 两条回放用户消息都不丢失（未分配 turnId 的第二条会被聚合层拒绝）
+    expect(countEntriesByRole(chatDoc, "user")).toBe(2);
+    expect(entriesText(chatDoc, "user")).toBe("历史消息一历史消息二");
+    // 最新回放 turn 处于 accepting，replayTurnId 指向它（到期收敛目标）
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("activeTurnStatus") as string | null).toBe("accepting");
+    expect(shared.replayTurnId).toBe(session.get("activeTurnId") as string | null);
+    // 旧回放 turn 的 assistant entry 收敛为 completed（回放自然结束，非 cancelled）
+    const entries = chatDoc.getMap("root").get("entries") as Y.Map<Y.Map<unknown>>;
+    const assistantStatuses: unknown[] = [];
+    for (const entry of entries.values()) {
+      if (entry.get("role") === "assistant") assistantStatuses.push(entry.get("status"));
+    }
+    expect(assistantStatuses).toContain("completed");
   });
 });
 

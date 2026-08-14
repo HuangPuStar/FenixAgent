@@ -150,8 +150,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 必须靠 canCancel 让整个输出过程保持可中断
   const canCancel = sessionState?.canCancel ?? false;
 
-  // 从 Yjs sessionState 计算会话是否就绪
-  const sessionReady = !!sessionState && sessionState.status !== "idle";
+  // 会话系统就绪（可输入）：session.status 仅在 create/load 成功后投影为 "ready"，
+  // 无历史会话时为 null——此时输入框必须可用，由 handleChatInputSubmit 懒创建会话
+  // （否则无会话场景输入被禁用、懒创建永不触发，页面死锁在"等待会话..."）。
+  // 仅明确处于 "initializing"（会话系统初始化中，当前 acp-link 不下发该会话级
+  // 状态，保留为防御分支）时禁用输入；turn 展示态只驱动 loading/canCancel。
+  const sessionReady = sessionState?.sessionStatus !== "initializing";
 
   // 从 Yjs structuredMessages 计算渲染用的 ThreadEntry[]
   const renderEntries: ThreadEntry[] = useMemo(() => {

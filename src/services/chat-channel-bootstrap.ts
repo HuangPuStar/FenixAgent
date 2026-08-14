@@ -125,10 +125,11 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     resolveInstanceNumberFromSession: async (sessionId) => {
       // 从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析实例编号；
       // agent_session 表已废弃，不再查 DB 标题。
+      // 无法解析（历史 session_* 书签、ACP ses_* 混入、格式非法）返回 null 而非抛错：
+      // 这是可预期的前端输入形态，由 gateway 按默认实例降级连接；
+      // message 不得包含 sessionId——其可含 envId 等标识，进入日志即构成敏感信息泄漏
       const parsed = deps.parseInstanceSessionId(sessionId);
-      // message 不得包含 sessionId：其可含 envId 等标识，进入日志即构成敏感信息泄漏
-      if (!parsed) throw new Error("Invalid instance session id");
-      return parsed.instanceNumber;
+      return parsed?.instanceNumber ?? null;
     },
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,

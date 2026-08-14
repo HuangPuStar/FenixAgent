@@ -29,5 +29,9 @@ export function applySessionList(pair: DocPair, event: NormalizedEvent): ApplyRe
     });
   }
   syncSessionsMap(pair.session, summaries);
+  // 列表权威确认标记：无论空/非空，session_list 响应即代表 agent 侧会话列表已确认。
+  // 前端 bootstrap 据此区分「确认无会话」（可安全自动创建新会话）与「列表未到达」
+  // （空列表不得触发创建，否则有历史会话时制造"假空"会话竞态）。
+  pair.session.getMap("root").set("sessionListLoaded", true);
   return { applied: true };
 }

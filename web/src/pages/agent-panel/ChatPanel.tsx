@@ -11,6 +11,7 @@ import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
+import { resolveChatAuthState } from "./chat-auth-state";
 import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
 
 type WsConnectionState = ChatWsConnectionState;
@@ -45,6 +46,9 @@ export function ChatPanel({
   // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
   // WS 客户端不会自动重连，必须由用户手动触发。
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
+  // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
+  const [autoReconnecting, setAutoReconnecting] = useState(false);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
 
@@ -84,16 +88,17 @@ export function ChatPanel({
   }, [pageVisible, connectionState, errorCode]);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
-  const { data: session } = useSession();
-  const userId = session?.user?.id ?? "unknown";
+  // 登录态驱动 rcsSessionKey 与建连守卫；useSession 未就绪/失败时不得建连，
+  // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
+  const { data: session, isPending: sessionPending, error: sessionError, refetch: refetchSession } = useSession();
+  const userId = session?.user?.id;
+  const authState = resolveChatAuthState({ pending: sessionPending, error: sessionError, userId });
 
   // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
   // sessionId 纳入标识后，同一 agent 不同实例拥有独立的 YJS doc，避免多实例数据串扰
   const rcsSessionKey =
-    agentId && userId !== "unknown"
-      ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined)
-      : undefined;
+    agentId && userId ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined) : undefined;
 
   // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
   const chatHookKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
@@ -181,13 +186,20 @@ export function ChatPanel({
       return;
     }
 
+    // 建连守卫（登录态维度）：userId 未就绪前 rcsSessionKey 无法派生，若此时建连，
+    // 服务端快照会落入 __pending_* 占位 doc，switchDoc 后丢失（历史竞态根因）。
+    // loading → 渲染层显示"加载用户信息"独立加载态（不占用"连接中"语义）；
+    // failed → 明确错误态 + 重试出口，杜绝 auth 悬挂时 UI 永驻转圈的体验黑洞。
+    if (authState === "loading") return;
+    if (authState === "failed") {
+      setConnectionState("error");
+      setErrorCode("auth_failed");
+      return;
+    }
+
     setConnectionState("connecting");
     setErrorCode(null);
-
-    // 建连守卫：userId 异步到达前 rcsSessionKey 未就绪，若此时建连，
-    // 服务端快照会落入 __pending_* 占位 doc，switchDoc 后丢失（竞态根因）。
-    // key 就绪后 deps 变化触发本 effect 重建连接，快照必然落入正确 key 的 doc。
-    // 注意：auth 悬挂（key 永不到达）时 UI 停留在 connecting，属于可接受行为。
+    // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
     const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
@@ -208,11 +220,20 @@ export function ChatPanel({
       },
       onClose: ({ code }) => {
         const terminalErrorCode = getTerminalYjsWsErrorCode(code);
-        if (terminalErrorCode) setErrorCode(terminalErrorCode);
+        if (terminalErrorCode) {
+          setErrorCode(terminalErrorCode);
+        } else {
+          // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避），
+          // 标记后 UI 展示"正在自动重连"轻提示；终态断开才需要手动干预。
+          setAutoReconnecting(true);
+        }
       },
       onConnectionState: (state: YjsWsState) => {
-        if (state === "connecting") setConnectionState("connecting");
-        else if (state === "connected") {
+        if (state === "connecting") {
+          setAutoReconnecting(false);
+          setConnectionState("connecting");
+        } else if (state === "connected") {
+          setAutoReconnecting(false);
           setConnectionState("connected");
 
           // 发送 list_sessions 获取历史会话列表
@@ -245,11 +266,12 @@ export function ChatPanel({
     };
     // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
     // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
-    // rcsSessionKey 变化触发重建（建连守卫，见上）
+    // rcsSessionKey 变化触发重建（建连守卫，见上）；authState 变化驱动登录态守卫
   }, [
     agentId,
     sessionId,
     rcsSessionKey,
+    authState,
     chatApplyUpdate,
     sessionApplyUpdate,
     reconnectAttempt,
@@ -371,6 +393,31 @@ export function ChatPanel({
     );
   }
 
+  // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
+  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈
+  if (authState === "loading") {
+    return (
+      <div className="agent-welcome-empty">
+        <Loader2 className="h-8 w-8 animate-spin text-brand" />
+        <p className="title">{t("loadingUser")}</p>
+      </div>
+    );
+  }
+
+  // 登录态失败（useSession 报错 / 未登录）——明确错误态 + 重试出口
+  if (authState === "failed") {
+    return (
+      <div className="agent-welcome-empty">
+        <p className="title">{t("authFailed")}</p>
+        <p className="desc">{t("authFailedDesc")}</p>
+        <Button variant="outline" onClick={() => refetchSession()} className="mt-2">
+          <RefreshCw className="h-4 w-4" />
+          {t("reconnect")}
+        </Button>
+      </div>
+    );
+  }
+
   // 连接中
   if (connectionState === "connecting") {
     return (
@@ -407,7 +454,9 @@ export function ChatPanel({
           agentId={agentId}
           initialCwd={initialCwd}
           hideSidebar={hideSidebar}
-          rcsSessionId={sessionId ?? undefined}
+          // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
+          // URL sessionId 是实例会话标识（ses_inst_*），仅用于 WS 建连参数
+          rcsSessionId={rcsSessionKey ?? undefined}
           scenePrompt={scenePrompt}
           contextKey={contextKey}
           onPromptComplete={onPromptComplete}
@@ -428,11 +477,13 @@ export function ChatPanel({
     );
   }
 
-  // 断开（非错误，非连接中）
+  // 断开（非错误，非连接中）。
+  // 非终态断开（autoReconnecting）：客户端正在自动重连，展示轻提示而非整屏错误；
+  // 终态断开（4001/4500 等）：自动重连已停止，必须手动点击重连。
   return (
     <div className="agent-welcome-empty">
-      <p className="title">{t("agentDisconnected")}</p>
-      <p className="desc">{t("agentOfflineDesc")}</p>
+      <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>
+      <p className="desc">{autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}</p>
       <Button variant="outline" onClick={handleReconnect} className="mt-2">
         <RefreshCw className="h-4 w-4" />
         {t("reconnect")}

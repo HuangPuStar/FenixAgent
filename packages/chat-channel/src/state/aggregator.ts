@@ -104,11 +104,17 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
   // 重放保护：同 turnId 的 user_message 已投影过 → 跳过，不重复创建 Entry
   if (active.turnId === turnId) return { applied: false, reason: "duplicate turn" };
 
-  // 旧 turn 未终结（用户连发/重试）→ 将旧 assistant entry 置为 cancelled，
+  // 旧 turn 未终结（用户连发/重试/回放历史接续）→ 将旧 assistant entry 收敛：
+  // 实时 turn 置 cancelled（用户放弃等待），回放 turn（turn_replay_ 前缀，历史
+  // 回显）置 completed——回放中后续 user_message 表明上一段历史已完整结束，
+  // 置 cancelled 会让历史消息全部显示"已取消"（状态聚合错乱）。
   // 保证任何时刻只有一个活动 turn（文档 8.2：默认每会话仅一个活动 turn）
   if (active.turnId && active.turnStatus && !TURN_TERMINAL_STATUSES.has(active.turnStatus)) {
     const oldAssistant = getEntry(pair.chat, ASSISTANT_ENTRY(active.turnId));
-    if (oldAssistant) setEntryStatus(pair.chat, ASSISTANT_ENTRY(active.turnId), "cancelled");
+    if (oldAssistant) {
+      const isReplayTurn = active.turnId.startsWith("turn_replay_");
+      setEntryStatus(pair.chat, ASSISTANT_ENTRY(active.turnId), isReplayTurn ? "completed" : "cancelled");
+    }
   }
 
   const text = extractText(event);
@@ -285,6 +291,14 @@ function applyTurnTerminal(
 ): ApplyResult {
   const active = readActiveTurn(pair.session);
   if (!active.turnId) return { applied: false, reason: "terminal without active turn" };
+  // 终态归属校验：事件携带 turnId 且与当前 active turn 不一致时，视为旧 turn 的
+  // 迟到终态（新 turn 已由下一条 user_message 创建，旧 turn 已被终结）——不得
+  // 终结新 turn，否则连续 prompt 时前一条的终态会提前终结后一条（后一条增量
+  // 全被 canWriteToTurn 丢弃、答案永远不出现，前端只见空 assistant entry）。
+  // 无 turnId 的事件（历史/回放兼容形态）保持按 active turn 归位。
+  if (event.turnId && active.turnId && event.turnId !== active.turnId) {
+    return { applied: false, reason: "terminal for stale turn" };
+  }
   // 终态幂等：已终结的同 turn 再次收到终态事件 → 跳过（不重复写）
   if (TURN_TERMINAL_STATUSES.has(active.turnStatus ?? "accepting")) {
     return { applied: false, reason: "duplicate terminal" };

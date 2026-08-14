@@ -5,7 +5,13 @@
 //
 // 职责错位纠正后时间线在 Chat Doc；applyUpdate 按 docName 前缀路由到内部 store。
 
-import type { PermissionOption, SessionStateSnapshot, SessionStatus, TurnStatus } from "@fenix/chat-channel";
+import type {
+  PermissionOption,
+  SessionDocStatus,
+  SessionStateSnapshot,
+  SessionStatus,
+  TurnStatus,
+} from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as Y from "yjs";
@@ -131,6 +137,8 @@ function mapToolRunStatus(status: string): "running" | "done" | "error" {
 
 interface SessionMetaSnapshot {
   acpSessionId: string;
+  /** Session Doc 会话级状态（session.status，create/load 成功后 "ready"），用于会话就绪判定 */
+  sessionStatus: SessionDocStatus | null;
   turnStatus: TurnStatus | null;
   turnUpdatedAt: number | null;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
@@ -154,7 +162,12 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   }
 
   return {
-    acpSessionId: (agent?.get("acpSessionId") as string | undefined) ?? "",
+    // agent.acpSessionId 只在 agent_status 帧投影（连接建立时，值为 null）；
+    // create/load 成功后回退读取 session.sessionId（session_updated 投影），
+    // 否则前端 send_prompt 永远不带 sessionId（多会话共享 relay 时路由错乱）
+    acpSessionId:
+      (agent?.get("acpSessionId") as string | undefined) ?? (session?.get("sessionId") as string | undefined) ?? "",
+    sessionStatus: (session?.get("status") as SessionDocStatus | undefined) ?? null,
     turnStatus: (session?.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
     turnUpdatedAt: (session?.get("activeTurnUpdatedAt") as number | undefined) ?? null,
     permissionOptions,
@@ -217,6 +230,7 @@ export function computeSessionSnapshot(
   });
   return {
     acpSessionId: meta.acpSessionId,
+    sessionStatus: meta.sessionStatus,
     status: mapTurnStatus(turnStatus),
     canCancel: deriveCanCancel(turnStatus),
     loading:
@@ -249,7 +263,7 @@ export function useSessionState(rcsSessionId: string) {
       ),
       meta: createYjsStore<SessionMetaSnapshot>(
         computeMetaSnapshot,
-        { acpSessionId: "", turnStatus: null, turnUpdatedAt: null, permissionOptions: new Map() },
+        { acpSessionId: "", sessionStatus: null, turnStatus: null, turnUpdatedAt: null, permissionOptions: new Map() },
         (s) => stableKey(s),
       ),
     };

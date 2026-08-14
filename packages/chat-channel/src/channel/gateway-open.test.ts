@@ -317,9 +317,34 @@ describe("Gateway handleOpen", () => {
     const relayEvents = createRelayEvents(registry, broadcaster, []);
     const seen: Array<number | undefined> = [];
     const lifecycle = createGateway(registry, broadcaster, relayEvents, {
-      resolveInstanceNumberFromSession: async () => {
-        throw new Error("Invalid instance session id");
+      resolveInstanceNumberFromSession: async () => null,
+      ensureRunning: async (_userId, _agentId, _mode, instanceNumber) => {
+        seen.push(instanceNumber);
+        return { instance: { id: "instance-1" } };
       },
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1", "session_legacy_uuid");
+
+    expect(ws.closed).toEqual([]);
+    expect(seen).toEqual([undefined]);
+    expect(registry.getClient("ws-1")).toBeDefined();
+  });
+
+  // 会话标识解析遇到 DB 层异常（区别于格式不可解析的 null 降级）：保留错误诊断，
+  // 仍按默认实例继续连接，避免一次解析失败拖垮整个建连路径。
+  test("degrades to the default instance when session resolution throws unexpectedly", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const seen: Array<number | undefined> = [];
+    const errors: unknown[] = [];
+    const lifecycle = createGateway(registry, broadcaster, relayEvents, {
+      resolveInstanceNumberFromSession: async () => {
+        throw new Error("db down");
+      },
+      reportError: (_message, error) => errors.push(error),
       ensureRunning: async (_userId, _agentId, _mode, instanceNumber) => {
         seen.push(instanceNumber);
         return { instance: { id: "instance-1" } };
@@ -331,6 +356,7 @@ describe("Gateway handleOpen", () => {
 
     expect(ws.closed).toEqual([]);
     expect(seen).toEqual([undefined]);
+    expect(errors).toEqual([new Error("db down")]);
     expect(registry.getClient("ws-1")).toBeDefined();
   });
 
