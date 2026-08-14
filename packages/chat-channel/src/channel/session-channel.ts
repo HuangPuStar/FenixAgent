@@ -18,14 +18,7 @@ import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
 import { CommandCoordinator } from "./command-coordinator";
-import {
-  type ActionAck,
-  type ActionError,
-  type ActionSinks,
-  type Command,
-  CommandExecutionError,
-  type CommandOutcome,
-} from "./types";
+import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
 /** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
 const DEFAULT_CANCEL_TIMEOUT_MS = 10_000;
@@ -422,6 +415,3 @@ function extractPromptText(content: unknown): string {
     .map((block) => block.text)
     .join("\n");
 }
-
-// 类型引用（导出面统一在 index）
-export type { ActionAck, ActionError };

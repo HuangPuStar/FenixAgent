@@ -1,4 +1,4 @@
-// packages/acp-server/src/types.ts
+// packages/chat-channel/src/types.ts
 import type * as Y from "yjs";
 import type { SessionDocStatus } from "./schema";
 

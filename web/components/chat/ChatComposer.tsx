@@ -375,20 +375,6 @@ export function ChatComposer({
     disabled,
   });
 
-  const _toggleCommandMenu = useCallback(() => {
-    if (showCommandMenu) {
-      setShowCommandMenu(false);
-      setCommandFilter("");
-    } else {
-      if (!text.startsWith("/")) {
-        setText(`/${text}`);
-      }
-      setShowCommandMenu(true);
-      setCommandFilter(text.startsWith("/") ? text.slice(1).split(/\s/)[0] || "" : "");
-      textareaRef.current?.focus();
-    }
-  }, [showCommandMenu, text]);
-
   // ---------------------------------------------------------------------------
   // canSend 计算 — 从 ChatInput 原样迁移
   // ---------------------------------------------------------------------------

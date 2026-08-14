@@ -361,9 +361,6 @@ export function ChatPanel({
       onResumeSession: (sid: string) => {
         sendAction({ action: "resume_session", sessionId: sid });
       },
-      onListSessions: () => {
-        sendAction({ action: "list_sessions" });
-      },
       onRenameSession: (sid: string, title: string) => {
         sendAction({ action: "rename_session", sessionId: sid, title });
       },

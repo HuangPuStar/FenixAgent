@@ -38,8 +38,6 @@ export {
   type ActionError,
   type ActionErrorCode,
   type ActionSinks,
-  type ActionType,
-  type ClientAction,
   type Command,
   CommandExecutionError,
   type CommandOutcome,

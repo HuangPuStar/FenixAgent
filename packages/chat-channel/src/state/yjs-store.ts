@@ -1,4 +1,4 @@
-// web/src/hooks/yjs-store.ts
+// packages/chat-channel/src/state/yjs-store.ts
 // Yjs 外部 store 抽象 — 将 Y.Doc 包装为 subscribe/getSnapshot 模式，供 useSyncExternalStore 使用
 //
 // 性能语义（回放/流式高峰保护）：

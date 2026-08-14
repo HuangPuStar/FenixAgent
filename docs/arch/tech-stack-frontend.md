@@ -119,10 +119,9 @@ web/
   src/
     routes/          — TanStack Router 文件路由（`routeTree.gen.ts` 严禁手动编辑）
     pages/           — 页面组件（agent-panel / workflow / hindsight / login）
-    hooks/           — 自定义 hooks（useAuth、useSSE、useACPConnection、useBackoffRetry 等 12 个）
+    hooks/           — 自定义 hooks（use-chat-state、use-session-state、usePageVisible、useMetaAgent）
     lib/             — 工具函数（form-utils、retry、token-stats、app-brand、theme、password-crypto 等）
     api/             — API 客户端 + SDK 实例化（sdk.ts）
-    acp/             — ACP 协议客户端（client.ts、types.ts）
     i18n/            — i18n 配置 + locales/{en,zh}/ 翻译文件
     types/           — 全局类型定义
     __tests__/       — 前端测试（50+ 测试文件）

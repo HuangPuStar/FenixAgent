@@ -14,9 +14,8 @@ web/
 ├── src/
 │   ├── routes/             # TanStack Router 文件路由（routeTree.gen.ts 严禁手动编辑）
 │   ├── pages/              # 页面组件（agent-panel / workflow / hindsight / login）
-│   ├── hooks/              # 自定义 hooks（useAuth、useSSE、useACPConnection 等 12 个）
+│   ├── hooks/              # 自定义 hooks（use-chat-state、use-session-state、usePageVisible、useMetaAgent）
 │   ├── api/                # API 建模层（按资源域分文件：tasks.ts / skills.ts / sites.ts 等）
-│   ├── acp/                # ACP 协议客户端（client.ts、types.ts）
 │   ├── lib/                # 工具函数（form-utils、retry、token-stats、theme 等）
 │   ├── i18n/               # i18n 配置 + locales/{en,zh}/ 翻译文件
 │   ├── types/              # 全局类型定义
@@ -223,8 +222,8 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 
 ### 3.3 Hooks 约定
 
-- **`useRef` 防重连**：事件订阅 hook（`useSSE`、`useACPConnection`）用 `useRef` 存最新回调，生成稳定引用的 `useCallback([], [])`，避免 `useEffect` 因回调变化反复订阅/取消
-- **AbortController**：`useBackoffRetry` 在每次重试前 abort 上一次未完成请求，防止竞态
+- **`useRef` 防重连**：事件订阅类 hook（如 `use-chat-state` / `use-session-state` 的 store 订阅）用 `useRef` 持有稳定引用，生成稳定 `useCallback`，避免 `useEffect` 因回调变化反复订阅/取消
+- **AbortController**：长轮询/重试场景在每次重试前 abort 上一次未完成请求，防止竞态
 - **表单使用 react-hook-form**：`useForm` + `zodResolver`，不手写 `useState` 管理表单状态。命名约定：`form = useForm<FormValues>(...)`、`formSchema = z.object({...})`
 
 ## 4. 组件规范
@@ -714,40 +713,35 @@ function ChatPanelFallback({ error, resetErrorBoundary }: FallbackProps) {
 
 ## 8. WebSocket / 实时通信
 
-项目通过 ACP 协议 WebSocket 进行前端与 Agent 实例的实时通信，相关 hooks 位于 `web/src/acp/` 和 `web/src/hooks/`。
+前端与 Agent 实例通过 Yjs WebSocket（`/yjs-ws`）实时通信，客户端为 `createYjsWsClient`（`@fenix/chat-channel`），状态消费走 `useChatState` / `useSessionState`（双 Y.Doc：`chat:{rcsSessionId}` 时间线 + `session:{rcsSessionId}` 元信息）。服务端生命周期见 `packages/chat-channel/src/channel/gateway.ts` 与 `docs/arch/19-yjs-chat-streaming.md`。
 
 ### 8.1 连接生命周期
 
-- **建立**：组件 mount 时通过 `useACPConnection(sessionId)` 建立连接
-- **断开**：组件 unmount 时自动断开（hook 内部 `useEffect` 清理）
-- **超时**：WebSocket 连接超时 > 30s，心跳包由 relay 层拦截不透传前端
+- **建立**：`gateway.handleOpen` 认证 → `ensureRunning` → 打开 Chat Doc / Session Doc → `relayReady = true` 前发送初始快照 → `connect` 握手 → flush 缓冲消息
+- **断开**：`handleClose` 释放连接级资源与 relay 引用计数；Agent 实例存活时重连后由 `handleOpen` 重新同步实时 Y.Doc；`relay_closed`（实例断链）才销毁 Doc
+- **心跳**：前端发 `ping` 探测（服务端回 `pong`）；`keep_alive` 标记页面可见性，服务端 30s 心跳，超时（约 60s 无客户端心跳）close 4501
 
 ### 8.2 重连策略
 
-使用指数退避 + 随机抖动，最大间隔 30 秒：
+客户端自动重连，但**终态关闭码不重连**（须手动重试）：
 
-```tsx
-// useACPConnection 内部实现约束
-const backoff = Math.min(1000 * Math.pow(2, retryCount) + Math.random() * 1000, 30000);
-```
-
-- 用 `useRef` 存储最新回调，生成稳定引用的 `useCallback([], [])`，避免 `useEffect` 因回调变化反复订阅/取消
-- 每次重试前通过 `AbortController` abort 上一次未完成请求，防止竞态
+| 关闭码 | 含义 | 前端行为 |
+|--------|------|----------|
+| 4500 | 机器离线 | 停止自动重连，展示 `machine_unavailable` 手动重试 |
+| 4501 | 客户端 keepalive 超时（页面隐藏） | 停止自动重连，回可见时手动重连 |
+| 4502 | spawn 永久拒绝（autoStart 关闭 / maxSessions 上限等） | 停止自动重连，按 `payload.code` 展示原因 |
+| 1013 | 连接数超限 | 停止自动重连 |
+| 其他 | 瞬时错误 | 自动重连 |
 
 ### 8.3 消息类型
 
-ACP relay 通道转发的消息类型：
-
 | 类型 | 方向 | 说明 |
 |------|------|------|
-| `agent/status` | 后端 → 前端 | Agent 状态变更（依赖 `capabilities` 判断 ACP 能力，relay 层**必须**转发） |
-| `agent/output` | 后端 → 前端 | Agent 输出内容 |
-| `agent/input` | 前端 → 后端 | 用户输入/控制指令 |
-| `keep_alive` | relay 内部 | 心跳维护，relay 层拦截，**不得**透传前端 |
-
-### 8.4 SSE 降级
-
-当 WebSocket 不可用时，使用 SSE（Server-Sent Events）作为降级通道。`useSSE` hook 通过 EventBus 接收事件，支持断线重连。
+| `action`（commandId 信封） | 前端 → 后端 | 会话操作（send_prompt / cancel / load_session 等），`commandId` 幂等去重 + `accepted → committed` 两阶段 Ack |
+| `ping` / `keep_alive` | 前端 → 后端 | 心跳与可见性标记 |
+| yjs 增量（`chat:` / `session:`） | 后端 → 前端 | 双 Doc 状态广播（消息时间线、会话元信息、权限、工具调用） |
+| `action_ack` / `action_error` | 后端 → 前端 | 操作确认与稳定错误码 |
+| `error` | 后端 → 前端 | 连接级错误（携带终态码对应 `payload.code`） |
 
 ## 9. i18n 国际化
 

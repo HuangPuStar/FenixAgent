@@ -18,25 +18,6 @@ export const KNOWN_ACTION_TYPES = [
   "set_session_mode",
 ] as const;
 
-export type ActionType = (typeof KNOWN_ACTION_TYPES)[number];
-
-/**
- * 客户端 Action 信封（协议契约）。
- * 前端实际发送时只有 commandId 必填；sessionId / payload 由服务端归一化补充。
- */
-export interface ClientAction<TType extends string = string, TPayload = Record<string, unknown>> {
-  /** 幂等键，同会话唯一（前端生成 UUID，重试复用同一 ID） */
-  commandId: string;
-  type: TType;
-  sessionId: string;
-  payload: TPayload;
-  /** 协议版本（服务端按会话绑定补充与校验，前端不感知） */
-  protocolVersion?: number;
-  /** 期望的投影版本（乐观并发增强，二期启用冲突重试 UI） */
-  expectedProjectionVersion?: number;
-  client?: { clientId: string; sentAt: string };
-}
-
 export const ACTION_ACK_STATUSES = ["accepted", "committed", "duplicate"] as const;
 export type ActionAckStatus = (typeof ACTION_ACK_STATUSES)[number];
 

@@ -37,7 +37,6 @@ interface ACPMainProps {
   onCreateSession: () => Promise<void> | void;
   onLoadSession: (sessionId: string) => void;
   onResumeSession: (sessionId: string) => void;
-  onListSessions: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
@@ -46,8 +45,6 @@ interface ACPMainProps {
   supportsImages?: boolean;
   supportsLoadSession?: boolean;
   supportsResumeSession?: boolean;
-  /** @deprecated 通过 chatState.sessions 获取会话列表，此参数可移除 */
-  _supportsSessionList?: boolean;
   availableCommands?: AvailableCommand[];
   availableModes?: SessionMode[];
   currentModeId?: string | null;
@@ -77,15 +74,12 @@ export function ACPMain({
   onCreateSession,
   onLoadSession,
   onResumeSession,
-  onListSessions: _onListSessions,
   onRenameSession,
   onDeleteSession,
   onRespondPermission,
   supportsImages = false,
   supportsLoadSession = false,
   supportsResumeSession = false,
-  /** @deprecated 通过 chatState.sessions 获取会话列表，此参数可移除 */
-  _supportsSessionList = true,
   availableCommands = [],
   availableModes = [],
   currentModeId = null,

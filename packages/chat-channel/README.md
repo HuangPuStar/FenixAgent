@@ -24,7 +24,7 @@ bun add @fenix/chat-channel
 src/
 ├── channel/     # 控制面（C3/C6/C7）：gateway、session-channel、command-coordinator、
 │                #   relay-event-handler、broadcaster、connection-registry、action-forward
-├── protocol/    # ACPChannel（私有帧规范化）、translator、config-options
+├── protocol/    # ACPChannel（私有帧规范化）、translator
 ├── state/       # aggregator、doc-manager、chat-writer、factory、permission、yjs-store
 ├── persist/     # redis provider（跨节点 pub/sub + CAS 快照持久化）
 ├── transport/   # createYjsWsClient（前端同构 WS 客户端）
@@ -226,7 +226,7 @@ import type {
   // 协议基础
   NormalizedEvent, NormalizedEventType, SessionUpdate,
   // Action / Ack 协议
-  ClientAction, ActionAck, ActionError, ActionType, Command,
+  ActionAck, ActionError, Command,
   // Doc schema（5.2/5.3 投影类型）
   ChatEntry, ContentBlock, ToolCallProjection,
   SessionInfoProjection, AgentStatusProjection,

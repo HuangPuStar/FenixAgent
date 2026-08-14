@@ -1,4 +1,4 @@
-// packages/acp-server/src/action-translator.ts
+// packages/chat-channel/src/protocol/translator.ts
 // 前端 action → ACP JSON-RPC 翻译。
 // 纯函数，不依赖任何 I/O 或框架。
 

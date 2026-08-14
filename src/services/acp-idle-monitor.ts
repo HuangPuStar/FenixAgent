@@ -1,7 +1,7 @@
 // ────────────────────────────────────────────
 // 编排域重构保留说明（I4：旧代码删除与精简）
 // ────────────────────────────────────────────
-// 此文件保留：实例空闲回收机制整体依赖它（acp-ws-handler / yjs-frontend 的活跃度观测、
+// 此文件保留：实例空闲回收机制整体依赖它（acp-ws-handler / 前端 relay 连接的活跃度观测、
 // routes/web/instances 的监控视图、src/index.ts 的定时器启停），删除会造成实例泄漏。
 // 空闲回收职责在新包 AgentNodeService（packages/orchestration/src/agent-node/，
 // 引用计数 + 空闲超时）有对应实现，但现有 instance-registry 维度的回收（idle + activity
