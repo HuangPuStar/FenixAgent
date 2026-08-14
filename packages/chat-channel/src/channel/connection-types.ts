@@ -88,7 +88,8 @@ export interface SharedRelay {
    * 在途 prompt 请求（send_prompt）的 rpcId 集合。Agent 子进程死亡等场景下 acp-link
    * 以 JSON-RPC error 响应（-32000 No active session / -32603 Prompt failed）拒绝
    * prompt，该错误无法归一化为终态事件，若不收敛则 turn 永久卡 accepting、前端
-   * loading 永不消失。按 id 匹配登记以区分 set_session_model 等命令回执（模型回滚）。
+   * loading 永不消失。仅登记过的 prompt id 匹配时收敛 turn_failed，其余错误帧
+   * 静默丢弃（不派发终态事件）。
    */
   pendingPromptIds?: Set<number | string>;
   /** session/list 轮询因 status 门禁未置位而连续跳过的次数（连续 3 次告警，成功后清零） */
