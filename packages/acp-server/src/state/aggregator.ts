@@ -5,8 +5,13 @@ import type { ACPEvent } from "../types";
 /**
  * 处理一个 ACP 事件，在其对应的 Session Doc 上执行状态变更。
  * 纯函数——不做 I/O，只在 ydoc.transact 中操作 Yjs 结构。
+ *
+ * @param options.suppressLoading 抑制 user_message_chunk 的 loading 设置。
+ *   session/load 历史回放窗口内为 true：回放的历史用户消息是数据重建，不是新的
+ *   turn，不应触发 loading（否则切换会话后 loading 残留、刷新恢复时覆盖真实
+ *   进行中的 loading）。消息内容照常写入，仅跳过 loading 状态。
  */
-export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
+export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent, options?: { suppressLoading?: boolean }): void {
   ydoc.transact(() => {
     const meta = ydoc.getMap("meta");
     const messages = ydoc.getArray("messages") as Y.Array<Y.Map<unknown>>;
@@ -438,11 +443,15 @@ export function applyACPEvent(ydoc: Y.Doc, event: ACPEvent): void {
         messages.push([msg]);
 
         meta.set("status", "loading");
-        meta.set("loading", {
-          kind: "session/respond",
-          label: "Agent is thinking...",
-          since: Date.now(),
-        });
+        if (!options?.suppressLoading) {
+          // 回放窗口内（session/load 后历史重建）跳过 loading：回放消息不是新的
+          // turn，设置 loading 会造成切换会话残留 / 覆盖刷新恢复中的真实 loading。
+          meta.set("loading", {
+            kind: "session/respond",
+            label: "Agent is thinking...",
+            since: Date.now(),
+          });
+        }
         meta.set("updatedAt", Date.now());
 
         // Phase C: 结构化消息 — user_message 条目

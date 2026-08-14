@@ -340,6 +340,27 @@ test("session_update ready clears loading", () => {
   expect(meta.get("status")).toBe("ready");
 });
 
+// 回放窗口抑制：suppressLoading 时 user_message_chunk 的消息照常写入，
+// 但不得设置 loading（回放的历史消息是数据重建，不是新的 turn）
+test("user_message_chunk with suppressLoading writes the message but skips loading", () => {
+  applyACPEvent(
+    ydoc,
+    {
+      type: "user_message_chunk",
+      payload: { content: { type: "text", text: "history" } },
+    },
+    { suppressLoading: true },
+  );
+  const meta = ydoc.getMap("meta") as any;
+  // 抑制时不写入 loading 字段（未设置，非 null）
+  expect(meta.get("loading")).toBeUndefined();
+  // 消息内容仍写入 structuredMessages（历史重建依赖）
+  const structuredMessages = ydoc.getArray("structuredMessages");
+  expect(structuredMessages.length).toBe(1);
+  const last = structuredMessages.get(0) as any;
+  expect(last.get("content")).toBe("history");
+});
+
 // session_error / error 应清除 loading
 test("session_error clears loading", () => {
   applyACPEvent(ydoc, {
