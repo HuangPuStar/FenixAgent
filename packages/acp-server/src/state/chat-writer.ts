@@ -85,6 +85,11 @@ export function syncSessions(ydoc: Y.Doc, sessions: SessionSummary[]): void {
     if (!hasChanges) return;
   }
 
+  // 空列表保护：agent 重启后列表尚未恢复、或全部条目被 acp-link"空标题"过滤时，
+  // 瞬时空响应不得清空已有列表（否则叠加当前会话 title 不投影，侧边栏全部显示
+  // "新会话"）；真实删除由非空响应自愈（被删会话不在 incoming 中）。
+  if (sessions.length === 0) return;
+
   ydoc.transact(() => {
     const incoming = new Set<string>();
 

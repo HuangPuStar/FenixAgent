@@ -1,7 +1,24 @@
 // web/src/hooks/yjs-store.ts
 // Yjs 外部 store 抽象 — 将 Y.Doc 包装为 subscribe/getSnapshot 模式，供 useSyncExternalStore 使用
+//
+// 性能语义（回放/流式高峰保护）：
+// - applyUpdate（WS 路径）不再同步重算快照，改为宏任务调度：
+//   重算移出 WS 消息接收栈，避免 load_session 历史回放时逐条全量重算
+//   阻塞主线程（O(n²)）。快路径（setTimeout 0）仅合并同一同步栈内的
+//   多次 applyUpdate（WS 每条消息是独立宏任务，跨消息不合并）；
+//   真正降频的是慢路径：单次重算耗时超过一帧预算（12ms）后切换为
+//   50ms 窗口合并重算，回放/流式高峰期间每秒至多约 20 次全量计算。
+// - 本地事务（origin !== APPLY_UPDATE_ORIGIN，如测试直接 ydoc.transact）
+//   保持同步重算语义，快照立即可见。
 
 import * as Y from "yjs";
+
+/** applyUpdate 显式事务 origin：区分 WS 应用与本地事务（本地事务保持同步重算） */
+const APPLY_UPDATE_ORIGIN = Symbol("yjs-store:apply-update");
+/** 重算耗时超过该预算（毫秒）时切换到慢路径降频，避免持续阻塞主线程 */
+const RECOMPUTE_BUDGET_MS = 12;
+/** 慢路径重算间隔（毫秒）：回放/流式高峰且重算成本高时使用 */
+const SLOW_RECOMPUTE_INTERVAL_MS = 50;
 
 /**
  * YjsStore 接口 — 外部 store 的契约
@@ -60,6 +77,13 @@ export function createYjsStore<T>(
   // snapshot 去重：仅当计算出的 snapshot key 变化时才通知 React
   let prevSnapshotKey = "";
 
+  // 合并重算调度状态（仅 applyUpdate 路径使用）：
+  // - recomputeScheduled：已调度未执行（同一 tick 多次 update 只调度一次）
+  // - slowRecompute：上次重算耗时超预算 → 下次调度用慢路径间隔
+  let recomputeScheduled = false;
+  let slowRecompute = false;
+  let scheduleToken: ReturnType<typeof setTimeout> | null = null;
+
   function notify() {
     // 遍历 listeners 通知 React（React 会批量处理重渲染）
     for (const listener of listeners) {
@@ -76,6 +100,36 @@ export function createYjsStore<T>(
     prevSnapshotKey = nextKey;
     snapshot = next;
     notify();
+  }
+
+  /** 取消已调度的合并重算（switchDoc/destroy 时调用，避免悬空回调） */
+  function cancelScheduledRecompute() {
+    if (scheduleToken !== null) {
+      clearTimeout(scheduleToken);
+      scheduleToken = null;
+    }
+    recomputeScheduled = false;
+  }
+
+  /**
+   * 调度合并重算：同一 tick 的多次 applyUpdate 合并为一次重算。
+   * 快路径（setTimeout 0，宏任务）保证同批 update 合并且不阻塞 WS 接收栈；
+   * 重算成本超预算时切换慢路径（50ms）降频，回放/流式高峰不持续卡主线程。
+   */
+  function scheduleRecompute() {
+    if (recomputeScheduled || !ydoc) return;
+    recomputeScheduled = true;
+    scheduleToken = setTimeout(runScheduledRecompute, slowRecompute ? SLOW_RECOMPUTE_INTERVAL_MS : 0);
+  }
+
+  function runScheduledRecompute() {
+    scheduleToken = null;
+    recomputeScheduled = false;
+    if (!ydoc) return;
+    const start = performance.now();
+    recompute();
+    // 重算成本自适应：超预算 → 慢路径（下次间隔 50ms），未超 → 恢复快路径
+    slowRecompute = performance.now() - start > RECOMPUTE_BUDGET_MS;
   }
 
   function subscribe(callback: () => void) {
@@ -100,7 +154,8 @@ export function createYjsStore<T>(
       }
     }
 
-    Y.applyUpdate(ydoc, update);
+    // 显式 origin：update 事件据此走合并重算路径（而非同步重算）
+    Y.applyUpdate(ydoc, update, APPLY_UPDATE_ORIGIN);
   }
 
   /**
@@ -134,16 +189,25 @@ export function createYjsStore<T>(
     cleanupFn = cleanup ?? null;
 
     // 3. 注册 update 事件监听（每次 switchDoc 创建新的回调，避免闭包捕获过期引用）
-    //    Y.applyUpdate 在 transaction 完成后同步触发 update 事件，
-    //    即 recompute → notify → React 通过 useSyncExternalStore 调度重渲染
-    const handler: UpdateHandler = () => recompute();
+    //    WS 应用（origin = APPLY_UPDATE_ORIGIN）走合并 + 宏任务重算，避免回放高峰
+    //    逐条同步全量计算阻塞主线程；本地事务（测试/内部写入）保持同步语义。
+    const handler: UpdateHandler = (_update, origin) => {
+      if (origin === APPLY_UPDATE_ORIGIN) scheduleRecompute();
+      else recompute();
+    };
     ydoc.on("update", handler);
     updateHandler = handler;
 
-    // 4. 立即计算初始快照
+    // 4. 立即计算初始快照（渲染期同步，保证首次渲染即正确）
+    cancelScheduledRecompute();
+    // 新 doc 通常内容少、重算便宜，重置降频状态避免继承旧 doc 的慢路径
+    slowRecompute = false;
     snapshot = computeSnapshot(ydoc);
     prevSnapshotKey = "";
     notify();
+    // 注：若 switchDoc 前已有 setTimeout 回调入队（宏任务已触发），clearTimeout
+    // 无法取消，迟到回调会对新 doc 重算一次并多通知一次——内容正确（与新 doc
+    // 初始快照一致），仅多一次重渲染，属无害行为，非 bug。
   }
 
   function destroy() {
@@ -159,6 +223,7 @@ export function createYjsStore<T>(
       ydoc.destroy();
       ydoc = null;
     }
+    cancelScheduledRecompute();
     listeners.clear();
     activeKey = "";
   }
