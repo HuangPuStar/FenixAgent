@@ -136,8 +136,11 @@ export interface WsLifecycleDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
-  /** 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接 */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number>;
+  /**
+   * 从 DB session 解析出对应的 instance 编号，用于多实例场景下的精准连接。
+   * 返回 undefined 表示会话不匹配任何实例编号（单实例普通会话），调用方降级到默认实例。
+   */
+  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | undefined>;
 }
 
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */

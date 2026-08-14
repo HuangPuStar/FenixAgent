@@ -1314,4 +1314,29 @@ describe("YJS frontend internal handlers", () => {
 
     lifecycle.handleClose("ws-1");
   });
+
+  // URL 带普通会话 sessionId（单实例场景，标题非 "Instance N"）时，解析器返回
+  // undefined（默认实例），连接必须成功且 ensureRunning 收到 undefined——抛错会
+  // 让 WS 以 4004 拒绝，用户刷新后 send_prompt 被前端静默丢弃（服务端无感知）。
+  test("allows opening when URL sessionId maps to no instance number", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const relayEvents = createRelayEvents(registry, broadcaster, []);
+    const instanceNumbers: Array<number | undefined> = [];
+    const lifecycle = createLifecycle(registry, broadcaster, relayEvents, {
+      resolveInstanceNumberFromSession: async () => undefined,
+      ensureRunning: async (_userId, _agentId, _mode, instanceNumber) => {
+        instanceNumbers.push(instanceNumber);
+        return { instance: { id: "instance-1" } };
+      },
+    });
+    const ws = createWs();
+
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1", "session_abc");
+
+    expect(instanceNumbers).toEqual([undefined]);
+    expect(ws.closed).toEqual([]);
+
+    lifecycle.handleClose("ws-1");
+  });
 });
