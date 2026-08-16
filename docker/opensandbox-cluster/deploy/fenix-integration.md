@@ -336,6 +336,7 @@ export POOL_ID='资源池 ID'
 export SERVER_ID='Server ID'
 export SERVER_UPDATE_FILE='./server-update.json'
 export SANDBOX_INSTANCE_ID='sandbox_instance ID'
+export INSTANCE_UPDATE_FILE='./instance-update.json'
 export USER_ID='用户 ID'
 ```
 
@@ -404,6 +405,8 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh fenix sandbox list "sandbox_pool_id=${POOL_ID}&status=ready"
 # 查询指定 Sandbox Instance 详情
 ./fenix-sandbox-ops.sh fenix sandbox get "${SANDBOX_INSTANCE_ID}"
+# 使用 JSON 文件更新指定 Sandbox Instance 的资源覆盖配置
+./fenix-sandbox-ops.sh fenix sandbox update "${SANDBOX_INSTANCE_ID}" @"${INSTANCE_UPDATE_FILE}"
 # 预览指定资源池中需要重建的 Instance，不执行删除和重建
 ./fenix-sandbox-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --dry-run
 # 重建指定资源池中配置已变化的全部 Instance
@@ -416,9 +419,30 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh fenix sandbox delete "${SANDBOX_INSTANCE_ID}" --yes
 ```
 
-修改资源池或单个 Instance 的沙盒配置时，变更只会写入数据库配置，不会直接修改正在运行的 Provider 沙盒，也不会自动重启它。要让配置对已有实例生效，需要执行 `rebuild`。在用户下次进入 Agent 时，按新配置创建或启动沙盒。
+`instance-update.json` 示例：
 
-`rebuild` 用于让已有 Instance 按新配置重建沙盒，适用于资源池默认配置或 Instance 配置发生变化的情况。`--dry-run` 只查询配置发生变化的 Instance，不执行重建。
+```json
+{
+  "resourceOverrides": {
+    "cpu": 4,
+    "memoryMb": 8192,
+    "diskGb": 50,
+    "gpuCount": 0,
+    "environment": {
+      "EXAMPLE_VARIABLE": "example-value"
+    },
+    "volumes": []
+  }
+}
+```
+
+`resourceOverrides` 中的字段均可按需省略。传入 `{ "resourceOverrides": null }` 可清除 Instance 的资源覆盖配置，使它重新继承资源池默认配置。
+
+使用 `sandbox update` 修改单个 Instance 时，Fenix 会立即保存新的资源覆盖值并重新计算配置快照。如果快照发生变化，Fenix 会销毁当前 Provider 沙盒并将 Instance 置为 `stopped`，但不会自动重新启动；用户下次进入 Agent 时会按新配置启动沙盒。如果配置快照没有变化，则只更新数据库记录，不销毁 Provider 沙盒。
+
+修改资源池默认配置只会影响之后新建的 Instance，已有 Instance 仍保留原配置快照。要让资源池新配置应用到已有实例，需要执行 `rebuild`。
+
+`rebuild` 用于让已有 Instance 按资源池最新配置重建沙盒。`--dry-run` 只查询配置发生变化的 Instance，不执行重建。
 
 `delete` 用于删除目标沙盒配置，下次用户进入 Agent 时按默认配置重建沙盒，日常较少使用。`rebuild` 和 `delete` 都不会清理工作空间、OpenCode 配置或会话数据。
 
