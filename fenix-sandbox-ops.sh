@@ -65,6 +65,7 @@ usage() {
 
   fenix-sandbox-ops.sh fenix sandbox list [query]
   fenix-sandbox-ops.sh fenix sandbox get <instance_id>
+  fenix-sandbox-ops.sh fenix sandbox update <instance_id> <json|@file>
   fenix-sandbox-ops.sh fenix sandbox delete <instance_id> [--yes]
   fenix-sandbox-ops.sh fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]
   fenix-sandbox-ops.sh fenix sandbox rebuild-instance <pool_id> <instance_id> [--dry-run] [--yes]
@@ -197,6 +198,7 @@ fenix_sandbox() {
       if [[ $# -eq 2 ]]; then request fenix GET "/api/system/sandbox-instances?$2"; else request fenix GET "/api/system/sandbox-instances"; fi
       ;;
     get) [[ $# -eq 2 ]] || die "用法：fenix sandbox get <instance_id>"; request fenix GET "/api/system/sandbox-instances/$2" ;;
+    update) [[ $# -eq 3 ]] || die "用法：fenix sandbox update <instance_id> <json|@file>"; request fenix PUT "/api/system/sandbox-instances/$2" "$3" ;;
     delete) [[ $# -ge 2 && $# -le 3 ]] || die "用法：fenix sandbox delete <instance_id> [--yes]"; confirm "删除 Fenix 沙盒实例 '$2'"; request fenix DELETE "/api/system/sandbox-instances/$2" ;;
     rebuild-all)
       [[ $# -ge 2 && $# -le 4 ]] || die "用法：fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]"
