@@ -163,14 +163,25 @@ export function getEntry(ydoc: Y.Doc, entryId: string): Y.Map<unknown> | null {
   return getEntriesMap(ydoc).get(entryId) ?? null;
 }
 
-/** 设置 Entry 状态（终态由调用方状态机保证不可逆） */
+/**
+ * 设置 Entry 状态（终态由调用方状态机保证不可逆）。
+ * 同值短路（SP-A3）：流式期间聚合层对每帧 message_delta/reasoning_delta 重复
+ * 设置 "streaming"，yjs 同值 set 无相等性检查、仍产生新 op（Item + tombstone），
+ * 必须在此短路消除冗余 op。终态例外：completedAt 首次补写语义必须保留
+ * （历史数据可能终态但缺 completedAt，短路不得吞掉补写）。
+ */
 export function setEntryStatus(ydoc: Y.Doc, entryId: string, status: ChatEntryStatus): void {
   const entry = getEntry(ydoc, entryId);
   if (!entry) return;
-  entry.set("status", status);
-  if (status === "completed" || status === "cancelled" || status === "error") {
-    if (!entry.get("completedAt")) entry.set("completedAt", new Date().toISOString());
+  const isTerminal = status === "completed" || status === "cancelled" || status === "error";
+  if (entry.get("status") === status) {
+    // 同值：非终态直接跳过；终态仅补写缺失的 completedAt（不重写 status）
+    if (!isTerminal || entry.get("completedAt")) return;
+    entry.set("completedAt", new Date().toISOString());
+    return;
   }
+  entry.set("status", status);
+  if (isTerminal && !entry.get("completedAt")) entry.set("completedAt", new Date().toISOString());
 }
 
 /** 在 Entry 上写入 turn 完成摘要（token 用量等，仅终态写入） */
@@ -185,8 +196,10 @@ export function setEntryTokenUsage(
 }
 
 /**
- * 幂等追加文本块：blockId 已存在（类型一致）则向 Y.Text 追加 text，
- * 否则新建 text 块。返回块对象。流式文本用 Y.Text 保证增量同步效率。
+ * 顺序感知的文本追加：目标块按「顺序相邻」聚合而非 blockId 存在性——
+ * 末尾块为同类型时流式追加（保持单块聚合），否则新建唯一编号的文本块
+ * （text:1 / reasoning:1 …）。文本流被工具调用打断后再次输出文本时必须
+ * 新建块，否则 "ai → tool×N → ai" 两段文本会错误合并到同一块。
  */
 export function appendEntryText(
   ydoc: Y.Doc,
@@ -201,20 +214,42 @@ export function appendEntryText(
 
   const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>>;
   const blockOrder = entry.get("blockOrder") as Y.Array<string>;
-  let block = blocks.get(blockId);
+
+  const lastBlockId = blockOrder.get(blockOrder.length - 1) ?? "";
+  const lastBlock = lastBlockId ? blocks.get(lastBlockId) : undefined;
+  let targetId: string;
+  if (lastBlock?.get("type") === blockType) {
+    // 末尾相邻同类型块：直接追加（连续文本流保持单块）
+    targetId = lastBlockId;
+  } else if (blocks.has(blockId)) {
+    // 目标 ID 已被占用（文本流被工具/其他类型块打断）→ 新建顺序编号块
+    targetId = nextTextBlockId(blocks, blockType);
+  } else {
+    // 首个文本块：沿用调用方 blockId（兼容既有数据与调用方语义）
+    targetId = blockId;
+  }
+
+  let block = blocks.get(targetId);
   if (!block) {
     block = new Y.Map<unknown>();
-    block.set("blockId", blockId);
+    block.set("blockId", targetId);
     block.set("type", blockType);
     const ytext = new Y.Text();
     block.set("text", ytext);
     if (blockType === "reasoning" && visibility) block.set("visibility", visibility);
-    blocks.set(blockId, block);
-    blockOrder.push([blockId]);
+    blocks.set(targetId, block);
+    blockOrder.push([targetId]);
   }
   const ytext = block.get("text") as Y.Text;
   ytext.insert(ytext.length, text);
   return block;
+}
+
+/** 生成 entry 内不冲突的顺序编号文本块 ID（text:1 / reasoning:1 …） */
+function nextTextBlockId(blocks: Y.Map<Y.Map<unknown>>, blockType: "text" | "reasoning"): string {
+  let seq = 1;
+  while (blocks.has(`${blockType}:${seq}`)) seq++;
+  return `${blockType}:${seq}`;
 }
 
 /** 幂等添加 tool_call 块（blockId = tool:{toolCallId}），已存在返回 false */
@@ -278,13 +313,22 @@ export function setToolCallStatus(ydoc: Y.Doc, toolCallId: string, status: ToolC
 
 // ── Session Doc 写入 ──
 
-/** 覆盖式写入会话元信息（缺失字段不清除，用于跨帧累积） */
+/**
+ * 覆盖式写入会话元信息（缺失字段不清除，用于跨帧累积）。
+ * 字段级短路（SP-A3）：仅写入与现值不同的字段；全部字段未变时不写 updatedAt，
+ * 避免 session_updated 重复帧（重连重放/轮询）持续产生 Session Doc op。
+ */
 export function setSessionInfo(ydoc: Y.Doc, patch: Record<string, unknown>): void {
   const session = getSessionInfo(ydoc);
+  let changed = false;
   for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) session.set(key, value);
+    if (value === undefined) continue;
+    if (session.get(key) !== value) {
+      session.set(key, value);
+      changed = true;
+    }
   }
-  session.set("updatedAt", new Date().toISOString());
+  if (changed) session.set("updatedAt", new Date().toISOString());
 }
 
 /** 覆盖式写入会话 Model 状态（session/new、load 响应的 models 提取结果，会话级元数据） */
@@ -387,6 +431,12 @@ export function readActiveTurn(ydoc: Y.Doc): { turnId: string | null; turnStatus
  */
 export function setActiveTurn(ydoc: Y.Doc, turnId: string | null, turnStatus: TurnStatus | null): void {
   const session = getSessionInfo(ydoc);
+  // 同值短路（SP-A3）：流式增量期间聚合层每帧重复调用（turnId/turnStatus 均
+  // 未变），yjs 同值 set 仍产生新 op，不短路会每帧重写 activeTurnUpdatedAt/
+  // updatedAt/展示态三字段。activeTurnUpdatedAt 语义为「turn 状态最近一次
+  // 变更时刻」（loading.since 消费），非心跳（无 liveness 消费方），短路后
+  // since 稳定在状态迁移时刻，语义更准确。
+  if (session.get("activeTurnId") === turnId && session.get("activeTurnStatus") === turnStatus) return;
   session.set("activeTurnId", turnId);
   if (turnStatus === null) {
     session.set("activeTurnStatus", null);
@@ -518,24 +568,35 @@ export function clearSessionDocContent(ydoc: Y.Doc): void {
 
 /**
  * 全量同步会话列表（幂等）：按 sessionId upsert，删除不在列表中的旧条目。
- * 保证 10s 轮询重复响应不重复追加、agent 侧删除可自愈。
+ * 保证 10s 轮询重复响应不重复追加、agent 侧删除可愈。
+ * 返回是否发生实际字段变更（SP-A2）：完全相同的响应返回 false，
+ * 供 applySessionList 做「零 op 短路」判定。
  *
  * 空列表保护：summaries 为空（agent 重启后列表尚未恢复、或全部条目被 acp-link
  * 的"空标题/New session"过滤滤掉）时**不清空**已有条目——瞬时空响应会清空
  * 整个 map，叠加当前会话 title 不投影导致侧边栏全部显示"新会话"；
  * 真实删除由非空响应自愈（被删会话不在 incoming 中）。
  */
-export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection[]): void {
+export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection[]): boolean {
   const sessions = getSessionsMap(ydoc);
   const incoming = new Set<string>();
+  let changed = false;
   for (const s of summaries) {
     incoming.add(s.sessionId);
     const existing = sessions.get(s.sessionId);
     if (existing) {
-      if (typeof s.title === "string" && existing.get("title") !== s.title) existing.set("title", s.title);
-      if (typeof s.cwd === "string" && existing.get("cwd") !== s.cwd) existing.set("cwd", s.cwd);
-      if (typeof s.updatedAt === "string" && existing.get("updatedAt") !== s.updatedAt)
+      if (typeof s.title === "string" && existing.get("title") !== s.title) {
+        existing.set("title", s.title);
+        changed = true;
+      }
+      if (typeof s.cwd === "string" && existing.get("cwd") !== s.cwd) {
+        existing.set("cwd", s.cwd);
+        changed = true;
+      }
+      if (typeof s.updatedAt === "string" && existing.get("updatedAt") !== s.updatedAt) {
         existing.set("updatedAt", s.updatedAt);
+        changed = true;
+      }
       continue;
     }
     const entry = new Y.Map<unknown>();
@@ -544,11 +605,16 @@ export function syncSessionsMap(ydoc: Y.Doc, summaries: SessionSummaryProjection
     entry.set("cwd", s.cwd ?? null);
     entry.set("updatedAt", s.updatedAt ?? null);
     sessions.set(s.sessionId, entry);
+    changed = true;
   }
-  if (summaries.length === 0) return; // 空响应不清空（见函数注释）
+  if (summaries.length === 0) return changed; // 空响应不清空（见函数注释）
   for (const sessionId of Array.from(sessions.keys())) {
-    if (!incoming.has(sessionId)) sessions.delete(sessionId);
+    if (!incoming.has(sessionId)) {
+      sessions.delete(sessionId);
+      changed = true;
+    }
   }
+  return changed;
 }
 
 /** Chat Doc 是否包含时间线内容（用于重连时判断是否需要跳过全量回放） */

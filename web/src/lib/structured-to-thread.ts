@@ -201,47 +201,62 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
     }
 
     if (kind === "message" && role === "assistant") {
-      const chunks: AssistantChunk[] = [];
-      // 遍历 blockOrder 保持输出顺序：reasoning → thought 块，text → message 块
+      // 按 tool_call 块切分展示消息：文本段被工具调用打断时拆为多条 assistant_message，
+      // 保证 "ai → tool×N → ai" 按真实顺序渲染（后端已把打断后的文本写入独立 text:N 块，
+      // 此处不能在一条消息内合并展示——否则工具调用全部排到两段文本之后）。
+      let chunks: AssistantChunk[] = [];
+      let segment = 0;
+      const flushChunks = () => {
+        if (chunks.length === 0) return;
+        messages.push({
+          type: "assistant_message",
+          // 首段沿用 entryId（兼容既有消费者），后续段追加段号保证 React key 唯一
+          id: segment === 0 ? entryId : `${entryId}#${segment}`,
+          chunks,
+          seq: messages.length,
+          ts,
+        });
+        segment += 1;
+        chunks = [];
+      };
+      // 遍历 blockOrder 保持输出顺序：reasoning → thought 块，text → message 块，
+      // tool_call → 先冲刷已累积文本段再投影工具条目
       for (const blockId of blockOrder) {
         const block = blocks?.get(blockId);
         if (!block) continue;
         const blockType = block.get("type") as string | undefined;
+        if (blockType === "tool_call") {
+          flushChunks();
+          const toolCallId = block.get("toolCallId") as string | undefined;
+          if (!toolCallId) continue;
+          const tool = toolCalls?.get(toolCallId);
+          if (!tool) continue;
+
+          const status = (tool.get("status") as string) || "running";
+          const permissionId = tool.get("permissionId") as string | null | undefined;
+          const toolMessage: StructuredMessage = {
+            type: "tool_call",
+            id: toolCallId,
+            title: (tool.get("name") as string) || "",
+            status: mapToolCallMessageStatus(status),
+            content: [],
+            rawInput: (tool.get("arguments") as Record<string, unknown> | undefined) ?? undefined,
+            rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
+          };
+          if (permissionId) {
+            // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
+            // 此处保持占位空数组，真实选项由 use-session-state 合并层
+            // （meta.permissionOptions → computeSessionSnapshot）按 requestId 覆盖
+            toolMessage.permissionRequest = { requestId: permissionId, options: [] };
+          }
+          messages.push(toolMessage);
+          continue;
+        }
         const text = blockText(block);
         if (blockType === "reasoning" && text) chunks.push({ type: "thought", text });
         else if (blockType === "text" && text) chunks.push({ type: "message", text });
       }
-      messages.push({ type: "assistant_message", id: entryId, chunks, seq, ts });
-    }
-
-    // 工具调用：assistant entry 内的 tool_call block 按出现顺序投影为独立条目
-    for (const blockId of blockOrder) {
-      const block = blocks?.get(blockId);
-      if (!block) continue;
-      if (block.get("type") !== "tool_call") continue;
-      const toolCallId = block.get("toolCallId") as string | undefined;
-      if (!toolCallId) continue;
-      const tool = toolCalls?.get(toolCallId);
-      if (!tool) continue;
-
-      const status = (tool.get("status") as string) || "running";
-      const permissionId = tool.get("permissionId") as string | null | undefined;
-      const message: StructuredMessage = {
-        type: "tool_call",
-        id: toolCallId,
-        title: (tool.get("name") as string) || "",
-        status: mapToolCallMessageStatus(status),
-        content: [],
-        rawInput: (tool.get("arguments") as Record<string, unknown> | undefined) ?? undefined,
-        rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
-      };
-      if (permissionId) {
-        // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
-        // 此处保持占位空数组，真实选项由 use-session-state 合并层
-        // （meta.permissionOptions → computeSessionSnapshot）按 requestId 覆盖
-        message.permissionRequest = { requestId: permissionId, options: [] };
-      }
-      messages.push(message);
+      flushChunks();
     }
 
     // plan 以 system entry 投影（planEntries 结构化字段 + 人类可读摘要）

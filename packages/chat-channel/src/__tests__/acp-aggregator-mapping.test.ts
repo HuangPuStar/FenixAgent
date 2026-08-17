@@ -8,12 +8,16 @@ import { normalizeAcpMessage } from "../protocol/acp-channel";
 import { type NormalizedEvent, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
+  ensureEntry,
   getEntry,
   getEntryOrder,
   getPendingPermissions,
   getSessionInfo,
   getSessionRoot,
   getToolCallsMap,
+  setActiveTurn,
+  setEntryStatus,
+  setSessionInfo,
 } from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
 
@@ -441,4 +445,137 @@ test("cancel_requested and interrupt drive the state machine end to end", () => 
   expect(interrupted.get("loading")).toBeNull();
   expect(interrupted.get("canCancel")).toBe(false);
   expect(getEntry(pair.chat, "turn_1:assistant")?.get("status")).toBe("cancelled");
+});
+
+// 核心回归：ai → tool×N → ai 场景下两段文本必须分离为独立块。
+// 修复前 blockId 固定为 "text"，工具调用后的第二段文本被追加到第一段块，
+// 渲染表现为 ai1+2 tool×N；修复后按「顺序相邻」聚合，被打断则新建 text:N 块。
+test("text deltas separated by tool calls split into distinct text blocks", () => {
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  // 连续文本流应保持单块聚合（不碎片化）
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "hello" } }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: " world" } }));
+
+  // 10 个工具调用插入文本流中间
+  for (let i = 1; i <= 10; i++) {
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: `t${i}`, title: "bash" }));
+  }
+
+  // 工具完成后继续输出文本 → 必须新建 text:1，不得并入第一段
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "after tools" } }));
+
+  const assistant = getEntry(pair.chat, "turn_1:assistant")!;
+  const blocks = assistant.get("blocks") as Y.Map<Y.Map<unknown>>;
+  const blockOrder = (assistant.get("blockOrder") as Y.Array<string>).toArray();
+
+  expect(blockOrder).toEqual(["text", ...Array.from({ length: 10 }, (_, i) => `tool:t${i + 1}`), "text:1"]);
+  expect((blocks.get("text")?.get("text") as Y.Text | undefined)?.toString()).toBe("hello world");
+  expect((blocks.get("text:1")?.get("text") as Y.Text | undefined)?.toString()).toBe("after tools");
+});
+
+// 多重打断：文本流被工具调用打断两次 → 生成 text / text:1 / text:2 三个独立块
+test("multiple interruptions create sequentially numbered text blocks", () => {
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "a" } }));
+  applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t1", title: "bash" }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "b" } }));
+  applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t2", title: "bash" }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "c" } }));
+
+  const assistant = getEntry(pair.chat, "turn_1:assistant")!;
+  const blocks = assistant.get("blocks") as Y.Map<Y.Map<unknown>>;
+  const blockOrder = (assistant.get("blockOrder") as Y.Array<string>).toArray();
+
+  expect(blockOrder).toEqual(["text", "tool:t1", "text:1", "tool:t2", "text:2"]);
+  expect((blocks.get("text")?.get("text") as Y.Text | undefined)?.toString()).toBe("a");
+  expect((blocks.get("text:1")?.get("text") as Y.Text | undefined)?.toString()).toBe("b");
+  expect((blocks.get("text:2")?.get("text") as Y.Text | undefined)?.toString()).toBe("c");
+});
+
+// reasoning 与 text 交错：类型不同互不聚合，各自独立编号，visibility 保持
+test("reasoning and text interleaving stays in separate blocks", () => {
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  applyNormalizedEvent(pair, event("reasoning_delta", { content: { type: "reasoning", text: "think1" } }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer1" } }));
+  applyNormalizedEvent(pair, event("reasoning_delta", { content: { type: "reasoning", text: "think2" } }));
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer2" } }));
+
+  const assistant = getEntry(pair.chat, "turn_1:assistant")!;
+  const blocks = assistant.get("blocks") as Y.Map<Y.Map<unknown>>;
+  const blockOrder = (assistant.get("blockOrder") as Y.Array<string>).toArray();
+
+  expect(blockOrder).toEqual(["reasoning", "text", "reasoning:1", "text:1"]);
+  // reasoning 块保持 summary visibility（新建块时同样透传）
+  expect(blocks.get("reasoning")?.get("visibility")).toBe("summary");
+  expect(blocks.get("reasoning:1")?.get("visibility")).toBe("summary");
+  expect((blocks.get("reasoning")?.get("text") as Y.Text | undefined)?.toString()).toBe("think1");
+  expect((blocks.get("text:1")?.get("text") as Y.Text | undefined)?.toString()).toBe("answer2");
+});
+
+// SP-A3 验收：连续 apply 相同状态的 delta，Session Doc update 计数不随 delta
+// 数增长——status 已 streaming、turn 已 running 后，每帧增量对 Session Doc 的
+// 冗余写入（setEntryStatus/setActiveTurn 同值 + projectionVersion）全部短路
+test("repeated steady-state deltas do not grow session doc update count", () => {
+  runTurn(pair, "turn_1"); // user_message + 首个增量（accepting→running）
+
+  let sessionUpdates = 0;
+  pair.session.on("update", () => sessionUpdates++);
+  for (let i = 0; i < 50; i++) {
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "x" } }));
+  }
+  expect(sessionUpdates).toBe(0);
+});
+
+// SP-A3 验收：setEntryStatus 同值短路零 update；终态 completedAt 首写语义保留
+// （短路不得吞掉历史数据缺失 completedAt 时的补写，也不得覆盖已有值）
+test("setEntryStatus short-circuits same value and preserves completedAt first-write", () => {
+  ensureEntry(pair.chat, { entryId: "e1", turnId: "t1", kind: "message", role: "assistant" });
+  let chatUpdates = 0;
+  pair.chat.on("update", () => chatUpdates++);
+
+  // pending → streaming 是真实状态迁移：1 次 update
+  pair.chat.transact(() => setEntryStatus(pair.chat, "e1", "streaming"));
+  expect(chatUpdates).toBe(1);
+
+  // 同值重复设置（流式每帧路径）：零 update
+  for (let i = 0; i < 50; i++) pair.chat.transact(() => setEntryStatus(pair.chat, "e1", "streaming"));
+  expect(chatUpdates).toBe(1);
+
+  // 终态首写：status 迁移 + completedAt 首次写入（同一事务 1 次 update）
+  pair.chat.transact(() => setEntryStatus(pair.chat, "e1", "completed"));
+  expect(chatUpdates).toBe(2);
+  const entry = getEntry(pair.chat, "e1")!;
+  expect(entry.get("status")).toBe("completed");
+  expect(entry.get("completedAt")).toBeTruthy();
+
+  // 终态同值重放：零 update 且 completedAt 不被覆盖（收敛/幂等语义不变）
+  const completedAt = entry.get("completedAt");
+  for (let i = 0; i < 10; i++) pair.chat.transact(() => setEntryStatus(pair.chat, "e1", "completed"));
+  expect(chatUpdates).toBe(2);
+  expect(entry.get("completedAt")).toBe(completedAt);
+});
+
+// SP-A3 验收：setActiveTurn / setSessionInfo 相同值短路——turnId/turnStatus 未变
+// 时五组键（activeTurnUpdatedAt/updatedAt/展示态三字段）零重写；patch 无变化时
+// 不写 updatedAt
+test("setActiveTurn and setSessionInfo short-circuit identical writes", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  setSessionInfo(pair.session, { title: "T" });
+
+  let sessionUpdates = 0;
+  pair.session.on("update", () => sessionUpdates++);
+
+  // 相同 turnId + turnStatus：activeTurnUpdatedAt 不再每帧刷新（loading.since
+  // 稳定在状态迁移时刻，语义不变）
+  for (let i = 0; i < 20; i++) setActiveTurn(pair.session, "turn_1", "running");
+  expect(sessionUpdates).toBe(0);
+
+  // 相同 patch：字段级比较后零写入（updatedAt 不刷新）
+  for (let i = 0; i < 20; i++) setSessionInfo(pair.session, { title: "T" });
+  expect(sessionUpdates).toBe(0);
+
+  // 真实变化（状态迁移）仍正常写入
+  setActiveTurn(pair.session, "turn_1", "completed");
+  expect(sessionUpdates).toBeGreaterThan(0);
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
 });

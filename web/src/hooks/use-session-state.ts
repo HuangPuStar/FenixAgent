@@ -58,22 +58,33 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
     const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
     if (kind !== "message") continue;
 
-    const text = blockOrder
-      .map((blockId) => {
-        const block = blocks?.get(blockId);
-        const blockType = block?.get("type");
-        const blockText = block?.get("text");
-        return blockType === "text" && blockText instanceof Y.Text ? blockText.toString() : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-
-    messages.push({
-      role: (role === "user" ? "user" : "assistant") as "user" | "assistant",
-      content: text,
-      seq: messages.length,
-      ts: entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now(),
-    });
+    // 按 tool_call 块切分扁平消息：文本段被工具调用打断时拆为多条消息，
+    // 避免 "ai → tool×N → ai" 的两段文本合并为一条（与 structuredMessages 切分一致）
+    let text = "";
+    const pushMessage = () => {
+      if (!text) return;
+      messages.push({
+        role: (role === "user" ? "user" : "assistant") as "user" | "assistant",
+        content: text,
+        seq: messages.length,
+        ts: entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now(),
+      });
+      text = "";
+    };
+    for (const blockId of blockOrder) {
+      const block = blocks?.get(blockId);
+      if (!block) continue;
+      const blockType = block.get("type");
+      if (blockType === "tool_call") {
+        pushMessage();
+        continue;
+      }
+      const blockText = block.get("text");
+      if (blockType === "text" && blockText instanceof Y.Text) {
+        text += (text.length > 0 ? "\n" : "") + blockText.toString();
+      }
+    }
+    pushMessage();
 
     // 流式状态：status === streaming 的 assistant entry 的 text/reasoning 增量
     if (status === "streaming" && role === "assistant") {
