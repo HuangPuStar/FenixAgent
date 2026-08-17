@@ -46,6 +46,21 @@ export function generateMessageUuid(): string {
   return uuidv4();
 }
 
+/**
+ * 生成浏览器安全的 UUID v4。
+ * 原生 crypto.randomUUID 仅在 secure context（HTTPS / localhost）下可用，纯 HTTP 部署
+ * 时其为 undefined，直接调用会抛 TypeError。全局场景由 random-uuid-polyfill 在
+ * bootstrap 阶段注入降级实现（见 web/src/lib/random-uuid-polyfill.ts）；此处保留
+ * 独立降级路径作为纵深防御（polyfill 注入失败或绕过 bootstrap 的调用场景），
+ * 保证 HTTP / HTTPS 环境下均可生成随机 ID。
+ */
+export function randomUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return uuidv4();
+}
+
 export function extractEventText(payload: Record<string, unknown> | null | undefined): string {
   if (!payload || typeof payload !== "object") return "";
   if (typeof payload.content === "string") return payload.content;

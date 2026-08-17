@@ -11,6 +11,7 @@ import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
+import { randomUUID } from "../../lib/utils";
 import { applyDocHubUpdate } from "../../yjs/doc-hub";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
@@ -163,7 +164,7 @@ export function ChatPanel({
       if (!ws?.isConnected()) return false;
       setErrorCode(null);
       const key = commandKey(data);
-      const commandId = commandIdCacheRef.current.get(key) ?? crypto.randomUUID();
+      const commandId = commandIdCacheRef.current.get(key) ?? randomUUID();
       commandIdCacheRef.current.set(key, commandId);
       ws.send({ ...data, commandId });
       return true;

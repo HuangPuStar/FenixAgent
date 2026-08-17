@@ -20,6 +20,7 @@ import { Tree } from "@/components/ui/tree";
 import { buildUploadUrl, fsApi, MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
 import { ApiError, UPLOAD_TIMEOUT_MS, unwrap } from "@/src/api/request";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
+import { randomUUID } from "@/src/lib/utils";
 import { NS } from "../../i18n";
 import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 
@@ -269,7 +270,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           // 否则 Elysia splat 路由不匹配空段返回 404；与 fsApi.upload 共用同一拼装逻辑
           const url = buildUploadUrl(envId, targetDir);
           // 写操作幂等契约的 HTTP 载体：每次上传生成一个 opId，超时/断网后调用方重发可被服务端去重
-          const opId = crypto.randomUUID();
+          const opId = randomUUID();
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && onProgress) {
