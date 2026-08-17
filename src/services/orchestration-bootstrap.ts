@@ -107,9 +107,6 @@ export function createExecutionNodeResolver(
   } = {},
 ): ExecutionNodeResolver {
   const prepareSandbox = deps.prepareSandbox ?? prepareSandboxNode;
-  const sandboxEnabled = deps.sandboxEnabled ?? config.sandboxEnabled;
-  const defaultSandboxPoolId =
-    deps.defaultSandboxPoolId === undefined ? config.defaultSandboxPoolId : deps.defaultSandboxPoolId;
 
   // async：失败路径（含部署配置错误）统一以 rejected promise 表达，
   // 调用方 await 语义一致，避免同步 throw 在非 async 调用链中逃逸
@@ -120,6 +117,14 @@ export function createExecutionNodeResolver(
     agentNode: unknown;
     configMachineId: string | null;
   }): Promise<string | null> {
+    // 动态读取 config：config 单例初始为空 env 构建（src/config.ts 延迟解析设计），
+    // 真实值由 index.ts 顶层 applyEnv(validateEnv()) 写入。本 resolver 在模块
+    // 求值阶段创建，若在此冻结默认值会永久拿到空配置，导致默认沙盒策略在运行时
+    // 失效（2026-08-17 事故：resolver 冻结 sandboxEnabled=false，spawn 静默回退
+    // local-default）。deps 显式注入（测试）优先于 config 动态读取。
+    const sandboxEnabled = deps.sandboxEnabled ?? config.sandboxEnabled;
+    const defaultSandboxPoolId =
+      deps.defaultSandboxPoolId === undefined ? config.defaultSandboxPoolId : deps.defaultSandboxPoolId;
     const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
     const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
     const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
