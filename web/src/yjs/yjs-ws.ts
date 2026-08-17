@@ -21,16 +21,18 @@ export type YjsTerminalErrorCode =
   | "spawn_rejected"
   | "too_many_connections";
 
-export function getTerminalYjsWsErrorCode(code: number): YjsTerminalErrorCode | null {
+export function getTerminalYjsWsErrorCode(code: number, reason?: string): YjsTerminalErrorCode | null {
   if (code === 4001) return "instance_idle_reclaimed";
   if (code === 4004) return "environment_unavailable";
   if (code === 4500) return "machine_unavailable";
   if (code === 4501) return "client_keepalive_timeout";
-  // 4502（spawn rejected：autoStart 关闭/maxSessions 上限/launch spec 构建失败）与
-  // 1013（连接数超限）为服务端终态关闭：不得进入自动重连，须手动恢复（否则终态
-  // 断开显示"正在自动重连"误导用户）。
   if (code === 4502) return "spawn_rejected";
-  if (code === 1013) return "too_many_connections";
+  // 1013 有两个语义来源，按 close reason 区分：
+  // - 连接数超限（gateway 容量拒绝）：重试相同 URL 在配额释放前无意义 → 终态；
+  // - 慢消费者追赶超时（broadcaster SP-A7）：非终态——客户端自动重连后走全量
+  //   快照同步恢复，不得展示"须手动恢复"的终态错误。
+  // 未知 reason 的 1013 保持终态（与既有容量语义一致）。
+  if (code === 1013) return reason === "slow consumer resync timeout" ? null : "too_many_connections";
   return null;
 }
 

@@ -296,6 +296,14 @@ export class DocManager {
 
   // ── 清理 ──
 
+  /**
+   * 观测信号（SP-C2）：当前内存中打开的 Chat / Session Doc 数量。
+   * 仅用于周期日志与长期采集（内存回收是否生效的曲线），不承载业务语义。
+   */
+  openedDocCount(): { chat: number; session: number } {
+    return { chat: this.chatDocs.size, session: this.sessionDocs.size };
+  }
+
   /** 关闭所有 Doc 并清理内部状态 */
   async closeAll(): Promise<void> {
     const batchKeys = [...this.acpBatchBuffers.keys()];

@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
-import { getAgentStatus, getChatRoot, getEntriesMap, getSessionInfo } from "../state/chat-writer";
+import { getAgentStatus, getChatRoot, getEntriesMap, getSessionInfo, getSessionRoot } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
@@ -574,7 +574,10 @@ describe("SessionChannel doc projection", () => {
 
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1");
     expect(getAgentStatus(sessionDoc as Y.Doc).get("status")).toBe("ready");
-    expect(getChatRoot(harness.docManager.getChatYdoc("rcs-1") as Y.Doc).get("projectionVersion")).toBeGreaterThan(1);
+    // projectionVersion 按触达 bump（SP-A2）：agent_status 只写 Session Doc，
+    // Session Doc 版本递增，Chat Doc 未被触碰版本不动
+    expect(getSessionRoot(sessionDoc as Y.Doc).get("projectionVersion")).toBeGreaterThan(1);
+    expect(getChatRoot(harness.docManager.getChatYdoc("rcs-1") as Y.Doc).get("projectionVersion")).toBe(1);
     void connection;
   });
 });

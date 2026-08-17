@@ -36,4 +36,9 @@ export {
   loadChatDoc,
   loadSessionDoc,
 } from "./factory";
-export { createYjsStore, type YjsStore } from "./yjs-store";
+export {
+  applyRemoteDocUpdate,
+  createYjsStore,
+  type SwitchDocBinding,
+  type YjsStore,
+} from "./yjs-store";

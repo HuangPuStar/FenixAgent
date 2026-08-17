@@ -9,6 +9,7 @@
 //   session-channel-action.test.ts 覆盖。
 
 import * as Y from "yjs";
+import { decodeYjsUpdateFrame } from "../protocol/update-frame";
 import { DocManager } from "../state/doc-manager";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
@@ -18,7 +19,8 @@ import { RelayEventHandler, type RelayEventHandlerDependencies } from "./relay-e
 import type { SessionChannel } from "./session-channel";
 
 export type MockWs = WsConnection & {
-  messages: string[];
+  /** 收到的全部帧：JSON 文本帧为 string，yjs:update 二进制帧为 Uint8Array（SP-A4） */
+  messages: (string | Uint8Array)[];
   closed: Array<[number | undefined, string | undefined]>;
   bufferedAmount?: number;
 };
@@ -36,6 +38,31 @@ export function createWs(bufferedAmount = 0): MockWs {
       this.closed.push([code, reason]);
     },
   };
+}
+
+/** 取连接收到的 JSON 文本帧（过滤 yjs:update 二进制帧），供控制消息断言 */
+export function textFrames(ws: MockWs): string[] {
+  return ws.messages.filter((message): message is string => typeof message === "string");
+}
+
+/** 解码连接收到的全部 yjs:update 二进制帧（跳过 JSON 文本帧） */
+export function decodeUpdateFrames(ws: MockWs): Array<{ docName: string; update: Uint8Array }> {
+  const frames: Array<{ docName: string; update: Uint8Array }> = [];
+  for (const message of ws.messages) {
+    if (typeof message === "string") continue;
+    const decoded = decodeYjsUpdateFrame(message);
+    if (decoded) frames.push(decoded);
+  }
+  return frames;
+}
+
+/** 从连接的 WS 帧中取出指定 docName 的快照/增量并解码为 Y.Doc（找不到时断言失败） */
+export function decodeSnapshot(ws: MockWs, docName: string): Y.Doc {
+  const frame = decodeUpdateFrames(ws).find((decoded) => decoded.docName === docName);
+  if (!frame) throw new Error(`expected yjs update frame for ${docName}, got ${ws.messages.length} frames`);
+  const restored = new Y.Doc();
+  Y.applyUpdate(restored, frame.update);
+  return restored;
 }
 
 export function createSharedRelay(overrides: Partial<SharedRelay> = {}): SharedRelay {

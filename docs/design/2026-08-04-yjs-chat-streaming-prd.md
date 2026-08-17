@@ -227,6 +227,7 @@ running → completed | failed | interrupted
 
 - 与 `agent-chat-service.ts`（HTTP 单轮）保持既有边界：本次重构不改变 HTTP 路径的对外契约，仅迁移 import 并复用 `ensureRunning` 与既有实例策略。
 - `YJS_MAX_CLIENTS` 连接上限与 64 KB 背压阈值保留（CLAUDE.md 不变量）。
+- **快照持久化为节流尽力而为语义**：`persist/redis.ts` 按默认 2s trailing 节流 + 500ms 静默期执行 Redis 快照 CAS（`destroy()` 强制 flush），节流窗口内进程崩溃会丢失窗口内更新——权威数据是 Agent 侧 ACP session 历史，可通过 `load_session` 回放重建；快照 key 附 7 天滑动 TTL（`RCS_YJS_SNAPSHOT_*` 可配）。
 - 前端仅新增 `commandId` 字段（Q9）；`expectedProjectionVersion` 乐观并发增强、19 号文档 10 节连接时序对齐为二期迭代。
 
 ## Testing Decisions

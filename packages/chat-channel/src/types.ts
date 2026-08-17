@@ -18,28 +18,6 @@ export interface LoadingState {
   since: number;
 }
 
-export interface ToolRun {
-  name: string;
-  status: "running" | "done" | "error";
-  input: unknown;
-  output?: unknown;
-  startedAt: number;
-}
-
-export interface ArtifactRef {
-  kind: "file" | "image" | "url";
-  url: string;
-  title: string;
-  seq: number;
-}
-
-export interface SessionMessage {
-  role: "user" | "assistant";
-  content: string;
-  seq: number;
-  ts: number;
-}
-
 // ── Chat 级别状态 ──
 
 export interface SessionSummary {
@@ -160,11 +138,10 @@ export interface SessionStateSnapshot {
    * 期间为 true（输出中停止按钮保持可用），回放 turn 与 idle/终态为 false。
    */
   canCancel: boolean;
-  messages: SessionMessage[];
+  // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段）：
+  // 前端唯一消费方是 structuredMessages（ChatInterface 时间线渲染），上述四个
+  // 字段全仓零消费且每次流式批次都触发全量派生计算（根因 B2）。
   structuredMessages: StructuredMessage[];
-  streaming: { text: string; reasoning: string } | null;
-  tools: Map<string, ToolRun>;
-  artifacts: ArtifactRef[];
 }
 
 // ── Structured Messages (Yjs timeline types, Phase C) ──

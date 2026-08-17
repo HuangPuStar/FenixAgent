@@ -7,9 +7,10 @@
 import { describe, expect, test } from "bun:test";
 import { computeSessionSnapshot } from "../hooks/use-session-state";
 
-/** 构造一份最小空时间线快照（computeSessionSnapshot 的 timeline 输入） */
+/** 构造一份最小空时间线快照（computeSessionSnapshot 的 timeline 输入；
+ *  历史死字段 messages/streaming/tools/artifacts 已随 SP-B2 删除） */
 function emptyTimeline() {
-  return { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] };
+  return { structuredMessages: [] };
 }
 
 describe("computeSessionSnapshot", () => {

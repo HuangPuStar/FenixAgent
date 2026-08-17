@@ -6,12 +6,19 @@
 
 import type { NormalizedEvent, SessionSummaryProjection } from "../schema";
 import type { ApplyResult } from "./aggregator";
-import { syncSessionsMap } from "./chat-writer";
+import { getSessionRoot, syncSessionsMap } from "./chat-writer";
 import type { DocPair } from "./permission";
 
 /**
  * 处理 session_list：把 agent 侧会话列表全量同步到 Session Doc sessions 投影。
  * 缺失 sessions 数组 / 无 sessionId 的条目被拒绝（不投影）。
+ *
+ * 空转轮询零 op 短路（SP-A2）：gateway 每 10s 轮询 list_sessions，完全相同的
+ * 响应在 sessions map 无任何字段变化且 sessionListLoaded 已确认时返回
+ * applied=false——配合聚合层「按触达 bump」，空闲连接的重复轮询不再产生
+ * Session Doc update（消除广播帧与 Redis 快照全量 CAS）。首个响应必然写入
+ * sessionListLoaded，前端 bootstrap 区分「确认无会话」与「列表未到达」的
+ * 语义不受影响。
  */
 export function applySessionList(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const raw = event.update.sessions;
@@ -28,10 +35,14 @@ export function applySessionList(pair: DocPair, event: NormalizedEvent): ApplyRe
       updatedAt: typeof rec.updatedAt === "string" ? rec.updatedAt : null,
     });
   }
-  syncSessionsMap(pair.session, summaries);
+  const changed = syncSessionsMap(pair.session, summaries);
+  const root = getSessionRoot(pair.session);
+  if (!changed && root.get("sessionListLoaded") === true) {
+    return { applied: false, reason: "session list unchanged" };
+  }
   // 列表权威确认标记：无论空/非空，session_list 响应即代表 agent 侧会话列表已确认。
   // 前端 bootstrap 据此区分「确认无会话」（可安全自动创建新会话）与「列表未到达」
   // （空列表不得触发创建，否则有历史会话时制造"假空"会话竞态）。
-  pair.session.getMap("root").set("sessionListLoaded", true);
+  root.set("sessionListLoaded", true);
   return { applied: true };
 }

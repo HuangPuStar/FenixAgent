@@ -440,11 +440,18 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
  * 每份 Doc 一个 transaction（YJS 嵌套事务会合并到各自 Doc 的事务栈，
  * 跨 Doc 顺序由调用方保证，不依赖跨 Doc transaction）。
  * 聚合层唯一入口：旧事件类型不会进入这里（ACPChannel 已翻译/拒绝）。
+ *
+ * projectionVersion 按触达 bump（SP-A2）：transaction.changed 记录本事务内
+ * 实际被修改的 type，只递增被触碰 Doc 的版本——未被触碰的 Doc 不产生任何
+ * op，消除流式稳态期间 Session Doc 的版本噪声（session: 广播帧与 Redis
+ * 全量快照 CAS 翻倍的根因 A2）。被拒绝的事件（applied=false）不 bump 的
+ * 既有语义不变；嵌套进外层批次事务时 changed 为批次累计值，同事务内多次
+ * bump 仍合并为单次 update，语义安全。
  */
 export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): ApplyResult {
   let result: ApplyResult = { applied: false, reason: "unhandled" };
-  pair.chat.transact(() => {
-    pair.session.transact(() => {
+  pair.chat.transact((chatTr) => {
+    pair.session.transact((sessionTr) => {
       switch (event.type) {
         case "user_message":
           result = applyUserMessage(pair, event);
@@ -525,11 +532,13 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
         }
       }
 
-      if (result.applied) {
-        bumpProjectionVersion(getChatRoot(pair.chat));
+      if (result.applied && sessionTr.changed.size > 0) {
         bumpProjectionVersion(getSessionRoot(pair.session));
       }
     });
+    if (result.applied && chatTr.changed.size > 0) {
+      bumpProjectionVersion(getChatRoot(pair.chat));
+    }
   });
   return result;
 }

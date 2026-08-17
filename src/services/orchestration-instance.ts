@@ -36,6 +36,11 @@ const _deps = {
   buildAgentLaunchSpecForCore,
   getOrchestrationController,
   getOrchestrationLaunchSpecBuilder,
+  // SP-C2：实例停止完成后回收其内存 Y.Doc。默认经 transport/relay 惰性导入
+  // （避免与 chat-channel-bootstrap 的模块循环，同 acp-idle-monitor 的既有模式）；
+  // 测试注入 spy 验证接线，不依赖真实控制器装配。
+  reclaimYjsDocs: (instanceId: string) =>
+    import("../transport/relay").then(({ reclaimInstanceYjsDocs }) => reclaimInstanceYjsDocs(instanceId)),
 };
 const _defaultDeps = { ..._deps };
 
@@ -175,7 +180,8 @@ export async function spawnInstanceViaController(
 
 /**
  * 编排域完整停止入口：controller.stopInstance（停止帧 + 活跃表移除 + 节点引用归还）
- * + core facade.stopInstance（真正停止进程并清理 core 快照）+ RCS supplement 清理。
+ * + core facade.stopInstance（真正停止进程并清理 core 快照）+ RCS supplement 清理
+ * + 实例名下内存 Y.Doc 回收（SP-C2，见函数末尾）。
  *
  * 组合原因：controller.stopInstance 只维护编排域内存状态，不会停止 core 侧进程，
  * 也不会清理 globalInstanceRegistry 的业务补充信息；单轮 HTTP 调用（openAgentSession）
@@ -203,6 +209,19 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
     globalInstanceRegistry.unregister(instanceId);
     globalInstanceRegistry.deleteCounter(sup.environmentId);
   }
+  // SP-C2：实例停止完成点统一回收其名下内存 Y.Doc（idle reclaim 4001 路径、
+  // terminateLocalDeadInstance、手动停止等都汇聚到本函数；远程机器幽灵清理因
+  // core 实例已被调用方同步删除、不经本函数，由 orchestration-machine-cleanup
+  // 对每个幽灵实例单独触发同一回收，funnel 不缺位）。必须发生在停止之后：
+  // 实例可能存活时关 Doc 会丢弃实时流——processNormalizedEvent 对不在内存的会话
+  // 直接丢事件，重连后的 openChat 也拿不到实时投影（C6 断链语义一，详见
+  // gateway.releaseRelay / relay-event-handler 注释）。回收失败不改变停止语义
+  // （Doc 泄漏由周期日志的 openedDocCount 观测暴露），但保留诊断上下文。
+  try {
+    await _deps.reclaimYjsDocs(instanceId);
+  } catch (err) {
+    logError(`[orchestration-instance] yjs doc reclaim failed after stop: instanceId=${instanceId}`, err);
+  }
 }
 
 /**
@@ -220,7 +239,9 @@ const localDeadCleanupInFlight = new Set<string>();
  * 于按实例而非按机器匹配，且由 relay 死亡信号触发而非机器 WS 关闭触发。
  *
  * 前置校验（任一不满足即静默跳过，保证幂等与不误伤）：
- *   1. core 快照存在且 nodeId === "local-default"（远程实例由 E-P0.1 机器级清理覆盖）；
+ *   1. core 快照存在且 nodeId === "local-default"（远程实例由 E-P0.1 机器级清理
+ *      覆盖，其内存 Y.Doc 由 orchestration-machine-cleanup 触发同一回收，SP-C2
+ *      funnel 不因该路径缺位）；
  *   2. 快照状态为 running 或 error（error 覆盖 connectRelay 失败被 markInstanceError
  *      的实例——该状态被 idle monitor 默认 sweep 排除，是唯一的永久泄漏路径）；
  *   3. 实例仍在编排域活跃表（已被 stop/清理的实例跳过，避免重复 stop 的噪音日志）。

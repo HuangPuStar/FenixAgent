@@ -78,7 +78,7 @@ classDiagram
         +spawnInstance(environmentId, userId) InstanceInfo
         +stopInstance(instanceId) void
         +listInstances() InstanceInfo[]
-        +stopInstancesByMachineId(machineId) void
+        +stopInstancesByMachineId(machineId) string[]
     }
     class Instance {
         +instanceId
@@ -249,7 +249,7 @@ stateDiagram-v2
 | core 快照 | `CoreRuntime.listInstances()` | `runtime.deleteInstance` |
 | registry supplement | `globalInstanceRegistry` | `unregister` / `reconcile` |
 
-**E-P0.1 教训（幽灵实例）**：任何一侧的清理路径（断连、重连、sweep、rollback、幂等 DELETE）都必须收敛到统一入口——机器断连由 `cleanupOrchestrationInstancesForMachine`（`orchestration-machine-cleanup.ts`）→ `AgentController.stopInstancesByMachineId` 完成活跃表删除 + `releaseNode` 配对归还；机器重连分支同样先清理再接受新连接。缺失任何一侧都会产生幽灵实例：占用并发额度、web DELETE 永久 404、refCount 残留节点永久滞留。
+**E-P0.1 教训（幽灵实例）**：任何一侧的清理路径（断连、重连、sweep、rollback、幂等 DELETE）都必须收敛到统一入口——机器断连由 `cleanupOrchestrationInstancesForMachine`（`orchestration-machine-cleanup.ts`）→ `AgentController.stopInstancesByMachineId` 完成活跃表删除 + `releaseNode` 配对归还，并对每个被移除实例 fire-and-forget 触发实例级实时资源回收（`reclaimInstanceYjsDocs`，SP-C2：该路径不经过 `stopInstanceViaController`，不接则 `instanceSessions` 登记与保留的实时 Doc 永久泄漏）；机器重连分支同样先清理再接受新连接。缺失任何一侧都会产生幽灵实例：占用并发额度、web DELETE 永久 404、refCount 残留节点永久滞留。
 
 **断连对账例外（D15 记录）**：机器不可达时无法走正常停止链，断连清理直接 `runtime.deleteInstance` + 删表 + 活跃表清理，绕过 `Instance.stop()` 的远端停止帧——这是唯一允许绕过正常生命周期路径的场景。
 

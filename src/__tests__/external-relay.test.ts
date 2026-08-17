@@ -16,13 +16,13 @@ interface MockWs extends WsConnection {
   closed: Array<[number | undefined, string | undefined]>;
 }
 
-/** 假 WS：记录 send 内容与 close 参数，readyState 恒为 OPEN */
+/** 假 WS：记录 send 内容与 close 参数，readyState 恒为 OPEN（本端点只发 JSON 文本帧） */
 function createWs(): MockWs {
   return {
     readyState: 1,
     messages: [],
     closed: [],
-    send(message) {
+    send(message: string) {
       this.messages.push(message);
     },
     close(code, reason) {

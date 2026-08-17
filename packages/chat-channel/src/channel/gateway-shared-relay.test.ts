@@ -8,7 +8,7 @@ import * as Y from "yjs";
 import { createDeterministicRcsSessionId } from "../util/id";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
-import { createGateway, createRelayEvents, createWs, deferred } from "./connection-test-helpers";
+import { createGateway, createRelayEvents, createWs, deferred, textFrames } from "./connection-test-helpers";
 import type { ClientConnection, RelayMessage } from "./connection-types";
 
 describe("Gateway shared relay", () => {
@@ -171,7 +171,7 @@ describe("Gateway shared relay", () => {
     expect(ensureCalls).toBe(1);
     expect(connectCalls).toBe(1);
     expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(1);
-    expect(JSON.parse(ws2.messages[0] ?? "{}")).toMatchObject({ payload: { code: "too_many_connections" } });
+    expect(JSON.parse(textFrames(ws2)[0] ?? "{}")).toMatchObject({ payload: { code: "too_many_connections" } });
     lifecycle.handleClose("ws-1");
   });
 

@@ -169,18 +169,91 @@ test("session_updated with availableCommands projects commands and clears on ses
   expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("availableCommands")).toBeUndefined();
 });
 
-// 每次成功投影后两份 Doc 的 projectionVersion 各 +1（描述镜像进度，与 schemaVersion 无关）
-test("projectionVersion bumps on each applied event", () => {
+// 每次成功投影后按「实际触碰的 Doc」递增 projectionVersion（SP-A2）：事件只
+// 修改了哪份 Doc，哪份才 +1——流式稳态增量只触碰 Chat Doc，Session Doc 版本
+// 不动（消除 session: 广播与 Redis 快照 CAS 的版本噪声）
+test("projectionVersion bumps only on docs touched by the applied event", () => {
+  // user_message：双 Doc（user/assistant entry 写 Chat；activeTurn accepting 写 Session）
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  // 首个增量：双 Doc（文本追加写 Chat；accepting→running 迁移写 Session）
   applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "hello" } }));
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(3);
   expect(getSessionRoot(pair.session).get("projectionVersion")).toBe(3);
 
-  // 被拒绝的事件（终态后增量）不 bump
+  // 稳态增量：status 已 streaming、turn 已 running（同值短路零写入），只 Chat Doc +1
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: " world" } }));
+  expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(4);
+  expect(getSessionRoot(pair.session).get("projectionVersion")).toBe(3);
+
+  // 终态：双 Doc（entry 终态写 Chat；activeTurn 终态与收敛写 Session）
   applyNormalizedEvent(pair, event("turn_completed", { usage: { totalTokens: 10 } }));
-  const before = getChatRoot(pair.chat).get("projectionVersion") as number;
+  expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(5);
+  expect(getSessionRoot(pair.session).get("projectionVersion")).toBe(4);
+
+  // 被拒绝的事件（终态后增量）不 bump 任何 Doc
+  const chatBefore = getChatRoot(pair.chat).get("projectionVersion") as number;
+  const sessionBefore = getSessionRoot(pair.session).get("projectionVersion") as number;
   applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "late" } }));
-  expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(before);
+  expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(chatBefore);
+  expect(getSessionRoot(pair.session).get("projectionVersion")).toBe(sessionBefore);
+});
+
+// SP-A2 验收：流式稳态期间 N 条 message_delta 只产生 Chat Doc update，
+// Session Doc 零 update——订阅 update 事件计数（对应广播帧 / Redis 快照 CAS 次数）
+test("steady-state message deltas emit chat doc updates only, zero session doc updates", () => {
+  let chatUpdates = 0;
+  let sessionUpdates = 0;
+  pair.chat.on("update", () => chatUpdates++);
+  pair.session.on("update", () => sessionUpdates++);
+
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  expect(chatUpdates).toBe(1);
+  expect(sessionUpdates).toBe(1);
+
+  // 首个增量含 accepting→running 迁移：两份 Doc 各一次 update
+  applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "h" } }));
+  expect(chatUpdates).toBe(2);
+  expect(sessionUpdates).toBe(2);
+
+  // 稳态 N 条增量：Chat Doc 每条一次 update（真实文本内容），Session Doc 零 update
+  for (let i = 0; i < 20; i++) {
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "x" } }));
+  }
+  expect(chatUpdates).toBe(22);
+  expect(sessionUpdates).toBe(2);
+});
+
+// SP-A2 验收：session_list 重复相同响应（10s 空转轮询）零 doc update；
+// 首个响应落 sessionListLoaded（前端 bootstrap「确认无会话」语义不受影响）
+test("repeated identical session_list responses produce zero session doc updates", () => {
+  let sessionUpdates = 0;
+  pair.session.on("update", () => sessionUpdates++);
+
+  const response = () =>
+    event("session_list", { sessions: [{ sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" }] });
+
+  const first = applyNormalizedEvent(pair, response());
+  expect(first.applied).toBe(true);
+  expect(getSessionRoot(pair.session).get("sessionListLoaded")).toBe(true);
+  expect(sessionUpdates).toBe(1); // 首响：sessions 条目 + sessionListLoaded + 版本 bump
+
+  // 完全相同的响应：applied=false 且零 update（无广播帧、无快照 CAS）
+  const second = applyNormalizedEvent(pair, response());
+  expect(second.applied).toBe(false);
+  expect(sessionUpdates).toBe(1);
+
+  // 内容真实变化（新会话）时恢复写入
+  const third = applyNormalizedEvent(
+    pair,
+    event("session_list", {
+      sessions: [
+        { sessionId: "ses_1", title: "A", updatedAt: "2026-08-05T00:00:00.000Z" },
+        { sessionId: "ses_2", title: "B", updatedAt: "2026-08-05T00:02:00.000Z" },
+      ],
+    }),
+  );
+  expect(third.applied).toBe(true);
+  expect(sessionUpdates).toBe(2);
 });
 
 // 完整消息时间线投影：user entry + assistant entry（含 Y.Text 流式块）

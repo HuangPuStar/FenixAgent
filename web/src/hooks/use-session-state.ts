@@ -5,7 +5,9 @@
 //   展示态投影字段（后端聚合层 setActiveTurn 统一投影）+ agent
 //
 // 展示态（status/loading/canCancel）为纯读后端投影字段，前端零派生；
-// 职责错位纠正后时间线在 Chat Doc；applyUpdate 按 docName 前缀路由到内部 store。
+// 职责错位纠正后时间线在 Chat Doc。
+// Y.Doc 副本合一（SP-B1 / 根因 B1）：两份 doc 从 DocHub 取共享实例（引用计数），
+// 本 hook 只读派生，WS update 由 ChatPanel 经 hub 单写（不再自带 applyUpdate）。
 
 import type {
   LoadingState,
@@ -14,19 +16,16 @@ import type {
   SessionStateSnapshot,
   SessionStatus,
 } from "@fenix/chat-channel";
-import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import * as Y from "yjs";
+import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type * as Y from "yjs";
 import { chatDocEntriesToStructuredMessages, sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
+import { createChatDocBinding, createSessionDocBinding } from "../yjs/doc-hub";
 
 // ── Chat Doc 派生：时间线（消息/工具/资源）──
 
 interface SessionTimelineSnapshot {
   structuredMessages: SessionStateSnapshot["structuredMessages"];
-  streaming: SessionStateSnapshot["streaming"];
-  tools: SessionStateSnapshot["tools"];
-  artifacts: SessionStateSnapshot["artifacts"];
-  messages: SessionStateSnapshot["messages"];
 }
 
 /** 从 Chat Doc 派生时间线快照（纯函数，无副作用） */
@@ -34,116 +33,17 @@ function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
   const root = ydoc.getMap("root");
   const order = root.get("entryOrder") as Y.Array<string> | undefined;
   const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
-  const toolCalls = root.get("toolCalls") as Y.Map<Y.Map<unknown>> | undefined;
 
   // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
   // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
   if (!order || !entries) {
-    return { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] };
+    return { structuredMessages: [] };
   }
 
-  const structuredMessages = chatDocEntriesToStructuredMessages(ydoc);
-
-  // messages：按时间线顺序的扁平消息（含 user/assistant 文本）
-  const messages: SessionStateSnapshot["messages"] = [];
-  let streaming: SessionStateSnapshot["streaming"] = null;
-
-  for (const entryId of order.toArray()) {
-    const entry = entries.get(entryId);
-    if (!entry) continue;
-    const kind = entry.get("kind") as string | undefined;
-    const role = entry.get("role") as string | undefined;
-    const status = entry.get("status") as string | undefined;
-    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
-    const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
-    if (kind !== "message") continue;
-
-    // 按 tool_call 块切分扁平消息：文本段被工具调用打断时拆为多条消息，
-    // 避免 "ai → tool×N → ai" 的两段文本合并为一条（与 structuredMessages 切分一致）
-    let text = "";
-    const pushMessage = () => {
-      if (!text) return;
-      messages.push({
-        role: (role === "user" ? "user" : "assistant") as "user" | "assistant",
-        content: text,
-        seq: messages.length,
-        ts: entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now(),
-      });
-      text = "";
-    };
-    for (const blockId of blockOrder) {
-      const block = blocks?.get(blockId);
-      if (!block) continue;
-      const blockType = block.get("type");
-      if (blockType === "tool_call") {
-        pushMessage();
-        continue;
-      }
-      const blockText = block.get("text");
-      if (blockType === "text" && blockText instanceof Y.Text) {
-        text += (text.length > 0 ? "\n" : "") + blockText.toString();
-      }
-    }
-    pushMessage();
-
-    // 流式状态：status === streaming 的 assistant entry 的 text/reasoning 增量
-    if (status === "streaming" && role === "assistant") {
-      let textChunk = "";
-      let reasoningChunk = "";
-      for (const blockId of blockOrder) {
-        const block = blocks?.get(blockId);
-        if (!block) continue;
-        const blockType = block.get("type") as string | undefined;
-        const blockText = block.get("text");
-        const value = blockText instanceof Y.Text ? blockText.toString() : "";
-        if (blockType === "text") textChunk = value;
-        else if (blockType === "reasoning") reasoningChunk = value;
-      }
-      streaming = { text: textChunk, reasoning: reasoningChunk };
-    }
-  }
-
-  // tools：toolCalls 投影
-  const tools: SessionStateSnapshot["tools"] = new Map();
-  if (toolCalls) {
-    for (const [toolCallId, tool] of toolCalls.entries()) {
-      tools.set(toolCallId, {
-        name: (tool.get("name") as string) || "",
-        status: mapToolRunStatus((tool.get("status") as string) || "running"),
-        input: tool.get("arguments"),
-        output: tool.get("result"),
-        startedAt: 0,
-      });
-    }
-  }
-
-  // artifacts：resource 块（受授权资源引用）
-  const artifacts: SessionStateSnapshot["artifacts"] = [];
-  for (const entryId of order.toArray()) {
-    const entry = entries.get(entryId);
-    if (!entry) continue;
-    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
-    for (const block of blocks?.values() ?? []) {
-      if (block.get("type") !== "resource") continue;
-      const mediaType = (block.get("mediaType") as string) || "";
-      artifacts.push({
-        kind: mediaType.startsWith("image/") ? "image" : "file",
-        url: (block.get("resourceId") as string) || "",
-        title: (block.get("name") as string) || "",
-        seq: artifacts.length,
-      });
-    }
-  }
-
-  return { structuredMessages, streaming, tools, artifacts, messages };
-}
-
-/** ToolCallProjection 状态 → ToolRun 状态 */
-function mapToolRunStatus(status: string): "running" | "done" | "error" {
-  if (status === "completed") return "done";
-  if (status === "error") return "error";
-  if (status === "cancelled") return "done";
-  return "running";
+  // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段，
+  // 全仓零消费），此处只保留唯一被消费的 structuredMessages；流式状态、工具
+  // 执行态均已由后端投影字段（session.presenting/loading）与 toolCall 块承载。
+  return { structuredMessages: chatDocEntriesToStructuredMessages(ydoc) };
 }
 
 // ── Session Doc 派生：元信息（展示态投影/agent）──
@@ -224,17 +124,14 @@ export function computeSessionSnapshot(
     status: meta.presenting,
     canCancel: meta.canCancel,
     loading: meta.loading,
-    messages: timeline.messages,
     structuredMessages,
-    streaming: timeline.streaming,
-    tools: timeline.tools,
-    artifacts: timeline.artifacts,
   };
 }
 
 /**
  * 订阅指定 RCS 会话的会话状态（时间线 + 展示态投影元信息）。
- * 内部双 store（Chat Doc / Session Doc），applyUpdate(docName, data) 按前缀路由。
+ * 内部双 store（Chat Doc / Session Doc）绑定 DocHub 的共享 doc 实例
+ * （SP-B1），WS update 由 ChatPanel 经 applyDocHubUpdate 单写，本 hook 只读派生。
  */
 export function useSessionState(rcsSessionId: string) {
   const storeRef = useRef<{
@@ -243,65 +140,53 @@ export function useSessionState(rcsSessionId: string) {
   } | null>(null);
   if (!storeRef.current) {
     storeRef.current = {
-      chat: createYjsStore<SessionTimelineSnapshot>(
-        computeTimelineSnapshot,
-        { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] },
-        (s) => stableKey(s),
-      ),
-      meta: createYjsStore<SessionMetaSnapshot>(
-        computeMetaSnapshot,
-        {
-          acpSessionId: "",
-          sessionStatus: null,
-          presenting: "idle",
-          loading: null,
-          canCancel: false,
-          permissionOptions: new Map(),
-        },
-        (s) => stableKey(s),
-      ),
+      chat: createYjsStore<SessionTimelineSnapshot>(computeTimelineSnapshot, { structuredMessages: [] }),
+      meta: createYjsStore<SessionMetaSnapshot>(computeMetaSnapshot, {
+        acpSessionId: "",
+        sessionStatus: null,
+        presenting: "idle",
+        loading: null,
+        canCancel: false,
+        permissionOptions: new Map(),
+      }),
     };
   }
   const stores = storeRef.current;
 
-  const prevKeyRef = useRef<string | null>(null);
-  if (prevKeyRef.current !== rcsSessionId) {
-    prevKeyRef.current = rcsSessionId;
-    for (const store of [stores.chat, stores.meta]) {
-      store.switchDoc(rcsSessionId, () => {
-        const ydoc = new Y.Doc();
-        return { ydoc };
-      });
-    }
-  }
+  // 绑定工厂：从 DocHub 取共享 doc（ownsDoc=false，生命周期归 hub 引用计数）；
+  // useCallback 保持引用稳定，渲染期与 effect 期复用同一工厂
+  const bindChatDoc = useCallback(() => createChatDocBinding(rcsSessionId), [rcsSessionId]);
+  const bindSessionDoc = useCallback(() => createSessionDocBinding(rcsSessionId), [rcsSessionId]);
 
-  const timeline = useSyncExternalStore(stores.chat.subscribe, stores.chat.getSnapshot);
-  const meta = useSyncExternalStore(stores.meta.subscribe, stores.meta.getSnapshot);
+  // 重订阅驱动（bind epoch）：destroy 会清空 store listeners（store 契约），
+  // 而 useSyncExternalStore 只在 subscribe 引用变化时重订阅——cleanup destroy
+  // 后必须重建订阅，否则切换会话 / StrictMode 双挂载后后续 update 不再触发
+  // 渲染（快照永久 stale，SP-B1 回归测试捕获的真实缺陷）。
+  const [bindEpoch, setBindEpoch] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）
+  const subscribeChat = useCallback((cb: () => void) => stores.chat.subscribe(cb), [bindEpoch]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，bindEpoch 仅驱动引用变化
+  const subscribeMeta = useCallback((cb: () => void) => stores.meta.subscribe(cb), [bindEpoch]);
+
+  const timeline = useSyncExternalStore(subscribeChat, stores.chat.getSnapshot);
+  const meta = useSyncExternalStore(subscribeMeta, stores.meta.getSnapshot);
   const state = useMemo(() => computeSessionSnapshot(timeline, meta), [timeline, meta]);
 
   useEffect(() => {
-    // StrictMode 双挂载：首次 cleanup 已 destroy store（activeKey 重置为 ""），
-    // 重挂载时 prevKeyRef 幂等保护会跳过渲染期 switchDoc，必须在此显式重建当前 doc。
-    // 正常挂载时渲染期 switchDoc 已设置 activeKey，此处调用为 no-op（幂等安全）。
-    for (const store of [stores.chat, stores.meta]) {
-      store.switchDoc(rcsSessionId, () => {
-        const ydoc = new Y.Doc();
-        return { ydoc };
-      });
-    }
+    // doc 绑定只在 effect 期执行（不在渲染期 switchDoc）：渲染期 switchDoc 的
+    // notify() 会在渲染进行中触发已订阅组件的 setState（React 报错），且本组件
+    // 的 listeners 已被 cleanup destroy 清空，必须经 bindEpoch 重订阅兜底。
+    // StrictMode 双挂载 / 切换会话：cleanup destroy 已重置 activeKey（""），
+    // 此处 switchDoc 重建 hub 绑定；destroy 经 binding.cleanup 释放 hub 引用，
+    // 计数归零才销毁共享 doc。绑定完成后推进 epoch 驱动重订阅。
+    stores.chat.switchDoc(rcsSessionId, bindChatDoc);
+    stores.meta.switchDoc(rcsSessionId, bindSessionDoc);
+    setBindEpoch((e) => e + 1);
     return () => {
       stores.chat.destroy();
       stores.meta.destroy();
     };
-  }, [stores, rcsSessionId]);
+  }, [stores, rcsSessionId, bindChatDoc, bindSessionDoc]);
 
-  const applyUpdate = useCallback(
-    (docName: string, data: Uint8Array) => {
-      if (docName.startsWith("chat:")) stores.chat.applyUpdate(data);
-      else stores.meta.applyUpdate(data);
-    },
-    [stores],
-  );
-
-  return { state, applyUpdate };
+  return { state };
 }

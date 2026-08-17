@@ -28,6 +28,10 @@ const INSTANCE_ID = "inst-1";
 const controllerStopCalls: string[] = [];
 /** 记录 facade.stopInstance 调用。 */
 const facadeStopCalls: string[] = [];
+/** 记录实例停止完成点的 YJS Doc 回收调用（SP-C2 接线验证）。 */
+const yjsReclaimCalls: string[] = [];
+/** 每次回收触发时刻的 facade 停止调用数（顺序钉住：回收必须在 core 停止之后）。 */
+const facadeStopCountAtReclaim: number[] = [];
 /** 当前注入的 controller.stopInstance 实现（测试 7 用于挂起第一个调用）。 */
 let controllerStopImpl: (instanceId: string) => Promise<void> = async (id) => {
   controllerStopCalls.push(id);
@@ -68,13 +72,23 @@ describe("terminateLocalDeadInstance", () => {
   beforeEach(() => {
     controllerStopCalls.length = 0;
     facadeStopCalls.length = 0;
+    yjsReclaimCalls.length = 0;
+    facadeStopCountAtReclaim.length = 0;
     activeInstances = [INSTANCE_ID];
     snapshot = makeSnapshot();
     controllerStopImpl = async (id) => {
       controllerStopCalls.push(id);
     };
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    setOrchestrationInstanceDeps({ getOrchestrationController: () => fakeController });
+    setOrchestrationInstanceDeps({
+      getOrchestrationController: () => fakeController,
+      // 隔离 SP-C2 回收接线：默认实现会惰性装配真实 ChatChannelController，
+      // 本文件的既有用例只验证停止语义，不依赖真实 Doc 回收
+      reclaimYjsDocs: async (instanceId) => {
+        yjsReclaimCalls.push(instanceId);
+        facadeStopCountAtReclaim.push(facadeStopCalls.length);
+      },
+    });
   });
 
   afterEach(() => {
@@ -176,5 +190,18 @@ describe("terminateLocalDeadInstance", () => {
     });
 
     await expect(terminateLocalDeadInstance(INSTANCE_ID)).resolves.toBeUndefined();
+  });
+
+  // SP-C2：实例停止完成点必须触发内存 YJS Doc 回收（idle reclaim 4001 路径与
+  // 死实例清理共用 stopInstanceViaController funnel），且回收发生在 core 停止之后——
+  // 实例可能存活时关 Doc 会丢弃实时流（C6 断链语义一）。
+  test("停止完成 → 触发 yjs doc 回收，且顺序在 core stop 之后", async () => {
+    await terminateLocalDeadInstance(INSTANCE_ID);
+
+    expect(controllerStopCalls).toEqual([INSTANCE_ID]);
+    expect(facadeStopCalls).toEqual([INSTANCE_ID]);
+    expect(yjsReclaimCalls).toEqual([INSTANCE_ID]);
+    // 回收触发时 core 停止已完成（顺序钉住）
+    expect(facadeStopCountAtReclaim).toEqual([1]);
   });
 });

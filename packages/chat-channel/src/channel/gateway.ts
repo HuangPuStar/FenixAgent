@@ -218,6 +218,12 @@ export class Gateway {
     if (acquired.created) {
       this.dependencies.markRelayAttached(instanceId);
       shared.idleMonitorAttached = true;
+      // 登记实例与会话的实时资源归属（SP-C2）：relay 释放（引用计数归零）不产生
+      // relay_closed，实例随后被停止回收（stopInstanceViaController 完成处）时，
+      // 依赖此登记按 instanceId 统一关闭名下内存 Doc。
+      // 注意：登记只在此处（relay 创建），不在 releaseRelay——前端断开但实例可能
+      // 存活时禁止关 Doc（见 releaseRelay 注释与 C6 断链语义一）。
+      this.dependencies.relayEvents.bindInstanceSession(instanceId, resolvedRcsSessionId);
       try {
         // 时间线 Doc 在首个客户端连接时打开并广播（Agent 元信息经 status 消息投影到 Session Doc）
         const chatDoc = await this.dependencies.docManager.openChat(shared.rcsSessionId);
@@ -403,7 +409,11 @@ export class Gateway {
    * 注销广播监听、释放频道状态（去重表/队列）、关闭 relay handle。
    * 注意：此路径不销毁 Chat Doc / Session Doc——Agent 会话可能仍存活，
    * 重连后 handleOpen 通过 openChat/openSession 同步当前实时 Y.Doc（C6 断链语义一）。
-   * Doc 销毁只发生在 relay_closed（实例断链/回收）路径（relay-event-handler）。
+   * **绝对禁止**在此（或任何"实例可能存活"的时机）关闭 Doc：processNormalizedEvent
+   * 对不在内存的会话直接丢事件，提前关闭等于丢弃实时流。Doc 销毁只发生在
+   * relay_closed（实例断链，relay-event-handler）与实例确认停止后的实例级回收
+   * （RelayEventHandler.reclaimInstanceRealtimeResources，由宿主在
+   * stopInstanceViaController 完成处触发）两条路径。
    */
   private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
     const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);

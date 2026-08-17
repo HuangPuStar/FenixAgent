@@ -70,7 +70,8 @@ export class ChatChannelController {
 
   constructor(dependencies: ChatChannelDependencies) {
     this.registry = new ConnectionRegistry();
-    this.broadcaster = new YjsBroadcaster(this.registry);
+    // reportLog 注入 broadcaster：SP-0 帧打点与 SP-A7 lagging/resync 生命周期日志
+    this.broadcaster = new YjsBroadcaster(this.registry, { reportLog: dependencies.log });
     this.sessionChannel = new SessionChannel({
       docManager: dependencies.docManager,
       prepareClearSessionSnapshot: dependencies.prepareClearSessionSnapshot,

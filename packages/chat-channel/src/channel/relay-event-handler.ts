@@ -6,7 +6,14 @@
 // - acp-link 私有帧在此边界翻译为规范化事件（session/update 语义）后投递聚合层；
 // - relay_closed（Instance ACP session 断链）触发两类清理：宿主侧实例级回收
 //   （terminateLocalDeadInstance 注入）与本节点实时资源删除（Chat Doc / Session Doc /
-//   广播订阅），保证新实例创建全新投影、绝不加载旧 Y.Doc（C6 断链语义）。
+//   广播订阅），保证新实例创建全新投影、绝不加载旧 Y.Doc（C6 断链语义）；
+// - 实例确认停止后的全量实时资源回收（SP-C2）：bindInstanceSession 登记
+//   instanceId → rcsSessionId 单活归属（gateway 创建 relay 时注入；后继实例
+//   重绑同一会话即刻剥夺旧实例归属，防止旧实例停止回收销毁接管实例正在写入
+//   的实时 Doc），宿主在 stopInstanceViaController 完成处调用
+//   reclaimInstanceRealtimeResources 统一关闭该实例名下全部内存 Doc，补齐
+//   relay 已释放（无 relay_closed 可达）的回收路径（idle reclaim / 死实例
+//   清理 / 机器幽灵清理）。
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
@@ -68,12 +75,34 @@ export interface RelayEventHandlerDependencies {
   reportError: (message: string, error: unknown) => void;
   /** 每次从 Agent 收到消息时更新实例活跃时间（宿主注入，内部过滤保活消息） */
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
-  /** 本地死实例回收（宿主注入：内部校验 nodeId，远程实例由机器级清理覆盖） */
+  /** 本地死实例回收（宿主注入：内部校验 nodeId；远程实例由机器级清理覆盖——该路径同样触发实时 Doc 回收） */
   terminateLocalDeadInstance: (instanceId: string) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
 export class RelayEventHandler {
+  /**
+   * instanceId → 该实例当前归属的 rcsSessionId 集合（SP-C2）。
+   * 由 gateway 在 relay 创建时经 bindInstanceSession 登记；登记必须跨越 relay
+   * 引用计数归零存活——relay 释放（closeReleasedRelay）不产生 relay_closed，
+   * 实例停止回收时是唯一的 instanceId → rcsSessionId 映射来源。
+   *
+   * 单活归属：同一 rcsSessionId 任一时间只属于一个实例（实时 Doc 按
+   * rcsSessionId 键控，物理上无法按实例共享）。旧实例停止窗口内
+   * （stopInstanceViaController 已移出编排域活跃表、facade.stopInstance 尚在途）
+   * 客户端自动重连会 spawn 新实例并重绑同一 rcsSessionId——bindInstanceSession
+   * 此刻剥夺旧实例归属，旧实例停止完成后的回收随之跳过该会话，避免销毁新实例
+   * 正在写入的实时 Doc。
+   *
+   * 绑定条目的最终删除依赖前提：所有实例移除路径都汇聚到回收 funnel——
+   * stopInstanceViaController 完成点（idle/activity reclaim、手动停止、
+   * agent-chat-service dispose、terminateLocalDeadInstance、stopAllInstances）
+   * 与远程机器幽灵清理（orchestration-machine-cleanup → reclaimInstanceYjsDocs）。
+   * 新增实例移除路径时必须同步接入，否则 instanceSessions 条目与该实例名下
+   * 保留的实时 Doc 将永久泄漏。
+   */
+  private readonly instanceSessions = new Map<string, Set<string>>();
+
   constructor(private readonly dependencies: RelayEventHandlerDependencies) {}
 
   createMessageHandler(shared: SharedRelay): (message: RelayMessage) => Promise<void> {
@@ -188,7 +217,11 @@ export class RelayEventHandler {
    * 本地 relay 意外关闭（进程崩溃/被杀）：实例级清理 + turn 收敛 + Doc 销毁
    * （C6 断链语义二）。与 gateway 的引用计数释放（断链语义一：保留 Doc 供重连）
    * 是两条不同 teardown 路径：relay_closed 意味着 Agent 会话已死，必须销毁热缓存，
-   * 新实例/新连接将创建全新实时投影，绝不加载旧 Y.Doc。
+   * 新实例/新连接将创建全新实时投影，绝不加载旧 Y.Doc。实例停止回收
+   * （reclaimInstanceRealtimeResources）是第三条路径：relay 已释放（无
+   * relay_closed 可达）但实例随后确认停止时，按 instanceId 统一回收。
+   * 例外：后继实例已接管该会话（单活归属易主）时跳过 Doc 销毁，见下方
+   * eligibleForDispose 注释。
    */
   private async handleRelayClosed(shared: SharedRelay): Promise<void> {
     const { registry } = this.dependencies;
@@ -223,20 +256,105 @@ export class RelayEventHandler {
       }
     });
     // 先注销广播监听再销毁 Doc：即使客户端 close 事件延迟到达，也不会残留僵尸监听器。
+    // 归属防误伤：后继实例已接管该会话（旧实例停止窗口内客户端重连 spawn 新实例
+    // 并重绑后，本 relay 才收到迟到断链）时不销毁实时 Doc——客户端已被 1011 关闭
+    // 并自动重连到后继实例，Doc 保留即可无缝续流；销毁只会静默冻结新实例的实时流。
+    const eligibleForDispose = () => {
+      const owner = this.findSessionOwner(shared.rcsSessionId);
+      return owner === undefined || owner === shared.instanceId;
+    };
+    if (eligibleForDispose()) {
+      await this.disposeRealtimeResources(shared.rcsSessionId, eligibleForDispose);
+    }
+  }
+
+  // ── 实例级实时资源回收（SP-C2）──
+
+  /**
+   * 登记实例与 RCS 会话的实时资源归属（gateway 在共享 relay 创建时调用）。
+   * 幂等：重复登记（重连后 relay 重建）只保留一个集合条目。
+   *
+   * 单活归属转移：把该 rcsSessionId 从其他实例的绑定集合中移除——后继实例接管
+   * 即刻剥夺旧实例的回收权。不转移的后果：旧实例停止完成（stopInstanceViaController
+   * 末尾）后的回收会按旧登记无条件销毁新实例正在写入的实时 Doc，之后
+   * processNormalizedEvent 对该会话全部丢事件，前端连接保持打开但静默冻结
+   * （无错误帧、无 turn 收敛）；该会话交由现持有实例停止时回收。
+   */
+  bindInstanceSession(instanceId: string, rcsSessionId: string): void {
+    for (const [owner, sessions] of this.instanceSessions) {
+      if (owner !== instanceId) sessions.delete(rcsSessionId);
+    }
+    let sessions = this.instanceSessions.get(instanceId);
+    if (!sessions) {
+      sessions = new Set();
+      this.instanceSessions.set(instanceId, sessions);
+    }
+    sessions.add(rcsSessionId);
+  }
+
+  /** 查询 rcsSessionId 当前的归属实例；未登记（无主）时返回 undefined。 */
+  private findSessionOwner(rcsSessionId: string): string | undefined {
+    for (const [owner, sessions] of this.instanceSessions) {
+      if (sessions.has(rcsSessionId)) return owner;
+    }
+    return;
+  }
+
+  /**
+   * 实例确认停止后回收其名下全部内存 Doc 与广播订阅（SP-C2）。
+   *
+   * 调用契约：宿主只在实例停止完成点调用（stopInstanceViaController 末尾与
+   * 机器幽灵清理 orchestration-machine-cleanup，覆盖 idle reclaim 4001 路径、
+   * terminateLocalDeadInstance 回收与远程机器断连/重连清理）。**绝对禁止**
+   * 在"前端连接断开但实例可能存活"时调用本方法回收 Doc：重连后 handleOpen 的
+   * openChat 依赖内存中的实时 Doc 同步投影，且 processNormalizedEvent 对不在
+   * 内存的会话直接丢事件（doc-manager 绑定规则）——提前关闭等于丢弃实时流
+   * （C6 断链语义一，与 gateway.releaseRelay 的保留约束一致）。
+   *
+   * 归属防误伤：逐会话回收前校验单活归属——该会话已被后继实例接管（旧实例
+   * 停止窗口内客户端重连 spawn 新实例并重绑）时跳过，交由现持有实例停止时
+   * 回收；回收 await 窗口内发生接管同样中止（disposeRealtimeResources 的逐步
+   * 资格校验）。
+   *
+   * 先删除登记再逐会话回收：并发触发（relay_closed 与实例停止回收竞争）时
+   * 最多一方执行，disposeRealtimeResources 本身幂等（Map miss 即 no-op）。
+   */
+  async reclaimInstanceRealtimeResources(instanceId: string): Promise<void> {
+    const sessions = this.instanceSessions.get(instanceId);
+    if (!sessions) return;
+    this.instanceSessions.delete(instanceId);
+    for (const rcsSessionId of sessions) {
+      // 自身登记已删除：仅无主（无任何实例归属）时才回收；被后继实例接管即跳过
+      const eligible = () => this.findSessionOwner(rcsSessionId) === undefined;
+      if (!eligible()) continue;
+      await this.disposeRealtimeResources(rcsSessionId, eligible);
+    }
+  }
+
+  /**
+   * 注销广播监听并销毁该 rcsSessionId 的 Chat / Session Doc。
+   * relay_closed（本 binding 断链）与实例停止回收（实例名下全部 binding）共用；
+   * closeChat/closeSession 内部触发 provider.destroy（Redis 快照 flush）与
+   * ydoc.destroy，Map 未命中时为 no-op（幂等）。
+   *
+   * eligible 为逐步资格校验：close 的 await 窗口（Redis flush）内后继实例可能
+   * 重绑并重开同名 Doc，失去资格时立即中止——继续执行会注销后继实例刚注册的
+   * 广播监听、销毁其刚重建的 Doc，令其前端连接静默冻结。
+   */
+  private async disposeRealtimeResources(rcsSessionId: string, eligible: () => boolean): Promise<void> {
+    if (!eligible()) return;
     try {
-      this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
-      this.dependencies.broadcaster.unregisterYjsDocListener(`session:${shared.rcsSessionId}`);
+      this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${rcsSessionId}`);
+      this.dependencies.broadcaster.unregisterYjsDocListener(`session:${rcsSessionId}`);
     } catch {
       /* ignore */
     }
     try {
-      await this.dependencies.docManager.closeChat(shared.rcsSessionId);
-      await this.dependencies.docManager.closeSession(shared.rcsSessionId);
+      await this.dependencies.docManager.closeChat(rcsSessionId);
+      if (!eligible()) return;
+      await this.dependencies.docManager.closeSession(rcsSessionId);
     } catch (err) {
-      this.dependencies.reportError(
-        `[YJS-FE] failed to dispose realtime resources: rcsSessionId=${shared.rcsSessionId}`,
-        err,
-      );
+      this.dependencies.reportError(`[YJS-FE] failed to dispose realtime resources: rcsSessionId=${rcsSessionId}`, err);
     }
   }
 

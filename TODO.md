@@ -30,8 +30,8 @@
   `mergeYjsSnapshotWithCas`、`getSessionsMap`、`UpdateHandler` 仅包内消费，
   可降级为非导出（turn-machine.ts:58,73 等）。影响：减小对外契约面。
 - [ ] **零消费者便利导出**：`index.ts` 10 个 acp-link 便利转导出
-  （AgentCapabilities / ModelInfo / SessionUpdate 等）、`types.ts` 19 个
-  导出类型零直接 import（LoadingState / ToolRun / ArtifactRef 等，结构性活跃）。
+  （AgentCapabilities / ModelInfo / SessionUpdate 等）、`types.ts` 导出类型零直接
+  import（LoadingState 等，结构性活跃；ToolRun / ArtifactRef 已随 SP-B2 死字段删除）。
   需逐项确认后删除或改为内部类型。
 - [ ] **M7 chat-writer 拆分**：494 行接近 500 行红线；按 entry 写入 /
   toolCalls / session 元信息拆分。风险：import 调整面大，暂缓至下次触碰时。

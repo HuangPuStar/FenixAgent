@@ -1,136 +1,61 @@
-// packages/acp-server/src/redis-provider.ts
+// packages/chat-channel/src/persist/redis.ts
+// Redis 快照持久化 provider 与 Pub/Sub 增量分发（chat:{id} / session:{id} 共用）。
+//
+// 丢失语义（SP-A1）：快照持久化是 trailing 节流的尽力而为写入——距上次成功 CAS
+// ≥ RCS_YJS_SNAPSHOT_INTERVAL_MS（默认 2s）或静默期（RCS_YJS_SNAPSHOT_IDLE_MS，
+// 默认 500ms 无新 update）才执行一次全量 CAS 合并；destroy()（closeChat/closeSession
+// 的统一收口）强制 flush 未落盘快照。节流窗口内进程崩溃会丢失窗口内更新，但快照本就
+// 不是权威——权威是 Agent 侧 ACP session 历史，可经 load_session 回放重建（见
+// docs/design/2026-08-04-yjs-chat-streaming-prd.md「兼容与演进」）。Pub/Sub 增量路径
+// 不节流，实时性不受影响。
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import { mergeYjsSnapshotWithCas, type RedisSnapshotConnection } from "./snapshot-cas";
+import { defaultSnapshotMetricsLog, getSnapshotEnvConfig, reportSnapshotCasMetric } from "./snapshot-config";
+import { framePublishUpdate, isSamePublisherId, PUBLISHER_ID, parseFramedPublish } from "./snapshot-framing";
+
+export type { RedisSnapshotConnection, RedisSnapshotTransaction } from "./snapshot-cas";
+// CAS 写入工具经本模块再导出，保持 persist/index.ts 与既有调用方的导入路径不变。
+export {
+  mergeYjsSnapshotWithCas,
+  persistYjsClearedSnapshotWithCas,
+  persistYjsSnapshotWithCas,
+} from "./snapshot-cas";
 
 const REDIS_KEY_PREFIX = "yjs:";
 const REDIS_CHANNEL_PREFIX = "yjs:channel:";
-const SNAPSHOT_PERSIST_RETRIES = 5;
 
-type RedisSnapshotTransaction = {
-  set(key: string, value: Buffer): RedisSnapshotTransaction;
-  exec(): Promise<unknown | null>;
-};
-
-type RedisSnapshotConnection = {
-  watch(key: string): Promise<unknown>;
-  unwatch(): Promise<unknown>;
-  getBuffer(key: string): Promise<Buffer | null>;
-  multi(): RedisSnapshotTransaction;
-  disconnect(): void;
-};
-
-function mergeSnapshotUpdates(existingRaw: Buffer | null, localFull: Uint8Array): Uint8Array {
-  if (!existingRaw) return localFull;
-
-  try {
-    return Y.mergeUpdates([new Uint8Array(existingRaw), localFull]);
-  } catch {
-    // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
-    return Y.mergeUpdates([new Uint8Array(Buffer.from(existingRaw.toString(), "base64")), localFull]);
-  }
-}
-
-/**
- * 使用专用连接将本地完整 Yjs 状态与 Redis 中的状态原子合并。
- * WATCH 必须只存在于此连接，不能污染全局命令连接或 Pub/Sub subscriber。
- */
-export async function mergeYjsSnapshotWithCas(
-  persistence: RedisSnapshotConnection,
-  redisKey: string,
-  localFull: Uint8Array,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < SNAPSHOT_PERSIST_RETRIES; attempt += 1) {
-    let watched = false;
-    try {
-      await persistence.watch(redisKey);
-      watched = true;
-      const existingRaw = await persistence.getBuffer(redisKey);
-      const merged = mergeSnapshotUpdates(existingRaw, localFull);
-      const result = await persistence.multi().set(redisKey, Buffer.from(merged)).exec();
-      watched = false; // EXEC 会自动 UNWATCH。
-      if (result !== null) return true;
-    } finally {
-      if (watched) await persistence.unwatch().catch(() => {});
-    }
-  }
-
-  return false;
-}
-
-/** 为临时调用方创建隔离连接，避免其 WATCH 状态影响主 Redis 连接。 */
-export async function persistYjsSnapshotWithCas(
-  redis: Redis | Cluster,
-  redisKey: string,
-  localFull: Uint8Array,
-): Promise<boolean> {
-  const persistence = redis.duplicate() as unknown as RedisSnapshotConnection;
-  try {
-    return await mergeYjsSnapshotWithCas(persistence, redisKey, localFull);
-  } finally {
-    try {
-      persistence.disconnect();
-    } catch {}
-  }
-}
-
-/**
- * 原子地持久化一个清空后的会话快照。
- *
- * 与普通合并 CAS 不同，冲突重试时会重新读取 Redis 当前状态并再次清空，
- * 因此清空者未见的并发内容不会被 Yjs 合并重新带回。
- */
-export async function persistYjsClearedSnapshotWithCas(
-  redis: Redis | Cluster,
-  redisKey: string,
-  localBaseline: Uint8Array,
-  clear: (ydoc: Y.Doc) => void,
-): Promise<boolean> {
-  const persistence = redis.duplicate() as unknown as RedisSnapshotConnection;
-  try {
-    for (let attempt = 0; attempt < SNAPSHOT_PERSIST_RETRIES; attempt += 1) {
-      let watched = false;
-      const clearedDoc = new Y.Doc();
-      try {
-        await persistence.watch(redisKey);
-        watched = true;
-        const existingRaw = await persistence.getBuffer(redisKey);
-        if (existingRaw) {
-          try {
-            Y.applyUpdate(clearedDoc, new Uint8Array(existingRaw));
-          } catch {
-            // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
-            Y.applyUpdate(clearedDoc, new Uint8Array(Buffer.from(existingRaw.toString(), "base64")));
-          }
-        }
-        Y.applyUpdate(clearedDoc, localBaseline);
-        clear(clearedDoc);
-
-        const result = await persistence
-          .multi()
-          .set(redisKey, Buffer.from(Y.encodeStateAsUpdate(clearedDoc)))
-          .exec();
-        watched = false; // EXEC 会自动 UNWATCH。
-        if (result !== null) return true;
-      } finally {
-        clearedDoc.destroy();
-        if (watched) await persistence.unwatch().catch(() => {});
-      }
-    }
-
-    return false;
-  } finally {
-    try {
-      persistence.disconnect();
-    } catch {}
-  }
+/** createRedisProvider 的可选配置（宿主 DI / 测试注入通道）。 */
+export interface RedisProviderOptions {
+  /** trailing 节流窗口：距上次成功 CAS 的最小间隔（毫秒） */
+  snapshotIntervalMs?: number;
+  /** 静默期：持续无新 update 该时长后提前 flush（毫秒） */
+  snapshotIdleMs?: number;
+  /** 快照滑动 TTL（秒），每次成功 CAS 续期 */
+  snapshotTtlSeconds?: number;
+  /**
+   * 发布者标识（16 字节）。生产留空使用模块级进程 UUID（同进程消息自环过滤，
+   * 一个进程内同一 channel 只有一个 provider）；仅供测试在单进程内模拟双进程
+   * 互发收敛场景时注入不同值。
+   */
+  publisherId?: Uint8Array;
+  /** SP-0 打点接收器（仅尺寸/耗时/标识）；不传时生产走 console.log、测试静默 */
+  log?: (msg: string) => void;
 }
 
 export function createRedisProvider(
   redis: Redis | Cluster,
   docName: string,
   ydoc: Y.Doc,
+  options?: RedisProviderOptions,
 ): { destroy(): Promise<void> } {
+  const envConfig = getSnapshotEnvConfig();
+  const snapshotIntervalMs = options?.snapshotIntervalMs ?? envConfig.intervalMs;
+  const snapshotIdleMs = options?.snapshotIdleMs ?? envConfig.idleMs;
+  const snapshotTtlSeconds = options?.snapshotTtlSeconds ?? envConfig.ttlSeconds;
+  const metricsLog = options?.log ?? defaultSnapshotMetricsLog;
+
   const redisKey = `${REDIS_KEY_PREFIX}${docName}`;
   const channel = `${REDIS_CHANNEL_PREFIX}${docName}`;
 
@@ -139,6 +64,8 @@ export function createRedisProvider(
   const r = redis as Redis;
 
   const remoteUpdateOrigin = Symbol("redis-provider-remote-update");
+  // 生产使用模块级进程 UUID（同进程自环过滤）；测试可注入不同值模拟双进程互发。
+  const publisherId = options?.publisherId ?? PUBLISHER_ID;
   const pendingLocalUpdates: Uint8Array[] = [];
   let readyForLocalUpdates = false;
   let localSnapshotPending = false;
@@ -147,6 +74,11 @@ export function createRedisProvider(
   let destroyed = false;
   let subscriber: Redis | null = null;
   let persistence: RedisSnapshotConnection | null = null;
+  // 节流状态：lastPersistSuccessAt = 0 表示尚无成功写入，首次调度立即 flush（microtask）。
+  let lastPersistSuccessAt = 0;
+  let intervalTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let inFlightCas: Promise<boolean> | null = null;
 
   const reportSubscriberFailure = (stage: "duplicate" | "listen" | "subscribe" | "load" | "error" | "persist") => {
     console.warn(`[redis-provider] Redis ${stage} failed; local sync remains enabled`);
@@ -154,7 +86,8 @@ export function createRedisProvider(
 
   const publishUpdate = (update: Uint8Array) => {
     try {
-      r.publish(channel, Buffer.from(update)).catch(() => {});
+      // SP-A6：附加发布者标识头，供本进程 subscriber 自环过滤。
+      r.publish(channel, framePublishUpdate(update, publisherId)).catch(() => {});
     } catch {
       // 后台发布失败不影响文档更新，且不记录文档内容。
     }
@@ -168,49 +101,101 @@ export function createRedisProvider(
     if (localSnapshotPending) scheduleSnapshotFlush();
   };
 
-  const scheduleSnapshotFlush = () => {
-    if (flushScheduled) return;
+  const clearSnapshotTimers = () => {
+    if (intervalTimer !== null) {
+      clearTimeout(intervalTimer);
+      intervalTimer = null;
+    }
+    if (idleTimer !== null) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+  };
 
-    flushScheduled = true;
-    queueMicrotask(() => {
-      flushScheduled = false;
-      if (destroyed || !readyForLocalUpdates) return;
-      if (persistInFlight) {
-        scheduleSnapshotFlush();
-        return;
-      }
+  /** 打点辅助：以 CAS 起始时刻换算耗时，仅含尺寸/耗时/标识。 */
+  const reportCasOutcome = (bytes: number, encodeMs: number, casStartedAt: number, persisted: boolean) => {
+    reportSnapshotCasMetric(metricsLog, docName, bytes, encodeMs, Date.now() - casStartedAt, persisted);
+  };
 
-      const activePersistence = persistence;
-      if (!activePersistence) {
-        reportSubscriberFailure("persist");
-        return;
-      }
+  const startFlush = () => {
+    clearSnapshotTimers();
+    if (destroyed || !readyForLocalUpdates || persistInFlight || !localSnapshotPending) return;
 
-      persistInFlight = true;
-      localSnapshotPending = false;
-      let localFull: Uint8Array;
-      try {
-        localFull = Y.encodeStateAsUpdate(ydoc);
-      } catch {
+    const activePersistence = persistence;
+    if (!activePersistence) {
+      reportSubscriberFailure("persist");
+      return;
+    }
+
+    persistInFlight = true;
+    localSnapshotPending = false;
+    const encodeStartedAt = Date.now();
+    let localFull: Uint8Array;
+    try {
+      localFull = Y.encodeStateAsUpdate(ydoc);
+    } catch {
+      persistInFlight = false;
+      if (!destroyed) reportSubscriberFailure("persist");
+      if (localSnapshotPending && !destroyed) scheduleSnapshotFlush();
+      return;
+    }
+    const encodeMs = Date.now() - encodeStartedAt;
+    const casStartedAt = Date.now();
+
+    inFlightCas = mergeYjsSnapshotWithCas(activePersistence, redisKey, localFull, snapshotTtlSeconds);
+    const cas = inFlightCas;
+    void cas
+      .then(
+        (persisted) => {
+          if (persisted) lastPersistSuccessAt = Date.now();
+          else if (!destroyed) reportSubscriberFailure("persist");
+          reportCasOutcome(localFull.length, encodeMs, casStartedAt, persisted);
+        },
+        () => {
+          if (!destroyed) reportSubscriberFailure("persist");
+          reportCasOutcome(localFull.length, encodeMs, casStartedAt, false);
+        },
+      )
+      .finally(() => {
+        if (inFlightCas === cas) inFlightCas = null;
         persistInFlight = false;
-        if (!destroyed) reportSubscriberFailure("persist");
-        return;
-      }
+        if (localSnapshotPending && !destroyed) scheduleSnapshotFlush();
+      });
+  };
 
-      void mergeYjsSnapshotWithCas(activePersistence, redisKey, localFull)
-        .then(
-          (persisted) => {
-            if (!persisted && !destroyed) reportSubscriberFailure("persist");
-          },
-          () => {
-            if (!destroyed) reportSubscriberFailure("persist");
-          },
-        )
-        .finally(() => {
-          persistInFlight = false;
-          if (localSnapshotPending && !destroyed) scheduleSnapshotFlush();
-        });
-    });
+  /**
+   * SP-A1 trailing 节流：距上次成功写入 ≥ interval 时经 microtask 立即执行
+   * （保留同一事件循环内变更合并为一次 CAS 的既有语义）；窗口内则安排
+   * 「interval 绝对到期」与「静默期」两个定时器，先到者触发一次合并 flush。
+   */
+  const scheduleSnapshotFlush = () => {
+    if (destroyed || !readyForLocalUpdates || persistInFlight || !localSnapshotPending) return;
+
+    const now = Date.now();
+    if (lastPersistSuccessAt === 0 || now - lastPersistSuccessAt >= snapshotIntervalMs) {
+      clearSnapshotTimers();
+      if (flushScheduled) return;
+
+      flushScheduled = true;
+      queueMicrotask(() => {
+        flushScheduled = false;
+        startFlush();
+      });
+      return;
+    }
+
+    if (intervalTimer === null) {
+      const delay = Math.max(lastPersistSuccessAt + snapshotIntervalMs - now, 0);
+      intervalTimer = setTimeout(() => {
+        intervalTimer = null;
+        startFlush();
+      }, delay);
+    }
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      startFlush();
+    }, snapshotIdleMs);
   };
 
   // 本地变更 → 合并写 Redis 全量快照 + publish 增量。
@@ -237,7 +222,15 @@ export function createRedisProvider(
     if (receivedChannelName !== channel) return;
 
     try {
-      Y.applyUpdate(ydoc, new Uint8Array(message), remoteUpdateOrigin);
+      const payload = new Uint8Array(message);
+      const framed = parseFramedPublish(payload);
+      if (framed) {
+        if (isSamePublisherId(framed.publisherId, publisherId)) return; // SP-A6 自环过滤
+        Y.applyUpdate(ydoc, framed.update, remoteUpdateOrigin);
+        return;
+      }
+      // 无发布者头的旧格式（滚动部署窗口）：按原始 update 全量 apply，无损兼容。
+      Y.applyUpdate(ydoc, payload, remoteUpdateOrigin);
     } catch {
       // 忽略无效的 update
     }
@@ -291,6 +284,30 @@ export function createRedisProvider(
     try {
       activePersistence.disconnect();
     } catch {}
+  };
+
+  /** destroy 收口的强制 flush：等待在途 CAS 后同步 encode + await CAS，关闭节流窗口的丢失语义。 */
+  const forceFlushForDestroy = async () => {
+    if (inFlightCas) {
+      try {
+        await inFlightCas;
+      } catch {}
+    }
+    if (!localSnapshotPending || persistInFlight || !persistence) return;
+
+    localSnapshotPending = false;
+    try {
+      const encodeStartedAt = Date.now();
+      const localFull = Y.encodeStateAsUpdate(ydoc);
+      const encodeMs = Date.now() - encodeStartedAt;
+      const casStartedAt = Date.now();
+      const persisted = await mergeYjsSnapshotWithCas(persistence, redisKey, localFull, snapshotTtlSeconds);
+      if (persisted) lastPersistSuccessAt = Date.now();
+      else reportSubscriberFailure("persist");
+      reportCasOutcome(localFull.length, encodeMs, casStartedAt, persisted);
+    } catch {
+      reportSubscriberFailure("persist");
+    }
   };
 
   try {
@@ -361,6 +378,8 @@ export function createRedisProvider(
       destroyed = true;
       ydoc.off("update", onUpdate);
       cleanupSubscriber();
+      clearSnapshotTimers();
+      await forceFlushForDestroy();
       cleanupPersistence();
     },
   };

@@ -8,17 +8,20 @@
 // Chat Doc、Session Doc、relay handle、广播订阅与热缓存；新连接创建全新投影，绝不加载旧 Y.Doc。
 
 import { describe, expect, test } from "bun:test";
-import * as Y from "yjs";
 import { DocManager } from "../state/doc-manager";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
-import { createGateway, createWs, type MockWs } from "./connection-test-helpers";
+import { createGateway, createWs, decodeSnapshot, decodeUpdateFrames, textFrames } from "./connection-test-helpers";
 import type { RelayMessage } from "./connection-types";
+import type { GatewayDependencies } from "./gateway";
 import { RelayEventHandler } from "./relay-event-handler";
 import { SessionChannel } from "./session-channel";
 
-/** 真实 DocManager + 真实 SessionChannel 的 Gateway 装配（协议层测试 seam） */
-function createRealStack() {
+/**
+ * 真实 DocManager + 真实 SessionChannel 的 Gateway 装配（协议层测试 seam）。
+ * ensureRunning 可注入（默认恒返回 instance-1），用于模拟实例切换 / 后继 spawn。
+ */
+function createRealStack(options: { ensureRunning?: GatewayDependencies["ensureRunning"] } = {}) {
   const registry = new ConnectionRegistry();
   const broadcaster = new YjsBroadcaster(registry);
   const docManager = new DocManager();
@@ -42,6 +45,7 @@ function createRealStack() {
   const gateway = createGateway(registry, broadcaster, relayEvents, {
     docManager,
     sessionChannel,
+    ...(options.ensureRunning ? { ensureRunning: options.ensureRunning } : {}),
     connectAgentRelay: async () => {
       connectCalls += 1;
       return {
@@ -64,17 +68,6 @@ function createRealStack() {
     getListener: () => listener,
     getConnectCalls: () => connectCalls,
   };
-}
-
-/** 从连接的 WS 消息中取出指定 docName 的 snapshot 并解码 */
-function decodeSnapshot(ws: MockWs, docName: string): Y.Doc {
-  const frame = ws.messages
-    .map((message) => JSON.parse(message) as { docName?: string; data?: string })
-    .find((message) => message.docName === docName);
-  expect(frame?.data).toBeDefined();
-  const restored = new Y.Doc();
-  Y.applyUpdate(restored, Buffer.from(frame?.data ?? "", "base64"));
-  return restored;
 }
 
 describe("断链语义一：前端断开仅释放连接级资源，重连同步当前实时 Y.Doc", () => {
@@ -139,10 +132,10 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
 
     expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(1);
     expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
-    // 存活标签仍收到同 rcsSessionId 的广播（隔离不丢失）
+    // 存活标签仍收到同 rcsSessionId 的广播（隔离不丢失；SP-A4 后为二进制帧）
     docManager.getChatYdoc("rcs-1")?.getMap("root").set("projectionVersion", 5);
     await Promise.resolve();
-    expect(ws2.messages.some((message) => JSON.parse(message).docName === "chat:rcs-1")).toBe(true);
+    expect(decodeUpdateFrames(ws2).some((frame) => frame.docName === "chat:rcs-1")).toBe(true);
 
     gateway.handleClose("ws-2");
   });
@@ -166,9 +159,11 @@ describe("断链语义二：relay_closed 删除全部实时资源，新实例绝
     expect(listener).toBeDefined();
     await listener?.({ type: "relay_closed" } as RelayMessage);
 
-    // 全部客户端被关闭并收到断链错误帧（消息流中还有连接时的 yjs:update 快照帧，按 type 定位）
+    // 全部客户端被关闭并收到断链错误帧（消息流中还有连接时的 yjs:update 二进制快照帧，按文本帧定位）
     for (const ws of [ws1, ws2]) {
-      const errorFrame = ws.messages.map((message) => JSON.parse(message)).find((m) => m.type === "error");
+      const errorFrame = textFrames(ws)
+        .map((message) => JSON.parse(message))
+        .find((m) => m.type === "error");
       expect(errorFrame).toMatchObject({
         type: "error",
         payload: { code: "agent_connection_lost" },
@@ -190,5 +185,91 @@ describe("断链语义二：relay_closed 删除全部实时资源，新实例绝
     expect(getConnectCalls()).toBe(2);
     expect(decodeSnapshot(ws3, "chat:rcs-1").getMap("root").get("projectionVersion")).toBe(1);
     gateway.handleClose("ws-3");
+  });
+});
+
+// SP-C2：实例确认停止后的实例级回收。relay 引用计数归零（前端断开）不产生
+// relay_closed，实例名下全部内存 Doc 只能由宿主在停止完成点
+// （stopInstanceViaController → reclaimInstanceRealtimeResources）统一关闭；
+// 仅断开前端（实例可能存活）时 Doc 必须保留（断链语义一）。
+describe("实例停止回收（SP-C2）：确认停止后关闭实例名下全部内存 Doc", () => {
+  // 前端断开 → Doc 保留；实例停止回收 → 该实例（gateway 创建 relay 时自动登记）
+  // 名下两个会话的 Doc 全部关闭、openedDocCount 归零；回收后新连接创建全新投影。
+  test("instance stop reclaims all session docs after frontend disconnects", async () => {
+    const { docManager, gateway, relayEvents } = createRealStack();
+    const ws1 = createWs();
+    const ws2 = createWs();
+    // 同一实例（ensureRunning fake 恒返回 instance-1）的两个 RCS 会话
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-2");
+
+    // 仅前端断开（实例可能存活）：Doc 必须保留（C6 断链语义一，重连同步实时 Doc）
+    gateway.handleClose("ws-1");
+    gateway.handleClose("ws-2");
+    expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
+    expect(docManager.getChatYdoc("rcs-2")).toBeDefined();
+    expect(docManager.openedDocCount()).toEqual({ chat: 2, session: 2 });
+
+    // 实例确认停止（idle reclaim / 死实例清理共用 stopInstanceViaController 完成点）
+    await relayEvents.reclaimInstanceRealtimeResources("instance-1");
+    expect(docManager.getChatYdoc("rcs-1")).toBeUndefined();
+    expect(docManager.getSessionYdoc("rcs-1")).toBeUndefined();
+    expect(docManager.getChatYdoc("rcs-2")).toBeUndefined();
+    expect(docManager.getSessionYdoc("rcs-2")).toBeUndefined();
+    expect(docManager.openedDocCount()).toEqual({ chat: 0, session: 0 });
+
+    // 回收后新连接（新实例 spawn）：全新投影，且重新登记归属（下次停止可再次回收）
+    const ws3 = createWs();
+    await gateway.handleOpen(ws3, "ws-3", "user-1", "agent-1", "rcs-1");
+    expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
+    expect(docManager.openedDocCount()).toEqual({ chat: 1, session: 1 });
+    await relayEvents.reclaimInstanceRealtimeResources("instance-1");
+    expect(docManager.openedDocCount()).toEqual({ chat: 0, session: 0 });
+    gateway.handleClose("ws-3");
+  });
+
+  // 后继实例接管竞态（回归，SP-C2）：stopInstanceViaController 进行中（旧实例已
+  // 移出编排域活跃表、facade.stopInstance 尚在途）客户端 1011 自动重连，ensureRunning
+  // 因旧实例不可见而 spawn 新实例并重绑同一 rcsSessionId、重开同名 Doc；随后旧实例
+  // 停止完成触发回收——新实例的实时 Doc 必须存活且事件继续投影（否则连接保持打开
+  // 但 processNormalizedEvent 静默丢事件，前端冻结且无错误帧）。
+  test("old instance reclaim during takeover does not destroy the successor instance live doc", async () => {
+    let currentInstanceId = "instance-old";
+    const { docManager, gateway, relayEvents } = createRealStack({
+      ensureRunning: async () => ({ instance: { id: currentInstanceId } }),
+    });
+    const ws1 = createWs();
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    // 旧实例投影的实时内容
+    docManager.processNormalizedEvent("rcs-1", {
+      type: "session_updated",
+      update: { sessionId: "ses-old", status: "ready" },
+      content: null,
+    });
+    gateway.handleClose("ws-1");
+    expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
+
+    // 停止窗口内客户端重连：ensureRunning spawn 新实例（instanceId 必然不同），
+    // 新 relay 创建时重绑同一 rcsSessionId 并复用内存实时 Doc
+    currentInstanceId = "instance-new";
+    const ws2 = createWs();
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+
+    // 旧实例停止完成（stopInstanceViaController 末尾的 reclaimYjsDocs(old)）
+    await relayEvents.reclaimInstanceRealtimeResources("instance-old");
+
+    // 新实例的实时 Doc 存活，事件继续投影（实时流未被静默丢弃）
+    expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
+    expect(docManager.getSessionYdoc("rcs-1")).toBeDefined();
+    docManager.processNormalizedEvent("rcs-1", {
+      type: "session_updated",
+      update: { sessionId: "ses-new", status: "ready" },
+      content: null,
+    });
+    const session = docManager.getSessionYdoc("rcs-1")?.getMap("root").get("session") as
+      | { get: (key: string) => unknown }
+      | undefined;
+    expect(session?.get("sessionId")).toBe("ses-new");
+    gateway.handleClose("ws-2");
   });
 });

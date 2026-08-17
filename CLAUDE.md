@@ -234,7 +234,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ## 环境变量
 
-环境变量的类型、默认值和必填性以 `src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是当前唯一在 YJS transport 中直接读取的兼容变量，后续调整时应收敛到 `src/env.ts`。关键变量：
+环境变量的类型、默认值和必填性以 `src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是 YJS transport 中直接读取的兼容变量；`RCS_YJS_SNAPSHOT_*` 三项在 `src/env.ts` 声明校验、由 `packages/chat-channel` 持久层直读（provider 收敛到宿主 DI 后应改为经 options 注入）。关键变量：
 
 - 必填：`DATABASE_URL`、`RCS_API_KEYS`。
 - 系统 API：`RCS_SYSTEM_API_KEYS`。
@@ -242,4 +242,4 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 系统管理：`RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `./data/password.txt`）。
 - Agent 路由：`RCS_DEFAULT_MACHINE_ID`、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`。
 - 并发与生命周期：`RCS_AGENT_MAX_CONCURRENCY`、`RCS_USER_AGENT_MAX_CONCURRENCY`、`RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`、`RCS_ACP_IDLE_TIMEOUT_SECONDS`、`RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS`、`RCS_ACP_ACTIVITY_TIMEOUT_SECONDS`。
-- YJS：`YJS_MAX_CLIENTS`（代码默认 200）。
+- YJS：`YJS_MAX_CLIENTS`（代码默认 200）；快照持久化：`RCS_YJS_SNAPSHOT_INTERVAL_MS`（节流窗口，默认 2000）、`RCS_YJS_SNAPSHOT_IDLE_MS`（静默期，默认 500）、`RCS_YJS_SNAPSHOT_TTL_SECONDS`（快照滑动 TTL，默认 7 天）。

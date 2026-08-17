@@ -27,17 +27,20 @@ class SnapshotPersistenceDouble {
     return Promise.resolve(this.redis.stored ? Buffer.from(this.redis.stored) : null);
   }
 
-  multi(): { set(key: string, value: Buffer): { exec(): Promise<unknown> }; exec(): Promise<unknown> } {
-    let write: { key: string; value: Buffer } | null = null;
+  multi(): {
+    set(key: string, value: Buffer, expiryMode?: string, seconds?: number): { exec(): Promise<unknown> };
+    exec(): Promise<unknown>;
+  } {
+    let write: { key: string; value: Buffer; ttlSeconds?: number } | null = null;
     const transaction = {
-      set: (key: string, value: Buffer) => {
-        write = { key, value };
+      set: (key: string, value: Buffer, expiryMode?: string, seconds?: number) => {
+        write = { key, value, ttlSeconds: expiryMode === "EX" ? seconds : undefined };
         return transaction;
       },
       exec: async () => {
         if (this.redis.failure) throw this.redis.failure;
         if (write) {
-          this.redis.writes.push({ key: write.key, value: Buffer.from(write.value) });
+          this.redis.writes.push({ key: write.key, value: Buffer.from(write.value), ttlSeconds: write.ttlSeconds });
           this.redis.stored = Buffer.from(write.value);
         }
         return [[null, "OK"]];
@@ -52,7 +55,7 @@ class SnapshotPersistenceDouble {
 }
 
 class SnapshotRedisDouble {
-  readonly writes: Array<{ key: string; value: Buffer }> = [];
+  readonly writes: Array<{ key: string; value: Buffer; ttlSeconds?: number }> = [];
   readonly persistences: SnapshotPersistenceDouble[] = [];
   stored: Buffer | null = null;
 
@@ -83,6 +86,7 @@ describe("persistClearedSessionSnapshot", () => {
     expect(redis.writes).toHaveLength(1);
     expect(redis.writes[0]?.key).toBe("yjs:session:rcs-1");
     expect(redis.writes[0]?.value).toBeInstanceOf(Buffer);
+    expect(redis.writes[0]?.ttlSeconds).toBeGreaterThan(0); // SP-C1：快照写入附带滑动 TTL
     expect(redis.persistences[0]?.watchCalls).toBe(1);
     expect(redis.persistences[0]?.disconnected).toBe(true);
 

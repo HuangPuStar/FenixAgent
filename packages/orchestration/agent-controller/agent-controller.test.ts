@@ -430,8 +430,9 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
     const removed = controller.stopInstancesByMachineId("m1");
 
-    // 只清理 m1 的实例，m2 实例保留；每个实例归还一次节点引用（计数而非去重）
-    expect(removed).toBe(2);
+    // 只清理 m1 的实例，m2 实例保留；返回被移除实例的 id 列表（宿主据此触发
+    // SP-C2 实时资源回收）；每个实例归还一次节点引用（计数而非去重）
+    expect(removed.sort()).toEqual([m1a.instanceId, m1b.instanceId].sort());
     expect(controller.listInstances().map((i) => i.instanceId)).toEqual([m2.instanceId]);
     expect(m1a.status()).toBe("stopped");
     expect(m1b.status()).toBe("stopped");
@@ -443,8 +444,8 @@ describe("AgentController.stopInstancesByMachineId", () => {
     const { controller } = setup();
     await controller.spawnInstance("env1", "user1");
 
-    // m2 机器无任何实例：批量清理无"目标不存在"概念，返回 0 且不抛错
-    expect(controller.stopInstancesByMachineId("m2")).toBe(0);
+    // m2 机器无任何实例：批量清理无"目标不存在"概念，返回空数组且不抛错
+    expect(controller.stopInstancesByMachineId("m2")).toEqual([]);
     expect(controller.listInstances()).toHaveLength(1);
   });
 
@@ -454,9 +455,10 @@ describe("AgentController.stopInstancesByMachineId", () => {
     await controller.spawnInstance("env1", "user1");
     await controller.spawnInstance("env1", "user1");
 
-    expect(controller.stopInstancesByMachineId("m1")).toBe(2);
-    // 活跃表已空：重复清理幂等返回 0（宿主断连/心跳超时先后触发时不会重复计数）
-    expect(controller.stopInstancesByMachineId("m1")).toBe(0);
+    const first = controller.stopInstancesByMachineId("m1");
+    expect(first).toHaveLength(2);
+    // 活跃表已空：重复清理幂等返回空数组（宿主断连/心跳超时先后触发时不会重复回收）
+    expect(controller.stopInstancesByMachineId("m1")).toEqual([]);
     expect(nodeService.releasedCounts.get("m1")).toBe(2);
   });
 

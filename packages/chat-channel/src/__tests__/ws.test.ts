@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import * as Y from "yjs";
 import type { ActionError } from "../channel/types";
+import { encodeYjsUpdateFrame, YJS_UPDATE_FRAME_TYPE } from "../protocol/update-frame";
 import { createYjsWsClient } from "../transport/ws";
 
 type ScheduledTimer = {
@@ -43,6 +45,11 @@ class FakeWebSocket {
 
   receiveFromServer(data: unknown): void {
     this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+
+  /** 服务端二进制 yjs:update 帧（SP-A4）：以 ArrayBuffer 形态到达（binaryType=arraybuffer） */
+  receiveBinaryFromServer(data: ArrayBuffer | Uint8Array): void {
+    this.onmessage?.({ data } as MessageEvent);
   }
 
   send(_data: string): void {}
@@ -333,5 +340,83 @@ describe("createYjsWsClient", () => {
 
     expect(states).toEqual(["connecting", "error"]);
     expect(timers).toHaveLength(0);
+  });
+});
+
+describe("createYjsWsClient 二进制 yjs:update 帧（SP-A4）", () => {
+  beforeEach(() => {
+    installFakes();
+  });
+
+  afterEach(() => {
+    restoreGlobal("WebSocket", originalWebSocket);
+    restoreGlobal("setTimeout", originalSetTimeout);
+    restoreGlobal("clearTimeout", originalClearTimeout);
+  });
+
+  // 服务端 yjs:update 二进制帧（ArrayBuffer 形态）必须零拷贝解析为
+  // (docName, update) 并可直接 Y.applyUpdate——替代历史 base64+JSON 慢解码路径。
+  test("解析 ArrayBuffer 形态的二进制 yjs:update 帧", () => {
+    const doc = new Y.Doc();
+    doc.getMap("root").set("hello", "binary");
+    const frame = encodeYjsUpdateFrame("chat:rcs-1", Y.encodeStateAsUpdate(doc));
+    const updates: Array<{ docName: string; update: Uint8Array }> = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: (docName, update) => updates.push({ docName, update }),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveBinaryFromServer(frame.slice().buffer);
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.docName).toBe("chat:rcs-1");
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, updates[0]!.update);
+    expect(restored.getMap("root").get("hello")).toBe("binary");
+  });
+
+  // Bun / 测试环境可能直接透传 Uint8Array 视图，同样必须正确解析。
+  test("解析 Uint8Array 视图形态的二进制 yjs:update 帧", () => {
+    const doc = new Y.Doc();
+    doc.getText("content").insert(0, "view-frame");
+    const frame = encodeYjsUpdateFrame("session:rcs-1", Y.encodeStateAsUpdate(doc));
+    const updates: string[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: (docName) => updates.push(docName),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveBinaryFromServer(frame);
+
+    expect(updates).toEqual(["session:rcs-1"]);
+  });
+
+  // 坏二进制帧（帧类型不符 / 长度越界）必须静默丢弃，不得抛错中断连接。
+  test("坏二进制帧被静默丢弃", () => {
+    const updates: string[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: (docName) => updates.push(docName),
+    });
+    client.connect();
+
+    const wrongType = new Uint8Array([0x02, 0x00, 0x01, 0x63]);
+    const truncated = new Uint8Array([YJS_UPDATE_FRAME_TYPE, 0xff, 0xff, 0x01]);
+    FakeWebSocket.instances[0]?.receiveBinaryFromServer(wrongType);
+    FakeWebSocket.instances[0]?.receiveBinaryFromServer(truncated);
+
+    expect(updates).toHaveLength(0);
+  });
+
+  // 建连后必须设置 binaryType=arraybuffer，保证浏览器端二进制帧以
+  // ArrayBuffer（同步可解析）而非 Blob（需异步解包）形态到达。
+  test("连接建立时设置 binaryType 为 arraybuffer", () => {
+    const client = createClient();
+    client.connect();
+
+    const socket = FakeWebSocket.instances[0] as unknown as { binaryType?: string };
+    expect(socket.binaryType).toBe("arraybuffer");
   });
 });

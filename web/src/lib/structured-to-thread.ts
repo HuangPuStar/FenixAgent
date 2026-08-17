@@ -166,7 +166,216 @@ function blockText(block: Y.Map<unknown> | undefined): string {
   return text instanceof Y.Text ? text.toString() : "";
 }
 
-/** 从 Chat Doc 按 entryOrder 顺序派生 StructuredMessage[]（保持既有展示形状） */
+// ── 增量派生缓存（SP-B2 第二步 / 根因 B2）──
+//
+// 时间线派生从"每批次全量重建全部 entry"改为 per-entry 缓存 + dirty 标记：
+// 未变 entry 的派生结果直接复用引用（使 ChatView 的 React.memo 引用比较真正
+// 生效），重算只重建脏 entry。缓存挂在 Y.Doc 实例上（WeakMap），doc 销毁后
+// 随之回收——副本为纯投影，可随时从后端 doc 全量重建（issue 裁决原则 1/3）。
+//
+// 失效安全网：任何无法精确定位的变更（如新建 toolCall 时引用关系未知、entry
+// 结构性删除导致后续 entry 输出位移）都回落全量重算——增量只是性能优化，
+// 正确性永远以全量重算结果为准。
+
+/** 单个 entry 的缓存元数据：派生结果对输出位置敏感（seq / 段 id），位移即失效 */
+interface EntryDerivationMeta {
+  /** 派生时该 entry 在 entryOrder 中的位序（user_message.seq 的取值来源） */
+  orderIndex: number;
+  /** 派生时该 entry 首条消息在全局输出中的序号（assistant 段 seq 的基准） */
+  startOutputSeq: number;
+  /** 派生时该 entry 的 blockOrder 引用到的 toolCallId（反向索引维护用） */
+  toolCallIds: string[];
+}
+
+interface TimelineDerivationCache {
+  /** entryId → 派生消息（未脏直接复用，保证引用稳定） */
+  perEntry: Map<string, StructuredMessage[]>;
+  entryMeta: Map<string, EntryDerivationMeta>;
+  /** 脏 entry 集合；null 表示全量失效（冷启动 / 失效边界不确定） */
+  dirtyEntries: Set<string> | null;
+  /** toolCallId → 引用它的 entryId 集合（toolCalls 变更定向失效） */
+  toolCallOwners: Map<string, Set<string>>;
+}
+
+const timelineCaches = new WeakMap<Y.Doc, TimelineDerivationCache>();
+
+/**
+ * 获取（或懒初始化）doc 的时间线派生缓存，并挂载失效观察者。
+ *
+ * 结构未同步（快照未到达）时返回 null：entries/toolCalls 实例由首个 update
+ * 创建，此时退回全量路径；观察者挂在实例上，实例在 doc 生命周期内稳定
+ * （initChatDocStructure 只在缺失时创建，clear 路径复用同一实例）。
+ */
+function getTimelineCache(ydoc: Y.Doc): TimelineDerivationCache | null {
+  const entries = getEntriesMap(ydoc);
+  const toolCalls = getToolCallsMap(ydoc);
+  if (!entries || !toolCalls) return null;
+  const existing = timelineCaches.get(ydoc);
+  if (existing) return existing;
+
+  const cache: TimelineDerivationCache = {
+    perEntry: new Map(),
+    entryMeta: new Map(),
+    // 首次派生必然全量：把观察者挂载前已存在的内容全部纳入基线
+    dirtyEntries: null,
+    toolCallOwners: new Map(),
+  };
+  // entries 及其全部嵌套类型（blocks / blockOrder / Y.Text 文本流）任何变更：
+  // 嵌套变更经 path[0] 定位 entry；entries 顶层增删改经事件 keys 定位
+  entries.observeDeep((events) => {
+    if (cache.dirtyEntries === null) return; // 已处于全量失效，无需细分
+    for (const event of events) {
+      const target = event.path[0];
+      if (typeof target === "string") {
+        cache.dirtyEntries.add(target);
+        continue;
+      }
+      for (const key of event.keys.keys()) cache.dirtyEntries.add(key);
+    }
+  });
+  // toolCalls 变更（状态/结果/权限关联，独立于 entry 结构）：能定位引用 entry
+  // 则只失效这些 entry；引用关系未知（新建 toolCall，可能已有 blockOrder 引用
+  // 但派生时 tool 未到达）时无法安全缩小范围，回落全量重算。
+  // 必须 observeDeep：状态迁移是对 tool 内部 Y.Map 的就地修改，浅层 observe
+  // 只能看到 toolCall 增删，看不到 status/result 变化
+  toolCalls.observeDeep((events) => {
+    for (const event of events) {
+      const nestedId = event.path[0];
+      const toolCallIds = typeof nestedId === "string" ? [nestedId] : [...event.keys.keys()];
+      for (const toolCallId of toolCallIds) {
+        const owners = cache.toolCallOwners.get(toolCallId);
+        if (!owners || owners.size === 0) {
+          cache.dirtyEntries = null;
+          return;
+        }
+        if (cache.dirtyEntries !== null) {
+          for (const entryId of owners) cache.dirtyEntries.add(entryId);
+        }
+      }
+    }
+  });
+  timelineCaches.set(ydoc, cache);
+  return cache;
+}
+
+/**
+ * 派生单个 entry 的展示消息（纯函数：entry + toolCalls 内容 + 位置参数决定输出）。
+ *
+ * seq 语义与既有全量派生逐字段等价：user_message.seq = entryOrder 位序；
+ * assistant 段 seq = startOutputSeq + 段前已输出消息数（等价于全量派生中
+ * push 时刻的 messages.length）。registerToolRef 登记 blockOrder 引用的
+ * toolCallId（无论 tool 是否已存在），供 toolCalls 变更定向失效。
+ */
+function deriveEntryMessages(
+  entry: Y.Map<unknown>,
+  entryId: string,
+  toolCalls: Y.Map<Y.Map<unknown>> | undefined,
+  orderIndex: number,
+  startOutputSeq: number,
+  registerToolRef: (toolCallId: string) => void,
+): StructuredMessage[] {
+  const derived: StructuredMessage[] = [];
+  const kind = entry.get("kind") as string | undefined;
+  const role = entry.get("role") as string | undefined;
+  const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
+  const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
+  const ts = entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now();
+
+  if (kind === "message" && role === "user") {
+    const content = blockOrder
+      .map((blockId) => blockText(blocks?.get(blockId)))
+      .filter(Boolean)
+      .join("\n");
+    derived.push({ type: "user_message", id: entryId, content, seq: orderIndex, ts });
+    return derived;
+  }
+
+  if (kind === "message" && role === "assistant") {
+    // 按 tool_call 块切分展示消息：文本段被工具调用打断时拆为多条 assistant_message，
+    // 保证 "ai → tool×N → ai" 按真实顺序渲染（后端已把打断后的文本写入独立 text:N 块，
+    // 此处不能在一条消息内合并展示——否则工具调用全部排到两段文本之后）。
+    let chunks: AssistantChunk[] = [];
+    let segment = 0;
+    const flushChunks = () => {
+      if (chunks.length === 0) return;
+      derived.push({
+        type: "assistant_message",
+        // 首段沿用 entryId（兼容既有消费者），后续段追加段号保证 React key 唯一
+        id: segment === 0 ? entryId : `${entryId}#${segment}`,
+        chunks,
+        seq: startOutputSeq + derived.length,
+        ts,
+      });
+      segment += 1;
+      chunks = [];
+    };
+    // 遍历 blockOrder 保持输出顺序：reasoning → thought 块，text → message 块，
+    // tool_call → 先冲刷已累积文本段再投影工具条目
+    for (const blockId of blockOrder) {
+      const block = blocks?.get(blockId);
+      if (!block) continue;
+      const blockType = block.get("type") as string | undefined;
+      if (blockType === "tool_call") {
+        flushChunks();
+        const toolCallId = block.get("toolCallId") as string | undefined;
+        if (!toolCallId) continue;
+        registerToolRef(toolCallId);
+        const tool = toolCalls?.get(toolCallId);
+        if (!tool) continue;
+
+        const status = (tool.get("status") as string) || "running";
+        const permissionId = tool.get("permissionId") as string | null | undefined;
+        const toolMessage: StructuredMessage = {
+          type: "tool_call",
+          id: toolCallId,
+          title: (tool.get("name") as string) || "",
+          status: mapToolCallMessageStatus(status),
+          content: [],
+          rawInput: (tool.get("arguments") as Record<string, unknown> | undefined) ?? undefined,
+          rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
+        };
+        if (permissionId) {
+          // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
+          // 此处保持占位空数组，真实选项由 use-session-state 合并层
+          // （meta.permissionOptions → computeSessionSnapshot）按 requestId 覆盖
+          toolMessage.permissionRequest = { requestId: permissionId, options: [] };
+        }
+        derived.push(toolMessage);
+        continue;
+      }
+      const text = blockText(block);
+      if (blockType === "reasoning" && text) chunks.push({ type: "thought", text });
+      else if (blockType === "text" && text) chunks.push({ type: "message", text });
+    }
+    flushChunks();
+    return derived;
+  }
+
+  // plan 以 system entry 投影（planEntries 结构化字段 + 人类可读摘要）
+  if (kind === "system") {
+    const planEntries = entry.get("planEntries") as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(planEntries)) {
+      derived.push({
+        type: "plan",
+        id: entryId,
+        entries: planEntries.map((e) => ({
+          content: (e.content as string) || "",
+          priority: (e.priority as "high" | "medium" | "low") || "medium",
+          status: (e.status as "pending" | "in_progress" | "completed") || "pending",
+        })),
+      });
+    }
+  }
+  return derived;
+}
+
+/**
+ * 从 Chat Doc 按 entryOrder 顺序派生 StructuredMessage[]（保持既有展示形状）。
+ *
+ * 增量路径（SP-B2 第二步）：未脏 entry 复用缓存派生结果（引用稳定）；脏 entry
+ * 与位置位移 entry 重派生。输出数组每次新建（装配成本 O(N) 浅拷贝），但未变
+ * entry 的消息对象引用不变，下游 React.memo / useMemo 依赖比较得以命中。
+ */
 export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessage[] {
   // 复用 @fenix/chat-channel 的 Chat Doc getters（state/chat-writer.ts），
   // 与后端 factory/aggregator 保持同一物理映射
@@ -177,104 +386,74 @@ export function chatDocEntriesToStructuredMessages(ydoc: Y.Doc): StructuredMessa
   // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
   // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
   if (!order || !entries) return [];
+  const cache = getTimelineCache(ydoc);
+  if (!cache) return [];
 
-  const messages: StructuredMessage[] = [];
+  // 全量失效（冷启动 / toolCalls 引用关系未知）：清空缓存整体重建。
+  // entry 删除等结构性变更不在此处理——由"位移重派生 + 缓存修剪"兜底
+  if (cache.dirtyEntries === null) {
+    cache.perEntry.clear();
+    cache.entryMeta.clear();
+    cache.toolCallOwners.clear();
+  }
+  const dirty = cache.dirtyEntries;
+
   const entryIds = order.toArray();
-  for (let seq = 0; seq < entryIds.length; seq++) {
-    const entryId = entryIds[seq] ?? "";
+  const messages: StructuredMessage[] = [];
+
+  for (let i = 0; i < entryIds.length; i++) {
+    const entryId = entryIds[i] ?? "";
     const entry = entries.get(entryId);
     if (!entry) continue;
 
-    const kind = entry.get("kind") as string | undefined;
-    const role = entry.get("role") as string | undefined;
-    const blockOrder = (entry.get("blockOrder") as Y.Array<string> | undefined)?.toArray() ?? [];
-    const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
-    const ts = entry.get("createdAt") ? new Date(entry.get("createdAt") as string).getTime() : Date.now();
-
-    if (kind === "message" && role === "user") {
-      const content = blockOrder
-        .map((blockId) => blockText(blocks?.get(blockId)))
-        .filter(Boolean)
-        .join("\n");
-      messages.push({ type: "user_message", id: entryId, content, seq, ts });
+    const cached = cache.perEntry.get(entryId);
+    const meta = cache.entryMeta.get(entryId);
+    // 位置敏感（seq / 段 id）：前序 entry 输出数量变化导致位移时重派生，
+    // 保证与全量派生逐字段一致；追加式流式输出不会移动前序 entry，命中缓存
+    const stale =
+      !cached ||
+      !meta ||
+      (dirty?.has(entryId) ?? false) ||
+      meta.orderIndex !== i ||
+      meta.startOutputSeq !== messages.length;
+    if (!stale && cached) {
+      for (const m of cached) messages.push(m);
       continue;
     }
 
-    if (kind === "message" && role === "assistant") {
-      // 按 tool_call 块切分展示消息：文本段被工具调用打断时拆为多条 assistant_message，
-      // 保证 "ai → tool×N → ai" 按真实顺序渲染（后端已把打断后的文本写入独立 text:N 块，
-      // 此处不能在一条消息内合并展示——否则工具调用全部排到两段文本之后）。
-      let chunks: AssistantChunk[] = [];
-      let segment = 0;
-      const flushChunks = () => {
-        if (chunks.length === 0) return;
-        messages.push({
-          type: "assistant_message",
-          // 首段沿用 entryId（兼容既有消费者），后续段追加段号保证 React key 唯一
-          id: segment === 0 ? entryId : `${entryId}#${segment}`,
-          chunks,
-          seq: messages.length,
-          ts,
-        });
-        segment += 1;
-        chunks = [];
-      };
-      // 遍历 blockOrder 保持输出顺序：reasoning → thought 块，text → message 块，
-      // tool_call → 先冲刷已累积文本段再投影工具条目
-      for (const blockId of blockOrder) {
-        const block = blocks?.get(blockId);
-        if (!block) continue;
-        const blockType = block.get("type") as string | undefined;
-        if (blockType === "tool_call") {
-          flushChunks();
-          const toolCallId = block.get("toolCallId") as string | undefined;
-          if (!toolCallId) continue;
-          const tool = toolCalls?.get(toolCallId);
-          if (!tool) continue;
-
-          const status = (tool.get("status") as string) || "running";
-          const permissionId = tool.get("permissionId") as string | null | undefined;
-          const toolMessage: StructuredMessage = {
-            type: "tool_call",
-            id: toolCallId,
-            title: (tool.get("name") as string) || "",
-            status: mapToolCallMessageStatus(status),
-            content: [],
-            rawInput: (tool.get("arguments") as Record<string, unknown> | undefined) ?? undefined,
-            rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
-          };
-          if (permissionId) {
-            // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
-            // 此处保持占位空数组，真实选项由 use-session-state 合并层
-            // （meta.permissionOptions → computeSessionSnapshot）按 requestId 覆盖
-            toolMessage.permissionRequest = { requestId: permissionId, options: [] };
-          }
-          messages.push(toolMessage);
-          continue;
-        }
-        const text = blockText(block);
-        if (blockType === "reasoning" && text) chunks.push({ type: "thought", text });
-        else if (blockType === "text" && text) chunks.push({ type: "message", text });
-      }
-      flushChunks();
+    // 重派生前先撤销旧的反向引用，再由派生过程登记新引用
+    if (meta) {
+      for (const refId of meta.toolCallIds) cache.toolCallOwners.get(refId)?.delete(entryId);
     }
+    const toolCallIds: string[] = [];
+    const derived = deriveEntryMessages(entry, entryId, toolCalls, i, messages.length, (toolCallId) => {
+      toolCallIds.push(toolCallId);
+      let ownerSet = cache.toolCallOwners.get(toolCallId);
+      if (!ownerSet) {
+        ownerSet = new Set();
+        cache.toolCallOwners.set(toolCallId, ownerSet);
+      }
+      ownerSet.add(entryId);
+    });
+    cache.perEntry.set(entryId, derived);
+    cache.entryMeta.set(entryId, { orderIndex: i, startOutputSeq: messages.length, toolCallIds });
+    for (const m of derived) messages.push(m);
+  }
 
-    // plan 以 system entry 投影（planEntries 结构化字段 + 人类可读摘要）
-    if (kind === "system") {
-      const planEntries = entry.get("planEntries") as Array<Record<string, unknown>> | undefined;
-      if (Array.isArray(planEntries)) {
-        messages.push({
-          type: "plan",
-          id: entryId,
-          entries: planEntries.map((e) => ({
-            content: (e.content as string) || "",
-            priority: (e.priority as "high" | "medium" | "low") || "medium",
-            status: (e.status as "pending" | "in_progress" | "completed") || "pending",
-          })),
-        });
+  // 修剪已删除 entry 的缓存项（entry 删除 / 清空 doc 场景，防缓存无界增长）
+  if (cache.perEntry.size > entries.size) {
+    for (const key of cache.perEntry.keys()) {
+      if (entries.has(key)) continue;
+      cache.perEntry.delete(key);
+      const removedMeta = cache.entryMeta.get(key);
+      if (removedMeta) {
+        for (const refId of removedMeta.toolCallIds) cache.toolCallOwners.get(refId)?.delete(key);
+        cache.entryMeta.delete(key);
       }
     }
   }
+
+  cache.dirtyEntries = new Set();
   return messages;
 }
 

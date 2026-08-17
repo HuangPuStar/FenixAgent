@@ -126,19 +126,20 @@ export class AgentController {
    * 无法再 spawn），且节点引用计数残留导致空闲回收不触发（E-P0.1）。
    *
    * 与 stopInstance 的语义差异：批量场景无"目标不存在"概念，不抛
-   * INSTANCE_NOT_FOUND；重复调用幂等（表内无匹配实例时直接返回 0）。
+   * INSTANCE_NOT_FOUND；重复调用幂等（表内无匹配实例时直接返回空数组）。
    * @param machineId 目标机器 ID（与 Instance.machineId 匹配）
-   * @returns 实际清理的实例数
+   * @returns 被移除实例的 instanceId 列表（宿主据此触发实例级后续清理，如
+   *   SP-C2 的内存 Y.Doc 回收；无匹配时为空数组）
    */
-  stopInstancesByMachineId(machineId: string): number {
-    let removed = 0;
+  stopInstancesByMachineId(machineId: string): string[] {
+    const removedInstanceIds: string[] = [];
     // 快照遍历：终止过程会从活跃表删除条目，迭代中删除可变 Map 不安全
     for (const instance of [...this.#instances.values()]) {
       if (instance.machineId !== machineId) continue;
       this.#terminateInstance(instance);
-      removed += 1;
+      removedInstanceIds.push(instance.instanceId);
     }
-    return removed;
+    return removedInstanceIds;
   }
 
   /** 列出当前所有活跃实例（已停止的实例不包含在内）。 */

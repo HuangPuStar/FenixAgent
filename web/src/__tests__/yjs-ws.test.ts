@@ -25,3 +25,15 @@ test("maps 4004 to environment_unavailable", () => {
 test("returns null for non-terminal close codes", () => {
   expect(getTerminalYjsWsErrorCode(1006)).toBeNull();
 });
+
+// 连接数超限的 1013 是终态：重试相同 URL 在配额释放前无意义，须手动恢复。
+test("maps 1013 without a resync reason to too_many_connections", () => {
+  expect(getTerminalYjsWsErrorCode(1013)).toBe("too_many_connections");
+  expect(getTerminalYjsWsErrorCode(1013, "too many connections")).toBe("too_many_connections");
+});
+
+// 慢消费者追赶超时的 1013（broadcaster SP-A7）不是终态：客户端自动重连后
+// 走全量快照同步恢复，UI 不得展示"须手动恢复"的终态错误。
+test("treats the slow consumer resync 1013 as reconnectable", () => {
+  expect(getTerminalYjsWsErrorCode(1013, "slow consumer resync timeout")).toBeNull();
+});

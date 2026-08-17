@@ -12,6 +12,7 @@ import { config } from "../config";
 import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
+import { docManager } from "./doc-manager-instance";
 import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
 import { globalInstanceRegistry } from "./instance-registry";
 
@@ -181,6 +182,12 @@ async function reclaimInstance(
 
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */
 export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
+  // SP-C2 观测信号：周期输出内存实时 Doc 数量，供长期采集"实例回收 → Doc 回收"
+  // 是否生效的曲线（只含数量，不含会话 ID / 内容）。实例停止后的 Doc 回收接线在
+  // stopInstanceViaController 完成处（orchestration-instance）。
+  const docCount = docManager.openedDocCount();
+  logger.info(`[ACP-IDLE] yjs realtime docs: chat=${docCount.chat} session=${docCount.session}`);
+
   const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
   const activityTimeoutMs = config.acpActivityTimeoutSeconds * 1000;
   const snapshots = listInstanceActivitySnapshots(now);

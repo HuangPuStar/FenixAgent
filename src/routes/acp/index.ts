@@ -61,10 +61,20 @@ function getFileWsMaxPayloadBytes(): number {
 // biome-ignore lint/suspicious/noExplicitAny: Elysia WS type not directly compatible with WsConnection
 function adaptWs(ws: any): WsConnection {
   return {
-    send: (data: string) => ws.send(data),
+    // 二进制 yjs:update 帧（SP-A4）必须走 sendBinary：Elysia 的 send 对 object 一律
+    // JSON.stringify，Uint8Array 会被序列化成数字索引对象文本而非透传二进制
+    send: (data: string | Uint8Array) => {
+      if (typeof data === "string") ws.send(data);
+      else ws.sendBinary(data);
+    },
     close: (code?: number, reason?: string) => ws.close(code, reason),
     get readyState() {
       return ws.readyState;
+    },
+    // 背压检测（SP-A7）：Bun ServerWebSocket 以 getBufferedAmount() 暴露待发送缓冲，
+    // 不暴露则按 0 处理（永不拥塞，与历史行为一致）
+    get bufferedAmount() {
+      return typeof ws.getBufferedAmount === "function" ? ws.getBufferedAmount() : 0;
     },
   };
 }

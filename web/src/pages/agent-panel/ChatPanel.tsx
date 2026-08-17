@@ -11,6 +11,7 @@ import { useSessionState } from "../../hooks/use-session-state";
 import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
+import { applyDocHubUpdate } from "../../yjs/doc-hub";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
 import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
@@ -101,12 +102,15 @@ export function ChatPanel({
   const rcsSessionKey =
     agentId && userId ? createDeterministicRcsSessionId(agentId, userId, sessionId ?? undefined) : undefined;
 
-  // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
-  const chatHookKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
-  const { state: chatState, applyUpdate: chatApplyUpdate } = useChatState(chatHookKey);
+  // DocHub 绑定 key（SP-B1）：两个 hook 必须绑定同一会话的同一份共享 doc。
+  // 登录态未就绪时使用占位 key（此时建连守卫不会放行 WS，占位 doc 恒为空）
+  const docHubKey = rcsSessionKey ?? `__pending_${agentId ?? "unknown"}`;
 
-  // Session Doc — 按 RCS session ID 命名
-  const { state: sessionState, applyUpdate: sessionApplyUpdate } = useSessionState(rcsSessionKey ?? "__placeholder__");
+  // Chat Doc — 观察全局 Chat 状态（连接、Agent 信息、会话列表、权限）
+  const { state: chatState } = useChatState(docHubKey);
+
+  // Session Doc — 按 RCS session ID 命名（与 chatHook 同一 hub entry，共享 doc 副本）
+  const { state: sessionState } = useSessionState(docHubKey);
 
   // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
   const yjsChatRef = useRef(chatState);
@@ -224,9 +228,10 @@ export function ChatPanel({
       url: relayUrl,
       onYjsUpdate: (docName, data) => {
         try {
-          // 两个 hook 各自内部按 docName 前缀路由到 Chat Doc / Session Doc store
-          chatApplyUpdate(docName, data);
-          sessionApplyUpdate(docName, data);
+          // 单写入口（SP-B1 / 根因 B1）：hub 持有该会话唯一的 Chat/Session doc 副本，
+          // 两个 hook 的 store 都绑定在这两份 doc 上——apply 一次即全部可见，
+          // 替代原先对两个 hook 各自 applyUpdate 的双写
+          applyDocHubUpdate(rcsSessionKey, docName, data);
         } catch (err) {
           console.warn("[Yjs] Failed to apply update:", err);
         }
@@ -234,8 +239,8 @@ export function ChatPanel({
       onError: (error) => {
         if (error.code) setErrorCode(error.code);
       },
-      onClose: ({ code }) => {
-        const terminalErrorCode = getTerminalYjsWsErrorCode(code);
+      onClose: ({ code, reason }) => {
+        const terminalErrorCode = getTerminalYjsWsErrorCode(code, reason);
         if (terminalErrorCode) {
           setErrorCode(terminalErrorCode);
         } else {
@@ -291,8 +296,6 @@ export function ChatPanel({
     sessionId,
     rcsSessionKey,
     authState,
-    chatApplyUpdate,
-    sessionApplyUpdate,
     reconnectAttempt,
     sendViaWs,
     handleActionAck,

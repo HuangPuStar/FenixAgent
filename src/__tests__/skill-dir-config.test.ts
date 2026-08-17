@@ -48,6 +48,10 @@ function makeEnv(skillDir: string): Env {
     RCS_CCB_COMMAND: "ccb",
     RCS_CCB_ARGS: "--acp",
     WORKFLOW_TOOLS_DIR: "./tools",
+    // YJS 快照持久化默认值（与 src/env.ts schema 默认一致）
+    RCS_YJS_SNAPSHOT_INTERVAL_MS: 2000,
+    RCS_YJS_SNAPSHOT_IDLE_MS: 500,
+    RCS_YJS_SNAPSHOT_TTL_SECONDS: 604800,
   };
 }
 

@@ -1,8 +1,11 @@
 // web/src/__tests__/structured-to-thread.test.ts
-// chatDocEntriesToStructuredMessages 切分回归测试：
-// assistant entry 内文本段被工具调用打断时，展示投影必须切分为多条
-// assistant_message（保持 "ai → tool×N → ai" 的真实顺序，id 唯一）；
-// 连续文本流保持单条消息，无文本直接工具调用不产生空消息。
+// chatDocEntriesToStructuredMessages 切分回归 + 增量派生（SP-B2 第二步）测试：
+// - 切分回归：assistant entry 内文本段被工具调用打断时，展示投影必须切分为多条
+//   assistant_message（保持 "ai → tool×N → ai" 的真实顺序，id 唯一）；
+//   连续文本流保持单条消息，无文本直接工具调用不产生空消息。
+// - 增量派生：per-entry 缓存 + dirty 标记——未变 entry 的派生结果引用稳定
+//   （===），重算只重建脏 entry；失效边界（toolCall 状态变更、entry 删除）
+//   回落全量重算且结果正确。
 //
 // 对应后端修复：appendEntryText 顺序感知聚合（打断后新建 text:N 块），
 // 前端投影按 tool_call 块切分——两层叠加才能正确渲染。
@@ -16,6 +19,7 @@ import {
   type NormalizedEvent,
   type StructuredMessage,
 } from "@fenix/chat-channel";
+import * as Y from "yjs";
 import { chatDocEntriesToStructuredMessages } from "../lib/structured-to-thread";
 
 let pair: DocPair;
@@ -92,5 +96,136 @@ describe("chatDocEntriesToStructuredMessages", () => {
     expect(messages[1].type).toBe("tool_call");
     expect(messages[2]).toMatchObject({ type: "assistant_message", id: "turn_1:assistant" });
     expect(textOf(messages[2])).toBe("late");
+  });
+});
+
+describe("chatDocEntriesToStructuredMessages 增量派生（SP-B2 第二步）", () => {
+  // 构造两个完整 turn（user + assistant 文本），返回首次派生结果作为基线
+  function seedTwoTurns(): StructuredMessage[] {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer-1" } }));
+    applyNormalizedEvent(pair, event("turn_completed", { turnId: "turn_1" }));
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q2" } }, "turn_2"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer-2" } }));
+    return chatDocEntriesToStructuredMessages(pair.chat);
+  }
+
+  // 未变 entry 引用稳定：后一个 turn 追加流式增量只重建该 turn 的 entry，
+  // 前序 entry 的消息对象必须保持 ===（ChatView 的 React.memo 依赖此语义）
+  test("尾部流式增量只重建脏 entry，未变 entry 引用稳定", () => {
+    const before = seedTwoTurns();
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "-more" } }));
+    const after = chatDocEntriesToStructuredMessages(pair.chat);
+
+    expect(after).toHaveLength(4);
+    // turn_1 的 user / assistant 消息引用稳定
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    // turn_2 的 assistant entry 被重建，内容包含追加文本
+    expect(after[3]).not.toBe(before[3]);
+    expect(textOf(after[3])).toBe("answer-2-more");
+  });
+
+  // toolCall 状态变更定向失效：只有引用该 toolCall 的 entry 重建，
+  // 工具消息状态更新为终态，其余 entry 引用稳定。
+  // 注：终态 turn 后的 tool 更新会被聚合层拒绝，故在 turn 终态前完成状态迁移
+  test("toolCall 状态变更只重建引用 entry", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "before" } }));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t1", title: "bash" }));
+    const before = chatDocEntriesToStructuredMessages(pair.chat);
+
+    applyNormalizedEvent(pair, event("tool_call_completed", { toolCallId: "t1", title: "bash" }));
+    const after = chatDocEntriesToStructuredMessages(pair.chat);
+
+    expect(after).toHaveLength(before.length);
+    // user entry（独立 entry）引用稳定；assistant 文本段与工具同 entry，
+    // 随 entry 级重派生重建（内容不变，引用可能更新——entry 是失效粒度）
+    expect(after[0]).toBe(before[0]);
+    expect(textOf(after[1])).toBe(textOf(before[1]));
+    // 工具消息重建且状态收敛为 complete
+    const tool = after[2];
+    if (tool.type !== "tool_call") throw new Error("expected tool_call");
+    expect(tool.status).toBe("complete");
+    expect(after[2]).not.toBe(before[2]);
+  });
+
+  // entry 删除失效边界：物理删除 entry + order 项后输出正确（位移重派生语义）
+  test("entry 删除后输出正确收敛", () => {
+    const before = seedTwoTurns();
+    expect(before).toHaveLength(4);
+
+    pair.chat.transact(() => {
+      const root = pair.chat.getMap("root");
+      const entries = root.get("entries") as Y.Map<Y.Map<unknown>>;
+      const order = root.get("entryOrder") as Y.Array<string>;
+      // 删除 turn_1 的 assistant entry（含 order 项）
+      entries.delete("turn_1:assistant");
+      const idx = order.toArray().indexOf("turn_1:assistant");
+      if (idx >= 0) order.delete(idx, 1);
+    });
+    const after = chatDocEntriesToStructuredMessages(pair.chat);
+
+    // 剩余 turn_1:user + turn_2:user + turn_2:assistant
+    expect(after).toHaveLength(3);
+    expect(textOf(after[2])).toBe("answer-2");
+    // turn_2 的 user entry 位序前移（seq 校正），内容不变
+    expect(after[1]).toMatchObject({ type: "user_message", content: "q2" });
+  });
+
+  // seq 语义等价：增量路径产出的 seq 与全量重算一致（user=entryOrder 位序、
+  // assistant=全局输出序），保证下游依赖 seq 的行为无差异。
+  // ts 不参与比对：全量基线在另一时刻复放事件，createdAt 的毫秒值天然不同
+  test("增量派生 seq 与全量派生一致", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "a1" } }));
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q2" } }, "turn_2"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "a2" } }));
+
+    const incremental = chatDocEntriesToStructuredMessages(pair.chat);
+    // 用全新 doc 复放同样事件做全量基线（无缓存路径），逐字段比对
+    const freshPair: DocPair = {
+      chat: createChatDoc("rcs_fresh", null).ydoc,
+      session: createSessionDoc("rcs_fresh", null).ydoc,
+    };
+    for (const evType of [
+      event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"),
+      event("message_delta", { content: { type: "text", text: "a1" } }),
+      event("user_message", { content: { type: "text", text: "q2" } }, "turn_2"),
+      event("message_delta", { content: { type: "text", text: "a2" } }),
+    ] as NormalizedEvent[]) {
+      applyNormalizedEvent(freshPair, evType);
+    }
+    const fresh = chatDocEntriesToStructuredMessages(freshPair.chat);
+    const seqShape = (messages: StructuredMessage[]) =>
+      messages.map((m) => ({
+        type: m.type,
+        id: m.id,
+        seq: m.type === "assistant_message" || m.type === "user_message" ? m.seq : undefined,
+      }));
+    expect(seqShape(incremental)).toEqual(seqShape(fresh));
+    // 内容（文本/块）比对：剥离 ts 后应完全一致
+    const contentShape = (messages: StructuredMessage[]) =>
+      messages.map((m) => {
+        if (m.type === "assistant_message") return { type: m.type, id: m.id, chunks: m.chunks, seq: m.seq };
+        return { type: m.type, id: m.id };
+      });
+    expect(contentShape(incremental)).toEqual(contentShape(fresh));
+  });
+
+  // 性能验收（SP-B2 第二步）：1000 entries 尾部 append delta 的单次重算耗时 < 2ms
+  test("1000 entries 尾部增量重算 < 2ms", () => {
+    for (let i = 1; i <= 1000; i++) {
+      applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: `q${i}` } }, `turn_${i}`));
+      applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: `a${i}` } }));
+    }
+    chatDocEntriesToStructuredMessages(pair.chat);
+
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "-tail" } }));
+    const start = performance.now();
+    const result = chatDocEntriesToStructuredMessages(pair.chat);
+    const elapsed = performance.now() - start;
+    expect(result).toHaveLength(2000);
+    expect(elapsed).toBeLessThan(2);
   });
 });

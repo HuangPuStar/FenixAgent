@@ -93,11 +93,14 @@ class PersistenceDouble {
     return this.redis.readStored();
   }
 
-  multi(): { set(key: string, value: Buffer): unknown; exec(): Promise<unknown | null> } {
-    let pending: { key: string; value: Buffer } | null = null;
+  multi(): {
+    set(key: string, value: Buffer, expiryMode?: string, seconds?: number): unknown;
+    exec(): Promise<unknown | null>;
+  } {
+    let pending: { key: string; value: Buffer; ttlSeconds?: number } | null = null;
     const transaction = {
-      set: (key: string, value: Buffer) => {
-        pending = { key, value };
+      set: (key: string, value: Buffer, expiryMode?: string, seconds?: number) => {
+        pending = { key, value, ttlSeconds: expiryMode === "EX" ? seconds : undefined };
         return transaction;
       },
       exec: () => {
@@ -105,7 +108,7 @@ class PersistenceDouble {
           this.watchedVersion = null;
           return Promise.resolve(null);
         }
-        this.redis.writeStored(pending.key, pending.value);
+        this.redis.writeStored(pending.key, pending.value, pending.ttlSeconds);
         this.watchedVersion = null;
         return Promise.resolve([[null, "OK"]]);
       },
@@ -120,7 +123,7 @@ class PersistenceDouble {
 
 class RedisDouble {
   readonly published: Array<{ channel: string; value: Buffer }> = [];
-  readonly sets: Array<{ key: string; value: Buffer }> = [];
+  readonly sets: Array<{ key: string; value: Buffer; ttlSeconds?: number }> = [];
   readonly subscribers: SubscriberDouble[] = [];
   readonly persistences: PersistenceDouble[] = [];
   duplicateCalls = 0;
@@ -142,8 +145,8 @@ class RedisDouble {
     return Promise.resolve(this.stored ? Buffer.from(this.stored) : null);
   }
 
-  writeStored(key: string, value: Buffer): void {
-    this.sets.push({ key, value: Buffer.from(value) });
+  writeStored(key: string, value: Buffer, ttlSeconds?: number): void {
+    this.sets.push({ key, value: Buffer.from(value), ttlSeconds });
     this.stored = Buffer.from(value);
     this.version += 1;
   }
@@ -169,6 +172,11 @@ class RedisDouble {
 
   publish(channel: string, value: Buffer): Promise<number> {
     this.published.push({ channel, value });
+    // 模拟真实 Redis：发布同步扇出到所有已连接 subscriber（含发布进程自身的订阅，
+    // 即 SP-A6 自环过滤要处理的路径）。
+    for (const subscriber of this.subscribers) {
+      subscriber.emitMessage(channel, value);
+    }
     return Promise.resolve(1);
   }
 
@@ -211,6 +219,8 @@ const deferred = <T>() => {
 const nextMicrotask = async (): Promise<void> => {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 };
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("createRedisProvider", () => {
   const docs: Y.Doc[] = [];
@@ -325,7 +335,8 @@ describe("createRedisProvider", () => {
     await provider.destroy();
   });
 
-  // 当前频道的远端 update 只应用到文档，且不会反向发布或持久化。
+  // 当前频道的远端 update 只应用到文档，且不会反向发布或持久化；无发布者头的
+  // 旧格式（滚动部署窗口）按原始 update 全量 apply 回落，无损兼容。
   test("applies remote updates without publishing or persisting them", async () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
@@ -602,6 +613,7 @@ describe("createRedisProvider", () => {
 
     expect(persisted).toBe(true);
     expect(redis.sets).toHaveLength(1);
+    expect(redis.sets[0]?.ttlSeconds).toBeGreaterThan(0); // SP-C1：快照写入附带 TTL
     Y.applyUpdate(restored, redis.sets[0]?.value ?? Buffer.alloc(0));
     expect(restored.getArray("messages").toArray()).toEqual([]);
     expect(restored.getArray("structuredMessages").toArray()).toEqual([]);
@@ -611,8 +623,9 @@ describe("createRedisProvider", () => {
     expect(restored.getMap("meta").toJSON()).toMatchObject({ status: "idle", loading: null });
   });
 
-  // destroy 后同一频道的消息不会再影响文档，也不会触发持久化或发布。
-  test("does not flush a scheduled snapshot after destroy", async () => {
+  // SP-A1：destroy（closeChat/closeSession 收口）必须强制 flush 未落盘的待写快照，
+  // 关闭节流窗口的崩溃丢失语义；destroy 后远端消息也不再影响文档。
+  test("forces a pending snapshot flush on destroy and ignores later messages", async () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
     const source = new Y.Doc();
@@ -624,8 +637,13 @@ describe("createRedisProvider", () => {
     await provider.destroy();
     await nextMicrotask();
 
-    expect(redis.sets).toHaveLength(0);
+    expect(redis.sets).toHaveLength(1);
     expect(redis.published).toHaveLength(1);
+    const restored = new Y.Doc();
+    docs.push(restored);
+    Y.applyUpdate(restored, redis.sets[0]?.value ?? Buffer.alloc(0));
+    expect(restored.getMap("state").toJSON()).toEqual({ value: "pending" });
+
     const setCountBeforeRemoteMessage = redis.sets.length;
     const publishCountBeforeRemoteMessage = redis.published.length;
 
@@ -637,5 +655,244 @@ describe("createRedisProvider", () => {
     expect(redis.published).toHaveLength(publishCountBeforeRemoteMessage);
 
     source.destroy();
+  });
+
+  // SP-A1：节流窗口内的多次 update 只触发 1 次快照 CAS，静默期结束后补一次 trailing flush。
+  test("throttles snapshot CAS within the window and flushes once after the idle gap", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:throttle", ydoc, {
+      snapshotIntervalMs: 5000,
+      snapshotIdleMs: 60,
+    });
+    await nextMicrotask();
+
+    const state = ydoc.getMap<string>("state");
+    state.set("first", "one"); // 尚无成功写入，首次调度立即持久化
+    await nextMicrotask();
+    expect(redis.sets).toHaveLength(1);
+
+    state.set("second", "two");
+    state.set("third", "three");
+    await nextMicrotask();
+    await sleep(25);
+    expect(redis.sets).toHaveLength(1); // 窗口内合并，不产生新 CAS
+
+    await sleep(150); // 距最后一条 update 已超过 60ms 静默期
+    expect(redis.sets).toHaveLength(2);
+    const restored = new Y.Doc();
+    docs.push(restored);
+    Y.applyUpdate(restored, redis.sets[1]?.value ?? Buffer.alloc(0));
+    expect(restored.getMap("state").toJSON()).toEqual({ first: "one", second: "two", third: "three" });
+    expect(redis.sets[1]?.ttlSeconds).toBeGreaterThan(0);
+
+    await provider.destroy();
+    expect(redis.sets).toHaveLength(2); // 无待写快照时 destroy 不重复 flush
+  });
+
+  // SP-A1：持续 update（静默期不触发）下 CAS 频率由 interval 窗口决定，与 update 次数解耦。
+  test("bounds snapshot CAS rate to the interval under continuous updates", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:interval-rate", ydoc, {
+      snapshotIntervalMs: 120,
+      snapshotIdleMs: 60000,
+    });
+    await nextMicrotask();
+
+    const state = ydoc.getMap<string>("state");
+    state.set("first", "one");
+    await nextMicrotask();
+    expect(redis.sets).toHaveLength(1);
+
+    for (let index = 0; index < 12; index += 1) {
+      state.set(`key${index}`, `value${index}`);
+      await sleep(10);
+    }
+    await sleep(30);
+
+    // 首次立即 + 每个 120ms 窗口至多一次；定时器与 update 到达顺序存在 ±1 次抖动，
+    // 但必须远小于 13 次 update（写放大已与 update 次数解耦）。
+    expect(redis.sets.length).toBeGreaterThanOrEqual(2);
+    expect(redis.sets.length).toBeLessThanOrEqual(3);
+
+    await provider.destroy();
+    // destroy 强制 flush 收口：最终快照包含全部内容。
+    const restored = new Y.Doc();
+    docs.push(restored);
+    Y.applyUpdate(restored, redis.sets[redis.sets.length - 1]?.value ?? Buffer.alloc(0));
+    const restoredState = restored.getMap("state").toJSON() as Record<string, string>;
+    expect(restoredState.first).toBe("one");
+    for (let index = 0; index < 12; index += 1) {
+      expect(restoredState[`key${index}`]).toBe(`value${index}`);
+    }
+  });
+
+  // SP-A1：destroy 强制 flush 节流窗口内尚未到期的待写快照。
+  test("forces a throttled pending snapshot flush on destroy", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:destroy-flush", ydoc, {
+      snapshotIntervalMs: 60000,
+      snapshotIdleMs: 60000,
+    });
+    await nextMicrotask();
+
+    ydoc.getMap("state").set("value", "pending");
+    await provider.destroy();
+    await nextMicrotask();
+
+    expect(redis.sets).toHaveLength(1);
+    const restored = new Y.Doc();
+    docs.push(restored);
+    Y.applyUpdate(restored, redis.sets[0]?.value ?? Buffer.alloc(0));
+    expect(restored.getMap("state").toJSON()).toEqual({ value: "pending" });
+  });
+
+  // SP-A6：自身发布的 update（带发布者头）回灌到本进程 subscriber 不触发 apply；
+  // 伪装成自身发布的外部内容同样被过滤；其他发布者的带头部消息正常 apply。
+  test("skips self-published updates via the publisher header while applying others", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:self-loop", ydoc);
+    await nextMicrotask();
+
+    let updateCount = 0;
+    ydoc.on("update", () => {
+      updateCount += 1;
+    });
+
+    ydoc.getMap("state").set("local", "value");
+    await nextMicrotask();
+    const baselineCount = updateCount;
+    const baselineSets = redis.sets.length;
+    const baselinePublished = redis.published.length;
+    expect(baselinePublished).toBe(1);
+
+    // 自身发布的原始载荷回灌（真实 Redis 会把消息投回发布进程的 subscriber）
+    redis.emitMessage("yjs:channel:session:self-loop", redis.published[0]!.value);
+    expect(updateCount).toBe(baselineCount);
+    expect(redis.published).toHaveLength(baselinePublished);
+    expect(redis.sets).toHaveLength(baselineSets);
+
+    // 同 publisherId 头 + 本文档未见过的外部内容：必须被自环过滤丢弃（否则会污染文档）
+    const foreign = new Y.Doc();
+    docs.push(foreign);
+    foreign.getMap("state").set("foreign", "must-not-apply");
+    const ownHeader = redis.published[0]!.value.subarray(0, 21); // flag + id + length
+    redis.emitMessage(
+      "yjs:channel:session:self-loop",
+      Buffer.concat([ownHeader, Buffer.from(Y.encodeStateAsUpdate(foreign))]),
+    );
+    expect(ydoc.getMap("state").toJSON()).toEqual({ local: "value" });
+    expect(updateCount).toBe(baselineCount);
+
+    // 其他发布者（不同 publisherId）的带头部消息正常 apply
+    const other = new Y.Doc();
+    docs.push(other);
+    other.getMap("state").set("fromOther", "applied");
+    const otherUpdate = Buffer.from(Y.encodeStateAsUpdate(other));
+    const otherFrame = Buffer.alloc(21 + otherUpdate.length);
+    otherFrame[0] = 0x80;
+    otherFrame.fill(7, 1, 17);
+    otherFrame.writeUInt32BE(otherUpdate.length, 17);
+    otherUpdate.copy(otherFrame, 21);
+    redis.emitMessage("yjs:channel:session:self-loop", otherFrame);
+    expect(ydoc.getMap("state").toJSON()).toEqual({ local: "value", fromOther: "applied" });
+
+    await provider.destroy();
+  });
+
+  // SP-A6/SP-A1：两个 provider（模拟双进程：注入不同 publisherId）经 pub/sub 互发
+  // 带头部增量仍收敛，且不自环放大消息量。
+  test("converges two providers exchanging framed updates over pub/sub", async () => {
+    const redis = new RedisDouble();
+    const firstDoc = new Y.Doc();
+    const secondDoc = new Y.Doc();
+    docs.push(firstDoc, secondDoc);
+    const first = createRedisProvider(redis as never, "session:fanout", firstDoc);
+    const secondPublisherId = new Uint8Array(16).fill(0xab);
+    const second = createRedisProvider(redis as never, "session:fanout", secondDoc, {
+      publisherId: secondPublisherId,
+    });
+    await nextMicrotask();
+
+    firstDoc.getMap("state").set("fromFirst", "one");
+    secondDoc.getMap("state").set("fromSecond", "two");
+    await nextMicrotask();
+
+    expect(firstDoc.getMap("state").toJSON()).toEqual({ fromFirst: "one", fromSecond: "two" });
+    expect(secondDoc.getMap("state").toJSON()).toEqual({ fromFirst: "one", fromSecond: "two" });
+    expect(redis.published).toHaveLength(2); // 各发一条，无自环/回显放大
+
+    await first.destroy();
+    await second.destroy();
+  });
+
+  // SP-C1：快照 CAS 使用调用方指定的滑动 TTL。
+  test("writes snapshots with the configured sliding TTL", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:ttl-config", ydoc, {
+      snapshotTtlSeconds: 3600,
+    });
+    await nextMicrotask();
+
+    ydoc.getMap("state").set("value", "persisted");
+    await nextMicrotask();
+
+    expect(redis.sets).toHaveLength(1);
+    expect(redis.sets[0]?.ttlSeconds).toBe(3600);
+
+    await provider.destroy();
+  });
+
+  // SP-C1：未显式配置时使用默认 TTL（7 天 = 604800 秒）。
+  test("uses the default seven-day snapshot TTL when not configured", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const provider = createRedisProvider(redis as never, "session:ttl-default", ydoc);
+    await nextMicrotask();
+
+    ydoc.getMap("state").set("value", "persisted");
+    await nextMicrotask();
+
+    expect(redis.sets).toHaveLength(1);
+    expect(redis.sets[0]?.ttlSeconds).toBe(604800);
+
+    await provider.destroy();
+  });
+
+  // SP-0：CAS 打点仅含尺寸/耗时/标识，不包含会话内容。
+  test("reports snapshot CAS metrics without leaking content", async () => {
+    const redis = new RedisDouble();
+    const ydoc = new Y.Doc();
+    docs.push(ydoc);
+    const lines: string[] = [];
+    const provider = createRedisProvider(redis as never, "session:metrics", ydoc, {
+      log: (line) => lines.push(line),
+    });
+    await nextMicrotask();
+
+    ydoc.getMap("state").set("secret", "metrics-secret-content");
+    await nextMicrotask();
+    await provider.destroy();
+    await nextMicrotask();
+
+    const casLines = lines.filter((line) => line.includes("snapshot cas"));
+    expect(casLines.length).toBeGreaterThan(0);
+    for (const line of casLines) {
+      expect(line).toContain("doc=session:metrics");
+      expect(line).toContain("bytes=");
+      expect(line).toContain("encodeMs=");
+      expect(line).toContain("casMs=");
+      expect(line).not.toContain("metrics-secret-content");
+    }
   });
 });

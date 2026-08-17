@@ -12,6 +12,7 @@ import {
   createRelayEvents,
   createSpawnClassifier,
   createWs,
+  textFrames,
 } from "./connection-test-helpers";
 
 type ScheduledInterval = {
@@ -50,6 +51,11 @@ function restoreProperty(target: object, name: PropertyKey, descriptor: Property
   } else {
     Reflect.deleteProperty(target, name);
   }
+}
+
+/** 解析连接收到的 JSON 文本帧（yjs:update 快照为二进制帧，SP-A4，须过滤后再 parse） */
+function parseTextFrames(ws: ReturnType<typeof createWs>): Array<Record<string, unknown>> {
+  return textFrames(ws).map((message) => JSON.parse(message) as Record<string, unknown>);
 }
 
 describe("Gateway handleOpen", () => {
@@ -104,15 +110,13 @@ describe("Gateway handleOpen", () => {
     keepalive?.callback();
 
     expect(ws.closed).toEqual([]);
-    expect(ws.messages.map((message) => JSON.parse(message))).toContainEqual({ type: "keep_alive" });
+    expect(parseTextFrames(ws)).toContainEqual({ type: "keep_alive" });
 
     now = 1_060_000;
     keepalive?.callback();
 
     expect(ws.closed).toEqual([[4501, "client keepalive timeout"]]);
-    expect(
-      ws.messages.map((message) => JSON.parse(message)).filter((message) => message.type === "keep_alive"),
-    ).toHaveLength(1);
+    expect(parseTextFrames(ws).filter((message) => message.type === "keep_alive")).toHaveLength(1);
   });
 
   // 兼容形态：抛 MACHINE_OFFLINE 码错误（历史/外部调用方形态）仍走 4500 终态，
@@ -134,7 +138,7 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "machine_unavailable", message: "Agent connection error" },
     });
@@ -160,13 +164,13 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "machine_unavailable", message: "Agent connection error" },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
     // 客户端帧不得出现 machineId 与原始诊断文案（machine_unavailable 为合法脱敏错误码，不在此列）
-    expect(ws.messages.join("")).not.toContain("mach_x");
+    expect(textFrames(ws).join("")).not.toContain("mach_x");
   });
 
   // 真实形态二：core launch 竞态窗口抛 NODE_OFFLINE（ensureNode 放行后机器断连）→
@@ -188,12 +192,12 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "machine_unavailable", message: "Agent connection error" },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
-    expect(ws.messages.join("")).not.toContain("mach_x");
+    expect(textFrames(ws).join("")).not.toContain("mach_x");
   });
 
   // 负例：瞬时/未知的 spawn 失败（INSTANCE_NOT_VISIBLE 防御分支、普通 Error）必须仍走
@@ -215,7 +219,7 @@ describe("Gateway handleOpen", () => {
 
       await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-      expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+      expect(parseTextFrames(ws)[0]).toEqual({
         type: "error",
         payload: { message: "Agent connection error" },
       });
@@ -242,14 +246,14 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "auto_start_disabled", message: "Agent connection error" },
     });
     expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
     // 客户端帧不得泄漏实例编号与原始诊断文案
-    expect(ws.messages.join("")).not.toContain("autoStart");
-    expect(ws.messages.join("")).not.toContain("2");
+    expect(textFrames(ws).join("")).not.toContain("autoStart");
+    expect(textFrames(ws).join("")).not.toContain("2");
   });
 
   // maxSessions 上限是配置态，重连不会释放实例：同样 close 4502 终态并携带诊断码。
@@ -270,7 +274,7 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "max_sessions_reached", message: "Agent connection error" },
     });
@@ -299,14 +303,14 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
     expect(errors).toEqual([thrown]);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { code: "launch_spec_build_failed", message: "Agent connection error" },
     });
     expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
     // 客户端帧不得泄漏 envId 与原始诊断文案
-    expect(ws.messages.join("")).not.toContain("env-1");
-    expect(ws.messages.join("")).not.toContain("machineId");
+    expect(textFrames(ws).join("")).not.toContain("env-1");
+    expect(textFrames(ws).join("")).not.toContain("machineId");
   });
 
   // 坏 sessionId（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）应降级为默认实例继续连接，
@@ -394,7 +398,7 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(firstWs, "ws-1", "user-1", "agent-1", null);
     await lifecycle.handleOpen(secondWs, "ws-2", "user-1", "agent-1", null);
 
-    expect(JSON.parse(firstWs.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(firstWs)[0]).toEqual({
       type: "error",
       payload: { message: "Agent connection error" },
     });
@@ -453,7 +457,7 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", null);
 
     expect(ensureCalls).toBe(0);
-    expect(JSON.parse(ws.messages[0] ?? "{}")).toEqual({
+    expect(parseTextFrames(ws)[0]).toEqual({
       type: "error",
       payload: { message: "Environment not found" },
     });

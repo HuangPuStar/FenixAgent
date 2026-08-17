@@ -145,6 +145,14 @@ const envSchema = z.object({
   RCS_REDIS_PASSWORD: z.string().optional(),
   RCS_REDIS_CLUSTER: z.string().optional(),
 
+  // ── 可选：YJS Redis 快照持久化（C2 切片：SP-A1 节流 / SP-C1 TTL）──
+  // 类型/默认值/部署文档的真相来源；包内持久层（packages/chat-channel/src/persist/
+  // redis.ts）按同名变量直读（provider 创建于包内 factory 深处，暂无宿主 DI 通道），
+  // 宿主把校验后的值经 provider options 注入后应删除包内直读。非法值由包内回落默认。
+  RCS_YJS_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
+  RCS_YJS_SNAPSHOT_IDLE_MS: z.coerce.number().int().positive().default(500),
+  RCS_YJS_SNAPSHOT_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
+
   // ── 可选：Workspace 路径 ──
   WORKSPACE_ROOT: z.string().optional(),
 });

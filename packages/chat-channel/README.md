@@ -28,7 +28,7 @@ src/
 ├── state/       # aggregator、doc-manager、chat-writer、factory、permission、yjs-store
 ├── persist/     # redis provider（跨节点 pub/sub + CAS 快照持久化）
 ├── transport/   # createYjsWsClient（前端同构 WS 客户端）
-├── util/        # createDeterministicRcsSessionId、stableKey
+├── util/        # createDeterministicRcsSessionId
 ├── schema.ts    # Chat Doc / Session Doc 新 schema 与规范化事件类型
 └── index.ts     # 稳定导出面
 ```
@@ -193,13 +193,13 @@ translateSimpleAction({ action: "load_session", sessionId: "ses_001" }, workspac
 ### util
 
 ```typescript
-import { createDeterministicRcsSessionId, stableKey } from "@fenix/chat-channel";
+import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 
 createDeterministicRcsSessionId("agent-1", "user-1", sessionId?) // → "rcs_..."
 // 前后端同构实现；同一 agent + user（+ DB session）始终生成相同 ID，作为 Y.Doc 命名 key
-
-stableKey(value) // 对 JSON-like 值做稳定序列化（Map 按 key 排序），用于 memo/useMemo 去重
 ```
+
+> `stableKey` 已随 yjs-store 的 O(1) 变更票据改造移除：变更通知去重不再序列化快照内容。
 
 ### transport (ws)
 

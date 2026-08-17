@@ -6,13 +6,14 @@ import type {
   PromptUsage,
   SessionMode,
   SessionStateSnapshot,
-  StructuredMessage,
 } from "@fenix/chat-channel";
 import imageCompression from "browser-image-compression";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";
+import { extractChangedFiles } from "../src/lib/extract-changed-files";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";
 import type { ChatInputMessage, PendingPermission, ThreadEntry, UserMessageImage } from "../src/lib/types";
@@ -158,13 +159,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const sessionReady = sessionState?.sessionStatus !== "initializing";
 
   // 从 Yjs structuredMessages 计算渲染用的 ThreadEntry[]
+  // 依赖收窄到 structuredMessages 引用本身：快照中其他字段（loading/canCancel 等）
+  // 变化不再触发整条时间线 O(N) 重建，这是流式期间渲染链的主要成本来源
+  const structuredMessages = sessionState?.structuredMessages;
   const renderEntries: ThreadEntry[] = useMemo(() => {
-    if (!sessionState) return [];
-    const result = sessionState.structuredMessages?.length
-      ? structuredToThreadEntries(sessionState.structuredMessages)
-      : [];
-    return result;
-  }, [sessionState]);
+    if (!structuredMessages?.length) return [];
+    return structuredToThreadEntries(structuredMessages);
+  }, [structuredMessages]);
 
   // ── Refs & retained local state (YJS does not yet carry these fields) ──
 
@@ -247,32 +248,42 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     await onCreateSession();
   }, [onCreateSession]);
 
-  // Todo 面板状态 — 从 Yjs structuredMessages 中提取最新 TodoWrite 工具调用
+  // Todo 面板状态 — 从 Yjs structuredMessages 中提取最新 TodoWrite 工具调用。
+  // 依赖收窄到 structuredMessages；倒序扫描且只访问 tool_call 类型消息，
+  // 只需要最后一个 TodoWrite 的 rawInput，避免正序全量 filter 两遍分配
   const todoItems = useMemo(() => {
-    if (!sessionState) return [];
-    if (!sessionState.structuredMessages) return [];
-    const todoWrites = sessionState.structuredMessages
-      .filter(
-        (m): m is StructuredMessage & { type: "tool_call"; rawInput?: Record<string, unknown> } =>
-          m.type === "tool_call",
-      )
-      .filter((m) => isTodoWriteToolCall(m.title, m.rawInput));
-    const last = todoWrites[todoWrites.length - 1];
-    if (!last?.rawInput) return [];
-    return parseTodosFromRawInput(last.rawInput);
-  }, [sessionState]);
+    if (!structuredMessages) return [];
+    for (let i = structuredMessages.length - 1; i >= 0; i--) {
+      const m = structuredMessages[i];
+      if (m.type !== "tool_call") continue;
+      if (isTodoWriteToolCall(m.title, m.rawInput) && m.rawInput) {
+        return parseTodosFromRawInput(m.rawInput);
+      }
+    }
+    return [];
+  }, [structuredMessages]);
 
   // 计算 token 统计，传给 ChatComposer 元信息条
   const tokenStats: TokenStats = useMemo(() => computeStats(renderEntries), [renderEntries]);
 
-  // Broadcast entries via custom event（路由层 chat.$agentId.tsx 据此派生 changedFiles 给 ArtifactsPanel）
+  // 会话内被 Agent 修改过的文件列表 — 路由层 ArtifactsPanel 消费（经 chat:stats 摘要事件）
+  const changedFiles = useMemo(() => extractChangedFiles(renderEntries), [renderEntries]);
+
+  // Broadcast 摘要 via custom event（路由层 ChatArea 据此派生 changedFiles 给 ArtifactsPanel）。
+  // 派发逻辑（幂等签名跳过 / 1s trailing 节流 / 依赖变化与卸载时 flush 补发最终态）
+  // 封装在 ChatStatsDispatcher，时序行为由 chat-stats.test.ts 覆盖
+  const statsDispatcher = useMemo(() => new ChatStatsDispatcher(), []);
+  // 卸载时补发待发摘要；不能放进下方 effect 的 cleanup——依赖变化也会触发 cleanup，
+  // 若在那里 flush 会把节流退化为每次变化立即派发
+  useEffect(() => () => statsDispatcher.flush(), [statsDispatcher]);
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("chat:stats", {
-        detail: { agentName: agentId, modelName, entries: renderEntries },
-      }),
-    );
-  }, [renderEntries, agentId, modelName]);
+    statsDispatcher.update({
+      agentName: agentId,
+      modelName,
+      entryCount: renderEntries.length,
+      changedFiles,
+    });
+  }, [agentId, modelName, renderEntries, changedFiles, statsDispatcher]);
 
   // =============================================================================
   // User Actions

@@ -3,6 +3,7 @@
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
 import type { ActionAck, ActionError } from "../channel/types";
+import { decodeYjsUpdateFrame } from "../protocol/update-frame";
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set([
@@ -53,10 +54,25 @@ export interface YjsWsClient {
 }
 
 /**
+ * 把 onmessage 收到的二进制载荷归一为 Uint8Array 视图。
+ * 接受 ArrayBuffer（binaryType=arraybuffer 的标准形态）与 TypedArray 视图（Bun /
+ * 测试 fake 直接透传的形态）；其他形态（如未设置 binaryType 的 Blob）返回 null 丢弃。
+ */
+function toFrameBytes(data: unknown): Uint8Array | null {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) {
+    const view = data as Uint8Array;
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+  return null;
+}
+
+/**
  * 创建 Yjs WebSocket 客户端。
  *
- * 自动处理连接、断线重连（指数退避）、
- * 解析 yjs:update 消息并 base64 解码为 Uint8Array。
+ * 自动处理连接、断线重连（指数退避）、解析消息帧：
+ * - 二进制帧（SP-A4）：yjs:update 走 0x01 二进制帧，零拷贝解码为 Uint8Array；
+ * - JSON 文本帧：error / action_ack / action_error 等控制消息。
  *
  * @example
  * ```ts
@@ -101,6 +117,9 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     setState("connecting");
     const socket = new WebSocket(url);
+    // yjs:update 二进制帧要求以 ArrayBuffer 形态到达（浏览器默认 blob 需异步解包），
+    // Bun 默认即 arraybuffer，显式设置保证两端一致。
+    socket.binaryType = "arraybuffer";
     ws = socket;
 
     socket.onopen = () => {
@@ -111,8 +130,18 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onmessage = (event: MessageEvent) => {
       if (destroyed || ws !== socket) return;
+      const data = event.data;
+      // 二进制 yjs:update 帧（SP-A4）：零拷贝解析，替代历史 base64+JSON 逐字节解码慢路径
+      if (typeof data !== "string") {
+        const bytes = toFrameBytes(data);
+        if (bytes) {
+          const frame = decodeYjsUpdateFrame(bytes);
+          if (frame) onYjsUpdate(frame.docName, frame.update);
+        }
+        return;
+      }
       try {
-        const msg = JSON.parse(event.data as string) as Record<string, unknown>;
+        const msg = JSON.parse(data) as Record<string, unknown>;
         if (msg.type === "error") {
           const payload = msg.payload;
           if (payload && typeof payload === "object") {
@@ -124,15 +153,6 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           }
           return;
         }
-        if (msg.type === "yjs:update") {
-          const docName = msg.docName as string;
-          const base64 = msg.data as string;
-          if (docName && base64) {
-            // 解码 base64 → Uint8Array（浏览器用 atob，Bun 同样支持）
-            const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-            onYjsUpdate(docName, binary);
-          }
-        }
         if (msg.type === "action_ack") {
           onActionAck?.(msg as unknown as ActionAck);
           return;
@@ -142,7 +162,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           return;
         }
       } catch {
-        console.warn("[yjs-ws] failed to parse msg:", (event.data as string)?.slice(0, 100));
+        console.warn("[yjs-ws] failed to parse msg:", data.slice(0, 100));
       }
     };
 

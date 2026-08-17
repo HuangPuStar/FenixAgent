@@ -7,9 +7,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
+import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
-import { extractChangedFiles } from "@/src/lib/extract-changed-files";
-import type { ThreadEntry } from "@/src/lib/types";
 import { cn } from "@/src/lib/utils";
 
 const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
@@ -61,9 +60,12 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     },
   );
 
-  const [entries, setEntries] = useState<ThreadEntry[]>([]);
+  // changedFiles 由 ChatInterface 通过 chat:stats 摘要事件派发（已含 extractChangedFiles 的结果），
+  // 此处只做投影存储，不再持有完整 entries 或二次全量派生。
+  // 按 agentName 过滤：ChatArea 维护跨 agent 的 session keep-alive 槽位，
+  // 后台隐藏槽位（延迟节流 flush / 重连收流中）派发的 chat:stats 不得污染当前 agent 的面板
+  const changedFiles = useChangedFilesFromStats(agentId);
   const [restartKey, setRestartKey] = useState(0);
-  const changedFiles = useMemo(() => extractChangedFiles(entries), [entries]);
 
   // ProdView 模块配置：若所有附加面板都被禁用，则不渲染右侧面板区域
   const hasPanelModules = useMemo(() => {
@@ -92,7 +94,6 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.envId && detail.envId === agentId) {
-        setEntries([]);
         setRestartKey((k) => k + 1);
         // 清除同 agent 所有 session slot，重建 ChatPanel
         setSessionSlots((prev) => {
@@ -130,16 +131,6 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
       </ChatPageVisibleContext.Provider>
     );
   });
-
-  // 监听 chat:stats 事件，派生 changedFiles
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setEntries(detail.entries ?? []);
-    };
-    window.addEventListener("chat:stats", handler);
-    return () => window.removeEventListener("chat:stats", handler);
-  }, []);
 
   // 记录用户是否已手动操作面板（展开/折叠/拖拽），
   // 防止 layout 重新计算时 panelRef 短暂重置导致意外 collapse

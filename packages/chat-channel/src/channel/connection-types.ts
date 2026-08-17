@@ -28,8 +28,11 @@ export const PROMPT_TIMEOUT_MS = 5 * 60_000;
 
 /** 最小 WebSocket 连接抽象：与传输框架解耦（Elysia WS / Hono WSContext 适配为同一形状） */
 export interface WsConnection {
-  /** 向客户端发送文本数据 */
-  send(data: string): void;
+  /**
+   * 向客户端发送数据：JSON 文本帧（keep_alive/pong/error/action ack 等控制消息）
+   * 或 yjs:update 二进制帧（Uint8Array，SP-A4 线协议，见 protocol/update-frame.ts）
+   */
+  send(data: string | Uint8Array): void;
   /** 以指定码与原因关闭连接 */
   close(code?: number, reason?: string): void;
   /** 当前就绪状态（0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED） */
