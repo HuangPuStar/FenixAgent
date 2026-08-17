@@ -1,12 +1,16 @@
 # FenixAgent
 
-FenixAgent 是一个 ACP Agent的统一后端服务，你可以通过它来控制所有支持 ACP 协议的 Agent，比如 OpenCode、OpenClaw、Claude Code 等。
+FenixAgent 是一个 ACP Agent的统一后端服务，你可以通过它来控制所有支持 ACP 协议的 Agent，比如 OpenCode、OpenClaw、Claude Code、DeepSeek Harness (DSH) 等。
 
 ## 功能
 
 - **统一的Harness支持** — 为 ACP Agent 提供统一的 Harness 支持，使用不同的 Agent 也能保持一致的体验
 - **统一的资源管理** — 为 ACP Agent 提供统一的 模型、技能、工具、知识库等资源 的配置和注入，可以在同一套资源配置下使用不同的 Agent，不需要对不同的 Agent 做重复配置
 - **ACP Agent适配** — 可控制所有支持 ACP 协议的 Agent（需要实现 Agent 的适配层）
+
+## DeepSeek Harness（DSH）支持
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）是 DeepSeek 官方的 Agent 框架，原生支持 ACP 协议，可直接接入 FenixAgent。仓库提供 `docker/sandbox-dsh/` 容器镜像，以伪装 ccb 引擎槽位的方式接入，平台侧零改动：模型配置由主服务器下发（API key 不落盘），Web Chat UI、OpenAI 兼容 API、Workflow、会话持久化与多租户 workspace 隔离等平台能力全部复用。使用步骤、权限边界与已知限制详见 [docker/sandbox-dsh/README.md](docker/sandbox-dsh/README.md)。
 
 ## 快速开始
 
@@ -80,7 +84,7 @@ bun precheck
 
 ## acp-link 独立部署（分布式执行节点）
 
-acp-link 是 ACP stdio-to-WebSocket 桥接器，部署在远端机器上，负责将 opencode 等 ACP Agent 子进程桥接到 RCS。
+acp-link 是 ACP stdio-to-WebSocket 桥接器，部署在远端机器上，负责将 opencode 等 ACP Agent 子进程桥接到 RCS。任何支持 ACP 的 Agent（包括 DSH，见 [DeepSeek Harness 支持](#deepseek-harnessdsh支持)）都可以通过 acp-link 注册为平台的远端执行节点。
 
 ### 架构
 

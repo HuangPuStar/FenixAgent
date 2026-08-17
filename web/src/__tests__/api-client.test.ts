@@ -5,22 +5,27 @@ let store: Record<string, string> = {};
 
 beforeEach(() => {
   store = {};
-  (globalThis as any).localStorage = {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => {
-      store[k] = v;
+  // CI 环境（GitHub Actions）中 globalThis.localStorage 是只读属性，直接赋值会抛
+  // TypeError；必须用 defineProperty 定义（同 auth-preference.test.ts 的模式）。
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+      clear: () => {
+        store = {};
+      },
+      get length() {
+        return Object.keys(store).length;
+      },
+      key: () => null,
     },
-    removeItem: (k: string) => {
-      delete store[k];
-    },
-    clear: () => {
-      store = {};
-    },
-    get length() {
-      return Object.keys(store).length;
-    },
-    key: () => null,
-  };
+  });
 });
 
 // Mock fetch

@@ -1,7 +1,7 @@
 # 领域上下文 (Domain Context)
 
-> 最后更新：2026-08-04
-> 来源：grill-with-docs 面试输出（编排域 2026-08-03、Chat 域 2026-08-04）
+> 最后更新：2026-08-11
+> 来源：grill-with-docs 面试输出（编排域 2026-08-03、Chat 域 2026-08-04）及通用资源版本控制设计（2026-08-11）
 
 ## 项目概览
 
@@ -54,6 +54,21 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台。
 | Organization | 多租户隔离边界 |
 | User | 用户身份 |
 | Team | 改动 11（待实施） |
+
+### 资源版本域（目标架构，见 `docs/arch/07-versioning.md`）
+
+| 术语 | 定义 | 避免使用 |
+|------|------|----------|
+| **资源（Resource）** | 可以连续保存多个版本的业务对象。 | 用某一版本代表整个资源 |
+| **资源 ID（Resource ID）** | 一个版本链的稳定身份；同一资源的所有版本共享相同 ID。 | 版本 ID、物理版本行 ID |
+| **MAX 工作版本（MAX Version）** | `version = Version.MAX` 的唯一可编辑工作版本；可以引用其他资源的 MAX 或确定整数版本。 | 独立 latest 指针、Draft 表 |
+| **锁定版本（Locked Version）** | `1..Version.MAX-1` 范围内、当前资源数据不可修改的整数版本；其引用仍可指向目标 MAX。 | 完整依赖快照、Release |
+| **版本键（Version Key）** | 唯一定位一份快照的 `resource_id + version`，也是资源引用的目标。 | 额外的 version UUID |
+| **MAX 引用（MAX Reference）** | 来源工作版本对目标 MAX 的动态引用；目标编辑后，来源工作图读取新内容。 | 固定引用 |
+| **确定版本引用（Exact Version Reference）** | 指向目标整数锁定版本、不会随时间变化的引用。 | MAX 引用 |
+| **单资源锁定（Resource Lock）** | 把当前资源的 MAX 聚合复制为新整数版本、并原样保留全部引用值的动作。 | 递归锁定、依赖快照 |
+| **锁定 Key（Lock Key）** | 调用方为一次锁定意图生成的幂等标识；同一资源链用相同 key 重试时返回第一次创建的版本。 | 版本 ID、资源 ID |
+| **资源 DAG（Resource DAG）** | 资源类型只按架构声明的单向层级引用；允许共享下游，禁止反向、自引用和任意类型关系。 | 树、通用资源图 |
 
 ## 当前目标架构
 
