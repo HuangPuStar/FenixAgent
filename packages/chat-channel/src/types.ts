@@ -145,8 +145,9 @@ export interface SessionStateSnapshot {
   sessionStatus: SessionDocStatus | null;
   status: SessionStatus;
   loading: LoadingState | null;
-  /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮，
-   *  与 loading 正交：running 输出期间 loading 为 null，但停止按钮必须保持可用 */
+  /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮；
+   *  running 正文流式输出期间 loading 保持非空（session/respond），输出中指示器不消失，
+   *  停止按钮同样可用，与 loading 正交 */
   canCancel: boolean;
   messages: SessionMessage[];
   structuredMessages: StructuredMessage[];

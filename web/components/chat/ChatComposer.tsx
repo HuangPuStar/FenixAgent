@@ -90,8 +90,8 @@ export function ChatComposer({
   const _placeholder = placeholder ?? t("chatInput.placeholder");
 
   // 发送/停止按钮派生状态（与 loading 正交）：
-  // - canCancel（accepting/running/awaiting_permission）→ 显示停止图标且可点击（本修复核心：
-  //   running 输出期间 loading 为 null，按钮原逻辑会退回 Send 导致无法中断）；
+  // - canCancel（accepting/running/awaiting_permission）→ 显示停止图标且可点击（停止可用性
+  //   不依赖 loading：running 输出期间 loading 虽非空，仍不能退回 Send，保证可中断）；
   // - isCancelling（isLoading 且不可取消 ⟺ turn === cancelling，取消已发出）→ 显示停止但禁用，
   //   防止重复点触发无意义的重发 cancel RPC；
   // - 其余状态 → 发送按钮，按 canSend 决定可点。

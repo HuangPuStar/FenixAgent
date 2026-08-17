@@ -145,9 +145,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 从 Yjs sessionState 计算 loading 状态
   const isLoading = sessionState?.loading != null;
 
-  // turn 是否可取消（accepting/running/awaiting_permission）：仅驱动 ChatComposer 停止按钮，
-  // 与 loading 正交——running 输出期间 loading 为 null（按钮原逻辑会退回 Send），
-  // 必须靠 canCancel 让整个输出过程保持可中断
+  // turn 是否可取消（accepting/running/awaiting_permission）：驱动 ChatComposer 停止按钮。
+  // 与 loading 正交——running 正文流式输出期间 loading 保持非空（输出中指示器不消失），
+  // 停止按钮可用性必须由 canCancel 独立保证，不可回退到 Send 按钮
   const canCancel = sessionState?.canCancel ?? false;
 
   // 会话系统就绪（可输入）：session.status 仅在 create/load 成功后投影为 "ready"，

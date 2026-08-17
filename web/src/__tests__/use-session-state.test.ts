@@ -32,9 +32,9 @@ describe("deriveCanCancel", () => {
 });
 
 describe("computeSessionSnapshot", () => {
-  // running（输出中）时 loading 为 null（断点 1 的原始问题）但 canCancel 为 true：
-  // 快照必须同时满足"输入区不锁死"与"停止按钮可用"
-  test("running 时 loading 为 null 且 canCancel 为 true（输出期间可停止）", () => {
+  // running（正文流式输出中）时 loading 保持非空（输出中指示器持续显示）且 canCancel 为 true：
+  // 流式期间 UI 指示器不消失，同时停止按钮保持可用
+  test("running 时 loading 非空且 canCancel 为 true（流式输出期间有 loading 指示器）", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
@@ -42,7 +42,7 @@ describe("computeSessionSnapshot", () => {
       turnUpdatedAt: 123,
       permissionOptions: new Map(),
     });
-    expect(snapshot.loading).toBeNull();
+    expect(snapshot.loading).toEqual({ kind: "session/respond", since: 123 });
     expect(snapshot.canCancel).toBe(true);
     expect(snapshot.status).toBe("responding");
     expect(snapshot.acpSessionId).toBe("ses-1");

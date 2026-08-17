@@ -210,7 +210,7 @@ export function deriveCanCancel(turnStatus: TurnStatus | null): boolean {
 /**
  * 合并时间线 + 会话元信息为展示快照（纯函数，无副作用）。
  * 导出仅供测试：直接构造输入验证 loading / canCancel / status 等派生字段的共存关系
- * （如 running 输出期间 loading 为 null 但 canCancel 为 true）。
+ * （如 running 正文流式输出期间 loading 保持非空、canCancel 为 true）。
  */
 export function computeSessionSnapshot(
   timeline: SessionTimelineSnapshot,
@@ -234,7 +234,7 @@ export function computeSessionSnapshot(
     status: mapTurnStatus(turnStatus),
     canCancel: deriveCanCancel(turnStatus),
     loading:
-      turnStatus === "accepting" || turnStatus === "cancelling"
+      turnStatus === "accepting" || turnStatus === "running" || turnStatus === "cancelling"
         ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }
         : null,
     messages: timeline.messages,

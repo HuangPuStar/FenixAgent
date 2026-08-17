@@ -93,7 +93,7 @@ describe("ChatComposer", () => {
   });
 
   // 断点 1 修复：canCancel（accepting/running/awaiting_permission）时按钮渲染 Square 停止图标，
-  // 输出过程中（running，isLoading=false）停止按钮也必须可见
+  // 输出过程中（running，loading 非空但 canCancel=true）停止按钮也必须可见
   test("renders Square stop icon when canCancel is true", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(
