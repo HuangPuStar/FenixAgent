@@ -5,6 +5,7 @@
  * 后端路由前缀为 /web/environments/:id/fs，本模块内部拼接完整路径。
  */
 
+import { randomUUID } from "../lib/utils";
 import { request, UPLOAD_TIMEOUT_MS, WRITE_TIMEOUT_MS } from "./request";
 
 /**
@@ -126,7 +127,7 @@ export const fsApi = {
       method: "POST",
       body: fd,
       timeout: UPLOAD_TIMEOUT_MS,
-      opId: crypto.randomUUID(),
+      opId: randomUUID(),
     }),
 
   /**
@@ -142,7 +143,7 @@ export const fsApi = {
       params: { id },
       body: { content },
       timeout: WRITE_TIMEOUT_MS,
-      opId: crypto.randomUUID(),
+      opId: randomUUID(),
     }),
 
   /**
@@ -158,7 +159,7 @@ export const fsApi = {
       params: { id },
       body: { oldPath, newPath },
       timeout: WRITE_TIMEOUT_MS,
-      opId: crypto.randomUUID(),
+      opId: randomUUID(),
     }),
 
   /**
@@ -173,7 +174,7 @@ export const fsApi = {
       params: { id },
       body: { path },
       timeout: WRITE_TIMEOUT_MS,
-      opId: crypto.randomUUID(),
+      opId: randomUUID(),
     }),
 
   /**
@@ -188,6 +189,6 @@ export const fsApi = {
       params: { id },
       body: { paths },
       timeout: WRITE_TIMEOUT_MS,
-      opId: crypto.randomUUID(),
+      opId: randomUUID(),
     }),
 };

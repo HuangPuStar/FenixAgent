@@ -166,7 +166,9 @@ function ChatPanel({ agentId }: { agentId: string }) {
 }
 ```
 
-发送 Action 时携带 `commandId`（UUID，重试复用同一 ID）：
+发送 Action 时携带 `commandId`（UUID，重试复用同一 ID；注意 `crypto.randomUUID` 仅
+在 secure context（HTTPS / localhost）可用，纯 HTTP 部署需使用不依赖 secure context
+的 UUID 生成器（如 `uuid` 包））：
 
 ```typescript
 client.send({

@@ -10,6 +10,7 @@ import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { stripHtmlTags } from "../src/lib/strip-html-tags";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -609,7 +610,9 @@ interface SessionTitleButtonProps {
  */
 function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonProps) {
   const { t } = useTranslation("components");
-  const displayTitle = session.title?.trim() ? session.title : t("acpMain.newSession");
+  // 与 ChatHeader 历史列表一致的标题清洗：剔除混入的 HTML 标签（如
+  // <system-reminder> 上下文块，见 strip-html-tags.ts），清洗后为空则回退到"新会话"
+  const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
 
   return (
     <Tooltip>
