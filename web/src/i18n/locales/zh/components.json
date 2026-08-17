@@ -225,7 +225,8 @@
   },
   "messageBubble": {
     "expand": "展开",
-    "uploadedImage": "已上传图片"
+    "uploadedImage": "已上传图片",
+    "systemMessage": "系统消息"
   },
   "planView": {
     "high": "高",
