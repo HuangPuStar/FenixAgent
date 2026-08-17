@@ -426,6 +426,24 @@ export function setBuildLaunchSpec(fn: ((input: BuildLaunchSpecInput) => Promise
 }
 
 /**
+ * 构造透传给 machine 上 agent 进程的 Langfuse 环境变量。
+ *
+ * 主服务统一配置 LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_BASE_URL
+ * （经 validateEnv 进入 config），此处映射为 agent 进程消费的同名变量并经
+ * launchSpec.env 派发到 machine（peri 的 langfuse-client 直读，SECRET_KEY 为密钥，
+ * 仅随受信 relay 通道传输）。只透传声明的三个键，避免无关 LANGFUSE_* 泄漏；
+ * extraEnv 中的同名变量仍保持最高优先级。从 config 读取而非直读 process.env，
+ * 便于测试经 setConfig 隔离注入，不污染全局环境。
+ */
+function buildLangfuseEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (config.langfusePublicKey) env.LANGFUSE_PUBLIC_KEY = config.langfusePublicKey;
+  if (config.langfuseSecretKey) env.LANGFUSE_SECRET_KEY = config.langfuseSecretKey;
+  if (config.langfuseBaseUrl) env.LANGFUSE_BASE_URL = config.langfuseBaseUrl;
+  return env;
+}
+
+/**
  * 按 agentConfig 直接解析启动所需资源，并构造最终的 AgentLaunchSpec。
  *
  * 设计约束：
@@ -544,9 +562,9 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     }
   }
 
-  // 合并 extraEnv 和 CCB Hindsight 环境变量（调用方显式传入的同名变量优先）
+  // 合并 extraEnv 与 CCB Hindsight / Langfuse 环境变量（调用方显式传入的同名变量优先）
   const extraEnv = input.extraEnv ?? {};
-  const launchEnv = { ...ccbHindsightEnv, ...extraEnv };
+  const launchEnv = { ...ccbHindsightEnv, ...buildLangfuseEnv(), ...extraEnv };
 
   return {
     organizationId,
@@ -580,7 +598,7 @@ export async function buildBasicLaunchSpec(input: BuildBasicLaunchSpecInput): Pr
     organizationId: input.organizationId,
     userId: input.userId,
     ...(input.environmentId ? { environmentId: input.environmentId } : {}),
-    env: input.extraEnv ?? {},
+    env: { ...buildLangfuseEnv(), ...(input.extraEnv ?? {}) },
     agent: {
       name: "build",
       prompt: composeAgentSystemPrompt(config.agentSystemPrompt, "build"),

@@ -86,6 +86,10 @@ function buildConfig(env: Env) {
     defaultEngineType: env.RCS_DEFAULT_ENGINE_TYPE,
     agentSystemPrompt: env.RCS_AGENT_SYSTEM_PROMPT ?? DEFAULT_AGENT_SYSTEM_PROMPT,
     disableLocalExecution: env.RCS_DISABLE_LOCAL_EXECUTION,
+    /** Langfuse 观测透传（env.ts 声明，经 launchSpec.env 统一派发到 machine 上 agent 进程）。 */
+    langfusePublicKey: env.LANGFUSE_PUBLIC_KEY,
+    langfuseSecretKey: env.LANGFUSE_SECRET_KEY,
+    langfuseBaseUrl: env.LANGFUSE_BASE_URL,
   };
 }
 

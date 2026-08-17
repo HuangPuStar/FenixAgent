@@ -302,6 +302,9 @@ async function buildAgentLaunchSpecForCore(
     USER_META_BASE_URL: getBaseUrl(),
     USER_META_USER_ID: env.userId ?? launchSpec.userId,
     USER_META_ORG_ID: env.organizationId ?? "",
+    // langfuse trace 的 user 维度：与 USER_META_USER_ID 同源（environment 属主优先），
+    // peri 的 langfuse tracer 经 LANGFUSE_USER_ID 写入 TraceBody.user_id（动态，按实例注入）
+    LANGFUSE_USER_ID: env.userId ?? launchSpec.userId,
   };
   // 对齐旧路径：调用方显式传入的同名环境变量优先
   const mergedExtraEnv = { ...platformEnv, ...extraEnv };
