@@ -11,7 +11,9 @@ import {
   clearSessionDocContent,
   getChatRoot,
   getEntryOrder,
+  getSessionInfo,
   getSessionRoot,
+  setActiveTurn,
 } from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
 
@@ -400,4 +402,21 @@ test("session_list 空列表不清空已有 sessions 条目", () => {
   applyNormalizedEvent(pair, event("session_list", { sessions: [{ sessionId: "ses_1", title: "A" }] }));
   expect(sessions.size).toBe(1);
   expect(sessions.has("ses_2")).toBe(false);
+});
+
+// 展示态三字段（presenting/loading/canCancel）是 session map 的平铺键：setActiveTurn
+// 同步投影，turn 为 null 的清空分支同样投影（idle / null / false），前端只读
+test("active turn presentation fields are flat keys on session map", () => {
+  setActiveTurn(pair.session, "turn_1", "running");
+  const running = getSessionInfo(pair.session);
+  expect(running.get("presenting")).toBe("responding");
+  expect(running.get("loading")).toEqual({ kind: "session/respond", since: running.get("activeTurnUpdatedAt") });
+  expect(running.get("canCancel")).toBe(true);
+
+  // 清空 turn（无活动 turn）：presenting=idle、loading=null、canCancel=false
+  setActiveTurn(pair.session, null, null);
+  const idle = getSessionInfo(pair.session);
+  expect(idle.get("presenting")).toBe("idle");
+  expect(idle.get("loading")).toBeNull();
+  expect(idle.get("canCancel")).toBe(false);
 });

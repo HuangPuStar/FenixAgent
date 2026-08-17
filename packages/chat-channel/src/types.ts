@@ -2,24 +2,15 @@
 import type * as Y from "yjs";
 import type { SessionDocStatus } from "./schema";
 
-/** ACP 事件应用选项（聚合层状态变更的附加控制） */
-export interface ACPApplyOptions {
-  /**
-   * 抑制 user_message_chunk 的 loading 设置。session/load 历史回放窗口内为 true：
-   * 回放的历史用户消息是数据重建，不是新的 turn，不应触发 loading（否则切换会话
-   * 后 loading 残留、刷新恢复时覆盖真实进行中的 loading）。
-   */
-  suppressLoading?: boolean;
-}
-
 // ── Session 级别状态 ──
 
 /**
- * 前端展示状态（派生自 Session Doc 的 session.activeTurnStatus 平铺键，见 web/src/hooks/use-session-state.ts）。
- * 旧扁平 10 态枚举（thinking/tool-calling/ready/plan 等）已随 Turn 状态机删除，
- * 此类型只保留映射表实际产出的展示值，不再承载执行状态。
+ * 前端展示状态（由后端聚合层在 setActiveTurn 投影到 Session Doc 的 session.presenting
+ * 平铺键，前端只读该投影字段，不再自行从 activeTurnStatus 派生，见
+ * web/src/hooks/use-session-state.ts）。旧扁平 10 态枚举（thinking/tool-calling/ready/plan
+ * 等）已随 Turn 状态机删除，此类型只保留映射表实际产出的展示值。
  */
-export type SessionStatus = "idle" | "loading" | "responding" | "waiting-user" | "done" | "error";
+export type SessionStatus = "idle" | "loading" | "responding" | "replaying" | "waiting-user" | "done" | "error";
 
 export interface LoadingState {
   kind: "session/bootstrap" | "session/respond" | "tool/executing" | "permission/pending";
@@ -153,12 +144,21 @@ export interface SessionStateSnapshot {
    * "新会话永远无法发消息"的死锁。
    */
   sessionStatus: SessionDocStatus | null;
+  /**
+   * 展示态（后端投影字段 session.presenting 直接读取，前端零派生）。
+   * 回放 turn（turn_replay_*，load/resume 历史回放）投影为 "replaying"：
+   * 静态历史回显，不触发 loading 指示与停止按钮。
+   */
   status: SessionStatus;
+  /**
+   * 展示态（后端投影字段 session.loading 直接读取）：accepting/running/cancelling 期间
+   * 非空 { kind: "session/respond", since }，回放 turn 与 idle/终态为 null。
+   */
   loading: LoadingState | null;
-  /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮；
-   *  running 正文流式输出期间 loading 保持非空（session/respond），输出中指示器不消失，
-   *  停止按钮同样可用，与 loading 正交。历史回放 turn（turn_replay_*，load/resume 投影）
-   *  视为静态历史：loading 与 canCancel 均不派生（回放期间无伪"输出中"指示与停止按钮） */
+  /**
+   * 展示态（后端投影字段 session.canCancel 直接读取）：accepting/running/awaiting_permission
+   * 期间为 true（输出中停止按钮保持可用），回放 turn 与 idle/终态为 false。
+   */
   canCancel: boolean;
   messages: SessionMessage[];
   structuredMessages: StructuredMessage[];

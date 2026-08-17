@@ -1,16 +1,18 @@
 // web/src/hooks/use-session-state.ts
 // 订阅两份 Y.Doc 派生 SessionStateSnapshot（展示形状保持，数据来源切到新 schema）：
 // - Chat Doc（chat:{rcsSessionId}）= 消息时间线：entries/blocks/toolCalls
-// - Session Doc（session:{rcsSessionId}）= 会话元信息：session.activeTurn*/agent
+// - Session Doc（session:{rcsSessionId}）= 会话元信息：session.presenting/loading/canCancel
+//   展示态投影字段（后端聚合层 setActiveTurn 统一投影）+ agent
 //
+// 展示态（status/loading/canCancel）为纯读后端投影字段，前端零派生；
 // 职责错位纠正后时间线在 Chat Doc；applyUpdate 按 docName 前缀路由到内部 store。
 
 import type {
+  LoadingState,
   PermissionOption,
   SessionDocStatus,
   SessionStateSnapshot,
   SessionStatus,
-  TurnStatus,
 } from "@fenix/chat-channel";
 import { createYjsStore, stableKey, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -133,16 +135,18 @@ function mapToolRunStatus(status: string): "running" | "done" | "error" {
   return "running";
 }
 
-// ── Session Doc 派生：元信息（turn 状态/agent）──
+// ── Session Doc 派生：元信息（展示态投影/agent）──
 
 interface SessionMetaSnapshot {
   acpSessionId: string;
   /** Session Doc 会话级状态（session.status，create/load 成功后 "ready"），用于会话就绪判定 */
   sessionStatus: SessionDocStatus | null;
-  turnStatus: TurnStatus | null;
-  /** 活动 turn ID：区分实时 turn 与历史回放 turn（turn_replay_*，供 loading/canCancel 抑制） */
-  turnId: string | null;
-  turnUpdatedAt: number | null;
+  /** 展示态（后端投影字段 session.presenting 直接读取，前端零派生） */
+  presenting: SessionStatus;
+  /** 展示态（后端投影字段 session.loading 直接读取） */
+  loading: LoadingState | null;
+  /** 展示态（后端投影字段 session.canCancel 直接读取） */
+  canCancel: boolean;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
   permissionOptions: Map<string, PermissionOption[]>;
 }
@@ -170,61 +174,27 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
     acpSessionId:
       (agent?.get("acpSessionId") as string | undefined) ?? (session?.get("sessionId") as string | undefined) ?? "",
     sessionStatus: (session?.get("status") as SessionDocStatus | undefined) ?? null,
-    turnStatus: (session?.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
-    turnId: (session?.get("activeTurnId") as string | undefined) ?? null,
-    turnUpdatedAt: (session?.get("activeTurnUpdatedAt") as number | undefined) ?? null,
+    // 展示态投影字段缺失（Session Doc 尚未同步）时给安全默认值：
+    // presenting="idle"、loading=null、canCancel=false
+    presenting: (session?.get("presenting") as SessionStatus | undefined) ?? "idle",
+    loading: (session?.get("loading") as LoadingState | null | undefined) ?? null,
+    canCancel: (session?.get("canCancel") as boolean | undefined) ?? false,
     permissionOptions,
   };
-}
-
-/** Turn 状态机 → 展示状态（accepting→思考中、awaiting_permission→等待授权、running→回复中…） */
-function mapTurnStatus(turnStatus: TurnStatus | null): SessionStatus {
-  switch (turnStatus) {
-    case "accepting":
-      return "loading";
-    case "running":
-      return "responding";
-    case "awaiting_permission":
-      return "waiting-user";
-    case "cancelling":
-      return "loading";
-    case "completed":
-    case "cancelled":
-    case "interrupted":
-      return "done";
-    case "failed":
-      return "error";
-    default:
-      return "idle";
-  }
-}
-
-/**
- * turn 是否可发起取消：accepting（消息刚发出）/ running（输出中）/ awaiting_permission（权限卡住）。
- * 与 loading 正交：loading 表示"思考/取消中"的加载态，canCancel 表示"此刻点停止按钮有对象可取消"。
- * cancelling（取消已发出）与全部终态不可再取消。
- */
-export function deriveCanCancel(turnStatus: TurnStatus | null): boolean {
-  return turnStatus === "accepting" || turnStatus === "running" || turnStatus === "awaiting_permission";
 }
 
 // ── 合并快照 ──
 
 /**
  * 合并时间线 + 会话元信息为展示快照（纯函数，无副作用）。
- * 导出仅供测试：直接构造输入验证 loading / canCancel / status 等派生字段的共存关系
- * （running 正文流式输出期间 loading 保持非空、canCancel 为 true；历史回放 turn
- * turn_replay_* 视为静态历史：不派生 loading 与 canCancel，避免切换会话后出现
- * 持续数秒的伪"输出中"指示）。
+ * 导出仅供测试：直接构造 meta 投影字段验证 status/loading/canCancel 透传
+ * （展示态全部来自后端投影字段 session.presenting / session.loading / session.canCancel，
+ * 前端零派生；后端 turn 状态机 → 展示态映射由 packages/chat-channel 包内测试覆盖）。
  */
 export function computeSessionSnapshot(
   timeline: SessionTimelineSnapshot,
   meta: SessionMetaSnapshot,
 ): SessionStateSnapshot {
-  const turnStatus = meta.turnStatus;
-  // 回放 turn（turn_replay_*，后端 load/resume 投影，回放流无终态信号、按回放窗口收敛）：
-  // 属于历史回显而非实时输出，loading 指示器与停止按钮都不应出现
-  const isReplayTurn = meta.turnId?.startsWith("turn_replay_") ?? false;
   // 按 permissionRequest.requestId 合并 Session Doc 的真实选项（Chat Doc 侧为占位空数组）
   const structuredMessages = timeline.structuredMessages.map((m) => {
     if (m.type !== "tool_call" || !m.permissionRequest) return m;
@@ -239,12 +209,10 @@ export function computeSessionSnapshot(
   return {
     acpSessionId: meta.acpSessionId,
     sessionStatus: meta.sessionStatus,
-    status: mapTurnStatus(turnStatus),
-    canCancel: !isReplayTurn && deriveCanCancel(turnStatus),
-    loading:
-      !isReplayTurn && (turnStatus === "accepting" || turnStatus === "running" || turnStatus === "cancelling")
-        ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }
-        : null,
+    // 展示态直接透传后端投影字段（presenting/loading/canCancel），前端不再做任何派生
+    status: meta.presenting,
+    canCancel: meta.canCancel,
+    loading: meta.loading,
     messages: timeline.messages,
     structuredMessages,
     streaming: timeline.streaming,
@@ -254,7 +222,7 @@ export function computeSessionSnapshot(
 }
 
 /**
- * 订阅指定 RCS 会话的会话状态（时间线 + turn 元信息）。
+ * 订阅指定 RCS 会话的会话状态（时间线 + 展示态投影元信息）。
  * 内部双 store（Chat Doc / Session Doc），applyUpdate(docName, data) 按前缀路由。
  */
 export function useSessionState(rcsSessionId: string) {
@@ -274,9 +242,9 @@ export function useSessionState(rcsSessionId: string) {
         {
           acpSessionId: "",
           sessionStatus: null,
-          turnStatus: null,
-          turnId: null,
-          turnUpdatedAt: null,
+          presenting: "idle",
+          loading: null,
+          canCancel: false,
           permissionOptions: new Map(),
         },
         (s) => stableKey(s),

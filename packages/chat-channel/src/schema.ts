@@ -104,6 +104,9 @@ export type TurnStatus =
  * Session Doc session map 投影（物理结构为平铺键：
  * activeTurnId / activeTurnStatus / activeTurnUpdatedAt，
  * 与 chat-writer.ts setActiveTurn 写入保持一致；无嵌套 activeTurn 对象）。
+ * 展示态三字段（presenting / loading / canCancel）由 setActiveTurn 同步投影：
+ * 前端只读投影结果，不再自行从 activeTurnStatus 派生（见 types.ts SessionStatus；
+ * 回放 turn turn_replay_* 投影为 "replaying" 且 loading=null / canCancel=false）。
  */
 export interface SessionInfoProjection {
   sessionId: string;

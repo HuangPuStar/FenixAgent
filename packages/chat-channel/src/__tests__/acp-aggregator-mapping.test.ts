@@ -116,8 +116,11 @@ test("deltas after terminal turn are dropped", () => {
   expect(assistant?.get("status")).toBe("completed");
   const blocks = assistant?.get("blocks") as Y.Map<Y.Map<unknown>>;
   expect((blocks.get("text")?.get("text") as Y.Text).toString()).toBe("hello");
-  // activeTurn 保持终态
+  // activeTurn 保持终态，展示态投影同步为 done（无 loading、不可取消）
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
+  expect(getSessionInfo(pair.session).get("presenting")).toBe("done");
+  expect(getSessionInfo(pair.session).get("loading")).toBeNull();
+  expect(getSessionInfo(pair.session).get("canCancel")).toBe(false);
 });
 
 // 终态不可逆：completed 后再收到 turn_failed 不覆盖终态
@@ -360,6 +363,11 @@ test("terminal with stale turnId does not terminate the new turn", () => {
   applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "answer" } }));
   expect(getEntry(pair.chat, "turn_2:assistant")?.get("status")).toBe("streaming");
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("running");
+  // 展示态投影同步：真实 turn running → responding + loading 非空 + 可取消
+  const running = getSessionInfo(pair.session);
+  expect(running.get("presenting")).toBe("responding");
+  expect(running.get("loading")).toEqual({ kind: "session/respond", since: running.get("activeTurnUpdatedAt") });
+  expect(running.get("canCancel")).toBe(true);
 });
 
 // 终态携带的 turnId 与活动 turn 一致时正常应用（归属校验不误伤正确的终态）。
@@ -368,6 +376,11 @@ test("terminal with matching turnId terminates the active turn", () => {
   applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
 
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
+  // 终态投影：presenting=done、loading=null、canCancel=false
+  const session = getSessionInfo(pair.session);
+  expect(session.get("presenting")).toBe("done");
+  expect(session.get("loading")).toBeNull();
+  expect(session.get("canCancel")).toBe(false);
   expect(getEntry(pair.chat, "turn_1:assistant")?.get("status")).toBe("completed");
 });
 
@@ -415,7 +428,17 @@ test("cancel_requested and interrupt drive the state machine end to end", () => 
   runTurn(pair, "turn_1");
   applyNormalizedEvent(pair, event("turn_cancel_requested"));
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("cancelling");
+  // cancelling 投影：仍显示 loading（取消进行中）但不可再取消，防重复点击
+  const cancelling = getSessionInfo(pair.session);
+  expect(cancelling.get("presenting")).toBe("loading");
+  expect(cancelling.get("loading")).not.toBeNull();
+  expect(cancelling.get("canCancel")).toBe(false);
   applyNormalizedEvent(pair, event("turn_interrupted"));
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("interrupted");
+  // interrupted 终态投影：done，无 loading 与取消
+  const interrupted = getSessionInfo(pair.session);
+  expect(interrupted.get("presenting")).toBe("done");
+  expect(interrupted.get("loading")).toBeNull();
+  expect(interrupted.get("canCancel")).toBe(false);
   expect(getEntry(pair.chat, "turn_1:assistant")?.get("status")).toBe("cancelled");
 });

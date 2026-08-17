@@ -312,6 +312,11 @@ describe("SessionChannel action flow", () => {
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1");
     // 取消请求落地为 cancelling（非终态，晚到增量自此丢弃）
     expect(getSessionInfo(sessionDoc as Y.Doc).get("activeTurnStatus")).toBe("cancelling");
+    // cancelling 展示态投影：仍显示 loading（取消进行中），但停止按钮已禁用
+    const cancelling = getSessionInfo(sessionDoc as Y.Doc);
+    expect(cancelling.get("presenting")).toBe("loading");
+    expect(cancelling.get("loading")).not.toBeNull();
+    expect(cancelling.get("canCancel")).toBe(false);
 
     // Agent 确认取消（acp-link 取消后回 prompt_complete { stopReason: "cancelled" }）
     harness.docManager.processNormalizedEvent("rcs-1", {
@@ -320,6 +325,11 @@ describe("SessionChannel action flow", () => {
       content: null,
     });
     expect(getSessionInfo(sessionDoc as Y.Doc).get("activeTurnStatus")).toBe("cancelled");
+    // cancelled 终态投影：done，无 loading 与取消
+    const cancelled = getSessionInfo(sessionDoc as Y.Doc);
+    expect(cancelled.get("presenting")).toBe("done");
+    expect(cancelled.get("loading")).toBeNull();
+    expect(cancelled.get("canCancel")).toBe(false);
   });
 
   // P2-4：cancel RPC 透传目标 sessionId——多会话并发下 dispatcher 必须按 RPC 中的
@@ -389,6 +399,11 @@ describe("SessionChannel action flow", () => {
     // 等待超时回调（cancelTimeoutMs=20，轮询等待收敛，避免固定等待 flaky）
     await waitForTurnStatus(sessionDoc, "interrupted");
     expect(getSessionInfo(sessionDoc as Y.Doc).get("activeTurnStatus")).toBe("interrupted");
+    // 超时兜底终态投影：presenting=done，无 loading 与取消（loading 卡死防护闭环）
+    const interrupted = getSessionInfo(sessionDoc as Y.Doc);
+    expect(interrupted.get("presenting")).toBe("done");
+    expect(interrupted.get("loading")).toBeNull();
+    expect(interrupted.get("canCancel")).toBe(false);
   });
 
   // 双终态幂等：取消超时已收敛为 interrupted 后，晚到的 Agent 确认事件（turn_cancelled）
@@ -446,6 +461,11 @@ describe("SessionChannel action flow", () => {
     // 终态后 cancel：状态保持 completed（聚合层拒绝），RPC 仍转发（幂等 no-op 语义）
     await harness.channel.handleAction(connection, { action: "cancel", commandId: "cmd-2" }, sinks);
     expect(getSessionInfo(sessionDoc as Y.Doc).get("activeTurnStatus")).toBe("completed");
+    // completed 终态展示态投影保持不变：presenting=done，无 loading 与取消
+    const completed = getSessionInfo(sessionDoc as Y.Doc);
+    expect(completed.get("presenting")).toBe("done");
+    expect(completed.get("loading")).toBeNull();
+    expect(completed.get("canCancel")).toBe(false);
 
     // 等待超过 cancelTimeoutMs：armCancelTimeout 守卫（turnId 相同但状态非 cancelling）
     // 不收敛为 interrupted，完成后的 turn 不会被误标中断

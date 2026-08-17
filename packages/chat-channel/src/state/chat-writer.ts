@@ -18,6 +18,7 @@ import {
   type SessionSummaryProjection,
   type TurnStatus,
 } from "../schema";
+import type { LoadingState, SessionStatus } from "../types";
 
 // ── 物理访问辅助 ──
 
@@ -378,7 +379,12 @@ export function readActiveTurn(ydoc: Y.Doc): { turnId: string | null; turnStatus
   return { turnId: turnId ?? null, turnStatus: turnStatus ?? null };
 }
 
-/** 写入活动 turn（session.activeTurn* 平铺键为权威；终态由状态机保证不可逆） */
+/**
+ * 写入活动 turn（session.activeTurn* 平铺键为权威；终态由状态机保证不可逆）。
+ * 同步投影前端展示态三字段（presenting / loading / canCancel，见
+ * projectActiveTurnPresentation）：本函数是 turn 状态变更的唯一权威写入点，
+ * 任何 activeTurn* 变更都必须经此投影，前端只读投影结果。
+ */
 export function setActiveTurn(ydoc: Y.Doc, turnId: string | null, turnStatus: TurnStatus | null): void {
   const session = getSessionInfo(ydoc);
   session.set("activeTurnId", turnId);
@@ -387,8 +393,65 @@ export function setActiveTurn(ydoc: Y.Doc, turnId: string | null, turnStatus: Tu
   } else {
     session.set("activeTurnStatus", turnStatus);
   }
-  session.set("activeTurnUpdatedAt", Date.now());
+  const now = Date.now();
+  session.set("activeTurnUpdatedAt", now);
+  projectActiveTurnPresentation(session, turnId, turnStatus, now);
   session.set("updatedAt", new Date().toISOString());
+}
+
+/**
+ * 投影前端展示态三字段（session.presenting / loading / canCancel 平铺键）。
+ * 行为与前端旧派生逻辑完全一致（web/src/hooks/use-session-state.ts 的
+ * mapTurnStatus / deriveCanCancel，含 loading.since = activeTurnUpdatedAt）：
+ * - presenting：turn 为 null → "idle"；accepting/cancelling → "loading"；
+ *   running → 回放 turn 为 "replaying"、实时为 "responding"；
+ *   awaiting_permission → "waiting-user"；终态 → "done"/"error"
+ * - loading：非回放 turn 且 turnStatus ∈ {accepting, running, cancelling}
+ *   → { kind: "session/respond", since: <activeTurnUpdatedAt> }，其余为 null
+ * - canCancel：非回放 turn 且 turnStatus ∈ {accepting, running, awaiting_permission}
+ * 回放 turn（turn_replay_* 前缀，见 relay-event-handler 的 createReplayTurnId）
+ * 视为静态历史：不派生 loading 与 canCancel，避免切换会话后出现持续数秒的
+ * 伪"输出中"指示。
+ */
+function projectActiveTurnPresentation(
+  session: Y.Map<unknown>,
+  turnId: string | null,
+  turnStatus: TurnStatus | null,
+  since: number,
+): void {
+  const isReplayTurn = turnId?.startsWith("turn_replay_") ?? false;
+  let presenting: SessionStatus = "idle";
+  switch (turnStatus) {
+    case "accepting":
+      presenting = "loading";
+      break;
+    case "running":
+      presenting = isReplayTurn ? "replaying" : "responding";
+      break;
+    case "awaiting_permission":
+      presenting = "waiting-user";
+      break;
+    case "cancelling":
+      presenting = "loading";
+      break;
+    case "completed":
+    case "cancelled":
+    case "interrupted":
+      presenting = "done";
+      break;
+    case "failed":
+      presenting = "error";
+      break;
+  }
+  const loading: LoadingState | null =
+    !isReplayTurn && (turnStatus === "accepting" || turnStatus === "running" || turnStatus === "cancelling")
+      ? { kind: "session/respond", since }
+      : null;
+  const canCancel =
+    !isReplayTurn && (turnStatus === "accepting" || turnStatus === "running" || turnStatus === "awaiting_permission");
+  session.set("presenting", presenting);
+  session.set("loading", loading);
+  session.set("canCancel", canCancel);
 }
 
 /** 是否仍有 pending 权限（决定 turn 是否可离开 awaiting_permission） */

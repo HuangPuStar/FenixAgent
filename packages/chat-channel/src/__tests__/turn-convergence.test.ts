@@ -178,3 +178,52 @@ test("replayed user_message of an old turn does not hijack the active turn", () 
   const userBlocks = getEntry(pair.chat, "turn_1:user")?.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
   expect((userBlocks?.get("text")?.get("text") as Y.Text | undefined)?.toString() ?? "").toBe("hi");
 });
+
+// 展示态投影（Q12）：setActiveTurn 同步投影 session.presenting / loading / canCancel，
+// 前端只读不再自行派生——真实 turn running 展示 responding+loading+可取消，回放 turn
+// turn_replay_* 展示 replaying 且抑制 loading/canCancel，idle 与终态均无 loading/取消。
+test("setActiveTurn projects presenting/loading/canCancel for frontend consumption", () => {
+  // accepting（消息刚发出）：展示 loading，可取消
+  setActiveTurn(pair.session, "turn_live_1", "accepting");
+  const accepting = getSessionInfo(pair.session);
+  expect(accepting.get("presenting")).toBe("loading");
+  expect(accepting.get("loading")).toEqual({ kind: "session/respond", since: accepting.get("activeTurnUpdatedAt") });
+  expect(accepting.get("canCancel")).toBe(true);
+
+  // 真实 turn running（正文流式输出期间）：展示 responding，loading 非空，可取消
+  setActiveTurn(pair.session, "turn_live_1", "running");
+  const running = getSessionInfo(pair.session);
+  expect(running.get("presenting")).toBe("responding");
+  expect(running.get("loading")).toEqual({ kind: "session/respond", since: running.get("activeTurnUpdatedAt") });
+  expect(running.get("canCancel")).toBe(true);
+
+  // awaiting_permission（权限卡住）：展示 waiting-user，可取消但无 loading 指示
+  setActiveTurn(pair.session, "turn_live_1", "awaiting_permission");
+  const waiting = getSessionInfo(pair.session);
+  expect(waiting.get("presenting")).toBe("waiting-user");
+  expect(waiting.get("loading")).toBeNull();
+  expect(waiting.get("canCancel")).toBe(true);
+
+  // 回放 turn running（历史回显而非实时输出）：展示 replaying，抑制伪 loading 与停止按钮
+  setActiveTurn(pair.session, "turn_replay_123", "running");
+  const replay = getSessionInfo(pair.session);
+  expect(replay.get("presenting")).toBe("replaying");
+  expect(replay.get("loading")).toBeNull();
+  expect(replay.get("canCancel")).toBe(false);
+
+  // 清空 turn（无活动 turn）：展示 idle，无 loading 与取消
+  setActiveTurn(pair.session, null, null);
+  const idle = getSessionInfo(pair.session);
+  expect(idle.get("presenting")).toBe("idle");
+  expect(idle.get("loading")).toBeNull();
+  expect(idle.get("canCancel")).toBe(false);
+
+  // 终态与失败：展示 done/error，无 loading 与取消
+  setActiveTurn(pair.session, "turn_live_1", "completed");
+  const done = getSessionInfo(pair.session);
+  expect(done.get("presenting")).toBe("done");
+  expect(done.get("loading")).toBeNull();
+  expect(done.get("canCancel")).toBe(false);
+  setActiveTurn(pair.session, "turn_live_1", "failed");
+  expect(getSessionInfo(pair.session).get("presenting")).toBe("error");
+});

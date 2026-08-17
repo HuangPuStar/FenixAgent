@@ -1,95 +1,76 @@
 // web/src/__tests__/use-session-state.test.ts
-// deriveCanCancel 纯函数测试 + computeSessionSnapshot 快照合并测试：
-// turn 状态到"停止按钮是否可取消"的映射。
-// 断点 1 修复：running（输出中）与 awaiting_permission（权限卡住）期间停止按钮必须可用，
-// 该映射是 ChatComposer 按钮状态矩阵的前端数据源。
+// computeSessionSnapshot 展示态透传测试：status/loading/canCancel 直接来自后端投影字段
+// （session.presenting / session.loading / session.canCancel），前端零派生。
+// 后端聚合层 turn 状态机 → 展示态的投影行为由 packages/chat-channel 包内测试覆盖，
+// 前端测试只验证透传。
 
 import { describe, expect, test } from "bun:test";
-import { computeSessionSnapshot, deriveCanCancel } from "../hooks/use-session-state";
+import { computeSessionSnapshot } from "../hooks/use-session-state";
 
 /** 构造一份最小空时间线快照（computeSessionSnapshot 的 timeline 输入） */
 function emptyTimeline() {
   return { structuredMessages: [], streaming: null, tools: new Map(), artifacts: [], messages: [] };
 }
 
-describe("deriveCanCancel", () => {
-  // accepting（消息刚发出）/ running（输出中）/ awaiting_permission（权限卡住）均可中断
-  test("accepting/running/awaiting_permission 时 canCancel 为 true", () => {
-    expect(deriveCanCancel("accepting")).toBe(true);
-    expect(deriveCanCancel("running")).toBe(true);
-    expect(deriveCanCancel("awaiting_permission")).toBe(true);
-  });
-
-  // cancelling（取消已发出，等 Agent 确认）与全部终态、idle 均不可再取消
-  test("cancelling 与全部终态、idle 时 canCancel 为 false", () => {
-    expect(deriveCanCancel("cancelling")).toBe(false);
-    expect(deriveCanCancel("cancelled")).toBe(false);
-    expect(deriveCanCancel("interrupted")).toBe(false);
-    expect(deriveCanCancel("completed")).toBe(false);
-    expect(deriveCanCancel("failed")).toBe(false);
-    expect(deriveCanCancel(null)).toBe(false);
-  });
-});
-
 describe("computeSessionSnapshot", () => {
-  // running（正文流式输出中）时 loading 保持非空（输出中指示器持续显示）且 canCancel 为 true：
+  // running（正文流式输出中）→ 后端投影 presenting="responding"、loading 非空、canCancel=true：
   // 流式期间 UI 指示器不消失，同时停止按钮保持可用
-  test("running 时 loading 非空且 canCancel 为 true（流式输出期间有 loading 指示器）", () => {
+  test("running 投影：presenting=responding、loading 非空、canCancel=true", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
-      turnStatus: "running",
-      turnId: "turn_live_1",
-      turnUpdatedAt: 123,
+      presenting: "responding",
+      loading: { kind: "session/respond", since: 123 },
+      canCancel: true,
       permissionOptions: new Map(),
     });
+    expect(snapshot.status).toBe("responding");
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 123 });
     expect(snapshot.canCancel).toBe(true);
-    expect(snapshot.status).toBe("responding");
     expect(snapshot.acpSessionId).toBe("ses-1");
   });
 
-  // 历史回放 turn（turn_replay_*，后端 load/resume 投影、按回放窗口收敛）应视为静态
-  // 历史：切换会话后的回放期间不能出现伪"输出中"指示与停止按钮（回放流无终态信号，
-  // turn 会持续数秒 running）。status 仍保持 responding 只描述 turn 活动性
-  test("回放 turn（running）时 loading 为 null 且 canCancel 为 false（历史回显不显示伪输出中）", () => {
+  // 历史回放 turn：后端投影 presenting="replaying"、loading=null、canCancel=false——
+  // 静态历史回显，不显示伪"输出中"指示与停止按钮
+  test("回放 turn 投影：presenting=replaying、loading=null、canCancel=false", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-b",
       sessionStatus: "ready",
-      turnStatus: "running",
-      turnId: "turn_replay_1",
-      turnUpdatedAt: 123,
+      presenting: "replaying",
+      loading: null,
+      canCancel: false,
       permissionOptions: new Map(),
     });
+    expect(snapshot.status).toBe("replaying");
     expect(snapshot.loading).toBeNull();
     expect(snapshot.canCancel).toBe(false);
-    expect(snapshot.status).toBe("responding");
   });
 
-  // accepting（消息刚发出，思考中）时 loading 与 canCancel 共存：
+  // accepting（消息刚发出，思考中）投影：loading 与 canCancel 共存——
   // 加载态照常驱动 ChatView 动画，停止按钮同时可用
-  test("accepting 时 loading 非空且 canCancel 为 true", () => {
+  test("accepting 投影：loading 非空且 canCancel=true", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "",
       sessionStatus: "ready",
-      turnStatus: "accepting",
-      turnId: "turn_live_2",
-      turnUpdatedAt: 456,
+      presenting: "loading",
+      loading: { kind: "session/respond", since: 456 },
+      canCancel: true,
       permissionOptions: new Map(),
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 456 });
     expect(snapshot.canCancel).toBe(true);
+    expect(snapshot.status).toBe("loading");
   });
 
-  // cancelling（取消已发出，等 Agent 确认）时 loading 非空但 canCancel 为 false：
+  // cancelling（取消已发出，等 Agent 确认）投影：loading 非空但 canCancel=false——
   // 停止按钮禁用（isCancelling 矩阵），防重复点发重取消
-  test("cancelling 时 loading 非空且 canCancel 为 false", () => {
+  test("cancelling 投影：loading 非空且 canCancel=false", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
-      turnStatus: "cancelling",
-      turnId: "turn_live_3",
-      turnUpdatedAt: 789,
+      presenting: "loading",
+      loading: { kind: "session/respond", since: 789 },
+      canCancel: false,
       permissionOptions: new Map(),
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 789 });
@@ -97,14 +78,14 @@ describe("computeSessionSnapshot", () => {
     expect(snapshot.status).toBe("loading");
   });
 
-  // idle（无活动 turn）时 loading 与 canCancel 均为空/false：默认发送态
-  test("idle 时 loading 为 null 且 canCancel 为 false", () => {
+  // idle（无活动 turn）→ 全默认：loading=null、canCancel=false、status=idle（默认发送态）
+  test("idle 投影：全默认（loading=null、canCancel=false、status=idle）", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "",
       sessionStatus: "ready",
-      turnStatus: null,
-      turnId: null,
-      turnUpdatedAt: null,
+      presenting: "idle",
+      loading: null,
+      canCancel: false,
       permissionOptions: new Map(),
     });
     expect(snapshot.loading).toBeNull();
@@ -112,16 +93,16 @@ describe("computeSessionSnapshot", () => {
     expect(snapshot.status).toBe("idle");
   });
 
-  // 会话就绪（sessionStatus=ready）与 turn 状态正交：新会话/加载历史会话后无活动
-  // turn（turnStatus=null → status=idle），sessionReady 判定必须依赖 sessionStatus——
+  // 会话就绪（sessionStatus=ready）与 turn 展示态正交：新会话/加载历史会话后无活动
+  // turn（presenting=idle），sessionReady 判定必须依赖 sessionStatus——
   // 否则输入框永久禁用，第一条消息永远发不出去（死锁）
-  test("无活动 turn 时 sessionStatus 仍透出 ready（会话就绪判定不依赖 turn 状态）", () => {
+  test("无活动 turn 时 sessionStatus 仍透出 ready（会话就绪判定不依赖 turn 展示态）", () => {
     const snapshot = computeSessionSnapshot(emptyTimeline(), {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
-      turnStatus: null,
-      turnId: null,
-      turnUpdatedAt: null,
+      presenting: "idle",
+      loading: null,
+      canCancel: false,
       permissionOptions: new Map(),
     });
     expect(snapshot.status).toBe("idle");

@@ -803,6 +803,10 @@ describe("RelayEventHandler replay window", () => {
     expect(shared.replayTurnId).toBeNull();
     const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
     expect(session.get("activeTurnStatus")).toBe("completed");
+    // 回放 turn 终态投影：presenting=done，无 loading 与取消（回放是历史回显）
+    expect(session.get("presenting")).toBe("done");
+    expect(session.get("loading")).toBeNull();
+    expect(session.get("canCancel")).toBe(false);
     // assistant entry 收敛终态（非 streaming）
     const entries = chatDoc.getMap("root").get("entries") as Y.Map<Y.Map<unknown>>;
     for (const entry of entries.values()) {
@@ -842,6 +846,10 @@ describe("RelayEventHandler replay window", () => {
     const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
     expect(session.get("activeTurnStatus") as string | null).toBe("accepting");
     expect(shared.replayTurnId).toBe(session.get("activeTurnId") as string | null);
+    // 回放 turn 展示态：presenting=loading（accepting 映射）但抑制 loading 指示与停止按钮
+    expect(session.get("presenting")).toBe("loading");
+    expect(session.get("loading")).toBeNull();
+    expect(session.get("canCancel")).toBe(false);
     // 旧回放 turn 的 assistant entry 收敛为 completed（回放自然结束，非 cancelled）
     const entries = chatDoc.getMap("root").get("entries") as Y.Map<Y.Map<unknown>>;
     const assistantStatuses: unknown[] = [];
