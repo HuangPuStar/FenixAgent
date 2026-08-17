@@ -157,7 +157,8 @@ export interface SessionStateSnapshot {
   loading: LoadingState | null;
   /** turn 处于可中断状态（accepting/running/awaiting_permission）——仅驱动停止按钮；
    *  running 正文流式输出期间 loading 保持非空（session/respond），输出中指示器不消失，
-   *  停止按钮同样可用，与 loading 正交 */
+   *  停止按钮同样可用，与 loading 正交。历史回放 turn（turn_replay_*，load/resume 投影）
+   *  视为静态历史：loading 与 canCancel 均不派生（回放期间无伪"输出中"指示与停止按钮） */
   canCancel: boolean;
   messages: SessionMessage[];
   structuredMessages: StructuredMessage[];

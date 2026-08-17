@@ -39,6 +39,7 @@ describe("computeSessionSnapshot", () => {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
       turnStatus: "running",
+      turnId: "turn_live_1",
       turnUpdatedAt: 123,
       permissionOptions: new Map(),
     });
@@ -48,6 +49,23 @@ describe("computeSessionSnapshot", () => {
     expect(snapshot.acpSessionId).toBe("ses-1");
   });
 
+  // 历史回放 turn（turn_replay_*，后端 load/resume 投影、按回放窗口收敛）应视为静态
+  // 历史：切换会话后的回放期间不能出现伪"输出中"指示与停止按钮（回放流无终态信号，
+  // turn 会持续数秒 running）。status 仍保持 responding 只描述 turn 活动性
+  test("回放 turn（running）时 loading 为 null 且 canCancel 为 false（历史回显不显示伪输出中）", () => {
+    const snapshot = computeSessionSnapshot(emptyTimeline(), {
+      acpSessionId: "ses-b",
+      sessionStatus: "ready",
+      turnStatus: "running",
+      turnId: "turn_replay_1",
+      turnUpdatedAt: 123,
+      permissionOptions: new Map(),
+    });
+    expect(snapshot.loading).toBeNull();
+    expect(snapshot.canCancel).toBe(false);
+    expect(snapshot.status).toBe("responding");
+  });
+
   // accepting（消息刚发出，思考中）时 loading 与 canCancel 共存：
   // 加载态照常驱动 ChatView 动画，停止按钮同时可用
   test("accepting 时 loading 非空且 canCancel 为 true", () => {
@@ -55,6 +73,7 @@ describe("computeSessionSnapshot", () => {
       acpSessionId: "",
       sessionStatus: "ready",
       turnStatus: "accepting",
+      turnId: "turn_live_2",
       turnUpdatedAt: 456,
       permissionOptions: new Map(),
     });
@@ -69,6 +88,7 @@ describe("computeSessionSnapshot", () => {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
       turnStatus: "cancelling",
+      turnId: "turn_live_3",
       turnUpdatedAt: 789,
       permissionOptions: new Map(),
     });
@@ -83,6 +103,7 @@ describe("computeSessionSnapshot", () => {
       acpSessionId: "",
       sessionStatus: "ready",
       turnStatus: null,
+      turnId: null,
       turnUpdatedAt: null,
       permissionOptions: new Map(),
     });
@@ -99,6 +120,7 @@ describe("computeSessionSnapshot", () => {
       acpSessionId: "ses-1",
       sessionStatus: "ready",
       turnStatus: null,
+      turnId: null,
       turnUpdatedAt: null,
       permissionOptions: new Map(),
     });

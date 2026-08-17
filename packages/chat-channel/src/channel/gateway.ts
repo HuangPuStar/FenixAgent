@@ -460,19 +460,21 @@ export class Gateway {
 
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
-    // load/resume 会话会触发 Agent 历史回放，且回放流可能先于 JSON-RPC result 到达
-    // （agent 在 loadSession resolve 前推送历史增量）；转发 RPC 前开启回放窗口，
-    // 使 relay-event-handler 能投影无头回放增量（JSON-RPC result 分支兜底重置窗口），
-    // 窗口到期定时器收敛回放 turn 终态（回放流无终态信号）。
-    if (shared && (action.action === "load_session" || action.action === "resume_session")) {
-      this.dependencies.relayEvents.openReplayWindow(shared);
-    }
+    // 回放窗口必须在 executeCommand（含 load_session 的会话 Doc 清空）完成后才开启：
+    // openReplayWindow 在开启瞬间缓存"是否跳过回放合成"（hasTimelineContent），若在清空
+    // 前开启，缓存的是旧会话内容 → 切换后回放增量被全部拒绝（新会话内容空白）。
+    // forwardYjsAction 会 await 命令完整执行（含异步 Redis CAS 清空与 RPC 发送），
+    // 而 Agent 回放增量需至少一次网络往返才会到达，窗口必然先于回放流开启；
+    // JSON-RPC result 分支会幂等重置窗口（回放流无终态信号，窗口到期定时器收敛回放 turn）。
     await forwardYjsAction(this.toSessionConnection(entry, shared), action, {
       sessionChannel: this.dependencies.sessionChannel,
       sendAck: (ack) => this.dependencies.broadcaster.sendToYjsWs(ws, ack),
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
     });
+    if (shared && (action.action === "load_session" || action.action === "resume_session")) {
+      this.dependencies.relayEvents.openReplayWindow(shared);
+    }
   }
 
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {

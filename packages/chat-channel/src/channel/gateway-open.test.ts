@@ -483,11 +483,13 @@ describe("Gateway handleOpen", () => {
   });
 });
 
-// 回放窗口开启：load/resume 会话的 RPC 转发必须早于 Agent 回放流开启窗口
-// （agent 在 loadSession resolve 前推送历史增量，result 分支兜底重置）。
+// 回放窗口开启：load/resume 会话的窗口必须在会话命令执行完成（含清空 Chat/Session
+// Doc 与 RPC 发送）后开启，使 replaySkipSynthesis 以空 Doc 为基准捕获（在清空前开启
+// 会缓存旧会话内容，回放增量被全部拒绝导致新会话内容空白）；Agent 回放流到达需要
+// 网络往返，窗口必然先于回放流开启，result 分支幂等重置窗口（兜底）。
 describe("Gateway replay window", () => {
-  // load_session action 转发时开启回放窗口。
-  test("load_session opens the replay window before forwarding the RPC", async () => {
+  // load_session action 处理完成后开启回放窗口（此时会话 Doc 已清空）。
+  test("load_session opens the replay window after the command (doc clearing) completes", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);
@@ -509,7 +511,7 @@ describe("Gateway replay window", () => {
   });
 
   // resume_session 与 load_session 同样触发历史回放，窗口必须同步开启。
-  test("resume_session opens the replay window before forwarding the RPC", async () => {
+  test("resume_session opens the replay window after the command (doc clearing) completes", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);

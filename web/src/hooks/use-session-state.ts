@@ -140,6 +140,8 @@ interface SessionMetaSnapshot {
   /** Session Doc 会话级状态（session.status，create/load 成功后 "ready"），用于会话就绪判定 */
   sessionStatus: SessionDocStatus | null;
   turnStatus: TurnStatus | null;
+  /** 活动 turn ID：区分实时 turn 与历史回放 turn（turn_replay_*，供 loading/canCancel 抑制） */
+  turnId: string | null;
   turnUpdatedAt: number | null;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
   permissionOptions: Map<string, PermissionOption[]>;
@@ -169,6 +171,7 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
       (agent?.get("acpSessionId") as string | undefined) ?? (session?.get("sessionId") as string | undefined) ?? "",
     sessionStatus: (session?.get("status") as SessionDocStatus | undefined) ?? null,
     turnStatus: (session?.get("activeTurnStatus") as TurnStatus | undefined) ?? null,
+    turnId: (session?.get("activeTurnId") as string | undefined) ?? null,
     turnUpdatedAt: (session?.get("activeTurnUpdatedAt") as number | undefined) ?? null,
     permissionOptions,
   };
@@ -210,13 +213,18 @@ export function deriveCanCancel(turnStatus: TurnStatus | null): boolean {
 /**
  * 合并时间线 + 会话元信息为展示快照（纯函数，无副作用）。
  * 导出仅供测试：直接构造输入验证 loading / canCancel / status 等派生字段的共存关系
- * （如 running 正文流式输出期间 loading 保持非空、canCancel 为 true）。
+ * （running 正文流式输出期间 loading 保持非空、canCancel 为 true；历史回放 turn
+ * turn_replay_* 视为静态历史：不派生 loading 与 canCancel，避免切换会话后出现
+ * 持续数秒的伪"输出中"指示）。
  */
 export function computeSessionSnapshot(
   timeline: SessionTimelineSnapshot,
   meta: SessionMetaSnapshot,
 ): SessionStateSnapshot {
   const turnStatus = meta.turnStatus;
+  // 回放 turn（turn_replay_*，后端 load/resume 投影，回放流无终态信号、按回放窗口收敛）：
+  // 属于历史回显而非实时输出，loading 指示器与停止按钮都不应出现
+  const isReplayTurn = meta.turnId?.startsWith("turn_replay_") ?? false;
   // 按 permissionRequest.requestId 合并 Session Doc 的真实选项（Chat Doc 侧为占位空数组）
   const structuredMessages = timeline.structuredMessages.map((m) => {
     if (m.type !== "tool_call" || !m.permissionRequest) return m;
@@ -232,9 +240,9 @@ export function computeSessionSnapshot(
     acpSessionId: meta.acpSessionId,
     sessionStatus: meta.sessionStatus,
     status: mapTurnStatus(turnStatus),
-    canCancel: deriveCanCancel(turnStatus),
+    canCancel: !isReplayTurn && deriveCanCancel(turnStatus),
     loading:
-      turnStatus === "accepting" || turnStatus === "running" || turnStatus === "cancelling"
+      !isReplayTurn && (turnStatus === "accepting" || turnStatus === "running" || turnStatus === "cancelling")
         ? { kind: "session/respond", since: meta.turnUpdatedAt ?? Date.now() }
         : null,
     messages: timeline.messages,
@@ -263,7 +271,14 @@ export function useSessionState(rcsSessionId: string) {
       ),
       meta: createYjsStore<SessionMetaSnapshot>(
         computeMetaSnapshot,
-        { acpSessionId: "", sessionStatus: null, turnStatus: null, turnUpdatedAt: null, permissionOptions: new Map() },
+        {
+          acpSessionId: "",
+          sessionStatus: null,
+          turnStatus: null,
+          turnId: null,
+          turnUpdatedAt: null,
+          permissionOptions: new Map(),
+        },
         (s) => stableKey(s),
       ),
     };
