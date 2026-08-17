@@ -13,7 +13,10 @@ services:
         restart: unless-stopped
         environment:
             TZ: Asia/Shanghai
-            RCS_URL: ws://rcs:3000
+            # 本地开发：RCS 主服务器通过 bun run dev 跑在宿主机上，
+            # 容器内使用 host.docker.internal 访问宿主机回环地址。
+            # 若 RCS 以容器方式部署在同一 Compose 网络中，改回 ws://rcs:3000。
+            RCS_URL: ws://host.docker.internal:3000
             RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
             RCS_MACHINE_ID: mach_d72e997e_8774_484b_b1f6_e2ccd241d60c
             RCS_MACHINE_NAME: basebox
@@ -26,9 +29,11 @@ services:
             RCS_CCB_COMMAND: peri
             RCS_CCB_ARGS: acp
         volumes:
-            - sandbox-peri-workspaces:/app/workspaces
+            # 本地开发：直接挂载宿主机 workspaces 目录，保证 file API / 前端文件面板
+            # 与容器内 agent 看到的是同一份文件（避免 named volume 造成的文件分裂）。
+            # 注意：容器以 root 运行，其创建的文件属主为 root。
+            - ../../workspaces:/app/workspaces:rw
             - sandbox-peri-global:/app/.peri
 
 volumes:
-    sandbox-peri-workspaces:
     sandbox-peri-global:
