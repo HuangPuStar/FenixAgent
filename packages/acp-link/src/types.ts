@@ -28,8 +28,10 @@ export interface InteractiveQuestionPayload {
   toolName: string;
   questions: Array<{
     question: string;
-    header: string;
-    options: Array<{ label: string; description: string }>;
+    // header/description 可空：form schema 可能不提供 title/description（与 chat-channel
+    // QuestionProjection 对齐，前端按空值隐藏对应 UI 元素）
+    header: string | null;
+    options: Array<{ label: string; description: string | null }>;
     multiSelect?: boolean;
   }>;
   description: string;

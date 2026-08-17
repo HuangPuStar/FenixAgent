@@ -1,9 +1,18 @@
+// ────────────────────────────────────────────
+// 编排域重构保留说明（I4：旧代码删除与精简）
+// ────────────────────────────────────────────
+// 此文件保留：实例空闲回收机制整体依赖它（acp-ws-handler / 前端 relay 连接的活跃度观测、
+// routes/web/instances 的监控视图、src/index.ts 的定时器启停），删除会造成实例泄漏。
+// 空闲回收职责在新包 AgentNodeService（packages/orchestration/src/agent-node/，
+// 引用计数 + 空闲超时）有对应实现，但现有 instance-registry 维度的回收（idle + activity
+// 硬超时）仍需此文件，后续随运行时注册表迁移统一收敛。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { config } from "../config";
 import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
+import { docManager } from "./doc-manager-instance";
 import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
 import { globalInstanceRegistry } from "./instance-registry";
 
@@ -173,6 +182,12 @@ async function reclaimInstance(
 
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */
 export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
+  // SP-C2 观测信号：周期输出内存实时 Doc 数量，供长期采集"实例回收 → Doc 回收"
+  // 是否生效的曲线（只含数量，不含会话 ID / 内容）。实例停止后的 Doc 回收接线在
+  // stopInstanceViaController 完成处（orchestration-instance）。
+  const docCount = docManager.openedDocCount();
+  logger.info(`[ACP-IDLE] yjs realtime docs: chat=${docCount.chat} session=${docCount.session}`);
+
   const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
   const activityTimeoutMs = config.acpActivityTimeoutSeconds * 1000;
   const snapshots = listInstanceActivitySnapshots(now);

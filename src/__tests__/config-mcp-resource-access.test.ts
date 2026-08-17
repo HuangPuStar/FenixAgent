@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { AppError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
-import { setOrganizationRepoForTesting } from "../services/resource-permission";
+import { _resetDeps, setOrganizationRepoForTesting } from "../services/resource-permission";
 import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const ctx: AuthContext = {
@@ -88,6 +88,9 @@ function installDb(
 describe("config mcp resource access", () => {
   beforeEach(() => {
     resetAllStubs();
+    // 模块首载时 resource-permission 的 mock.module 尚未替换（bun 惰性替换），
+    // _deps.repo 绑定的是真实实现；_resetDeps 重新赋值后 stub 才生效
+    _resetDeps();
     setOrganizationRepoForTesting({
       listNamesByIds: async () =>
         new Map([

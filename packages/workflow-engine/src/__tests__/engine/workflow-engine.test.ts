@@ -7,6 +7,7 @@ import type { DryRunResult, WorkflowEngineOptions } from "../../engine/workflow-
 import { createWorkflowEngine } from "../../engine/workflow-engine";
 import { verifyApprovalToken } from "../../executor/awaitable-executor";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
+import type { AgentSession, Transport } from "../../transport/transport";
 import { WorkflowError } from "../../types/errors";
 
 // ---------- 辅助工具 ----------
@@ -90,6 +91,65 @@ nodes:
     command: echo "after audit"
     depends_on: [approval]
 `;
+
+/** 挂起前段与恢复段都含 agent 节点的工作流 YAML（验证恢复段实例记录） */
+const AGENT_AUDIT_AGENT_YAML = `
+name: agent-audit-agent-workflow
+schema_version: "1"
+nodes:
+  - id: agent1
+    type: agent
+    agent: env-a
+    prompt: "before audit"
+  - id: approval
+    type: audit
+    display_data:
+      message: Please approve
+    depends_on: [agent1]
+  - id: agent2
+    type: agent
+    agent: env-b
+    prompt: "after audit"
+    depends_on: [approval]
+`;
+
+/** 双审计节点工作流 YAML（验证连续审批时每次 approveNode 返回对应段结果） */
+const DOUBLE_AUDIT_YAML = `
+name: double-audit-workflow
+schema_version: "1"
+nodes:
+  - id: step1
+    type: shell
+    command: echo "one"
+  - id: approval1
+    type: audit
+    display_data:
+      message: Please approve 1
+    depends_on: [step1]
+  - id: step2
+    type: shell
+    command: echo "two"
+    depends_on: [approval1]
+  - id: approval2
+    type: audit
+    display_data:
+      message: Please approve 2
+    depends_on: [step2]
+  - id: step3
+    type: shell
+    command: echo "three"
+    depends_on: [approval2]
+`;
+
+/** 测试用 Transport：connect 时按 agentId 把实例 ID 写入运行级集合（模拟真实 Transport 的 spawn 记录语义） */
+class RecordingTransport implements Transport {
+  async connect(agentId: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession> {
+    options?.spawnedInstanceIds?.add(`inst_${agentId}`);
+    return {
+      execute: async () => ({ stdout: `response from ${agentId}`, exit_code: 0, messages: [] }),
+    };
+  }
+}
 
 /** 长时间运行的 shell 命令（用于 cancel 测试） */
 const _LONG_RUNNING_YAML = `
@@ -327,14 +387,63 @@ describe("createWorkflowEngine", () => {
     expect(verifyResult.valid).toBe(true);
     expect(verifyResult.expired).toBe(false);
 
-    // 审批：SUSPENDED 状态的 run 保留在 activeRuns 中，approveNode 可直接恢复
-    await engine.approveNode(result.runId, nodeId, approvalToken);
+    // 审批：SUSPENDED 状态的 run 保留在 activeRuns 中，approveNode 可直接恢复；
+    // 自 C-P2.1 起返回值为本次恢复段的调度结果（供宿主清理该段 spawn 的实例）
+    const resumeResult = await engine.approveNode(result.runId, nodeId, approvalToken);
+    expect(resumeResult.status).toBe("SUCCESS");
+    expect(resumeResult.runId).toBe(result.runId);
+    expect(Array.isArray(resumeResult.spawnedInstanceIds)).toBe(true);
 
     // 审批后 step3 应执行完毕，工作流最终状态为 SUCCESS
     const finalSnapshot = await engine.getRunStatus(result.runId);
     expect(finalSnapshot?.dag_status).toBe("SUCCESS");
     const step3Output = await engine.getOutput(result.runId, "step3");
     expect(step3Output?.stdout).toContain("after audit");
+  });
+
+  test("approveNode 返回恢复段 spawn 的实例 ID", async () => {
+    // 挂起前段 spawn 的实例由首次 run 结果携带；恢复段新 spawn 的实例只出现在
+    // approveNode 返回值中（全新 Set，复用/已完成节点不计入），宿主据此清理
+    const transport = new RecordingTransport();
+    const engineWithTransport = createTestEngine({ transport });
+
+    const result = await engineWithTransport.run(AGENT_AUDIT_AGENT_YAML);
+    expect(result.status).toBe("SUSPENDED");
+    expect(result.spawnedInstanceIds ?? []).toContain("inst_env-a");
+
+    const pending = await engineWithTransport.getPendingApprovals(result.runId);
+    expect(pending).toHaveLength(1);
+    const { nodeId, approvalToken } = pending[0];
+
+    const resumeResult = await engineWithTransport.approveNode(result.runId, nodeId, approvalToken);
+    expect(resumeResult.status).toBe("SUCCESS");
+    // 恢复段只执行 agent2：返回值恰好只含该段新 spawn 的实例，不含挂起前段的实例
+    expect(resumeResult.spawnedInstanceIds ?? []).toEqual(["inst_env-b"]);
+  });
+
+  test("多次挂起时 approveNode 每次返回对应段结果", async () => {
+    // 连续审批场景：第一次 approve 后再次 SUSPENDED（activeRuns 保留可继续审批），
+    // 第二次 approve 返回 SUCCESS，且每次返回值携带对应段的调度结果
+    const result = await engine.run(DOUBLE_AUDIT_YAML);
+    expect(result.status).toBe("SUSPENDED");
+
+    let pending = await engine.getPendingApprovals(result.runId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].nodeId).toBe("approval1");
+
+    const firstResume = await engine.approveNode(result.runId, pending[0].nodeId, pending[0].approvalToken);
+    expect(firstResume.status).toBe("SUSPENDED");
+
+    pending = await engine.getPendingApprovals(result.runId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].nodeId).toBe("approval2");
+
+    const secondResume = await engine.approveNode(result.runId, pending[0].nodeId, pending[0].approvalToken);
+    expect(secondResume.status).toBe("SUCCESS");
+    expect(secondResume.runId).toBe(result.runId);
+
+    const finalSnapshot = await engine.getRunStatus(result.runId);
+    expect(finalSnapshot?.dag_status).toBe("SUCCESS");
   });
 });
 

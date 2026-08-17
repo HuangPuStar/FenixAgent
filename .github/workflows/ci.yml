@@ -52,5 +52,10 @@ jobs:
       - name: Backend tests
         run: bun test $(find src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1
 
+      # workspace 包测试（orchestration / workflow-engine / acp-server 等）：
+      # 独立于 src/__tests__ 运行，防止包级回归只在本地 precheck 中被发现
+      - name: Package tests
+        run: bun test packages/ --verbose --bail=1
+
       - name: Frontend tests
         run: bun test $(find web/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1

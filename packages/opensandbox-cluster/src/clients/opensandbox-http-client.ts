@@ -17,7 +17,8 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 export class OpenSandboxHttpClient {
   constructor(
-    // 预留的连接超时参数（当前请求统一使用 responseTimeoutMs），保留签名兼容调用方
+    // 连接超时（proxyConnectTimeoutMs）暂未接入请求：当前实现只对响应应用
+    // AbortSignal.timeout。保留参数以维持配置契约，接入连接超时后恢复使用。
     _connectTimeoutMs: number,
     private readonly responseTimeoutMs: number,
     private readonly fetchImpl: typeof fetch = fetch,

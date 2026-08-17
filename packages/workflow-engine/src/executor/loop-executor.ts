@@ -96,6 +96,9 @@ export class LoopExecutor implements NodeExecutor {
           secrets: ctx.secrets,
           nodeExecutor: this.registry,
           cancellation: iterCancellation,
+          // 与 sub-workflow-executor 同模式（C-P2.2）：迭代子 DAG 透传父级集合，
+          // loop 体内 agent 节点 spawn 的实例归本次 run 记账，run 结束统一清理。
+          spawnedInstanceIds: ctx.spawnedInstanceIds,
         });
 
         const result = await scheduler.run();

@@ -6,6 +6,9 @@
 
 import { mock } from "bun:test";
 import * as actualKnowledgeBaseService from "../services/knowledge-base";
+// file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
+import * as actualFileWsHandler from "../transport/file-ws-handler";
+import * as actualFileWsRequests from "../transport/file-ws-requests";
 import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
@@ -13,6 +16,7 @@ import {
   coreBootstrapRegistry,
   customToolsRegistry,
   environmentServiceRegistry,
+  fileWsHandlerRegistry,
   getEnvironmentRepoStub,
   knowledgeBaseServiceRegistry,
   pgStorageAdapterRegistry,
@@ -224,13 +228,20 @@ mock.module("../repositories/resource-permission", () => ({
 // 仅有 acp-machine-connection-lookup.test.ts 和 relay-handler-machine.test.ts 使用 mock
 
 mock.module("../repositories/environment", () => {
-  const obj: Record<string, unknown> = {};
-  Object.defineProperty(obj, "environmentRepo", {
-    enumerable: true,
-    configurable: true,
-    get: () => getEnvironmentRepoStub() ?? { getById: async () => null },
+  // 用 Proxy 实时转发而非对象 getter：具名导入（如 environment-core 的
+  // `import { environmentRepo } from "../repositories"`）在模块首次求值时固化绑定，
+  // getter 一次返回的对象引用会被缓存——若其他测试文件先求值该模块，
+  // 后置的 stubEnvironmentRepo 将永远不生效（fs-upload-escape.test.ts 全量运行曾因此 404）。
+  // Proxy 把每次属性访问实时转发到当前 stub（与上方 ../db 的 createDbMock 同模式），
+  // 未配置 stub 时仍回退 `{ getById: async () => null }`，语义与原先一致。
+  const environmentRepoProxy = new Proxy({} as Record<string, unknown>, {
+    get: (_target, prop) => {
+      const stub = getEnvironmentRepoStub();
+      const target = stub ?? { getById: async () => null };
+      return target[prop as string];
+    },
   });
-  return obj;
+  return { environmentRepo: environmentRepoProxy };
 });
 
 mock.module("../services/knowledge-base", () => ({
@@ -260,6 +271,9 @@ const REGISTRY_KEYS = [
   "updateHeartbeat",
   "resetAllMachinesOffline",
   "updateMachine",
+  // W7 起 file-ws-handler 复用 writeRegistryEvent 落库事件告警（§7.5），
+  // 测试需经 stubRegistry 配置其行为
+  "writeRegistryEvent",
 ] as const;
 mock.module("../services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
 
@@ -341,6 +355,50 @@ const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] 
 mock.module("../services/workflow/custom-tools", () =>
   createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
 );
+
+// ── file-ws-handler / file-ws-requests（W5a 起）──
+// 部分 mock：isFileWsConnected（handler）与 sendFileOpAndWait（file-ws-requests，
+// 自 handler 拆分后的请求发送域）可 stub，其余导出保留真实实现——file-ws-handler.test.ts
+// 直接测这两个函数的真实行为（背压、巡检、回执），因此 stub 未配置时回退真实实现而非空函数。
+const FILE_WS_KEYS = ["isFileWsConnected"] as const;
+mock.module("../transport/file-ws-handler", () => {
+  const obj: Record<string, unknown> = { ...actualFileWsHandler };
+  for (const key of FILE_WS_KEYS) {
+    Object.defineProperty(obj, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        // biome-ignore lint/suspicious/noExplicitAny: 部分 mock 需要宽松类型
+        const actualFn = (actualFileWsHandler as Record<string, any>)[key];
+        return (...args: unknown[]) => {
+          if (fileWsHandlerRegistry.has(key)) return fileWsHandlerRegistry.get(key)(...args);
+          return actualFn(...args);
+        };
+      },
+    });
+  }
+  return obj;
+});
+
+const FILE_WS_REQUEST_KEYS = ["sendFileOpAndWait"] as const;
+mock.module("../transport/file-ws-requests", () => {
+  const obj: Record<string, unknown> = { ...actualFileWsRequests };
+  for (const key of FILE_WS_REQUEST_KEYS) {
+    Object.defineProperty(obj, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        // biome-ignore lint/suspicious/noExplicitAny: 部分 mock 需要宽松类型
+        const actualFn = (actualFileWsRequests as Record<string, any>)[key];
+        return (...args: unknown[]) => {
+          if (fileWsHandlerRegistry.has(key)) return fileWsHandlerRegistry.get(key)(...args);
+          return actualFn(...args);
+        };
+      },
+    });
+  }
+  return obj;
+});
 
 // ── react-i18next ──
 // CI 的 bun 包缓存（npmmirror 镜像）解析出的 react-i18next@17.0.8 的 es/index.js

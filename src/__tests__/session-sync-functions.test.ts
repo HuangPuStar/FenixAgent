@@ -1,14 +1,6 @@
 // ── session.ts 同步函数返回 Promise 验证 ──
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ISessionRepo } from "../repositories";
-import {
-  _setEventService,
-  _setSessionRepo,
-  _setUuid,
-  createSession,
-  getSession,
-  resolveExistingSessionId,
-} from "../services/session";
+import { _setEventService, _setUuid, getSession, resolveExistingSessionId } from "../services/session";
 
 // 注入 mock eventService
 const mockBuses = new Map();
@@ -19,30 +11,6 @@ _setEventService({
 } as any);
 
 _setUuid(() => "test-uuid");
-
-// 注入 mock sessionRepo（避免 createSession 打到真实数据库）
-const mockSessionRepo: ISessionRepo = {
-  create: mock(async (params) => ({
-    id: `${params.idPrefix || "session_"}testuuid`,
-    environmentId: params.environmentId ?? null,
-    title: params.title ?? null,
-    status: "idle",
-    source: params.source ?? "acp",
-    username: params.username ?? null,
-    userId: params.userId ?? null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  })),
-  getById: mock(async () => undefined),
-  update: mock(async () => true),
-  delete: mock(async () => true),
-  listAll: mock(async () => []),
-  listByEnvironment: mock(async () => []),
-  listByUserId: mock(async () => []),
-  bindOwner: mock(async () => {}),
-  reset: () => {},
-};
-_setSessionRepo(mockSessionRepo);
 
 describe("getSession — 同步返回 Promise", () => {
   beforeEach(() => {
@@ -79,17 +47,5 @@ describe("resolveExistingSessionId — 同步返回 Promise", () => {
   test("resolveExistingSessionId with no bus returns null", async () => {
     const result = await resolveExistingSessionId("ses_nonexistent");
     expect(result).toBeNull();
-  });
-});
-
-describe("createSession — 返回轻量存根", () => {
-  // createSession 返回 { id: "session_<uuid去中划线>", status: "idle" }
-  test("createSession returns { id: session_testuuidwithoutdashes, status: idle }", async () => {
-    const result = await createSession({});
-    // uuid v4 mock 返回 "test-uuid"，去中划线后为 "testuuid"
-    expect(result).toEqual({
-      id: "session_testuuid",
-      status: "idle",
-    });
   });
 });

@@ -1,4 +1,4 @@
-import type { ConnectionState } from "../../src/acp/types";
+import type { ConnectionState } from "@fenix/chat-channel";
 import { cn } from "../../src/lib/utils";
 
 // Shared styles for connection state dots

@@ -1,8 +1,8 @@
 "use client";
 
+import type { PermissionOption } from "@fenix/chat-channel";
 import { CheckIcon, ShieldAlertIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { PermissionOption } from "../../src/acp/types";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 

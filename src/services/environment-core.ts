@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { NotFoundError } from "../errors";
+import { ForbiddenError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { EnvironmentResponse } from "../types/api";
@@ -68,19 +68,38 @@ export function sanitizeResponse(row: EnvironmentRecord) {
   };
 }
 
+/** 组织成员角色（与 authContext.role 取值一致） */
+export type EnvironmentRole = "owner" | "admin" | "member";
+
 /**
- * 获取 Environment 并验证可见性。
+ * 获取 Environment 并验证可见性与操作角色（D17 角色化授权：403/404 分离）。
  *
  * 普通共享 environment 仍按组织可见；绑定 agent 的 runtime environment 额外要求访问者是 owner，
  * 避免共享 agent 时直接落到其他成员的个人 workspace。
+ *
+ * role 参数语义（语义变更点）：调用方声明本次为「需要 owner/admin 权限的写操作」。
+ * role 为 member 时抛 ForbiddenError（403，环境存在但无操作权限）；owner/admin 或不传
+ * （读操作）放行。环境不存在/组织不可见/agent 绑定环境非本人 → NotFoundError（404），
+ * 与 403 明确区分，避免向未授权调用方泄露环境是否存在。
+ * 现状注意：W5a 文件门面（agent-file-service.ensureEnvironment）对全部操作透传 role 属
+ * 中间态——member 经文件门面的操作一律 403（fail-closed，比「只读」更保守），若需精确
+ * 的读写分离由后续波次在调用点区分，本函数签名保持四参数不变。
  */
-export async function getOwnedEnvironment(envId: string, organizationId: string, userId?: string) {
+export async function getOwnedEnvironment(
+  envId: string,
+  organizationId: string,
+  userId?: string,
+  role?: EnvironmentRole,
+) {
   const env = await environmentRepo.getById(envId);
   if (!env || env.organizationId !== organizationId) {
     throw new NotFoundError("环境不存在");
   }
   if (userId && env.agentConfigId && env.userId !== userId) {
     throw new NotFoundError("环境不存在");
+  }
+  if (role === "member") {
+    throw new ForbiddenError("无权限执行该操作");
   }
   return env;
 }

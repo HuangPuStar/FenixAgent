@@ -5,16 +5,16 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { applyEnv, config } from "./config";
-import { db, initDb, client as pgClient } from "./db";
-import { agentSession } from "./db/schema";
-import { validateEnv } from "./env";
+import { initDb, client as pgClient } from "./db";
+import { findDeprecatedEnvVars, validateEnv } from "./env";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
@@ -47,10 +47,9 @@ import { initializeDefaultSandboxPool } from "./services/sandbox/sandbox-default
 import { schedulerService } from "./services/scheduler/index";
 import { syncBuiltin } from "./services/sync-builtin";
 import { ensureSystemAdmin } from "./services/system-admin";
-import { startScheduler, stopScheduler } from "./services/task";
 import { initCustomToolsRegistry } from "./services/workflow/custom-tools";
 import { closeAllAcpConnections } from "./transport/acp-ws-handler";
-import { closeAllFileWsConnections } from "./transport/file-ws-handler";
+import { closeAllFileWsConnections, stopFileWsSweep } from "./transport/file-ws-handler";
 import { closeAllRelayConnections } from "./transport/relay";
 
 const startedAt = new Date().toISOString();
@@ -62,6 +61,15 @@ const env = validateEnv();
 applyEnv(env);
 registerConfiguredSandboxProviders();
 
+// 废弃环境变量启动告警：RCS_DEFAULT_MACHINE_TYPE 是 637a4cef 引入的死配置，服务端从未读取，
+// 且 c71ee18c 后 ENGINE_TYPE 仅对 local 执行生效（远程引擎由机器端 AGENT_TYPE 唯一控制）。
+// 部署侧配置了旧变量时显式提示，避免死配置被 zod strip 静默丢弃。
+for (const { name, replacement } of findDeprecatedEnvVars()) {
+  startupLog.warn(
+    `Deprecated environment variable ${name} is ignored; use ${replacement} instead (local execution only, remote engine is controlled by machine-side AGENT_TYPE)`,
+  );
+}
+
 // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
 const systemAdmin = await ensureSystemAdmin();
 startupLog.info(`System admin ready: ${systemAdmin.email}`);
@@ -70,6 +78,8 @@ startupLog.info(`System admin ready: ${systemAdmin.email}`);
 await runDataMigrations();
 startupLog.info("Data migrations completed");
 
+// 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
+// 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
 try {
   const defaultPool = await initializeDefaultSandboxPool(config);
   if (defaultPool) startupLog.info(`Default sandbox pool initialized: ${defaultPool.id}`);
@@ -79,15 +89,10 @@ try {
 
 await sandboxManager.recoverAfterRestart();
 
-// 重启时重置所有 agent_session 状态为 idle
-// WebSocket/EventBus 已断开，之前的运行状态不再有效
-import { sql } from "drizzle-orm";
-
-await db.update(agentSession).set({ status: "idle", updatedAt: new Date() }).where(sql`1=1`);
-
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
-await Promise.all([startScheduler(), schedulerService.start()]);
+
+await schedulerService.start();
 
 try {
   // builtin 资源现在统一托管到系统 admin 组织，不再在启动时遍历所有组织复制副本。
@@ -122,6 +127,14 @@ if (ragflowHealth.ok) {
 import("./services/registry-heartbeat").then(({ startMachineSweep }) => {
   startMachineSweep(60_000);
 });
+// file-ws 僵尸连接巡检（P0-1）：独立于 startMachineSweep——后者只查 DB 中 status=online
+// 的机器（registry-heartbeat.ts），覆盖不到 file-ws 的 half-open 僵尸。默认关闭，
+// 灰度防误杀旧机器端（keep_alive 缺失或间隔 >90s），开启时按配置间隔巡检。
+if (config.fileWsSweepEnabled) {
+  import("./transport/file-ws-handler").then(({ startFileWsSweep }) => {
+    startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
+  });
+}
 startAcpIdleMonitor();
 
 const app = new Elysia({
@@ -137,7 +150,13 @@ const app = new Elysia({
   .onBeforeHandle(logRequest)
   .onAfterHandle(logResponse)
   .onAfterHandle(injectRequestId)
-  .onError(({ request, error, set }) => logError({ request, error, set }))
+  // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
+  // 在链中先执行，命中时返回 index.html 终止链；errorPlugin 对所有错误返回 JSON
+  // 响应，若在其后注册 SPA fallback 永远轮不到执行。
+  .use(ctrlStaticPlugin)
+  // 错误日志合并进 errorPlugin 内部处理（先映射 set.status 再写日志），
+  // 不能挂在这里的 onError：errorPlugin 返回映射响应会终止 onError 链，
+  // 且其前的 hook 读不到最终状态，日志会丢失或记录错误状态。
   .use(errorPlugin)
   .use(rateLimitPlugin)
   // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
@@ -187,8 +206,6 @@ const app = new Elysia({
   )
   // better-auth handler
   .use(authPlugin)
-  // Static files under /ctrl
-  .use(ctrlStaticPlugin)
   // Web control panel routes
   .use(webApp)
   // Token-protected skill archive download for plugins/runtimes
@@ -226,7 +243,24 @@ export type App = typeof app;
 
 // app.listen() 设置 app.server（WebSocket 升级需要），同时 export default
 // 供 Eden Treaty treaty<App>() 做类型推断
-app.listen({ port, hostname: host });
+app.listen({
+  port,
+  hostname: host,
+  // file-ws 载荷治理（§7.6，P1-11a）：Bun 默认 maxPayloadLength 为 16MB，uWS 层会先于
+  // JS 层检查拒绝 16-32MB 的 file-ws 帧（20MB upload → ~27MB base64），32MB 上限形同虚设。
+  // Bun 的 maxPayloadLength 是全局配置（Elysia 1.4.28 .ws() 路由级不透传，仅全局可设），
+  // 放宽后 acp-ws / yjs / relay 仍由各自 JS 层 10MB 检查（MAX_WS_MESSAGE_SIZE）拦截：
+  // 字符串/二进制帧按字节检查，object 帧（Elysia 默认 parse 产物）重序列化后检查
+  // （src/routes/acp/index.ts isOverWsLimit），有效限制不变；file-ws 的 32MB 显式检查
+  // 在 acp/index.ts 的 parse 钩子（解析前）+ uWS 全局上限（单行 JSON 帧路径）。
+  websocket: {
+    // Elysia 的 Partial<Serve> 类型要求完整 WebSocketHandler（message 必填），但运行时
+    // 与 Elysia 自带消息分发器合并（adapter/bun 合并顺序 options 最后，仅补充字段）——
+    // 若按类型补写 message 会覆盖分发器导致全部 WS 端点消息无法分发。第三方类型缺陷，
+    // 最小范围断言规避，不引入其他字段。
+    maxPayloadLength: env.RCS_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024,
+  } as unknown as WebSocketHandler<unknown>,
+});
 export default app;
 
 // Graceful shutdown
@@ -237,9 +271,10 @@ async function gracefulShutdown(signal: string) {
   stopAcpIdleMonitor();
   closeAllRelayConnections();
   closeAllAcpConnections();
+  // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
+  stopFileWsSweep();
   closeAllFileWsConnections();
   await stopAllInstances();
-  stopScheduler();
   schedulerService.stop();
   await closeCache();
   await pgClient.end();

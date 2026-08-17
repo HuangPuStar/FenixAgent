@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanDisplayEntry, ThreadEntry, ToolCallEntry } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
@@ -47,9 +47,11 @@ export const ChatView = React.memo(
     const { t } = useTranslation("components");
     const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
     const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
-    // 将相邻的 ToolCallEntry 合并为一组
-    const grouped = groupToolCalls(entries);
+    // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
+    const grouped = useMemo(() => groupToolCalls(entries), [entries]);
     const hasMessages = entries.length > 0;
+    // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
+    const hasUserMessages = useMemo(() => entries.some((e) => e.type === "user_message"), [entries]);
 
     return (
       <Conversation className="flex-1">
@@ -95,7 +97,7 @@ export const ChatView = React.memo(
               {isLoading && <LoadingIndicator />}
             </>
           )}
-          <ConversationScrollButtons hasUserMessages={entries.some((e) => e.type === "user_message")} />
+          <ConversationScrollButtons hasUserMessages={hasUserMessages} />
         </ConversationContent>
       </Conversation>
     );

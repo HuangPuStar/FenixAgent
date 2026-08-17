@@ -4,12 +4,14 @@
       "@fenix/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@fenix/core": ["./packages/core/src/index.ts"],
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],
+      "@fenix/orchestration": ["./packages/orchestration/src/index.ts"],
       "@fenix/claude-code": ["./packages/plugin-claude-code/src/index.ts"],
       "@fenix/ccb": ["./packages/plugin-ccb/src/index.ts"],
       "@fenix/workflow-engine": ["./packages/workflow-engine/src/index.ts"],
       "@fenix/remote-runtime": ["./packages/remote-runtime/src/index.ts"],
       "@fenix/logger": ["./packages/logger/src/index.ts"],
-      "@fenix/acp-server": ["./packages/acp-server/src/index.ts"]
+      "@fenix/chat-channel": ["./packages/chat-channel/src/index.ts"],
+      "@fenix/chat-channel/server": ["./packages/chat-channel/src/server.ts"]
     },
     "target": "ES2022",
     "module": "ES2022",

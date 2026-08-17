@@ -1,6 +1,6 @@
 # Provider & Model
 
-> 涉及模块：Provider 配置服务、Model 配置服务、LaunchSpec Builder
+> 涉及模块：Provider 配置服务、Model 配置服务、LaunchSpecBuilder
 
 ## 概述
 
@@ -33,7 +33,7 @@ flowchart LR
 
 ## 与 AgentConfig 的关系
 
-AgentConfig 通过 `modelId` 引用一个 Model。spawn 时 LaunchSpec Builder 沿着 Model → Provider 链路解析出 `ModelConfig`（含 apiKey、baseUrl、protocol、model），注入到 `AgentLaunchSpec`。详见 [Agent Config 资源引用](./04-agent-config.md)。
+AgentConfig 通过 `modelId` 引用一个 Model。spawn 时 LaunchSpecBuilder 沿着 Model → Provider 链路解析出 `ModelConfig`（含 apiKey、baseUrl、protocol、model），注入到 `AgentLaunchSpec`。详见 [Agent Config 资源引用](./04-agent-config.md)。
 
 ## 跨组织共享
 

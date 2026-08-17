@@ -9,6 +9,8 @@ function buildConfig(env: Env) {
     host: env.RCS_HOST,
     baseUrl: env.RCS_BASE_URL,
     skillDir: resolve(env.SKILL_DIR ?? "./data/skills"),
+    /** Workspace 根目录，默认运行目录下 workspaces；与 workspace-resolver 的默认值保持一致。 */
+    workspaceRoot: resolve(env.WORKSPACE_ROOT ?? "./workspaces"),
     systemAdminPasswordFile: resolve(env.RCS_SYSTEM_ADMIN_PASSWORD_FILE ?? "./data/password.txt"),
     pollTimeout: env.RCS_POLL_TIMEOUT,
     heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,
@@ -37,6 +39,14 @@ function buildConfig(env: Env) {
     userAgentMaxConcurrency: env.RCS_USER_AGENT_MAX_CONCURRENCY,
     /** 定时任务触发的活跃 Agent 实例并发上限。 */
     scheduledAgentMaxConcurrency: env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY,
+    /** file-ws 僵尸判定阈值：lastClientActivity 距今超过该值（ms）视为僵尸连接。默认 90s（3×30s keep_alive 间隔）。 */
+    fileWsIdleTimeoutMs: env.RCS_FILE_WS_IDLE_TIMEOUT_MS,
+    /** file-ws 僵尸巡检间隔（ms）。默认 30s。 */
+    fileWsSweepIntervalMs: env.RCS_FILE_WS_SWEEP_INTERVAL_MS,
+    /** file-ws 巡检开关。默认 false：旧机器端 keep_alive 缺失或间隔 >90s 会被误判，灰度开启防误杀。 */
+    fileWsSweepEnabled: env.RCS_FILE_WS_SWEEP_ENABLED,
+    /** file-ws 身份绑定严格模式（§7.1）。默认 false（宽松）：未知 machine 放行 + 告警；true 时 close(4404)。两阶段过渡软开关。 */
+    fileWsIdentityStrict: env.RCS_FILE_WS_IDENTITY_STRICT,
     /** 沙盒创建或恢复后等待 ACP Runtime 回连的最长时间（毫秒）。 */
     sandboxRuntimeConnectTimeoutMs: env.RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS ?? 10000,
     /** 是否启用沙盒默认策略。 */

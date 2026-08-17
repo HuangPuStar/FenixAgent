@@ -6,6 +6,12 @@ import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
 import type { AcpConnectionEntry } from "../types/store";
+import {
+  dispatchAgentNodeDisconnect,
+  dispatchAgentNodeWsClose,
+  getAgentNodeService,
+  wsToAgentNodeSocket,
+} from "./agent-node-bridge";
 import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
@@ -160,6 +166,21 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     const engineTypes = supportedEngineTypes.map((e) => e.type);
     registerRemoteNode(result.id, entry.ws, entry, engineTypes);
+
+    // 接入编排域 AgentNodeService：machine 注册成功后由新包管理节点生命周期。
+    // 编排域接入失败不阻断机器注册（relay / core 通道不依赖编排域节点），记录诊断即可。
+    // 竞态防护：registerMachine 的 await 期间 WS 可能已关闭（handleAcpWsClose 已删
+    // entry，且此时 entry.machineId 尚为 null 不会触发清理），用已关闭的 socket 建节点
+    // 会让节点以死信道进入 connected 且永远收不到 close 事件（事件已过），导致节点
+    // 永久 stuck；关闭中的连接不接入编排域，等待机器重连。
+    if (entry.ws.readyState === 1) {
+      try {
+        getAgentNodeService().handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
+      } catch (err) {
+        logError("AgentNodeService handleIncomingConnection error:", err);
+      }
+    }
+
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (replacedInstanceIds.length > 0) {
       import("./relay").then(({ closeClientsForMachineInstances }) => {
@@ -344,6 +365,12 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     return;
   }
 
+  // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并停止
+  // 重连尝试，等待机器主动重连；E-P2.2 方案 A）。
+  // 必须放在快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用为
+  // connected，旧 socket 的 close 事件不应把节点打断为 disconnected。
+  dispatchAgentNodeWsClose(entry.ws);
+
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
   const instanceIds = getCoreRuntime()
@@ -395,6 +422,12 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   // 先检查是否有活跃连接（可能已重连）
   const activeConn = findMachineConnectionById(machineId);
   if (activeConn) return;
+
+  // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 语义一致，
+  // 置于快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用
+  // 为 connected，不得再打断）。sweep 路径无 entry.ws 可引用，走 machineId 维度
+  // 通知（幂等：节点未管理或已断连时忽略）。
+  dispatchAgentNodeDisconnect(machineId);
 
   // 更新 DB 状态
   disconnectMachine(machineId, reason).catch((err) => {
@@ -520,6 +553,8 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.isMachine && entry.machineId) {
+        // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 幂等）
+        dispatchAgentNodeWsClose(entry.ws);
         disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
       }
     } catch {

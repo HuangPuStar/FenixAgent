@@ -39,10 +39,11 @@ describe("SessionManager", () => {
     expect(mgr.getAliveSessionIds()).toEqual([]);
   });
 
-  // sendData triggers spawn when no connection exists; not testable without real opencode
-  test.skip("sendData returns true when no connection", () => {
+  // 无连接时 sendData 应立即返回 true 并触发后台 spawn；agent 命令缺失时 spawn 失败不得崩溃进程。
+  // 历史版本因 spawn ENOENT 无 error 监听导致未捕获异常崩溃而跳过，session-manager 已修复监听。
+  test("sendData returns true when no connection", async () => {
     const mgr = new SessionManager("nonexistent_command_xyz", 5);
-    const result = mgr.sendData("ses_1", { type: "list_sessions" });
+    const result = await mgr.sendData("ses_1", { type: "list_sessions" });
     expect(result).toBe(true);
     mgr.stopAll();
   });

@@ -1,7 +1,7 @@
+import type { PlanEntry, PlanEntryPriority, PlanEntryStatus } from "@fenix/chat-channel";
 import { CheckCircle2, ChevronRight, Circle, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PlanEntry, PlanEntryPriority, PlanEntryStatus } from "../../src/acp/types";
 import type { PlanDisplayEntry } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { ScrollArea } from "../ui/scroll-area";

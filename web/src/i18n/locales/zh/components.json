@@ -1,34 +1,4 @@
 {
-  "navbar": {
-    "status": {
-      "active": "活跃",
-      "running": "运行中",
-      "idle": "空闲",
-      "inactive": "离线",
-      "requires_action": "待操作",
-      "archived": "已归档",
-      "error": "错误",
-      "disconnected": "已断开"
-    }
-  },
-  "controlBar": {
-    "sessionClosed": "会话已关闭",
-    "typeMessage": "输入消息...",
-    "stop": "停止",
-    "send": "发送"
-  },
-  "newSession": {
-    "title": "新建会话",
-    "titleLabel": "标题（可选）",
-    "titlePlaceholder": "我的会话",
-    "environment": "环境",
-    "noneOption": "-- 无 --",
-    "noBranch": "无分支",
-    "cancel": "取消",
-    "creating": "创建中...",
-    "create": "创建",
-    "createFailed": "创建会话失败"
-  },
   "filePicker": {
     "title": "选择文件",
     "searchPlaceholder": "搜索文件...",
@@ -39,22 +9,6 @@
     "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
     "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
     "totalTooLarge": "文件总量 {{total}} 超过了单次上传 {{max}} 限制，请分批次上传"
-  },
-  "identity": {
-    "title": "身份标识",
-    "yourUuid": "你的 UUID",
-    "copy": "复制",
-    "copied": "已复制！",
-    "scanOnAnotherDevice": "在其他设备上扫描",
-    "cameraScanner": "摄像头扫描",
-    "stopScanning": "停止扫描",
-    "stopCamera": "停止摄像头",
-    "scanWithCamera": "使用摄像头扫描",
-    "uploadQrImage": "上传二维码图片",
-    "qrNotFound": "未找到二维码，请尝试更清晰的图片"
-  },
-  "loading": {
-    "thinking": "思考中"
   },
   "permission": {
     "notSet": "未设置",
@@ -75,60 +29,6 @@
     "customRules": "自定义规则（通配符模式）",
     "skillWildcardPlaceholder": "通配符，如 \"internal-*\"",
     "addCustomRule": "+ 添加自定义规则"
-  },
-  "permissionViews": {
-    "permissionRequest": "权限请求",
-    "approve": "批准",
-    "reject": "拒绝",
-    "other": "其他...",
-    "send": "发送",
-    "submit": "提交",
-    "skip": "跳过",
-    "submitAll": "全部提交",
-    "question": "问题",
-    "questions": "问题",
-    "exitPlanMode": "退出计划模式？",
-    "readyToCode": "准备好开始编码？",
-    "yes": "是",
-    "no": "否",
-    "yesAutoAccept": "是，自动接受编辑",
-    "yesAutoAcceptDesc": "批准计划并自动接受文件编辑",
-    "yesManualApprove": "是，手动确认编辑",
-    "yesManualApproveDesc": "批准计划但逐一确认每次编辑",
-    "noKeepPlanning": "否，继续规划",
-    "noKeepPlanningDesc": "提供反馈以完善计划",
-    "planFeedbackPlaceholder": "告诉智能体需要修改什么..."
-  },
-  "sessionList": {
-    "noSessions": "暂无会话"
-  },
-  "taskPanel": {
-    "title": "任务",
-    "noActiveTasks": "暂无活跃任务"
-  },
-  "tokenManager": {
-    "title": "Token 管理",
-    "description": "管理 RCS 认证使用的 API Token。",
-    "noTokens": "尚未保存 Token。请在下方添加。",
-    "addToken": "添加 Token",
-    "tokenPlaceholder": "API Token",
-    "labelPlaceholder": "标签（可选）",
-    "tokenRequired": "Token 不能为空",
-    "unnamed": "未命名",
-    "toggleVisibility": "切换 Token 可见性",
-    "copyToken": "复制 Token",
-    "editLabel": "编辑标签",
-    "deleteToken": "删除 Token"
-  },
-  "acpDirect": {
-    "loginExpired": "登录已过期，请重新登录",
-    "backToDashboard": "返回仪表盘",
-    "connectingAgent": "正在连接 ACP Agent...",
-    "connectionFailed": "连接失败"
-  },
-  "artifact": {
-    "contextPlaceholder": "上下文 (placeholder), entries: {{count}}",
-    "previewPlaceholder": "预览 (placeholder), entries: {{count}}"
   },
   "panelMode": {
     "files": "文件",
@@ -221,6 +121,10 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "staleBanner": "文件服务暂时不可用，正在自动重连",
+    "renameFailed": "重命名失败",
+    "mkdirFailed": "创建文件夹失败",
+    "newFileFailed": "创建文件失败",
     "dropToUpload": "释放文件以上传",
     "hintDragUpload": "拖拽上传",
     "hintDoubleClick": "双击预览",
@@ -321,22 +225,14 @@
   },
   "messageBubble": {
     "expand": "展开",
-    "uploadedImage": "已上传图片"
+    "uploadedImage": "已上传图片",
+    "systemMessage": "系统消息"
   },
   "planView": {
     "high": "高",
     "medium": "中",
     "low": "低",
     "executionPlan": "执行计划"
-  },
-  "sessionSidebar": {
-    "today": "今天",
-    "yesterday": "昨天",
-    "earlier": "更早",
-    "header": "会话",
-    "sessions": "会话",
-    "historySessions": "历史会话",
-    "noSessions": "暂无会话"
   },
   "toolCallGroup": {
     "running": "运行中",
@@ -356,11 +252,6 @@
     "primaryModelPlaceholder": "选择主模型",
     "lightweightModel": "轻量模型",
     "lightweightModelPlaceholder": "选择轻量模型"
-  },
-  "acpConnect": {
-    "server": "服务器",
-    "connect": "连接",
-    "remoteAccessPlaceholder": "用于远程访问"
   },
   "acpMain": {
     "newSession": "新会话",
@@ -393,10 +284,6 @@
     "hideSessions": "收起会话面板",
     "pinSessions": "钉住会话面板",
     "unpinSessions": "解除钉住"
-  },
-  "chatMessage": {
-    "you": "你",
-    "agent": "智能体"
   },
   "contextPanel": {
     "unknownModel": "未知",
@@ -465,11 +352,6 @@
     "statusStopped": "已停止"
   },
   "orgSwitchFailed": "切换组织失败",
-  "imagePreview": {
-    "zoomIn": "放大",
-    "zoomOut": "缩小",
-    "reset": "还原"
-  },
   "hindsightToolCard": {
     "failed": "失败"
   },
@@ -515,12 +397,15 @@
   },
   "permissionPanel": {
     "allow": "允许",
+    "allowSession": "允许本次会话",
     "deny": "拒绝"
   },
   "sessionModeSelector": {
     "default": "默认"
   },
-  "modelIconMap": {
-    "qwen": "Qwen / 通义千问"
+  "askUser": {
+    "title": "需要你回答",
+    "description": "Agent 需要你提供一些信息以继续执行",
+    "submit": "提交"
   }
 }

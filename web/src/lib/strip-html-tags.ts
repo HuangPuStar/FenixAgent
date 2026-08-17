@@ -34,15 +34,51 @@ export function stripHtmlTags(title: string | null | undefined): string {
   );
 }
 
+const SYSTEM_REMINDER_OPEN = "<system-reminder>";
+const SYSTEM_REMINDER_CLOSE = "</system-reminder>";
+
+/** 消息切分结果：system 段渲染为系统消息标签，text 段渲染为普通消息 */
+export type ReminderSegment = { kind: "system" | "text"; text: string };
+
 /**
- * 移除用户消息中仅供 Agent 使用的 system-reminder 上下文。
+ * 将消息文本切分为系统上下文段与普通文本段，供聊天渲染使用。
  *
- * system-reminder 可能在消息持久化前被截断，因此除了完整块，还要丢弃从
- * 未闭合开标签开始直到字符串结尾的内容，避免展示权限模式等内部信息。
+ * 背景：注入的 `<system-reminder>` 上下文块（见 `context-queue.ts`）此前在渲染层
+ * 被整体隐藏；现在改为渲染为"系统消息"标签（`SystemMessage`），hover 展示原始块，
+ * 因此需要先切分。切分结果保留块文本（含标签），由 `SystemMessage` 原样展示。
+ *
+ * 切分规则：
+ * - 完整的 `<system-reminder>...</system-reminder>` 块，无论位置都识别为系统段
+ *   （块内是系统上下文而非消息内容；若未来出现其他同性质的上下文标签块，
+ *   在此追加即可）。
+ * - 未闭合的开标签仅在消息开头（发送方 unshift 的注入位置）时视为系统段；
+ *   出现在其他位置属于用户输入（如用户询问 "请解释 <system-reminder> 标签的用途"），
+ *   保留为文本段，避免把用户消息中合法包含的标签文本连同后续内容一起截断。
+ *
+ * @param text 原始消息文本
+ * @returns 按出现顺序排列的切分段；空输入返回空数组
  */
-export function stripSystemReminderContent(text: string): string {
-  return text
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
-    .replace(/<system-reminder>[\s\S]*$/gi, "")
-    .trimEnd();
+export function splitSystemReminderBlocks(text: string): ReminderSegment[] {
+  if (!text) return [];
+  const segments: ReminderSegment[] = [];
+  let rest = text.trim();
+  while (rest) {
+    const openIndex = rest.indexOf(SYSTEM_REMINDER_OPEN);
+    if (openIndex < 0) {
+      segments.push({ kind: "text", text: rest });
+      break;
+    }
+    const closeIndex = rest.indexOf(SYSTEM_REMINDER_CLOSE, openIndex + SYSTEM_REMINDER_OPEN.length);
+    if (closeIndex < 0) {
+      // 未闭合的开标签：仅在消息开头视为注入的系统上下文，其余属于用户输入，
+      // 连同前后内容整体保留为单个 text 段，避免改变用户输入的换行结构
+      segments.push({ kind: openIndex === 0 ? "system" : "text", text: rest });
+      break;
+    }
+    const before = rest.slice(0, openIndex).trim();
+    if (before) segments.push({ kind: "text", text: before });
+    segments.push({ kind: "system", text: rest.slice(openIndex, closeIndex + SYSTEM_REMINDER_CLOSE.length) });
+    rest = rest.slice(closeIndex + SYSTEM_REMINDER_CLOSE.length).trim();
+  }
+  return segments;
 }

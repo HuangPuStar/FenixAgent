@@ -45,7 +45,7 @@ flowchart LR
 | **前端角色** | 只读投影 (observe → setState) | intent 发起者 (send action → 等待编排结果) |
 | **状态语义** | "当前是什么" | "要做什么" |
 | **本协议覆盖** | 状态机定义、生命周期规则 | action 字典、路由规则 |
-| **本协议不覆盖** | Y.Doc 内部字段定义 (属于 `@fenix/acp-server` 的 aggregator 层) | action 的 JSON-RPC params/result 具体 schema |
+| **本协议不覆盖** | Y.Doc 内部字段定义 (属于 `@fenix/chat-channel` 的 aggregator 层) | action 的 JSON-RPC params/result 具体 schema |
 
 ## 3. 六个实体及其身份标识
 
@@ -547,9 +547,9 @@ Control Protocol 定义前端可发起的 8 个 action。每个 action 遵循 JS
 
 | 未定义项 | 归属 | 说明 |
 | :-- | :-- | :-- |
-| State Protocol 的 Y.Doc 字段定义 | `@fenix/acp-server` aggregator 层 | `meta.status`、`messages[]`、`streaming`、`tools` 等字段的完整类型和语义 |
-| Control Protocol 的 JSON-RPC params/result schema | `@fenix/acp-server` + `agent-chat-service` | 每个 action 的请求参数和响应结构 |
-| ACP 事件类型与 Session 状态的映射表 | `@fenix/acp-server` aggregator | `agent_message_chunk` → `meta.status = "responding"` 等详细规则 |
+| State Protocol 的 Y.Doc 字段定义 | `@fenix/chat-channel` aggregator 层 | `meta.status`、`messages[]`、`streaming`、`tools` 等字段的完整类型和语义 |
+| Control Protocol 的 JSON-RPC params/result schema | `@fenix/chat-channel` + `agent-chat-service` | 每个 action 的请求参数和响应结构 |
+| ACP 事件类型与 Session 状态的映射表 | `@fenix/chat-channel` aggregator | `agent_message_chunk` → `meta.status = "responding"` 等详细规则 |
 | 具体的超时数值 | `@fenix/config` | `idleTimeoutMs`、`maxSessionLifetimeMs`、`heartbeatIntervalMs` 等默认值 |
 | Machine 预注册审批流程 | `machine-registry` | PENDING → REGISTERING 的审批策略和 UI |
 | Agent Instance 的错误分类与重试策略 | `agent-chat-service` | 区分可恢复错误与不可恢复错误 |

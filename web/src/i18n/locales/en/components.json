@@ -1,34 +1,4 @@
 {
-  "navbar": {
-    "status": {
-      "active": "Active",
-      "running": "Running",
-      "idle": "Idle",
-      "inactive": "Offline",
-      "requires_action": "Pending",
-      "archived": "Archived",
-      "error": "Error",
-      "disconnected": "Disconnected"
-    }
-  },
-  "controlBar": {
-    "sessionClosed": "Session is closed",
-    "typeMessage": "Type a message...",
-    "stop": "Stop",
-    "send": "Send"
-  },
-  "newSession": {
-    "title": "New Session",
-    "titleLabel": "Title (optional)",
-    "titlePlaceholder": "My session",
-    "environment": "Environment",
-    "noneOption": "-- None --",
-    "noBranch": "no branch",
-    "cancel": "Cancel",
-    "creating": "Creating...",
-    "create": "Create",
-    "createFailed": "Failed to create session"
-  },
   "filePicker": {
     "title": "Select File",
     "searchPlaceholder": "Search files...",
@@ -39,22 +9,6 @@
     "fileTooLarge": "{{name}} is too large (max {{max}})",
     "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit",
     "totalTooLarge": "Total file size {{total}} exceeds the {{max}} single upload limit, please upload in multiple batches"
-  },
-  "identity": {
-    "title": "Identity",
-    "yourUuid": "Your UUID",
-    "copy": "Copy",
-    "copied": "Copied!",
-    "scanOnAnotherDevice": "Scan on another device",
-    "cameraScanner": "Camera scanner",
-    "stopScanning": "Stop scanning",
-    "stopCamera": "Stop Camera",
-    "scanWithCamera": "Scan with Camera",
-    "uploadQrImage": "Upload QR Image",
-    "qrNotFound": "QR code not found, please try a clearer image"
-  },
-  "loading": {
-    "thinking": "Thinking"
   },
   "permission": {
     "notSet": "Not set",
@@ -75,60 +29,6 @@
     "customRules": "Custom Rules (wildcard pattern)",
     "skillWildcardPlaceholder": "Wildcard, e.g. \"internal-*\"",
     "addCustomRule": "+ Add Custom Rule"
-  },
-  "permissionViews": {
-    "permissionRequest": "Permission Request",
-    "approve": "Approve",
-    "reject": "Reject",
-    "other": "Other...",
-    "send": "Send",
-    "submit": "Submit",
-    "skip": "Skip",
-    "submitAll": "Submit All",
-    "question": "Question",
-    "questions": "Questions",
-    "exitPlanMode": "Exit plan mode?",
-    "readyToCode": "Ready to code?",
-    "yes": "Yes",
-    "no": "No",
-    "yesAutoAccept": "Yes, auto-accept edits",
-    "yesAutoAcceptDesc": "Approve plan and auto-accept file edits",
-    "yesManualApprove": "Yes, manually approve edits",
-    "yesManualApproveDesc": "Approve plan but confirm each edit",
-    "noKeepPlanning": "No, keep planning",
-    "noKeepPlanningDesc": "Provide feedback to refine the plan",
-    "planFeedbackPlaceholder": "Tell the agent what needs to be changed..."
-  },
-  "sessionList": {
-    "noSessions": "No sessions"
-  },
-  "taskPanel": {
-    "title": "Tasks",
-    "noActiveTasks": "No active tasks"
-  },
-  "tokenManager": {
-    "title": "Token Manager",
-    "description": "Manage API tokens for RCS authentication.",
-    "noTokens": "No tokens saved yet. Add one below.",
-    "addToken": "Add Token",
-    "tokenPlaceholder": "API Token",
-    "labelPlaceholder": "Label (optional)",
-    "tokenRequired": "Token is required",
-    "unnamed": "Unnamed",
-    "toggleVisibility": "Toggle token visibility",
-    "copyToken": "Copy token",
-    "editLabel": "Edit label",
-    "deleteToken": "Delete token"
-  },
-  "acpDirect": {
-    "loginExpired": "Session expired, please log in again",
-    "backToDashboard": "Back to Dashboard",
-    "connectingAgent": "Connecting to ACP agent...",
-    "connectionFailed": "Connection Failed"
-  },
-  "artifact": {
-    "contextPlaceholder": "Context (placeholder), entries: {{count}}",
-    "previewPlaceholder": "Preview (placeholder), entries: {{count}}"
   },
   "panelMode": {
     "files": "Files",
@@ -221,6 +121,10 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "staleBanner": "File service temporarily unavailable, reconnecting...",
+    "renameFailed": "Rename failed",
+    "mkdirFailed": "Create folder failed",
+    "newFileFailed": "Create file failed",
     "dropToUpload": "Drop files to upload",
     "hintDragUpload": "Drag to upload",
     "hintDoubleClick": "Double-click to preview",
@@ -321,22 +225,14 @@
   },
   "messageBubble": {
     "expand": "Expand",
-    "uploadedImage": "Uploaded image"
+    "uploadedImage": "Uploaded image",
+    "systemMessage": "System message"
   },
   "planView": {
     "high": "High",
     "medium": "Medium",
     "low": "Low",
     "executionPlan": "Execution Plan"
-  },
-  "sessionSidebar": {
-    "today": "Today",
-    "yesterday": "Yesterday",
-    "earlier": "Earlier",
-    "header": "Sessions",
-    "sessions": "Sessions",
-    "historySessions": "History Sessions",
-    "noSessions": "No sessions"
   },
   "toolCallGroup": {
     "running": "Running",
@@ -356,11 +252,6 @@
     "primaryModelPlaceholder": "Select primary model",
     "lightweightModel": "Lightweight Model",
     "lightweightModelPlaceholder": "Select lightweight model"
-  },
-  "acpConnect": {
-    "server": "Server",
-    "connect": "Connect",
-    "remoteAccessPlaceholder": "For remote access"
   },
   "acpMain": {
     "newSession": "New Session",
@@ -393,10 +284,6 @@
     "hideSessions": "Hide sessions panel",
     "pinSessions": "Pin sessions panel",
     "unpinSessions": "Unpin sessions panel"
-  },
-  "chatMessage": {
-    "you": "You",
-    "agent": "Agent"
   },
   "contextPanel": {
     "unknownModel": "Unknown",
@@ -465,11 +352,6 @@
     "statusStopped": "Stopped"
   },
   "orgSwitchFailed": "Failed to switch organization",
-  "imagePreview": {
-    "zoomIn": "Zoom In",
-    "zoomOut": "Zoom Out",
-    "reset": "Reset"
-  },
   "hindsightToolCard": {
     "failed": "Failed"
   },
@@ -515,12 +397,15 @@
   },
   "permissionPanel": {
     "allow": "Allow",
+    "allowSession": "Allow Session",
     "deny": "Deny"
   },
   "sessionModeSelector": {
     "default": "Default"
   },
-  "modelIconMap": {
-    "qwen": "Qwen / Tongyi Qianwen"
+  "askUser": {
+    "title": "Question from Agent",
+    "description": "The agent needs your input to continue",
+    "submit": "Submit"
   }
 }

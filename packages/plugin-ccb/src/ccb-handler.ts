@@ -51,6 +51,7 @@ export function createCcbHandler(): EngineHandler {
         connection,
         capabilities,
         resolvePermissionOutcome,
+        resolveQuestionAnswer,
       } = await spawnAcpAgent(resolved, args, state.workspace, state.launchSpec.env, send);
 
       // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
@@ -81,6 +82,11 @@ export function createCcbHandler(): EngineHandler {
         send,
         workspace: state.workspace,
         onPermissionOutcome: resolvePermissionOutcome,
+        // elicitation 答案（前端 respond_question → control_response 帧）路由回
+        // spawnAcpAgent 的 pendingQuestions，组装 content 后作为 elicitation/create 响应
+        onControlResponse: (requestId, _approved, extra) => {
+          resolveQuestionAnswer(requestId, extra);
+        },
       });
 
       console.log(`[ccb-handler] started: ${instanceId}`);

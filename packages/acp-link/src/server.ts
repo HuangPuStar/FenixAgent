@@ -13,6 +13,7 @@ import { type AgentType, type EngineHandler, InstanceManager } from "./client/in
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import { extractModelState, extractModeState } from "./config-options-utils.js";
+import { createElicitationHandler, type ElicitationHandler } from "./elicitation.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -95,6 +96,8 @@ interface ClientState {
   connection: acp.ClientSideConnection | null;
   sessionId: string | null;
   pendingPermissions: Map<string, PendingPermission>;
+  /** AskUserQuestion 提问处理器（interactive_question 帧发出/答案回传/超时/取消） */
+  elicitation: ElicitationHandler;
   agentCapabilities: AgentCapabilities | null;
   promptCapabilities: PromptCapabilities | null;
   modelState: SessionModelState | null;
@@ -242,6 +245,12 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let manualClose = false;
   // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
   let cachedNodeId: string | null = null;
+  // 实例 start 完成前到达的 connect 帧缓存（instId → payload）。
+  // relay 的 connect 帧只在实例 dispatcher 就绪后才会被消费；若在前端建连
+  // （spawn + connection.initialize 耗时秒级）期间到达，会被静默丢弃，
+  // 导致 status（含 capabilities）永不发送、前端能力信息缺失（"not supported"）。
+  // start 成功后补发缓存帧，保证能力信息最终到达前端。
+  const pendingConnects = new Map<string, unknown>();
 
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
@@ -562,6 +571,27 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   capabilities: result.capabilities,
                 }),
               );
+              // 补发 start 完成前缓存的 connect 帧：dispatcher 此刻已就绪，
+              // 重放后回传 status（含 capabilities），避免前端能力信息永久缺失。
+              const pendingConnect = pendingConnects.get(instId);
+              if (pendingConnect) {
+                pendingConnects.delete(instId);
+                const dispatcher = instanceMgr.getDispatcher(instId);
+                if (dispatcher) {
+                  try {
+                    await dispatcher.handleMessage(pendingConnect);
+                  } catch (err) {
+                    ws!.send(
+                      JSON.stringify({
+                        type: "relay",
+                        instance_id: instId,
+                        session_id: instanceMgr.getSessionId(instId) ?? instId,
+                        payload: createErrorResponse(null, -32603, (err as Error).message),
+                      }),
+                    );
+                  }
+                }
+              }
             } catch (err) {
               ws!.send(
                 JSON.stringify({
@@ -623,6 +653,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                     }),
                   );
                 }
+              } else if ((relayPayload as { type?: string })?.type === "connect") {
+                // dispatcher 尚未就绪（实例仍在 start：spawn 子进程 + initialize 握手）：
+                // connect 帧必须先缓存，start 完成后补发，否则 status 永不发送。
+                // 仅缓存 connect（幂等握手），其余消息在 dispatcher 就绪前没有消费者，直接忽略。
+                pendingConnects.set(instId, relayPayload);
               }
             } else {
               sessionMgr.sendData(sessId, relayPayload);
@@ -802,6 +837,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         return { outcome };
       },
 
+      // AskUserQuestion：委托公共 elicitation handler（解析 schema、发帧、
+      // 60s 超时空答案、control_response 回传均在其中，见 elicitation.ts）
+      unstable_createElicitation: (params) => clientState.elicitation.handle(params),
+
       async sessionUpdate(params) {
         sendMsg(ws, createNotification(ACP_METHOD.SESSION_UPDATE, params));
       },
@@ -935,6 +974,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     // Kill existing process if any (only if not healthy)
     if (state.process) {
       cancelPendingPermissions(state);
+      state.elicitation.cancelAll();
       state.process.kill();
       state.process = null;
       state.connection = null;
@@ -974,6 +1014,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         clientInfo: { name: "zed", version: "1.0.0" },
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
+          // 声明支持 form 模式 elicitation（AskUserQuestion）：ACP 要求 client 在
+          // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
+          // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
+          elicitation: { form: {} },
         },
       });
 
@@ -989,6 +1033,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `sessionList=${!!state.agentCapabilities?.sessionCapabilities?.list}`,
         `sessionResume=${!!state.agentCapabilities?.sessionCapabilities?.resume}`,
         `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
+        // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
+        `elicitationForm=true`,
       );
 
       sendMsg(ws, {
@@ -1208,14 +1254,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         .filter((c) => c.type === "text")
         .map((c) => (c as { text: string }).text)
         .join(" ");
+      // 优先按请求携带的 sessionId 路由（并发 run 各自会话）；
+      // yjs 前端 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话，保持向后兼容
+      const promptSessionId = (params.sessionId as string | undefined) ?? state.sessionId;
       console.log("[acp-server] prompt:", {
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         id,
         text: promptText.slice(0, 200),
         blocks: content.length,
       });
       const result = await state.connection.prompt({
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         prompt: content as acp.ContentBlock[],
       });
 
@@ -1251,6 +1300,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
     console.log("cancel requested, sessionId:", state.sessionId);
     cancelPendingPermissions(state);
+    state.elicitation.cancelAll();
 
     try {
       await state.connection.cancel({ sessionId: state.sessionId });
@@ -1345,12 +1395,26 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         case "ping":
           sendMsg(ws, { type: "pong" });
           break;
+        case "control_response": {
+          // AskUserQuestion 答案回传（translator 构造的传输帧，非 JSON-RPC）：
+          // request_id = questionId，extra.answers = 选中选项 label 数组（按问题顺序）。
+          // 与 acp-dispatcher.ts:194 handleTransportMessage 消费形态对齐。
+          const state = clients.get(ws);
+          if (state) {
+            const requestId = (msg.request_id as string) ?? "";
+            if (!state.elicitation.resolve(requestId, (msg.extra ?? {}) as Record<string, unknown>)) {
+              console.warn("question response for unknown request:", requestId);
+            }
+          }
+          break;
+        }
         case "cancel_pending_permissions": {
           // 前端 relay 断连时，主服务通过 relay handle 发送此消息，
           // 通知 acp-link server 立即取消所有待决权限请求，避免 agent 等待 30s 超时。
           const state = clients.get(ws);
           if (state) {
             cancelPendingPermissions(state);
+            state.elicitation.cancelAll();
           }
           break;
         }
@@ -1426,6 +1490,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         connection: null,
         sessionId: null,
         pendingPermissions: new Map(),
+        elicitation: createElicitationHandler((payload) => sendMsg(ws, { type: "interactive_question", payload })),
         agentCapabilities: null,
         promptCapabilities: null,
         modelState: null,
@@ -1456,6 +1521,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const state = clients.get(ws);
       if (state) {
         cancelPendingPermissions(state);
+        state.elicitation.cancelAll();
       }
       handleDisconnect(ws);
       clients.delete(ws);
@@ -1496,6 +1562,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       }
       for (const [, cs] of clients) {
         cancelPendingPermissions(cs);
+        cs.elicitation.cancelAll();
         if (cs.process) cs.process.kill();
       }
       clients.clear();

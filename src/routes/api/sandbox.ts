@@ -31,7 +31,9 @@ export function mapSandboxApiError(error: unknown): {
 } {
   const message = error instanceof Error ? error.message : "Unknown error";
   if (error instanceof SandboxProviderNotConfiguredError || error instanceof SandboxRuntimeNotReadyError) {
-    return { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE", message } } };
+    // message 固定通用文案：ProviderNotConfiguredError 携带 providerKey、
+    // RuntimeNotReadyError 携带 sbi_* sandboxId，透传给 /api/system 调用方属泄漏
+    return { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" } } };
   }
   if (error instanceof SandboxProviderError) {
     if (error.code === "NOT_FOUND") {
@@ -70,8 +72,7 @@ const app = new Elysia({ name: "api-sandbox", prefix: "/api/system" }).use(syste
 
 app.get(
   "/sandbox-pools",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ query, error }: any) => {
+  async ({ query, error }) => {
     try {
       return await sandboxApi.listPools(query);
     } catch (err) {
@@ -84,8 +85,7 @@ app.get(
 
 app.post(
   "/sandbox-pools",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ body, error }: any) => {
+  async ({ body, error }) => {
     try {
       return await sandboxApi.createPool(body);
     } catch (err) {
@@ -98,8 +98,7 @@ app.post(
 
 app.get(
   "/sandbox-pools/:poolId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, error }: any) => {
+  async ({ params, error }) => {
     try {
       return await sandboxApi.getPool(params.poolId);
     } catch (err) {
@@ -112,8 +111,7 @@ app.get(
 
 app.put(
   "/sandbox-pools/:poolId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, body, error }: any) => {
+  async ({ params, body, error }) => {
     try {
       return await sandboxApi.updatePool(params.poolId, body);
     } catch (err) {
@@ -126,8 +124,7 @@ app.put(
 
 app.delete(
   "/sandbox-pools/:poolId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, error }: any) => {
+  async ({ params, error }) => {
     try {
       return await sandboxApi.deletePool(params.poolId);
     } catch (err) {
@@ -140,8 +137,7 @@ app.delete(
 
 app.get(
   "/sandbox-instances",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ query, error }: any) => {
+  async ({ query, error }) => {
     try {
       return await sandboxApi.listInstances(query);
     } catch (err) {
@@ -154,8 +150,7 @@ app.get(
 
 app.get(
   "/sandbox-instances/:instanceId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, error }: any) => {
+  async ({ params, error }) => {
     try {
       return await sandboxApi.getInstance(params.instanceId);
     } catch (err) {
@@ -168,8 +163,7 @@ app.get(
 
 app.put(
   "/sandbox-instances/:instanceId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, body, error }: any) => {
+  async ({ params, body, error }) => {
     try {
       return await sandboxApi.updateInstance(params.instanceId, body.resourceOverrides);
     } catch (err) {
@@ -182,8 +176,7 @@ app.put(
 
 app.delete(
   "/sandbox-instances/:instanceId",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ params, error }: any) => {
+  async ({ params, error }) => {
     try {
       return await sandboxApi.deleteInstance(params.instanceId);
     } catch (err) {
@@ -196,8 +189,7 @@ app.delete(
 
 app.post(
   "/sandbox-instances/rebuild",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 上下文与 schema 组合时类型推断受限（同 acp/index.ts 模式）
-  async ({ body, error }: any) => {
+  async ({ body, error }) => {
     try {
       return await sandboxApi.rebuildInstances(body);
     } catch (err) {

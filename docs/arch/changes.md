@@ -291,7 +291,7 @@ IMChannel 包含：
 | `transport/relay/message-router.ts` | **整个文件** (5 个函数，生产代码零调用) |
 | `relay-handler.ts:39-46` | `shouldForwardToFrontend` |
 | `relay-handler.ts:49` | `pendingRelayMessages` Map |
-| `relay-handler.ts:127-180` | `translateSimpleAction` 副本（`@fenix/acp-server` 已有替代实现） |
+| `relay-handler.ts:127-180` | `translateSimpleAction` 副本（`@fenix/chat-channel` 已有替代实现） |
 | `relay-handler.ts:186-242` | `trySyncSessionsToYjs` |
 | `relay-handler.ts:249-490` | `handleRelayOpen` + `openLocalRelay` |
 | `relay-handler.ts:493-591` | `handleRelayMessage` |
@@ -330,3 +330,143 @@ IMChannel 包含：
 - `docs/arch/tech-stack-frontend.md` — 第 102-106 行更新前端连接描述
 - `docs/arch/tech-stack-overview.md` — 移除 `/acp/relay` 相关连线
 - `docs/developer/arch/*` — 同步更新 `/acp/relay` 引用
+
+---
+
+## 改动 14：Chat 域独立包 chat-channel（合并 acp-server）
+
+**状态**：✅ 已实施（C1 切片，prefactor）
+
+**现状**：Chat 域逻辑横跨 `packages/acp-server`（protocol / state / persist / transport / util）与 `src/transport/relay/yjs-frontend/`，包名与目标架构（`docs/arch/19-yjs-chat-streaming.md`）不一致。
+
+**目标**：建立 `packages/chat-channel` 大包（与 `packages/orchestration` 同级），原 `acp-server` 包全部能力原样迁入（逻辑零改动），删除原包，全部引用同批迁移到 `@fenix/chat-channel`；新增 `src/channel/` 控制面占位目录（后续 C3/C6 填充）。`web/src/acp/` 与 `yjs-frontend/` 的迁移分别在 C2、C3/C6 处理。
+
+**影响**：
+- 包：`packages/chat-channel`（`@fenix/chat-channel`），`test`/`typecheck` 脚本与原包一致；`packages/acp-server` 删除，不留兼容壳
+- 配置：`tsconfig.base.json`、`web/tsconfig.json`、`web/vite.config.ts` 的路径别名同步更新
+- 引用迁移：`src/`、`web/`、`src/__tests__/`、`web/src/__tests__/` 约 20 处 import 及当前状态文档（CLAUDE.md、19-yjs-chat-streaming、changes.md、协议/技术栈文档）全部改为 `@fenix/chat-channel`
+- 历史过渡文档（C1 issue 与 2026-07-24 acp-server 设计文档）保留「原 @fenix/acp-server」表述，作为合并前历史记录
+- `bun.lock` 同步；CI 的 Package tests（`bun test packages/`）自动覆盖新包
+
+---
+
+## 改动 15：Chat 域实现基线落地（协议、schema、状态机、权限 CAS、断链语义）
+
+**状态**：✅ 已实施（C2–C8 切片，`refactor/yjs` 分支）
+
+**现状（重构前）**：`docs/arch/19-yjs-chat-streaming.md` 是目标设计基线，与代码存在系统性差距——Y.Doc schema 与文档契约不符且 Doc 职责错位（`chat:` 装状态、`session:` 装时间线）、聚合层直接消费文档明令禁止的 `agent_message_chunk` 私有帧、无 Action/Ack 协议与 `commandId` 幂等、无显式 Turn 状态机、权限解析无 CAS 保护、Chat 域逻辑横跨包与宿主且 `yjs-frontend/` 直接耦合 `environmentRepo` / `resolveWorkspacePath` / `acp-idle-monitor` / `cache`。
+
+**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`spec/global/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
+
+**实施内容**：
+
+1. **包合并（C1，改动 14 完成）**：`packages/acp-server` 全量能力迁入 `packages/chat-channel`（`@fenix/chat-channel`），不留兼容壳；`web/src/acp/` 删除，11 个组件 import 直接指向包导出。
+2. **Y.Doc schema 一次性切换（C2，Q4）**：Chat Doc `chat:{rcsSessionId}` = 消息时间线（`schemaVersion` / `projectionVersion` / `entryOrder` / `entries` / `toolCalls`），Session Doc `session:{rcsSessionId}` = 会话元信息 / Agent 状态（`session` / `agent` / `pendingPermissions`）；纠正 Doc 职责错位；旧字段全部删除，**无兼容窗口、不做双读双写**；加载路径幂等补齐新结构骨架。
+3. **ACP 聚合边界（C2，Q6）**：`protocol/acp-channel.ts` 是唯一协议边界——acp-link 私有帧（`agent_message_chunk` / `agent_thought_chunk` / `prompt_complete` 等）与 JSON-RPC `session/update` 帧在此规范化为统一事件（保留原始 + 包裹双格式兼容）；聚合层只消费规范化事件，删除旧类型消费路径；acp-link 与 Agent 部署零改动。
+4. **Action / Ack 协议（C3，Q5/Q9）**：`channel/` 新增控制面——Gateway / SessionChannel / CommandCoordinator；`commandId` 幂等去重（每 `rcsSessionId` 进程内 Map，随实例生命周期释放）、`accepted → committed → duplicate` 两阶段 Ack、`ActionError` 稳定错误码、`expectedProjectionVersion` 服务端校验（VERSION_CONFLICT）；前端只新增 `commandId` 字段（UUID，重试复用），`protocolVersion` / `client` / `sessionId` 由服务端按会话绑定补充。
+5. **Turn 状态机（C4，Q7）**：`accepting → running → awaiting_permission → cancelling → cancelled/interrupted/failed/completed` 为权威，终态不可逆；`interrupted` 由实例失联（`relay_closed`）或取消超时（10s 兜底）触发；删除会话级扁平 `status` 枚举，前端由 `session.activeTurn.turnStatus` 派生展示状态。
+6. **权限 CAS（C5，Q8）**：`pendingPermissions` 迁入 Session Doc；解析走 CAS（`state/permission.ts`，仅 `pending → resolved` 原子迁移一次，迁移成功才向 Agent 发 `permission.resolve`）；权限请求/会话切换/断链附带过期终态迁移（默认 5min）。
+7. **连接生命周期与两类断链（C6，Q13）**：`ws-lifecycle` 语义原样迁移、结构重组（YJS 快照时序、64 KB 背压、`YJS_MAX_CLIENTS` 200 配额、rpcId 管理不重写）；前端断开仅释放连接级资源与 relay 引用计数，Instance ACP session 存活时重连同步当前实时 Y.Doc；`relay_closed` 删除该 `rcsSessionId` 的 Chat Doc / Session Doc / 广播订阅（先注销监听再销毁 Doc，杜绝僵尸监听器）并触发实例级回收；与 19 号文档 §4.1 的 YJS sync 握手差异记为二期优化项。
+8. **宿主桥接（C7，Q10）**：包内 `ChatChannelDependencies` 接口 + `src/services/chat-channel-bootstrap.ts` 装配单例（`getChatChannelController()` / `resetChatChannelBootstrap()` 供测试）；`src/transport/relay/yjs-frontend/` 与 facade 删除，`src/routes/acp/index.ts` 改调桥接；包内无对 `src/` 宿主的直接 import。
+9. **不实现项（Q5 评审决策）**：事件日志体系（`eventId` / `eventSeq` 不建模）与 `SessionLeaseManager` 租约不实现——YJS CRDT 已保证文档一致性，防重复副作用由 `commandId` 去重承担；`leaseEpoch` 类型占位，为多节点部署预留。
+
+**影响**：
+- 文档：`docs/arch/19-yjs-chat-streaming.md` 升级为"实现基线"（状态头、§2.3 模块表、§4 流程、§5.4、§6.2、§7.1/7.2、§8.2、§11、§15 修订）；`docs/arch/changes.md` 本次记录；`packages/chat-channel/README.md` 就位（原 acp-server README 内容并入并更新新语义）
+- 测试：包内测试（`packages/chat-channel/src/**/*.test.ts`，协议层 seam + 假连接对象，无真实 WS/Agent）覆盖 `commandId` 去重、版本冲突、权限 CAS、Turn 状态机、两类断链、背压、广播隔离；既有 `src/__tests__/yjs-frontend-*.test.ts` 迁移/清理
+- 行为不变：`agent-chat-service.ts`（HTTP 单轮）与 workflow 路径仅迁移 import，对外契约不变
+- 遗留（二期）：YJS sync 增量握手对齐（Q13）、`expectedProjectionVersion` 前端乐观并发增强与冲突重试 UI、跨节点 Redis 租约 / 事件日志持久化
+
+---
+
+## 改动 16：19/20 号文档二次对齐（实现基线与代码一致化）
+
+**状态**：✅ 已实施（2026-08-05，`refactor/yjs` 分支）
+
+**现状（修订前）**：c95e1f0a 把 20 号文档升级为实现基线后，19 号文档仍残留旧架构概念与编号错乱：§1 架构图沿用 `InstanceManager` / `ACP Gateway` 旧模型、`ensureRunning(environmentId, agentConfigId)` 签名过时、`### 7.1` 位于 `## 8` 之下等多处章节编号错乱、Session Doc schema 缺 `activeTurn` / `sessions` / `decision` 字段；20 号文档头部与正文引用了两份已不存在/从未存在的文档（`agent-controller-consumers-audit.md` 已被 c95e1f0a 删除、`pending-design-decisions.md` 从未创建），且引用已删除的 `ws-lifecycle.handleOpen`。
+
+**目标**：19 号文档全面对齐 `refactor/yjs` 分支当前实现（`packages/chat-channel` + 宿主桥接 + 编排域），20 号文档清除失效引用并把必要内容内联。
+
+**实施内容**（19 号文档）：
+
+1. **§1 架构图重构**：`AgentController / InstanceManager / ACP Gateway` 旧子图替换为 ChatChannelController（控制面）+ state + protocol（ACPChannel 入站 / Translator 出站）+ 宿主桥接（chat-channel-bootstrap / ensureRunning / connectAgentRelay）+ 编排域（AgentController / AgentNode）双层结构，与 20 号文档一致。
+2. **§2.3 模块表**：新增 `ChatChannelController`（`channel/controller.ts` 装配点）、`Translator`（出站 action → ACP JSON-RPC，cwd/rpcId 注入）行；`InstanceManager` 行改为编排域 AgentController + AgentNode/AgentNodeService + 宿主 ensureRunning；RelayEventHandler 行补充 `relay_closed` 实例级回收（`terminateLocalDeadInstance`）。
+3. **§4.1 连接建立**：时序改写为实际实现（配额 → 授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → 共享 relay → 快照 → connect 握手 → flush 缓冲）；新增终态关闭码表（4500 机器离线 / 4502 配置失败 / 4501 keepalive 超时 / 1011、1013）与共享 relay 引用计数语义。
+4. **§4.2/4.3/4.4 流程**：ensureRunning 签名修正；load/resume 补充回放窗口（`REPLAY_WINDOW_MS` 10s，无头历史回放投影）与会话切换清理（CAS 快照 + `clearSessionDocContent` + `syncSessionId`）；命令出站路径改经 Translator → 共享 relay。
+5. **§5.2/5.3 schema**：补充 `CHAT_DOC_SCHEMA_VERSION = 2` / `SESSION_DOC_SCHEMA_VERSION = 3`；Session Doc 增加 `activeTurn`、`sessions` 投影位与 `decision` 字段；§5.4 澄清旧 `sessions` 字段与新投影位同名不同义。
+6. **§6.2/6.3/6.5**：补充 Translator 出站边界、`session/list` 轮询投影（10s 全量同步）、`relay_closed` 双清理语义。
+7. **章节编号修正**：`7.1/7.2 → 8.1/8.2`、`8.1/8.2/8.3 → 9.1/9.2/9.3`、`11.1/11.2 → 12.1/12.2`；删除 §10 尾部与 §4.1 重复的过时差异注。
+8. **§11/§13/§14/§15**：补充回放窗口、keep_alive 心跳与关闭码、失败矩阵终态码语义、场景 A/K 的 ensureRunning 触发时机与签名；决策摘要新增共享 relay 引用计数、回放窗口、实例生命周期归编排域三条。
+
+**实施内容**（20 号文档）：
+
+1. 头部"配套文档"删除两份失效引用（审计报告与待决决策内容已并入正文 §5/§2.2，注明不再单独成文）。
+2. §7 表格 B 行与 §9 场景 B 的 `ws-lifecycle.handleOpen` 修正为 `/acp/yjs/:agentId`（`src/routes/acp/index.ts`）→ `gateway.handleOpen`。
+3. §11 教训清单与 §12 T9 的审计报告/验收点引用改为内联描述。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建不受影响。
+
+---
+
+## 改动 17：文件系统操作传递权威文档与 file-ws v2 协议设计（12-files.md 重写）
+
+**状态**：📝 设计已确认，待实施（2026-08-05）
+
+**现状（修订前）**：文件系统操作传递的生命线（file-ws 信道）未在任何权威文档中定义——19 号文档只覆盖 YJS Chat 流式，20 号文档只覆盖 acp-ws（AgentNode）编排域；`12-files.md` 停留在旧模块风格且描述已过时（路由写的是 `/user`、`/user-file`，实际代码已迁移到 `/web/environments/:id/fs/*`）。代码调研确认现有 file-ws 传递存在 9 个设计缺陷（D1–D9）：register 身份仅自报不与 acp-ws 注册表对账、keep_alive 无超时巡检（僵尸连接永久占索引）、无领域幂等键（断连重试重复执行写操作）、pending 无界、远程分支 path 零校验、机器健康状态无聚合、读文件静默 fallback 掩盖错误语义等。
+
+**目标**：12-files.md 重写为文件系统操作传递的权威实现基线（对齐 19/20 号文档风格），补出两条生命线（file-ws 信道生命周期、文件操作请求-响应），并基于缺陷清单完成 file-ws v2 协议设计（评审待办，暂不实施）。
+
+**实施内容**（纯文档）：
+
+1. **§1 总体架构**：重写为**理想态架构图**（AgentFileService 统一执行面 + 防缓存双机制），附现状→理想态差异表；范围限定为服务端契约（主服务 + 远端 Machine），不覆盖前端消费方式。
+2. **§2 AgentFileService（统一文件服务层）**：内部结构细化——入口（认证上下文）/ 路由决策 / 路径校验 / 后端适配执行 / 指纹派生 / 错误映射 / 变更事件发布七个子模块（职责表 + 子模块图）；统一接口（10 操作）+ LocalBackend/RemoteBackend 映射表 + 统一契约（路径校验、错误码 `file_service_unavailable`、响应结构、变更事件），路由层消灭 `if (machineId)` 双分支（D10）。
+3. **§3 路由契约**：`/web/environments/:id/fs/*` 十个端点表（含远程支持矩阵）+ machineId 回退链与拒绝静默回退；旧 `/user`、`/user-file` 前缀标记废弃。
+4. **§4 防缓存与一致性机制**（D11）：ETag 条件请求（read 文件指纹 / list 条目指纹 / tree 弱校验，`Cache-Control: no-cache`）+ `file_changed` 变更事件（机器端写操作后经 file-ws 推送 → EventBus 按 environmentId 路由广播，本地写由 AgentFileService 直发）+ 并发写 If-Match（v2 可选）。
+5. **§5 file-ws 信道生命周期生命线**：机器侧连接时序图（register → 同机器替换 → keep_alive → 断连清理）。
+6. **§6 文件操作请求-响应生命线**：路由 → AgentFileService → service → file-ws 往返时序图（request_id、60s/120s 超时、断连 reject pending），标注理想态差异。
+7. **§7 file-ws v2 协议设计**：连接身份绑定（D1）、op_id 幂等（D3）、重连请求迁移、心跳僵尸回收（D2）、file_changed 事件帧（§7.5）、背压（D4）、路径前置校验（D5/D7）、读 mode 显式（D9）、远程 zip（§7.9）。
+8. **§8 安全边界 + §9 缺陷对照（D1–D11，新增 D10 双路径、D11 无缓存）+ §10 实施计划**（P0 止血 / P1 统一执行面+缓存 / P2 一致性增强 / 二期分块）。
+9. **附录 A**：废弃路由表与替代关系。
+10. 20 号文档头部定位行补充交叉引用（文件操作信道 → 12-files.md）。
+
+**对抗审查修订（2026-08-05，plan subagent 对抗审查 + 用户决策）**：
+
+- **阻断项**：新增 §4.3 file-events 独立 WS 订阅端点契约（订阅/事件/失效/降级帧、鉴权、限频、异步发布——修复 D13）；§7.1 身份绑定对账查询面定为 **core runtime node**（registerRemoteNode 产物）、删除 node_id、4004 语义与机器侧重连时序契约（跨仓库）。
+- **严重项**：§5 现状描述修正（register 替换先删登记再 close → pending 悬挂至超时，与代码对齐，新增 D3 前置修复）；§7.6 载荷治理（WS 32MB maxPayload + 解析前检查，修复 Elysia 自动 parse 绕过 10MB 限制；upload 降为 20MB；zip 分块回传——D12）；§7.3 断连窗口兜底（重连注册成功广播 `invalidate_all`，修复 S3/D14）。
+- **联动核心**：§1 机器能力矩阵（acp 可达 × file 可达 2×2，降级由本文档表达不扩展 20 号状态机）；§7.4 巡检独立遍历 machineFileWsIndex（不复用 startMachineSweep 的 online 集合——C5）；§4.4 澄清环境级回退链排他、"本地+远程混合"不成立（C14）；§4.2 tree 指纹加路径排序 hash 修复 rename 304 误判（C8）；§4.1 目标修订（本地外部变更 ≤ 30s 明确接受边界）。
+- **19/20 号文档联动**：20 号 §5 补"先 acp-ws 后 file-ws"重连顺序跨仓库契约 + §6 补 performMachineCleanup 不触碰 file-ws 的状态分裂说明；19 号 §2.3 补传输层边界（file_changed 不经 YJS/relay 通道）+ §5.2 资源引用语义（路径字符串引用、上传与消息引用无事务）。
+
+**三视角用户挑战修订（2026-08-05，plan subagent ×3：控制台用户 / Agent 作者配置者 / 平台运营集成方）**：
+
+- **事件机制修订（D20）**：限频超限合并语义从 `invalidate_all` 改为 **`file_changed_batch`（≤50 条路径列表，增量语义）**；`invalidate_all` 仅保留未知范围；**本地写路径走同一限频器**（防无限频无兜底）。
+- **invalidate_all 治理三件套**：机器级聚合限频（≤2 条/s/machine）+ 分发抖动（0–5s）+ 订阅方 30s coalescing——修复重连风暴与 §4.1 目标矛盾。
+- **关闭码 4404（用户决策）**：file-ws unknown_machine 改用 **4404**，与 19 号 YJS 4004（终态不重试）语义区分；20 号 §5 同步。
+- **审计字段契约先行（用户决策）**：事件帧与 file_op 增加 `source`（user/agent/api）+ `actorId`，本期只定义字段不落库；审计落库列入二期（待合规需求）。
+- **错误码补全**：新增 `403 forbidden`（现状无角色检查，成员读写自由——D17）、`422 config_error`（machineId 配置错误 vs 离线区分）、`429 busy`（+ Retry-After，busy 不得映射 503）。
+- **废弃路由双面并存（D15）+ 迁移表修正**：`files.ts`/`user-file.ts` 仍挂载、Chat 拖拽上传仍走 `/user`；**附录 A 迁移表修正：`/user/*` → `/fs/user/*`（保留 user/ 前缀，此前误映射为 `/fs/*` 会读写错误文件）**；补充 deprecation 策略（Deprecation 头 + 删除条件）。
+- **新增缺陷 D15–D20**：废弃路由并存、本地 upload relativePath 越界写（现网漏洞）、无角色权限、deleteMachine 不清理 file-ws（退役残留）、前端 30s 与后端 60/120s 超时错位、事件合并语义倒挂。
+- **新增契约细节**：op_id 完整契约（缺失=至少一次、作用域三元组、缓存淘汰窗口、回显）；读重试失败分类矩阵 + 机器级熔断器；机器端 v1→v2 兼容矩阵与发布顺序（机器端先行 / FILE_WS_IDENTITY_STRICT 软开关）；环境声明增量协议 + 主服务记账（修复鸡生蛋）；`/api/*` 第三套实现（api-workspace.ts）收敛评估列二期。
+- **用户视角契约**：断连期间"旧树 + 过期横幅"禁止渲染空目录；rename/mkdir 失败必须反馈；写操作前端超时不短于后端；20MB 能力回退的用户出口与 413 文案；If-Match 编辑器路径必选；"最后一次写入生效"不得静默（事件携带 source 呈现）。
+- **运营视角**：可观测（file-ws 生命周期事件入 registry_event、启动恢复时长打点、独立 FILE_EVENTS_MAX_CLIENTS 分池）；订阅端点生命周期（断开取消订阅、队列销毁防泄漏）；tree 分页逃生舱与成本声明（事件驱动指纹失效列 P1）。
+- **§10 实施计划重排**：新增 P0-4（本地 upload 越界修复）、P0-5（机器退役清理）；P1 新增前端消费配套（用户视角 P0）；分块上传从二期提前到 P1 边界；新增"破坏性升级窗口"小节。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建通过。理想态设计（§2/§4/§7）为评审待办，实施时按 §10 拆分提交并同步更新文档状态。修订记录：统一层命名从 FileService 改为 AgentFileService，删除前端消费相关章节（文档范围限定服务端契约）。
+
+---
+
+## 改动 18：架构文档整顿——08/05 废弃，09 重写对齐 v2
+
+**状态**：✅ 已实施（2026-08-06）
+
+**现状（修订前）**：`08-instance.md` 整篇停留在旧模型（acp-link InstanceManager、prepare/start 协议、RCS 管理 Session），内容已被 20 号文档（实现基线）完整覆盖；`05-chat.md` 半新半旧——传输/协议主体仍是旧 Relay 双通道模型（SSE last-event-id 续传、`web/src/acp/` 封装、`/web/sessions/:id/user/*` 文件 API），已被 19 号文档覆盖；`09-scheduler.md` 描述已下线的 `scheduled_task` 表与已删除的 AgentTaskRunner。
+
+**目标**：被实现基线覆盖的文档删除或收敛，未被覆盖的按代码事实重写。
+
+**实施内容**：
+
+1. **`08-instance.md` 删除**：实例生命周期（spawn/stop/list、回滚、配额）与远程部署（双层启动模型、core runtime 下发 prepare/start）均由 `20-orchestration-management.md` 覆盖；多用户隔离语义见 20 号 §8 与 19 号 §14。导航与交叉引用同步移除。
+2. **`05-chat.md` 收敛重写**：删除被 19 号覆盖的传输层/协议/消息传递描述，保留前端 UI 层独有内容（用户能力表 + 组件地图），并修正过时组件路径（AgentSidebar/ArtifactsPanel 已移至 `web/src/pages/agent-panel/`）与文件 API 引用（`/web/environments/:id/fs/*`）；新增权威边界表（19/20/12 号文档）。
+3. **`09-scheduler.md` 重写**：对齐 `scheduled_task_v2`（HTTP + Agent 双类型，`type`/`definition`/`agentId`/`timeoutSeconds`）、`/tasks/v2` 路由与 `SchedulerService` executor 模式（httpExecutor / agentExecutor）；删除已下线的 `scheduled_task` 表、旧 `/web/tasks` API 与已删除的 AgentTaskRunner 描述。
+4. **术语对齐**：`04-agent-config.md` 与 `06-config-*.md` 的 "LaunchSpec Builder / 交给 @fenix/core 分派" 修正为 `LaunchSpecBuilder`（`packages/orchestration`，见 20 号文档），与实现基线统一。
+5. **交叉引用修正**：`tech-stack-overview.md`、`tech-stack-backend.md` 的实时通信引用从 05 改为 19 号文档；`.vitepress/config.ts` 导航移除 08、05 改名为 "Chat 前端界面"。
+
+**影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。

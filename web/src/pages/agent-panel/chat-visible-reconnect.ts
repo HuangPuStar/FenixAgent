@@ -11,7 +11,7 @@ export type ChatWsConnectionState = "disconnected" | "connecting" | "connected" 
  * 约束：
  * - 只处理 pageVisible false → true 边沿（首次挂载、每次 render 均不触发）
  * - connected / connecting 状态不重复重连
- * - machine_unavailable（4500）保留手动重试，避免无意义循环
+ * - machine_unavailable（4500）/ environment_unavailable（4004）保留手动重试，避免无意义循环
  * - 普通网络异常仍由 YJS 客户端已有的自动重连处理
  */
 export function shouldAutoReconnectOnVisible(
@@ -22,6 +22,16 @@ export function shouldAutoReconnectOnVisible(
 ): boolean {
   if (previousPageVisible || !pageVisible) return false;
   if (connectionState !== "disconnected" && connectionState !== "error") return false;
-  if (errorCode === "machine_unavailable") return false;
+  // 确定性永久失败：自动重连（含页面从隐藏切回可见触发的一次连接）无意义，仅保留手动重试按钮。
+  // max_sessions_reached 不在此列：实例被释放后切回前台可自动恢复，重试有成功机会。
+  // environment_unavailable（4004）与 machine_unavailable 同理：重试相同 URL 永远失败。
+  if (
+    errorCode === "machine_unavailable" ||
+    errorCode === "auto_start_disabled" ||
+    errorCode === "launch_spec_build_failed" ||
+    errorCode === "environment_unavailable"
+  ) {
+    return false;
+  }
   return true;
 }

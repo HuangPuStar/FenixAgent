@@ -4,6 +4,7 @@ import { db } from "../db";
 import { agentConfig, machine, organization, registryEvent } from "../db/schema";
 import type { AuthContext } from "../plugins/auth";
 import { markSandboxInstanceReadyByMachineId } from "../repositories/sandbox-instance-repository";
+import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 
 function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
@@ -204,6 +205,18 @@ export async function createSandboxMachine(params: {
 }
 
 /**
+ * 删除 sandbox machine 记录（createSandboxMachine 的补偿路径）。
+ *
+ * 仅用于 sandbox-manager.createOrReuse 中"machine 行已插入但 sandbox_instance
+ * 创建失败"的失败回滚（唯一索引冲突 / FK 缺失 / DB 错误），防止每次失败残留
+ * 一条无主 mach_sandbox_* 记录。与 deleteMachine（管理面删除，含引用校验与
+ * file-ws 清理）语义不同：此处机器从未注册运行，仅需删除行。
+ */
+export async function deleteSandboxMachine(id: string): Promise<void> {
+  await db.delete(machine).where(eq(machine.id, id));
+}
+
+/**
  * Machine 注册连接处理器。
  *
  * 仅负责运行时状态激活/重连（status、lastHeartbeatAt、updatedAt），
@@ -332,6 +345,27 @@ export async function updateHeartbeat(machineId: string): Promise<void> {
 }
 
 /**
+ * 通用 registry 事件落库（P0-5，D18）。
+ *
+ * 供机器生命周期各路径复用：`deleteMachine` 的 retired 事件（本文件）、
+ * file-ws-handler 的 degraded 落库（W1 预留钩子）与波次 4 W7 的告警。
+ * 业务语义（type / detail）由调用方定义，本函数只负责生成事件 id 并插入，
+ * 保证所有调用方的事件格式与落库行为一致。
+ */
+export async function writeRegistryEvent(
+  machineId: string,
+  type: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  await db.insert(registryEvent).values({
+    id: genId("evt"),
+    machineId,
+    type,
+    detail,
+  });
+}
+
+/**
  * 由管理面调用，更新机器的名称、标签和引擎类型。
  * 仅允许组织管理员操作，校验组织归属。
  */
@@ -411,6 +445,24 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
   }
 
   await db.delete(machine).where(and(eq(machine.id, id), ...ownershipConditions));
+
+  // P0-5（D18）：DB 删除后立即切断退役机器的 file-ws 连接（reject pending + 清索引 + close），
+  // 避免机器已删除但 machineFileWsIndex 残留导致 isFileWsConnected 恒真、请求悬挂；
+  // 并写 retired 事件归档。两者为尽力而为的后置清理：失败只记录日志，不阻断删除结果——
+  // 机器记录此时已删除，若返回错误会造成"实际已删但界面报错"的不一致。
+  try {
+    closeMachineFileWsConnection(id);
+  } catch (err) {
+    log(`[registry] file-ws cleanup failed for machine '${id}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    await writeRegistryEvent(id, "retired", { reason: "machine deleted" });
+  } catch (err) {
+    log(
+      `[registry] retired event write failed for machine '${id}': ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   return { deleted: true };
 }
 

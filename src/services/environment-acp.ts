@@ -1,11 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { log } from "@fenix/logger";
 import { AppError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
-import { environmentRepo, sessionRepo } from "../repositories";
+import { environmentRepo } from "../repositories";
 import type { RegisterEnvironmentRequest } from "../types/api";
 import { deleteEnvironment, toResponse } from "./environment-core";
-import { findOrCreateForEnvironment } from "./session";
 
 /** 通过 secret 获取环境信息（认证用），仅返回认证所需字段 */
 export async function getEnvironmentBySecret(secret: string): Promise<{
@@ -26,28 +24,9 @@ export async function getEnvironmentBySecret(secret: string): Promise<{
   };
 }
 
-/** Bridge 注册请求参数 */
-export interface BridgeRegistrationInput {
-  authEnvironmentId?: string;
-  userId: string;
-  organizationId?: string;
-  machine_name?: string;
-  directory?: string;
-  branch?: string;
-  git_repo_url?: string;
-  max_sessions?: number;
-  worker_type?: string;
-  capabilities?: Record<string, unknown>;
-  metadata?: { worker_type?: string };
-}
-
-/** Bridge 注册结果 */
-export interface BridgeRegistrationResult {
-  environment_id: string;
-  environment_secret: string;
-  status: string;
-  session_id?: string;
-}
+// ────────────────────────────────────────────
+// ACP 连接生命周期管理
+// ────────────────────────────────────────────
 
 /** 旧式 WS 注册（env_ 前缀 secret），保留向后兼容 */
 export async function registerEnvironment(
@@ -166,81 +145,8 @@ export async function createTemporaryEnvironment(params: {
 }
 
 // ────────────────────────────────────────────
-// Bridge 注册编排（v1/environments 路由用）
+// ACP 连接生命周期管理
 // ────────────────────────────────────────────
-
-/** Bridge 注册编排：已认证环境更新 + 新环境创建 + 自动会话 */
-export async function registerBridge(input: BridgeRegistrationInput): Promise<BridgeRegistrationResult> {
-  const {
-    authEnvironmentId,
-    userId,
-    machine_name,
-    directory,
-    branch,
-    git_repo_url,
-    max_sessions,
-    capabilities,
-    metadata,
-  } = input;
-
-  // 已认证环境：更新并返回
-  if (authEnvironmentId) {
-    const existing = await environmentRepo.getById(authEnvironmentId);
-    if (existing) {
-      if (existing.userId !== userId) {
-        throw new AppError("Environment not owned by you", "FORBIDDEN", 403);
-      }
-      // 并行执行环境更新和 session 查询（两操作无依赖）
-      const [, sessions] = await Promise.all([
-        environmentRepo.update(authEnvironmentId, {
-          status: "active",
-          lastPollAt: new Date(),
-          capabilities: capabilities ?? undefined,
-          maxSessions: max_sessions,
-        }),
-        sessionRepo.listByEnvironment(authEnvironmentId),
-      ]);
-
-      return {
-        environment_id: existing.id,
-        environment_secret: existing.secret,
-        status: "active",
-        session_id: sessions.length > 0 ? sessions[0].id : undefined,
-      };
-    }
-    log(`[ACP] authEnvironmentId '${authEnvironmentId}' not found, creating new environment`);
-  }
-
-  // 新环境：创建 + 自动会话
-  const workerType = input.worker_type ?? metadata?.worker_type ?? "acp";
-  const secret = `rest_${randomBytes(24).toString("hex")}`;
-
-  const record = await environmentRepo.create({
-    secret,
-    userId,
-    organizationId: input.organizationId,
-    machineName: machine_name,
-    directory,
-    branch,
-    gitRepoUrl: git_repo_url,
-    maxSessions: max_sessions,
-    workerType,
-    capabilities,
-  });
-
-  let sessionId: string | undefined;
-  if (workerType === "acp") {
-    const sessionResult = await findOrCreateForEnvironment(record.id, machine_name || "ACP Agent", userId, "acp");
-    sessionId = sessionResult.id;
-  }
-
-  return {
-    environment_id: record.id,
-    environment_secret: record.secret,
-    status: record.status,
-    session_id: sessionId,
-  };
-}
 
 /** Bridge 重连编排：校验归属 + 标记 active */
 export async function reconnectBridge(envId: string, userId: string): Promise<void> {
@@ -259,10 +165,6 @@ export async function deregisterBridge(envId: string, userId: string): Promise<v
   }
   await deleteEnvironment(envId);
 }
-
-// ────────────────────────────────────────────
-// ACP 连接生命周期管理
-// ────────────────────────────────────────────
 
 /**
  * ACP 连接建立时激活环境（bound 环境）。

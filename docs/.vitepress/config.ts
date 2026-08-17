@@ -105,8 +105,9 @@ export default defineConfig({
           text: "Agent 系统",
           items: [
             { text: "Agent Config", link: "/arch/04-agent-config" },
-            { text: "Agent 实例", link: "/arch/08-instance" },
-            { text: "Agent 接口", link: "/arch/05-chat" },
+            { text: "AgentController", link: "/arch/20-orchestration-management" },
+            { text: "Chat 前端界面", link: "/arch/05-chat" },
+            { text: "YJS 流式链路", link: "/arch/19-yjs-chat-streaming" },
             { text: "文件系统", link: "/arch/12-files" },
           ],
         },

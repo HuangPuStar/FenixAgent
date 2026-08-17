@@ -97,6 +97,16 @@ export class SessionManager {
         this.currentAcpSessionId = null;
       });
 
+      // agent 可执行文件缺失等 spawn 失败场景必须捕获，否则未监听的 error 事件会崩溃整个进程
+      // biome-ignore lint/suspicious/noExplicitAny: 同上，Bun.ChildProcessByStdio 需 cast 监听 error
+      (proc as any).on("error", (err: Error) => {
+        console.error("[session-manager] spawn failed:", err.message);
+        this.sharedProc = null;
+        this.sharedConnection = null;
+        this.initPromise = null;
+        this.currentAcpSessionId = null;
+      });
+
       const input = Writable.toWeb(proc.stdin!) as unknown as WritableStream<Uint8Array>;
       const output = Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
       const stream = acp.ndJsonStream(input, output);

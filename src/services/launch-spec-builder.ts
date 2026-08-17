@@ -1,3 +1,10 @@
+// ────────────────────────────────────────────
+// 编排域重构保留说明（I4：旧代码删除与精简）
+// ────────────────────────────────────────────
+// 此文件保留：buildLaunchSpec 承载 skill-fs 文件系统、Hindsight env、knowledge 绑定、
+// model 解析等业务逻辑，这些能力是现有系统实例启动的必要能力，且业务耦合超出编排域
+// 抽象范围；新包 LaunchSpecBuilder（packages/orchestration/src/launch-spec/）用于编排域
+// 抽象。当前保留现有实现作为运行时权威路径，后续可随 Chat 域重构进一步收敛。
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";

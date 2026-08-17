@@ -1,10 +1,12 @@
 // web/src/__tests__/yjs-store.test.ts
-// 验证 createYjsStore 的 snapshot 去重行为：
-//   消息内容变化、tool_call output/status 变化、permission/loading/streaming 变化必通知；
-//   快照未变时不额外通知；不参与 snapshot 的字段变化不通知。
+// 验证 createYjsStore 的变更票据通知行为（SP-B3：O(1) 票据替代全量 stableKey 序列化）：
+//   通知条件为「doc 有 update ⇒ 票据（projectionVersion:docUpdateSeq）变化」，
+//   内容变化必通知；doc 有 update 但内容未变（不参与快照的字段/相同值写入）
+//   允许误报——牺牲误报换取 O(1) 票据。票据专项语义（seq 兜底、switchDoc 重置、
+//   幂等重放不通知）见 yjs-store-ticket.test.ts。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createYjsStore, stableKey } from "@fenix/acp-server";
+import { createYjsStore } from "@fenix/chat-channel";
 import * as Y from "yjs";
 
 // ── 辅助类型和函数 ──
@@ -66,11 +68,6 @@ function computeTestSnapshot(ydoc: Y.Doc): TestSnapshot {
     })),
     isSwitching: (meta.get("isSwitching") as boolean) || false,
   };
-}
-
-/** 使用 stableKey 作为领域去重函数 */
-function getTestSnapshotKey(s: TestSnapshot): string {
-  return stableKey(s);
 }
 
 function getInitialTestSnapshot(): TestSnapshot {
@@ -139,7 +136,7 @@ function addPermission(ydoc: Y.Doc, id: string, status: string) {
 
 // ── 测试 ──
 
-describe("createYjsStore snapshot 去重", () => {
+describe("createYjsStore 变更票据通知", () => {
   let ydoc: Y.Doc;
   let store: ReturnType<typeof createYjsStore<TestSnapshot>>;
   let notifyCount: number;
@@ -147,7 +144,7 @@ describe("createYjsStore snapshot 去重", () => {
   beforeEach(() => {
     ydoc = new Y.Doc();
     notifyCount = 0;
-    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot(), getTestSnapshotKey);
+    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot());
     store.switchDoc("test", () => ({ ydoc }));
 
     // 订阅计数：每次 React 通知时递增
@@ -270,9 +267,9 @@ describe("createYjsStore snapshot 去重", () => {
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // 7.3.7: 快照未变时不通知（去重验证）
+  // 7.3.7: 不参与快照的字段写入仍通知（票据按 doc update 判定，牺牲误报换 O(1)）
   // ────────────────────────────────────────────────────────────────────────
-  test("快照未变时不通知（去重验证）", () => {
+  test("不参与快照的字段写入仍通知（允许误报）", () => {
     writeMessage(ydoc, "user", "hello", 0);
     resetNotifyCount();
 
@@ -281,36 +278,38 @@ describe("createYjsStore snapshot 去重", () => {
       ydoc.getMap("meta").set("_internal", "debug-value");
     });
 
-    // _internal 不在 computeTestSnapshot 中读取，应该不通知
-    expect(notifyCount).toBe(0);
+    // 票据语义（SP-B3）：doc 有 update 即通知，不再做内容级比较；
+    // 误报只多一次 React 重渲染，不会产生错误快照
+    expect(notifyCount).toBe(1);
+    expect(store.getSnapshot().messages).toHaveLength(1);
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // 7.3.8: 多次更新但快照 key 不变时不触发额外通知
+  // 7.3.8: 相同值写入仍通知（yjs Map.set 无相等性短路，相同值也产生 op）
   // ────────────────────────────────────────────────────────────────────────
-  test("多次写入相同内容不重复通知", () => {
+  test("相同值写入仍通知（op 级 update 判定）", () => {
     writeMessage(ydoc, "user", "hello", 0);
     resetNotifyCount();
 
-    // 将消息 content 设为相同值
+    // 将消息 content 设为相同值：yjs 13.6.x 对相同值也产生新 op（根因 A3），
+    // update 事件照常触发，票据推进 → 通知
     ydoc.transact(() => {
       const msg = ydoc.getArray("messages").get(0) as Y.Map<unknown>;
       msg.set("content", "hello"); // 已经是 "hello"，设置相同值
     });
 
-    // stableKey 比较结果相同，不应通知
-    expect(notifyCount).toBe(0);
+    expect(notifyCount).toBe(1);
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // 7.3.9: stableKey 处理 Map 按 key 排序
+  // 7.3.9: 同一事务内多次写入合并为一次通知（一个 update 事件只推进一次票据）
   // ────────────────────────────────────────────────────────────────────────
-  test("stableKey 处理 Map 按 key 排序", () => {
+  test("同一事务内多次写入合并为一次通知", () => {
     writeTool(ydoc, "b-tool", "read_file", "running");
     writeTool(ydoc, "a-tool", "write_file", "running");
     resetNotifyCount();
 
-    // 同时更新两个 tool，验证序列化使用排序后的 key
+    // 单事务更新两个 tool：yjs 每事务只 emit 一次 update → 票据只变一次
     ydoc.transact(() => {
       const tools = ydoc.getMap("tools") as Y.Map<Y.Map<unknown>>;
       tools.get("a-tool")!.set("status", "done");
@@ -348,7 +347,7 @@ describe("createYjsStore applyUpdate 合并重算", () => {
   beforeEach(() => {
     ydoc = new Y.Doc();
     notifyCount = 0;
-    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot(), getTestSnapshotKey);
+    store = createYjsStore<TestSnapshot>(computeTestSnapshot, getInitialTestSnapshot());
     store.switchDoc("test", () => ({ ydoc }));
     store.subscribe(() => {
       notifyCount++;
@@ -449,38 +448,19 @@ describe("createYjsStore applyUpdate 合并重算", () => {
     expect(notifyCount).toBe(0);
   });
 
-  // 异步路径去重：applyUpdate 应用同一份 update（同 client+clock，Yjs 幂等重放），
-  // 重算 key 不变 → 0 次通知
-  test("applyUpdate 内容未变时异步重算后仍不通知", async () => {
-    const update = encodeMessageUpdate("user", "hello", 0);
-    store.applyUpdate(update);
-    await flushRecompute();
-    expect(notifyCount).toBe(1);
-
-    // 重放同一份 update（服务端重发/幂等帧场景）：Yjs 检测到已存在，内容不变
-    store.applyUpdate(update);
-    await flushRecompute();
-
-    expect(notifyCount).toBe(1);
-  });
-
   // 慢路径降频：重算耗时超预算后，下一次 applyUpdate 的通知延迟到 50ms 窗口
   test("重算超预算后切换到慢路径（50ms 窗口合并）", async () => {
     // 用 busy-loop 模拟高成本重算（稳定超过 12ms 预算）
     let simulateSlow = false;
-    const slowStore = createYjsStore<TestSnapshot>(
-      (doc) => {
-        if (simulateSlow) {
-          const deadline = performance.now() + 20;
-          while (performance.now() < deadline) {
-            /* busy loop */
-          }
+    const slowStore = createYjsStore<TestSnapshot>((doc) => {
+      if (simulateSlow) {
+        const deadline = performance.now() + 20;
+        while (performance.now() < deadline) {
+          /* busy loop */
         }
-        return computeTestSnapshot(doc);
-      },
-      getInitialTestSnapshot(),
-      getTestSnapshotKey,
-    );
+      }
+      return computeTestSnapshot(doc);
+    }, getInitialTestSnapshot());
     slowStore.switchDoc("slow", () => ({ ydoc: new Y.Doc() }));
     let lastNotifyAt = 0;
     slowStore.subscribe(() => {

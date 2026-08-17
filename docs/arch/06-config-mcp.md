@@ -1,6 +1,6 @@
 # MCP 配置
 
-> 涉及模块：MCP Server 配置服务、MCP Tool 缓存、LaunchSpec Builder
+> 涉及模块：MCP Server 配置服务、MCP Tool 缓存、LaunchSpecBuilder
 
 ## 概述
 
@@ -29,7 +29,7 @@ flowchart LR
 
 ## 与 AgentConfig 的关系
 
-AgentConfig 通过 `agentConfigMcp` 多对多表绑定 MCP。更新时全量覆盖。spawn 时 LaunchSpec Builder 进行严格校验：
+AgentConfig 通过 `agentConfigMcp` 多对多表绑定 MCP。更新时全量覆盖。spawn 时 LaunchSpecBuilder 进行严格校验：
 
 - 禁用或缺失的 MCP 直接拒绝启动（不跳过）
 - 配置格式非法（如空 command/url）也拒绝启动
