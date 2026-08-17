@@ -9,8 +9,12 @@
 // 单例缓存是必要的：SessionChannel 构造时会向 DocManager 注册权限请求回调（单槽位
 // 装配点），重复构造会覆盖前者导致权限超时迁移失效，因此一个进程内至多一个控制器。
 
-import type { ChatChannelDependencies } from "@fenix/chat-channel";
-import { ChatChannelController, clearSessionDocContent, persistYjsClearedSnapshotWithCas } from "@fenix/chat-channel";
+import type { ChatChannelDependencies } from "@fenix/chat-channel/server";
+import {
+  ChatChannelController,
+  clearSessionDocContent,
+  persistYjsClearedSnapshotWithCas,
+} from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";

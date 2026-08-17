@@ -87,6 +87,9 @@ const PRIVATE_FRAME_TO_NORMALIZED: Record<string, NormalizedEventType> = {
   tool_call_error: "tool_call_failed",
   permission_request: "permission_requested",
   permission_response: "permission_resolved",
+  // AskUserQuestion 交互问题（acp-link claude-adapter 拦截工具后发送私有帧，
+  // payload 携带 sessionId/questionId/toolId/toolName/questions[]/description）
+  interactive_question: "question_requested",
   session_update: "session_updated",
   plan: "plan",
   available_commands_update: "session_updated",

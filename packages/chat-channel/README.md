@@ -30,8 +30,18 @@ src/
 ├── transport/   # createYjsWsClient（前端同构 WS 客户端）
 ├── util/        # createDeterministicRcsSessionId
 ├── schema.ts    # Chat Doc / Session Doc 新 schema 与规范化事件类型
-└── index.ts     # 稳定导出面
+├── index.ts     # 浏览器安全导出面（web vite alias 直连，禁止 re-export 服务端模块）
+└── server.ts    # 服务端完整导出面 = index + channel + persist + state
 ```
+
+### 双入口导出
+
+| 入口 | 内容 | 消费方 |
+|------|------|--------|
+| `@fenix/chat-channel` | 类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`（无 node 运行时依赖） | 前端（vite alias 直连源码）+ 双端共享纯函数 |
+| `@fenix/chat-channel/server` | 上述 + `channel` 控制面 + `persist` 持久化 + `state` 聚合层（DocManager / factory / aggregator 等） | 仅服务端（Bun） |
+
+边界由 `src/__tests__/chat-channel-browser-surface.test.ts` 静态走根入口值导入图守护；从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 `node:crypto` 事故）。
 
 ## 快速开始
 
@@ -41,7 +51,7 @@ src/
 内置规范化事件微批次合并（默认 16ms 窗口）。
 
 ```typescript
-import { DocManager } from "@fenix/chat-channel";
+import { DocManager } from "@fenix/chat-channel/server";
 
 const dm = new DocManager({
   getRedis: () => getRedisConnection(),           // 惰性求值，Redis 不可用时自动降级 no-op

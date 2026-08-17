@@ -1,6 +1,6 @@
 // packages/chat-channel/src/types.ts
 import type * as Y from "yjs";
-import type { SessionDocStatus } from "./schema";
+import type { QuestionProjection, SessionDocStatus } from "./schema";
 
 // ── Session 级别状态 ──
 
@@ -142,6 +142,13 @@ export interface SessionStateSnapshot {
   // 前端唯一消费方是 structuredMessages（ChatInterface 时间线渲染），上述四个
   // 字段全仓零消费且每次流式批次都触发全量派生计算（根因 B2）。
   structuredMessages: StructuredMessage[];
+  /**
+   * AskUserQuestion 待应答问题投影（questionId → 投影）。
+   * 后端聚合层写入 Session Doc root.pendingQuestions（60s expiresAt），
+   * 前端只读：pending 过滤 + expiresAt 未过（双保险：后端超时定时器 CAS 迁移
+   * 与前端本地剔除都按同一 expiresAt，任何一侧失效面板都不会悬挂）。
+   */
+  pendingQuestions: Map<string, QuestionProjection>;
 }
 
 // ── Structured Messages (Yjs timeline types, Phase C) ──

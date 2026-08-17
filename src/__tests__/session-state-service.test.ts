@@ -6,7 +6,7 @@ import {
   createSessionDoc,
   getChatRoot,
   getSessionRoot,
-} from "@fenix/chat-channel";
+} from "@fenix/chat-channel/server";
 import * as Y from "yjs";
 
 describe("clearSessionDocContent", () => {

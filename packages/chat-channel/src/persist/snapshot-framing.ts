@@ -12,15 +12,21 @@
 // 极端误判的后果仅为：一条旧格式消息被错位 apply、因 yjs 校验失败被丢弃——只在
 // 前后版本混布的瞬时滚动窗口内可能发生，快照 CAS 路径仍保证最终收敛。
 
-import { randomUUID } from "node:crypto";
-
 const PUBLISH_FRAME_FLAG = 0x80;
+
 const PUBLISHER_ID_BYTES = 16;
 const PUBLISH_PAYLOAD_LENGTH_BYTES = 4;
 const PUBLISH_HEADER_LENGTH = 1 + PUBLISHER_ID_BYTES + PUBLISH_PAYLOAD_LENGTH_BYTES;
 
-/** 进程级 publisherId：模块初始化生成，同进程所有 provider 共享。 */
-export const PUBLISHER_ID = createPublisherId(randomUUID());
+/**
+ * 进程级 publisherId：模块初始化生成，同进程所有 provider 共享。
+ * 必须用 Web Crypto 的 getRandomValues 而非 node:crypto 的 randomUUID：
+ * 历史上 node:crypto 的顶层调用曾随包根 barrel 进入前端 bundle 并在浏览器抛
+ * "randomUUID is not a function"；本模块现仅经 @fenix/chat-channel/server
+ * 子路径可达（根入口浏览器面由 src/__tests__/chat-channel-browser-surface.test.ts
+ * 守护），getRandomValues 在浏览器（含非安全上下文）与 Bun 均可用。
+ */
+export const PUBLISHER_ID = crypto.getRandomValues(new Uint8Array(PUBLISHER_ID_BYTES));
 
 /** 由 UUID 字符串派生 16 字节发布者标识。 */
 export function createPublisherId(uuid: string): Uint8Array {

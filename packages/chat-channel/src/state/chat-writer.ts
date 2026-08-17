@@ -14,6 +14,7 @@ import {
   type ChatEntryStatus,
   INITIAL_PROJECTION_VERSION,
   type PermissionProjection,
+  type QuestionProjection,
   SESSION_DOC_SCHEMA_VERSION,
   type SessionSummaryProjection,
   type TurnStatus,
@@ -59,6 +60,15 @@ export function getAgentStatus(ydoc: Y.Doc): Y.Map<unknown> {
  */
 export function getPendingPermissions(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return getSessionRoot(ydoc).get("pendingPermissions") as Y.Map<Y.Map<unknown>>;
+}
+
+/**
+ * AskUserQuestion 交互问题投影（Session Doc 根 map pendingQuestions）。
+ * CAS 迁移（pending → resolved/expired）权威实现见 state/question.ts，
+ * 聚合层与控制面共用；本文件只保留投影的写入原语与读取辅助。
+ */
+export function getPendingQuestions(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
+  return getSessionRoot(ydoc).get("pendingQuestions") as Y.Map<Y.Map<unknown>>;
 }
 
 /** Session Doc 根级会话列表投影（agent 级会话摘要，随 list_sessions 响应全量同步） */
@@ -108,6 +118,9 @@ export function initSessionDocStructure(ydoc: Y.Doc): void {
     }
     if (!(root.get("pendingPermissions") instanceof Y.Map)) {
       root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
+    }
+    if (!(root.get("pendingQuestions") instanceof Y.Map)) {
+      root.set("pendingQuestions", new Y.Map<Y.Map<unknown>>());
     }
     if (!(root.get("sessions") instanceof Y.Map)) {
       root.set("sessions", new Y.Map<Y.Map<unknown>>());
@@ -530,6 +543,24 @@ export function upsertPendingPermission(ydoc: Y.Doc, projection: PermissionProje
   pending.set(projection.permissionId, map);
 }
 
+/**
+ * 幂等 upsert AskUserQuestion 投影：以 questionId 为键。
+ * 注意：CAS 迁移（pending → resolved/expired）权威实现见 state/question.ts，
+ * 这里只负责请求落地，不承载迁移语义。
+ */
+export function upsertPendingQuestion(ydoc: Y.Doc, projection: QuestionProjection): void {
+  const pending = getPendingQuestions(ydoc);
+  if (pending.has(projection.questionId)) return;
+  const map = new Y.Map<unknown>();
+  map.set("questionId", projection.questionId);
+  map.set("questions", projection.questions);
+  map.set("description", projection.description ?? null);
+  map.set("status", projection.status);
+  map.set("answer", projection.answer);
+  map.set("expiresAt", projection.expiresAt);
+  pending.set(projection.questionId, map);
+}
+
 // ── 清理（领域 tombstone：不物理删除权威记录，切换会话时整 Doc 清空）──
 
 /** 清空 Chat Doc 时间线内容（entryOrder/entries/toolCalls/planSeq），保留 schema 骨架 */
@@ -545,7 +576,7 @@ export function clearChatDocContent(ydoc: Y.Doc): void {
 }
 
 /**
- * 清空 Session Doc 内容（session/pendingPermissions），保留 schema 骨架、sessions 投影与 agent 状态。
+ * 清空 Session Doc 内容（session/pendingPermissions/pendingQuestions），保留 schema 骨架、sessions 投影与 agent 状态。
  * agent 是实例级状态（capabilities/instanceId/status），跨会话切换必须保留：agent 仅在连接/
  * initialize 时发送 status 帧，切换会话（load/create）后不会重新投影；清空会导致 capabilities
  * 永久丢失，前端 supportsLoadSession 变 false，切换会话报 "Loading or resuming sessions is
@@ -561,6 +592,9 @@ export function clearSessionDocContent(ydoc: Y.Doc): void {
       agent.delete("acpSessionId");
     }
     root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
+    // AskUserQuestion 交互问题是会话级瞬时状态：切换会话（load/create）时随 Doc 清空，
+    // 未回答的问题由 acp-link 侧 60s 超时自动 resolve 空答案兜底（无悬挂风险）
+    root.set("pendingQuestions", new Y.Map<Y.Map<unknown>>());
     // sessions 是 agent 级数据（跨会话切换不清空，避免侧边栏闪空），随 list_sessions 轮询刷新
     bumpProjectionVersion(root);
   });

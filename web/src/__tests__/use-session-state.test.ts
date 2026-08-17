@@ -24,6 +24,7 @@ describe("computeSessionSnapshot", () => {
       loading: { kind: "session/respond", since: 123 },
       canCancel: true,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.status).toBe("responding");
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 123 });
@@ -41,6 +42,7 @@ describe("computeSessionSnapshot", () => {
       loading: null,
       canCancel: false,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.status).toBe("replaying");
     expect(snapshot.loading).toBeNull();
@@ -57,6 +59,7 @@ describe("computeSessionSnapshot", () => {
       loading: { kind: "session/respond", since: 456 },
       canCancel: true,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 456 });
     expect(snapshot.canCancel).toBe(true);
@@ -73,6 +76,7 @@ describe("computeSessionSnapshot", () => {
       loading: { kind: "session/respond", since: 789 },
       canCancel: false,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 789 });
     expect(snapshot.canCancel).toBe(false);
@@ -88,6 +92,7 @@ describe("computeSessionSnapshot", () => {
       loading: null,
       canCancel: false,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.loading).toBeNull();
     expect(snapshot.canCancel).toBe(false);
@@ -105,9 +110,62 @@ describe("computeSessionSnapshot", () => {
       loading: null,
       canCancel: false,
       permissionOptions: new Map(),
+      pendingQuestions: new Map(),
     });
     expect(snapshot.status).toBe("idle");
     expect(snapshot.sessionStatus).toBe("ready");
     expect(snapshot.loading).toBeNull();
+  });
+
+  // pendingQuestions 投影透传：computeMetaSnapshot 已做 pending + 未过期过滤，
+  // 快照层原样携带 Map（QuestionPanel 据此渲染弹窗）
+  test("pendingQuestions 投影原样透传到快照", () => {
+    const pending = new Map([
+      [
+        "iqa_1",
+        {
+          questionId: "iqa_1",
+          status: "pending" as const,
+          questions: [
+            {
+              question: "Deploy to prod?",
+              header: "Deploy",
+              options: [
+                { label: "production", description: "Prod" },
+                { label: "staging", description: null },
+              ],
+            },
+          ],
+          description: "Please answer",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          answer: null,
+        },
+      ],
+    ]);
+    const snapshot = computeSessionSnapshot(emptyTimeline(), {
+      acpSessionId: "ses-1",
+      sessionStatus: "ready",
+      presenting: "responding",
+      loading: null,
+      canCancel: false,
+      permissionOptions: new Map(),
+      pendingQuestions: pending,
+    });
+    expect(snapshot.pendingQuestions).toBe(pending);
+    expect(snapshot.pendingQuestions.get("iqa_1")?.questions[0]?.options).toHaveLength(2);
+  });
+
+  // 空 pendingQuestions（无待应答问题）→ 快照携带空 Map，QuestionPanel 不渲染
+  test("无待应答问题时 pendingQuestions 为空 Map", () => {
+    const snapshot = computeSessionSnapshot(emptyTimeline(), {
+      acpSessionId: "",
+      sessionStatus: "ready",
+      presenting: "idle",
+      loading: null,
+      canCancel: false,
+      permissionOptions: new Map(),
+      pendingQuestions: new Map(),
+    });
+    expect(snapshot.pendingQuestions.size).toBe(0);
   });
 });

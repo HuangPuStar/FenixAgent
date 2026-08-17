@@ -10,7 +10,9 @@
 
 import { describe, expect, test } from "bun:test";
 import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/chat-channel";
-import { createSessionDoc, setSessionInfo } from "@fenix/chat-channel";
+import { setSessionInfo, upsertPendingQuestion } from "@fenix/chat-channel";
+// createSessionDoc 属聚合层服务端能力，经 server 子路径导入（双入口边界）
+import { createSessionDoc } from "@fenix/chat-channel/server";
 import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -211,5 +213,68 @@ describe("useSessionState hook 生命周期", () => {
 
     harness.unmount();
     chatBindingA.cleanup();
+  });
+
+  // pendingQuestions 投影过滤：只有 status=pending 且 expiresAt 未过的问题进入快照
+  // （resolved/expired 与已过期 pending 都被剔除，弹窗随过滤自动关闭）
+  test("pendingQuestions 投影只保留 pending 且未过期的问题", async () => {
+    const spectator = createSessionDocBinding("rcs-sess-q");
+    const doc = spectator.ydoc;
+    act(() => {
+      seedSessionSkeleton(doc);
+      const now = Date.now();
+      // 待应答（保留）：pending + 未过期
+      upsertPendingQuestion(doc, {
+        questionId: "iqa_active",
+        status: "pending",
+        questions: [
+          {
+            question: "Deploy?",
+            header: "Deploy",
+            options: [
+              { label: "production", description: "Prod" },
+              { label: "staging", description: null },
+            ],
+          },
+        ],
+        description: "Please answer",
+        expiresAt: new Date(now + 60_000).toISOString(),
+        answer: null,
+      });
+      // 已应答（剔除）：resolved
+      upsertPendingQuestion(doc, {
+        questionId: "iqa_resolved",
+        status: "resolved",
+        questions: [],
+        description: null,
+        expiresAt: new Date(now + 60_000).toISOString(),
+        answer: "production",
+      });
+      // 过期（剔除）：pending 但 expiresAt 已过（前端本地剔除兜底，与后端定时器同刻失效）
+      upsertPendingQuestion(doc, {
+        questionId: "iqa_stale",
+        status: "pending",
+        questions: [],
+        description: null,
+        expiresAt: new Date(now - 1000).toISOString(),
+        answer: null,
+      });
+    });
+
+    const harness = createHarness<SessionStateSnapshot>(useSessionState);
+    harness.render("rcs-sess-q");
+    await flush();
+
+    const pending = harness.latest.value?.pendingQuestions;
+    expect(pending?.size).toBe(1);
+    expect(pending?.get("iqa_active")?.questions[0]?.options).toEqual([
+      { label: "production", description: "Prod" },
+      { label: "staging", description: null },
+    ]);
+    expect(pending?.has("iqa_resolved")).toBe(false);
+    expect(pending?.has("iqa_stale")).toBe(false);
+
+    harness.unmount();
+    spectator.cleanup();
   });
 });

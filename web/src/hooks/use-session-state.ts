@@ -12,6 +12,7 @@
 import type {
   LoadingState,
   PermissionOption,
+  QuestionProjection,
   SessionDocStatus,
   SessionStateSnapshot,
   SessionStatus,
@@ -60,6 +61,8 @@ interface SessionMetaSnapshot {
   canCancel: boolean;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
   permissionOptions: Map<string, PermissionOption[]>;
+  /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，60s 过期自动剔除） */
+  pendingQuestions: Map<string, QuestionProjection>;
 }
 
 function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
@@ -69,12 +72,34 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   const session = root.get("session") as Y.Map<unknown> | undefined;
   const agent = root.get("agent") as Y.Map<unknown> | undefined;
   const pending = root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined;
+  const questions = root.get("pendingQuestions") as Y.Map<Y.Map<unknown>> | undefined;
 
   // 行内权限按钮数据源：Session Doc 的 options（3 值 kind）翻译为 acp-link PermissionOption[]
   const permissionOptions = new Map<string, PermissionOption[]>();
   if (pending) {
     for (const [permissionId, permission] of pending.entries()) {
       permissionOptions.set(permissionId, sessionOptionKindsToPermissionOptions(permission.get("options")));
+    }
+  }
+
+  // AskUserQuestion 弹窗数据源：只投影 status=pending 且未过期的问题（双保险：
+  // 后端 60s 超时定时器会 CAS 迁移 expired，前端按 expiresAt 本地剔除兜底，
+  // 与后端失效时刻一致——acp-link 侧 60s 自动 resolve 空答案，过期面板必须消失）
+  const pendingQuestions = new Map<string, QuestionProjection>();
+  if (questions) {
+    const now = Date.now();
+    for (const [questionId, question] of questions.entries()) {
+      if (question.get("status") !== "pending") continue;
+      const expiresAt = question.get("expiresAt") as string | undefined;
+      if (expiresAt && new Date(expiresAt).getTime() <= now) continue;
+      pendingQuestions.set(questionId, {
+        questionId,
+        status: "pending",
+        questions: (question.get("questions") as QuestionProjection["questions"]) ?? [],
+        description: (question.get("description") as string | null | undefined) ?? null,
+        expiresAt: expiresAt ?? new Date(now + 60_000).toISOString(),
+        answer: null,
+      });
     }
   }
 
@@ -91,6 +116,7 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
     loading: (session?.get("loading") as LoadingState | null | undefined) ?? null,
     canCancel: (session?.get("canCancel") as boolean | undefined) ?? false,
     permissionOptions,
+    pendingQuestions,
   };
 }
 
@@ -125,6 +151,7 @@ export function computeSessionSnapshot(
     canCancel: meta.canCancel,
     loading: meta.loading,
     structuredMessages,
+    pendingQuestions: meta.pendingQuestions,
   };
 }
 
@@ -148,6 +175,7 @@ export function useSessionState(rcsSessionId: string) {
         loading: null,
         canCancel: false,
         permissionOptions: new Map(),
+        pendingQuestions: new Map(),
       }),
     };
   }

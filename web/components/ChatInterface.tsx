@@ -21,6 +21,7 @@ import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
 import { PermissionPanel } from "./chat/PermissionPanel";
+import { QuestionPanel } from "./chat/QuestionPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
 
 // Image compression options
@@ -84,6 +85,8 @@ interface ChatInterfaceProps {
   onCancel: () => void;
   onCreateSession: () => Promise<void>;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
+  /** AskUserQuestion 选项回传（questionId + 用户选择的选项 label） */
+  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
 
   // ── 提升的状态（原 useCommands/useModes 结果）──
   availableCommands: AvailableCommand[];
@@ -125,6 +128,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onCancel,
     onCreateSession,
     onRespondPermission,
+    onRespondQuestion,
     availableCommands,
     availableModes,
     currentModeId,
@@ -375,6 +379,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [onRespondPermission],
   );
 
+  // AskUserQuestion 待应答问题（Session Doc pendingQuestions 投影，已过滤 pending+未过期）：
+  // 依赖收窄到 Map 引用本身（快照中其他字段变化不触发重建）
+  const pendingQuestions = useMemo(() => {
+    const map = sessionState?.pendingQuestions;
+    if (!map || map.size === 0) return [];
+    return Array.from(map.values());
+  }, [sessionState?.pendingQuestions]);
+
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
   const handleChatInputSubmit = useCallback(
     async (message: ChatInputMessage) => {
@@ -505,6 +517,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         {/* Permission panel — fixed above input */}
         <PermissionPanel requests={pendingPermissions} onRespond={handlePermissionPanelRespond} />
+
+        {/* AskUserQuestion 面板 — 输入框上方（选中选项后点提交才回传，空列表不渲染） */}
+        <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
 
         {/* Todo panel — 显示在输入框上方 */}
         <TodoPanel todos={todoItems} />

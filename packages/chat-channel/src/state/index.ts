@@ -12,6 +12,7 @@ export {
   getEntry,
   getEntryOrder,
   getPendingPermissions,
+  getPendingQuestions,
   getSessionInfo,
   getSessionRoot,
   getToolCallsMap,
@@ -27,15 +28,22 @@ export {
   setToolCallStatus,
   type ToolCallInit,
   upsertPendingPermission,
+  upsertPendingQuestion,
   upsertToolCall,
 } from "./chat-writer";
-export { DocManager, type DocManagerOptions } from "./doc-manager";
+export {
+  DocManager,
+  type DocManagerOptions,
+  type PermissionRequestedHandler,
+  type QuestionRequestedHandler,
+} from "./doc-manager";
 export {
   createChatDoc,
   createSessionDoc,
   loadChatDoc,
   loadSessionDoc,
 } from "./factory";
+export { expireQuestion, respondQuestion } from "./question";
 export {
   applyRemoteDocUpdate,
   createYjsStore,

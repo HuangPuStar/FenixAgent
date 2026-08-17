@@ -40,6 +40,8 @@ interface ACPMainProps {
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
+  /** AskUserQuestion 选项回传（questionId + 选中选项 label 数组，按问题顺序） */
+  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
 
   // ── 状态 props（替代 client.state / client.xxx 读取）──
   supportsImages?: boolean;
@@ -77,6 +79,7 @@ export function ACPMain({
   onRenameSession,
   onDeleteSession,
   onRespondPermission,
+  onRespondQuestion,
   supportsImages = false,
   supportsLoadSession = false,
   supportsResumeSession = false,
@@ -376,6 +379,7 @@ export function ACPMain({
             onCancel={handleCancel}
             onCreateSession={handleCreateSession}
             onRespondPermission={handleRespondPermission}
+            onRespondQuestion={onRespondQuestion}
             availableCommands={availableCommands}
             availableModes={availableModes}
             currentModeId={currentModeId}

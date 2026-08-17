@@ -13,10 +13,11 @@
 // 全部经依赖注入，保证包内可用 fake 依赖独立测试（Q12）。
 
 import { translateSimpleAction } from "../protocol/translator";
-import { DEFAULT_PERMISSION_TIMEOUT_MS } from "../schema";
+import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS } from "../schema";
 import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
+import { expireQuestion, respondQuestion } from "../state/question";
 import { CommandCoordinator } from "./command-coordinator";
 import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
@@ -79,6 +80,8 @@ export class SessionChannel {
   private readonly cancelTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** 权限过期定时器（rcsSessionId → permissionId → timer），disposeRcsSession 时全部释放 */
   private readonly permissionTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
+  /** AskUserQuestion 过期定时器（rcsSessionId → questionId → timer），disposeRcsSession 时全部释放 */
+  private readonly questionTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
 
   constructor(private readonly dependencies: SessionChannelDependencies) {
     this.coordinator = new CommandCoordinator({
@@ -92,6 +95,11 @@ export class SessionChannel {
     // 单槽位装配：DocManager 为单例，同一实例只应有一个控制面绑定。
     dependencies.docManager.setPermissionRequestedHandler((rcsSessionId, permission) => {
       this.armPermissionExpiry(rcsSessionId, permission.permissionId, permission.expiresAt);
+    });
+    // AskUserQuestion 问题投影成功 → 安排 60s 超时迁移（与权限定时器同模式：
+    // acp-link 侧 60s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
+    dependencies.docManager.setQuestionRequestedHandler((rcsSessionId, question) => {
+      this.armQuestionExpiry(rcsSessionId, question.questionId, question.expiresAt);
     });
   }
 
@@ -120,6 +128,11 @@ export class SessionChannel {
     if (permTimers) {
       for (const t of permTimers.values()) clearTimeout(t);
       this.permissionTimers.delete(rcsSessionId);
+    }
+    const questionTimers = this.questionTimers.get(rcsSessionId);
+    if (questionTimers) {
+      for (const t of questionTimers.values()) clearTimeout(t);
+      this.questionTimers.delete(rcsSessionId);
     }
     this.activeConnections.delete(rcsSessionId);
     this.coordinator.disposeRcsSession(rcsSessionId);
@@ -214,6 +227,13 @@ export class SessionChannel {
       // （已 resolved / expired / 不存在）不发 RPC、返回幂等成功——
       // 防止重复授权导致 Agent 执行两遍。
       if (!this.resolvePermissionViaCas(connection, command.payload)) return {};
+    }
+
+    if (command.type === "respond_question") {
+      // AskUserQuestion CAS：仅 pending → resolved 迁移一次，迁移成功才向 Agent 发送
+      // control_response 帧（translator 构造，非 JSON-RPC）。重复响应不发帧、
+      // 返回幂等成功——防止 Agent 收到两份答案重复执行。
+      if (!this.respondQuestionViaCas(connection, command.payload)) return {};
     }
 
     // cwd 由服务端根据已认证 environment 注入（translateSimpleAction 内完成），
@@ -393,6 +413,74 @@ export class SessionChannel {
     const sessionDoc = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
     if (!chatDoc || !sessionDoc) return;
     const migrated = applyPermissionExpiration({ chat: chatDoc, session: sessionDoc }, permissionId);
+    if (migrated) {
+      bumpProjectionVersion(chatDoc.getMap("root"));
+      bumpProjectionVersion(sessionDoc.getMap("root"));
+    }
+  }
+
+  // ── AskUserQuestion CAS（与权限 C5 同模式）──
+
+  /**
+   * 应答问题（CAS）：仅 pending → resolved 迁移一次，成功返回 true。
+   * 迁移成功后 bump 投影版本（控制面路径不走聚合层，与聚合层 question_resolved
+   * 事件共用 state/question.ts 单一实现）。失败（重复响应/已过期/不存在/无 Doc）
+   * 返回 false，调用方不发 control_response。
+   */
+  private respondQuestionViaCas(connection: SessionConnection, payload: Record<string, unknown>): boolean {
+    const questionId = typeof payload.questionId === "string" ? payload.questionId : "";
+    if (!questionId) return false;
+    const chatDoc = this.dependencies.docManager.getChatYdoc(connection.rcsSessionId);
+    const sessionDoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
+    if (!chatDoc || !sessionDoc) return false;
+
+    // 多问题合并答案（optionIds 数组，按问题顺序）；兼容单值 optionId 历史形态
+    const rawOptionIds = payload.optionIds;
+    const optionIds = Array.isArray(rawOptionIds)
+      ? (rawOptionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
+      : typeof payload.optionId === "string" && payload.optionId.length > 0
+        ? [payload.optionId]
+        : [];
+    const migrated = respondQuestion({ chat: chatDoc, session: sessionDoc }, questionId, optionIds);
+    if (migrated) {
+      bumpProjectionVersion(chatDoc.getMap("root"));
+      bumpProjectionVersion(sessionDoc.getMap("root"));
+    }
+    return migrated;
+  }
+
+  // ── AskUserQuestion 超时（60s，与 acp-link 自动空答案对齐）──
+
+  /**
+   * 为问题请求安排过期定时器（幂等：同 questionId 已有定时器则跳过，
+   * 覆盖重放 question_requested 帧的重复通知）。定时器到期后执行
+   * pending → expired CAS 迁移（投影失效，前端弹窗随状态过滤消失）。
+   */
+  private armQuestionExpiry(rcsSessionId: string, questionId: string, expiresAt: string): void {
+    let timers = this.questionTimers.get(rcsSessionId);
+    if (!timers) {
+      timers = new Map();
+      this.questionTimers.set(rcsSessionId, timers);
+    }
+    if (timers.has(questionId)) return;
+
+    const parsed = new Date(expiresAt).getTime();
+    // 超时固定与 acp-link 60s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
+    // 不提供配置覆盖：acp-link 侧无对应配置项，可配会破坏两侧失效时刻一致
+    const timeoutMs = Number.isFinite(parsed) ? Math.max(0, parsed - Date.now()) : DEFAULT_QUESTION_TIMEOUT_MS;
+    const timer = setTimeout(() => {
+      timers.delete(questionId);
+      this.expireQuestionTimer(rcsSessionId, questionId);
+    }, timeoutMs);
+    timers.set(questionId, timer);
+  }
+
+  /** 问题过期迁移：CAS pending → expired（重复过期无副作用），实现见 state/question.ts */
+  private expireQuestionTimer(rcsSessionId: string, questionId: string): void {
+    const chatDoc = this.dependencies.docManager.getChatYdoc(rcsSessionId);
+    const sessionDoc = this.dependencies.docManager.getSessionYdoc(rcsSessionId);
+    if (!chatDoc || !sessionDoc) return;
+    const migrated = expireQuestion({ chat: chatDoc, session: sessionDoc }, questionId);
     if (migrated) {
       bumpProjectionVersion(chatDoc.getMap("root"));
       bumpProjectionVersion(sessionDoc.getMap("root"));

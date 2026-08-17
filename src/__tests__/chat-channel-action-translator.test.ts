@@ -85,4 +85,48 @@ describe("translateSimpleAction", () => {
 
     expect(translateSimpleAction(action, undefined, 1)).toBe(action);
   });
+
+  // respond_question 必须以 control_response 传输帧回传（非 JSON-RPC！）：
+  // acp-link dispatcher 的 handleTransportMessage 只消费 { type: "control_response",
+  // request_id, approved, extra } 形态，extra.answers 为选中选项 label 数组
+  // （多问题按问题顺序合并回传）
+  test("translates respond_question into a control_response transport frame", () => {
+    const workspacePath = "/workspace/project";
+    const frame = translateSimpleAction(
+      { action: "respond_question", questionId: "iqa_1", optionIds: ["production"] },
+      workspacePath,
+      1,
+    );
+    expect(frame).toEqual({
+      type: "control_response",
+      request_id: "iqa_1",
+      approved: true,
+      extra: { answers: ["production"] },
+    });
+
+    // 多问题合并答案：answers 数组按问题顺序
+    const multi = translateSimpleAction(
+      { action: "respond_question", questionId: "iqa_1", optionIds: ["production", "all"] },
+      workspacePath,
+      1,
+    );
+    expect(multi).toEqual({
+      type: "control_response",
+      request_id: "iqa_1",
+      approved: true,
+      extra: { answers: ["production", "all"] },
+    });
+  });
+
+  // respond_question 选项为空（用户取消/跳过）→ approved=false 且 extra 无有效答案：
+  // acp-link adapter 侧解析不到 answers 时 resolve 空答案，agent 按空答案继续
+  test("translates respond_question without optionIds as declined", () => {
+    const frame = translateSimpleAction({ action: "respond_question", questionId: "iqa_1" }, undefined, 1);
+    expect(frame).toEqual({
+      type: "control_response",
+      request_id: "iqa_1",
+      approved: false,
+      extra: { outcome: { optionId: "" } },
+    });
+  });
 });

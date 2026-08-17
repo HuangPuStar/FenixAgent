@@ -12,7 +12,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import type * as Y from "yjs";
-import { DEFAULT_PERMISSION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
+import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
 import { clearChatDocContent, clearSessionDocContent, hasChatDocContent } from "./chat-writer";
@@ -43,6 +43,12 @@ export type PermissionRequestedHandler = (
   permission: { permissionId: string; expiresAt: string },
 ) => void;
 
+/** AskUserQuestion 问题投影成功的通知（控制面据此安排 60s 超时迁移定时器） */
+export type QuestionRequestedHandler = (
+  rcsSessionId: string,
+  question: { questionId: string; expiresAt: string },
+) => void;
+
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
@@ -51,6 +57,7 @@ export class DocManager {
   private onError: ((context: string, err: unknown) => void) | undefined;
   private onLog: ((msg: string) => void) | undefined;
   private onPermissionRequested: PermissionRequestedHandler | null;
+  private onQuestionRequested: QuestionRequestedHandler | null;
   private batchWindowMs: number;
   private acpBatchBuffers = new Map<string, { events: NormalizedEvent[]; timer: ReturnType<typeof setTimeout> }>();
 
@@ -60,6 +67,7 @@ export class DocManager {
     this.onError = options?.onError;
     this.onLog = options?.onLog;
     this.onPermissionRequested = null;
+    this.onQuestionRequested = null;
     this.batchWindowMs = options?.acpBatchWindowMs ?? DEFAULT_BATCH_WINDOW_MS;
   }
 
@@ -76,6 +84,14 @@ export class DocManager {
    */
   setPermissionRequestedHandler(handler: PermissionRequestedHandler | null): void {
     this.onPermissionRequested = handler;
+  }
+
+  /**
+   * 设置或清除 AskUserQuestion 问题请求回调（控制面 SessionChannel 注入：
+   * 安排 60s 超时迁移定时器，与权限回调同模式）。
+   */
+  setQuestionRequestedHandler(handler: QuestionRequestedHandler | null): void {
+    this.onQuestionRequested = handler;
   }
 
   /** 绑定 Y.Doc 的 update 事件到广播回调 */
@@ -254,6 +270,20 @@ export class DocManager {
     this.onPermissionRequested?.(rcsSessionId, { permissionId, expiresAt });
   }
 
+  /** 通知控制面：AskUserQuestion 问题已投影到 Session Doc（expiresAt 以投影值为准） */
+  private notifyQuestionRequested(rcsSessionId: string, sessionDoc: Y.Doc, event: NormalizedEvent): void {
+    const questionId = event.update.questionId as string | undefined;
+    if (typeof questionId !== "string") return;
+    const projection = (sessionDoc.getMap("root").get("pendingQuestions") as Y.Map<Y.Map<unknown>> | undefined)?.get(
+      questionId,
+    );
+    const expiresAt =
+      (projection?.get("expiresAt") as string | undefined) ??
+      (event.update.expiresAt as string | undefined) ??
+      new Date(Date.now() + DEFAULT_QUESTION_TIMEOUT_MS).toISOString();
+    this.onQuestionRequested?.(rcsSessionId, { questionId, expiresAt });
+  }
+
   /**
    * 处理单个规范化事件（聚合层唯一入口）。
    * - binding 不存在（无内存 Doc）→ 丢弃，不重建旧 Doc
@@ -280,6 +310,9 @@ export class DocManager {
       }
       if (result.applied && event.type === "permission_requested") {
         this.notifyPermissionRequested(rcsSessionId, sessionDoc.ydoc, event);
+      }
+      if (result.applied && event.type === "question_requested") {
+        this.notifyQuestionRequested(rcsSessionId, sessionDoc.ydoc, event);
       }
       return;
     }

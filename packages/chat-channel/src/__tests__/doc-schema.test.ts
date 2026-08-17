@@ -53,11 +53,12 @@ test("chat doc root contains only timeline fields", () => {
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(1);
 });
 
-// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions/sessions）
+// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions/pendingQuestions/sessions）
 test("session doc root contains only metadata fields", () => {
   expect(sessionRootKeys()).toEqual([
     "agent",
     "pendingPermissions",
+    "pendingQuestions",
     "projectionVersion",
     "schemaVersion",
     "session",
@@ -388,6 +389,7 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
   expect(sessionRootKeys()).toEqual([
     "agent",
     "pendingPermissions",
+    "pendingQuestions",
     "projectionVersion",
     "schemaVersion",
     "session",
@@ -441,6 +443,7 @@ test("session_list syncs sessions map with idempotent full sync", () => {
   expect(sessionRootKeys()).toEqual([
     "agent",
     "pendingPermissions",
+    "pendingQuestions",
     "projectionVersion",
     "schemaVersion",
     "session",

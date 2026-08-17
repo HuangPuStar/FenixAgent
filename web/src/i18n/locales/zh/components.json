@@ -402,5 +402,10 @@
   },
   "sessionModeSelector": {
     "default": "默认"
+  },
+  "askUser": {
+    "title": "需要你回答",
+    "description": "Agent 需要你提供一些信息以继续执行",
+    "submit": "提交"
   }
 }

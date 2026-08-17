@@ -10,12 +10,13 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  createSessionDoc,
   setAgentStatus,
   setSessionAvailableCommands,
   setSessionInfo,
   upsertPendingPermission,
 } from "@fenix/chat-channel";
+// createSessionDoc 属聚合层服务端能力，经 server 子路径导入（双入口边界）
+import { createSessionDoc } from "@fenix/chat-channel/server";
 import * as Y from "yjs";
 import { computeMetaSnapshot, computeTokenSnapshot } from "../hooks/use-chat-state";
 

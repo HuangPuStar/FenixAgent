@@ -88,6 +88,8 @@ export type SessionDocStatus = "initializing" | "ready" | "running" | "degraded"
 export type AgentRuntimeStatus = "offline" | "starting" | "initializing" | "ready" | "busy" | "error";
 export type PermissionStatus = "pending" | "resolved" | "expired";
 export type PermissionOptionKind = "allow_once" | "allow_session" | "deny";
+/** AskUserQuestion 交互问题的生命周期状态（与 PermissionStatus 平行：expired 由 60s 超时 CAS 迁移） */
+export type QuestionStatus = "pending" | "resolved" | "expired";
 
 /** Turn 状态机（8.1）：终态不可逆；恢复执行必须创建新 turn */
 export type TurnStatus =
@@ -146,6 +148,37 @@ export interface PermissionProjection {
   decision: "allow" | "deny" | null;
 }
 
+/** AskUserQuestion 单个问题的选项投影（label 即回传答案，与 acp-link handleControlResponse 对齐） */
+export interface QuestionOptionProjection {
+  label: string;
+  description: string | null;
+}
+
+/** AskUserQuestion 单个问题投影（来自 acp-link interactive_question 帧的 questions[] 元素） */
+export interface QuestionItemProjection {
+  question: string;
+  header: string | null;
+  options: QuestionOptionProjection[];
+}
+
+/**
+ * AskUserQuestion 交互问题投影（Session Doc 根 map pendingQuestions，按 questionId 键控）。
+ * 生命周期：question_requested → pending（60s expiresAt）→ 用户回传 respondQuestion CAS
+ * → resolved；超时定时器（控制面持有）→ expired。与 acp-link 侧 60s 自动空答案对齐。
+ */
+export interface QuestionProjection {
+  questionId: string;
+  status: QuestionStatus;
+  questions: QuestionItemProjection[];
+  description: string | null;
+  expiresAt: string;
+  /**
+   * 决议结果：CAS 迁移成功后写入用户选择的选项 label（translator 以 outcome.optionId
+   * 回传，acp-link 直接作为答案注入）；upsert 创建时为 null；expired 不写（保持 null）。
+   */
+  answer: string | null;
+}
+
 /** 会话列表投影条目（agent 级会话摘要，随 list_sessions 响应全量同步；按 sessionId 键控） */
 export interface SessionSummaryProjection {
   sessionId: string;
@@ -172,6 +205,8 @@ export type NormalizedEventType =
   | "permission_requested"
   | "permission_resolved"
   | "permission_expired"
+  | "question_requested"
+  | "question_resolved"
   | "turn_completed"
   | "turn_failed"
   | "turn_cancel_requested"
@@ -215,3 +250,11 @@ export const TOOL_TERMINAL_STATUSES: ReadonlySet<ToolCallStatus> = new Set(["com
  * 另一个超时，前端倒计时与后端失效时刻漂移。
  */
 export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * AskUserQuestion 默认超时：pending 超时后迁移 expired（CAS）。
+ * 与 acp-link 侧 60s 自动 resolve 空答案对齐（claude-acp-adapter.ts:469）：
+ * 投影的 expiresAt 必须 ≤ 60s 且控制面定时器按同一值失效，否则 acp-link 已
+ * 回空答案、agent 继续执行，前端弹窗仍悬挂 60s 以上。
+ */
+export const DEFAULT_QUESTION_TIMEOUT_MS = 60_000;

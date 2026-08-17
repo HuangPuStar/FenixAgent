@@ -11,14 +11,9 @@
 // 前端投影按 tool_call 块切分——两层叠加才能正确渲染。
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import {
-  applyNormalizedEvent,
-  createChatDoc,
-  createSessionDoc,
-  type DocPair,
-  type NormalizedEvent,
-  type StructuredMessage,
-} from "@fenix/chat-channel";
+import type { NormalizedEvent, StructuredMessage } from "@fenix/chat-channel";
+// 聚合层服务端能力经 server 子路径导入（双入口边界，见 CLAUDE.md YJS 不变量 11）
+import { applyNormalizedEvent, createChatDoc, createSessionDoc, type DocPair } from "@fenix/chat-channel/server";
 import * as Y from "yjs";
 import { chatDocEntriesToStructuredMessages } from "../lib/structured-to-thread";
 

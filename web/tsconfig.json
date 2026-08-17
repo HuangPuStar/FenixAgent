@@ -19,7 +19,8 @@
     "paths": {
       "@/*": ["./*"],
       "@server/*": ["../../src/*"],
-      "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"]
+      "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"],
+      "@fenix/chat-channel/server": ["../packages/chat-channel/src/server.ts"]
     }
   },
   "include": ["src", "components"]

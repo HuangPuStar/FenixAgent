@@ -15,6 +15,7 @@ export const KNOWN_ACTION_TYPES = [
   "rename_session",
   "delete_session",
   "respond_permission",
+  "respond_question",
   "set_session_mode",
 ] as const;
 

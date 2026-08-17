@@ -402,5 +402,10 @@
   },
   "sessionModeSelector": {
     "default": "Default"
+  },
+  "askUser": {
+    "title": "Question from Agent",
+    "description": "The agent needs your input to continue",
+    "submit": "Submit"
   }
 }

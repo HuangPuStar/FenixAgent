@@ -11,8 +11,10 @@
 
 import {
   DEFAULT_PERMISSION_TIMEOUT_MS,
+  DEFAULT_QUESTION_TIMEOUT_MS,
   type NormalizedEvent,
   type PublicError,
+  type QuestionItemProjection,
   TOOL_TERMINAL_STATUSES,
   type ToolCallStatus,
   TURN_TERMINAL_STATUSES,
@@ -36,9 +38,11 @@ import {
   setSessionModelState,
   setSessionModeState,
   upsertPendingPermission,
+  upsertPendingQuestion,
   upsertToolCall,
 } from "./chat-writer";
 import { applyPermissionExpiration, applyPermissionResolution, type DocPair } from "./permission";
+import { respondQuestion } from "./question";
 import { applySessionList } from "./session-list";
 import { convergeTurnExit, turnAssistantEntryId } from "./turn-machine";
 
@@ -302,6 +306,89 @@ function applyPermissionResolved(pair: DocPair, event: NormalizedEvent): ApplyRe
 }
 
 /**
+ * 从 acp-link interactive_question 帧提取 questions[] 并做最小结构校验
+ * （外部输入不可信：非字符串 question 丢弃，options 仅保留 label 为字符串的项）。
+ */
+function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
+  if (!Array.isArray(raw)) return [];
+  const items: QuestionItemProjection[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.question !== "string" || record.question.length === 0) continue;
+    const options = Array.isArray(record.options)
+      ? record.options
+          .filter((o): o is Record<string, unknown> => typeof o === "object" && o !== null)
+          .filter((o) => typeof o.label === "string" && o.label.length > 0)
+          .map((o) => ({
+            label: o.label as string,
+            description: typeof o.description === "string" ? o.description : null,
+          }))
+      : [];
+    items.push({
+      question: record.question,
+      header: typeof record.header === "string" && record.header.length > 0 ? record.header : null,
+      options,
+    });
+  }
+  return items;
+}
+
+/**
+ * 处理 AskUserQuestion 交互问题请求：questionId upsert 幂等；60s expiresAt 投影
+ * （与 acp-link 侧自动空答案对齐）。turn 状态机不动：AskUserQuestion 是工具执行中
+ * 的询问（agent 收到答案后自行继续），复用 awaiting_permission 会与权限 CAS 收敛
+ * 逻辑（hasPendingPermission / expireTurnPermissions）耦合、新增 waiting_question
+ * 状态位违反设计决策（复用 waiting_user 展示态，不新增状态位）；前端弹窗自身即
+ * "等待用户"信号，60s 后投影随超时迁移自动消失。
+ */
+function applyQuestionRequested(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  const questionId = event.update.questionId as string | undefined;
+  if (!questionId) return { applied: false, reason: "question missing questionId" };
+
+  const active = readActiveTurn(pair.session);
+  // 终态或 cancelling 后的问题请求不投影：turn 已不可恢复执行（与权限守卫同规则）
+  if (!canWriteToTurn(active.turnStatus)) {
+    return {
+      applied: false,
+      reason: "question requested for unwritable turn",
+    };
+  }
+
+  upsertPendingQuestion(pair.session, {
+    questionId,
+    status: "pending",
+    questions: extractQuestionItems(event.update.questions),
+    description: typeof event.update.description === "string" ? event.update.description : null,
+    // 请求时刻无决议，CAS 迁移（respondQuestion / expireQuestion）成功后由 question.ts 写入
+    answer: null,
+    expiresAt:
+      typeof event.update.expiresAt === "string"
+        ? event.update.expiresAt
+        : new Date(Date.now() + DEFAULT_QUESTION_TIMEOUT_MS).toISOString(),
+  });
+  return { applied: true };
+}
+
+/** 处理问题应答：CAS（仅 pending → resolved 一次），重复 resolve 不生效 */
+function applyQuestionResolved(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  const questionId = event.update.questionId as string | undefined;
+  if (!questionId) return { applied: false, reason: "question_resolved missing questionId" };
+
+  // 多问题合并答案（optionIds 数组，按问题顺序）；兼容单值 optionId 历史形态
+  const rawOptionIds = event.update.optionIds;
+  const optionIds = Array.isArray(rawOptionIds)
+    ? (rawOptionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
+    : typeof event.update.optionId === "string" && event.update.optionId.length > 0
+      ? [event.update.optionId]
+      : [];
+  // CAS 迁移在 state/question.ts 单一来源（控制面 respond_question 共用）
+  return respondQuestion(pair, questionId, optionIds)
+    ? { applied: true }
+    : { applied: false, reason: "question not pending (duplicate resolve)" };
+}
+
+/**
  * 用户取消请求：running / awaiting_permission / accepting → cancelling（非终态）。
  * 重复取消幂等跳过；终态后到达的取消请求拒绝（终态不可逆）。
  * Agent 确认取消（turn_cancelled）或取消超时（turn_interrupted）在此状态上收敛。
@@ -479,6 +566,12 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         case "permission_resolved":
           result = applyPermissionResolved(pair, event);
+          break;
+        case "question_requested":
+          result = applyQuestionRequested(pair, event);
+          break;
+        case "question_resolved":
+          result = applyQuestionResolved(pair, event);
           break;
         case "permission_expired": {
           // C5：超时迁移（pending → expired 一次）与收敛统一走 state/permission.ts，
