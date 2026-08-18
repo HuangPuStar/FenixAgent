@@ -1130,7 +1130,6 @@ describe("RelayEventHandler Peri Task 事件（切片 1）", () => {
     const reports: Array<[string, unknown]> = [];
     const handler = createRelayEvents(registry, broadcaster, processed, {
       reportError: (context, error) => reports.push([context, error]),
-      enablePeriTaskView: true,
     });
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws, acpSessionId: "active-session" }));
@@ -1143,29 +1142,13 @@ describe("RelayEventHandler Peri Task 事件（切片 1）", () => {
     ]);
   });
 
-  // 开关 gate：宿主未开启 RCS_PERI_TASK_VIEW_ENABLED（默认 false）时，即使机器端
-  // 已声明 capability 并发射事件，relay 层也必须独立丢弃（防御性 gate，不依赖
-  // "源头不发"），投影层不得把未开启的 Peri Task 写入 Doc。
-  test("drops peri events when enablePeriTaskView is off", async () => {
+  // 已协商的 peri/agent_event 始终进入聚合层（normalize → 投影），
+  // 与 session/update 共享同一入站管线，不创建第二套连接或 dispatch。
+  test("projects peri events into the aggregator", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const processed: string[] = [];
     const handler = createRelayEvents(registry, broadcaster, processed);
-    const ws = createWs();
-    registry.addClient("ws-1", createClient({ ws, acpSessionId: "ses-1" }));
-
-    await handler.createMessageHandler(relayOn("rcs-1"))(periAgentStarted("ses-1") as unknown as RelayMessage);
-
-    expect(processed).toEqual([]);
-  });
-
-  // 开关 gate：开启后 peri/agent_event 正常进入聚合层（normalize → 投影），
-  // 与 session/update 共享同一入站管线，不创建第二套连接或 dispatch。
-  test("projects peri events into the aggregator when enabled", async () => {
-    const registry = new ConnectionRegistry();
-    const broadcaster = new YjsBroadcaster(registry);
-    const processed: string[] = [];
-    const handler = createRelayEvents(registry, broadcaster, processed, { enablePeriTaskView: true });
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws, acpSessionId: "ses-1" }));
 
@@ -1180,7 +1163,7 @@ describe("RelayEventHandler Peri Task 事件（切片 1）", () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const processed: string[] = [];
-    const handler = createRelayEvents(registry, broadcaster, processed, { enablePeriTaskView: true });
+    const handler = createRelayEvents(registry, broadcaster, processed);
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws, acpSessionId: "ses-1" }));
     const shared = relayOn("rcs-1");

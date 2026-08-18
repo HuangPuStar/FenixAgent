@@ -90,13 +90,6 @@ function buildConfig(env: Env) {
     langfusePublicKey: env.LANGFUSE_PUBLIC_KEY,
     langfuseSecretKey: env.LANGFUSE_SECRET_KEY,
     langfuseBaseUrl: env.LANGFUSE_BASE_URL,
-    /**
-     * Peri Task View 灰度开关（env.ts 声明，默认 false）。
-     * 宿主装配 ChatChannelController 时经 enablePeriTaskView 注入 relay 层 gate；
-     * 开启时同时经 launchSpec.env 透传 RCS_PERI_TASK_VIEW_ENABLED 到 machine 端
-     * agent 进程，acp-link 据此决定是否声明 peri.* capability。
-     */
-    periTaskViewEnabled: env.RCS_PERI_TASK_VIEW_ENABLED,
   };
 }
 

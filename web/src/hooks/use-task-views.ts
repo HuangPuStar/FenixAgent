@@ -26,7 +26,7 @@ import type {
 import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
-import { createSessionDocBinding } from "../yjs/doc-hub";
+import { createSessionDocBinding, getDocHubReplacementVersion, subscribeDocHubReplacement } from "../yjs/doc-hub";
 
 /** 终态集合：非终态（running）展示在前 */
 const PERI_TASK_TERMINAL_STATUSES: ReadonlySet<PeriTaskStatus> = new Set(["completed", "failed", "cancelled"]);
@@ -204,6 +204,12 @@ export function useTaskViews(rcsSessionId: string) {
   // 绑定工厂：从 DocHub 取共享 Session Doc（ownsDoc=false，生命周期归 hub 引用计数）；
   // useCallback 保持引用稳定，渲染期与 effect 期复用同一工厂
   const bindSessionDoc = useCallback(() => createSessionDocBinding(rcsSessionId), [rcsSessionId]);
+  const subscribeReplacement = useCallback(
+    (listener: () => void) => subscribeDocHubReplacement(rcsSessionId, listener),
+    [rcsSessionId],
+  );
+  const getReplacementVersion = useCallback(() => getDocHubReplacementVersion(rcsSessionId), [rcsSessionId]);
+  const replacementVersion = useSyncExternalStore(subscribeReplacement, getReplacementVersion, getReplacementVersion);
 
   // 重订阅驱动（bind epoch）：destroy 会清空 store listeners（store 契约），
   // 而 useSyncExternalStore 只在 subscribe 引用变化时重订阅——cleanup destroy
@@ -222,12 +228,13 @@ export function useTaskViews(rcsSessionId: string) {
     // StrictMode 双挂载 / 切换会话：cleanup destroy 已重置 activeKey（""），
     // 此处 switchDoc 重建 hub 绑定；destroy 经 binding.cleanup 释放 hub 引用，
     // 计数归零才销毁共享 doc。绑定完成后推进 epoch 驱动重订阅。
-    store.switchDoc(rcsSessionId, bindSessionDoc);
+    const bindingKey = `${rcsSessionId}:${replacementVersion}`;
+    store.switchDoc(bindingKey, bindSessionDoc);
     setBindEpoch((e) => e + 1);
     return () => {
       store.destroy();
     };
-  }, [store, rcsSessionId, bindSessionDoc]);
+  }, [store, rcsSessionId, bindSessionDoc, replacementVersion]);
 
   return { state: snapshot };
 }

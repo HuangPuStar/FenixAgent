@@ -58,12 +58,6 @@ export interface ChatChannelDependencies {
   log: (message: string) => void;
   /** 错误日志（宿主 error 语义，保留诊断上下文、对外脱敏） */
   reportError: (message: string, error: unknown) => void;
-  /**
-   * Peri Task View 开关（宿主 RCS_PERI_TASK_VIEW_ENABLED，默认 false）。
-   * false 时 relay 层丢弃全部 peri_task_* 规范化事件（capability 未声明/未开启
-   * 时源头不发，此为防御性 gate，见 RelayEventHandlerDependencies.enablePeriTaskView）。
-   */
-  enablePeriTaskView?: boolean;
 }
 
 /** Chat 域控制面组装：持有网关入口与连接注册表（供宿主关闭连接）。 */
@@ -105,9 +99,9 @@ export class ChatChannelController {
       docManager: dependencies.docManager,
       registerYjsDocListener: this.broadcaster.registerYjsDocListener.bind(this.broadcaster),
       reportError: dependencies.reportError,
+      log: dependencies.log,
       touchInstanceActivity: dependencies.touchInstanceActivity,
       terminateLocalDeadInstance: dependencies.terminateLocalDeadInstance,
-      enablePeriTaskView: dependencies.enablePeriTaskView,
     });
     this.gateway = new Gateway({
       registry: this.registry,

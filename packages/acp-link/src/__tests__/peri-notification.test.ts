@@ -17,14 +17,13 @@
 //   createNotification + 现有 send/emit/sendMsg」，本测试按各路径转发形态
 //   验证转发帧与 relay extractJsonRpc（裸 / { type, payload } 包裹）兼容。
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as acp from "@agentclientprotocol/sdk";
 import { createNotification } from "../json-rpc";
 import {
   isPeriTaskNotificationMethod,
   PERI_AGENT_EVENT_METHOD,
   PERI_UNSTABLE_EVENT_METHOD,
-  setPeriTaskCapabilityEnabled,
 } from "../peri-task-capability";
 
 /** 轮询等待异步处理完成（SDK 连接消费/转发 notification 是异步微任务/IO） */
@@ -121,25 +120,12 @@ function assertForwardFrame(
   params: Record<string, unknown>,
   expected: (frame: Record<string, unknown>) => void,
 ): void {
-  setPeriTaskCapabilityEnabled(true);
-  try {
-    if (isPeriTaskNotificationMethod(method)) {
-      expected(forward(method, params) as Record<string, unknown>);
-    } else {
-      throw new Error(`expected ${method} to pass capability whitelist`);
-    }
-  } finally {
-    setPeriTaskCapabilityEnabled(false);
+  if (isPeriTaskNotificationMethod(method)) {
+    expected(forward(method, params) as Record<string, unknown>);
+  } else {
+    throw new Error(`expected ${method} to pass capability whitelist`);
   }
 }
-
-beforeEach(() => {
-  setPeriTaskCapabilityEnabled(true);
-});
-
-afterEach(() => {
-  setPeriTaskCapabilityEnabled(false);
-});
 
 describe("SDK 未知 notification 穿透（Slice 0A spike）", () => {
   // 核心阻断条件：SDK 必须把未知 peri/agent_event notification 原样交给业务层
@@ -293,13 +279,5 @@ describe("三条路径转发形态与 relay envelope 兼容（Slice 0A）", () =
       expect(frame.method).toBe(PERI_AGENT_EVENT_METHOD);
       expect(frame.params).toEqual(params);
     });
-  });
-
-  // 白名单：capability 关闭时两个 method 一律不转发（flag 未开源头不发，
-  // 转发层必须同步静默，不能出现「capability 未声明但事件仍被转发」）
-  test("whitelist is empty when capability is disabled", () => {
-    setPeriTaskCapabilityEnabled(false);
-    expect(isPeriTaskNotificationMethod(PERI_AGENT_EVENT_METHOD)).toBe(false);
-    expect(isPeriTaskNotificationMethod(PERI_UNSTABLE_EVENT_METHOD)).toBe(false);
   });
 });

@@ -20,7 +20,6 @@ import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../p
 import {
   type NormalizedEvent,
   type NormalizedEventType,
-  PERI_TASK_EVENT_TYPES,
   SESSION_BOUND_NOTIFICATION_METHODS,
   TURN_TERMINAL_STATUSES,
   type TurnStatus,
@@ -84,12 +83,8 @@ export interface RelayEventHandlerDependencies {
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
   /** 本地死实例回收（宿主注入：内部校验 nodeId；远程实例由机器级清理覆盖——该路径同样触发实时 Doc 回收） */
   terminateLocalDeadInstance: (instanceId: string) => void;
-  /**
-   * Peri Task View 开关（宿主经 RCS_PERI_TASK_VIEW_ENABLED 注入，默认 false）。
-   * false 时丢弃全部 peri_task_* 规范化事件：机器端可能已声明 capability 而宿主
-   * 未开启，投影层必须有独立 gate 防御，不依赖"源头不发"。
-   */
-  enablePeriTaskView?: boolean;
+  /** 安全诊断日志：只记录低基数 method/type，不得记录 payload 或会话标识。 */
+  log?: (message: string) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
@@ -218,12 +213,13 @@ export class RelayEventHandler {
     // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截
     // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
     let normalized = normalizeAcpMessage(raw, msgType);
+    const periMethod = rpcCheck?.method;
+    if (periMethod === "peri/agent_event" || periMethod === "peri/unstable_event") {
+      this.dependencies.log?.(
+        `[YJS-FE] Peri notification normalized: method=${periMethod} result=${normalized?.type ?? "ignored"}`,
+      );
+    }
     if (normalized) {
-      // Peri Task View 开关 gate：未开启时丢弃全部 peri_task_* 事件（防御性——
-      // 机器端可能已声明 capability 而宿主未开 flag，投影层必须独立拦截）
-      if (PERI_TASK_EVENT_TYPES.has(normalized.type) && !this.dependencies.enablePeriTaskView) {
-        return;
-      }
       // 终态归属回传：JSON-RPC prompt 响应帧（result 带 stopReason / error）本身
       // 不携带 turnId，聚合层按 active turn 归位会误伤——连续 prompt 时旧 turn 的
       // 迟到终态会提前终结新 turn（新 turn 增量全被丢弃、答案永不出现）。按

@@ -522,15 +522,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   return (
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0">
-        {/* Peri Task 会话活动面板 — 时间线上方（切片 2：Task View 权威入口）。
-            只读 Session Doc tasks/taskOrder 投影，不触发任何 Detail 请求；
-            loaded/empty/reconnecting 状态由 PeriTaskList 内部收敛 */}
-        <PeriTaskList
-          tasks={periTasks}
-          loaded={periTasksLoaded}
-          reconnecting={connectionState !== "connected"}
-          onOpenDetail={agentId && detailSessionId ? setSelectedPeriTask : undefined}
-        />
+        {/* Peri Task 会话活动面板仅在当前会话存在任务时展示，避免空面板占用聊天空间。 */}
+        {periTasks.length > 0 && (
+          <PeriTaskList
+            tasks={periTasks}
+            loaded={periTasksLoaded}
+            reconnecting={connectionState !== "connected"}
+            onOpenDetail={agentId && detailSessionId ? setSelectedPeriTask : undefined}
+          />
+        )}
         {agentId && detailSessionId ? (
           <PeriTaskDetailSheet
             environmentId={agentId}

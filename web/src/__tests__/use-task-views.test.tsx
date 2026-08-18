@@ -14,13 +14,13 @@ import { describe, expect, test } from "bun:test";
 import type { PeriTaskViewProjection } from "@fenix/chat-channel";
 import { upsertPeriTaskView } from "@fenix/chat-channel";
 // createSessionDoc 属聚合层服务端能力，经 server 子路径导入（双入口边界）
-import { createSessionDoc } from "@fenix/chat-channel/server";
+import { createChatDoc, createSessionDoc } from "@fenix/chat-channel/server";
 import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
-import { createSessionDocBinding, type SharedDocBinding } from "../yjs/doc-hub";
+import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "../yjs/doc-hub";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -270,6 +270,26 @@ describe("useTaskViews hook 生命周期", () => {
 
     h.unmount();
     release();
+  });
+
+  // 首帧 replace 会替换 DocHub 内的 Y.Doc；hook 必须重新绑定新 Session Doc，不能继续监听已销毁的旧 doc
+  test("DocHub 全量替换后重新绑定并读取任务", async () => {
+    const rcsSessionId = "rcs-task-hook-replace";
+    const h = createHarness();
+    h.render(rcsSessionId);
+    await flush();
+
+    const session = createSessionDoc(rcsSessionId, null).ydoc;
+    upsertPeriTaskView(session, makeTask({ taskId: "replaced-task", title: "后台任务" }));
+    const chat = createChatDoc(rcsSessionId, null).ydoc;
+    act(() => {
+      replaceDocHubUpdate(rcsSessionId, `chat:${rcsSessionId}`, "gen-1", Y.encodeStateAsUpdate(chat));
+      replaceDocHubUpdate(rcsSessionId, `session:${rcsSessionId}`, "gen-1", Y.encodeStateAsUpdate(session));
+    });
+    await flush();
+
+    expect(h.latest.value?.tasks.map((task) => task.taskId)).toEqual(["replaced-task"]);
+    h.unmount();
   });
 
   // 切换会话：旧会话任务不串扰，新会话快照正确跟随（DocHub 引用计数配对）

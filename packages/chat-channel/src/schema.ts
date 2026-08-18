@@ -323,7 +323,7 @@ export const PERI_UNSTABLE_EVENT_NAMES: ReadonlySet<string> = new Set([
 /** bg-task-* 的 kind allowlist（BgTaskKind snake_case） */
 export const PERI_TASK_SUBTYPE_ALLOWLIST: ReadonlySet<string> = new Set(["shell", "agent", "workflow"]);
 
-/** 规范化 Task 事件类型集合（relay gate 与 doc-manager 分支共用） */
+/** 规范化 Task 事件类型集合（DocManager 分支使用） */
 export const PERI_TASK_EVENT_TYPES: ReadonlySet<NormalizedEventType> = new Set([
   "peri_task_started",
   "peri_task_completed",

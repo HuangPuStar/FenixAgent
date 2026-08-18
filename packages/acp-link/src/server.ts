@@ -858,6 +858,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       // （同一 NDJSON/WS 输入流，不创建第二套连接），只放行已知两个 method
       extNotification: async (method: string, params: Record<string, unknown>) => {
         if (isPeriTaskNotificationMethod(method)) {
+          console.log(`[acp-link] forwarding Peri notification: method=${method}`);
           sendMsg(ws, createNotification(method, params));
         }
       },
@@ -1028,7 +1029,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
           // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
           elicitation: { form: {} },
-          // Peri Task View capability（_meta.peri.*，默认关闭，见 peri-task-capability.ts）
+          // Peri Task View capability（_meta.peri.*，见 peri-task-capability.ts）
           ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
         },
       });
@@ -1047,6 +1048,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
         // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
         `elicitationForm=true`,
+        `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
+        `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
       );
 
       sendMsg(ws, {

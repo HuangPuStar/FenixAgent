@@ -82,7 +82,7 @@ export async function installSkills(
       const targetDir = join(skillsDir, skill.name);
 
       const downloadUrl = resolveDownloadUrl(skill.url);
-      console.log(`[ccb-skill-installer] 下载 skill "${skill.name}": url=${downloadUrl.slice(0, 120)}...`);
+      console.log(`[ccb-skill-installer] 下载 skill "${skill.name}"`);
       await rm(targetDir, { recursive: true, force: true });
       await mkdir(targetDir, { recursive: true });
       await mkdir(dirname(archivePath), { recursive: true });
