@@ -314,6 +314,14 @@
     "completed": "completed",
     "inProgress": "in progress"
   },
+  "todoChanges": {
+    "added": "Added",
+    "removed": "Removed",
+    "pending": "To do",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "updated": "Updated"
+  },
   "resource": {
     "internal": "Private",
     "external": "Shared",

@@ -314,6 +314,14 @@
     "completed": "已完成",
     "inProgress": "进行中"
   },
+  "todoChanges": {
+    "added": "新增",
+    "removed": "移除",
+    "pending": "待办",
+    "in_progress": "进行中",
+    "completed": "已完成",
+    "updated": "更新"
+  },
   "resource": {
     "internal": "私有",
     "external": "共享",

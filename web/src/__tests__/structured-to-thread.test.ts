@@ -15,7 +15,7 @@ import type { NormalizedEvent, StructuredMessage } from "@fenix/chat-channel";
 // 聚合层服务端能力经 server 子路径导入（双入口边界，见 CLAUDE.md YJS 不变量 11）
 import { applyNormalizedEvent, createChatDoc, createSessionDoc, type DocPair } from "@fenix/chat-channel/server";
 import * as Y from "yjs";
-import { chatDocEntriesToStructuredMessages } from "../lib/structured-to-thread";
+import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from "../lib/structured-to-thread";
 
 let pair: DocPair;
 
@@ -77,6 +77,31 @@ describe("chatDocEntriesToStructuredMessages", () => {
     if (assistant.type !== "assistant_message") throw new Error("expected assistant message");
     expect(assistant.id).toBe("turn_1:assistant");
     expect(assistant.chunks).toEqual([{ type: "message", text: "ab" }]);
+  });
+
+  // 旧 Chat Doc 可能包含同一 turn 的多个计划快照；展示层只保留最后一次更新，
+  // 避免历史重放在 ChatView 中渲染多个“执行计划”面板。
+  test("keeps only the latest plan snapshot for each turn", () => {
+    const entries = structuredToThreadEntries([
+      {
+        type: "plan",
+        id: "plan:turn_1:0",
+        entries: [{ content: "inspect files", priority: "medium", status: "in_progress" }],
+      },
+      {
+        type: "plan",
+        id: "plan:turn_1:1",
+        entries: [{ content: "inspect files", priority: "medium", status: "completed" }],
+      },
+    ]);
+
+    expect(entries).toEqual([
+      {
+        type: "plan",
+        id: "plan:turn_1:1",
+        entries: [{ content: "inspect files", priority: "medium", status: "completed" }],
+      },
+    ]);
   });
 
   // 无文本直接工具调用：不得产生空的 assistant_message（切分点仅在文本段之间）

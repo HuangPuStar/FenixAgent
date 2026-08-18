@@ -665,7 +665,7 @@ export function clearPeriTaskViews(ydoc: Y.Doc): void {
 
 // ── 清理（领域 tombstone：不物理删除权威记录，切换会话时整 Doc 清空）──
 
-/** 清空 Chat Doc 时间线内容（entryOrder/entries/toolCalls/planSeq），保留 schema 骨架 */
+/** 清空 Chat Doc 时间线内容（entryOrder/entries/toolCalls），保留 schema 骨架并移除历史 planSeq。 */
 export function clearChatDocContent(ydoc: Y.Doc): void {
   ydoc.transact(() => {
     const root = getChatRoot(ydoc);

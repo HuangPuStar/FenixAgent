@@ -455,14 +455,14 @@ function applyTurnTerminal(
   return { applied: true };
 }
 
-/** 处理 plan：投影为 system entry（结构化字段 + 人类可读 text block） */
+/** 处理 plan：同一 turn 内原位覆盖计划快照，避免每次进度更新追加一个面板。 */
 function applyPlan(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const entries = event.update.entries;
   if (!Array.isArray(entries)) return { applied: false, reason: "plan missing entries" };
 
   const active = readActiveTurn(pair.session);
   const turnId = active.turnId ?? "global";
-  const entryId = `plan:${turnId}:${getChatRoot(pair.chat).get("planSeq") ?? 0}`;
+  const entryId = `plan:${turnId}`;
 
   const entry = ensureEntry(pair.chat, {
     entryId,
@@ -472,12 +472,6 @@ function applyPlan(pair: DocPair, event: NormalizedEvent): ApplyResult {
   });
   setEntryStatus(pair.chat, entryId, "completed");
   entry.set("planEntries", entries);
-
-  const summary = (entries as Array<Record<string, unknown>>)
-    .map((e) => `[${String(e.priority ?? "medium")}] ${String(e.content ?? "")}`)
-    .join("\n");
-  if (summary) appendEntryText(pair.chat, entryId, "text", "text", summary);
-  getChatRoot(pair.chat).set("planSeq", ((getChatRoot(pair.chat).get("planSeq") as number | undefined) ?? 0) + 1);
   return { applied: true };
 }
 

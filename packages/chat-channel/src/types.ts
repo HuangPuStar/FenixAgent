@@ -248,6 +248,8 @@ export interface PlanEntryData {
 export interface PlanMessage {
   type: "plan";
   id: string;
+  /** 计划所属 turn；同一 turn 的计划更新在展示层只保留最新快照。 */
+  turnId?: string | null;
   entries: PlanEntryData[];
 }
 

@@ -17,7 +17,8 @@ import {
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
 import i18n from "i18next";
 import * as Y from "yjs";
-import type { AssistantChunk, PlanDisplayEntry, ThreadEntry, ToolCallData, ToolCallStatus } from "./types";
+import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall } from "./todo";
+import type { AssistantChunk, PlanDisplayEntry, ThreadEntry, TodoItem, ToolCallData, ToolCallStatus } from "./types";
 
 /**
  * Session Doc 三态权限选项（allow_once/allow_session/deny）→ acp-link PermissionOption[]。
@@ -83,15 +84,31 @@ function mapStatus(status: string): ToolCallStatus {
   }
 }
 
+/** 返回计划所属 turn；旧快照从 `plan:<turnId>:<seq>` entryId 恢复归属。 */
+function planScope(message: Extract<StructuredMessage, { type: "plan" }>): string {
+  if (message.turnId !== undefined) return message.turnId ?? "global";
+  const legacyMatch = /^plan:(.+):\d+$/u.exec(message.id);
+  return legacyMatch?.[1] ?? "global";
+}
+
 /**
  * 将 Yjs StructuredMessage[] 转换为 ChatInterface 渲染用的 ThreadEntry[]。
  * 纯函数，无副作用。
  */
 export function structuredToThreadEntries(messages: StructuredMessage[]): ThreadEntry[] {
-  return messages.map((m): ThreadEntry => {
+  const entries: ThreadEntry[] = [];
+  let previousTodos: TodoItem[] | null = null;
+  // 旧快照可能已持久化为同一 turn 的多条 plan entry。计划是可更新状态而非
+  // 历史消息，因此只投影该 turn 的最后一个快照；新写入路径则已原位覆盖同一 entry。
+  const latestPlanIndexes = new Map<string, number>();
+  for (const [index, message] of messages.entries()) {
+    if (message.type === "plan") latestPlanIndexes.set(planScope(message), index);
+  }
+
+  for (const [index, m] of messages.entries()) {
     switch (m.type) {
       case "assistant_message":
-        return {
+        entries.push({
           type: "assistant_message",
           id: m.id,
           chunks: m.chunks.map(
@@ -101,14 +118,16 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
             }),
           ),
           error: m.error,
-        };
+        });
+        break;
 
       case "user_message":
-        return {
+        entries.push({
           type: "user_message",
           id: m.id,
           content: m.content,
-        };
+        });
+        break;
 
       case "tool_call": {
         const permReq = m.permissionRequest
@@ -117,6 +136,9 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
               options: [...m.permissionRequest.options],
             } as unknown as ToolCallData["permissionRequest"])
           : undefined;
+        const todos = isTodoWriteToolCall(m.title, m.rawInput) ? getTodosFromRawInput(m.rawInput) : null;
+        const todoChanges = todos ? getTodoChanges(previousTodos ?? [], todos) : undefined;
+        if (todos) previousTodos = todos;
 
         const toolCallData: ToolCallData = {
           id: m.id,
@@ -136,16 +158,19 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
                 truncated: m.display.truncated,
               }
             : undefined,
+          todoChanges,
           permissionRequest: permReq,
           isStandalonePermission: m.isStandalonePermission,
           publicError: m.publicError,
           subEntries: m.subMessages ? structuredToThreadEntries(m.subMessages) : undefined,
         };
-        return { type: "tool_call", toolCall: toolCallData };
+        entries.push({ type: "tool_call", toolCall: toolCallData });
+        break;
       }
 
       case "plan":
-        return {
+        if (latestPlanIndexes.get(planScope(m)) !== index) break;
+        entries.push({
           type: "plan",
           id: m.id,
           entries: m.entries.map((e) => ({
@@ -153,16 +178,19 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
             priority: e.priority,
             status: e.status,
           })),
-        } as PlanDisplayEntry;
+        } as PlanDisplayEntry);
+        break;
 
       default:
-        return {
+        entries.push({
           type: "assistant_message",
           id: `unknown-${Date.now()}`,
           chunks: [],
-        };
+        });
     }
-  });
+  }
+
+  return entries;
 }
 
 // =============================================================================
@@ -404,6 +432,7 @@ function deriveEntryMessages(
       derived.push({
         type: "plan",
         id: entryId,
+        turnId: (entry.get("turnId") as string | null | undefined) ?? null,
         entries: planEntries.map((e) => ({
           content: (e.content as string) || "",
           priority: (e.priority as "high" | "medium" | "low") || "medium",

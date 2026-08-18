@@ -414,6 +414,28 @@ test("terminal with matching turnId terminates the active turn", () => {
   expect(getEntry(pair.chat, "turn_1:assistant")?.get("status")).toBe("completed");
 });
 
+// 同一 turn 的 plan 是可更新状态，后续快照原位覆盖而非追加多个执行计划面板
+test("plan updates replace the current turn plan instead of appending entries", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(
+    pair,
+    event("plan", {
+      entries: [{ content: "inspect files", priority: "medium", status: "in_progress" }],
+    }),
+  );
+  applyNormalizedEvent(
+    pair,
+    event("plan", {
+      entries: [{ content: "inspect files", priority: "medium", status: "completed" }],
+    }),
+  );
+
+  expect(getEntryOrder(pair.chat).toArray()).toEqual(["turn_1:user", "turn_1:assistant", "plan:turn_1"]);
+  expect(getEntry(pair.chat, "plan:turn_1")?.get("planEntries")).toEqual([
+    { content: "inspect files", priority: "medium", status: "completed" },
+  ]);
+});
+
 // 终态常量覆盖全部合法终态（供状态机使用方校验）
 test("terminal status set covers all final states", () => {
   for (const status of ["cancelled", "interrupted", "failed", "completed"] as TurnStatus[]) {
