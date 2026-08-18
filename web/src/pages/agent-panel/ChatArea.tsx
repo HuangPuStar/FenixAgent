@@ -65,7 +65,9 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // 按 agentName 过滤：ChatArea 维护跨 agent 的 session keep-alive 槽位，
   // 后台隐藏槽位（延迟节流 flush / 重连收流中）派发的 chat:stats 不得污染当前 agent 的面板
   const changedFiles = useChangedFilesFromStats(agentId);
-  const [restartKey, setRestartKey] = useState(0);
+  // 当前 slot 会在清理缓存后立即回填，必须单独递增重连版本以重新获取新实例的 capabilities。
+  const [agentRestartVersions, setAgentRestartVersions] = useState<Record<string, number>>({});
+  const activeAgentRestartVersion = agentId ? (agentRestartVersions[agentId] ?? 0) : 0;
 
   // ProdView 模块配置：若所有附加面板都被禁用，则不渲染右侧面板区域
   const hasPanelModules = useMemo(() => {
@@ -93,19 +95,23 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.envId && detail.envId === agentId) {
-        setRestartKey((k) => k + 1);
-        // 清除同 agent 所有 session slot，重建 ChatPanel
-        setSessionSlots((prev) => {
-          const next: Record<string, SessionSlot> = {};
-          for (const [key, slot] of Object.entries(prev)) {
-            if (slot.agentId !== agentId) {
-              next[key] = slot;
-            }
+      const restartedEnvironmentId = detail?.envId;
+      if (typeof restartedEnvironmentId !== "string" || restartedEnvironmentId !== agentId) return;
+
+      setAgentRestartVersions((versions) => ({
+        ...versions,
+        [restartedEnvironmentId]: (versions[restartedEnvironmentId] ?? 0) + 1,
+      }));
+      // 清除同 agent 所有 session slot，重建 ChatPanel
+      setSessionSlots((prev) => {
+        const next: Record<string, SessionSlot> = {};
+        for (const [key, slot] of Object.entries(prev)) {
+          if (slot.agentId !== restartedEnvironmentId) {
+            next[key] = slot;
           }
-          return next;
-        });
-      }
+        }
+        return next;
+      });
     };
     window.addEventListener("agent:reconnect", handler);
     return () => window.removeEventListener("agent:reconnect", handler);
@@ -123,8 +129,9 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // 使非活跃面板的 SessionsProvider 能感知到自己被隐藏，从而停止轮询
   const chatPanels = Object.entries(allSlots).map(([key, slot]) => {
     const isActive = key === currentSessionKey && visible;
+    const restartVersion = agentRestartVersions[slot.agentId] ?? 0;
     return (
-      <ChatPageVisibleContext.Provider key={key} value={isActive}>
+      <ChatPageVisibleContext.Provider key={`${key}:${restartVersion}`} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>
           <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
         </div>
@@ -246,7 +253,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
                   onResize={handleArtifactsResize}
                 >
                   <ArtifactsPanel
-                    key={`${agentId}-${restartKey}`}
+                    key={`${agentId}-${activeAgentRestartVersion}`}
                     envId={agentId}
                     agentConfigId={agentConfigId}
                     changedFiles={changedFiles}
