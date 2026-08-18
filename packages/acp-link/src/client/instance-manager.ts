@@ -88,6 +88,14 @@ export class InstanceManager {
     const effectiveType = (engineType ?? this.defaultEngine) as AgentType;
     const handler = this.getHandler(effectiveType);
     const workspace = this.resolveWorkspace(launchSpec);
+    const existing = this.instances.get(instanceId);
+
+    if (existing?.agentType !== undefined && existing.agentType !== effectiveType) {
+      throw new Error(`Cannot change engine type for running instance ${instanceId}`);
+    }
+    if (existing?.workspace !== undefined && existing.workspace !== workspace) {
+      throw new Error(`Cannot change workspace for running instance ${instanceId}`);
+    }
 
     await mkdir(workspace, { recursive: true });
 
@@ -96,6 +104,14 @@ export class InstanceManager {
     }
 
     await handler.prepareWorkspace(workspace, launchSpec);
+
+    if (existing) {
+      // 在线实例刷新只替换配置快照，必须保留 process/connection/dispatcher/sessionState；
+      // 否则下一条 session/new 会因 dispatcher 被清空而无法送达现有 Agent 进程。
+      existing.launchSpec = launchSpec;
+      console.log(`[instance-manager] refreshed: ${instanceId} at ${workspace} (type=${effectiveType})`);
+      return;
+    }
 
     this.instances.set(instanceId, {
       instanceId,

@@ -25,7 +25,7 @@ import {
   startPromptTurn,
 } from "../agent-chat-service";
 import { ensureRunning } from "../instance";
-import { terminateLocalDeadInstance } from "../orchestration-instance";
+import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../orchestration-instance";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");
@@ -408,7 +408,10 @@ class AgentChatTransport implements Transport {
     // activity 硬超时兜底
     let turn: PromptTurn;
     try {
-      ({ turn } = await startPromptTurn({ session: chatSession }));
+      ({ turn } = await startPromptTurn({
+        session: chatSession,
+        prepareNewSession: () => refreshInstanceEnvironment(instance.id, envRow.id, options?.userId ?? envRow.userId),
+      }));
     } catch (err) {
       markInstanceRelayDetached(instance.id);
       // 租约配对归还（与 acquire 配对）：session/new、session/load 失败时本次

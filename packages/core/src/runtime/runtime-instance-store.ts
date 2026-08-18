@@ -39,6 +39,8 @@ export interface CreateRuntimeInstanceRecordInput {
 export interface UpdateRuntimeInstanceRecordInput {
   /** 需要推进到的新状态；未传则保持原值。 */
   status?: RuntimeInstanceStatus;
+  /** 刷新后要保存的完整启动配置。 */
+  launchSpec?: AgentLaunchSpec;
   /** 是否已建立 relay 连接。 */
   relayConnected?: boolean;
   /** 当前错误信息，仅 `error` 状态下保留。 */
@@ -200,6 +202,7 @@ export function createRuntimeInstanceStore(options?: { now?: RuntimeClock }): Ru
       const nextRecord: RuntimeInstanceRecord = {
         ...current,
         status: nextStatus,
+        launchSpec: input.launchSpec ? cloneLaunchSpec(input.launchSpec) : current.launchSpec,
         relayConnected: input.relayConnected ?? current.relayConnected,
         errorMessage: nextStatus === "error" ? (input.errorMessage ?? current.errorMessage) : undefined,
         pluginMetadata: input.pluginMetadata ?? current.pluginMetadata,

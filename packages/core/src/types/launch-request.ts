@@ -25,6 +25,19 @@ export interface ConnectInstanceRelayRequest {
 }
 
 /**
+ * 刷新已运行实例环境所需的请求。
+ *
+ * 调用方必须在发起依赖工作区配置的新 ACP session 前完成刷新；该操作不重启 Agent
+ * 进程，也不重建 relay。
+ */
+export interface RefreshInstanceEnvironmentRequest {
+  /** 要刷新环境的运行中实例 ID。 */
+  instanceId: string;
+  /** 当前配置态重新构建出的完整启动配置。 */
+  launchSpec: AgentLaunchSpec;
+}
+
+/**
  * 停止实例的最小请求。
  */
 export interface StopInstanceRequest {

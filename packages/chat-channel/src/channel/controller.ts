@@ -38,6 +38,8 @@ export interface ChatChannelDependencies {
   ) => Promise<{ instance: { id: string } }>;
   /** relay 连接（宿主 connectAgentRelay 语义） */
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<ClientConnection["relayHandle"]>;
+  /** 新 ACP session 创建前刷新复用实例的 workspace 配置与 Skills。 */
+  refreshInstanceEnvironment: (instanceId: string, agentId: string, userId: string) => Promise<void>;
   /** 空闲监控（宿主 acp-idle-monitor 语义）：relay 附着/分离与活跃观测 */
   markRelayAttached: (instanceId: string) => void;
   markRelayDetached: (instanceId: string) => void;
@@ -74,6 +76,8 @@ export class ChatChannelController {
     this.broadcaster = new YjsBroadcaster(this.registry, { reportLog: dependencies.log });
     this.sessionChannel = new SessionChannel({
       docManager: dependencies.docManager,
+      refreshInstanceEnvironment: (connection) =>
+        dependencies.refreshInstanceEnvironment(connection.instanceId, connection.agentId, connection.userId),
       prepareClearSessionSnapshot: dependencies.prepareClearSessionSnapshot,
       replaceProjection: (projection) => {
         const chatName = `chat:${projection.rcsSessionId}`;

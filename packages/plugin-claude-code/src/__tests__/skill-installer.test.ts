@@ -37,6 +37,34 @@ describe("claude-code skill-installer", () => {
     }
   });
 
+  // 新 skill 下载失败时必须保留旧目录，避免刷新失败破坏现有会话。
+  test("keeps previously installed skills when a replacement download fails", async () => {
+    const workspace = await createWorkspace();
+    try {
+      const successfulFetch = (async () => new Response("zip-bytes")) as unknown as typeof fetch;
+      await installSkills(workspace, [{ name: "existing", url: "https://example.com/existing.zip" }], {
+        fetch: successfulFetch,
+        extractArchive: async (_archivePath, targetDir) => {
+          await writeFile(join(targetDir, "SKILL.md"), "# existing\n", "utf8");
+        },
+      });
+
+      const failedFetch = (async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+      await expect(
+        installSkills(workspace, [{ name: "replacement", url: "https://example.com/replacement.zip" }], {
+          fetch: failedFetch,
+        }),
+      ).rejects.toThrow("Failed to download skill 'replacement'");
+
+      await expect(readFile(join(workspace, ".claude", "skills", "existing", "SKILL.md"), "utf8")).resolves.toContain(
+        "existing",
+      );
+      await expect(access(join(workspace, ".claude", "skills", "replacement"))).rejects.toThrow();
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   // skill 从有到无时，应清理 workspace 中残留的旧 skill 目录
   test("removes stale installed skills when launchSpec no longer declares them", async () => {
     const workspace = await createWorkspace();

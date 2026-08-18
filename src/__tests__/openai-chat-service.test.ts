@@ -89,19 +89,16 @@ describe("startPromptTurn", () => {
     expect(turn.prompt).toBeDefined();
   });
 
-  // session/load
-  test("session/load 时传入 sessionId", async () => {
+  // 新会话必须在发送 session/new 前完成 workspace/Skills 刷新。
+  test("新建 session 时先刷新环境再发送 session/new", async () => {
+    const calls: string[] = [];
     let handler: (msg: any) => void = () => {};
-    let receivedMethod = "";
     const handle = makeMockRelayHandle({
       send: (_msg: any) => {
-        receivedMethod = (_msg as any)?.method;
-        if (receivedMethod === "session/load") {
-          // 回显请求携带的 id（而非固定 -1）：rpcId 已改为进程内唯一生成，固定回显会使响应失配
-          const reqId = (_msg as any)?.id;
-          setTimeout(() => {
-            handler({ jsonrpc: "2.0", id: reqId, result: { sessionId: "ses_existing" } });
-          }, 5);
+        calls.push(_msg.method);
+        if (_msg.method === "session/new") {
+          const reqId = _msg.id;
+          setTimeout(() => handler({ jsonrpc: "2.0", id: reqId, result: { sessionId: "ses_refreshed" } }), 0);
         }
       },
       onMessage: (h: any) => {
@@ -109,15 +106,45 @@ describe("startPromptTurn", () => {
         return () => {};
       },
     });
+    const session = createAgentSession({ relayHandle: handle, instanceId: "inst-test" });
 
-    const session = createAgentSession({
-      relayHandle: handle,
-      instanceId: "inst-test",
-      stopInstance: async () => {},
+    await startPromptTurn({
+      session,
+      prepareNewSession: async () => {
+        calls.push("refresh");
+      },
     });
 
-    await startPromptTurn({ session, sessionId: "ses_existing" });
-    expect(receivedMethod).toBe("session/load");
+    expect(calls).toEqual(["refresh", "session/new"]);
+  });
+
+  // 恢复既有 ACP session 不创建新会话，不应触发新会话环境刷新。
+  test("session/load 不刷新新会话环境", async () => {
+    let refreshCalls = 0;
+    let handler: (msg: any) => void = () => {};
+    const handle = makeMockRelayHandle({
+      send: (_msg: any) => {
+        if (_msg.method === "session/load") {
+          const reqId = _msg.id;
+          setTimeout(() => handler({ jsonrpc: "2.0", id: reqId, result: { sessionId: "ses_existing" } }), 0);
+        }
+      },
+      onMessage: (h: any) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    const session = createAgentSession({ relayHandle: handle, instanceId: "inst-test" });
+
+    await startPromptTurn({
+      session,
+      sessionId: "ses_existing",
+      prepareNewSession: async () => {
+        refreshCalls++;
+      },
+    });
+
+    expect(refreshCalls).toBe(0);
   });
 });
 
