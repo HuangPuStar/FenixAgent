@@ -3,6 +3,7 @@ import type {
   ChatStateSnapshot,
   ContentBlock,
   ImageContent,
+  PeriTaskViewProjection,
   PromptUsage,
   SessionMode,
   SessionStateSnapshot,
@@ -20,6 +21,8 @@ import type { ChatInputMessage, PendingPermission, ThreadEntry, UserMessageImage
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
+import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
+import { PeriTaskList } from "./chat/PeriTaskList";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import { QuestionPanel } from "./chat/QuestionPanel";
 import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
@@ -70,6 +73,7 @@ interface ChatInterfaceProps {
   readonly?: boolean;
   hideContextPanel?: boolean;
   rcsSessionId?: string;
+  detailSessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
   scenePrompt?: string;
   onPromptComplete?: () => void;
@@ -100,6 +104,14 @@ interface ChatInterfaceProps {
   modelName: string | undefined;
   /** ACP prompt_complete 返回的真实 token 用量 */
   tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+
+  // ── Peri Task 视图（切片 2，会话活动面板）──
+  /** Session Doc tasks/taskOrder 派生任务视图（引用稳定，任务内容未变时不变） */
+  periTasks?: readonly PeriTaskViewProjection[];
+  /** tasks/taskOrder 子树是否已同步（未同步时面板显示加载态） */
+  periTasksLoaded?: boolean;
+  /** WS 连接状态（重连中时任务面板提示列表可能不完整） */
+  connectionState?: string;
 }
 
 // =============================================================================
@@ -118,6 +130,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     readonly,
     hideContextPanel,
     rcsSessionId,
+    detailSessionId,
     onSessionCreated,
     scenePrompt,
     contextKey,
@@ -137,6 +150,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     supportsImages,
     modelName,
     tokenUsage,
+    periTasks = [],
+    periTasksLoaded = false,
+    connectionState,
   },
   ref,
 ) {
@@ -501,9 +517,29 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     [isLoading, onSendPrompt, scenePrompt, activeSessionId, onCreateSession],
   );
 
+  const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
+
   return (
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0">
+        {/* Peri Task 会话活动面板 — 时间线上方（切片 2：Task View 权威入口）。
+            只读 Session Doc tasks/taskOrder 投影，不触发任何 Detail 请求；
+            loaded/empty/reconnecting 状态由 PeriTaskList 内部收敛 */}
+        <PeriTaskList
+          tasks={periTasks}
+          loaded={periTasksLoaded}
+          reconnecting={connectionState !== "connected"}
+          onOpenDetail={agentId && detailSessionId ? setSelectedPeriTask : undefined}
+        />
+        {agentId && detailSessionId ? (
+          <PeriTaskDetailSheet
+            environmentId={agentId}
+            sessionId={detailSessionId}
+            task={selectedPeriTask}
+            onClose={() => setSelectedPeriTask(null)}
+          />
+        ) : null}
+
         {/* Chat messages — unified ChatView */}
         <ChatView
           entries={renderEntries}

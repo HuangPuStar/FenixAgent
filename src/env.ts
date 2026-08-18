@@ -153,6 +153,19 @@ const envSchema = z.object({
   RCS_YJS_SNAPSHOT_IDLE_MS: z.coerce.number().int().positive().default(500),
   RCS_YJS_SNAPSHOT_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
 
+  // ── 可选：Peri Task View（切片 1 灰度开关）──
+  // 默认 false。控制三件事：acp-link 是否在 initialize 中声明 peri.agentEvent /
+  // peri.unstableEvent capability（源头决定 Peri 是否发射）、宿主是否接收并投影
+  // Peri Task、前端是否展示 Task View。关闭时源头不发，避免无意义流量；机器端
+  // 可能先升级（声明 capability）而宿主未开，relay 层有独立 gate 防御（见
+  // RelayEventHandlerDependencies.enablePeriTaskView）。回滚只需关闭本变量：
+  // 新连接不再声明 capability、Peri 不再发两通道、Session Doc v4 已有 tasks
+  // subtree 可被旧前端忽略（schema 不降级不删数据）。
+  RCS_PERI_TASK_VIEW_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
   // ── 可选：Workspace 路径 ──
   WORKSPACE_ROOT: z.string().optional(),
 

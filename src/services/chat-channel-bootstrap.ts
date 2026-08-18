@@ -18,6 +18,7 @@ import {
 import { log, error as logError } from "@fenix/logger";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import { config } from "../config";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "./acp-idle-monitor";
@@ -138,6 +139,8 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,
     maxClients: deps.maxClients,
+    // Peri Task View 开关（默认 false）：relay 层据此丢弃 peri_task_* 事件
+    enablePeriTaskView: config.periTaskViewEnabled,
     log: deps.log,
     reportError: deps.logError,
   };

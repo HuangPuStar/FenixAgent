@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
+import { useTaskViews } from "../../hooks/use-task-views";
 import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
@@ -112,6 +113,10 @@ export function ChatPanel({
 
   // Session Doc — 按 RCS session ID 命名（与 chatHook 同一 hub entry，共享 doc 副本）
   const { state: sessionState } = useSessionState(docHubKey);
+
+  // Peri Task 视图 — 只订阅 Session Doc 的 tasks/taskOrder 子树（DocHub 共享实例，
+  // 与上面两个 hook 同一份 doc；Chat Doc token 流不触发本 selector 重算）
+  const { state: periTaskState } = useTaskViews(docHubKey);
 
   // 调试：通过 ref 追踪最新 YJS 状态，控制台输入 __yjs_dump__() 查看，不会阻止 GC
   const yjsChatRef = useRef(chatState);
@@ -516,12 +521,16 @@ export function ChatPanel({
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
           // URL sessionId 是实例会话标识（ses_inst_*），仅用于 WS 建连参数
           rcsSessionId={rcsSessionKey ?? undefined}
+          detailSessionId={sessionId ?? undefined}
           scenePrompt={scenePrompt}
           contextKey={contextKey}
           onPromptComplete={onPromptComplete}
           chatState={chatState}
           sessionState={sessionState}
           connectionState={connectionState}
+          // Peri Task 视图（切片 2）：会话活动面板数据，经 ACPMain 透传给 ChatInterface
+          periTasks={periTaskState.tasks}
+          periTasksLoaded={periTaskState.loaded}
           supportsImages={derivedState.supportsImages}
           supportsLoadSession={derivedState.supportsLoadSession}
           modelName={derivedState.modelName}

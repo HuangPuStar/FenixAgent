@@ -3,6 +3,7 @@ import type {
   AvailableCommand,
   ChatStateSnapshot,
   ContentBlock,
+  PeriTaskViewProjection,
   SessionMode,
   SessionStateSnapshot,
 } from "@fenix/chat-channel";
@@ -25,6 +26,8 @@ interface ACPMainProps {
   readonly?: boolean;
   hideSidebar?: boolean;
   rcsSessionId?: string;
+  /** 服务端确定性计算 rcsSessionId 使用的实例会话标识 */
+  detailSessionId?: string;
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
@@ -55,6 +58,12 @@ interface ACPMainProps {
   supportsModeSelection?: boolean;
   modelName?: string;
   tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+
+  // ── Peri Task 视图（切片 2，会话活动面板）──
+  /** Session Doc tasks/taskOrder 派生任务视图（非终态在前排序，引用稳定） */
+  periTasks?: readonly PeriTaskViewProjection[];
+  /** tasks/taskOrder 子树是否已同步（未同步时任务面板显示加载态） */
+  periTasksLoaded?: boolean;
 }
 
 /**
@@ -66,6 +75,7 @@ export function ACPMain({
   readonly,
   hideSidebar,
   rcsSessionId,
+  detailSessionId,
   scenePrompt,
   contextKey,
   onPromptComplete,
@@ -91,6 +101,8 @@ export function ACPMain({
   supportsModeSelection = false,
   modelName,
   tokenUsage,
+  periTasks = [],
+  periTasksLoaded = false,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   const sessions = chatState?.sessions ?? [];
@@ -370,6 +382,7 @@ export function ACPMain({
             readonly={readonly}
             hideContextPanel={true}
             rcsSessionId={rcsSessionId}
+            detailSessionId={detailSessionId}
             scenePrompt={scenePrompt}
             contextKey={contextKey}
             onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
@@ -389,6 +402,9 @@ export function ACPMain({
             supportsImages={supportsImages}
             modelName={modelName}
             tokenUsage={tokenUsage}
+            connectionState={connectionState}
+            periTasks={periTasks}
+            periTasksLoaded={periTasksLoaded}
           />
         </div>
       </div>

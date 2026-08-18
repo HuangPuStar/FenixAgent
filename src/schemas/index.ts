@@ -230,6 +230,13 @@ export {
   type OrganizationMember,
   OrganizationMemberSchema,
 } from "./organization.schema";
+export {
+  type PeriTaskDetail,
+  PeriTaskDetailParamsSchema,
+  PeriTaskDetailQuerySchema,
+  PeriTaskDetailResponseSchema,
+  PeriTaskDetailSchema,
+} from "./peri-task-details";
 // Registry
 export {
   type EventQuery,

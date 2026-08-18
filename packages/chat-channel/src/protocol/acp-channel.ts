@@ -6,8 +6,27 @@
 // （session/update 语义：增量、内容块、终态），聚合层只消费规范化事件。
 //
 // 双格式兼容：原始 { type, payload } 与包裹 { type, payload: { jsonrpc: "2.0", ... } }。
+//
+// Peri Task 通道（切片 0B）：显式识别 `peri/agent_event`（Subagent 生命周期，
+// event_json 内嵌 AcpEvent DTO）与 `peri/unstable_event`（Background Task，
+// { event, data } 信封），翻译为 NormalizedPeriTaskEvent。未知 event type /
+// 非法 event_json / 缺字段一律返回 null（不生成 unknown Task，避免把任意 Peri
+// 控制事件暴露到 UI）；raw payload 不写入日志，拒绝原因只记录脱敏 code。
 
-import type { NormalizedEvent, NormalizedEventType } from "../schema";
+import {
+  type NormalizedEvent,
+  type NormalizedEventType,
+  type NormalizedPeriTaskEvent,
+  PERI_AGENT_EVENT_METHOD,
+  PERI_AGENT_EVENT_TYPES,
+  PERI_TASK_FALLBACK_TITLE,
+  PERI_TASK_SUBTYPE_ALLOWLIST,
+  PERI_TASK_SUMMARY_MAX,
+  PERI_TASK_TITLE_MAX,
+  PERI_UNSTABLE_EVENT_METHOD,
+  PERI_UNSTABLE_EVENT_NAMES,
+  truncateUtf8Safe,
+} from "../schema";
 
 /** 从消息中提取 JSON-RPC 对象（兼容原始和包裹两种格式） */
 export function extractJsonRpc(msg: Record<string, unknown>): Record<string, unknown> | null {
@@ -136,10 +155,14 @@ function resolveToolCallType(payload: Record<string, unknown> | undefined): Norm
   return "tool_call_started";
 }
 
-/** 从消息中提取 ACP sessionId（session/update 通知的 params.sessionId） */
+/**
+ * 从消息中提取 ACP sessionId。
+ * session-bound notification（session/update、peri/agent_event、peri/unstable_event）
+ * 的 sessionId 都在 params.sessionId；兼容顶层 session_id/sessionId 的历史形态。
+ */
 function extractSessionId(message: Record<string, unknown>): string | null {
   const rpc = extractJsonRpc(message);
-  if (rpc?.method === "session/update") {
+  if (rpc?.method) {
     const params = rpc.params as Record<string, unknown> | undefined;
     const sessionId = params?.sessionId;
     if (typeof sessionId === "string" && sessionId.length > 0) return sessionId;
@@ -158,6 +181,186 @@ function extractContent(payload: Record<string, unknown> | undefined): Record<st
     return payload;
   }
   return null;
+}
+
+// ── Peri Task 事件规范化（切片 0B）──
+
+/**
+ * 将外部摘要收敛为可展示文本。
+ * 先擦除常见凭证、URL 与本机绝对路径，再执行长度限制；这是纵深防御，
+ * 上游仍不得在 result/output_preview 中返回秘密。
+ */
+function boundedSummary(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const redacted = raw
+    .trim()
+    .replace(/\b(?:https?|wss?):\/\/[^\s<>'"`]+/giu, "[REDACTED_URL]")
+    .replace(
+      /\b(?:bearer\s+)?[A-Za-z0-9_-]*(?:token|secret|password|api[_-]?key)[A-Za-z0-9_-]*\s*[:=]\s*[^\s,;]+/giu,
+      "[REDACTED_SECRET]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/giu, "[REDACTED_SECRET]")
+    .replace(
+      /(?:^|\s)(?:~\/|\/(?:Users|home|var|tmp|private|etc|opt|srv|workspace)\/)[^\s<>'"`]+/gu,
+      (value) => `${value.startsWith(" ") ? " " : ""}[REDACTED_PATH]`,
+    );
+  if (redacted.length === 0) return null;
+  return truncateUtf8Safe(redacted, PERI_TASK_SUMMARY_MAX);
+}
+
+/** 读取稳定字符串字段（非字符串/缺字段返回 null，缺失字段的标题用安全 fallback） */
+function readString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** 读取布尔字段（仅显式布尔值，缺省返回 fallback） */
+function readBool(record: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const value = record[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+/**
+ * 解析 `peri/agent_event` 的 event_json（AcpEvent DTO 的 JSON 字符串）。
+ * 只接收 subagent_started / subagent_stopped；JSON 解析失败、缺字段、其他 event
+ * type 返回 null。result 只作为有界摘要候选（截断 + 脱敏，不保留完整内容）。
+ */
+function normalizePeriAgentEvent(eventJson: string, acpSessionId: string | null): NormalizedPeriTaskEvent | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(eventJson);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const record = parsed as Record<string, unknown>;
+  const type = record.type;
+  if (typeof type !== "string" || !PERI_AGENT_EVENT_TYPES.has(type)) return null;
+  const value = record.value;
+  if (typeof value !== "object" || value === null) return null;
+  const data = value as Record<string, unknown>;
+  const instanceId = readString(data, "instance_id");
+  if (!instanceId) return null;
+  const agentName = readString(data, "agent_name");
+  const receivedAt = new Date().toISOString();
+
+  if (type === "subagent_started") {
+    const title = agentName ? truncateUtf8Safe(agentName, PERI_TASK_TITLE_MAX) : PERI_TASK_FALLBACK_TITLE;
+    return {
+      type: "peri_task_started",
+      update: {},
+      content: null,
+      acpSessionId,
+      taskId: instanceId,
+      kind: "subagent",
+      taskSubtype: null,
+      title,
+      summary: null,
+      sourceStartedAt: null,
+      receivedAt,
+      // Subagent 也可能是后台运行（is_background wire 字段），标记保留给展示层
+      isBackground: readBool(data, "is_background", false),
+      detailAvailability: "unavailable",
+    };
+  }
+
+  // subagent_stopped
+  const isError = readBool(data, "is_error", false);
+  const result = boundedSummary(data.result);
+  return {
+    type: "peri_task_completed",
+    update: {},
+    content: null,
+    acpSessionId,
+    taskId: instanceId,
+    kind: "subagent",
+    success: !isError,
+    summary: result,
+    durationMs: null,
+    receivedAt,
+    detailAvailability: result ? "preview" : "unavailable",
+  };
+}
+
+/**
+ * 解析 `peri/unstable_event`（{ event, data } 信封，bg-task-*）。
+ * kind allowlist 为 shell | agent | workflow；output_preview 只作为有界摘要候选。
+ * 未知 event 忽略，不生成 unknown Task。
+ */
+function normalizePeriUnstableEvent(
+  eventName: unknown,
+  rawData: unknown,
+  acpSessionId: string | null,
+): NormalizedPeriTaskEvent | null {
+  if (typeof eventName !== "string" || !PERI_UNSTABLE_EVENT_NAMES.has(eventName)) return null;
+  if (typeof rawData !== "object" || rawData === null) return null;
+  const data = rawData as Record<string, unknown>;
+  const taskId = readString(data, "task_id");
+  if (!taskId) return null;
+  const kind = readString(data, "kind");
+  const taskSubtype = kind && PERI_TASK_SUBTYPE_ALLOWLIST.has(kind) ? (kind as "shell" | "agent" | "workflow") : null;
+  const receivedAt = new Date().toISOString();
+
+  if (eventName === "bg-task-started") {
+    const summary = boundedSummary(data.summary);
+    const title = summary
+      ? truncateUtf8Safe(summary, PERI_TASK_TITLE_MAX)
+      : kind && PERI_TASK_SUBTYPE_ALLOWLIST.has(kind)
+        ? truncateUtf8Safe(kind, PERI_TASK_TITLE_MAX)
+        : PERI_TASK_FALLBACK_TITLE;
+    const startedAt = readString(data, "started_at");
+    return {
+      type: "peri_task_started",
+      update: {},
+      content: null,
+      acpSessionId,
+      taskId,
+      kind: "background",
+      taskSubtype,
+      title,
+      summary,
+      // started_at 必须为合法 ISO 时间，否则聚合层降级为 receivedAt（不拒绝事件）
+      sourceStartedAt: startedAt,
+      receivedAt,
+      isBackground: true,
+      detailAvailability: summary ? "preview" : "unavailable",
+    };
+  }
+
+  if (eventName === "bg-task-completed") {
+    const success = typeof data.success === "boolean" ? data.success : false;
+    const preview = boundedSummary(data.output_preview);
+    // duration_ms 只收非负有限数；非法值返回 null（由聚合层缺省）
+    const durationMs =
+      typeof data.duration_ms === "number" && Number.isFinite(data.duration_ms) ? data.duration_ms : null;
+    return {
+      type: "peri_task_completed",
+      update: {},
+      content: null,
+      acpSessionId,
+      taskId,
+      kind: "background",
+      success,
+      summary: preview,
+      durationMs,
+      receivedAt,
+      detailAvailability: preview ? "preview" : "unavailable",
+    };
+  }
+
+  // bg-task-cancelled：reason 不进入 Y.Doc（raw cancellation reason 禁止），
+  // 只以固定 reasonCode 表示取消终态
+  return {
+    type: "peri_task_cancelled",
+    update: {},
+    content: null,
+    acpSessionId,
+    taskId,
+    kind: "background",
+    reasonCode: "cancelled",
+    receivedAt,
+    detailAvailability: "unavailable",
+  };
 }
 
 /**
@@ -190,6 +393,18 @@ export function normalizeAcpMessage(rawMessage: unknown, msgType?: string): Norm
       };
     }
     return null;
+  }
+
+  // 1.5. Peri Subagent / Background Task 通道：显式识别两个 wire method。
+  // 未知 event type / 非法 payload 一律返回 null（不生成 unknown Task）。
+  if (rpc?.method === PERI_AGENT_EVENT_METHOD) {
+    const eventJson = (rpc.params as Record<string, unknown> | undefined)?.event_json;
+    if (typeof eventJson !== "string") return null;
+    return normalizePeriAgentEvent(eventJson, acpSessionId);
+  }
+  if (rpc?.method === PERI_UNSTABLE_EVENT_METHOD) {
+    const params = rpc.params as Record<string, unknown> | undefined;
+    return normalizePeriUnstableEvent(params?.event, params?.data, acpSessionId);
   }
 
   // 2. JSON-RPC 响应中的 prompt 结果（含 stopReason → turn 终态）与 cancel 确认

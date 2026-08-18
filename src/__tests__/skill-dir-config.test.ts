@@ -52,6 +52,8 @@ function makeEnv(skillDir: string): Env {
     RCS_YJS_SNAPSHOT_INTERVAL_MS: 2000,
     RCS_YJS_SNAPSHOT_IDLE_MS: 500,
     RCS_YJS_SNAPSHOT_TTL_SECONDS: 604800,
+    // Peri Task View 灰度开关（默认 false，见 src/env.ts）
+    RCS_PERI_TASK_VIEW_ENABLED: false,
   };
 }
 

@@ -12,6 +12,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "../json-rpc.js";
+import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
@@ -121,14 +122,26 @@ export class SessionManager {
           },
           readTextFile: async (_p) => ({ content: "" }),
           writeTextFile: async (_p) => ({}),
+          // SDK 扩展 notification 入口：把 peri/* 通知经 session_data 包裹转发到
+          // 现有 relay（extractJsonRpc 兼容包裹格式），不创建第二套 JSON-RPC 栈
+          extNotification: async (method: string, params: Record<string, unknown>) => {
+            if (this.activeRelayId && isPeriTaskNotificationMethod(method)) {
+              this.emit(this.activeRelayId, "session_data", createNotification(method, params));
+            }
+          },
         }),
         stream,
       );
 
+      const periMeta = buildPeriCapabilityMeta();
       const initResult = await connection.initialize({
         protocolVersion: acp.PROTOCOL_VERSION,
         clientInfo: { name: "rcs-relay", version: "1.0.0" },
-        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          // Peri Task View capability（_meta.peri.*，默认关闭，见 peri-task-capability.ts）
+          ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
+        },
       });
       this.initPromise = Promise.resolve();
 

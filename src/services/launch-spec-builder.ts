@@ -444,6 +444,18 @@ function buildLangfuseEnv(): Record<string, string> {
 }
 
 /**
+ * 构造透传给 machine 上 acp-link 进程的 Peri Task View 开关。
+ * acp-link 可能运行在独立 machine 进程（capability 声明发生在该进程内），
+ * 不能在包内假设宿主环境变量天然可见；宿主开启 RCS_PERI_TASK_VIEW_ENABLED 时
+ * 经 launchSpec.env 派发同名变量，machine 端据此声明 peri.* capability。
+ * 未开启时不注入（关闭时源头不发，避免无意义流量）。
+ */
+function buildPeriTaskEnv(): Record<string, string> {
+  if (!config.periTaskViewEnabled) return {};
+  return { RCS_PERI_TASK_VIEW_ENABLED: "true" };
+}
+
+/**
  * 按 agentConfig 直接解析启动所需资源，并构造最终的 AgentLaunchSpec。
  *
  * 设计约束：
@@ -562,9 +574,10 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     }
   }
 
-  // 合并 extraEnv 与 CCB Hindsight / Langfuse 环境变量（调用方显式传入的同名变量优先）
+  // 合并 extraEnv 与 CCB Hindsight / Langfuse / Peri Task 环境变量
+  // （调用方显式传入的同名变量优先）
   const extraEnv = input.extraEnv ?? {};
-  const launchEnv = { ...ccbHindsightEnv, ...buildLangfuseEnv(), ...extraEnv };
+  const launchEnv = { ...ccbHindsightEnv, ...buildLangfuseEnv(), ...buildPeriTaskEnv(), ...extraEnv };
 
   return {
     organizationId,

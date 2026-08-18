@@ -3,6 +3,7 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { createElicitationHandler } from "../elicitation.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
+import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
 
 export interface SpawnResult {
   process: ChildProcess;
@@ -138,10 +139,19 @@ export async function spawnAcpAgent(
       },
       readTextFile: async () => ({ content: "" }),
       writeTextFile: async () => ({}),
+      // SDK 扩展 notification 入口（Client.extNotification）：捕获标准方法之外的
+      // peri/* notification（SDK legacyClientApp 对未知 notification 的透传机制）。
+      // 只放行已知两个 method 并经现有 send → relay 转发，不创建第二套连接。
+      extNotification: async (method: string, params: Record<string, unknown>) => {
+        if (isPeriTaskNotificationMethod(method)) {
+          send(createNotification(method, params));
+        }
+      },
     }),
     stream,
   );
 
+  const periMeta = buildPeriCapabilityMeta();
   const initResult = await connection.initialize({
     protocolVersion: acp.PROTOCOL_VERSION,
     clientInfo: { name: "rcs-remote", version: "1.0.0" },
@@ -151,6 +161,9 @@ export async function spawnAcpAgent(
       // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
       // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
       elicitation: { form: {} },
+      // Peri Task View capability（_meta.peri.*，默认关闭）：声明后 Peri 才发射
+      // peri/agent_event 与 peri/unstable_event（caps gating，见 peri_caps.rs）
+      ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
     },
   });
   console.log(

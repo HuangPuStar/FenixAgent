@@ -13,6 +13,9 @@ import {
   type ChatEntryRole,
   type ChatEntryStatus,
   INITIAL_PROJECTION_VERSION,
+  PERI_TASK_FALLBACK_TITLE,
+  PERI_TASK_VIEW_MAX,
+  type PeriTaskViewProjection,
   type PermissionProjection,
   type QuestionProjection,
   SESSION_DOC_SCHEMA_VERSION,
@@ -76,6 +79,16 @@ export function getSessionsMap(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return getSessionRoot(ydoc).get("sessions") as Y.Map<Y.Map<unknown>>;
 }
 
+/** Session Doc 根级 Peri Task 投影（按 taskId 键控；结构见 schema.ts PeriTaskViewProjection） */
+export function getPeriTasksMap(ydoc: Y.Doc): Y.Map<Y.Map<unknown>> {
+  return getSessionRoot(ydoc).get("tasks") as Y.Map<Y.Map<unknown>>;
+}
+
+/** Session Doc 根级 Peri Task 顺序索引（首次创建 append，更新不重排） */
+export function getPeriTaskOrder(ydoc: Y.Doc): Y.Array<string> {
+  return getSessionRoot(ydoc).get("taskOrder") as Y.Array<string>;
+}
+
 // ── 结构初始化（幂等：重复初始化不破坏已有内容）──
 
 /** 初始化 Chat Doc 结构（新建或旧 schema 升级路径） */
@@ -124,6 +137,13 @@ export function initSessionDocStructure(ydoc: Y.Doc): void {
     }
     if (!(root.get("sessions") instanceof Y.Map)) {
       root.set("sessions", new Y.Map<Y.Map<unknown>>());
+    }
+    // v4：Peri Task View 投影位（幂等补结构，旧 v3 快照恢复后自动补齐）
+    if (!(root.get("tasks") instanceof Y.Map)) {
+      root.set("tasks", new Y.Map<Y.Map<unknown>>());
+    }
+    if (!(root.get("taskOrder") instanceof Y.Array)) {
+      root.set("taskOrder", new Y.Array<string>());
     }
   });
 }
@@ -564,6 +584,85 @@ export function upsertPendingQuestion(ydoc: Y.Doc, projection: QuestionProjectio
   pending.set(projection.questionId, map);
 }
 
+// ── Peri Task View（Session Doc root.tasks / root.taskOrder，切片 1）──
+// writer 只负责物理写入原语，不做状态机（状态收敛规则在 aggregator 的
+// applyPeriTaskEvent）与 I/O；禁止把 event_json / 完整 result / locator 写入。
+
+/**
+ * 幂等 upsert Peri Task 投影：以 taskId 为键。
+ * - 首次创建时 append 一次 taskOrder（创建顺序），更新不重排；
+ * - 身份性/展示字段选择性覆盖：title 只在非空时覆盖（started 提供的标题不被
+ *   completed 的 fallback 顶掉）；taskSubtype 只在非 null 时覆盖（completed 事件
+ *   无合法 subtype 时保留 started 值）；startedAt / isBackground / turnId 仅首次
+ *   创建写入——终态事件没有源开始时间（规格：不用 duration_ms 反推 startedAt），
+ *   不得用 receivedAt 覆盖 started 事件写入的合法 started_at；
+ * - 状态机（终态保护 / terminal-first / 冲突保留）由 aggregator 保证，
+ *   本原语不校验状态，调用方不得越权回退终态。
+ * 返回是否首次创建（created=true 时调用方无需再处理 taskOrder）。
+ */
+export function upsertPeriTaskView(ydoc: Y.Doc, view: PeriTaskViewProjection): { created: boolean } {
+  const tasks = getPeriTasksMap(ydoc);
+  const existing = tasks.get(view.taskId);
+  if (existing) {
+    if (view.title) existing.set("title", view.title);
+    if (view.taskSubtype) existing.set("taskSubtype", view.taskSubtype);
+    existing.set("summary", view.summary);
+    existing.set("status", view.status);
+    existing.set("completedAt", view.completedAt);
+    existing.set("updatedAt", view.updatedAt);
+    existing.set("detailAvailability", view.detailAvailability);
+    return { created: false };
+  }
+  const map = new Y.Map<unknown>();
+  map.set("taskId", view.taskId);
+  map.set("kind", view.kind);
+  map.set("taskSubtype", view.taskSubtype);
+  map.set("title", view.title || PERI_TASK_FALLBACK_TITLE);
+  map.set("summary", view.summary);
+  map.set("status", view.status);
+  map.set("turnId", view.turnId);
+  map.set("isBackground", view.isBackground);
+  map.set("startedAt", view.startedAt);
+  map.set("completedAt", view.completedAt);
+  map.set("updatedAt", view.updatedAt);
+  map.set("detailAvailability", view.detailAvailability);
+  tasks.set(view.taskId, map);
+  const order = getPeriTaskOrder(ydoc);
+  order.push([view.taskId]);
+
+  // Session Doc 首帧会完整同步，必须硬性有界。优先淘汰最早的终态任务；
+  // 极端情况下全部任务都在运行，则淘汰最早任务以守住资源上限。
+  while (order.length > PERI_TASK_VIEW_MAX) {
+    const taskIds = order.toArray();
+    const terminalIndex = taskIds.findIndex((taskId) => {
+      const status = tasks.get(taskId)?.get("status");
+      return status === "completed" || status === "failed" || status === "cancelled";
+    });
+    const evictedIndex = terminalIndex >= 0 ? terminalIndex : 0;
+    const evictedTaskId = taskIds[evictedIndex];
+    if (evictedTaskId) tasks.delete(evictedTaskId);
+    order.delete(evictedIndex, 1);
+  }
+  return { created: true };
+}
+
+/** 清空 Peri Task 投影（tasks + taskOrder；随 clearSessionDocContent 一起调用） */
+export function clearPeriTaskViews(ydoc: Y.Doc): void {
+  const root = getSessionRoot(ydoc);
+  const tasks = root.get("tasks");
+  if (tasks instanceof Y.Map) {
+    tasks.clear();
+  } else {
+    root.set("tasks", new Y.Map<Y.Map<unknown>>());
+  }
+  const taskOrder = root.get("taskOrder");
+  if (taskOrder instanceof Y.Array) {
+    taskOrder.delete(0, taskOrder.length);
+  } else {
+    root.set("taskOrder", new Y.Array<string>());
+  }
+}
+
 // ── 清理（领域 tombstone：不物理删除权威记录，切换会话时整 Doc 清空）──
 
 /** 清空 Chat Doc 时间线内容（entryOrder/entries/toolCalls/planSeq），保留 schema 骨架 */
@@ -579,12 +678,14 @@ export function clearChatDocContent(ydoc: Y.Doc): void {
 }
 
 /**
- * 清空 Session Doc 内容（session/pendingPermissions/pendingQuestions），保留 schema 骨架、sessions 投影与 agent 状态。
+ * 清空 Session Doc 内容（session/pendingPermissions/pendingQuestions/tasks），保留 schema 骨架、sessions 投影与 agent 状态。
  * agent 是实例级状态（capabilities/instanceId/status），跨会话切换必须保留：agent 仅在连接/
  * initialize 时发送 status 帧，切换会话（load/create）后不会重新投影；清空会导致 capabilities
  * 永久丢失，前端 supportsLoadSession 变 false，切换会话报 "Loading or resuming sessions is
  * not supported"（会话切换回归）。仅清除会话绑定的 acpSessionId（切换后旧值失效；前端不消费，
  * 权威值在服务端 registry）。
+ * Peri Task 是会话级瞬时投影（同 pendingPermissions 语义）：切换会话时随 Doc 清空，
+ * 新会话的 Task 从零开始累积（Task 视图不跨会话保留）。
  */
 export function clearSessionDocContent(ydoc: Y.Doc): void {
   ydoc.transact(() => {
@@ -598,6 +699,9 @@ export function clearSessionDocContent(ydoc: Y.Doc): void {
     // AskUserQuestion 交互问题是会话级瞬时状态：切换会话（load/create）时随 Doc 清空，
     // 未回答的问题由 acp-link 侧 60s 超时自动 resolve 空答案兜底（无悬挂风险）
     root.set("pendingQuestions", new Y.Map<Y.Map<unknown>>());
+    // Peri Task 视图是会话级瞬时状态（见函数注释），保持共享类型实例稳定，
+    // 避免持有 tasks/taskOrder 引用的订阅者在会话切换后与新投影脱钩。
+    clearPeriTaskViews(ydoc);
     // sessions 是 agent 级数据（跨会话切换不清空，避免侧边栏闪空），随 list_sessions 轮询刷新
     bumpProjectionVersion(root);
   });
