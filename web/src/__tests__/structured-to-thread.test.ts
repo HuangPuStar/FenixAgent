@@ -274,6 +274,30 @@ describe("chatDocEntriesToStructuredMessages 增量派生（SP-B2 第二步）",
     expect(assistant.error).toEqual({ code: "model_error", message: "boom" });
   });
 
+  // 前一个 turn 已有助手文本，当前 turn 纯失败时错误必须落在本 turn 新建的错误消息，
+  // 不得误挂到前一个 turn 的助手消息上（按 entryId 前缀隔离）
+  test("纯失败 turn 错误不误挂前一个 turn 的助手消息", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "prev answer" } }));
+    applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q2" } }, "turn_2"));
+    applyNormalizedEvent(pair, event("turn_failed", { error: { code: "model_error", message: "boom2" } }));
+
+    const messages = chatDocEntriesToStructuredMessages(pair.chat);
+    const errored = messages.filter((m) => m.type === "assistant_message" && m.error);
+    expect(errored).toHaveLength(1);
+    const err = errored[0];
+    if (err.type !== "assistant_message") throw new Error("expected assistant message");
+    expect(err.id).toBe("turn_2:assistant#error");
+    expect(err.chunks).toEqual([]);
+    expect(err.error).toEqual({ code: "model_error", message: "boom2" });
+    // 前 turn 助手消息不受污染
+    const prev = messages.find((m) => m.type === "assistant_message" && textOf(m) === "prev answer");
+    if (!prev || prev.type !== "assistant_message") throw new Error("expected prev assistant message");
+    expect(prev.error).toBeUndefined();
+  });
+
   // 工具失败（ToolCallProjection.publicError 脱敏投影）：工具消息必须携带脱敏错误，
   // 供前端 narrate 优先展示（替代 rawOutput 启发式）
   test("工具失败 publicError 投影到工具消息", () => {

@@ -373,8 +373,15 @@ function deriveEntryMessages(
         ? extractPublicErrorInfo(entryError as Record<string, unknown>)
         : undefined;
     if (errorInfo) {
-      const lastAssistant = [...derived].reverse().find((m) => m.type === "assistant_message");
-      if (lastAssistant && lastAssistant.type === "assistant_message") {
+      // 错误只挂本 entry 派生出的最后一段助手消息（id 前缀 entryId），
+      // 不能在整条时间线里 find——纯失败 turn 会把错误误挂到前一个 turn 的消息上
+      const lastAssistant = [...derived]
+        .reverse()
+        .find(
+          (m): m is Extract<StructuredMessage, { type: "assistant_message" }> =>
+            m.type === "assistant_message" && (m.id === entryId || m.id.startsWith(`${entryId}#`)),
+        );
+      if (lastAssistant) {
         lastAssistant.error = errorInfo;
       } else {
         derived.push({
