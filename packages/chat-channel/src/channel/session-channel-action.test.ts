@@ -35,6 +35,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     prepareClearSessionSnapshot: async () => {
       state.prepareCalls += 1;
     },
+    replaceProjection: () => {},
     syncSessionId: (_connection, newSessionId) => {
       state.syncCalls.push(newSessionId);
     },
