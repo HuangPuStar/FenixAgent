@@ -126,11 +126,13 @@ function mapSessionUpdateType(sessionUpdate: string): NormalizedEventType | null
   }
 }
 
-/** 判断 tool_call 帧是否已携带终态（非流式 agent 可能直接发送完整结果） */
+/** 判断 tool_call 帧是否已携带终态（非流式 agent 可能直接发送完整结果）。
+ * 标准 ACP（agent-client-protocol）工具失败序列化为 "failed"（ToolCallStatus::Failed），
+ * 与私有帧的 "error" 一并收敛为 tool_call_failed，避免标准失败被误判为 started。 */
 function resolveToolCallType(payload: Record<string, unknown> | undefined): NormalizedEventType {
   const status = (payload?.status as string | undefined) ?? "running";
   if (status === "completed" || status === "complete" || status === "done") return "tool_call_completed";
-  if (status === "error") return "tool_call_failed";
+  if (status === "error" || status === "failed") return "tool_call_failed";
   return "tool_call_started";
 }
 

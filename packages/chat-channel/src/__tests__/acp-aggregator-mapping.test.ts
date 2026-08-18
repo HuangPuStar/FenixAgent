@@ -225,6 +225,22 @@ test("JSON-RPC session/update wrapped format normalizes to delta", () => {
   expect(normalized?.acpSessionId).toBe("ses_1");
 });
 
+// 标准 ACP ToolCallUpdate.status 序列化为 snake_case "failed"（ToolCallStatus::Failed，
+// 见 agent-client-protocol schema tool_call.rs），必须与私有帧 "error" 收敛为
+// tool_call_failed——否则标准工具失败被误判为 started，错误永不进入聚合层
+test("标准 ACP tool_call_update status=failed 归一化为 tool_call_failed", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      update: { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "failed" },
+    },
+  });
+  expect(normalized?.type).toBe("tool_call_failed");
+  expect(normalized?.acpSessionId).toBe("ses_1");
+});
+
 // available_commands_update 通知（agent 启动后下发）归一化为 session_updated，
 // 载荷保留 availableCommands，聚合层投影到 Session Doc session map
 test("available_commands_update normalizes to session_updated and projects commands", () => {

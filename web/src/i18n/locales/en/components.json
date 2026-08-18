@@ -226,7 +226,8 @@
   "messageBubble": {
     "expand": "Expand",
     "uploadedImage": "Uploaded image",
-    "systemMessage": "System message"
+    "systemMessage": "System message",
+    "turnError": "Execution failed"
   },
   "planView": {
     "high": "High",

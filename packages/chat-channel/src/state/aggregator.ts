@@ -211,6 +211,7 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
     status,
     arguments: (event.update.rawInput as Record<string, unknown> | null) ?? null,
     result: status === "completed" ? result : undefined,
+    publicError: status === "error" ? extractPublicError(event.update) : undefined,
   });
 
   // 工具块挂到 assistant entry（幂等：重放不重复添加）
