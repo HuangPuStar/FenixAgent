@@ -15,7 +15,6 @@ import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
-import { rateLimitPlugin } from "./plugins/rate-limit";
 import { ctrlStaticPlugin } from "./plugins/static";
 import acpRoutes from "./routes/acp";
 import { agentSitesCompatApp, agentSitesProxyApp } from "./routes/agent-sites-proxy";
@@ -158,7 +157,6 @@ const app = new Elysia({
   // 不能挂在这里的 onError：errorPlugin 返回映射响应会终止 onError 链，
   // 且其前的 hook 读不到最终状态，日志会丢失或记录错误状态。
   .use(errorPlugin)
-  .use(rateLimitPlugin)
   // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
   .onBeforeHandle(({ request }) => {
     const contentLength = request.headers.get("content-length");

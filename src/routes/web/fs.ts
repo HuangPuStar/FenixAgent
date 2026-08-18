@@ -83,7 +83,7 @@ function toFileError(err: unknown): {
 }
 
 /** busy 响应：429 + Retry-After: 1。Elysia 的 error() 无法附加自定义头，
- * 此处用独立 Response 构造（rate-limit 插件同款模式）。 */
+ * 此处用独立 Response 构造。 */
 function busyErrorResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,

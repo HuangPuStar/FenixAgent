@@ -77,17 +77,6 @@ export interface InstanceSupplement {
 }
 
 // ────────────────────────────────────────────
-// Rate Limit
-// Extracted from: src/plugins/rate-limit.ts
-// ────────────────────────────────────────────
-
-/** Per-IP rate limit sliding window entry */
-export interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-// ────────────────────────────────────────────
 // File WS Connection
 // 用于 /acp/file-ws 端点的远程文件操作连接
 // ────────────────────────────────────────────
