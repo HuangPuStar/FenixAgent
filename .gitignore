@@ -10,6 +10,7 @@ coverage
 *.lock
 src/utils/vendor/
 sandbox.toml
+frpc.toml
 
 # AI tool runtime directories
 .agents/*
