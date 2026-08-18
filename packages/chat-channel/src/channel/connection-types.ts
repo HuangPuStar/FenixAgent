@@ -59,8 +59,6 @@ export interface ClientConnection {
   relayReady: boolean;
   /** agent 是否已发送过 status（确认 ACP 初始化完成） */
   agentStatusReceived: boolean;
-  /** 客户端最近一次发送 keep_alive 的时间戳（ms），用于判断页面是否隐藏 */
-  lastClientKeepalive: number;
 }
 
 /**

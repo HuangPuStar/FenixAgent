@@ -27,11 +27,11 @@ function buildConfig(env: Env) {
     /** Disconnect timeout (seconds). Environments/sessions with no activity for
      *  this long are considered disconnected. Default 120s. */
     disconnectTimeout: env.RCS_DISCONNECT_TIMEOUT,
-    /** Idle timeout in seconds before an unobserved ACP instance is auto-stopped. */
+    /** Idle timeout in seconds before an unobserved non-interactive ACP instance is auto-stopped. */
     acpIdleTimeoutSeconds: env.RCS_ACP_IDLE_TIMEOUT_SECONDS,
-    /** Sweep interval in seconds for ACP idle instance cleanup. */
+    /** Sweep interval in seconds for non-interactive ACP instance cleanup. */
     acpIdleSweepIntervalSeconds: env.RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS,
-    /** Hard timeout in seconds for no ACP business activity, even if relay is still attached. */
+    /** Hard timeout in seconds for no ACP business activity on non-interactive instances. */
     acpActivityTimeoutSeconds: env.RCS_ACP_ACTIVITY_TIMEOUT_SECONDS,
     /** 全部活跃 Agent 实例的并发上限。 */
     agentMaxConcurrency: env.RCS_AGENT_MAX_CONCURRENCY,

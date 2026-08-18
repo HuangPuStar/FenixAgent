@@ -37,7 +37,6 @@ export interface SessionConnection {
   /** 是否已执行过至少一次 load_session（区分重连首次加载 vs 后续正常切换） */
   sessionLoaded: boolean;
   workspacePath: string | null;
-  lastClientKeepalive: number;
   /** 发送 RPC 到 relay（测试中为记录型 fake） */
   sendToRelay: (message: Record<string, unknown>) => Promise<void> | void;
   /** JSON-RPC id 递增计数器，保证同一 instance 下生成唯一 id */
@@ -60,6 +59,8 @@ export interface SessionConnection {
 
 export interface SessionChannelDependencies {
   docManager: DocManager;
+  /** 新 ACP session 创建前刷新当前实例的 workspace 配置与 Skills。 */
+  refreshInstanceEnvironment?: (connection: SessionConnection) => Promise<void>;
   /** 仅供滚动升级期间兼容旧装配；projection replacement 不再调用。 */
   prepareClearSessionSnapshot?: (connection: SessionConnection) => Promise<void>;
   /** 新投影交换后重绑 broadcaster 并向同 RCS 会话全部客户端发送 replace frame。 */
@@ -343,8 +344,14 @@ export class SessionChannel {
     return true;
   }
 
-  /** create_session：先换代 Chat/Session 投影，确保新会话没有旧 StructStore。 */
+  /** create_session：先同步运行环境，再换代 Chat/Session 投影，确保新会话冻结当前 Skills。 */
   private async prepareCreateSession(connection: SessionConnection): Promise<void> {
+    try {
+      await this.dependencies.refreshInstanceEnvironment?.(connection);
+    } catch (error) {
+      this.dependencies.reportError("[SessionChannel] instance environment refresh failed", error);
+      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+    }
     const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, null);
     this.dependencies.replaceProjection(projection);
   }

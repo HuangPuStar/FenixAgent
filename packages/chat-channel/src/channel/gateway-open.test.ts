@@ -65,35 +65,8 @@ describe("Gateway handleOpen", () => {
     restoreProperty(Date, "now", originalDateNow);
   });
 
-  // 客户端 keep_alive 会续期，页面可见期间不会因连接建立时间到期而关闭。
-  test("renews the YJS WS keepalive timeout after a client keep_alive", async () => {
-    let now = 1_000_000;
-    installIntervalFakes(() => now);
-    const registry = new ConnectionRegistry();
-    const broadcaster = new YjsBroadcaster(registry);
-    const relayEvents = createRelayEvents(registry, broadcaster, []);
-    const lifecycle = createGateway(registry, broadcaster, relayEvents);
-    const ws = createWs();
-
-    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
-    const keepalive = intervals.find((interval) => interval.delay === 30_000);
-
-    now = 1_050_000;
-    await lifecycle.handleMessage(ws, "ws-1", JSON.stringify({ type: "keep_alive" }));
-    now = 1_100_000;
-    keepalive?.callback();
-
-    expect(ws.closed).toEqual([]);
-
-    now = 1_110_001;
-    keepalive?.callback();
-
-    expect(ws.closed).toEqual([[4501, "client keepalive timeout"]]);
-  });
-
-  // 新连接从客户端登记时刻开始计时：首个 30 秒周期仍保活，连续 60 秒未收到客户端
-  // keep_alive 才以 4501 终态关闭（客户端停止自动重连，回到可见时手动重连）。
-  test("closes the YJS WS only after the client keepalive timeout elapses from registration", async () => {
+  // 客户端暂停 keep_alive（如页面冻结）时，服务端仍持续发送心跳且不主动关闭 YJS WS。
+  test("keeps the YJS WS open when the client stops sending keep_alive", async () => {
     let now = 1_000_000;
     installIntervalFakes(() => now);
     const registry = new ConnectionRegistry();
@@ -106,17 +79,13 @@ describe("Gateway handleOpen", () => {
     const keepalive = intervals.find((interval) => interval.delay === 30_000);
     expect(keepalive).toBeDefined();
 
-    now = 1_030_000;
+    now = 1_060_000;
+    keepalive?.callback();
+    now = 1_120_000;
     keepalive?.callback();
 
     expect(ws.closed).toEqual([]);
-    expect(parseTextFrames(ws)).toContainEqual({ type: "keep_alive" });
-
-    now = 1_060_000;
-    keepalive?.callback();
-
-    expect(ws.closed).toEqual([[4501, "client keepalive timeout"]]);
-    expect(parseTextFrames(ws).filter((message) => message.type === "keep_alive")).toHaveLength(1);
+    expect(parseTextFrames(ws).filter((message) => message.type === "keep_alive")).toHaveLength(2);
   });
 
   // 兼容形态：抛 MACHINE_OFFLINE 码错误（历史/外部调用方形态）仍走 4500 终态，

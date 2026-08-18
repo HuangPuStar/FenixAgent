@@ -12,8 +12,6 @@ import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 
 const KEEPALIVE_INTERVAL = 30_000;
-/** 客户端 keepalive 超时：超过此阈值视为页面隐藏，停发服务端心跳并 close 4501（终态，客户端不再自动重连） */
-const CLIENT_KEEPALIVE_TIMEOUT = KEEPALIVE_INTERVAL * 2;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
 const SESSION_LIST_POLL_INTERVAL = 10_000;
 /** 兜底 JSON-RPC id 计数器，当 SharedRelay 不可用时使用 */
@@ -231,14 +229,7 @@ export class Gateway {
         clearInterval(keepalive);
         return;
       }
-      // 客户端超时未发送 keep_alive → 关闭连接并由 handleClose 统一释放资源。
-      // 4501 在客户端 NO_RECONNECT_CODES 中：页面隐藏导致的超时链接不在后台自动重连，
-      // 回到可见时由 UI 触发一次手动重连（C6 可见性恢复语义）。
-      if (Date.now() - entry.lastClientKeepalive >= CLIENT_KEEPALIVE_TIMEOUT) {
-        clearInterval(keepalive);
-        entry.ws.close(4501, "client keepalive timeout");
-        return;
-      }
+      // 服务端心跳仅用于维持代理层连接；客户端暂停 keep_alive（如页面冻结）不再主动关闭。
       broadcaster.sendToYjsWs(entry.ws, { type: "keep_alive" });
     }, KEEPALIVE_INTERVAL);
     const entry: ClientConnection = {
@@ -256,7 +247,6 @@ export class Gateway {
       pendingMessages: [],
       relayReady: false,
       agentStatusReceived: false,
-      lastClientKeepalive: openedAt,
     };
     registry.addClient(wsId, entry);
     let chatDoc: Awaited<ReturnType<DocManager["openChat"]>>;
@@ -340,11 +330,7 @@ export class Gateway {
       this.dependencies.broadcaster.sendToYjsWs(ws, { type: "pong" });
       return;
     }
-    if (parsed.type === "keep_alive") {
-      const entry = this.dependencies.registry.getClient(wsId);
-      if (entry) entry.lastClientKeepalive = Date.now();
-      return;
-    }
+    if (parsed.type === "keep_alive") return;
     if (parsed.action) await this.forward(entry, parsed, ws);
   }
   handleClose(wsId: string): void {
@@ -461,7 +447,6 @@ export class Gateway {
       agentStatusReceived: entry.agentStatusReceived,
       sessionLoaded: entry.sessionLoaded,
       workspacePath: entry.workspacePath,
-      lastClientKeepalive: entry.lastClientKeepalive,
       sendToRelay: (message) => entry.relayHandle.send(message as never),
       getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
       registerSessionSyncRpcId: (rpcId) => {
