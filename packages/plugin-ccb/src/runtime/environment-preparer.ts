@@ -58,7 +58,7 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
 
 /**
  * IS_PERI 环境下，额外创建 .peri/settings.json 供 Peri 客户端使用。
- * 将 AgentLaunchSpec 的 model 信息转换为 Peri provider 格式。
+ * 将 AgentLaunchSpec 的模型信息映射为 Peri 当前的 provider/profile 配置格式。
  */
 export async function writePeriSettings(workspace: string, launchSpec: AgentLaunchSpec): Promise<string | null> {
   if (!process.env.IS_PERI) return null;
@@ -68,46 +68,46 @@ export async function writePeriSettings(workspace: string, launchSpec: AgentLaun
   await mkdir(periDir, { recursive: true });
 
   const modelId = model.modelName ?? model.model;
-  const periEnv: Record<string, string> = {};
-  // 仅透传 HINDSIGHT_* 环境变量给 Peri，模型认证信息已通过 config.providers 注入
-  if (launchSpec.env) {
-    for (const key of Object.keys(launchSpec.env)) {
-      if (key.startsWith("HINDSIGHT_")) {
-        periEnv[key] = launchSpec.env[key];
-      }
-    }
-  }
-
-  const settings: Record<string, unknown> = {
+  const periEnv = launchSpec.env ? { ...launchSpec.env } : undefined;
+  const configPath = join(periDir, "settings.json");
+  const settings = {
     config: {
-      active_provider_id: model.provider,
-      active_alias: "sonnet",
+      active_alias: "opus",
       providers: [
         {
           id: model.provider,
           type: model.protocol,
           apiKey: model.apiKey,
           baseUrl: model.baseUrl,
+          name: model.provider,
           models: {
             opus: modelId,
             sonnet: modelId,
             haiku: modelId,
+            fable: modelId,
           },
         },
       ],
-      thinking: {
-        enabled: true,
-        budget_tokens: 8000,
-        effort: "high",
+      profiles: {
+        opus: {
+          provider: model.provider,
+          model: modelId,
+          effort: "medium",
+        },
+        sonnet: {
+          provider: model.provider,
+          effort: "max",
+        },
+        haiku: {
+          provider: model.provider,
+          effort: "low",
+        },
       },
+      skills_dir: null,
+      ...(periEnv && Object.keys(periEnv).length > 0 ? { env: periEnv } : {}),
     },
   };
 
-  if (Object.keys(periEnv).length > 0) {
-    settings.env = periEnv;
-  }
-
-  const configPath = join(periDir, "settings.json");
   await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   return configPath;
 }
