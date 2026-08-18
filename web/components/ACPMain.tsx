@@ -171,10 +171,11 @@ export function ACPMain({
     [onRespondPermission],
   );
 
-  // Handle session selection
+  // Handle session selection. 刷新后的会话恢复必须继续加载正在进行的会话；
+  // 仅用户主动切换时，才需要以 loading 保护当前对话不被切走。
   const handleSelectSession = useCallback(
-    async (session: AgentSessionInfo) => {
-      if (chatRef.current?.isLoading) {
+    async (session: AgentSessionInfo, source: "user" | "restore" = "user") => {
+      if (source === "user" && chatRef.current?.isLoading) {
         toast.warning(t("acpMain.chatBusy"));
         return;
       }
@@ -237,7 +238,7 @@ export function ACPMain({
         const activeSession = sessions.find((s) => s.sessionId === chatState.activeSessionId);
         if (activeSession) {
           sessionEnteredRef.current = true;
-          handleSelectSession(activeSession as AgentSessionInfo);
+          handleSelectSession(activeSession as AgentSessionInfo, "restore");
         }
         return;
       }
@@ -252,7 +253,7 @@ export function ACPMain({
       if (latest) {
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(latest.sessionId);
-        handleSelectSession(latest as AgentSessionInfo);
+        handleSelectSession(latest as AgentSessionInfo, "restore");
         return;
       }
 
@@ -298,7 +299,7 @@ export function ACPMain({
     sessionEnteredRef.current = true;
     setInitialActiveSessionId(sid);
     try {
-      handleSelectSession(activeSession as AgentSessionInfo);
+      handleSelectSession(activeSession as AgentSessionInfo, "restore");
     } catch (err) {
       console.error("[ACPMain] Delayed session enter failed:", err);
     }
