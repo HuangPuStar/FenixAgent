@@ -6,24 +6,23 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * todoWriteNarrator 单测。
  *
- * 覆盖：kinds、verb、todos/tasks 字段兼容、完成进度 detail、
- * 全部完成特殊文案、仅有 pending 时不显示 detail。
+ * 覆盖：kinds、verb、todos/tasks 字段兼容，以及有差分时只显示变更数量，
+ * 防止工具卡片重新展示整份 TodoWrite 快照。
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
   if (key === "todo.items") return `${opts?.count} 项`;
-  if (key === "todo.progress") return `已完成 ${opts?.completed} / 共 ${opts?.count}`;
-  if (key === "todo.allDone") return "全部完成";
   return key;
 }) as unknown as NarrationContext["t"];
 
-function makeCtx(rawInput: unknown): NarrationContext {
+function makeCtx(rawInput: unknown, todoChanges?: ToolCallData["todoChanges"]): NarrationContext {
   return {
     tool: {
       id: "t1",
       title: "TodoWrite",
       status: "complete",
       rawInput: rawInput as Record<string, unknown>,
+      todoChanges,
     } as ToolCallData,
     kind: "todo",
     status: "complete",
@@ -42,71 +41,39 @@ describe("todoWriteNarrator", () => {
     expect(todoWriteNarrator.verb).toBe("更新");
   });
 
-  // todos 数组长度作为待办数渲染到 object
-  test("todos 数组长度作为待办数", () => {
+  // 无历史差分时回退使用快照数组长度，兼容旧会话投影
+  test("无差分时使用 todos 数组长度", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}, {}] }));
     expect(object).toBe("3 项");
   });
 
-  // 兼容 tasks 字段
-  test("兼容 tasks 字段", () => {
+  // 兼容 tasks 字段，避免不同 Agent 的参数命名导致标题退化
+  test("无差分时兼容 tasks 字段", () => {
     const { object } = todoWriteNarrator.getDisplay(makeCtx({ tasks: [{}, {}] }));
     expect(object).toBe("2 项");
   });
 
-  // 无字段兜底显示 0
-  test("无待办时兜底", () => {
-    const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
-    expect(object).toBe("0 项");
-  });
+  // 连续调用的第二次只显示变更项数，不能使用完整快照中的 4 项
+  test("有差分时只显示变更项数", () => {
+    const { object, detail } = todoWriteNarrator.getDisplay(
+      makeCtx({ todos: [{}, {}, {}, {}] }, [
+        { id: "completed:实现增量展示::0", kind: "completed", todo: { content: "实现增量展示", status: "completed" } },
+      ]),
+    );
 
-  // detail：有已完成 + 未完成 → 显示进度
-  test("detail 显示完成进度", () => {
-    const todos = [
-      { status: "completed", content: "a" },
-      { status: "completed", content: "b" },
-      { status: "in_progress", content: "c" },
-      { status: "pending", content: "d" },
-    ];
-    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("4 项");
-    expect(detail).toBe("已完成 2 / 共 4");
-  });
-
-  // 全部完成时显示"全部完成"
-  test("全部完成时显示 allDone", () => {
-    const todos = [
-      { status: "completed", content: "a" },
-      { status: "completed", content: "b" },
-    ];
-    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("2 项");
-    expect(detail).toBe("全部完成");
-  });
-
-  // 仅有 pending 时不显示 detail
-  test("仅有 pending 时无 detail", () => {
-    const todos = [{ status: "pending", content: "a" }];
-    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
     expect(object).toBe("1 项");
     expect(detail).toBeUndefined();
   });
 
-  // 全部 pending 但无任何完成 → 无 detail
-  test("全部 pending 无 detail", () => {
-    const todos = [
-      { status: "pending", content: "a" },
-      { status: "pending", content: "b" },
-    ];
-    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos }));
-    expect(object).toBe("2 项");
-    expect(detail).toBeUndefined();
+  // 无实际变更的调用保持显示 0 项，避免伪造进度信息
+  test("空差分显示 0 项", () => {
+    const { object } = todoWriteNarrator.getDisplay(makeCtx({ todos: [{}, {}] }, []));
+    expect(object).toBe("0 项");
   });
 
-  // 空数组无 detail
-  test("空数组无 detail", () => {
-    const { object, detail } = todoWriteNarrator.getDisplay(makeCtx({ todos: [] }));
+  // 无待办字段时兜底显示 0
+  test("无待办时兜底", () => {
+    const { object } = todoWriteNarrator.getDisplay(makeCtx({}));
     expect(object).toBe("0 项");
-    expect(detail).toBeUndefined();
   });
 });

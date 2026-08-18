@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { InstanceManager } from "../client/instance-manager.js";
 import type { ServerConfig } from "../server.js";
 
 describe("Server HTTP endpoints", () => {
@@ -75,6 +80,55 @@ describe("WebSocket message types", () => {
     expect(notification.jsonrpc).toBe("2.0");
     expect(notification.method).toBe("session/update");
     expect("id" in notification).toBe(false);
+  });
+});
+
+describe("InstanceManager refresh", () => {
+  // 运行实例重新 prepare 只更新 launchSpec，不能清空 dispatcher、session 或 relay 绑定。
+  test("preserves running state when refreshing the same workspace", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "acp-link-refresh-"));
+    const preparedSpecs: AgentLaunchSpec[] = [];
+    const manager = new InstanceManager(
+      {
+        opencode: {
+          prepareWorkspace: async (_workspace, launchSpec) => {
+            preparedSpecs.push(launchSpec);
+          },
+          startInstance: async ({ state }) => {
+            state.capabilities = { prompt: true };
+            return { capabilities: state.capabilities };
+          },
+        },
+      },
+      workspaceRoot,
+      "opencode",
+    );
+    const createSpec = (skills: AgentLaunchSpec["skills"]): AgentLaunchSpec => ({
+      organizationId: "org-test",
+      userId: "user-test",
+      environmentId: "env-test",
+      env: {},
+      agent: { name: "agent", prompt: "" },
+      model: { provider: "test", protocol: "openai", model: "test", modelName: "test" },
+      skills,
+      mcpServers: [],
+    });
+
+    try {
+      await manager.prepare("inst-refresh", createSpec([]));
+      await manager.start("inst-refresh", () => {});
+      manager.setSessionId("inst-refresh", "ses-existing");
+
+      await manager.prepare("inst-refresh", createSpec([{ name: "current", url: "https://example.com/current.zip" }]));
+
+      expect(preparedSpecs).toHaveLength(2);
+      expect(preparedSpecs[1].skills).toEqual([{ name: "current", url: "https://example.com/current.zip" }]);
+      expect(manager.hasInstance("inst-refresh")).toBe(true);
+      expect(manager.getSessionId("inst-refresh")).toBe("ses-existing");
+    } finally {
+      await manager.stop("inst-refresh");
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 });
 

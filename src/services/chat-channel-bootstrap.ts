@@ -26,7 +26,7 @@ import { classifyPermanentSpawnFailure, isMachineOfflineError } from "./chat-cha
 import { docManager } from "./doc-manager-instance";
 import { ensureRunning } from "./instance";
 import { parseInstanceSessionId } from "./instance-session";
-import { terminateLocalDeadInstance } from "./orchestration-instance";
+import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "./orchestration-instance";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 type ChatChannelBootstrapDeps = {
@@ -34,6 +34,7 @@ type ChatChannelBootstrapDeps = {
   resolveWorkspacePath: typeof resolveWorkspacePath;
   ensureRunning: typeof ensureRunning;
   connectAgentRelay: typeof connectAgentRelay;
+  refreshInstanceEnvironment: typeof refreshInstanceEnvironment;
   markInstanceRelayAttached: typeof markInstanceRelayAttached;
   markInstanceRelayDetached: typeof markInstanceRelayDetached;
   touchInstanceActivity: typeof touchInstanceActivity;
@@ -53,6 +54,7 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   resolveWorkspacePath,
   ensureRunning,
   connectAgentRelay,
+  refreshInstanceEnvironment,
   markInstanceRelayAttached,
   markInstanceRelayDetached,
   touchInstanceActivity,
@@ -108,6 +110,7 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     // spawn 分支内部委托 spawnInstanceViaController 创建独立实例并负责销毁。
     ensureRunning: (userId, agentId, mode, instanceNumber) => deps.ensureRunning(userId, agentId, mode, instanceNumber),
     connectAgentRelay: deps.connectAgentRelay,
+    refreshInstanceEnvironment: deps.refreshInstanceEnvironment,
     markRelayAttached: deps.markInstanceRelayAttached,
     markRelayDetached: deps.markInstanceRelayDetached,
     touchInstanceActivity: deps.touchInstanceActivity,

@@ -53,8 +53,8 @@ describe("acp idle monitor", () => {
     expect(shouldCountInstanceActivity({ jsonrpc: "2.0", method: "session/list" })).toBe(true);
   });
 
-  // 仅无 relay 且空闲超过阈值的实例才会被标记为可回收
-  test("listInstanceActivitySnapshots exposes idle eligibility", () => {
+  // interactive Chat 不显示自动回收资格；scheduled 实例的回收观测保持不变。
+  test("listInstanceActivitySnapshots exposes reclaim eligibility only for non-interactive instances", () => {
     const idleInstance = makeInstance("inst_idle", "env-1");
     const busyInstance = makeInstance("inst_busy", "env-2");
     globalInstanceRegistry.register(idleInstance.id, {
@@ -62,7 +62,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-1",
       instanceNumber: 1,
       organizationId: "org-1",
-      spawnSource: "interactive",
+      spawnSource: "scheduled",
       lastActivityAt: 1000,
       relayCount: 0,
       lastRelayDetachedAt: 1000,
@@ -73,9 +73,9 @@ describe("acp idle monitor", () => {
       instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
-      lastActivityAt: 2000,
-      relayCount: 1,
-      lastRelayDetachedAt: null,
+      lastActivityAt: 1000,
+      relayCount: 0,
+      lastRelayDetachedAt: 1000,
     });
     setAcpIdleMonitorDeps({
       getCoreRuntime: () =>
@@ -170,7 +170,7 @@ describe("acp idle monitor", () => {
       environmentId: "env-1",
       instanceNumber: 1,
       organizationId: "org-1",
-      spawnSource: "interactive",
+      spawnSource: "scheduled",
       lastActivityAt: 1000,
       relayCount: 0,
       lastRelayDetachedAt: 1000,
@@ -208,9 +208,8 @@ describe("acp idle monitor", () => {
     expect(stopCalls).toEqual([{ instanceId: "inst_idle", organizationId: "org-1" }]);
   });
 
-  // 前端保持连接（relay_count > 0）但业务活动超过 activity timeout 时，
-  // 仍应按 inactive 回收——activity 回收与 relay 是否存在无关
-  test("runAcpIdleMonitorSweep stops stale instances even with active relay connections", async () => {
+  // interactive Chat 实例即使长期未操作也不应被 activity monitor 自动停止。
+  test("runAcpIdleMonitorSweep keeps stale interactive instances running", async () => {
     const stopCalls: Array<{ instanceId: string; organizationId: string }> = [];
     const staleInstance = makeInstance("inst_stale", "env-1");
     globalInstanceRegistry.register(staleInstance.id, {
@@ -239,8 +238,7 @@ describe("acp idle monitor", () => {
     });
 
     await runAcpIdleMonitorSweep(1000 + 3601 * 1000);
-    // relay_count > 0 不能阻止 activity 回收：业务无活动超过硬超时仍应回收
-    expect(stopCalls).toEqual([{ instanceId: "inst_stale", organizationId: "org-1" }]);
+    expect(stopCalls).toEqual([]);
   });
 
   // 前端保持连接且业务活动未超时（relay_count > 0）时，不应触发 idle 回收

@@ -7,6 +7,27 @@ import type { PermissionOption, PlanEntry, ToolCallContent } from "@fenix/chat-c
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
 
+/** TodoWrite 条目的状态。 */
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/** TodoWrite 工具在每次调用中提交的完整条目。 */
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+  activeForm?: string;
+}
+
+/** 相较前一次 TodoWrite 调用的条目变更类型。 */
+export type TodoChangeKind = "added" | "removed" | "pending" | "in_progress" | "completed" | "updated";
+
+/** TodoWrite 条目的增量投影，仅用于历史工具调用卡片展示。 */
+export interface TodoChange {
+  /** 当前工具调用内唯一的展示标识；TodoWrite 协议未提供条目 ID。 */
+  id: string;
+  kind: TodoChangeKind;
+  todo: TodoItem;
+}
+
 /**
  * 工具卡片统一类型标识。驱动 narrator 匹配、卡片样式、图标和文案。
  * 每新增一种工具展示类型，只需在此枚举和 DISPLAY_TYPE_MAP 中各加一行。
@@ -55,6 +76,8 @@ export interface ToolCallData {
   display?: ToolCallDisplay;
   /** 工具调用统一类型标识，由 resolveToolCardKind() 在 construct 阶段一次性解析 */
   kind?: ToolCardKind;
+  /** TodoWrite 相较上一轮的条目变更；只用于历史工具调用卡片展示。 */
+  todoChanges?: TodoChange[];
   // 权限请求（仅当 status === "waiting_for_confirmation"）
   permissionRequest?: {
     requestId: string;

@@ -1,5 +1,4 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   ConnectRelayInput,
@@ -10,6 +9,9 @@ import type {
   StartInstanceInput,
   StopInstanceInput,
 } from "@fenix/plugin-sdk";
+import { prepareWorkspaceEnvironment } from "./environment";
+import { buildMcpConfig, buildSettings } from "./settings";
+import { installSkills } from "./skill-installer";
 
 interface InstanceState {
   envId: string;
@@ -30,25 +32,19 @@ export function createClaudeCodeRuntime(): EngineRuntime {
     async prepareEnvironment(input: PrepareEnvironmentInput): Promise<void> {
       const spec = input.launchSpec;
       const workspace = join(spec.organizationId, spec.userId, spec.environmentId ?? "");
+      const previous = instances.get(input.instanceId);
 
-      // 创建 .claude 配置目录
-      const claudeDir = join(workspace, ".claude");
-      await mkdir(claudeDir, { recursive: true });
-
-      // 写入基础 settings.json
-      const settings = {
-        permissions: {
-          defaultMode: "default",
-        },
-      };
-      await writeFile(join(claudeDir, "settings.json"), JSON.stringify(settings, null, 2));
+      const installedSkills = await installSkills(workspace, spec.skills);
+      const settings = buildSettings(spec, installedSkills);
+      const mcpConfig = buildMcpConfig(spec);
+      await prepareWorkspaceEnvironment(workspace, settings, mcpConfig, spec.agent.prompt, installedSkills);
 
       instances.set(input.instanceId, {
-        envId: input.launchSpec.environmentId ?? "",
+        envId: spec.environmentId ?? "",
         workspace,
-        process: null,
-        port: 0,
-        token: "",
+        process: previous?.process ?? null,
+        port: previous?.port ?? 0,
+        token: previous?.token ?? "",
       });
     },
 

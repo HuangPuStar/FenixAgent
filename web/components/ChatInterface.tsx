@@ -16,6 +16,7 @@ import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";
 import { extractChangedFiles } from "../src/lib/extract-changed-files";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
+import { isTodoWriteToolCall, parseTodosFromRawInput } from "../src/lib/todo";
 import { computeStats, type TokenStats } from "../src/lib/token-stats";
 import type { ChatInputMessage, PendingPermission, ThreadEntry, UserMessageImage } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
@@ -25,7 +26,7 @@ import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
 import { PeriTaskList } from "./chat/PeriTaskList";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import { QuestionPanel } from "./chat/QuestionPanel";
-import { isTodoWriteToolCall, parseTodosFromRawInput, TodoPanel } from "./chat/TodoPanel";
+import { TodoPanel } from "./chat/TodoPanel";
 
 // Image compression options
 // Claude API has a 5MB limit, so we target 2MB to be safe

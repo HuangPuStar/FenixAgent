@@ -179,6 +179,17 @@ export async function spawnInstanceViaController(
 }
 
 /**
+ * 使用当前 AgentConfig 重新物化运行实例环境，供 ACP session/new 冻结 Skills 前调用。
+ * 该操作复用现有 runtime，不重启进程或断开 relay。
+ */
+export async function refreshInstanceEnvironment(instanceId: string, envId: string, userId: string): Promise<void> {
+  const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
+  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(launchSpec);
+  await getCoreRuntime().refreshInstanceEnvironment({ instanceId, launchSpec: agentLaunchSpec });
+  log(`[orchestration-instance] refreshed environment: instanceId=${instanceId}`);
+}
+
+/**
  * 编排域完整停止入口：controller.stopInstance（停止帧 + 活跃表移除 + 节点引用归还）
  * + core facade.stopInstance（真正停止进程并清理 core 快照）+ RCS supplement 清理
  * + 实例名下内存 Y.Doc 回收（SP-C2，见函数末尾）。

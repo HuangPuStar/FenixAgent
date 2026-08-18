@@ -118,6 +118,7 @@ export function createOpencodeRuntime(dependencies: OpencodeRuntimeDependencies 
 
     async prepareEnvironment(input) {
       const state = getOrCreateState(states, input.instanceId);
+      const wasRunning = state.status === "running" && state.process != null;
       const workspacePath = resolveWorkspace(input.launchSpec);
       await mkdir(workspacePath, { recursive: true });
       await accessWorkspace(workspacePath, constants.R_OK | constants.W_OK);
@@ -146,9 +147,9 @@ export function createOpencodeRuntime(dependencies: OpencodeRuntimeDependencies 
         if (dependencies.prepareEnvironment) {
           await dependencies.prepareEnvironment(input, state);
         }
-        state.status = "prepared";
+        state.status = wasRunning ? "running" : "prepared";
       } catch (error) {
-        state.status = "error";
+        state.status = wasRunning ? "running" : "error";
         state.error = error instanceof Error ? error.message : String(error);
         throw error;
       }

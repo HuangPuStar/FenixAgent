@@ -6,7 +6,14 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
-import { getAgentStatus, getChatRoot, getEntriesMap, getSessionInfo, getSessionRoot } from "../state/chat-writer";
+import {
+  getAgentStatus,
+  getChatRoot,
+  getEntriesMap,
+  getSessionInfo,
+  getSessionRoot,
+  setSessionInfo,
+} from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
@@ -15,6 +22,7 @@ interface TestHarness {
   channel: SessionChannel;
   docManager: DocManager;
   prepareCalls: number;
+  refreshCalls: string[];
   syncCalls: string[];
   errors: Array<{ message: string; error: unknown }>;
   acks: ActionAck[];
@@ -24,6 +32,7 @@ interface TestHarness {
 function createHarness(overrides: Partial<SessionChannelDependencies> = {}): TestHarness {
   const state = {
     prepareCalls: 0,
+    refreshCalls: [] as string[],
     syncCalls: [] as string[],
     errors: [] as Array<{ message: string; error: unknown }>,
     acks: [] as ActionAck[],
@@ -32,6 +41,9 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
   const docManager = new DocManager({ onError: () => {}, onLog: () => {} });
   const channel = new SessionChannel({
     docManager,
+    refreshInstanceEnvironment: async (connection) => {
+      state.refreshCalls.push(connection.instanceId);
+    },
     prepareClearSessionSnapshot: async () => {
       state.prepareCalls += 1;
     },
@@ -51,6 +63,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     get prepareCalls() {
       return state.prepareCalls;
     },
+    refreshCalls: state.refreshCalls,
     syncCalls: state.syncCalls,
     errors: state.errors,
     acks: state.acks,
@@ -123,6 +136,61 @@ async function waitForTurnStatus(
 }
 
 describe("SessionChannel action flow", () => {
+  // create_session 必须先刷新当前实例环境，随后才发送 session/new，让 Peri 冻结最新 Skills。
+  test("refreshes the instance environment before forwarding session/new", async () => {
+    const callOrder: string[] = [];
+    const harness = createHarness({
+      refreshInstanceEnvironment: async () => {
+        callOrder.push("refresh");
+      },
+    });
+    const { connection, relayMessages } = createConnection({
+      sendToRelay: (message) => {
+        callOrder.push("relay");
+        relayMessages.push(message as unknown as RelayRecord);
+      },
+    });
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "create_session", commandId: "cmd-create" },
+      createSinks(harness),
+    );
+
+    expect(callOrder).toEqual(["refresh", "relay"]);
+    expect(relayMessages[0]).toMatchObject({ method: "session/new" });
+  });
+
+  // 环境刷新失败时不得创建 ACP session，客户端收到可重试的通用错误。
+  test("does not forward session/new when the instance environment refresh fails", async () => {
+    const harness = createHarness({
+      refreshInstanceEnvironment: async () => {
+        throw new Error("skill download failed");
+      },
+    });
+    const { connection, relayMessages } = createConnection();
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "create_session", commandId: "cmd-create-error" },
+      createSinks(harness),
+    );
+
+    expect(relayMessages).toHaveLength(0);
+    expect(harness.errorFrames).toContainEqual({
+      type: "action_error",
+      commandId: "cmd-create-error",
+      code: "AGENT_UNAVAILABLE",
+      message: "Agent connection error",
+      retryable: true,
+    });
+    expect(harness.errors).toHaveLength(1);
+  });
+
   // send_prompt 全链路：accepted → committed（含 turnId 与投影版本），用户消息进入 Chat Doc 时间线。
   test("send_prompt commits a user entry and forwards session/prompt to relay", async () => {
     const harness = createHarness();
@@ -247,6 +315,53 @@ describe("SessionChannel action flow", () => {
       sessionId: "ses-new",
       cwd: "/workspace/org-1/user-1/env-1",
     });
+  });
+
+  // 首次恢复只能跳过与目标 ACP session 匹配的持久化投影：旧会话的时间线不可冒充
+  // 新目标已加载，否则前端会先高亮目标但仍显示旧会话，需先切换其他项才会触发真正 load。
+  test("first load replaces a persisted timeline when it belongs to another session", async () => {
+    const harness = createHarness();
+    const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
+    const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
+    const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
+    harness.docManager.registerUserMessage("rcs-1", "message from the previous session");
+    setSessionInfo(oldSession, { sessionId: "ses-old", title: "旧会话", status: "ready" });
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "load_session", commandId: "cmd-1", sessionId: "ses-target" },
+      createSinks(harness),
+    );
+
+    expect(harness.docManager.getChatYdoc("rcs-1")).not.toBe(oldChat);
+    expect(harness.docManager.getSessionYdoc("rcs-1")).not.toBe(oldSession);
+    expect(harness.syncCalls).toEqual(["ses-target"]);
+    expect(connection.acpSessionId).toBe("ses-target");
+    expect(relayMessages).toHaveLength(1);
+    expect(relayMessages[0]?.method).toBe("session/load");
+    expect(relayMessages[0]?.params).toMatchObject({ sessionId: "ses-target" });
+  });
+
+  // 首次恢复仅当缓存投影确实属于目标会话时跳过回放，避免不必要的 session/load。
+  test("first load reuses a persisted timeline when it belongs to the target session", async () => {
+    const harness = createHarness();
+    const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
+    const persistedChat = (await harness.docManager.openChat("rcs-1")).ydoc;
+    const persistedSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
+    harness.docManager.registerUserMessage("rcs-1", "message from the persisted session");
+    setSessionInfo(persistedSession, { sessionId: "ses-target", title: "已恢复会话", status: "ready" });
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "load_session", commandId: "cmd-1", sessionId: "ses-target" },
+      createSinks(harness),
+    );
+
+    expect(harness.docManager.getChatYdoc("rcs-1")).toBe(persistedChat);
+    expect(harness.docManager.getSessionYdoc("rcs-1")).toBe(persistedSession);
+    expect(harness.syncCalls).toEqual(["ses-target"]);
+    expect(connection.acpSessionId).toBe("ses-target");
+    expect(relayMessages).toHaveLength(0);
   });
 
   // 同一 ACP session 重复 load：静默跳过（不转发 relay、不清空 Doc、不发快照）。

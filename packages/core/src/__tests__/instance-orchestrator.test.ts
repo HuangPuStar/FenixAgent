@@ -55,6 +55,31 @@ function createTestContext(options?: {
 }
 
 describe("InstanceOrchestrator", () => {
+  // 运行实例刷新环境时只重新 prepare，不重启进程，并保存最新 LaunchSpec。
+  test("refreshes a running instance environment without restarting it", async () => {
+    const { orchestrator, plugin, store } = createTestContext();
+    await orchestrator.launch({
+      instanceId: "inst_refresh",
+      engineType: "fake-engine",
+      nodeId: "local-default",
+      launchSpec: createLaunchSpec(),
+    });
+    const refreshedSpec = {
+      ...createLaunchSpec(),
+      skills: [{ name: "review", url: "https://example.com/review.zip" }],
+    };
+
+    const refreshed = await orchestrator.refreshEnvironment({
+      instanceId: "inst_refresh",
+      launchSpec: refreshedSpec,
+    });
+
+    expect(plugin.runtimeState.calls).toEqual(["prepare", "start", "prepare"]);
+    expect(plugin.runtimeState.lastPrepareInput?.launchSpec.skills).toEqual(refreshedSpec.skills);
+    expect(refreshed).toMatchObject({ status: "running", launchSpec: refreshedSpec });
+    expect(store.get("inst_refresh")?.launchSpec.skills).toEqual(refreshedSpec.skills);
+  });
+
   // 生命周期成功路径会按固定顺序推进状态与 runtime 调用
   test("runs launch -> connectRelay -> stop successfully", async () => {
     const { orchestrator, plugin, store } = createTestContext();
@@ -77,6 +102,37 @@ describe("InstanceOrchestrator", () => {
     expect(store.get("inst_flow")?.status).toBe("stopped");
     expect(store.get("inst_flow")?.relayConnected).toBe(false);
     expect(plugin.runtimeState.calls).toEqual(["prepare", "start", "connectRelay", "stop"]);
+  });
+
+  // 刷新失败时保留运行状态和上一次成功配置，避免破坏现有会话。
+  test("keeps the running snapshot when an environment refresh fails", async () => {
+    const { orchestrator, plugin, store } = createTestContext();
+    await orchestrator.launch({
+      instanceId: "inst_refresh_error",
+      engineType: "fake-engine",
+      nodeId: "local-default",
+      launchSpec: createLaunchSpec(),
+    });
+    const previousSpec = store.require("inst_refresh_error").launchSpec;
+    const originalPrepare = plugin.createRuntime().prepareEnvironment;
+    plugin.createRuntime().prepareEnvironment = async (input) => {
+      if (input.launchSpec.skills.length > 0) throw new Error("refresh failed");
+      await originalPrepare(input);
+    };
+
+    await expect(
+      orchestrator.refreshEnvironment({
+        instanceId: "inst_refresh_error",
+        launchSpec: {
+          ...createLaunchSpec(),
+          skills: [{ name: "review", url: "https://example.com/review.zip" }],
+        },
+      }),
+    ).rejects.toThrow("refresh failed");
+    expect(store.get("inst_refresh_error")).toMatchObject({
+      status: "running",
+      launchSpec: previousSpec,
+    });
   });
 
   // launch() 会在前置校验失败时返回稳定错误码

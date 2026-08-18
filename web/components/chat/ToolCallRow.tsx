@@ -8,6 +8,7 @@ import { ToolPermissionButtons } from "../ai-elements/permission-request";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
+import { TodoChanges } from "./TodoChanges";
 import { cardKindToStyle, formatOutput, kindLabel, truncate } from "./tool-call-utils";
 
 /**
@@ -177,6 +178,9 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
           </button>
         )}
       </div>
+
+      {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的 TodoPanel 承载。 */}
+      {tool.todoChanges && <TodoChanges changes={tool.todoChanges} />}
 
       {/* 子 agent 嵌套面板（保留） */}
       {hasSubEntries && (

@@ -56,6 +56,8 @@ export interface PromptTurnStartOptions {
   session: AgentSession;
   /** 可选：恢复已有会话（调用 session/load） */
   sessionId?: string;
+  /** 新建会话前刷新复用实例的 workspace 配置与 Skills；session/load 不调用。 */
+  prepareNewSession?: () => Promise<void>;
 }
 
 /** PromptTurn —— 单次 session/prompt 生命周期 */
@@ -260,6 +262,12 @@ export async function startPromptTurn(
   options: PromptTurnStartOptions,
 ): Promise<{ turn: PromptTurn; session: AgentSession }> {
   const { session } = options;
+
+  // 新 ACP session 会在创建时扫描 workspace Skills。复用运行实例的调用方必须先按
+  // 当前 AgentConfig 重新物化环境；恢复已有 session 不改变其 Skills 快照，无需刷新。
+  if (!options.sessionId && options.prepareNewSession) {
+    await options.prepareNewSession();
+  }
 
   // 发送 session/new 或 session/load，等待 agent 返回 sessionId
   const sessionId = await new Promise<string>((resolve, reject) => {

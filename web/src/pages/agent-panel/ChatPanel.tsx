@@ -46,9 +46,9 @@ export function ChatPanel({
   // 避免单动作失败触发整屏错误态
   const [actionError, setActionError] = useState<ActionError | null>(null);
   const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS 连接。
-  // 服务端以 4001/4500 等关闭码主动断连时（如 machine_unavailable、idle reclaim），
-  // WS 客户端不会自动重连，必须由用户手动触发。
+  // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS。
+  // 4500、4502 等同一 URL 无法恢复的关闭码仍需用户手动触发；Chat idle/activity
+  // 与客户端 keepalive 超时不再由服务端主动断开。
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
   // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
@@ -77,10 +77,8 @@ export function ChatPanel({
     };
   }, []);
 
-  // 缓存 ChatPanel 从后台切回前台且连接已断开时，自动触发一次与「重连」按钮等价的重连：
-  // 后台期间实例可能已被 idle/activity 回收（4001）或客户端 keepalive 超时（4501）断开，
-  // 这两类终态关闭码不会触发 YJS 客户端自动重连；切回前台时后端已通过 enter/ensureRunning
-  // 恢复实例，前端需重建 WS 才能恢复连接。machine_unavailable（4500）保留手动重试。
+  // 缓存 ChatPanel 从后台切回前台且连接已断开时，立即触发一次重连：浏览器可能节流后台
+  // 的 WS 退避计时器。machine_unavailable（4500）保留手动重试，避免无意义循环。
   const previousPageVisibleRef = useRef(pageVisible);
   useEffect(() => {
     const wasVisible = previousPageVisibleRef.current;
@@ -547,8 +545,8 @@ export function ChatPanel({
   }
 
   // 断开（非错误，非连接中）。
-  // 非终态断开（autoReconnecting）：客户端正在自动重连，展示轻提示而非整屏错误；
-  // 终态断开（4001/4500 等）：自动重连已停止，必须手动点击重连。
+  // 非终态断开时客户端正在自动重连，展示轻提示而非整屏错误；
+  // 4500 等终态断开才需要手动点击重连。
   return (
     <div className="agent-welcome-empty">
       <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>

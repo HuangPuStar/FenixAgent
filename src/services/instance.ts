@@ -212,6 +212,8 @@ export function toInstanceActivityInfo(
   const idleSince = supplement.lastRelayDetachedAt ?? now;
   const idleSeconds = supplement.relayCount === 0 ? Math.max(0, Math.floor((now - idleSince) / 1000)) : 0;
   const inactivitySeconds = Math.max(0, Math.floor((now - supplement.lastActivityAt) / 1000));
+  // interactive 来源是用户打开的 Chat，必须显式停止才释放；后台任务仍允许自动回收。
+  const automaticReclaimEnabled = supplement.spawnSource !== "interactive";
   return {
     ...toInstanceInfo(instance),
     user: {
@@ -226,10 +228,10 @@ export function toInstanceActivityInfo(
       supplement.lastRelayDetachedAt === null ? null : Math.floor(supplement.lastRelayDetachedAt / 1000),
     idle_seconds: idleSeconds,
     idle_timeout_seconds: idleTimeoutSeconds,
-    idle_kill_eligible: supplement.relayCount === 0 && idleSeconds >= idleTimeoutSeconds,
+    idle_kill_eligible: automaticReclaimEnabled && supplement.relayCount === 0 && idleSeconds >= idleTimeoutSeconds,
     inactivity_seconds: inactivitySeconds,
     activity_timeout_seconds: activityTimeoutSeconds,
-    activity_kill_eligible: inactivitySeconds >= activityTimeoutSeconds,
+    activity_kill_eligible: automaticReclaimEnabled && inactivitySeconds >= activityTimeoutSeconds,
   };
 }
 

@@ -2,7 +2,11 @@ import type { EngineRelayHandle, EngineRuntime } from "@fenix/plugin-sdk";
 import { createCoreRuntimeError } from "../errors/core-runtime-error";
 import type { CoreNodeRegistry } from "../registry/core-node-registry";
 import type { EnginePluginRegistry } from "../registry/engine-plugin-registry";
-import type { ConnectInstanceRelayRequest, LaunchInstanceRequest } from "../types/launch-request";
+import type {
+  ConnectInstanceRelayRequest,
+  LaunchInstanceRequest,
+  RefreshInstanceEnvironmentRequest,
+} from "../types/launch-request";
 import type { RuntimeInstanceSnapshot } from "../types/runtime-instance";
 import type { RuntimeInstanceStore } from "./runtime-instance-store";
 
@@ -14,6 +18,8 @@ export interface InstanceOrchestrator {
   launch(request: LaunchInstanceRequest): Promise<RuntimeInstanceSnapshot>;
   /** 为已处于运行态的实例建立或复用 relay 连接。 */
   connectRelay(request: ConnectInstanceRelayRequest): Promise<EngineRelayHandle>;
+  /** 在不重启进程的前提下刷新运行实例的 workspace 环境。 */
+  refreshEnvironment(request: RefreshInstanceEnvironmentRequest): Promise<RuntimeInstanceSnapshot>;
   /** 停止实例并执行必要的 relay/runtime 清理。 */
   stop(instanceId: string): Promise<void>;
   /** 读取单个实例快照；不存在时返回 `null`。 */
@@ -54,6 +60,7 @@ export interface CreateInstanceOrchestratorOptions {
  */
 export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOptions): InstanceOrchestrator {
   const { pluginRegistry, nodeRegistry, store, onInstanceStarted, runtimeResolver } = options;
+  const environmentRefreshes = new Map<string, Promise<RuntimeInstanceSnapshot>>();
 
   /**
    * 把异常统一收敛为实例 `error` 状态，便于上层读取失败快照。
@@ -208,6 +215,55 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
       } catch (error) {
         markInstanceError(request.instanceId, error);
         throw error;
+      }
+    },
+
+    /**
+     * 刷新运行实例的 workspace 环境，但不重启 Agent 进程或替换 relay。
+     *
+     * 同一 workspace 的刷新严格串行，避免同环境多个实例并发 session/new 互相替换 skills 目录；
+     * 失败时保留上一次成功的 launchSpec 与 running 状态，现有会话可继续使用。
+     */
+    async refreshEnvironment(request) {
+      const environmentKey = [
+        request.launchSpec.organizationId,
+        request.launchSpec.userId,
+        request.launchSpec.environmentId ?? "",
+      ].join("\0");
+      const previous = environmentRefreshes.get(environmentKey) ?? Promise.resolve(store.require(request.instanceId));
+      const refresh = previous
+        .catch(() => store.require(request.instanceId))
+        .then(async () => {
+          const record = store.require(request.instanceId);
+          if (record.status !== "running") {
+            throw toInvalidStateError(request.instanceId, record.status, "refreshEnvironment");
+          }
+
+          const runtimeEntry = store.getRuntimeEntry(request.instanceId);
+          if (!runtimeEntry) {
+            throw createCoreRuntimeError("INSTANCE_NOT_FOUND", `Runtime entry not found: ${request.instanceId}`, {
+              instanceId: request.instanceId,
+            });
+          }
+          const node = nodeRegistry.require(record.nodeId);
+          await runtimeEntry.runtime.prepareEnvironment({
+            instanceId: request.instanceId,
+            launchSpec: request.launchSpec,
+            engineType: node.mode === "remote" ? undefined : record.engineType,
+          });
+          return store.update(request.instanceId, {
+            status: "running",
+            launchSpec: request.launchSpec,
+          });
+        });
+
+      environmentRefreshes.set(environmentKey, refresh);
+      try {
+        return await refresh;
+      } finally {
+        if (environmentRefreshes.get(environmentKey) === refresh) {
+          environmentRefreshes.delete(environmentKey);
+        }
       }
     },
 
