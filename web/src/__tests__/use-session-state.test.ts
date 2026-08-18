@@ -25,6 +25,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: true,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.status).toBe("responding");
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 123 });
@@ -43,6 +44,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.status).toBe("replaying");
     expect(snapshot.loading).toBeNull();
@@ -60,6 +62,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: true,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 456 });
     expect(snapshot.canCancel).toBe(true);
@@ -77,6 +80,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.loading).toEqual({ kind: "session/respond", since: 789 });
     expect(snapshot.canCancel).toBe(false);
@@ -93,6 +97,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.loading).toBeNull();
     expect(snapshot.canCancel).toBe(false);
@@ -111,6 +116,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.status).toBe("idle");
     expect(snapshot.sessionStatus).toBe("ready");
@@ -150,6 +156,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: pending,
+      agentPublicError: null,
     });
     expect(snapshot.pendingQuestions).toBe(pending);
     expect(snapshot.pendingQuestions.get("iqa_1")?.questions[0]?.options).toHaveLength(2);
@@ -165,6 +172,7 @@ describe("computeSessionSnapshot", () => {
       canCancel: false,
       permissionOptions: new Map(),
       pendingQuestions: new Map(),
+      agentPublicError: null,
     });
     expect(snapshot.pendingQuestions.size).toBe(0);
   });

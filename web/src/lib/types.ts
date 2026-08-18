@@ -62,6 +62,8 @@ export interface ToolCallData {
   };
   // 独立权限请求（无匹配工具调用时创建）
   isStandalonePermission?: boolean;
+  /** 工具执行失败的脱敏错误（后端 ToolCallProjection.publicError 投影） */
+  publicError?: PublicErrorInfo;
   // 子 agent 嵌套条目（Task/Agent 工具调用的子 agent 输出）
   subEntries?: ThreadEntry[];
 }
@@ -88,6 +90,8 @@ export interface AssistantMessageEntry {
   type: "assistant_message";
   id: string;
   chunks: AssistantChunk[];
+  /** 本 turn 失败的脱敏错误（后端 ChatEntry.error 投影，挂在最后一段助手消息） */
+  error?: PublicErrorInfo;
 }
 
 // 工具调用条目
@@ -105,6 +109,12 @@ export interface PlanDisplayEntry {
 
 // 统一聊天条目类型
 export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry | PlanDisplayEntry;
+
+/** 展示层公开错误（脱敏 code/message，与 chat-channel PublicErrorInfo 结构一致） */
+export interface PublicErrorInfo {
+  code: string;
+  message: string;
+}
 
 // =============================================================================
 // Chat 组件 Props 类型

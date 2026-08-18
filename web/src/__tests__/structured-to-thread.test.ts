@@ -247,4 +247,70 @@ describe("chatDocEntriesToStructuredMessages 增量派生（SP-B2 第二步）",
     // 宽松绝对上限：即便未来实现整体变快，增量机制退化也不得超过 5ms
     expect(incMin).toBeLessThan(5);
   });
+
+  // turn 失败（ChatEntry.error 脱敏投影）：失败错误必须挂到最后一段助手消息；
+  // 整段无文本（纯失败 turn）时也要创建仅含错误的消息，不得出现"空 assistant entry"
+  test("turn 失败错误投影到最后一段助手消息", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "partial" } }));
+    applyNormalizedEvent(pair, event("turn_failed", { error: { code: "model_error", message: "rate limited" } }));
+
+    const messages = chatDocEntriesToStructuredMessages(pair.chat);
+    const assistant = messages[messages.length - 1];
+    if (assistant.type !== "assistant_message") throw new Error("expected assistant message");
+    expect(assistant.error).toEqual({ code: "model_error", message: "rate limited" });
+  });
+
+  // 纯失败 turn（无任何文本输出）也须投影错误消息，前端才能渲染失败态而非空白
+  test("纯失败 turn 创建仅含错误的消息", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("turn_failed", { error: { code: "model_error", message: "boom" } }));
+
+    const messages = chatDocEntriesToStructuredMessages(pair.chat);
+    expect(messages).toHaveLength(2);
+    const assistant = messages[1];
+    if (assistant.type !== "assistant_message") throw new Error("expected assistant message");
+    expect(assistant.chunks).toEqual([]);
+    expect(assistant.error).toEqual({ code: "model_error", message: "boom" });
+  });
+
+  // 前一个 turn 已有助手文本，当前 turn 纯失败时错误必须落在本 turn 新建的错误消息，
+  // 不得误挂到前一个 turn 的助手消息上（按 entryId 前缀隔离）
+  test("纯失败 turn 错误不误挂前一个 turn 的助手消息", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q1" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "prev answer" } }));
+    applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "q2" } }, "turn_2"));
+    applyNormalizedEvent(pair, event("turn_failed", { error: { code: "model_error", message: "boom2" } }));
+
+    const messages = chatDocEntriesToStructuredMessages(pair.chat);
+    const errored = messages.filter((m) => m.type === "assistant_message" && m.error);
+    expect(errored).toHaveLength(1);
+    const err = errored[0];
+    if (err.type !== "assistant_message") throw new Error("expected assistant message");
+    expect(err.id).toBe("turn_2:assistant#error");
+    expect(err.chunks).toEqual([]);
+    expect(err.error).toEqual({ code: "model_error", message: "boom2" });
+    // 前 turn 助手消息不受污染
+    const prev = messages.find((m) => m.type === "assistant_message" && textOf(m) === "prev answer");
+    if (!prev || prev.type !== "assistant_message") throw new Error("expected prev assistant message");
+    expect(prev.error).toBeUndefined();
+  });
+
+  // 工具失败（ToolCallProjection.publicError 脱敏投影）：工具消息必须携带脱敏错误，
+  // 供前端 narrate 优先展示（替代 rawOutput 启发式）
+  test("工具失败 publicError 投影到工具消息", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("tool_call_started", { toolCallId: "t1", title: "bash" }));
+    applyNormalizedEvent(
+      pair,
+      event("tool_call_failed", { toolCallId: "t1", error: { code: "exit_1", message: "command failed" } }),
+    );
+
+    const messages = chatDocEntriesToStructuredMessages(pair.chat);
+    const toolMsg = messages.find((m) => m.type === "tool_call");
+    if (!toolMsg || toolMsg.type !== "tool_call") throw new Error("expected tool_call message");
+    expect(toolMsg.publicError).toEqual({ code: "exit_1", message: "command failed" });
+  });
 });

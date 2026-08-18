@@ -12,6 +12,7 @@
 import type {
   LoadingState,
   PermissionOption,
+  PublicErrorInfo,
   QuestionProjection,
   SessionDocStatus,
   SessionStateSnapshot,
@@ -63,6 +64,8 @@ interface SessionMetaSnapshot {
   permissionOptions: Map<string, PermissionOption[]>;
   /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，60s 过期自动剔除） */
   pendingQuestions: Map<string, QuestionProjection>;
+  /** Agent 运行时错误（Session Doc agent.publicError 直接读取，未发生错误时为 null） */
+  agentPublicError: PublicErrorInfo | null;
 }
 
 function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
@@ -117,7 +120,17 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
     canCancel: (session?.get("canCancel") as boolean | undefined) ?? false,
     permissionOptions,
     pendingQuestions,
+    agentPublicError: normalizePublicError(agent?.get("publicError")),
   };
+}
+
+/** 规范化 Session Doc agent.publicError 为展示层错误（message 为空视为无错误） */
+function normalizePublicError(raw: unknown): PublicErrorInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const code = typeof record.code === "string" && record.code ? record.code : "agent_error";
+  const message = typeof record.message === "string" && record.message ? record.message : "";
+  return message ? { code, message } : null;
 }
 
 // ── 合并快照 ──
@@ -152,6 +165,7 @@ export function computeSessionSnapshot(
     loading: meta.loading,
     structuredMessages,
     pendingQuestions: meta.pendingQuestions,
+    agentPublicError: meta.agentPublicError,
   };
 }
 
@@ -176,6 +190,7 @@ export function useSessionState(rcsSessionId: string) {
         canCancel: false,
         permissionOptions: new Map(),
         pendingQuestions: new Map(),
+        agentPublicError: null,
       }),
     };
   }

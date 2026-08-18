@@ -149,6 +149,11 @@ export interface SessionStateSnapshot {
    * 与前端本地剔除都按同一 expiresAt，任何一侧失效面板都不会悬挂）。
    */
   pendingQuestions: Map<string, QuestionProjection>;
+  /**
+   * Agent 运行时错误（后端 agent.publicError 投影而来，如启动失败/崩溃）。
+   * 未发生错误时为空；展示层可在会话顶部呈现。
+   */
+  agentPublicError?: PublicErrorInfo | null;
 }
 
 // ── Structured Messages (Yjs timeline types, Phase C) ──
@@ -180,6 +185,12 @@ import type { PermissionOption } from "acp-link/client";
 
 export type { PermissionOption };
 
+/** 展示层公开错误（脱敏 code/message，不含内部实现细节与敏感信息；与 Chat Doc schema 的 PublicError 结构一致） */
+export interface PublicErrorInfo {
+  code: string;
+  message: string;
+}
+
 export interface ToolCallMessage {
   type: "tool_call";
   id: string;
@@ -192,6 +203,8 @@ export interface ToolCallMessage {
   permissionRequest?: { requestId: string; options: PermissionOption[] };
   isStandalonePermission?: boolean;
   subMessages?: StructuredMessage[];
+  /** 工具执行失败的脱敏错误（后端 ToolCallProjection.publicError 投影而来） */
+  publicError?: PublicErrorInfo;
 }
 
 export interface AssistantMessage {
@@ -200,6 +213,8 @@ export interface AssistantMessage {
   chunks: AssistantChunk[];
   seq: number;
   ts: number;
+  /** 本 turn 失败的脱敏错误（后端 ChatEntry.error 投影而来，挂在最后一段助手消息） */
+  error?: PublicErrorInfo;
 }
 
 export interface UserMessage {

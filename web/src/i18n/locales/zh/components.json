@@ -226,7 +226,8 @@
   "messageBubble": {
     "expand": "展开",
     "uploadedImage": "已上传图片",
-    "systemMessage": "系统消息"
+    "systemMessage": "系统消息",
+    "turnError": "执行出错"
   },
   "planView": {
     "high": "高",

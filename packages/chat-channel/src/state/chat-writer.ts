@@ -290,6 +290,8 @@ export interface ToolCallInit {
   status: "pending" | "awaiting_permission" | "running" | "completed" | "error" | "cancelled";
   arguments?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
+  /** 工具失败的脱敏错误（error 状态由聚合层传 extractPublicError，其余状态不携带） */
+  publicError?: { code: string; message: string } | null;
   permissionId?: string | null;
 }
 
@@ -302,6 +304,7 @@ export function upsertToolCall(ydoc: Y.Doc, init: ToolCallInit): Y.Map<unknown> 
     if (init.status) existing.set("status", init.status);
     if (init.arguments != null) existing.set("arguments", init.arguments);
     if (init.result != null) existing.set("result", init.result);
+    if (init.publicError !== undefined) existing.set("publicError", init.publicError ?? null);
     if (init.permissionId != null) existing.set("permissionId", init.permissionId);
     return existing;
   }
@@ -312,7 +315,7 @@ export function upsertToolCall(ydoc: Y.Doc, init: ToolCallInit): Y.Map<unknown> 
   projection.set("status", init.status);
   projection.set("arguments", init.arguments ?? null);
   projection.set("result", init.result ?? null);
-  projection.set("publicError", null);
+  projection.set("publicError", init.publicError ?? null);
   projection.set("permissionId", init.permissionId ?? null);
   toolCalls.set(init.toolCallId, projection);
   return projection;

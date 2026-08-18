@@ -121,6 +121,7 @@ interface AssistantBubbleProps {
 }
 
 export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: AssistantBubbleProps) {
+  const { t } = useTranslation("components");
   // 每个助手消息创建独立的 emitter 实例
   const emitter = useMemo(() => new CardEventEmitter(), []);
 
@@ -174,6 +175,16 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               </div>
             );
           })}
+          {/* turn 失败错误（后端 ChatEntry.error 脱敏投影）— 展示在消息末尾 */}
+          {entry.error && (
+            <div
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              <span className="font-medium">{t("messageBubble.turnError")}</span>
+              {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
+            </div>
+          )}
         </div>
       </div>
     </MessageEmitterContext.Provider>

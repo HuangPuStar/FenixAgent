@@ -52,6 +52,14 @@ export function sessionOptionKindsToPermissionOptions(rawOptions: unknown): Perm
   return result;
 }
 
+/** 规范化脱敏错误（后端 ChatEntry.error / ToolCallProjection.publicError 投影），message 为空则视为无错误 */
+function extractPublicErrorInfo(raw: Record<string, unknown>): { code: string; message: string } | undefined {
+  const code = typeof raw.code === "string" && raw.code ? raw.code : "agent_error";
+  const message = typeof raw.message === "string" && raw.message ? raw.message : "";
+  if (!message) return;
+  return { code, message };
+}
+
 function mapStatus(status: string): ToolCallStatus {
   switch (status) {
     case "running":
@@ -92,6 +100,7 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
               text: c.text,
             }),
           ),
+          error: m.error,
         };
 
       case "user_message":
@@ -129,6 +138,7 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
             : undefined,
           permissionRequest: permReq,
           isStandalonePermission: m.isStandalonePermission,
+          publicError: m.publicError,
           subEntries: m.subMessages ? structuredToThreadEntries(m.subMessages) : undefined,
         };
         return { type: "tool_call", toolCall: toolCallData };
@@ -325,6 +335,12 @@ function deriveEntryMessages(
 
         const status = (tool.get("status") as string) || "running";
         const permissionId = tool.get("permissionId") as string | null | undefined;
+        // 工具失败脱敏错误：后端 ToolCallProjection.publicError 投影，取 message 兜底为空
+        const publicErrorRaw = tool.get("publicError");
+        const publicError =
+          publicErrorRaw && typeof publicErrorRaw === "object"
+            ? extractPublicErrorInfo(publicErrorRaw as Record<string, unknown>)
+            : undefined;
         const toolMessage: StructuredMessage = {
           type: "tool_call",
           id: toolCallId,
@@ -333,6 +349,7 @@ function deriveEntryMessages(
           content: [],
           rawInput: (tool.get("arguments") as Record<string, unknown> | undefined) ?? undefined,
           rawOutput: (tool.get("result") as Record<string, unknown> | undefined) ?? undefined,
+          publicError,
         };
         if (permissionId) {
           // Chat Doc 侧拿不到权限选项（pendingPermissions 在 Session Doc）：
@@ -348,6 +365,35 @@ function deriveEntryMessages(
       else if (blockType === "text" && text) chunks.push({ type: "message", text });
     }
     flushChunks();
+    // turn 失败错误（ChatEntry.error）：挂到最后一段助手消息；整段无文本（纯失败 turn）
+    // 时创建仅含错误的消息承载，保证前端能渲染失败态而非"空 assistant entry"
+    const entryError = entry.get("error");
+    const errorInfo =
+      entryError && typeof entryError === "object"
+        ? extractPublicErrorInfo(entryError as Record<string, unknown>)
+        : undefined;
+    if (errorInfo) {
+      // 错误只挂本 entry 派生出的最后一段助手消息（id 前缀 entryId），
+      // 不能在整条时间线里 find——纯失败 turn 会把错误误挂到前一个 turn 的消息上
+      const lastAssistant = [...derived]
+        .reverse()
+        .find(
+          (m): m is Extract<StructuredMessage, { type: "assistant_message" }> =>
+            m.type === "assistant_message" && (m.id === entryId || m.id.startsWith(`${entryId}#`)),
+        );
+      if (lastAssistant) {
+        lastAssistant.error = errorInfo;
+      } else {
+        derived.push({
+          type: "assistant_message",
+          id: `${entryId}#error`,
+          chunks: [],
+          seq: startOutputSeq + derived.length,
+          ts,
+          error: errorInfo,
+        });
+      }
+    }
     return derived;
   }
 
