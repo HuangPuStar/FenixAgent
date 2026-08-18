@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle, Circle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TodoChange, TodoChangeKind } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
@@ -30,8 +30,8 @@ const CHANGE_STYLES: Record<
     itemClassName: "text-text-secondary",
   },
   in_progress: {
-    Icon: Loader2,
-    iconClassName: "text-status-running animate-spin",
+    Icon: Circle,
+    iconClassName: "text-status-running",
     labelClassName: "text-status-running bg-status-running/10",
     itemClassName: "text-text-primary font-medium",
   },
