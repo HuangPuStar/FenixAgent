@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 import type { ActionError } from "../channel/types";
-import { encodeYjsUpdateFrame, YJS_UPDATE_FRAME_TYPE } from "../protocol/update-frame";
+import {
+  decodeYjsSyncFrame,
+  encodeYjsUpdateFrame,
+  MAX_YJS_SYNC_PAYLOAD_BYTES,
+  YJS_UPDATE_FRAME_TYPE,
+} from "../protocol/update-frame";
 import { createYjsWsClient } from "../transport/ws";
 
 type ScheduledTimer = {
@@ -418,5 +423,22 @@ describe("createYjsWsClient 二进制 yjs:update 帧（SP-A4）", () => {
 
     const socket = FakeWebSocket.instances[0] as unknown as { binaryType?: string };
     expect(socket.binaryType).toBe("arraybuffer");
+  });
+});
+
+describe("generation frame payload 边界", () => {
+  // 合法 payload 恰好达到 8 MiB 上限时仍可编码并无损解码。
+  test("accepts payload exactly at the configured bound", () => {
+    const payload = new Uint8Array(MAX_YJS_SYNC_PAYLOAD_BYTES);
+    payload[payload.length - 1] = 7;
+    const decoded = decodeYjsSyncFrame(encodeYjsUpdateFrame("chat:rcs-bound", "gen-bound", payload));
+    expect(decoded?.type).toBe("update");
+    expect(decoded?.type === "update" ? decoded.update.length : 0).toBe(MAX_YJS_SYNC_PAYLOAD_BYTES);
+  });
+
+  // payload 超过 8 MiB 一字节必须在分配 WS 帧前被明确拒绝。
+  test("rejects payload one byte above the configured bound", () => {
+    const payload = new Uint8Array(MAX_YJS_SYNC_PAYLOAD_BYTES + 1);
+    expect(() => encodeYjsUpdateFrame("chat:rcs-bound", "gen-bound", payload)).toThrow("Yjs payload too large");
   });
 });

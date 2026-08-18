@@ -218,12 +218,13 @@ describe("SessionChannel action flow", () => {
     expect(relayMessages).toHaveLength(0);
   });
 
-  // load_session 合法：先清空两份 Doc（快照 + clear），再转发 session/load（cwd 服务端注入）。
-  test("load_session clears docs and forwards session/load with server-injected cwd", async () => {
+  // load_session 合法：换代两份 Doc 后再转发 session/load（cwd 服务端注入）。
+  test("load_session replaces docs and forwards session/load with server-injected cwd", async () => {
     const harness = createHarness();
     const { connection, relayMessages } = createConnection({ acpSessionId: "ses-old" });
-    await harness.docManager.openChat("rcs-1");
-    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+    const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
+    const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
+    const oldGeneration = harness.docManager.getProjectionGeneration("rcs-1");
     const sinks = createSinks(harness);
 
     await harness.channel.handleAction(
@@ -233,7 +234,9 @@ describe("SessionChannel action flow", () => {
     );
 
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
-    expect(harness.prepareCalls).toBe(1);
+    expect(harness.docManager.getChatYdoc("rcs-1")).not.toBe(oldChat);
+    expect(harness.docManager.getSessionYdoc("rcs-1")).not.toBe(oldSession);
+    expect(harness.docManager.getProjectionGeneration("rcs-1")).not.toBe(oldGeneration);
     expect(harness.syncCalls).toEqual(["ses-new"]);
     expect(connection.acpSessionId).toBe("ses-new");
     expect(relayMessages).toHaveLength(1);
@@ -506,13 +509,12 @@ describe("SessionChannel action flow", () => {
     expect(harness.errors).toHaveLength(1);
   });
 
-  // 快照准备失败（Redis 不可用）：保留旧会话绑定，返回稳定错误且不转发 relay。
-  test("keeps old session binding when snapshot preparation rejects", async () => {
-    const harness = createHarness({
-      prepareClearSessionSnapshot: async () => {
-        throw new Error("Redis unavailable");
-      },
-    });
+  // 投影换代失败：保留旧会话绑定，返回稳定错误且不转发 relay。
+  test("keeps old session binding when projection replacement rejects", async () => {
+    const harness = createHarness();
+    harness.docManager.replaceProjection = async () => {
+      throw new Error("Redis unavailable");
+    };
     const { connection, relayMessages } = createConnection({ acpSessionId: "ses-old" });
     await harness.docManager.openChat("rcs-1");
     await harness.docManager.openSession("user-1", "agent-1", "rcs-1");

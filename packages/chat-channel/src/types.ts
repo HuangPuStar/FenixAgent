@@ -45,14 +45,25 @@ export interface PermissionRequest {
 
 export interface ChatDoc {
   ydoc: Y.Doc;
+  generation: string;
   provider: RedisProvider;
   destroy(): Promise<void>;
 }
 
 export interface SessionDoc {
   ydoc: Y.Doc;
+  generation: string;
   provider: RedisProvider;
   destroy(): Promise<void>;
+}
+
+/** 同一 ACP 会话投影的 Chat/Session 原子世代。 */
+export interface ProjectionDocs {
+  rcsSessionId: string;
+  generation: string;
+  targetAcpSessionId: string | null;
+  chat: ChatDoc;
+  session: SessionDoc;
 }
 
 // ── Redis Provider 接口 ──

@@ -1,55 +1,145 @@
 // packages/chat-channel/src/protocol/update-frame.ts
-// yjs:update 二进制 WS 帧编解码（SP-A4，含 B8 慢解码路径治理）。
-//
-// 线协议：yjs:update 一律走二进制帧，替代历史 {type:"yjs:update",docName,data:base64}
-// JSON 文本帧——base64 使传输体积膨胀 ~33%，且客户端 atob + 逐字节回调解码在大快照
-// 下是慢路径。其余消息（keep_alive / pong / error / action_ack / action_error）保持
-// JSON 文本帧，客户端以 typeof event.data === "string" 判别帧类型。
-//
-// 帧布局（docNameLen 为大端网络字节序）：
-//   [1-byte type=0x01][2-byte docNameLen][docName UTF-8][Yjs update bytes]
-//
-// 帧类型 0x02 预留给 SP-A5 的 state vector 差量同步帧，二者共用同一布局族。
+// generation-aware Yjs 二进制 WS 帧编解码。
 
 const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
+const TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 
-/** yjs:update 二进制帧类型标识；0x02 已预留给 SP-A5 state vector 帧 */
 export const YJS_UPDATE_FRAME_TYPE = 0x01;
+export const YJS_STATE_VECTOR_FRAME_TYPE = 0x02;
+export const YJS_REPLACE_FRAME_TYPE = 0x03;
+export const YJS_V2_MAGIC = 0xa7;
+export const YJS_V2_MAGIC_SECOND = 0x59;
+export const YJS_FRAME_VERSION = 0x02;
+export const MAX_YJS_SYNC_PAYLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_YJS_FRAME_BYTES = 9 * 1024 * 1024;
+export const MAX_YJS_IDENTIFIER_BYTES = 1024;
 
-/** 解码后的 yjs:update 帧：docName 如 "chat:rcs_xxx"，update 为可直接 Y.applyUpdate 的增量 */
-export interface YjsUpdateFrame {
+export interface LegacyYjsUpdateFrame {
+  type: "legacy-update";
   docName: string;
+  generation: null;
   update: Uint8Array;
 }
+export interface YjsUpdateFrame {
+  type: "update";
+  docName: string;
+  generation: string;
+  update: Uint8Array;
+}
+export interface YjsStateVectorFrame {
+  type: "state-vector";
+  docName: string;
+  generation: string;
+  stateVector: Uint8Array;
+}
+export interface YjsReplaceFrame {
+  type: "replace";
+  docName: string;
+  generation: string;
+  update: Uint8Array;
+}
+export type YjsSyncFrame = LegacyYjsUpdateFrame | YjsUpdateFrame | YjsStateVectorFrame | YjsReplaceFrame;
 
-/**
- * 编码 yjs:update 二进制帧。
- * docName 超过 65535 字节时抛错（实际 docName 为 `chat:rcs_*` 短标识，属协议不变量违约）。
- */
-export function encodeYjsUpdateFrame(docName: string, update: Uint8Array): Uint8Array {
-  const docNameBytes = TEXT_ENCODER.encode(docName);
-  if (docNameBytes.length > 0xffff) {
-    throw new Error(`yjs update frame docName too long: ${docNameBytes.length} bytes`);
-  }
-  const frame = new Uint8Array(3 + docNameBytes.length + update.length);
-  frame[0] = YJS_UPDATE_FRAME_TYPE;
-  frame[1] = (docNameBytes.length >> 8) & 0xff;
-  frame[2] = docNameBytes.length & 0xff;
-  frame.set(docNameBytes, 3);
-  frame.set(update, 3 + docNameBytes.length);
+function encodePart(value: string, label: string): Uint8Array {
+  const bytes = TEXT_ENCODER.encode(value);
+  if (bytes.length === 0 || bytes.length > MAX_YJS_IDENTIFIER_BYTES)
+    throw new Error(`${label} length is invalid: ${bytes.length} bytes`);
+  return bytes;
+}
+
+function encodeGenerationFrame(type: number, docName: string, generation: string, payload: Uint8Array): Uint8Array {
+  if (payload.length > MAX_YJS_SYNC_PAYLOAD_BYTES) throw new Error(`Yjs payload too large: ${payload.length} bytes`);
+  const doc = encodePart(docName, "docName");
+  const gen = encodePart(generation, "generation");
+  const frame = new Uint8Array(8 + doc.length + gen.length + payload.length);
+  frame[0] = type;
+  frame[1] = YJS_V2_MAGIC;
+  frame[2] = YJS_V2_MAGIC_SECOND;
+  frame[3] = YJS_FRAME_VERSION;
+  frame[4] = doc.length >> 8;
+  frame[5] = doc.length & 0xff;
+  frame.set(doc, 6);
+  const offset = 6 + doc.length;
+  frame[offset] = gen.length >> 8;
+  frame[offset + 1] = gen.length & 0xff;
+  frame.set(gen, offset + 2);
+  frame.set(payload, offset + 2 + gen.length);
+  if (frame.length > MAX_YJS_FRAME_BYTES) throw new Error(`Yjs frame too large: ${frame.length} bytes`);
   return frame;
 }
 
-/**
- * 解码 yjs:update 二进制帧。
- * 帧头类型不符或长度越界返回 null（调用方静默丢弃坏帧，不得让单条坏帧中断连接）；
- * 返回的 update 是输入缓冲的子视图（零拷贝），调用方不得在其底层缓冲被复用后继续持有。
- */
-export function decodeYjsUpdateFrame(data: Uint8Array): YjsUpdateFrame | null {
-  if (data.length < 3 || data[0] !== YJS_UPDATE_FRAME_TYPE) return null;
-  const docNameLen = (data[1] << 8) | data[2];
-  if (3 + docNameLen > data.length) return null;
-  const docName = TEXT_DECODER.decode(data.subarray(3, 3 + docNameLen));
-  return { docName, update: data.subarray(3 + docNameLen) };
+export function encodeYjsUpdateFrame(docName: string, update: Uint8Array): Uint8Array;
+export function encodeYjsUpdateFrame(docName: string, generation: string, update: Uint8Array): Uint8Array;
+export function encodeYjsUpdateFrame(
+  docName: string,
+  generationOrUpdate: string | Uint8Array,
+  maybeUpdate?: Uint8Array,
+): Uint8Array {
+  if (typeof generationOrUpdate === "string")
+    return encodeGenerationFrame(YJS_UPDATE_FRAME_TYPE, docName, generationOrUpdate, maybeUpdate ?? new Uint8Array());
+  const doc = encodePart(docName, "docName");
+  const frame = new Uint8Array(3 + doc.length + generationOrUpdate.length);
+  frame[0] = YJS_UPDATE_FRAME_TYPE;
+  frame[1] = doc.length >> 8;
+  frame[2] = doc.length & 0xff;
+  frame.set(doc, 3);
+  frame.set(generationOrUpdate, 3 + doc.length);
+  if (frame.length > MAX_YJS_FRAME_BYTES) throw new Error(`Yjs frame too large: ${frame.length} bytes`);
+  return frame;
+}
+
+export function encodeYjsStateVectorFrame(docName: string, generation: string, stateVector: Uint8Array): Uint8Array {
+  return encodeGenerationFrame(YJS_STATE_VECTOR_FRAME_TYPE, docName, generation, stateVector);
+}
+export function encodeYjsReplaceFrame(docName: string, generation: string, update: Uint8Array): Uint8Array {
+  return encodeGenerationFrame(YJS_REPLACE_FRAME_TYPE, docName, generation, update);
+}
+
+function decodeText(bytes: Uint8Array): string | null {
+  try {
+    return TEXT_DECODER.decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+export function decodeYjsSyncFrame(data: Uint8Array): YjsSyncFrame | null {
+  if (data.length > MAX_YJS_FRAME_BYTES || data.length < 3) return null;
+  const type: number = Number(data[0]);
+  if (type !== YJS_UPDATE_FRAME_TYPE && type !== YJS_STATE_VECTOR_FRAME_TYPE && type !== YJS_REPLACE_FRAME_TYPE)
+    return null;
+  const hasV2Header =
+    data.length >= 8 && data[1] === YJS_V2_MAGIC && data[2] === YJS_V2_MAGIC_SECOND && data[3] === YJS_FRAME_VERSION;
+  if (!hasV2Header) {
+    // magic 前缀出现但 magic/version 不完整时必须拒绝，不能降级为 legacy。
+    if (data[1] === YJS_V2_MAGIC) return null;
+    if (type !== YJS_UPDATE_FRAME_TYPE) return null;
+    const docLength = (data[1] << 8) | data[2];
+    if (docLength === 0 || 3 + docLength > data.length) return null;
+    const docName = decodeText(data.subarray(3, 3 + docLength));
+    return docName ? { type: "legacy-update", docName, generation: null, update: data.subarray(3 + docLength) } : null;
+  }
+  if (data.length < 8) return null;
+  const docLength = (data[4] << 8) | data[5];
+  if (docLength === 0 || 6 + docLength + 2 > data.length) return null;
+  const docName = decodeText(data.subarray(6, 6 + docLength));
+  if (!docName) return null;
+  const generationOffset = 6 + docLength;
+  const generationLength = (data[generationOffset] << 8) | data[generationOffset + 1];
+  const payloadOffset = generationOffset + 2 + generationLength;
+  if (generationLength === 0 || generationLength > MAX_YJS_IDENTIFIER_BYTES || payloadOffset > data.length) return null;
+  const generation = decodeText(data.subarray(generationOffset + 2, payloadOffset));
+  if (!generation || data.length - payloadOffset > MAX_YJS_SYNC_PAYLOAD_BYTES) return null;
+  const payload = data.subarray(payloadOffset);
+  if (data[0] === YJS_STATE_VECTOR_FRAME_TYPE)
+    return { type: "state-vector", docName, generation, stateVector: payload };
+  if (data[0] === YJS_REPLACE_FRAME_TYPE) return { type: "replace", docName, generation, update: payload };
+  return { type: "update", docName, generation, update: payload };
+}
+
+export function decodeYjsUpdateFrame(data: Uint8Array): { docName: string; update: Uint8Array } | null {
+  const frame = decodeYjsSyncFrame(data);
+  return frame && (frame.type === "legacy-update" || frame.type === "update")
+    ? { docName: frame.docName, update: frame.update }
+    : null;
 }

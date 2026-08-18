@@ -16,8 +16,9 @@ export type RedisSnapshotTransaction = {
 };
 
 export type RedisSnapshotConnection = {
-  watch(key: string): Promise<unknown>;
+  watch(...keys: string[]): Promise<unknown>;
   unwatch(): Promise<unknown>;
+  get(key: string): Promise<string | null>;
   getBuffer(key: string): Promise<Buffer | null>;
   multi(): RedisSnapshotTransaction;
   disconnect(): void;
@@ -43,12 +44,14 @@ export async function mergeYjsSnapshotWithCas(
   redisKey: string,
   localFull: Uint8Array,
   ttlSeconds: number = getSnapshotEnvConfig().ttlSeconds,
+  fence?: { key: string; generation: string },
 ): Promise<boolean> {
   for (let attempt = 0; attempt < SNAPSHOT_PERSIST_RETRIES; attempt += 1) {
     let watched = false;
     try {
-      await persistence.watch(redisKey);
+      await persistence.watch(...(fence ? [redisKey, fence.key] : [redisKey]));
       watched = true;
+      if (fence && (await persistence.get(fence.key)) !== fence.generation) return false;
       const existingRaw = await persistence.getBuffer(redisKey);
       const merged = mergeSnapshotUpdates(existingRaw, localFull);
       const result = await persistence.multi().set(redisKey, Buffer.from(merged), "EX", ttlSeconds).exec();
