@@ -46,9 +46,17 @@ function sessionRootKeys(): string[] {
   return Array.from(getSessionRoot(pair.session).keys()).sort();
 }
 
-// Chat Doc 初始化后根键只有时间线相关字段（schemaVersion/projectionVersion/entryOrder/entries/toolCalls）
+// Chat Doc 初始化后根键只有时间线与投影世代字段
+// （schemaVersion/projectionVersion/projectionGeneration/entryOrder/entries/toolCalls）
 test("chat doc root contains only timeline fields", () => {
-  expect(chatRootKeys()).toEqual(["entries", "entryOrder", "projectionVersion", "schemaVersion", "toolCalls"]);
+  expect(chatRootKeys()).toEqual([
+    "entries",
+    "entryOrder",
+    "projectionGeneration",
+    "projectionVersion",
+    "schemaVersion",
+    "toolCalls",
+  ]);
   expect(getChatRoot(pair.chat).get("schemaVersion")).toBe(CHAT_DOC_SCHEMA_VERSION);
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(1);
 });
@@ -59,6 +67,7 @@ test("session doc root contains only metadata fields", () => {
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",
@@ -377,7 +386,14 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
 
   // 骨架保留
   expect(getChatRoot(pair.chat).get("schemaVersion")).toBe(CHAT_DOC_SCHEMA_VERSION);
-  expect(chatRootKeys()).toEqual(["entries", "entryOrder", "projectionVersion", "schemaVersion", "toolCalls"]);
+  expect(chatRootKeys()).toEqual([
+    "entries",
+    "entryOrder",
+    "projectionGeneration",
+    "projectionVersion",
+    "schemaVersion",
+    "toolCalls",
+  ]);
   expect(getEntryOrder(pair.chat).length).toBe(0);
   expect((getChatRoot(pair.chat).get("entries") as Y.Map<unknown>).size).toBe(0);
   expect((getChatRoot(pair.chat).get("toolCalls") as Y.Map<unknown>).size).toBe(0);
@@ -390,6 +406,7 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",
@@ -444,6 +461,7 @@ test("session_list syncs sessions map with idempotent full sync", () => {
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",

@@ -19,7 +19,12 @@ import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as Y from "yjs";
 import { sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
-import { createChatDocBinding, createSessionDocBinding } from "../yjs/doc-hub";
+import {
+  createChatDocBinding,
+  createSessionDocBinding,
+  getDocHubReplacementVersion,
+  subscribeDocHubReplacement,
+} from "../yjs/doc-hub";
 
 // ── Chat Doc 派生：token 用量（turn 终态写入 assistant entry 的 tokenUsage）──
 
@@ -463,6 +468,12 @@ export function useChatState(rcsSessionId: string) {
   // 后必须重建订阅，否则切换会话 / StrictMode 双挂载后后续 update 不再触发
   // 渲染（快照永久 stale，SP-B1 回归测试捕获的真实缺陷）。
   const [bindEpoch, setBindEpoch] = useState(0);
+  const subscribeReplacement = useCallback(
+    (listener: () => void) => subscribeDocHubReplacement(rcsSessionId, listener),
+    [rcsSessionId],
+  );
+  const getReplacementVersion = useCallback(() => getDocHubReplacementVersion(rcsSessionId), [rcsSessionId]);
+  const replacementVersion = useSyncExternalStore(subscribeReplacement, getReplacementVersion, getReplacementVersion);
   // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）
   const subscribeChat = useCallback((cb: () => void) => stores.chat.subscribe(cb), [bindEpoch]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，bindEpoch 仅驱动引用变化
@@ -473,20 +484,21 @@ export function useChatState(rcsSessionId: string) {
   const state = useMemo(() => computeChatSnapshot(token, meta), [token, meta]);
 
   useEffect(() => {
-    // doc 绑定只在 effect 期执行（不在渲染期 switchDoc）：渲染期 switchDoc 的
+    // Doc 绑定只在 effect 期执行（不在渲染期 switchDoc）：渲染期 switchDoc 的
     // notify() 会在渲染进行中触发已订阅组件的 setState（React 报错），且本组件
     // 的 listeners 已被 cleanup destroy 清空，必须经 bindEpoch 重订阅兜底。
     // StrictMode 双挂载 / 切换会话：cleanup destroy 已重置 activeKey（""），
     // 此处 switchDoc 重建 hub 绑定；destroy 经 binding.cleanup 释放 hub 引用，
     // 计数归零才销毁共享 doc。绑定完成后推进 epoch 驱动重订阅。
-    stores.chat.switchDoc(rcsSessionId, bindChatDoc);
-    stores.meta.switchDoc(rcsSessionId, bindSessionDoc);
+    const bindingKey = `${rcsSessionId}:${replacementVersion}`;
+    stores.chat.switchDoc(bindingKey, bindChatDoc);
+    stores.meta.switchDoc(bindingKey, bindSessionDoc);
     setBindEpoch((e) => e + 1);
     return () => {
       stores.chat.destroy();
       stores.meta.destroy();
     };
-  }, [stores, rcsSessionId, bindChatDoc, bindSessionDoc]);
+  }, [stores, rcsSessionId, bindChatDoc, bindSessionDoc, replacementVersion]);
 
   return { state };
 }

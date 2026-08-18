@@ -75,6 +75,14 @@ export class ChatChannelController {
     this.sessionChannel = new SessionChannel({
       docManager: dependencies.docManager,
       prepareClearSessionSnapshot: dependencies.prepareClearSessionSnapshot,
+      replaceProjection: (projection) => {
+        const chatName = `chat:${projection.rcsSessionId}`;
+        const sessionName = `session:${projection.rcsSessionId}`;
+        this.broadcaster.registerYjsDocListener(projection.chat.ydoc, chatName, projection.generation);
+        this.broadcaster.registerYjsDocListener(projection.session.ydoc, sessionName, projection.generation);
+        this.broadcaster.broadcastReplacement(projection.chat.ydoc, chatName, projection.generation);
+        this.broadcaster.broadcastReplacement(projection.session.ydoc, sessionName, projection.generation);
+      },
       // 会话切换后同步 ACP session ID 到同一 RCS 会话的所有客户端，
       // 使同一会话的多标签页保持一致，且不污染其他 RCS 会话（YJS 不变量 8）。
       syncSessionId: (connection, newSessionId) => {

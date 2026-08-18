@@ -71,7 +71,7 @@ export interface RelayEventHandlerDependencies {
   registry: ConnectionRegistry;
   broadcaster: YjsBroadcaster;
   docManager: DocManager;
-  registerYjsDocListener: (ydoc: Y.Doc, docName: string) => void;
+  registerYjsDocListener: (ydoc: Y.Doc, docName: string, generation?: string) => void;
   reportError: (message: string, error: unknown) => void;
   /** 每次从 Agent 收到消息时更新实例活跃时间（宿主注入，内部过滤保活消息） */
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;

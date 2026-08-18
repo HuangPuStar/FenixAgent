@@ -11,11 +11,13 @@
 // 无 Doc / 已解绑的 rcsSessionId 直接丢弃，绝不重建旧 Doc。
 
 import type { Cluster, Redis } from "ioredis";
-import type * as Y from "yjs";
+import * as Y from "yjs";
+import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import { encodeYjsReplaceFrame } from "../protocol/update-frame";
 import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
-import type { ChatDoc, SessionDoc } from "../types";
+import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
-import { clearChatDocContent, clearSessionDocContent, hasChatDocContent } from "./chat-writer";
+import { hasChatDocContent } from "./chat-writer";
 import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
 
 /** 合并窗口（毫秒）：文本/思考增量可落入同一窗口合并为一个 yjs:update */
@@ -23,6 +25,32 @@ const DEFAULT_BATCH_WINDOW_MS = 16;
 
 /** 可合并的内容类事件；控制类事件（工具/权限/终态/断链）必须先 flush 再立即写入 */
 const BATCHABLE_EVENT_TYPES = new Set(["message_delta", "reasoning_delta"]);
+
+function cloneYValue(value: unknown): unknown {
+  if (value instanceof Y.Map) {
+    const clone = new Y.Map<unknown>();
+    for (const [key, child] of value.entries()) clone.set(key, cloneYValue(child));
+    return clone;
+  }
+  if (value instanceof Y.Array) {
+    const clone = new Y.Array<unknown>();
+    clone.push(value.toArray().map(cloneYValue));
+    return clone;
+  }
+  return value;
+}
+
+function preserveAgentProjection(source: Y.Doc | undefined, target: Y.Doc): void {
+  if (!source) return;
+  const sourceRoot = source.getMap("root");
+  const targetRoot = target.getMap("root");
+  target.transact(() => {
+    for (const key of ["agent", "sessions", "sessionListLoaded"]) {
+      const value = sourceRoot.get(key);
+      if (value !== undefined) targetRoot.set(key, cloneYValue(value));
+    }
+  });
+}
 
 export interface DocManagerOptions {
   /** Redis 连接获取器（惰性求值，支持连接延迟建立） */
@@ -109,7 +137,10 @@ export class DocManager {
     if (existing) return existing;
 
     const redis = this.getRedis();
-    const doc = redis ? loadChatDoc(rcsSessionId, redis) : createChatDoc(rcsSessionId, null);
+    const generation = redis
+      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
+      : (this.sessionDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
+    const doc = redis ? loadChatDoc(rcsSessionId, redis, generation) : createChatDoc(rcsSessionId, null, generation);
     this.registerDocBroadcast(doc.ydoc, `chat:${rcsSessionId}`);
     this.chatDocs.set(rcsSessionId, doc);
     return doc;
@@ -142,7 +173,12 @@ export class DocManager {
     if (existing) return existing;
 
     const redis = this.getRedis();
-    const doc = redis ? loadSessionDoc(rcsSessionId, redis) : createSessionDoc(rcsSessionId, null);
+    const generation = redis
+      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
+      : (this.chatDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
+    const doc = redis
+      ? loadSessionDoc(rcsSessionId, redis, generation)
+      : createSessionDoc(rcsSessionId, null, generation);
     this.registerDocBroadcast(doc.ydoc, `session:${rcsSessionId}`);
     this.sessionDocs.set(rcsSessionId, doc);
     return doc;
@@ -166,20 +202,58 @@ export class DocManager {
     }
   }
 
-  // ── 会话切换清理 ──
+  // ── 投影换代 ──
 
-  /** 在 Y.Doc 事务内原地清空 Session Doc（禁止 destroy+recreate 制造异步竞态） */
-  clearSessionDocContent(rcsSessionId: string): void {
-    const doc = this.sessionDocs.get(rcsSessionId);
-    if (!doc) return;
-    clearSessionDocContent(doc.ydoc);
+  /** 返回当前 Chat/Session 投影共同世代；尚未完整打开时返回 null。 */
+  getProjectionGeneration(rcsSessionId: string): string | null {
+    const chat = this.chatDocs.get(rcsSessionId);
+    const session = this.sessionDocs.get(rcsSessionId);
+    return chat && session && chat.generation === session.generation ? chat.generation : null;
   }
 
-  /** 在 Y.Doc 事务内原地清空 Chat Doc 时间线（与 Session Doc 同批切换） */
-  clearChatDocContent(rcsSessionId: string): void {
-    const doc = this.chatDocs.get(rcsSessionId);
-    if (!doc) return;
-    clearChatDocContent(doc.ydoc);
+  /**
+   * 创建全新 StructStore 并原子替换 Chat/Session 投影组。
+   * 新 Doc 完整构造并绑定广播后才交换 map；旧 provider 在交换后销毁，迟到事件因
+   * processNormalizedEvent 总是从 map 取当前 Doc，不会写回旧 generation。
+   */
+  async replaceProjection(rcsSessionId: string, targetAcpSessionId: string | null): Promise<ProjectionDocs> {
+    this.cancelACPBatch(rcsSessionId);
+    const generation = `gen_${crypto.randomUUID()}`;
+    const redis = this.getRedis();
+    const expectedGeneration = redis
+      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
+      : (this.getProjectionGeneration(rcsSessionId) ?? generation);
+    let chat: ChatDoc | null = null;
+    let session: SessionDoc | null = null;
+    try {
+      chat = createChatDoc(rcsSessionId, redis, generation);
+      session = createSessionDoc(rcsSessionId, redis, generation);
+      const oldChat = this.chatDocs.get(rcsSessionId);
+      const oldSession = this.sessionDocs.get(rcsSessionId);
+      preserveAgentProjection(oldSession?.ydoc, session.ydoc);
+
+      // 在 generation 提交前完成编码验证；失败时新 provider 只存在于未激活私有 channel。
+      encodeYjsReplaceFrame(`chat:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(chat.ydoc));
+      encodeYjsReplaceFrame(`session:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(session.ydoc));
+      if (redis && !(await publishActiveGeneration(redis, rcsSessionId, expectedGeneration, generation))) {
+        throw new Error("projection generation changed concurrently");
+      }
+
+      this.registerDocBroadcast(chat.ydoc, `chat:${rcsSessionId}`);
+      this.registerDocBroadcast(session.ydoc, `session:${rcsSessionId}`);
+      this.chatDocs.set(rcsSessionId, chat);
+      this.sessionDocs.set(rcsSessionId, session);
+
+      try {
+        await Promise.all([oldChat?.destroy(), oldSession?.destroy()]);
+      } catch (err) {
+        this.onError?.("destroy replaced projection", err);
+      }
+      return { rcsSessionId, generation, targetAcpSessionId, chat, session };
+    } catch (err) {
+      await Promise.allSettled([chat?.destroy(), session?.destroy()]);
+      throw err;
+    }
   }
 
   /**

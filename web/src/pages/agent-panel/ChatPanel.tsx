@@ -12,7 +12,7 @@ import { useChatPageVisible } from "../../hooks/usePageVisible";
 import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { randomUUID } from "../../lib/utils";
-import { applyDocHubUpdate } from "../../yjs/doc-hub";
+import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../../yjs/doc-hub";
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
 import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
@@ -229,14 +229,15 @@ export function ChatPanel({
       url: relayUrl,
       onYjsUpdate: (docName, data) => {
         try {
-          // 单写入口（SP-B1 / 根因 B1）：hub 持有该会话唯一的 Chat/Session doc 副本，
-          // 两个 hook 的 store 都绑定在这两份 doc 上——apply 一次即全部可见，
-          // 替代原先对两个 hook 各自 applyUpdate 的双写
           applyDocHubUpdate(rcsSessionKey, docName, data);
         } catch (err) {
           console.warn("[Yjs] Failed to apply update:", err);
         }
       },
+      onYjsReplace: (docName, generation, data) => {
+        replaceDocHubUpdate(rcsSessionKey, docName, generation, data);
+      },
+      getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
       onError: (error) => {
         if (error.code) setErrorCode(error.code);
       },

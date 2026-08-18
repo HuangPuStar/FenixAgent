@@ -20,39 +20,47 @@ const NOOP_PROVIDER: RedisProvider = {
 };
 
 /** 安全创建 provider：Redis 不可用时返回 no-op */
-function safeProvider(redis: RedisConn | null, docName: string, ydoc: Y.Doc): RedisProvider {
+function safeProvider(redis: RedisConn | null, docName: string, generation: string, ydoc: Y.Doc): RedisProvider {
   if (!redis) return NOOP_PROVIDER;
-  return createRedisProvider(redis, docName, ydoc);
+  return createRedisProvider(redis, docName, ydoc, { generation });
+}
+
+function createGeneration(): string {
+  return `gen_${crypto.randomUUID()}`;
 }
 
 // ── Chat Doc（消息时间线）──
 
-export function createChatDoc(rcsSessionId: string, redis: RedisConn | null): ChatDoc {
+export function createChatDoc(rcsSessionId: string, redis: RedisConn | null, generation = createGeneration()): ChatDoc {
   const docName = `chat:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: docName });
+  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
   initChatDocStructure(ydoc);
+  ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, ydoc);
+  const provider = safeProvider(redis, docName, generation, ydoc);
   return {
     ydoc,
+    generation,
     provider,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }
 
-export function loadChatDoc(rcsSessionId: string, redis: RedisConn | null): ChatDoc {
+export function loadChatDoc(rcsSessionId: string, redis: RedisConn | null, generation = createGeneration()): ChatDoc {
   const docName = `chat:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: docName });
+  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
 
   // 兼容缺失结构：旧 schema 或空 Doc 加载时补齐新结构骨架；
   // 已存在的新结构 Doc 不做破坏性重建（无兼容窗口，但加载路径需幂等）。
   if (getChatRoot(ydoc).get("schemaVersion") !== CHAT_DOC_SCHEMA_VERSION) {
     initChatDocStructure(ydoc);
   }
+  ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, ydoc);
+  const provider = safeProvider(redis, docName, generation, ydoc);
   return {
     ydoc,
+    generation,
     provider,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
@@ -60,30 +68,42 @@ export function loadChatDoc(rcsSessionId: string, redis: RedisConn | null): Chat
 
 // ── Session Doc（会话元信息 / Agent 状态）──
 
-export function createSessionDoc(rcsSessionId: string, redis: RedisConn | null): SessionDoc {
+export function createSessionDoc(
+  rcsSessionId: string,
+  redis: RedisConn | null,
+  generation = createGeneration(),
+): SessionDoc {
   const docName = `session:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: docName });
+  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
   initSessionDocStructure(ydoc);
+  ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, ydoc);
+  const provider = safeProvider(redis, docName, generation, ydoc);
   return {
     ydoc,
+    generation,
     provider,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };
 }
 
-export function loadSessionDoc(rcsSessionId: string, redis: RedisConn | null): SessionDoc {
+export function loadSessionDoc(
+  rcsSessionId: string,
+  redis: RedisConn | null,
+  generation = createGeneration(),
+): SessionDoc {
   const docName = `session:${rcsSessionId}`;
-  const ydoc = new Y.Doc({ guid: docName });
+  const ydoc = new Y.Doc({ guid: `${docName}:${generation}` });
 
   if (getSessionRoot(ydoc).get("schemaVersion") !== SESSION_DOC_SCHEMA_VERSION) {
     initSessionDocStructure(ydoc);
   }
+  ydoc.getMap("root").set("projectionGeneration", generation);
 
-  const provider = safeProvider(redis, docName, ydoc);
+  const provider = safeProvider(redis, docName, generation, ydoc);
   return {
     ydoc,
+    generation,
     provider,
     destroy: () => provider.destroy().then(() => ydoc.destroy()),
   };

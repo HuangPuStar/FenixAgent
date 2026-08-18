@@ -3,7 +3,7 @@
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
 import type { ActionAck, ActionError } from "../channel/types";
-import { decodeYjsUpdateFrame } from "../protocol/update-frame";
+import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set([
@@ -34,6 +34,10 @@ export interface YjsWsOptions {
   url: string;
   /** 收到 yjs:update 消息时回调，docName 如 "chat:rcs_xxx" / "session:rcs_xxx" */
   onYjsUpdate: (docName: string, data: Uint8Array) => void;
+  /** replacement 帧：调用方必须销毁旧 Doc 并以该快照创建新副本。 */
+  onYjsReplace?: (docName: string, generation: string, data: Uint8Array) => void;
+  /** 当前本地 Doc 的 state vector；连接建立后用于请求差量同步。 */
+  getYjsStateVectors?: () => Array<{ docName: string; generation: string; stateVector: Uint8Array }>;
   /** 连接状态变化回调 */
   onConnectionState?: (state: YjsWsState) => void;
   /** 收到服务端安全错误帧时回调 */
@@ -67,6 +71,12 @@ function toFrameBytes(data: unknown): Uint8Array | null {
   return null;
 }
 
+function toWebSocketBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 /**
  * 创建 Yjs WebSocket 客户端。
  *
@@ -90,7 +100,20 @@ function toFrameBytes(data: unknown): Uint8Array | null {
  * ```
  */
 export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
-  const { url, onYjsUpdate, onConnectionState, onError, onClose, onActionAck, onActionError } = options;
+  const {
+    url,
+    onYjsUpdate,
+    onYjsReplace,
+    getYjsStateVectors,
+    onConnectionState,
+    onError,
+    onClose,
+    onActionAck,
+    onActionError,
+  } = options;
+
+  const generations = new Map<string, string>();
+  const requestedGenerations = new Map<string, string>();
 
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
@@ -126,6 +149,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       if (destroyed || ws !== socket) return;
       reconnectDelayIdx = 0;
       setState("connected");
+      for (const vector of getYjsStateVectors?.() ?? []) {
+        socket.send(
+          toWebSocketBuffer(encodeYjsStateVectorFrame(vector.docName, vector.generation, vector.stateVector)),
+        );
+      }
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -135,13 +163,52 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       if (typeof data !== "string") {
         const bytes = toFrameBytes(data);
         if (bytes) {
-          const frame = decodeYjsUpdateFrame(bytes);
-          if (frame) onYjsUpdate(frame.docName, frame.update);
+          const frame = decodeYjsSyncFrame(bytes);
+          if (!frame || frame.type === "state-vector") return;
+          if (frame.type === "legacy-update") {
+            if (!generations.has(frame.docName)) onYjsUpdate(frame.docName, frame.update);
+            return;
+          }
+          if (frame.type === "replace") {
+            generations.set(frame.docName, frame.generation);
+            onYjsReplace?.(frame.docName, frame.generation, frame.update);
+            return;
+          }
+          const current = generations.get(frame.docName);
+          if (requestedGenerations.get(frame.docName) === frame.generation && current !== frame.generation) {
+            requestedGenerations.delete(frame.docName);
+            generations.set(frame.docName, frame.generation);
+            onYjsReplace?.(frame.docName, frame.generation, frame.update);
+            return;
+          }
+          if (current && current !== frame.generation) return;
+          generations.set(frame.docName, frame.generation);
+          onYjsUpdate(frame.docName, frame.update);
         }
         return;
       }
       try {
         const msg = JSON.parse(data) as Record<string, unknown>;
+        if (msg.type === "yjs:sync-request" && Array.isArray(msg.docs)) {
+          const local = new Map((getYjsStateVectors?.() ?? []).map((vector) => [vector.docName, vector]));
+          for (const requested of msg.docs) {
+            if (!requested || typeof requested !== "object") continue;
+            const record = requested as Record<string, unknown>;
+            if (typeof record.docName !== "string" || typeof record.generation !== "string") continue;
+            const vector = local.get(record.docName);
+            requestedGenerations.set(record.docName, record.generation);
+            socket.send(
+              toWebSocketBuffer(
+                encodeYjsStateVectorFrame(
+                  record.docName,
+                  record.generation,
+                  vector?.generation === record.generation ? vector.stateVector : new Uint8Array(),
+                ),
+              ),
+            );
+          }
+          return;
+        }
         if (msg.type === "error") {
           const payload = msg.payload;
           if (payload && typeof payload === "object") {
