@@ -319,8 +319,16 @@ export class SessionChannel {
       return false;
     }
 
-    // Redis 或内存中已有当前会话投影时，首次恢复只绑定会话，不再请求 Agent 全量回放。
-    if (!connection.sessionLoaded && this.dependencies.docManager.hasTimelineContent(connection.rcsSessionId)) {
+    // Redis 或内存中已有目标会话的投影时，首次恢复只绑定会话，不再请求 Agent 全量回放。
+    // 时间线非空本身不能证明它属于当前点击的目标：同一 rcsSessionId 下若保留的是
+    // 另一会话，跳过 load 会让前端先高亮目标、却继续显示旧时间线，直到再次切换才恢复。
+    const currentSessionDoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
+    const currentProjectionSessionId = currentSessionDoc ? getSessionInfo(currentSessionDoc).get("sessionId") : null;
+    if (
+      !connection.sessionLoaded &&
+      currentProjectionSessionId === sessionId &&
+      this.dependencies.docManager.hasTimelineContent(connection.rcsSessionId)
+    ) {
       connection.acpSessionId = sessionId;
       connection.sessionLoaded = true;
       this.dependencies.syncSessionId(connection, sessionId);

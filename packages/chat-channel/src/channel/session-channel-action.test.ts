@@ -6,7 +6,14 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
-import { getAgentStatus, getChatRoot, getEntriesMap, getSessionInfo, getSessionRoot } from "../state/chat-writer";
+import {
+  getAgentStatus,
+  getChatRoot,
+  getEntriesMap,
+  getSessionInfo,
+  getSessionRoot,
+  setSessionInfo,
+} from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
@@ -247,6 +254,53 @@ describe("SessionChannel action flow", () => {
       sessionId: "ses-new",
       cwd: "/workspace/org-1/user-1/env-1",
     });
+  });
+
+  // 首次恢复只能跳过与目标 ACP session 匹配的持久化投影：旧会话的时间线不可冒充
+  // 新目标已加载，否则前端会先高亮目标但仍显示旧会话，需先切换其他项才会触发真正 load。
+  test("first load replaces a persisted timeline when it belongs to another session", async () => {
+    const harness = createHarness();
+    const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
+    const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
+    const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
+    harness.docManager.registerUserMessage("rcs-1", "message from the previous session");
+    setSessionInfo(oldSession, { sessionId: "ses-old", title: "旧会话", status: "ready" });
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "load_session", commandId: "cmd-1", sessionId: "ses-target" },
+      createSinks(harness),
+    );
+
+    expect(harness.docManager.getChatYdoc("rcs-1")).not.toBe(oldChat);
+    expect(harness.docManager.getSessionYdoc("rcs-1")).not.toBe(oldSession);
+    expect(harness.syncCalls).toEqual(["ses-target"]);
+    expect(connection.acpSessionId).toBe("ses-target");
+    expect(relayMessages).toHaveLength(1);
+    expect(relayMessages[0]?.method).toBe("session/load");
+    expect(relayMessages[0]?.params).toMatchObject({ sessionId: "ses-target" });
+  });
+
+  // 首次恢复仅当缓存投影确实属于目标会话时跳过回放，避免不必要的 session/load。
+  test("first load reuses a persisted timeline when it belongs to the target session", async () => {
+    const harness = createHarness();
+    const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
+    const persistedChat = (await harness.docManager.openChat("rcs-1")).ydoc;
+    const persistedSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
+    harness.docManager.registerUserMessage("rcs-1", "message from the persisted session");
+    setSessionInfo(persistedSession, { sessionId: "ses-target", title: "已恢复会话", status: "ready" });
+
+    await harness.channel.handleAction(
+      connection,
+      { action: "load_session", commandId: "cmd-1", sessionId: "ses-target" },
+      createSinks(harness),
+    );
+
+    expect(harness.docManager.getChatYdoc("rcs-1")).toBe(persistedChat);
+    expect(harness.docManager.getSessionYdoc("rcs-1")).toBe(persistedSession);
+    expect(harness.syncCalls).toEqual(["ses-target"]);
+    expect(connection.acpSessionId).toBe("ses-target");
+    expect(relayMessages).toHaveLength(0);
   });
 
   // 同一 ACP session 重复 load：静默跳过（不转发 relay、不清空 Doc、不发快照）。
