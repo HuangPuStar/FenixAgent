@@ -34,7 +34,7 @@ Cluster 启动时会自动执行 SQLite 迁移，数据保存在 Compose volume 
 OpenSandbox Server 不与 Cluster 部署在同一个 Compose 中。请在每台沙盒机器上参考
 [`docker/opensandbox-server/README.md`](../opensandbox-server/README.md) 独立部署 DinD 版 OpenSandbox Server。
 
-节点启动并确认健康后，再将节点的可访问地址注册到 Cluster。Cluster 只通过 HTTP 连接这些节点，不挂载节点的 Docker Socket。
+节点启动并确认健康后，再将节点注册到 Cluster。direct 节点需要提供可访问的 `base_url`；tunnel 节点通过 FRP 主动连接，不挂载节点的 Docker Socket。
 
 ## 注册 OpenSandbox Server
 
@@ -77,3 +77,33 @@ docker compose start
 ```
 
 不要在 Cluster 运行时直接复制正在写入的 SQLite 文件。
+
+## FRP tunnel 配置
+
+默认 Compose 同时启动 Cluster 和单实例 `frps`。宿主机只发布：
+
+- Cluster 管理 API：`8080`；
+- FRP 登录端口：`7000`，可通过 `FRP_BIND_PORT` 修改。
+
+Cluster 的 Plugin `8081` 和 frps vhost `7080` 仅在 Docker 内部网络可见。
+
+`.env` 至少配置：
+
+```env
+FRP_PUBLIC_ADDRESS=cluster.example.com
+FRP_BIND_PORT=7000
+FRP_TOKEN=replace-with-a-url-safe-random-token
+```
+
+`FRP_TOKEN` 同时用于 frpc/frps 登录认证和 frps 回调 Cluster Plugin，建议只使用字母、数字、`-`、`_`。
+
+tunnel 配置有两种入口，二选一：
+
+- 新建 Server：在 `POST /api/v1/servers` 中设置 `transport_mode=tunnel`；
+- 迁移已有 direct Server：先停机，再调用 `PUT /api/v1/servers/:serverId/tunnel`，由接口检查离线并切换模式。
+
+完成任一入口后，再调用 `GET /api/v1/servers/:serverId/tunnel/frpc.toml` 下载配置。
+
+然后将配置挂载到 Server 的 `/etc/frp/frpc.toml`，使用 `docker-compose.tunnel.yml` 重启或启动 Server，等待 FRP 连接恢复。
+
+Cluster 管理 API 支持 HTTP 或 HTTPS，FRP 数据链路固定启用 TLS。
