@@ -1,11 +1,11 @@
 # Chat 流式对话全链路架构
 # YJS Chat Streaming 实现基线
 
-> 状态：实现基线（2026-08-05 修订，对齐 `refactor/yjs` 分支当前实现；包内测试与后端测试全绿）
+> 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿）
 > 范围：浏览器 → 主服务 → Machine 的流式对话链路、关键实体生命周期、数据归属与隔离、典型用户场景。
 > 定位：本文档描述**已验证实现**，是前端交互式 Chat（YJS 路径）的权威架构契约。代码演进偏离时，先更新本文档再改代码；关键实现文件以相对路径引用（行号不维护，以语义为准）。
 > 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`src/services/chat-channel-bootstrap.ts` 装配单例 + `src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
-> 实现差异速览（评审决策，详见对应章节）：事件日志与租约不实现（Q5，§7.2/§8.2）、Y.Doc schema 一次性切换无兼容窗口（Q4，§5.4）、ACP 私有帧在 ACPChannel 边界内规范化为事件（Q6，§6.2）、前端信封只发 `commandId`（Q9，§7.1）、连接建立时序为快照推送 + connect 握手（Q13，§4.1，YJS sync 增量握手对齐为二期优化项）。
+> 实现差异速览（评审决策，详见对应章节）：事件日志与租约不实现（Q5，§7.2/§8.2）、Y.Doc schema 一次性切换无兼容窗口（Q4，§5.4）、ACP 私有帧在 ACPChannel 边界内规范化为事件（Q6，§6.2）、前端信封只发 `commandId`（Q9，§7.1）；连接初始化采用 generation-aware state-vector 差量握手，`load_session` / `create_session` 通过 projection replacement 切换干净世代，禁止在旧 Y.Doc 上 clear 后重放。
 
 ## 1. 总体架构
 
@@ -83,12 +83,14 @@ flowchart TB
 
 1. **业务事实由服务端单写**：浏览器可以提交意图，但不能直接写入共享 Chat Doc。用户消息、Agent 消息、工具调用和会话状态仅由当前会话的服务端写入者提交。
 2. **YJS 是实时状态投影，不是业务命令总线**：YJS Update 用于同步已经确认的会话事实；创建会话、发送消息、取消生成、权限应答等操作使用显式 Action。
-3. **Instance ACP session data 是实时恢复真相，Y.Doc 是随实例生命周期存在的镜像**：Durable Store 仅保存业务会话元数据；Redis 承担有界热缓存、跨节点同步与 Session Doc 快照持久化（`persist/redis.ts` CAS 写入，会话切换前的并发安全清理用），均不能恢复已断链实例的 YJS 状态。
+3. **Instance ACP session data 是实时恢复真相，Y.Doc 是随实例生命周期存在的镜像**：Durable Store 仅保存业务会话元数据；Redis 只承担存活实例的有界热快照、active generation 恢复和跨节点同步，不能把已断链实例的旧 Y.Doc 提升为业务真相。
 4. **同一 Instance ACP session 的消息按其协议顺序处理**：服务端必须将其数据单写入对应 `rcsSessionId` 的 Y.Doc，避免重连或复用实例产生混写。
 5. **传输至少一次，领域效果恰好一次**：客户端和 ACP 链路允许重发；服务端通过 `commandId`、`turnId` 和状态机实现幂等。
 6. **流式增量可丢、最终状态不可丢**：短暂的 token delta 可以合并；turn 完成、错误、取消、工具调用和权限决策必须可靠落盘。
 7. **租户边界先于资源定位**：任何 `sessionId`、`environmentId`、`instanceId` 都必须在认证主体与组织上下文内解析，不能仅凭 ID 访问。
 8. **慢消费者不能阻塞 Agent**：广播与 ACP 读取解耦；连接达到背压阈值后重新同步当前实时 Doc 或断开重连，而不是无限缓存。
+9. **投影世代必须有界且可替换**：`load_session` / `create_session` 不得在旧 Y.Doc 上执行 clear + 全量回放；Chat Doc 与 Session Doc 必须以同一个 projection generation 成对替换，确保已删除 CRDT struct 不随切换次数累积。
+10. **同步以 generation + state vector 为边界**：连接初始化先协商客户端当前世代和 state vector，仅发送缺失 update；generation 不一致时发送当前世代 replacement。空 state-vector payload 表示客户端没有当前世代状态，不得当作合法 YJS state vector 解码。
 
 ### 2.2 控制面与数据面
 
@@ -106,15 +108,17 @@ flowchart TB
 | 模块 | 实现位置 | 单一职责 | 不应承担 |
 |---|---|---|---|
 | `ChatChannelController` | `channel/controller.ts` | Chat 域控制面单例组装点：持有 Gateway / ConnectionRegistry / SessionChannel / RelayEventHandler / Broadcaster | 不直接调用宿主服务、不承载协议实现 |
-| `Yjs Gateway` | `channel/gateway.ts` + `channel/connection-registry.ts` | 认证、连接限流、协议解码、心跳与背压；open/message/close 生命周期编排；共享 relay 引用计数 | 领域状态变更、Agent 编排 |
-| `SessionChannel` | `channel/session-channel.ts` | 将连接绑定至安全上下文和会话频道，路由 Action/Update，`normalizeAction` 服务端补全信封，会话切换与清理 | 直接调用 Agent Engine |
+| `Yjs Gateway` | `channel/gateway.ts` + `channel/gateway-sync.ts` + `channel/connection-registry.ts` | 认证、连接限流、generation-aware state-vector 初始同步、协议解码、心跳与背压；open/message/close 生命周期编排；共享 relay 引用计数 | 领域状态变更、Agent 编排 |
+| `SessionChannel` | `channel/session-channel.ts` | 将连接绑定至安全上下文和会话频道，路由 Action/Update，`normalizeAction` 服务端补全信封；会话切换时编排 projection replacement | 直接调用 Agent Engine |
 | `CommandCoordinator` | `channel/command-coordinator.ts` | Action 校验、`commandId` 幂等、单写约束、会话状态机、命令串行化 | 解析厂商特定 ACP 事件 |
 | `ACPChannel` | `protocol/acp-channel.ts` | 入站消息规范化边界：acp-link 私有帧与 JSON-RPC 帧翻译为规范化事件、双格式兼容（`extractJsonRpc` / `extractAcpEvent`） | 持久化 Chat Doc |
 | `Translator` | `protocol/translator.ts` | 出站翻译：前端 action → ACP JSON-RPC（`translateSimpleAction`，cwd 由服务端注入）；ACP RPC 请求携带 rpcId | 解析入站事件 |
 | `RelayEventHandler` | `channel/relay-event-handler.ts` | 共享 relay 唯一入站消费者；断链（`relay_closed`）触发实例级回收（`terminateLocalDeadInstance` 注入）与本节点实时资源删除 | 业务去重 |
 | `EventAggregator` | `state/aggregator.ts` | 将规范化事件聚合为稳定 Y.Doc 投影，节流 token 更新（16ms 合并窗口） | 连接管理 |
-| `DocManager` | `state/doc-manager.ts` + `state/chat-writer.ts` + `state/factory.ts` | 维护 Instance ACP session 的实时 Y.Doc 镜像、微批次合并、生成 update、可选 Redis 持久化 | 处理未经确认的客户端业务写入、持久化或恢复旧 Y.Doc |
-| `YjsBroadcaster` | `channel/broadcaster.ts` | 本节点 fan-out、更新合并、慢消费者背压（64 KB 阈值） | 业务去重 |
+| `DocManager` | `state/doc-manager.ts` + `state/chat-writer.ts` + `state/factory.ts` | 维护 generation 成对的 Chat/Session Y.Doc；微批次合并；构造、校验并原子替换干净 projection；装配 generation-aware Redis provider | 处理未经确认的客户端业务写入、在旧 Doc 上 clear 后继续复用 |
+| `YjsBroadcaster` | `channel/broadcaster.ts` | 本节点 fan-out、更新合并、state-vector 差量响应、replacement 广播、慢消费者背压（64 KB 阈值） | 业务去重 |
+| `Yjs Sync Frame` | `protocol/update-frame.ts` + `transport/ws.ts` | generation-aware update / state-vector / replace 二进制帧；magic/version、标识和 payload 上限校验；旧 generation fencing | 承载 Action 或授权上下文 |
+| `Redis Yjs Provider` | `persist/redis.ts` + `persist/snapshot-cas.ts` | active generation 指针、快照 CAS、generation-scoped key/channel、旧世代写入 fencing 与 TTL 回收 | 作为 ACP session 的持久化真相 |
 | `SessionLeaseManager` | **占位，不实现**（Q5 评审决策：YJS CRDT 已保证文档一致性，`commandId` 去重承担防重复副作用；`leaseEpoch` 类型占位） | 租约获取、续期、释放与 fencing token | 会话内容存储 |
 | `Instance 生命周期` | 编排域 `packages/orchestration`（AgentController + AgentNode/AgentNodeService，见 `docs/arch/20-orchestration-management.md`）；宿主 `ensureRunning`（`src/services/instance.ts`）经桥接注入 | Agent 实例复用 / 创建（仅新建时检查并发配额）、共享 relay 连接、空闲回收 | 浏览器会话状态 |
 
@@ -210,7 +214,9 @@ classDiagram
 
 ### 4.1 建立连接与初始同步
 
-> **实现差异（Q13，二期优化项）**：当前实现不采用 `server_hello` / `sync_step_1` / `sync_step_2` / `sync_ready` 的 YJS sync 增量握手。实际时序（`channel/gateway.ts` `handleOpen`）为：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → `acquireRelay`（共享 relay：同一 `instanceId + userId` 多标签页复用，引用计数）→ 首个客户端打开 Chat Doc 并注册广播监听 + 启动 session/list 轮询 → 登记客户端（`relayReady = false`，消息进入有界缓冲）→ 推送两份 Doc 的全量快照（`yjs:update` snapshot）→ `relayReady = true` → 发送 `connect` 握手（远端据此回传 Agent status）→ flush 连接期间缓冲的 Action。`relayReady` 前到达的客户端消息进入有界缓冲，`relayReady` 后按 Action 处理。YJS sync 增量握手对齐为二期优化项。
+连接建立采用 generation-aware state-vector 握手（`channel/gateway.ts` + `channel/gateway-sync.ts`）：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → `acquireRelay`（共享 relay）→ 打开同一 active generation 的 Chat/Session Doc 并注册广播监听 → 登记客户端（`relayReady = false`）→ 服务端发送 `yjs:sync-request` → 客户端分别返回 generation + state vector → 服务端定向发送缺失 update；客户端 generation 不一致时以空 payload 声明“无当前世代状态”，服务端返回完整当前 projection，客户端按 replacement 处理。握手超时后才兼容性发送当前快照。随后服务端完成 relay `connect` 握手，成功后置 `relayReady = true` 并 flush 有界缓冲中的 Action。
+
+Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
 
 **建立失败的终态关闭码**（`channel/gateway.ts`，客户端据此决定是否自动重连）：
 
@@ -244,23 +250,30 @@ sequenceDiagram
     IB-->>GW: instanceId（复用或新建）
     GW->>IB: connectAgentRelay(instanceId, rcsSessionId)
     IB-->>GW: relay handle（共享，引用计数 +1）
-    GW->>DM: open(rcsSessionId) 打开 / 恢复两份 Doc
-    DM-->>GW: current docs
+    GW->>DM: open(rcsSessionId) 恢复 active generation 的两份 Doc
+    DM-->>GW: Chat/Session docs（同 generation）
     alt 首个客户端
-        GW->>GW: 注册 Chat Doc 广播监听 + 启动 session/list 轮询
+        GW->>GW: 注册两份 Doc 广播监听 + 启动 session/list 轮询
     end
-    GW-->>YC: 推送 Chat Doc / Session Doc 全量快照（yjs:update）
-    GW->>GW: relayReady = true
+    GW-->>YC: yjs:sync-request(docName + generation)
+    YC->>GW: Chat/Session state-vector frame
+    alt 客户端拥有相同 generation
+        GW-->>YC: 缺失的 yjs:update diff
+    else 客户端无当前 generation
+        GW-->>YC: 当前 projection update（客户端按 replacement 处理）
+    end
     GW->>IB: 发送 connect 握手（远端回传 Agent status）
-    GW->>GW: flush 缓冲 Action
+    IB-->>GW: connect success
+    GW->>GW: relayReady = true + flush 缓冲 Action
     YC-->>UI: stores hydrated
 ```
 
 **约束：**
 
-- `relayReady` 之前 UI 可以读取本地缓存，但不得把会话视为在线可写。
-- 服务端必须先完成 Chat Doc 与 Session Doc 的同步，再接受依赖当前状态的 Action。（实现等价：两份 Doc 快照推送完成后才置 `relayReady`，之前只缓冲不处理。）
-- 客户端上传的 state vector 只是同步提示，不是业务版本或授权依据。
+- `relayReady` 之前 UI 可以读取本地缓存，但不得把会话视为在线可写；客户端 Action 进入有界缓冲。
+- 服务端必须先完成两份 Doc 的 generation/state-vector 协商和 relay `connect` 握手，再置 `relayReady` 并处理缓冲 Action。
+- 客户端上传的 state vector 只是同步提示，不是业务版本或授权依据；空 payload 仅表示客户端没有请求 generation 的状态，服务端必须使用单参数 `Y.encodeStateAsUpdate(ydoc)`，不能把空数组作为 YJS state vector 解码。
+- Chat/Session state-vector 响应必须使用同一 active generation。generation 不一致的 update 不能合并进现有 Doc，客户端必须通过 replacement 换代。
 - 协议协商失败应返回稳定错误码并关闭连接，不得静默降级成未知语义。
 
 ### 4.2 创建或恢复 Agent 会话
@@ -281,18 +294,23 @@ sequenceDiagram
     GW->>CC: handleAction（normalizeAction 服务端补全信封）
     CC->>CC: authz + idempotency + state validation
     Note over GW: ensureRunning 已在 handleOpen 完成；relay 已共享
+    CC->>DM: 构造干净的 Chat/Session projection generation
+    DM->>DM: 编码校验 + Redis active generation CAS
+    DM-->>B: 成对 yjs:replace（同 generation）
     CC->>TR: translateSimpleAction(load_session, cwd, rpcId)
     TR->>RL: ACP session/load（cwd 服务端注入）
     RL-->>CC: loaded(acpSessionId, capabilities)
-    CC->>DM: 投影会话状态到 Session Doc（会话切换先清空旧投影）
+    CC->>DM: 回放写入新 generation
     DM-->>B: yjs:update(session status/capabilities)
     CC-->>B: action_ack(commandId, committedVersion)
 ```
 
 - 实例生命周期在连接建立时完成：`ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`src/services/instance.ts`，经桥接注入）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
-- **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：load/resume 转发时开启，窗口内且 Chat Doc 无时间线内容时，先于 JSON-RPC result 到达的 Agent 历史回放流（无头增量 / 无 turnId user_message）由 `relay-event-handler` 合成回放 turn 投影时间线——无持久化快照时历史恢复的唯一来源；窗口外或 Doc 已有内容（重连跳过回放语义）由聚合层拒绝。
-- **会话切换（switch session）**：`SessionChannel` 先 `prepareClearSessionSnapshot`（CAS 持久化清空后的 Session Doc 快照）再 `clearSessionDocContent` 清空两份 Doc，随后 `syncSessionId` 把新 `acpSessionId` 同步给同 `rcsSessionId` 的所有客户端（多标签页一致，不污染其他 rcsSessionId）；create_session 同批清空。
+- **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
+- **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
+- **多标签页原子可见性**：服务端向同一 `rcsSessionId` 广播两份相同 generation 的 replace frame；前端 `DocHub` 先 staging，只有 Chat/Session 均到齐才同时交换 Y.Doc 并通知 hooks 重新绑定。单边 replacement 不得暴露“新 Chat + 旧 Session”的混合状态。
+- **回放窗口**（`connection-types.ts` `REPLAY_WINDOW_MS`，10s）：新 projection 无时间线内容，load/resume 转发时开启；窗口内 Agent 历史回放由 `relay-event-handler` 合成到新 generation。重连恢复已有时间线时跳过重复合成。
 - 能恢复既有 `acpSessionId` 时优先恢复（从 Session Doc `session.sessionId` 反查 binding）；恢复失败应显式进入 `degraded` 或创建新绑定，且记录原因，不得伪装为原会话连续。
 - Agent capability 未确认前，相关 Action 必须拒绝或排队在有界队列中。
 
@@ -412,10 +430,12 @@ sequenceDiagram
 
 | Doc | 名称 | 内容 | 生命周期 |
 |---|---|---|---|
-| Chat Doc | `chat:{rcsSessionId}` | 消息时间线、内容块、工具调用、turn 投影 | 与前端 Agent 实例数据保留期一致 |
-| Session Doc | `session:{rcsSessionId}` | 会话元信息、Agent 状态、能力、活动 turn、同步版本 | 与前端 Agent 实例一致，更新频率较低 |
+| Chat Doc | `chat:{rcsSessionId}` | 消息时间线、内容块、工具调用、turn 投影、`projectionGeneration` | 与当前 projection generation 一致；会话切换时整份替换 |
+| Session Doc | `session:{rcsSessionId}` | 会话元信息、Agent 状态、能力、活动 turn、同步版本、`projectionGeneration` | 与 Chat Doc 同 generation；会话切换时成对替换 |
 
 拆分的原因是隔离高频内容流与低频控制状态，降低订阅和同步成本。两份 Doc 都是 Instance ACP session data 的实时镜像，不是持久化恢复源；跨文档更新按 ACP 会话内事件顺序应用，不依赖 YJS 跨 Doc transaction。
+
+`projectionGeneration` 是 projection group 的 fencing token，而不是 schemaVersion 或业务版本。Chat/Session 两份 Doc 必须共享同一个 generation；Redis active-generation 指针、Pub/Sub channel、快照 key、WS frame 和前端 DocHub replacement 都以它为一致性边界。旧 generation 的晚到 update、快照 CAS 和 publish 必须被拒绝。
 
 ### 5.2 Chat Doc schema
 
@@ -535,6 +555,28 @@ interface SessionSummaryProjection {
 - 服务端升级实时 schema 时，应为仍存活的 Instance ACP session 以兼容方式更新 Y.Doc（实现为 `state/factory.ts` / `chat-writer.ts` 的幂等结构初始化：旧结构或空 Doc 补齐新骨架，不破坏已存在的同版本结构）；客户端只能消费服务端声明支持的版本。
 - 更新必须做到"旧客户端忽略未知字段仍安全"。**schema 切换为一次性切换、无兼容窗口（Q4 评审决策）：Y.Doc 是实时镜像而非持久资产，前后端同仓库同步发版，不做双读双写**；旧字段（`agentInfo` / `chatMeta` / `connection` / `permissions` / `capabilities` / `tokenUsage` / `messages` / `streaming` / `tools` / `artifacts` / `structuredMessages`）全部删除。`modelState` / `modeState` / `availableCommands` 属会话级元数据，以新结构投影到 Session Doc `session` map（models/modes 来自 session/new、load 响应，命令列表来自 `available_commands_update` 通知，见 `state/aggregator.ts` `applySessionControl`）。旧 Chat Doc 的 `sessions` 字段一并删除；Session Doc 当前 `sessions` 投影位（v3）是新的 agent 级会话列表，与旧字段同名不同义。
 - Doc 更新失败时仅将当前实时链接标记为 `degraded` 并报警；实例 ACP session 仍是权威状态，重连或新建实例时不得依赖旧 Y.Doc 继续写入。
+
+### 5.5 Projection generation 与 Redis 持久化
+
+Redis 中每个 `rcsSessionId` 有一个 projection-group active generation 指针。Chat/Session 快照和 Pub/Sub channel 都带 generation：
+
+```text
+yjs:active-generation:{rcsSessionId} -> generation
+yjs:{docName}:{generation}          -> YJS snapshot
+yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
+```
+
+- 首次打开以 `SET NX` 初始化 active generation；重启或其他服务节点读取相同指针，从同一 generation 恢复两份 Doc。
+- replacement 以 compare-and-set 发布新 generation。只有仍持有 expected generation 的调用方能成功，避免两个实例并发切换后各自成为权威。
+- 快照 CAS 同时监视 snapshot key 和 active-generation key；旧 provider 即使在 destroy 时 flush，也不能写入或发布到新 generation。
+- replacement 成功后旧 generation 不再活跃，通过滑动 TTL 自然回收；禁止把旧快照 merge 回当前 Doc。
+- Chat/Session 候选 Doc、replacement frame 编码与尺寸校验必须在 active-generation CAS 前完成；失败时销毁候选资源，不能先交换内存引用再尝试广播。
+
+### 5.6 WebSocket generation 帧与前端换代
+
+`protocol/update-frame.ts` 定义三类 generation-aware 二进制帧：`update`、`state-vector`、`replace`。新协议使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。
+
+前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。
 
 ## 6. ACP 到 YJS 状态聚合
 

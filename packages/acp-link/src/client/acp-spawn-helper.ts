@@ -3,6 +3,18 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { createElicitationHandler } from "../elicitation.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
+import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
+
+/** 仅提取安全的事件 discriminator，诊断日志不得输出 event_json 内容。 */
+function readPeriAgentEventType(eventJson: unknown): string {
+  if (typeof eventJson !== "string") return "missing";
+  try {
+    const event = JSON.parse(eventJson) as { type?: unknown };
+    return typeof event.type === "string" ? event.type : "missing";
+  } catch {
+    return "invalid";
+  }
+}
 
 export interface SpawnResult {
   process: ChildProcess;
@@ -138,10 +150,28 @@ export async function spawnAcpAgent(
       },
       readTextFile: async () => ({ content: "" }),
       writeTextFile: async () => ({}),
+      // SDK 扩展 notification 入口（Client.extNotification）：捕获标准方法之外的
+      // peri/* notification（SDK legacyClientApp 对未知 notification 的透传机制）。
+      // 只放行已知两个 method 并经现有 send → relay 转发，不创建第二套连接。
+      extNotification: async (method: string, params: Record<string, unknown>) => {
+        if (isPeriTaskNotificationMethod(method)) {
+          const eventType =
+            method === "peri/unstable_event"
+              ? typeof params.event === "string"
+                ? params.event
+                : "missing"
+              : readPeriAgentEventType(params.event_json);
+          console.log(
+            `[acp-spawn-helper] forwarding Peri notification: method=${method} event=${eventType} hasSessionId=${typeof params.sessionId === "string"}`,
+          );
+          send(createNotification(method, params));
+        }
+      },
     }),
     stream,
   );
 
+  const periMeta = buildPeriCapabilityMeta();
   const initResult = await connection.initialize({
     protocolVersion: acp.PROTOCOL_VERSION,
     clientInfo: { name: "rcs-remote", version: "1.0.0" },
@@ -151,12 +181,17 @@ export async function spawnAcpAgent(
       // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
       // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
       elicitation: { form: {} },
+      // Peri Task View capability（_meta.peri.*）：声明后 Peri 才发射
+      // peri/agent_event 与 peri/unstable_event（caps gating，见 peri_caps.rs）
+      ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
     },
   });
   console.log(
     "[acp-spawn-helper] agent initialized:",
     `protocolVersion=${initResult.protocolVersion}`,
     `elicitationForm=true`,
+    `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
+    `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
   );
 
   return {

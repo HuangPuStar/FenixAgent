@@ -13,6 +13,9 @@ import {
   DEFAULT_PERMISSION_TIMEOUT_MS,
   DEFAULT_QUESTION_TIMEOUT_MS,
   type NormalizedEvent,
+  type NormalizedPeriTaskEvent,
+  type PeriTaskStatus,
+  type PeriTaskViewProjection,
   type PublicError,
   type QuestionItemProjection,
   TOOL_TERMINAL_STATUSES,
@@ -27,6 +30,7 @@ import {
   ensureEntry,
   getChatRoot,
   getEntry,
+  getPeriTasksMap,
   getSessionRoot,
   getToolCallsMap,
   readActiveTurn,
@@ -39,6 +43,7 @@ import {
   setSessionModeState,
   upsertPendingPermission,
   upsertPendingQuestion,
+  upsertPeriTaskView,
   upsertToolCall,
 } from "./chat-writer";
 import { applyPermissionExpiration, applyPermissionResolution, type DocPair } from "./permission";
@@ -524,6 +529,143 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
 }
 
 /**
+ * 处理 Peri Task 事件（切片 1）：状态收敛 + 幂等 upsert + 终态保护。
+ * 与消息/turn 状态机完全解耦：background task 无 active turn 也可写入。
+ *
+ * 状态收敛规则（规格 §二.3，无 wire sequence 时的保守状态机）：
+ * - missing + terminal → 创建 terminal task（terminal-first）
+ * - missing + started  → 创建 running task
+ * - running + terminal → terminal
+ * - terminal + started → 忽略
+ * - terminal + terminal：相同终态 → 幂等忽略；不同终态 → 保留首次终态，
+ *   返回脱敏冲突计数 reason（不含任何 payload 字段）
+ *
+ * 时间规则：
+ * - Background startedAt 优先使用合法 started_at；Subagent started 无源时间，
+ *   使用 receivedAt；非法时间不拒绝事件，降级为 receivedAt；
+ * - stop/completed/cancelled 的 completedAt 使用 receivedAt；
+ * - 不用 duration_ms 反推 startedAt。
+ */
+function applyPeriTaskEvent(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  const peri = event as NormalizedPeriTaskEvent;
+  // 首次创建前即确认 taskId（normalize 已保证非空）
+  const existing = getPeriTasksMap(pair.session).get(peri.taskId);
+  const existingStatus = existing?.get("status") as PeriTaskStatus | undefined;
+
+  if (!existing) {
+    upsertPeriTaskView(pair.session, buildPeriTaskView(peri, periTaskTimes(peri)));
+    return { applied: true };
+  }
+
+  // started 事件：终态后到达的 started 忽略（不重建、不回退），running 更新放行
+  if (peri.type === "peri_task_started") {
+    if (existingStatus && PERI_TASK_TERMINAL_STATUSES.has(existingStatus)) {
+      return { applied: false, reason: "peri_task started after terminal" };
+    }
+    upsertPeriTaskView(pair.session, buildPeriTaskView(peri, periTaskTimes(peri)));
+    return { applied: true };
+  }
+
+  // 终态事件
+  const status = peri.type === "peri_task_completed" ? (peri.success ? "completed" : "failed") : "cancelled";
+  if (existingStatus && !PERI_TASK_TERMINAL_STATUSES.has(existingStatus)) {
+    // running + terminal → terminal（覆盖 summary/终态字段，不重排 taskOrder）
+    upsertPeriTaskView(pair.session, buildPeriTaskView(peri, periTaskTimes(peri)));
+    return { applied: true };
+  }
+  if (existingStatus === status) {
+    // 相同终态 → 幂等忽略（重复 completed/cancelled 不补写）
+    return { applied: false, reason: "peri_task duplicate terminal" };
+  }
+  // 不同终态冲突：保留首次终态；reason 只含低基数终态名（脱敏，不含 payload）
+  return { applied: false, reason: `peri_task terminal conflict (${existingStatus})` };
+}
+
+/** Peri Task 终态集合（状态机判终态用） */
+const PERI_TASK_TERMINAL_STATUSES: ReadonlySet<PeriTaskStatus> = new Set(["completed", "failed", "cancelled"]);
+
+/** 合法 ISO 时间校验：非法/缺省降级为 receivedAt（非法时间不拒绝事件） */
+function resolvePeriTimestamp(raw: string | null, fallback: string): string {
+  if (raw && Number.isFinite(new Date(raw).getTime())) return raw;
+  return fallback;
+}
+
+/**
+ * 由规范化事件计算 startedAt/completedAt：
+ * - Background started 优先使用合法 started_at，Subagent started 使用 receivedAt；
+ * - 终态事件的 completedAt = receivedAt（不反推 startedAt）；
+ * - terminal-first 创建时无源开始时间，startedAt 降级为 receivedAt。
+ */
+function periTaskTimes(peri: NormalizedPeriTaskEvent): { startedAt: string; completedAt: string | null } {
+  if (peri.type === "peri_task_started") {
+    const startedAt =
+      peri.kind === "background" ? resolvePeriTimestamp(peri.sourceStartedAt, peri.receivedAt) : peri.receivedAt;
+    return { startedAt, completedAt: null };
+  }
+  return { startedAt: peri.receivedAt, completedAt: peri.receivedAt };
+}
+
+/**
+ * 构造投影视图（由规范化事件 + 时间字段派生）。
+ * completed/cancelled 事件 title 传空串（upsert 已有时跳过覆盖，创建时回退
+ * 安全 fallback）；isBackground 以通道 kind 为创建 fallback（终态事件无 wire
+ * is_background 字段，upsert 更新分支不覆盖 started 确定的标记）。
+ */
+function buildPeriTaskView(
+  peri: NormalizedPeriTaskEvent,
+  times: { startedAt: string; completedAt: string | null },
+): PeriTaskViewProjection {
+  if (peri.type === "peri_task_started") {
+    return {
+      taskId: peri.taskId,
+      kind: peri.kind,
+      taskSubtype: peri.taskSubtype,
+      title: peri.title,
+      summary: peri.summary,
+      status: "running",
+      turnId: peri.turnId ?? null,
+      isBackground: peri.isBackground,
+      startedAt: times.startedAt,
+      completedAt: times.completedAt,
+      updatedAt: peri.receivedAt,
+      detailAvailability: peri.detailAvailability,
+    };
+  }
+  if (peri.type === "peri_task_completed") {
+    return {
+      taskId: peri.taskId,
+      kind: peri.kind,
+      // completed 事件无 wire taskSubtype（见 NormalizedPeriTaskEvent 联合类型），
+      // 传 null 由 upsert 更新分支保留 started 确定的 subtype（不覆盖）
+      taskSubtype: null,
+      title: "",
+      summary: peri.summary,
+      status: peri.success ? "completed" : "failed",
+      turnId: peri.turnId ?? null,
+      isBackground: peri.kind === "background",
+      startedAt: times.startedAt,
+      completedAt: times.completedAt,
+      updatedAt: peri.receivedAt,
+      detailAvailability: peri.detailAvailability,
+    };
+  }
+  return {
+    taskId: peri.taskId,
+    kind: "background",
+    taskSubtype: null,
+    title: "",
+    summary: null,
+    status: "cancelled",
+    turnId: peri.turnId ?? null,
+    isBackground: true,
+    startedAt: times.startedAt,
+    completedAt: times.completedAt,
+    updatedAt: peri.receivedAt,
+    detailAvailability: "unavailable",
+  };
+}
+
+/**
  * 应用单个规范化事件到两份 Y.Doc。
  * 每份 Doc 一个 transaction（YJS 嵌套事务会合并到各自 Doc 的事务栈，
  * 跨 Doc 顺序由调用方保证，不依赖跨 Doc transaction）。
@@ -615,6 +757,13 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
         case "session_list":
           // 会话列表不依赖 turn，与其他控制事件并列；实现见 state/session-list.ts
           result = applySessionList(pair, event);
+          break;
+        case "peri_task_started":
+        case "peri_task_completed":
+        case "peri_task_cancelled":
+          // Peri Task 生命周期投影：独立于 turn 状态机（无 active turn 也可写入）；
+          // 状态收敛/终态保护/冲突计数见 applyPeriTaskEvent
+          result = applyPeriTaskEvent(pair, event);
           break;
         default: {
           // 防御：新加的规范化类型未实现处理时拒绝，不静默吞掉

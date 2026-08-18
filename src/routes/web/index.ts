@@ -13,6 +13,7 @@ import webInstances from "./instances";
 import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
 import webOrganizations from "./organizations";
+import webPeriTaskDetails from "./peri-task-details";
 import webProdViews from "./prod-views";
 import webRegistry from "./registry";
 import webSidebarConfig from "./sidebar-config";
@@ -37,6 +38,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webKnowledgeBases)
   .use(webMetaAgent)
   .use(webOrganizations)
+  .use(webPeriTaskDetails)
   .use(webTasksV2)
   .use(webEnvironments)
   .use(webRegistry)

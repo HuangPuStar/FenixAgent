@@ -313,8 +313,17 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
       if (yjsWsId) {
-        const text = typeof data === "string" ? data : JSON.stringify(data);
-        getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, text);
+        const payload =
+          typeof data === "string"
+            ? data
+            : data instanceof Uint8Array
+              ? data
+              : ArrayBuffer.isView(data)
+                ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+                : data instanceof ArrayBuffer
+                  ? new Uint8Array(data)
+                  : JSON.stringify(data);
+        getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload);
       }
     },
     close(ws) {

@@ -404,6 +404,37 @@
   "sessionModeSelector": {
     "default": "默认"
   },
+  "periTask": {
+    "title": "任务活动",
+    "syncing": "正在同步任务…",
+    "activeCount": "{{count}} 进行中",
+    "reconnecting": "重连中 — 任务列表可能不完整",
+    "loading": "正在加载任务…",
+    "empty": "暂无任务",
+    "kindSubagent": "子代理",
+    "kindBackground": "后台任务",
+    "subtype": {
+      "agent": "Agent",
+      "shell": "Shell",
+      "workflow": "Workflow"
+    },
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "unknownTitle": "未知任务",
+    "previewOnly": "仅提供摘要",
+    "viewDetail": "查看详情",
+    "detailTitle": "任务详情",
+    "detailLoading": "正在加载详情…",
+    "detailLoadFailed": "详情加载失败",
+    "detailRetry": "重试",
+    "detailClose": "关闭",
+    "detailUnavailable": "Peri 未提供此任务的详情。",
+    "detailExpired": "此任务详情已过期。"
+  },
   "askUser": {
     "title": "需要你回答",
     "description": "Agent 需要你提供一些信息以继续执行",

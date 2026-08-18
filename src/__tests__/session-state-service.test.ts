@@ -46,8 +46,13 @@ describe("clearSessionDocContent", () => {
     expect(agent.get("acpSessionId")).toBeUndefined();
     // 骨架保留：schemaVersion 与根键集合不变
     expect(getChatRoot(chat).get("schemaVersion")).toBe(2);
-    // Session Doc v3：新增根级 sessions 投影位（clearSessionDocContent 保留该 agent 级数据）
-    expect(getSessionRoot(session).get("schemaVersion")).toBe(3);
+    // Session Doc v4：新增根级 sessions 投影位与 Peri Task 投影位
+    // （clearSessionDocContent 保留 agent 级 sessions 数据，清空会话级 tasks）
+    expect(getSessionRoot(session).get("schemaVersion")).toBe(4);
+    expect(getSessionRoot(session).get("tasks")).toBeInstanceOf(Y.Map);
+    expect(getSessionRoot(session).get("taskOrder")).toBeInstanceOf(Y.Array);
+    expect((getSessionRoot(session).get("tasks") as Y.Map<unknown>).size).toBe(0);
+    expect((getSessionRoot(session).get("taskOrder") as Y.Array<string>).length).toBe(0);
     expect(typeof getChatRoot(chat).get("projectionVersion")).toBe("number");
   });
 });

@@ -404,6 +404,37 @@
   "sessionModeSelector": {
     "default": "Default"
   },
+  "periTask": {
+    "title": "Task Activity",
+    "syncing": "Syncing tasks...",
+    "activeCount": "{{count}} active",
+    "reconnecting": "Reconnecting — task list may be incomplete",
+    "loading": "Loading tasks...",
+    "empty": "No task activity yet",
+    "kindSubagent": "Subagent",
+    "kindBackground": "Background",
+    "subtype": {
+      "agent": "Agent",
+      "shell": "Shell",
+      "workflow": "Workflow"
+    },
+    "status": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "unknownTitle": "Unknown task",
+    "previewOnly": "Summary only",
+    "viewDetail": "View detail",
+    "detailTitle": "Task detail",
+    "detailLoading": "Loading detail...",
+    "detailLoadFailed": "Failed to load detail",
+    "detailRetry": "Retry",
+    "detailClose": "Close",
+    "detailUnavailable": "Peri did not provide detail for this task.",
+    "detailExpired": "This task detail has expired."
+  },
   "askUser": {
     "title": "Question from Agent",
     "description": "The agent needs your input to continue",

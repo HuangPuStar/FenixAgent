@@ -11,6 +11,7 @@ import {
   getEntry,
   getPendingPermissions,
   getSessionInfo,
+  getSessionRoot,
   getToolCallsMap,
   setActiveTurn,
   upsertPendingPermission,
@@ -226,4 +227,68 @@ test("setActiveTurn projects presenting/loading/canCancel for frontend consumpti
   expect(done.get("canCancel")).toBe(false);
   setActiveTurn(pair.session, "turn_live_1", "failed");
   expect(getSessionInfo(pair.session).get("presenting")).toBe("error");
+});
+
+// ── Peri Task 与 turn 状态机解耦（切片 1）──
+
+/** 构造 background task started 规范化事件（与 protocol/acp-channel 输出字段一致） */
+function periBackgroundStarted(taskId: string): NormalizedEvent {
+  return {
+    type: "peri_task_started",
+    update: {},
+    content: null,
+    taskId,
+    kind: "background",
+    taskSubtype: "shell",
+    title: "run tests",
+    summary: "started",
+    sourceStartedAt: null,
+    receivedAt: "2026-08-18T00:00:00.000Z",
+    isBackground: true,
+    detailAvailability: "preview",
+  };
+}
+
+// Peri Task 是独立于 turn 的会话级投影：active turn 存在时 background task 可写入，
+// 且不得影响 turn 状态机（不误收敛 active turn、不改变 presenting）
+test("peri background task does not converge or alter the active turn", () => {
+  setActiveTurn(pair.session, "turn_live_1", "running");
+  const before = getSessionInfo(pair.session);
+  expect(before.get("presenting")).toBe("responding");
+
+  applyNormalizedEvent(pair, periBackgroundStarted("bg_1"));
+
+  const tasks = getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>;
+  expect(tasks.size).toBe(1);
+  expect(tasks.get("bg_1")?.get("status")).toBe("running");
+  // turn 状态不变（未被 peri 事件终结/恢复）
+  const after = getSessionInfo(pair.session);
+  expect(after.get("activeTurnId")).toBe("turn_live_1");
+  expect(after.get("activeTurnStatus")).toBe("running");
+  expect(after.get("presenting")).toBe("responding");
+});
+
+// turn 已终态（completed）后，background task 生命周期仍可独立推进：
+// task 终态写入不依赖 turn 存在，消息时间线已收敛也不影响任务投影
+test("peri background task terminal still projects after turn terminal", () => {
+  setActiveTurn(pair.session, "turn_1", "completed");
+  applyNormalizedEvent(pair, periBackgroundStarted("bg_1"));
+  applyNormalizedEvent(pair, {
+    type: "peri_task_completed",
+    update: {},
+    content: null,
+    taskId: "bg_1",
+    kind: "background",
+    success: true,
+    summary: "output preview",
+    durationMs: 1200,
+    receivedAt: "2026-08-18T00:01:00.000Z",
+    detailAvailability: "preview",
+  });
+
+  const tasks = getSessionRoot(pair.session).get("tasks") as Y.Map<Y.Map<unknown>>;
+  expect(tasks.get("bg_1")?.get("status")).toBe("completed");
+  expect(tasks.get("bg_1")?.get("summary")).toBe("output preview");
+  // turn 状态机不受影响
+  expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
 });

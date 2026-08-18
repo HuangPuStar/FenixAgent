@@ -17,7 +17,13 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
-import { type NormalizedEvent, type NormalizedEventType, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
+import {
+  type NormalizedEvent,
+  type NormalizedEventType,
+  SESSION_BOUND_NOTIFICATION_METHODS,
+  TURN_TERMINAL_STATUSES,
+  type TurnStatus,
+} from "../schema";
 import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
@@ -71,12 +77,14 @@ export interface RelayEventHandlerDependencies {
   registry: ConnectionRegistry;
   broadcaster: YjsBroadcaster;
   docManager: DocManager;
-  registerYjsDocListener: (ydoc: Y.Doc, docName: string) => void;
+  registerYjsDocListener: (ydoc: Y.Doc, docName: string, generation?: string) => void;
   reportError: (message: string, error: unknown) => void;
   /** 每次从 Agent 收到消息时更新实例活跃时间（宿主注入，内部过滤保活消息） */
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
   /** 本地死实例回收（宿主注入：内部校验 nodeId；远程实例由机器级清理覆盖——该路径同样触发实时 Doc 回收） */
   terminateLocalDeadInstance: (instanceId: string) => void;
+  /** 安全诊断日志：只记录低基数 method/type，不得记录 payload 或会话标识。 */
+  log?: (message: string) => void;
 }
 
 /** 共享 relay 唯一的入站消息消费者。 */
@@ -137,13 +145,22 @@ export class RelayEventHandler {
       shared.lastInboundAt = Date.now();
     }
 
-    // binding 校验：ACP 帧携带的 sessionId 必须与当前实例绑定的 ACP session 一致，
-    // 不一致（过期会话/串流）直接丢弃，不得写入 Y.Doc
-    if (rpcCheck?.method === "session/update") {
+    // binding 校验：session-bound ACP 通知（session/update、peri/agent_event、
+    // peri/unstable_event）携带的 sessionId 必须与当前实例绑定的 ACP session 一致，
+    // 不一致（过期会话/串流）直接丢弃，不得写入 Y.Doc——扩展自原 session/update
+    // 单方法检查，防止旧 session 的 Peri 事件写入当前 rcsSessionId。
+    if (typeof rpcCheck?.method === "string" && SESSION_BOUND_NOTIFICATION_METHODS.has(rpcCheck.method)) {
       const msgSessionId = (rpcCheck.params as Record<string, unknown> | undefined)?.sessionId as string | undefined;
       if (msgSessionId) {
         const activeSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
-        if (activeSessionId && activeSessionId !== msgSessionId) return;
+        if (activeSessionId && activeSessionId !== msgSessionId) {
+          // 脱敏计数观测（规格 §五）：只记录 method（低基数），不记录 payload/sessionId
+          this.dependencies.reportError("[YJS-FE] peri task session mismatch", {
+            method: rpcCheck.method,
+            instanceId: shared.instanceId,
+          });
+          return;
+        }
       }
     }
 
@@ -196,6 +213,12 @@ export class RelayEventHandler {
     // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截
     // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
     let normalized = normalizeAcpMessage(raw, msgType);
+    const periMethod = rpcCheck?.method;
+    if (periMethod === "peri/agent_event" || periMethod === "peri/unstable_event") {
+      this.dependencies.log?.(
+        `[YJS-FE] Peri notification normalized: method=${periMethod} result=${normalized?.type ?? "ignored"}`,
+      );
+    }
     if (normalized) {
       // 终态归属回传：JSON-RPC prompt 响应帧（result 带 stopReason / error）本身
       // 不携带 turnId，聚合层按 active turn 归位会误伤——连续 prompt 时旧 turn 的

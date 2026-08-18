@@ -25,9 +25,38 @@ export {
 
 const REDIS_KEY_PREFIX = "yjs:";
 const REDIS_CHANNEL_PREFIX = "yjs:channel:";
+const ACTIVE_GENERATION_PREFIX = "yjs:active-generation:";
+
+export async function getOrCreateActiveGeneration(redis: Redis | Cluster, rcsSessionId: string): Promise<string> {
+  const key = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
+  const proposed = `gen_${crypto.randomUUID()}`;
+  const r = redis as Redis;
+  await r.set(key, proposed, "NX");
+  return (await r.get(key)) ?? proposed;
+}
+
+/** 仅当前 active generation 可发布后继，防止并发 replacement 后到者覆盖胜者。 */
+export async function publishActiveGeneration(
+  redis: Redis | Cluster,
+  rcsSessionId: string,
+  expected: string,
+  next: string,
+): Promise<boolean> {
+  const key = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
+  const result = await (redis as Redis).eval(
+    "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2]); return 1 else return 0 end",
+    1,
+    key,
+    expected,
+    next,
+  );
+  return Number(result) === 1;
+}
 
 /** createRedisProvider 的可选配置（宿主 DI / 测试注入通道）。 */
 export interface RedisProviderOptions {
+  /** 投影世代；提供时快照 key 与 Pub/Sub channel 均隔离，旧 provider 无法污染新投影。 */
+  generation?: string;
   /** trailing 节流窗口：距上次成功 CAS 的最小间隔（毫秒） */
   snapshotIntervalMs?: number;
   /** 静默期：持续无新 update 该时长后提前 flush（毫秒） */
@@ -56,8 +85,12 @@ export function createRedisProvider(
   const snapshotTtlSeconds = options?.snapshotTtlSeconds ?? envConfig.ttlSeconds;
   const metricsLog = options?.log ?? defaultSnapshotMetricsLog;
 
-  const redisKey = `${REDIS_KEY_PREFIX}${docName}`;
-  const channel = `${REDIS_CHANNEL_PREFIX}${docName}`;
+  const persistenceName = options?.generation ? `${docName}:${options.generation}` : docName;
+  const redisKey = `${REDIS_KEY_PREFIX}${persistenceName}`;
+  const channel = `${REDIS_CHANNEL_PREFIX}${persistenceName}`;
+  const rcsSessionId = docName.slice(docName.indexOf(":") + 1);
+  const activeGenerationKey = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
+  const generation = options?.generation;
 
   // ioredis Cluster supports pub/sub at runtime but TypeScript types differ;
   // cast to Redis for method access (same pattern as KeyvRedis in cache.ts).
@@ -86,8 +119,19 @@ export function createRedisProvider(
 
   const publishUpdate = (update: Uint8Array) => {
     try {
-      // SP-A6：附加发布者标识头，供本进程 subscriber 自环过滤。
-      r.publish(channel, framePublishUpdate(update, publisherId)).catch(() => {});
+      const framed = framePublishUpdate(update, publisherId);
+      if (generation) {
+        r.eval(
+          "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PUBLISH', KEYS[2], ARGV[2]) else return 0 end",
+          2,
+          activeGenerationKey,
+          channel,
+          generation,
+          framed,
+        ).catch(() => {});
+      } else {
+        r.publish(channel, framed).catch(() => {});
+      }
     } catch {
       // 后台发布失败不影响文档更新，且不记录文档内容。
     }
@@ -142,7 +186,13 @@ export function createRedisProvider(
     const encodeMs = Date.now() - encodeStartedAt;
     const casStartedAt = Date.now();
 
-    inFlightCas = mergeYjsSnapshotWithCas(activePersistence, redisKey, localFull, snapshotTtlSeconds);
+    inFlightCas = mergeYjsSnapshotWithCas(
+      activePersistence,
+      redisKey,
+      localFull,
+      snapshotTtlSeconds,
+      generation ? { key: activeGenerationKey, generation } : undefined,
+    );
     const cas = inFlightCas;
     void cas
       .then(
@@ -258,6 +308,7 @@ export function createRedisProvider(
 
   const loadInitialSnapshot = async () => {
     try {
+      if (generation && (await r.get(activeGenerationKey)) !== generation) return;
       const buf = await r.getBuffer(redisKey);
       if (destroyed) return;
 
@@ -301,7 +352,13 @@ export function createRedisProvider(
       const localFull = Y.encodeStateAsUpdate(ydoc);
       const encodeMs = Date.now() - encodeStartedAt;
       const casStartedAt = Date.now();
-      const persisted = await mergeYjsSnapshotWithCas(persistence, redisKey, localFull, snapshotTtlSeconds);
+      const persisted = await mergeYjsSnapshotWithCas(
+        persistence,
+        redisKey,
+        localFull,
+        snapshotTtlSeconds,
+        generation ? { key: activeGenerationKey, generation } : undefined,
+      );
       if (persisted) lastPersistSuccessAt = Date.now();
       else reportSubscriberFailure("persist");
       reportCasOutcome(localFull.length, encodeMs, casStartedAt, persisted);

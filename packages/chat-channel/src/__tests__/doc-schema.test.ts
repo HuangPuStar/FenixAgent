@@ -4,16 +4,25 @@
 
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { CHAT_DOC_SCHEMA_VERSION, type NormalizedEvent, SESSION_DOC_SCHEMA_VERSION } from "../schema";
+import {
+  CHAT_DOC_SCHEMA_VERSION,
+  type NormalizedEvent,
+  type PeriTaskViewProjection,
+  SESSION_DOC_SCHEMA_VERSION,
+} from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
   clearChatDocContent,
   clearSessionDocContent,
   getChatRoot,
   getEntryOrder,
+  getPeriTaskOrder,
+  getPeriTasksMap,
   getSessionInfo,
   getSessionRoot,
+  initSessionDocStructure,
   setActiveTurn,
+  upsertPeriTaskView,
 } from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
 
@@ -46,23 +55,34 @@ function sessionRootKeys(): string[] {
   return Array.from(getSessionRoot(pair.session).keys()).sort();
 }
 
-// Chat Doc 初始化后根键只有时间线相关字段（schemaVersion/projectionVersion/entryOrder/entries/toolCalls）
+// Chat Doc 初始化后根键只有时间线与投影世代字段
+// （schemaVersion/projectionVersion/projectionGeneration/entryOrder/entries/toolCalls）
 test("chat doc root contains only timeline fields", () => {
-  expect(chatRootKeys()).toEqual(["entries", "entryOrder", "projectionVersion", "schemaVersion", "toolCalls"]);
+  expect(chatRootKeys()).toEqual([
+    "entries",
+    "entryOrder",
+    "projectionGeneration",
+    "projectionVersion",
+    "schemaVersion",
+    "toolCalls",
+  ]);
   expect(getChatRoot(pair.chat).get("schemaVersion")).toBe(CHAT_DOC_SCHEMA_VERSION);
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBe(1);
 });
 
-// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions/pendingQuestions/sessions）
+// Session Doc 初始化后根键只有元信息字段（session/agent/pendingPermissions/pendingQuestions/sessions/tasks/taskOrder）
 test("session doc root contains only metadata fields", () => {
   expect(sessionRootKeys()).toEqual([
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",
     "sessions",
+    "taskOrder",
+    "tasks",
   ]);
   expect(getSessionRoot(pair.session).get("schemaVersion")).toBe(SESSION_DOC_SCHEMA_VERSION);
 });
@@ -377,7 +397,14 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
 
   // 骨架保留
   expect(getChatRoot(pair.chat).get("schemaVersion")).toBe(CHAT_DOC_SCHEMA_VERSION);
-  expect(chatRootKeys()).toEqual(["entries", "entryOrder", "projectionVersion", "schemaVersion", "toolCalls"]);
+  expect(chatRootKeys()).toEqual([
+    "entries",
+    "entryOrder",
+    "projectionGeneration",
+    "projectionVersion",
+    "schemaVersion",
+    "toolCalls",
+  ]);
   expect(getEntryOrder(pair.chat).length).toBe(0);
   expect((getChatRoot(pair.chat).get("entries") as Y.Map<unknown>).size).toBe(0);
   expect((getChatRoot(pair.chat).get("toolCalls") as Y.Map<unknown>).size).toBe(0);
@@ -390,10 +417,13 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",
     "sessions",
+    "taskOrder",
+    "tasks",
   ]);
 });
 
@@ -444,11 +474,14 @@ test("session_list syncs sessions map with idempotent full sync", () => {
     "agent",
     "pendingPermissions",
     "pendingQuestions",
+    "projectionGeneration",
     "projectionVersion",
     "schemaVersion",
     "session",
     "sessionListLoaded",
     "sessions",
+    "taskOrder",
+    "tasks",
   ]);
 });
 
@@ -495,4 +528,116 @@ test("active turn presentation fields are flat keys on session map", () => {
   expect(idle.get("presenting")).toBe("idle");
   expect(idle.get("loading")).toBeNull();
   expect(idle.get("canCancel")).toBe(false);
+});
+
+// ── Session Doc v3→v4 迁移（切片 1：tasks / taskOrder 幂等补齐）──
+
+/** 构造带已有数据的 v3 Session Doc（不含 tasks/taskOrder，模拟旧快照恢复后的状态） */
+function createV3SessionDoc(): Y.Doc {
+  const ydoc = new Y.Doc();
+  const root = ydoc.getMap("root");
+  root.set("schemaVersion", 3);
+  root.set("projectionVersion", 5);
+  const sessionMap = new Y.Map<unknown>();
+  sessionMap.set("sessionId", "ses_old");
+  sessionMap.set("activeTurnId", "turn_1");
+  root.set("session", sessionMap);
+  const agentMap = new Y.Map<unknown>();
+  agentMap.set("instanceId", "inst_1");
+  agentMap.set("status", "ready");
+  root.set("agent", agentMap);
+  const sessions = new Y.Map<Y.Map<unknown>>();
+  sessions.set("ses_old", new Y.Map<unknown>());
+  root.set("sessions", sessions);
+  root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
+  root.set("pendingQuestions", new Y.Map<Y.Map<unknown>>());
+  return ydoc;
+}
+
+// v3 快照恢复后经 initSessionDocStructure 幂等补齐 v4 subtree：schemaVersion 升级、
+// tasks/taskOrder 补结构，既有 session/agent/sessions 投影与数据不被覆盖、不重置
+test("v3 session doc upgrades to v4 by adding tasks and taskOrder idempotently", () => {
+  const ydoc = createV3SessionDoc();
+  const root = getSessionRoot(ydoc);
+
+  initSessionDocStructure(ydoc);
+
+  expect(root.get("schemaVersion")).toBe(SESSION_DOC_SCHEMA_VERSION);
+  expect(root.get("tasks")).toBeInstanceOf(Y.Map);
+  expect(root.get("taskOrder")).toBeInstanceOf(Y.Array);
+  // 已有数据不被覆盖
+  const session = root.get("session") as Y.Map<unknown>;
+  expect(session.get("sessionId")).toBe("ses_old");
+  expect(session.get("activeTurnId")).toBe("turn_1");
+  const agent = root.get("agent") as Y.Map<unknown>;
+  expect(agent.get("instanceId")).toBe("inst_1");
+  expect(agent.get("status")).toBe("ready");
+  expect((root.get("sessions") as Y.Map<unknown>).size).toBe(1);
+  // projectionVersion 不因结构升级重置（投影演进语义不变）
+  expect(root.get("projectionVersion")).toBe(5);
+});
+
+// 重复初始化幂等：同一 doc 多次调用 initSessionDocStructure 不重建 subtree 实例，
+// 已写入的 Task 内容不丢失（旧 v2/v3 快照 + 重连多开场景）
+test("repeated initSessionDocStructure is idempotent for tasks subtree", () => {
+  const ydoc = createV3SessionDoc();
+  initSessionDocStructure(ydoc);
+
+  const view: PeriTaskViewProjection = {
+    taskId: "task_1",
+    kind: "background",
+    taskSubtype: "shell",
+    title: "run tests",
+    summary: "started",
+    status: "running",
+    turnId: null,
+    isBackground: true,
+    startedAt: "2026-08-18T00:00:00.000Z",
+    completedAt: null,
+    updatedAt: "2026-08-18T00:00:00.000Z",
+    detailAvailability: "preview",
+  };
+  upsertPeriTaskView(ydoc, view);
+
+  const tasksBefore = getPeriTasksMap(ydoc);
+  const orderBefore = getPeriTaskOrder(ydoc);
+  initSessionDocStructure(ydoc);
+  initSessionDocStructure(ydoc);
+
+  expect(getPeriTasksMap(ydoc)).toBe(tasksBefore);
+  expect(getPeriTaskOrder(ydoc)).toBe(orderBefore);
+  expect(getPeriTasksMap(ydoc).size).toBe(1);
+  expect(getPeriTaskOrder(ydoc).toArray()).toEqual(["task_1"]);
+  expect(getPeriTasksMap(ydoc).get("task_1")?.get("title")).toBe("run tests");
+});
+
+// clear 语义：Peri Task 是会话级瞬时投影，切换会话（clearSessionDocContent）时
+// tasks/taskOrder 随 Doc 清空，agent 状态与 sessions（agent 级数据）保留
+test("clearSessionDocContent clears peri task subtree but keeps agent and sessions", () => {
+  const view: PeriTaskViewProjection = {
+    taskId: "task_1",
+    kind: "subagent",
+    taskSubtype: null,
+    title: "researcher",
+    summary: "done",
+    status: "completed",
+    turnId: "turn_1",
+    isBackground: false,
+    startedAt: "2026-08-18T00:00:00.000Z",
+    completedAt: "2026-08-18T00:01:00.000Z",
+    updatedAt: "2026-08-18T00:01:00.000Z",
+    detailAvailability: "preview",
+  };
+  upsertPeriTaskView(pair.session, view);
+  // agent 状态与 sessions 为 agent 级数据（跨会话保留）
+  applyNormalizedEvent(pair, event("agent_status", { instanceId: "inst_1", status: "ready", capabilities: {} }));
+  applyNormalizedEvent(pair, event("session_list", { sessions: [{ sessionId: "ses_1", title: "A" }] }));
+
+  clearSessionDocContent(pair.session);
+
+  expect(getPeriTasksMap(pair.session).size).toBe(0);
+  expect(getPeriTaskOrder(pair.session).length).toBe(0);
+  const agent = getSessionRoot(pair.session).get("agent") as Y.Map<unknown>;
+  expect(agent.get("instanceId")).toBe("inst_1");
+  expect((getSessionRoot(pair.session).get("sessions") as Y.Map<unknown>).size).toBe(1);
 });

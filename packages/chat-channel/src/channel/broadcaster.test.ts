@@ -106,6 +106,40 @@ describe("YjsBroadcaster 二进制帧（SP-A4）", () => {
     expect(restored.getMap("chat").get("title")).toBe("snapshot");
   });
 
+  // generation 不匹配时客户端发送空 state-vector，服务端应回完整当前投影且不能触发 lib0 越界。
+  test("treats an empty state vector as no state for the requested generation", () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const doc = new Y.Doc();
+    doc.getMap("chat").set("title", "current generation");
+
+    expect(() => broadcaster.sendDiff(ws, doc, "chat:rcs-1", "generation-2", new Uint8Array())).not.toThrow();
+
+    const frames = decodeUpdateFrames(ws);
+    expect(frames).toHaveLength(1);
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, frames[0]!.update);
+    expect(restored.getMap("chat").get("title")).toBe("current generation");
+  });
+
+  // 合法 state-vector 应只返回客户端缺失的差量，并保持双方合并后状态一致。
+  test("sends a differential update for a valid state vector", () => {
+    const broadcaster = new YjsBroadcaster(new ConnectionRegistry());
+    const ws = createWs();
+    const serverDoc = new Y.Doc();
+    serverDoc.getMap("chat").set("first", "one");
+    const clientDoc = new Y.Doc();
+    Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+    serverDoc.getMap("chat").set("second", "two");
+
+    broadcaster.sendDiff(ws, serverDoc, "chat:rcs-1", "generation-1", Y.encodeStateVector(clientDoc));
+
+    const frames = decodeUpdateFrames(ws);
+    expect(frames).toHaveLength(1);
+    Y.applyUpdate(clientDoc, frames[0]!.update);
+    expect(clientDoc.getMap("chat").toJSON()).toEqual(serverDoc.getMap("chat").toJSON());
+  });
+
   // 同一 tick 内同一 Doc 的两次更新必须合并为一帧，且解码后状态等价。
   test("merges same-tick updates for one document", async () => {
     const registry = new ConnectionRegistry();

@@ -18,6 +18,7 @@ import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
 import { expireQuestion, respondQuestion } from "../state/question";
+import type { ProjectionDocs } from "../types";
 import { CommandCoordinator } from "./command-coordinator";
 import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
@@ -59,8 +60,10 @@ export interface SessionConnection {
 
 export interface SessionChannelDependencies {
   docManager: DocManager;
-  /** 会话切换（load/create）前把当前 Session Doc 快照以 CAS 方式持久化到 Redis */
-  prepareClearSessionSnapshot: (connection: SessionConnection) => Promise<void>;
+  /** 仅供滚动升级期间兼容旧装配；projection replacement 不再调用。 */
+  prepareClearSessionSnapshot?: (connection: SessionConnection) => Promise<void>;
+  /** 新投影交换后重绑 broadcaster 并向同 RCS 会话全部客户端发送 replace frame。 */
+  replaceProjection: (projection: ProjectionDocs) => void;
   /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */
   syncSessionId: (connection: SessionConnection, newSessionId: string) => void;
   reportError: (message: string, error: unknown) => void;
@@ -316,33 +319,26 @@ export class SessionChannel {
       return false;
     }
 
-    // 防御：首次 load_session 且 Chat Doc 已有时间线内容时，
-    // 说明是重连场景下 acpSessionId 恢复失败，不应清空已有消息。
+    // Redis 或内存中已有当前会话投影时，首次恢复只绑定会话，不再请求 Agent 全量回放。
     if (!connection.sessionLoaded && this.dependencies.docManager.hasTimelineContent(connection.rcsSessionId)) {
       connection.acpSessionId = sessionId;
       connection.sessionLoaded = true;
       this.dependencies.syncSessionId(connection, sessionId);
-      // P1: 此处 return true 会向 agent 发送 session/load RPC，可能触发全量回放。
-      // 如果 Chat Doc 已有内容（来自之前的回放），其他客户端会收到重复消息。
-      // 若未来观察到多客户端重复消息，改为 return false 即可（快照已在内存中）。
-      return true;
+      return false;
     }
 
-    await this.dependencies.prepareClearSessionSnapshot(connection);
-    this.dependencies.docManager.clearChatDocContent(connection.rcsSessionId);
-    this.dependencies.docManager.clearSessionDocContent(connection.rcsSessionId);
+    const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, sessionId);
+    this.dependencies.replaceProjection(projection);
     connection.acpSessionId = sessionId;
     connection.sessionLoaded = true;
     this.dependencies.syncSessionId(connection, sessionId);
     return true;
   }
 
-  /** create_session：同批清空 Chat Doc 与 Session Doc，确保新会话投影不残留旧内容 */
+  /** create_session：先换代 Chat/Session 投影，确保新会话没有旧 StructStore。 */
   private async prepareCreateSession(connection: SessionConnection): Promise<void> {
-    await this.dependencies.docManager.openSession(connection.userId, connection.agentId, connection.rcsSessionId);
-    await this.dependencies.prepareClearSessionSnapshot(connection);
-    this.dependencies.docManager.clearChatDocContent(connection.rcsSessionId);
-    this.dependencies.docManager.clearSessionDocContent(connection.rcsSessionId);
+    const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, null);
+    this.dependencies.replaceProjection(projection);
   }
 
   /** send_prompt：把用户消息写入 Chat Doc（服务端单写，前端不乐观写入）并返回 turnId */

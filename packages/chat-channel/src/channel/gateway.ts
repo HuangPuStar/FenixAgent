@@ -1,27 +1,13 @@
-// packages/chat-channel/src/channel/gateway.ts
 // Gateway：YJS 前端 WebSocket 连接生命周期控制面。
-//
-// 迁移自 src/transport/relay/yjs-frontend/ws-lifecycle.ts，语义原样保留（Q13：
-// YJS sync 握手时序、断线重连、64 KB 背压、YJS_MAX_CLIENTS 配额、rpcId 管理
-// 一律不重写；与 19 号文档 10 节的差异记为二期优化项）：
-// - handleOpen：认证/授权 → ensureRunning → 共享 relay 获取（并发去重）→
-//   Chat Doc / Session Doc 初始快照（relayReady = true 之前）→ connect 握手 →
-//   缓冲消息 flush；
-// - handleMessage：relayReady 前缓冲；ping/keep_alive 心跳；action 转
-//   SessionChannel（commandId 幂等 + 两阶段 Ack）；
-// - handleClose：仅释放连接级资源（客户端条目、keepalive 定时器、relay 引用计数），
-//   实例 ACP session 存活时重连后由 handleOpen 同步当前实时 Y.Doc（C6 断链语义一）。
-//
-// 宿主能力全部经依赖注入（环境解析、workspace、ensureRunning、relay 连接、空闲监控、
-// spawn 错误分类），包内可用 fake 依赖独立测试（Q12）。
-
 import { translateSimpleAction } from "../protocol/translator";
+import { decodeYjsSyncFrame } from "../protocol/update-frame";
 import type { DocManager } from "../state";
 import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { type ClientConnection, PROMPT_TIMEOUT_MS, type SharedRelay, type WsConnection } from "./connection-types";
+import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 
@@ -32,14 +18,12 @@ const CLIENT_KEEPALIVE_TIMEOUT = KEEPALIVE_INTERVAL * 2;
 const SESSION_LIST_POLL_INTERVAL = 10_000;
 /** 兜底 JSON-RPC id 计数器，当 SharedRelay 不可用时使用 */
 let entryRelayNextId = 0;
-
 /** 已认证 environment 的最小形状（route 鉴权后注入） */
 export interface GatewayEnvironment {
   organizationId?: string | null;
   machineName?: string | null;
   userId?: string | null;
 }
-
 export interface GatewayDependencies {
   registry: ConnectionRegistry;
   broadcaster: YjsBroadcaster;
@@ -69,11 +53,10 @@ export interface GatewayDependencies {
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连分支 */
   classifyPermanentSpawnFailure: (err: unknown) => string | null;
 }
-
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
+  private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
   constructor(private readonly dependencies: GatewayDependencies) {}
-
   async handleOpen(
     ws: WsConnection,
     wsId: string,
@@ -92,7 +75,6 @@ export class Gateway {
       ws.close(1013, "too many connections");
       return;
     }
-
     let environment: Awaited<ReturnType<GatewayDependencies["getEnvironment"]>>;
     try {
       environment = await this.dependencies.getEnvironment(agentId);
@@ -109,23 +91,14 @@ export class Gateway {
       this.rejectOpen(ws, wsId, 4003, "unauthorized", "Environment not found");
       return;
     }
-
     const orgId = environment.organizationId ?? userId;
     const workspacePath = this.dependencies.resolveWorkspacePath(orgId, userId, agentId);
-
-    // 多实例隔离：从 URL sessionId 解析对应的 instance 编号，确保连到正确的实例。
-    // 无法解析（历史 session_* 书签、ACP ses_* 混入、实例回收后编号失效）是可预期的
-    // 输入形态：resolveInstanceNumberFromSession 返回 null，按默认实例（编号 1）继续
-    // 连接，连接建立后由 ACP 层 list_sessions/create_session 重建会话；不得以 4004
-    // 拒绝——4004 不在客户端终态码集合，会触发相同 URL 的无限重连。
-    // 仅 DB 层异常（查询失败等非预期错误）才进入 catch 保留错误诊断。
     const resolvedInstanceNumber = sessionId
       ? await this.dependencies.resolveInstanceNumberFromSession(sessionId).catch((err) => {
           this.reportError("[YJS-FE] Failed to resolve session instance:", err);
           return null;
         })
       : null;
-
     let instanceId: string;
     try {
       instanceId = (
@@ -134,9 +107,6 @@ export class Gateway {
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance:", err);
-      // 机器离线（MACHINE_OFFLINE / AGENT_NODE_UNAVAILABLE / NODE_OFFLINE / NODE_NOT_FOUND）
-      // 进入终态：close 4500 使客户端停止自动重连并展示 machine_unavailable 手动重试 UI。
-      // 判定逻辑由宿主注入（isMachineOffline）；其余 spawn 失败仍走 1011 通用分支。
       if (this.dependencies.isMachineOffline(err)) {
         broadcaster.sendToYjsWs(ws, {
           type: "error",
@@ -145,9 +115,6 @@ export class Gateway {
         ws.close(4500, "machine offline");
         return;
       }
-      // 配置性永久失败（autoStart 关闭 / maxSessions 上限 / launch spec 构建失败）→ 4502 终态：
-      // 重连不改变失败条件，须停止自动重连；具体原因由 payload.code 提供给客户端展示，
-      // message 保持脱敏通用文案，不泄漏 envId/machineId/实例编号。
       const permanentCode = this.dependencies.classifyPermanentSpawnFailure(err);
       if (permanentCode) {
         broadcaster.sendToYjsWs(ws, {
@@ -161,12 +128,10 @@ export class Gateway {
       ws.close(1011, "spawn failed");
       return;
     }
-
     if (ws.readyState !== 1) {
       registry.discardPending(wsId);
       return;
     }
-
     const resolvedRcsSessionId = rcsSessionId ?? createDeterministicRcsSessionId(agentId, userId);
     let acquired: { shared: SharedRelay; created: boolean };
     try {
@@ -207,22 +172,15 @@ export class Gateway {
       ws.close(1011, "relay failed");
       return;
     }
-
     const { shared } = acquired;
     if (ws.readyState !== 1 || !registry.canPromotePending(wsId, maxClients)) {
       registry.discardPending(wsId);
       this.releaseRelay(instanceId, userId, resolvedRcsSessionId);
       return;
     }
-
     if (acquired.created) {
       this.dependencies.markRelayAttached(instanceId);
       shared.idleMonitorAttached = true;
-      // 登记实例与会话的实时资源归属（SP-C2）：relay 释放（引用计数归零）不产生
-      // relay_closed，实例随后被停止回收（stopInstanceViaController 完成处）时，
-      // 依赖此登记按 instanceId 统一关闭名下内存 Doc。
-      // 注意：登记只在此处（relay 创建），不在 releaseRelay——前端断开但实例可能
-      // 存活时禁止关 Doc（见 releaseRelay 注释与 C6 断链语义一）。
       this.dependencies.relayEvents.bindInstanceSession(instanceId, resolvedRcsSessionId);
       try {
         // 时间线 Doc 在首个客户端连接时打开并广播（Agent 元信息经 status 消息投影到 Session Doc）
@@ -235,9 +193,6 @@ export class Gateway {
       shared.sessionListTimer = setInterval(() => {
         if (shared.destroyed) return;
         if (!registry.hasStatusReceivedByRcsSession(shared.rcsSessionId)) {
-          // 门禁卡死可观测性（R3）：status 未就绪时轮询被跳过且不产生异常，
-          // 必须显式计数告警，否则"轮询是否在跑"不可观测。连续 3 次（30s）告警
-          // 一次，之后每 30 次（5min）再报一次防刷屏；成功发送时清零。
           shared.sessionListSkipCount = (shared.sessionListSkipCount ?? 0) + 1;
           if (shared.sessionListSkipCount === 3 || shared.sessionListSkipCount % 30 === 0) {
             this.dependencies.reportLog(
@@ -257,7 +212,6 @@ export class Gateway {
         }
       }, SESSION_LIST_POLL_INTERVAL);
     }
-
     if (ws.readyState !== 1 || !registry.canPromotePending(wsId, maxClients)) {
       registry.discardPending(wsId);
       this.releaseRelay(instanceId, userId, resolvedRcsSessionId);
@@ -270,7 +224,6 @@ export class Gateway {
       }
       return;
     }
-
     const openedAt = Date.now();
     const keepalive = setInterval(() => {
       const entry = registry.getClient(wsId);
@@ -306,34 +259,40 @@ export class Gateway {
       lastClientKeepalive: openedAt,
     };
     registry.addClient(wsId, entry);
-
+    let chatDoc: Awaited<ReturnType<DocManager["openChat"]>>;
+    let sessionDoc: Awaited<ReturnType<DocManager["openSession"]>>;
     try {
-      const chatDoc = await this.dependencies.docManager.openChat(shared.rcsSessionId);
-      broadcaster.sendSnapshot(ws, chatDoc.ydoc, `chat:${shared.rcsSessionId}`);
-      // 恢复当前 ACP session：权威值在 Session Doc session.sessionId（binding 反查）
-      const sessionYdoc = this.dependencies.docManager.getSessionYdoc(shared.rcsSessionId);
-      const sessionInfo = sessionYdoc?.getMap("root").get("session") as { get: (key: string) => unknown } | undefined;
-      const sessionId = sessionInfo?.get("sessionId");
-      if (typeof sessionId === "string" && sessionId.length > 0) entry.acpSessionId = sessionId;
-    } catch (err) {
-      this.dependencies.reportError("[YJS-FE] Failed to push chat init state:", err);
-    }
-    try {
-      const sessionDoc = await this.dependencies.docManager.openSession(userId, agentId, shared.rcsSessionId);
-      // openSession 挂起期间连接可能已被 handleClose 释放（refCount 归零 → closeReleasedRelay
-      // 已置 destroyed 并注销）；此刻再注册会产生无注销点的僵尸监听器，守卫必须在 await 之后判断。
-      if (!shared.destroyed) {
-        broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
+      [chatDoc, sessionDoc] = await Promise.all([
+        this.dependencies.docManager.openChat(shared.rcsSessionId),
+        this.dependencies.docManager.openSession(userId, agentId, shared.rcsSessionId),
+      ]);
+      if (chatDoc.generation !== sessionDoc.generation) {
+        throw new Error("chat/session projection generation mismatch");
       }
-      broadcaster.sendSnapshot(ws, sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
+      if (!shared.destroyed) {
+        broadcaster.registerYjsDocListener(chatDoc.ydoc, `chat:${shared.rcsSessionId}`, chatDoc.generation);
+        broadcaster.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`, sessionDoc.generation);
+      }
+      const sessionInfo = sessionDoc.ydoc.getMap("root").get("session") as
+        | { get: (key: string) => unknown }
+        | undefined;
+      const activeSessionId = sessionInfo?.get("sessionId");
+      if (typeof activeSessionId === "string" && activeSessionId.length > 0) entry.acpSessionId = activeSessionId;
     } catch (err) {
-      this.dependencies.reportError("[YJS-FE] Failed to push session init state:", err);
+      this.dependencies.reportError("[YJS-FE] Failed to initialize Yjs docs:", err);
+      ws.close(1011, "yjs initialization failed");
+      return;
     }
-
-    entry.relayReady = true;
-
-    // 远端 AcpDispatcher 仅在收到 connect 后回传 status。此时 client 已登记且初始快照已发送，
-    // 同步回包也能解除 session/list 的状态门禁。
+    await synchronizeInitialDocs(
+      this.pendingInitialSync,
+      broadcaster,
+      ws,
+      wsId,
+      shared.rcsSessionId,
+      chatDoc,
+      sessionDoc,
+    );
+    // connect 成功是 relayReady 的提交点；此前文本 action 始终留在有界 pending queue。
     try {
       await shared.handle.send({ type: "connect" } as never);
     } catch (err) {
@@ -342,13 +301,31 @@ export class Gateway {
       ws.close(1011, "relay handshake failed");
       return;
     }
-
+    entry.relayReady = true;
     const pending = registry.consumePending(wsId);
     if (pending?.length) await this.flushPending(entry, pending, ws);
   }
-
-  async handleMessage(ws: WsConnection, wsId: string, data: string): Promise<void> {
+  async handleMessage(ws: WsConnection, wsId: string, data: string | Uint8Array): Promise<void> {
     const entry = this.dependencies.registry.getClient(wsId);
+    if (typeof data !== "string") {
+      const frame = decodeYjsSyncFrame(data);
+      if (!entry || frame?.type !== "state-vector") return;
+      const prefix = frame.docName.split(":", 1)[0];
+      const expectedName = `${prefix}:${entry.rcsSessionId}`;
+      if (frame.docName !== expectedName) return;
+      const doc =
+        prefix === "chat"
+          ? this.dependencies.docManager.getChat(entry.rcsSessionId)
+          : this.dependencies.docManager.getSession(entry.rcsSessionId);
+      if (!doc || doc.generation !== frame.generation) return;
+      this.dependencies.broadcaster.sendDiff(ws, doc.ydoc, frame.docName, frame.generation, frame.stateVector);
+      const pendingSync = this.pendingInitialSync.get(wsId);
+      if (pendingSync?.expected.has(frame.docName)) {
+        pendingSync.received.add(frame.docName);
+        if (pendingSync.received.size === pendingSync.expected.size) pendingSync.resolve();
+      }
+      return;
+    }
     if (!entry?.relayReady) {
       this.dependencies.registry.bufferPending(wsId, data);
       return;
@@ -370,8 +347,8 @@ export class Gateway {
     }
     if (parsed.action) await this.forward(entry, parsed, ws);
   }
-
   handleClose(wsId: string): void {
+    this.pendingInitialSync.get(wsId)?.resolve();
     const { registry } = this.dependencies;
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);
@@ -381,7 +358,6 @@ export class Gateway {
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
     this.dependencies.reportLog(`[YJS-FE] Disconnected: wsId=${wsId} agentId=${entry.agentId} duration=${duration}s`);
   }
-
   private reportError(message: string, error: unknown): void {
     try {
       this.dependencies.reportError(message, error);
@@ -389,7 +365,6 @@ export class Gateway {
       /* ignore */
     }
   }
-
   private rejectOpen(ws: WsConnection, wsId: string, closeCode: number, closeReason: string, message: string): void {
     this.dependencies.registry.discardPending(wsId);
     try {
@@ -403,25 +378,12 @@ export class Gateway {
       /* ignore */
     }
   }
-
-  /**
-   * 释放一个 relay 引用；引用计数归零（最后一个前端客户端断开）时执行最终释放：
-   * 注销广播监听、释放频道状态（去重表/队列）、关闭 relay handle。
-   * 注意：此路径不销毁 Chat Doc / Session Doc——Agent 会话可能仍存活，
-   * 重连后 handleOpen 通过 openChat/openSession 同步当前实时 Y.Doc（C6 断链语义一）。
-   * **绝对禁止**在此（或任何"实例可能存活"的时机）关闭 Doc：processNormalizedEvent
-   * 对不在内存的会话直接丢事件，提前关闭等于丢弃实时流。Doc 销毁只发生在
-   * relay_closed（实例断链，relay-event-handler）与实例确认停止后的实例级回收
-   * （RelayEventHandler.reclaimInstanceRealtimeResources，由宿主在
-   * stopInstanceViaController 完成处触发）两条路径。
-   */
   private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
     const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);
     if (!released) return;
     this.closeReleasedRelay(released);
     if (released.idleMonitorAttached) this.dependencies.markRelayDetached(instanceId);
   }
-
   private closeReleasedRelay(shared: SharedRelay | undefined): void {
     if (!shared) return;
     shared.destroyed = true;
@@ -467,15 +429,8 @@ export class Gateway {
       /* ignore */
     }
   }
-
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
-    // 回放窗口必须在 executeCommand（含 load_session 的会话 Doc 清空）完成后才开启：
-    // openReplayWindow 在开启瞬间缓存"是否跳过回放合成"（hasTimelineContent），若在清空
-    // 前开启，缓存的是旧会话内容 → 切换后回放增量被全部拒绝（新会话内容空白）。
-    // forwardYjsAction 会 await 命令完整执行（含异步 Redis CAS 清空与 RPC 发送），
-    // 而 Agent 回放增量需至少一次网络往返才会到达，窗口必然先于回放流开启；
-    // JSON-RPC result 分支会幂等重置窗口（回放流无终态信号，窗口到期定时器收敛回放 turn）。
     await forwardYjsAction(this.toSessionConnection(entry, shared), action, {
       sessionChannel: this.dependencies.sessionChannel,
       sendAck: (ack) => this.dependencies.broadcaster.sendToYjsWs(ws, ack),
@@ -486,7 +441,6 @@ export class Gateway {
       this.dependencies.relayEvents.openReplayWindow(shared);
     }
   }
-
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
     await flushPendingYjsActions(this.toSessionConnection(entry, shared), pending, {
@@ -496,7 +450,6 @@ export class Gateway {
       reportError: this.dependencies.reportError,
     });
   }
-
   /** ClientConnection → 包内 SessionConnection 适配（rpcId 与 relay 发送来自连接/共享 relay） */
   private toSessionConnection(entry: ClientConnection, shared: SharedRelay | undefined): SessionConnection {
     return {
@@ -511,25 +464,15 @@ export class Gateway {
       lastClientKeepalive: entry.lastClientKeepalive,
       sendToRelay: (message) => entry.relayHandle.send(message as never),
       getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
-      // 会话同步请求登记到共享 relay：relay-event-handler 的会话同步 result 分支
-      // 按 id 校验响应来源（rename/delete 等响应不得劫持），relay 释放时统一清空
       registerSessionSyncRpcId: (rpcId) => {
         if (!shared) return;
         if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
         shared.pendingSessionSyncIds.add(rpcId);
       },
-      // prompt 请求登记：relay-event-handler 按 id 匹配 JSON-RPC error 响应收敛
-      // turn_failed（Agent 子进程死亡场景防 loading 永久卡死），relay 释放时统一清空。
-      // 同时启动卡死收敛定时器：到点时若 agent 全程无业务帧（lastInboundAt 距今
-      // ≥ PROMPT_TIMEOUT_MS）则收敛 turn_failed；期间有业务帧（流式输出/事件/
-      // JSON-RPC 响应，保活帧除外——见 relay-event-handler 的 lastInboundAt 刷新）
-      // 则重排等待，不误杀正常的长输出。result/error 响应消费登记时清除定时器。
       registerPendingPrompt: (rpcId, turnId) => {
         if (!shared) return;
         if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
         shared.pendingPromptIds.add(rpcId);
-        // turnId 登记：终态事件按 rpcId 回传归属 turn，聚合层据此校验
-        //（连续 prompt 时旧 turn 的迟到终态不终结新 turn，见 aggregator）
         if (turnId) {
           if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
           shared.pendingPromptTurns.set(rpcId, turnId);
@@ -537,10 +480,10 @@ export class Gateway {
         if (!shared.pendingPromptTimeouts) shared.pendingPromptTimeouts = new Map();
         const schedule = () => {
           const timer = setTimeout(() => {
-            if (!shared.pendingPromptIds?.has(rpcId)) return; // 已被 result/error 消费
+            if (!shared.pendingPromptIds?.has(rpcId)) return;
             const lastInboundAt = shared.lastInboundAt ?? 0;
             if (Date.now() - lastInboundAt < PROMPT_TIMEOUT_MS) {
-              schedule(); // agent 仍在活跃输出，重排等待
+              schedule();
               return;
             }
             this.dependencies.relayEvents.convergeStuckPrompt(shared, rpcId);

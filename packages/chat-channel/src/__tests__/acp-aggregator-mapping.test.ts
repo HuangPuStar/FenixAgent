@@ -5,13 +5,23 @@
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
-import { type NormalizedEvent, TURN_TERMINAL_STATUSES, type TurnStatus } from "../schema";
+import {
+  type NormalizedEvent,
+  type NormalizedPeriTaskEvent,
+  PERI_TASK_FALLBACK_TITLE,
+  PERI_TASK_SUMMARY_MAX,
+  PERI_TASK_VIEW_MAX,
+  TURN_TERMINAL_STATUSES,
+  type TurnStatus,
+} from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
   ensureEntry,
   getEntry,
   getEntryOrder,
   getPendingPermissions,
+  getPeriTaskOrder,
+  getPeriTasksMap,
   getSessionInfo,
   getSessionRoot,
   getToolCallsMap,
@@ -594,4 +604,496 @@ test("setActiveTurn and setSessionInfo short-circuit identical writes", () => {
   setActiveTurn(pair.session, "turn_1", "completed");
   expect(sessionUpdates).toBeGreaterThan(0);
   expect(getSessionInfo(pair.session).get("activeTurnStatus")).toBe("completed");
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Peri Task View（切片 0B + 1）：wire 规范化与 Session Doc 投影
+// ════════════════════════════════════════════════════════════════════
+
+// ── normalize 契约：peri/agent_event（Subagent 生命周期）──
+
+// 裸 JSON-RPC subagent_started → peri_task_started（taskId=instance_id，title=agent_name）
+test("normalize peri/agent_event subagent_started (bare jsonrpc)", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({
+        type: "subagent_started",
+        value: { agent_name: "coder", instance_id: "inst_1", is_background: false },
+      }),
+    },
+  };
+  const normalized = normalizeAcpMessage(raw);
+  expect(normalized).not.toBeNull();
+  const peri = normalized as NormalizedPeriTaskEvent;
+  expect(peri.type).toBe("peri_task_started");
+  if (peri.type !== "peri_task_started") return;
+  expect(peri.taskId).toBe("inst_1");
+  expect(peri.kind).toBe("subagent");
+  expect(peri.title).toBe("coder");
+  expect(peri.isBackground).toBe(false);
+  expect(peri.acpSessionId).toBe("ses_1");
+});
+
+// 包裹格式 { type: "session_data", payload: jsonrpc } 同样识别（extractJsonRpc 双格式）
+test("normalize peri/agent_event inside session_data wrapper", () => {
+  const wrapped = {
+    type: "session_data",
+    payload: {
+      jsonrpc: "2.0",
+      method: "peri/agent_event",
+      params: {
+        sessionId: "ses_1",
+        event_json: JSON.stringify({
+          type: "subagent_stopped",
+          value: { agent_name: "coder", instance_id: "inst_1", result: "done", is_error: false },
+        }),
+      },
+    },
+  };
+  const normalized = normalizeAcpMessage(wrapped);
+  expect(normalized).not.toBeNull();
+  const peri = normalized as NormalizedPeriTaskEvent;
+  expect(peri.type).toBe("peri_task_completed");
+  if (peri.type !== "peri_task_completed") return;
+  expect(peri.taskId).toBe("inst_1");
+  expect(peri.success).toBe(true);
+  expect(peri.summary).toBe("done");
+  expect(peri.acpSessionId).toBe("ses_1");
+});
+
+// subagent_stopped 的 is_error=true → success=false（failed 终态源）
+test("normalize subagent_stopped with is_error maps success=false", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({
+        type: "subagent_stopped",
+        value: { agent_name: "coder", instance_id: "inst_2", result: "boom", is_error: true },
+      }),
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  if (peri.type !== "peri_task_completed") throw new Error("expected peri_task_completed");
+  expect(peri.success).toBe(false);
+});
+
+// 外部 result/output_preview 在写入 Y.Doc 前擦除常见秘密、URL 与本机路径
+test("normalize redacts sensitive task summaries before projection", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({
+        type: "subagent_stopped",
+        value: {
+          agent_name: "coder",
+          instance_id: "inst_secret",
+          result: "token=live-secret https://internal.example/a /Users/alice/private.txt safe",
+          is_error: false,
+        },
+      }),
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  if (peri.type !== "peri_task_completed") throw new Error("expected peri_task_completed");
+  expect(peri.summary).toBe("[REDACTED_SECRET] [REDACTED_URL] [REDACTED_PATH] safe");
+});
+
+// Task View 维持硬上限，并优先淘汰最早的终态任务而保留运行中任务
+test("peri task projection evicts terminal tasks at the bounded limit", () => {
+  for (let index = 0; index < PERI_TASK_VIEW_MAX; index += 1) {
+    applyNormalizedEvent(pair, {
+      type: "peri_task_started",
+      update: {},
+      content: null,
+      taskId: `running_${index}`,
+      kind: "background",
+      taskSubtype: "shell",
+      title: `Task ${index}`,
+      summary: null,
+      sourceStartedAt: null,
+      receivedAt: new Date(index).toISOString(),
+      isBackground: true,
+      detailAvailability: "unavailable",
+    });
+  }
+  applyNormalizedEvent(pair, {
+    type: "peri_task_completed",
+    update: {},
+    content: null,
+    taskId: "terminal_first",
+    kind: "background",
+    success: true,
+    summary: "done",
+    durationMs: 1,
+    receivedAt: new Date(PERI_TASK_VIEW_MAX).toISOString(),
+    detailAvailability: "preview",
+  });
+
+  expect(getPeriTasksMap(pair.session).size).toBe(PERI_TASK_VIEW_MAX);
+  expect(getPeriTaskOrder(pair.session).length).toBe(PERI_TASK_VIEW_MAX);
+  expect(getPeriTasksMap(pair.session).has("terminal_first")).toBe(false);
+  expect(getPeriTasksMap(pair.session).has("running_0")).toBe(true);
+});
+
+// 非法 event_json（非 JSON）→ null（不拒绝主链路、不生成 unknown Task）
+test("normalize rejects non-JSON event_json", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: { sessionId: "ses_1", event_json: "{not-json" },
+  };
+  expect(normalizeAcpMessage(raw)).toBeNull();
+});
+
+// 缺 instance_id / 缺 value → null
+test("normalize rejects peri/agent_event missing instance_id or value", () => {
+  const noInstance = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({ type: "subagent_started", value: { agent_name: "x" } }),
+    },
+  };
+  expect(normalizeAcpMessage(noInstance)).toBeNull();
+  const noValue = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: { sessionId: "ses_1", event_json: JSON.stringify({ type: "subagent_started" }) },
+  };
+  expect(normalizeAcpMessage(noValue)).toBeNull();
+});
+
+// 未知 agent event type（如 compact_completed）→ null，不暴露为 Task
+test("normalize ignores unknown peri/agent_event types", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({ type: "compact_completed", value: { summary: "x", messages_json: "[]" } }),
+    },
+  };
+  expect(normalizeAcpMessage(raw)).toBeNull();
+});
+
+// 被拒绝的 peri payload（缺 instance_id）即使携带 token/path sentinel 也不进入
+// 任何结构化输出：normalize 返回 null，拒绝路径不记录 raw payload（规格 §一.5/§五）
+test("normalize rejects malformed payload without leaking raw sentinels", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({
+        type: "subagent_stopped",
+        value: { result: "done" },
+        access_token: "secret-token-abc",
+        error: { path: "/etc/passwd", stack: "at handler" },
+      }),
+    },
+  };
+  expect(normalizeAcpMessage(raw)).toBeNull();
+});
+
+// 长 result 按 code point 截断至摘要上限，且不会切断多字节字符
+test("normalize truncates subagent result to summary bound safely", () => {
+  const long = `${"a".repeat(PERI_TASK_SUMMARY_MAX + 100)}😀`;
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/agent_event",
+    params: {
+      sessionId: "ses_1",
+      event_json: JSON.stringify({
+        type: "subagent_stopped",
+        value: { agent_name: "c", instance_id: "inst_3", result: long, is_error: false },
+      }),
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  if (peri.type !== "peri_task_completed") throw new Error("expected peri_task_completed");
+  expect(peri.summary?.length).toBe(PERI_TASK_SUMMARY_MAX);
+});
+
+// ── normalize 契约：peri/unstable_event（Background Task）──
+
+// bg-task-started → peri_task_started（kind=background，taskSubtype=kind，started_at 透传）
+test("normalize peri/unstable_event bg-task-started", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: {
+      sessionId: "ses_1",
+      event: "bg-task-started",
+      data: { task_id: "t1", kind: "shell", summary: "run tests", started_at: "2026-08-01T00:00:00.000Z" },
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  expect(peri.type).toBe("peri_task_started");
+  if (peri.type !== "peri_task_started") return;
+  expect(peri.taskId).toBe("t1");
+  expect(peri.kind).toBe("background");
+  expect(peri.taskSubtype).toBe("shell");
+  expect(peri.title).toBe("run tests");
+  expect(peri.sourceStartedAt).toBe("2026-08-01T00:00:00.000Z");
+  expect(peri.isBackground).toBe(true);
+});
+
+// bg-task-completed → peri_task_completed（success / output_preview 有界 / duration_ms）
+test("normalize peri/unstable_event bg-task-completed", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: {
+      sessionId: "ses_1",
+      event: "bg-task-completed",
+      data: { task_id: "t1", kind: "agent", success: true, output_preview: "ok", duration_ms: 1234 },
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  expect(peri.type).toBe("peri_task_completed");
+  if (peri.type !== "peri_task_completed") return;
+  expect(peri.taskId).toBe("t1");
+  expect(peri.success).toBe(true);
+  expect(peri.summary).toBe("ok");
+  expect(peri.durationMs).toBe(1234);
+});
+
+// bg-task-cancelled → peri_task_cancelled（reason 不进入事件，只留固定 reasonCode）
+test("normalize peri/unstable_event bg-task-cancelled drops raw reason", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: {
+      sessionId: "ses_1",
+      event: "bg-task-cancelled",
+      data: { task_id: "t1", reason: "user-killed-机密路径" },
+    },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  expect(peri.type).toBe("peri_task_cancelled");
+  if (peri.type !== "peri_task_cancelled") return;
+  expect(peri.reasonCode).toBe("cancelled");
+  expect(JSON.stringify(peri)).not.toContain("user-killed");
+});
+
+// 非法 kind（allowlist 之外）→ taskSubtype 降级 null，不拒绝事件
+test("normalize rejects unknown bg-task kind to null subtype", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: { sessionId: "ses_1", event: "bg-task-started", data: { task_id: "t1", kind: "evil", summary: "s" } },
+  };
+  const peri = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  if (peri.type !== "peri_task_started") throw new Error("expected peri_task_started");
+  expect(peri.taskSubtype).toBeNull();
+});
+
+// 非法 timestamp / duration：started_at 非法不拒绝事件（聚合层降级 receivedAt）；
+// duration_ms 非法 → null
+test("normalize accepts event with invalid timestamp and duration", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: {
+      sessionId: "ses_1",
+      event: "bg-task-started",
+      data: { task_id: "t1", kind: "shell", summary: "s", started_at: "not-a-date" },
+    },
+  };
+  const started = normalizeAcpMessage(raw) as NormalizedPeriTaskEvent;
+  if (started.type !== "peri_task_started") throw new Error("expected peri_task_started");
+  expect(started.sourceStartedAt).toBe("not-a-date"); // 透传，聚合层校验
+
+  const completed = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: {
+      sessionId: "ses_1",
+      event: "bg-task-completed",
+      data: { task_id: "t1", kind: "shell", success: true, output_preview: "p", duration_ms: "NaN" },
+    },
+  };
+  const done = normalizeAcpMessage(completed) as NormalizedPeriTaskEvent;
+  if (done.type !== "peri_task_completed") throw new Error("expected peri_task_completed");
+  expect(done.durationMs).toBeNull();
+});
+
+// 未知 unstable event 名 → null（不生成 unknown Task）
+test("normalize ignores unknown peri/unstable_event event names", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable_event",
+    params: { sessionId: "ses_1", event: "bg-task-snapshot", data: { task_id: "t1" } },
+  };
+  expect(normalizeAcpMessage(raw)).toBeNull();
+});
+
+// 错误 method `peri/unstable-event`（横线别名）不被识别 → null
+test("normalize does not recognize hyphented method alias", () => {
+  const raw = {
+    jsonrpc: "2.0",
+    method: "peri/unstable-event",
+    params: { sessionId: "ses_1", event: "bg-task-started", data: { task_id: "t1" } },
+  };
+  expect(normalizeAcpMessage(raw)).toBeNull();
+});
+
+// ── aggregator 投影：Peri Task View 状态机 ──
+
+/** 构造 peri_task_started 规范化事件（测试辅助） */
+function periStarted(overrides: Partial<NormalizedPeriTaskEvent> = {}): NormalizedPeriTaskEvent {
+  return {
+    type: "peri_task_started",
+    update: {},
+    content: null,
+    taskId: "t1",
+    kind: "background",
+    taskSubtype: "shell",
+    title: "run tests",
+    summary: "run tests",
+    sourceStartedAt: "2026-08-01T00:00:00.000Z",
+    receivedAt: "2026-08-01T00:01:00.000Z",
+    isBackground: true,
+    detailAvailability: "preview",
+    ...overrides,
+  } as NormalizedPeriTaskEvent;
+}
+
+/** 构造 peri_task_completed 规范化事件（测试辅助） */
+function periCompleted(overrides: Partial<NormalizedPeriTaskEvent> = {}): NormalizedPeriTaskEvent {
+  return {
+    type: "peri_task_completed",
+    update: {},
+    content: null,
+    taskId: "t1",
+    kind: "background",
+    success: true,
+    summary: "ok",
+    durationMs: 100,
+    receivedAt: "2026-08-01T00:02:00.000Z",
+    detailAvailability: "preview",
+    ...overrides,
+  } as NormalizedPeriTaskEvent;
+}
+
+// started → running 创建，taskOrder append；无 active turn 也可写入（与 turn 解耦）
+test("peri task started projects running view without an active turn", () => {
+  applyNormalizedEvent(pair, periStarted());
+  const tasks = getPeriTasksMap(pair.session);
+  expect(tasks.size).toBe(1);
+  const task = tasks.get("t1")!;
+  expect(task.get("status")).toBe("running");
+  expect(task.get("kind")).toBe("background");
+  expect(task.get("taskSubtype")).toBe("shell");
+  expect(task.get("title")).toBe("run tests");
+  expect(task.get("startedAt")).toBe("2026-08-01T00:00:00.000Z");
+  expect(getPeriTaskOrder(pair.session).toArray()).toEqual(["t1"]);
+});
+
+// completed 后 started 到达 → 忽略（终态不可回退）
+test("peri task started after terminal is ignored", () => {
+  applyNormalizedEvent(pair, periStarted());
+  applyNormalizedEvent(pair, periCompleted());
+  const result = applyNormalizedEvent(pair, periStarted());
+  expect(result.applied).toBe(false);
+  const task = getPeriTasksMap(pair.session).get("t1")!;
+  expect(task.get("status")).toBe("completed");
+  // taskOrder 不重排
+  expect(getPeriTaskOrder(pair.session).toArray()).toEqual(["t1"]);
+});
+
+// 重复 started 不重复创建（taskOrder 不追加第二次）
+test("duplicate peri task started does not duplicate order", () => {
+  applyNormalizedEvent(pair, periStarted());
+  const result = applyNormalizedEvent(pair, periStarted());
+  expect(result.applied).toBe(true);
+  expect(getPeriTasksMap(pair.session).size).toBe(1);
+  expect(getPeriTaskOrder(pair.session).toArray()).toEqual(["t1"]);
+});
+
+// completed-before-started（terminal-first）：先创建终态，晚到的 started 忽略
+test("peri task completed-before-started creates terminal view", () => {
+  applyNormalizedEvent(pair, periCompleted());
+  const tasks = getPeriTasksMap(pair.session);
+  expect(tasks.get("t1")?.get("status")).toBe("completed");
+  expect(tasks.get("t1")?.get("title")).toBe(PERI_TASK_FALLBACK_TITLE);
+  // 晚到 started：忽略，保留首次终态
+  const result = applyNormalizedEvent(pair, periStarted());
+  expect(result.applied).toBe(false);
+  expect(tasks.get("t1")?.get("status")).toBe("completed");
+  expect(getPeriTaskOrder(pair.session).toArray()).toEqual(["t1"]);
+});
+
+// running + terminal → terminal（completedAt = receivedAt，不反推 startedAt）
+test("peri task running transitions to terminal on completed", () => {
+  applyNormalizedEvent(pair, periStarted());
+  applyNormalizedEvent(pair, periCompleted({ receivedAt: "2026-08-01T00:05:00.000Z" }));
+  const task = getPeriTasksMap(pair.session).get("t1")!;
+  expect(task.get("status")).toBe("completed");
+  expect(task.get("completedAt")).toBe("2026-08-01T00:05:00.000Z");
+  // startedAt 保持 started 事件提供的合法 started_at
+  expect(task.get("startedAt")).toBe("2026-08-01T00:00:00.000Z");
+});
+
+// 失败（success=false）→ failed 终态
+test("peri task failed maps success=false to failed status", () => {
+  applyNormalizedEvent(pair, periStarted());
+  applyNormalizedEvent(pair, periCompleted({ success: false }));
+  expect(getPeriTasksMap(pair.session).get("t1")?.get("status")).toBe("failed");
+});
+
+// 相同终态重复到达 → 幂等忽略（不补写）
+test("peri task duplicate terminal is ignored", () => {
+  applyNormalizedEvent(pair, periCompleted());
+  const result = applyNormalizedEvent(pair, periCompleted());
+  expect(result.applied).toBe(false);
+  expect(getPeriTasksMap(pair.session).get("t1")?.get("status")).toBe("completed");
+});
+
+// 不同终态冲突（completed vs cancelled）→ 保留首次终态，返回脱敏冲突 reason
+// （reason 不含任何 payload / token 字段）
+test("peri task terminal conflict keeps first terminal with sanitized reason", () => {
+  applyNormalizedEvent(pair, periCompleted());
+  const cancelled = {
+    type: "peri_task_cancelled",
+    update: {},
+    content: null,
+    taskId: "t1",
+    kind: "background",
+    reasonCode: "cancelled",
+    receivedAt: "2026-08-01T00:03:00.000Z",
+    detailAvailability: "unavailable",
+  } as NormalizedPeriTaskEvent;
+  const result = applyNormalizedEvent(pair, cancelled);
+  expect(result.applied).toBe(false);
+  expect(result.reason).toContain("terminal conflict");
+  expect(result.reason).not.toContain("t1");
+  expect(getPeriTasksMap(pair.session).get("t1")?.get("status")).toBe("completed");
+});
+
+// subagent 生命周期：started（title=agent_name）→ stopped（completed）且 stopped
+// 不覆盖 started 提供的 title / isBackground（identity 字段保留）
+test("peri subagent completed preserves started identity fields", () => {
+  applyNormalizedEvent(pair, periStarted({ kind: "subagent", taskSubtype: null, title: "coder", isBackground: false }));
+  applyNormalizedEvent(pair, periCompleted({ kind: "subagent", taskSubtype: null, title: "", summary: "result text" }));
+  const task = getPeriTasksMap(pair.session).get("t1")!;
+  expect(task.get("status")).toBe("completed");
+  expect(task.get("title")).toBe("coder"); // started 提供的 title 不被覆盖
+  expect(task.get("isBackground")).toBe(false); // 终态事件无 is_background，不覆盖
+  expect(task.get("summary")).toBe("result text");
+});
+
+// 非法 started_at（background）：降级为 receivedAt，不拒绝事件
+test("peri task invalid started_at falls back to receivedAt", () => {
+  applyNormalizedEvent(pair, periStarted({ sourceStartedAt: "not-a-date", receivedAt: "2026-08-01T00:01:00.000Z" }));
+  const task = getPeriTasksMap(pair.session).get("t1")!;
+  expect(task.get("startedAt")).toBe("2026-08-01T00:01:00.000Z");
 });

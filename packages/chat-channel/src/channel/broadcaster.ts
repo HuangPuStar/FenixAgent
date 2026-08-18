@@ -13,7 +13,7 @@
 //   仅含前缀与尺寸计量，不含任何会话内容。
 
 import * as Y from "yjs";
-import { encodeYjsUpdateFrame } from "../protocol/update-frame";
+import { encodeYjsReplaceFrame, encodeYjsUpdateFrame } from "../protocol/update-frame";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { WsConnection } from "./connection-types";
 
@@ -38,7 +38,10 @@ interface LaggingState {
 
 /** 负责 Y.Doc 更新的批处理、路由与 WebSocket 发送。 */
 export class YjsBroadcaster {
-  private readonly registeredDocs = new Map<string, { ydoc: Y.Doc; listener: (update: Uint8Array) => void }>();
+  private readonly registeredDocs = new Map<
+    string,
+    { ydoc: Y.Doc; generation: string; listener: (update: Uint8Array) => void }
+  >();
   private updateBuffers = new Map<string, Uint8Array[]>();
   private pendingDocNames = new Set<string>();
   private flushScheduled = false;
@@ -70,16 +73,36 @@ export class YjsBroadcaster {
     ws.send(JSON.stringify(data));
   }
 
-  /** 向单个连接发送 Y.Doc 全量快照（二进制帧）；背压跳帧同样登记 lagging */
-  sendSnapshot(ws: WsConnection, ydoc: Y.Doc, docName: string): void {
-    const frame = encodeYjsUpdateFrame(docName, Y.encodeStateAsUpdate(ydoc));
+  /** 向单个连接发送当前世代快照；客户端仅在 generation 相同时合并。 */
+  sendSnapshot(ws: WsConnection, ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
+    const frame = encodeYjsUpdateFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
     this.recordFrameMetric(docName, frame.length);
     this.sendFrameWithBackpressure(ws, docName, frame);
   }
 
-  /** 向同 rcsSessionId 的全部客户端广播 Y.Doc 全量快照 */
-  broadcastSnapshot(ydoc: Y.Doc, docName: string): void {
-    const frame = encodeYjsUpdateFrame(docName, Y.encodeStateAsUpdate(ydoc));
+  /**
+   * state-vector 握手的定向差量响应。
+   *
+   * 客户端 generation 不匹配时以空 payload 表示“没有当前世代状态”。空字节数组
+   * 不是合法的 Yjs state vector，必须退化为当前世代全量编码，不能直接交给 lib0 解码。
+   */
+  sendDiff(ws: WsConnection, ydoc: Y.Doc, docName: string, generation: string, stateVector: Uint8Array): void {
+    const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
+    const frame = encodeYjsUpdateFrame(docName, generation, update);
+    this.recordFrameMetric(docName, frame.length);
+    this.sendFrameWithBackpressure(ws, docName, frame);
+  }
+
+  /** replacement 使用 replace frame，客户端据此销毁旧副本并切换世代。 */
+  broadcastReplacement(ydoc: Y.Doc, docName: string, generation: string): void {
+    const frame = encodeYjsReplaceFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
+    this.recordFrameMetric(docName, frame.length);
+    this.broadcastMessage(docName, frame);
+  }
+
+  /** 向同 rcsSessionId 的全部客户端广播当前世代快照。 */
+  broadcastSnapshot(ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
+    const frame = encodeYjsUpdateFrame(docName, generation, Y.encodeStateAsUpdate(ydoc));
     this.recordFrameMetric(docName, frame.length);
     this.broadcastMessage(docName, frame);
   }
@@ -100,8 +123,10 @@ export class YjsBroadcaster {
     }
   }
 
-  registerYjsDocListener(ydoc: Y.Doc, docName: string): void {
-    if (this.registeredDocs.has(docName)) return;
+  registerYjsDocListener(ydoc: Y.Doc, docName: string, generation = this.generationOf(ydoc)): void {
+    const existing = this.registeredDocs.get(docName);
+    if (existing?.ydoc === ydoc) return;
+    if (existing) this.unregisterYjsDocListener(docName);
     const listener = (update: Uint8Array) => {
       let buffers = this.updateBuffers.get(docName);
       if (!buffers) {
@@ -112,8 +137,13 @@ export class YjsBroadcaster {
       this.pendingDocNames.add(docName);
       this.scheduleFlush();
     };
-    this.registeredDocs.set(docName, { ydoc, listener });
+    this.registeredDocs.set(docName, { ydoc, generation, listener });
     ydoc.on("update", listener);
+  }
+
+  private generationOf(ydoc: Y.Doc): string {
+    const generation = ydoc.getMap("root").get("projectionGeneration");
+    return typeof generation === "string" ? generation : ydoc.guid;
   }
 
   private scheduleFlush(): void {
@@ -131,11 +161,12 @@ export class YjsBroadcaster {
     this.pendingDocNames = new Set();
 
     for (const docName of pendingDocNames) {
-      if (!this.registeredDocs.has(docName)) continue;
+      const registered = this.registeredDocs.get(docName);
+      if (!registered) continue;
       const buffers = updateBuffers.get(docName);
       if (!buffers || buffers.length === 0) continue;
       const update = buffers.length === 1 ? buffers[0] : Y.mergeUpdates(buffers);
-      const frame = encodeYjsUpdateFrame(docName, update);
+      const frame = encodeYjsUpdateFrame(docName, registered.generation, update);
       this.recordFrameMetric(docName, frame.length);
       this.broadcastMessage(docName, frame);
     }

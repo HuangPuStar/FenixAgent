@@ -3,6 +3,7 @@ export {
   appendEntryText,
   bumpProjectionVersion,
   clearChatDocContent,
+  clearPeriTaskViews,
   clearSessionDocContent,
   type EntryInit,
   ensureEntry,
@@ -13,6 +14,8 @@ export {
   getEntryOrder,
   getPendingPermissions,
   getPendingQuestions,
+  getPeriTaskOrder,
+  getPeriTasksMap,
   getSessionInfo,
   getSessionRoot,
   getToolCallsMap,
@@ -29,6 +32,7 @@ export {
   type ToolCallInit,
   upsertPendingPermission,
   upsertPendingQuestion,
+  upsertPeriTaskView,
   upsertToolCall,
 } from "./chat-writer";
 export {
