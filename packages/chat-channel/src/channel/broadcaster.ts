@@ -80,9 +80,15 @@ export class YjsBroadcaster {
     this.sendFrameWithBackpressure(ws, docName, frame);
   }
 
-  /** state-vector 握手的定向差量响应。 */
+  /**
+   * state-vector 握手的定向差量响应。
+   *
+   * 客户端 generation 不匹配时以空 payload 表示“没有当前世代状态”。空字节数组
+   * 不是合法的 Yjs state vector，必须退化为当前世代全量编码，不能直接交给 lib0 解码。
+   */
   sendDiff(ws: WsConnection, ydoc: Y.Doc, docName: string, generation: string, stateVector: Uint8Array): void {
-    const frame = encodeYjsUpdateFrame(docName, generation, Y.encodeStateAsUpdate(ydoc, stateVector));
+    const update = stateVector.length === 0 ? Y.encodeStateAsUpdate(ydoc) : Y.encodeStateAsUpdate(ydoc, stateVector);
+    const frame = encodeYjsUpdateFrame(docName, generation, update);
     this.recordFrameMetric(docName, frame.length);
     this.sendFrameWithBackpressure(ws, docName, frame);
   }
