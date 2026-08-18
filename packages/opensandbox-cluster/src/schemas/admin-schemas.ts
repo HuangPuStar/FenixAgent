@@ -8,11 +8,12 @@ export interface ServerInput {
   id: string;
   pool_id: string;
   name: string;
-  base_url: string;
+  base_url?: string;
   workspace_root: string;
   api_key: string;
   max_sandboxes: number;
   status?: string;
+  transport_mode?: "direct" | "tunnel";
 }
 
 export function bodyOf<T>(body: unknown): T {

@@ -23,6 +23,22 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+默认 Compose 同时启动 Cluster 和单实例 `frps`：
+
+- Cluster API：宿主机 `8080`；
+- FRP 登录端口：宿主机 `7000`，供 Server 的 `frpc` 主动连接；
+- FRP Plugin `8081` 和 vhost `7080`：仅 Docker 内部网络可见，不对宿主机发布。
+
+`.env` 至少配置：
+
+```env
+FRP_PUBLIC_ADDRESS=cluster.example.com
+FRP_BIND_PORT=7000
+FRP_TOKEN=replace-with-a-url-safe-random-token
+```
+
+`FRP_TOKEN` 同时用于 frpc/frps 登录认证和 frps 回调 Cluster Plugin；建议只使用字母、数字、`-`、`_`。`FRP_BIND_PORT` 修改后，必须重新下载对应 Server 的 `frpc.toml`。
+
 ## 调用顺序
 
 ```text
@@ -55,3 +71,18 @@ Cluster 只负责在代理到 OpenSandbox Server 前拼接：
 ```
 
 Cluster 不感知 `userId` 和其他业务语义，也不会把 `sandbox_id` 插入宿主机路径。`ws`、`/ws` 和 `./ws` 都会被规范化为同一个相对路径；`mountPath` 和 PVC volume 不会被改写，`..`、Windows 绝对路径和 NUL 字符会被拒绝。OpenSandbox Server 节点的 Compose 挂载路径、`sandbox.toml` 的 `storage.allowed_host_paths` 和 Cluster 的 `workspace_root` 必须保持一致。
+## Server 连接模式
+
+Server 支持 `direct` 与 `tunnel` 两种 transport：
+
+- `direct`：Cluster 直接访问 Server 的 `base_url`，Server 需要提供可达端口；
+- `tunnel`：Server 内的 `frpc` 主动连接 Cluster 的 `frps`，Cluster 通过 FRP vhost 访问 Server，Server 不需要发布宿主机端口。
+
+tunnel 配置有两种入口，二选一：
+
+- 新建 Server：在 `POST /api/v1/servers` 中设置 `transport_mode=tunnel`；
+- 迁移已有 direct Server：先停机，再调用 `PUT /api/v1/servers/:serverId/tunnel`，由接口检查离线并切换模式。
+
+完成任一入口后，再调用 `GET /api/v1/servers/:serverId/tunnel/frpc.toml` 下载配置。
+
+然后将文件安全地挂载到 Server 的 `/etc/frp/frpc.toml`，使用 `docker-compose.tunnel.yml` 重启或启动 Server，等待 FRP 连接恢复。

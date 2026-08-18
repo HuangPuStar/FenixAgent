@@ -8,17 +8,27 @@ export function createSecretBox(key: Uint8Array) {
   if (key.length !== 32) throw new Error("secret box key must be 32 bytes");
 
   return {
-    encryptApiKey(value: string): string {
+    encryptCredential(value: string): string {
       const nonce = randomBytes(NONCE_LENGTH);
       const ciphertext = gcm(key, nonce).encrypt(new TextEncoder().encode(value));
       return [VERSION, encode(nonce), encode(ciphertext)].join(".");
     },
-    decryptApiKey(value: string): string {
+    decryptCredential(value: string): string {
       const [version, nonceText, ciphertextText] = value.split(".");
-      if (version !== VERSION || !nonceText || !ciphertextText) throw new Error("invalid encrypted API key format");
+      if (version !== VERSION || !nonceText || !ciphertextText) throw new Error("invalid encrypted credential format");
       try {
         const plaintext = gcm(key, decode(nonceText)).decrypt(decode(ciphertextText));
         return new TextDecoder().decode(plaintext);
+      } catch {
+        throw new Error("unable to decrypt credential");
+      }
+    },
+    encryptApiKey(value: string): string {
+      return this.encryptCredential(value);
+    },
+    decryptApiKey(value: string): string {
+      try {
+        return this.decryptCredential(value);
       } catch {
         throw new Error("unable to decrypt OpenSandbox API key");
       }

@@ -6,6 +6,13 @@ export interface ClusterConfig {
   serverApiKeyEncryptionKey: Uint8Array;
   proxyConnectTimeoutMs: number;
   proxyResponseTimeoutMs: number;
+  frpPluginPort: number;
+  frpPublicAddress: string;
+  frpBindPort: number;
+  frpInternalUrl: string;
+  frpToken: string;
+  frpConnectionStaleMs: number;
+  frpHealthIntervalMs: number;
 }
 
 export interface HealthResponse {

@@ -9,9 +9,15 @@ import {
 import { isValidClusterApiKey } from "../security/api-auth";
 import { ConflictError, type PoolService } from "../services/pool-service";
 import type { ServerService } from "../services/server-service";
+import type { TunnelConfigService } from "../services/tunnel-config-service";
 import type { ClusterConfig } from "../types";
 
-export function createAdminRoutes(config: ClusterConfig, pools: PoolService, servers: ServerService) {
+export function createAdminRoutes(
+  config: ClusterConfig,
+  pools: PoolService,
+  servers: ServerService,
+  tunnels?: TunnelConfigService,
+) {
   return new Elysia({ name: "cluster-admin", prefix: "/api/v1" })
     .onBeforeHandle(({ request, set }) => {
       if (!isValidClusterApiKey(request, config)) {
@@ -57,6 +63,19 @@ export function createAdminRoutes(config: ClusterConfig, pools: PoolService, ser
     .delete("/pools/:poolId", ({ params }) => pools.delete(params.poolId))
     .post("/servers", async ({ body }) => {
       const input = bodyOf<ServerInput>(body);
+      const transportMode = input.transport_mode ?? "direct";
+      if (transportMode === "tunnel") {
+        if (!tunnels) throw new Error("tunnel service unavailable");
+        return tunnels.createTunnelServer({
+          id: requireString(input.id, "id"),
+          pool_id: requireString(input.pool_id, "pool_id"),
+          name: requireString(input.name, "name"),
+          workspace_root: requireString(input.workspace_root, "workspace_root"),
+          api_key: requireString(input.api_key, "api_key"),
+          max_sandboxes: requirePositiveInteger(input.max_sandboxes, "max_sandboxes"),
+          status: input.status,
+        });
+      }
       const server = servers.create({
         id: requireString(input.id, "id"),
         pool_id: requireString(input.pool_id, "pool_id"),
@@ -80,5 +99,8 @@ export function createAdminRoutes(config: ClusterConfig, pools: PoolService, ser
     )
     .put("/servers/:serverId", ({ params, body }) => servers.update(params.serverId, bodyOf(body)))
     .delete("/servers/:serverId", ({ params }) => servers.delete(params.serverId))
-    .post("/servers/:serverId/health-check", ({ params }) => servers.healthCheck(params.serverId));
+    .post("/servers/:serverId/health-check", ({ params, query }) => {
+      if (query.transport === "tunnel") return tunnels?.prepare(params.serverId);
+      return servers.healthCheck(params.serverId);
+    });
 }
