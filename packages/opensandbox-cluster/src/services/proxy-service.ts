@@ -27,6 +27,7 @@ export class ProxyService {
     fetchImpl: typeof fetch = fetch,
     db?: ClusterDatabase,
     config?: ClusterConfig,
+    private readonly recoverTunnel?: (serverId: string) => Promise<boolean>,
   ) {
     this.client = new OpenSandboxHttpClient(connectTimeoutMs, responseTimeoutMs, fetchImpl);
     this.resolver = db && config ? new ServerTargetResolver(db, config) : undefined;
@@ -55,8 +56,23 @@ export class ProxyService {
         transportMode: "direct" as const,
       };
     } catch (error) {
-      if (error instanceof ServerTargetError) throw new ProxyError(503, error.message);
-      throw error;
+      if (error instanceof ServerTargetError && error.code === "SERVER_DISCONNECTED" && this.recoverTunnel) {
+        const recovered = await this.recoverTunnel(resolvedServerId);
+        if (recovered && this.resolver) {
+          try {
+            target = this.resolver.resolve(resolvedServerId);
+          } catch (retryError) {
+            if (retryError instanceof ServerTargetError) throw new ProxyError(503, retryError.message);
+            throw retryError;
+          }
+        } else {
+          throw new ProxyError(503, error.message);
+        }
+      } else if (error instanceof ServerTargetError) {
+        throw new ProxyError(503, error.message);
+      } else {
+        throw error;
+      }
     }
     try {
       return await this.client.request(

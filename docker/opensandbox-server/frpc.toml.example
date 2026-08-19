@@ -5,6 +5,12 @@ loginFailExit = false
 [auth]
 method = "token"
 token = "replace-with-FRP_TOKEN"
+additionalScopes = ["HeartBeats", "NewWorkConns"]
+
+[transport]
+heartbeatInterval = 10
+heartbeatTimeout = 30
+dialServerKeepalive = 30
 
 [transport.tls]
 enable = true

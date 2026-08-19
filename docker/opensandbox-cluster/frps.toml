@@ -1,9 +1,6 @@
 bindPort = 7000
 vhostHTTPPort = 7080
 
-[transport.tls]
-  force = true
-
 [auth]
   method = "token"
   token = "{{ .Envs.FRP_TOKEN }}"
