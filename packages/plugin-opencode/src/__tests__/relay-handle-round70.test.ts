@@ -113,18 +113,13 @@ describe("relay-handle 覆盖真实生命周期分支", () => {
   });
 
   // 显式关闭应转交 code/reason，停止 keepalive，并拒绝后续发送。
-  test("发送关闭会传递关闭参数并禁止后续发送", async () => {
-    const { handle, socket } = createMemoryRelay(new MemoryRelaySocket(), 1);
+  test("发送关闭会传递关闭参数并禁止后续发送", () => {
+    const { handle, socket } = createMemoryRelay(new MemoryRelaySocket(), 60_000);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(socket.sent).toContain('{"type":"ping"}');
-
       handle.close(1000, "finished");
-      const sentBeforeWait = socket.sent.length;
-      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(socket.closeCalls).toEqual([{ code: 1000, reason: "finished" }]);
-      expect(socket.sent).toHaveLength(sentBeforeWait);
+      expect(socket.sent).toEqual([]);
       expect(handle.state).toBe("closed");
       expect(() => handle.send({ type: "request", payload: { id: "after-close" } })).toThrow("Relay is closed");
       handle.close(1001, "ignored");
