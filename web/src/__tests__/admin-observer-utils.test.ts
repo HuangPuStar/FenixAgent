@@ -4,7 +4,16 @@
 
 import { describe, expect, test } from "bun:test";
 import type { AcpLinkSnapshot } from "../api/observer";
-import { integrityRows, machineReverseIndex, mergeFlatRows, name } from "../pages/admin/utils";
+import {
+  chatRelayPayload,
+  formatDuration,
+  groupYjsSessions,
+  integrityRows,
+  machineReverseIndex,
+  mergeFlatRows,
+  name,
+  sessionTabCounts,
+} from "../pages/admin/utils";
 
 /** 构造一致的 acp-link 观察视图 fixture（byOrg + byEntity 交叉覆盖去重场景）。 */
 function makeView(): AcpLinkSnapshot {
@@ -143,5 +152,105 @@ describe("admin observer utils", () => {
     expect(name(view.names, "userId", "user-999")).toBe("user-999");
     // 无角色值时返回空串（调用方展示占位符）
     expect(name(view.names, "machineId", null)).toBe("");
+  });
+
+  // chat-relay payload 收窄：仅 chat-relay 且有 payload 才返回概要，字段逐项类型收窄。
+  test("chatRelayPayload 只收窄 chat-relay 叶子", () => {
+    const relay = {
+      id: "c1",
+      source: "chat-relay",
+      machineId: null,
+      payload: { openTime: 5000, rcsSessionId: "rcs_1" },
+    };
+    expect(chatRelayPayload(relay)).toEqual({ openTime: 5000, rcsSessionId: "rcs_1" });
+    // 非 chat-relay 来源返回 null
+    expect(chatRelayPayload({ id: "a1", source: "acp-ws", machineId: null })).toBeNull();
+    // chat-relay 但 payload 字段类型不匹配时只保留合法字段
+    expect(
+      chatRelayPayload({
+        id: "c2",
+        source: "chat-relay",
+        machineId: null,
+        payload: { openTime: "bad", acpSessionId: "ses_1" },
+      }),
+    ).toEqual({ acpSessionId: "ses_1" });
+  });
+
+  // 时长粒度：按秒/分/小时/天逐级归一化，供 i18n 单位文案渲染。
+  test("formatDuration 归一化时长粒度", () => {
+    expect(formatDuration(45_000)).toEqual({ value: 45, unit: "second" });
+    expect(formatDuration(5 * 60 * 1000 + 4000)).toEqual({ value: 5, unit: "minute" });
+    expect(formatDuration(3 * 3600 * 1000 + 5000)).toEqual({ value: 3, unit: "hour" });
+    expect(formatDuration(50 * 3600 * 1000)).toEqual({ value: 2, unit: "day" });
+  });
+
+  // 同会话标签页计数：按 rcsSessionId 分组统计 chat-relay 叶子，非 chat-relay/无会话不计。
+  test("sessionTabCounts 统计同会话多标签页", () => {
+    const orgs = [
+      {
+        organizationId: "org-1",
+        userCount: 1,
+        agentCount: 1,
+        instanceCount: 1,
+        leafCount: 3,
+        children: [
+          {
+            userId: "user-1",
+            agentCount: 1,
+            leafCount: 3,
+            children: [
+              {
+                agentConfigId: "acfg-1",
+                instanceCount: 1,
+                leafCount: 3,
+                children: [
+                  {
+                    instanceId: "inst-1",
+                    leafCount: 2,
+                    leaves: [
+                      { id: "c1", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_x" } },
+                      { id: "c2", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_x" } },
+                      { id: "c3", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_y" } },
+                    ],
+                  },
+                ],
+                leaves: [{ id: "a1", source: "acp-ws", machineId: null, payload: { rcsSessionId: "rcs_x" } }],
+              },
+            ],
+          },
+        ],
+      },
+    ] as AcpLinkSnapshot["trees"]["byOrg"];
+    const counts = sessionTabCounts(orgs);
+    expect(counts.get("rcs_x")).toBe(2);
+    expect(counts.get("rcs_y")).toBe(1);
+    expect(counts.size).toBe(2);
+  });
+
+  // Y.Doc 会话分组：chat-relay 链接按 rcsSessionId 归入会话，无会话链接留在 ungrouped。
+  test("groupYjsSessions 按 rcsSessionId 分组出会话层", () => {
+    const leaves = [
+      { id: "c1", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_b" } },
+      { id: "a1", source: "acp-ws", machineId: null, payload: { openTime: 1000 } },
+      { id: "c2", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_a" } },
+      { id: "c3", source: "chat-relay", machineId: null, payload: { rcsSessionId: "rcs_a" } },
+    ];
+    const { sessions, ungrouped } = groupYjsSessions(leaves);
+    // 会话按 rcsSessionId 字典序稳定输出
+    expect(sessions.map((s) => s.rcsSessionId)).toEqual(["rcs_a", "rcs_b"]);
+    expect(sessions[0].leaves.map((l) => l.id)).toEqual(["c2", "c3"]);
+    expect(sessions[1].leaves.map((l) => l.id)).toEqual(["c1"]);
+    // 非 chat-relay 且无 rcsSessionId 的链接不进会话层
+    expect(ungrouped.map((l) => l.id)).toEqual(["a1"]);
+  });
+
+  // 会话分组对空输入与全无会话输入保持稳定（不抛错、空数组）。
+  test("groupYjsSessions 空输入返回空会话", () => {
+    const { sessions, ungrouped } = groupYjsSessions([]);
+    expect(sessions).toEqual([]);
+    expect(ungrouped).toEqual([]);
+    const onlyRelay = groupYjsSessions([{ id: "r1", source: "external-relay", machineId: null }]);
+    expect(onlyRelay.sessions).toEqual([]);
+    expect(onlyRelay.ungrouped.map((l) => l.id)).toEqual(["r1"]);
   });
 });

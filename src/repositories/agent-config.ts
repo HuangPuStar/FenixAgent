@@ -1,5 +1,5 @@
 import { type AgentConfigData, type AgentConfigRepo, LaunchSpecBuildError } from "@fenix/orchestration";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   agentConfig,
@@ -103,3 +103,16 @@ export class PgAgentConfigRepo implements AgentConfigRepo {
 
 /** 编排域 AgentConfigRepo 单例。 */
 export const agentConfigRepo = new PgAgentConfigRepo();
+
+/**
+ * 按配置 ID 批量查询展示名称（Observer 面板 name(id) 展示用，只读）。
+ * 空入参返回空 Map，避免生成空 IN 子句。
+ */
+export async function findAgentConfigNamesByIds(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: agentConfig.id, name: agentConfig.name })
+    .from(agentConfig)
+    .where(inArray(agentConfig.id, ids));
+  return new Map(rows.map((row) => [row.id, row.name]));
+}

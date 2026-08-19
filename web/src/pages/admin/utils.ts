@@ -165,3 +165,105 @@ export function name(names: AcpLinkSnapshot["names"], role: keyof AcpLinkSnapsho
   if (!id) return "";
   return names[role][id] ?? id;
 }
+
+// ────────────────────────────────────────────
+// chat-relay（YJS）连接统计（docs/arch/21 §6 排查辅助）
+// ────────────────────────────────────────────
+
+/** chat-relay 叶子 payload 收窄后的连接统计概要。 */
+export interface ChatRelayStatsPayload {
+  openTime?: number;
+  rcsSessionId?: string;
+  acpSessionId?: string;
+}
+
+/**
+ * 从叶子 payload 安全收窄出 chat-relay 连接概要；非 chat-relay 或无 payload 返回 null。
+ * payload 是 Record<string, unknown>，这里逐字段类型收窄，避免 as any（CLAUDE.md）。
+ */
+export function chatRelayPayload(leaf: ObserverLeaf): ChatRelayStatsPayload | null {
+  if (leaf.source !== "chat-relay" || !leaf.payload) return null;
+  const p = leaf.payload;
+  return {
+    ...(typeof p.openTime === "number" ? { openTime: p.openTime } : {}),
+    ...(typeof p.rcsSessionId === "string" ? { rcsSessionId: p.rcsSessionId } : {}),
+    ...(typeof p.acpSessionId === "string" ? { acpSessionId: p.acpSessionId } : {}),
+  };
+}
+
+export type DurationUnit = "second" | "minute" | "hour" | "day";
+
+/**
+ * 时长（ms）→ 展示粒度。向上取整到分钟/小时/天；单位文案由组件按 i18n 本地化。
+ */
+export function formatDuration(ms: number): { value: number; unit: DurationUnit } {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return { value: seconds, unit: "second" };
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return { value: minutes, unit: "minute" };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { value: hours, unit: "hour" };
+  return { value: Math.floor(hours / 24), unit: "day" };
+}
+
+/** epoch ms → 本地时钟 HH:mm:ss（连接打开时间展示）。 */
+export function formatClockTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * 同会话多标签页计数：按 rcsSessionId 分组统计 chat-relay 叶子数。
+ * 用于区分「同一会话开多个标签页」（正常）与「陈旧残留连接」（同实例却不同会话/无会话）。
+ */
+export function sessionTabCounts(orgs: ObserverOrgNode[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  const visit = (leaf: ObserverLeaf) => {
+    const info = chatRelayPayload(leaf);
+    if (!info?.rcsSessionId) return;
+    counts.set(info.rcsSessionId, (counts.get(info.rcsSessionId) ?? 0) + 1);
+  };
+  for (const org of orgs) {
+    for (const user of org.children) {
+      for (const agent of user.children) {
+        for (const inst of agent.children) {
+          for (const leaf of inst.leaves) visit(leaf);
+        }
+        for (const leaf of agent.leaves ?? []) visit(leaf);
+      }
+    }
+  }
+  return counts;
+}
+
+/** 单个 Y.Doc 会话（同一 rcsSessionId 的 chat-relay 链接集合）。 */
+export interface YjsSessionGroup {
+  rcsSessionId: string;
+  /** 该会话下的链接（同一实例内；无 rcsSessionId 的非 chat-relay 链接不属于任何会话） */
+  leaves: ObserverLeaf[];
+}
+
+/**
+ * 把实例下的链接按 rcsSessionId 分组为 Y.Doc 会话层。
+ * chat-relay 链接从 payload 收窄 rcsSessionId；acp-ws / external-relay 等无会话链接
+ * 归入 ungrouped，仍直接挂在实例层下（Y.Doc 实例只有一个、链接可以有多个的展示语义）。
+ */
+export function groupYjsSessions(leaves: ObserverLeaf[]): { sessions: YjsSessionGroup[]; ungrouped: ObserverLeaf[] } {
+  const sessionsBySession = new Map<string, ObserverLeaf[]>();
+  const ungrouped: ObserverLeaf[] = [];
+  for (const leaf of leaves) {
+    const info = chatRelayPayload(leaf);
+    if (info?.rcsSessionId) {
+      const list = sessionsBySession.get(info.rcsSessionId) ?? [];
+      list.push(leaf);
+      sessionsBySession.set(info.rcsSessionId, list);
+    } else {
+      ungrouped.push(leaf);
+    }
+  }
+  const sessions = [...sessionsBySession.entries()]
+    .map(([rcsSessionId, sessionLeaves]) => ({ rcsSessionId, leaves: sessionLeaves }))
+    .sort((a, b) => a.rcsSessionId.localeCompare(b.rcsSessionId));
+  return { sessions, ungrouped };
+}

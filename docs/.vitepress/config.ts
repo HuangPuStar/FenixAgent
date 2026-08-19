@@ -122,6 +122,12 @@ export default defineConfig({
           ],
         },
         {
+          text: "可观测性",
+          items: [
+            { text: "Observer Service", link: "/arch/21-observability-observer-service" },
+          ],
+        },
+        {
           text: "业务模块",
           items: [
             { text: "工作流引擎", link: "/arch/17-workflow" },

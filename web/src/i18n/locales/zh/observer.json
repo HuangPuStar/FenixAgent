@@ -1,6 +1,10 @@
 {
   "title": "Observer 观察中心",
   "subtitle": "系统级只读可观测面板（受 master key 保护）",
+  "admin": {
+    "title": "管理面板",
+    "backToConsole": "返回主控制台"
+  },
   "login": {
     "title": "需要 Master Key",
     "description": "输入系统 master key（RCS_SYSTEM_API_KEYS）后进入观察面板。key 仅存于 sessionStorage，不落日志。",
@@ -45,6 +49,17 @@
     "instanceId": "实例",
     "machineId": "machine",
     "openTime": "打开时间"
+  },
+  "stats": {
+    "openTime": "打开时间",
+    "session": "会话",
+    "unit": {
+      "second": "{{value}} 秒",
+      "minute": "{{value}} 分",
+      "hour": "{{value}} 小时",
+      "day": "{{value}} 天"
+    },
+    "tabs": "同会话 {{count}} 标签"
   },
   "integrity": {
     "title": "一致性校验",

@@ -1,6 +1,10 @@
 {
   "title": "Observer Center",
   "subtitle": "Read-only system observability panel (master key protected)",
+  "admin": {
+    "title": "Admin",
+    "backToConsole": "Back to Console"
+  },
   "login": {
     "title": "Master Key Required",
     "description": "Enter the system master key (RCS_SYSTEM_API_KEYS) to view the observation dashboard. The key is kept only in sessionStorage and is never logged.",
@@ -45,6 +49,17 @@
     "instanceId": "Instance",
     "machineId": "Machine",
     "openTime": "Opened"
+  },
+  "stats": {
+    "openTime": "Opened",
+    "session": "Session",
+    "unit": {
+      "second": "{{value}}s",
+      "minute": "{{value}}m",
+      "hour": "{{value}}h",
+      "day": "{{value}}d"
+    },
+    "tabs": "{{count}} tabs, same session"
   },
   "integrity": {
     "title": "Integrity check",

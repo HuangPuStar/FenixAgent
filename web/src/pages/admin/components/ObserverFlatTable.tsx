@@ -13,10 +13,10 @@ interface ObserverFlatTableProps {
   names: ObserverNames;
 }
 
-function Cell({ role, value, names }: { role: keyof ObserverNames; value: string | null; names: ObserverNames }) {
+function Cell({ roleKey, value, names }: { roleKey: keyof ObserverNames; value: string | null; names: ObserverNames }) {
   if (!value) return <TableCell className="text-xs text-text-muted">—</TableCell>;
   // name(id)：展示可读名称，原始 id 以弱化小字跟随，便于与树视图对照
-  const display = name(names, role, value);
+  const display = name(names, roleKey, value);
   return (
     <TableCell className="text-xs">
       <span className="font-mono text-text-primary">{display}</span>
@@ -53,11 +53,11 @@ export function ObserverFlatTable({ rows, names }: ObserverFlatTableProps) {
                   {t(`source.${row.source}`, { defaultValue: row.source })}
                 </Badge>
               </TableCell>
-              <Cell role="organizationId" value={row.organizationId} names={names} />
-              <Cell role="userId" value={row.userId} names={names} />
-              <Cell role="agentConfigId" value={row.agentConfigId} names={names} />
-              <Cell role="instanceId" value={row.instanceId} names={names} />
-              <Cell role="machineId" value={row.machineId} names={names} />
+              <Cell roleKey="organizationId" value={row.organizationId} names={names} />
+              <Cell roleKey="userId" value={row.userId} names={names} />
+              <Cell roleKey="agentConfigId" value={row.agentConfigId} names={names} />
+              <Cell roleKey="instanceId" value={row.instanceId} names={names} />
+              <Cell roleKey="machineId" value={row.machineId} names={names} />
               <TableCell className="text-xs text-text-muted">
                 {row.openTime ? new Date(row.openTime).toLocaleString() : "—"}
               </TableCell>
