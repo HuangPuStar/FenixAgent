@@ -368,6 +368,9 @@ export class SessionManager {
               type: "session_renamed",
               payload: { sessionId: targetSid, title },
             });
+            // 重命名成功后立即刷新 session/list，让历史列表立刻显示最新标题。
+            // titleOverrides 已先写入，可覆盖 Agent 列表响应中的旧标题。
+            await this.emitSessionList(sessionId);
           } catch (err) {
             console.error("[session-manager] renameSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
