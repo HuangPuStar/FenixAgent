@@ -9,21 +9,25 @@ async function createWorkspace(): Promise<string> {
 }
 
 describe("claude-code skill-installer", () => {
-  // skill zip 安装
-  test("downloads an archive and extracts SKILL.md into .claude/skills/<name>", async () => {
+  // skill zip 必须在 workspace 文件系统内暂存，避免跨设备替换失败。
+  test("stages an archive inside the workspace before installing SKILL.md into .claude/skills/<name>", async () => {
     const workspace = await createWorkspace();
     try {
       const mockFetch = (async () => new Response("zip-bytes")) as unknown as typeof fetch;
+      let stagedTargetDir: string | undefined;
       const installed = await installSkills(
         workspace,
         [{ name: "code-review", url: "https://example.com/code-review.zip" }],
         {
           fetch: mockFetch,
           extractArchive: async (_archivePath, targetDir) => {
+            stagedTargetDir = targetDir;
             await writeFile(join(targetDir, "SKILL.md"), "# code-review\n", "utf8");
           },
         },
       );
+
+      expect(stagedTargetDir).toStartWith(join(workspace, ".claude", ".claude-code-skills-"));
 
       expect(installed).toEqual([
         {
