@@ -158,6 +158,27 @@ export class SessionManager {
     }
   }
 
+  private async emitSessionList(sessionId: string): Promise<void> {
+    try {
+      const r = await this.sharedConnection!.listSessions({});
+      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
+      const withOverrides = r.sessions.map((s) => {
+        const override = this.titleOverrides.get(s.sessionId);
+        return override !== undefined ? { ...s, title: override } : s;
+      });
+      // 过滤掉标题为空或以 "New session" 开头的会话
+      const filtered = {
+        ...r,
+        sessions: withOverrides.filter(
+          (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+        ),
+      };
+      this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
+    } catch (err) {
+      this.emit(sessionId, "session_error", String(err));
+    }
+  }
+
   async sendData(sessionId: string, rawPayload: unknown): Promise<boolean> {
     this.activeRelayId = sessionId;
 
@@ -289,27 +310,7 @@ export class SessionManager {
           }
           break;
         case "list_sessions":
-          try {
-            const r = await this.sharedConnection.listSessions({});
-            // 应用本地标题覆盖（agent 可能不支持 session_info_update）
-            const withOverrides = r.sessions.map((s) => {
-              const override = this.titleOverrides.get(s.sessionId);
-              if (override !== undefined) {
-                return { ...s, title: override };
-              }
-              return s;
-            });
-            // 过滤掉标题为空或以 "New session" 开头的会话
-            const filtered = {
-              ...r,
-              sessions: withOverrides.filter(
-                (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
-              ),
-            };
-            this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
-          } catch (err) {
-            this.emit(sessionId, "session_error", String(err));
-          }
+          await this.emitSessionList(sessionId);
           break;
         case "load_session":
           try {
@@ -337,6 +338,8 @@ export class SessionManager {
               type: "session_deleted",
               payload: { sessionId: targetSid },
             });
+            // 删除成功后立即刷新 session/list，让前端历史列表无需等待轮询
+            await this.emitSessionList(sessionId);
           } catch (err) {
             console.error("[session-manager] deleteSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
