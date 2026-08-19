@@ -269,20 +269,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     await onCreateSession();
   }, [onCreateSession]);
 
-  // Todo 面板状态 — 从 Yjs structuredMessages 中提取最新 TodoWrite 工具调用。
-  // 依赖收窄到 structuredMessages；倒序扫描且只访问 tool_call 类型消息，
-  // 只需要最后一个 TodoWrite 的 rawInput，避免正序全量 filter 两遍分配
+  // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。
+  // 使用 renderEntries 而不是直接读取 structuredMessages，确保输入框上方的 Todo
+  // 列表与当前消息投影保持一致；执行计划等非消息条目不会影响此列表。
   const todoItems = useMemo(() => {
-    if (!structuredMessages) return [];
-    for (let i = structuredMessages.length - 1; i >= 0; i--) {
-      const m = structuredMessages[i];
-      if (m.type !== "tool_call") continue;
-      if (isTodoWriteToolCall(m.title, m.rawInput) && m.rawInput) {
-        return parseTodosFromRawInput(m.rawInput);
+    for (let i = renderEntries.length - 1; i >= 0; i--) {
+      const entry = renderEntries[i];
+      if (entry.type !== "tool_call") continue;
+      const { toolCall } = entry;
+      if (isTodoWriteToolCall(toolCall.title, toolCall.rawInput) && toolCall.rawInput) {
+        return parseTodosFromRawInput(toolCall.rawInput);
       }
     }
     return [];
-  }, [structuredMessages]);
+  }, [renderEntries]);
 
   // 计算 token 统计，传给 ChatComposer 元信息条
   const tokenStats: TokenStats = useMemo(() => computeStats(renderEntries), [renderEntries]);
