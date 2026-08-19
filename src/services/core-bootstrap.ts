@@ -88,6 +88,11 @@ function defaultCreateFacade(): CoreRuntimeFacade {
   });
 }
 
+function removeInstanceWithRegistryCleanup(runtime: CoreRuntimeFacade, instanceId: string): void {
+  runtime.deleteInstance(instanceId);
+  globalInstanceRegistry.unregisterAndDeleteCounter(instanceId);
+}
+
 /** 可替换的 facade 工厂（测试时注入 mock） */
 let _facadeFactory: (() => CoreRuntimeFacade) | null = null;
 
@@ -152,9 +157,7 @@ export function registerRemoteNode(
     // 删除该 machineId 下所有旧实例，确保下次 ensureRunning 重新 launch
     for (const instance of runtime.listInstances()) {
       if (instance.nodeId !== machineId) continue;
-      runtime.deleteInstance(instance.instanceId);
-      // 同步清理 RCS 业务层 registry，否则 ensureRunning 会 reuse 已失效实例
-      globalInstanceRegistry.unregister(instance.instanceId);
+      removeInstanceWithRegistryCleanup(runtime, instance.instanceId);
       log(`[core-bootstrap] Deleted instance ${instance.instanceId} on reconnected machine ${machineId}`);
     }
     // 同步清理编排域活跃表与节点引用，否则断连期间残留的幽灵实例会继续计入
@@ -184,10 +187,12 @@ export function unregisterRemoteNode(machineId: string): void {
   if (existing) {
     runtime.updateNodeStatus(machineId, "offline");
   }
-  // 删除该 machineId 下所有活跃实例，让 ensureRunning 重新 launch
+  // 删除该 machineId 下所有活跃实例，让 ensureRunning 重新 launch。core、RCS
+  // registry supplement/byEnvironment 与空环境计数器必须同步收敛，否则 sandbox
+  // 销毁等不经过 ACP handler 的路径会永久占用并发额度。
   for (const instance of runtime.listInstances()) {
     if (instance.nodeId !== machineId) continue;
-    runtime.deleteInstance(instance.instanceId);
+    removeInstanceWithRegistryCleanup(runtime, instance.instanceId);
     log(`[core-bootstrap] Deleted instance ${instance.instanceId} on disconnected machine ${machineId}`);
   }
   // 同步清理编排域活跃表与节点引用，否则断连后幽灵实例永久计入并发额度、
