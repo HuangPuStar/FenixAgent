@@ -1,0 +1,81 @@
+{
+  "title": "Observer 观察中心",
+  "subtitle": "系统级只读可观测面板（受 master key 保护）",
+  "admin": {
+    "title": "管理面板",
+    "backToConsole": "返回主控制台"
+  },
+  "login": {
+    "title": "需要 Master Key",
+    "description": "输入系统 master key（RCS_SYSTEM_API_KEYS）后进入观察面板。key 仅存于 sessionStorage，不落日志。",
+    "inputPlaceholder": "系统 master key",
+    "submit": "进入面板",
+    "error": "master key 无效或已失效",
+    "logout": "退出"
+  },
+  "kind": {
+    "acpLink": "ACP 活跃链接"
+  },
+  "overview": {
+    "total": "观察总数",
+    "machines": "活跃 machine",
+    "mismatched": "一致性问题",
+    "lastUpdated": "最后更新"
+  },
+  "source": {
+    "acp-ws": "本地 ACP",
+    "external-relay": "外部 Relay",
+    "chat-relay": "Chat Relay"
+  },
+  "tree": {
+    "orgTree": "归属树",
+    "machineTree": "machine 树",
+    "flatTable": "全部观察",
+    "integrity": "一致性",
+    "selectMachine": "点击 machine 行可在归属树中高亮其承载的链接。",
+    "noData": "暂无观察数据。",
+    "agents": "{{count}} 个智能体",
+    "instances": "{{count}} 个实例",
+    "leaves": "{{count}} 个叶子",
+    "expand": "全部展开",
+    "collapse": "全部收起"
+  },
+  "flat": {
+    "id": "业务 id",
+    "source": "来源",
+    "organizationId": "组织",
+    "userId": "用户",
+    "agentConfigId": "智能体",
+    "instanceId": "实例",
+    "machineId": "machine",
+    "openTime": "打开时间"
+  },
+  "stats": {
+    "openTime": "打开时间",
+    "session": "会话",
+    "unit": {
+      "second": "{{value}} 秒",
+      "minute": "{{value}} 分",
+      "hour": "{{value}} 小时",
+      "day": "{{value}} 天"
+    },
+    "tabs": "同会话 {{count}} 标签"
+  },
+  "integrity": {
+    "title": "一致性校验",
+    "description": "角色 id 无法与权威表对齐，或关键角色缺省的观察。",
+    "checked": "已核对",
+    "mismatched": "不一致",
+    "kind": "类型",
+    "id": "ID",
+    "possibleReasons": "可能原因：environment 缺失、identify 前 agentConfigId 未就绪（不占位）、或与权威记录归属不一致。",
+    "empty": "全部观察均一致。"
+  },
+  "states": {
+    "loading": "加载中…",
+    "empty": "暂无观察数据",
+    "error": "观察视图加载失败",
+    "retry": "重试",
+    "refresh": "刷新"
+  }
+}

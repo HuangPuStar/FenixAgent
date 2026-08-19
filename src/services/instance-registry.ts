@@ -44,6 +44,20 @@ export class InstanceRegistry {
     }
   }
 
+  /**
+   * 注销实例补充信息，并在该 environment 已无实例时释放其单调计数器。
+   *
+   * 用于 machine 断连等绕过 stopInstanceViaController 的强制卸载路径，保证
+   * supplement / byEnvironment / envCounters 同步收敛。
+   */
+  unregisterAndDeleteCounter(instanceId: string): void {
+    const supplement = this.supplements.get(instanceId);
+    this.unregister(instanceId);
+    if (supplement) {
+      this.deleteCounter(supplement.environmentId);
+    }
+  }
+
   /** 获取实例补充信息 */
   get(instanceId: string): InstanceSupplement | undefined {
     return this.supplements.get(instanceId);

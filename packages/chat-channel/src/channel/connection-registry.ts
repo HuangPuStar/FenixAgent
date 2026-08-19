@@ -82,6 +82,11 @@ export class ConnectionRegistry {
     }
   }
 
+  /** 只读遍历：带出 wsId key（Observer 等只读消费者使用；ClientConnection 本身不自曝 wsId）。 */
+  forEachClientEntry(callback: (wsId: string, client: ClientConnection) => void): void {
+    for (const [wsId, client] of this.clients) callback(wsId, client);
+  }
+
   forEachByInstance(agentId: string, instanceId: string, callback: (client: ClientConnection) => void): void {
     for (const client of this.clients.values()) {
       if (client.agentId === agentId && client.instanceId === instanceId) {

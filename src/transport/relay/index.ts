@@ -11,6 +11,17 @@ export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
 }
 
 /**
+ * 实例确认停止后关闭其全部前端 YJS WebSocket client。
+ *
+ * Y.Doc 回收不会自行断开浏览器连接；若保留 client，shared relay 及其 listener 会继续
+ * 存活，Observer 会显示孤儿 chat-relay。必须在 runtime/controller 已停止后调用，
+ * 以免活跃实例的实时流被错误中断。
+ */
+export function closeRelayConnectionsForStoppedInstance(instanceId: string): void {
+  getChatChannelController().registry.closeClientsByInstance(instanceId, 4002, "instance_stopped");
+}
+
+/**
  * 实例确认停止后回收其名下全部内存 Y.Doc（Chat / Session Doc 与广播订阅，SP-C2）。
  * 与 closeRelayConnectionsForIdleReclaim 同一控制器装配 seam，供实例停止完成点
  * （orchestration-instance 的 stopInstanceViaController）调用；调用方必须保证实例

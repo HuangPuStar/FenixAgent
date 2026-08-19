@@ -38,6 +38,21 @@ export interface AcpConnectionEntry {
   remoteTransport?: RemoteTransport;
 }
 
+/**
+ * ACP 连接的只读快照：供 Observer 等只读消费者遍历活跃连接。
+ * 刻意不包含 ws/unsub/keepalive 等句柄字段，避免句柄外泄与生命周期干扰。
+ */
+export interface AcpConnectionSnapshot {
+  wsId: string;
+  userId: string;
+  agentId: string | null;
+  boundEnvId: string | null;
+  machineId: string | null;
+  isMachine: boolean;
+  openTime: number;
+  capabilities: Record<string, unknown> | null;
+}
+
 // ────────────────────────────────────────────
 // WS Session Cleanup
 // Extracted from: src/transport/ws-handler.ts

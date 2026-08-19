@@ -27,6 +27,7 @@ import openaiChatRoutes from "./routes/api/openai-chat";
 import apiSandboxRoutes from "./routes/api/sandbox";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
+import apiSystemObserverRoutes from "./routes/api/system-observer";
 import apiWorkflowRoutes from "./routes/api/workflows";
 import apiWorkspaceRoutes from "./routes/api/workspaces";
 import knowledgeMcpRoutes from "./routes/mcp/knowledge";
@@ -217,6 +218,7 @@ const app = new Elysia({
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
+  .use(apiSystemObserverRoutes)
   .use(apiSandboxRoutes)
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)

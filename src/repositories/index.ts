@@ -1,4 +1,4 @@
-export { agentConfigRepo } from "./agent-config";
+export { agentConfigRepo, findAgentConfigNamesByIds } from "./agent-config";
 export { agentEngineRepo } from "./agent-engine";
 export { agentMachineRepo } from "./agent-machine";
 export type { AgentSiteAppInsert, AgentSiteAppRow, Visibility } from "./agent-site-app";

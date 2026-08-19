@@ -5,7 +5,7 @@ import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../ser
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
-import type { AcpConnectionEntry } from "../types/store";
+import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../types/store";
 import {
   dispatchAgentNodeDisconnect,
   dispatchAgentNodeWsClose,
@@ -480,6 +480,20 @@ export function findMachineConnectionById(machineId: string): AcpConnectionEntry
     }
   }
   return null;
+}
+
+/** 只读快照：供 Observer 等只读消费者遍历活跃连接，不暴露 ws/unsub 句柄。 */
+export function listAcpConnections(): AcpConnectionSnapshot[] {
+  return [...connections.values()].map((entry) => ({
+    wsId: entry.wsId,
+    userId: entry.userId,
+    agentId: entry.agentId,
+    boundEnvId: entry.boundEnvId,
+    machineId: entry.machineId,
+    isMachine: entry.isMachine,
+    openTime: entry.openTime,
+    capabilities: entry.capabilities,
+  }));
 }
 
 /** 通过 agentId 查找在线的 machine WebSocket 连接（异步，含 DB 查询）。结果会缓存到 agentMachineCache。 */

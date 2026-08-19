@@ -16,16 +16,19 @@ function RootComponent() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { t } = useTranslation("common");
+  // /admin 观察面板独立于 better-auth 会话体系：无 session 也可访问，
+  // 由页面内 MasterKeyGate 把关（docs/arch/21 §5），不触发登录跳转。
+  const isAdminPath = pathname.startsWith("/admin");
 
   useEffect(() => {
     if (isPending) return;
-    if (!session && pathname !== "/login") {
+    if (!session && pathname !== "/login" && !isAdminPath) {
       void navigate({ to: "/login" });
     }
     if (session && pathname === "/login") {
       void navigate({ to: "/agent" });
     }
-  }, [session, isPending, pathname, navigate]);
+  }, [session, isPending, pathname, navigate, isAdminPath]);
 
   if (isPending) {
     return (
@@ -38,7 +41,7 @@ function RootComponent() {
     );
   }
 
-  if (!session && pathname !== "/login") {
+  if (!session && pathname !== "/login" && !isAdminPath) {
     return null;
   }
 
