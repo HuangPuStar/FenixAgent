@@ -35,18 +35,19 @@ OpenSandbox Cluster
   |-- SQLite
   |     |-- sandbox_pool
   |     |-- opensandbox_server
-  |     `-- sandbox_binding
+  |     |-- sandbox_binding
+  |     `-- tunnel credential / connection
   |
-  |-- HTTP + OPEN-SANDBOX-API-KEY
-  v
-OpenSandbox Server 节点
-  `-- 节点自己的 Docker daemon（当前节点部署使用 DinD）
-          |
-          v
-      Sandbox 容器 + execd
+  |-- direct: HTTP + OPEN-SANDBOX-API-KEY ------> OpenSandbox Server
+  |
+  `-- tunnel: HTTP -> frps vhost -> frpc -------> OpenSandbox Server
+                                                    |
+                                                    v
+                                          节点自己的 Docker daemon
+                                          Sandbox 容器 + execd
 ```
 
-Cluster 只通过 HTTP 访问 OpenSandbox Server，不访问 Docker Socket。节点内部的 Docker daemon、沙盒容器和镜像由 OpenSandbox Server 管理。
+Cluster 只通过 HTTP 访问 OpenSandbox Server，不访问 Docker Socket。direct 模式访问 Server 的 `base_url`；tunnel 模式由 Server 内的 frpc 主动连接 Cluster 的 frps，Server 不需要提供入站端口。节点内部的 Docker daemon、沙盒容器和镜像由 OpenSandbox Server 管理。
 
 ### 2.1 实际目录
 
@@ -110,6 +111,8 @@ sandbox_binding.server_id 指向实际承载沙盒的 Server
 | `pool_id` | `text` | 所属资源池 ID，外键 |
 | `name` | `text` | Server 名称 |
 | `base_url` | `text` | OpenSandbox Server 基础 URL，按原值保存 |
+| `transport_mode` | `text` | `direct` 或 `tunnel`，默认 `direct` |
+| `route_host` | `text` | tunnel vhost Host；切换后保留，direct 节点为空 |
 | `workspace_root` | `text` | Cluster 改写 host volume 时使用的绝对路径 |
 | `api_key_ciphertext` | `text` | 使用 `SERVER_API_KEY_ENCRYPTION_KEY` 加密保存 |
 | `max_sandboxes` | `integer` | 该 Server 的容量上限 |
@@ -132,7 +135,17 @@ sandbox_binding.server_id 指向实际承载沙盒的 Server
 - 修改容量上限时，不能小于当前 binding 数量；
 - 修改有 binding 的 Server 的 `pool_id` 会返回冲突。
 
-### 3.4 sandbox_binding
+`base_url` 在切换到 tunnel 后仍保留，`transport_mode` 是当前请求路径的唯一选择依据，因此同一 Server 可以切回 direct。tunnel 专属的凭证和当前连接状态分别保存在 `opensandbox_server_credential`、`opensandbox_tunnel_connection` 中；每个 Server 只有一条当前连接记录。
+
+### 3.4 opensandbox_server_credential
+
+保存 tunnel Server 的注册凭证。数据库只保存 token hash，明文 token 只在生成 `frpc.toml` 时用于返回配置，不在普通 Server 查询中返回。
+
+### 3.5 opensandbox_tunnel_connection
+
+保存 Server 与 frps 的当前连接 lease，包括 `frp_run_id`、`status`、`health_status`、`last_seen_at`、`disconnected_at` 和 `last_error`。frpc 重连更新原记录；回调按 run ID fencing，旧连接不能覆盖新连接。
+
+### 3.6 sandbox_binding
 
 | 字段 | SQLite 类型 | 说明 |
 | --- | --- | --- |
@@ -177,6 +190,14 @@ health_status = unknown
 注册流程会在写入后立即执行一次健康检查，因此正常情况下注册接口返回的
 `healthStatus` 已经是 `healthy` 或 `unhealthy`，不会长期停留在 `unknown`。注册和修改只保存连接信息，不会创建或删除远程 OpenSandbox Server。
 
+创建 tunnel Server 时可在请求中指定 `transport_mode=tunnel`，此时允许不提供
+`base_url`，并创建 tunnel credential 和 route host；Server 启动 frpc 后再通过 FRP
+Login 建立连接并执行健康检查。
+
+已有 direct Server 切换 tunnel 使用 `PUT /api/v1/servers/:serverId/tunnel`。调用前必须
+停止 Server，Cluster 确认 direct 地址离线后才一次性切换模式。重复调用幂等复用原有配置，
+原 `base_url`、binding 和 Server API Key 保留。
+
 ### 4.2 allocate 选择 Server
 
 ```text
@@ -191,6 +212,7 @@ SQLite BEGIN IMMEDIATE
         | 查询 pool 下 Server
         |-- 过滤 status=active
         |-- 过滤 health_status=healthy
+        |-- tunnel 还必须有 connected、healthy 且未过期的 connection
         |-- 过滤 current < max_sandboxes
         |
         | 按 current / max_sandboxes 升序选择
@@ -367,6 +389,8 @@ GET    /api/v1/servers/:serverId
 PUT    /api/v1/servers/:serverId
 DELETE /api/v1/servers/:serverId
 POST   /api/v1/servers/:serverId/health-check
+PUT    /api/v1/servers/:serverId/tunnel
+GET    /api/v1/servers/:serverId/tunnel/frpc.toml
 ```
 
 创建请求：
@@ -544,9 +568,11 @@ services:
 
 ### 7.3 节点连接关系
 
-Cluster 容器必须能够访问每个 Server 的 `base_url`。Server 容器不需要加入 Cluster 的 Compose 网络，可以使用宿主机 IP、DNS 或其他 Cluster 可达地址。
+direct Server：Cluster 必须能够访问 Server 的 `base_url`。Server 容器不需要加入 Cluster 的 Compose 网络，可以使用宿主机 IP、DNS 或其他 Cluster 可达地址。
 
-当前 Server 节点只保留 DinD 部署：
+tunnel Server：Server 内的 frpc 主动访问 frps 的 `FRP_BIND_PORT`，Cluster 通过 frps vhost 访问 Server；Server 不发布管理端口或沙盒端口。frps 的 Plugin 和 vhost 端口只在 Cluster 内部网络可见。
+
+direct 节点使用 DinD 部署：
 
 ```text
 docker/opensandbox-server/docker-compose.dind.yml
@@ -559,6 +585,18 @@ OpenSandbox Server 容器
         |
         v
     DinD daemon -> Sandbox containers
+```
+
+tunnel 节点使用独立目录：
+
+```text
+docker/opensandbox-server-tunnel/docker-compose.yml
+        |
+        v
+OpenSandbox Server + frpc
+        |
+        v
+主动连接 Cluster:frps
 ```
 
 节点注册时，`workspace_root`、`sandbox.toml` 的 `allowed_host_paths` 和 Compose 内的容器路径必须一致。当前示例统一为 `/workspace`。
@@ -588,9 +626,10 @@ Cluster 只提供资源池和 HTTP 透传能力。上游 Provider 的实际调�
 - Cluster 只负责 Server 选择、绑定和 HTTP 代理，不负责远程沙盒生命周期、状态同步或故障恢复。
 - binding 是容量占用和路由记录，不是远程沙盒状态记录；孤儿 binding 需要由调用方或运维流程显式释放。
 - SQLite 调度锁只适用于单 Cluster 实例；多实例部署需要增加共享数据库或分布式锁协调。
-- 健康状态由注册时和显式健康检查更新，不承担跨节点自动故障迁移。
+- 健康状态由注册时、FRP 建链后的健康探测和显式健康检查更新，不承担跨节点自动故障迁移。
 - 不提供 Web 管理页面，资源池、Server、绑定和代理能力通过 HTTP API 提供。
 - 节点部署模型以 OpenSandbox Server + DinD 为边界，Server 内部 Docker 运行时不属于 Cluster 的管理范围。
+- tunnel 采用单 Cluster、单 frps；每个 Server 只有一条当前 tunnel connection，断线恢复不改变 sandbox binding。
 - 资源池状态字段用于资源池管理，不替代 Server 的容量和健康状态；实际分配由可用 Server 决定。
 - Host volume 只允许落在 Server 注册的 `workspace_root` 范围内；容器内挂载点由上游 Provider 根据业务镜像决定。
 - Cluster 不保存 Provider sandbox ID；上游 Provider 必须持久化业务 sandbox ID 与 Provider sandbox ID 的关联。

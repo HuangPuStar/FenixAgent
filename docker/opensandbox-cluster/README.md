@@ -104,6 +104,6 @@ tunnel 配置有两种入口，二选一：
 
 完成任一入口后，再调用 `GET /api/v1/servers/:serverId/tunnel/frpc.toml` 下载配置。
 
-然后将配置挂载到 Server 的 `/etc/frp/frpc.toml`，使用 `docker-compose.tunnel.yml` 重启或启动 Server，等待 FRP 连接恢复。
+然后将配置挂载到 Server 的 `/etc/frp/frpc.toml`，参考 [`../opensandbox-server-tunnel/README.md`](../opensandbox-server-tunnel/README.md) 启动或重启 Server，等待 FRP 连接恢复。
 
 Cluster 管理 API 支持 HTTP 或 HTTPS，FRP 数据链路固定启用 TLS。

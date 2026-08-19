@@ -144,7 +144,7 @@ Cluster 注册时提供 Server 的可达地址：
 
 ### tunnel 模式
 
-使用 `docker-compose.tunnel.yml`。该模式不发布任何宿主机端口，Server 只需要能够访问 Cluster 的 FRP 登录地址。
+tunnel 模式已独立到 [`../opensandbox-server-tunnel/`](../opensandbox-server-tunnel/)。该模式不发布任何宿主机端口，Server 只需要能够访问 Cluster 的 FRP 登录地址。
 
 选择以下一种方式准备 tunnel Server：
 
@@ -188,11 +188,12 @@ curl -fsS "$CLUSTER_URL/api/v1/servers/server-node-1/tunnel/frpc.toml" \
 chmod 600 frpc.toml
 ```
 
-将 `frpc.toml` 放在本目录后启动：
+将 `frpc.toml` 放在 `docker/opensandbox-server-tunnel/` 后启动：
 
 ```bash
-docker compose -f docker-compose.tunnel.yml up -d --build
-docker compose -f docker-compose.tunnel.yml ps
+cd ../opensandbox-server-tunnel
+docker compose up -d --build
+docker compose ps
 ```
 
-该 compose 会自动启动容器内的 `frpc`。frpc 断线会自动重连；如果进程异常退出，Compose 的 `restart: unless-stopped` 会恢复容器。
+该目录的 README 提供完整的 tunnel 部署说明。
