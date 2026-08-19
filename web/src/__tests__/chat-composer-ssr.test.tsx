@@ -59,4 +59,30 @@ describe("ChatComposer 服务端渲染", () => {
 
     expect(html).toContain("Claude Test");
   });
+
+  // 可用 slash 命令和工作区存在时应提供技能与文件入口，方便用户补充上下文。
+  test("渲染技能与工作区文件入口", () => {
+    const html = renderComposer({
+      commands: [{ name: "review", description: "审查代码", input: { hint: "目标文件" } }],
+      envId: "env-ssr",
+    });
+
+    expect(html).toContain("chatComposer.skillButton");
+    expect(html).toContain("chatComposer.fileButton");
+    expect(html).toContain("lucide-sparkles");
+    expect(html).toContain("lucide-paperclip");
+  });
+
+  // token 估算和新建会话回调齐备时应显示进度及新建入口。
+  test("渲染 token 进度与新建会话入口", () => {
+    const html = renderComposer({
+      tokenStats: { estimatedTokens: 40_000, estimatedInputTokens: 30_000, estimatedOutputTokens: 10_000 },
+      showNewSession: true,
+      onNewSession: () => {},
+    });
+
+    expect(html).toContain("20%");
+    expect(html).toContain("chatComposer.newSession");
+    expect(html).toContain("chat-composer-token-stats");
+  });
 });
