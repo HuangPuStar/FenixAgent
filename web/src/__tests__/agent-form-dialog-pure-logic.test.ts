@@ -188,4 +188,121 @@ describe("Agent 表单与资源访问纯逻辑", () => {
     expect(normalizeSkillOptionsPayload({ skills })).toEqual(mapSkillOptions(skills));
     expect(normalizeSkillOptionsPayload("invalid")).toEqual([]);
   });
+
+  // 每次打开创建表单均须生成独立的默认知识库状态，避免上一次编辑残留选择。
+  test("知识库默认状态使用独立数组", () => {
+    const first = getDefaultKnowledgeFormState();
+    const second = getDefaultKnowledgeFormState();
+    first.knowledgeBaseIds.push("kb-stale");
+    expect(second).toEqual({ knowledgeBaseIds: [], searchFirst: true, maxResults: "5" });
+  });
+
+  // 编辑数据只提供知识库时，其余策略字段必须回填为创建表单默认值。
+  test("知识库编辑状态补齐缺失策略", () => {
+    expect(buildKnowledgeFormState({ knowledge: { knowledgeBaseIds: ["kb-1"] } })).toEqual({
+      knowledgeBaseIds: ["kb-1"],
+      searchFirst: true,
+      maxResults: "5",
+    });
+  });
+
+  // 编辑数据只提供搜索策略时，不得凭空创建知识库关联。
+  test("知识库编辑状态保留空关联", () => {
+    expect(buildKnowledgeFormState({ knowledge: { policy: { searchFirst: false, maxResults: 3 } } })).toEqual({
+      knowledgeBaseIds: [],
+      searchFirst: false,
+      maxResults: "3",
+    });
+  });
+
+  // 数值零是显式策略值，回填时不能被默认最大结果数覆盖。
+  test("知识库编辑状态保留零最大结果", () => {
+    expect(buildKnowledgeFormState({ knowledge: { policy: { maxResults: 0 } } })).toEqual({
+      knowledgeBaseIds: [],
+      searchFirst: true,
+      maxResults: "0",
+    });
+  });
+
+  // 无可见知识库时，提交前必须清空所有过期关联。
+  test("空知识库选项过滤全部已选项", () => {
+    expect(filterKnowledgeBaseIds(["kb-1", "kb-2"], [])).toEqual([]);
+  });
+
+  // 过滤逻辑必须保留当前可见选项的选择顺序，保证 payload 稳定。
+  test("知识库过滤保留有效选择顺序", () => {
+    expect(filterKnowledgeBaseIds(["kb-2", "missing", "kb-1"], [{ id: "kb-1" }, { id: "kb-2" }])).toEqual([
+      "kb-2",
+      "kb-1",
+    ]);
+  });
+
+  // 名称输入允许单个 Unicode 字母，支持创建国际化 Agent 名称。
+  test("Agent 名称允许单个 Unicode 字母", () => {
+    expect(isValidAgentNameInput("智")).toBe(true);
+  });
+
+  // 名称输入不得包含空格，否则会生成不可预测的配置 key。
+  test("Agent 名称拒绝空格", () => {
+    expect(isValidAgentNameInput("agent one")).toBe(false);
+  });
+
+  // 名称输入不得包含连续连字符，避免生成空路径段。
+  test("Agent 名称拒绝连续连字符", () => {
+    expect(isValidAgentNameInput("agent--one")).toBe(false);
+  });
+
+  // 名称输入不得超过后端支持的 64 个字符。
+  test("Agent 名称拒绝超过长度上限", () => {
+    expect(isValidAgentNameInput("a".repeat(65))).toBe(false);
+  });
+
+  // 创建 payload 必须保留非空字段和默认 engineType，供未选择运行引擎的表单提交。
+  test("Agent payload 使用默认引擎并保留非空字段", () => {
+    expect(
+      buildAgentPayload({
+        modelId: "model-1",
+        prompt: "You are helpful",
+        description: "Assistant",
+        knowledge: { knowledgeBaseIds: [], searchFirst: true, maxResults: "5" },
+      }),
+    ).toEqual({
+      modelId: "model-1",
+      prompt: "You are helpful",
+      description: "Assistant",
+      engineType: "opencode",
+      knowledge: { knowledgeBaseIds: [], policy: { searchFirst: true, maxResults: 5 } },
+    });
+  });
+
+  // 空最大结果输入按表单默认值序列化，防止向 API 传递 NaN。
+  test("Agent payload 为空最大结果使用默认值", () => {
+    expect(
+      buildAgentPayload({
+        modelId: "model-1",
+        prompt: "prompt",
+        description: "description",
+        knowledge: { knowledgeBaseIds: ["kb-1"], searchFirst: false, maxResults: "" },
+      }).knowledge.policy,
+    ).toEqual({ searchFirst: false, maxResults: 5 });
+  });
+
+  // Schema 应将非数值结果数转换为可展示的字段错误。
+  test("最大结果校验拒绝非整数", () => {
+    expect(validateWithSchema(intRangeSchema({ label: "Results", min: 1, max: 10 }), "none")).toEqual([
+      "Results must be an integer",
+    ]);
+  });
+
+  // Schema 应拒绝小于下界的结果数，避免无效检索策略进入 payload。
+  test("最大结果校验拒绝低于下界", () => {
+    expect(validateWithSchema(intRangeSchema({ label: "Results", min: 1, max: 10 }), "0")).toEqual([
+      "Results must be between 1 and 10",
+    ]);
+  });
+
+  // API 错误应保留服务端错误信息，供表单错误状态直接展示。
+  test("API 错误解包保留服务端消息", () => {
+    expect(() => unwrapApiResult(err("VALIDATION_ERROR", "Name already exists", 409))).toThrow("Name already exists");
+  });
 });
