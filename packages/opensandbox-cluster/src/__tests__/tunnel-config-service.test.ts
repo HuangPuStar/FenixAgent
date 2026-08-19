@@ -75,7 +75,14 @@ describe("tunnel config service", () => {
   test("switches an offline direct server to tunnel idempotently", async () => {
     const databasePath = `/tmp/opensandbox-cluster-tunnel-switch-${Date.now()}.db`;
     migrateDatabase(databasePath);
-    const app = createApp({ ...config, databasePath });
+    const app = createApp(
+      { ...config, databasePath },
+      {
+        fetch: (async () => {
+          throw new Error("server offline");
+        }) as unknown as typeof fetch,
+      },
+    );
     const headers = { Authorization: "Bearer cluster-key", "Content-Type": "application/json" };
     const request = (path: string, init?: RequestInit) =>
       app.handle(new Request(`http://localhost${path}`, { ...init, headers: { ...headers, ...init?.headers } }));
