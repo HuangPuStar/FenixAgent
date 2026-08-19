@@ -43,6 +43,36 @@ describe("ResourcePreviewContent 服务端渲染", () => {
     expect(getFileCategory("archive.bin")).toBe("other");
   });
 
+  // 视频预览必须提供 media source 的正确 MIME 类型，避免浏览器以错误解码器播放。
+  test("视频文件渲染对应 MIME 的媒体源", () => {
+    const html = renderPreview("walkthrough.webm");
+
+    expect(html).toContain("<video");
+    expect(html).toContain('src="/web/knowledgeBases/knowledge-base-id/resources/resource-id/file"');
+    expect(html).toContain('type="video/webm"');
+    expect(html).toContain('preload="metadata"');
+  });
+
+  // Markdown 和纯文本在服务端尚未取得内容时必须展示受控错误，不渲染不可信内容。
+  test("文本型文件初始状态展示加载失败占位", () => {
+    const markdown = renderPreview("readme.md");
+    const text = renderPreview("runtime.log");
+
+    expect(markdown).toContain("preview.loadError");
+    expect(text).toContain("preview.loadError");
+    expect(markdown).not.toContain("<pre");
+    expect(text).not.toContain("<pre");
+  });
+
+  // Office 文件转换结果未知时应保持转换中状态，不能过早回退为不安全的文档嵌入。
+  test("Office 文件初始状态展示转换进度", () => {
+    const html = renderPreview("proposal.docx");
+
+    expect(html).toContain("preview.converting");
+    expect(html).toContain("animate-spin");
+    expect(html).not.toContain("srcDoc=");
+  });
+
   // PDF 预览应保留资源标题并隐藏浏览器侧栏，避免展示无关导航。
   test("PDF 文件渲染受限的内嵌预览", () => {
     const html = renderPreview("guide.pdf");
