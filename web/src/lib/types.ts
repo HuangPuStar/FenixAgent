@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, PlanEntry, ToolCallContent } from "@fenix/chat-channel";
+import type { PermissionOption, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
@@ -123,15 +123,8 @@ export interface ToolCallEntry {
   toolCall: ToolCallData;
 }
 
-// Plan 展示条目（Agent 执行计划）
-export interface PlanDisplayEntry {
-  type: "plan";
-  id: string;
-  entries: PlanEntry[];
-}
-
 // 统一聊天条目类型
-export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry | PlanDisplayEntry;
+export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry;
 
 /** 展示层公开错误（脱敏 code/message，与 chat-channel PublicErrorInfo 结构一致） */
 export interface PublicErrorInfo {

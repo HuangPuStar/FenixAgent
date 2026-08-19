@@ -30,9 +30,6 @@ function SubGroupedView({ entries }: { entries: ThreadEntry[] }) {
           if (entry.type === "user_message") {
             return null; // 子 agent 面板不显示用户消息
           }
-          if (entry.type === "plan") {
-            return null; // 子 agent 面板不显示 plan
-          }
           return null;
         }
         // 工具调用组 — 复用 ToolCallGroup

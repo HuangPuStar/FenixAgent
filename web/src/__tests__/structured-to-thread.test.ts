@@ -79,9 +79,8 @@ describe("chatDocEntriesToStructuredMessages", () => {
     expect(assistant.chunks).toEqual([{ type: "message", text: "ab" }]);
   });
 
-  // 旧 Chat Doc 可能包含同一 turn 的多个计划快照；展示层只保留最后一次更新，
-  // 避免历史重放在 ChatView 中渲染多个“执行计划”面板。
-  test("keeps only the latest plan snapshot for each turn", () => {
+  // Plan 是状态同步数据而非消息流内容，转换层必须忽略，避免渲染执行计划组件。
+  test("ignores plan snapshots", () => {
     const entries = structuredToThreadEntries([
       {
         type: "plan",
@@ -95,13 +94,7 @@ describe("chatDocEntriesToStructuredMessages", () => {
       },
     ]);
 
-    expect(entries).toEqual([
-      {
-        type: "plan",
-        id: "plan:turn_1:1",
-        entries: [{ content: "inspect files", priority: "medium", status: "completed" }],
-      },
-    ]);
+    expect(entries).toEqual([]);
   });
 
   // 无文本直接工具调用：不得产生空的 assistant_message（切分点仅在文本段之间）

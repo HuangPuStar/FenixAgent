@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
-import { cardKindToStyle, formatOutput, kindLabel, truncate } from "./tool-call-utils";
+import { cardKindToStyle, formatOutput, kindLabel, supportsFilePreview, truncate } from "./tool-call-utils";
 
 /**
  * 从工具调用的 rawInput 中提取文件路径。
@@ -67,9 +67,10 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
     (tool.rawInput && Object.keys(tool.rawInput).length > 0) ||
     (!isRunning && !isPending && (tool.rawOutput || tool.content));
 
-  // 检测工具入参中是否包含文件路径，用于显示预览按钮
-  // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput
+  // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput。
   const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
+  // 仅允许文件读写工具打开文件，其他携带 path 的工具（如 Glob、Grep）不应触发文件预览。
+  const canPreviewFile = previewPath && supportsFilePreview(kind);
 
   const openDialog = useCallback(() => {
     if (hasParams && !isPending) setDialogOpen(true);
@@ -147,8 +148,8 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
           {result.statusLabel}
         </span>
 
-        {/* 文件预览按钮：仅当工具入参包含文件路径时显示 */}
-        {previewPath && !isPending && (
+        {/* 文件预览按钮：仅 Read、Edit、Write 工具显示 */}
+        {canPreviewFile && !isPending && (
           <button
             type="button"
             onClick={(e) => {

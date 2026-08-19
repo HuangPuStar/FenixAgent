@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { extractDisplayMeta, resolveToolCardKind } from "@/components/chat/narrators/helpers";
+import { supportsFilePreview } from "@/components/chat/tool-call-utils";
 import type { ToolCallData } from "@/src/lib/types";
 
 /** 构造最小工具调用数据，便于测试 */
@@ -7,9 +8,17 @@ function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {
   return { id: "t1", title: "unknown", status: "complete", ...overrides };
 }
 
-// =============================================================================
-// extractDisplayMeta — 5 级采集链
-// =============================================================================
+describe("文件预览工具范围", () => {
+  // 仅 Read、Edit、Write 文件操作保留“打开文件”入口，目录和检索工具不应显示。
+  test("仅文件读写工具支持预览", () => {
+    expect(supportsFilePreview("read-file")).toBe(true);
+    expect(supportsFilePreview("edit")).toBe(true);
+    expect(supportsFilePreview("write")).toBe(true);
+    expect(supportsFilePreview("read-directory")).toBe(false);
+    expect(supportsFilePreview("grep")).toBe(false);
+    expect(supportsFilePreview("glob")).toBe(false);
+  });
+});
 
 describe("extractDisplayMeta（5 级采集链）", () => {
   // ① 顶层 toolCall.display 优先级最高

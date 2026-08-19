@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { PlanDisplayEntry, ThreadEntry, ToolCallEntry } from "../../src/lib/types";
+import type { ThreadEntry, ToolCallEntry } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import {
   Conversation,
@@ -10,7 +10,6 @@ import {
 } from "../ai-elements/conversation";
 import { AgentBadge, AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
-import { PlanDisplay } from "./PlanView";
 import { ToolCallGroup } from "./ToolCallGroup";
 
 // =============================================================================
@@ -134,10 +133,6 @@ function entrySpacing(entries: ThreadEntry[], index: number): string {
     }
     return "pt-3 pb-8";
   }
-  // Plan 条目
-  if (entry?.type === "plan") {
-    return "pt-3 pb-3";
-  }
   return "py-2";
 }
 
@@ -166,8 +161,6 @@ const EntryRenderer = React.memo(
         return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
       case "tool_call":
         return <ToolCallGroup entries={[entry as ToolCallEntry]} onPermissionRespond={onPermissionRespond} />;
-      case "plan":
-        return <PlanDisplay entry={entry as PlanDisplayEntry} />;
       default:
         return null;
     }

@@ -18,7 +18,7 @@ import {
 import i18n from "i18next";
 import * as Y from "yjs";
 import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall } from "./todo";
-import type { AssistantChunk, PlanDisplayEntry, ThreadEntry, TodoItem, ToolCallData, ToolCallStatus } from "./types";
+import type { AssistantChunk, ThreadEntry, TodoItem, ToolCallData, ToolCallStatus } from "./types";
 
 /**
  * Session Doc 三态权限选项（allow_once/allow_session/deny）→ acp-link PermissionOption[]。
@@ -84,13 +84,6 @@ function mapStatus(status: string): ToolCallStatus {
   }
 }
 
-/** 返回计划所属 turn；旧快照从 `plan:<turnId>:<seq>` entryId 恢复归属。 */
-function planScope(message: Extract<StructuredMessage, { type: "plan" }>): string {
-  if (message.turnId !== undefined) return message.turnId ?? "global";
-  const legacyMatch = /^plan:(.+):\d+$/u.exec(message.id);
-  return legacyMatch?.[1] ?? "global";
-}
-
 /**
  * 将 Yjs StructuredMessage[] 转换为 ChatInterface 渲染用的 ThreadEntry[]。
  * 纯函数，无副作用。
@@ -98,14 +91,8 @@ function planScope(message: Extract<StructuredMessage, { type: "plan" }>): strin
 export function structuredToThreadEntries(messages: StructuredMessage[]): ThreadEntry[] {
   const entries: ThreadEntry[] = [];
   let previousTodos: TodoItem[] | null = null;
-  // 旧快照可能已持久化为同一 turn 的多条 plan entry。计划是可更新状态而非
-  // 历史消息，因此只投影该 turn 的最后一个快照；新写入路径则已原位覆盖同一 entry。
-  const latestPlanIndexes = new Map<string, number>();
-  for (const [index, message] of messages.entries()) {
-    if (message.type === "plan") latestPlanIndexes.set(planScope(message), index);
-  }
 
-  for (const [index, m] of messages.entries()) {
+  for (const m of messages) {
     switch (m.type) {
       case "assistant_message":
         entries.push({
@@ -169,16 +156,6 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
       }
 
       case "plan":
-        if (latestPlanIndexes.get(planScope(m)) !== index) break;
-        entries.push({
-          type: "plan",
-          id: m.id,
-          entries: m.entries.map((e) => ({
-            content: e.content,
-            priority: e.priority,
-            status: e.status,
-          })),
-        } as PlanDisplayEntry);
         break;
 
       default:
