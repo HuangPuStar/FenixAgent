@@ -15,6 +15,7 @@ import knowledgeEN from "./locales/en/knowledge.json";
 import loginEN from "./locales/en/login.json";
 import mcpEN from "./locales/en/mcp.json";
 import modelsEN from "./locales/en/models.json";
+import observerEN from "./locales/en/observer.json";
 import orgsEN from "./locales/en/orgs.json";
 import prodViewsEN from "./locales/en/prodViews.json";
 import sessionsEN from "./locales/en/sessions.json";
@@ -39,6 +40,7 @@ import knowledgeZH from "./locales/zh/knowledge.json";
 import loginZH from "./locales/zh/login.json";
 import mcpZH from "./locales/zh/mcp.json";
 import modelsZH from "./locales/zh/models.json";
+import observerZH from "./locales/zh/observer.json";
 import orgsZH from "./locales/zh/orgs.json";
 import prodViewsZH from "./locales/zh/prodViews.json";
 import sessionsZH from "./locales/zh/sessions.json";
@@ -57,6 +59,7 @@ export const NS = {
   DASHBOARD: "dashboard",
   AGENTS: "agents",
   MODELS: "models",
+  OBSERVER: "observer",
   SKILLS: "skills",
   MCP: "mcp",
   TASKS: "tasks",
@@ -93,6 +96,7 @@ i18n
         [NS.TASKS_V2]: tasksV2EN,
         [NS.AGENTS]: agentsEN,
         [NS.MODELS]: modelsEN,
+        [NS.OBSERVER]: observerEN,
         [NS.ENVIRONMENTS]: environmentsEN,
         [NS.SKILLS]: skillsEN,
         [NS.MCP]: mcpEN,
@@ -119,6 +123,7 @@ i18n
         [NS.TASKS_V2]: tasksV2ZH,
         [NS.AGENTS]: agentsZH,
         [NS.MODELS]: modelsZH,
+        [NS.OBSERVER]: observerZH,
         [NS.ENVIRONMENTS]: environmentsZH,
         [NS.SKILLS]: skillsZH,
         [NS.MCP]: mcpZH,
@@ -147,6 +152,7 @@ i18n
       NS.TASKS,
       NS.TASKS_V2,
       NS.ENVIRONMENTS,
+      NS.OBSERVER,
       NS.SKILLS,
       NS.MCP,
       NS.AGENT_PANEL,

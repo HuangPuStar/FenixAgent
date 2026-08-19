@@ -70,11 +70,39 @@ interface ExternalRelayEntry {
   /** onMessage 注销函数；close 时调用，防止 listener 泄漏 */
   unsub: (() => void) | null;
   instanceId: string;
+  /** 连接建立时的环境 id（权威归属回查键） */
+  agentId: string;
+  /** 连接时的认证上下文（open 时路由层认证结果，用于归属校验快照） */
+  authContext: Pick<AuthContext, "organizationId" | "userId">;
+  /** 连接建立时间戳 */
+  openTime: number;
   /** 是否已收到 agent 的 status（含 capabilities）；决定补发 connect 是否必要 */
   receivedStatus: boolean;
 }
 
 const entries = new Map<string, ExternalRelayEntry>();
+
+/** 只读快照：供 Observer 等只读消费者遍历 relay 连接，不暴露 ws/relayHandle 句柄。 */
+export interface ExternalRelayConnectionSnapshot {
+  relayWsId: string;
+  agentId: string;
+  instanceId: string;
+  organizationId: string;
+  userId: string;
+  openTime: number;
+}
+
+/** 只读快照：供 Observer 等只读消费者遍历 relay 连接。 */
+export function listExternalRelayEntries(): ExternalRelayConnectionSnapshot[] {
+  return [...entries.entries()].map(([relayWsId, entry]) => ({
+    relayWsId,
+    agentId: entry.agentId,
+    instanceId: entry.instanceId,
+    organizationId: entry.authContext.organizationId,
+    userId: entry.authContext.userId,
+    openTime: entry.openTime,
+  }));
+}
 
 /** 仅在连接仍打开时发送 JSON 序列化消息，避免向已关闭 WS 写入 */
 function sendToRelayWs(ws: WsConnection, message: Record<string, unknown>): void {
@@ -170,6 +198,9 @@ export async function handleExternalRelayOpen(
       relayHandle: full,
       unsub: null,
       instanceId,
+      agentId,
+      authContext: { organizationId: authCtx.organizationId, userId: authCtx.userId },
+      openTime: Date.now(),
       receivedStatus: false,
     };
     entries.set(relayWsId, entry);

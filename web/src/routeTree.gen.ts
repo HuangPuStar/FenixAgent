@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as NoAccessRouteImport } from "./routes/no-access"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
@@ -52,6 +53,11 @@ const LoginRoute = LoginRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: "/admin/",
+  path: "/admin/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const ViewProdViewIdRoute = ViewProdViewIdRouteImport.update({
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
+  "/admin/": typeof AdminIndexRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/algorithms": typeof AgentPanelAlgorithmsRoute
@@ -227,6 +234,7 @@ export interface FileRoutesByTo {
   "/no-access": typeof NoAccessRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
+  "/admin": typeof AdminIndexRoute
   "/agent/$agentId/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/agents": typeof AgentPanelAgentsRoute
   "/agent/algorithms": typeof AgentPanelAlgorithmsRoute
@@ -259,6 +267,7 @@ export interface FileRoutesById {
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
+  "/admin/": typeof AdminIndexRoute
   "/agent/$agentId_/$sessionId": typeof AgentAgentIdSessionIdRoute
   "/agent/_panel/agents": typeof AgentPanelAgentsRoute
   "/agent/_panel/algorithms": typeof AgentPanelAlgorithmsRoute
@@ -292,6 +301,7 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent"
     | "/view/$prodViewId"
+    | "/admin/"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/algorithms"
@@ -322,6 +332,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/agent/$agentId"
     | "/view/$prodViewId"
+    | "/admin"
     | "/agent/$agentId/$sessionId"
     | "/agent/agents"
     | "/agent/algorithms"
@@ -353,6 +364,7 @@ export interface FileRouteTypes {
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/view/$prodViewId"
+    | "/admin/"
     | "/agent/$agentId_/$sessionId"
     | "/agent/_panel/agents"
     | "/agent/_panel/algorithms"
@@ -385,6 +397,7 @@ export interface RootRouteChildren {
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   AgentPanelRoute: typeof AgentPanelRouteWithChildren
   ViewProdViewIdRoute: typeof ViewProdViewIdRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   AgentAgentIdSessionIdRoute: typeof AgentAgentIdSessionIdRoute
 }
 
@@ -409,6 +422,13 @@ declare module "@tanstack/react-router" {
       path: "/"
       fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin/": {
+      id: "/admin/"
+      path: "/admin"
+      fullPath: "/admin/"
+      preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/view/$prodViewId": {
@@ -657,6 +677,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentAgentIdRoute: AgentAgentIdRoute,
   AgentPanelRoute: AgentPanelRouteWithChildren,
   ViewProdViewIdRoute: ViewProdViewIdRoute,
+  AdminIndexRoute: AdminIndexRoute,
   AgentAgentIdSessionIdRoute: AgentAgentIdSessionIdRoute,
 }
 export const routeTree = rootRouteImport

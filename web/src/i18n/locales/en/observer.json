@@ -1,0 +1,66 @@
+{
+  "title": "Observer Center",
+  "subtitle": "Read-only system observability panel (master key protected)",
+  "login": {
+    "title": "Master Key Required",
+    "description": "Enter the system master key (RCS_SYSTEM_API_KEYS) to view the observation dashboard. The key is kept only in sessionStorage and is never logged.",
+    "inputPlaceholder": "System master key",
+    "submit": "Enter panel",
+    "error": "Invalid or expired master key",
+    "logout": "Exit"
+  },
+  "kind": {
+    "acpLink": "ACP Active Links"
+  },
+  "overview": {
+    "total": "Total observations",
+    "machines": "Active machines",
+    "mismatched": "Integrity issues",
+    "lastUpdated": "Last updated"
+  },
+  "source": {
+    "acp-ws": "Local ACP",
+    "external-relay": "External relay",
+    "chat-relay": "Chat relay"
+  },
+  "tree": {
+    "orgTree": "Ownership tree",
+    "machineTree": "Machine tree",
+    "flatTable": "All observations",
+    "integrity": "Integrity",
+    "selectMachine": "Select a machine row to highlight its links in the ownership tree.",
+    "noData": "No observations yet.",
+    "agents": "{{count}} agents",
+    "instances": "{{count}} instances",
+    "leaves": "{{count}} leaves",
+    "expand": "Expand all",
+    "collapse": "Collapse all"
+  },
+  "flat": {
+    "id": "Business ID",
+    "source": "Source",
+    "organizationId": "Org",
+    "userId": "User",
+    "agentConfigId": "Agent",
+    "instanceId": "Instance",
+    "machineId": "Machine",
+    "openTime": "Opened"
+  },
+  "integrity": {
+    "title": "Integrity check",
+    "description": "Observations whose role ids could not be aligned with the authority table, or whose key roles are missing.",
+    "checked": "Checked",
+    "mismatched": "Mismatched",
+    "kind": "Kind",
+    "id": "ID",
+    "possibleReasons": "Possible causes: environment missing, agent config not identified yet (no placeholders), or ownership mismatch with the authority record.",
+    "empty": "All observations are consistent."
+  },
+  "states": {
+    "loading": "Loading…",
+    "empty": "No observation data",
+    "error": "Failed to load the observation view",
+    "retry": "Retry",
+    "refresh": "Refresh"
+  }
+}

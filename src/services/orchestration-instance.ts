@@ -36,6 +36,13 @@ const _deps = {
   buildAgentLaunchSpecForCore,
   getOrchestrationController,
   getOrchestrationLaunchSpecBuilder,
+  // SP-C2：实例停止完成后关闭前端 YJS client。仅回收 Doc 不会断开浏览器连接，
+  // shared relay 及 listener 会残留为 Observer 中的孤儿 chat-relay；惰性导入避免
+  // 与 chat-channel-bootstrap 的模块循环，测试可注入 spy 验证顺序。
+  closeRelayConnectionsForStoppedInstance: (instanceId: string) =>
+    import("../transport/relay").then(({ closeRelayConnectionsForStoppedInstance }) =>
+      closeRelayConnectionsForStoppedInstance(instanceId),
+    ),
   // SP-C2：实例停止完成后回收其内存 Y.Doc。默认经 transport/relay 惰性导入
   // （避免与 chat-channel-bootstrap 的模块循环，同 acp-idle-monitor 的既有模式）；
   // 测试注入 spy 验证接线，不依赖真实控制器装配。
@@ -220,14 +227,18 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
     globalInstanceRegistry.unregister(instanceId);
     globalInstanceRegistry.deleteCounter(sup.environmentId);
   }
-  // SP-C2：实例停止完成点统一回收其名下内存 Y.Doc（idle reclaim 4001 路径、
-  // terminateLocalDeadInstance、手动停止等都汇聚到本函数；远程机器幽灵清理因
-  // core 实例已被调用方同步删除、不经本函数，由 orchestration-machine-cleanup
-  // 对每个幽灵实例单独触发同一回收，funnel 不缺位）。必须发生在停止之后：
-  // 实例可能存活时关 Doc 会丢弃实时流——processNormalizedEvent 对不在内存的会话
-  // 直接丢事件，重连后的 openChat 也拿不到实时投影（C6 断链语义一，详见
-  // gateway.releaseRelay / relay-event-handler 注释）。回收失败不改变停止语义
-  // （Doc 泄漏由周期日志的 openedDocCount 观测暴露），但保留诊断上下文。
+  // SP-C2：停止成功后先关闭该 instance 的所有前端 YJS client，使 gateway close
+  // 生命周期释放 shared relay/refCount/listener；随后才 reclaim Doc。关闭失败不得改变
+  // 停止语义，但必须保留诊断信息，否则 Observer 会持续显示孤儿 chat-relay。
+  try {
+    await _deps.closeRelayConnectionsForStoppedInstance(instanceId);
+  } catch (err) {
+    logError(`[orchestration-instance] yjs relay close failed after stop: instanceId=${instanceId}`, err);
+  }
+  // 实例停止完成点统一回收其名下内存 Y.Doc（idle reclaim、terminateLocalDeadInstance、
+  // 手动停止等都汇聚到本函数；远程机器幽灵清理由 orchestration-machine-cleanup 对每个
+  // 实例单独触发同一回收）。必须发生在停止之后：实例可能存活时关 Doc 会丢弃实时流。
+  // 回收失败不改变停止语义（Doc 泄漏由周期日志的 openedDocCount 观测暴露）。
   try {
     await _deps.reclaimYjsDocs(instanceId);
   } catch (err) {

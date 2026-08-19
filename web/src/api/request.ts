@@ -71,6 +71,12 @@ interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
    * 网络错误/超时自动重试会复用同一 opId，服务端据此幂等去重；busy/4xx/5xx 不重试。
    */
   opId?: string;
+  /**
+   * Bearer token 注入（如系统 Master Key，docs/arch/21 §5）。置入时自动加
+   * `Authorization: Bearer <token>`；调用方显式传入的 headers 合并时靠后，冲突以显式为准。
+   * 不设置时行为完全不变。
+   */
+  bearerToken?: string;
   /** 请求头透传（如 If-None-Match 条件请求）；与内部注入头合并，冲突时以本字段为准 */
   headers?: HeadersInit;
 }
@@ -88,7 +94,16 @@ export const UPLOAD_TIMEOUT_MS = 120_000;
 
 /** 统一请求函数。自动处理路径参数、查询参数、JSON 序列化、超时、错误标准化。 */
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
-  const { params, query, body, timeout = DEFAULT_TIMEOUT, signal: externalSignal, opId, ...init } = options;
+  const {
+    params,
+    query,
+    body,
+    timeout = DEFAULT_TIMEOUT,
+    signal: externalSignal,
+    opId,
+    bearerToken,
+    ...init
+  } = options;
 
   // 路径参数插值：/web/tasks/:id → /web/tasks/abc
   let resolvedUrl = url;
@@ -113,6 +128,7 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   const headers: Record<string, string> = {};
   // opId 透传 X-File-Op-Id：写操作幂等契约的 HTTP 载体（docs/arch/12-files.md §7.2）
   if (opId) headers["x-file-op-id"] = opId;
+  if (bearerToken) headers.authorization = `Bearer ${bearerToken}`;
   if (body !== undefined) {
     if (body instanceof FormData || body instanceof Blob) {
       resolvedBody = body;
