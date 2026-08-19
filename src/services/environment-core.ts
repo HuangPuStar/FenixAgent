@@ -5,6 +5,7 @@ import { ForbiddenError, NotFoundError } from "../errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { EnvironmentResponse } from "../types/api";
+import { stopInstancesForEnvironments } from "./orchestration-instance";
 
 const BLOCKED_PATHS = ["/", "/etc", "/usr", "/bin", "/sbin", "/var", "/sys", "/proc", "/dev", "/boot", "/lib", "/root"];
 
@@ -104,8 +105,16 @@ export async function getOwnedEnvironment(
   return env;
 }
 
-/** 删除 environment */
+/**
+ * 删除 environment。
+ *
+ * 删除前先停止该 environment 上的运行实例：删 DB 只移记录，不停止编排实例会泄漏
+ * Agent 进程与并发额度（见 docs/issues/2026-08-19-agent-delete-instance-leak.md）。
+ * 不传 organizationId：所有调用方（web DELETE 已校验归属、ACP deregister/disconnect
+ * 已校验归属）均在此前完成权限校验，环境内实例必然同属该环境。
+ */
 export async function deleteEnvironment(envId: string): Promise<boolean> {
+  await stopInstancesForEnvironments([envId]);
   return environmentRepo.delete(envId);
 }
 

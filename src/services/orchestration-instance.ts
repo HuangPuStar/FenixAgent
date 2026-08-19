@@ -235,6 +235,93 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
   }
 }
 
+/** stopInstancesForEnvironments 的可选参数。 */
+export interface StopInstancesForEnvironmentsOptions {
+  /**
+   * 仅停止归属该组织的实例（多租户隔离；省略则不限制）。
+   * 提供时只 stop 归属信息明确匹配的实例（supplement.organizationId /
+   * launchSpec.organizationId）；无归属信息的 controller 幽灵实例保守跳过，
+   * 避免跨租户误停（与 web DELETE /instances 的 403 语义一致）。
+   */
+  organizationId?: string;
+}
+
+/**
+ * 批量停止指定 environment 下的全部运行实例（agent / environment 删除时的资源回收入口）。
+ *
+ * 背景：删除 agent_config / environment 的 DB 行不会停止其运行中的编排实例，Agent
+ * 进程、controller 活跃表、registry supplement / env 计数与节点 refCount 全部残留，
+ * 永久占用并发额度（详见 docs/issues/2026-08-19-agent-delete-instance-leak.md）。
+ * idle monitor 对 spawnSource === "interactive" 直接跳过、scheduled/system 需等待
+ * 硬超时，均无法及时回收——删除路径必须在删 DB 前调用本 helper 主动释放。
+ *
+ * 三路收集（同一 instanceId 只 stop 一次）：
+ *   1. primary：globalInstanceRegistry.getByEnvironment —— 有 supplement 的正常实例；
+ *   2. core facade.listInstances 按 launchSpec.environmentId 过滤 —— 补 supplement
+ *      丢失的边际（core 快照仍在，进程仍活）；
+ *   3. controller.listInstances 按 environmentId 过滤 —— 补 controller 幽灵
+ *      （supplement 与 core 均已清，仅活跃表仍持有）。
+ *
+ * 失败语义：单个实例 stop 失败不中断整体（Promise.allSettled），逐条 logError；
+ * 调用方（删除流程）仍继续执行 DB 删除，残留实例由 idle monitor / 超时兜底。
+ * 三路收集阶段若抛错（runtime 不可用等系统级故障）则向上抛：调用方删除中断、
+ * DB 行保留可重试，避免在 runtime 状态未知时静默删除留下孤儿实例（fail-closed）。
+ *
+ * @param environmentIds 目标 environment 列表；为空时直接返回。
+ * @param options 可选参数（organizationId 多租户隔离）。
+ * @returns 被 stop 的 instanceId 列表（供调用方聚合日志观测）。
+ */
+export async function stopInstancesForEnvironments(
+  environmentIds: string[],
+  options: StopInstancesForEnvironmentsOptions = {},
+): Promise<string[]> {
+  if (environmentIds.length === 0) return [];
+  const envSet = new Set(environmentIds);
+
+  // instanceId → 已知组织归属（undefined 表示来源无归属信息）
+  const candidates = new Map<string, string | undefined>();
+
+  for (const envId of environmentIds) {
+    for (const [instanceId, sup] of globalInstanceRegistry.getByEnvironment(envId)) {
+      candidates.set(instanceId, sup.organizationId);
+    }
+  }
+  for (const snapshot of getCoreRuntime().listInstances()) {
+    const envId = snapshot.launchSpec?.environmentId;
+    // supplement 可能已丢失，core 快照的 launchSpec 携带组织归属；已在 registry
+    // 收集到的实例不重复写入（supplement.organizationId 为归属权威来源，两者同源）
+    if (envId && envSet.has(envId) && !candidates.has(snapshot.instanceId)) {
+      candidates.set(snapshot.instanceId, snapshot.launchSpec.organizationId);
+    }
+  }
+  for (const instance of _deps.getOrchestrationController().listInstances()) {
+    if (envSet.has(instance.environmentId) && !candidates.has(instance.instanceId)) {
+      // controller 幽灵：无 supplement / launchSpec 归属信息，仅当不限制组织时允许 stop
+      candidates.set(instance.instanceId, undefined);
+    }
+  }
+
+  const targetIds = [...candidates.entries()]
+    .filter(([, organizationId]) => options.organizationId === undefined || organizationId === options.organizationId)
+    .map(([instanceId]) => instanceId);
+  if (targetIds.length === 0) return [];
+
+  const results = await Promise.allSettled(targetIds.map((instanceId) => stopInstanceViaController(instanceId)));
+  const failed = results
+    .map((result, index) => ({ result, instanceId: targetIds[index] }))
+    .filter(({ result }) => result.status === "rejected");
+  for (const { instanceId, result } of failed) {
+    logError(
+      `[instance-cleanup] stop failed: instanceId=${instanceId} (agent/env 删除清理)`,
+      // Promise.allSettled 的联合类型无法经 filter 收窄，此处按 status === "rejected"
+      // 已经过滤，reason 必然存在（与上方 filter 谓词配套）
+      (result as PromiseRejectedResult).reason,
+    );
+  }
+  log(`[instance-cleanup] envs=${environmentIds.length} instances=${targetIds.length} failed=${failed.length}`);
+  return targetIds;
+}
+
 /**
  * 本地实例死亡清理的去重集合：同一实例并发到达多个死亡信号时只执行一次。
  */
