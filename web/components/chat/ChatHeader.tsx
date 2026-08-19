@@ -5,6 +5,16 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { stripHtmlTags } from "../../src/lib/strip-html-tags";
 import { cn } from "../../src/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -68,6 +78,7 @@ export function ChatHeader({
   // 内联重命名状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
 
   // 外部控制弹窗打开
   useEffect(() => {
@@ -175,17 +186,29 @@ export function ChatHeader({
     setEditTitle("");
   };
 
-  // 删除处理
+  // 删除处理：通过 AlertDialog 二次确认后再删除；确认后调用后端 delete_session
+  // 并触发 session/list 刷新，列表由聚合层投影回前端。
   const handleDelete = useCallback(
     async (sessionId: string) => {
-      try {
-        onDeleteSession?.(sessionId);
-      } catch (err) {
-        toast.error(`删除失败: ${(err as Error).message}`);
-      }
+      const target = sessions.find((s) => s.sessionId === sessionId);
+      setDeleteTarget({
+        sessionId,
+        title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
+      });
     },
-    [onDeleteSession],
+    [sessions, t],
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      onDeleteSession?.(deleteTarget.sessionId);
+    } catch (err) {
+      toast.error(`删除失败: ${(err as Error).message}`);
+    } finally {
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, onDeleteSession]);
 
   return (
     <div
@@ -390,6 +413,27 @@ export function ChatHeader({
 
       {/* 右侧占位：留给后续模型/连接状态展示，保持 header 布局稳定 */}
       <div className="flex-1" />
+
+      {/* 会话删除二次确认 */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("acpMain.deleteSessionTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>{t("acpMain.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+              onClick={() => void handleConfirmDelete()}
+            >
+              {t("acpMain.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -265,7 +265,9 @@
     "earlier": "更早",
     "rename": "重命名",
     "delete": "删除",
-    "closeToPopover": "收起至弹窗",
+    "deleteSessionTitle": "删除会话",
+    "deleteConfirm": "确定要删除会话 \"{{title}}\" 吗？此操作不可撤销。",
+    "cancel": "取消",
     "chatBusy": "请等待当前对话完成后再切换会话"
   },
   "chatInterface": {

@@ -171,15 +171,18 @@ function readSessions(
   // 会话列表：Session Doc sessions 投影派生（sessionId/title/updatedAt），
   // 无标题/未命名会话不在 agent 列表时以当前会话兜底（status=active）
   const sessions: ChatStateSnapshot["sessions"] = [];
+  const currentSessionUpdatedAt = new Date().toISOString();
   if (rawSessions instanceof Y.Map) {
     for (const [sessionId, entry] of rawSessions.entries()) {
+      const updatedAt = entry.get("updatedAt") as string | undefined;
       sessions.push({
         sessionId,
         title: (entry.get("title") as string | null | undefined) ?? "",
         preview: "",
         status: sessionId === currentSessionId ? "active" : "idle",
         lastMsgTs: 0,
-        updatedAt: (entry.get("updatedAt") as string | undefined) ?? undefined,
+        // 新会话尚未被 agent 写入 updatedAt 时，当前会话仍应位于历史列表最前面。
+        updatedAt: updatedAt ?? (sessionId === currentSessionId ? currentSessionUpdatedAt : undefined),
       });
     }
   }
@@ -190,7 +193,9 @@ function readSessions(
       preview: "",
       status: "active",
       lastMsgTs: 0,
-      updatedAt: undefined,
+      // 新会话尚未被 agent 的 session_list 收录时没有 updatedAt；使用当前时间，
+      // 确保它在前端历史列表中作为最新会话显示在最前面。
+      updatedAt: new Date().toISOString(),
     });
   }
   return sessions;

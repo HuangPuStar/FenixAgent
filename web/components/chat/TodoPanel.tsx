@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Loader2 } from "lucide-react";
+import { CheckCircle, Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TodoItem } from "../../src/lib/types";
@@ -61,7 +61,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 
           {inProgress > 0 && (
             <span className="flex items-center gap-1 text-status-running">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Circle className="h-3 w-3 text-status-running" />
               <span>
                 {inProgress} {t("todoPanel.inProgress")}
               </span>
@@ -79,7 +79,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
                 {todo.status === "completed" ? (
                   <CheckCircle className="h-3.5 w-3.5 mt-0.5 text-status-active flex-shrink-0" />
                 ) : todo.status === "in_progress" ? (
-                  <Loader2 className="h-3.5 w-3.5 mt-0.5 text-status-running animate-spin flex-shrink-0" />
+                  <Circle className="h-3.5 w-3.5 mt-0.5 text-status-running flex-shrink-0" />
                 ) : (
                   <Circle className="h-3.5 w-3.5 mt-0.5 text-text-muted/40 flex-shrink-0" />
                 )}

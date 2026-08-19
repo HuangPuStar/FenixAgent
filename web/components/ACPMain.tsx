@@ -16,6 +16,16 @@ import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
 import { groupByRecency } from "./chat/session-grouping";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -436,6 +446,7 @@ function SidebarSessionList({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
 
   // 重命名处理
   const handleStartRename = (session: AgentSessionInfo) => {
@@ -461,20 +472,31 @@ function SidebarSessionList({
     setEditTitle("");
   };
 
-  // 删除处理
+  // 删除处理：二次确认通过 AlertDialog 收集 sessionId 与展示标题；确认后删除并清理本地选中态。
   const handleDelete = useCallback(
     async (sessionId: string) => {
-      try {
-        onDeleteSession(sessionId);
-        if (activeId === sessionId) {
-          setActiveId(null);
-        }
-      } catch (err) {
-        toast.error(`删除失败: ${(err as Error).message}`);
-      }
+      const target = sessions.find((s) => s.sessionId === sessionId);
+      setDeleteTarget({
+        sessionId,
+        title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
+      });
     },
-    [onDeleteSession, activeId],
+    [sessions, t],
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      onDeleteSession(deleteTarget.sessionId);
+      if (activeId === deleteTarget.sessionId) {
+        setActiveId(null);
+      }
+    } catch (err) {
+      toast.error(`删除失败: ${(err as Error).message}`);
+    } finally {
+      setDeleteTarget(null);
+    }
+  }, [activeId, deleteTarget, onDeleteSession]);
 
   useEffect(() => {
     if (initialActiveSessionId) {
@@ -609,6 +631,27 @@ function SidebarSessionList({
           })}
         </div>
       ))}
+
+      {/* 会话删除二次确认 */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("acpMain.deleteSessionTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>{t("acpMain.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+              onClick={() => void handleConfirmDelete()}
+            >
+              {t("acpMain.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </nav>
   );
 }

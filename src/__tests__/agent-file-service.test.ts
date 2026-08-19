@@ -201,11 +201,23 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
       ): Promise<{ status: string; data?: unknown; error?: string }> => {
         switch (operation) {
           case "tree":
-            return { status: "ok", data: { paths: ["user/a.txt"], mtimes: { "user/a.txt": 1 } } };
+            return {
+              status: "ok",
+              data: {
+                paths: ["user/a.txt", "user/.mcp.json"],
+                mtimes: { "user/a.txt": 1, "user/.mcp.json": 2 },
+                errors: [{ path: "user/.mcp.json", message: "hidden" }],
+              },
+            };
           case "list":
             return {
               status: "ok",
-              data: { entries: [{ name: "a.txt", path: "user/a.txt", type: "file", size: 3, modifiedAt: 1 }] },
+              data: {
+                entries: [
+                  { name: "a.txt", path: "user/a.txt", type: "file", size: 3, modifiedAt: 1 },
+                  { name: ".mcp.json", path: "user/.mcp.json", type: "file", size: 5, modifiedAt: 2 },
+                ],
+              },
             };
           case "read":
             return {
@@ -254,7 +266,12 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
     const fs = gate(ENV_ID, authCtx);
     const tree = await fs.tree();
     expect(tree.paths).toContain("user/a.txt");
-    expect((await fs.list("user")).length).toBe(1);
+    expect(tree.paths).not.toContain("user/.mcp.json");
+    expect(tree.mtimes?.["user/.mcp.json"]).toBeUndefined();
+    expect(tree.errors).toBeUndefined();
+    const entries = await fs.list("user");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.name).toBe("a.txt");
     expect((await fs.read("user/a.txt", "text")).type).toBe("text");
     const bin = (await fs.read("user/a.bin", "binary")) as Extract<ReadResult, { type: "binary" }>;
     expect((await collectStream(bin.stream)).toString()).toBe("abc");
