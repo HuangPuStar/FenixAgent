@@ -51,10 +51,22 @@ describe("tunnel config service", () => {
     const parsed = parse(await response.text()) as {
       serverAddr: string;
       loginFailExit: boolean;
+      transport: {
+        heartbeatInterval: number;
+        heartbeatTimeout: number;
+        dialServerKeepalive: number;
+        tls: { enable: boolean };
+      };
       metadatas: { server_id: string; node_token: string };
     };
     expect(parsed.serverAddr).toBe("cluster.example.com");
     expect(parsed.loginFailExit).toBe(false);
+    expect(parsed.transport).toEqual({
+      heartbeatInterval: 10,
+      heartbeatTimeout: 30,
+      dialServerKeepalive: 30,
+      tls: { enable: true },
+    });
     expect(parsed.metadatas.server_id).toBe("server-tunnel");
     expect(parsed.metadatas.node_token).toStartWith("osn1.");
   });

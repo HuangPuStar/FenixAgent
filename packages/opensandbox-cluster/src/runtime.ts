@@ -15,8 +15,14 @@ export interface ClusterRuntime {
 
 export function createClusterRuntime(config: ClusterConfig): ClusterRuntime {
   const { db, sqlite } = createDatabase(config.databasePath);
-  const apiApp = createAppWithDatabase(config, db, sqlite, {}, false);
-  const pluginApp = createFrpPluginRoutes(config, new FrpPluginService(db));
   const monitor = new ServerConnectionMonitor(db, config, createSecretBox(config.serverApiKeyEncryptionKey));
+  const apiApp = createAppWithDatabase(
+    config,
+    db,
+    sqlite,
+    { recoverTunnel: async (serverId) => (await monitor.checkServer(serverId)) === "healthy" },
+    false,
+  );
+  const pluginApp = createFrpPluginRoutes(config, new FrpPluginService(db));
   return { apiApp, pluginApp, monitor, close: () => sqlite.close() };
 }

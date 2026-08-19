@@ -16,6 +16,7 @@ import type { ClusterConfig, HealthResponse } from "./types";
 
 export interface AppDependencies {
   fetch?: typeof fetch;
+  recoverTunnel?: (serverId: string) => Promise<boolean>;
 }
 
 export function createApp(_config: ClusterConfig, dependencies: AppDependencies = {}) {
@@ -43,6 +44,7 @@ export function createAppWithDatabase(
     fetchImpl,
     db,
     _config,
+    dependencies.recoverTunnel,
   );
   return new Elysia({ name: "opensandbox-cluster" })
     .get("/health", (): HealthResponse => ({ status: "healthy" }))

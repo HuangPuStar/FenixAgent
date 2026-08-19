@@ -8,7 +8,7 @@ export interface FrpPluginRequest {
 export interface FrpPluginMetadata {
   serverId: string;
   nodeToken: string;
-  runId: string;
+  runId?: string;
 }
 
 export type PluginResponse =

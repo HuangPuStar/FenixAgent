@@ -30,6 +30,17 @@ describe("FRP plugin service", () => {
     const service = new FrpPluginService(db);
     const metadata = { user: { metas: { server_id: "server-a", node_token: token.value } }, run_id: "run-new" };
     expect(service.handle({ op: "Login", content: metadata })).toEqual({ reject: false, unchange: true });
+    expect(
+      service.handle({
+        op: "NewProxy",
+        content: {
+          user: { metas: { server_id: "server-a", node_token: token.value }, run_id: "run-new" },
+          proxy_name: "os-server-a",
+          proxy_type: "http",
+          custom_domains: ["os-a.tunnel.internal"],
+        },
+      }),
+    ).toEqual({ reject: false, unchange: true });
     expect(service.handle({ op: "Ping", content: metadata })).toEqual({ reject: false, unchange: true });
     expect(service.handle({ op: "CloseProxy", content: { ...metadata, run_id: "run-old" } })).toEqual({
       reject: false,

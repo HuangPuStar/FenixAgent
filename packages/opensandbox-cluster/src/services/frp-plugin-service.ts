@@ -31,6 +31,9 @@ export class FrpPluginService {
       return reject("invalid node credential");
     const now = Date.now();
     this.credentials.touchLastUsed(metadata.serverId, now);
+    // FRP 0.69 Login does not include run_id; it is supplied with NewProxy/Ping.
+    if (request.op === "Login" && !metadata.runId) return ok;
+    if (!metadata.runId) return reject("invalid plugin metadata");
     switch (request.op) {
       case "Login":
         this.connections.upsertLogin(metadata.serverId, metadata.runId, now);
@@ -41,6 +44,8 @@ export class FrpPluginService {
         return this.connections.markDisconnected(metadata.serverId, metadata.runId, now) ? ok : ok;
       case "NewProxy":
         if (!this.validateProxy(request.content, server.routeHost)) return reject("invalid proxy");
+        // FRP 0.69 supplies run_id for the first time in NewProxy, after Login.
+        this.connections.upsertLogin(metadata.serverId, metadata.runId, now);
         this.connections.markConnected(metadata.serverId, metadata.runId, now);
         return ok;
     }
@@ -51,8 +56,9 @@ export class FrpPluginService {
     if (!content || !routeHost) return false;
     const proxy = (content.proxy ?? content) as Record<string, unknown>;
     const domains = proxy.custom_domains ?? proxy.customDomains;
-    const name = typeof proxy.name === "string" ? proxy.name : "";
-    const type = proxy.type;
+    const name =
+      typeof proxy.name === "string" ? proxy.name : typeof proxy.proxy_name === "string" ? proxy.proxy_name : "";
+    const type = proxy.type ?? proxy.proxy_type;
     return (
       type === "http" &&
       name.startsWith("os-") &&
@@ -68,8 +74,13 @@ export class FrpPluginService {
     const serverId = metas?.server_id;
     const nodeToken = metas?.node_token;
     const runId = content?.run_id ?? content?.runId ?? user?.run_id ?? user?.runId;
-    if (typeof serverId !== "string" || typeof nodeToken !== "string" || typeof runId !== "string") return;
-    if (serverId.length > 128 || nodeToken.length > 512 || runId.length > 128) return;
-    return { serverId, nodeToken, runId };
+    if (typeof serverId !== "string" || typeof nodeToken !== "string") return;
+    if (typeof runId !== "string" && requestIsRunIdRequired(content)) return;
+    if (serverId.length > 128 || nodeToken.length > 512 || (typeof runId === "string" && runId.length > 128)) return;
+    return { serverId, nodeToken, ...(typeof runId === "string" ? { runId } : {}) };
   }
+}
+
+function requestIsRunIdRequired(content: Record<string, unknown> | undefined): boolean {
+  return content?.user !== undefined || content?.run_id !== undefined || content?.runId !== undefined;
 }

@@ -3,11 +3,9 @@ import { opensandboxServer } from "../db/schema";
 import { TunnelConnectionRepository } from "../repositories/tunnel-connection-repository";
 import type { SecretBox } from "../security/secret-box";
 import type { ClusterConfig } from "../types";
-import { ServerTargetResolver } from "./server-target-resolver";
 
 export class ServerConnectionMonitor {
   private readonly connections: TunnelConnectionRepository;
-  private readonly resolver: ServerTargetResolver;
   private staleTimer?: ReturnType<typeof setInterval>;
   private healthTimer?: ReturnType<typeof setInterval>;
 
@@ -18,7 +16,6 @@ export class ServerConnectionMonitor {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     this.connections = new TunnelConnectionRepository(db);
-    this.resolver = new ServerTargetResolver(db, config);
   }
 
   start(): void {
@@ -53,7 +50,7 @@ export class ServerConnectionMonitor {
 
   async checkServer(serverId: string, now = Date.now()): Promise<"unknown" | "healthy" | "unhealthy"> {
     const connection = this.connections.findByServerId(serverId);
-    if (connection?.status !== "connected") return "unknown";
+    if (!connection || !["connected", "disconnected"].includes(connection.status)) return "unknown";
     const server = this.db
       .select()
       .from(opensandboxServer)
@@ -61,7 +58,13 @@ export class ServerConnectionMonitor {
       .find((row) => row.id === serverId);
     if (!server) return "unknown";
     try {
-      const target = this.resolver.resolve(serverId, now);
+      // 健康探测必须绕过 resolver 的 healthy 前置条件，否则 unknown/unhealthy
+      // 状态永远无法通过实际 HTTP 探测恢复为 healthy。
+      if (!server.routeHost) return "unknown";
+      const target = {
+        baseUrl: this.config.frpInternalUrl,
+        hostHeader: server.routeHost,
+      };
       const response = await this.fetchImpl(new URL("/health", target.baseUrl), {
         headers: {
           Host: target.hostHeader ?? "",

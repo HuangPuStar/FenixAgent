@@ -175,4 +175,56 @@ describe("OpenSandbox Cluster repositories", () => {
     expect(tunnelConnectionRepository.markDisconnected("server-a", "run-old", now + 1)).toBe(false);
     expect(tunnelConnectionRepository.findByServerId("server-a")?.frpRunId).toBe("run-new");
   });
+
+  // 健康探测成功时续租，避免未回调 Ping 的 FRP 版本被误判为断线。
+  test("renews the tunnel lease after a healthy probe", () => {
+    const now = Date.now();
+    poolRepository.insert({ id: "pool-1", name: "Default", status: "active", createdAt: now, updatedAt: now });
+    serverRepository.insert({
+      id: "server-a",
+      poolId: "pool-1",
+      name: "node-a",
+      baseUrl: "http://server-a:8080",
+      workspaceRoot: "/data",
+      apiKeyCiphertext: "ciphertext",
+      maxSandboxes: 1,
+      status: "active",
+      healthStatus: "healthy",
+      createdAt: now,
+      updatedAt: now,
+    });
+    tunnelConnectionRepository.upsertLogin("server-a", "run-1", now);
+    tunnelConnectionRepository.markConnected("server-a", "run-1", now);
+    tunnelConnectionRepository.updateHealth("server-a", "run-1", "healthy", now + 1000);
+    expect(tunnelConnectionRepository.findByServerId("server-a")?.lastSeenAt).toBe(now + 1000);
+  });
+
+  // stale 后健康探测成功应恢复连接状态，而不是只更新健康字段。
+  test("restores a stale tunnel connection after a healthy probe", () => {
+    const now = Date.now();
+    poolRepository.insert({ id: "pool-1", name: "Default", status: "active", createdAt: now, updatedAt: now });
+    serverRepository.insert({
+      id: "server-a",
+      poolId: "pool-1",
+      name: "node-a",
+      baseUrl: "http://server-a:8080",
+      workspaceRoot: "/data",
+      apiKeyCiphertext: "ciphertext",
+      maxSandboxes: 1,
+      status: "active",
+      healthStatus: "healthy",
+      createdAt: now,
+      updatedAt: now,
+    });
+    tunnelConnectionRepository.upsertLogin("server-a", "run-1", now);
+    tunnelConnectionRepository.markConnected("server-a", "run-1", now);
+    tunnelConnectionRepository.markStaleDisconnected(now + 1, now + 1);
+    tunnelConnectionRepository.updateHealth("server-a", "run-1", "healthy", now + 2);
+    expect(tunnelConnectionRepository.findByServerId("server-a")).toMatchObject({
+      status: "connected",
+      disconnectedAt: null,
+      healthStatus: "healthy",
+      lastError: null,
+    });
+  });
 });

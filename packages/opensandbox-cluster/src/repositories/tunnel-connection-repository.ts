@@ -94,8 +94,12 @@ export class TunnelConnectionRepository {
 
   updateHealth(serverId: string, runId: string, health: HealthStatus, now: number, error?: string) {
     return this.updateRun(serverId, runId, {
+      ...(health === "healthy" ? { status: "connected", disconnectedAt: null } : { status: "disconnected" }),
       healthStatus: health,
       lastHealthAt: now,
+      // A successful HTTP probe proves the tunnel is usable even when the
+      // installed frpc/frps pair does not emit Ping plugin callbacks.
+      ...(health === "healthy" ? { lastSeenAt: now } : {}),
       lastError: error ?? null,
       updatedAt: now,
     });

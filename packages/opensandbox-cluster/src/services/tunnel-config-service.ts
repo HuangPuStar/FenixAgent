@@ -87,8 +87,17 @@ export class TunnelConfigService {
         serverAddr: this.config.frpPublicAddress,
         serverPort: this.config.frpBindPort,
         loginFailExit: false,
-        auth: { method: "token", token: this.config.frpToken },
-        transport: { tls: { enable: true } },
+        auth: {
+          method: "token",
+          token: this.config.frpToken,
+          additionalScopes: ["HeartBeats", "NewWorkConns"],
+        },
+        transport: {
+          heartbeatInterval: 10,
+          heartbeatTimeout: 30,
+          dialServerKeepalive: 30,
+          tls: { enable: true },
+        },
         metadatas: { server_id: serverId, node_token: token },
         proxies: [
           {
