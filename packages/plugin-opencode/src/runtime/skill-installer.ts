@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { SkillConfig } from "@fenix/plugin-sdk";
@@ -64,7 +63,8 @@ export async function installSkills(
   const { skillsDir } = await ensureWorkspaceRuntimeDirs(workspace);
   const fetchImpl = dependencies.fetch ?? fetch;
   const extractArchive = dependencies.extractArchive ?? defaultExtractArchive;
-  const tempRoot = await mkdtemp(join(tmpdir(), "plugin-opencode-skills-"));
+  // 暂存目录必须与 .opencode/skills 同属 workspace 文件系统，目录替换才能安全使用 rename。
+  const tempRoot = await mkdtemp(join(dirname(skillsDir), ".plugin-opencode-skills-"));
   const stagedSkillsDir = join(tempRoot, "skills");
   await mkdir(stagedSkillsDir, { recursive: true });
 
