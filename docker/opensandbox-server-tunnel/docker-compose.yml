@@ -1,7 +1,7 @@
 services:
   opensandbox-server:
     build:
-      context: .
+      context: ../opensandbox-server
       dockerfile: Dockerfile
     image: ${OPENSANDBOX_SERVER_IMAGE:-aos/opensandbox-server:latest}
     command: ["opensandbox-server", "--config", "/etc/opensandbox/sandbox.toml"]

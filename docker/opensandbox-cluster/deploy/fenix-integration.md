@@ -198,7 +198,7 @@ export SERVER_API_KEY='替换为 Server API Key'
 ### tunnel Server（与 direct 二选一）
 
 如果 Server 无法提供入站端口，不使用上面的 `opensandbox-server` direct 服务配置，改为单独部署
-[`docker/opensandbox-server/docker-compose.tunnel.yml`](../../opensandbox-server/docker-compose.tunnel.yml)。Cluster 和 frps 仍使用本目录的 Compose。
+[`docker/opensandbox-server-tunnel/`](../../opensandbox-server-tunnel/)。Cluster 和 frps 仍使用本目录的 Compose。
 
 新建 tunnel Server 与已有 direct Server 切换为 tunnel 是两种入口，二选一。两种入口完成后，都要执行 `server tunnel` 下载配置，再将配置挂载到 Server 并重启：
 
@@ -209,14 +209,14 @@ export SERVER_API_KEY='替换为 Server API Key'
 
 # 生成并下载 frpc.toml（重复执行安全）
 ./fenix-sandbox-ops.sh cluster server tunnel \
-  server-tunnel-1 /path/to/opensandbox-server/frpc.toml
+  server-tunnel-1 /path/to/opensandbox-server-tunnel/frpc.toml
 
 # 方案 B：已有 direct Server。先停止 Server，确认其不再提供健康检查响应后再执行。
 ./fenix-sandbox-ops.sh cluster server tunnel \
-  server-1 /path/to/opensandbox-server/frpc.toml
+  server-1 /path/to/opensandbox-server-tunnel/frpc.toml
 ```
 
-然后在 Server 目录使用 `docker-compose.tunnel.yml` 启动。该 Compose 不发布 Server 或沙盒端口，Server 只需能访问 `${FRP_PUBLIC_ADDRESS}:${FRP_BIND_PORT}`。
+然后在 `docker/opensandbox-server-tunnel/` 目录使用 `docker compose up -d` 启动。该 Compose 不发布 Server 或沙盒端口，Server 只需能访问 `${FRP_PUBLIC_ADDRESS}:${FRP_BIND_PORT}`。
 
 ## 5. 配置并启动 FenixAgent
 
@@ -408,7 +408,7 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh cluster server health-check "${SERVER_ID}"
 # 生成并下载 tunnel Server 使用的 frpc.toml；已有 direct Server 切换前必须先停机
 ./fenix-sandbox-ops.sh cluster server tunnel \
-  "${SERVER_ID}" /path/to/opensandbox-server/frpc.toml
+  "${SERVER_ID}" /path/to/opensandbox-server-tunnel/frpc.toml
 # 删除指定 Server；--yes 表示跳过交互确认
 ./fenix-sandbox-ops.sh cluster server delete "${SERVER_ID}" --yes
 ```
