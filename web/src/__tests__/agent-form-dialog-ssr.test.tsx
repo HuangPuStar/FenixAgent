@@ -27,7 +27,7 @@ describe("AgentFormDialog SSR 初始展示", () => {
     expect(html).toContain("form.name");
     expect(html).toContain("form.model");
     expect(html).toContain("form.prompt");
-    expect(html).toContain("dialog.create");
+    expect(html).toContain("dialog.createConfirm");
   });
 
   // 编辑模式在尚未加载资源详情时仍应展示编辑框架与保存动作，而不依赖浏览器 API。
