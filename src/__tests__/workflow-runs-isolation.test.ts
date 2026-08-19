@@ -139,4 +139,20 @@ describe("Workflow runs routes isolation and state boundaries", () => {
     expect(response.status).toBe(401);
     expect(approveNode).not.toHaveBeenCalled();
   });
+
+  for (const index of Array.from({ length: 4 }, (_, value) => value + 1)) {
+    test(`取消当前组织运行并发布状态第${index}例`, async () => {
+      const cancel = spyOn(getTeamEngine("org-runs-1"), "cancel").mockResolvedValue();
+
+      const response = await request(`/workflow-runs/run-cancel-${index}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowId: `workflow-cancel-${index}` }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(cancel).toHaveBeenCalledWith(`run-cancel-${index}`);
+    });
+  }
 });
