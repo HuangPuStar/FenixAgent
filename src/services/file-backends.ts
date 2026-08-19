@@ -62,6 +62,8 @@ import {
   readFileContent,
   renamePath,
   resolveWorkspacePath,
+  shouldHideEntry,
+  shouldHidePath,
   writeFileContent,
 } from "./workspace-fs";
 
@@ -350,10 +352,17 @@ class RemoteBackend implements BackEnd {
   }
 
   async tree(envId: string): Promise<TreeResult> {
-    return remoteTree(this.machineId, envId);
+    const result = await remoteTree(this.machineId, envId);
+    const paths = result.paths.filter((path) => !shouldHidePath(path));
+    const mtimes = result.mtimes
+      ? Object.fromEntries(Object.entries(result.mtimes).filter(([path]) => !shouldHidePath(path)))
+      : undefined;
+    const errors = result.errors?.filter(({ path }) => !shouldHidePath(path));
+    return { paths, ...(mtimes ? { mtimes } : {}), ...(errors?.length ? { errors } : {}) };
   }
   async list(envId: string, path: string): Promise<FileEntry[]> {
-    return remoteListDir(this.machineId, envId, path);
+    const entries = await remoteListDir(this.machineId, envId, path);
+    return entries.filter((entry) => !shouldHideEntry(entry.path, entry.name));
   }
   async read(envId: string, path: string, mode: ReadMode): Promise<ReadResult> {
     if (mode === "binary") return this.readBinary(envId, path);
