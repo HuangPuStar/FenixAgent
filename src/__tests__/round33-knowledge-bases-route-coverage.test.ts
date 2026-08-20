@@ -103,13 +103,15 @@ class RuntimeProvider extends RagFlowKnowledgeProvider {
 
   override async generateKnowledgeGraph() {}
 
-  override async getKnowledgeGraph() {
+  override async getKnowledgeGraph(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["getKnowledgeGraph"]>>> {
     return { graph: { nodes: [], edges: [] } };
   }
 
   override async deleteKnowledgeGraph() {}
 
-  override async pollKnowledgeGraphProgress() {
+  override async pollKnowledgeGraphProgress(): Promise<
+    Awaited<ReturnType<RagFlowKnowledgeProvider["pollKnowledgeGraphProgress"]>>
+  > {
     return { progress: 1, progressMsg: "完成", taskId: "task-1" };
   }
 }
@@ -119,7 +121,7 @@ class FailingRuntimeProvider extends RuntimeProvider {
     throw new Error("provider unavailable");
   }
 
-  override async getKnowledgeGraph() {
+  override async getKnowledgeGraph(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["getKnowledgeGraph"]>>> {
     throw new Error("provider unavailable");
   }
 
@@ -127,7 +129,9 @@ class FailingRuntimeProvider extends RuntimeProvider {
     throw new Error("provider unavailable");
   }
 
-  override async pollKnowledgeGraphProgress() {
+  override async pollKnowledgeGraphProgress(): Promise<
+    Awaited<ReturnType<RagFlowKnowledgeProvider["pollKnowledgeGraphProgress"]>>
+  > {
     throw new Error("provider unavailable");
   }
 }
@@ -242,7 +246,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
   ])("Embedding DTO 校验：%s", async (_name, body, message) => {
     const response = await jsonRequest("/knowledgeBases/models", "POST", body);
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR", message } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "VALIDATION_ERROR", message } });
   });
 
   test.each([
@@ -257,7 +261,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     const method = path.includes("enabled") ? "PATCH" : path.includes("reparse") ? "POST" : "GET";
     const response = await jsonRequest(path, method, { enabled: true });
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   test.each([
@@ -265,10 +269,10 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["URL 资源缺少地址", resource({ sourceType: "url", sourcePath: null }), 500, null],
     ["上传资源缺少本地路径", resource({ sourcePath: null }), 500, null],
   ])("资源导出文件边界：%s", async (_name, item, status, code) => {
-    knowledgeResourceRepo.getById = mock(async () => item);
+    knowledgeResourceRepo.getById = mock(async () => item) as unknown as typeof knowledgeResourceRepo.getById;
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/file");
     expect(response.status).toBe(status);
-    if (code) expect(await response.json()).toMatchObject({ error: { code } });
+    if (code) expect((await response.json()) as unknown).toMatchObject({ error: { code } });
   });
 
   test.each([
@@ -276,7 +280,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["不属于知识库的资源", resource({ knowledgeBaseId: "kb-other" })],
     ["URL 资源", resource({ sourceType: "url", sourcePath: null })],
   ])("PDF 导出边界：%s", async (_name, item) => {
-    knowledgeResourceRepo.getById = mock(async () => item);
+    knowledgeResourceRepo.getById = mock(async () => item) as unknown as typeof knowledgeResourceRepo.getById;
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/pdf");
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
@@ -295,7 +299,10 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await request(`/knowledgeBases/kb-1/resources/resource-1/chunks${query}`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [], total: 0, page, pageSize } });
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: { items: [], total: 0, page, pageSize },
+    });
     expect(provider.chunkInput).toMatchObject({ page, pageSize });
   });
 
@@ -313,7 +320,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/enabled", "PATCH", body);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { enabled } });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: { enabled } });
     expect(provider.enabledInput).toMatchObject({ enabled });
   });
 
@@ -333,7 +340,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
       body,
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { enabled } });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: { enabled } });
     expect(provider.chunkSwitchInput).toMatchObject({ available: enabled, chunkId: "chunk-1" });
   });
 
@@ -341,24 +348,24 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["资源无远端 ID", resource({ remoteId: null }), knowledgeBase(), "NO_REMOTE"],
     ["知识库无远端 ID", resource(), knowledgeBase({ remoteId: null }), "NO_REMOTE"],
   ])("切片开关拒绝未同步数据：%s", async (_name, item, base, code) => {
-    knowledgeResourceRepo.getById = mock(async () => item);
+    knowledgeResourceRepo.getById = mock(async () => item) as unknown as typeof knowledgeResourceRepo.getById;
     knowledgeBaseRepo.getById = mock(async () => base);
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/chunks/chunk-1/enabled", "PATCH", {
       enabled: true,
     });
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code } });
   });
 
   test.each([
-    ["资源无远端 ID", resource({ remoteId: null })],
+    ["资源无远端 ID", resource({ remoteId: null }), knowledgeBase()],
     ["知识库无远端 ID", resource(), knowledgeBase({ remoteId: null })],
-  ])("重解析拒绝未同步数据：%s", async (_name, item, base = knowledgeBase()) => {
-    knowledgeResourceRepo.getById = mock(async () => item);
-    knowledgeBaseRepo.getById = mock(async () => base);
+  ])("重解析拒绝未同步数据：%s", async (_name, item, base) => {
+    knowledgeResourceRepo.getById = mock(async () => item) as unknown as typeof knowledgeResourceRepo.getById;
+    knowledgeBaseRepo.getById = mock(async () => base) as unknown as typeof knowledgeBaseRepo.getById;
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/reparse", "POST", { delete: true });
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_SYNCED" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_SYNCED" } });
   });
 
   test.each([
@@ -392,7 +399,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
   ])("导入知识库校验：%s", async (_name, body) => {
     const response = await jsonRequest("/knowledgeBases", "POST", body);
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
 
   test.each([
@@ -416,7 +423,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await jsonRequest(path, method);
     expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({ error: { code: "KNOWLEDGE_PROVIDER_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "KNOWLEDGE_PROVIDER_ERROR" } });
   });
 
   test.each([
@@ -429,6 +436,6 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await jsonRequest(path, method);
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ success: true });
+    expect((await response.json()) as unknown).toMatchObject({ success: true });
   });
 });

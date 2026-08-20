@@ -129,7 +129,7 @@ describe("知识库 Web 路由资源分支", () => {
     const response = await request("/knowledgeBases/kb-1/resources/upload", { method: "POST", body });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 文件预览不得接受属于其他知识库的资源 ID。
@@ -139,7 +139,7 @@ describe("知识库 Web 路由资源分支", () => {
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/file");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // PDF 转换接口应拒绝 URL 类型资源，避免触发本地文件或转换进程。
@@ -149,7 +149,7 @@ describe("知识库 Web 路由资源分支", () => {
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/pdf");
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NO_LOCAL_FILE" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NO_LOCAL_FILE" } });
   });
 
   // 资源启用状态切换应保留字符串 true 的兼容输入并转发远端身份。
@@ -185,7 +185,7 @@ describe("知识库 Web 路由资源分支", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 未同步远端 ID 的资源不可触发重新解析。
@@ -200,7 +200,7 @@ describe("知识库 Web 路由资源分支", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_SYNCED" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_SYNCED" } });
   });
 
   // 重新解析成功后必须标记本地资源为 processing，供前端轮询。
@@ -235,7 +235,10 @@ describe("知识库 Web 路由资源分支", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 100 } });
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: { items: [], total: 0, page: 1, pageSize: 100 },
+    });
     expect(provider.chunkInput).toMatchObject({ page: 1, pageSize: 100, keyword: undefined });
   });
 
@@ -249,7 +252,10 @@ describe("知识库 Web 路由资源分支", () => {
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/chunks?page=2&pageSize=5");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [], total: 0, page: 2, pageSize: 5 } });
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: { items: [], total: 0, page: 2, pageSize: 5 },
+    });
     expect(provider.chunkInput).toBeNull();
   });
 
@@ -265,7 +271,7 @@ describe("知识库 Web 路由资源分支", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NO_REMOTE" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NO_REMOTE" } });
   });
 
   // 切片开关成功时应将请求值映射为 provider 的 available 字段。
@@ -282,7 +288,7 @@ describe("知识库 Web 路由资源分支", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { enabled: false } });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: { enabled: false } });
     expect(provider.switchInput).toMatchObject({ chunkId: "chunk-1", available: false });
   });
 });

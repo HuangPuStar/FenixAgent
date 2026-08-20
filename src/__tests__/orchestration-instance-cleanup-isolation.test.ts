@@ -65,7 +65,7 @@ const fakeFacade: Pick<CoreRuntimeFacade, "listInstances" | "stopInstance"> = {
 };
 
 const fakeController: Pick<AgentController, "listInstances" | "stopInstance"> = {
-  listInstances: () => controllerInstances,
+  listInstances: (() => controllerInstances) as unknown as AgentController["listInstances"],
   stopInstance: async (instanceId: string) => {
     controllerStopCalls.push(instanceId);
     if (controllerStopFailure === instanceId) throw new Error(`controller stop failed: ${instanceId}`);

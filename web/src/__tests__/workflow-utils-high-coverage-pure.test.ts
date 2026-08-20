@@ -41,7 +41,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const completedMetadata = [
+  const completedMetadata: Array<[Record<string, unknown>, string]> = [
     [{ exit_code: 0 }, "exit=0"],
     [{ exit_code: 1 }, "exit=1"],
     [{ exit_code: -9 }, "exit=-9"],
@@ -65,7 +65,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const failedMetadata = [
+  const failedMetadata: Array<[Record<string, unknown>, string]> = [
     [{ error: "权限不足" }, "权限不足"],
     [{ error: 404 }, "404"],
     [{ error: false }, "false"],
@@ -78,7 +78,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const startedMetadata = [
+  const startedMetadata: Array<[Record<string, unknown>, string]> = [
     [{ pid: 1 }, "pid=1"],
     [{ pid: -1 }, "pid=-1"],
     [{ pid: "worker-1" }, "pid=worker-1"],
@@ -92,7 +92,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const durations = [
+  const durations: Array<[number, string]> = [
     [0, "0s"],
     [1, "0s"],
     [499, "0s"],
@@ -111,7 +111,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const retryMetadata = [
+  const retryMetadata: Array<[Record<string, unknown>]> = [
     [{ attempt: 0, next_delay_ms: 0 }],
     [{ attempt: 1, next_delay_ms: 100 }],
     [{ attempt: 2, next_delay_ms: 500 }],
@@ -126,7 +126,7 @@ describe("工作流纯逻辑高覆盖边界", () => {
     });
   }
 
-  const summaries = [
+  const summaries: Array<[string, Record<string, { status: string; exit_code?: number }>, string]> = [
     ["SUCCESS", {}, "Run Succeeded (0/0 completed)"],
     ["CANCELLED", {}, "Cancelled (0/0 completed)"],
     ["RUNNING", {}, "Running (0/0 completed)"],

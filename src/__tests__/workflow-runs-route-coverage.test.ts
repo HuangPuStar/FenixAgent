@@ -3,7 +3,7 @@ import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { getTeamEngine } from "../services/workflow";
-import { resetAllStubs, stubPgStorageAdapter } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubPgStorageAdapter } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 
@@ -46,7 +46,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await readJson(response)).toEqual({
         success: true,
         data: { items: [{ run_id: `run-${index}` }], total: index, page: index, pageSize: index + 1 },
       });
@@ -64,7 +64,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-status-${index}`);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
       expect(current).toHaveBeenCalledWith(`run-status-${index}`);
       expect(foreign).not.toHaveBeenCalled();
     });
@@ -80,7 +80,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-events-${index}/events?nodeId=node-${index}`);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: [] });
+      expect(await readJson(response)).toEqual({ success: true, data: [] });
       expect(current).toHaveBeenCalledWith(`run-events-${index}`, { nodeId: `node-${index}` });
       expect(foreign).not.toHaveBeenCalled();
     });
@@ -92,7 +92,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-output-${index}/nodes/node-${index}/output`);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
       expect(getOutput).toHaveBeenCalledWith(`run-output-${index}`, `node-${index}`);
     });
   }
@@ -103,7 +103,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-approval-${index}/approvals`);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: [] });
+      expect(await readJson(response)).toEqual({ success: true, data: [] });
       expect(getPendingApprovals).toHaveBeenCalledWith(`run-approval-${index}`);
     });
   }
@@ -114,7 +114,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-cancel-${index}/cancel`, jsonRequest({}));
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
       expect(cancel).toHaveBeenCalledWith(`run-cancel-${index}`);
     });
   }
@@ -122,6 +122,15 @@ describe("workflow-runs 路由补充覆盖", () => {
   for (const index of Array.from({ length: 10 }, (_, value) => value + 1)) {
     test(`审批第${index}个节点传递 token 和附加数据`, async () => {
       const approveNode = spyOn(getTeamEngine("org-route-tests"), "approveNode").mockResolvedValue({
+        runId: `run-approve-${index}`,
+        status: "SUCCESS",
+        summary: {
+          run_id: `run-approve-${index}`,
+          workflow_name: "路由测试工作流",
+          status: "SUCCESS",
+          started_at: "2026-08-19T00:00:00.000Z",
+          node_summary: { total: 0, completed: 0, failed: 0, running: 0 },
+        },
         spawnedInstanceIds: [],
       });
       const response = await request(
@@ -130,7 +139,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
       expect(approveNode).toHaveBeenCalledWith(`run-approve-${index}`, `node-${index}`, `token-${index}`, {
         sequence: index,
       });
@@ -160,7 +169,7 @@ describe("workflow-runs 路由补充覆盖", () => {
       const response = await request(`/workflow-runs/run-missing-${index}`);
 
       expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({
+      expect(await readJson(response)).toEqual({
         success: false,
         error: { code: WorkflowErrorCode.RUN_NOT_FOUND, message: `运行${index}不存在` },
       });

@@ -95,7 +95,7 @@ describe("ACPMain 依赖的工具调用纯逻辑", () => {
     expect(
       formatOutput(
         createTool({
-          content: [{ type: "terminal", content: { type: "text", text: "终端输出" } }],
+          content: [{ type: "terminal", terminalId: "terminal-1" }],
           rawOutput: { code: 0 },
         }),
       ),
@@ -104,7 +104,9 @@ describe("ACPMain 依赖的工具调用纯逻辑", () => {
 
   // 未提供 content 且 rawOutput 为数组时，应保留 JSON 数组格式。
   test("数组 rawOutput 格式化为 JSON", () => {
-    expect(formatOutput(createTool({ rawOutput: ["first", "second"] }))).toBe('[\n  "first",\n  "second"\n]');
+    expect(formatOutput(createTool({ rawOutput: { items: ["first", "second"] } }))).toBe(
+      '{\n  "items": [\n    "first",\n    "second"\n  ]\n}',
+    );
   });
 
   // 文本内容可用时，即使 rawOutput 为空数组也必须优先展示文本。
@@ -113,7 +115,7 @@ describe("ACPMain 依赖的工具调用纯逻辑", () => {
       formatOutput(
         createTool({
           content: [{ type: "content", content: { type: "text", text: "可读输出" } }],
-          rawOutput: [],
+          rawOutput: {},
         }),
       ),
     ).toBe("可读输出");

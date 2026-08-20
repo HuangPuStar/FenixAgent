@@ -66,8 +66,8 @@ function stubDb(
     record.model = null;
     updates.push({ agentConfigId, nextModelId });
   };
-  _deps.log = (message) => {
-    logs.push(message);
+  _deps.log = (...args: unknown[]) => {
+    logs.push(args.join(" "));
   };
 
   return { records, updates, logs, stableProviderQueries, legacyProviderQueries, modelQueries };

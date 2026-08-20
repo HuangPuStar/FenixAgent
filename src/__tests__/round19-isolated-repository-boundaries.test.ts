@@ -29,6 +29,40 @@ function logs<T>(rows: T[], onOffset?: (value: number) => void) {
   return { from: () => ({ where: () => filtered }) };
 }
 
+function taskLog(id: string) {
+  return {
+    id,
+    taskId: "task",
+    status: "success",
+    error: null,
+    duration: null,
+    triggeredBy: "manual",
+    workspacePath: null,
+    workspaceName: null,
+    taskSnapshot: null,
+    skipReason: null,
+    resultSummary: null,
+    createdAt: new Date("2026-08-19T00:00:00.000Z"),
+  };
+}
+
+function shareLink(id: string) {
+  return {
+    id,
+    organizationId: "org",
+    mode: "view",
+    token: "token",
+    sessionId: "session",
+    environmentId: "environment",
+    createdBy: "user",
+    accessCount: 0,
+    expiresAt: null,
+    lastAccessedAt: null,
+    createdAt: new Date("2026-08-19T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-19T00:00:00.000Z"),
+  };
+}
+
 beforeEach(resetAllStubs);
 afterEach(resetAllStubs);
 
@@ -256,28 +290,28 @@ describe("round19 隔离仓储边界", () => {
 
   // 最新日志返回数据库排序后的第一项。
   test("任务日志最新返回第一项", async () => {
-    stubDb({ select: () => logs([{ id: "latest" }]) });
-    expect(await taskExecutionLogRepo.getLatest("task")).toEqual({ id: "latest" });
+    stubDb({ select: () => logs([taskLog("latest")]) });
+    expect(await taskExecutionLogRepo.getLatest("task")).toMatchObject({ id: "latest" });
   });
 
   // 分享链接按会话列表必须原样返回数据库结果。
   test("分享链接会话列表保留结果", async () => {
-    const rows = [{ id: "link-1" }];
+    const rows = [shareLink("link-1")];
     stubDb({ select: () => selected(rows) });
     expect(await shareLinkRepo.listBySession("org", "session")).toEqual(rows);
   });
 
   // 分享链接按组织列表必须保持组织查询结果。
   test("分享链接组织列表保留结果", async () => {
-    const rows = [{ id: "link-2" }];
+    const rows = [shareLink("link-2")];
     stubDb({ select: () => selected(rows) });
     expect(await shareLinkRepo.listByOrganizationId("org")).toEqual(rows);
   });
 
   // 新建日志应返回数据库记录。
   test("任务日志创建返回记录", async () => {
-    stubDb({ insert: () => ({ values: () => ({ returning: () => Promise.resolve([{ id: "new" }]) }) }) });
-    expect(await taskExecutionLogRepo.create({ taskId: "task", status: "success" })).toEqual({ id: "new" });
+    stubDb({ insert: () => ({ values: () => ({ returning: () => Promise.resolve([taskLog("new")]) }) }) });
+    expect(await taskExecutionLogRepo.create({ taskId: "task", status: "success" })).toMatchObject({ id: "new" });
   });
 
   // 更新日志必须在写入结束后 resolve。
@@ -312,7 +346,7 @@ describe("round19 隔离仓储边界", () => {
 
   // 列表应保持数据库提供的时间排序。
   test("任务日志保留列表顺序", async () => {
-    const rows = [{ id: "new" }, { id: "old" }];
+    const rows = [taskLog("new"), taskLog("old")];
     stubDb({ select: () => logs(rows) });
     expect(await taskExecutionLogRepo.listByTask("task")).toEqual(rows);
   });
@@ -320,7 +354,7 @@ describe("round19 隔离仓储边界", () => {
   // 并发日志查询不得共享可变结果。
   test("任务日志并发读取隔离", async () => {
     let call = 0;
-    stubDb({ select: () => logs([{ id: ++call === 1 ? "first" : "second" }]) });
+    stubDb({ select: () => logs([taskLog(++call === 1 ? "first" : "second")]) });
     const [first, second] = await Promise.all([
       taskExecutionLogRepo.getById("first"),
       taskExecutionLogRepo.getById("second"),

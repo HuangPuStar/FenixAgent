@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import hindsightRoutes from "../routes/web/hindsight";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -110,7 +110,7 @@ describe("round60 hindsight 路由", () => {
     memberId = null;
     const response = await request("/hindsight/graph");
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "forbidden", message: "Cannot resolve bank ID" },
     });
@@ -122,7 +122,7 @@ describe("round60 hindsight 路由", () => {
     upstream = async () => Promise.reject(new Error("offline"));
     const response = await request("/hindsight/graph");
     expect(response.status).toBe(503);
-    expect((await response.json()).error.code).toBe("service_unavailable");
+    expect(await readJson(response)).toMatchObject({ error: { code: "service_unavailable" } });
   });
 
   // 统计读取应定位到当前 bank 的 stats 资源。
@@ -261,9 +261,8 @@ describe("round60 hindsight 路由", () => {
     form.set("title", "不可用测试");
     const response = await request("/hindsight/documents", { method: "POST", body: form });
     expect(response.status).toBe(503);
-    expect((await response.json()).error).toEqual({
-      code: "service_unavailable",
-      message: "Hindsight service unavailable",
+    expect(await readJson(response)).toMatchObject({
+      error: { code: "service_unavailable", message: "Hindsight service unavailable" },
     });
   });
 
@@ -272,7 +271,7 @@ describe("round60 hindsight 路由", () => {
     upstream = async () => Promise.reject(new Error("timeout"));
     const response = await request("/hindsight/mental-models/model-1", { method: "DELETE" });
     expect(response.status).toBe(503);
-    expect((await response.json()).error.code).toBe("service_unavailable");
+    expect(await readJson(response)).toMatchObject({ error: { code: "service_unavailable" } });
   });
 
   // 实体图谱在上游不可用时不应泄露原始异常。
@@ -280,6 +279,8 @@ describe("round60 hindsight 路由", () => {
     upstream = async () => Promise.reject(new Error("network secret"));
     const response = await request("/hindsight/entities/graph");
     expect(response.status).toBe(503);
-    expect((await response.json()).error.message).toBe("Hindsight service unavailable");
+    expect(await readJson(response)).toMatchObject({
+      error: { message: "Hindsight service unavailable" },
+    });
   });
 });

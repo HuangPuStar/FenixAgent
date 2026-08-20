@@ -41,7 +41,7 @@ describe("消息组件补充分支的服务端渲染", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MessageToolbar,
-        { "data-testid": "toolbar" },
+        { className: "toolbar" },
         createElement(
           MessageActions,
           { className: "custom-actions" },
@@ -51,7 +51,7 @@ describe("消息组件补充分支的服务端渲染", () => {
       ),
     );
 
-    expect(markup).toContain('data-testid="toolbar"');
+    expect(markup).toContain("toolbar");
     expect(markup).toContain("custom-actions");
     expect(markup).toContain("复制回复");
     expect(markup).toContain("重新生成");

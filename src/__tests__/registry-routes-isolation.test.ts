@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { resetAllStubs, stubAuthApi, stubRegistry } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubRegistry } from "../test-utils/helpers";
 
 const registryRoutes = (await import("../routes/web/registry")).default;
 
@@ -55,7 +55,7 @@ describe("Registry 路由隔离与认证", () => {
     const response = await request("/registry/machines?status=online&labels=gpu&limit=5&offset=2");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: {
         items: [
@@ -83,7 +83,7 @@ describe("Registry 路由隔离与认证", () => {
     const response = await request("/registry/machines/mach-foreign");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "Machine not found" },
     });
@@ -111,7 +111,7 @@ describe("Registry 路由隔离与认证", () => {
     const response = await request("/registry/machines");
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "INTERNAL_ERROR", message: "storage unavailable" },
     });

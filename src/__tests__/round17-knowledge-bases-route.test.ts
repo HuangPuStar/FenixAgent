@@ -5,7 +5,7 @@ import { type KnowledgeBaseRow, knowledgeBaseRepo } from "../repositories/knowle
 import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
-import { resetAllStubs } from "../test-utils/helpers";
+import { readJson, resetAllStubs } from "../test-utils/helpers";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -85,7 +85,7 @@ describe("知识库最大缺口路由的隔离分支", () => {
     knowledgeBaseRepo.listByOrganizationId = mock(async () => [kb()]);
     const response = await post("/knowledgeBases", { action: "list-unassociated" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [{ id: "remote-2", name: "待导入" }] });
+    expect(await readJson(response)).toEqual({ success: true, data: [{ id: "remote-2", name: "待导入" }] });
   });
 
   // 上游目录失败应映射为网关错误，不能伪造空数据掩盖故障。
@@ -118,7 +118,7 @@ describe("知识库最大缺口路由的隔离分支", () => {
   test("rerank 模型路由返回 provider 结果", async () => {
     const response = await request("/knowledgeBases/rerank-models");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: [{ name: "rerank", label: "Rerank", provider: "OpenAI", instance: "default" }],
     });

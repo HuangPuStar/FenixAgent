@@ -259,8 +259,8 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ id: "agent-a" })];
     configureSuccessfulLegacyLookup();
     _deps.updateAgentConfigModel = async () => {};
-    _deps.log = (message: string) => {
-      logs.push(message);
+    _deps.log = (...args: unknown[]) => {
+      logs.push(args.join(" "));
     };
 
     await migrateAgentConfigModelId.run();

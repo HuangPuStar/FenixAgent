@@ -53,9 +53,11 @@ class Provider extends RagFlowKnowledgeProvider {
   created: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0] | null = null;
   deleted: Parameters<RagFlowKnowledgeProvider["deleteKnowledgeBase"]>[0] | null = null;
 
-  override async createKnowledgeBase(input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0]) {
+  override async createKnowledgeBase(
+    input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0],
+  ): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["createKnowledgeBase"]>>> {
     this.created = input;
-    return { remoteId: "remote-created", name: input.name, status: "empty" as const };
+    return { remoteId: "remote-created", name: input.name, status: "empty" };
   }
 
   override async deleteKnowledgeBase(input: Parameters<RagFlowKnowledgeProvider["deleteKnowledgeBase"]>[0]) {
@@ -68,7 +70,7 @@ class Provider extends RagFlowKnowledgeProvider {
 
   override async setModelStatus() {}
 
-  override async listInstanceModels() {
+  override async listInstanceModels(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["listInstanceModels"]>>> {
     return [];
   }
 
@@ -120,7 +122,7 @@ describe("round62 知识库 service 补充覆盖", () => {
 
   // 空白名称必须在访问仓储和远端前被拒绝。
   test("创建拒绝空白名称", async () => {
-    const findSlug = mock(async () => null);
+    const findSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.findByOrgAndSlug = findSlug;
 
     await expect(createKnowledgeBaseRecord("org-1", { name: "  " })).resolves.toMatchObject({
@@ -132,7 +134,7 @@ describe("round62 知识库 service 补充覆盖", () => {
 
   // 非法 slug 不应触发唯一性查询或 provider 调用。
   test("创建拒绝包含非法字符的 slug", async () => {
-    const findSlug = mock(async () => null);
+    const findSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.findByOrgAndSlug = findSlug;
 
     await expect(createKnowledgeBaseRecord("org-1", { name: "文档", slug: "bad_slug" })).resolves.toMatchObject({
@@ -146,7 +148,7 @@ describe("round62 知识库 service 补充覆盖", () => {
   test("创建 builtin 知识库映射分块配置和租户身份", async () => {
     const provider = new Provider();
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     const create = mock(async (input) => kb({ ...input, id: "kb-created", remoteId: "remote-created" }));
     knowledgeBaseRepo.create = create;
 
@@ -170,13 +172,15 @@ describe("round62 知识库 service 补充覆盖", () => {
   // 远端漏返回 ID 时不能写入无法关联的本地记录。
   test("创建在远端缺少 ID 时拒绝本地持久化", async () => {
     class MissingIdProvider extends Provider {
-      override async createKnowledgeBase(input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0]) {
+      override async createKnowledgeBase(
+        input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0],
+      ): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["createKnowledgeBase"]>>> {
         this.created = input;
-        return { remoteId: null, name: input.name, status: "empty" as const };
+        return { remoteId: null, name: input.name, status: "empty" };
       }
     }
     setKnowledgeProviderForTesting(new MissingIdProvider());
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     const create = mock(async () => kb());
     knowledgeBaseRepo.create = create;
 
@@ -188,7 +192,7 @@ describe("round62 知识库 service 补充覆盖", () => {
   test("创建使用组织 ID 作为缺省用户身份", async () => {
     const provider = new Provider();
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.create = mock(async (input) => kb({ ...input, remoteId: "remote-created" }));
 
     await createKnowledgeBaseRecord("org-1", { name: "文档", slug: "docs" });
@@ -256,8 +260,10 @@ describe("round62 知识库 service 补充覆盖", () => {
         if (provider === "Broken") throw new Error("unavailable");
         return [{ provider, instanceName: "main", status: "active" }];
       }
-      override async listInstanceModels() {
-        return [{ name: "embed", status: "active" }];
+      override async listInstanceModels(): Promise<
+        Awaited<ReturnType<RagFlowKnowledgeProvider["listInstanceModels"]>>
+      > {
+        return [{ name: "embed", provider: "Good", instance: "main", modelType: "embedding", status: "active" }];
       }
     }
     setKnowledgeProviderForTesting(new PartialTreeProvider());
@@ -266,7 +272,12 @@ describe("round62 知识库 service 补充覆盖", () => {
       {
         provider: "Good",
         instances: [
-          { provider: "Good", instanceName: "main", status: "active", models: [{ name: "embed", status: "active" }] },
+          {
+            provider: "Good",
+            instanceName: "main",
+            status: "active",
+            models: [{ name: "embed", provider: "Good", instance: "main", modelType: "embedding", status: "active" }],
+          },
         ],
       },
     ]);
@@ -318,7 +329,9 @@ describe("round62 知识库 service 补充覆盖", () => {
   // 实例重复冲突按幂等成功处理，避免用户重试失败。
   test("添加 provider 实例忽略已存在冲突", async () => {
     class ConflictProvider extends Provider {
-      override async addProviderInstance() {
+      override async addProviderInstance(): Promise<
+        Awaited<ReturnType<RagFlowKnowledgeProvider["addProviderInstance"]>>
+      > {
         throw new Error("already exists");
       }
     }
@@ -336,7 +349,9 @@ describe("round62 知识库 service 补充覆盖", () => {
   // 非冲突远端错误必须保留给调用方处理。
   test("添加 provider 实例透传非冲突错误", async () => {
     class FailingProvider extends Provider {
-      override async addProviderInstance() {
+      override async addProviderInstance(): Promise<
+        Awaited<ReturnType<RagFlowKnowledgeProvider["addProviderInstance"]>>
+      > {
         throw new Error("permission denied");
       }
     }

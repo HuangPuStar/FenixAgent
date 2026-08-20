@@ -208,7 +208,9 @@ describe("Agent 表单与资源访问纯逻辑", () => {
 
   // 编辑数据只提供搜索策略时，不得凭空创建知识库关联。
   test("知识库编辑状态保留空关联", () => {
-    expect(buildKnowledgeFormState({ knowledge: { policy: { searchFirst: false, maxResults: 3 } } })).toEqual({
+    expect(
+      buildKnowledgeFormState({ knowledge: { knowledgeBaseIds: [], policy: { searchFirst: false, maxResults: 3 } } }),
+    ).toEqual({
       knowledgeBaseIds: [],
       searchFirst: false,
       maxResults: "3",
@@ -217,7 +219,7 @@ describe("Agent 表单与资源访问纯逻辑", () => {
 
   // 数值零是显式策略值，回填时不能被默认最大结果数覆盖。
   test("知识库编辑状态保留零最大结果", () => {
-    expect(buildKnowledgeFormState({ knowledge: { policy: { maxResults: 0 } } })).toEqual({
+    expect(buildKnowledgeFormState({ knowledge: { knowledgeBaseIds: [], policy: { maxResults: 0 } } })).toEqual({
       knowledgeBaseIds: [],
       searchFirst: true,
       maxResults: "0",

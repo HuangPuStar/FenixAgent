@@ -8,7 +8,7 @@ function tool(
   status: StructuredMessage extends never
     ? never
     : "running" | "complete" | "error" | "waiting_for_confirmation" | "canceled" | "rejected",
-): StructuredMessage {
+): Extract<StructuredMessage, { type: "tool_call" }> {
   return { id: `tool-${status}`, type: "tool_call", title: "Bash", status, content: [] };
 }
 

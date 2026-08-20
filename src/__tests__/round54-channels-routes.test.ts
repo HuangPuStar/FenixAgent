@@ -4,7 +4,7 @@ import type { ChannelBindingRow } from "../repositories/channel-binding";
 import { channelBindingRepo } from "../repositories/channel-binding";
 import type { EnvironmentRecord } from "../repositories/environment";
 import { setHermesClientGetter } from "../services/channel-provider";
-import { resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/channels")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");
@@ -102,7 +102,7 @@ describe("round54 Web 通道路由", () => {
     });
     channelBindingRepo.create = mock(async (input) => binding(input));
     channelBindingRepo.delete = mock(async () => true);
-    channelBindingRepo.getById = mock(async (id) => (id === "binding-1" ? binding() : null));
+    channelBindingRepo.getById = mock(async (id: string) => (id === "binding-1" ? binding() : binding({ id })));
     channelBindingRepo.list = mock(async () => [binding()]);
     channelBindingRepo.update = mock(async () => {});
   });
@@ -121,7 +121,7 @@ describe("round54 Web 通道路由", () => {
   });
   // Hermes 不可用时平台仍安全地标为禁用。
   test("供应商列表返回禁用平台", async () => {
-    expect(await (await request("/channels/providers")).json()).toEqual({
+    expect(await readJson(await request("/channels/providers"))).toEqual({
       success: true,
       data: [
         { type: "wechat", label: "微信", status: "disabled" },
@@ -132,12 +132,12 @@ describe("round54 Web 通道路由", () => {
   // 查询 token 不得从响应中泄露。
   test("供应商列表不回显 token", async () => {
     expect(
-      JSON.stringify(await (await request("/channels/providers?token=query-token-must-not-leak")).json()),
+      JSON.stringify(await readJson(await request("/channels/providers?token=query-token-must-not-leak"))),
     ).not.toContain("query-token-must-not-leak");
   });
   // 未初始化 Hermes 必须返回稳定断开状态。
   test("Hermes 未初始化时返回断开状态", async () => {
-    expect(await (await request("/channels/hermes/status")).json()).toEqual({
+    expect(await readJson(await request("/channels/hermes/status"))).toEqual({
       success: true,
       data: { connected: false, url: "", platforms: [], reconnecting: false, lastConnectedAt: null },
     });
@@ -145,12 +145,12 @@ describe("round54 Web 通道路由", () => {
   // 空列表不得制造伪造绑定。
   test("绑定列表保留空结果", async () => {
     channelBindingRepo.list = mock(async () => []);
-    expect(await (await request("/channels/bindings")).json()).toEqual({ success: true, data: [] });
+    expect(await readJson(await request("/channels/bindings"))).toEqual({ success: true, data: [] });
   });
   // 列表只能包含当前组织环境的绑定。
   test("绑定列表过滤其他组织环境", async () => {
     channelBindingRepo.list = mock(async () => [binding(), binding({ id: "foreign", agentId: "env-foreign" })]);
-    expect(await (await request("/channels/bindings")).json()).toEqual({
+    expect(await readJson(await request("/channels/bindings"))).toEqual({
       success: true,
       data: [{ ...responseBinding(), agentName: "团队环境" }],
     });
@@ -158,21 +158,21 @@ describe("round54 Web 通道路由", () => {
   // 不可读环境对应的名称必须为空。
   test("绑定列表缺少环境时返回空名称", async () => {
     stubEnvironmentRepo({ getById: async () => undefined });
-    expect(await (await request("/channels/bindings")).json()).toEqual({
+    expect(await readJson(await request("/channels/bindings"))).toEqual({
       success: true,
       data: [{ ...responseBinding(), agentName: null }],
     });
   });
   // 环境 secret 不得出现在绑定响应中。
   test("绑定列表不泄露环境 secret", async () => {
-    expect(JSON.stringify(await (await request("/channels/bindings")).json())).not.toContain(
+    expect(JSON.stringify(await readJson(await request("/channels/bindings")))).not.toContain(
       "environment-secret-must-not-leak",
     );
   });
   // 创建应携带环境展示名称。
   test("创建绑定返回关联环境名称", async () => {
     const r = await json("/channels/bindings", "POST", { platform: "feishu", chatId: "chat-new", agentId: "env-1" });
-    expect(await r.json()).toEqual({
+    expect(await readJson(r)).toEqual({
       success: true,
       data: { ...responseBinding({ chatId: "chat-new" }), agentName: "团队环境" },
     });
@@ -206,7 +206,7 @@ describe("round54 Web 通道路由", () => {
   test("创建绑定拒绝不存在环境", async () => {
     const r = await json("/channels/bindings", "POST", { platform: "feishu", agentId: "missing" });
     expect(r.status).toBe(404);
-    expect(await r.json()).toEqual({ success: false, error: { code: "NOT_FOUND", message: "Agent 不存在" } });
+    expect(await readJson(r)).toEqual({ success: false, error: { code: "NOT_FOUND", message: "Agent 不存在" } });
   });
   // 跨组织环境要隐藏为不存在。
   test("创建绑定拒绝其他组织环境", async () => {
@@ -230,7 +230,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 成功删除只返回 null 数据。
   test("删除绑定返回空数据", async () => {
-    expect(await (await request("/channels/bindings/binding-1", { method: "DELETE" })).json()).toEqual({
+    expect(await readJson(await request("/channels/bindings/binding-1", { method: "DELETE" }))).toEqual({
       success: true,
       data: null,
     });
@@ -248,7 +248,7 @@ describe("round54 Web 通道路由", () => {
   // 更新成功需返回最新绑定和环境名称。
   test("更新绑定返回更新后的数据", async () => {
     channelBindingRepo.getById = mock(async () => binding({ enabled: false }));
-    expect(await (await json("/channels/bindings/binding-1", "PATCH", { enabled: false })).json()).toEqual({
+    expect(await readJson(await json("/channels/bindings/binding-1", "PATCH", { enabled: false }))).toEqual({
       success: true,
       data: { ...responseBinding({ enabled: false }), agentName: "团队环境" },
     });

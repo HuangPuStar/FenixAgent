@@ -15,6 +15,11 @@ export function resetAllStubs() {
   resetSystemApiStubs();
 }
 
+/** 以运行时 JSON 值读取路由响应，避免测试被路由声明中的窄响应类型限制。 */
+export async function readJson(response: Response): Promise<any> {
+  return response.json();
+}
+
 export {
   getApiKeyServiceStub,
   getAuthApiStub,

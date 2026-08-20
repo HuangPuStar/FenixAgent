@@ -119,7 +119,7 @@ describe("知识库 service 隔离分支", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: { code: "VALIDATION_ERROR", message: "RAGFLOW_API_KEY is not configured" },
     });
@@ -136,7 +136,7 @@ describe("知识库 service 隔离分支", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "知识库不存在" },
     });
@@ -163,14 +163,14 @@ describe("知识库 service 隔离分支", () => {
     });
     expect(deleteBindings).toHaveBeenCalledWith("kb-1");
     expect(deleteBase).toHaveBeenCalledWith("kb-1");
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
   });
 
   // 创建时 pipeline 只应把 pipeline 配置传给远端，避免混入 builtin 的 chunkMethod。
   test("创建 pipeline 知识库时映射解析配置", async () => {
     const provider = new ControlledProvider();
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.create = mock(async (input) => kb({ ...input, id: "kb-created", remoteId: "remote-created" }));
 
     const result = await createKnowledgeBaseRecord(
@@ -226,7 +226,7 @@ describe("知识库 service 隔离分支", () => {
   test("更新知识库时标准化 slug 与描述", async () => {
     let changes: Record<string, unknown> | null = null;
     knowledgeBaseRepo.getById = mock(async () => kb());
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.update = mock(async (_id, input) => {
       changes = input;
     });
@@ -265,10 +265,12 @@ describe("知识库 service 隔离分支", () => {
   // 表单选项查询失败时应降级为空远端数据，仍返回本地支持的分块方法。
   test("表单选项在 provider 失败时可降级返回", async () => {
     class FailingOptionsProvider extends RagFlowKnowledgeProvider {
-      override async listEmbeddingModels() {
+      override async listEmbeddingModels(): Promise<
+        Awaited<ReturnType<RagFlowKnowledgeProvider["listEmbeddingModels"]>>
+      > {
         throw new Error("embedding unavailable");
       }
-      override async listPipelines() {
+      override async listPipelines(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["listPipelines"]>>> {
         throw new Error("pipeline unavailable");
       }
     }
@@ -292,8 +294,22 @@ describe("知识库 service 隔离分支", () => {
           ? [{ provider, instanceName: "main", status: "active" }]
           : [{ provider, instanceName: "none", status: "active" }];
       }
-      override async listInstanceModels({ instanceName }: { provider: string; instanceName: string; apiKey: string }) {
-        return instanceName === "main" ? [{ name: "text-embedding", status: "active" }] : [];
+      override async listInstanceModels({
+        instanceName,
+      }: Parameters<RagFlowKnowledgeProvider["listInstanceModels"]>[0]): Promise<
+        Awaited<ReturnType<RagFlowKnowledgeProvider["listInstanceModels"]>>
+      > {
+        return instanceName === "main"
+          ? [
+              {
+                name: "text-embedding",
+                provider: "OpenAI",
+                instance: instanceName,
+                modelType: "embedding",
+                status: "active",
+              },
+            ]
+          : [];
       }
     }
     setKnowledgeProviderForTesting(new TreeProvider());
@@ -306,7 +322,15 @@ describe("知识库 service 隔离分支", () => {
             provider: "OpenAI",
             instanceName: "main",
             status: "active",
-            models: [{ name: "text-embedding", status: "active" }],
+            models: [
+              {
+                name: "text-embedding",
+                provider: "OpenAI",
+                instance: "main",
+                modelType: "embedding",
+                status: "active",
+              },
+            ],
           },
         ],
       },

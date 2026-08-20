@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-defs")).default;
 
@@ -105,7 +105,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { name: "   " });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
+    expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
   });
 
   // 兼容 action 创建同样不能绕过名称空白校验。
@@ -113,7 +113,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "create", name: "\t" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("name is required");
+    expect((await readJson(response)).error.message).toBe("name is required");
   });
 
   // 保存 action 必须同时包含工作流 ID 与非空 YAML。
@@ -121,7 +121,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "save", workflowId: "workflow-round38", yaml: "" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("workflowId and yaml are required");
+    expect((await readJson(response)).error.message).toBe("workflowId and yaml are required");
   });
 
   // action 获取其他组织工作流不得泄露其详情。
@@ -131,7 +131,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "get", workflowId: "workflow-foreign" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // action 获取版本时先校验工作流组织归属。
@@ -145,7 +145,7 @@ describe("Round 38 工作流定义路由行为", () => {
     });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Workflow not found");
+    expect((await readJson(response)).error.message).toBe("Workflow not found");
   });
 
   // action 获取版本列表不暴露当前组织不可见工作流的版本。
@@ -155,7 +155,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "getVersions", workflowId: "workflow-foreign" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
   });
 
   // action 设置最新版本成功时更新当前组织工作流。
@@ -178,7 +178,7 @@ describe("Round 38 工作流定义路由行为", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(updates).toHaveLength(1);
   });
 
@@ -193,7 +193,7 @@ describe("Round 38 工作流定义路由行为", () => {
     });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // action 删除当前组织工作流返回空成功载荷。
@@ -203,7 +203,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "delete", workflowId: "workflow-round38" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
   });
 
   // REST 更新的非字符串字段必须在仓储调用前被拒绝。
@@ -224,7 +224,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await request("/workflow-defs/workflow-round38", { method: "DELETE" });
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error.code).toBe("INTERNAL_ERROR");
+    expect((await readJson(response)).error.code).toBe("INTERNAL_ERROR");
   });
 
   // 版本恢复拒绝非数字路径参数，避免进入文件与仓储操作。
@@ -232,7 +232,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round38/versions/invalid/restore", {});
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
+    expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
   });
 
   // 设置最新版本拒绝非数字路径参数。
@@ -240,7 +240,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round38/versions/invalid/set-latest", {});
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("workflowId and version are required");
+    expect((await readJson(response)).error.message).toBe("workflowId and version are required");
   });
 
   // 参数定义未指定版本时采用当前工作流的 latestVersion。
@@ -250,7 +250,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await request("/workflow-defs/workflow-round38/params");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Version not found");
+    expect((await readJson(response)).error.message).toBe("Version not found");
   });
 
   // 创建触发器默认采用 webhook 类型并返回完整视图。
@@ -299,7 +299,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await request("/workflow-defs/workflow-round38/triggers/trigger-round38", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
   });
 
   // 启用当前组织触发器应更新其启用状态。
@@ -318,7 +318,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round38/triggers/trigger-round38/enable", {});
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(updates).toHaveLength(1);
   });
 
@@ -338,7 +338,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round38/triggers/trigger-round38/disable", {});
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(updates).toHaveLength(1);
   });
 
@@ -349,7 +349,7 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "enableTrigger", triggerId: "trigger-round38" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Trigger not found");
+    expect((await readJson(response)).error.message).toBe("Trigger not found");
   });
 
   // action 禁用其他组织触发器必须保持隔离。
@@ -359,6 +359,6 @@ describe("Round 38 工作流定义路由行为", () => {
     const response = await jsonRequest("/workflow-defs", { action: "disableTrigger", triggerId: "trigger-round38" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 });

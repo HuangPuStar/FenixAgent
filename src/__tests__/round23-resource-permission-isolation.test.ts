@@ -25,10 +25,21 @@ import {
 const ctx: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
 const otherCtx: AuthContext = { organizationId: "org-b", userId: "user-b", role: "member" };
 
+type ResourcePermissionGrant = Awaited<ReturnType<IResourcePermissionRepo["createGrant"]>>;
+
+function grant(input: CreateResourcePermissionGrantInput): ResourcePermissionGrant {
+  return {
+    ...input,
+    id: "grant-1",
+    createdAt: new Date("2026-08-19T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-19T00:00:00.000Z"),
+  };
+}
+
 function createRepo(overrides: Partial<IResourcePermissionRepo> = {}): IResourcePermissionRepo {
   return {
     listByResource: async () => [],
-    createGrant: async (input) => ({ ...input }),
+    createGrant: async (input) => grant(input),
     deleteGrant: async () => true,
     listOwnedByOrganization: async () => [],
     listAccessibleForPrincipal: async () => [],
@@ -280,7 +291,7 @@ describe("resource-permission 组织隔离与授权边界", () => {
       createRepo({
         createGrant: async (input) => {
           created = input;
-          return input;
+          return grant(input);
         },
       }),
     );
@@ -358,7 +369,7 @@ describe("resource-permission 组织隔离与授权边界", () => {
       createRepo({
         createGrant: async (input) => {
           created.push(input.resourceId);
-          return input;
+          return grant(input);
         },
       }),
     );

@@ -191,7 +191,7 @@ describe("round16 isolated protocol and boundary coverage", () => {
           jsonrpc: "2.0",
           method: "session/update",
           params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "原始事件" } } },
-        },
+        } as unknown as RelayEvent,
       ],
       "agent-round16",
     );

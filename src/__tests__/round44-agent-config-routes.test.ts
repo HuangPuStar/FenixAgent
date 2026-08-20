@@ -3,7 +3,7 @@ import { AppError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/config/agents")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");
@@ -121,7 +121,7 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("列表返回空的当前组织集合", async () => {
     const response = await request("/config/agents");
 
-    expect(await response.json()).toEqual({ success: true, data: { default_agent: null, agents: [] } });
+    expect(await readJson(response)).toEqual({ success: true, data: { default_agent: null, agents: [] } });
   });
 
   // 外部共享资源的只读访问描述必须原样暴露，而不被误标记为内部资源。

@@ -98,7 +98,7 @@ afterEach(() => {
 describe("round57 AgentChatTransport 内存链路", () => {
   // 工厂必须返回始终就绪的 Transport，供 workflow 在组织上下文中直接使用。
   test("工厂创建的 Transport 报告 ready", () => {
-    expect(createAgentChatTransport("org-round57").isReady()).toBe(true);
+    expect(createAgentChatTransport("org-round57").isReady?.()).toBe(true);
   });
 
   // execute 必须把 workflow prompt 原样转换为 ACP text content。

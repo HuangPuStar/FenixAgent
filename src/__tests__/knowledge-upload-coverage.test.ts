@@ -54,7 +54,7 @@ function resource(overrides: Partial<KnowledgeResourceRow> = {}): KnowledgeResou
 }
 
 class UploadProvider extends RagFlowKnowledgeProvider {
-  override async listResources() {
+  override async listResources(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["listResources"]>>> {
     throw new Error("provider unavailable");
   }
 }

@@ -89,7 +89,7 @@ describe("round58 通道绑定服务内存隔离", () => {
 
   // 查询缺失绑定时必须明确返回 undefined。
   test("读取缺失绑定返回 undefined", async () => {
-    channelBindingRepo.getById = mock(async () => null);
+    channelBindingRepo.getById = mock(async () => null) as never;
     await expect(getBinding("missing")).resolves.toBeUndefined();
   });
 
@@ -189,7 +189,7 @@ describe("round58 通道绑定服务内存隔离", () => {
   // 更新缺失项时不得触发写入。
   test("更新缺失项不写入", async () => {
     const update = mock(async () => undefined);
-    channelBindingRepo.getById = mock(async () => null);
+    channelBindingRepo.getById = mock(async () => null) as never;
     channelBindingRepo.update = update;
     await expect(updateBinding("missing", { enabled: false })).resolves.toBeUndefined();
     expect(update).not.toHaveBeenCalled();

@@ -3,7 +3,7 @@ import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { getTeamEngine } from "../services/workflow";
-import { resetAllStubs, stubAuthApi } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 
@@ -43,7 +43,7 @@ describe("workflow-runs 路由额外业务分支", () => {
     const response = await request("/workflow-runs/dry", post({}));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "VALIDATION_ERROR", message: "yaml or workflowId is required" },
     });
@@ -59,7 +59,7 @@ describe("workflow-runs 路由额外业务分支", () => {
     const response = await request("/workflow-runs/dry", post({ yaml: "name: [" }));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: WorkflowErrorCode.VALIDATION_ERROR, message: "invalid workflow yaml" },
     });
@@ -74,7 +74,7 @@ describe("workflow-runs 路由额外业务分支", () => {
     const response = await request("/workflow-runs", post({ yaml: "name: demo" }));
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: WorkflowErrorCode.RUN_NOT_FOUND, message: "source workflow missing" },
     });

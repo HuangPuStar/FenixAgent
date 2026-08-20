@@ -50,7 +50,7 @@ describe("机器连接轮询边界", () => {
         },
       );
       expect(reads).toBe(item.onlineOnRead);
-      expect(delays).toEqual(item.expectedDelays);
+      expect(delays).toEqual([...item.expectedDelays]);
     });
   }
 

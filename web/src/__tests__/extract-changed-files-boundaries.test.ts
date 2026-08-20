@@ -167,33 +167,46 @@ describe("extractChangedFiles 纯逻辑边界", () => {
   // 非 diff 内容不应阻止 rawInput 兜底。
   test("非 diff 内容使用 rawInput 兜底", () =>
     expect(
-      files([toolCall({ title: "Write", content: [{ type: "text", text: "完成" }], rawInput: { path: "a.ts" } })]),
+      files([
+        toolCall({
+          title: "Write",
+          content: [{ type: "content", content: { type: "text", text: "完成" } }],
+          rawInput: { path: "a.ts" },
+        }),
+      ]),
     ).toEqual([{ path: "a.ts", type: "write" }]));
 
   // diff 路径是最高优先级的信息源。
   test("diff 路径优先于 rawInput", () =>
     expect(
-      files([toolCall({ title: "Edit", content: [{ type: "diff", path: "diff.ts" }], rawInput: { path: "raw.ts" } })]),
+      files([
+        toolCall({
+          title: "Edit",
+          content: [{ type: "diff", path: "diff.ts", newText: "" }],
+          rawInput: { path: "raw.ts" },
+        }),
+      ]),
     ).toEqual([{ path: "diff.ts", type: "edit" }]));
 
   // Write 工具的 diff 也应映射为 write。
   test("Write 的 diff 映射为 write", () =>
-    expect(files([toolCall({ title: "Write", content: [{ type: "diff", path: "a.ts" }] })])).toEqual([
+    expect(files([toolCall({ title: "Write", content: [{ type: "diff", path: "a.ts", newText: "" }] })])).toEqual([
       { path: "a.ts", type: "write" },
     ]));
 
   // 未知工具的 diff 使用安全的 edit 默认类型。
   test("未知工具的 diff 默认 edit", () =>
-    expect(files([toolCall({ title: "Patch", content: [{ type: "diff", path: "a.ts" }] })])).toEqual([
+    expect(files([toolCall({ title: "Patch", content: [{ type: "diff", path: "a.ts", newText: "" }] })])).toEqual([
       { path: "a.ts", type: "edit" },
     ]));
 
   // 无路径的 diff 不应产生空路径记录。
-  test("忽略无路径 diff", () => expect(files([toolCall({ title: "Edit", content: [{ type: "diff" }] })])).toEqual([]));
+  test("忽略无路径 diff", () =>
+    expect(files([toolCall({ title: "Edit", content: [{ type: "diff", path: "", newText: "" }] })])).toEqual([]));
 
   // 空路径 diff 不应产生空路径记录。
   test("忽略空路径 diff", () =>
-    expect(files([toolCall({ title: "Edit", content: [{ type: "diff", path: "" }] })])).toEqual([]));
+    expect(files([toolCall({ title: "Edit", content: [{ type: "diff", path: "", newText: "" }] })])).toEqual([]));
 
   // 多个 diff 应逐一提取全部路径。
   test("提取多个 diff 路径", () =>
@@ -202,8 +215,8 @@ describe("extractChangedFiles 纯逻辑边界", () => {
         toolCall({
           title: "Edit",
           content: [
-            { type: "diff", path: "b.ts" },
-            { type: "diff", path: "a.ts" },
+            { type: "diff", path: "b.ts", newText: "" },
+            { type: "diff", path: "a.ts", newText: "" },
           ],
         }),
       ]),
@@ -219,8 +232,8 @@ describe("extractChangedFiles 纯逻辑边界", () => {
         toolCall({
           title: "Edit",
           content: [
-            { type: "diff", path: "a.ts" },
-            { type: "diff", path: "a.ts" },
+            { type: "diff", path: "a.ts", newText: "" },
+            { type: "diff", path: "a.ts", newText: "" },
           ],
         }),
       ]),
@@ -230,7 +243,11 @@ describe("extractChangedFiles 纯逻辑边界", () => {
   test("有效 diff 阻止 rawInput 兜底", () =>
     expect(
       files([
-        toolCall({ title: "Write", content: [{ type: "diff", path: "diff.ts" }], rawInput: { file_path: "raw.ts" } }),
+        toolCall({
+          title: "Write",
+          content: [{ type: "diff", path: "diff.ts", newText: "" }],
+          rawInput: { file_path: "raw.ts" },
+        }),
       ]),
     ).toEqual([{ path: "diff.ts", type: "write" }]));
 
@@ -258,7 +275,7 @@ describe("extractChangedFiles 纯逻辑边界", () => {
       files([
         toolCall({
           title: "Edit",
-          content: [{ type: "diff", path: "parent.ts" }],
+          content: [{ type: "diff", path: "parent.ts", newText: "" }],
           subEntries: [toolCall({ title: "Write", rawInput: { path: "child.ts" } })],
         }),
       ]),
@@ -349,10 +366,10 @@ describe("extractChangedFiles 纯逻辑边界", () => {
 
   // 输入中的 content 数组不应因提取过程被修改。
   test("不修改 diff 内容数组", () => {
-    const content: ToolCallData["content"] = [{ type: "diff", path: "a.ts" }];
+    const content: ToolCallData["content"] = [{ type: "diff", path: "a.ts", newText: "" }];
     const entries = [toolCall({ title: "Edit", content })];
     files(entries);
-    expect(content).toEqual([{ type: "diff", path: "a.ts" }]);
+    expect(content).toEqual([{ type: "diff", path: "a.ts", newText: "" }]);
   });
 
   // 输入中的 subEntries 数组不应因递归遍历被修改。

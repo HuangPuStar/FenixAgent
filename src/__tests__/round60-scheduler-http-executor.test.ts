@@ -4,7 +4,7 @@ import { httpExecutor } from "../services/scheduler/http-executor";
 
 const originalFetch = globalThis.fetch;
 
-function task(definition: unknown, timeoutSeconds: number | null = 1): ScheduledTaskV2Row {
+function task(definition: unknown, timeoutSeconds = 1): ScheduledTaskV2Row {
   return {
     id: "round60-http-task",
     userId: "user-1",
@@ -27,10 +27,12 @@ function task(definition: unknown, timeoutSeconds: number | null = 1): Scheduled
 }
 
 function installFetch(handler: (url: string, init: RequestInit) => Promise<Response>): void {
-  globalThis.fetch = async (input, init) => handler(String(input), init ?? {});
+  const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> =>
+    handler(String(input), init ?? {});
+  globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
 }
 
-function execute(definition: unknown, timeoutSeconds?: number | null) {
+function execute(definition: unknown, timeoutSeconds = 1) {
   return httpExecutor.execute({ task: task(definition, timeoutSeconds), triggeredBy: "manual" });
 }
 
@@ -88,7 +90,7 @@ describe("round60 scheduler HTTP executor", () => {
 
   // 调用方提供的鉴权头必须完整透传，不能被默认头覆盖。
   test("透传 Authorization 鉴权头", async () => {
-    let headers: HeadersInit | undefined;
+    let headers: RequestInit["headers"] | undefined;
     installFetch(async (_url, init) => {
       headers = init.headers;
       return new Response("authorized");
@@ -108,7 +110,7 @@ describe("round60 scheduler HTTP executor", () => {
 
   // 大小写不同的 content-type 已存在时也不得额外添加默认头。
   test("识别小写 content-type", async () => {
-    let headers: HeadersInit | undefined;
+    let headers: RequestInit["headers"] | undefined;
     installFetch(async (_url, init) => {
       headers = init.headers;
       return new Response("ok");
@@ -121,7 +123,7 @@ describe("round60 scheduler HTTP executor", () => {
 
   // 未提供 body 的非 GET 请求应显式传递 undefined，而不是串行化空值。
   test("缺少请求体时不串行化空值", async () => {
-    let body: BodyInit | null | undefined;
+    let body: RequestInit["body"] | null | undefined;
     installFetch(async (_url, init) => {
       body = init.body;
       return new Response("ok");
@@ -268,8 +270,8 @@ describe("round60 scheduler HTTP executor", () => {
       return new Response("ok");
     });
 
-    await execute({ url: "https://scheduler.invalid/first" }, null);
-    await execute({ url: "https://scheduler.invalid/second" }, null);
+    await execute({ url: "https://scheduler.invalid/first" });
+    await execute({ url: "https://scheduler.invalid/second" });
 
     expect(signals).toHaveLength(2);
     expect(signals[0]).not.toBe(signals[1]);

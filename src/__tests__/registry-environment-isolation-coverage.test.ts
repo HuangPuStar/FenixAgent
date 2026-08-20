@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ForbiddenError, NotFoundError } from "../errors";
+import type { EnvironmentRecord } from "../repositories/environment";
 import {
   generateEnvSecret,
   getOwnedEnvironment,
@@ -9,6 +10,33 @@ import {
 } from "../services/environment-core";
 import { normalizePayload } from "../services/transport";
 import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";
+
+function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
+  return {
+    id: "env-1",
+    name: "environment",
+    description: null,
+    workspacePath: "/workspace/env-1",
+    agentConfigId: null,
+    secret: "env-secret",
+    machineName: null,
+    directory: "/workspace/env-1",
+    branch: null,
+    gitRepoUrl: null,
+    maxSessions: 1,
+    workerType: "local",
+    capabilities: null,
+    status: "ready",
+    username: null,
+    userId: "user-a",
+    organizationId: "org-a",
+    autoStart: false,
+    lastPollAt: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   resetAllStubs();
@@ -92,7 +120,7 @@ describe("environment-core 的隔离、失败与响应边界", () => {
 
   // owner 写操作可以取得已授权环境。
   test("owner 写操作返回环境记录", async () => {
-    const env = { id: "env-1", organizationId: "org-a", userId: "user-a", agentConfigId: null };
+    const env = environment({ id: "env-1", organizationId: "org-a", userId: "user-a", agentConfigId: null });
     stubEnvironmentRepo({ getById: async () => env });
     await expect(getOwnedEnvironment("env-1", "org-a", "user-a", "owner")).resolves.toBe(env);
   });
@@ -113,46 +141,49 @@ describe("environment-core 的隔离、失败与响应边界", () => {
 
   // v1 DTO 必须将 Date 转为 Unix 秒。
   test("v1 响应转换轮询时间为 Unix 秒", () => {
-    const result = toResponse({
-      id: "env-1",
-      machineName: "m",
-      workspacePath: "/w",
-      branch: "main",
-      status: "ready",
-      username: "u",
-      lastPollAt: new Date("2024-01-01T00:00:00Z"),
-      workerType: "local",
-      capabilities: {},
-    });
+    const result = toResponse(
+      environment({
+        machineName: "m",
+        workspacePath: "/w",
+        branch: "main",
+        status: "ready",
+        username: "u",
+        lastPollAt: new Date("2024-01-01T00:00:00Z"),
+        workerType: "local",
+        capabilities: {},
+      }),
+    );
     expect(result.last_poll_at).toBe(1704067200);
   });
 
   // v1 DTO 对空轮询时间使用 null。
   test("v1 响应保留空轮询时间", () => {
-    const result = toResponse({
-      id: "env-1",
-      machineName: "m",
-      workspacePath: "/w",
-      branch: "main",
-      status: "ready",
-      username: "u",
-      lastPollAt: null,
-      workerType: "local",
-      capabilities: {},
-    });
+    const result = toResponse(
+      environment({
+        machineName: "m",
+        workspacePath: "/w",
+        branch: "main",
+        status: "ready",
+        username: "u",
+        lastPollAt: null,
+        workerType: "local",
+        capabilities: {},
+      }),
+    );
     expect(result.last_poll_at).toBeNull();
   });
 
   // Web DTO 统一缺失的可选字段，避免前端出现三态歧义。
   test("Web 响应将缺失可选字段规范化", () => {
-    const result = sanitizeResponse({
-      id: "env-1",
-      name: "dev",
-      workspacePath: "/w",
-      status: "ready",
-      createdAt: new Date(0),
-      updatedAt: new Date(0),
-    });
+    const result = sanitizeResponse(
+      environment({
+        name: "dev",
+        workspacePath: "/w",
+        status: "ready",
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      }),
+    );
     expect(result).toMatchObject({
       description: null,
       agent_config_id: null,

@@ -5,7 +5,7 @@ import { taskExecutionLogRepo } from "../repositories/task";
 import type { ScheduledTaskV2Row } from "../repositories/task-v2";
 import { scheduledTaskV2Repo } from "../repositories/task-v2";
 import { schedulerService } from "../services/scheduler";
-import { resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/tasks-v2")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");
@@ -43,8 +43,10 @@ function log(overrides: Partial<TaskExecutionLogRow> = {}): TaskExecutionLogRow 
     triggeredBy: "manual",
     skipReason: null,
     resultSummary: "完成",
-    createdAt: now,
-    ...overrides,
+    workspacePath: null,
+    workspaceName: null,
+    taskSnapshot: null,
+    createdAt: overrides.createdAt ?? now,
   };
 }
 
@@ -158,7 +160,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   test("列表返回空分页结果", async () => {
     scheduledTaskV2Repo.listByUserAndOrgPaged = async () => ({ rows: [], total: 0 });
 
-    expect(await (await request("/tasks/v2")).json()).toEqual({
+    expect(await readJson(await request("/tasks/v2"))).toEqual({
       success: true,
       data: { items: [], total: 0, page: 1, pageSize: 20 },
     });
@@ -219,9 +221,9 @@ describe("round55 Tasks V2 Web 路由", () => {
     });
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data).toEqual(
-      expect.objectContaining({ name: "新任务", type: "http", enabled: true }),
-    );
+    expect(await readJson(response)).toMatchObject({
+      data: expect.objectContaining({ name: "新任务", type: "http", enabled: true }),
+    });
   });
 
   // Agent 任务缺少 agentId 属于跨字段校验错误而非服务器故障。
@@ -234,7 +236,7 @@ describe("round55 Tasks V2 Web 路由", () => {
     });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
+    expect(await readJson(response)).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
 
   // 缺少必填名称必须在 HTTP schema 层拒绝，禁止调用创建仓储。
@@ -286,11 +288,11 @@ describe("round55 Tasks V2 Web 路由", () => {
 
   // 不存在任务必须映射为不泄露内部细节的 404。
   test("详情不存在返回 404", async () => {
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
 
     const response = await request("/tasks/v2/missing");
     expect(response.status).toBe(404);
-    expect((await response.json()).error).toEqual({ code: "not_found", message: "任务不存在" });
+    expect(await readJson(response)).toMatchObject({ error: { code: "not_found", message: "任务不存在" } });
   });
 
   // 更新名称应写入当前任务并返回更新后的数据。
@@ -299,7 +301,7 @@ describe("round55 Tasks V2 Web 路由", () => {
 
     const response = await json("/tasks/v2/task-1", "PUT", { name: "更新后" });
     expect(response.status).toBe(200);
-    expect((await response.json()).data.name).toBe("更新后");
+    expect(await readJson(response)).toMatchObject({ data: { name: "更新后" } });
   });
 
   // 修改任务类型是业务校验错误，必须映射为 400。
@@ -307,12 +309,12 @@ describe("round55 Tasks V2 Web 路由", () => {
     const response = await json("/tasks/v2/task-1", "PUT", { type: "agent" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("validation_error");
+    expect(await readJson(response)).toMatchObject({ error: { code: "validation_error" } });
   });
 
   // 更新不存在任务必须返回 404。
   test("更新不存在任务返回 404", async () => {
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
 
     expect((await json("/tasks/v2/missing", "PUT", { name: "新名称" })).status).toBe(404);
   });
@@ -331,7 +333,7 @@ describe("round55 Tasks V2 Web 路由", () => {
 
   // 删除成功必须返回统一的空 data 响应。
   test("删除任务返回空数据", async () => {
-    expect(await (await request("/tasks/v2/task-1", { method: "DELETE" })).json()).toEqual({
+    expect(await readJson(await request("/tasks/v2/task-1", { method: "DELETE" }))).toEqual({
       success: true,
       data: null,
     });
@@ -348,7 +350,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   test("切换任务返回禁用状态", async () => {
     scheduledTaskV2Repo.update = async (id, input) => task({ id, ...input });
 
-    expect(await (await request("/tasks/v2/task-1/toggle", { method: "POST" })).json()).toEqual({
+    expect(await readJson(await request("/tasks/v2/task-1/toggle", { method: "POST" }))).toEqual({
       success: true,
       data: { id: "task-1", enabled: false },
     });
@@ -357,7 +359,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   // 切换不存在任务必须不触发调度器并返回 404。
   test("切换不存在任务返回 404", async () => {
     let scheduled = false;
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
     schedulerService.schedule = () => {
       scheduled = true;
       return true;
@@ -372,13 +374,15 @@ describe("round55 Tasks V2 Web 路由", () => {
     const response = await request("/tasks/v2/task-1/trigger", { method: "POST" });
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data).toEqual({ status: "success", duration: 12, resultSummary: "已执行" });
+    expect(await readJson(response)).toMatchObject({
+      data: { status: "success", duration: 12, resultSummary: "已执行" },
+    });
   });
 
   // 手动触发不存在任务必须在执行器之前被拒绝。
   test("触发不存在任务不执行调度器", async () => {
     let executed = false;
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
     schedulerService.execute = async () => {
       executed = true;
       return { status: "success", duration: 0 };
@@ -403,7 +407,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   // 查询日志前必须验证任务在当前认证租户内存在。
   test("日志不存在任务不读取日志仓储", async () => {
     let listed = false;
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
     taskExecutionLogRepo.listByTaskPaged = async () => {
       listed = true;
       return { rows: [], total: 0 };
@@ -420,7 +424,7 @@ describe("round55 Tasks V2 Web 路由", () => {
       deletedTaskId = taskId;
     };
 
-    expect(await (await request("/tasks/v2/task-1/logs", { method: "DELETE" })).json()).toEqual({
+    expect(await readJson(await request("/tasks/v2/task-1/logs", { method: "DELETE" }))).toEqual({
       success: true,
       data: null,
     });
@@ -430,7 +434,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   // 清空不存在任务必须不删除任何日志。
   test("清空不存在任务不删除日志", async () => {
     let deleted = false;
-    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null;
+    scheduledTaskV2Repo.getByUserAndOrgAndId = async () => null as never;
     taskExecutionLogRepo.deleteByTask = async () => {
       deleted = true;
     };

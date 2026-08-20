@@ -120,11 +120,12 @@ describe("round43 Agent Sites Web 路由", () => {
     process.env.AGENT_SITES_BASE_URL = "https://agent-sites.test";
     process.env.AGENT_SITES_MASTER_KEY = "test-master-key";
     originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
+    const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
       requests.push({ url, init });
       return new Response(JSON.stringify(remoteResponse(url)), { headers: { "content-type": "application/json" } });
     };
+    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
     stubRouteDb();
     authenticate();
   });
@@ -272,12 +273,13 @@ describe("round43 Agent Sites Web 路由", () => {
   // 旧 token 吊销失败不应阻止申请新 token 并更新本地记录。
   test("重签 token 在吊销失败后继续", async () => {
     selectResults = [[app()]];
-    globalThis.fetch = async (input, init) => {
+    const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
       requests.push({ url, init });
       if (url.includes("token-old")) return new Response(JSON.stringify({ message: "gone" }), { status: 404 });
       return new Response(JSON.stringify(remoteResponse(url)), { headers: { "content-type": "application/json" } });
     };
+    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
     expect((await request(`/apps/${appId}/rotate-token`, { method: "POST" })).status).toBe(200);
     expect(updatedValues).toMatchObject({ platformToken: "token-new", platformTokenId: "token-new-id" });
   });

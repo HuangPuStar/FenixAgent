@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
+import { type DAGRunResult, WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { getTeamEngine } from "../services/workflow";
-import { resetAllStubs, stubAuthApi, stubPgStorageAdapter } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubPgStorageAdapter } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 
@@ -23,7 +23,7 @@ function authenticate(organizationId = "org-round40", userId = "user-round40") {
   setTestOrgContext({ organizationId, userId, role: "owner" });
 }
 
-function result(runId = "run-result", status = "SUCCESS") {
+function result(runId = "run-result", status: DAGRunResult["status"] = "SUCCESS"): DAGRunResult {
   return {
     runId,
     status,
@@ -73,7 +73,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 20 } });
+    expect(await readJson(response)).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 20 } });
     expect(listRuns).toHaveBeenCalledWith({ page: 1, pageSize: 20, status: undefined, q: undefined });
   });
 
@@ -96,7 +96,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs?page=0");
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("INVALID_PARAMS");
+    expect((await readJson(response)).error.code).toBe("INVALID_PARAMS");
     expect(listRuns).not.toHaveBeenCalled();
   });
 
@@ -107,7 +107,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs");
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "INTERNAL_ERROR", message: "Failed to list workflow runs" },
     });
@@ -128,7 +128,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-detail");
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.run_id).toBe("run-detail");
+    expect((await readJson(response)).data.run_id).toBe("run-detail");
     expect(current).toHaveBeenCalledWith("run-detail");
     expect(foreign).not.toHaveBeenCalled();
   });
@@ -142,7 +142,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-missing");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe(WorkflowErrorCode.RUN_NOT_FOUND);
+    expect((await readJson(response)).error.code).toBe(WorkflowErrorCode.RUN_NOT_FOUND);
   });
 
   // 非 WorkflowError 的详情失败需作为内部错误处理。
@@ -152,7 +152,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-failed");
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error).toEqual({ code: "INTERNAL_ERROR", message: "engine offline" });
+    expect((await readJson(response)).error).toEqual({ code: "INTERNAL_ERROR", message: "engine offline" });
   });
 
   // 事件读取没有 nodeId 时仍应显式传递未定义筛选条件。
@@ -162,7 +162,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-events/events");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
     expect(getEvents).toHaveBeenCalledWith("run-events", { nodeId: undefined });
   });
 
@@ -175,21 +175,21 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-events-missing/events?nodeId=private-node");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("events missing");
+    expect((await readJson(response)).error.message).toBe("events missing");
   });
 
   // 节点输出应将 runId 和 nodeId 分别传递给同一组织 engine。
   test("节点输出按运行和节点读取", async () => {
     const getOutput = spyOn(getTeamEngine("org-round40"), "getOutput").mockResolvedValue({
       stdout: "completed",
-      stderr: "",
+      json: null,
       exit_code: 0,
     });
 
     const response = await request("/workflow-runs/run-output/nodes/node-output/output");
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.stdout).toBe("completed");
+    expect((await readJson(response)).data.stdout).toBe("completed");
     expect(getOutput).toHaveBeenCalledWith("run-output", "node-output");
   });
 
@@ -200,7 +200,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-output-error/nodes/node/output");
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error.code).toBe("INTERNAL_ERROR");
+    expect((await readJson(response)).error.code).toBe("INTERNAL_ERROR");
   });
 
   // 待审批查询返回当前运行的审批项而不访问其他组织 engine。
@@ -213,7 +213,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-approval/approvals");
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data).toHaveLength(1);
+    expect((await readJson(response)).data).toHaveLength(1);
     expect(current).toHaveBeenCalledWith("run-approval");
     expect(foreign).not.toHaveBeenCalled();
   });
@@ -230,9 +230,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
 
   // 审批成功需要透传可选附加数据。
   test("审批传递 token 和附加数据", async () => {
-    const approveNode = spyOn(getTeamEngine("org-round40"), "approveNode").mockResolvedValue({
-      spawnedInstanceIds: [],
-    });
+    const approveNode = spyOn(getTeamEngine("org-round40"), "approveNode").mockResolvedValue(result());
 
     const response = await request(
       "/workflow-runs/run-approval/approve",
@@ -240,7 +238,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(approveNode).toHaveBeenCalledWith("run-approval", "approve", "token-approval", { decision: "yes" });
   });
 
@@ -256,7 +254,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     );
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe(WorkflowErrorCode.VALIDATION_ERROR);
+    expect((await readJson(response)).error.code).toBe(WorkflowErrorCode.VALIDATION_ERROR);
   });
 
   // 取消成功时应仅转交给认证组织的 engine。
@@ -280,7 +278,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-cancel-missing/cancel", post({}));
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("cannot cancel missing");
+    expect((await readJson(response)).error.message).toBe("cannot cancel missing");
   });
 
   // 恢复必须带上认证用户，确保配额归属到实际触发者。
@@ -291,7 +289,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-recover/recover", post({ yaml: "name: recovered" }));
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.runId).toBe("run-recovered");
+    expect((await readJson(response)).data.runId).toBe("run-recovered");
     expect(recover).toHaveBeenCalledWith("run-recover", "name: recovered", { userId: "user-recover" });
   });
 
@@ -314,7 +312,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     const response = await request("/workflow-runs/run-recover-missing/recover", post({ yaml: "name: missing" }));
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe(WorkflowErrorCode.RUN_NOT_FOUND);
+    expect((await readJson(response)).error.code).toBe(WorkflowErrorCode.RUN_NOT_FOUND);
   });
 
   // 重跑需要传递起始节点及当前用户配额上下文。
@@ -328,7 +326,7 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     );
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.status).toBe("FAILED");
+    expect((await readJson(response)).data.status).toBe("FAILED");
     expect(rerunFrom).toHaveBeenCalledWith("run-source", "name: rerun", "deploy", { userId: "user-rerun" });
   });
 
@@ -354,6 +352,6 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     );
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("invalid rerun node");
+    expect((await readJson(response)).error.message).toBe("invalid rerun node");
   });
 });

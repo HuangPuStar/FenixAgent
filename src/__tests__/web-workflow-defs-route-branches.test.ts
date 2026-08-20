@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const workflowDefsRoute = (await import("../routes/web/workflow-defs")).default;
 const WORKFLOW_BASE_DIR = join(process.cwd(), ".agents", "workflows");
@@ -106,7 +106,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/workflow-1/draft", { yaml: "name: saved-draft" }, "PUT");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(await Bun.file(join(testStoragePath, "draft.yaml")).text()).toBe("name: saved-draft");
     expect(inserted).toHaveLength(1);
   });
@@ -118,7 +118,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/other-workflow/versions");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
   });
 
   // 非数字版本号必须由路由显式拒绝，避免传入仓储查询。
@@ -126,7 +126,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/workflow-1/versions/not-a-number");
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
+    expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
   });
 
   // 指定版本前先验证工作流组织归属，跨组织资源统一映射为 404。
@@ -136,7 +136,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/other-workflow/versions/1");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Workflow not found");
+    expect((await readJson(response)).error.message).toBe("Workflow not found");
   });
 
   // 已授权工作流存在对应 YAML 文件时，应导出请求版本内容和版本号。
@@ -148,7 +148,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/workflow-1/versions/2");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: { workflowId: "workflow-1", version: 2, yaml: "name: exported-workflow" },
     });
@@ -161,7 +161,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/workflow-1/versions/2");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Version not found");
+    expect((await readJson(response)).error.message).toBe("Version not found");
   });
 
   // 设置最新版本必须验证工作流属于当前组织，仓储错误应保留为受控 500 响应。
@@ -171,7 +171,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/other-workflow/versions/2/set-latest", {});
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error.code).toBe("INTERNAL_ERROR");
+    expect((await readJson(response)).error.code).toBe("INTERNAL_ERROR");
   });
 
   // 设置不存在版本时不应更新工作流 latestVersion。
@@ -181,7 +181,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/workflow-1/versions/99/set-latest", {});
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error.message).toBe("Version 99 not found");
+    expect((await readJson(response)).error.message).toBe("Version 99 not found");
   });
 
   // 参数定义读取必须先完成组织隔离检查。
@@ -191,7 +191,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/other-workflow/params");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Workflow not found");
+    expect((await readJson(response)).error.message).toBe("Workflow not found");
   });
 
   // 参数定义的版本 query 必须满足正整数 Zod 约束。
@@ -208,7 +208,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/workflow-1/params?version=2");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Version not found");
+    expect((await readJson(response)).error.message).toBe("Version not found");
   });
 
   // 创建触发器前必须验证工作流归属，避免向其他组织资源写入触发器。
@@ -218,7 +218,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/other-workflow/triggers", { type: "webhook" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // 触发器请求 config 不是对象时必须由 Zod 在服务调用前拒绝。
@@ -235,7 +235,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/other-workflow/triggers");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // 删除触发器时服务层必须拒绝不属于当前组织的触发器。
@@ -245,7 +245,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await request("/workflow-defs/workflow-1/triggers/trigger-1", { method: "DELETE" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Trigger not found");
+    expect((await readJson(response)).error.message).toBe("Trigger not found");
   });
 
   // 重新生成哈希不得越过组织边界读取或更新其他组织触发器。
@@ -255,7 +255,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/workflow-1/triggers/trigger-1/regenerate", {});
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // 启用触发器必须保留服务层组织隔离，即使 URL 中包含任意 workflowId。
@@ -265,7 +265,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/workflow-1/triggers/trigger-1/enable", {});
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Trigger not found");
+    expect((await readJson(response)).error.message).toBe("Trigger not found");
   });
 
   // 禁用触发器同样必须拒绝其他组织记录，不能因路径参数而绕过隔离。
@@ -275,7 +275,7 @@ describe("Web Workflow Definition Routes 补充分支", () => {
     const response = await jsonRequest("/workflow-defs/workflow-1/triggers/trigger-1/disable", {});
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.message).toBe("Trigger not found");
+    expect((await readJson(response)).error.message).toBe("Trigger not found");
   });
 
   // action 协议不认识的动作必须走统一验证错误映射，而不是落入默认业务分支。

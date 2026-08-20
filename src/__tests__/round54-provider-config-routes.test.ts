@@ -78,7 +78,7 @@ function installDefaults() {
 }
 
 function installFetch(response: Response | Error, seen?: { url: string; init: RequestInit | undefined }) {
-  globalThis.fetch = async (input, init) => {
+  const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     if (seen) {
       seen.url = input.toString();
       seen.init = init;
@@ -86,6 +86,7 @@ function installFetch(response: Response | Error, seen?: { url: string; init: Re
     if (response instanceof Error) throw response;
     return response;
   };
+  globalThis.fetch = Object.assign(fetchStub, { preconnect: globalThis.fetch.preconnect });
 }
 
 describe("round54 Provider 配置 Web 路由", () => {

@@ -20,8 +20,8 @@ describe("round29 缓存隔离与资源释放", () => {
     await first.set("workflow-status", `running-${index}`);
     await second.set("workflow-status", `finished-${index}`);
 
-    expect(await first.get("workflow-status")).toBe(`running-${index}`);
-    expect(await second.get("workflow-status")).toBe(`finished-${index}`);
+    expect(String(await first.get("workflow-status"))).toBe(`running-${index}`);
+    expect(String(await second.get("workflow-status"))).toBe(`finished-${index}`);
   });
 
   // 同一工作流状态更新必须以最后一次写入为准。
@@ -32,7 +32,7 @@ describe("round29 缓存隔离与资源释放", () => {
     await cache.set("status", "running");
     await cache.set("status", "completed");
 
-    expect(await cache.get("status")).toBe("completed");
+    expect(String(await cache.get("status"))).toBe("completed");
   });
 
   // 删除过期任务不能影响同一租户中的其他任务状态。
@@ -44,7 +44,9 @@ describe("round29 缓存隔离与资源释放", () => {
     expect(await cache.delete("expired-task")).toBe(true);
 
     expect(await cache.get("expired-task")).toBeUndefined();
-    expect(await cache.get("active-task")).toEqual({ id: `active-${index}`, status: "running" });
+    expect(JSON.stringify(await cache.get("active-task"))).toBe(
+      JSON.stringify({ id: `active-${index}`, status: "running" }),
+    );
   });
 
   // 重复删除已释放资源必须安全，避免清理路径掩盖原始异常。

@@ -50,7 +50,7 @@ function pagedDb(rows: unknown[], total: string | number) {
   const whereRows = mock(() => ({ orderBy }));
   const whereCount = mock(() => Promise.resolve([{ total }]));
   const from = mock(() => ({ where: whereCount }));
-  const select = mock(() => ({ from: mock(() => ({ where: whereRows })) }));
+  const select = mock<() => unknown>(() => ({ from: mock(() => ({ where: whereRows })) }));
   select.mockImplementationOnce(() => ({ from }));
   stubDb({ select });
   return { limit, offset };

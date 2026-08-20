@@ -102,8 +102,8 @@ class ServiceProvider extends RagFlowKnowledgeProvider {
     return { chunks: [], total: 0, docAggs: [] };
   }
 
-  override async readResource() {
-    return { content: "正文", sourceName: "guide.md", sourceType: "url" };
+  override async readResource(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["readResource"]>>> {
+    return { resourceId: "remote-resource-1", content: "正文", title: "guide.md", docType: "url" };
   }
 
   override async generateKnowledgeGraph(input: Parameters<RagFlowKnowledgeProvider["generateKnowledgeGraph"]>[0]) {
@@ -114,7 +114,7 @@ class ServiceProvider extends RagFlowKnowledgeProvider {
   override async getKnowledgeGraph(input: Parameters<RagFlowKnowledgeProvider["getKnowledgeGraph"]>[0]) {
     this.graphInputs.push(input);
     if (this.graphFailure) throw this.graphFailure;
-    return { graph: { nodes: [{ id: "node-1", label: "节点", type: "entity" }], edges: [] } };
+    return { graph: { nodes: [{ id: "node-1", name: "节点", label: "节点", entity_type: "entity" }], edges: [] } };
   }
 
   override async deleteKnowledgeGraph(input: Parameters<RagFlowKnowledgeProvider["deleteKnowledgeGraph"]>[0]) {
@@ -148,11 +148,13 @@ const originals = {
 
 function installResourceStore(rows: KnowledgeResourceRow[]) {
   knowledgeBaseRepo.update = mock(async () => undefined);
-  knowledgeResourceRepo.getById = mock(async (id) => rows.find((row) => row.id === id) ?? null);
+  knowledgeResourceRepo.getById = mock(
+    async (id: string) => rows.find((row) => row.id === id) ?? null,
+  ) as unknown as typeof knowledgeResourceRepo.getById;
   knowledgeResourceRepo.getBySourceName = mock(
-    async (knowledgeBaseId, sourceName) =>
+    async (knowledgeBaseId: string, sourceName: string) =>
       rows.find((row) => row.knowledgeBaseId === knowledgeBaseId && row.sourceName === sourceName) ?? null,
-  );
+  ) as unknown as typeof knowledgeResourceRepo.getBySourceName;
   knowledgeResourceRepo.create = mock(async (input) => {
     const created = resource({ ...input, id: input.id ?? `resource-${rows.length + 1}` });
     rows.push(created);
@@ -403,7 +405,7 @@ describe("第35轮知识服务真实业务边界", () => {
     ["图谱删除", deleteKnowledgeGraphForKb],
     ["图谱轮询", pollKnowledgeGraphProgressForKb],
   ])("%s拒绝不存在知识库", async (_caseName, action) => {
-    knowledgeBaseRepo.getById = mock(async () => null);
+    knowledgeBaseRepo.getById = mock(async () => null) as unknown as typeof knowledgeBaseRepo.getById;
     setKnowledgeRuntimeProviderForTesting(new ServiceProvider());
 
     await expect(action({ organizationId: "org-1", knowledgeBaseId: "missing", userId: "user-1" })).rejects.toThrow(

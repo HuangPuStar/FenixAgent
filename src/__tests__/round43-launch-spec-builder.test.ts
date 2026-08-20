@@ -365,7 +365,7 @@ describe("round43 launch spec builder 真实业务语义", () => {
   test("extraEnv 覆盖 Langfuse 配置", async () => {
     setConfig({ langfusePublicKey: "configured-public" } as never);
     const spec = await build({}, { extraEnv: { LANGFUSE_PUBLIC_KEY: "environment-public" } });
-    expect(spec.env.LANGFUSE_PUBLIC_KEY).toBe("environment-public");
+    expect(spec.env?.LANGFUSE_PUBLIC_KEY).toBe("environment-public");
   });
 
   // 未启用 Hindsight 时保留用户的普通 agent extra，不读取全局敏感环境变量。
@@ -376,6 +376,6 @@ describe("round43 launch spec builder 真实业务语义", () => {
       { agentConfig: agentConfig({ extra: { engine: "ccb", plugin: [["other", { enabled: true }]] } }) },
     );
     expect(spec.agent.extra).toEqual({ engine: "ccb", plugin: [["other", { enabled: true }]] });
-    expect(spec.env.HINDSIGHT_API_URL).toBeUndefined();
+    expect(spec.env?.HINDSIGHT_API_URL).toBeUndefined();
   });
 });

@@ -12,7 +12,7 @@ function tool(overrides: Partial<ToolCallData> = {}): ToolCallData {
     id: "tool-ssr",
     title: "Read",
     status: "complete",
-    kind: "read",
+    kind: "read-file",
     rawInput: { file_path: "src/app.ts" },
     rawOutput: { content: "export const answer = 42;" },
     ...overrides,
@@ -62,13 +62,13 @@ describe("ToolCallRow 服务端渲染", () => {
     const html = renderTool(
       tool({
         title: "Delete",
-        kind: "delete",
+        kind: "unknown",
         status: "waiting_for_confirmation",
         permissionRequest: {
           requestId: "permission-ssr",
           options: [
-            { optionId: "allow", name: "允许", kind: "allow" },
-            { optionId: "deny", name: "拒绝", kind: "deny" },
+            { optionId: "allow", name: "允许", kind: "allow_once" },
+            { optionId: "deny", name: "拒绝", kind: "reject_once" },
           ],
         },
       }),

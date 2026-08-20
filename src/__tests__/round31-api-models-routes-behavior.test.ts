@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const apiModelsRoute = (await import("../routes/api/models")).default;
 
@@ -100,7 +100,7 @@ describe("API Models Routes round 31", () => {
   // Provider 列表默认使用第一页和二十条分页参数。
   test("uses default provider pagination", async () => {
     const res = await request("/api/models/providers");
-    expect(await res.json()).toEqual({ items: [], total: 0, page: 1, pageSize: 20 });
+    expect(await readJson(res)).toEqual({ items: [], total: 0, page: 1, pageSize: 20 });
   });
 
   // Provider 列表应在第二页截取正确的项目。
@@ -113,14 +113,19 @@ describe("API Models Routes round 31", () => {
       ],
     });
     const res = await request("/api/models/providers?page=2&pageSize=2");
-    expect(await res.json()).toMatchObject({ total: 3, page: 2, pageSize: 2, items: [{ id: "p-3", name: "three" }] });
+    expect(await readJson(res)).toMatchObject({
+      total: 3,
+      page: 2,
+      pageSize: 2,
+      items: [{ id: "p-3", name: "three" }],
+    });
   });
 
   // Provider 列表超出末页时应返回空项目而保留总数。
   test("returns an empty provider page beyond the result set", async () => {
     stubConfigPg({ listProviders: async () => [{ ...provider(), modelCount: 0 }] });
     const res = await request("/api/models/providers?page=3&pageSize=1");
-    expect(await res.json()).toMatchObject({ items: [], total: 1, page: 3, pageSize: 1 });
+    expect(await readJson(res)).toMatchObject({ items: [], total: 1, page: 3, pageSize: 1 });
   });
 
   // Provider 列表 DTO 应把缺失的可选字段标准化为 null 或零。
@@ -129,7 +134,7 @@ describe("API Models Routes round 31", () => {
       listProviders: async () => [{ id: "p", name: "minimal", protocol: "openai", resourceAccess: access() }],
     });
     const res = await request("/api/models/providers");
-    expect(await res.json()).toMatchObject({ items: [{ displayName: null, baseUrl: null, modelCount: 0 }] });
+    expect(await readJson(res)).toMatchObject({ items: [{ displayName: null, baseUrl: null, modelCount: 0 }] });
   });
 
   // Provider 分页页码不能小于一。
@@ -184,7 +189,7 @@ describe("API Models Routes round 31", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "openai" }),
     });
-    expect(await res.json()).toEqual({ error: { code: "CONFLICT", message: "Provider 'openai' already exists" } });
+    expect(await readJson(res)).toEqual({ error: { code: "CONFLICT", message: "Provider 'openai' already exists" } });
   });
 
   // 创建 Provider 的可空字段应通过请求验证并继续执行重复名称检查。
@@ -214,7 +219,9 @@ describe("API Models Routes round 31", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "new" }),
     });
-    expect(await res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: "Provider could not be reloaded" } });
+    expect(await readJson(res)).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "Provider could not be reloaded" },
+    });
   });
 
   // 创建 Provider 时服务层业务异常应保留状态和错误码。
@@ -229,7 +236,7 @@ describe("API Models Routes round 31", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "new" }),
     });
-    expect(await res.json()).toEqual({ error: { code: "FORBIDDEN", message: "tenant cannot create providers" } });
+    expect(await readJson(res)).toEqual({ error: { code: "FORBIDDEN", message: "tenant cannot create providers" } });
   });
 
   // 创建 Provider 时未知异常应映射成内部错误。
@@ -244,13 +251,13 @@ describe("API Models Routes round 31", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "new" }),
     });
-    expect(await res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: "storage unavailable" } });
+    expect(await readJson(res)).toEqual({ error: { code: "INTERNAL_ERROR", message: "storage unavailable" } });
   });
 
   // Provider 详情不存在时应返回资源标识对应的错误消息。
   test("returns not found for an unknown provider detail", async () => {
     const res = await request("/api/models/providers/missing");
-    expect(await res.json()).toEqual({ error: { code: "NOT_FOUND", message: "Provider 'missing' not found" } });
+    expect(await readJson(res)).toEqual({ error: { code: "NOT_FOUND", message: "Provider 'missing' not found" } });
   });
 
   // Provider 详情 DTO 不应输出模型内部 options 字段。
@@ -270,8 +277,8 @@ describe("API Models Routes round 31", () => {
         ]),
     });
     const res = await request("/api/models/providers/provider-a");
-    const json = await res.json();
-    expect("options" in json.models[0]).toBe(false);
+    const json = await readJson(res);
+    expect(JSON.stringify(json)).not.toContain('"options"');
   });
 
   // Provider 详情应将缺失模型字段标准化为 null。
@@ -291,7 +298,7 @@ describe("API Models Routes round 31", () => {
         ]),
     });
     const res = await request("/api/models/providers/provider-a");
-    expect(await res.json()).toMatchObject({
+    expect(await readJson(res)).toMatchObject({
       models: [{ displayName: null, modalities: null, limitConfig: null, cost: null }],
     });
   });
@@ -357,7 +364,7 @@ describe("API Models Routes round 31", () => {
     const deleteProviderById = mock(async () => true);
     stubConfigPg({ deleteProviderById });
     const res = await request("/api/models/providers/provider-a", { method: "DELETE" });
-    expect(await res.json()).toEqual({ id: "provider-a", deleted: true });
+    expect(await readJson(res)).toEqual({ id: "provider-a", deleted: true });
     expect(deleteProviderById).toHaveBeenCalledWith(
       { organizationId: "org-a", userId: "user-a", role: "owner" },
       "provider-a",
@@ -375,11 +382,11 @@ describe("API Models Routes round 31", () => {
   test("maps provider deletion business errors", async () => {
     stubConfigPg({
       deleteProviderById: async () => {
-        throw new NotFoundError("Provider", "gone");
+        throw new NotFoundError("gone");
       },
     });
     const res = await request("/api/models/providers/provider-a", { method: "DELETE" });
-    expect(await res.json()).toEqual({ error: { code: "NOT_FOUND", message: "Provider" } });
+    expect(await readJson(res)).toEqual({ error: { code: "NOT_FOUND", message: "Provider" } });
   });
 
   // Model 列表必须使用当前认证租户读取 Provider。
@@ -419,7 +426,7 @@ describe("API Models Routes round 31", () => {
         ]),
     });
     const res = await request("/api/models/providers/provider-a/models?page=2&pageSize=1");
-    expect(await res.json()).toMatchObject({
+    expect(await readJson(res)).toMatchObject({
       total: 2,
       items: [{ providerId: "provider-a", providerName: "openai", id: "m2" }],
     });
@@ -567,7 +574,7 @@ describe("API Models Routes round 31", () => {
         ]),
     });
     const res = await request("/api/models/providers/provider-a/models/m");
-    expect(await res.json()).toMatchObject({ options: null });
+    expect(await readJson(res)).toMatchObject({ options: null });
   });
 
   // Model 详情 DTO 应保留对象类型 options。
@@ -587,7 +594,7 @@ describe("API Models Routes round 31", () => {
         ]),
     });
     const res = await request("/api/models/providers/provider-a/models/m");
-    expect(await res.json()).toMatchObject({ options: { temperature: 0.2 } });
+    expect(await readJson(res)).toMatchObject({ options: { temperature: 0.2 } });
   });
 
   // Model 详情在 Provider 不存在时应返回未找到。
@@ -721,7 +728,7 @@ describe("API Models Routes round 31", () => {
     const removeModelById = mock(async () => true);
     stubConfigPg({ assertProviderInternalWritableById: async () => provider([model]), removeModelById });
     const res = await request("/api/models/providers/provider-a/models/m", { method: "DELETE" });
-    expect(await res.json()).toEqual({ providerId: "provider-a", id: "m", modelId: "gpt", deleted: true });
+    expect(await readJson(res)).toEqual({ providerId: "provider-a", id: "m", modelId: "gpt", deleted: true });
     expect(removeModelById).toHaveBeenCalledWith(
       { organizationId: "org-a", userId: "user-a", role: "owner" },
       "provider-a",
@@ -747,6 +754,6 @@ describe("API Models Routes round 31", () => {
       },
     });
     const res = await request("/api/models/providers/provider-a/models/m", { method: "DELETE" });
-    expect(await res.json()).toEqual({ error: { code: "FORBIDDEN", message: "shared provider is read-only" } });
+    expect(await readJson(res)).toEqual({ error: { code: "FORBIDDEN", message: "shared provider is read-only" } });
   });
 });

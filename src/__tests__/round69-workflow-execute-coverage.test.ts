@@ -96,7 +96,7 @@ describe("workflow-execute 工作流执行真实编排", () => {
     const result = await executeWorkflow(
       organizationId,
       workflowId,
-      { inputs: { ticket: "T-1" }, mode: "sync" },
+      { inputs: { ticket: "T-1" }, mode: "sync", timeout: 30_000 },
       "user-1",
     );
 
@@ -127,7 +127,7 @@ describe("workflow-execute 工作流执行真实编排", () => {
       exit_code: 0,
     });
 
-    const result = await executeWorkflow(organizationId, workflowId, { mode: "sync" });
+    const result = await executeWorkflow(organizationId, workflowId, { mode: "sync", timeout: 30_000 });
 
     expect(result).toEqual(expect.objectContaining({ status: "SUCCESS", output: { result: "stored" } }));
     expect(getOutput).toHaveBeenCalledWith("run-workflow-execute", "finish");
@@ -141,7 +141,7 @@ describe("workflow-execute 工作流执行真实编排", () => {
       result: Promise.resolve(runResult("CANCELLED")),
     });
 
-    const result = await executeWorkflow(organizationId, workflowId, { mode: "sync" });
+    const result = await executeWorkflow(organizationId, workflowId, { mode: "sync", timeout: 30_000 });
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -159,7 +159,7 @@ describe("workflow-execute 工作流执行真实编排", () => {
       result: Promise.resolve(runResult("SUCCESS")),
     });
 
-    await expect(executeWorkflow(organizationId, workflowId, { mode: "async" })).resolves.toEqual({
+    await expect(executeWorkflow(organizationId, workflowId, { mode: "async", timeout: 30_000 })).resolves.toEqual({
       runId: "run-workflow-execute",
       version: 2,
     });

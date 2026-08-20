@@ -29,6 +29,24 @@ function successfulJson(data: unknown): Response {
   return new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
 }
 
+const remoteApp = {
+  id: "app-1",
+  name: "默认应用",
+  type: "pocketbase" as const,
+  port: 8090,
+  status: "running",
+  api_path: "/api",
+  created_at: "2026-08-19T00:00:00.000Z",
+};
+
+const remoteToken = {
+  token_id: "token-1",
+  app_id: "app-1",
+  token: "opaque",
+  status: "active",
+  issued_at: "2026-08-19T00:00:00.000Z",
+};
+
 function capturedHeaders(index = 0): Headers {
   return new Headers(requests[index]?.init?.headers);
 }
@@ -37,12 +55,13 @@ beforeEach(() => {
   process.env.AGENT_SITES_BASE_URL = "https://agent-sites.test";
   process.env.AGENT_SITES_MASTER_KEY = "test-master-key";
   requests = [];
-  responseFactory = () => successfulJson({ data: {} });
+  responseFactory = () => successfulJson({ data: remoteApp });
   originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
+  const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     requests.push({ url: input.toString(), init });
     return responseFactory();
   };
+  globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
 });
 
 afterEach(() => {
@@ -85,8 +104,8 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // 创建默认应用不得擅自标记为 custom 类型。
   test("创建默认 PocketBase 应用", async () => {
-    responseFactory = () => successfulJson({ data: { id: "app-1", type: "pocketbase" } });
-    await expect(createRemoteApp("默认应用")).resolves.toEqual({ id: "app-1", type: "pocketbase" });
+    responseFactory = () => successfulJson({ data: remoteApp });
+    await expect(createRemoteApp("默认应用")).resolves.toEqual(remoteApp);
     expect(requests[0]?.url).toBe("https://agent-sites.test/api/apps");
     expect(requests[0]?.init?.method).toBe("POST");
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ name: "默认应用" });
@@ -126,12 +145,8 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // token 申请只发送目标应用标识。
   test("申请平台令牌传递应用标识", async () => {
-    responseFactory = () => successfulJson({ data: { token_id: "token-1", app_id: "app-1", token: "opaque" } });
-    await expect(issuePlatformToken("app-1")).resolves.toEqual({
-      token_id: "token-1",
-      app_id: "app-1",
-      token: "opaque",
-    });
+    responseFactory = () => successfulJson({ data: remoteToken });
+    await expect(issuePlatformToken("app-1")).resolves.toEqual(remoteToken);
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ app_id: "app-1" });
   });
 
@@ -285,11 +300,12 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // 客户端中断应转成 499 而非误报平台故障。
   test("代理将 AbortError 映射为客户端关闭", async () => {
-    globalThis.fetch = async () => {
+    const fetchStub = async (): Promise<never> => {
       const error = new Error("aborted");
       error.name = "AbortError";
       throw error;
     };
+    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
     const response = await proxyToAgentSites("app-1", "/api", new Request("https://rcs.test/source"));
     expect(response.status).toBe(499);
     expect(response.statusText).toBe("Client Closed Request");
@@ -297,9 +313,10 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // 未知连接失败必须映射为受控网关错误。
   test("代理将连接失败映射为网关错误", async () => {
-    globalThis.fetch = async () => {
+    const fetchStub = async (): Promise<never> => {
       throw new Error("connection refused");
     };
+    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
     const response = await proxyToAgentSites("app-1", "/api", new Request("https://rcs.test/source"));
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({
@@ -309,9 +326,10 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // 非 Error 异常也必须安全转换为可返回的网关错误。
   test("代理处理非 Error 失败", async () => {
-    globalThis.fetch = async () => {
+    const fetchStub = async (): Promise<never> => {
       throw "offline";
     };
+    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
     const response = await proxyToAgentSites("app-1", "/api", new Request("https://rcs.test/source"));
     await expect(response.json()).resolves.toEqual({
       error: { type: "bad_gateway", message: "Agent Sites unreachable: offline" },

@@ -65,13 +65,13 @@ function jsonRequest(path: string, method: string, body: Record<string, unknown>
 }
 
 class RouteProvider extends RagFlowKnowledgeProvider {
-  downloadResult: { content: string; contentType: string; fileName: string } | null = null;
+  downloadResult: Awaited<ReturnType<RagFlowKnowledgeProvider["downloadResource"]>> = null;
   throwOnEnabled = false;
   throwOnReparse = false;
   throwOnChunks = false;
   throwOnSwitch = false;
 
-  override async downloadResource() {
+  override async downloadResource(): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["downloadResource"]>>> {
     return this.downloadResult;
   }
 
@@ -110,7 +110,7 @@ class RuntimeProvider extends RagFlowKnowledgeProvider {
 
   override async getKnowledgeGraph() {
     if (this.throwOnGraph) throw new Error("graph unavailable");
-    return { graph: { nodes: [{ id: "node-1" }], edges: [] } };
+    return { graph: { nodes: [{ id: "node-1", name: "节点", label: "节点", entity_type: "entity" }], edges: [] } };
   }
 
   override async deleteKnowledgeGraph() {
@@ -165,7 +165,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     form.append("files", "not-a-file");
     const response = await request("/knowledgeBases/kb-1/resources/upload", { method: "POST", body: form });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [] } });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: { items: [] } });
   });
 
   // URL 资源预览应保留原地址作为重定向目标。
@@ -181,7 +181,11 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
   // 远端资源可在无本地文件时由 provider 返回预览内容。
   test("远端资源预览转发 provider 下载内容", async () => {
     const provider = new RouteProvider();
-    provider.downloadResult = { content: "remote content", contentType: "text/plain", fileName: "remote.txt" };
+    provider.downloadResult = {
+      content: new Blob(["remote content"]).stream(),
+      contentType: "text/plain",
+      fileName: "remote.txt",
+    };
     setKnowledgeProviderForTesting(provider);
     knowledgeResourceRepo.getById = mock(async () => resource({ sourceType: "ragflow", sourcePath: null }));
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
@@ -198,7 +202,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/file");
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NO_LOCAL_FILE" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NO_LOCAL_FILE" } });
   });
 
   // PDF 转换在本地源文件缺失时应映射为转换失败。
@@ -208,7 +212,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     );
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/pdf");
     expect(response.status).toBe(500);
-    expect(await response.json()).toMatchObject({ error: { code: "CONVERSION_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "CONVERSION_ERROR" } });
   });
 
   // PDF 转换只接受 Office 文档，普通文本不应触发转换程序。
@@ -219,15 +223,15 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/pdf");
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_OFFICE_FILE" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_OFFICE_FILE" } });
   });
 
   // 资源不存在时不能调用资源启用 provider。
   test("资源启用拒绝不存在的资源", async () => {
-    knowledgeResourceRepo.getById = mock(async () => null);
+    knowledgeResourceRepo.getById = mock(async () => null) as unknown as typeof knowledgeResourceRepo.getById;
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/enabled", "PATCH", { enabled: true });
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // provider 失败应映射为资源启用失败而不是泄露成功响应。
@@ -239,7 +243,9 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/enabled", "PATCH", { enabled: true });
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "TOGGLE_FAILED", message: "toggle unavailable" } });
+    expect((await response.json()) as unknown).toMatchObject({
+      error: { code: "TOGGLE_FAILED", message: "toggle unavailable" },
+    });
   });
 
   // 重试解析遇到跨组织知识库时必须隐藏资源存在性。
@@ -248,7 +254,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ organizationId: "org-2" }));
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/reparse", "POST", { delete: false });
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 重试解析 provider 失败时不应修改本地 processing 状态。
@@ -262,7 +268,9 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await jsonRequest("/knowledgeBases/kb-1/resources/resource-1/reparse", "POST", { delete: true });
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { code: "REPARSE_FAILED", message: "reparse unavailable" } });
+    expect((await response.json()) as unknown).toMatchObject({
+      error: { code: "REPARSE_FAILED", message: "reparse unavailable" },
+    });
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -272,7 +280,10 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ remoteId: null }));
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/chunks?page=4&pageSize=6");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { items: [], total: 0, page: 4, pageSize: 6 } });
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: { items: [], total: 0, page: 4, pageSize: 6 },
+    });
   });
 
   // 切片列表 provider 失败时应统一映射为业务错误。
@@ -284,7 +295,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/chunks");
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       error: { code: "CHUNK_LIST_FAILED", message: "chunks unavailable" },
     });
   });
@@ -297,7 +308,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
       enabled: true,
     });
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 切片 provider 失败必须映射为单独的切换失败代码。
@@ -311,7 +322,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
       enabled: true,
     });
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       error: { code: "CHUNK_SWITCH_FAILED", message: "switch unavailable" },
     });
   });
@@ -325,7 +336,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
       remoteId: "remote-2",
     });
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
 
   // 导入创建本地绑定失败时应映射为 provider 错误。
@@ -340,7 +351,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
       remoteId: "remote-2",
     });
     expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       error: { code: "KNOWLEDGE_PROVIDER_ERROR", message: "create binding unavailable" },
     });
   });
@@ -350,7 +361,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     setKnowledgeRuntimeProviderForTesting(new RuntimeProvider());
     const response = await jsonRequest("/knowledgeBases/kb-1/graph/generate", "POST");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
   });
 
   // 图谱读取应保留 runtime provider 的图数据。
@@ -358,7 +369,10 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     setKnowledgeRuntimeProviderForTesting(new RuntimeProvider());
     const response = await request("/knowledgeBases/kb-1/graph");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ success: true, data: { graph: { nodes: [{ id: "node-1" }] } } });
+    expect((await response.json()) as unknown).toMatchObject({
+      success: true,
+      data: { graph: { nodes: [{ id: "node-1" }] } },
+    });
   });
 
   // 图谱删除成功应返回统一空响应。
@@ -366,7 +380,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     setKnowledgeRuntimeProviderForTesting(new RuntimeProvider());
     const response = await request("/knowledgeBases/kb-1/graph", { method: "DELETE" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
   });
 
   // 图谱进度轮询应返回 provider 的任务进度。
@@ -374,7 +388,10 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     setKnowledgeRuntimeProviderForTesting(new RuntimeProvider());
     const response = await request("/knowledgeBases/kb-1/graph/progress");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ success: true, data: { progress: 1, taskId: "task-1" } });
+    expect((await response.json()) as unknown).toMatchObject({
+      success: true,
+      data: { progress: 1, taskId: "task-1" },
+    });
   });
 
   // 图谱 provider 故障必须映射为网关错误。
@@ -384,7 +401,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     setKnowledgeRuntimeProviderForTesting(provider);
     const response = await jsonRequest("/knowledgeBases/kb-1/graph/generate", "POST");
     expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       error: { code: "KNOWLEDGE_PROVIDER_ERROR", message: "graph unavailable" },
     });
   });

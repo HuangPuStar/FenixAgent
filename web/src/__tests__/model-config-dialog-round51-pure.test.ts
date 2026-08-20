@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mergeModelConfigUpdate } from "../../components/config/ModelConfigDialog";
 import { buildModelOptions } from "../lib/model-config-utils";
-import type { ModelConfig, ModelEntry } from "../types/config";
+import type { ModelConfig, ModelEntry, ResourceAccess } from "../types/config";
 
 function modelEntry(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {
@@ -13,6 +13,18 @@ function modelEntry(overrides: Partial<ModelEntry> = {}): ModelEntry {
     contextLimit: 128000,
     outputLimit: 8192,
     ...overrides,
+  };
+}
+
+function providerAccess(sourceOrganizationName: string): ResourceAccess {
+  return {
+    ownership: "external",
+    sourceOrganizationId: "source-org",
+    sourceOrganizationName,
+    resourceUid: "provider-uid",
+    resourceKey: "source-org/provider",
+    manageable: false,
+    writable: false,
   };
 }
 
@@ -51,13 +63,13 @@ describe("ModelConfigDialog 纯转换", () => {
 
   // 有来源组织时，标签应保留来源组织、provider 和模型三级信息。
   test("有 sourceOrganizationName 时加入来源组织", () => {
-    const entry = modelEntry({ providerResourceAccess: { sourceOrganizationName: "Org A" } });
+    const entry = modelEntry({ providerResourceAccess: providerAccess("Org A") });
     expect(buildModelOptions([entry])[0]?.label).toBe("Org A/Provider One/Model One");
   });
 
   // 来源组织为空字符串时应按缺失处理，避免出现多余的斜杠。
   test("空 sourceOrganizationName 回退到 provider 标签", () => {
-    const entry = modelEntry({ providerResourceAccess: { sourceOrganizationName: "" } });
+    const entry = modelEntry({ providerResourceAccess: providerAccess("") });
     expect(buildModelOptions([entry])[0]?.label).toBe("Provider One/Model One");
   });
 

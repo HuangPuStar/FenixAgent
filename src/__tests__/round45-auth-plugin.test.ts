@@ -9,7 +9,7 @@ import {
   setTestAuth,
 } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "../test-utils/helpers";
 
 const user = { id: "user-1", email: "user-1@example.test", name: "测试用户" };
 
@@ -71,7 +71,7 @@ describe("round45 auth plugin", () => {
     const response = await authRequest("/encryption-key");
 
     expect(response.status).toBe(200);
-    expect((await response.json()).key).toBeString();
+    expect(await readJson(response)).toMatchObject({ key: expect.any(String) });
   });
 
   // 注册开关端点必须显式返回布尔值。
@@ -79,7 +79,7 @@ describe("round45 auth plugin", () => {
     const response = await authRequest("/signup-status");
 
     expect(response.status).toBe(200);
-    expect(typeof (await response.json()).signupAllowed).toBe("boolean");
+    expect(await readJson(response)).toMatchObject({ signupAllowed: expect.any(Boolean) });
   });
 
   // 非 POST 认证框架请求不应被请求体转换逻辑干扰。
@@ -195,7 +195,7 @@ describe("round45 auth plugin", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ code: "INVALID_REQUEST", message: "请求体格式不正确" });
+    expect(await readJson(response)).toEqual({ code: "INVALID_REQUEST", message: "请求体格式不正确" });
   });
 
   // 手机号注册拒绝缺失姓名。
@@ -203,7 +203,7 @@ describe("round45 auth plugin", () => {
     const response = await jsonRequest("/sign-up/phone", { phoneNumber: "13800138000", password: "secret" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    expect(await readJson(response)).toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   // 手机号注册拒绝缺失密码。
@@ -211,7 +211,7 @@ describe("round45 auth plugin", () => {
     const response = await jsonRequest("/sign-up/phone", { name: "张三", phoneNumber: "13800138000" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    expect(await readJson(response)).toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   // 手机号注册拒绝缺失手机号。
@@ -219,7 +219,7 @@ describe("round45 auth plugin", () => {
     const response = await jsonRequest("/sign-up/phone", { name: "张三", password: "secret" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    expect(await readJson(response)).toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   // 手机号注册将手机号格式错误映射为确定的 400 响应。
@@ -227,7 +227,7 @@ describe("round45 auth plugin", () => {
     const response = await jsonRequest("/sign-up/phone", { name: "张三", password: "secret", phoneNumber: "123" });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ code: "INVALID_PHONE_NUMBER", message: "手机号格式不正确" });
+    expect(await readJson(response)).toEqual({ code: "INVALID_PHONE_NUMBER", message: "手机号格式不正确" });
   });
 
   // 已存在手机号必须在调用 better-auth 前被拒绝。
@@ -246,7 +246,7 @@ describe("round45 auth plugin", () => {
     });
 
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ code: "PHONE_NUMBER_EXISTS", message: "该手机号已注册" });
+    expect(await readJson(response)).toEqual({ code: "PHONE_NUMBER_EXISTS", message: "该手机号已注册" });
     expect(handlerCalled).toBeFalse();
   });
 
@@ -341,7 +341,7 @@ describe("round45 auth plugin", () => {
     const response = await sessionGuard().handle(new Request("http://localhost/protected"));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ userId: user.id, sessionId: "test-session", organizationId: "org-1" });
+    expect(await readJson(response)).toEqual({ userId: user.id, sessionId: "test-session", organizationId: "org-1" });
   });
 
   // session guard 必须在未认证时统一映射为 401。
@@ -351,7 +351,7 @@ describe("round45 auth plugin", () => {
     const response = await sessionGuard().handle(new Request("http://localhost/protected"));
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: { type: "unauthorized", message: "Not authenticated" } });
+    expect(await readJson(response)).toEqual({ error: { type: "unauthorized", message: "Not authenticated" } });
   });
 
   // uuid guard 拒绝缺少 uuid 的请求。
@@ -359,7 +359,7 @@ describe("round45 auth plugin", () => {
     const response = await uuidGuard().handle(new Request("http://localhost/uuid"));
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: { type: "unauthorized", message: "Missing uuid" } });
+    expect(await readJson(response)).toEqual({ error: { type: "unauthorized", message: "Missing uuid" } });
   });
 
   // uuid guard 将查询参数原样注入 store。
@@ -376,6 +376,6 @@ describe("round45 auth plugin", () => {
 
     expect(response.status).toBe(418);
     expect(response.headers.get("Content-Type")).toContain("application/json");
-    expect(await response.json()).toEqual({ error: "teapot" });
+    expect(await readJson(response)).toEqual({ error: "teapot" });
   });
 });

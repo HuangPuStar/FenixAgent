@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AppError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubConfigPg, stubDb, stubEnvironmentRepo } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubConfigPg, stubDb, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/api/mcp")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");
@@ -150,7 +150,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/?page=1&pageSize=1");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    expect(await readJson(response)).toMatchObject({
       total: 1,
       page: 1,
       pageSize: 1,
@@ -238,7 +238,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/other-org-resource");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(await readJson(response)).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 空路径 ID 必须在服务调用前被路由匹配拒绝。
@@ -389,7 +389,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/mcp-1", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ id: "mcp-1", deleted: true });
+    expect(await readJson(response)).toEqual({ id: "mcp-1", deleted: true });
     expect(received).toBe("org-1:mcp-1");
   });
 
@@ -409,7 +409,7 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/");
 
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: { code: "FORBIDDEN", message: "denied" } });
+    expect(await readJson(response)).toEqual({ error: { code: "FORBIDDEN", message: "denied" } });
   });
 
   // 未知异常必须映射为 INTERNAL_ERROR，而不能泄露服务层分类。
@@ -423,6 +423,6 @@ describe("round47 API MCP 路由", () => {
     const response = await request("/mcp-1", { method: "DELETE" });
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: "storage failed" } });
+    expect(await readJson(response)).toEqual({ error: { code: "INTERNAL_ERROR", message: "storage failed" } });
   });
 });

@@ -1,27 +1,29 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { getPeriTaskDetail } from "../api/peri-task-details";
+import { getPeriTaskDetail, type PeriTaskDetail } from "../api/peri-task-details";
 import { ApiError } from "../api/request";
 
 const originalFetch = globalThis.fetch;
 const fetchCalls: Array<[string, RequestInit]> = [];
-let responseBody: unknown;
+let responseBody: object;
+let expectedDetail: PeriTaskDetail;
 let responseStatus: number;
 
 beforeEach(() => {
   fetchCalls.length = 0;
   responseStatus = 200;
+  expectedDetail = {
+    kind: "preview",
+    taskId: "task/1",
+    taskKind: "subagent",
+    items: [{ type: "text", content: "任务输出" }],
+    nextCursor: null,
+    complete: false,
+    limitation: "source_only_provides_preview",
+  };
   responseBody = {
     success: true,
-    data: {
-      kind: "preview",
-      taskId: "task/1",
-      taskKind: "subagent",
-      items: [{ type: "text", content: "任务输出" }],
-      nextCursor: null,
-      complete: false,
-      limitation: "source_only_provides_preview",
-    },
+    data: expectedDetail,
   };
   globalThis.fetch = mock((url: string, init: RequestInit) => {
     fetchCalls.push([url, init]);
@@ -31,7 +33,7 @@ beforeEach(() => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-  });
+  }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
@@ -46,7 +48,7 @@ describe("peri task details API client", () => {
 
     const result = await getPeriTaskDetail("env/a", "session b", "task/1", controller.signal);
 
-    expect(result).toEqual(responseBody.data);
+    expect(result).toEqual(expectedDetail);
     expect(fetchCalls).toHaveLength(1);
     const [url, init] = fetchCalls[0] ?? [];
     expect(url).toBe("/web/agents/env%2Fa/sessions/session%20b/peri-tasks/task%2F1/detail?limit=1&byteLimit=2000");

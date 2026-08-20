@@ -263,7 +263,7 @@ describe("round44 Web 环境路由", () => {
   // 跨组织或跨用户被服务层隐藏时，路由应统一为 404。
   test("详情隐藏无归属环境", async () => {
     stubEnvironmentService({
-      getOwnedEnvironment: async () => Promise.reject(new NotFoundError("Environment", environmentId)),
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
     });
 
     expect((await request(`/environments/${environmentId}`)).status).toBe(404);
@@ -321,7 +321,7 @@ describe("round44 Web 环境路由", () => {
   test("更新无归属环境不执行写入", async () => {
     let updated = false;
     stubEnvironmentService({
-      getOwnedEnvironment: async () => Promise.reject(new NotFoundError("Environment", environmentId)),
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
       updateWebEnvironment: async () => (updated = true),
     });
 
@@ -348,7 +348,7 @@ describe("round44 Web 环境路由", () => {
   // enter 必须先验证环境归属，避免未授权用户触发实例连接。
   test("进入环境无归属返回 404", async () => {
     stubEnvironmentService({
-      getOwnedEnvironment: async () => Promise.reject(new NotFoundError("Environment", environmentId)),
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
     });
 
     expect((await json(`/environments/${environmentId}/enter`, "POST")).status).toBe(404);
@@ -385,9 +385,10 @@ describe("round44 Web 环境路由", () => {
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({
-      getOrchestrationController: () => ({
-        spawnInstance: async () => Promise.reject(new SandboxProviderNotConfiguredError("internal-provider")),
-      }),
+      getOrchestrationController: () =>
+        ({
+          spawnInstance: async () => Promise.reject(new SandboxProviderNotConfiguredError("internal-provider")),
+        }) as unknown as import("@fenix/orchestration").AgentController,
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
@@ -402,9 +403,10 @@ describe("round44 Web 环境路由", () => {
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({
-      getOrchestrationController: () => ({
-        spawnInstance: async () => Promise.reject(new SandboxRuntimeNotReadyError("sbi_private")),
-      }),
+      getOrchestrationController: () =>
+        ({
+          spawnInstance: async () => Promise.reject(new SandboxRuntimeNotReadyError("sbi_private")),
+        }) as unknown as import("@fenix/orchestration").AgentController,
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
@@ -434,7 +436,7 @@ describe("round44 Web 环境路由", () => {
   test("删除无归属环境不执行删除", async () => {
     let deleted = false;
     stubEnvironmentService({
-      getOwnedEnvironment: async () => Promise.reject(new NotFoundError("Environment", environmentId)),
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
       deleteEnvironment: async () => (deleted = true),
     });
 
@@ -466,7 +468,7 @@ describe("round44 Web 环境路由", () => {
   // 无归属环境不可枚举其实例信息。
   test("实例列表隐藏无归属环境", async () => {
     stubEnvironmentService({
-      getOwnedEnvironment: async () => Promise.reject(new NotFoundError("Environment", environmentId)),
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
     });
 
     expect((await request(`/environments/${environmentId}/instances`)).status).toBe(404);

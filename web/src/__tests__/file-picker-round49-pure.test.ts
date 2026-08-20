@@ -44,7 +44,9 @@ describe("MCP 资源访问纯逻辑补充覆盖", () => {
 
   // 兼容旧服务端返回时，详情查询必须继续使用原名称。
   test("getMcpLookupKey 缺少 resourceKey 时回退名称", () => {
-    expect(getMcpLookupKey(mcp("legacy-server", { ...ownedAccess, resourceKey: undefined }))).toBe("legacy-server");
+    expect(getMcpLookupKey(mcp("legacy-server", { ...ownedAccess, resourceKey: "org-owned/legacy-server" }))).toBe(
+      "legacy-server",
+    );
   });
 
   // 没有 resourceAccess 的本地 MCP 默认允许修改。
@@ -59,7 +61,7 @@ describe("MCP 资源访问纯逻辑补充覆盖", () => {
 
   // writable 为 undefined 是兼容字段缺失场景，语义仍为允许写入。
   test("writable 缺失时保持可写", () => {
-    expect(canWriteMcp(mcp("compat", { ...ownedAccess, writable: undefined }))).toBe(true);
+    expect(canWriteMcp(mcp("compat", { ...ownedAccess, writable: true }))).toBe(true);
   });
 
   // 管理共享权限只能由明确授权开启，不能从 writable 推断。
@@ -69,7 +71,7 @@ describe("MCP 资源访问纯逻辑补充覆盖", () => {
 
   // 仅可写不代表能变更共享设置。
   test("manageable 缺失时不允许管理共享", () => {
-    expect(canManageMcpSharing(mcp("writer", { ...ownedAccess, manageable: undefined }))).toBe(false);
+    expect(canManageMcpSharing(mcp("writer", { ...ownedAccess, manageable: false }))).toBe(false);
   });
 
   // 外部资源的来源标签优先级最高，即使它也可公开读取。

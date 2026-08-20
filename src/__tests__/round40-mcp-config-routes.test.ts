@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AppError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
 
@@ -93,7 +93,7 @@ describe("round40 MCP 配置路由", () => {
     const response = await request("/config/mcp");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { servers: [] } });
+    expect(await readJson(response)).toEqual({ success: true, data: { servers: [] } });
   });
 
   // 工具计数查询失败时，列表仍应返回服务器并将数量降为零。
@@ -343,7 +343,7 @@ describe("round40 MCP 配置路由", () => {
     const response = await request("/config/mcp?name=demo", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
   });
 
   // 启用历史损坏配置必须提示重建，而不能写入 enabled 状态。

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-defs")).default;
 
@@ -90,7 +90,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await jsonRequest("/workflow-defs/foreign-workflow", { name: "不应更新" }, "PATCH");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // REST 删除当前组织工作流应返回统一空成功载荷。
@@ -100,7 +100,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await request("/workflow-defs/workflow-round67", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
   });
 
   // REST 创建触发器的唯一约束异常必须映射为冲突响应。
@@ -116,7 +116,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round67/triggers", { type: "webhook" });
 
     expect(response.status).toBe(409);
-    expect((await response.json()).error.code).toBe("CONFLICT");
+    expect((await readJson(response)).error.code).toBe("CONFLICT");
   });
 
   // REST 删除触发器的意外仓储错误必须受控映射为 500。
@@ -130,7 +130,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await request("/workflow-defs/workflow-round67/triggers/trigger-round67", { method: "DELETE" });
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error.message).toBe("trigger lookup unavailable");
+    expect((await readJson(response)).error.message).toBe("trigger lookup unavailable");
   });
 
   // REST 重新生成哈希仅在当前组织触发器存在时返回完整新哈希视图。
@@ -162,7 +162,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await jsonRequest("/workflow-defs/workflow-round67/triggers/missing-trigger/disable", {});
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 
   // action 创建触发器必须将认证组织和用户写入服务输入。
@@ -202,7 +202,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await jsonRequest("/workflow-defs", { action: "regenerateHash", triggerId: "trigger-round67" });
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.publicHash).toBe("actionhash01234567");
+    expect((await readJson(response)).data.publicHash).toBe("actionhash01234567");
   });
 
   // action 启用当前组织触发器应完成状态更新并返回空成功载荷。
@@ -221,7 +221,7 @@ describe("workflow-defs 第六十七轮路由补充覆盖", () => {
     const response = await jsonRequest("/workflow-defs", { action: "enableTrigger", triggerId: "trigger-round67" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(updates).toHaveLength(1);
   });
 });

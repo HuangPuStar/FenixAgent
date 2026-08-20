@@ -81,9 +81,11 @@ class KnowledgeRouteProvider extends RagFlowKnowledgeProvider {
   addInput: Parameters<NonNullable<RagFlowKnowledgeProvider["addProviderInstance"]>>[0] | null = null;
   deleteInput: Parameters<NonNullable<RagFlowKnowledgeProvider["deleteProviderInstance"]>>[0] | null = null;
 
-  override async createKnowledgeBase(input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0]) {
+  override async createKnowledgeBase(
+    input: Parameters<RagFlowKnowledgeProvider["createKnowledgeBase"]>[0],
+  ): Promise<Awaited<ReturnType<RagFlowKnowledgeProvider["createKnowledgeBase"]>>> {
     this.createInput = input;
-    return { remoteId: "remote-created", status: "empty", lastError: null };
+    return { remoteId: "remote-created", name: input.name, status: "empty", lastError: null };
   }
 
   override async getDataset() {
@@ -121,14 +123,26 @@ class KnowledgeRouteProvider extends RagFlowKnowledgeProvider {
     return { success: true, message: "可用" };
   }
 
-  override async listProviderModels(input: Parameters<NonNullable<RagFlowKnowledgeProvider["listProviderModels"]>>[0]) {
+  override async listProviderModels(
+    input: Parameters<NonNullable<RagFlowKnowledgeProvider["listProviderModels"]>>[0],
+  ): Promise<Awaited<ReturnType<NonNullable<RagFlowKnowledgeProvider["listProviderModels"]>>>> {
     this.providerModelsInput = input;
-    return [{ name: "text-embedding-3-small", label: "Small" }];
+    return [{ name: "text-embedding-3-small", modelType: "embedding" }];
   }
 
-  override async listInstanceModels(input: Parameters<NonNullable<RagFlowKnowledgeProvider["listInstanceModels"]>>[0]) {
+  override async listInstanceModels(
+    input: Parameters<NonNullable<RagFlowKnowledgeProvider["listInstanceModels"]>>[0],
+  ): Promise<Awaited<ReturnType<NonNullable<RagFlowKnowledgeProvider["listInstanceModels"]>>>> {
     this.instanceModelsInput = input;
-    return [{ name: "embed-1", status: "active" }];
+    return [
+      {
+        name: "embed-1",
+        provider: input.provider,
+        instance: input.instanceName,
+        modelType: "embedding",
+        status: "active",
+      },
+    ];
   }
 
   override async setModelStatus(input: Parameters<NonNullable<RagFlowKnowledgeProvider["setModelStatus"]>>[0]) {
@@ -216,7 +230,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       success: true,
       data: [{ id: "kb-1", bindingsCount: 3, resourcesCount: 7 }],
     });
@@ -231,7 +245,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ data: [{ remoteExists: false }] });
+    expect((await response.json()) as unknown).toMatchObject({ data: [{ remoteExists: false }] });
   });
 
   // 创建应将内置分块配置传给 provider 并持久化本地记录。
@@ -239,7 +253,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const provider = new KnowledgeRouteProvider();
     const create = mock(async () => knowledgeBase({ id: "kb-created", remoteId: "remote-created", status: "empty" }));
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.create = create;
 
     const response = await jsonRequest("/knowledgeBases", "POST", {
@@ -268,12 +282,12 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
       throw new Error("provider unavailable");
     });
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
 
     const response = await jsonRequest("/knowledgeBases", "POST", { name: "产品手册" });
 
     expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({ error: { code: "KNOWLEDGE_PROVIDER_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "KNOWLEDGE_PROVIDER_ERROR" } });
   });
 
   // 同一组织不得重复关联同一个远端知识库。
@@ -287,7 +301,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     });
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
 
   // 详情不得跨组织泄露知识库元数据。
@@ -297,7 +311,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases/kb-1");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 更新应修剪用户输入并只更新所属组织的记录。
@@ -322,7 +336,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await jsonRequest("/knowledgeBases/kb-1", "PATCH", { name: "新名称" });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 删除应先清理绑定再删除本地知识库。
@@ -347,7 +361,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases/kb-1/resources");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: [] });
   });
 
   // 资源列表不得返回其他组织的资源缓存。
@@ -357,7 +371,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases/kb-1/resources");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // URL 类型资源预览应重定向到原始来源，不读取本地文件。
@@ -400,12 +414,12 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
 
   // 搜索不存在的知识库应映射为 404。
   test("搜索映射不存在知识库", async () => {
-    knowledgeBaseRepo.getById = mock(async () => null);
+    knowledgeBaseRepo.getById = mock(async () => null) as unknown as typeof knowledgeBaseRepo.getById;
 
     const response = await jsonRequest("/knowledgeBases/kb-1/search", "POST", { query: "安装说明" });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   // 创建表单应在单个上游目录失败时保留其他可用选项。
@@ -419,7 +433,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases/form-options");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    expect((await response.json()) as unknown).toMatchObject({
       data: { embeddingModels: [], pipelines: [{ id: "pipeline-1" }], chunkMethods: expect.any(Array) },
     });
   });
@@ -429,7 +443,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await request("/knowledgeBases/rerank-models");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       success: true,
       data: [{ name: "rerank-1", label: "Rerank 1", provider: "OpenAI", instance: "main" }],
     });
@@ -440,7 +454,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     const response = await jsonRequest("/knowledgeBases/models", "POST", { action: "list-factories" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [{ name: "openai", label: "OpenAI" }] });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: [{ name: "openai", label: "OpenAI" }] });
   });
 
   // 模型连接验证应传递临时厂商凭据而不写入配置。
@@ -475,7 +489,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ data: [{ name: "text-embedding-3-small" }] });
+    expect((await response.json()) as unknown).toMatchObject({ data: [{ name: "text-embedding-3-small" }] });
     expect(provider.providerModelsInput).toMatchObject({ provider: "openai", providerApiKey: "temporary-key" });
   });
 
@@ -529,7 +543,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { instanceName: "secondary" } });
+    expect((await response.json()) as unknown).toEqual({ success: true, data: { instanceName: "secondary" } });
     expect(provider.addInput).toMatchObject({ provider: "openai", instanceName: "secondary" });
   });
 

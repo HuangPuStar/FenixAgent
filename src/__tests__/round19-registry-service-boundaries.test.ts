@@ -6,7 +6,7 @@ import {
   MachineQuerySchema,
   UpdateMachineSchema,
 } from "../schemas/registry.schema";
-import { resetAllStubs, stubRegistry } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubRegistry } from "../test-utils/helpers";
 
 const authContext = { organizationId: "org-a", userId: "user-a", role: "owner" as const };
 
@@ -175,7 +175,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
   test("列表路由序列化机器日期字段", async () => {
     stubRegistry({ listMachines: async () => ({ data: [machineRecord()], total: 1 }) });
     const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines"));
-    const body = (await response.json()) as { data: { items: Array<{ createdAt: number }>; total: number } };
+    const body = (await readJson(response)) as { data: { items: Array<{ createdAt: number }>; total: number } };
 
     expect(response.status).toBe(200);
     expect(body.data.items[0].createdAt).toBe(1785542400);
@@ -284,7 +284,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
       }),
     );
 
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: { id: "mach-1", name: "worker", status: "pending", initCommand: "safe command" },
     });
@@ -333,7 +333,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
       }),
     });
     const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-1"));
-    const body = (await response.json()) as { data: { recentEvents: Array<{ createdAt: number }> } };
+    const body = (await readJson(response)) as { data: { recentEvents: Array<{ createdAt: number }> } };
 
     expect(response.status).toBe(200);
     expect(body.data.recentEvents[0].createdAt).toBe(1785542400);
@@ -392,7 +392,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
         body: JSON.stringify({ labels: ["linux"] }),
       }),
     );
-    const body = (await response.json()) as { data: { updatedAt: number } };
+    const body = (await readJson(response)) as { data: { updatedAt: number } };
 
     expect(response.status).toBe(200);
     expect(body.data.updatedAt).toBe(1785542400);
@@ -425,7 +425,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
     const response = await (await registryApp()).handle(
       new Request("http://localhost/registry/machines/mach-1/events?limit=1"),
     );
-    const body = (await response.json()) as { data: { items: Array<{ createdAt: number }>; total: number } };
+    const body = (await readJson(response)) as { data: { items: Array<{ createdAt: number }>; total: number } };
 
     expect(response.status).toBe(200);
     expect(body.data.items[0].createdAt).toBe(1785542400);
@@ -483,6 +483,6 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
       new Request("http://localhost/registry/machines/mach-1", { method: "DELETE" }),
     );
 
-    expect(await response.json()).toEqual({ success: true, data: { deleted: true } });
+    expect(await readJson(response)).toEqual({ success: true, data: { deleted: true } });
   });
 });

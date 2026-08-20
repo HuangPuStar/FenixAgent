@@ -8,7 +8,7 @@ import { getAllEventBuses } from "../transport/event-bus";
 
 const USER_ID = "user-round21";
 
-function request(path = "/", headers?: HeadersInit) {
+function request(path = "/", headers?: Record<string, string>) {
   return new Request(`http://localhost${path}`, { headers });
 }
 
@@ -94,7 +94,7 @@ describe("round21 隔离服务边界", () => {
   test("缓存隔离命名空间", async () => {
     await getCache("round21-a").set("key", "a");
     await getCache("round21-b").set("key", "b");
-    expect(await getCache("round21-a").get("key")).toBe("a");
+    expect(String(await getCache("round21-a").get("key"))).toBe("a");
   });
   // 覆盖该独立行为与边界。
   test("缓存支持并发写入", async () => {
@@ -108,7 +108,7 @@ describe("round21 隔离服务边界", () => {
     await cache.set("first", 1);
     await cache.set("second", 2);
     await cache.delete("first");
-    expect(await cache.get("second")).toBe(2);
+    expect(String(await cache.get("second"))).toBe("2");
   });
   // 覆盖该独立行为与边界。
   test("缓存清理删除数据", async () => {
@@ -213,7 +213,7 @@ describe("round21 隔离服务边界", () => {
     const cache = getCache("round21-overwrite");
     await cache.set("state", "pending");
     await cache.set("state", "complete");
-    expect(await cache.get("state")).toBe("complete");
+    expect(String(await cache.get("state"))).toBe("complete");
   });
 
   // 组织授权必须遵循可信来源优先级与租户隔离。

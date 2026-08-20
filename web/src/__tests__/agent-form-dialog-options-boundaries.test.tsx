@@ -115,10 +115,10 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].key).toBe("");
   });
 
-  // 缺失 resourceKey 时应回退到 MCP 名称。
-  test("缺失 resourceKey 回退到 MCP 名称", () => {
-    const { resourceKey: _resourceKey, ...resourceAccess } = externalAccess;
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].key).toBe("files");
+  // resourceKey 是当前协议的必填稳定标识，应按原值传递。
+  test("resourceKey 按原值保留", () => {
+    const resourceAccess = { ...externalAccess, resourceKey: "org-source/legacy-files" };
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].key).toBe("org-source/legacy-files");
   });
 
   // 空来源组织名不应生成多余斜杠前缀。

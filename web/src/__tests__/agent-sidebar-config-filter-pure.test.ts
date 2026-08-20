@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { FileText } from "lucide-react";
+
 import { filterNavGroups, type NavEntry } from "../pages/agent-panel/AgentSidebarConfig";
 
 type TestGroup = {
@@ -10,10 +12,10 @@ type TestGroup = {
 };
 
 const icons = {
-  alpha: (() => null) as NavEntry["icon"],
-  beta: (() => null) as NavEntry["icon"],
-  gamma: (() => null) as NavEntry["icon"],
-  delta: (() => null) as NavEntry["icon"],
+  alpha: FileText,
+  beta: FileText,
+  gamma: FileText,
+  delta: FileText,
 };
 
 function entry(id: string): NavEntry {

@@ -137,7 +137,7 @@ describe("round27 Agent 模板隔离、状态与资源清理", () => {
       const service = await import(`../services/agent-templates.ts?round27=${moduleVersion++}`);
       expect(service.loadAgentTemplates()[0]?.name).toBe("初始");
       await writeFile(join(directory, "b.md"), template("新增"));
-      expect(service.loadAgentTemplates().map(({ id }) => id)).toEqual(["a"]);
+      expect(service.loadAgentTemplates().map(({ id }: { id: string }) => id)).toEqual(["a"]);
     } finally {
       process.chdir(originalCwd);
       await rm(root, { force: true, recursive: true });

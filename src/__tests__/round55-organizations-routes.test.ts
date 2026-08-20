@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import organizationsRoute from "../routes/web/organizations";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 type Organization = {
   id: string;
@@ -23,6 +23,10 @@ function organization(overrides: Partial<Organization> = {}): Organization {
 
 function request(path: string, init?: RequestInit) {
   return organizationsRoute.handle(new Request(`http://localhost${path}`, init));
+}
+
+async function responseJson(response: Response): Promise<unknown> {
+  return response.json();
 }
 
 function json(path: string, method: string, body: Record<string, unknown>) {
@@ -76,7 +80,7 @@ describe("round55 Web 组织路由", () => {
   test("空组织列表直接返回空数组", async () => {
     stubAuthApi({ listOrganizations: async () => [] });
 
-    expect(await (await request("/organizations")).json()).toEqual({ success: true, data: [] });
+    expect(await readJson(await request("/organizations"))).toEqual({ success: true, data: [] });
   });
 
   // 列表应按当前用户的成员关系补齐组织角色。
@@ -84,7 +88,7 @@ describe("round55 Web 组织路由", () => {
     stubAuthApi({ listOrganizations: async () => [organization(), organization({ id: "org-2", slug: "ops" })] });
     stubDb(executeDb([[{ organizationId: "org-1", role: "admin" }]]));
 
-    expect(await (await request("/organizations")).json()).toEqual({
+    expect(await readJson(await request("/organizations"))).toEqual({
       success: true,
       data: [
         { ...organization(), role: "admin" },
@@ -111,7 +115,7 @@ describe("round55 Web 组织路由", () => {
     });
     stubDb(executeDb([[{ id: "user-2", phoneNumber: "+8613800138000" }]]));
 
-    expect(await (await request("/organizations/org-1")).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-1"))).toEqual({
       success: true,
       data: {
         ...organization({ createdAt: "2026-08-19T00:00:00.000Z" }),
@@ -143,7 +147,7 @@ describe("round55 Web 组织路由", () => {
     const response = await request("/organizations/org-foreign");
     expect(response.status).toBe(200);
     expect(requestedMembers).toBe(false);
-    expect(await response.json()).toEqual({ success: true, data: organization({ id: "org-foreign" }) });
+    expect(await readJson(response)).toEqual({ success: true, data: organization({ id: "org-foreign" }) });
   });
 
   // 创建组织应将描述收敛到 metadata.description。
@@ -218,7 +222,7 @@ describe("round55 Web 组织路由", () => {
       },
     });
 
-    expect(await (await request("/organizations/org-2", { method: "DELETE" })).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2", { method: "DELETE" }))).toEqual({
       success: true,
       data: { deleted: true },
     });
@@ -234,7 +238,7 @@ describe("round55 Web 组织路由", () => {
       },
     });
 
-    expect(await (await request("/organizations/org-2/set-active", { method: "POST" })).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2/set-active", { method: "POST" }))).toEqual({
       success: true,
       data: null,
     });
@@ -246,7 +250,7 @@ describe("round55 Web 组织路由", () => {
     stubAuthApi({ listMembers: async () => [{ id: "member-2", userId: "user-2", role: "admin" }] });
     stubDb(executeDb([[{ id: "user-2", phoneNumber: "+8613900139000" }]]));
 
-    expect(await (await request("/organizations/org-2/members")).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2/members"))).toEqual({
       success: true,
       data: [{ id: "member-2", userId: "user-2", role: "admin" }],
     });
@@ -257,7 +261,7 @@ describe("round55 Web 组织路由", () => {
     stubAuthApi({ listMembers: async () => [{ id: "member-2", userId: "user-2", role: "member" }] });
     stubDb(executeDb([[{ id: "user-2", phoneNumber: "+8613800138000" }]]));
 
-    expect(await (await request("/organizations/org-2/members")).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2/members"))).toEqual({
       success: true,
       data: [{ id: "member-2", userId: "user-2", role: "member" }],
     });
@@ -265,7 +269,7 @@ describe("round55 Web 组织路由", () => {
 
   // 空白候选关键词应短路，不触发全站用户查询。
   test("空白候选关键词返回空数组", async () => {
-    expect(await (await request("/organizations/org-2/member-candidates?keyword=%20%20")).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2/member-candidates?keyword=%20%20"))).toEqual({
       success: true,
       data: [],
     });
@@ -280,7 +284,7 @@ describe("round55 Web 组织路由", () => {
       ]),
     );
 
-    expect(await (await request("/organizations/org-2/member-candidates?keyword=%20候选人%20")).json()).toEqual({
+    expect(await readJson(await request("/organizations/org-2/member-candidates?keyword=%20候选人%20"))).toEqual({
       success: true,
       data: [{ id: "user-2", name: "候选人", email: "candidate@example.test", phoneNumber: null, isMember: true }],
     });

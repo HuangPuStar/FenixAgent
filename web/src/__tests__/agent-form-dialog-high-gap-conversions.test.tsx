@@ -141,6 +141,12 @@ describe("AgentFormDialog 补充模型选项转换", () => {
   });
 });
 
+function isModelEntries(
+  input: ModelEntry[] | Array<{ id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess }>,
+): input is ModelEntry[] {
+  return input.every((item) => "modelId" in item);
+}
+
 describe("AgentFormDialog 转换不可变性", () => {
   test.each([
     ["MCP 启用项", [{ id: "one", name: "files", enabled: true }]],
@@ -173,10 +179,10 @@ describe("AgentFormDialog 转换不可变性", () => {
     ["模型特殊字符", [model({ id: "id/1", providerDisplayName: "P:1", displayName: "N?1" })]],
   ])("%s 的输入数据保持不变", (caseName, input) => {
     const snapshot = structuredClone(input);
-    if (caseName.startsWith("MCP")) {
-      mapMcpOptions(input);
-    } else {
+    if (isModelEntries(input)) {
       mapModelOptions(input);
+    } else {
+      mapMcpOptions(input);
     }
     expect(input).toEqual(snapshot);
   });

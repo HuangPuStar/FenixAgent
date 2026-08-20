@@ -147,7 +147,7 @@ describe("知识运行时服务分支", () => {
     ]);
     knowledgeResourceRepo.findByRemoteIds = mock(async () => [
       { id: "resource-local-1", remoteId: "remote-resource-1" },
-    ]);
+    ]) as unknown as typeof knowledgeResourceRepo.findByRemoteIds;
 
     const result = await searchKnowledgeDetailedForAgent({ agentConfigId: "agent-1", query: "部署", topK: 3 });
 

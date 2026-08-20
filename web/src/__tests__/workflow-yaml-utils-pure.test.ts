@@ -210,7 +210,7 @@ describe("workflow yaml utils 纯逻辑", () => {
   // 序列化时起始节点是编辑器内部结构，不能写回工作流协议。
   test("flowToYaml 跳过起始节点", () => {
     const parsed = yaml.load(flowToYaml([createStartNode(), flowNode("task", "shell")], [], workflowMeta())) as {
-      nodes: Array<{ id: string }>;
+      nodes: Array<{ id: string; type: string }>;
     };
 
     expect(parsed.nodes).toEqual([{ id: "task", type: "shell" }]);

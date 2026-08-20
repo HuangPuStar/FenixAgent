@@ -359,7 +359,17 @@ describe("round57 MCP server service", () => {
 
   // listToolsByServer 只读取指定组织和 serverName 的缓存工具。
   test("读取指定 server 的工具缓存", async () => {
-    const tools = [{ id: "tool-1", organizationId: "org_current", serverName: "shared-server", toolName: "search" }];
+    const tools = [
+      {
+        id: "tool-1",
+        organizationId: "org_current",
+        serverName: "shared-server",
+        toolName: "search",
+        description: null,
+        inputSchema: null,
+        inspectedAt: new Date("2026-08-19T00:00:00.000Z"),
+      },
+    ];
     stubDb({ select: () => ({ from: () => ({ where: async () => tools }) }) });
     expect(await listToolsByServer("org_current", "shared-server")).toEqual(tools);
   });

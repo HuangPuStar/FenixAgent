@@ -125,7 +125,7 @@ describe("tool-call-utils", () => {
       createTool({
         content: [
           { type: "content", content: { type: "text", text: "first" } },
-          { type: "terminal", content: { type: "text", text: "ignored" } },
+          { type: "terminal", terminalId: "terminal-1" },
           { type: "content", content: { type: "text", text: "second" } },
         ],
         rawOutput: { fallback: true },

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 const workflowDefsRoute = (await import("../routes/web/workflow-defs")).default;
 
@@ -53,7 +53,7 @@ describe("Web Workflow Definition Routes", () => {
     const response = await request("/workflow-defs");
 
     expect(response.status).toBe(401);
-    expect((await response.json()).error.type).toBe("unauthorized");
+    expect((await readJson(response)).error.type).toBe("unauthorized");
   });
 
   // 工作流列表只能通过当前认证组织的查询链路返回，不能依赖请求方传入组织标识。
@@ -76,7 +76,7 @@ describe("Web Workflow Definition Routes", () => {
     const response = await request("/workflow-defs?organizationId=org-2");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: asJson(workflows) });
+    expect(await readJson(response)).toEqual({ success: true, data: asJson(workflows) });
   });
 
   // 跨组织或不存在的工作流详情必须统一映射为 404，避免泄露资源存在性。
@@ -86,7 +86,7 @@ describe("Web Workflow Definition Routes", () => {
     const response = await request("/workflow-defs/workflow-from-another-org");
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "Workflow not found" },
     });
@@ -110,7 +110,7 @@ describe("Web Workflow Definition Routes", () => {
     const response = await request("/workflow-defs/workflow-1");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { ...asJson(workflow), draftYaml: null } });
+    expect(await readJson(response)).toEqual({ success: true, data: { ...asJson(workflow), draftYaml: null } });
   });
 
   // 创建请求缺少必填名称时必须被路由参数校验拒绝，且不执行数据库写入。
@@ -156,7 +156,7 @@ describe("Web Workflow Definition Routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: asJson(updated) });
+    expect(await readJson(response)).toEqual({ success: true, data: asJson(updated) });
   });
 
   // 唯一约束异常必须被映射为 409，而非向客户端暴露为通用服务器错误。
@@ -177,7 +177,7 @@ describe("Web Workflow Definition Routes", () => {
     });
 
     expect(response.status).toBe(409);
-    expect((await response.json()).error.code).toBe("CONFLICT");
+    expect((await readJson(response)).error.code).toBe("CONFLICT");
   });
 
   // 删除仓储未匹配当前组织资源时必须返回 404，避免误报删除成功。
@@ -191,6 +191,6 @@ describe("Web Workflow Definition Routes", () => {
     const response = await request("/workflow-defs/workflow-from-another-org", { method: "DELETE" });
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await readJson(response)).error.code).toBe("NOT_FOUND");
   });
 });

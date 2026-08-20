@@ -179,7 +179,7 @@ describe("round22 隔离启动规格与输入边界", () => {
       () => configValidationError("格式错误"),
       { success: false, error: { code: "VALIDATION_ERROR", message: "格式错误" } },
     ],
-  ])("配置响应%s", (_label, create, expected) => expect(create()).toEqual(expected));
+  ])("配置响应%s", (_label, create, expected) => expect(JSON.stringify(create())).toBe(JSON.stringify(expected)));
 
   // JSON 边界不能抛出，损坏输入必须被收敛为空值。
   test.each([
@@ -214,7 +214,7 @@ describe("round22 隔离启动规格与输入边界", () => {
   ])("MCP 配置%s", async (_label, raw, type) => {
     process.env.ROUND22_PROVIDER_KEY = "provider-key";
     const spec = await build(raw);
-    expect(spec.mcpServers[0]?.type).toBe(type);
+    expect(spec.mcpServers[0]?.type).toBe(type as "stdio" | "streamable-http");
     expect(spec.model.apiKey).toBe("provider-key");
     expect(spec.organizationId).toBe("org_isolated");
   });
@@ -297,7 +297,7 @@ describe("round22 隔离启动规格与输入边界", () => {
       extraEnv: { EXPLICIT: "wins" },
     });
     expect(spec.environmentId).toBe(environmentId);
-    expect(spec.env.EXPLICIT).toBe("wins");
+    expect(spec.env?.EXPLICIT).toBe("wins");
     expect(spec.skills).toEqual([]);
     expect(spec.mcpServers).toEqual([]);
   });

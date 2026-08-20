@@ -3,7 +3,7 @@ import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { getTeamEngine } from "../services/workflow";
-import { resetAllStubs, stubAuthApi } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 
@@ -45,8 +45,8 @@ describe("Workflow runs routes isolation and state boundaries", () => {
 
     expect(firstResponse.status).toBe(200);
     expect(secondResponse.status).toBe(200);
-    expect(await firstResponse.json()).toEqual({ success: true, data: null });
-    expect(await secondResponse.json()).toEqual({ success: true, data: null });
+    expect(await readJson(firstResponse)).toEqual({ success: true, data: null });
+    expect(await readJson(secondResponse)).toEqual({ success: true, data: null });
     expect(firstStatus).toHaveBeenCalledTimes(1);
     expect(secondStatus).toHaveBeenCalledTimes(1);
     expect(firstStatus).toHaveBeenCalledWith("run-shared-id");
@@ -65,7 +65,7 @@ describe("Workflow runs routes isolation and state boundaries", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: WorkflowErrorCode.RUN_NOT_FOUND, message: "run not found" },
     });
@@ -118,7 +118,7 @@ describe("Workflow runs routes isolation and state boundaries", () => {
     const response = await request("/workflow-runs/run-events/events?nodeId=node-private");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
     expect(getEvents).toHaveBeenCalledWith("run-events", { nodeId: "node-private" });
   });
 
@@ -151,7 +151,7 @@ describe("Workflow runs routes isolation and state boundaries", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
       expect(cancel).toHaveBeenCalledWith(`run-cancel-${index}`);
     });
   }

@@ -659,7 +659,7 @@ describe("RagFlowKnowledgeProvider", () => {
       keyword: false,
       highlight: true,
       crossLanguages: ["en", "zh"],
-      metaDataFilter: { method: "manual", conditions: [] },
+      metaDataFilter: { method: "manual", logic: "and", manual: [] },
     });
 
     expect(result).toEqual([

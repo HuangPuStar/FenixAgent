@@ -69,7 +69,7 @@ describe("Channel binding 服务的状态与消息匹配", () => {
 
   // 单条查询不存在时不得暴露内部数据库形态。
   test("读取不存在绑定返回 undefined", async () => {
-    channelBindingRepo.getById = mock(async () => null);
+    channelBindingRepo.getById = mock(async () => null) as never;
     await expect(getBinding("missing")).resolves.toBeUndefined();
   });
 
@@ -111,7 +111,7 @@ describe("Channel binding 服务的状态与消息匹配", () => {
   // 更新不存在对象时不得发起写操作。
   test("更新不存在绑定不写入", async () => {
     const update = mock(async () => undefined);
-    channelBindingRepo.getById = mock(async () => null);
+    channelBindingRepo.getById = mock(async () => null) as never;
     channelBindingRepo.update = update;
     await expect(updateBinding("missing", { enabled: false })).resolves.toBeUndefined();
     expect(update).not.toHaveBeenCalled();

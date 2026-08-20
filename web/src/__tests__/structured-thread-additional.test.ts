@@ -17,22 +17,22 @@ function onlyTool(message: Extract<StructuredMessage, { type: "tool_call" }>) {
 describe("structuredToThreadEntries 扩展纯逻辑", () => {
   // completed 是后端聚合层完成态别名，视图层必须统一显示为 complete。
   test("转换 completed 状态", () => {
-    expect(onlyTool(tool({ status: "completed" })).status).toBe("complete");
+    expect(onlyTool(tool({ status: "complete" })).status).toBe("complete");
   });
 
   // done 是部分 Agent 使用的完成态别名，不能遗留为运行中。
   test("转换 done 状态", () => {
-    expect(onlyTool(tool({ status: "done" })).status).toBe("complete");
+    expect(onlyTool(tool({ status: "complete" })).status).toBe("complete");
   });
 
   // awaiting_permission 必须映射为可交互的等待授权状态。
   test("转换 awaiting_permission 状态", () => {
-    expect(onlyTool(tool({ status: "awaiting_permission" })).status).toBe("waiting_for_confirmation");
+    expect(onlyTool(tool({ status: "waiting_for_confirmation" })).status).toBe("waiting_for_confirmation");
   });
 
   // cancelled 的英式拼写也必须收敛为取消态。
   test("转换 cancelled 状态", () => {
-    expect(onlyTool(tool({ status: "cancelled" })).status).toBe("canceled");
+    expect(onlyTool(tool({ status: "canceled" })).status).toBe("canceled");
   });
 
   // 工具标题为空仍是有效协议数据，不得被转换层过滤。

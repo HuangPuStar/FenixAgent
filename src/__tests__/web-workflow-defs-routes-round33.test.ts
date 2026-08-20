@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-defs")).default;
 
@@ -97,7 +97,7 @@ describe("工作流定义路由扩展真实用例", () => {
       });
 
       expect(response.status).toBe(200);
-      expect((await response.json()).data.id).toBe(created.id);
+      expect((await readJson(response)).data.id).toBe(created.id);
       expect(inserts).toHaveLength(1);
     });
   }
@@ -131,7 +131,7 @@ describe("工作流定义路由扩展真实用例", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
     });
   }
 
@@ -145,7 +145,7 @@ describe("工作流定义路由扩展真实用例", () => {
       const response = await jsonRequest(`/workflow-defs/workflow-extra/triggers/trigger-enable-${index}/enable`, {});
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
     });
   }
 
@@ -159,7 +159,7 @@ describe("工作流定义路由扩展真实用例", () => {
       const response = await jsonRequest(`/workflow-defs/workflow-extra/triggers/trigger-disable-${index}/disable`, {});
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, data: null });
+      expect(await readJson(response)).toEqual({ success: true, data: null });
     });
   }
 

@@ -159,7 +159,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
 
   // 不可见任务必须作为不存在返回，避免泄漏另一租户资源。
   test("读取跨租户任务返回未找到", async () => {
-    scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => null);
+    scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => null) as never;
     await expect(getTaskV2(USER_ID, ORG_ID, "foreign")).resolves.toMatchObject({
       success: false,
       error: { code: "NOT_FOUND" },
@@ -168,7 +168,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
 
   // 更新不可见任务必须作为不存在返回，避免泄漏另一租户资源。
   test("更新跨租户任务返回未找到", async () => {
-    scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => null);
+    scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => null) as never;
     await expect(updateTaskV2(USER_ID, ORG_ID, "foreign", { name: "new" })).resolves.toMatchObject({
       success: false,
       error: { code: "NOT_FOUND" },
@@ -211,7 +211,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
   // 更新写入后对象消失时必须报告明确的未找到状态。
   test("更新写入后消失返回未找到", async () => {
     scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => task());
-    scheduledTaskV2Repo.update = mock(async () => null);
+    scheduledTaskV2Repo.update = mock(async () => null) as never;
     await expect(updateTaskV2(USER_ID, ORG_ID, "task-1", { name: "new" })).resolves.toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "任务不存在（更新后未找到）" },
@@ -270,7 +270,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
   // 切换时写入竞争导致更新失败，应返回未找到而不调度。
   test("切换写入失败不变更调度", async () => {
     scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => task());
-    scheduledTaskV2Repo.update = mock(async () => null);
+    scheduledTaskV2Repo.update = mock(async () => null) as never;
     const unschedule = mock(() => undefined);
     schedulerService.unschedule = unschedule;
     await expect(toggleTaskV2(USER_ID, ORG_ID, "task-1")).resolves.toMatchObject({
@@ -283,7 +283,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
   // 手动触发仅在当前用户和组织可见时才委派调度器。
   test("手动触发委派调度器", async () => {
     scheduledTaskV2Repo.getByUserAndOrgAndId = mock(async () => task());
-    schedulerService.execute = mock(async () => ({ status: "success", duration: 7, resultSummary: "ok" }));
+    schedulerService.execute = mock(async () => ({ status: "success" as const, duration: 7, resultSummary: "ok" }));
     await expect(triggerTaskV2(USER_ID, ORG_ID, "task-1")).resolves.toMatchObject({
       success: true,
       data: { status: "success" },

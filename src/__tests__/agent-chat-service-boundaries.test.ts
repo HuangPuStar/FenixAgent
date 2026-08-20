@@ -92,7 +92,7 @@ describe("agent-chat-service 输入边界与实例回滚", () => {
     });
     setAgentChatServiceDeps({
       spawnInstanceViaController: async (environmentId, userId, source) => {
-        spawned = { environmentId, userId, source };
+        spawned = { environmentId, userId, source: source ?? "interactive" };
         return { instanceId: "inst-org-a-user-a" } as never;
       },
       connectAgentRelay: async () => createReplyingRelay(),

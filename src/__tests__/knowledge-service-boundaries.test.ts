@@ -75,7 +75,7 @@ describe("知识库服务边界", () => {
       name: "产品文档",
       slug: "product-docs",
       description: null,
-      provider: null,
+      provider: null as never,
       remoteId: null,
       remoteAccountId: null,
       remoteUserId: null,

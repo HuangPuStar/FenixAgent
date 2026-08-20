@@ -11,8 +11,14 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function installFetch(fetchStub: unknown): void {
-  globalThis.fetch = fetchStub as typeof fetch;
+type FetchStub = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+function mockFetch(implementation: FetchStub) {
+  return mock<FetchStub>(implementation);
+}
+
+function installFetch(fetchStub: FetchStub): void {
+  globalThis.fetch = fetchStub as unknown as typeof fetch;
 }
 
 beforeEach(() => {
@@ -31,7 +37,7 @@ afterEach(() => {
 describe("RagFlowKnowledgeProvider 补充覆盖", () => {
   // 数据集列表应只保留调用方需要的 id 与名称。
   test("listDatasets 映射数据集列表并注入覆盖用 API key", async () => {
-    const fetchSpy = mock(async () =>
+    const fetchSpy = mockFetch(async () =>
       jsonResponse({ code: 0, data: [{ id: "ds-1", name: "资料库", description: "忽略" }] }),
     );
     installFetch(fetchSpy);
@@ -46,7 +52,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
   // 数据集详情应识别内置解析器并规范化嵌入模型。
   test("getDataset 映射内置解析器和分块配置", async () => {
     installFetch(
-      mock(async () =>
+      mockFetch(async () =>
         jsonResponse({
           code: 0,
           data: { embedding_model: " embed@instance@provider ", parser_id: "naive", chunk_method: "book" },
@@ -63,15 +69,15 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 不存在的数据集详情应返回 null 而不是伪造默认配置。
   test("getDataset 在上游失败时返回 null", async () => {
-    installFetch(mock(async () => jsonResponse({ code: 102, message: "not found" })));
+    installFetch(mockFetch(async () => jsonResponse({ code: 102, message: "not found" })));
 
     await expect(new RagFlowKnowledgeProvider().getDataset({ datasetId: "missing" })).resolves.toBeNull();
   });
 
   // 模型列表应在新端点失败后降级到旧端点并过滤目标类型。
   test("listEmbeddingModels 回退旧模型端点并映射两段式模型标识", async () => {
-    const fetchSpy = mock(async (url: string) => {
-      if (url.endsWith("/api/v1/models")) return jsonResponse({ code: 500, message: "unsupported" });
+    const fetchSpy = mockFetch(async (url) => {
+      if (String(url).endsWith("/api/v1/models")) return jsonResponse({ code: 500, message: "unsupported" });
       return jsonResponse({
         code: 0,
         data: [
@@ -91,7 +97,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
   // pipeline 列表应接受多语言标题并过滤缺失 ID 的项。
   test("listPipelines 映射多语言画布标题并过滤无效项", async () => {
     installFetch(
-      mock(async () =>
+      mockFetch(async () =>
         jsonResponse({
           code: 0,
           data: { canvas: [{ id: "pipe-1", title: { en: "English", zh: "中文" } }, { title: "无 ID" }], total: 2 },
@@ -104,7 +110,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 厂商连接失败应转换为可展示的失败结果，避免泄露请求体中的密钥。
   test("verifyProviderConnection 映射业务错误为失败结果", async () => {
-    installFetch(mock(async () => jsonResponse({ code: 403, message: "connection rejected" })));
+    installFetch(mockFetch(async () => jsonResponse({ code: 403, message: "connection rejected" })));
 
     await expect(
       new RagFlowKnowledgeProvider().verifyProviderConnection({
@@ -117,7 +123,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 模型目录请求应编码路径参数并映射多类型和 token 上限。
   test("listProviderModels 编码厂商名并映射模型响应", async () => {
-    const fetchSpy = mock(async () =>
+    const fetchSpy = mockFetch(async () =>
       jsonResponse({ code: 0, data: [{ name: "embed", model_type: ["embedding", "rerank"], max_tokens: 8192 }] }),
     );
     installFetch(fetchSpy);
@@ -135,7 +141,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 文档删除的 405 兼容路径应使用集合端点和 ids 请求体。
   test("deleteResource 在旧文档端点不支持时回退集合删除", async () => {
-    const fetchSpy = mock(async (_url: string, init?: RequestInit) => {
+    const fetchSpy = mockFetch(async (_url, init) => {
       if (init?.body) return jsonResponse({ code: 0 });
       return jsonResponse({ code: 405, message: "MethodNotAllowed" }, 405);
     });
@@ -154,7 +160,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 资源状态更新和重解析应发送 RagFlow 要求的数值状态及 ingest 参数。
   test("setResourceEnabled 与 reparseResource 映射写入请求体", async () => {
-    const fetchSpy = mock(async () => jsonResponse({ code: 0 }));
+    const fetchSpy = mockFetch(async () => jsonResponse({ code: 0 }));
     installFetch(fetchSpy);
     const provider = new RagFlowKnowledgeProvider();
 
@@ -172,7 +178,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 分块分页应保留请求页码、关键词，并计算跨页的 chunkIndex。
   test("listChunks 映射分页分块和启用状态", async () => {
-    const fetchSpy = mock(async () =>
+    const fetchSpy = mockFetch(async () =>
       jsonResponse({
         code: 0,
         data: {
@@ -204,7 +210,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 切换分块状态应使用 PATCH 和数值 available 字段。
   test("switchChunk 将布尔状态映射为 RagFlow available 数值", async () => {
-    const fetchSpy = mock(async () => jsonResponse({ code: 0 }));
+    const fetchSpy = mockFetch(async () => jsonResponse({ code: 0 }));
     installFetch(fetchSpy);
 
     await new RagFlowKnowledgeProvider().switchChunk({
@@ -222,7 +228,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 图谱读取应补齐缺失的节点和边，并原样保留 mind_map。
   test("getKnowledgeGraph 映射图谱响应的默认集合", async () => {
-    installFetch(mock(async () => jsonResponse({ code: 0, data: { graph: {}, mind_map: { root: "知识" } } })));
+    installFetch(mockFetch(async () => jsonResponse({ code: 0, data: { graph: {}, mind_map: { root: "知识" } } })));
 
     await expect(
       new RagFlowKnowledgeProvider().getKnowledgeGraph({
@@ -235,7 +241,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 删除不存在图谱是幂等操作，不应向调用方暴露 code=102。
   test("deleteKnowledgeGraph 将图不存在业务码视为成功", async () => {
-    installFetch(mock(async () => jsonResponse({ code: 102, message: "graph not found" })));
+    installFetch(mockFetch(async () => jsonResponse({ code: 102, message: "graph not found" })));
 
     await expect(
       new RagFlowKnowledgeProvider().deleteKnowledgeGraph({
@@ -248,7 +254,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 图谱进度接口应为缺失字段提供零进度默认值。
   test("pollKnowledgeGraphProgress 映射图谱任务进度", async () => {
-    installFetch(mock(async () => jsonResponse({ code: 0, data: { progress_msg: "处理中", task_id: "task-1" } })));
+    installFetch(mockFetch(async () => jsonResponse({ code: 0, data: { progress_msg: "处理中", task_id: "task-1" } })));
 
     await expect(
       new RagFlowKnowledgeProvider().pollKnowledgeGraphProgress({
@@ -261,7 +267,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 通用检索应透传可选参数，并将 RagFlow chunk 映射为统一搜索结果。
   test("search 映射检索响应并保留分页过滤参数", async () => {
-    const fetchSpy = mock(async () =>
+    const fetchSpy = mockFetch(async () =>
       jsonResponse({
         code: 0,
         data: {
@@ -300,7 +306,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
   // 检索测试接口应映射兼容字段、关键词字符串及文档聚合。
   test("searchDetailed 映射 datasets/search 的兼容字段和聚合", async () => {
     installFetch(
-      mock(async () =>
+      mockFetch(async () =>
         jsonResponse({
           code: 0,
           data: {
@@ -349,7 +355,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
     setConfig({ ragflowRequestTimeoutMs: 1 });
     installFetch(
       mock(
-        (_url: string, init?: RequestInit) =>
+        (input: string | URL | Request, init?: RequestInit) =>
           new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
           }),

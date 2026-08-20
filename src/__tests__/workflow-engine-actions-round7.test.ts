@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
+import { type DAGRunResult, WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { getTeamEngine } from "../services/workflow";
-import { resetAllStubs, stubAuthApi } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-engine")).default;
 
@@ -25,6 +25,21 @@ function setAuthenticatedOrg(organizationId = "org-engine-1", userId = "user-eng
   setTestOrgContext({ organizationId, userId, role: "owner" });
 }
 
+function runResult(status: DAGRunResult["status"] = "SUCCESS"): DAGRunResult {
+  return {
+    runId: "run-started",
+    status,
+    summary: {
+      run_id: "run-started",
+      workflow_name: "Direct workflow",
+      status,
+      started_at: "2026-08-19T00:00:00.000Z",
+      node_summary: { total: 0, completed: 0, failed: 0, running: 0 },
+    },
+    spawnedInstanceIds: [],
+  };
+}
+
 describe("POST /web/workflow-engine action 分发", () => {
   beforeEach(() => {
     resetAllStubs();
@@ -43,13 +58,13 @@ describe("POST /web/workflow-engine action 分发", () => {
     const engine = getTeamEngine("org-engine-1");
     const runAsync = spyOn(engine, "runAsync").mockReturnValue({
       runId: "run-started",
-      result: Promise.resolve({ status: "SUCCESS", spawnedInstanceIds: [] }),
+      result: Promise.resolve(runResult()),
     });
 
     const response = await request({ action: "run", yaml: "name: direct" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: { runId: "run-started", status: "RUNNING" } });
+    expect(await readJson(response)).toEqual({ success: true, data: { runId: "run-started", status: "RUNNING" } });
     expect(runAsync).toHaveBeenCalledWith("name: direct", undefined, { userId: "user-engine-1" });
   });
 
@@ -60,7 +75,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "run" });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "VALIDATION_ERROR", message: "yaml or workflowId is required" },
     });
@@ -79,7 +94,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "dryRun", yaml: "name: preview" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: {
         valid: true,
@@ -107,7 +122,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "cancel", runId: "run-cancel" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(cancel).toHaveBeenCalledWith("run-cancel");
   });
 
@@ -120,7 +135,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "cancel", runId: "run-missing" });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: WorkflowErrorCode.RUN_NOT_FOUND, message: "run not found" },
     });
@@ -135,7 +150,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "cancel", runId: "run-invalid" });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: WorkflowErrorCode.VALIDATION_ERROR, message: "invalid transition" },
     });
@@ -148,7 +163,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "cancel", runId: "run-broken" });
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "INTERNAL_ERROR", message: "storage unavailable" },
     });
@@ -156,9 +171,7 @@ describe("POST /web/workflow-engine action 分发", () => {
 
   // approve 必须保留审批 token 与附加数据，确保挂起节点能恢复到原始审批上下文。
   test("approve 转交 token 和附加数据", async () => {
-    const approveNode = spyOn(getTeamEngine("org-engine-1"), "approveNode").mockResolvedValue({
-      spawnedInstanceIds: [],
-    });
+    const approveNode = spyOn(getTeamEngine("org-engine-1"), "approveNode").mockResolvedValue(runResult());
 
     const response = await request({
       action: "approve",
@@ -169,7 +182,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(approveNode).toHaveBeenCalledWith("run-approval", "node-review", "approval-token", { approvedBy: "owner" });
   });
 
@@ -180,7 +193,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "getRunStatus", runId: "run-absent" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(getRunStatus).toHaveBeenCalledWith("run-absent");
   });
 
@@ -191,7 +204,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "getEvents", runId: "run-events", nodeId: "node-private" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
     expect(getEvents).toHaveBeenCalledWith("run-events", { nodeId: "node-private" });
   });
 
@@ -202,7 +215,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "getOutput", runId: "run-output", nodeId: "node-pending" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: null });
+    expect(await readJson(response)).toEqual({ success: true, data: null });
     expect(getOutput).toHaveBeenCalledWith("run-output", "node-pending");
   });
 
@@ -213,7 +226,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "getPendingApprovals", runId: "run-finished" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true, data: [] });
+    expect(await readJson(response)).toEqual({ success: true, data: [] });
     expect(getPendingApprovals).toHaveBeenCalledWith("run-finished");
   });
 
@@ -234,7 +247,7 @@ describe("POST /web/workflow-engine action 分发", () => {
     const response = await request({ action: "recover", runId: "run-old", yaml: "name: restore" });
 
     expect(response.status).toBe(200);
-    expect((await response.json()).success).toBe(true);
+    expect((await readJson(response)).success).toBe(true);
     expect(recover).toHaveBeenCalledWith("run-old", "name: restore", { userId: "user-engine-1" });
   });
 

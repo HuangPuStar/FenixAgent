@@ -95,9 +95,9 @@ describe("技能上传纯逻辑边界", () => {
   // overwrite 策略必须传递。
   test("传递覆盖策略", () =>
     expect(buildSkillUploadFormData([skill("demo", true)], "overwrite").get("conflictStrategy")).toBe("overwrite"));
-  // skip 策略必须传递。
-  test("传递跳过策略", () =>
-    expect(buildSkillUploadFormData([skill("demo", true)], "skip").get("conflictStrategy")).toBe("skip"));
+  // ignore 策略必须传递。
+  test("传递忽略策略", () =>
+    expect(buildSkillUploadFormData([skill("demo", true)], "ignore").get("conflictStrategy")).toBe("ignore"));
   // 空输入应生成可解析空清单。
   test("空输入生成空清单", () => expect(getManifest(buildSkillUploadFormData([]))).toEqual([]));
   // 所有有效文件都必须写入 multipart。

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import * as mcpInspector from "../services/mcp-inspector";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
 
@@ -44,7 +44,7 @@ describe("MCP 配置路由补充覆盖", () => {
     const response = await request("/config/mcp/actions/test", { method: "POST" });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "VALIDATION_ERROR", message: "缺少 'name' 查询参数" },
     });
@@ -57,7 +57,7 @@ describe("MCP 配置路由补充覆盖", () => {
     const response = await request("/config/mcp/actions/test?name=missing", { method: "POST" });
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "MCP server 'missing' not found" },
     });
@@ -72,7 +72,7 @@ describe("MCP 配置路由补充覆盖", () => {
     const response = await request("/config/mcp/actions/test?name=remote-server", { method: "POST" });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: false,
       error: { code: "VALIDATION_ERROR", message: "Cannot test 'remote-server': unsupported config type" },
     });
@@ -99,7 +99,7 @@ describe("MCP 配置路由补充覆盖", () => {
     const response = await request("/config/mcp/actions/test?name=remote-server", { method: "POST" });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: { name: "remote-server", reachable: false, protocol: false, message: "连接失败" },
     });
@@ -127,7 +127,7 @@ describe("MCP 配置路由补充覆盖", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await readJson(response)).toEqual({
       success: true,
       data: { reachable: true, protocol: false, message: "HTTP endpoint only" },
     });
