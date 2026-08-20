@@ -30,7 +30,16 @@ describe("OpenSandbox Cluster routes", () => {
   test("protects management routes and never returns server API keys", async () => {
     const databasePath = `/tmp/opensandbox-cluster-routes-${Date.now()}.db`;
     migrateDatabase(databasePath);
-    const app = createApp({ ...config, databasePath });
+    // 显式注入离线探针，避免并发测试替换 globalThis.fetch 后把不可达节点误判为健康。
+    const offlineFetch: typeof fetch = Object.assign(async (): Promise<Response> => {
+      throw new Error("test server is offline");
+    }, fetch);
+    const app = createApp(
+      { ...config, databasePath },
+      {
+        fetch: offlineFetch,
+      },
+    );
 
     const unauthorized = await app.handle(new Request("http://localhost/api/v1/pools"));
     expect(unauthorized.status).toBe(401);

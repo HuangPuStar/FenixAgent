@@ -19,7 +19,7 @@ allowed-tools: Bash
 
 ## 分页列出任务
 
-支持按名称关键字和类型筛选，服务端分页。
+支持按名称关键字、类型和 Agent 筛选，服务端分页。
 
 ```bash
 curl -s "$USER_META_BASE_URL/web/tasks/v2?page=1&pageSize=20" \
@@ -32,6 +32,7 @@ curl -s "$USER_META_BASE_URL/web/tasks/v2?page=1&pageSize=20" \
 - `pageSize`（number，默认 20）：每页条数
 - `keyword`（string，可选）：按任务名称模糊搜索（大小写不敏感）
 - `type`（`http` | `agent`，可选）：按任务类型筛选
+- `agentId`（string，可选）：按关联的 Agent ID 筛选
 
 ## 创建任务
 
