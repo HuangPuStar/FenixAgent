@@ -190,6 +190,25 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     expect(InMemoryWebSocket.instances).toHaveLength(3);
   });
 
+  // chat relay 恢复时，即使本地仍误判旧 file-ws 为 OPEN，也必须换链重新 register。
+  test("chat relay connect 会强制重建文件通道", async () => {
+    handles.push(createAcpClient(config));
+    await waitForSockets(1);
+    const mainSocket = InMemoryWebSocket.instances[0];
+    if (!mainSocket) throw new Error("main socket was not created");
+    mainSocket.message('{"type":"registered"}');
+    const fileSocket = InMemoryWebSocket.instances[1];
+    if (!fileSocket) throw new Error("file socket was not created");
+    fileSocket.open();
+
+    mainSocket.message('{"type":"relay","instance_id":"inst-1","session_id":"ses-1","payload":{"type":"connect"}}');
+
+    expect(timeoutCallbacks.size).toBe(0);
+    expect(fileSocket.closeCalls).toBe(1);
+    expect(InMemoryWebSocket.instances).toHaveLength(3);
+    expect(InMemoryWebSocket.instances[2]?.url).toContain("/acp/file-ws");
+  });
+
   // 文件通道构造异常时也必须进入退避重连，避免 sandbox 重启窗口永久失联。
   test("文件通道构造失败时仍会重连", async () => {
     InMemoryWebSocket.remainingFileWsConstructionFailures = 1;
