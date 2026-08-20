@@ -18,10 +18,11 @@ import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/a
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
+import type { SkillConfigRowWithAccess } from "./config/types";
 import { spawnInstanceViaController } from "./orchestration-instance";
 import { setPublicRead } from "./resource-permission";
 import { getGlobalSkillsDir, setSkill } from "./skill";
-import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
+import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir, parseFrontmatter } from "./skill-fs";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 
@@ -57,6 +58,22 @@ const META_BUILTIN_MARKER = { source: "meta-builtin" } as const;
 function isMetaBuiltin(row: { metadata: unknown }): boolean {
   if (!row.metadata || typeof row.metadata !== "object") return false;
   return (row.metadata as Record<string, string>).source === "meta-builtin";
+}
+
+/**
+ * 选择 meta Agent 应绑定的系统托管 builtin skill。
+ *
+ * Meta Agent 的 builtin 绑定只能来自系统 admin 组织中带有 meta-builtin 标记的
+ * 本地记录；业务组织中的同名 skill 不属于 builtin 来源。
+ */
+export function selectSystemBuiltinSkillId(
+  rows: Pick<SkillConfigRowWithAccess, "id" | "name" | "metadata" | "resourceAccess">[],
+  name: string,
+): string | null {
+  const selected = rows.find(
+    (row) => row.name === name && row.resourceAccess?.ownership === "internal" && isMetaBuiltin(row),
+  );
+  return selected?.id ?? null;
 }
 
 /** orgId → apiKey 明文缓存，避免重复创建 */
@@ -101,20 +118,14 @@ async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | nu
   return null;
 }
 
-/** 解析内置 SKILL.md 的最小 frontmatter；这里只提取同步阶段真正需要的字段。 */
-function parseSkillFrontmatter(raw: string): { name: string; description: string } | null {
-  const match = raw.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!match) return null;
-  const frontmatter = match[1];
-  const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
-  if (!nameMatch) return null;
-  // description 可能是多行（| 前缀），取第一行作为摘要
-  const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
-  // 去掉 YAML 双引号包裹，与 skill-fs.ts parseFrontmatter 保持一致
-  const unquote = (v: string) => v.trim().replace(/^"(.*)"$/, "$1");
+/** 解析内置 SKILL.md，并把 frontmatter 与正文分离后交给统一写入流程。 */
+function parseSkillFrontmatter(raw: string): { name: string; description: string; content: string } | null {
+  const parsed = parseFrontmatter(raw);
+  if (!parsed.metadata.name) return null;
   return {
-    name: unquote(nameMatch[1]),
-    description: descMatch ? unquote(descMatch[1]) : "",
+    name: parsed.metadata.name,
+    description: parsed.metadata.description ?? "",
+    content: parsed.content,
   };
 }
 
@@ -145,7 +156,7 @@ function scanBuiltinSkills(): {
         log(`[meta-agent] Skipping ${entry.name}: no valid frontmatter`);
         continue;
       }
-      skills.push({ ...parsed, content: raw });
+      skills.push(parsed);
     } catch (err) {
       log(`[meta-agent] Failed to read skill ${entry.name}: ${err}`);
     }
@@ -229,14 +240,16 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   }
 }
 
-/** 将当前组织下已同步的 builtin 名称反查成 skill id，供后续绑定 AgentConfig 或公开设置。 */
-async function listBuiltinSkillIds(ctx: AuthContext): Promise<string[]> {
+/** 从系统 admin 组织反查 builtin 名称对应的 skill id，供后续绑定 AgentConfig 或公开设置。 */
+async function listBuiltinSkillIds(_ctx: AuthContext): Promise<string[]> {
+  // builtin 绑定固定来自系统 admin 组织，不从当前业务组织解析同名 skill。
+  const { ensureSystemAdmin } = await import("./system-admin");
+  const admin = await ensureSystemAdmin();
+  const systemSkills = await listSkills({ organizationId: admin.organization.id, userId: admin.userId, role: "owner" });
   const skillIds: string[] = [];
   for (const builtin of scanBuiltinSkills()) {
-    const existing = await getSkill(ctx, builtin.name);
-    if (existing?.id) {
-      skillIds.push(existing.id);
-    }
+    const skillId = selectSystemBuiltinSkillId(systemSkills, builtin.name);
+    if (skillId) skillIds.push(skillId);
   }
   return skillIds;
 }

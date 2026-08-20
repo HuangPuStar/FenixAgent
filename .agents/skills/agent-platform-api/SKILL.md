@@ -1,6 +1,6 @@
 ---
 name: agent-platform-api
-description: RCS Platform API 完整参考。Agent 通过 curl + jq 调用 REST API 操作平台资源：环境、会话、工作流、配置、任务、知识库、组织等。
+description: RCS Platform API 完整参考。Agent 通过 curl + jq 调用 REST API 操作平台资源：环境、工作流、配置、任务、知识库、组织等。
 allowed-tools: Bash
 ---
 
@@ -17,6 +17,8 @@ allowed-tools: Bash
 - `$USER_META_USER_ID` — 当前请求用户 ID，用于标注资源归属或调用 user-scoped API
 - `$USER_META_ORG_ID` — 当前组织 ID，多租户隔离/调用 organization-scoped API 时使用
 
+> **沙盒网络例外**：先使用注入的 `$USER_META_BASE_URL`。只有当其主机为 `localhost` / `127.0.0.1` 且在当前沙盒中连接失败时，才在当前 shell 将主机替换为 `host.docker.internal` 后重试；保留原协议、端口和路径。该替换后的内部地址同样不得向用户展示。
+
 所有请求必须携带 `Authorization` 头：
 
 ```bash
@@ -27,20 +29,20 @@ AUTH="-H 'Authorization: Bearer $USER_META_API_KEY' -H 'Content-Type: applicatio
 
 ## 响应格式
 
-成功：`{ "success": true, "data": ... }`
-失败：`{ "success": false, "error": { "type": "ERROR_CODE", "message": "..." } }`
+成功响应通常为：`{ "success": true, "data": ... }`。
+
+失败响应**尚未全局统一**：路由主动返回的业务错误通常是 `{ "success": false, "error": { "code": "ERROR_CODE", "message": "..." } }`；全局错误处理、限流等也可能是 `{ "error": { "type": "ERROR_CODE", "message": "..." } }`，没有 `success` 字段。调用方必须先判断 HTTP 状态码，再兼容读取 `error.code` 和 `error.type`；不要把其中任一形状当作所有 `/web/*` 接口的保证。
 
 ## API 模块索引
 
 | 模块 | 文档 | 说明 |
 |------|------|------|
 | 环境 | `references/environment.md` | 环境创建/列表/进入/实例管理 |
-| 会话 | `references/session.md` | 会话列表/历史/控制/中断 |
-| 工作流 | `references/workflow.md` | 工作流定义/执行引擎/触发器/看板/作业 |
+| 工作流 | `references/workflow.md` | 工作流定义/执行引擎/触发器 |
 | 配置 | `references/config.md` | Provider/Model/Agent/Skill/MCP 配置 |
 | 任务 | `references/task.md` | 定时任务 CRUD/触发/日志 |
-| 知识库 | `references/knowledge.md` | 知识库 CRUD/文件上传/URL 导入 |
-| 组织 | `references/org.md` | 组织管理/成员/API Key |
+| 知识库 | `references/knowledge.md` | 知识库 CRUD/文件上传 |
+| 组织 | `references/org.md` | 当前不可用；禁止调用组织、成员和 API Key 接口 |
 | Agent Sites | `references/agent-sites.md` | 建站部署/App 管理/PocketBase 后端配置/前端上传 |
 
 **使用某个模块的 API 前，先 `cat references/<module>.md` 读取完整文档和 curl 示例。**

@@ -38,6 +38,9 @@ const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
   "tool_call_completed",
   "tool_call_failed",
   "permission_requested",
+  // AskUserQuestion 可能是 Agent 恢复后的首个业务帧；没有可写 turn 时必须与
+  // permission 一样先补建回放 turn，否则聚合层会拒绝投影，前端不会显示提问面板。
+  "question_requested",
 ]);
 
 /** 生成回放 turnId（turn_replay_ 前缀与实时 turn 区分，便于日志排查） */
@@ -666,6 +669,24 @@ export class RelayEventHandler {
             turnId: replayTurnId,
           });
         }
+      }
+    }
+    if (!inReplayWindow && event.type === "user_message" && !event.turnId) {
+      const callbackEntryId = `callback_${crypto.randomUUID()}`;
+      shared.callbackAssistantEntryId = callbackEntryId;
+      event = { ...event, callbackEntryId };
+    } else if (
+      shared.callbackAssistantEntryId &&
+      (event.type === "message_delta" ||
+        event.type === "reasoning_delta" ||
+        event.type === "turn_completed" ||
+        event.type === "turn_cancelled" ||
+        event.type === "turn_failed") &&
+      !event.turnId
+    ) {
+      event = { ...event, callbackEntryId: shared.callbackAssistantEntryId };
+      if (event.type === "turn_completed" || event.type === "turn_cancelled" || event.type === "turn_failed") {
+        shared.callbackAssistantEntryId = null;
       }
     }
     this.dispatch(shared, event);

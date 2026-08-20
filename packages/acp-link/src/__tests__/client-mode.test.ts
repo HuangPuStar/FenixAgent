@@ -101,7 +101,8 @@ describe("buildRegisterMessage 机器信息", () => {
   });
 });
 
-describe("createAcpClient rcsUrl 为空时抛错", () => {
+describe("createAcpClient 配置校验", () => {
+  // 缺少 RCS 地址时应在启动前失败。
   test("缺少 rcsUrl 时抛出 Error", async () => {
     const { createAcpClient } = await import("../server");
     expect(() =>
@@ -111,8 +112,24 @@ describe("createAcpClient rcsUrl 为空时抛错", () => {
         command: "echo",
         args: [],
         cwd: "/tmp",
+        machineId: "mach_test",
       }),
     ).toThrow("rcsUrl");
+  });
+
+  // 缺少唯一 machine 身份时不得依赖本地历史状态注册。
+  test("缺少 machineId 时抛出 Error", async () => {
+    const { createAcpClient } = await import("../server");
+    expect(() =>
+      createAcpClient({
+        port: 9315,
+        host: "localhost",
+        command: "echo",
+        args: [],
+        cwd: "/tmp",
+        rcsUrl: "ws://localhost:3000",
+      }),
+    ).toThrow("machineId");
   });
 });
 
@@ -150,8 +167,8 @@ describe("buildRegisterMessage name 字段", () => {
 });
 
 describe("buildRegisterMessage machine_id 字段", () => {
-  // 传入 machineId 时应透传到注册消息
-  test("传入 machineId 时透传到注册消息", async () => {
+  // 显式 machineId 是注册消息唯一的身份字段。
+  test("传入 machineId 时透传且不包含 node_id", async () => {
     const { buildRegisterMessage } = await import("../server");
     const config: ServerConfig = {
       port: 9315,
@@ -163,62 +180,6 @@ describe("buildRegisterMessage machine_id 字段", () => {
     };
     const msg = buildRegisterMessage(config) as Record<string, unknown>;
     expect(msg.machine_id).toBe("mach_sandbox_01");
-  });
-
-  // 不传 machineId 时不应包含 machine_id 字段
-  test("不传 machineId 时不包含 machine_id 字段", async () => {
-    const { buildRegisterMessage } = await import("../server");
-    const config: ServerConfig = {
-      port: 9315,
-      host: "localhost",
-      command: "opencode",
-      args: ["acp"],
-      cwd: "/app",
-    };
-    const msg = buildRegisterMessage(config) as Record<string, unknown>;
-    expect(msg.machine_id).toBeUndefined();
-  });
-});
-describe("buildRegisterMessage node_id 字段", () => {
-  // 传入 nodeId 时应透传到注册消息
-  test("传入 nodeId 时透传到注册消息", async () => {
-    const { buildRegisterMessage } = await import("../server");
-    const config: ServerConfig = {
-      port: 9315,
-      host: "localhost",
-      command: "opencode",
-      args: ["acp"],
-      cwd: "/app",
-    };
-    const msg = buildRegisterMessage(config, "mach_abc123") as Record<string, unknown>;
-    expect(msg.node_id).toBe("mach_abc123");
-  });
-
-  // 不传 nodeId 时不应包含 node_id 字段
-  test("不传 nodeId 时不包含 node_id 字段", async () => {
-    const { buildRegisterMessage } = await import("../server");
-    const config: ServerConfig = {
-      port: 9315,
-      host: "localhost",
-      command: "opencode",
-      args: ["acp"],
-      cwd: "/app",
-    };
-    const msg = buildRegisterMessage(config) as Record<string, unknown>;
-    expect(msg.node_id).toBeUndefined();
-  });
-
-  // 传入 null 时不应包含 node_id 字段
-  test("传入 null 时不包含 node_id 字段", async () => {
-    const { buildRegisterMessage } = await import("../server");
-    const config: ServerConfig = {
-      port: 9315,
-      host: "localhost",
-      command: "opencode",
-      args: ["acp"],
-      cwd: "/app",
-    };
-    const msg = buildRegisterMessage(config, null) as Record<string, unknown>;
     expect(msg.node_id).toBeUndefined();
   });
 });

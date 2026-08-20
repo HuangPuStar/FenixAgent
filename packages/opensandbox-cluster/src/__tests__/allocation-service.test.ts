@@ -11,6 +11,13 @@ const config: ClusterConfig = {
   serverApiKeyEncryptionKey: new Uint8Array(32),
   proxyConnectTimeoutMs: 3000,
   proxyResponseTimeoutMs: 120000,
+  frpPluginPort: 8081,
+  frpPublicAddress: "cluster.example.com",
+  frpBindPort: 7000,
+  frpInternalUrl: "http://frps:7080",
+  frpToken: "shared-token",
+  frpConnectionStaleMs: 40000,
+  frpHealthIntervalMs: 30000,
 };
 
 describe("sandbox allocation", () => {

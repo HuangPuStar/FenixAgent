@@ -12,6 +12,13 @@ const config: ClusterConfig = {
   serverApiKeyEncryptionKey: new Uint8Array(32),
   proxyConnectTimeoutMs: 3000,
   proxyResponseTimeoutMs: 120000,
+  frpPluginPort: 8081,
+  frpPublicAddress: "cluster.example.com",
+  frpBindPort: 7000,
+  frpInternalUrl: "http://frps:7080",
+  frpToken: "shared-token",
+  frpConnectionStaleMs: 40000,
+  frpHealthIntervalMs: 30000,
 };
 
 describe("OpenSandbox Cluster routes", () => {
@@ -24,7 +31,16 @@ describe("OpenSandbox Cluster routes", () => {
   test("protects management routes and never returns server API keys", async () => {
     const databasePath = `/tmp/opensandbox-cluster-routes-${randomUUID()}.db`;
     migrateDatabase(databasePath);
-    const app = createApp({ ...config, databasePath }, { fetch: async () => Promise.reject(new Error("unreachable")) });
+    // 显式注入离线探针，避免并发测试替换 globalThis.fetch 后把不可达节点误判为健康。
+    const offlineFetch: typeof fetch = Object.assign(async (): Promise<Response> => {
+      throw new Error("test server is offline");
+    }, fetch);
+    const app = createApp(
+      { ...config, databasePath },
+      {
+        fetch: offlineFetch,
+      },
+    );
 
     const unauthorized = await app.handle(new Request("http://localhost/api/v1/pools"));
     expect(unauthorized.status).toBe(401);

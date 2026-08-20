@@ -110,7 +110,16 @@ function extractToolCallId(event: NormalizedEvent): string | null {
 /** 处理用户消息：创建新 turn（幂等：同 turnId 重放跳过），终结未完成的旧 turn */
 function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const turnId = event.turnId;
-  if (!turnId) return { applied: false, reason: "user_message missing turnId" };
+  if (!turnId && !event.callbackEntryId) return { applied: false, reason: "user_message missing turnId" };
+  if (!turnId) {
+    const entryId = event.callbackEntryId as string;
+    const text = extractText(event);
+    ensureEntry(pair.chat, { entryId, turnId: null, kind: "message", role: "user" });
+    setEntryStatus(pair.chat, entryId, "completed");
+    if (text) appendEntryText(pair.chat, entryId, "text", "text", text);
+    ensureEntry(pair.chat, { entryId: `${entryId}:assistant`, turnId: null, kind: "message", role: "assistant" });
+    return { applied: true };
+  }
 
   // M2 重放保护：按 user entry 存在性判定（同 turnId 已投影过 → 跳过）。
   // 不能按 active.turnId === turnId 判定：历史回放/乱序下 active 可能已被更新
@@ -162,6 +171,16 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
 
 /** 处理文本/思考增量：定位当前 turn 的 assistant entry，Y.Text 追加 */
 function applyDelta(pair: DocPair, event: NormalizedEvent, blockType: "text" | "reasoning"): ApplyResult {
+  if (event.callbackEntryId) {
+    const entryId = `${event.callbackEntryId}:assistant`;
+    if (!getEntry(pair.chat, entryId)) return { applied: false, reason: "callback assistant entry not found" };
+    const text = extractText(event);
+    if (!text) return { applied: false, reason: "empty delta" };
+    appendEntryText(pair.chat, entryId, blockType, blockType, text, blockType === "reasoning" ? "summary" : undefined);
+    setEntryStatus(pair.chat, entryId, "streaming");
+    return { applied: true };
+  }
+
   const active = readActiveTurn(pair.session);
   // 终态或 cancelling 后到达的增量一律丢弃（不新建 entry、不回退状态机）
   if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
@@ -342,22 +361,29 @@ function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
 
 /**
  * 处理 AskUserQuestion 交互问题请求：questionId upsert 幂等；60s expiresAt 投影
- * （与 acp-link 侧自动空答案对齐）。turn 状态机不动：AskUserQuestion 是工具执行中
- * 的询问（agent 收到答案后自行继续），复用 awaiting_permission 会与权限 CAS 收敛
- * 逻辑（hasPendingPermission / expireTurnPermissions）耦合、新增 waiting_question
- * 状态位违反设计决策（复用 waiting_user 展示态，不新增状态位）；前端弹窗自身即
- * "等待用户"信号，60s 后投影随超时迁移自动消失。
+ * （与 acp-link 侧自动空答案对齐）。问题是独立 control_response 等待态，不驱动
+ * turn 状态机；正常完成帧与问题帧乱序时仍须投影，避免工具卡片已展示但面板丢失。
+ * cancelled / interrupted / failed 或无活动 turn 时则拒绝，避免旧会话帧创建孤立问题。
  */
 function applyQuestionRequested(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const questionId = event.update.questionId as string | undefined;
   if (!questionId) return { applied: false, reason: "question missing questionId" };
 
   const active = readActiveTurn(pair.session);
-  // 终态或 cancelling 后的问题请求不投影：turn 已不可恢复执行（与权限守卫同规则）
-  if (!canWriteToTurn(active.turnStatus)) {
+  // AskUserQuestion 已由 acp-link 拦截并等待 control_response；因此若私有问题帧与
+  // prompt_complete 乱序到达，completed 只是展示态提前收敛，不能据此丢弃问题。
+  // cancelled / interrupted / failed 则表示 Agent 确已不能消费答案，仍须拒绝；没有
+  // active turn 同样拒绝，避免孤立的旧帧在当前会话创建无归属问题。
+  if (
+    !active.turnStatus ||
+    active.turnStatus === "cancelling" ||
+    active.turnStatus === "cancelled" ||
+    active.turnStatus === "interrupted" ||
+    active.turnStatus === "failed"
+  ) {
     return {
       applied: false,
-      reason: "question requested for unwritable turn",
+      reason: "question requested for cancelled, failed, or missing turn",
     };
   }
 
@@ -416,6 +442,17 @@ function applyTurnTerminal(
   event: NormalizedEvent,
   status: "completed" | "error" | "cancelled" | "interrupted",
 ): ApplyResult {
+  if (event.callbackEntryId) {
+    const entryId = `${event.callbackEntryId}:assistant`;
+    if (!getEntry(pair.chat, entryId)) return { applied: false, reason: "callback assistant entry not found" };
+    setEntryStatus(
+      pair.chat,
+      entryId,
+      status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
+    );
+    return { applied: true };
+  }
+
   const active = readActiveTurn(pair.session);
   if (!active.turnId) return { applied: false, reason: "terminal without active turn" };
   // 终态归属校验：事件携带 turnId 且与当前 active turn 不一致时，视为旧 turn 的

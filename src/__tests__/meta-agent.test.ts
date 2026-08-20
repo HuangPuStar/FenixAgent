@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { syncBuiltinSkillsToSystemAdmin } from "../services/meta-agent";
+import { selectSystemBuiltinSkillId, syncBuiltinSkillsToSystemAdmin } from "../services/meta-agent";
 import { syncBuiltin } from "../services/sync-builtin";
 
 describe("syncBuiltin", () => {
@@ -26,6 +26,69 @@ describe("syncBuiltin", () => {
       userId: "user_admin",
       role: "owner",
     });
+  });
+});
+
+describe("selectSystemBuiltinSkillId", () => {
+  // Meta Agent 只能绑定系统 admin 组织的 builtin，不能绑定业务组织同名 skill。
+  test("ignores business organization duplicates and external resources", () => {
+    const selected = selectSystemBuiltinSkillId(
+      [
+        {
+          id: "stale-local",
+          name: "show-html-or-picture",
+          metadata: null,
+          resourceAccess: {
+            ownership: "internal",
+            sourceOrganizationId: "user-org",
+            resourceUid: "stale-local",
+            resourceKey: "user-org/stale-local",
+            manageable: true,
+            writable: true,
+          },
+        },
+        {
+          id: "system-builtin",
+          name: "show-html-or-picture",
+          metadata: { source: "meta-builtin" },
+          resourceAccess: {
+            ownership: "external",
+            sourceOrganizationId: "system-org",
+            resourceUid: "system-builtin",
+            resourceKey: "system-org/system-builtin",
+            manageable: false,
+            writable: false,
+          },
+        },
+      ],
+      "show-html-or-picture",
+    );
+
+    expect(selected).toBe(null);
+  });
+
+  // 系统 admin 组织中带 meta-builtin 标记的本地 skill 才是合法绑定来源。
+  test("selects marked local builtin for system organization", () => {
+    expect(
+      selectSystemBuiltinSkillId(
+        [
+          {
+            id: "system-builtin",
+            name: "show-html-or-picture",
+            metadata: { source: "meta-builtin" },
+            resourceAccess: {
+              ownership: "internal",
+              sourceOrganizationId: "system-org",
+              resourceUid: "system-builtin",
+              resourceKey: "system-org/system-builtin",
+              manageable: true,
+              writable: true,
+            },
+          },
+        ],
+        "show-html-or-picture",
+      ),
+    ).toBe("system-builtin");
   });
 });
 

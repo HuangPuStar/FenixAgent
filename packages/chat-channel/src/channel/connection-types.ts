@@ -141,6 +141,8 @@ export interface SharedRelay {
    * 开启时判定一次：空 doc（冷启动/切换清空）→ 允许合成；有内容（重连）→ 跳过。
    */
   replaySkipSynthesis?: boolean;
+  /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
+  callbackAssistantEntryId?: string | null;
 }
 
 /**
