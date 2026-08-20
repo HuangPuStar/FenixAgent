@@ -237,8 +237,8 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     });
   });
 
-  // 未携带 machineId 时，可通过稳定 nodeId 找回已有机器。
-  test("nodeId 命中已有机器时按重连处理", async () => {
+  // 预创建的 machineId 命中已有机器时按重连处理。
+  test("machineId 命中已有机器时按重连处理", async () => {
     const inserts: unknown[] = [];
     stubDb({
       select: mock(() => limitedRows([{ id: "mach-node" }])),
@@ -247,7 +247,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     });
 
     await expect(
-      registry.registerMachine({ agentName: "codex", tenantId: null, nodeId: "mach-node" }),
+      registry.registerMachine({ agentName: "codex", tenantId: null, machineId: "mach-node" }),
     ).resolves.toEqual({
       id: "mach-node",
       isNew: false,
@@ -255,13 +255,13 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     expect(inserts).toEqual([expect.objectContaining({ type: "reconnect" })]);
   });
 
-  // 未命中的 nodeId 不能隐式创建机器，必须要求管理面预创建。
-  test("nodeId 未命中时拒绝隐式注册", async () => {
+  // 未命中的 machineId 不能隐式创建机器，必须要求管理面预创建。
+  test("machineId 未命中时拒绝隐式注册", async () => {
     stubDb({ select: mock(() => limitedRows([])) });
 
-    await expect(registry.registerMachine({ agentName: "codex", tenantId: null, nodeId: "unknown" })).rejects.toThrow(
-      "admin panel",
-    );
+    await expect(
+      registry.registerMachine({ agentName: "codex", tenantId: null, machineId: "unknown" }),
+    ).rejects.toThrow("create it first in your organization");
   });
 
   // 主动断开必须下线机器并保留调用方提供的原因。
