@@ -86,6 +86,8 @@
     "resetPassword": "重置密码",
     "name": "姓名",
     "email": "邮箱",
+    "phoneNumber": "手机号",
+    "phonePlaceholder": "请输入手机号",
     "password": "密码",
     "passwordHint": "密码至少需要 8 个字符。",
     "cancel": "取消",

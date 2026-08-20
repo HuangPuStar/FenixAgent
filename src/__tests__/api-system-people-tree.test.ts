@@ -36,6 +36,7 @@ describe("API System People Tree", () => {
               id: "user_1",
               name: "张三",
               email: "zhangsan@example.com",
+              phoneNumber: "+8613800138000",
               role: "owner",
               agents: [
                 {
@@ -74,6 +75,7 @@ describe("API System People Tree", () => {
                 id: "user_1",
                 name: "张三",
                 email: "zhangsan@example.com",
+                phoneNumber: "+8613800138000",
                 role: "owner",
                 agents: [
                   {

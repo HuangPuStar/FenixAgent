@@ -14,6 +14,7 @@ export const SystemPeopleUserSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
+  phoneNumber: z.string().nullable(),
   role: z.string().nullable(),
   agents: SystemPeopleAgentSchema.array(),
 });

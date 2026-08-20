@@ -13,6 +13,7 @@ export interface SystemPeopleUser {
   id: string;
   name: string;
   email: string;
+  phoneNumber: string | null;
   role: string | null;
   agents: SystemPeopleAgent[];
 }
@@ -24,16 +25,23 @@ export interface SystemPeopleOrganization {
   users: SystemPeopleUser[];
 }
 
-export interface CreateSystemUserInput {
-  name: string;
-  email: string;
-  password: string;
+export type SystemUserIdentifierType = "email" | "phone";
+
+export type SystemUserIdentifier = { email: string } | { phoneNumber: string };
+
+export function buildSystemUserIdentifier(type: SystemUserIdentifierType, value: string): SystemUserIdentifier {
+  const normalizedValue = value.trim();
+  return type === "phone" ? { phoneNumber: normalizedValue } : { email: normalizedValue };
 }
 
-export interface ResetSystemUserPasswordInput {
-  email: string;
+export type CreateSystemUserInput = {
+  name: string;
   password: string;
-}
+} & SystemUserIdentifier;
+
+export type ResetSystemUserPasswordInput = {
+  password: string;
+} & SystemUserIdentifier;
 
 export function createSystemUser(input: CreateSystemUserInput): Promise<void> {
   return unwrap(

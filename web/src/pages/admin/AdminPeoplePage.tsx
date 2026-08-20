@@ -12,10 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "../../api/request";
 import {
+  buildSystemUserIdentifier,
   createSystemUser,
   fetchSystemPeopleTree,
   resetSystemUserPassword,
   type SystemPeopleOrganization,
+  type SystemUserIdentifierType,
 } from "../../api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
 import { MasterKeyGate } from "./components/MasterKeyGate";
@@ -144,26 +146,29 @@ function UserActionDialog({
   action: "create" | "reset" | null;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (input: { name: string; email: string; password: string }) => void;
-  onReset: (input: { email: string; password: string }) => void;
+  onCreate: (input: { name: string; password: string } & ({ email: string } | { phoneNumber: string })) => void;
+  onReset: (input: { password: string } & ({ email: string } | { phoneNumber: string })) => void;
 }) {
   const { t } = useTranslation("observer");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [identifierType, setIdentifierType] = useState<SystemUserIdentifierType>("email");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const isCreate = action === "create";
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail || password.length < 8 || (isCreate && !name.trim())) return;
-    if (isCreate) onCreate({ name: name.trim(), email: normalizedEmail, password });
-    else onReset({ email: normalizedEmail, password });
+    const normalizedIdentifier = identifier.trim();
+    if (!normalizedIdentifier || password.length < 8 || (isCreate && !name.trim())) return;
+    const accountIdentifier = buildSystemUserIdentifier(identifierType, normalizedIdentifier);
+    if (isCreate) onCreate({ name: name.trim(), password, ...accountIdentifier });
+    else onReset({ password, ...accountIdentifier });
   };
   const close = (open: boolean) => {
     if (!open && !loading) {
       setName("");
-      setEmail("");
+      setIdentifier("");
+      setIdentifierType("email");
       setPassword("");
     }
     onOpenChange(open);
@@ -183,14 +188,37 @@ function UserActionDialog({
             </div>
           ) : null}
           <div className="space-y-2">
-            <Label htmlFor="people-user-email">{t("people.email")}</Label>
+            <Label htmlFor="people-user-identifier">
+              {identifierType === "phone" ? t("people.phoneNumber") : t("people.email")}
+            </Label>
             <Input
-              id="people-user-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              id="people-user-identifier"
+              type={identifierType === "phone" ? "tel" : "email"}
+              value={identifier}
+              placeholder={identifierType === "phone" ? t("people.phonePlaceholder") : undefined}
+              onChange={(event) => setIdentifier(event.target.value)}
               autoFocus={!isCreate}
             />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={identifierType === "email" ? "secondary" : "outline"}
+                onClick={() => setIdentifierType("email")}
+                disabled={loading}
+              >
+                {t("people.email")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={identifierType === "phone" ? "secondary" : "outline"}
+                onClick={() => setIdentifierType("phone")}
+                disabled={loading}
+              >
+                {t("people.phoneNumber")}
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="people-user-password">{t("people.password")}</Label>
@@ -209,7 +237,7 @@ function UserActionDialog({
             </Button>
             <Button
               type="submit"
-              disabled={loading || !email.trim() || password.length < 8 || (isCreate && !name.trim())}
+              disabled={loading || !identifier.trim() || password.length < 8 || (isCreate && !name.trim())}
             >
               {loading ? t("people.submitting") : isCreate ? t("people.createUser") : t("people.resetPassword")}
             </Button>
@@ -248,7 +276,9 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
                         <ChevronRight className="size-3.5 text-text-muted transition-transform group-open/user:rotate-90" />
                         <UserRound className="size-3.5 text-accent-tiffany" />
                         <span className="text-sm font-medium text-text-primary">{person.name}</span>
-                        <span className="text-xs text-text-muted">{person.email}</span>
+                        <span className="text-xs text-text-muted">
+                          {person.phoneNumber ? `${person.email} · ${person.phoneNumber}` : person.email}
+                        </span>
                         <span className="font-mono text-[10px] text-text-muted">{person.id}</span>
                         {person.role ? (
                           <Badge variant="outline" className="text-[10px]">
