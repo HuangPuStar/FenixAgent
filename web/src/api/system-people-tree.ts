@@ -24,6 +24,37 @@ export interface SystemPeopleOrganization {
   users: SystemPeopleUser[];
 }
 
+export interface CreateSystemUserInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface ResetSystemUserPasswordInput {
+  email: string;
+  password: string;
+}
+
+export function createSystemUser(input: CreateSystemUserInput): Promise<void> {
+  return unwrap(
+    request<void>("/api/system/users", {
+      method: "POST",
+      body: input,
+      bearerToken: getAdminKey() ?? undefined,
+    }),
+  );
+}
+
+export function resetSystemUserPassword(input: ResetSystemUserPasswordInput): Promise<void> {
+  return unwrap(
+    request<void>("/api/system/users/reset-password", {
+      method: "POST",
+      body: input,
+      bearerToken: getAdminKey() ?? undefined,
+    }),
+  );
+}
+
 export function fetchSystemPeopleTree(): Promise<{ organizations: SystemPeopleOrganization[] }> {
   return unwrap(
     request<{ organizations: SystemPeopleOrganization[] }>("/api/system/people-tree/", {

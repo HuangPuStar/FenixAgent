@@ -1,13 +1,22 @@
 import { useRequest } from "ahooks";
-import { Bot, Building2, ChevronRight, RefreshCw, UserRound } from "lucide-react";
-import { useState } from "react";
+import { Bot, Building2, ChevronRight, KeyRound, RefreshCw, UserPlus, UserRound } from "lucide-react";
+import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "../../api/request";
-import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "../../api/system-people-tree";
+import {
+  createSystemUser,
+  fetchSystemPeopleTree,
+  resetSystemUserPassword,
+  type SystemPeopleOrganization,
+} from "../../api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
 import { MasterKeyGate } from "./components/MasterKeyGate";
 
@@ -41,9 +50,33 @@ export function AdminPeoplePage() {
 
 function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const { t } = useTranslation("observer");
+  const [dialog, setDialog] = useState<"create" | "reset" | null>(null);
   const { data, loading, error, refresh } = useRequest(fetchSystemPeopleTree, {
     onError: (err) => {
       if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
+    },
+  });
+  const createRequest = useRequest(createSystemUser, {
+    manual: true,
+    onSuccess: () => {
+      toast.success(t("people.createSuccess"));
+      setDialog(null);
+      refresh();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
+      else toast.error(t("people.actionError"), { description: err instanceof Error ? err.message : undefined });
+    },
+  });
+  const resetRequest = useRequest(resetSystemUserPassword, {
+    manual: true,
+    onSuccess: () => {
+      toast.success(t("people.resetSuccess"));
+      setDialog(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
+      else toast.error(t("people.actionError"), { description: err instanceof Error ? err.message : undefined });
     },
   });
   const organizations = data?.organizations ?? [];
@@ -56,10 +89,20 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
             <h1 className="text-lg font-semibold text-text-primary">{t("people.title")}</h1>
             <p className="text-xs text-text-muted">{t("people.subtitle")}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-            <RefreshCw className="size-3.5" />
-            {t("states.refresh")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDialog("reset")}>
+              <KeyRound className="size-3.5" />
+              {t("people.resetPassword")}
+            </Button>
+            <Button size="sm" onClick={() => setDialog("create")}>
+              <UserPlus className="size-3.5" />
+              {t("people.createUser")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+              <RefreshCw className="size-3.5" />
+              {t("states.refresh")}
+            </Button>
+          </div>
         </header>
 
         {loading && !data ? <Skeleton className="h-64 w-full" /> : null}
@@ -80,7 +123,100 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
         ) : null}
         {organizations.length > 0 ? <PeopleTree organizations={organizations} /> : null}
       </div>
+      <UserActionDialog
+        action={dialog}
+        loading={createRequest.loading || resetRequest.loading}
+        onOpenChange={(open) => !open && setDialog(null)}
+        onCreate={(input) => void createRequest.runAsync(input)}
+        onReset={(input) => void resetRequest.runAsync(input)}
+      />
     </div>
+  );
+}
+
+function UserActionDialog({
+  action,
+  loading,
+  onOpenChange,
+  onCreate,
+  onReset,
+}: {
+  action: "create" | "reset" | null;
+  loading: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (input: { name: string; email: string; password: string }) => void;
+  onReset: (input: { email: string; password: string }) => void;
+}) {
+  const { t } = useTranslation("observer");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const isCreate = action === "create";
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || password.length < 8 || (isCreate && !name.trim())) return;
+    if (isCreate) onCreate({ name: name.trim(), email: normalizedEmail, password });
+    else onReset({ email: normalizedEmail, password });
+  };
+  const close = (open: boolean) => {
+    if (!open && !loading) {
+      setName("");
+      setEmail("");
+      setPassword("");
+    }
+    onOpenChange(open);
+  };
+
+  return (
+    <Dialog open={action !== null} onOpenChange={close}>
+      <DialogContent disableOverlayClose={loading} disableEscapeClose={loading}>
+        <DialogHeader>
+          <DialogTitle>{isCreate ? t("people.createUser") : t("people.resetPassword")}</DialogTitle>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={submit}>
+          {isCreate ? (
+            <div className="space-y-2">
+              <Label htmlFor="people-user-name">{t("people.name")}</Label>
+              <Input id="people-user-name" value={name} onChange={(event) => setName(event.target.value)} autoFocus />
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor="people-user-email">{t("people.email")}</Label>
+            <Input
+              id="people-user-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoFocus={!isCreate}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="people-user-password">{t("people.password")}</Label>
+            <Input
+              id="people-user-password"
+              type="password"
+              minLength={8}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <p className="text-xs text-text-muted">{t("people.passwordHint")}</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => close(false)} disabled={loading}>
+              {t("people.cancel")}
+            </Button>
+            <Button
+              type="submit"
+              disabled={loading || !email.trim() || password.length < 8 || (isCreate && !name.trim())}
+            >
+              {loading ? t("people.submitting") : isCreate ? t("people.createUser") : t("people.resetPassword")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

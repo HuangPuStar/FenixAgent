@@ -81,7 +81,18 @@
     "noAgents": "This user has no agents.",
     "unassignedRole": "No member role",
     "empty": "No organization data.",
-    "error": "Failed to load people hierarchy"
+    "error": "Failed to load people hierarchy",
+    "createUser": "Create User",
+    "resetPassword": "Reset Password",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "passwordHint": "Passwords must be at least 8 characters.",
+    "cancel": "Cancel",
+    "submitting": "Submitting…",
+    "createSuccess": "User created",
+    "resetSuccess": "Password reset and existing sessions revoked",
+    "actionError": "Action failed. Please retry."
   },
   "logs": {
     "nav": "System Logs",

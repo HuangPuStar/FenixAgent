@@ -81,7 +81,18 @@
     "noAgents": "该用户暂无智能体。",
     "unassignedRole": "未分配角色",
     "empty": "暂无组织数据。",
-    "error": "人员层级加载失败"
+    "error": "人员层级加载失败",
+    "createUser": "注册用户",
+    "resetPassword": "重置密码",
+    "name": "姓名",
+    "email": "邮箱",
+    "password": "密码",
+    "passwordHint": "密码至少需要 8 个字符。",
+    "cancel": "取消",
+    "submitting": "提交中…",
+    "createSuccess": "用户注册成功",
+    "resetSuccess": "密码已重置，原有登录会话已失效",
+    "actionError": "操作失败，请重试"
   },
   "logs": {
     "nav": "系统日志",
