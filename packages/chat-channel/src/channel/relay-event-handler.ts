@@ -671,6 +671,24 @@ export class RelayEventHandler {
         }
       }
     }
+    if (!inReplayWindow && event.type === "user_message" && !event.turnId) {
+      const callbackEntryId = `callback_${crypto.randomUUID()}`;
+      shared.callbackAssistantEntryId = callbackEntryId;
+      event = { ...event, callbackEntryId };
+    } else if (
+      shared.callbackAssistantEntryId &&
+      (event.type === "message_delta" ||
+        event.type === "reasoning_delta" ||
+        event.type === "turn_completed" ||
+        event.type === "turn_cancelled" ||
+        event.type === "turn_failed") &&
+      !event.turnId
+    ) {
+      event = { ...event, callbackEntryId: shared.callbackAssistantEntryId };
+      if (event.type === "turn_completed" || event.type === "turn_cancelled" || event.type === "turn_failed") {
+        shared.callbackAssistantEntryId = null;
+      }
+    }
     this.dispatch(shared, event);
   }
 

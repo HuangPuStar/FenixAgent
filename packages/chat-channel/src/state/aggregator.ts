@@ -110,7 +110,16 @@ function extractToolCallId(event: NormalizedEvent): string | null {
 /** 处理用户消息：创建新 turn（幂等：同 turnId 重放跳过），终结未完成的旧 turn */
 function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const turnId = event.turnId;
-  if (!turnId) return { applied: false, reason: "user_message missing turnId" };
+  if (!turnId && !event.callbackEntryId) return { applied: false, reason: "user_message missing turnId" };
+  if (!turnId) {
+    const entryId = event.callbackEntryId as string;
+    const text = extractText(event);
+    ensureEntry(pair.chat, { entryId, turnId: null, kind: "message", role: "user" });
+    setEntryStatus(pair.chat, entryId, "completed");
+    if (text) appendEntryText(pair.chat, entryId, "text", "text", text);
+    ensureEntry(pair.chat, { entryId: `${entryId}:assistant`, turnId: null, kind: "message", role: "assistant" });
+    return { applied: true };
+  }
 
   // M2 重放保护：按 user entry 存在性判定（同 turnId 已投影过 → 跳过）。
   // 不能按 active.turnId === turnId 判定：历史回放/乱序下 active 可能已被更新
@@ -162,6 +171,16 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
 
 /** 处理文本/思考增量：定位当前 turn 的 assistant entry，Y.Text 追加 */
 function applyDelta(pair: DocPair, event: NormalizedEvent, blockType: "text" | "reasoning"): ApplyResult {
+  if (event.callbackEntryId) {
+    const entryId = `${event.callbackEntryId}:assistant`;
+    if (!getEntry(pair.chat, entryId)) return { applied: false, reason: "callback assistant entry not found" };
+    const text = extractText(event);
+    if (!text) return { applied: false, reason: "empty delta" };
+    appendEntryText(pair.chat, entryId, blockType, blockType, text, blockType === "reasoning" ? "summary" : undefined);
+    setEntryStatus(pair.chat, entryId, "streaming");
+    return { applied: true };
+  }
+
   const active = readActiveTurn(pair.session);
   // 终态或 cancelling 后到达的增量一律丢弃（不新建 entry、不回退状态机）
   if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
@@ -423,6 +442,17 @@ function applyTurnTerminal(
   event: NormalizedEvent,
   status: "completed" | "error" | "cancelled" | "interrupted",
 ): ApplyResult {
+  if (event.callbackEntryId) {
+    const entryId = `${event.callbackEntryId}:assistant`;
+    if (!getEntry(pair.chat, entryId)) return { applied: false, reason: "callback assistant entry not found" };
+    setEntryStatus(
+      pair.chat,
+      entryId,
+      status === "completed" ? "completed" : status === "error" ? "error" : "cancelled",
+    );
+    return { applied: true };
+  }
+
   const active = readActiveTurn(pair.session);
   if (!active.turnId) return { applied: false, reason: "terminal without active turn" };
   // 终态归属校验：事件携带 turnId 且与当前 active turn 不一致时，视为旧 turn 的
