@@ -46,8 +46,6 @@ ENV RCS_PORT=3000
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
 ENV BUN_INSTALL_GLOBAL=/root/.bun
 ENV PATH=/root/.bun/bin:${PATH}
-ENV RCS_CCB_COMMAND=peri
-ENV RCS_CCB_ARGS=acp
 ENV IS_PERI=1
 
 # Install Python 3 and common tools (Debian/glibc base, use TUNA mirror)

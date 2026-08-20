@@ -89,12 +89,12 @@ describe("env validation", () => {
   });
 
   // RCS_DEFAULT_ENGINE_TYPE 合法值
-  test("RCS_DEFAULT_ENGINE_TYPE 合法值 'ccb' 通过校验", () => {
+  test("RCS_DEFAULT_ENGINE_TYPE 合法值 'peri' 通过校验", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
     process.env.RCS_API_KEYS = "test-key";
-    process.env.RCS_DEFAULT_ENGINE_TYPE = "ccb";
+    process.env.RCS_DEFAULT_ENGINE_TYPE = "peri";
     const env = validateEnv();
-    expect(env.RCS_DEFAULT_ENGINE_TYPE).toBe("ccb");
+    expect(env.RCS_DEFAULT_ENGINE_TYPE).toBe("peri");
   });
 
   // RCS_DEFAULT_ENGINE_TYPE 非法值

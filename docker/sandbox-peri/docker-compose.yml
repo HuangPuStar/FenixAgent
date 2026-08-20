@@ -21,8 +21,8 @@ services:
             RCS_MACHINE_ID: mach_d72e997e_8774_484b_b1f6_e2ccd241d60c
             RCS_MACHINE_NAME: basebox
             RCS_LABELS: sandbox,production
-            # 这里需要标记为 ccb
-            AGENT_TYPE: ccb
+            # Peri 是独立引擎类型，底层复用 CCB-compatible runtime。
+            AGENT_TYPE: peri
             # 这个 id 设置为空，表示都可以使用
             RCS_TENANT_ID:
             # 下面的 command 要进行替换

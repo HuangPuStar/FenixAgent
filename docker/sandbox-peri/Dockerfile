@@ -47,8 +47,8 @@ RUN peri plugin install hindsight-memory
 # peri ultracode 依赖 workflow 库
 RUN npm i -g @peri-code/workflow
 
-ENV AGENT_TYPE=ccb
+ENV AGENT_TYPE=peri
 # Peri 客户端模式，额外生成 .peri/settings.json
 ENV IS_PERI=1
-# acp-runtime 启动 CCB agent 并注册到 RCS
+# acp-runtime 启动 Peri agent 并注册到 RCS
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]

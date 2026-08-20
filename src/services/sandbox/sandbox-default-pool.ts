@@ -46,7 +46,7 @@ export async function initializeDefaultSandboxPool(
     throw new Error("sandbox pool extra must be an object");
   }
 
-  extra = { ...extra, agent_type: settings.defaultSandboxAgentType ?? "ccb" };
+  extra = { ...extra, agent_type: settings.defaultSandboxAgentType ?? "peri" };
 
   return repository.upsert({
     id: settings.defaultSandboxPoolId,

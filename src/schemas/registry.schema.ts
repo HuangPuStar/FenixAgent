@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { ENGINE_TYPES } from "../services/config/types";
 import { WebOkSchema } from "./common.schema";
 
 /** 机器注册记录 */
@@ -81,7 +82,7 @@ export const EventQuerySchema = z.object({
 export const CreateMachineSchema = z.object({
   name: z.string().min(1).max(64).describe("机器显示名称"),
   labels: z.array(z.string()).optional().default([]).describe("标签列表"),
-  agentName: z.string().min(1).max(64).default("ccb").describe("引擎名称"),
+  agentName: z.enum(ENGINE_TYPES).default("peri").describe("引擎名称"),
 });
 
 /** 更新机器请求 */

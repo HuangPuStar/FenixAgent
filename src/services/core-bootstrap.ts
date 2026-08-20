@@ -3,6 +3,7 @@ import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { log } from "@fenix/logger";
 import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
+import { createEnginePlugin as createPeriPlugin } from "@fenix/peri";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
@@ -36,7 +37,7 @@ async function ensureMachineExists() {
   if (existing.length > 0) return;
 
   const now = new Date();
-  const agentName = config.defaultEngineType ?? "ccb";
+  const agentName = config.defaultEngineType ?? "peri";
 
   await db.insert(machine).values({
     id: config.defaultMachineId,
@@ -62,14 +63,14 @@ const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
-    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()],
+    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin(), createPeriPlugin()],
     nodes: config.disableLocalExecution
       ? []
       : [
           {
             id: "local-default",
             mode: "local",
-            engineTypes: ["ccb", "opencode", "claude-code"],
+            engineTypes: ["peri", "ccb", "opencode", "claude-code"],
             status: "online",
           },
         ],
@@ -170,7 +171,7 @@ export function registerRemoteNode(
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: engineTypes ?? ["ccb"],
+    engineTypes: engineTypes ?? ["peri"],
     status: "online",
     metadata: { machineId },
   });

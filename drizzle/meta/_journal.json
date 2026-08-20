@@ -162,6 +162,13 @@
       "when": 1787220374875,
       "tag": "0022_default-peri-engine",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787221439383,
+      "tag": "0023_default-peri-engine-type",
+      "breakpoints": true
     }
   ]
 }
