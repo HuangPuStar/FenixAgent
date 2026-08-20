@@ -342,22 +342,29 @@ function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
 
 /**
  * 处理 AskUserQuestion 交互问题请求：questionId upsert 幂等；60s expiresAt 投影
- * （与 acp-link 侧自动空答案对齐）。turn 状态机不动：AskUserQuestion 是工具执行中
- * 的询问（agent 收到答案后自行继续），复用 awaiting_permission 会与权限 CAS 收敛
- * 逻辑（hasPendingPermission / expireTurnPermissions）耦合、新增 waiting_question
- * 状态位违反设计决策（复用 waiting_user 展示态，不新增状态位）；前端弹窗自身即
- * "等待用户"信号，60s 后投影随超时迁移自动消失。
+ * （与 acp-link 侧自动空答案对齐）。问题是独立 control_response 等待态，不驱动
+ * turn 状态机；正常完成帧与问题帧乱序时仍须投影，避免工具卡片已展示但面板丢失。
+ * cancelled / interrupted / failed 或无活动 turn 时则拒绝，避免旧会话帧创建孤立问题。
  */
 function applyQuestionRequested(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const questionId = event.update.questionId as string | undefined;
   if (!questionId) return { applied: false, reason: "question missing questionId" };
 
   const active = readActiveTurn(pair.session);
-  // 终态或 cancelling 后的问题请求不投影：turn 已不可恢复执行（与权限守卫同规则）
-  if (!canWriteToTurn(active.turnStatus)) {
+  // AskUserQuestion 已由 acp-link 拦截并等待 control_response；因此若私有问题帧与
+  // prompt_complete 乱序到达，completed 只是展示态提前收敛，不能据此丢弃问题。
+  // cancelled / interrupted / failed 则表示 Agent 确已不能消费答案，仍须拒绝；没有
+  // active turn 同样拒绝，避免孤立的旧帧在当前会话创建无归属问题。
+  if (
+    !active.turnStatus ||
+    active.turnStatus === "cancelling" ||
+    active.turnStatus === "cancelled" ||
+    active.turnStatus === "interrupted" ||
+    active.turnStatus === "failed"
+  ) {
     return {
       applied: false,
-      reason: "question requested for unwritable turn",
+      reason: "question requested for cancelled, failed, or missing turn",
     };
   }
 
