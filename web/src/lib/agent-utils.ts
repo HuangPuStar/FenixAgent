@@ -2,7 +2,12 @@ import type { AgentDetail } from "../types/config";
 import type { KnowledgeBaseInfo } from "../types/knowledge";
 
 export function isValidAgentNameInput(name: string): boolean {
-  return /^[\p{L}0-9]+(?:-[\p{L}0-9]+)*$/u.test(name) && name.length >= 1 && name.length <= 64;
+  return (
+    name.length >= 1 &&
+    name.length <= 64 &&
+    !name.includes("--") &&
+    /^[\p{L}0-9][\p{L}0-9 -]*[\p{L}0-9]$|^[\p{L}0-9]$/u.test(name)
+  );
 }
 
 export interface AgentKnowledgeFormState {
