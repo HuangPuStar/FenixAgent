@@ -88,6 +88,38 @@ describe("RelayEventHandler", () => {
     expect(processed).toEqual(["message_delta"]);
   });
 
+  // 回放流可能从 AskUserQuestion 私有帧开始；此时没有活动 turn 也必须补建回放 turn，
+  // 否则聚合层会拒绝 question_requested，前端无法显示待应答面板。
+  test("projects an interactive question when it is the first replay event", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const relay = createSharedRelay({
+      rcsSessionId: "rcs-1",
+      replayWindowUntil: Date.now() + 1_000,
+      replaySkipSynthesis: false,
+    });
+
+    await handler.createMessageHandler(relay)({
+      type: "interactive_question",
+      payload: {
+        questionId: "question-1",
+        toolId: "tool-1",
+        toolName: "AskUserQuestion",
+        questions: [
+          {
+            question: "Choose a deployment target",
+            options: [{ label: "staging", description: "Staging environment" }],
+          },
+        ],
+      },
+    } as unknown as RelayMessage);
+
+    const pendingQuestions = sessionDoc.getMap("root").get("pendingQuestions") as Y.Map<Y.Map<unknown>>;
+    expect(pendingQuestions.get("question-1")?.get("status")).toBe("pending");
+  });
+
   // 同一用户的不同 RCS 会话中，status 只能解除当前 RCS 的 session/list 门禁。
   test("status does not mark another RCS session as initialized for the same user", async () => {
     const registry = new ConnectionRegistry();
