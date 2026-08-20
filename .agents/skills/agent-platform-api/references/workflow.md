@@ -495,7 +495,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-engine" \
 
 ---
 
-## 三、触发器 — `/web/workflow-defs` (action 内)
+## 四、触发器 — `/web/workflow-defs` (action 内)
 
 ### 创建触发器
 
@@ -543,95 +543,7 @@ curl -s -X POST "$USER_META_BASE_URL/web/workflow-defs" \
 
 ---
 
-## 四、看板 — `/web/workflow-boards`
-
-所有看板 API 使用 `POST` + `action` 字段。
-
-### 列出看板
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-boards" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"list"}' | jq '.data[] | { id, name }'
-```
-
-### 创建看板
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-boards" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"create","name":"我的看板"}' | jq '.data'
-```
-
----
-
-## 五、作业 — `/web/workflow-jobs`
-
-所有作业 API 使用 `POST` + `action` 字段。
-
-### 创建作业
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"create","workflowId":"<WF_ID>","boardId":"<BOARD_ID>","params":{"key":"value"}}' | \
-  jq '.data | { id, status }'
-```
-
-### 列出作业
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"list","boardId":"<可选>"}' | \
-  jq '.data[] | { id, status }'
-```
-
-### 运行作业
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"run","jobId":"<JOB_ID>"}' | \
-  jq '.data | { runId }'
-```
-
-### 取消作业
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"cancel","jobId":"<JOB_ID>"}' | jq '{ success }'
-```
-
-### 获取作业输出
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"getOutputs","jobId":"<JOB_ID>"}' | jq '.data'
-```
-
-### 作业审批
-
-```bash
-curl -s -X POST "$USER_META_BASE_URL/web/workflow-jobs" \
-  -H "Authorization: Bearer $USER_META_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"approve","jobId":"<JOB_ID>","nodeId":"approve_1","token":"<TOKEN>"}' | \
-  jq '{ success }'
-```
-
----
-
-## 六、YAML Schema 完整参考
+## 五、YAML Schema 完整参考
 
 ### 顶层结构
 
@@ -921,7 +833,7 @@ nodes:
 
 ---
 
-## 七、完整 YAML 样例
+## 六、完整 YAML 样例
 
 ### 样例 1：基础 Shell 串行流水线
 
@@ -1139,7 +1051,7 @@ Slurm 节点语法见 [六 → Custom 节点：Slurm](#custom-节点slurmhpc-作
 
 ---
 
-## 八、常见错误与排查
+## 七、常见错误与排查
 
 ### dryRun 错误
 
