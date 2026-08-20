@@ -86,6 +86,8 @@
     "resetPassword": "Reset Password",
     "name": "Name",
     "email": "Email",
+    "phoneNumber": "Phone number",
+    "phonePlaceholder": "Enter phone number",
     "password": "Password",
     "passwordHint": "Passwords must be at least 8 characters.",
     "cancel": "Cancel",

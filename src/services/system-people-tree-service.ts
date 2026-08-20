@@ -17,6 +17,7 @@ export interface SystemPeopleUser {
   id: string;
   name: string;
   email: string;
+  phoneNumber: string | null;
   role: string | null;
   agents: SystemPeopleAgent[];
 }
@@ -51,6 +52,7 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
               id: user.id,
               name: user.name,
               email: user.email,
+              phoneNumber: user.phoneNumber,
               role: member.role,
             })
             .from(member)
@@ -67,6 +69,7 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
               engineType: agentConfig.engineType,
               userName: user.name,
               userEmail: user.email,
+              userPhoneNumber: user.phoneNumber,
             })
             .from(agentConfig)
             .innerJoin(user, eq(agentConfig.userId, user.id))
@@ -77,7 +80,14 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
         const users = new Map<string, SystemPeopleUser>(
           members.map((item) => [
             item.id,
-            { id: item.id, name: item.name, email: item.email, role: item.role, agents: [] },
+            {
+              id: item.id,
+              name: item.name,
+              email: item.email,
+              phoneNumber: item.phoneNumber,
+              role: item.role,
+              agents: [],
+            },
           ]),
         );
         for (const agent of agents) {
@@ -86,6 +96,7 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
             id: agent.userId,
             name: agent.userName,
             email: agent.userEmail,
+            phoneNumber: agent.userPhoneNumber,
             role: null,
             agents: [],
           };
