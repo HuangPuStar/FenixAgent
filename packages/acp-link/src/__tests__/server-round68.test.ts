@@ -3,6 +3,7 @@ import { createAcpClient, type ServerConfig } from "../server.js";
 
 class InMemoryWebSocket {
   static instances: InMemoryWebSocket[] = [];
+  static remainingFileWsConstructionFailures = 0;
 
   readyState = 0;
   sent: string[] = [];
@@ -13,6 +14,10 @@ class InMemoryWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
 
   constructor(readonly url: string) {
+    if (url.includes("/acp/file-ws") && InMemoryWebSocket.remainingFileWsConstructionFailures > 0) {
+      InMemoryWebSocket.remainingFileWsConstructionFailures--;
+      throw new Error("simulated file-ws construction failure");
+    }
     InMemoryWebSocket.instances.push(this);
   }
 
@@ -86,6 +91,7 @@ function runIntervals(): void {
 describe("createAcpClient round 68 离线生命周期分支", () => {
   beforeEach(() => {
     InMemoryWebSocket.instances = [];
+    InMemoryWebSocket.remainingFileWsConstructionFailures = 0;
     timeoutCallbacks = new Map();
     intervalCallbacks = new Map();
     nextTimerId = 0;
@@ -163,8 +169,8 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     expect(timeoutCallbacks.size).toBe(1);
   });
 
-  // 文件通道 error 由随后的 close 统一处理，单独 error 不得提前安排重连。
-  test("文件通道 error 不会单独安排重连", async () => {
+  // Node.js 连接失败可能只触发 error；文件通道必须仍然安排重连，且重复 close 不得重复调度。
+  test("文件通道仅触发 error 时仍会重连", async () => {
     handles.push(createAcpClient(config));
     await waitForSockets(1);
     const mainSocket = InMemoryWebSocket.instances[0];
@@ -174,8 +180,33 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     if (!fileSocket) throw new Error("file socket was not created");
 
     fileSocket.error();
+    fileSocket.closed();
 
-    expect(timeoutCallbacks.size).toBe(0);
+    expect(timeoutCallbacks.size).toBe(1);
+
+    const [reconnect] = timeoutCallbacks.values();
+    reconnect?.();
+
+    expect(InMemoryWebSocket.instances).toHaveLength(3);
+  });
+
+  // 文件通道构造异常时也必须进入退避重连，避免 sandbox 重启窗口永久失联。
+  test("文件通道构造失败时仍会重连", async () => {
+    InMemoryWebSocket.remainingFileWsConstructionFailures = 1;
+    handles.push(createAcpClient(config));
+    await waitForSockets(1);
+    const mainSocket = InMemoryWebSocket.instances[0];
+    if (!mainSocket) throw new Error("main socket was not created");
+
+    mainSocket.message('{"type":"registered"}');
+
+    expect(timeoutCallbacks.size).toBe(1);
+
+    const [reconnect] = timeoutCallbacks.values();
+    reconnect?.();
+
+    expect(InMemoryWebSocket.instances).toHaveLength(2);
+    expect(InMemoryWebSocket.instances[1]?.url).toContain("/acp/file-ws");
   });
 
   // node_id 异步读取尚未完成时关闭客户端，后续回调不得再创建 WebSocket。
