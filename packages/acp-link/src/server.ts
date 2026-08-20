@@ -1,7 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { createCcbHandler } from "@fenix/ccb";
@@ -76,7 +74,7 @@ export interface ServerConfig {
   supportedEngineTypes?: { type: string; cliPath?: string }[];
   /** 用户指定的机器显示名称，可选 */
   name?: string;
-  /** 客户端指定的 machine id（可选），用于固定 machine 标识 */
+  /** 客户端指定的 machine ID，用于固定 machine 标识 */
   machineId?: string;
 }
 
@@ -126,36 +124,17 @@ function cancelPendingPermissions(clientState: ClientState): void {
   clientState.pendingPermissions.clear();
 }
 
-// ---------------------------------------------------------------------------
-// Node identity persistence: 持久化 machine_id 避免重复注册
-// ---------------------------------------------------------------------------
-
-const NODE_ID_FILENAME = ".acp-link-node-id";
-
-/** 从 cwd 加载持久化的 node_id（上次注册时服务器分配的 machine_id） */
-async function loadNodeId(cwd: string): Promise<string | null> {
-  try {
-    const id = (await readFile(join(cwd, NODE_ID_FILENAME), "utf-8")).trim();
-    return id || null;
-  } catch {
-    return null;
-  }
-}
-
-/** 将 node_id 持久化到 cwd，后续重连时携带以精确匹配已有 machine 记录 */
-async function saveNodeId(cwd: string, machineId: string): Promise<void> {
-  try {
-    await writeFile(join(cwd, NODE_ID_FILENAME), machineId, "utf-8");
-  } catch (err) {
-    console.error("[acp-client] Failed to persist node_id:", err);
-  }
+/** 将服务端 close reason 限制为单行诊断信息，避免日志注入和超长输出。 */
+function formatCloseReason(reason: unknown): string {
+  if (typeof reason !== "string" || reason.length === 0) return "(empty)";
+  return reason.replace(/[\r\n\t]/g, " ").slice(0, 300);
 }
 
 // ---------------------------------------------------------------------------
 // Registry helpers: build register message for RCS client mode
 // ---------------------------------------------------------------------------
 
-export function buildRegisterMessage(config: ServerConfig, nodeId?: string | null): object {
+export function buildRegisterMessage(config: ServerConfig): object {
   let ip = "127.0.0.1";
   let mac = "";
   try {
@@ -198,15 +177,8 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
     user_id: config.userId ?? null,
   };
 
-  // 携带持久化的 node_id，服务端据此精确匹配已有记录，避免重复注册
-  if (nodeId) {
-    msg.node_id = nodeId;
-  }
-
-  // 客户端指定的 machine id，用于固定机器标识
-  if (config.machineId) {
-    msg.machine_id = config.machineId;
-  }
+  // machine_id 是 ACP runtime 注册的唯一身份。
+  msg.machine_id = config.machineId;
 
   return msg;
 }
@@ -218,6 +190,9 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
 export function createAcpClient(config: ServerConfig): { close: () => void } {
   if (!config.rcsUrl) {
     throw new Error("rcsUrl is required for client mode");
+  }
+  if (!config.machineId) {
+    throw new Error("machineId is required for client mode");
   }
 
   const cwd = config.cwd || process.cwd();
@@ -245,8 +220,6 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   const MAX_RECONNECT_MS = 30_000;
   const MAX_FILE_WS_RECONNECT_MS = 30_000;
   let manualClose = false;
-  // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
-  let cachedNodeId: string | null = null;
   // 实例 start 完成前到达的 connect 帧缓存（instId → payload）。
   // relay 的 connect 帧只在实例 dispatcher 就绪后才会被消费；若在前端建连
   // （spawn + connection.initialize 耗时秒级）期间到达，会被静默丢弃，
@@ -294,11 +267,13 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   function connect(): void {
     if (manualClose) return;
+    const connectionStartedAt = Date.now();
+    let registered = false;
     ws = new WebSocket(url);
 
     ws.onopen = () => {
       reconnectAttempt = 0;
-      ws!.send(JSON.stringify(buildRegisterMessage(config, cachedNodeId)));
+      ws!.send(JSON.stringify(buildRegisterMessage(config)));
 
       // 重连后：为所有存活的子进程发送 session_resumed
       for (const sessionId of sessionMgr.getAliveSessionIds()) {
@@ -316,12 +291,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
           case "registered": {
+            registered = true;
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
-            // 持久化服务器分配的 machine_id 作为 node_id，后续重连精确匹配
-            if (msg.machine_id && msg.machine_id !== cachedNodeId) {
-              cachedNodeId = msg.machine_id;
-              saveNodeId(cwd, msg.machine_id).catch(() => {});
-            }
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: "heartbeat" }));
@@ -754,6 +725,13 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
       if (manualClose) return;
 
+      const lifetimeMs = Date.now() - connectionStartedAt;
+      const closeCode = typeof event.code === "number" ? event.code : "unknown";
+      const closeReason = formatCloseReason(event.reason);
+      console.warn(
+        `[acp-client] main-ws closed machineId=${config.machineId} code=${closeCode} reason=${closeReason} registered=${registered} lifetimeMs=${lifetimeMs}`,
+      );
+
       // 提供有意义的断连原因提示
       if (event.code === 4003) {
         reconnectScheduler.cancel();
@@ -768,6 +746,10 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     };
 
     ws.onerror = () => {
+      const lifetimeMs = Date.now() - connectionStartedAt;
+      console.warn(
+        `[acp-client] main-ws error machineId=${config.machineId} registered=${registered} lifetimeMs=${lifetimeMs}; awaiting close event for code/reason`,
+      );
       // Node.js WebSocket 在连接不上服务端时可能只触发 error，不触发 close。
       // 因此 error 也必须进入重连调度，否则服务端重启后 Runtime 会永久离线。
       scheduleReconnect("error");
@@ -785,15 +767,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     console.log(`[acp-client] disconnected (${reason}), reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
   }
 
-  // 先加载持久化的 node_id，完成后建立连接（确保首次注册即带上 node_id）
-  loadNodeId(cwd)
-    .then((id) => {
-      cachedNodeId = id;
-      if (!manualClose) connect();
-    })
-    .catch(() => {
-      if (!manualClose) connect();
-    });
+  connect();
 
   return {
     close: () => {

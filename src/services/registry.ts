@@ -224,98 +224,56 @@ export async function deleteSandboxMachine(id: string): Promise<void> {
  * machine 必须在管理面通过 `POST /web/registry/machines` 预创建后才能连接，
  * 未预创建的连接将被拒绝（不再支持自动注册）。
  *
- * @param params.machineId - 客户端指定的 machine ID（优先），对应管理面预创建记录
- * @param params.nodeId - 客户端持久化的 node_id（去重用），用于未指定 machineId 时的回退匹配
+ * @param params.machineId - 客户端指定的 machine ID，对应管理面预创建记录
  * @param params.agentName - 引擎名称，用于 bindAgentConfigs 自动匹配
  * @param params.tenantId - 组织 ID，用于 bindAgentConfigs 范围限定
  */
 export async function registerMachine(params: {
   agentName: string;
   tenantId: string | null;
-  nodeId?: string | null;
-  machineId?: string | null;
+  machineId: string;
 }): Promise<{ id: string; isNew: boolean }> {
-  let existingId: string | null = null;
+  const existing = await db
+    .select({ id: machine.id, status: machine.status })
+    .from(machine)
+    .where(eq(machine.id, params.machineId))
+    .limit(1);
 
-  // ── 客户端指定 machineId 分支：验证预创建记录并激活 ──
-  if (params.machineId) {
-    const existing = await db
-      .select({ id: machine.id, status: machine.status })
-      .from(machine)
-      .where(eq(machine.id, params.machineId))
-      .limit(1);
-
-    // machine 不存在：必须在组织管理界面先创建
-    if (existing.length === 0) {
-      throw new Error(`machine '${params.machineId}' not found, please create it first in your organization`);
-    }
-
-    const now = new Date();
-
-    // server 重启后 DB 状态可能过期，允许重连
-    if (existing[0].status === "online") {
-      log(`[registry] machine id '${params.machineId}' was already online (stale), allowing reconnection`);
-    }
-
-    const isFirstRegistration = existing[0].status === "pending";
-    const eventType = isFirstRegistration ? "register" : "reconnect";
-
-    // pending 或 offline → 激活为 online
-    await db
-      .update(machine)
-      .set({
-        status: "online",
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .where(eq(machine.id, params.machineId));
-
-    await db.insert(registryEvent).values({
-      id: genId("evt"),
-      machineId: params.machineId,
-      type: eventType,
-      detail: {},
-    });
-
-    await markSandboxInstanceReadyByMachineId(params.machineId, now);
-    await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
-    return { id: params.machineId, isNew: isFirstRegistration };
-  }
-
-  // ── 去重策略（machineId 未指定时走此分支）──
-  // 优先级 1：按客户端持久化的 node_id 精确匹配（最可靠，跨 IP/MAC 变化稳定）
-  if (params.nodeId) {
-    const byNodeId = await db.select({ id: machine.id }).from(machine).where(eq(machine.id, params.nodeId)).limit(1);
-    existingId = byNodeId[0]?.id ?? null;
+  // machine 不存在：必须在组织管理界面先创建
+  if (existing.length === 0) {
+    throw new Error(`machine '${params.machineId}' not found, please create it first in your organization`);
   }
 
   const now = new Date();
 
-  // ── 已存在的机器重连：更新状态，写 reconnect 事件 ──
-  if (existingId) {
-    await db
-      .update(machine)
-      .set({
-        status: "online",
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .where(eq(machine.id, existingId));
-
-    // 重连事件与首次注册区分，避免 registry_event 表堆积无意义的重复 register 记录
-    await db.insert(registryEvent).values({
-      id: genId("evt"),
-      machineId: existingId,
-      type: "reconnect",
-      detail: {},
-    });
-
-    await markSandboxInstanceReadyByMachineId(existingId, now);
-    await bindAgentConfigs(existingId, params.agentName, params.tenantId);
-    return { id: existingId, isNew: false };
+  // server 重启后 DB 状态可能过期，允许重连
+  if (existing[0].status === "online") {
+    log(`[registry] machine id '${params.machineId}' was already online (stale), allowing reconnection`);
   }
 
-  throw new Error("machine not found, please create it first in your organization's admin panel");
+  const isFirstRegistration = existing[0].status === "pending";
+  const eventType = isFirstRegistration ? "register" : "reconnect";
+
+  // pending 或 offline → 激活为 online
+  await db
+    .update(machine)
+    .set({
+      status: "online",
+      lastHeartbeatAt: now,
+      updatedAt: now,
+    })
+    .where(eq(machine.id, params.machineId));
+
+  await db.insert(registryEvent).values({
+    id: genId("evt"),
+    machineId: params.machineId,
+    type: eventType,
+    detail: {},
+  });
+
+  await markSandboxInstanceReadyByMachineId(params.machineId, now);
+  await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
+  return { id: params.machineId, isNew: isFirstRegistration };
 }
 
 export async function disconnectMachine(machineId: string, reason: string): Promise<void> {

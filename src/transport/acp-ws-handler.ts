@@ -137,16 +137,17 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
     ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
     : [{ type: "opencode" }];
-  // 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册）
-  const nodeId = (msg.node_id as string) || null;
-  // 客户端指定的 machine id，用于固定机器标识
   const specifiedMachineId = (msg.machine_id as string) || null;
+  if (!specifiedMachineId) {
+    sendToWs(entry.ws, { type: "error", message: "machine_id is required" });
+    entry.ws.close(4004, "machine_id is required");
+    return;
+  }
 
   try {
     const result = await registerMachine({
       agentName,
       tenantId,
-      nodeId,
       machineId: specifiedMachineId,
     });
 
