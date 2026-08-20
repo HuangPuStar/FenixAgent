@@ -128,6 +128,40 @@ describe("file-ws 事件接收（W7，§7.5）", () => {
     unsub();
   });
 
+  // 忽略依赖与构建目录：这些路径不进入限频器或订阅流，避免事件风暴触发文件树全量刷新
+  test("忽略 node_modules、.git 与构建产物目录的单帧和批量事件", async () => {
+    const handler = await import("../transport/file-ws-handler");
+    const envId = "evt-env-ignored-paths";
+    cleanups.push(envId);
+    openRegisteredWs(handler, "ws_ignored", "mach_ignored", [envId]);
+    const frames: FileEventFrame[] = [];
+    const unsub = subscribe(envId, (f) => frames.push(f));
+
+    handler.handleFileWsMessage(createMockWs(), "ws_ignored", {
+      type: "file_changed",
+      environment_id: envId,
+      path: "packages/app/node_modules/react/index.js",
+      kind: "write",
+      source: "agent",
+    });
+    handler.handleFileWsMessage(createMockWs(), "ws_ignored", {
+      type: "file_changed_batch",
+      environment_id: envId,
+      changes: [
+        { path: ".git/index", kind: "write", source: "agent" },
+        { path: "web/dist/assets/app.js", kind: "write", source: "agent" },
+        { path: "apps/site/.next/cache/data", kind: "write", source: "agent" },
+        { path: "packages\\api\\coverage\\report.json", kind: "write", source: "agent" },
+        { path: "src/keep.ts", kind: "write", source: "agent" },
+      ],
+    });
+    await flushEvents();
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toMatchObject({ environment_id: envId, path: "src/keep.ts" });
+    unsub();
+  });
+
   // 突发合并（D20 修复）：1s 窗口内连发 50 条，仅前 20 条逐条下发，
   // 其余 30 条合并为一条 file_changed_batch（增量语义），绝不允许退化为 invalidate_all
   test("连发 50 事件合并为 batch 而非全量失效", async () => {
