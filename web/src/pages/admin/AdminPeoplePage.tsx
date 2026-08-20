@@ -231,6 +231,7 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
             <Building2 className="size-4 text-brand" />
             <span className="font-medium text-text-primary">{organization.name}</span>
             <span className="font-mono text-xs text-text-muted">{organization.slug}</span>
+            <span className="font-mono text-[10px] text-text-muted">{organization.id}</span>
             <Badge variant="secondary" className="ml-auto">
               {t("people.users", { count: organization.users.length })}
             </Badge>
@@ -248,6 +249,7 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
                         <UserRound className="size-3.5 text-accent-tiffany" />
                         <span className="text-sm font-medium text-text-primary">{person.name}</span>
                         <span className="text-xs text-text-muted">{person.email}</span>
+                        <span className="font-mono text-[10px] text-text-muted">{person.id}</span>
                         {person.role ? (
                           <Badge variant="outline" className="text-[10px]">
                             {person.role}
@@ -269,6 +271,7 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
                             <li key={agent.id} className="flex flex-wrap items-center gap-2 rounded-md py-1 text-sm">
                               <Bot className="size-3.5 text-accent-green" />
                               <span className="text-text-primary">{agent.name}</span>
+                              <span className="font-mono text-[10px] text-text-muted">{agent.id}</span>
                               {agent.engineType ? (
                                 <Badge variant="outline" className="text-[10px]">
                                   {agent.engineType}
