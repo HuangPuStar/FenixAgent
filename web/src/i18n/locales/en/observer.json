@@ -71,6 +71,25 @@
     "possibleReasons": "Possible causes: environment missing, agent config not identified yet (no placeholders), or ownership mismatch with the authority record.",
     "empty": "All observations are consistent."
   },
+  "logs": {
+    "nav": "System Logs",
+    "title": "System Logs",
+    "subtitle": "Read-only service logs from the logs directory (master key protected)",
+    "files": "Log Files",
+    "noFiles": "No readable log files in the logs directory.",
+    "search": "Search Logs",
+    "searchPlaceholder": "Enter keywords to search",
+    "errorOnly": "Error lines only",
+    "searchButton": "Search",
+    "download": "Download",
+    "searchError": "Failed to search logs. Please retry.",
+    "selectFile": "Select a log file.",
+    "matches": "{{count}} matching lines",
+    "truncated": "Showing only the most recent matching results",
+    "requestId": "Request ID",
+    "errorDetail": "Error details",
+    "noMatches": "No matching logs."
+  },
   "states": {
     "loading": "Loading…",
     "empty": "No observation data",

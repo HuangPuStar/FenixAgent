@@ -71,6 +71,25 @@
     "possibleReasons": "可能原因：environment 缺失、identify 前 agentConfigId 未就绪（不占位）、或与权威记录归属不一致。",
     "empty": "全部观察均一致。"
   },
+  "logs": {
+    "nav": "系统日志",
+    "title": "系统日志",
+    "subtitle": "只读查看 logs 目录中的服务日志（受 master key 保护）",
+    "files": "日志文件",
+    "noFiles": "logs 目录中暂无可读取的日志文件。",
+    "search": "搜索日志",
+    "searchPlaceholder": "输入关键字后搜索",
+    "errorOnly": "仅显示 error 行",
+    "searchButton": "搜索",
+    "download": "下载",
+    "searchError": "日志搜索失败，请重试。",
+    "selectFile": "请选择一个日志文件。",
+    "matches": "匹配 {{count}} 行",
+    "truncated": "仅显示最近的匹配结果",
+    "requestId": "请求 ID",
+    "errorDetail": "异常详情",
+    "noMatches": "没有匹配的日志。"
+  },
   "states": {
     "loading": "加载中…",
     "empty": "暂无观察数据",
