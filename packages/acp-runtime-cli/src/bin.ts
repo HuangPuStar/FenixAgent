@@ -54,6 +54,7 @@ if (args.length === 0) {
   console.log("必填环境变量:");
   console.log("  RCS_URL             WS base URL，如 ws://localhost:3000 或 wss://rcs.example.com");
   console.log("  RCS_SECRET          client 端鉴权 secret");
+  console.log("  RCS_MACHINE_ID      管理面预创建的 Machine ID");
   console.log("");
   console.log("可选环境变量:");
   console.log("  RCS_TENANT_ID       用于远程注册机器的组织 ID（不设置则机器对所有组织可见）");
@@ -70,12 +71,14 @@ if (args.length === 0) {
 const missing: string[] = [];
 if (!RCS_URL) missing.push("RCS_URL");
 if (!RCS_SECRET) missing.push("RCS_SECRET");
+if (!MACHINE_ID) missing.push("RCS_MACHINE_ID");
 if (missing.length > 0) {
   console.error(`缺少必填环境变量: ${missing.join(", ")}`);
   console.error("");
   console.error("必填项:");
   console.error("  RCS_URL        WS base URL，如 ws://localhost:3000 或 wss://rcs.example.com");
   console.error("  RCS_SECRET     client 端鉴权 secret");
+  console.error("  RCS_MACHINE_ID 管理面预创建的 Machine ID");
   process.exit(1);
 }
 

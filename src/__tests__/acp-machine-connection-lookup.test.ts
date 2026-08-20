@@ -159,6 +159,7 @@ describe("handleAcpWsMessage — session 消息转发", () => {
 });
 
 describe("handleRegister 走 machine 路径", () => {
+  // 注册消息携带 machine_id 时应触发 machine 注册流程。
   test("register 消息触发 handleMachineRegister 流程", async () => {
     const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
 
@@ -168,6 +169,7 @@ describe("handleRegister 走 machine 路径", () => {
     await handleAcpWsMessage(ws, "ws_reg", {
       type: "register",
       agent_name: "test-agent",
+      machine_id: "mach_test_001",
     });
 
     // 注册成功后会发送 registered 消息
@@ -176,6 +178,21 @@ describe("handleRegister 走 machine 路径", () => {
     const lastMsg = JSON.parse(msgs[msgs.length - 1]);
     expect(lastMsg.type).toBe("registered");
     expect(lastMsg.machine_id).toBe("mach_test_001");
+  });
+
+  // 缺少 machine_id 时不得回退到历史 node_id。
+  test("缺少 machine_id 时关闭连接", async () => {
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+
+    const ws = createMockWs();
+    handleAcpWsOpen(ws, "ws_missing_machine", "user_reg", null, true);
+
+    await handleAcpWsMessage(ws, "ws_missing_machine", {
+      type: "register",
+      agent_name: "test-agent",
+    });
+
+    expect(ws.close).toHaveBeenCalledWith(4004, "machine_id is required");
   });
 });
 
