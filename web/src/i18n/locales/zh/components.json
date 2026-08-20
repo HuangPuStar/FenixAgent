@@ -406,6 +406,10 @@
     "openFile": "打开文件",
     "toolName": "工具"
   },
+  "subAgentPanel": {
+    "title": "子 Agent 执行轨迹",
+    "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤"
+  },
   "permissionPanel": {
     "allow": "允许",
     "allowSession": "允许本次会话",

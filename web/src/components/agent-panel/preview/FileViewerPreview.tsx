@@ -102,6 +102,7 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
         mimeType={mimeType}
         plugins={plugins}
         height="100%"
+        fit="width"
         toolbar={toolbar}
         theme="auto"
         locale="zh-CN"
