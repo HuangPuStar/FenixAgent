@@ -26,6 +26,7 @@ import {
   getSkillOrganizationDir as _getSkillOrganizationDir,
   getSkillSourceDir as _getSkillSourceDir,
   groupUploadFiles as _groupUploadFiles,
+  parseFrontmatter as _parseFrontmatter,
   readSkillDetailFromMd as _readSkillDetailFromMd,
   resolveImportPlan as _resolveImportPlan,
   restoreFromBackup as _restoreFromBackup,
@@ -147,6 +148,36 @@ function stripNameAndDescription(metadata: Record<string, string>): Record<strin
   return Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== "name" && k !== "description"));
 }
 
+/**
+ * 规范化写入参数，兼容把完整 SKILL.md 误传到 content 的 API 调用方。
+ *
+ * setSkill 的正式契约仍是接收 Markdown 正文；这里在持久化边界剥离一个或多个
+ * 已有 Skill frontmatter，避免 Meta Agent 或旧客户端再次包裹出重复头部。
+ */
+function normalizeSkillWriteData(data: { description: string; content: string; metadata?: Record<string, string> }): {
+  description: string;
+  content: string;
+  metadata?: Record<string, string>;
+} {
+  let content = data.content;
+  let embeddedMetadata: Record<string, string> = {};
+
+  while (true) {
+    const parsed = _parseFrontmatter(content);
+    const isCompleteSkill = parsed.metadata.name !== undefined || parsed.metadata.description !== undefined;
+    if (!isCompleteSkill || parsed.content === content) break;
+    embeddedMetadata = { ...embeddedMetadata, ...stripNameAndDescription(parsed.metadata) };
+    content = parsed.content;
+  }
+
+  const metadata = { ...embeddedMetadata, ...(data.metadata ?? {}) };
+  return {
+    description: data.description,
+    content,
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+  };
+}
+
 export async function listSkills(ctx: AuthContext): Promise<SkillInfo[]> {
   const rows = await _deps.configPg.listSkills(ctx);
   return rows.map((r) => ({
@@ -206,6 +237,7 @@ export async function setSkill(
   data: { description: string; content: string; metadata?: Record<string, string>; publicReadable?: boolean },
 ): Promise<SkillInfo> {
   const { publicReadable, ...skillData } = data;
+  const normalizedSkillData = normalizeSkillWriteData(skillData);
   const safeName = _deps.skillFs.assertValidSkillName(name);
   const skillDir = skillSourceDir(ctx.organizationId, safeName);
   const archivePath = skillArchivePath(ctx.organizationId, safeName);
@@ -217,17 +249,17 @@ export async function setSkill(
     const contentPath = await _deps.skillFs.writeSkillMd(
       skillDir,
       safeName,
-      skillData.description,
-      skillData.content,
-      skillData.metadata,
+      normalizedSkillData.description,
+      normalizedSkillData.content,
+      normalizedSkillData.metadata,
     );
     await _deps.skillFs.buildSkillArchive(skillDir, archivePath);
     await _deps.configPg.upsertSkill(
       ctx,
       safeName,
       {
-        description: skillData.description,
-        metadata: skillData.metadata,
+        description: normalizedSkillData.description,
+        metadata: normalizedSkillData.metadata,
       },
       { publicReadable, auditAction: "set" },
     );
@@ -237,7 +269,7 @@ export async function setSkill(
       id: updatedMeta?.id,
       name: safeName,
       enabled: true,
-      description: skillData.description,
+      description: normalizedSkillData.description,
       path: contentPath,
       resourceAccess: updatedMeta?.resourceAccess,
     };
