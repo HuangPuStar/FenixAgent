@@ -43,7 +43,7 @@ services:
             AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY}
             RCS_DEFAULT_MACHINE_ID: ${RCS_DEFAULT_MACHINE_ID:-}
             # 注意：RCS_DEFAULT_ENGINE_TYPE 仅对 local 执行生效；远程引擎由机器端 AGENT_TYPE 决定
-            RCS_DEFAULT_ENGINE_TYPE: ${RCS_DEFAULT_ENGINE_TYPE:-opencode}
+            RCS_DEFAULT_ENGINE_TYPE: ${RCS_DEFAULT_ENGINE_TYPE:-ccb}
             # 行为变更：.env 已设 true 者部署后 local 执行被真实禁用（旧配置从未生效）
             RCS_DISABLE_LOCAL_EXECUTION: ${RCS_DISABLE_LOCAL_EXECUTION:-false}
             OPENCODE_DISABLE_AUTOUPDATE: "1"

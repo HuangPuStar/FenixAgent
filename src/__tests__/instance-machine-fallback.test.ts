@@ -30,18 +30,18 @@ describe("instance machine/engine fallback", () => {
 
   // ── engineType 传递决策：基于最终 nodeId ──
 
-  // local 执行时传递 engineType，使用 RCS_DEFAULT_ENGINE_TYPE 或默认 opencode
+  // local 执行时传递 engineType，使用 RCS_DEFAULT_ENGINE_TYPE 或默认 ccb（Peri 槽位）
   test("local 执行时传递 engineType，优先使用 RCS_DEFAULT_ENGINE_TYPE", () => {
     const resolvedNodeId: string = "local-default";
-    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
-    expect(engineType).toBe("opencode");
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "ccb") : undefined;
+    expect(engineType).toBe("ccb");
   });
 
   // local 执行、RCS_DEFAULT_ENGINE_TYPE 有值时使用环境变量
   test("local 执行时 RCS_DEFAULT_ENGINE_TYPE 覆盖默认值", () => {
     setConfig({ defaultEngineType: "ccb" } as any);
     const resolvedNodeId: string = "local-default";
-    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "ccb") : undefined;
     expect(engineType).toBe("ccb");
   });
 
@@ -49,7 +49,7 @@ describe("instance machine/engine fallback", () => {
   // c71ee18c 设计意图，非缺陷：引擎控制权下放机器端 AGENT_TYPE，服务端不传 engineType
   test("remote 执行时 engineType 始终为 undefined", () => {
     const resolvedNodeId: string = "mach_remote_01";
-    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "ccb") : undefined;
     expect(engineType).toBeUndefined();
   });
 
@@ -58,7 +58,7 @@ describe("instance machine/engine fallback", () => {
     setConfig({ defaultMachineId: "mach_redirect" } as any);
     const resolvedNodeId = config.defaultMachineId ?? "local-default";
     // resolvedNodeId 是 "mach_redirect"，不等于 "local-default"
-    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "opencode") : undefined;
+    const engineType = resolvedNodeId === "local-default" ? (config.defaultEngineType ?? "ccb") : undefined;
     expect(engineType).toBeUndefined();
   });
 

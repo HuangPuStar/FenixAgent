@@ -33,8 +33,9 @@ RUN printf 'registry=%s\n' \
 COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-runtime.js
 
-# 整个 peri（binary + 版本管理 + 配置）安装到 /opt/.peri-binary
-RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+# 从仓库内安装器安装，避免构建期执行未经版本固定的远程脚本。
+COPY install.js /usr/local/bin/install-peri.js
+RUN PERI_INSTALL_DIR=/opt/.peri-binary bun /usr/local/bin/install-peri.js
 ENV PATH="/opt/.peri-binary:$PATH"
 
 RUN mkdir -p /app/workspaces

@@ -7,7 +7,7 @@ export type SandboxResolvedConfig = {
   providerExtra: SandboxProviderExtra;
 };
 
-const DEFAULT_SANDBOX_AGENT_TYPE = "opencode";
+const DEFAULT_SANDBOX_AGENT_TYPE = "ccb";
 
 function normalizeRelativeVolumePath(value: string): string {
   if (value.includes("\0")) throw new Error("sandbox volume path contains a NUL byte");

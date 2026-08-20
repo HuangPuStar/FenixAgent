@@ -46,8 +46,9 @@ ENV RCS_PORT=3000
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
 ENV BUN_INSTALL_GLOBAL=/root/.bun
 ENV PATH=/root/.bun/bin:${PATH}
-ENV OPENCODE_DISABLE_AUTOUPDATE=1
-ENV OPENCODE_DISABLE_TELEMETRY=1
+ENV RCS_CCB_COMMAND=peri
+ENV RCS_CCB_ARGS=acp
+ENV IS_PERI=1
 
 # Install Python 3 and common tools (Debian/glibc base, use TUNA mirror)
 RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
@@ -73,8 +74,9 @@ RUN printf 'registry=%s\n' \
 RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
     && ln -sf /usr/local/bin/bun /usr/local/bin/npm \
     && ln -sf /usr/local/bin/bunx /usr/local/bin/npx
-RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN opencode plugin @konghayao/opencode-hindsight -g
+COPY install.js /usr/local/bin/install-peri.js
+RUN PERI_INSTALL_DIR=/opt/.peri-binary bun /usr/local/bin/install-peri.js
+ENV PATH=/opt/.peri-binary:/root/.bun/bin:${PATH}
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
@@ -82,14 +84,14 @@ COPY --from=build /app/web/dist ./web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
 
-RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces
+RUN mkdir -p /app/data /app/workflow /app/workspaces
 RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
 COPY .agents/agents/ /app/.agents/agents/
 COPY .agents/skills/ /app/.agents/skills/
 COPY fenix-sandbox-ops.sh /app/fenix-sandbox-ops.sh
 RUN chmod +x /app/fenix-sandbox-ops.sh
 
-VOLUME ["/root/.config/opencode", "/root/.local/share/opencode", "/app/data", "/app/workflow", "/app/workspaces"]
+VOLUME ["/app/data", "/app/workflow", "/app/workspaces"]
 
 EXPOSE 3000
 

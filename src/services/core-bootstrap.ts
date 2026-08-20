@@ -36,7 +36,7 @@ async function ensureMachineExists() {
   if (existing.length > 0) return;
 
   const now = new Date();
-  const agentName = config.defaultEngineType ?? "opencode";
+  const agentName = config.defaultEngineType ?? "ccb";
 
   await db.insert(machine).values({
     id: config.defaultMachineId,
@@ -69,7 +69,7 @@ function defaultCreateFacade(): CoreRuntimeFacade {
           {
             id: "local-default",
             mode: "local",
-            engineTypes: ["opencode", "claude-code", "ccb"],
+            engineTypes: ["ccb", "opencode", "claude-code"],
             status: "online",
           },
         ],
@@ -170,7 +170,7 @@ export function registerRemoteNode(
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: engineTypes ?? ["opencode"],
+    engineTypes: engineTypes ?? ["ccb"],
     status: "online",
     metadata: { machineId },
   });

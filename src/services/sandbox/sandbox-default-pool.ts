@@ -46,7 +46,7 @@ export async function initializeDefaultSandboxPool(
     throw new Error("sandbox pool extra must be an object");
   }
 
-  extra = { ...extra, agent_type: settings.defaultSandboxAgentType ?? "opencode" };
+  extra = { ...extra, agent_type: settings.defaultSandboxAgentType ?? "ccb" };
 
   return repository.upsert({
     id: settings.defaultSandboxPoolId,

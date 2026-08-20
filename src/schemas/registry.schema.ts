@@ -81,7 +81,7 @@ export const EventQuerySchema = z.object({
 export const CreateMachineSchema = z.object({
   name: z.string().min(1).max(64).describe("机器显示名称"),
   labels: z.array(z.string()).optional().default([]).describe("标签列表"),
-  agentName: z.string().min(1).max(64).default("opencode").describe("引擎名称"),
+  agentName: z.string().min(1).max(64).default("ccb").describe("引擎名称"),
 });
 
 /** 更新机器请求 */
