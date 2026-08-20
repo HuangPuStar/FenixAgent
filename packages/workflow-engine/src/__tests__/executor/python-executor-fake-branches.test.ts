@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { PythonExecutor } from "../../executor/python-executor";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { PythonExecutor, type PythonRuntime } from "../../executor/python-executor";
 import type { NodeExecutionContext } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
 import type { NodeDef, PythonNodeDef } from "../../types/dag";
@@ -86,16 +86,21 @@ function makeNode(overrides: Partial<PythonNodeDef> = {}): PythonNodeDef {
 }
 
 describe("PythonExecutor 内存 fake 分支", () => {
-  const writeSpy = spyOn(Bun, "write");
-  const spawnSpy = spyOn(Bun, "spawn");
+  const writeSpy = mock<typeof Bun.write>();
+  const spawnSpy = mock<typeof Bun.spawn>();
+  const runtime: PythonRuntime = { write: writeSpy, spawn: spawnSpy };
 
   afterEach(() => {
     writeSpy.mockReset();
     spawnSpy.mockReset();
   });
 
+  function createExecutor(): PythonExecutor {
+    return new PythonExecutor(runtime);
+  }
+
   test("非 Python 节点在写入脚本前返回 NODE_FAILED", async () => {
-    const executor = new PythonExecutor();
+    const executor = createExecutor();
     const node: NodeDef = { id: "shell-node", type: "shell", command: "echo ignored" };
 
     await expect(executor.execute(node, makeContext())).rejects.toMatchObject({
@@ -106,7 +111,7 @@ describe("PythonExecutor 内存 fake 分支", () => {
   });
 
   test("解析后的代码、环境与工作目录用于组装 python3 命令", async () => {
-    const executor = new PythonExecutor();
+    const executor = createExecutor();
     const ctx = makeContext({
       secrets: { CONTEXT_VALUE: "from-context" },
       resolvedInputs: {
@@ -135,7 +140,7 @@ describe("PythonExecutor 内存 fake 分支", () => {
   });
 
   test("pip 安装失败时返回截断后的 NODE_FAILED 且不启动 python3", async () => {
-    const executor = new PythonExecutor();
+    const executor = createExecutor();
     writeSpy.mockResolvedValue(0);
     spawnSpy.mockImplementation(
       () => createSubprocess("", "dependency missing", 2) as unknown as ReturnType<typeof Bun.spawn>,
@@ -155,7 +160,7 @@ describe("PythonExecutor 内存 fake 分支", () => {
   });
 
   test("Python 非零退出码记录失败事件并保留 stdout 与 stderr 摘要", async () => {
-    const executor = new PythonExecutor();
+    const executor = createExecutor();
     const ctx = makeContext();
     writeSpy.mockResolvedValue(0);
     spawnSpy.mockImplementation(
@@ -176,7 +181,7 @@ describe("PythonExecutor 内存 fake 分支", () => {
   });
 
   test("节点超时时终止内存子进程并返回 NODE_TIMEOUT", async () => {
-    const executor = new PythonExecutor();
+    const executor = createExecutor();
     const kills: string[] = [];
     writeSpy.mockResolvedValue(0);
     spawnSpy.mockImplementation(() => createHangingSubprocess(kills) as unknown as ReturnType<typeof Bun.spawn>);

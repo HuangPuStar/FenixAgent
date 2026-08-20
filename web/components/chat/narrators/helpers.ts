@@ -7,12 +7,21 @@
  */
 
 /**
+ * 从多种可能的路径字段中提取文件路径。
+ * 兼容 Read/Edit/Write 工具的不同参数命名（file_path / path / filePath）。
+ */
+export function extractFilePath(rawInput: unknown): string | undefined {
+  const r = rawInput as Record<string, unknown> | undefined;
+  const path = r?.file_path ?? r?.path ?? r?.filePath;
+  return typeof path === "string" && path.length > 0 ? path : undefined;
+}
+
+/**
  * 从多种可能的路径字段中提取文件名。
  * 兼容 Read/Edit/Write 工具的不同参数命名（file_path / path / filePath）。
  */
 export function extractFileName(rawInput: unknown): string {
-  const r = rawInput as Record<string, unknown> | undefined;
-  const path = String(r?.file_path ?? r?.path ?? r?.filePath ?? "");
+  const path = extractFilePath(rawInput);
   if (!path) return "文件";
   return path.split("/").pop() || path;
 }

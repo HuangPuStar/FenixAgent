@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
 import type { ClusterConfig } from "../types";
@@ -21,9 +22,9 @@ describe("OpenSandbox Cluster routes", () => {
   });
 
   test("protects management routes and never returns server API keys", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-routes-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-routes-${randomUUID()}.db`;
     migrateDatabase(databasePath);
-    const app = createApp({ ...config, databasePath });
+    const app = createApp({ ...config, databasePath }, { fetch: async () => Promise.reject(new Error("unreachable")) });
 
     const unauthorized = await app.handle(new Request("http://localhost/api/v1/pools"));
     expect(unauthorized.status).toBe(401);

@@ -106,7 +106,6 @@ describe("InstanceManager refresh", () => {
     const createSpec = (skills: AgentLaunchSpec["skills"]): AgentLaunchSpec => ({
       organizationId: "org-test",
       userId: "user-test",
-      environmentId: "env-test",
       env: {},
       agent: { name: "agent", prompt: "" },
       model: { provider: "test", protocol: "openai", model: "test", modelName: "test" },

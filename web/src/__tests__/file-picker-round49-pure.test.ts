@@ -42,11 +42,9 @@ describe("MCP 资源访问纯逻辑补充覆盖", () => {
     expect(getMcpLookupKey(mcp("duplicate-name", ownedAccess))).toBe("org-owned/mcp-owned");
   });
 
-  // 兼容旧服务端返回时，详情查询必须继续使用原名称。
+  // 旧服务端返回缺失访问元信息时，详情查询必须继续使用原名称。
   test("getMcpLookupKey 缺少 resourceKey 时回退名称", () => {
-    expect(getMcpLookupKey(mcp("legacy-server", { ...ownedAccess, resourceKey: "org-owned/legacy-server" }))).toBe(
-      "legacy-server",
-    );
+    expect(getMcpLookupKey(mcp("legacy-server"))).toBe("legacy-server");
   });
 
   // 没有 resourceAccess 的本地 MCP 默认允许修改。
