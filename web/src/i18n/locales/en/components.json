@@ -406,6 +406,10 @@
     "openFile": "Open File",
     "toolName": "Tool"
   },
+  "subAgentPanel": {
+    "title": "Sub-agent activity",
+    "summary": "{{messages}} messages · {{tools}} tool steps"
+  },
   "permissionPanel": {
     "allow": "Allow",
     "allowSession": "Allow Session",

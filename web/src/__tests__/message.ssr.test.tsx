@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
+import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
 import { SystemMessage } from "../../components/chat/SystemMessage";
 
 async function renderStreaming(element: ReactNode) {
@@ -61,5 +62,24 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("messageBubble.systemMessage");
     expect(markup).not.toContain("仅双击后显示");
     expect(markup).not.toContain('data-slot="popover-content"');
+  });
+
+  // 子 Agent 详情默认折叠，只展示执行轨迹摘要，避免占满父工具调用。
+  test("子 Agent 执行轨迹默认折叠", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SubAgentPanel, {
+        entries: [
+          {
+            type: "assistant_message",
+            id: "sub-agent-message",
+            chunks: [{ type: "message", text: "已完成调研" }],
+          },
+        ],
+      }),
+    );
+
+    expect(markup).toContain("subAgentPanel.title");
+    expect(markup).toContain("subAgentPanel.summary");
+    expect(markup).not.toContain("已完成调研");
   });
 });

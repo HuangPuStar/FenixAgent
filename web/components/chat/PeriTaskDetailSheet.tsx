@@ -59,7 +59,7 @@ export function PeriTaskDetailSheet({ environmentId, sessionId, task, onClose }:
             {task?.kind === "background" ? t("periTask.kindBackground") : t("periTask.kindSubagent")}
           </SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-auto py-4">
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-text-muted" role="status">
               <Loader2 className="h-4 w-4 animate-spin" />
