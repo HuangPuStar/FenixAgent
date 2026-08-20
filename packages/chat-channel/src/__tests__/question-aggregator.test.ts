@@ -192,10 +192,35 @@ test("expired question migrates to expired once and cannot be responded afterwar
   expect(getPendingQuestions(pair.session).get("iqa_1")?.get("answer")).toBeNull();
 });
 
-// 未知 questionId / 无活动 turn 的问题请求被拒绝
-test("question request without writable turn is rejected", () => {
-  const result = applyNormalizedEvent(pair, event("question_requested", { questionId: "iqa_1", questions: [] }));
-  expect(result.applied).toBe(false);
+// 乱序容错：工具已发起询问但 prompt_complete 先到时，completed 仅代表展示态终结；
+// Agent 仍在等待 control_response，问题必须投影，否则会出现工具卡片已渲染但无弹窗。
+test("question request remains visible when prompt completion arrives first", () => {
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  applyNormalizedEvent(pair, event("turn_completed", {}, "turn_1"));
+
+  const result = applyNormalizedEvent(
+    pair,
+    event("question_requested", {
+      questionId: "iqa_1",
+      questions: [{ question: "Deploy?", header: "Deploy", options: [{ label: "production" }] }],
+    }),
+  );
+
+  expect(result.applied).toBe(true);
+  expect(getPendingQuestions(pair.session).get("iqa_1")?.get("status")).toBe("pending");
+});
+
+// 已取消、失败或无活动 turn 时的问题没有可消费答案的 Agent，必须拒绝以避免旧帧污染当前会话。
+test("question request without an answerable turn is rejected", () => {
+  expect(
+    applyNormalizedEvent(pair, event("question_requested", { questionId: "missing", questions: [] })).applied,
+  ).toBe(false);
+
+  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+  applyNormalizedEvent(pair, event("turn_cancelled", {}, "turn_1"));
+  expect(
+    applyNormalizedEvent(pair, event("question_requested", { questionId: "cancelled", questions: [] })).applied,
+  ).toBe(false);
   expect(getPendingQuestions(pair.session).size).toBe(0);
 });
 
