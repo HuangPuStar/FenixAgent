@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
+import { SystemMessage } from "../../components/chat/SystemMessage";
 
 async function renderStreaming(element: ReactNode) {
   const stream = await renderToReadableStream(element);
@@ -49,5 +50,16 @@ describe("消息组件的服务端渲染", () => {
 
     expect(markup).toContain('<h1 class="mt-6 mb-2 font-semibold text-3xl" data-streamdown="heading-1">部署结果</h1>');
     expect(markup).toContain('<span class="font-semibold" data-streamdown="strong">验证通过</span>');
+  });
+
+  // 系统消息默认仅输出标签；原文仅在客户端双击触发的 Popover 中展示。
+  test("系统消息默认不展示原始提示或浮层内容", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SystemMessage, { rawText: "<system-reminder>仅双击后显示</system-reminder>" }),
+    );
+
+    expect(markup).toContain("messageBubble.systemMessage");
+    expect(markup).not.toContain("仅双击后显示");
+    expect(markup).not.toContain('data-slot="popover-content"');
   });
 });

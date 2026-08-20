@@ -28,9 +28,9 @@ interface UserBubbleProps {
 export function UserBubble({ entry }: UserBubbleProps) {
   const { t } = useTranslation("components");
   // 切分注入的系统上下文段与用户文本段：system 段合并为原始块文本，渲染为
-  // 系统消息标签（hover 展示原文）；text 段合并后按原逻辑渲染为用户气泡
+  // 系统消息标签默认隐藏注入内容；双击后以 Popover 展示。
   const segments = useMemo(() => splitSystemReminderBlocks(entry.content ?? ""), [entry.content]);
-  // 原始块文本（含标签），hover 系统消息时展示完整注入上下文
+  // 原始块文本（含标签），双击系统消息标签后以 Popover 展示完整注入上下文
   const systemRawText = useMemo(
     () =>
       segments
@@ -101,7 +101,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
           </div>
         </div>
       )}
-      {/* 注入的系统上下文 — 居中"系统消息"标签，hover 展示原始块 */}
+      {/* 注入的系统上下文 — 居中“系统消息”标签，双击后以 Popover 展示原始块 */}
       {systemRawText && <SystemMessage rawText={systemRawText} />}
     </div>
   );
@@ -160,7 +160,7 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
                 </Reasoning>
               );
             }
-            // 完整 system-reminder 块 — 渲染为系统消息标签，hover 展示原始块
+            // 完整 system-reminder 块 — 渲染为系统消息标签，双击后以 Popover 展示原始块
             if (!isVisibleContentBlock({ type: "text", text: chunk.text })) {
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
