@@ -94,6 +94,40 @@ describe("skill archive lifecycle", () => {
     expect(upsertCalls[0]?.[2]).toEqual({ description: "Demo", metadata: undefined });
   });
 
+  // 调用方传入完整 SKILL.md 时，应去掉已有 frontmatter 后再生成唯一的规范头部。
+  test("setSkill normalizes a complete SKILL.md before writing", async () => {
+    const { configPg, skillFs } = installMocks();
+    const completeSkill = `---
+name: demo
+description: Embedded description
+category: testing
+---
+
+# Demo
+`;
+
+    await setSkill(ctx, "demo", {
+      description: "Request description",
+      content: completeSkill,
+      metadata: { source: "meta-agent" },
+    });
+
+    expect(skillFs.writeSkillMd).toHaveBeenCalledWith(
+      `${root}/org-1/demo`,
+      "demo",
+      "Request description",
+      "\n# Demo\n",
+      { category: "testing", source: "meta-agent" },
+    );
+    const upsertCalls = configPg.upsertSkill.mock.calls as unknown as Array<
+      [unknown, string, { description: string; metadata?: Record<string, string> | undefined }]
+    >;
+    expect(upsertCalls[0]?.[2]).toEqual({
+      description: "Request description",
+      metadata: { category: "testing", source: "meta-agent" },
+    });
+  });
+
   // 新建 skill 的 PG 写入失败时，清理新 source 与 archive。
   test("setSkill cleans new source and archive when upsert fails", async () => {
     const { configPg, skillFs } = installMocks();
