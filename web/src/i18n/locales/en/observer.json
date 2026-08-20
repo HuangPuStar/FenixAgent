@@ -71,6 +71,18 @@
     "possibleReasons": "Possible causes: environment missing, agent config not identified yet (no placeholders), or ownership mismatch with the authority record.",
     "empty": "All observations are consistent."
   },
+  "people": {
+    "nav": "People",
+    "title": "People Management",
+    "subtitle": "View platform ownership by organization, user, and agent (master key protected)",
+    "users": "{{count}} users",
+    "agents": "{{count}} agents",
+    "noUsers": "This organization has no members.",
+    "noAgents": "This user has no agents.",
+    "unassignedRole": "No member role",
+    "empty": "No organization data.",
+    "error": "Failed to load people hierarchy"
+  },
   "logs": {
     "nav": "System Logs",
     "title": "System Logs",

@@ -71,6 +71,18 @@
     "possibleReasons": "可能原因：environment 缺失、identify 前 agentConfigId 未就绪（不占位）、或与权威记录归属不一致。",
     "empty": "全部观察均一致。"
   },
+  "people": {
+    "nav": "人员管理",
+    "title": "人员管理",
+    "subtitle": "按组织、用户和智能体查看平台人员归属（受 master key 保护）",
+    "users": "{{count}} 位用户",
+    "agents": "{{count}} 个智能体",
+    "noUsers": "该组织暂无成员。",
+    "noAgents": "该用户暂无智能体。",
+    "unassignedRole": "未分配角色",
+    "empty": "暂无组织数据。",
+    "error": "人员层级加载失败"
+  },
   "logs": {
     "nav": "系统日志",
     "title": "系统日志",
