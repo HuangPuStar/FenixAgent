@@ -352,19 +352,34 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               fileWsHeartbeat = null;
             }
             const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
+            const scheduleFileWsReconnect = () => {
+              if (manualClose || fileWsReconnectTimer) return;
+              fileWsReconnectAttempt++;
+              const rawDelay = Math.min(1000 * 2 ** (fileWsReconnectAttempt - 1), MAX_FILE_WS_RECONNECT_MS);
+              // Full jitter: randomize between 50%–100% of raw delay
+              const delay = Math.round(rawDelay * (0.5 + Math.random() * 0.5));
+              console.log(
+                `[acp-client] file-ws disconnected, reconnecting in ${delay}ms (attempt ${fileWsReconnectAttempt})`,
+              );
+              fileWsReconnectTimer = setTimeout(connectFileWs, delay);
+            };
             const connectFileWs = () => {
               fileWsReconnectTimer = null;
               if (manualClose) return;
+              let nextFileWs: WebSocket;
               try {
-                fileWs = new WebSocket(fileWsUrl);
+                nextFileWs = new WebSocket(fileWsUrl);
               } catch (err) {
                 console.error("[acp-client] Failed to create file-ws:", err);
+                scheduleFileWsReconnect();
                 return;
               }
-              fileWs.onopen = () => {
+              fileWs = nextFileWs;
+              nextFileWs.onopen = () => {
+                if (fileWs !== nextFileWs) return;
                 console.log("[acp-client] file-ws connected, registering...");
-                if (fileWs && fileWs.readyState === 1) {
-                  fileWs.send(
+                if (nextFileWs.readyState === 1) {
+                  nextFileWs.send(
                     JSON.stringify({
                       type: "register",
                       machine_id: msg.machine_id,
@@ -372,8 +387,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   );
                 }
                 fileWsHeartbeat = setInterval(() => {
-                  if (fileWs && fileWs.readyState === 1) {
-                    fileWs.send(
+                  if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
+                    nextFileWs.send(
                       JSON.stringify({
                         type: "keep_alive",
                       }),
@@ -381,38 +396,34 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   }
                 }, 30000);
               };
-              fileWs.onmessage = async (event) => {
+              nextFileWs.onmessage = async (event) => {
+                if (fileWs !== nextFileWs) return;
                 try {
                   const fmsg = JSON.parse(event.data as string);
                   if (fmsg.type === "file_op") {
                     const result = await handleFileOp(fmsg);
-                    if (fileWs && fileWs.readyState === 1) {
-                      fileWs.send(JSON.stringify(result));
+                    if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
+                      nextFileWs.send(JSON.stringify(result));
                     }
                   }
                 } catch {
                   // ignore
                 }
               };
-              fileWs.onclose = () => {
+              nextFileWs.onclose = () => {
+                if (fileWs !== nextFileWs) return;
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
                 }
                 fileWs = null;
-                if (!manualClose) {
-                  fileWsReconnectAttempt++;
-                  const rawDelay = Math.min(1000 * 2 ** (fileWsReconnectAttempt - 1), MAX_FILE_WS_RECONNECT_MS);
-                  // Full jitter: randomize between 50%–100% of raw delay
-                  const delay = Math.round(rawDelay * (0.5 + Math.random() * 0.5));
-                  console.log(
-                    `[acp-client] file-ws disconnected, reconnecting in ${delay}ms (attempt ${fileWsReconnectAttempt})`,
-                  );
-                  fileWsReconnectTimer = setTimeout(connectFileWs, delay);
-                }
+                scheduleFileWsReconnect();
               };
-              fileWs.onerror = () => {
-                // onclose will handle
+              nextFileWs.onerror = () => {
+                if (fileWs !== nextFileWs) return;
+                // Node.js WebSocket 在连接不上服务端时可能只触发 error，不触发 close。
+                // scheduleFileWsReconnect 会合并 error/close，避免同一断连重复连接。
+                scheduleFileWsReconnect();
               };
             };
             connectFileWs();
