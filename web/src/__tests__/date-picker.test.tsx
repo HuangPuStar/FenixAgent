@@ -3,6 +3,7 @@ import ReactDOMServer from "react-dom/server";
 import { DatePicker } from "../../components/ui/date-picker";
 
 mock.module("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children: unknown }) => children,
   useTranslation: () => ({
     t: (key: string) => {
       const map: Record<string, string> = {

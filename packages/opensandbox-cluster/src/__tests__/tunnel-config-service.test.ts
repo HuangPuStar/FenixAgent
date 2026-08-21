@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { parse } from "smol-toml";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
@@ -24,7 +25,7 @@ const config: ClusterConfig = {
 describe("tunnel config service", () => {
   // tunnel 创建不需要 base_url，下载结果可以直接交给 frpc。
   test("downloads a ready-to-use frpc.toml", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-tunnel-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-tunnel-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath });
     const headers = { Authorization: "Bearer cluster-key", "Content-Type": "application/json" };
@@ -73,7 +74,7 @@ describe("tunnel config service", () => {
 
   // 已有 direct 节点只有在离线后才能一次性切换为 tunnel，重复调用必须保持幂等。
   test("switches an offline direct server to tunnel idempotently", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-tunnel-switch-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-tunnel-switch-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp(
       { ...config, databasePath },
@@ -117,7 +118,7 @@ describe("tunnel config service", () => {
 
   // 运行中的 direct Server 不允许被 tunnel action 突然切换。
   test("rejects tunnel migration while direct server is reachable", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-tunnel-online-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-tunnel-online-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp(
       { ...config, databasePath },

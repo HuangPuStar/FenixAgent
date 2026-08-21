@@ -3,6 +3,7 @@ import ReactDOMServer from "react-dom/server";
 
 // 显式 mock react-i18next，避免其他测试文件的 mock.module 残留影响 SSR 渲染
 mock.module("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children: unknown }) => children,
   useTranslation: () => ({
     t: (key: string) => key,
   }),
