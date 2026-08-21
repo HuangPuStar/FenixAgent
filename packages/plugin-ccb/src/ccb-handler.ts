@@ -11,13 +11,19 @@ import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
 
+export interface CcbCompatibleHandlerOptions {
+  command: string;
+  args: string[];
+  logLabel: string;
+}
+
 /**
- * ccb 引擎 handler：spawn ccb --acp 子进程，通过 ACP stdio 通信。
+ * 创建 CCB-compatible ACP handler。
+ * CCB 与 Peri 共用 workspace 配置、skills、MCP、权限和 ACP relay 生命周期；
+ * 调用方提供二进制与日志标签以维持各自的 engine 身份。
  */
-export function createCcbHandler(): EngineHandler {
-  // 延迟到 startInstance 才 resolve executable，避免机器上没有 ccb 二进制时启动失败
-  const binaryName = process.env.RCS_CCB_COMMAND ?? "ccb";
-  const args = (process.env.RCS_CCB_ARGS ?? "--acp").split(/\s+/);
+export function createCcbCompatibleHandler(options: CcbCompatibleHandlerOptions): EngineHandler {
+  const { command: binaryName, args, logLabel } = options;
 
   return {
     async prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
@@ -29,13 +35,13 @@ export function createCcbHandler(): EngineHandler {
       if (mcpConfig) {
         const { writeCcbMcpConfig } = await import("@fenix/ccb");
         await writeCcbMcpConfig(workspace, mcpConfig);
-        console.log(`[ccb-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
+        console.log(`[${logLabel}-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
       }
 
       if (launchSpec.agent.prompt) {
         const { writeClaudeMd } = await import("@fenix/ccb");
         await writeClaudeMd(workspace, launchSpec.agent.prompt);
-        console.log("[ccb-handler] wrote CLAUDE.md");
+        console.log(`[${logLabel}-handler] wrote CLAUDE.md`);
       }
 
       await writePeriSettings(workspace, launchSpec);
@@ -56,7 +62,7 @@ export function createCcbHandler(): EngineHandler {
 
       // biome-ignore lint/suspicious/noExplicitAny: Bun.ChildProcess 不继承 EventEmitter，需 cast 监听 exit
       (proc as any).on("exit", (code: number | null) => {
-        console.log(`[ccb-handler] ccb exited: ${instanceId}, code=${code}`);
+        console.log(`[${logLabel}-handler] ${logLabel} exited: ${instanceId}, code=${code}`);
         state.process = null;
         state.connection = null;
       });
@@ -89,7 +95,7 @@ export function createCcbHandler(): EngineHandler {
         },
       });
 
-      console.log(`[ccb-handler] started: ${instanceId}`);
+      console.log(`[${logLabel}-handler] started: ${instanceId}`);
       return { capabilities };
     },
 

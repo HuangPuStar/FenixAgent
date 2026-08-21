@@ -1,0 +1,1 @@
+ALTER TABLE "agent_config" ALTER COLUMN "engine_type" SET DEFAULT 'ccb';

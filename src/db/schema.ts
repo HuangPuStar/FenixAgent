@@ -506,7 +506,7 @@ export const agentConfig = pgTable(
     agentNode: jsonb("agent_node"),
     // 预留给未来可变扩展，避免为低频碎片配置反复加列。
     extra: jsonb("extra"),
-    engineType: varchar("engine_type", { length: 32 }).default("opencode"),
+    engineType: varchar("engine_type", { length: 32 }).default("peri"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

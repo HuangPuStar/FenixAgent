@@ -136,7 +136,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   const tenantId = (msg.tenant_id as string) || null;
   const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
     ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
-    : [{ type: "opencode" }];
+    : [{ type: "peri" }];
   const specifiedMachineId = (msg.machine_id as string) || null;
   if (!specifiedMachineId) {
     sendToWs(entry.ws, { type: "error", message: "machine_id is required" });

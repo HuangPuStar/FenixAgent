@@ -42,7 +42,7 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RCS_DEFAULT_SANDBOX_POOL_ID: z.string().min(1).optional(),
   RCS_DEFAULT_SANDBOX_IMAGE: z.string().min(1).optional(),
-  RCS_DEFAULT_SANDBOX_AGENT_TYPE: z.string().min(1).default("opencode"),
+  RCS_DEFAULT_SANDBOX_AGENT_TYPE: z.enum(ENGINE_TYPES).default("peri"),
   RCS_DEFAULT_SANDBOX_RESOURCES_JSON: z.string().min(1).optional(),
   RCS_DEFAULT_SANDBOX_EXTRA_JSON: z.string().min(1).optional(),
   RCS_SANDBOX_CLUSTER_URL: z.string().min(1).optional(),

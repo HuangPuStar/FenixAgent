@@ -7,7 +7,7 @@ import { agentConfig } from "../db/schema";
  * 编排域 AgentEngineRepo 的 PostgreSQL 实现。
  *
  * DB 没有独立的 agent_engine 表：引擎类型是 `agent_config.engine_type` 列上的字符串
- * （"opencode" / "claude-code" / "ccb"）。因此“引擎存在性”以该引擎类型是否被任一
+ * （"opencode" / "claude-code" / "ccb" / "peri"）。因此“引擎存在性”以该引擎类型是否被任一
  * agent_config 实际引用为准（SELECT DISTINCT engine_type）。
  */
 export class PgAgentEngineRepo implements AgentEngineRepo {

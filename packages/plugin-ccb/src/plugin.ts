@@ -10,6 +10,22 @@ export interface CcbPluginOptions {
 }
 
 /**
+ * 为兼容 CCB 工作区和 ACP 协议的引擎创建 runtime。
+ * 调用方必须提供自己的引擎命令；此函数不承担引擎身份与默认值决策。
+ */
+export function createCcbCompatibleRuntime(options: Required<CcbPluginOptions>) {
+  const { command, args } = options;
+  return createCcbRuntime({
+    portAllocator: createPortAllocator(),
+    processManager: new AcpLinkProcessManager({ command, args }),
+    createRelayHandle,
+    relayHandleDependencies: {
+      createWebSocket: (url) => new WebSocket(url) as never,
+    },
+  });
+}
+
+/**
  * 创建 ccb engine plugin 的唯一公开入口。
  */
 export function createEnginePlugin(options: CcbPluginOptions = {}): EnginePlugin {
@@ -23,14 +39,7 @@ export function createEnginePlugin(options: CcbPluginOptions = {}): EnginePlugin
       version: "0.1.0",
     },
     createRuntime() {
-      return createCcbRuntime({
-        portAllocator: createPortAllocator(),
-        processManager: new AcpLinkProcessManager({ command, args }),
-        createRelayHandle,
-        relayHandleDependencies: {
-          createWebSocket: (url) => new WebSocket(url) as never,
-        },
-      });
+      return createCcbCompatibleRuntime({ command, args });
     },
   };
 }

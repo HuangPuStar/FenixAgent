@@ -87,9 +87,9 @@ export class PgAgentConfigRepo implements AgentConfigRepo {
       id: first.configId,
       name: first.configName,
       systemPrompt: first.systemPrompt,
-      // engine_type 列允许为空（未声明 notNull），DB 默认 'opencode'，此处与默认值对齐，
-      // 避免空引擎引用把启动流程带偏。
-      engineId: first.engineType ?? "opencode",
+      // engine_type 列允许为空（未声明 notNull），DB 默认 'peri'，此处与默认值对齐。
+      // Peri 是独立 engine type，并复用 CCB-compatible runtime，避免空引擎引用把启动流程带偏。
+      engineId: first.engineType ?? "peri",
       // 字段名带 Id，但语义与旧 launch-spec-builder 的 ModelConfig.provider 对齐：
       // 存 provider 名称（如 "openviking"），运行时插件以名称作为密钥/路由标识。
       modelProviderId: first.providerName,
