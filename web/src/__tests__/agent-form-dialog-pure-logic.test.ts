@@ -244,9 +244,9 @@ describe("Agent 表单与资源访问纯逻辑", () => {
     expect(isValidAgentNameInput("智")).toBe(true);
   });
 
-  // 名称输入不得包含空格，否则会生成不可预测的配置 key。
-  test("Agent 名称拒绝空格", () => {
-    expect(isValidAgentNameInput("agent one")).toBe(false);
+  // 名称输入允许空格，保持与后端允许的人类可读 Agent 名称契约一致。
+  test("Agent 名称允许空格", () => {
+    expect(isValidAgentNameInput("agent one")).toBe(true);
   });
 
   // 名称输入不得包含连续连字符，避免生成空路径段。

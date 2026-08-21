@@ -53,6 +53,7 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
 
 // ── mock react-i18next ──
 mock.module("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children: unknown }) => children,
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       let result = MOCK_TRANSLATIONS[key] ?? key;

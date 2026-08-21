@@ -8,12 +8,14 @@ mock.module("react-i18next", () => ({
     t,
     i18n: { changeLanguage: () => new Promise(() => {}), language: "zh" },
   }),
+  I18nextProvider: ({ children }: { children: unknown }) => children,
   initReactI18next: { type: "3rdParty", init: () => {} },
   Trans: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 // Mock the CSS module imports used by UI components
 mock.module("@/src/i18n", () => ({
+  default: { t },
   NS: { TASKS_V2: "tasksV2" },
 }));
 
