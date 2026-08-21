@@ -25,7 +25,11 @@ const TRUNCATE_SIZE = 2000;
 const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 
+/** PythonExecutor 使用的运行时依赖；默认使用 Bun 原生实现。 */
+export type PythonRuntime = Pick<typeof Bun, "spawn" | "write">;
+
 export class PythonExecutor implements NodeExecutor {
+  constructor(private readonly runtime: PythonRuntime = Bun) {}
   async execute(node: import("../types/dag").NodeDef, ctx: NodeExecutionContext): Promise<NodeOutput> {
     if (node.type !== "python") {
       throw new WorkflowError(
@@ -134,7 +138,7 @@ export class PythonExecutor implements NodeExecutor {
   ): Promise<NodeOutput> {
     // 写入临时脚本文件
     const scriptPath = join(tmpdir(), `wf-python-${randomUUID()}.py`);
-    await Bun.write(scriptPath, code);
+    await this.runtime.write(scriptPath, code);
 
     try {
       // 可选安装依赖
@@ -142,7 +146,7 @@ export class PythonExecutor implements NodeExecutor {
         await this.installRequirements(node.requirements, env, cwd, signal);
       }
 
-      const subprocess = Bun.spawn(["python3", scriptPath], {
+      const subprocess = this.runtime.spawn(["python3", scriptPath], {
         cwd,
         env: { ...(process.env as Record<string, string>), ...env },
         stdout: "pipe",
@@ -261,7 +265,7 @@ export class PythonExecutor implements NodeExecutor {
     cwd: string,
     signal: AbortSignal,
   ): Promise<void> {
-    const pip = Bun.spawn(["pip", "install", "--quiet", ...requirements], {
+    const pip = this.runtime.spawn(["pip", "install", "--quiet", ...requirements], {
       cwd,
       env: { ...(process.env as Record<string, string>), ...env },
       stdout: "pipe",

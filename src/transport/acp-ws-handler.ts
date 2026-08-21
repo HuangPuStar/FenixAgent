@@ -1,4 +1,5 @@
 import { createLogger, error as logError } from "@fenix/logger";
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { config } from "../config";
 import { touchInstanceActivity } from "../services/acp-idle-monitor";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
@@ -16,7 +17,19 @@ import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
 
+/**
+ * 当前连接互斥只在单进程内生效：连接表和注册中的 pending 占位均保存在内存中。
+ *
+ * TODO(distributed-machine-connection-lock): 服务水平扩展前改为 Redis 或 DB 租约，
+ * 记录 machine 的 connection owner/token/lease，并让注册、心跳、断连清理都带 owner
+ * 条件，避免不同服务实例同时接受同一 machine，或旧连接误清理新连接。迁移完成前
+ * 不得将当前内存集合视为跨实例锁。
+ */
 const connections = new Map<string, AcpConnectionEntry>();
+
+/** 服务端明确拒绝的 machine 重复连接：客户端收到后不得自动重连。 */
+const pendingMachineRegistrations = new Set<string>();
+const MACHINE_CONNECTION_CONFLICT_REASON = "machine_already_connected";
 
 const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
 const _CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
@@ -144,6 +157,27 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     return;
   }
 
+  // registerMachine 包含数据库 await。用 pending 集合先占住 machine_id，避免两个新 WS
+  // 在数据库写入完成前同时通过在线检查；已完成注册的连接则从 connections 直接识别。
+  const hasActiveConnection = [...connections.values()].some(
+    (candidate) => candidate.isMachine && candidate.machineId === specifiedMachineId && candidate.ws.readyState === 1,
+  );
+  const hasActiveAgentNodeConnection = getAgentNodeService().hasActiveConnection(specifiedMachineId);
+  if (hasActiveConnection || hasActiveAgentNodeConnection || pendingMachineRegistrations.has(specifiedMachineId)) {
+    sendToWs(entry.ws, {
+      type: "error",
+      code: "MACHINE_ALREADY_CONNECTED",
+      message: `Machine '${specifiedMachineId}' already has an active connection`,
+    });
+    entry.ws.close(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code, MACHINE_CONNECTION_CONFLICT_REASON);
+    logger.warn(
+      `[MACHINE-CONNECTION-CONFLICT] rejected duplicate connection machineId=${specifiedMachineId} wsId=${wsId}`,
+    );
+    return;
+  }
+
+  pendingMachineRegistrations.add(specifiedMachineId);
+
   try {
     const result = await registerMachine({
       agentName,
@@ -208,6 +242,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   } catch (err) {
     logError("Machine register error:", err);
     sendToWs(entry.ws, { type: "error", message: "Machine registration failed" });
+  } finally {
+    pendingMachineRegistrations.delete(specifiedMachineId);
   }
 }
 

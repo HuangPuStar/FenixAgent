@@ -25,6 +25,13 @@ export class AgentNodeUnavailableError extends OrchestrationError {
   }
 }
 
+/** 同一 machine 已存在在线控制信道，重复连接不能接管或替换原信道。 */
+export class AgentNodeConnectionConflictError extends OrchestrationError {
+  constructor(message = "Agent node already has an active connection") {
+    super(message, "AGENT_NODE_CONNECTION_CONFLICT");
+  }
+}
+
 /** 状态机非法转换：当前状态下不支持该事件（如 connected 时再次 connect）。 */
 export class IllegalStateTransitionError extends OrchestrationError {
   constructor(message = "Illegal state transition") {

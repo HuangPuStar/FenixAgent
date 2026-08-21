@@ -9,6 +9,12 @@ export type SandboxInstancePatch = Partial<
   >
 >;
 
+export type SandboxInstanceLockScope = {
+  findById(id: string): Promise<SandboxInstance | null>;
+  update(id: string, status: string, patch?: SandboxInstancePatch): Promise<SandboxInstance | null>;
+  delete(id: string): Promise<SandboxInstance | null>;
+};
+
 export async function findActiveSandboxInstance(
   providerKey: string,
   poolId: string,
@@ -40,6 +46,45 @@ export async function findSandboxInstanceByIdForUser(id: string, userId: string)
 export async function findSandboxInstanceById(id: string): Promise<SandboxInstance | null> {
   const [row] = await db.select().from(sandboxInstance).where(eq(sandboxInstance.id, id)).limit(1);
   return row ?? null;
+}
+
+/**
+ * 在同一事务内锁定 sandbox_instance，并将锁内读写绑定到该事务。
+ *
+ * 这是 Sandbox provider 创建的持久化 single-flight 边界：锁必须从 provider
+ * 查询/创建前一直保持到 externalSandboxId 回写完成。scope 内的 update/delete
+ * 也必须使用 tx，否则会在当前事务持锁期间走另一条连接，既可能死锁，也无法
+ * 保证第二个请求读取到第一个请求刚写入的资源 ID。
+ */
+export async function withSandboxInstanceLock<T>(
+  id: string,
+  operation: (scope: SandboxInstanceLockScope) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    const [locked] = await tx.select().from(sandboxInstance).where(eq(sandboxInstance.id, id)).for("update").limit(1);
+    if (!locked) throw new Error(`sandbox instance '${id}' not found`);
+
+    const scope: SandboxInstanceLockScope = {
+      findById: async (lookupId) => {
+        const [row] = await tx.select().from(sandboxInstance).where(eq(sandboxInstance.id, lookupId)).limit(1);
+        return row ?? null;
+      },
+      update: async (updateId, status, patch = {}) => {
+        const [row] = await tx
+          .update(sandboxInstance)
+          .set({ ...patch, status, updatedAt: new Date() })
+          .where(eq(sandboxInstance.id, updateId))
+          .returning();
+        return row ?? null;
+      },
+      delete: async (deleteId) => {
+        const [row] = await tx.delete(sandboxInstance).where(eq(sandboxInstance.id, deleteId)).returning();
+        return row ?? null;
+      },
+    };
+
+    return operation(scope);
+  });
 }
 
 export async function findSandboxInstanceByMachineId(machineId: string): Promise<SandboxInstance | null> {

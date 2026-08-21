@@ -38,8 +38,12 @@ function installIntervalFakes(now: () => number): void {
   });
   Object.defineProperty(globalThis, "clearInterval", {
     configurable: true,
-    value: (interval: ScheduledInterval) => {
-      interval.cleared = true;
+    value: (interval: ScheduledInterval | ReturnType<typeof setInterval>) => {
+      if (intervals.includes(interval as ScheduledInterval)) {
+        (interval as ScheduledInterval).cleared = true;
+        return;
+      }
+      originalClearInterval?.value?.(interval);
     },
   });
   Object.defineProperty(Date, "now", { configurable: true, value: now });

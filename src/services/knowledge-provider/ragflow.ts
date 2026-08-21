@@ -1053,8 +1053,13 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     if (input.page != null) body.page = input.page;
     if (input.useKg != null) body.use_kg = input.useKg;
     if (input.crossLanguages != null && input.crossLanguages.length > 0) body.cross_languages = input.crossLanguages;
-    if (input.metaDataFilter != null && input.metaDataFilter.method !== "disabled")
-      body.meta_data_filter = input.metaDataFilter;
+    if (input.metaDataFilter != null && input.metaDataFilter.method !== "disabled") {
+      const { logic: _logic, manual, ...filter } = input.metaDataFilter;
+      body.meta_data_filter = {
+        ...filter,
+        ...(manual ? { conditions: manual } : {}),
+      };
+    }
 
     const payload = await this.request<
       RagFlowResponse<{

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
 import type { ClusterConfig } from "../types";
@@ -28,7 +29,7 @@ describe("OpenSandbox Cluster routes", () => {
   });
 
   test("protects management routes and never returns server API keys", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-routes-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-routes-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     // 显式注入离线探针，避免并发测试替换 globalThis.fetch 后把不可达节点误判为健康。
     const offlineFetch: typeof fetch = Object.assign(async (): Promise<Response> => {

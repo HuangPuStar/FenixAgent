@@ -1,4 +1,10 @@
+import { WEBSOCKET_CODES } from "../websocket-code.js";
 import { EventEmitter } from "./emitter.js";
+
+const NO_RECONNECT_CODES = new Set<number>([
+  WEBSOCKET_CODES.MACHINE_UNAVAILABLE.code,
+  WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code,
+]);
 
 export type TransportState = "connecting" | "connected" | "disconnected" | "error";
 
@@ -98,8 +104,8 @@ export class WSTransport extends EventEmitter<TransportEvents> {
           return;
         }
 
-        // 4500 = 远程节点不可用（machine_unavailable），不自动重连，等待用户手动触发
-        if (event.code === 4500) {
+        // 不自动重连，等待用户手动触发
+        if (NO_RECONNECT_CODES.has(event.code)) {
           this.setState("error", event);
           return;
         }

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { InstanceManager } from "../client/instance-manager.js";
-import type { ServerConfig } from "../server.js";
+import { isTerminalWebSocketCloseCode, type ServerConfig } from "../server.js";
+import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "../websocket-code.js";
 
 describe("Server HTTP endpoints", () => {
   // package.json 入口验证
@@ -26,6 +27,20 @@ describe("Server HTTP endpoints", () => {
     expect(config.port).toBe(9315);
     expect(config.host).toBe("localhost");
     expect(config.command).toBe("echo");
+  });
+});
+
+describe("machine connection close codes", () => {
+  // machine 重复连接是永久冲突，认证失败和重复连接都必须停止主 WS 自动重连。
+  test("4503 is terminal while transient close codes remain reconnectable", () => {
+    expect(isTerminalWebSocketCloseCode(4503)).toBe(true);
+    expect(isTerminalWebSocketCloseCode(4003)).toBe(true);
+    expect(isTerminalWebSocketCloseCode(4001)).toBe(false);
+    expect(isTerminalWebSocketCloseCode(4501)).toBe(false);
+    expect(isTerminalWebSocketCloseCode(1011)).toBe(false);
+    expect(getWebSocketCodeMessage(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code)).toContain("machine 连接被拒绝");
+    expect(getWebSocketCodeMessage(WEBSOCKET_CODES.UNAUTHORIZED.code)).toContain("认证失败");
+    expect(getWebSocketCodeMessage(4999)).toBe("未知 WebSocket code[4999]");
   });
 });
 
@@ -106,7 +121,6 @@ describe("InstanceManager refresh", () => {
     const createSpec = (skills: AgentLaunchSpec["skills"]): AgentLaunchSpec => ({
       organizationId: "org-test",
       userId: "user-test",
-      environmentId: "env-test",
       env: {},
       agent: { name: "agent", prompt: "" },
       model: { provider: "test", protocol: "openai", model: "test", modelName: "test" },

@@ -25,6 +25,7 @@ import {
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
+import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
 
 // ── WebSocket 抽象接口 ──────────────────────────────
@@ -55,6 +56,16 @@ function getAdapter(): AdapterFn {
 }
 
 export { MAX_CLIENT_WS_PAYLOAD_BYTES } from "./ws-message.js";
+
+const TERMINAL_CLOSE_CODES = new Set<number>([
+  WEBSOCKET_CODES.UNAUTHORIZED.code,
+  WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code,
+]);
+
+/** server 主 machine 连接的终态关闭码；具体策略属于本使用方。 */
+export function isTerminalWebSocketCloseCode(code: number): boolean {
+  return TERMINAL_CLOSE_CODES.has(code);
+}
 
 export interface ServerConfig {
   port: number;
@@ -733,11 +744,10 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       );
 
       // 提供有意义的断连原因提示
-      if (event.code === 4003) {
+      if (isTerminalWebSocketCloseCode(event.code)) {
         reconnectScheduler.cancel();
-        console.error(
-          `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
-        );
+        const reason = event.reason ? ` reason=${event.reason}` : "";
+        console.error(`${getWebSocketCodeMessage(event.code)}${reason}`);
         manualClose = true;
         return;
       }

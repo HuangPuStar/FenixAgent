@@ -22,7 +22,7 @@ const config: ClusterConfig = {
 
 describe("sandbox allocation", () => {
   test("allocates idempotently and respects server capacity", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-allocation-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-allocation-${crypto.randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const mockServer = Bun.serve({ port: 0, fetch: () => Response.json({ status: "healthy" }) });
