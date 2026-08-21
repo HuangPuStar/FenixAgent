@@ -675,7 +675,7 @@ describe("RagFlowKnowledgeProvider", () => {
       keyword: false,
       highlight: true,
       cross_languages: ["en", "zh"],
-      meta_data_filter: { method: "manual", conditions: [] },
+      meta_data_filter: { method: "manual", logic: "and", manual: [] },
     });
   });
 

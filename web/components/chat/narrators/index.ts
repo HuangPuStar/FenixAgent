@@ -70,8 +70,7 @@ export function narrate(
   // 第 4 阶段：拼接 title（verb + object 完整句子）。running 用进行时模板（"正在读取 X"），
   // 其他状态用过去时模板（"读取 X"）
   const titleKey = normalizedStatus === "running" ? "common.subtitleRunning" : "common.subtitle";
-  const translatedTitle = t(titleKey, { verb, object });
-  const title = translatedTitle === titleKey ? `${verb} ${object}` : translatedTitle;
+  const title = t(titleKey, { verb, object });
 
   // 第 5 阶段：拿状态词（全局统一）
   const statusLabel = t(`common.status.${normalizedStatus}`);

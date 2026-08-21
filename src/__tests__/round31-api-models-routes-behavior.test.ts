@@ -386,7 +386,7 @@ describe("API Models Routes round 31", () => {
       },
     });
     const res = await request("/api/models/providers/provider-a", { method: "DELETE" });
-    expect(await readJson(res)).toEqual({ error: { code: "NOT_FOUND", message: "Provider" } });
+    expect(await readJson(res)).toEqual({ error: { code: "NOT_FOUND", message: "gone" } });
   });
 
   // Model 列表必须使用当前认证租户读取 Provider。

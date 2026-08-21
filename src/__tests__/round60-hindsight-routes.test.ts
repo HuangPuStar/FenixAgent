@@ -77,6 +77,14 @@ describe("round60 hindsight 路由", () => {
     expect(calls).toHaveLength(0);
   });
 
+  // 未认证的状态查询同样必须拒绝，避免泄露 Hindsight 配置和组织映射。
+  test("未认证 status 返回 401", async () => {
+    resetTestAuth();
+    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
+    expect((await request("/hindsight/status")).status).toBe(401);
+    expect(calls).toHaveLength(0);
+  });
+
   // 未配置服务时状态接口仍可安全报告禁用。
   test("未配置时 status 返回 disabled", async () => {
     delete process.env.HINDSIGHT_MCP_URL;
@@ -84,7 +92,7 @@ describe("round60 hindsight 路由", () => {
     expect(body).toEqual({ success: true, data: { enabled: false } });
   });
 
-  // 配置服务后状态接口返回当前组织隔离的 bank，并且不触发上游调用。
+  // 已认证状态查询返回当前组织映射的 bank，并且不触发上游调用。
   test("已配置时 status 返回服务地址和组织 bank", async () => {
     const body = await (await request("/hindsight/status")).json();
     expect(body).toEqual({ success: true, data: { enabled: true, url: hindsightUrl, bankId: "member-org-a" } });

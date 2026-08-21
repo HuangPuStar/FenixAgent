@@ -71,31 +71,31 @@ describe("readNarrator", () => {
     expect(readNarrator.verb).toBe("读取");
   });
 
-  // 基本场景：从 file_path 提取完整路径作为 object
+  // 基本场景：从 file_path 提取文件名作为 object
   test("提取文件路径（file_path）", () => {
     const { object, detail } = readNarrator.getDisplay(makeCtx({ file_path: "/a/b/c.ts" }));
-    expect(object).toBe("/a/b/c.ts");
+    expect(object).toBe("c.ts");
     expect(detail).toBeUndefined();
   });
 
   // 有 offset+limit 时 object 仍是文件名，行号区间作为 detail
   test("offset+limit 转成行号区间作为 detail", () => {
     const { object, detail } = readNarrator.getDisplay(makeCtx({ file_path: "/a/b/c.ts", offset: 100, limit: 50 }));
-    expect(object).toBe("/a/b/c.ts");
+    expect(object).toBe("c.ts");
     expect(detail).toBe("第 100-149 行");
   });
 
   // 无行号限制时 detail 不显示
   test("无 offset 时无 detail", () => {
     const { object, detail } = readNarrator.getDisplay(makeCtx({ file_path: "/x.ts" }));
-    expect(object).toBe("/x.ts");
+    expect(object).toBe("x.ts");
     expect(detail).toBeUndefined();
   });
 
   // 兼容 path 字段（OpenCode 等其他 Agent 风格）
   test("兼容 path 字段", () => {
     const { object } = readNarrator.getDisplay(makeCtx({ path: "/y/z.ts" }));
-    expect(object).toBe("/y/z.ts");
+    expect(object).toBe("z.ts");
   });
 
   // ===== opencode 目录读取场景 =====
@@ -124,14 +124,14 @@ describe("readNarrator", () => {
     expect(detail).toBe("3 个条目");
   });
 
-  // opencode 文件读取场景（<type>file</type>）：object 保留完整路径，无条目数 detail
-  test("文件场景（<type>file</type>）显示路径且无条目数 detail", () => {
+  // opencode 文件读取场景（<type>file</type>）：object 显示文件名，无条目数 detail
+  test("文件场景（<type>file</type>）显示文件名且无条目数 detail", () => {
     const tool = {
       ...makeCtx({ filePath: "/workspaces/env_xxx/foo.ts" }, OPENCODE_FILE_OUTPUT, "read-file").tool,
       title: "workspaces/.../foo.ts",
     } as ToolCallData;
     const { object, detail } = readNarrator.getDisplay({ tool, kind: "read-file", status: "complete", t: mockT });
-    expect(object).toBe("/workspaces/env_xxx/foo.ts");
+    expect(object).toBe("foo.ts");
     expect(detail).toBeUndefined();
   });
 });

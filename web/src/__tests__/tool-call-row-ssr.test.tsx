@@ -28,7 +28,7 @@ describe("ToolCallRow 服务端渲染", () => {
   test("完成的读取工具展示摘要与详情入口", () => {
     const html = renderTool(tool());
 
-    expect(html).toContain("src/app.ts");
+    expect(html).toContain("common.subtitle");
     expect(html).toContain("common.status.complete");
     expect(html).toContain("toolCallRow.viewParams");
   });
