@@ -168,10 +168,14 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-lines", "user-a", null, true);
 
-    await handleAcpWsMessage(ws, "register-lines", '{"type":"register","agent_name":"alpha"}\nnot-json\n');
+    await handleAcpWsMessage(
+      ws,
+      "register-lines",
+      '{"type":"register","agent_name":"alpha","machine_id":"machine-lines"}\nnot-json\n',
+    );
     await flushRegistration();
 
-    expect(registeredMachines).toEqual([{ agentName: "alpha", tenantId: null, nodeId: null, machineId: null }]);
+    expect(registeredMachines).toEqual([{ agentName: "alpha", tenantId: null, machineId: "machine-lines" }]);
   });
 
   // 预解析对象帧应与文本帧共享注册协议。
@@ -191,7 +195,6 @@ describe("round43 acp ws handler", () => {
     expect(registeredMachines[0]).toEqual({
       agentName: "beta",
       tenantId: "org-a",
-      nodeId: "node-a",
       machineId: "machine-fixed",
     });
   });
@@ -201,7 +204,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-success", "user-a", null, true);
 
-    await handleAcpWsMessage(ws, "register-success", { type: "register" });
+    await handleAcpWsMessage(ws, "register-success", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
     expect(frame(ws)).toEqual({ type: "registered", machine_id: "machine-43", is_new: true });
@@ -213,10 +216,10 @@ describe("round43 acp ws handler", () => {
   test("重复注册回送既有 machineId", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-twice", "user-a", null, true);
-    await handleAcpWsMessage(ws, "register-twice", { type: "register" });
+    await handleAcpWsMessage(ws, "register-twice", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
-    await handleAcpWsMessage(ws, "register-twice", { type: "register" });
+    await handleAcpWsMessage(ws, "register-twice", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
     expect(registeredMachines).toHaveLength(1);
@@ -233,7 +236,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-failure", "user-a", null, true);
 
-    await handleAcpWsMessage(ws, "register-failure", { type: "register" });
+    await handleAcpWsMessage(ws, "register-failure", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
     expect(frame(ws)).toEqual({ type: "error", message: "Machine registration failed" });
@@ -243,7 +246,7 @@ describe("round43 acp ws handler", () => {
   test("heartbeat 路由到已注册 machine", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "heartbeat-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "heartbeat-43", { type: "register" });
+    await handleAcpWsMessage(ws, "heartbeat-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
     await handleAcpWsMessage(ws, "heartbeat-43", { type: "heartbeat" });
@@ -256,7 +259,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     const injected: unknown[] = [];
     handleAcpWsOpen(ws, "remote-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "remote-43", { type: "register" });
+    await handleAcpWsMessage(ws, "remote-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
     registeredEntries[0].remoteTransport = {
       injectMessage: (message: unknown) => {
@@ -274,7 +277,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     const delivered: Array<[string, string, unknown]> = [];
     handleAcpWsOpen(ws, "session-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "session-43", { type: "register" });
+    await handleAcpWsMessage(ws, "session-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
     registeredEntries[0].sessionMessageListeners?.set("session-a", (id, type, payload) => {
       delivered.push([id, type, payload]);
@@ -305,10 +308,18 @@ describe("round43 acp ws handler", () => {
     const first = new FakeWs();
     const second = new FakeWs();
     handleAcpWsOpen(first, "agent-first", "user-a", null, true);
-    await handleAcpWsMessage(first, "agent-first", { type: "register", agent_name: "first" });
+    await handleAcpWsMessage(first, "agent-first", {
+      type: "register",
+      agent_name: "first",
+      machine_id: "machine-first",
+    });
     await flushRegistration();
     handleAcpWsOpen(second, "agent-second", "user-b", null, true);
-    await handleAcpWsMessage(second, "agent-second", { type: "register", agent_name: "second" });
+    await handleAcpWsMessage(second, "agent-second", {
+      type: "register",
+      agent_name: "second",
+      machine_id: "machine-second",
+    });
     await flushRegistration();
     setAgentMachineCache("environment-a", "machine-first");
 
@@ -325,7 +336,7 @@ describe("round43 acp ws handler", () => {
   test("findMachineConnectionByAgentId 拒绝未绑定 agentConfig 的环境", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "lookup-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "lookup-43", { type: "register" });
+    await handleAcpWsMessage(ws, "lookup-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
     stubEnvironmentRepo({ getById: async () => ({ agentConfigId: null }) });
 
@@ -338,7 +349,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     facadeInstances = [{ instanceId: "instance-a", nodeId: "machine-43" }];
     handleAcpWsOpen(ws, "close-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "close-43", { type: "register" });
+    await handleAcpWsMessage(ws, "close-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
     handleAcpWsClose(ws, "close-43", 1006, "network lost");

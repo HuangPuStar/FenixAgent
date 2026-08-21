@@ -177,7 +177,7 @@ describe("registry 服务真实业务覆盖", () => {
     });
   }
 
-  for (const nodeId of [
+  for (const machineId of [
     "mach-node-1",
     "mach-node-2",
     "mach-node-3",
@@ -189,12 +189,12 @@ describe("registry 服务真实业务覆盖", () => {
     "mach-node-9",
     "mach-node-10",
   ]) {
-    test(`持久 nodeId ${nodeId}重连已有机器并绑定组织引擎`, async () => {
+    test(`预创建 machineId ${machineId}重连已有机器并绑定组织引擎`, async () => {
       const updates: unknown[] = [];
       const writes: unknown[] = [];
-      stubDb({ select: mock(() => chain([{ id: nodeId }])), update: mutation(updates), insert: insert(writes) });
-      await expect(registry.registerMachine({ agentName: "opencode", tenantId: "org-a", nodeId })).resolves.toEqual({
-        id: nodeId,
+      stubDb({ select: mock(() => chain([{ id: machineId }])), update: mutation(updates), insert: insert(writes) });
+      await expect(registry.registerMachine({ agentName: "opencode", tenantId: "org-a", machineId })).resolves.toEqual({
+        id: machineId,
         isNew: false,
       });
       expect(updates.length).toBe(3);
@@ -203,11 +203,11 @@ describe("registry 服务真实业务覆盖", () => {
   }
 
   for (const params of [
-    { agentName: "opencode", tenantId: "org-a", nodeId: null },
-    { agentName: "opencode", tenantId: null, nodeId: null },
-    { agentName: "claude-code", tenantId: "org-b", nodeId: "missing" },
-    { agentName: "codex", tenantId: null, nodeId: "missing" },
-    { agentName: "gemini", tenantId: "org-a", machineId: "missing" },
+    { agentName: "opencode", tenantId: "org-a", machineId: "missing-opencode" },
+    { agentName: "opencode", tenantId: null, machineId: "missing-global" },
+    { agentName: "claude-code", tenantId: "org-b", machineId: "missing-claude" },
+    { agentName: "codex", tenantId: null, machineId: "missing-codex" },
+    { agentName: "gemini", tenantId: "org-a", machineId: "missing-gemini" },
   ]) {
     test(`未预创建机器拒绝注册 ${params.agentName}`, async () => {
       stubDb({ select: mock(() => chain([])) });
