@@ -235,6 +235,8 @@ export interface NormalizedEvent {
   content: Record<string, unknown> | null;
   /** 帧携带的 ACP sessionId，仅用于 binding 校验，不得用于 Y.Doc 寻址 */
   acpSessionId?: string | null;
+  /** Peri 子 Agent 事件来源身份；存在时不得投影到主 Agent assistant entry。 */
+  sourceAgentId?: string | null;
   turnId?: string | null;
   /** callback 流本地关联键，仅用于隔离无 turnId 的 Peri callback 历史输出。 */
   callbackEntryId?: string | null;

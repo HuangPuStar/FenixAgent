@@ -183,6 +183,14 @@ function extractContent(payload: Record<string, unknown> | undefined): Record<st
   return null;
 }
 
+/** 读取方案 A 的标准 ACP metadata；字段存在即表示 SubAgent 内容。 */
+function extractSourceAgentId(params: Record<string, unknown> | undefined): string | null {
+  const meta = params?._meta as Record<string, unknown> | undefined;
+  const peri = meta?.peri as Record<string, unknown> | undefined;
+  const sourceAgentId = peri?.sourceAgentId;
+  return typeof sourceAgentId === "string" && sourceAgentId.length > 0 ? sourceAgentId : null;
+}
+
 // ── Peri Task 事件规范化（切片 0B）──
 
 /**
@@ -373,8 +381,9 @@ export function normalizeAcpMessage(rawMessage: unknown, msgType?: string): Norm
   const message = rawMessage as Record<string, unknown>;
   const acpSessionId = extractSessionId(message);
 
-  // 1. JSON-RPC session/update 通知：事件类型与载荷都来自 params.update
   const rpc = extractJsonRpc(message);
+
+  // 1. JSON-RPC session/update 通知：事件类型与载荷都来自 params.update
   if (rpc?.method === "session/update") {
     const params = rpc.params as Record<string, unknown> | undefined;
     const update = params?.update as Record<string, unknown> | undefined;
@@ -390,6 +399,7 @@ export function normalizeAcpMessage(rawMessage: unknown, msgType?: string): Norm
         update: update ?? {},
         content: (update?.content as Record<string, unknown>) ?? null,
         acpSessionId,
+        sourceAgentId: extractSourceAgentId(params),
       };
     }
     return null;
