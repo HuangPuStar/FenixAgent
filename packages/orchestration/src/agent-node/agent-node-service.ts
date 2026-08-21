@@ -15,7 +15,7 @@
  * handleIncomingConnection 复用节点并恢复 connected。
  */
 
-import { AgentNodeUnavailableError } from "../errors";
+import { AgentNodeConnectionConflictError, AgentNodeUnavailableError } from "../errors";
 import type { AgentNodeStatus } from "../types/domain";
 import { AgentNode } from "./agent-node";
 import {
@@ -40,15 +40,24 @@ export class AgentNodeService {
   }
 
   /**
-   * 被动连接：Machine 连接到达时生成 AgentNode，同 machineId 已存在可用节点时复用
-   * （替换 WS 信道并同步为 connected），已关闭 / 关闭中的节点则重建。
+   * 被动连接：Machine 连接到达时生成 AgentNode；同 machineId 已存在在线节点时拒绝
+   * 重复连接，避免第二条 WS 替换第一条真实控制信道。已断连或关闭的节点允许重建。
+   * @throws AgentNodeConnectionConflictError machine 已有 connecting/connected 信道
    */
   handleIncomingConnection(machineId: string, socket: AgentNodeSocket): AgentNode {
     const existing = this.#nodes.get(machineId);
-    if (existing !== undefined && this.#isUsable(existing)) {
-      existing._attachSocket(socket);
-      existing._handleConnected();
-      return existing;
+    if (existing !== undefined) {
+      const status = existing.status();
+      if (status === "connecting" || status === "connected") {
+        throw new AgentNodeConnectionConflictError(`Machine '${machineId}' already has an active connection`);
+      }
+      if (this.#isUsable(existing)) {
+        // disconnected 节点仍保留引用计数和生命周期状态，机器正常重连时复用节点；
+        // 只有 connecting/connected 才代表已有在线信道，不能被新连接接管。
+        existing._attachSocket(socket);
+        existing._handleConnected();
+        return existing;
+      }
     }
     if (existing !== undefined) {
       // 旧节点不可用（关闭中/已关闭）：先移出管理集合，避免与新节点并存
@@ -122,6 +131,12 @@ export class AgentNodeService {
   /** 当前管理的 AgentNode 数（已关闭节点会自动移出）。 */
   activeCount(): number {
     return this.#nodes.size;
+  }
+
+  /** 判断 machine 是否已经持有在线或正在建立中的真实控制信道。 */
+  hasActiveConnection(machineId: string): boolean {
+    const status = this.#nodes.get(machineId)?.status();
+    return status === "connecting" || status === "connected";
   }
 
   // ---- 私有 ----

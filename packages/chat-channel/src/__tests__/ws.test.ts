@@ -316,6 +316,15 @@ describe("createYjsWsClient", () => {
     expect(timers).toHaveLength(0);
   });
 
+  // 同 machine 已有连接时，重复连接属于永久冲突，客户端必须停止自动重连。
+  test("4503 关闭码不自动重连", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4503, "machine already connected");
+
+    expect(timers).toHaveLength(0);
+  });
+
   // 服务端因客户端 keepalive 超时关闭时，客户端必须终止且不得排队自动重连。
   test("4501 关闭码不自动重连", () => {
     const client = createClient();

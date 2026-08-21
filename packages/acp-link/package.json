@@ -38,6 +38,10 @@
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"
+    },
+    "./websocket-code": {
+      "import": "./src/websocket-code.ts",
+      "types": "./src/websocket-code.ts"
     }
   },
   "files": [

@@ -2,16 +2,18 @@
 // 同构 Yjs WebSocket 客户端，兼容浏览器和 Bun。
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import type { ActionAck, ActionError } from "../channel/types";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
-const NO_RECONNECT_CODES = new Set([
-  4001, // instance idle/activity reclaim
-  4004, // 会话/环境引用失效（env 已删除）：重试相同 URL 永远失败
-  4500, // machine_unavailable
-  4501, // client_keepalive_timeout
-  4502, // spawn_rejected（配置性永久失败：autoStart 关闭 / maxSessions 上限 / launch spec 构建失败）
+const NO_RECONNECT_CODES = new Set<number>([
+  WEBSOCKET_CODES.INSTANCE_RECLAIMED.code,
+  WEBSOCKET_CODES.INVALID_REFERENCE.code,
+  WEBSOCKET_CODES.MACHINE_UNAVAILABLE.code,
+  WEBSOCKET_CODES.KEEPALIVE_TIMEOUT.code,
+  WEBSOCKET_CODES.SPAWN_REJECTED.code,
+  WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code,
 ]);
 
 /** 重连间隔（指数退避），单位毫秒 */

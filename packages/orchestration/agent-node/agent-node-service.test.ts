@@ -10,7 +10,11 @@ import { AgentNode } from "../src/agent-node/agent-node";
 import { AgentNodeFsm } from "../src/agent-node/agent-node-fsm";
 import { AgentNodeService } from "../src/agent-node/agent-node-service";
 import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
-import { AgentNodeUnavailableError, IllegalStateTransitionError } from "../src/errors";
+import {
+  AgentNodeConnectionConflictError,
+  AgentNodeUnavailableError,
+  IllegalStateTransitionError,
+} from "../src/errors";
 
 /** Mock WS 信道：记录发送数据，可手动触发 open/close/error 事件。 */
 class MockSocket implements AgentNodeSocket {
@@ -377,17 +381,18 @@ describe("AgentNodeService", () => {
     expect(service.activeCount()).toBe(0);
   });
 
-  test("并发连接：同一 machineId 第二个连接复用已有 AgentNode，旧信道被关闭", () => {
+  // 同一 machine 的在线连接是唯一真实控制信道，第二个连接必须被拒绝，不能替换第一个。
+  test("并发连接：同一 machineId 第二个连接抛冲突错误并保留旧信道", () => {
     const service = createService(new MockScheduler());
     const socket1 = new MockSocket();
     const node1 = service.handleIncomingConnection("m1", socket1);
     const socket2 = new MockSocket();
-    const node2 = service.handleIncomingConnection("m1", socket2);
 
-    expect(node2).toBe(node1);
+    expect(() => service.handleIncomingConnection("m1", socket2)).toThrow(AgentNodeConnectionConflictError);
     expect(service.activeCount()).toBe(1);
-    expect(socket1.closed).toBe(true); // 旧信道被替换关闭
-    expect(node2.status()).toBe("connected");
+    expect(socket1.closed).toBe(false);
+    expect(node1.status()).toBe("connected");
+    expect(socket2.closed).toBe(false);
   });
 
   test("回收后重建：断连（无引用）即回收移出管理，新连接创建全新节点", () => {
