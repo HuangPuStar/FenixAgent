@@ -26,6 +26,7 @@ export type {
 } from "./agent-node/types";
 // 分层异常
 export {
+  AgentNodeConnectionConflictError,
   AgentNodeUnavailableError,
   ConcurrencyExceededError,
   EnvironmentNotFoundError,

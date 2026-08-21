@@ -205,12 +205,10 @@ export async function createSandboxMachine(params: {
 }
 
 /**
- * 删除 sandbox machine 记录（createSandboxMachine 的补偿路径）。
+ * 删除 sandbox machine 记录。
  *
- * 仅用于 sandbox-manager.createOrReuse 中"machine 行已插入但 sandbox_instance
- * 创建失败"的失败回滚（唯一索引冲突 / FK 缺失 / DB 错误），防止每次失败残留
- * 一条无主 mach_sandbox_* 记录。与 deleteMachine（管理面删除，含引用校验与
- * file-ws 清理）语义不同：此处机器从未注册运行，仅需删除行。
+ * 与 deleteMachine（管理面删除，含引用校验与 file-ws 清理）语义不同：此处只
+ * 用于 sandbox 生命周期的补偿清理，机器通常尚未注册运行，仅需删除记录。
  */
 export async function deleteSandboxMachine(id: string): Promise<void> {
   await db.delete(machine).where(eq(machine.id, id));
