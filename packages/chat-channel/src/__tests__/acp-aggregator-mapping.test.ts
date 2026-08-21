@@ -64,6 +64,121 @@ test("replayed user_message with same turnId does not duplicate entries", () => 
   expect((userBlocks.get("text")?.get("text") as Y.Text | undefined)?.toString() ?? "").toBe("hi");
 });
 
+// Peri 通过标准 ACP metadata 标记子 Agent；其工具调用不得进入主 Chat Doc。
+// 测试 params._meta 身份透传与 Chat Doc 隔离。
+test("subagent tool call with ACP metadata does not leak into main entry", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      _meta: { peri: { sourceAgentId: "child_agent_1" } },
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "sub_tool",
+        title: "Bash",
+        status: "running",
+      },
+    },
+  });
+  expect(normalized?.sourceAgentId).toBe("child_agent_1");
+
+  runTurn(pair, "turn_1");
+  const result = applyNormalizedEvent(pair, normalized!);
+  expect(result.applied).toBe(false);
+  expect(getToolCallsMap(pair.chat).has("sub_tool")).toBe(false);
+  const assistant = getEntry(pair.chat, "turn_1:assistant");
+  const blocks = assistant?.get("blocks") as Y.Map<Y.Map<unknown>>;
+  expect(blocks.get("tool:sub_tool")).toBeUndefined();
+});
+
+// 子 Agent 文本即使带有有效内容，也不得追加到主 Agent assistant entry。
+test("subagent message with ACP metadata does not leak into main entry", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      _meta: { peri: { sourceAgentId: "child_agent_1" } },
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "child-only" },
+      },
+    },
+  });
+  expect(normalized?.sourceAgentId).toBe("child_agent_1");
+
+  runTurn(pair, "turn_1");
+  const assistant = getEntry(pair.chat, "turn_1:assistant");
+  const blocks = assistant?.get("blocks") as Y.Map<Y.Map<unknown>>;
+  const text = blocks.get("text")?.get("text") as Y.Text;
+  const before = text.toString();
+  expect(applyNormalizedEvent(pair, normalized!).applied).toBe(false);
+  expect(text.toString()).toBe(before);
+});
+
+// SubAgent reasoning 使用同一 metadata 契约，也不得进入主 reasoning block。
+test("subagent reasoning with ACP metadata does not leak into main entry", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      _meta: { peri: { sourceAgentId: "child_agent_1" } },
+      update: {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "child-reasoning" },
+      },
+    },
+  });
+  runTurn(pair, "turn_1");
+  expect(applyNormalizedEvent(pair, normalized!).applied).toBe(false);
+});
+
+// SubAgent tool update/end 与 start 使用相同稳定实例 ID，均不得创建根级工具投影。
+test("subagent tool update with ACP metadata does not leak into main entry", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      _meta: { peri: { sourceAgentId: "child_agent_1" } },
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "sub_tool_update",
+        status: "completed",
+        content: [{ type: "content", content: { type: "text", text: "done" } }],
+      },
+    },
+  });
+  expect(normalized?.sourceAgentId).toBe("child_agent_1");
+  runTurn(pair, "turn_1");
+  expect(applyNormalizedEvent(pair, normalized!).applied).toBe(false);
+  expect(getToolCallsMap(pair.chat).has("sub_tool_update")).toBe(false);
+});
+
+// 主 Agent 历史恢复不携带来源 metadata，工具调用必须正常恢复。
+test("history main-agent session update keeps tool call", () => {
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "history_tool",
+        title: "Read",
+        status: "completed",
+      },
+    },
+  });
+  expect(normalized?.sourceAgentId).toBeNull();
+
+  runTurn(pair, "turn_replay_1");
+  expect(applyNormalizedEvent(pair, normalized!).applied).toBe(true);
+  expect(getToolCallsMap(pair.chat).has("history_tool")).toBe(true);
+});
+
 // 重放同一 tool_call 帧（同 toolCallId）不重复创建工具调用
 test("replayed tool_call with same toolCallId does not duplicate projection", () => {
   runTurn(pair, "turn_1");

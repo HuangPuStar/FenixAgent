@@ -171,6 +171,10 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
 
 /** 处理文本/思考增量：定位当前 turn 的 assistant entry，Y.Text 追加 */
 function applyDelta(pair: DocPair, event: NormalizedEvent, blockType: "text" | "reasoning"): ApplyResult {
+  // 子 Agent 的消息/思考由 Peri task 容器承载，不进入主 Agent Chat Doc。
+  if (event.sourceAgentId) {
+    return { applied: false, reason: "subagent message is rendered by peri task scope" };
+  }
   if (event.callbackEntryId) {
     const entryId = `${event.callbackEntryId}:assistant`;
     if (!getEntry(pair.chat, entryId)) return { applied: false, reason: "callback assistant entry not found" };
@@ -208,6 +212,12 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
   // 终态或 cancelling 后的工具调用不投影：取消后不允许再出现新的工具输出
   if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
     return { applied: false, reason: "tool_call without writable turn" };
+  }
+
+  // Peri 子 Agent 的工具事件虽然复用父 ACP session，但通过 sourceAgentId 独立路由；
+  // 当前 Chat Doc 只承载主 Agent assistant entry，因此不写入主 Chat Doc 的 toolCalls。
+  if (event.sourceAgentId) {
+    return { applied: false, reason: "subagent tool call is rendered by peri task scope" };
   }
 
   const result =
