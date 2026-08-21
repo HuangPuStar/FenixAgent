@@ -15,6 +15,8 @@ export interface RelaySocket {
 export interface RelayHandleDependencies {
   createWebSocket: (url: string) => RelaySocket;
   keepAliveIntervalMs?: number;
+  setInterval?: (callback: () => void, delay: number) => ReturnType<typeof setInterval>;
+  clearInterval?: (interval: ReturnType<typeof setInterval>) => void;
 }
 
 export interface CreateRelayHandleInput {
@@ -69,6 +71,8 @@ export function createRelayHandle(
   const socket = dependencies.createWebSocket(url);
   const listeners = new Set<(message: EngineRelayMessage) => void>();
   const keepAliveIntervalMs = dependencies.keepAliveIntervalMs ?? RELAY_KEEPALIVE_INTERVAL_MS;
+  const scheduleInterval = dependencies.setInterval ?? setInterval;
+  const cancelInterval = dependencies.clearInterval ?? clearInterval;
   let state: EngineRelayState = "open";
   let readySettled = socket.readyState === 1;
   let resolveReady!: () => void;
@@ -109,7 +113,7 @@ export function createRelayHandle(
     }
   };
 
-  const keepalive = setInterval(() => {
+  const keepalive = scheduleInterval(() => {
     if (state !== "open") {
       return;
     }
@@ -143,7 +147,7 @@ export function createRelayHandle(
   socket.onclose = () => {
     console.log(`[RelayHandle] WS closed for instance ${input.instanceId}`);
     state = "closed";
-    clearInterval(keepalive);
+    cancelInterval(keepalive);
     emit({ type: "relay_closed", payload: { code: "relay_disconnected" } });
     messageBuffer.length = 0;
     if (!readySettled) {
@@ -154,7 +158,7 @@ export function createRelayHandle(
   socket.onerror = () => {
     console.error(`[RelayHandle] WS error for instance ${input.instanceId}`);
     state = "closed";
-    clearInterval(keepalive);
+    cancelInterval(keepalive);
     emit({ type: "relay_closed", payload: { code: "relay_error" } });
     messageBuffer.length = 0;
     if (!readySettled) {
@@ -197,7 +201,7 @@ export function createRelayHandle(
       }
       console.log(`[RelayHandle] Closing WS for instance ${input.instanceId}, code=${code} reason=${reason}`);
       state = "closed";
-      clearInterval(keepalive);
+      cancelInterval(keepalive);
       messageBuffer.length = 0;
       socket.close(code, reason);
     },

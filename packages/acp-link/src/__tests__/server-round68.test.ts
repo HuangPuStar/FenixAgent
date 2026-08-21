@@ -56,6 +56,7 @@ const config: ServerConfig = {
   args: [],
   cwd: "/tmp/acp-link-round68-no-server",
   rcsUrl: "ws://registry.invalid",
+  machineId: "mach-round68",
 };
 
 const webSocketDescriptor = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
@@ -228,14 +229,16 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     expect(InMemoryWebSocket.instances[1]?.url).toContain("/acp/file-ws");
   });
 
-  // node_id 异步读取尚未完成时关闭客户端，后续回调不得再创建 WebSocket。
-  test("关闭后阻止延迟初始化连接", async () => {
+  // machineId 已在启动配置中提供时，关闭必须关闭立即创建的主连接且不再安排重连。
+  test("关闭后不再重连", async () => {
     const handle = createAcpClient(config);
     handle.close();
     handles.push(handle);
 
     await Bun.sleep(5);
 
-    expect(InMemoryWebSocket.instances).toEqual([]);
+    expect(InMemoryWebSocket.instances).toHaveLength(1);
+    expect(InMemoryWebSocket.instances[0]?.closeCalls).toBe(1);
+    expect(timeoutCallbacks.size).toBe(0);
   });
 });

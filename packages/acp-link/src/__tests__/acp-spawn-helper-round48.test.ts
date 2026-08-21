@@ -70,19 +70,12 @@ async function start(
   return { harness, result };
 }
 
-function waitFor(predicate: () => boolean): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + 500;
-    const timer = setInterval(() => {
-      if (predicate()) {
-        clearInterval(timer);
-        resolve();
-      } else if (Date.now() > deadline) {
-        clearInterval(timer);
-        reject(new Error("等待 ACP 内存管道消息超时"));
-      }
-    }, 1);
-  });
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error("等待 ACP 内存管道消息超时");
 }
 
 afterEach(() => {

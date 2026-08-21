@@ -42,11 +42,19 @@ afterEach(() => {
   }
 });
 
-function createFixture(keepAliveIntervalMs = 20_000) {
+function createFixture(
+  keepAliveIntervalMs = 20_000,
+  setInterval?: (callback: () => void) => ReturnType<typeof setInterval>,
+) {
   const socket = createFakeSocket();
   const handle = createRelayHandle(
     { instanceId: "lifecycle-test", port: 8123, token: "token-test" },
-    { createWebSocket: () => socket, keepAliveIntervalMs },
+    {
+      createWebSocket: () => socket,
+      keepAliveIntervalMs,
+      setInterval: setInterval ? (callback) => setInterval(callback) : undefined,
+      clearInterval: () => {},
+    },
   );
   openHandles.push(handle);
   return { handle, socket };
@@ -91,12 +99,16 @@ describe("CCB relay handle 生命周期补充", () => {
 
   // open relay 应按依赖注入的周期发送传输层 ping，且测试结束时由 afterEach 清理定时器。
   test("保持连接定时发送 ping", async () => {
-    const { handle, socket } = createFixture(1);
+    let keepalive: (() => void) | undefined;
+    const { handle, socket } = createFixture(1, (callback) => {
+      keepalive = callback;
+      return 0 as ReturnType<typeof setInterval>;
+    });
     socket.readyState = 1;
     socket.onopen?.();
     await handle.ready;
 
-    await Bun.sleep(10);
+    keepalive?.();
 
     expect(socket.sent.some((data) => data === '{"type":"ping"}')).toBeTrue();
   });

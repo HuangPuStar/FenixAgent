@@ -56,8 +56,9 @@ const config: ServerConfig = {
   host: "127.0.0.1",
   command: "opencode",
   args: [],
-  cwd: "/tmp/acp-link-round67-no-node-id",
+  cwd: "/tmp/acp-link-round67",
   rcsUrl: "ws://registry.invalid/base",
+  machineId: "mach-round67",
   rcsSecret: "round 67/secret",
 };
 
@@ -152,7 +153,7 @@ describe("createAcpClient round 67 内存传输分支", () => {
     expect(() => createAcpClient({ ...config, rcsUrl: undefined })).toThrow("rcsUrl is required");
   });
 
-  // node_id 读取完成后应只创建内存主连接，并保留编码后的密钥。
+  // 配置 machineId 后应只创建内存主连接，并保留编码后的密钥。
   test("使用编码密钥创建主连接", async () => {
     createClient();
     await waitForSockets(1);

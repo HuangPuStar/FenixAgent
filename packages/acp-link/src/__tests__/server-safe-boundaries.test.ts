@@ -97,31 +97,9 @@ describe("server 注册消息安全边界", () => {
     expect(registerMessage({ ...baseConfig, userId: "user-a" }).user_id).toBe("user-a");
   });
 
-  // 持久化 nodeId 仅在非空时发送，避免覆盖服务端已有标识。
-  test("保留非空 nodeId", () => {
-    expect(registerMessage(baseConfig, "node-1").node_id).toBe("node-1");
-  });
-
-  // 空 nodeId 不得进入注册帧。
-  test("忽略空 nodeId", () => {
-    expect("node_id" in registerMessage(baseConfig, "")).toBe(false);
-  });
-
-  // null nodeId 不得进入注册帧。
-  test("忽略 null nodeId", () => {
-    expect("node_id" in registerMessage(baseConfig, null)).toBe(false);
-  });
-
-  // 固定 machineId 必须进入独立字段，不能与持久化 nodeId 混淆。
+  // 固定 machineId 必须进入注册字段，作为管理面预创建机器的唯一身份。
   test("保留固定 machineId", () => {
     expect(registerMessage({ ...baseConfig, machineId: "machine-1" }).machine_id).toBe("machine-1");
-  });
-
-  // nodeId 与 machineId 同时存在时都应保留，支持精确重连和固定机器标识。
-  test("同时保留 nodeId 与 machineId", () => {
-    const message = registerMessage({ ...baseConfig, machineId: "machine-1" }, "node-1");
-    expect(message.node_id).toBe("node-1");
-    expect(message.machine_id).toBe("machine-1");
   });
 
   // 自定义引擎清单必须完整透传，确保服务端据此调度实例。

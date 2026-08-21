@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
 import type { ClusterConfig } from "../types";
@@ -49,7 +50,7 @@ describe("OpenSandbox Cluster end-to-end flow", () => {
   test("allocates, proxies lifecycle calls and releases explicitly", async () => {
     const nodeA = createMockServer("node-a-key");
     const nodeB = createMockServer("node-b-key");
-    const databasePath = `/tmp/opensandbox-cluster-e2e-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-e2e-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const auth = { Authorization: "Bearer cluster-key" };
