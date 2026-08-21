@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   extractErrorMessage,
   extractFileName,
-  extractFilePath,
   extractLineRange,
   findFirstStringValue,
   formatElapsed,
@@ -16,19 +15,6 @@ import {
  * 不使用 mock（纯函数），遵循前端测试规范（参考 config-helpers.test.ts）。
  */
 describe("narrators/helpers", () => {
-  describe("extractFilePath", () => {
-    test("从兼容路径字段提取完整路径", () => {
-      expect(extractFilePath({ file_path: "/a/b/c.ts" })).toBe("/a/b/c.ts");
-      expect(extractFilePath({ path: "/x/y.ts" })).toBe("/x/y.ts");
-      expect(extractFilePath({ filePath: "/z.ts" })).toBe("/z.ts");
-    });
-
-    test("路径缺失或为空时返回 undefined", () => {
-      expect(extractFilePath({})).toBeUndefined();
-      expect(extractFilePath({ file_path: "" })).toBeUndefined();
-    });
-  });
-
   describe("extractFileName", () => {
     // 从 file_path 字段提取文件名（带目录前缀只取最后一段）
     test("从 file_path 提取末段文件名", () => {

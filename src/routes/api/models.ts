@@ -336,13 +336,10 @@ app.delete(
     try {
       const deleted = await configPg.deleteProviderById(authCtx, providerId);
       if (!deleted) {
-        return error(404, { error: { code: "NOT_FOUND", message: "Provider" } });
+        return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
       return { id: providerId, deleted: true as const };
     } catch (err) {
-      if (err instanceof AppError) {
-        return error(err.statusCode, { error: { code: err.code, message: "Provider" } });
-      }
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
     }

@@ -37,7 +37,6 @@ const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
       };
     },
     {
-      sessionAuth: true,
       response: "hindsight-status-response",
       detail: {
         tags: ["Hindsight"],
