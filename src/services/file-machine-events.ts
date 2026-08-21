@@ -51,6 +51,19 @@ const machineInvalidateRate = new Map<string, { start: number; count: number }>(
 const CHANGE_KINDS = new Set<FileChangeKind>(["write", "delete", "mkdir", "rename", "upload"]);
 const CHANGE_SOURCES = new Set<FileChangeSource>(["user", "agent", "api"]);
 
+/**
+ * 不应驱动工作区文件树刷新的生成/依赖目录。
+ *
+ * 机器端 watcher 尚未过滤这些路径时，服务端在事件接收边界兜底丢弃，避免依赖安装、
+ * 构建或测试产物造成事件风暴及前端全量刷新。按路径段匹配，确保 `my-node_modules`
+ * 等普通目录不受影响；同时兼容机器端可能传入的 POSIX 或 Windows 分隔符。
+ */
+const IGNORED_PATH_SEGMENTS = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
+
+function isIgnoredPath(path: string): boolean {
+  return path.split(/[\\/]+/).some((segment) => IGNORED_PATH_SEGMENTS.has(segment));
+}
+
 function isChangeKind(value: unknown): value is FileChangeKind {
   return typeof value === "string" && (CHANGE_KINDS as Set<string>).has(value);
 }
@@ -192,6 +205,9 @@ function publishMachineFileChanged(
 ): void {
   if (typeof rawPath !== "string" || rawPath === "" || !isChangeKind(rawKind)) {
     writeEventWarning(machineId, "invalid_file_changed", { environment_id: envId, reason: "invalid path or kind" });
+    return;
+  }
+  if (isIgnoredPath(rawPath)) {
     return;
   }
   publishFileChanged(
