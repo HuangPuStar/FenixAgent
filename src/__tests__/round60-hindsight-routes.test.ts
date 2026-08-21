@@ -84,10 +84,10 @@ describe("round60 hindsight 路由", () => {
     expect(body).toEqual({ success: true, data: { enabled: false } });
   });
 
-  // 配置服务后状态接口只暴露服务地址而不触发上游调用。
-  test("已配置时 status 返回服务地址", async () => {
+  // 配置服务后状态接口返回当前组织隔离的 bank，并且不触发上游调用。
+  test("已配置时 status 返回服务地址和组织 bank", async () => {
     const body = await (await request("/hindsight/status")).json();
-    expect(body).toEqual({ success: true, data: { enabled: true, url: hindsightUrl, bankId: null } });
+    expect(body).toEqual({ success: true, data: { enabled: true, url: hindsightUrl, bankId: "member-org-a" } });
     expect(calls).toHaveLength(0);
   });
 
