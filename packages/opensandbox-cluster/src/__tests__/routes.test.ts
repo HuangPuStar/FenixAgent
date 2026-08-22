@@ -73,5 +73,34 @@ describe("OpenSandbox Cluster routes", () => {
     const serverBody = (await server.json()) as { healthStatus: string };
     expect(serverBody.healthStatus).toBe("unhealthy");
     expect(JSON.stringify(serverBody)).not.toContain("secret-api-key");
+
+    // Tunnel Server 的手动健康检查必须返回当前连接结论，不能把保留的 base_url 当作 Direct 地址解析。
+    const tunnelServer = await app.handle(
+      new Request("http://localhost/api/v1/servers", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: "server-tunnel-route",
+          pool_id: "pool-route",
+          name: "Tunnel server",
+          base_url: "12345",
+          workspace_root: "/data/opensandbox/sandboxes",
+          api_key: "secret-tunnel-api-key",
+          max_sandboxes: 2,
+          transport_mode: "tunnel",
+        }),
+      }),
+    );
+    expect(tunnelServer.status).toBe(200);
+
+    const tunnelHealthCheck = await app.handle(
+      new Request("http://localhost/api/v1/servers/server-tunnel-route/health-check", {
+        method: "POST",
+        headers,
+      }),
+    );
+    expect(tunnelHealthCheck.status).toBe(200);
+    const tunnelHealthBody = (await tunnelHealthCheck.json()) as { healthStatus: string };
+    expect(tunnelHealthBody.healthStatus).toBe("unknown");
   });
 });
