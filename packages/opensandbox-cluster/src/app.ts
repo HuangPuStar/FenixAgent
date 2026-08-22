@@ -17,6 +17,7 @@ import type { ClusterConfig, HealthResponse } from "./types";
 export interface AppDependencies {
   fetch?: typeof fetch;
   recoverTunnel?: (serverId: string) => Promise<boolean>;
+  healthCheck?: (serverId: string) => Promise<"unknown" | "healthy" | "unhealthy">;
 }
 
 export function createApp(_config: ClusterConfig, dependencies: AppDependencies = {}) {
@@ -48,7 +49,7 @@ export function createAppWithDatabase(
   );
   return new Elysia({ name: "opensandbox-cluster" })
     .get("/health", (): HealthResponse => ({ status: "healthy" }))
-    .use(createAdminRoutes(_config, pools, servers, tunnels))
+    .use(createAdminRoutes(_config, pools, servers, tunnels, dependencies.healthCheck))
     .use(createTunnelRoutes(_config, tunnels))
     .use(includePlugin ? createFrpPluginRoutes(_config, new FrpPluginService(db)) : new Elysia())
     .use(createAllocationRoutes(_config, allocations))

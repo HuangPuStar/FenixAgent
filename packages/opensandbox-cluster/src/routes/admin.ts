@@ -17,6 +17,7 @@ export function createAdminRoutes(
   pools: PoolService,
   servers: ServerService,
   tunnels?: TunnelConfigService,
+  healthCheck?: (serverId: string) => Promise<"unknown" | "healthy" | "unhealthy">,
 ) {
   return new Elysia({ name: "cluster-admin", prefix: "/api/v1" })
     .onBeforeHandle(({ request, set }) => {
@@ -99,8 +100,13 @@ export function createAdminRoutes(
     )
     .put("/servers/:serverId", ({ params, body }) => servers.update(params.serverId, bodyOf(body)))
     .delete("/servers/:serverId", ({ params }) => servers.delete(params.serverId))
-    .post("/servers/:serverId/health-check", ({ params, query }) => {
-      if (query.transport === "tunnel") return tunnels?.prepare(params.serverId);
+    .post("/servers/:serverId/health-check", async ({ params }) => {
+      const server = servers.findById(params.serverId);
+      if (!server) throw new Error("server not found");
+      if (server.transportMode === "tunnel" && healthCheck) {
+        await healthCheck(params.serverId);
+        return servers.findById(params.serverId) ?? server;
+      }
       return servers.healthCheck(params.serverId);
     });
 }

@@ -20,7 +20,10 @@ export function createClusterRuntime(config: ClusterConfig): ClusterRuntime {
     config,
     db,
     sqlite,
-    { recoverTunnel: async (serverId) => (await monitor.checkServer(serverId)) === "healthy" },
+    {
+      recoverTunnel: async (serverId) => (await monitor.checkServer(serverId)) === "healthy",
+      healthCheck: (serverId) => monitor.checkServer(serverId),
+    },
     false,
   );
   const pluginApp = createFrpPluginRoutes(config, new FrpPluginService(db));

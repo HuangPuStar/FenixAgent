@@ -2,6 +2,7 @@ import type { ClusterDatabase } from "../db/client";
 import { BindingRepository } from "../repositories/binding-repository";
 import { PoolRepository } from "../repositories/pool-repository";
 import { ServerRepository } from "../repositories/server-repository";
+import { TunnelConnectionRepository } from "../repositories/tunnel-connection-repository";
 import type { SecretBox } from "../security/secret-box";
 import { ConflictError } from "./pool-service";
 
@@ -22,6 +23,7 @@ export class ServerService {
   private readonly pools: PoolRepository;
   private readonly servers: ServerRepository;
   private readonly bindings: BindingRepository;
+  private readonly tunnelConnections: TunnelConnectionRepository;
 
   constructor(
     db: ClusterDatabase,
@@ -31,6 +33,7 @@ export class ServerService {
     this.pools = new PoolRepository(db);
     this.servers = new ServerRepository(db);
     this.bindings = new BindingRepository(db);
+    this.tunnelConnections = new TunnelConnectionRepository(db);
   }
 
   list(poolId?: string) {
@@ -133,6 +136,9 @@ export class ServerService {
   async healthCheck(id: string) {
     const row = this.servers.findById(id);
     if (!row) return;
+    // Tunnel 的健康探测由 ServerConnectionMonitor 通过 FRP 路由定时执行，不能把保留的
+    // baseUrl 当作 Direct 地址再次拼接 /health；管理端手动检查只返回当前连接结论。
+    if (row.transportMode === "tunnel") return this.findById(id);
     try {
       if (!row.baseUrl) return this.findById(id);
       const response = await this.fetchImpl(new URL("/health", row.baseUrl), { signal: AbortSignal.timeout(3000) });
@@ -156,7 +162,18 @@ export class ServerService {
 
   private publicRow(row: NonNullable<ReturnType<ServerRepository["findById"]>>) {
     const { apiKeyCiphertext: _apiKeyCiphertext, ...publicRow } = row;
-    return { ...publicRow, currentSandboxes: this.bindings.countByServer(row.id) };
+    const tunnelHealth = row.transportMode === "tunnel" ? this.tunnelConnections.findByServerId(row.id) : undefined;
+    return {
+      ...publicRow,
+      ...(row.transportMode === "tunnel"
+        ? {
+            healthStatus: tunnelHealth?.healthStatus ?? "unknown",
+            lastHealthAt: tunnelHealth?.lastHealthAt ?? null,
+            lastError: tunnelHealth?.lastError ?? null,
+          }
+        : {}),
+      currentSandboxes: this.bindings.countByServer(row.id),
+    };
   }
 }
 
