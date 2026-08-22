@@ -13,6 +13,14 @@ describe("sandbox API error mapping", () => {
     });
   });
 
+  // Service 层提前发现重复 Pool ID 时，API 仍必须返回明确的资源冲突。
+  test("maps service-level duplicate pool errors to HTTP 409", () => {
+    expect(mapSandboxApiError(new Error("sandbox pool 'pool-1' already exists"))).toEqual({
+      status: 409,
+      body: { error: { code: "CONFLICT", message: "sandbox pool 'pool-1' already exists" } },
+    });
+  });
+
   // Provider 未注册时必须返回服务不可用，而不是参数错误；message 固定通用文案，
   // 不得透传 providerKey（ProviderNotConfiguredError 携带内部标识，泄漏给
   // /api/system 调用方属敏感信息外泄）

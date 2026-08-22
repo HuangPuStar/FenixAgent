@@ -1,5 +1,6 @@
-import type { SandboxResourceOverrides } from "@fenix/sandbox-provider";
 import type { SandboxInstance, SandboxPool } from "../../db/schema";
+import { findMachinesBasicInfoByIds } from "../../repositories/machine-repository";
+import { organizationRepo } from "../../repositories/organization";
 import { findSandboxInstanceById, listSandboxInstances } from "../../repositories/sandbox-instance-repository";
 import {
   createSandboxPool,
@@ -9,6 +10,7 @@ import {
   listSandboxPools,
   updateSandboxPool,
 } from "../../repositories/sandbox-pool-repository";
+import { findUsersBasicInfoByIds } from "../../repositories/user";
 import type {
   SandboxInstanceRebuildBody,
   SandboxPoolCreateBody,
@@ -20,13 +22,37 @@ function date(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-function poolResponse(pool: SandboxPool) {
-  return { ...pool, createdAt: pool.createdAt.toISOString(), updatedAt: pool.updatedAt.toISOString() };
+function poolResponse(pool: SandboxPool, organizationName?: string | null) {
+  return {
+    ...pool,
+    organizationName: pool.organizationId ? (organizationName ?? null) : null,
+    createdAt: pool.createdAt.toISOString(),
+    updatedAt: pool.updatedAt.toISOString(),
+  };
 }
 
-function instanceResponse(instance: SandboxInstance) {
+function instanceResponse(
+  instance: SandboxInstance,
+  owner?: { id: string; name: string; email: string } | null,
+  machine?: {
+    id: string;
+    name: string | null;
+    agentName: string;
+    status: string;
+    lastHeartbeatAt: Date | null;
+  } | null,
+) {
   return {
     ...instance,
+    user: owner ?? { id: instance.userId, name: instance.userId, email: "" },
+    machine: machine
+      ? {
+          id: machine.id,
+          name: machine.name ?? machine.agentName,
+          status: machine.status,
+          lastHeartbeatAt: date(machine.lastHeartbeatAt),
+        }
+      : { id: instance.machineId, name: instance.machineId, status: "unknown", lastHeartbeatAt: null },
     lastHeartbeatAt: date(instance.lastHeartbeatAt),
     createdAt: instance.createdAt.toISOString(),
     updatedAt: instance.updatedAt.toISOString(),
@@ -34,13 +60,16 @@ function instanceResponse(instance: SandboxInstance) {
 }
 
 export async function listPools(filters: { organization_id?: string; provider_key?: string }) {
-  return (await listSandboxPools())
+  const pools = (await listSandboxPools())
     .filter(
       (pool) =>
         !filters.organization_id || pool.organizationId === null || pool.organizationId === filters.organization_id,
     )
-    .filter((pool) => !filters.provider_key || pool.providerKey === filters.provider_key)
-    .map(poolResponse);
+    .filter((pool) => !filters.provider_key || pool.providerKey === filters.provider_key);
+  const names = await organizationRepo.listNamesByIds(
+    pools.flatMap((pool) => (pool.organizationId ? [pool.organizationId] : [])),
+  );
+  return pools.map((pool) => poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null));
 }
 
 /** 返回 Agent 配置页面可选择的沙盒资源池，不暴露资源和 Provider 专属配置。 */
@@ -58,19 +87,23 @@ export async function listPoolOptions(
 }
 
 export async function createPool(input: SandboxPoolCreateBody) {
-  return poolResponse(
-    await createSandboxPool({
-      ...input,
-      organizationId: input.organizationId ?? null,
-      extra: input.extra ?? null,
-    }),
-  );
+  const existing = await findSandboxPoolById(input.id);
+  if (existing) throw new Error(`sandbox pool '${input.id}' already exists`);
+
+  const pool = await createSandboxPool({
+    ...input,
+    organizationId: input.organizationId ?? null,
+    extra: input.extra ?? null,
+  });
+  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
 export async function getPool(id: string) {
   const pool = await findSandboxPoolById(id);
   if (!pool) throw new Error(`sandbox pool '${id}' not found`);
-  return poolResponse(pool);
+  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
 export async function updatePool(id: string, input: SandboxPoolUpdateBody) {
@@ -80,7 +113,8 @@ export async function updatePool(id: string, input: SandboxPoolUpdateBody) {
     extra: input.extra ?? null,
   });
   if (!pool) throw new Error(`sandbox pool '${id}' not found`);
-  return poolResponse(pool);
+  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
 export async function deletePool(id: string) {
@@ -105,9 +139,17 @@ export async function listInstances(filters: {
     providerKey: filters.provider_key,
     statuses: filters.status ? [filters.status] : undefined,
   });
+  const [owners, machines] = await Promise.all([
+    findUsersBasicInfoByIds([...new Set(rows.map((row) => row.userId))]),
+    findMachinesBasicInfoByIds([...new Set(rows.map((row) => row.machineId))]),
+  ]);
+  const ownerMap = new Map(owners.map((owner) => [owner.id, owner]));
+  const machineMap = new Map(machines.map((item) => [item.id, item]));
   const start = (filters.page - 1) * filters.page_size;
   return {
-    items: rows.slice(start, start + filters.page_size).map(instanceResponse),
+    items: rows
+      .slice(start, start + filters.page_size)
+      .map((instance) => instanceResponse(instance, ownerMap.get(instance.userId), machineMap.get(instance.machineId))),
     total: rows.length,
     page: filters.page,
     pageSize: filters.page_size,
@@ -117,10 +159,22 @@ export async function listInstances(filters: {
 export async function getInstance(id: string) {
   const instance = await findSandboxInstanceById(id);
   if (!instance) throw new Error(`sandbox instance '${id}' not found`);
-  return instanceResponse(instance);
+  const [owners, machines] = await Promise.all([
+    findUsersBasicInfoByIds([instance.userId]),
+    findMachinesBasicInfoByIds([instance.machineId]),
+  ]);
+  return instanceResponse(instance, owners[0], machines[0]);
 }
 
-export async function updateInstance(id: string, resourceOverrides: SandboxResourceOverrides | null) {
+export async function updateInstance(
+  id: string,
+  resourceOverrides: {
+    cpu?: number | null;
+    memoryMb?: number | null;
+    diskGb?: number | null;
+    gpuCount?: number | null;
+  } | null,
+) {
   return instanceResponse(await sandboxManager.updateInstanceConfig(id, resourceOverrides));
 }
 
