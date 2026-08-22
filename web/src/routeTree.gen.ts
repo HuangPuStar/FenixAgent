@@ -17,6 +17,7 @@ import { Route as AdminIndexRouteImport } from "./routes/admin/index"
 import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
+import { Route as AdminSandboxRouteImport } from "./routes/admin/sandbox"
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
 import { Route as AdminLogsRouteImport } from "./routes/admin/logs"
 import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
@@ -82,6 +83,11 @@ const AgentAgentIdRoute = AgentAgentIdRouteImport.update({
   id: "/agent/$agentId",
   path: "/agent/$agentId",
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSandboxRoute = AdminSandboxRouteImport.update({
+  id: "/sandbox",
+  path: "/sandbox",
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminPeopleRoute = AdminPeopleRouteImport.update({
   id: "/people",
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -255,6 +262,7 @@ export interface FileRoutesByTo {
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
   "/admin": typeof AdminIndexRoute
@@ -290,6 +298,7 @@ export interface FileRoutesById {
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/admin/logs"
     | "/admin/people"
+    | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent"
     | "/view/$prodViewId"
@@ -361,6 +371,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/admin/logs"
     | "/admin/people"
+    | "/admin/sandbox"
     | "/agent/$agentId"
     | "/view/$prodViewId"
     | "/admin"
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | "/no-access"
     | "/admin/logs"
     | "/admin/people"
+    | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent/_panel"
     | "/view/$prodViewId"
@@ -492,6 +504,13 @@ declare module "@tanstack/react-router" {
       fullPath: "/agent/$agentId"
       preLoaderRoute: typeof AgentAgentIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    "/admin/sandbox": {
+      id: "/admin/sandbox"
+      path: "/sandbox"
+      fullPath: "/admin/sandbox"
+      preLoaderRoute: typeof AdminSandboxRouteImport
+      parentRoute: typeof AdminRoute
     }
     "/admin/people": {
       id: "/admin/people"
@@ -674,12 +693,14 @@ declare module "@tanstack/react-router" {
 interface AdminRouteChildren {
   AdminLogsRoute: typeof AdminLogsRoute
   AdminPeopleRoute: typeof AdminPeopleRoute
+  AdminSandboxRoute: typeof AdminSandboxRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLogsRoute: AdminLogsRoute,
   AdminPeopleRoute: AdminPeopleRoute,
+  AdminSandboxRoute: AdminSandboxRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

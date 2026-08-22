@@ -1,13 +1,18 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { Activity, ArrowLeft, FileText, type LucideIcon, Network } from "lucide-react";
+import { Activity, ArrowLeft, Box, FileText, type LucideIcon, Network } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 
 // Admin 布局（docs/arch/21 §5）：左侧边栏导航 + 内容区 Outlet。
 // 导航项数组是扩展点：后续新增 admin 子页面时在此追加 { to, labelKey, icon }，
 // labelKey 落在 observer i18n 命名空间下；Obs 保持为默认首页（/admin）。
-const NAV_ITEMS: { to: "/admin" | "/admin/logs" | "/admin/people"; labelKey: string; icon: LucideIcon }[] = [
+const NAV_ITEMS: {
+  to: "/admin" | "/admin/logs" | "/admin/people" | "/admin/sandbox";
+  labelKey: string;
+  icon: LucideIcon;
+}[] = [
   { to: "/admin", labelKey: "title", icon: Activity },
+  { to: "/admin/sandbox", labelKey: "sandbox.nav", icon: Box },
   { to: "/admin/people", labelKey: "people.nav", icon: Network },
   { to: "/admin/logs", labelKey: "logs.nav", icon: FileText },
 ];

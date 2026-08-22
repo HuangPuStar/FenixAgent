@@ -21,3 +21,18 @@ export async function findMachineNamesByIds(ids: string[]): Promise<Map<string, 
     .where(inArray(machine.id, ids));
   return new Map(rows.map((row) => [row.id, row.name ?? row.agentName]));
 }
+
+/** 按 machine id 批量查询管理视图所需的状态与心跳信息。 */
+export async function findMachinesBasicInfoByIds(ids: string[]) {
+  if (ids.length === 0) return [];
+  return db
+    .select({
+      id: machine.id,
+      name: machine.name,
+      agentName: machine.agentName,
+      status: machine.status,
+      lastHeartbeatAt: machine.lastHeartbeatAt,
+    })
+    .from(machine)
+    .where(inArray(machine.id, ids));
+}

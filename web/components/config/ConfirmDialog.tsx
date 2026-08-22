@@ -42,17 +42,13 @@ export function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogDescription className={cn(variant === "destructive" && "text-destructive")}>
+            {description}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{cnlLabel}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={loading}
-            className={cn(
-              variant === "destructive" && "bg-destructive text-white hover:bg-destructive/90 focus:ring-destructive",
-            )}
-          >
+          <AlertDialogAction variant={variant} onClick={onConfirm} disabled={loading}>
             {loading ? t("confirmDialog.processing") : confLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

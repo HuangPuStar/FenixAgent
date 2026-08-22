@@ -61,6 +61,13 @@ type SandboxInstanceRepository = {
   withLock?: <T>(id: string, operation: (scope: SandboxInstanceLockScope) => Promise<T>) => Promise<T>;
 };
 
+type SandboxAdminResourceOverrides = {
+  cpu?: number | null;
+  memoryMb?: number | null;
+  diskGb?: number | null;
+  gpuCount?: number | null;
+};
+
 export type SandboxManagerDependencies = {
   pools?: SandboxPoolRepository;
   instances?: SandboxInstanceRepository;
@@ -330,15 +337,27 @@ export class SandboxManager {
   }
 
   /** 修改实例资源覆盖值；配置快照变化时先销毁旧资源，再保留实例为 stopped。 */
-  async updateInstanceConfig(id: string, resourceOverrides: SandboxResourceOverrides | null): Promise<SandboxInstance> {
+  async updateInstanceConfig(
+    id: string,
+    resourceOverrides: SandboxResourceOverrides | SandboxAdminResourceOverrides | null,
+  ): Promise<SandboxInstance> {
     const instance = await this.instances.findById?.(id);
     if (!instance) throw new SandboxStateError(`sandbox instance '${id}' not found`);
     const pool = await this.getPool(instance.sandboxPoolId);
+    const mergedResourceOverrides =
+      resourceOverrides === null ? null : { ...(instance.resourceOverrides ?? {}), ...resourceOverrides };
+    const nonNullResourceOverrides = mergedResourceOverrides
+      ? Object.fromEntries(Object.entries(mergedResourceOverrides).filter(([, value]) => value !== null))
+      : null;
+    const nextResourceOverrides =
+      nonNullResourceOverrides && Object.keys(nonNullResourceOverrides).length > 0
+        ? (nonNullResourceOverrides as SandboxResourceOverrides)
+        : null;
     const nextConfig = addMachineIdToConfig(
       resolveSandboxConfig(
         pool.image,
         asResources(pool.defaultResources),
-        resourceOverrides,
+        nextResourceOverrides,
         getProviderExtra(pool.extra, instance.providerKey),
         instance.userId,
       ),
@@ -347,7 +366,7 @@ export class SandboxManager {
     const changed = !sandboxConfigsEqual(instance.resolvedConfig, nextConfig);
     if (!changed) {
       const updated = await this.instances.update(id, instance.status, {
-        resourceOverrides,
+        resourceOverrides: nextResourceOverrides,
         resolvedConfig: nextConfig,
       });
       if (!updated) throw new SandboxStateError(`sandbox instance '${id}' not found`);
@@ -359,7 +378,7 @@ export class SandboxManager {
       const updated = await this.instances.update(id, "stopped", {
         externalSandboxId: null,
         providerPayload: null,
-        resourceOverrides,
+        resourceOverrides: nextResourceOverrides,
         resolvedConfig: nextConfig,
       });
       if (!updated) throw new SandboxStateError(`sandbox instance '${id}' not found`);
