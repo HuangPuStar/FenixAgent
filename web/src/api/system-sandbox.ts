@@ -80,6 +80,31 @@ export interface ClusterServer {
   currentSandboxes: number;
 }
 
+export interface RemoteSandbox {
+  id: string;
+  image?: string | { uri?: string };
+  status: {
+    state: string;
+    reason?: string | null;
+    message?: string | null;
+    lastTransitionAt?: string | null;
+  };
+  createdAt: string;
+  [key: string]: unknown;
+}
+
+export interface RemoteSandboxList {
+  items: RemoteSandbox[];
+  pagination: { page: number; pageSize: number; totalItems: number; totalPages: number; hasNextPage: boolean };
+}
+
+export interface SandboxCommandBody {
+  command: string;
+  cwd?: string;
+  background?: boolean;
+  timeout?: number;
+}
+
 export type SandboxRebuildRequest = {
   sandboxPoolId: string;
   instanceIds?: string[];
@@ -245,4 +270,65 @@ export const systemSandboxApi = {
       return response.text();
     },
   },
+  server: {
+    listSandboxes: (
+      serverId: string,
+      query: { state?: string; metadata?: string; page?: number; page_size?: number } = {},
+    ) =>
+      unwrap(
+        request<RemoteSandboxList>("/api/system/sandbox-server/servers/:serverId/sandboxes", {
+          ...adminOptions(),
+          params: { serverId },
+          query: { page: 1, page_size: 200, ...query },
+        }),
+      ),
+    getSandbox: (serverId: string, sandboxId: string) =>
+      unwrap(
+        request<RemoteSandbox>("/api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId", {
+          ...adminOptions(),
+          params: { serverId, sandboxId },
+        }),
+      ),
+    getDiagnostics: async (serverId: string, sandboxId: string) => {
+      const response = await fetch(
+        `/api/system/sandbox-server/servers/${encodeURIComponent(serverId)}/sandboxes/${encodeURIComponent(sandboxId)}/diagnostics`,
+        { headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` } },
+      );
+      if (!response.ok) throw new Error(await readResponseError(response, "获取诊断概览失败"));
+      return response.text();
+    },
+    executeCommand: async (serverId: string, sandboxId: string, body: SandboxCommandBody, signal: AbortSignal) => {
+      const response = await fetch(
+        `/api/system/sandbox-server/servers/${encodeURIComponent(serverId)}/sandboxes/${encodeURIComponent(sandboxId)}/commands`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${getAdminKey() ?? ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal,
+        },
+      );
+      if (!response.ok) throw new Error(await readResponseError(response, "执行命令失败"));
+      return response;
+    },
+  },
 };
+
+async function readResponseError(response: Response, fallback: string): Promise<string> {
+  const text = await response.text().catch(() => "");
+  try {
+    const payload: unknown = JSON.parse(text);
+    if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
+      const error = (payload as Record<string, unknown>).error;
+      if (typeof error === "object" && error !== null && !Array.isArray(error)) {
+        const message = (error as Record<string, unknown>).message;
+        if (typeof message === "string" && message.trim()) return message;
+      }
+    }
+  } catch {
+    // 非 JSON 错误直接回退到原始文本。
+  }
+  return text.trim() || fallback;
+}
