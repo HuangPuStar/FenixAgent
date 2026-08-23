@@ -113,5 +113,3 @@ describe("CCB relay handle 生命周期补充", () => {
     expect(socket.sent.some((data) => data === '{"type":"ping"}')).toBeTrue();
   });
 });
-
-export {};

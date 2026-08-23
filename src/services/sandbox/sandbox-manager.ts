@@ -68,13 +68,6 @@ type SandboxAdminResourceOverrides = {
   gpuCount?: number | null;
 };
 
-type SandboxAdminResourceOverrides = {
-  cpu?: number | null;
-  memoryMb?: number | null;
-  diskGb?: number | null;
-  gpuCount?: number | null;
-};
-
 export type SandboxManagerDependencies = {
   pools?: SandboxPoolRepository;
   instances?: SandboxInstanceRepository;

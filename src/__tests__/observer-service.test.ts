@@ -428,7 +428,7 @@ describe("observer-service", () => {
     expect(view.names.organizationId["org-1"]).toBe("Acme 组织");
     expect(view.names.userId["user-1"]).toBe("张三");
     expect(view.names.agentConfigId["acfg-1"]).toBe("客服助手");
-    expect(view.names.machineId["mach_1"]).toBe("边缘节点-01");
+    expect(view.names.machineId.mach_1).toBe("边缘节点-01");
     // instance 名由 instance registry 回查 environmentId → environment 名 + 序号派生
     expect(view.names.instanceId["inst-1"]).toBe("生产环境 #2");
   });

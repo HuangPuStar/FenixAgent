@@ -16,7 +16,9 @@ export function resetAllStubs() {
 }
 
 /** 以运行时 JSON 值读取路由响应，避免测试被路由声明中的窄响应类型限制。 */
-export async function readJson(response: Response): Promise<any> {
+type ResponseJson = ReturnType<typeof JSON.parse>;
+
+export async function readJson(response: Response): Promise<ResponseJson> {
   return response.json();
 }
 

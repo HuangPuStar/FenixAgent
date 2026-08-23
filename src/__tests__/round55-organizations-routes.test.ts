@@ -25,10 +25,6 @@ function request(path: string, init?: RequestInit) {
   return organizationsRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-async function responseJson(response: Response): Promise<unknown> {
-  return response.json();
-}
-
 function json(path: string, method: string, body: Record<string, unknown>) {
   return request(path, {
     method,
