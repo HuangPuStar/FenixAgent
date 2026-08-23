@@ -21,7 +21,7 @@ export class SandboxClusterUnavailableError extends Error {
 
 function extractClusterErrorMessage(text: string): string | undefined {
   const trimmed = text.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) return;
   try {
     const payload: unknown = JSON.parse(trimmed);
     if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return trimmed;
@@ -35,7 +35,7 @@ function extractClusterErrorMessage(text: string): string | undefined {
   } catch {
     return trimmed;
   }
-  return undefined;
+  return;
 }
 
 /** 为主服务管理 API 提供带鉴权的 Cluster JSON 和流式请求。 */

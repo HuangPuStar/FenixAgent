@@ -355,7 +355,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
     setConfig({ ragflowRequestTimeoutMs: 1 });
     installFetch(
       mock(
-        (input: string | URL | Request, init?: RequestInit) =>
+        (_input: string | URL | Request, init?: RequestInit) =>
           new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
           }),

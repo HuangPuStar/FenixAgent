@@ -177,7 +177,7 @@ describe("AgentFormDialog 转换不可变性", () => {
     ["模型多个项目", [model({ id: "one" }), model({ id: "two", displayName: "第二个" })]],
     ["模型重复展示名", [model({ id: "one" }), model({ id: "two" })]],
     ["模型特殊字符", [model({ id: "id/1", providerDisplayName: "P:1", displayName: "N?1" })]],
-  ])("%s 的输入数据保持不变", (caseName, input) => {
+  ])("%s 的输入数据保持不变", (_caseName, input) => {
     const snapshot = structuredClone(input);
     if (isModelEntries(input)) {
       mapModelOptions(input);
