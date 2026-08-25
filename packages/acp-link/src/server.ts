@@ -2,9 +2,10 @@ import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { createCcbHandler } from "@fenix/ccb";
+import { createCcbCompatibleHandler } from "@fenix/ccb";
 import { createClaudeCodeHandler } from "@fenix/claude-code";
 import { createOpencodeHandler } from "@fenix/opencode";
+import { createPeriHandler } from "@fenix/peri";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
@@ -79,7 +80,7 @@ export interface ServerConfig {
   tenantId?: string;
   userId?: string;
   labels?: string[];
-  /** Agent 类型：opencode（默认）、ccb、claude-code */
+  /** Agent 类型：opencode（默认）、ccb、peri、claude-code */
   agentType?: AgentType;
   /** 支持的引擎类型列表，注册时上报给 RCS */
   supportedEngineTypes?: { type: string; cliPath?: string }[];
@@ -181,6 +182,8 @@ export function buildRegisterMessage(config: ServerConfig): object {
     labels: config.labels ?? [],
     heartbeat_interval_ms: 30000,
     supported_engine_types: config.supportedEngineTypes ?? [
+      { type: "peri" },
+      { type: "ccb" },
       { type: "opencode" },
       ...(process.env.CLAUDE_CODE_CLI_PATH ? [{ type: "claude-code", cliPath: process.env.CLAUDE_CODE_CLI_PATH }] : []),
     ],
@@ -210,10 +213,15 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
   const handlers: Record<string, EngineHandler> = {
     opencode: createOpencodeHandler(config.command, config.args),
-    ccb: createCcbHandler(),
+    ccb: createCcbCompatibleHandler({
+      command: process.env.RCS_CCB_COMMAND ?? "ccb",
+      args: (process.env.RCS_CCB_ARGS ?? "--acp").split(/\s+/),
+      logLabel: "ccb",
+    }),
+    peri: createPeriHandler({ command: config.command, args: config.args }),
     "claude-code": createClaudeCodeHandler(),
   };
-  const instanceMgr = new InstanceManager(handlers, config.cwd || process.cwd(), config.agentType ?? "opencode");
+  const instanceMgr = new InstanceManager(handlers, config.cwd || process.cwd(), config.agentType ?? "peri");
 
   // 从磁盘加载 workspace 映射（acp-link 重启后恢复）
   initRegistry(cwd).catch((err) => {
@@ -1083,6 +1091,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
         `elicitationForm=true`,
         `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
+        `periAgentEventDone=${periMeta["peri.agentEventDone"] === true}`,
         `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
       );
 

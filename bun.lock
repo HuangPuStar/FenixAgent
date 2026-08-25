@@ -127,6 +127,7 @@
         "@fenix/ccb": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/opencode": "workspace:*",
+        "@fenix/peri": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "@types/bun": "^1.3.12",
         "@types/ws": "^8.18.1",
@@ -221,6 +222,15 @@
       "version": "0.1.0",
       "dependencies": {
         "@fenix/core": "workspace:*",
+        "@fenix/plugin-sdk": "workspace:*",
+        "acp-link": "workspace:*",
+      },
+    },
+    "packages/plugin-peri": {
+      "name": "@fenix/peri",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/ccb": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "acp-link": "workspace:*",
       },
@@ -596,6 +606,8 @@
     "@fenix/opensandbox-cluster": ["@fenix/opensandbox-cluster@workspace:packages/opensandbox-cluster"],
 
     "@fenix/orchestration": ["@fenix/orchestration@workspace:packages/orchestration"],
+
+    "@fenix/peri": ["@fenix/peri@workspace:packages/plugin-peri"],
 
     "@fenix/plugin-sdk": ["@fenix/plugin-sdk@workspace:packages/plugin-sdk"],
 

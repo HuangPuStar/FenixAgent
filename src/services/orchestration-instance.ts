@@ -107,7 +107,7 @@ export async function spawnInstanceViaCore(
       // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定
       await facade.launchInstance({
         instanceId,
-        engineType: config.defaultEngineType ?? "opencode",
+        engineType: config.defaultEngineType ?? "peri",
         nodeId,
         launchSpec: agentLaunchSpec,
       });

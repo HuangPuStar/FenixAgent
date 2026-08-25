@@ -14,10 +14,10 @@
  *   RCS_USER_ID         用户 ID (可选)
  *   RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)
  *   RCS_MACHINE_NAME    机器显示名称 (可选，不传则使用 hostname)
- *   AGENT_TYPE          Agent 类型: opencode (默认)、ccb、claude-code
+ *   AGENT_TYPE          Agent 类型: peri（默认）、opencode、ccb、claude-code
  *                       必须与实际启动的 agent 命令匹配，否则 RCS 无法管理生命周期
  *   SUPPORTED_ENGINE_TYPES  该 machine 支持的引擎列表，JSON 格式
- *                            默认: '[{"type":"opencode"},{"type":"ccb"},{"type":"claude-code"}]'
+ *                            默认: '[{"type":"peri"},{"type":"opencode"},{"type":"ccb"},{"type":"claude-code"}]'
  *
  * 工作区路径: workspace 根目录为启动目录 (cwd)，实例路径自动按
  *   {cwd}/{organizationId}/{userId}/{environmentId} 计算。
@@ -33,10 +33,10 @@ const USER_ID = process.env.RCS_USER_ID || "";
 const LABELS = process.env.RCS_LABELS || "remote-runtime";
 const MACHINE_NAME = process.env.RCS_MACHINE_NAME || "";
 const MACHINE_ID = process.env.RCS_MACHINE_ID;
-const AGENT_TYPE = (process.env.AGENT_TYPE || "opencode") as "opencode" | "ccb" | "claude-code";
+const AGENT_TYPE = (process.env.AGENT_TYPE || "peri") as "peri" | "opencode" | "ccb" | "claude-code";
 const SUPPORTED_ENGINE_TYPES = process.env.SUPPORTED_ENGINE_TYPES
   ? (JSON.parse(process.env.SUPPORTED_ENGINE_TYPES) as { type: string; cliPath?: string }[])
-  : [{ type: "opencode" }, { type: "ccb" }, { type: "claude-code" }];
+  : [{ type: "peri" }, { type: "opencode" }, { type: "ccb" }, { type: "claude-code" }];
 // ──────────
 
 const args = process.argv.slice(2);
@@ -47,7 +47,7 @@ if (args.length === 0) {
   console.log("用法: acp-runtime <agent-command> [agent-args...]");
   console.log("");
   console.log("示例:");
-  console.log("  RCS_URL=ws://localhost:3000 RCS_SECRET=xxx acp-runtime opencode acp");
+  console.log("  RCS_URL=ws://localhost:3000 RCS_SECRET=xxx acp-runtime peri acp");
   console.log("  AGENT_TYPE=ccb RCS_URL=wss://rcs.example.com RCS_SECRET=xxx \\");
   console.log("    acp-runtime npx @anthropic-ai/claude-code --acp");
   console.log("");
@@ -61,9 +61,9 @@ if (args.length === 0) {
   console.log("  RCS_USER_ID         用户 ID (可选)");
   console.log("  RCS_LABELS          节点标签，逗号分隔 (默认 remote-runtime)");
   console.log("  RCS_MACHINE_NAME    机器显示名称 (默认 hostname)");
-  console.log("  AGENT_TYPE          Agent 类型: opencode (默认)、ccb、claude-code");
+  console.log("  AGENT_TYPE          Agent 类型: peri（默认）、opencode、ccb、claude-code");
   console.log("                     必须与实际 agent 命令匹配，否则 RCS 无法管理生命周期");
-  console.log("  SUPPORTED_ENGINE_TYPES  支持的引擎列表 JSON，默认全部三种");
+  console.log("  SUPPORTED_ENGINE_TYPES  支持的引擎列表 JSON，默认全部四种");
   process.exit(1);
 }
 

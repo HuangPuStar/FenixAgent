@@ -1,5 +1,6 @@
-export { createCcbHandler } from "./ccb-handler.js";
-export { createEnginePlugin } from "./plugin";
+export type { CcbCompatibleHandlerOptions } from "./ccb-handler.js";
+export { createCcbCompatibleHandler } from "./ccb-handler.js";
+export { createCcbCompatibleRuntime, createEnginePlugin } from "./plugin";
 export type { CcbRuntime, CcbRuntimeDependencies } from "./runtime/ccb-runtime";
 export { createCcbRuntime } from "./runtime/ccb-runtime";
 export type { PreparedWorkspacePaths } from "./runtime/environment-preparer";

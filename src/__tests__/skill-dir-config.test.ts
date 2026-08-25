@@ -35,7 +35,7 @@ function makeEnv(skillDir: string): Env {
     RCS_FILE_WS_IDENTITY_STRICT: false,
     RCS_FILE_EVENTS_MAX_CLIENTS: 200,
     RCS_SANDBOX_ENABLED: false,
-    RCS_DEFAULT_SANDBOX_AGENT_TYPE: "opencode",
+    RCS_DEFAULT_SANDBOX_AGENT_TYPE: "peri",
     RCS_USER_AGENT_MAX_CONCURRENCY: 10,
     RAGFLOW_API_URL: "http://localhost:9380",
     RAGFLOW_API_KEY: "",

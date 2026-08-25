@@ -6,8 +6,8 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
-// 三种引擎类型
-export type AgentType = "opencode" | "ccb" | "claude-code";
+// 支持的引擎类型。Peri 复用 CCB 的 ACP 生命周期实现，但保留独立类型以便配置与调度。
+export type AgentType = "opencode" | "ccb" | "peri" | "claude-code";
 
 // ── EngineHandler 接口 ────────────────────────────────────────
 
