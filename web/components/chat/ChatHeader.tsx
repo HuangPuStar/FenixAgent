@@ -19,6 +19,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { canDeleteSession } from "./session-actions";
 import { groupByRecency } from "./session-grouping";
 
 interface ChatHeaderProps {
@@ -190,13 +192,14 @@ export function ChatHeader({
   // 并触发 session/list 刷新，列表由聚合层投影回前端。
   const handleDelete = useCallback(
     async (sessionId: string) => {
+      if (!canDeleteSession(sessionId, activeSessionId)) return;
       const target = sessions.find((s) => s.sessionId === sessionId);
       setDeleteTarget({
         sessionId,
         title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
       });
     },
-    [sessions, t],
+    [activeSessionId, sessions, t],
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -388,18 +391,28 @@ export function ChatHeader({
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
-                          <button
-                            type="button"
-                            className="h-6 w-6 p-0 flex items-center justify-center rounded text-text-muted hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(session.sessionId);
-                            }}
-                            aria-label={t("acpMain.delete")}
-                            title={t("acpMain.delete")}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex">
+                                <button
+                                  type="button"
+                                  disabled={isActive}
+                                  className="h-6 w-6 p-0 flex items-center justify-center rounded text-text-muted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(session.sessionId);
+                                  }}
+                                  aria-label={isActive ? t("acpMain.cannotDeleteActiveSession") : t("acpMain.delete")}
+                                  title={isActive ? t("acpMain.cannotDeleteActiveSession") : t("acpMain.delete")}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {isActive ? t("acpMain.cannotDeleteActiveSession") : t("acpMain.delete")}
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
                     );

@@ -15,6 +15,7 @@ import { stripHtmlTags } from "../src/lib/strip-html-tags";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
+import { canDeleteSession } from "./chat/session-actions";
 import { groupByRecency } from "./chat/session-grouping";
 import {
   AlertDialog,
@@ -475,13 +476,14 @@ function SidebarSessionList({
   // 删除处理：二次确认通过 AlertDialog 收集 sessionId 与展示标题；确认后删除并清理本地选中态。
   const handleDelete = useCallback(
     async (sessionId: string) => {
+      if (!canDeleteSession(sessionId, initialActiveSessionId)) return;
       const target = sessions.find((s) => s.sessionId === sessionId);
       setDeleteTarget({
         sessionId,
         title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
       });
     },
-    [sessions, t],
+    [initialActiveSessionId, sessions, t],
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -609,19 +611,26 @@ function SidebarSessionList({
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(session.sessionId);
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <span className="inline-flex">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={session.sessionId === initialActiveSessionId}
+                              className="h-6 w-6 p-0 text-text-muted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(session.sessionId);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </span>
                         </TooltipTrigger>
-                        <TooltipContent>{t("acpMain.delete")}</TooltipContent>
+                        <TooltipContent>
+                          {session.sessionId === initialActiveSessionId
+                            ? t("acpMain.cannotDeleteActiveSession")
+                            : t("acpMain.delete")}
+                        </TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
