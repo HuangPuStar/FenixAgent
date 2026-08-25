@@ -17,6 +17,7 @@ import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from ".
 import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
 import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
+import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";
 
 type WsConnectionState = ChatWsConnectionState;
 
@@ -167,8 +168,11 @@ export function ChatPanel({
       if (!ws?.isConnected()) return false;
       setErrorCode(null);
       const key = commandKey(data);
-      const commandId = commandIdCacheRef.current.get(key) ?? randomUUID();
-      commandIdCacheRef.current.set(key, commandId);
+      // 后台刷新显式携带独立 commandId，避免连续 mutation 的 list_sessions
+      // 在前一个 Ack 到达前复用幂等键而被服务端去重。
+      const explicitCommandId = typeof data.commandId === "string" ? data.commandId : null;
+      const commandId = explicitCommandId ?? commandIdCacheRef.current.get(key) ?? randomUUID();
+      if (!explicitCommandId) commandIdCacheRef.current.set(key, commandId);
       ws.send({ ...data, commandId });
       return true;
     },
@@ -370,10 +374,20 @@ export function ChatPanel({
         sendAction({ action: "resume_session", sessionId: sid });
       },
       onRenameSession: (sid: string, title: string) => {
-        sendAction({ action: "rename_session", sessionId: sid, title });
+        sendSessionMutationWithRefresh(
+          { action: "rename_session", sessionId: sid, title },
+          sendAction,
+          sendViaWs,
+          randomUUID(),
+        );
       },
       onDeleteSession: (sid: string) => {
-        sendAction({ action: "delete_session", sessionId: sid });
+        sendSessionMutationWithRefresh(
+          { action: "delete_session", sessionId: sid },
+          sendAction,
+          sendViaWs,
+          randomUUID(),
+        );
       },
       onRespondPermission: (requestId: string, optionId: string | null) => {
         sendAction({ action: "respond_permission", requestId, optionId });
@@ -388,7 +402,7 @@ export function ChatPanel({
         sendAction({ action: "set_session_mode", modeId });
       },
     }),
-    [sendAction, sessionState.acpSessionId],
+    [sendAction, sendViaWs, sessionState.acpSessionId],
   );
 
   // 未选中实例 → 欢迎空状态
