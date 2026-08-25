@@ -7,7 +7,7 @@ import type {
   SessionMode,
   SessionStateSnapshot,
 } from "@fenix/chat-channel";
-import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
+import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -127,7 +127,6 @@ export function ACPMain({
       return true;
     }
   });
-  const [forcePopoverOpen, setForcePopoverOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
@@ -206,19 +205,6 @@ export function ACPMain({
     },
     [supportsLoadSession, supportsResumeSession, onLoadSession, onResumeSession, t],
   );
-
-  // 关闭侧边栏并打开弹窗
-  const handleCloseSidebarAndOpenPopover = useCallback(() => {
-    setSidebarOpen(false);
-    setForcePopoverOpen(true);
-  }, []);
-
-  // 重置弹窗强制打开状态
-  const handlePopoverOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setForcePopoverOpen(false);
-    }
-  }, []);
 
   // Bootstrap: 通过 YJS chatState 获取会话列表，自动进入最近会话。
   // 使用防抖避免增量更新分片到达时的过早触发（如 list_sessions 逐条 broadcast）。
@@ -321,7 +307,7 @@ export function ACPMain({
     // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
     // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
     <div className="acp-main-root flex h-full w-full flex-col gap-3 p-3">
-      {/* 顶部 ChatHeader — 跨整个宽度，承担会话面板开关 + 当前会话标题 + popover 历史会话列表 */}
+      {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
       {/* readonly 时整体隐藏 */}
       {!readonly && (
         <ChatHeader
@@ -330,11 +316,10 @@ export function ACPMain({
           onNewSession={() => chatRef.current?.newSession()}
           onToggleSidebar={!hideSidebar ? () => setSidebarOpen((v) => !v) : undefined}
           sidebarOpen={sidebarOpen}
-          forceOpen={forcePopoverOpen}
-          onPopoverChange={handlePopoverOpenChange}
           sessions={sessions}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          showSessionList={false}
         />
       )}
 
@@ -346,7 +331,7 @@ export function ACPMain({
             className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
-            {/* 头部：标题 + 新会话按钮 + 钉子按钮 */}
+            {/* 头部：标题 + 新会话按钮 */}
             <div className="flex items-center justify-between px-3 py-4">
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
                 {t("acpMain.sessions")}
@@ -360,15 +345,6 @@ export function ACPMain({
                   title={t("acpMain.newSession")}
                 >
                   <Plus className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCloseSidebarAndOpenPopover}
-                  className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2/60"
-                  title={t("acpMain.closeToPopover")}
-                >
-                  <Pin className="h-4 w-4" />
                 </Button>
               </div>
             </div>
