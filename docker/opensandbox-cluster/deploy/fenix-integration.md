@@ -350,6 +350,10 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## 6. 日常运维操作
 
+完成 Fenix 部署并确认 Fenix 已经可以访问 Cluster 服务后，资源池、Cluster Server 以及沙盒实例的日常维护，既可以继续使用 `/app/fenix-sandbox-ops.sh`，也可以直接使用 Admin 管理端的“沙盒管理”功能。Admin 页面适合部署完成后的查看、配置更新、健康检查和实例维护；脚本适合自动化操作或无法通过 Admin 页面访问 Fenix 的场景。
+
+首次部署时仍需先使用 `fenix-sandbox-ops.sh` 完成 Cluster Server 注册等初始化操作，因为此时 Fenix 尚未启动，或尚未具备访问沙盒服务的条件。初始化完成后，再通过 Admin 页面进行后续维护即可。
+
 在 Fenix 镜像容器中运行 `/app/fenix-sandbox-ops.sh` 时，Cluster 和 Fenix 相关配置会直接复用容器已有的环境变量，无需额外设置。只有在宿主机或其他独立环境运行脚本时，才需要通过项目根目录 `.env` 或 shell 环境变量提供这些配置；shell 环境变量优先于 `.env`：
 
 ```bash
