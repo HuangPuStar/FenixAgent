@@ -265,6 +265,7 @@
     "earlier": "Earlier",
     "rename": "Rename",
     "delete": "Delete",
+    "cannotDeleteActiveSession": "The active session cannot be deleted",
     "deleteSessionTitle": "Delete Session",
     "deleteConfirm": "Delete session \"{{title}}\"? This action cannot be undone.",
     "cancel": "Cancel",
