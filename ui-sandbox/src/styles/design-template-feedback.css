@@ -1,0 +1,171 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: overlays and page states are isolated preview modules. */
+.template-page-states > .segmented {
+  margin-bottom: 14px;
+}
+
+.template-page-state {
+  display: grid;
+  min-height: 190px;
+  place-items: center;
+  border-radius: 9px;
+  background: #f8f9fc;
+}
+
+.template-page-state > div:not(.template-skeletons) {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.template-page-state > div > svg {
+  width: 22px;
+  color: var(--faint);
+}
+
+.template-page-state > div > strong {
+  font-size: 12px;
+}
+
+.template-page-state > div > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.template-page-state .button {
+  margin-top: 5px;
+}
+
+.template-skeletons {
+  display: grid;
+  width: min(600px, 78%);
+  gap: 9px;
+}
+
+.template-skeletons span {
+  height: 35px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #edf0f5 25%, #f7f8fa 48%, #edf0f5 72%);
+  background-size: 220% 100%;
+  animation: template-shimmer 1.4s ease-in-out infinite;
+}
+
+.template-overlay-actions {
+  display: flex;
+  min-height: 56px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-drawer-backdrop {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  background: rgb(18 31 53 / 24%);
+}
+
+.template-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  width: min(420px, 92vw);
+  height: 100%;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: -18px 0 50px rgb(24 45 82 / 16%);
+}
+
+.template-drawer > header,
+.template-drawer > footer {
+  display: flex;
+  align-items: center;
+}
+
+.template-drawer > header {
+  min-height: 66px;
+  justify-content: space-between;
+  padding: 0 20px;
+  box-shadow: inset 0 -1px var(--line);
+}
+
+.template-drawer > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.template-drawer > header strong {
+  font-size: 14px;
+}
+
+.template-drawer > header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.template-drawer > header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.template-drawer > header svg {
+  width: 16px;
+}
+
+.template-drawer__body {
+  display: grid;
+  align-content: start;
+  flex: 1;
+  gap: 16px;
+  padding: 22px 20px;
+}
+
+.template-drawer__body label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 10px;
+}
+
+.template-drawer__body input {
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 11px;
+  background: #f5f7fa;
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 11px;
+}
+
+.template-drawer > footer {
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  box-shadow: inset 0 1px var(--line);
+}
+
+.template-confirm-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@keyframes template-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes template-shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
