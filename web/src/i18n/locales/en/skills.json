@@ -1,8 +1,30 @@
 {
-  "title": "Skill Management",
-  "subtitle": "Manage global skill templates available to AI Agents",
-  "search": "Search skills...",
-  "empty": "No skills yet",
+  "title": "Skill Library",
+  "subtitle": "Manage reusable Agent workflows and control how skills are shared across your organization.",
+  "search": "Search skills by name or purpose",
+  "empty": "Your skill library is empty",
+  "emptyHint": "Create or upload a skill to give Agents a reusable way of working.",
+  "emptySearch": "No matching skills",
+  "emptySearchHint": "Try another search term or ownership filter.",
+  "toolbar": {
+    "label": "Search and ownership filters"
+  },
+  "scope": {
+    "label": "Skill ownership",
+    "all": "All",
+    "organization": "This organization",
+    "shared": "Shared with me"
+  },
+  "directory": {
+    "title": "Skill directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No purpose documented",
+    "private": "Private"
+  },
+  "loadState": {
+    "title": "Could not load skills",
+    "retry": "Try again"
+  },
   "column": {
     "name": "Skill Name",
     "description": "Description"
@@ -17,7 +39,8 @@
     "conversationCreate": "Create via Chat",
     "uploadSkill": "Upload Skill",
     "batchDelete": "Batch Delete",
-    "reselect": "Reselect"
+    "reselect": "Reselect",
+    "more": "More actions"
   },
   "dialog": {
     "editTitle": "Edit Skill",
