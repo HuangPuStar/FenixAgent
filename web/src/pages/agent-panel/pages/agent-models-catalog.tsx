@@ -1,0 +1,402 @@
+import {
+  BrainCircuit,
+  CheckCircle2,
+  ChevronRight,
+  CircleOff,
+  Eye,
+  FileSearch,
+  KeyRound,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
+import { ModelIcon } from "@/components/model-icon/ModelIcon";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import type { ProviderInfo, ProviderModel } from "../../../types/config";
+import { AgentPageHeader } from "../shared/AgentPageHeader";
+import type { ModelTestState } from "./agent-models-types";
+import {
+  canWriteProvider,
+  getProviderColor,
+  getProviderKey,
+  getProviderScope,
+  type ProviderScope,
+  supportsThinking,
+} from "./agent-models-utils";
+
+const SCOPES: ProviderScope[] = ["all", "organization", "shared"];
+
+interface ModelsCatalogProps {
+  providers: ProviderInfo[];
+  allProviders: ProviderInfo[];
+  modelsByProvider: Record<string, ProviderModel[]>;
+  selectedProvider: ProviderInfo | null;
+  query: string;
+  scope: ProviderScope;
+  detailFailures: string[];
+  testing: boolean;
+  discovering: boolean;
+  toggling: boolean;
+  modelTest: ModelTestState | null;
+  onQueryChange: (value: string) => void;
+  onScopeChange: (value: ProviderScope) => void;
+  onSelectProvider: (provider: ProviderInfo) => void;
+  onCreateProvider: () => void;
+  onEditProvider: (provider: ProviderInfo) => void;
+  onViewProvider: (provider: ProviderInfo) => void;
+  onDeleteProvider: (provider: ProviderInfo) => void;
+  onTogglePublic: (provider: ProviderInfo, value: boolean) => void;
+  onDiscoverModels: (provider: ProviderInfo) => void;
+  onCreateModel: (provider: ProviderInfo) => void;
+  onEditModel: (provider: ProviderInfo, model: ProviderModel) => void;
+  onViewModel: (provider: ProviderInfo, model: ProviderModel) => void;
+  onDeleteModel: (provider: ProviderInfo, model: ProviderModel) => void;
+  onTestModel: (provider: ProviderInfo, model: ProviderModel) => void;
+  onRetry: () => void;
+}
+
+export function AgentModelsCatalog(props: ModelsCatalogProps) {
+  const { t } = useTranslation("models");
+  const counts = SCOPES.reduce<Record<ProviderScope, number>>(
+    (result, scope) => {
+      result[scope] =
+        scope === "all"
+          ? props.allProviders.length
+          : props.allProviders.filter((item) => getProviderScope(item) === scope).length;
+      return result;
+    },
+    { all: 0, organization: 0, shared: 0 },
+  );
+  return (
+    <div className="agent-models-page">
+      <AgentPageHeader
+        title={t("title")}
+        subtitle={t("subtitle")}
+        actions={
+          <Button onClick={props.onCreateProvider}>
+            <Plus />
+            {t("createButton")}
+          </Button>
+        }
+      />
+      <div className="models-search-toolbar">
+        <label className="models-search-field">
+          <Search />
+          <span className="sr-only">{t("searchLabel")}</span>
+          <input
+            value={props.query}
+            onChange={(event) => props.onQueryChange(event.target.value)}
+            placeholder={t("searchPlaceholder")}
+          />
+        </label>
+        <div className="models-scope-filter" role="group" aria-label={t("scope.label")}>
+          {SCOPES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={props.scope === item}
+              onClick={() => props.onScopeChange(item)}
+            >
+              {t(`scope.${item}`)} <small>{counts[item]}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+      {props.detailFailures.length > 0 && (
+        <div className="models-partial-error" role="alert">
+          <span>{t("partialLoadError", { count: props.detailFailures.length })}</span>
+          <Button variant="ghost" size="sm" onClick={props.onRetry}>
+            <RefreshCw />
+            {t("actions.retry")}
+          </Button>
+        </div>
+      )}
+      <section className="models-workspace">
+        <ProviderIndex
+          providers={props.providers}
+          selected={props.selectedProvider}
+          onSelect={props.onSelectProvider}
+        />
+        {props.selectedProvider ? (
+          <ProviderDetail {...props} provider={props.selectedProvider} />
+        ) : (
+          <CatalogEmpty query={props.query} />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ProviderIndex({
+  providers,
+  selected,
+  onSelect,
+}: {
+  providers: ProviderInfo[];
+  selected: ProviderInfo | null;
+  onSelect: (provider: ProviderInfo) => void;
+}) {
+  const { t } = useTranslation("models");
+  return (
+    <aside className="models-provider-index">
+      <header>
+        <div>
+          <strong>{t("providerIndex.title")}</strong>
+          <span>{providers.length}</span>
+        </div>
+        <small>{t("providerIndex.description")}</small>
+      </header>
+      {providers.length ? (
+        <nav aria-label={t("providerIndex.title")}>
+          {providers.map((provider) => {
+            const key = getProviderKey(provider);
+            const active = key === (selected ? getProviderKey(selected) : null);
+            return (
+              <button
+                type="button"
+                key={key}
+                className={active ? "is-selected" : ""}
+                aria-current={active ? "page" : undefined}
+                onClick={() => onSelect(provider)}
+              >
+                <span className="models-provider-brand">
+                  <ModelIcon modelId={provider.id} size={18} />
+                </span>
+                <span className="models-provider-copy">
+                  <strong>{provider.name || provider.id}</strong>
+                  <small>
+                    {t(`protocolOptions.${provider.protocol}`)} ·{" "}
+                    {t("providerIndex.models", { count: provider.modelCount })}
+                  </small>
+                </span>
+                <span className={`models-provider-scope is-${getProviderScope(provider)}`}>
+                  {t(`scope.${getProviderScope(provider)}`)}
+                </span>
+                <ChevronRight className="models-provider-arrow" />
+              </button>
+            );
+          })}
+        </nav>
+      ) : (
+        <div className="models-provider-empty">
+          <FileSearch />
+          <span>{t("providerIndex.empty")}</span>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) {
+  const { t } = useTranslation("models");
+  const provider = props.provider;
+  const key = getProviderKey(provider);
+  const models = props.modelsByProvider[key] ?? [];
+  const writable = canWriteProvider(provider);
+  const color = getProviderColor(provider.id);
+  return (
+    <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
+      <header className="models-provider-detail__header">
+        <div className="models-provider-identity">
+          <span className="models-provider-detail-brand">
+            <ModelIcon modelId={provider.id} size={25} />
+          </span>
+          <div>
+            <div className="models-provider-meta">
+              <span>{t(`protocolOptions.${provider.protocol}`)}</span>
+              <code>{provider.id}</code>
+            </div>
+            <h2>{provider.name || provider.id}</h2>
+            <small>
+              {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
+              {t("providerIndex.models", { count: models.length })}
+            </small>
+          </div>
+        </div>
+        <div className="models-provider-controls">
+          {writable ? (
+            <>
+              <button type="button" onClick={() => props.onEditProvider(provider)}>
+                <Pencil />
+                {t("actions.edit")}
+              </button>
+              <button type="button" className="is-danger" onClick={() => props.onDeleteProvider(provider)}>
+                <Trash2 />
+                {t("actions.delete")}
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => props.onViewProvider(provider)}>
+              <Eye />
+              {t("actions.view")}
+            </button>
+          )}
+        </div>
+      </header>
+      <div className="models-provider-connection">
+        <div>
+          <Server />
+          <small>{t("connection.endpoint")}</small>
+          <code title={provider.baseURL ?? undefined}>{provider.baseURL ?? t("connection.defaultEndpoint")}</code>
+        </div>
+        <div>
+          <KeyRound />
+          <small>{t("connection.credential")}</small>
+          <code>{provider.keyHint ?? t("connection.managedCredential")}</code>
+        </div>
+        <label className="models-provider-visibility">
+          <span>
+            <strong>{t("connection.shared")}</strong>
+            <small>{t("connection.sharedDescription")}</small>
+          </span>
+          <Switch
+            checked={Boolean(provider.resourceAccess?.publicReadable)}
+            disabled={!writable || provider.resourceAccess?.manageable !== true || props.toggling}
+            onCheckedChange={(value) => props.onTogglePublic(provider, value)}
+          />
+        </label>
+      </div>
+      <section className="models-model-catalog">
+        <header>
+          <div>
+            <h3>{t("modelsSection.title")}</h3>
+            <small>{t("modelsSection.description", { count: models.length })}</small>
+          </div>
+          {writable && (
+            <div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={props.discovering}
+                onClick={() => props.onDiscoverModels(provider)}
+              >
+                {props.discovering ? <LoaderCircle className="animate-spin" /> : <Search />}
+                {t("form.fetchModels")}
+              </Button>
+              <Button size="sm" onClick={() => props.onCreateModel(provider)}>
+                <Plus />
+                {t("modelSubrow.addButtonLabel")}
+              </Button>
+            </div>
+          )}
+        </header>
+        {models.length ? (
+          <div className="models-model-list">
+            {models.map((model) => (
+              <ModelRow
+                key={model.id}
+                provider={provider}
+                model={model}
+                test={props.modelTest?.key === `${key}:${model.id}` ? props.modelTest : null}
+                testing={props.testing}
+                writable={writable}
+                onTest={props.onTestModel}
+                onEdit={props.onEditModel}
+                onView={props.onViewModel}
+                onDelete={props.onDeleteModel}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="models-model-empty">
+            <CircleOff />
+            <strong>{t("modelSubrow.emptyTitle")}</strong>
+            <span>{writable ? t("modelSubrow.emptyMessage") : t("modelSubrow.emptyReadOnly")}</span>
+          </div>
+        )}
+      </section>
+    </article>
+  );
+}
+
+function ModelRow({
+  provider,
+  model,
+  test,
+  testing,
+  writable,
+  onTest,
+  onEdit,
+  onView,
+  onDelete,
+}: {
+  provider: ProviderInfo;
+  model: ProviderModel;
+  test: ModelTestState | null;
+  testing: boolean;
+  writable: boolean;
+  onTest: (provider: ProviderInfo, model: ProviderModel) => void;
+  onEdit: (provider: ProviderInfo, model: ProviderModel) => void;
+  onView: (provider: ProviderInfo, model: ProviderModel) => void;
+  onDelete: (provider: ProviderInfo, model: ProviderModel) => void;
+}) {
+  const { t } = useTranslation("models");
+  const thinking = supportsThinking(model);
+  return (
+    <div className="models-model-row">
+      <div className="models-model-summary">
+        <span className="models-model-icon">
+          <ModelIcon modelId={model.id} size={17} />
+        </span>
+        <span className="models-model-identity">
+          <strong>{model.name || model.id}</strong>
+          <code>{model.id}</code>
+        </span>
+      </div>
+      <div className={`models-model-thinking ${thinking ? "supports-thinking" : "no-thinking"}`}>
+        {thinking ? <BrainCircuit /> : <CircleOff />}
+        <span>{thinking ? t("modelTraits.thinking") : t("modelTraits.noThinking")}</span>
+      </div>
+      <div className="models-model-actions">
+        {test && (
+          <span className={`models-model-test is-${test.status}`} title={test.detail}>
+            {test.status === "running" ? (
+              <LoaderCircle className="animate-spin" />
+            ) : test.status === "success" ? (
+              <CheckCircle2 />
+            ) : (
+              <XCircle />
+            )}
+            {t(`testStatus.${test.status}`)}
+          </span>
+        )}
+        {writable ? (
+          <>
+            <button type="button" disabled={testing} onClick={() => onTest(provider, model)}>
+              {t("actions.test")}
+            </button>
+            <button type="button" onClick={() => onEdit(provider, model)}>
+              {t("actions.edit")}
+            </button>
+            <button type="button" className="is-danger" onClick={() => onDelete(provider, model)}>
+              {t("actions.delete")}
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => onView(provider, model)}>
+            {t("actions.view")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CatalogEmpty({ query }: { query: string }) {
+  const { t } = useTranslation("models");
+  return (
+    <div className="models-catalog-empty">
+      <FileSearch />
+      <strong>{query ? t("empty.filteredTitle") : t("empty.title")}</strong>
+      <span>{query ? t("empty.filteredDescription") : t("empty.description")}</span>
+    </div>
+  );
+}

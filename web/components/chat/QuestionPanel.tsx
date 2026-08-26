@@ -15,7 +15,7 @@
 //   或 60s 过期 expired）
 
 import type { QuestionProjection } from "@fenix/chat-channel";
-import { Check, HelpCircle } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../src/lib/utils";
@@ -30,17 +30,11 @@ interface QuestionPanelProps {
 }
 
 export function QuestionPanel({ questions, onRespond, className }: QuestionPanelProps) {
-  const { t } = useTranslation("components");
   if (questions.length === 0) return null;
 
   return (
-    <div className={cn("w-full max-w-3xl mx-auto px-4", className)}>
+    <div className={cn("chat-interaction-stack", className)}>
       <div className="space-y-2">
-        <div className="flex items-center gap-2 px-1">
-          <HelpCircle className="h-4 w-4 text-warning-text" />
-          <span className="text-sm font-medium text-warning-text">{t("askUser.title")}</span>
-          <span className="text-xs text-text-muted">{t("askUser.description")}</span>
-        </div>
         {questions.map((question) => (
           <QuestionCard key={question.questionId} question={question} onRespond={onRespond} />
         ))}
@@ -64,56 +58,90 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
   const { t } = useTranslation("components");
   /** 每个问题项的选中 label（key = 问题项 index；缺省 = 未选择，提交按钮禁用） */
   const [selected, setSelected] = useState<Record<number, string>>({});
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
   const allAnswered = question.questions.every((_, i) => selected[i] !== undefined);
+  const item = question.questions[questionIndex];
+
+  if (!item) return null;
 
   return (
-    <div className="rounded-xl border border-warning-border/30 bg-warning-bg/50 p-4">
-      {question.questions.map((item, index) => (
-        // QuestionItemProjection 无 id 字段，question 文本是同一问题内唯一标识
-        // （aggregator extractQuestionItems 已过滤空 question），用作稳定 key
-        <div key={item.question} className="mb-3 last:mb-0">
-          {item.header && <div className="text-xs font-medium text-warning-text/80 mb-1">{item.header}</div>}
-          <div className="text-sm font-medium text-warning-text mb-2">{item.question}</div>
-          <div className="flex flex-wrap gap-2">
-            {item.options.map((option) => {
-              const isSelected = selected[index] === option.label;
+    <section className="chat-interaction-region chat-question-region" aria-label={t("askUser.title")}>
+      <header>
+        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>
+          <strong>{t("askUser.title")}</strong>
+          <small>
+            {questionIndex + 1}/{question.questions.length}
+          </small>
+          <ChevronDown className={collapsed ? "is-collapsed" : undefined} />
+        </button>
+      </header>
+      {!collapsed && (
+        <div className="chat-question-body">
+          <div className="chat-question-copy">
+            {item.header && <span>{item.header}</span>}
+            <strong>{item.question}</strong>
+          </div>
+          <div className="chat-question-options">
+            {item.options.map((option, optionIndex) => {
+              const isSelected = selected[questionIndex] === option.label;
               return (
-                <Button
+                <button
                   key={option.label}
-                  variant={isSelected ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelected((prev) => ({ ...prev, [index]: option.label }))}
-                  className={cn(
-                    "gap-1.5",
-                    isSelected
-                      ? "bg-brand text-white hover:bg-brand-light"
-                      : "border-warning-border/30 text-warning-text hover:bg-warning-bg",
-                  )}
+                  type="button"
+                  className={isSelected ? "is-selected" : undefined}
+                  aria-pressed={isSelected}
+                  onClick={() => setSelected((previous) => ({ ...previous, [questionIndex]: option.label }))}
                 >
-                  {isSelected && <Check className="h-3.5 w-3.5" />}
-                  {option.label}
-                </Button>
+                  <span>{isSelected ? <Check /> : String.fromCharCode(65 + optionIndex)}</span>
+                  <div>
+                    <strong>{option.label}</strong>
+                    {option.description && <small>{option.description}</small>}
+                  </div>
+                </button>
               );
             })}
           </div>
+          <footer>
+            <div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={questionIndex === 0}
+                aria-label={t("askUser.previous")}
+                onClick={() => setQuestionIndex((index) => Math.max(0, index - 1))}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={questionIndex === question.questions.length - 1}
+                aria-label={t("askUser.next")}
+                onClick={() => setQuestionIndex((index) => Math.min(question.questions.length - 1, index + 1))}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!allAnswered}
+              onClick={() => {
+                if (!allAnswered) return;
+                onRespond?.(
+                  question.questionId,
+                  question.questions.map((_, index) => selected[index] as string),
+                );
+              }}
+            >
+              {t("askUser.submit")}
+            </Button>
+          </footer>
         </div>
-      ))}
-      <div className="mt-3 flex justify-end">
-        <Button
-          size="sm"
-          disabled={!allAnswered}
-          onClick={() => {
-            if (!allAnswered) return;
-            onRespond?.(
-              question.questionId,
-              question.questions.map((_, i) => selected[i] as string),
-            );
-          }}
-          className="h-8 px-4 bg-brand text-white text-xs font-medium hover:bg-brand-light gap-1.5"
-        >
-          {t("askUser.submit")}
-        </Button>
-      </div>
-    </div>
+      )}
+    </section>
   );
 }

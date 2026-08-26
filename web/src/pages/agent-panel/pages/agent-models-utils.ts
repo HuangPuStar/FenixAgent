@@ -1,5 +1,7 @@
 import type { ProviderInfo } from "../../../types/config";
 
+export type ProviderScope = "all" | "organization" | "shared";
+
 /**
  * Provider 相关的纯工具函数。
  *
@@ -25,6 +27,32 @@ export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
 
 export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
+}
+
+/**
+ * Provider 当前只具备组织级资源边界。内部资源归入本组织，外部资源只能证明为共享给我；
+ * 在后端增加明确 scope 前，不把跨组织资源猜测成平台资源，也不伪造个人范围。
+ */
+export function getProviderScope(provider: ProviderInfo): Exclude<ProviderScope, "all"> {
+  return provider.resourceAccess?.ownership === "external" ? "shared" : "organization";
+}
+
+/** 模型的思考开关来自真实 options.thinking.enabled，不从模型名称推测。 */
+export function supportsThinking(model: { options?: Record<string, unknown> }): boolean {
+  const thinking = model.options?.thinking;
+  return typeof thinking === "object" && thinking !== null && (thinking as Record<string, unknown>).enabled === true;
+}
+
+/** 数字配置转换，保留合法的 0，并拒绝 NaN、负数和空输入。 */
+export function parseOptionalNonNegativeNumber(value: string): number | undefined {
+  if (!value.trim()) return;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+/** 表单展示数字时保留 0，避免 truthy 判断把合法配置变成空值。 */
+export function formatOptionalNumber(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
 export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {

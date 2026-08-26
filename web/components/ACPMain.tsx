@@ -1,5 +1,4 @@
 import type {
-  AgentSessionInfo,
   AvailableCommand,
   ChatStateSnapshot,
   ContentBlock,
@@ -7,29 +6,15 @@ import type {
   SessionMode,
   SessionStateSnapshot,
 } from "@fenix/chat-channel";
-import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { stripHtmlTags } from "../src/lib/strip-html-tags";
-import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
-import { canDeleteSession } from "./chat/session-actions";
-import { groupByRecency } from "./chat/session-grouping";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "./ui/alert-dialog";
+import { SidebarSessionList } from "./chat/sidebar-session-list";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface ACPMainProps {
   agentId?: string;
@@ -184,7 +169,7 @@ export function ACPMain({
   // Handle session selection. 刷新后的会话恢复必须继续加载正在进行的会话；
   // 仅用户主动切换时，才需要以 loading 保护当前对话不被切走。
   const handleSelectSession = useCallback(
-    async (session: AgentSessionInfo, source: "user" | "restore" = "user") => {
+    async (session: { sessionId: string }, source: "user" | "restore" = "user") => {
       if (source === "user" && chatRef.current?.isLoading) {
         toast.warning(t("acpMain.chatBusy"));
         return;
@@ -235,7 +220,7 @@ export function ACPMain({
         const activeSession = sessions.find((s) => s.sessionId === chatState.activeSessionId);
         if (activeSession) {
           sessionEnteredRef.current = true;
-          handleSelectSession(activeSession as AgentSessionInfo, "restore");
+          handleSelectSession(activeSession, "restore");
         }
         return;
       }
@@ -250,7 +235,7 @@ export function ACPMain({
       if (latest) {
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(latest.sessionId);
-        handleSelectSession(latest as AgentSessionInfo, "restore");
+        handleSelectSession(latest, "restore");
         return;
       }
 
@@ -296,7 +281,7 @@ export function ACPMain({
     sessionEnteredRef.current = true;
     setInitialActiveSessionId(sid);
     try {
-      handleSelectSession(activeSession as AgentSessionInfo, "restore");
+      handleSelectSession(activeSession, "restore");
     } catch (err) {
       console.error("[ACPMain] Delayed session enter failed:", err);
     }
@@ -306,7 +291,7 @@ export function ACPMain({
     // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
     // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
     // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
-    <div className="acp-main-root flex h-full w-full flex-col gap-3 p-3">
+    <div className="acp-main-root flex h-full w-full flex-col">
       {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
       {/* readonly 时整体隐藏 */}
       {!readonly && (
@@ -324,15 +309,12 @@ export function ACPMain({
       )}
 
       {/* 主体：横向 sidebar + chat */}
-      <div className="flex flex-1 min-h-0 gap-3">
+      <div className="flex flex-1 min-h-0">
         {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
         {!readonly && !hideSidebar && sidebarOpen && (
-          <div
-            className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
-            style={{ boxShadow: "var(--shadow-card)" }}
-          >
+          <div className="chat-session-sidebar hidden md:flex flex-col transition-all duration-200 flex-shrink-0">
             {/* 头部：标题 + 新会话按钮 */}
-            <div className="flex items-center justify-between px-3 py-4">
+            <div className="flex items-center justify-between px-3 py-2.5">
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
                 {t("acpMain.sessions")}
               </span>
@@ -363,7 +345,7 @@ export function ACPMain({
         )}
 
         {/* 聊天区域 */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="chat-main-column flex-1 flex flex-col min-w-0">
           <ChatInterface
             ref={chatRef}
             agentId={agentId}
@@ -399,291 +381,3 @@ export function ACPMain({
     </div>
   );
 }
-
-// =============================================================================
-// 侧边栏会话列表 — Anthropic 分段式（今天/昨天/更早）
-// =============================================================================
-
-function SidebarSessionList({
-  initialActiveSessionId,
-  onSelectSession,
-  sessions = [],
-  loading = false,
-  onRenameSession,
-  onDeleteSession,
-}: {
-  initialActiveSessionId: string | null;
-  onSelectSession: (session: AgentSessionInfo) => void;
-  sessions?: readonly { sessionId: string; title?: string | null; updatedAt?: string | null }[];
-  loading?: boolean;
-  onRenameSession: (sessionId: string, title: string) => void;
-  onDeleteSession: (sessionId: string) => void;
-}) {
-  const { t } = useTranslation("components");
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
-
-  // 重命名处理
-  const handleStartRename = (session: AgentSessionInfo) => {
-    setEditingId(session.sessionId);
-    setEditTitle(session.title ?? "");
-  };
-  const handleSaveRename = useCallback(
-    async (sessionId: string) => {
-      const title = editTitle.trim();
-      if (!title) return;
-      try {
-        onRenameSession(sessionId, title);
-      } catch (err) {
-        toast.error(`重命名失败: ${(err as Error).message}`);
-      }
-      setEditingId(null);
-      setEditTitle("");
-    },
-    [editTitle, onRenameSession],
-  );
-  const handleCancelRename = () => {
-    setEditingId(null);
-    setEditTitle("");
-  };
-
-  // 删除处理：二次确认通过 AlertDialog 收集 sessionId 与展示标题；确认后删除并清理本地选中态。
-  const handleDelete = useCallback(
-    async (sessionId: string) => {
-      if (!canDeleteSession(sessionId, initialActiveSessionId)) return;
-      const target = sessions.find((s) => s.sessionId === sessionId);
-      setDeleteTarget({
-        sessionId,
-        title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
-      });
-    },
-    [initialActiveSessionId, sessions, t],
-  );
-
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    try {
-      onDeleteSession(deleteTarget.sessionId);
-      if (activeId === deleteTarget.sessionId) {
-        setActiveId(null);
-      }
-    } catch (err) {
-      toast.error(`删除失败: ${(err as Error).message}`);
-    } finally {
-      setDeleteTarget(null);
-    }
-  }, [activeId, deleteTarget, onDeleteSession]);
-
-  useEffect(() => {
-    if (initialActiveSessionId) {
-      setActiveId(initialActiveSessionId);
-    }
-  }, [initialActiveSessionId]);
-
-  const sorted = useMemo(
-    () =>
-      sessions.slice().sort((a, b) => {
-        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return dateB - dateA;
-      }),
-    [sessions],
-  );
-
-  if (loading && sessions.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="h-5 w-5 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
-    );
-  }
-
-  if (sessions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 gap-1">
-        <span className="text-xs text-text-muted font-display">{t("acpMain.noSessions")}</span>
-        <span className="text-[10px] text-text-muted">{t("acpMain.clickToCreate")}</span>
-      </div>
-    );
-  }
-
-  // 按日期分组（groupByRecency 内部已做 updatedAt 降序排序，sorted 变量保留供后续扩展使用）
-  const groups = groupByRecency(sorted, {
-    today: t("acpMain.today"),
-    yesterday: t("acpMain.yesterday"),
-    earlier: t("acpMain.earlier"),
-  });
-
-  return (
-    <nav className="py-1" aria-label={t("acpMain.historySessions")}>
-      {groups.map((group, gi) => (
-        <div key={group.label}>
-          {gi > 0 && <div className="mx-3 my-2 border-t border-border/40" />}
-          <div className="px-4 py-2">
-            <span className="text-[10px] font-display font-semibold uppercase tracking-widest text-text-muted/70">
-              {group.label}
-            </span>
-          </div>
-          {group.sessions.map((session) => {
-            const isEditing = editingId === session.sessionId;
-            return (
-              <div key={session.sessionId} className="group relative">
-                {isEditing ? (
-                  <div className="flex items-center gap-1 px-4 py-1.5">
-                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                    <input
-                      className="flex-1 text-[13px] font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveRename(session.sessionId);
-                        if (e.key === "Escape") handleCancelRename();
-                      }}
-                      onBlur={() => handleSaveRename(session.sessionId)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-text-muted hover:text-text-primary"
-                      onClick={handleCancelRename}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "flex items-center",
-                      session.sessionId === activeId ? "bg-brand/8" : "hover:bg-surface-2/60",
-                    )}
-                  >
-                    <SessionTitleButton
-                      session={session}
-                      isActive={session.sessionId === activeId}
-                      onSelect={() => {
-                        setActiveId(session.sessionId);
-                        onSelectSession(session as AgentSessionInfo);
-                      }}
-                    />
-                    {/* 悬停时显示操作按钮 */}
-                    <div className="hidden group-hover:flex items-center gap-0.5 pr-1 flex-shrink-0">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-text-muted hover:text-brand"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartRename(session as AgentSessionInfo);
-                            }}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{t("acpMain.rename")}</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={session.sessionId === initialActiveSessionId}
-                              className="h-6 w-6 p-0 text-text-muted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(session.sessionId);
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {session.sessionId === initialActiveSessionId
-                            ? t("acpMain.cannotDeleteActiveSession")
-                            : t("acpMain.delete")}
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-
-      {/* 会话删除二次确认 */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("acpMain.deleteSessionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>{t("acpMain.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-              onClick={() => void handleConfirmDelete()}
-            >
-              {t("acpMain.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </nav>
-  );
-}
-
-interface SessionTitleButtonProps {
-  session: { sessionId: string; title?: string | null };
-  isActive: boolean;
-  onSelect: () => void;
-}
-
-/**
- * SessionTitleButton —— 侧边栏会话列表中的单个会话标题按钮。
- *
- * 会话标题可能因宽度不足被 truncate 截断，故 hover 时统一弹出主题化 tooltip 展示完整标题。
- * 整体 ACPMain 已被 ChatPanel 的 TooltipProvider 包裹，此处直接使用 Tooltip 即可，无需再引入 provider。
- */
-function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonProps) {
-  const { t } = useTranslation("components");
-  // 与 ChatHeader 历史列表一致的标题清洗：剔除混入的 HTML 标签（如
-  // <system-reminder> 上下文块，见 strip-html-tags.ts），清洗后为空则回退到"新会话"
-  const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          onClick={onSelect}
-          className={cn(
-            "flex-1 flex items-center gap-2.5 px-4 py-2 text-left justify-start rounded-none min-w-0",
-            isActive
-              ? "text-text-primary hover:bg-transparent"
-              : "text-text-secondary hover:text-text-primary hover:bg-transparent",
-          )}
-        >
-          <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-          <span className="text-[13px] font-display truncate leading-snug min-w-0">{displayTitle}</span>
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[280px] break-words">
-        {displayTitle}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// =============================================================================
-// 按日期分组：今天 / 昨天 / 更早
-// 分组逻辑已抽到 ./chat/session-grouping，ChatHeader 与 SidebarSessionList 共享
-// =============================================================================

@@ -27,19 +27,14 @@ describe("ChatComposer", () => {
     expect(html).toContain("lucide-send");
   });
 
-  // 元信息条：token 进度条宽度 + 百分比（数字文字已移除）
-  test("renders token stats when tokenStats provided", async () => {
+  // 只渲染协议真实 token 总量，不按固定上限推算百分比。
+  test("renders real context usage without a fake percentage", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(
-      <ChatComposer
-        onSubmit={() => {}}
-        tokenStats={{ estimatedTokens: 12300, estimatedInputTokens: 5000, estimatedOutputTokens: 7300 }}
-      />,
+      <ChatComposer onSubmit={() => {}} contextUsage={{ totalTokens: 12300, inputTokens: 5000, outputTokens: 7300 }} />,
     );
-    // 进度条 input token 宽度 2.5%（5000/200000）
-    expect(html).toContain("width:2.5%");
-    // React SSR 在 JSX 表达式和文本之间插入 HTML 注释（6<!-- -->%），需匹配 SSR 格式
-    expect(html).toContain("6<!-- -->%");
+    expect(html).toContain("12.3k");
+    expect(html).not.toContain("%");
   });
 
   // 元信息条：新会话按钮文案（i18n 未初始化时返回 key，参考 fde9e38 做法）
@@ -61,35 +56,34 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} commands={mockCommands} envId="env_test" />,
     );
-    // 检查技能按钮存在（SSR 下 i18n 回退到 key）
-    expect(html).toContain("chatComposer.skillButton");
-    // 检查文件按钮存在
-    expect(html).toContain("chatComposer.fileButton");
+    expect(html).toContain("chatComposer.commandButton");
+    expect(html).toContain("chatComposer.attach");
   });
 
   // 浮动按钮组：仅有 commands 无 envId 时，只有技能按钮
-  test("renders only skill button when no envId", async () => {
+  test("renders only command button when no envId", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const mockCommands = [{ name: "review", description: "Code review" }];
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
-    expect(html).toContain("chatComposer.skillButton");
-    expect(html).not.toContain("chatComposer.fileButton");
+    expect(html).toContain("chatComposer.commandButton");
+    expect(html).toContain('aria-label="chatComposer.attach"');
+    expect(html).toContain('class="chat-composer-icon-button" disabled=""');
   });
 
   // 浮动按钮组：仅有 envId 无 commands 时，只有文件按钮
   test("renders only file button when no commands", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} envId="env_test" />);
-    expect(html).not.toContain("chatComposer.skillButton");
-    expect(html).toContain("chatComposer.fileButton");
+    expect(html).not.toContain("chatComposer.commandButton");
+    expect(html).toContain('aria-label="chatComposer.attach"');
   });
 
   // 浮动按钮组：commands 为空数组时不显示技能按钮，无 envId 时不显示文件按钮
   test("renders no buttons when commands empty array and no envId", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={[]} />);
-    expect(html).not.toContain("chatComposer.skillButton");
-    expect(html).not.toContain("chatComposer.fileButton");
+    expect(html).not.toContain("chatComposer.commandButton");
+    expect(html).toContain('aria-label="chatComposer.attach"');
   });
 
   // 断点 1 修复：canCancel（accepting/running/awaiting_permission）时按钮渲染 Square 停止图标，
@@ -109,7 +103,7 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
     );
-    expect(html).not.toContain('disabled=""');
+    expect(html).toContain('chat-composer-send is-stop" type="button" aria-label="chatComposer.stop"');
   });
 
   // cancelling（isLoading 且 canCancel=false）：渲染 Square 且 disabled，防止重复点发重取消

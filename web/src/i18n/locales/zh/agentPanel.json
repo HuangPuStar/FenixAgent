@@ -1,6 +1,7 @@
 {
   "showArtifacts": "显示内容面板",
   "hideArtifacts": "隐藏内容面板",
+  "resizeArtifacts": "调整右侧工作区宽度",
   "workflow": "智能体编排",
   "agentManagement": "智能体管理",
   "models": "模型库",

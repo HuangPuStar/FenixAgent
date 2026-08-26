@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
 import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
-import { ToolPermissionButtons } from "../ai-elements/permission-request";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
@@ -28,10 +27,9 @@ function extractPreviewPath(rawInput: Record<string, unknown> | undefined): stri
 
 interface ToolCallRowProps {
   tool: ToolCallData;
-  onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
 }
 
-export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
+export function ToolCallRow({ tool }: ToolCallRowProps) {
   const { t: tComponents } = useTranslation("components");
   const { t: tNarrator } = useTranslation(NS.TOOL_NARRATOR);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -85,33 +83,16 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
   return (
     <div>
       {/* 卡片主体 */}
-      <div
-        className={cn(
-          "flex items-center gap-3 px-3 py-2.5 rounded-lg",
-          style.cardBg,
-          isError && "ring-1 ring-inset ring-status-error/30",
-          isCanceled && "opacity-50",
-        )}
-      >
+      <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
         {/* 图标 */}
-        <div
-          className={cn(
-            "h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
-            style.iconBg,
-            isRunning && "animate-pulse",
-          )}
-        >
-          {isRunning ? (
-            <Loader2 className={cn("h-[18px] w-[18px] animate-spin", style.iconColor)} />
-          ) : (
-            <Icon className={cn("h-[18px] w-[18px]", style.iconColor)} />
-          )}
+        <div className={cn("tool-call-row-icon", style.iconColor)}>
+          {isRunning ? <Loader2 className="animate-spin" /> : <Icon />}
         </div>
 
         {/* 工具内容 — 渲染 narrate 结果 */}
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium text-text-primary truncate">{result.title}</div>
-          <div className="text-[11px] text-text-dim mt-0.5 truncate flex items-center gap-1.5">
+        <div className="tool-call-row-copy">
+          <strong>{result.title}</strong>
+          <div>
             <span className="truncate">{result.subtitle}</span>
             {result.badge && (
               <span
@@ -189,17 +170,6 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
           <div className="px-2 py-2">
             <SubAgentPanel entries={tool.subEntries!} />
           </div>
-        </div>
-      )}
-
-      {/* 权限请求按钮（保留） */}
-      {isPending && tool.permissionRequest && (
-        <div className="px-4 pb-2.5 pt-1" onClick={(e) => e.stopPropagation()}>
-          <ToolPermissionButtons
-            requestId={tool.permissionRequest.requestId}
-            options={tool.permissionRequest.options}
-            onRespond={onPermissionRespond || (() => {})}
-          />
         </div>
       )}
 

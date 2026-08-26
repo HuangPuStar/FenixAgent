@@ -1,8 +1,53 @@
 {
   "title": "Model Library",
-  "subtitle": "Manage AI providers and models — connect and orchestrate LLM capabilities",
+  "subtitle": "Connect providers, configure model capabilities, and give Agents reliable model references",
   "createButton": "New Provider",
-  "searchPlaceholder": "Search provider names...",
+  "searchLabel": "Search model library",
+  "searchPlaceholder": "Search providers, models, or protocols",
+  "selectionAnnouncement": "Selected {{provider}}, {{count}} models",
+  "partialLoadError": "Details for {{count}} providers could not be loaded. Retry to recover them.",
+  "scope": {
+    "label": "Resource scope",
+    "all": "All",
+    "organization": "Organization",
+    "shared": "Shared with me"
+  },
+  "providerIndex": {
+    "title": "Providers",
+    "description": "Connections and credentials",
+    "models": "{{count}} models",
+    "empty": "No matching providers"
+  },
+  "connection": {
+    "endpoint": "Endpoint",
+    "credential": "Credential",
+    "defaultEndpoint": "Protocol default endpoint",
+    "managedCredential": "Securely managed by the platform",
+    "shared": "Organization sharing",
+    "sharedDescription": "Allow other organizations to read"
+  },
+  "modelsSection": {
+    "title": "Configured Models",
+    "description": "{{count}} models · only runtime-critical capabilities are shown"
+  },
+  "modelTraits": {
+    "thinking": "Thinking supported",
+    "noThinking": "No thinking"
+  },
+  "testStatus": {
+    "running": "Testing",
+    "success": "Passed",
+    "error": "Failed"
+  },
+  "empty": {
+    "title": "No providers yet",
+    "description": "Create a provider to configure its models.",
+    "filteredTitle": "No matches",
+    "filteredDescription": "Change the search term or resource scope and try again."
+  },
+  "loadState": {
+    "title": "Model library failed to load"
+  },
   "emptyMessage": "No providers yet. Click \"New Provider\" to add one",
   "loadError": "Failed to load data: {{message}}",
   "loadProvidersError": "Failed to load provider list: {{message}}",
@@ -37,7 +82,10 @@
     "edit": "Edit",
     "delete": "Delete",
     "add": "Add",
-    "close": "Close"
+    "close": "Close",
+    "save": "Save",
+    "saving": "Saving...",
+    "retry": "Retry"
   },
   "batchDelete": "Batch Delete",
   "batchDeleteConfirmTitle": "Confirm Batch Delete",
@@ -60,6 +108,8 @@
     "editTitle": "Edit Provider",
     "detailTitle": "Provider Details",
     "createTitle": "New Provider",
+    "description": "Configure a real connection and discover models from the provider when needed.",
+    "readOnlyDescription": "This provider is shared with you and is read-only.",
     "id": "ID (Identifier)",
     "idPlaceholder": "bailian-token-plan",
     "idImmutable": "ID cannot be changed after creation",
@@ -72,6 +122,9 @@
     "baseUrl": "Base URL",
     "baseUrlPlaceholder": "Optional, uses provider default URL",
     "modelsSection": "Available Models",
+    "modelsSectionHint": "Discovered models are not added automatically. Select them before saving.",
+    "fetchModelsError": "Failed to fetch models",
+    "addModelsPartialError": "The provider was saved, but {{count}} models could not be added. Please retry.",
     "fetchModels": "Fetch Models",
     "fetching": "Fetching...",
     "selectAll": "Select / Deselect All",
@@ -107,7 +160,10 @@
   },
   "modelSubrow": {
     "emptyMessage": "No models yet. Click the button below to add",
+    "emptyTitle": "No configured models",
+    "emptyReadOnly": "This shared provider does not expose any models yet.",
     "addButton": "+ Add Model",
+    "addButtonLabel": "Add Model",
     "createTitle": "New Model",
     "detailTitle": "Model Details — {{id}}",
     "editTitle": "Edit Model — {{id}}",
@@ -125,6 +181,7 @@
     "showAdvanced": "Show Advanced Parameters",
     "hideAdvanced": "Hide Advanced Parameters",
     "thinkingEnabled": "Enable Thinking Mode",
+    "thinkingDescription": "The list only shows support; budget and other parameters stay in this configuration.",
     "thinkingBudget": "Thinking Budget (tokens)",
     "thinkingBudgetPlaceholder": "e.g. 10000",
     "inputCost": "Input Cost ($/M tokens)",

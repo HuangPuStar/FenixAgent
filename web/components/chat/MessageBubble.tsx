@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Copy, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
@@ -9,7 +9,7 @@ import { cn } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
 import { Button } from "../ui/button";
-import { AgentAvatar } from "./AgentAvatar";
+import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { SystemMessage } from "./SystemMessage";
 
 // 用户消息折叠最大高度（px）
@@ -65,18 +65,18 @@ export function UserBubble({ entry }: UserBubbleProps) {
           <div className="max-w-[85%] sm:max-w-[70%]">
             {/* 图片附件 */}
             {entry.images && entry.images.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 justify-end">
+              <div className="flex flex-wrap gap-2 mb-2 justify-center">
                 {entry.images.map((img) => (
                   <ImageThumbnail key={img.data} image={img} />
                 ))}
               </div>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
-            <div className="relative bg-user-bubble border border-user-bubble-border rounded-2xl overflow-hidden message-bubble-enter">
+            <div className="chat-user-bubble message-bubble-enter">
               <div
                 ref={contentRef}
                 className={cn(
-                  "px-5 py-3 text-sm text-white whitespace-pre-wrap font-display leading-relaxed",
+                  "px-4 py-2.5 text-sm whitespace-pre-wrap font-display leading-relaxed",
                   !expanded && overflowing && `max-h-[${COLLAPSED_MAX_HEIGHT}px]`,
                 )}
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
@@ -85,12 +85,12 @@ export function UserBubble({ entry }: UserBubbleProps) {
               </div>
               {/* 折叠渐变遮罩 + 展开按钮 */}
               {!expanded && overflowing && (
-                <div className="absolute bottom-0 inset-x-0 flex flex-col items-center pt-8 bg-gradient-to-t from-user-bubble via-user-bubble/80 to-transparent">
+                <div className="absolute bottom-0 inset-x-0 flex flex-col items-center pt-8 bg-gradient-to-t from-white via-white/90 to-transparent">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setExpanded(true)}
-                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-display font-medium text-white/90 hover:bg-white/15 h-auto"
+                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-display font-medium text-text-secondary hover:bg-surface-2 h-auto"
                   >
                     <span>{t("messageBubble.expand")}</span>
                     <ChevronDown className="h-3 w-3" />
@@ -120,10 +120,19 @@ interface AssistantBubbleProps {
   cardEmitterRef?: MutableRefObject<CardEventEmitter | null>;
 }
 
-export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: AssistantBubbleProps) {
+export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmitterRef }: AssistantBubbleProps) {
   const { t } = useTranslation("components");
   // 每个助手消息创建独立的 emitter 实例
   const emitter = useMemo(() => new CardEventEmitter(), []);
+  const visibleText = useMemo(
+    () =>
+      entry.chunks
+        .filter((chunk) => chunk.type === "message" && isVisibleContentBlock({ type: "text", text: chunk.text }))
+        .map((chunk) => chunk.text)
+        .join("\n\n")
+        .trim(),
+    [entry.chunks],
+  );
 
   // 暴露 emitter 给外部监听器，组件卸载时清理
   useEffect(() => {
@@ -140,9 +149,7 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
 
   return (
     <MessageEmitterContext.Provider value={emitter}>
-      <div className="flex gap-4 items-start message-bubble-enter">
-        {/* Agent avatar — 窄屏隐藏 */}
-        <AgentAvatar className="hidden md:flex mt-0.5" />
+      <div className="chat-assistant-message message-bubble-enter">
         {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
         <div className="flex-1 min-w-0 space-y-4">
           {entry.chunks.map((chunk, i, all) => {
@@ -185,6 +192,30 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
             </div>
           )}
+          {visibleText && (
+            <div className="chat-message-actions" role="group" aria-label={t("messageBubble.actions")}>
+              <button
+                type="button"
+                title={t("messageBubble.copy")}
+                aria-label={t("messageBubble.copy")}
+                onClick={() => void navigator.clipboard.writeText(visibleText)}
+              >
+                <Copy />
+              </button>
+              <button
+                type="button"
+                title={t("messageBubble.quote")}
+                aria-label={t("messageBubble.quote")}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
+                  )
+                }
+              >
+                <Quote />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </MessageEmitterContext.Provider>
@@ -197,20 +228,20 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
 
 function ImageThumbnail({ image }: { image: UserMessageImage }) {
   const { t } = useTranslation("components");
+  const [open, setOpen] = useState(false);
   const dataUrl = `data:${image.mimeType};base64,${image.data}`;
   return (
-    <Button
-      variant="ghost"
-      className="rounded-lg overflow-hidden border border-border hover:border-brand/40 p-0 h-auto"
-      onClick={() => {
-        const w = window.open("");
-        if (w) {
-          w.document.write(`<img src="${dataUrl}" style="max-width:100%;max-height:100%" />`);
-        }
-      }}
-    >
-      <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="h-20 w-20 object-cover" />
-    </Button>
+    <>
+      <Button variant="ghost" className="rounded-lg overflow-hidden p-0 h-auto" onClick={() => setOpen(true)}>
+        <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="h-20 w-20 object-cover" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-[min(92vw,960px)] p-3 bg-white">
+          <DialogTitle className="sr-only">{t("messageBubble.imagePreview")}</DialogTitle>
+          <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="max-h-[82vh] w-full object-contain" />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

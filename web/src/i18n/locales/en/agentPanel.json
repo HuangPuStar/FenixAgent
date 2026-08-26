@@ -1,6 +1,7 @@
 {
   "showArtifacts": "Show artifacts panel",
   "hideArtifacts": "Hide artifacts panel",
+  "resizeArtifacts": "Resize right workspace",
   "workflow": "Workflow",
   "agentManagement": "Agent Management",
   "models": "Model Library",

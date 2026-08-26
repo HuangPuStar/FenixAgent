@@ -57,8 +57,8 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(html).toContain("toolCallRow.previewFile");
   });
 
-  // 等待确认的工具不得开放详情弹窗，而应渲染权限决策入口。
-  test("等待确认工具展示权限操作", () => {
+  // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。
+  test("等待确认工具不重复渲染权限操作", () => {
     const html = renderTool(
       tool({
         title: "Delete",
@@ -75,7 +75,7 @@ describe("ToolCallRow 服务端渲染", () => {
     );
 
     expect(html).toContain("common.status.waiting_for_confirmation");
-    expect(html).toContain("允许");
-    expect(html).toContain("拒绝");
+    expect(html).not.toContain("允许");
+    expect(html).not.toContain("拒绝");
   });
 });

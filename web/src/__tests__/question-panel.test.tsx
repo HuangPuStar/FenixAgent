@@ -213,10 +213,10 @@ describe("QuestionPanel", () => {
     const buttons = Array.from(container.querySelectorAll("button"));
     const submitButton = buttons.find((b) => b.textContent?.includes("askUser.submit"));
     const programmingButton = buttons.find((b) => b.textContent?.includes("programming"));
-    const easyButton = buttons.find((b) => b.textContent?.includes("easy"));
+    const nextButton = buttons.find((b) => b.getAttribute("aria-label") === "askUser.next");
     expect(submitButton).toBeDefined();
     expect(programmingButton).toBeDefined();
-    expect(easyButton).toBeDefined();
+    expect(nextButton).toBeDefined();
 
     // 只选第一个问题：提交仍禁用（第二个问题未答）
     act(() => {
@@ -224,7 +224,14 @@ describe("QuestionPanel", () => {
     });
     expect((submitButton as unknown as HTMLButtonElement).disabled).toBe(true);
 
-    // 选中第二个问题（第一个问题选中不被清除）：提交可用并合并回传
+    // 切到第二个问题后选中，第一题答案仍保留，提交按 schema 顺序回传。
+    act(() => {
+      nextButton!.click();
+    });
+    const easyButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("easy"),
+    );
+    expect(easyButton).toBeDefined();
     act(() => {
       easyButton!.click();
     });

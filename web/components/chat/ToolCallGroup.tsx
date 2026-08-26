@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ToolCallEntry } from "../../src/lib/types";
 import { HindsightToolCard, isHindsightTool } from "./HindsightToolCard";
@@ -10,12 +11,14 @@ import { ToolCallRow } from "./ToolCallRow";
 
 interface ToolCallGroupProps {
   entries: ToolCallEntry[];
-  onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
 }
 
-export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupProps) {
+const COLLAPSE_THRESHOLD = 5;
+
+export function ToolCallGroup({ entries }: ToolCallGroupProps) {
   const { t } = useTranslation("components");
-  if (entries.length === 0) return null;
+  const [collapsed, setCollapsed] = useState(entries.length > COLLAPSE_THRESHOLD);
+  const wasGroupedRef = useRef(entries.length > COLLAPSE_THRESHOLD);
 
   // 将 hindsight 工具与普通工具分离，各自独立渲染
   const hindsightEntries = entries.filter((e) => isHindsightTool(e.toolCall.title));
@@ -23,30 +26,45 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
 
   const running = toolEntries.filter((e) => e.toolCall.status === "running").length;
   const error = toolEntries.filter((e) => e.toolCall.status === "error").length;
+  const complete = toolEntries.filter((e) => e.toolCall.status === "complete").length;
+  const grouped = toolEntries.length > COLLAPSE_THRESHOLD;
+
+  // 流式追加越过阈值时仅自动收起一次；用户随后手动展开不会被下一帧覆盖。
+  useEffect(() => {
+    if (grouped && !wasGroupedRef.current) setCollapsed(true);
+    if (!grouped) setCollapsed(false);
+    wasGroupedRef.current = grouped;
+  }, [grouped]);
+
+  if (entries.length === 0) return null;
 
   return (
-    // tool-call-group：pl-10 原用于让工具调用与 avatar 右侧的助手内容对齐。
-    // 当 meta-agent-panel 隐藏 avatar 后，padding-left 由 CSS 作用域规则置零，避免内容偏右
-    <div className="tool-call-group pl-10">
-      {(running > 0 || error > 0) && (
-        <div className="flex items-center gap-2 mb-1.5">
+    <div className="tool-call-group">
+      {grouped && (
+        <button
+          type="button"
+          className="tool-call-group-summary"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <ChevronRight className={collapsed ? undefined : "is-open"} />
+          <strong>{t("toolCallGroup.count", { count: toolEntries.length })}</strong>
+          <span>{t("toolCallGroup.completedCount", { count: complete })}</span>
+          {error > 0 && <span className="is-error">{t("toolCallGroup.failed", { count: error })}</span>}
           {running > 0 && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-status-running">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              {running} {t("toolCallGroup.running")}
+            <span className="is-running">
+              <Loader2 />
+              {t("toolCallGroup.runningCount", { count: running })}
             </span>
           )}
-          {error > 0 && (
-            <span className="text-[10px] text-status-error">{t("toolCallGroup.failed", { count: error })}</span>
-          )}
-        </div>
+          <small>{collapsed ? t("toolCallGroup.expand") : t("toolCallGroup.collapse")}</small>
+        </button>
       )}
 
-      {/* 普通工具调用 — 卡片容器 */}
-      {toolEntries.length > 0 && (
-        <div className="rounded-lg border border-border bg-surface-1 overflow-hidden shadow-xs p-1.5 space-y-1.5">
+      {toolEntries.length > 0 && !collapsed && (
+        <div className="tool-call-group-list">
           {toolEntries.map((entry, i) => (
-            <ToolCallRow key={entry.toolCall.id || i} tool={entry.toolCall} onPermissionRespond={onPermissionRespond} />
+            <ToolCallRow key={entry.toolCall.id || i} tool={entry.toolCall} />
           ))}
         </div>
       )}

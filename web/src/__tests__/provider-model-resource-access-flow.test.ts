@@ -8,6 +8,8 @@ import {
   getProviderDisplayName,
   getProviderKey,
   getProviderResourceBadgeKey,
+  getProviderScope,
+  supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
 
@@ -85,6 +87,19 @@ describe("provider model resource access flow", () => {
     expect(canWriteProvider(externalProvider)).toBe(false);
     expect(getProviderResourceBadgeKey(internalProvider)).toBe("resource.internal");
     expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
+  });
+
+  // Provider API 未提供个人/平台 scope 时，只显示可由 ownership 证明的本组织与共享范围。
+  test("derives only provable provider scopes", () => {
+    expect(getProviderScope(internalProvider)).toBe("organization");
+    expect(getProviderScope(externalProvider)).toBe("shared");
+  });
+
+  // 思考能力必须读取真实 options.thinking.enabled，不能根据模型名称推测。
+  test("reads thinking capability from model options", () => {
+    expect(supportsThinking({ options: { thinking: { enabled: true } } })).toBe(true);
+    expect(supportsThinking({ options: { thinking: { enabled: false } } })).toBe(false);
+    expect(supportsThinking({})).toBe(false);
   });
 
   // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
