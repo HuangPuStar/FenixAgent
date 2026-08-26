@@ -1,0 +1,333 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: 应用卡片按预览、正文、页脚层级组织。 */
+.agent-sites-page {
+  --site-blue: #2463eb;
+  --site-ink: #17233a;
+  --site-muted: #65728a;
+  --site-faint: #96a2b5;
+  --site-line: #e7ecf3;
+  min-height: 100%;
+  overflow: auto;
+  padding: 28px 32px 40px;
+  color: var(--site-ink);
+  background: #f5f7fb;
+}
+
+.site-create-button {
+  height: 40px;
+  gap: 7px;
+  border-radius: 8px;
+  padding-inline: 15px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.site-create-button svg {
+  width: 15px;
+}
+
+.site-commandbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+.site-search-field {
+  position: relative;
+  display: block;
+  width: min(560px, 100%);
+}
+.site-search-field > svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 16px;
+  color: #8d9bb0;
+  transform: translateY(-50%);
+}
+.site-search-field input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  outline: 0;
+  padding: 0 14px 0 41px;
+  color: var(--site-ink);
+  background: #fff;
+  font-size: 13px;
+}
+.site-search-field input:focus-visible {
+  box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
+}
+
+.site-visibility-filter {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  padding: 4px;
+  background: #e9edf4;
+}
+.site-visibility-filter button {
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 11px;
+  color: var(--site-muted);
+  background: transparent;
+  font-size: 11px;
+}
+.site-visibility-filter button[aria-pressed="true"] {
+  color: var(--site-blue);
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
+  font-weight: 650;
+}
+
+.site-directory-heading {
+  min-height: 54px;
+  box-shadow: inset 0 -1px var(--site-line);
+}
+.site-directory-heading h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+.site-directory-heading p {
+  margin-top: 3px;
+  color: var(--site-faint);
+  font-size: 10px;
+}
+
+.site-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  padding-top: 16px;
+}
+.site-deployment-card {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgb(36 57 92 / 7%);
+}
+
+.site-deployment-preview {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 126px;
+  place-content: center;
+  overflow: hidden;
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #2d65df, #77a3ff);
+}
+.site-deployment-preview::before {
+  position: absolute;
+  inset: 14px 15px auto;
+  height: 14px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 20%);
+  content: "";
+}
+.site-deployment-preview span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 18%);
+  font-size: 13px;
+  font-weight: 750;
+}
+.site-deployment-preview i {
+  position: absolute;
+  bottom: 18px;
+  left: 15%;
+  width: 20%;
+  height: 28px;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 16%);
+}
+.site-deployment-preview i:nth-of-type(2) {
+  left: 40%;
+  width: 34%;
+}
+.site-deployment-preview i:nth-of-type(3) {
+  right: 8%;
+  left: auto;
+  width: 13%;
+}
+.site-deployment-preview.is-variant-2 {
+  background: linear-gradient(135deg, #6556d9, #a190ff);
+}
+.site-deployment-preview.is-variant-3 {
+  background: linear-gradient(135deg, #207f7a, #63c5ae);
+}
+.site-deployment-preview.is-variant-4 {
+  background: linear-gradient(135deg, #be7040, #ecae72);
+}
+
+.site-card-body {
+  padding: 13px 15px 0;
+}
+.site-card-body > header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 9px;
+}
+.site-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--site-blue);
+  background: #edf3ff;
+}
+.site-card-icon svg {
+  width: 15px;
+}
+.site-card-body header strong,
+.site-card-body header small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-card-body header strong {
+  font-size: 12px;
+}
+.site-card-body header small {
+  margin-top: 2px;
+  color: var(--site-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.site-more-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--site-faint);
+  background: transparent;
+}
+.site-more-button:hover {
+  color: var(--site-ink);
+  background: #f2f5f9;
+}
+.site-more-button svg {
+  width: 15px;
+}
+.site-card-body > p {
+  min-height: 31px;
+  margin: 10px 0 12px;
+  color: var(--site-muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.site-card-body > footer {
+  display: flex;
+  min-height: 41px;
+  align-items: center;
+  gap: 9px;
+  margin-inline: -15px;
+  padding: 0 15px;
+  color: var(--site-faint);
+  background: #fafbfd;
+  box-shadow: inset 0 1px var(--site-line);
+  font-size: 9px;
+}
+.site-card-body > footer > span,
+.site-card-body > footer > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.site-card-body > footer > button {
+  border: 0;
+  color: var(--site-muted);
+  background: transparent;
+  font-size: 9px;
+}
+.site-card-body > footer > button:hover {
+  color: var(--site-blue);
+}
+.site-published-status {
+  color: #278d70;
+}
+.site-published-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #31a984;
+}
+.site-open-button {
+  margin-left: auto;
+}
+.site-open-button svg {
+  width: 11px;
+}
+
+.site-empty-state {
+  display: grid;
+  min-height: 380px;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--site-faint);
+  text-align: center;
+}
+.site-empty-state > svg {
+  width: 28px;
+  color: #7d91ae;
+}
+.site-empty-state strong {
+  color: var(--site-ink);
+  font-size: 14px;
+}
+.site-empty-state p {
+  max-width: 420px;
+  font-size: 10px;
+}
+.site-empty-state button {
+  margin-top: 8px;
+}
+.site-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding-top: 16px;
+  color: var(--site-muted);
+  font-size: 10px;
+}
+.site-pagination button {
+  height: 28px;
+  font-size: 10px;
+}
+
+@media (max-width: 950px) {
+  .agent-sites-page {
+    padding: 22px 20px 32px;
+  }
+  .site-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .site-visibility-filter {
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .site-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

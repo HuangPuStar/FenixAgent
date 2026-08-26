@@ -81,7 +81,69 @@
   "cancel": "Cancel",
   "remoteNode": "Remote",
   "memories": "Memories",
-  "sites": "AOS App Deployment",
+  "sites": "App Deployment",
+  "siteDeployment": {
+    "title": "App Deployment",
+    "subtitle": "Publish agent capabilities as accessible sites and manage access and security tokens.",
+    "toolbarLabel": "App search and visibility filters",
+    "search": "Search apps, remote IDs, or creators",
+    "creator": "Creator",
+    "visibility": {
+      "label": "Visibility",
+      "all": "All",
+      "private": "Private",
+      "org": "Organization",
+      "authenticated": "Signed in",
+      "public": "Public"
+    },
+    "directory": {
+      "title": "Deployed apps",
+      "summary": "Showing {{count}} apps",
+      "noDescription": "No app description"
+    },
+    "status": { "published": "Published" },
+    "empty": "No deployed apps",
+    "emptySearch": "No matching apps",
+    "emptyHint": "Create an app to get a standalone access point.",
+    "actions": {
+      "create": "New app",
+      "open": "Open",
+      "edit": "Edit",
+      "delete": "Delete",
+      "rotateToken": "Rotate token",
+      "more": "More app actions",
+      "retry": "Retry"
+    },
+    "pagination": { "label": "App pagination", "previous": "Previous", "next": "Next" },
+    "dialog": {
+      "createTitle": "New app",
+      "editTitle": "Edit app",
+      "deleteTitle": "Confirm deletion",
+      "deleteDescription": "Delete app “{{name}}”? This also deletes the remote app and cannot be undone."
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "For example, my-app",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional description"
+    },
+    "toast": {
+      "created": "App created",
+      "updated": "App updated",
+      "deleted": "App deleted",
+      "tokenRotated": "Token rotated"
+    },
+    "errors": {
+      "load": "Could not load apps",
+      "loadWith": "Could not load apps: {{message}}",
+      "save": "Could not save app",
+      "deleteWith": "Could not delete app: {{message}}",
+      "rotateWith": "Could not rotate token: {{message}}",
+      "nameRequired": "Name is required",
+      "creatorInactive": "The agent that created this app is not active",
+      "creatorNavigation": "Could not open creator"
+    }
+  },
   "changedFiles": {
     "title": "Changed Files",
     "count_one": "{{count}} file",
