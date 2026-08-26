@@ -5,7 +5,21 @@
     "all": "All",
     "http": "HTTP",
     "agent": "Agent",
-    "searchPlaceholder": "Search tasks..."
+    "searchPlaceholder": "Search tasks, targets, or schedules",
+    "typeLabel": "Task type"
+  },
+  "runtime": {
+    "title": "Next 24 hours",
+    "description": "An approximate timeline based on actual last runs, next runs, and timeout limits.",
+    "legendLabel": "Run status legend",
+    "scheduled": "Scheduled",
+    "paused": "Paused",
+    "outsideWindow": "No runs in the current 24-hour window"
+  },
+  "registry": {
+    "title": "Task management",
+    "summary": "Showing {{count}} tasks",
+    "paginationLabel": "Task pagination"
   },
   "status": {
     "success": "Success",
