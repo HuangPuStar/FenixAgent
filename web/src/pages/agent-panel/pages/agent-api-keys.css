@@ -1,0 +1,239 @@
+.agent-api-keys-page {
+  min-height: 100%;
+  padding: 28px 32px 40px;
+  background: #f4f7fb;
+  color: #14213d;
+}
+
+.api-key-security-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff8e7;
+  color: #8f651f;
+}
+.api-key-security-note div {
+  min-width: 0;
+}
+.api-key-security-note strong {
+  color: #6e4e18;
+  font-size: 12px;
+}
+.api-key-security-note p {
+  margin: 2px 0 0;
+  color: #947640;
+  font-size: 11px;
+}
+
+.api-key-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.api-key-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(520px, 100%);
+  height: 42px;
+  padding: 0 13px;
+  border: 1px solid #dce5ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #91a0b5;
+}
+.api-key-search:focus-within {
+  border-color: #8bb5f3;
+  box-shadow: 0 0 0 3px rgb(41 112 216 / 8%);
+}
+.api-key-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #253550;
+  font-size: 13px;
+}
+.api-key-search input::placeholder {
+  color: #9ba8ba;
+}
+.api-key-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: #8a97aa;
+  font-size: 11px;
+}
+.api-key-summary strong {
+  color: #2e65b7;
+  font-size: 15px;
+}
+
+.api-key-table,
+.api-key-table-loading,
+.api-key-error {
+  overflow: hidden;
+  border: 1px solid #e2e8f1;
+  border-radius: 10px;
+  background: #fff;
+}
+.api-key-table > header,
+.api-key-table > article {
+  display: grid;
+  grid-template-columns: 34px minmax(150px, 1.2fr) minmax(150px, 1fr) 110px 110px 110px 36px;
+  align-items: center;
+  gap: 12px;
+}
+.api-key-table > header {
+  min-height: 38px;
+  padding: 0 16px;
+  background: #f8fafc;
+  color: #8c99ac;
+  font-size: 10px;
+  font-weight: 650;
+}
+.api-key-table > article {
+  min-height: 66px;
+  padding: 0 16px;
+  border-top: 1px solid #edf1f6;
+  color: #738096;
+  font-size: 11px;
+}
+.api-key-table > article:hover {
+  background: #fbfcfe;
+}
+.api-key-table article strong {
+  overflow: hidden;
+  color: #253550;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-key-table article code {
+  overflow: hidden;
+  color: #53647e;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-key-table article time {
+  color: #8793a6;
+  font-size: 10px;
+}
+.api-key-row-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 7px;
+  background: #fff4dc;
+  color: #a9751f;
+}
+.api-key-table article > button {
+  color: #a4adbb;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
+}
+.api-key-table article:hover > button,
+.api-key-table article > button:focus-visible {
+  opacity: 1;
+}
+.api-key-table article > button:hover {
+  color: #bf4e55;
+}
+.api-key-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 220px;
+  color: #9aa6b7;
+  font-size: 12px;
+}
+.api-key-table-loading {
+  display: grid;
+  gap: 1px;
+  padding: 10px;
+}
+.api-key-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  color: #9a6268;
+  font-size: 12px;
+}
+
+.api-key-create-field {
+  display: grid;
+  gap: 7px;
+  padding: 8px 0;
+}
+.api-key-reveal {
+  display: grid;
+  gap: 14px;
+  padding: 8px 0;
+}
+.api-key-reveal-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #26765f;
+}
+.api-key-reveal-heading strong,
+.api-key-reveal-heading span {
+  display: block;
+}
+.api-key-reveal-heading strong {
+  font-size: 13px;
+}
+.api-key-reveal-heading span {
+  margin-top: 3px;
+  color: #8b6b32;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.api-key-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 11px 12px;
+  background: #f4f7fb;
+}
+.agent-api-keys-page .api-key-value code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  color: #243652;
+  font-size: 12px;
+  user-select: all;
+}
+
+@media (max-width: 1050px) {
+  .api-key-table {
+    overflow-x: auto;
+  }
+  .api-key-table > header,
+  .api-key-table > article {
+    min-width: 880px;
+  }
+}
+
+@media (max-width: 680px) {
+  .agent-api-keys-page {
+    padding: 20px 18px 32px;
+  }
+  .api-key-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
