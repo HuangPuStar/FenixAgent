@@ -1,0 +1,478 @@
+.agent-organizations-page {
+  min-height: 100%;
+  padding: 28px 32px 40px;
+  background: #f4f7fb;
+  color: #14213d;
+}
+
+.org-workspace {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 640px;
+  margin-top: 24px;
+  overflow: hidden;
+  border: 1px solid #e3e9f2;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgb(29 64 118 / 6%);
+}
+
+.org-directory {
+  padding: 20px 12px;
+  border-right: 1px solid #edf1f6;
+  background: #fafbfd;
+}
+
+.org-directory-heading,
+.org-section-heading,
+.org-section-actions,
+.org-detail-meta,
+.org-detail-meta button,
+.org-list-title,
+.org-list-actions,
+.org-engine-strip,
+.org-engine-strip > div,
+.org-engine-actions,
+.org-danger-zone {
+  display: flex;
+  align-items: center;
+}
+
+.org-directory-heading {
+  justify-content: space-between;
+  padding: 0 10px 12px;
+  color: #8793a8;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.org-directory-list {
+  display: grid;
+  gap: 4px;
+}
+.org-directory-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #53627b;
+  text-align: left;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.org-directory-row:hover {
+  background: #f0f4f9;
+  color: #273a5a;
+}
+.org-directory-row.is-active {
+  background: #eaf2ff;
+  color: #1e5dc5;
+}
+.org-directory-copy {
+  min-width: 0;
+}
+.org-directory-copy strong,
+.org-directory-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-directory-copy strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+.org-directory-copy small {
+  margin-top: 2px;
+  color: #94a0b4;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.org-directory-role {
+  color: #8793a8;
+  font-size: 10px;
+}
+.org-role-icon {
+  width: 16px;
+  height: 16px;
+  color: #8b98ac;
+}
+.org-role-icon.is-owner {
+  color: #d8901c;
+}
+.org-role-icon.is-admin {
+  color: #3170d4;
+}
+
+.org-detail {
+  min-width: 0;
+  padding: 30px 36px 36px;
+}
+.org-detail-loading {
+  display: grid;
+  gap: 14px;
+  padding: 34px;
+}
+.org-detail-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  min-height: 520px;
+  color: #9aa6b8;
+  font-size: 13px;
+}
+.org-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 24px;
+}
+.org-detail-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.org-detail-mark,
+.org-person-avatar,
+.org-machine-state {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: #eaf2ff;
+  color: #2365cc;
+  font-weight: 700;
+}
+.org-detail-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+.org-detail h2 {
+  margin: 0;
+  color: #162440;
+  font-size: 22px;
+  line-height: 1.2;
+}
+.org-detail-meta {
+  gap: 10px;
+  margin-top: 6px;
+  color: #8a96aa;
+  font-size: 12px;
+}
+.org-detail-meta button {
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.org-detail-meta code {
+  font-size: 11px;
+}
+.org-detail-meta em {
+  color: #27916f;
+  font-style: normal;
+}
+.org-name-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.org-name-editor input {
+  width: min(320px, 45vw);
+}
+
+.org-engine-strip {
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 68px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #f5f8fc;
+}
+.org-engine-strip > div {
+  gap: 10px;
+}
+.org-engine-strip span strong,
+.org-engine-strip span small {
+  display: block;
+}
+.org-engine-strip strong {
+  color: #34445f;
+  font-size: 12px;
+}
+.org-engine-strip small {
+  margin-top: 2px;
+  color: #919db0;
+  font-size: 11px;
+}
+.org-engine-strip select,
+.org-list-actions select,
+.org-dialog-field select {
+  min-height: 34px;
+  padding: 0 30px 0 10px;
+  border: 1px solid #dfe6f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #52617a;
+  font-size: 12px;
+}
+
+.org-section {
+  padding-top: 28px;
+}
+.org-section + .org-section {
+  margin-top: 26px;
+  border-top: 1px solid #edf1f6;
+}
+.org-section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.org-section-heading h3 {
+  margin: 2px 0 0;
+  color: #1f2d48;
+  font-size: 15px;
+}
+.org-section-kicker {
+  color: #2b68ca;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.org-section-actions {
+  gap: 4px;
+}
+.org-list {
+  border-top: 1px solid #edf1f6;
+}
+.org-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 10px 6px;
+  border-bottom: 1px solid #edf1f6;
+}
+.org-person-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 12px;
+}
+.org-machine-state {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #f0f3f8;
+  color: #8290a7;
+}
+.org-machine-state.is-online {
+  background: #eaf8f3;
+  color: #20926f;
+}
+.org-list-main {
+  min-width: 0;
+  flex: 1;
+}
+.org-list-title {
+  gap: 8px;
+}
+.org-list-title strong {
+  overflow: hidden;
+  color: #25344f;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-list-main > span {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #8c98aa;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-role-badge,
+.org-status {
+  color: #75839a;
+  font-size: 10px;
+}
+.org-role-badge.is-owner {
+  color: #b57411;
+}
+.org-role-badge.is-admin,
+.org-status.is-online {
+  color: #23896b;
+}
+.org-list-actions {
+  gap: 2px;
+  opacity: 0.2;
+  transition: opacity 120ms ease;
+}
+.org-list-row:hover .org-list-actions,
+.org-list-actions:focus-within {
+  opacity: 1;
+}
+.org-machine-labels {
+  display: flex;
+  gap: 4px;
+}
+.org-machine-labels span {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f2f5f9;
+  color: #8490a3;
+  font-size: 9px;
+}
+.org-empty-copy {
+  padding: 30px 10px;
+  color: #9aa6b8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.org-danger-zone {
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 32px;
+  padding: 18px 0 0;
+  border-top: 1px solid #f2e4e5;
+}
+.org-danger-zone div strong,
+.org-danger-zone div span {
+  display: block;
+}
+.org-danger-zone strong {
+  color: #b84d56;
+  font-size: 12px;
+}
+.org-danger-zone span {
+  margin-top: 3px;
+  color: #9a8388;
+  font-size: 11px;
+}
+
+.org-dialog-fields {
+  display: grid;
+  gap: 14px;
+  padding: 8px 0;
+}
+.org-dialog-field {
+  display: grid;
+  gap: 6px;
+}
+.org-dialog-field > span {
+  color: #516079;
+  font-size: 12px;
+  font-weight: 600;
+}
+.org-member-command {
+  border: 1px solid #dfe6f0;
+}
+.org-selected-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #edf1f6;
+}
+.org-selected-members span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #edf4ff;
+  color: #315f9f;
+  font-size: 11px;
+}
+.org-selected-members button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.org-command-hint {
+  padding: 16px;
+  color: #8e9aab;
+  font-size: 12px;
+}
+.org-candidate-copy {
+  min-width: 0;
+  flex: 1;
+}
+.org-candidate-copy strong,
+.org-candidate-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-candidate-copy span {
+  color: #8b97aa;
+  font-size: 11px;
+}
+.org-dialog-description {
+  color: #75839a;
+  font-size: 12px;
+}
+.org-copy-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: #f4f7fb;
+}
+.org-copy-value code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #40516d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .agent-organizations-page {
+    padding: 20px 18px 32px;
+  }
+  .org-workspace {
+    grid-template-columns: 1fr;
+  }
+  .org-directory {
+    border-right: 0;
+    border-bottom: 1px solid #edf1f6;
+  }
+  .org-directory-list {
+    display: flex;
+    overflow-x: auto;
+  }
+  .org-directory-row {
+    min-width: 190px;
+  }
+  .org-detail {
+    padding: 24px 20px;
+  }
+  .org-engine-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
