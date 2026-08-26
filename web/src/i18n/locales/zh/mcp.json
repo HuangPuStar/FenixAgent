@@ -1,12 +1,37 @@
 {
-  "title": "MCP 服务器",
-  "subtitle": "管理 Model Context Protocol 服务器连接",
-  "search": "搜索 MCP 服务器...",
-  "empty": "暂无 MCP 服务器，点击「新建服务器」添加",
+  "title": "插件市场",
+  "subtitle": "集中管理 Agent 可使用的 MCP 插件与连接",
+  "search": "搜索插件、连接方式或用途",
+  "searchInstalled": "搜索已安装插件",
+  "empty": "还没有可用插件",
+  "emptyHint": "添加一个 MCP JSON 配置，连接 Agent 所需的真实工具。",
+  "emptySearch": "没有匹配的插件",
+  "emptySearchHint": "换一个名称、连接方式或资源范围试试。",
   "disabled": "已禁用",
   "resource": {
     "trustedNotice": "公开 MCP 会向拥有读取权限的受信任内部团队暴露完整配置。"
   },
+  "toolbar": { "label": "插件搜索与范围筛选" },
+  "scope": {
+    "label": "插件资源范围",
+    "all": "全部",
+    "organization": "本组织",
+    "shared": "共享给我"
+  },
+  "filter": { "installed": "已安装" },
+  "directory": {
+    "title": "插件目录",
+    "summary": "显示 {{visible}} 个，共 {{total}} 个",
+    "noDescription": "暂无说明",
+    "toolCount": "{{count}} 个工具",
+    "details": "详情",
+    "collapse": "收起"
+  },
+  "type": { "local": "本地进程", "remote": "远程服务" },
+  "status": { "enabled": "已启用", "disabled": "已停用" },
+  "actions": { "more": "更多插件操作" },
+  "loadState": { "title": "插件目录加载失败", "retry": "重试" },
+  "errors": { "sharingUnavailable": "无法管理此插件的共享状态" },
   "column": {
     "name": "名称",
     "type": "类型",
@@ -15,7 +40,7 @@
     "tools": "Tools"
   },
   "btn": {
-    "newServer": "新建服务器",
+    "newServer": "添加插件",
     "view": "查看",
     "inspect": "检测",
     "inspecting": "检测中...",
@@ -99,9 +124,11 @@
     "loadListFailedWith": "加载 MCP 服务器列表失败: {{message}}",
     "loadDetailFailed": "加载服务器详情失败",
     "inspectSuccess": "{{name}} 连接成功：{{serverInfo}} v{{version}}，发现 {{toolCount}} 个工具",
+    "inspectSuccessSimple": "检测完成，发现 {{count}} 个工具",
     "inspectFailed": "检测失败",
     "inspectFailedWith": "检测失败: {{message}}",
     "testSuccess": "连接成功：{{serverName}} v{{serverVersion}}{{toolsInfo}}",
+    "testSuccessSimple": "连接测试通过",
     "testReachable": "可达但非 MCP 协议：{{message}}",
     "testFailed": "连接失败：{{message}}",
     "testFailedWith": "测试失败: {{message}}",

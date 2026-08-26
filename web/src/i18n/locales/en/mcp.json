@@ -1,12 +1,37 @@
 {
-  "title": "MCP Servers",
-  "subtitle": "Manage Model Context Protocol server connections",
-  "search": "Search MCP servers...",
-  "empty": "No MCP servers yet. Click \"New Server\" to add one",
+  "title": "Plugin Marketplace",
+  "subtitle": "Manage the MCP plugins and connections available to agents",
+  "search": "Search plugins, transports, or use cases",
+  "searchInstalled": "Search installed plugins",
+  "empty": "No plugins are available yet",
+  "emptyHint": "Add an MCP JSON configuration to connect real tools for agents.",
+  "emptySearch": "No matching plugins",
+  "emptySearchHint": "Try another name, transport, or resource scope.",
   "disabled": "Disabled",
   "resource": {
     "trustedNotice": "Public MCP servers expose their full configuration to trusted internal teams with read access."
   },
+  "toolbar": { "label": "Plugin search and scope filters" },
+  "scope": {
+    "label": "Plugin resource scope",
+    "all": "All",
+    "organization": "Organization",
+    "shared": "Shared with me"
+  },
+  "filter": { "installed": "Installed" },
+  "directory": {
+    "title": "Plugin directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No description",
+    "toolCount": "{{count}} tools",
+    "details": "Details",
+    "collapse": "Collapse"
+  },
+  "type": { "local": "Local process", "remote": "Remote service" },
+  "status": { "enabled": "Enabled", "disabled": "Disabled" },
+  "actions": { "more": "More plugin actions" },
+  "loadState": { "title": "Could not load the plugin directory", "retry": "Retry" },
+  "errors": { "sharingUnavailable": "This plugin's sharing state cannot be managed" },
   "column": {
     "name": "Name",
     "type": "Type",
@@ -15,7 +40,7 @@
     "tools": "Tools"
   },
   "btn": {
-    "newServer": "New Server",
+    "newServer": "Add plugin",
     "view": "View",
     "inspect": "Inspect",
     "inspecting": "Inspecting...",
@@ -99,9 +124,11 @@
     "loadListFailedWith": "Failed to load MCP server list: {{message}}",
     "loadDetailFailed": "Failed to load server details",
     "inspectSuccess": "{{name}} connected successfully: {{serverInfo}} v{{version}}, discovered {{toolCount}} tools",
+    "inspectSuccessSimple": "Inspection complete: {{count}} tools found",
     "inspectFailed": "Inspect failed",
     "inspectFailedWith": "Inspect failed: {{message}}",
     "testSuccess": "Connected successfully: {{serverName}} v{{serverVersion}}{{toolsInfo}}",
+    "testSuccessSimple": "Connection test passed",
     "testReachable": "Reachable but not MCP protocol: {{message}}",
     "testFailed": "Connection failed: {{message}}",
     "testFailedWith": "Test failed: {{message}}",
