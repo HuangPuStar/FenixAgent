@@ -210,7 +210,13 @@ function MachinesSection({ props }: { props: OrganizationsWorkspaceProps }) {
   );
 }
 
-function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
+function OrganizationDetail({
+  props,
+  headerOnly = false,
+}: {
+  props: OrganizationsWorkspaceProps;
+  headerOnly?: boolean;
+}) {
   const { t } = useTranslation("orgs");
   if (props.detailLoading)
     return (
@@ -227,44 +233,46 @@ function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
         <p>{t("selectOrg")}</p>
       </div>
     );
-  return (
-    <div className="org-detail">
-      <AgentMasterDetailHeader className="org-detail-header">
-        <div className="org-detail-identity">
-          <div className="org-detail-mark">{props.detail.name.slice(0, 1).toUpperCase()}</div>
-          <div>
-            {props.editingName ? (
-              <div className="org-name-editor">
-                <Input value={props.editName} onChange={(event) => props.onEditNameChange(event.target.value)} />
-                <Button size="sm" onClick={props.onSaveName} disabled={props.updateNameLoading}>
-                  <Check className="size-4" />
-                  {t("save")}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={props.onCancelEditName}>
-                  {t("cancel")}
-                </Button>
-              </div>
-            ) : (
-              <h2>{props.detail.name}</h2>
-            )}
-            <div className="org-detail-meta">
-              <span>{props.detail.slug}</span>
-              <button type="button" onClick={props.onCopyId}>
-                <code>{props.detail.id.slice(0, 12)}</code>
-                <Copy className="size-3.5" />
-              </button>
-              {props.copiedId ? <em>{t("copied")}</em> : null}
+  const header = (
+    <AgentMasterDetailHeader className="org-detail-header">
+      <div className="org-detail-identity">
+        <div className="org-detail-mark">{props.detail.name.slice(0, 1).toUpperCase()}</div>
+        <div>
+          {props.editingName ? (
+            <div className="org-name-editor">
+              <Input value={props.editName} onChange={(event) => props.onEditNameChange(event.target.value)} />
+              <Button size="sm" onClick={props.onSaveName} disabled={props.updateNameLoading}>
+                <Check className="size-4" />
+                {t("save")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={props.onCancelEditName}>
+                {t("cancel")}
+              </Button>
             </div>
+          ) : (
+            <h2>{props.detail.name}</h2>
+          )}
+          <div className="org-detail-meta">
+            <span>{props.detail.slug}</span>
+            <button type="button" onClick={props.onCopyId}>
+              <code>{props.detail.id.slice(0, 12)}</code>
+              <Copy className="size-3.5" />
+            </button>
+            {props.copiedId ? <em>{t("copied")}</em> : null}
           </div>
         </div>
-        {props.canManage && !props.editingName ? (
-          <Button size="sm" variant="ghost" onClick={props.onStartEditName}>
-            <Pencil className="size-4" />
-            {t("edit")}
-          </Button>
-        ) : null}
-      </AgentMasterDetailHeader>
-
+      </div>
+      {props.canManage && !props.editingName ? (
+        <Button size="sm" variant="ghost" onClick={props.onStartEditName}>
+          <Pencil className="size-4" />
+          {t("edit")}
+        </Button>
+      ) : null}
+    </AgentMasterDetailHeader>
+  );
+  if (headerOnly) return header;
+  return (
+    <div className="org-detail">
       {props.isOwner ? (
         <div className="org-engine-strip">
           <div>
@@ -316,7 +324,11 @@ function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
 
 export function OrganizationsWorkspace(props: OrganizationsWorkspaceProps) {
   return (
-    <AgentMasterDetailWorkspace className="org-workspace" index={<OrganizationDirectory props={props} />}>
+    <AgentMasterDetailWorkspace
+      className="org-workspace"
+      index={<OrganizationDirectory props={props} />}
+      detailHeader={props.detail ? <OrganizationDetail props={props} headerOnly /> : null}
+    >
       <OrganizationDetail props={props} />
     </AgentMasterDetailWorkspace>
   );

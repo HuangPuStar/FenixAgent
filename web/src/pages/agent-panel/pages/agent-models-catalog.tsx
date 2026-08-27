@@ -121,6 +121,9 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
         </div>
       )}
       <AgentMasterDetailWorkspace
+        detailHeader={
+          props.selectedProvider ? <ProviderDetail {...props} provider={props.selectedProvider} headerOnly /> : null
+        }
         index={
           <ProviderIndex
             providers={props.providers}
@@ -203,7 +206,7 @@ function ProviderIndex({
   );
 }
 
-function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) {
+function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; headerOnly?: boolean }) {
   const { t } = useTranslation(NS.MODELS);
   const provider = props.provider;
   const key = getProviderKey(provider);
@@ -211,8 +214,8 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) 
   const iconModelId = getProviderIconModelId(provider, models);
   const writable = canWriteProvider(provider);
   const color = getProviderColor(provider.id);
-  return (
-    <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
+  const header = (
+    <div style={{ "--provider-color": color } as CSSProperties}>
       <AgentMasterDetailHeader className="models-provider-detail__header">
         <div className="models-provider-identity">
           <span className="models-provider-detail-brand [--ant-color-text-description:currentColor]">
@@ -234,22 +237,24 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) 
           {writable ? (
             <>
               <button type="button" onClick={() => props.onEditProvider(provider)}>
-                <Pencil />
-                {t("actions.edit")}
+                <Pencil /> {t("actions.edit")}
               </button>
               <button type="button" className="is-danger" onClick={() => props.onDeleteProvider(provider)}>
-                <Trash2 />
-                {t("actions.delete")}
+                <Trash2 /> {t("actions.delete")}
               </button>
             </>
           ) : (
             <button type="button" onClick={() => props.onViewProvider(provider)}>
-              <Eye />
-              {t("actions.view")}
+              <Eye /> {t("actions.view")}
             </button>
           )}
         </div>
       </AgentMasterDetailHeader>
+    </div>
+  );
+  if (props.headerOnly) return header;
+  return (
+    <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
       <div className="models-provider-connection">
         <div>
           <Server />

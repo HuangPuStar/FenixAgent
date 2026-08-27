@@ -177,6 +177,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
       ) : (
         <AgentMasterDetailWorkspace
           className="mt-[18px]"
+          detailHeader={selectedSkill ? <SkillDetail skill={selectedSkill} props={props} headerOnly /> : null}
           index={
             <aside className="px-[10px] py-[19px]">
               <header className="px-2 pb-[14px]">
@@ -236,7 +237,15 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   );
 }
 
-function SkillDetail({ skill, props }: { skill: SkillInfo; props: AgentSkillsCatalogProps }) {
+function SkillDetail({
+  skill,
+  props,
+  headerOnly = false,
+}: {
+  skill: SkillInfo;
+  props: AgentSkillsCatalogProps;
+  headerOnly?: boolean;
+}) {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const writable = canWriteSkill(skill);
@@ -245,35 +254,36 @@ function SkillDetail({ skill, props }: { skill: SkillInfo; props: AgentSkillsCat
   const downloading = props.downloadingKey === getSkillKey(skill);
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
-  return (
-    <article className="min-w-0">
-      <AgentMasterDetailHeader className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
-        <div className="flex min-w-0 items-center gap-4">
-          <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
-            {external ? <Share2 /> : <SkillIcon />}
+  const header = (
+    <AgentMasterDetailHeader className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
+      <div className="flex min-w-0 items-center gap-4">
+        <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
+          {external ? <Share2 /> : <SkillIcon />}
+        </span>
+        <div className="min-w-0">
+          <span className="text-[10px] font-bold tracking-[0.08em] text-[var(--skills-blue)] uppercase">
+            {external ? t("scope.shared") : t("scope.organization")}
           </span>
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold tracking-[0.08em] text-[var(--skills-blue)] uppercase">
-              {external ? t("scope.shared") : t("scope.organization")}
-            </span>
-            <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
-              {display.name}
-            </h2>
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
-              <small>{skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</small>
-              {display.namespace ? (
-                <span className="rounded bg-[#eef1f6] px-1.5 py-0.5 text-[9px] text-[#68758b]">
-                  {display.namespace}
-                </span>
-              ) : null}
-            </div>
+          <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
+            {display.name}
+          </h2>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
+            <small>{skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</small>
+            {display.namespace ? (
+              <span className="rounded bg-[#eef1f6] px-1.5 py-0.5 text-[9px] text-[#68758b]">{display.namespace}</span>
+            ) : null}
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => props.onOpen(skill)}>
-          {writable ? <Pencil /> : <Eye />}
-          {writable ? t("btn.edit") : t("btn.view")}
-        </Button>
-      </AgentMasterDetailHeader>
+      </div>
+      <Button variant="ghost" size="sm" onClick={() => props.onOpen(skill)}>
+        {writable ? <Pencil /> : <Eye />}
+        {writable ? t("btn.edit") : t("btn.view")}
+      </Button>
+    </AgentMasterDetailHeader>
+  );
+  if (headerOnly) return header;
+  return (
+    <article className="min-w-0">
       <div className="p-8">
         <section className="rounded-lg bg-[#f5f8fc] px-5 py-4">
           <span className="text-[10px] font-bold tracking-[0.1em] text-[var(--skills-blue)] uppercase">Skill</span>
