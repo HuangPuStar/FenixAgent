@@ -15,10 +15,10 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { OrgMember } from "@/src/api/organizations";
 import type { MachineRecord } from "@/src/api/registry";
+import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { OrganizationsWorkspaceProps } from "./agent-organizations-types";
 import { canOperateMachine } from "./agent-organizations-utils";
 
@@ -41,26 +41,24 @@ function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }
         <span>{t("myOrgs")}</span>
         <span>{props.organizations.length}</span>
       </div>
-      <ScrollArea className="org-directory-scroll">
-        <div className="org-directory-list">
-          {props.organizations.map((organization) => (
-            <button
-              key={organization.id}
-              type="button"
-              className={`org-directory-row${organization.id === props.selectedOrgId ? " is-active" : ""}`}
-              onClick={() => props.onSelectOrg(organization.id)}
-            >
-              <RoleIcon role={organization.role} />
-              <span className="org-directory-copy">
-                <strong>{organization.name}</strong>
-                <small>{organization.slug}</small>
-              </span>
-              <span className="org-directory-role">{t(`roles.${organization.role}`, organization.role)}</span>
-            </button>
-          ))}
-          {props.organizations.length === 0 ? <p className="org-empty-copy">{t("noOrgs")}</p> : null}
-        </div>
-      </ScrollArea>
+      <div className="org-directory-list">
+        {props.organizations.map((organization) => (
+          <button
+            key={organization.id}
+            type="button"
+            className={`org-directory-row${organization.id === props.selectedOrgId ? " is-active" : ""}`}
+            onClick={() => props.onSelectOrg(organization.id)}
+          >
+            <RoleIcon role={organization.role} />
+            <span className="org-directory-copy">
+              <strong>{organization.name}</strong>
+              <small>{organization.slug}</small>
+            </span>
+            <span className="org-directory-role">{t(`roles.${organization.role}`, organization.role)}</span>
+          </button>
+        ))}
+        {props.organizations.length === 0 ? <p className="org-empty-copy">{t("noOrgs")}</p> : null}
+      </div>
     </aside>
   );
 }
@@ -231,7 +229,7 @@ function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
     );
   return (
     <div className="org-detail">
-      <header className="org-detail-header">
+      <AgentMasterDetailHeader className="org-detail-header">
         <div className="org-detail-identity">
           <div className="org-detail-mark">{props.detail.name.slice(0, 1).toUpperCase()}</div>
           <div>
@@ -265,7 +263,7 @@ function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
             {t("edit")}
           </Button>
         ) : null}
-      </header>
+      </AgentMasterDetailHeader>
 
       {props.isOwner ? (
         <div className="org-engine-strip">
@@ -318,11 +316,8 @@ function OrganizationDetail({ props }: { props: OrganizationsWorkspaceProps }) {
 
 export function OrganizationsWorkspace(props: OrganizationsWorkspaceProps) {
   return (
-    <div className="org-workspace">
-      <OrganizationDirectory props={props} />
-      <ScrollArea className="org-detail-scroll">
-        <OrganizationDetail props={props} />
-      </ScrollArea>
-    </div>
+    <AgentMasterDetailWorkspace className="org-workspace" index={<OrganizationDirectory props={props} />}>
+      <OrganizationDetail props={props} />
+    </AgentMasterDetailWorkspace>
   );
 }

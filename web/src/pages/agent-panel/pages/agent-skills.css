@@ -43,26 +43,6 @@
   margin-top: 8px;
 }
 
-.skills-upload-button,
-.skills-create-button {
-  height: 40px;
-  gap: 7px;
-  border-radius: 8px;
-  padding-inline: 14px;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.skills-upload-button svg,
-.skills-create-button svg {
-  width: 15px;
-}
-
-.skills-create-button .skills-create-chevron {
-  width: 13px;
-  opacity: 0.65;
-}
-
 .skills-commandbar {
   display: flex;
   align-items: center;

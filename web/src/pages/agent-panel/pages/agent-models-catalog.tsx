@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { NS } from "@/src/i18n";
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { ModelTestState } from "./agent-models-types";
 import {
   canWriteProvider,
@@ -119,19 +120,22 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
           </Button>
         </div>
       )}
-      <section className="models-workspace">
-        <ProviderIndex
-          providers={props.providers}
-          modelsByProvider={props.modelsByProvider}
-          selected={props.selectedProvider}
-          onSelect={props.onSelectProvider}
-        />
+      <AgentMasterDetailWorkspace
+        index={
+          <ProviderIndex
+            providers={props.providers}
+            modelsByProvider={props.modelsByProvider}
+            selected={props.selectedProvider}
+            onSelect={props.onSelectProvider}
+          />
+        }
+      >
         {props.selectedProvider ? (
           <ProviderDetail {...props} provider={props.selectedProvider} />
         ) : (
           <CatalogEmpty query={props.query} />
         )}
-      </section>
+      </AgentMasterDetailWorkspace>
     </div>
   );
 }
@@ -209,7 +213,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) 
   const color = getProviderColor(provider.id);
   return (
     <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
-      <header className="models-provider-detail__header">
+      <AgentMasterDetailHeader className="models-provider-detail__header">
         <div className="models-provider-identity">
           <span className="models-provider-detail-brand [--ant-color-text-description:currentColor]">
             <ModelIcon modelId={iconModelId} size={25} />
@@ -245,7 +249,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) 
             </button>
           )}
         </div>
-      </header>
+      </AgentMasterDetailHeader>
       <div className="models-provider-connection">
         <div>
           <Server />

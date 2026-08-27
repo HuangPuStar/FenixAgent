@@ -10,16 +10,8 @@
 }
 
 .org-workspace {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  min-height: 0;
-  flex: 1;
   margin-top: 24px;
-  overflow: hidden;
   border: 1px solid #e3e9f2;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 16px 40px rgb(29 64 118 / 6%);
 }
 
 .org-directory {
@@ -29,16 +21,6 @@
   padding: 20px 12px;
   border-right: 1px solid #edf1f6;
   background: #fafbfd;
-}
-
-.org-directory-scroll,
-.org-detail-scroll {
-  min-height: 0;
-  flex: 1;
-}
-
-.org-detail-scroll {
-  min-width: 0;
 }
 
 .org-directory-heading,

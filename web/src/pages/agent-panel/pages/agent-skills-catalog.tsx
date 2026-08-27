@@ -36,6 +36,7 @@ import {
   getSkillOptionLabel,
 } from "../../../lib/skill-resource-access";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
 import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
 import "./agent-skills.css";
@@ -65,6 +66,13 @@ function getSkillIcon(skill: SkillInfo): LucideIcon {
   if (/html|picture|browser|网页|图片/.test(value)) return Globe2;
   if (/document|文档/.test(value)) return FileText;
   return Sparkles;
+}
+
+function getSkillDisplayName(skill: SkillInfo): { name: string; namespace: string | null } {
+  const label = getSkillOptionLabel(skill);
+  const separator = label.lastIndexOf("/");
+  if (separator < 0) return { name: label, namespace: null };
+  return { name: label.slice(separator + 1), namespace: label.slice(0, separator) };
 }
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
@@ -102,13 +110,13 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
         subtitle={t("subtitle")}
         actions={
           <>
-            <Button variant="outline" className="skills-upload-button" onClick={() => props.onCreate("upload")}>
+            <Button variant="outline" size="sm" onClick={() => props.onCreate("upload")}>
               <Upload />
               {t("btn.uploadSkill")}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="skills-create-button">
+                <Button size="sm">
                   <Plus />
                   {t("btn.createSkill")}
                   <ChevronDown className="skills-create-chevron" />
@@ -167,52 +175,62 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           <p>{props.skills.length === 0 ? t("emptyHint") : t("emptySearchHint")}</p>
         </section>
       ) : (
-        <section className="mt-[18px] grid min-h-[620px] grid-cols-[238px_minmax(0,1fr)] overflow-hidden rounded-[10px] bg-white shadow-[0_12px_38px_rgb(36_57_92_/_8%)] max-[760px]:grid-cols-1">
-          <aside className="bg-[#f6f8fb] px-[10px] py-[19px] shadow-[inset_-1px_0_#e7ecf3]">
-            <header className="px-2 pb-[14px]">
-              <div className="flex items-center justify-between text-[13px] font-semibold">
-                <strong>{t("directory.title")}</strong>
-                <span className="grid h-5 min-w-[22px] place-items-center rounded-[5px] bg-[#e9edf4] text-[11px] text-[var(--skills-muted)]">
-                  {filtered.length}
-                </span>
-              </div>
-              <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
-                {t("directory.summary", { visible: filtered.length, total: props.skills.length })}
-              </small>
-            </header>
-            <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
-              {filtered.map((skill) => {
-                const external = skill.resourceAccess?.ownership === "external";
-                const SkillIcon = getSkillIcon(skill);
-                const active = getSkillKey(skill) === getSkillKey(selectedSkill);
-                return (
-                  <button
-                    type="button"
-                    key={getSkillKey(skill)}
-                    aria-current={active ? "page" : undefined}
-                    className={`grid min-h-[57px] min-w-0 grid-cols-[28px_minmax(0,1fr)_auto_12px] items-center gap-2 rounded-[7px] border-0 p-2 text-left ${active ? "bg-[#e8f0ff] text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
-                    onClick={() => setSelectedKey(getSkillKey(skill))}
-                  >
-                    <span className="grid size-7 place-items-center rounded-md bg-white [&_svg]:w-4">
-                      {external ? <Share2 /> : <SkillIcon />}
-                    </span>
-                    <span className="flex min-w-0 flex-col">
-                      <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--skills-ink)]">
-                        {external ? getSkillOptionLabel(skill) : skill.name}
-                      </strong>
-                      <small className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] text-[var(--skills-faint)]">
-                        {skill.description || t("directory.noDescription")}
-                      </small>
-                    </span>
-                    <span className="text-[9px]">{external ? t("scope.shared") : t("scope.organization")}</span>
-                    <ChevronRight className={`w-3 ${active ? "opacity-100" : "opacity-0"}`} />
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
+        <AgentMasterDetailWorkspace
+          className="mt-[18px]"
+          index={
+            <aside className="px-[10px] py-[19px]">
+              <header className="px-2 pb-[14px]">
+                <div className="flex items-center justify-between text-[13px] font-semibold">
+                  <strong>{t("directory.title")}</strong>
+                  <span className="grid h-5 min-w-[22px] place-items-center rounded-[5px] bg-[#e9edf4] text-[11px] text-[var(--skills-muted)]">
+                    {filtered.length}
+                  </span>
+                </div>
+                <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
+                  {t("directory.summary", { visible: filtered.length, total: props.skills.length })}
+                </small>
+              </header>
+              <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
+                {filtered.map((skill) => {
+                  const external = skill.resourceAccess?.ownership === "external";
+                  const SkillIcon = getSkillIcon(skill);
+                  const display = getSkillDisplayName(skill);
+                  const active = getSkillKey(skill) === getSkillKey(selectedSkill);
+                  return (
+                    <button
+                      type="button"
+                      key={getSkillKey(skill)}
+                      aria-current={active ? "page" : undefined}
+                      className={`grid min-h-[57px] min-w-0 grid-cols-[28px_minmax(0,1fr)_auto_12px] items-center gap-2 rounded-[7px] border-0 p-2 text-left ${active ? "bg-[#e8f0ff] text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
+                      onClick={() => setSelectedKey(getSkillKey(skill))}
+                    >
+                      <span className="grid size-7 place-items-center rounded-md bg-white [&_svg]:w-4">
+                        {external ? <Share2 /> : <SkillIcon />}
+                      </span>
+                      <span className="flex min-w-0 flex-col">
+                        <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--skills-ink)]">
+                          {display.name}
+                        </strong>
+                        <small className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] text-[var(--skills-faint)]">
+                          {skill.description || t("directory.noDescription")}
+                        </small>
+                      </span>
+                      <span className="flex items-center gap-1 text-[9px]">
+                        {display.namespace ? (
+                          <span className="rounded bg-[#eef1f6] px-1.5 py-1 text-[#68758b]">{display.namespace}</span>
+                        ) : null}
+                        <span>{external ? t("scope.shared") : t("scope.organization")}</span>
+                      </span>
+                      <ChevronRight className={`w-3 ${active ? "opacity-100" : "opacity-0"}`} />
+                    </button>
+                  );
+                })}
+              </nav>
+            </aside>
+          }
+        >
           {selectedSkill ? <SkillDetail skill={selectedSkill} props={props} /> : null}
-        </section>
+        </AgentMasterDetailWorkspace>
       )}
     </main>
   );
@@ -226,9 +244,10 @@ function SkillDetail({ skill, props }: { skill: SkillInfo; props: AgentSkillsCat
   const external = skill.resourceAccess?.ownership === "external";
   const downloading = props.downloadingKey === getSkillKey(skill);
   const SkillIcon = getSkillIcon(skill);
+  const display = getSkillDisplayName(skill);
   return (
     <article className="min-w-0">
-      <header className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
+      <AgentMasterDetailHeader className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
         <div className="flex min-w-0 items-center gap-4">
           <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
             {external ? <Share2 /> : <SkillIcon />}
@@ -238,18 +257,23 @@ function SkillDetail({ skill, props }: { skill: SkillInfo; props: AgentSkillsCat
               {external ? t("scope.shared") : t("scope.organization")}
             </span>
             <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
-              {external ? getSkillOptionLabel(skill) : skill.name}
+              {display.name}
             </h2>
-            <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
-              {skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}
-            </small>
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
+              <small>{skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</small>
+              {display.namespace ? (
+                <span className="rounded bg-[#eef1f6] px-1.5 py-0.5 text-[9px] text-[#68758b]">
+                  {display.namespace}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={() => props.onOpen(skill)}>
           {writable ? <Pencil /> : <Eye />}
           {writable ? t("btn.edit") : t("btn.view")}
         </Button>
-      </header>
+      </AgentMasterDetailHeader>
       <div className="p-8">
         <section className="rounded-lg bg-[#f5f8fc] px-5 py-4">
           <span className="text-[10px] font-bold tracking-[0.1em] text-[var(--skills-blue)] uppercase">Skill</span>
