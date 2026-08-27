@@ -1,4 +1,14 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, ScatterChart, X } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  List,
+  RefreshCw,
+  ScatterChart,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -17,11 +27,15 @@ export function EntitiesView() {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [entitiesError, setEntitiesError] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<EntityItem | null>(null);
-  const [_loadingDetail, setLoadingDetail] = useState(false);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("relations");
   const [graphData, setGraphData] = useState<EntityGraphResponse | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -32,6 +46,7 @@ export function EntitiesView() {
 
   const loadEntities = useCallback(async (page: number = 1) => {
     setLoading(true);
+    setEntitiesError(false);
     try {
       const pageOffset = (page - 1) * ITEMS_PER_PAGE;
       const result = await hindsightApi.listEntities({
@@ -42,18 +57,23 @@ export function EntitiesView() {
       setTotal(result.total || 0);
     } catch (error) {
       console.error("Failed to load entities:", error);
+      setEntitiesError(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
   const loadEntityDetail = useCallback(async (entityId: string) => {
+    setSelectedEntityId(entityId);
     setLoadingDetail(true);
+    setDetailError(false);
     try {
       const result = await hindsightApi.getEntity(entityId);
       setSelectedEntity(result);
     } catch (error) {
       console.error("Failed to load entity detail:", error);
+      setSelectedEntity(null);
+      setDetailError(true);
     } finally {
       setLoadingDetail(false);
     }
@@ -67,6 +87,7 @@ export function EntitiesView() {
 
   const loadGraph = useCallback(async () => {
     setGraphLoading(true);
+    setGraphError(false);
     try {
       const result = await hindsightApi.getEntityGraph({
         limit: 2000,
@@ -75,6 +96,7 @@ export function EntitiesView() {
       setGraphData(result);
     } catch (error) {
       console.error("Failed to load entity graph:", error);
+      setGraphError(true);
     } finally {
       setGraphLoading(false);
     }
@@ -87,10 +109,10 @@ export function EntitiesView() {
   }, [loadEntities]);
 
   useEffect(() => {
-    if (viewMode === "relations" && !graphData && !graphLoading) {
+    if (viewMode === "relations" && !graphData && !graphLoading && !graphError) {
       loadGraph();
     }
-  }, [viewMode, graphData, graphLoading, loadGraph]);
+  }, [viewMode, graphData, graphLoading, graphError, loadGraph]);
 
   const constellationData = useMemo(() => {
     if (!graphData) return { nodes: [], links: [] };
@@ -211,6 +233,15 @@ export function EntitiesView() {
                 <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntityGraph")}</div>
               </div>
             </div>
+          ) : graphError ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
+              <AlertCircle className="size-8 text-destructive" />
+              <p className="text-sm font-medium">{t("entitiesView.graphLoadFailed")}</p>
+              <Button variant="outline" size="sm" onClick={() => void loadGraph()}>
+                <RefreshCw className="size-4" />
+                {t("entitiesView.retry")}
+              </Button>
+            </div>
           ) : constellationData.nodes.length > 0 ? (
             <Constellation
               data={constellationData}
@@ -250,6 +281,15 @@ export function EntitiesView() {
                 <div className="text-4xl mb-2">...</div>
                 <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntities")}</div>
               </div>
+            </div>
+          ) : entitiesError ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
+              <AlertCircle className="size-8 text-destructive" />
+              <p className="text-sm font-medium">{t("entitiesView.listLoadFailed")}</p>
+              <Button variant="outline" size="sm" onClick={() => void loadEntities(currentPage)}>
+                <RefreshCw className="size-4" />
+                {t("entitiesView.retry")}
+              </Button>
             </div>
           ) : entities.length > 0 ? (
             <>
@@ -344,6 +384,38 @@ export function EntitiesView() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {selectedEntityId && (loadingDetail || detailError) && (
+        <div
+          className="fixed right-4 top-4 z-50 flex w-80 flex-col items-center gap-3 rounded-lg border bg-card p-5 text-center shadow-lg"
+          role={detailError ? "alert" : "status"}
+        >
+          {detailError ? (
+            <AlertCircle className="size-8 text-destructive" />
+          ) : (
+            <RefreshCw className="size-8 animate-spin" />
+          )}
+          <p className="text-sm font-medium">
+            {detailError ? t("entitiesView.detailLoadFailed") : t("entitiesView.loadingEntityDetail")}
+          </p>
+          {detailError && (
+            <Button variant="outline" size="sm" onClick={() => void loadEntityDetail(selectedEntityId)}>
+              <RefreshCw className="size-4" />
+              {t("entitiesView.retry")}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedEntityId(null);
+              setDetailError(false);
+            }}
+          >
+            {t("entitiesView.close")}
+          </Button>
         </div>
       )}
 

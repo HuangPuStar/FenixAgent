@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Calendar,
   CheckCircle,
   ChevronLeft,
@@ -22,9 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
-// 空状态插图
-import emptyMemoriesImg from "/images/memories-empty.webp";
-import type { BankStats, GraphApiData, MemoryTableRow } from "../types";
+import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
 import { MemoryDetailModal } from "./MemoryDetailModal";
@@ -37,17 +36,26 @@ interface DataViewProps {
   factType: FactType;
   documentId?: string;
   chunkId?: string;
+  initialQuery?: string;
   compact?: boolean;
   onExpandToggle?: () => void;
 }
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: 组件命名为视图概念 DataView
-export function DataView({ factType, documentId, chunkId, compact = false, onExpandToggle }: DataViewProps) {
+export function DataView({
+  factType,
+  documentId,
+  chunkId,
+  initialQuery,
+  compact = false,
+  onExpandToggle,
+}: DataViewProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
   const [compactMode, setCompactMode] = useState(compact);
   const [data, setData] = useState<GraphApiData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedGraphNode, setSelectedGraphNode] = useState<MemoryTableRow | null>(null);
   const [modalMemoryId, setModalMemoryId] = useState<string | null>(null);
@@ -102,30 +110,36 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedGraphNode]);
 
-  const loadData = async (limit?: number, q?: string, tags?: string[]) => {
+  const loadData = async (limit?: number, q: string | undefined = initialQuery, tags?: string[]) => {
     setLoading(true);
+    setError(null);
     try {
-      const graphData = (await hindsightApi.getGraph({
+      const graphData = await hindsightApi.getGraph({
         type: factType,
         limit: limit ?? fetchLimit,
-        q,
+        q: q || undefined,
         tags,
         document_id: documentId,
         chunk_id: chunkId,
-      })) as GraphApiData;
+      });
       setData(graphData);
 
-      // 观察类型：获取整合状态
+      // 观察类型的整合状态是辅助信息，失败时不应遮盖已经成功加载的图数据。
       if (factType === "observation") {
-        const stats = (await hindsightApi.getBankStats()) as BankStats;
-        setConsolidationStatus({
-          pending_consolidation: stats.pending_consolidation || 0,
-          last_consolidated_at: stats.last_consolidated_at || null,
-        });
+        try {
+          const stats = await hindsightApi.getBankStats();
+          setConsolidationStatus({
+            pending_consolidation: stats.pending_consolidation ?? 0,
+            last_consolidated_at: stats.last_consolidated_at ?? null,
+          });
+        } catch (statsError) {
+          console.error("[DataView] getBankStats failed:", statsError);
+          setConsolidationStatus(null);
+        }
       }
-    } catch (error) {
-      // 调试：打印 loadData 错误以便排查数据加载失败
-      console.error("[DataView] loadData failed:", error);
+    } catch (loadError) {
+      console.error("[DataView] loadData failed:", loadError);
+      setError(loadError instanceof Error ? loadError.message : t("dataView.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -192,7 +206,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   );
 
   // 颜色和尺寸回调
-  const nodeColorFn = useCallback((node: GraphNode) => node.color || "#0074d9", []);
+  const nodeColorFn = useCallback((node: GraphNode) => node.color || "var(--color-primary)", []);
 
   // 观察类型：按 proof_count 调整节点尺寸
   const observationSizeLookup = useMemo(() => {
@@ -254,12 +268,12 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   );
 
   const linkColorFn = useCallback((link: { type?: string }) => {
-    if (link.type === "temporal") return "#009296";
-    if (link.type === "entity") return "#f59e0b";
+    if (link.type === "temporal") return "var(--color-cyan)";
+    if (link.type === "entity") return "var(--color-status-warning)";
     if (link.type === "causes" || link.type === "caused_by" || link.type === "enables" || link.type === "prevents") {
-      return "#8b5cf6";
+      return "var(--color-accent-pink)";
     }
-    return "#0074d9";
+    return "var(--color-primary)";
   }, []);
 
   // 组件挂载或 factType 变化时自动加载数据
@@ -282,9 +296,21 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   return (
     <div>
       {loading && !data ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12" role="status">
           <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
           <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
+          <AlertCircle className="size-8 text-destructive" />
+          <div>
+            <p className="text-sm font-medium">{t("dataView.loadFailed")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            {t("dataView.retry")}
+          </Button>
         </div>
       ) : !data ? (
         <div className="flex items-center justify-center py-20">
@@ -295,14 +321,14 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
       ) : data.table_rows?.length === 0 ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-[15px] font-semibold text-[#56667d]">{t("dataView.emptyTitle")}</p>
-          <p className="mt-1 text-[13px] text-[#8a9ab0]">{t("dataView.emptyHint")}</p>
+          <p className="text-[15px] font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{t("dataView.emptyHint")}</p>
           <img
-            src={emptyMemoriesImg}
+            src="/images/memories-empty.webp"
             alt={t("dataView.emptyTitle")}
             className="w-[70%] max-w-full mt-6 mb-4 opacity-80"
           />
-          <p className="text-[13px] text-[#8a9ab0]">{t("dataView.emptyFooter")}</p>
+          <p className="text-[13px] text-muted-foreground">{t("dataView.emptyFooter")}</p>
         </div>
       ) : (
         <>

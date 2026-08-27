@@ -8,6 +8,18 @@
     "mentalModels": "Mental Models",
     "entities": "Entities"
   },
+  "perspectives": {
+    "title": "Memory perspectives",
+    "description": "Explore long-term cognition by how it forms",
+    "worldDescription": "Verifiable objective information",
+    "experienceDescription": "User and Agent experiences",
+    "observationDescription": "Judgments formed from behavior",
+    "mentalModelsDescription": "Synthesized long-term cognition",
+    "entitiesDescription": "People, projects, and relationships"
+  },
+  "workspace": {
+    "searchPlaceholder": "Search this memory perspective"
+  },
   "memories": {
     "worldFacts": "World Facts",
     "experience": "Experience",
@@ -73,10 +85,14 @@
   },
   "status": {
     "notConfigured": "Hindsight is not configured. Please set HINDSIGHT_MCP_URL.",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "loadFailed": "Failed to load Hindsight status",
+    "retry": "Retry"
   },
   "dataView": {
     "loadingMemories": "Loading memories...",
+    "loadFailed": "Failed to load memories",
+    "retry": "Retry",
     "noMemoriesYet": "No memories yet",
     "noMemoriesDescription": "Add a document to start building this memory bank.",
     "emptyTitle": "No memory data yet",
@@ -206,11 +222,16 @@
     "viewRelations": "Relations",
     "viewList": "List",
     "loadingEntityGraph": "Loading entity graph...",
+    "graphLoadFailed": "Failed to load entity graph",
     "noCooccurrences": "No co-occurrences found",
     "noCooccurrencesDescription": "Entities will appear here as memories are added.",
     "heatLegendLabel": "recency",
     "sizeLegendLabel": "co-occurrences",
     "loadingEntities": "Loading entities...",
+    "listLoadFailed": "Failed to load entities",
+    "loadingEntityDetail": "Loading entity details...",
+    "detailLoadFailed": "Failed to load entity details",
+    "retry": "Retry",
     "entityCount": "{{count}} entities",
     "colName": "Name",
     "colMentions": "Mentions",

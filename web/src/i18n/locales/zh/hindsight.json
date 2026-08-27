@@ -8,6 +8,18 @@
     "mentalModels": "心理模型",
     "entities": "实体"
   },
+  "perspectives": {
+    "title": "记忆视角",
+    "description": "按形成方式查看长期认知",
+    "worldDescription": "可验证的客观信息",
+    "experienceDescription": "用户与 Agent 的经历",
+    "observationDescription": "从行为中形成的判断",
+    "mentalModelsDescription": "归纳后的长期认知",
+    "entitiesDescription": "人物、项目与关系"
+  },
+  "workspace": {
+    "searchPlaceholder": "搜索当前记忆视角"
+  },
   "memories": {
     "worldFacts": "世界事实",
     "experience": "经验",
@@ -73,10 +85,14 @@
   },
   "status": {
     "notConfigured": "记忆能力未开启，请联系管理员进行记忆服务部署与配置",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "loadFailed": "加载记忆服务状态失败",
+    "retry": "重试"
   },
   "dataView": {
     "loadingMemories": "正在加载记忆...",
+    "loadFailed": "加载记忆失败",
+    "retry": "重试",
     "noMemoriesYet": "暂无记忆",
     "noMemoriesDescription": "添加文档以开始构建此记忆库。",
     "emptyTitle": "暂无记忆数据",
@@ -206,11 +222,16 @@
     "viewRelations": "关系图",
     "viewList": "列表",
     "loadingEntityGraph": "正在加载实体图谱...",
+    "graphLoadFailed": "加载实体图谱失败",
     "noCooccurrences": "未找到共现关系",
     "noCooccurrencesDescription": "添加记忆后，实体将显示在此处。",
     "heatLegendLabel": "近期度",
     "sizeLegendLabel": "共现次数",
     "loadingEntities": "正在加载实体...",
+    "listLoadFailed": "加载实体列表失败",
+    "loadingEntityDetail": "正在加载实体详情...",
+    "detailLoadFailed": "加载实体详情失败",
+    "retry": "重试",
     "entityCount": "{{count}} 个实体",
     "colName": "名称",
     "colMentions": "提及次数",
