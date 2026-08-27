@@ -41,7 +41,6 @@ type Props = {
   onEdit: (app: SiteApp) => void;
   onDelete: (app: SiteApp) => void;
   onRotateToken: (app: SiteApp) => void;
-  onOpen: (app: SiteApp) => void;
   onCreatorOpen: (app: SiteApp) => void;
   onRetry: () => void;
 };
@@ -119,69 +118,80 @@ export function AgentSitesCatalog(props: Props) {
           )}
         </section>
       ) : (
-        <section className="site-card-grid">
-          {props.apps.map((app, index) => (
-            <article className="site-deployment-card" key={app.id}>
-              <button
-                type="button"
-                className={`site-deployment-preview is-variant-${(index % 4) + 1}`}
-                onClick={() => props.onOpen(app)}
-              >
-                <span>{app.name.slice(0, 2).toUpperCase()}</span>
-                <i />
-                <i />
-                <i />
-              </button>
-              <div className="site-card-body">
-                <header>
-                  <span className="site-card-icon">
-                    <Globe2 />
-                  </span>
-                  <div>
-                    <strong>{app.name}</strong>
-                    <small>{app.remoteAppId}</small>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button type="button" className="site-more-button" aria-label={t("siteDeployment.actions.more")}>
-                        <MoreHorizontal />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => props.onRotateToken(app)}>
-                        <RefreshCw />
-                        {t("siteDeployment.actions.rotateToken")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => props.onEdit(app)}>
-                        <Pencil />
-                        {t("siteDeployment.actions.edit")}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onClick={() => props.onDelete(app)}>
-                        <Trash2 />
-                        {t("siteDeployment.actions.delete")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </header>
-                <p>{app.description || t("siteDeployment.directory.noDescription")}</p>
-                <footer>
-                  <span className="site-published-status">
-                    <i />
-                    {t("siteDeployment.status.published")}
-                  </span>
-                  <span>{t(`siteDeployment.visibility.${app.visibility}`)}</span>
-                  {app.createdByAgentConfigId && (
-                    <button type="button" onClick={() => props.onCreatorOpen(app)}>
-                      {app.createdByAgentConfigName || t("siteDeployment.creator")}
-                    </button>
-                  )}
-                  <button type="button" className="site-open-button" onClick={() => props.onOpen(app)}>
-                    {t("siteDeployment.actions.open")}
-                    <ExternalLink />
+        <section className="grid grid-cols-2 gap-3.5 pt-4 max-[950px]:grid-cols-1">
+          {props.apps.map((app) => (
+            <article
+              className="min-w-0 overflow-hidden rounded-lg border border-[var(--site-line)] bg-white shadow-[0_5px_18px_rgb(36_57_92/5%)]"
+              key={app.id}
+            >
+              <header className="grid grid-cols-[38px_minmax(0,1fr)_30px] items-center gap-3 px-4 pt-4">
+                <span className="grid size-[38px] place-items-center rounded-lg bg-[#edf3ff] text-[var(--site-blue)] [&_svg]:w-[17px]">
+                  <Globe2 />
+                </span>
+                <div className="min-w-0">
+                  <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
+                    {app.name}
+                  </strong>
+                  <small className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-[var(--site-faint)]">
+                    {app.remoteAppId}
+                  </small>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-[30px] text-[var(--site-muted)] [&_svg]:w-4"
+                      aria-label={t("siteDeployment.actions.more")}
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => props.onRotateToken(app)}>
+                      <RefreshCw />
+                      {t("siteDeployment.actions.rotateToken")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => props.onEdit(app)}>
+                      <Pencil />
+                      {t("siteDeployment.actions.edit")}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onClick={() => props.onDelete(app)}>
+                      <Trash2 />
+                      {t("siteDeployment.actions.delete")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </header>
+              <p className="min-h-10 px-4 pt-3 text-[11px] text-[var(--site-muted)] leading-5">
+                {app.description || t("siteDeployment.directory.noDescription")}
+              </p>
+              <footer className="mt-3 flex min-h-11 items-center gap-2.5 border-[var(--site-line)] border-t bg-[#fafbfd] px-4 text-[10px] text-[var(--site-faint)]">
+                <span className="inline-flex items-center gap-1 text-[#278d70]">
+                  <i className="size-1.5 rounded-full bg-[#31a984]" />
+                  {t("siteDeployment.status.published")}
+                </span>
+                <span>{t(`siteDeployment.visibility.${app.visibility}`)}</span>
+                {app.createdByAgentConfigId && (
+                  <button
+                    type="button"
+                    className="max-w-36 overflow-hidden text-ellipsis whitespace-nowrap text-[var(--site-muted)] hover:text-[var(--site-blue)]"
+                    onClick={() => props.onCreatorOpen(app)}
+                  >
+                    {app.createdByAgentConfigName || t("siteDeployment.creator")}
                   </button>
-                </footer>
-              </div>
+                )}
+                <a
+                  className="ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)] [&_svg]:w-3"
+                  href={`/web/site/deploy/${encodeURIComponent(app.remoteAppId)}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("siteDeployment.actions.open")}
+                  <ExternalLink />
+                </a>
+              </footer>
             </article>
           ))}
         </section>

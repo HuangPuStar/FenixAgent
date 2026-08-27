@@ -138,7 +138,6 @@ export function AgentSitesPage() {
         onEdit={openEdit}
         onDelete={setDeleteTarget}
         onRotateToken={rotateToken.run}
-        onOpen={(app) => window.open(`/web/site/deploy/${app.remoteAppId}/`, "_blank", "noopener,noreferrer")}
         onCreatorOpen={(app) => void openCreator(app)}
         onRetry={catalog.refresh}
       />
