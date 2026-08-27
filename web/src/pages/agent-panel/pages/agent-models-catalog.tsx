@@ -19,9 +19,10 @@ import { useTranslation } from "react-i18next";
 import { ModelIcon } from "@/components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { ModelTestState } from "./agent-models-types";
 import {
@@ -77,8 +78,8 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
     { all: 0, organization: 0, shared: 0 },
   );
   return (
-    <div className="agent-models-page">
-      <AgentPageHeader
+    <AppPage className="agent-models-page">
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -139,7 +140,7 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
           <CatalogEmpty query={props.query} />
         )}
       </AgentMasterDetailWorkspace>
-    </div>
+    </AppPage>
   );
 }
 

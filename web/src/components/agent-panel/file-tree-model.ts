@@ -8,6 +8,11 @@ export interface ParsedFileNode {
   children: ParsedFileNode[];
 }
 
+export interface FileTreeSections {
+  workspace: ParsedFileNode[];
+  user: ParsedFileNode[];
+}
+
 export const MAX_FILE_UPLOAD_SIZE_LABEL = `${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB`;
 
 export function parsePathsToTree(paths: string[]): ParsedFileNode[] {
@@ -48,6 +53,18 @@ export function filterFileTree(nodes: ParsedFileNode[], query: string): ParsedFi
     const children = filterFileTree(node.children, query);
     return node.name.toLocaleLowerCase().includes(query) || children.length > 0 ? [{ ...node, children }] : [];
   });
+}
+
+/**
+ * 将 workspace 根节点投影为两个独立展示区。
+ * 用户文件仍保留 `user/...` 的真实 workspace 相对路径，只移除视图中的重复目录层级。
+ */
+export function splitFileTreeSections(nodes: ParsedFileNode[]): FileTreeSections {
+  const userRoot = nodes.find((node) => node.path === "user");
+  return {
+    workspace: nodes.filter((node) => node.path !== "user"),
+    user: userRoot?.children ?? [],
+  };
 }
 
 export function collectDirectoryPaths(nodes: ParsedFileNode[]): string[] {

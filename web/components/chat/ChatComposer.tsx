@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import { pushContext, removeContext } from "../../src/lib/context-queue";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
 import type { FileInfo } from "../../src/types";
 import { CommandMenu } from "./CommandMenu";
 import { ComposerAssets, type ComposerQuote } from "./composer-assets";
@@ -365,11 +364,7 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   return (
     <div
-      className={cn(
-        // chat-composer-wrapper：作为窄屏容器（如 MetaAgentPanel）收紧外边距的 CSS 作用域钩子
-        "chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2",
-        className,
-      )}
+      className={`chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2${className ? ` ${className}` : ""}`}
     >
       {/* relative wrapper：CommandMenu 在此层定位，不受 .chat-composer-card 的 overflow: clip 裁剪 */}
       <div className="relative">
@@ -383,12 +378,12 @@ export function ChatComposer({
               setShowCommandMenu(false);
               setCommandFilter("");
             }}
-            className="absolute bottom-full left-0 right-0 mb-1 z-50"
+            className="chat-command-menu--inline"
           />
         )}
 
         <div
-          className={cn("chat-composer-card", isDragOver && "bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]")}
+          className={`chat-composer-card${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
           onDragOver={hookDragOver}
           onDragEnter={hookDragEnter}
           onDragLeave={hookDragLeave}

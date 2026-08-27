@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "../../../i18n";
 import {
   canManageSkillSharing,
@@ -35,10 +38,10 @@ import {
   getSkillKey,
   getSkillOptionLabel,
 } from "../../../lib/skill-resource-access";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
+import type { SkillDetail as SkillDetailData } from "../../../types/config";
 import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
-import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
+import { countSkillsByScope, filterSkills, getSkillOrganizationBadgeStyle } from "./agent-skills-utils";
 import "./agent-skills.css";
 
 type AgentSkillsCatalogProps = {
@@ -57,6 +60,7 @@ type AgentSkillsCatalogProps = {
   onDelete: (skill: SkillInfo) => void;
   onToggleSharing: (skill: SkillInfo) => void;
   onRetry: () => void;
+  onLoadDetail: (skill: SkillInfo) => Promise<SkillDetailData>;
 };
 
 function getSkillIcon(skill: SkillInfo): LucideIcon {
@@ -80,16 +84,41 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const filtered = filterSkills(props.skills, props.query, props.scope);
   const { organization: organizationCount, shared: sharedCount } = countSkillsByScope(props.skills);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SkillDetailData | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
   const selectedSkill = filtered.find((skill) => getSkillKey(skill) === selectedKey) ?? filtered[0] ?? null;
 
   useEffect(() => {
     if (selectedSkill && selectedKey !== getSkillKey(selectedSkill)) setSelectedKey(getSkillKey(selectedSkill));
   }, [selectedKey, selectedSkill]);
 
+  useEffect(() => {
+    if (!selectedSkill) return;
+    let current = true;
+    setDetail(null);
+    setDetailError(false);
+    setDetailLoading(true);
+    props
+      .onLoadDetail(selectedSkill)
+      .then((result) => {
+        if (current) setDetail(result);
+      })
+      .catch(() => {
+        if (current) setDetailError(true);
+      })
+      .finally(() => {
+        if (current) setDetailLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [props.onLoadDetail, selectedSkill]);
+
   if (props.loading) return <SkillsLoading />;
   if (props.error && props.skills.length === 0) {
     return (
-      <main className="agent-skills-page">
+      <AppPage className="agent-skills-page">
         <section className="skills-load-error" role="alert">
           <AlertTriangle />
           <strong>{t("loadState.title")}</strong>
@@ -99,13 +128,13 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
             {t("loadState.retry")}
           </Button>
         </section>
-      </main>
+      </AppPage>
     );
   }
 
   return (
-    <main className="agent-skills-page">
-      <AgentPageHeader
+    <AppPage className="agent-skills-page" busy>
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -176,8 +205,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
         </section>
       ) : (
         <AgentMasterDetailWorkspace
-          className="mt-[18px]"
-          detailHeader={selectedSkill ? <SkillDetail skill={selectedSkill} props={props} headerOnly /> : null}
+          detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}
           index={
             <aside className="px-[10px] py-[19px]">
               <header className="px-2 pb-[14px]">
@@ -197,6 +225,8 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                   const SkillIcon = getSkillIcon(skill);
                   const display = getSkillDisplayName(skill);
                   const active = getSkillKey(skill) === getSkillKey(selectedSkill);
+                  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
+                  const organizationBadgeStyle = getSkillOrganizationBadgeStyle(skill);
                   return (
                     <button
                       type="button"
@@ -216,9 +246,15 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                           {skill.description || t("directory.noDescription")}
                         </small>
                       </span>
-                      <span className="flex items-center gap-1 text-[9px]">
+                      <span className="flex flex-col items-end gap-1 text-[9px] leading-none">
                         {display.namespace ? (
-                          <span className="rounded bg-[#eef1f6] px-1.5 py-1 text-[#68758b]">{display.namespace}</span>
+                          <span
+                            className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap rounded border px-1.5 py-1"
+                            style={organizationBadgeStyle}
+                            title={organizationName}
+                          >
+                            {display.namespace}
+                          </span>
                         ) : null}
                         <span>{external ? t("scope.shared") : t("scope.organization")}</span>
                       </span>
@@ -230,21 +266,35 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
             </aside>
           }
         >
-          {selectedSkill ? <SkillDetail skill={selectedSkill} props={props} /> : null}
+          {selectedSkill ? (
+            <SkillDetailView
+              skill={selectedSkill}
+              props={props}
+              detail={detail}
+              loading={detailLoading}
+              error={detailError}
+            />
+          ) : null}
         </AgentMasterDetailWorkspace>
       )}
-    </main>
+    </AppPage>
   );
 }
 
-function SkillDetail({
+function SkillDetailView({
   skill,
   props,
   headerOnly = false,
+  detail = null,
+  loading = false,
+  error = false,
 }: {
   skill: SkillInfo;
   props: AgentSkillsCatalogProps;
   headerOnly?: boolean;
+  detail?: SkillDetailData | null;
+  loading?: boolean;
+  error?: boolean;
 }) {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
@@ -254,8 +304,10 @@ function SkillDetail({
   const downloading = props.downloadingKey === getSkillKey(skill);
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
+  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
+  const organizationBadgeStyle = getSkillOrganizationBadgeStyle(skill);
   const header = (
-    <AgentMasterDetailHeader className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
+    <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
         <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
           {external ? <Share2 /> : <SkillIcon />}
@@ -268,10 +320,13 @@ function SkillDetail({
             {display.name}
           </h2>
           <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
-            <small>{skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</small>
-            {display.namespace ? (
-              <span className="rounded bg-[#eef1f6] px-1.5 py-0.5 text-[9px] text-[#68758b]">{display.namespace}</span>
-            ) : null}
+            <span
+              className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium"
+              style={organizationBadgeStyle}
+              title={organizationName}
+            >
+              {organizationName}
+            </span>
           </div>
         </div>
       </div>
@@ -290,6 +345,36 @@ function SkillDetail({
           <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--skills-muted)]">
             {skill.description || t("directory.noDescription")}
           </p>
+        </section>
+        <section className="mt-6 border-t border-[var(--skills-line)] pt-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-[13px] font-semibold text-[var(--skills-ink)]">{t("detail.contentTitle")}</h3>
+              <p className="mt-1 text-[10px] text-[var(--skills-faint)]">{t("detail.contentHint")}</p>
+            </div>
+            <span className="rounded bg-[#eef1f6] px-2 py-1 font-mono text-[9px] text-[#68758b]">SKILL.md</span>
+          </div>
+          {loading ? (
+            <div className="space-y-3" aria-busy="true">
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          ) : error ? (
+            <div
+              className="flex items-center justify-between rounded-lg bg-[#fff7ed] px-4 py-3 text-[11px] text-[#9a5a16]"
+              role="alert"
+            >
+              <span>{t("detail.loadError")}</span>
+              <Button variant="ghost" size="xs" onClick={() => props.onOpen(skill)}>
+                {t("btn.view")}
+              </Button>
+            </div>
+          ) : (
+            <MessageResponse className="skills-detail-markdown">
+              {detail?.content || t("detail.emptyContent")}
+            </MessageResponse>
+          )}
         </section>
         <div className="mt-7 flex flex-wrap items-center gap-2 border-b border-[var(--skills-line)] pb-7">
           <span className="rounded-md bg-[#edf5ff] px-2.5 py-1.5 text-[10px] text-[#1e72c8]">
@@ -328,7 +413,7 @@ function SkillDetail({
 
 function SkillsLoading() {
   return (
-    <main className="agent-skills-page" aria-busy="true">
+    <AppPage className="agent-skills-page">
       <div>
         <Skeleton className="h-7 w-36" />
         <Skeleton className="mt-2 h-4 w-72" />
@@ -349,6 +434,6 @@ function SkillsLoading() {
           </div>
         ))}
       </div>
-    </main>
+    </AppPage>
   );
 }

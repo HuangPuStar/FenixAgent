@@ -5,11 +5,7 @@
   --task-muted: #65728a;
   --task-faint: #96a2b5;
   --task-line: #e7ecf3;
-  min-height: 100%;
-  overflow: auto;
-  padding: 28px 32px 40px;
   color: var(--task-ink);
-  background: #f5f7fb;
 }
 
 .task-runtime-board {
@@ -270,8 +266,11 @@
 }
 
 .task-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  border: 1px solid var(--task-line);
+  border-radius: 10px;
   background: #fff;
+  box-shadow: 0 8px 28px rgb(36 57 92 / 7%);
 }
 
 .task-table-wrap table {
@@ -299,6 +298,7 @@
 .task-table-wrap th {
   height: 38px;
   color: var(--task-faint);
+  background: #fafbfd;
   font-size: 10px;
 }
 .task-table-wrap td {
@@ -307,6 +307,10 @@
 }
 .task-table-wrap tr.is-disabled {
   opacity: 0.58;
+}
+
+.task-table-wrap tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .task-name-button {
@@ -432,9 +436,6 @@
 }
 
 @media (max-width: 900px) {
-  .agent-tasks-page {
-    padding: 22px 20px 32px;
-  }
   .task-runtime-board > header {
     align-items: flex-start;
     flex-direction: column;

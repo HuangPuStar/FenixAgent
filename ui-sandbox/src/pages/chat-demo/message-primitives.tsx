@@ -99,8 +99,8 @@ export function ThoughtBlock({ label, children }: { label: string; children: Rea
   return (
     <div className="chat-demo__thought">
       <button type="button" className="chat-demo__thought-trigger" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? <ChevronDown /> : <ChevronRight />}
         <span>{label}</span>
+        {open ? <ChevronDown /> : <ChevronRight />}
       </button>
       {open && <div className="chat-demo__thought-body">{children}</div>}
     </div>

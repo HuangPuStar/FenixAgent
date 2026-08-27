@@ -204,7 +204,7 @@
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: minmax(140px, 38%) minmax(0, 1fr);
+  grid-template-columns: clamp(148px, 22%, 176px) minmax(0, 1fr);
 }
 .chat-demo__vscode-workbench {
   display: flex;
@@ -214,9 +214,12 @@
   background: #fff;
 }
 .chat-demo__vscode-explorer {
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
   padding: 7px 5px;
-  overflow: auto;
+  overflow: hidden;
   background: #f8fafc;
   box-shadow: inset -1px 0 #edf0f4;
 }
@@ -270,6 +273,13 @@
 .chat-demo__vscode-root {
   padding: 7px 7px 5px;
   color: #38455b;
+}
+
+.chat-demo__explorer-workspace {
+  min-height: 96px;
+  flex: 1 1 auto;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 .chat-demo__file-search {
   display: flex;

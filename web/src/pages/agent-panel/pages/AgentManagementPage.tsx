@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import { agentApi } from "@/src/api/agents";
 import { type EnvironmentDetail, envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { AgentBadge } from "../../../../components/chat/AgentBadge";
 import { NS } from "../../../i18n";
 import { getAgentConfigLookupKey, getAgentDisplayName, isAgentWritable } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { AgentInfo } from "../../../types/config";
 import { AgentFormDialog } from "../AgentFormDialog";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 interface AgentManageNode {
   agent: AgentInfo;
@@ -150,8 +151,8 @@ export function AgentManagementPage() {
   );
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <AgentPageHeader
+    <AppPage>
+      <AppHeader
         title="智能体管理"
         subtitle="管理您的所有 AI 智能体，支持创建、编辑和对话"
         actions={
@@ -248,6 +249,6 @@ export function AgentManagementPage() {
         agentName={editAgentName ?? undefined}
         onSuccess={refresh}
       />
-    </div>
+    </AppPage>
   );
 }

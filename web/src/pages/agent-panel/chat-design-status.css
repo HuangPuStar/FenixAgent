@@ -1,0 +1,244 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: preserve the established cross-section cascade while this legacy stylesheet is split by responsibility. */
+
+.chat-interaction-stack,
+.chat-status-panel {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto 8px;
+}
+.chat-interaction-region,
+.chat-status-panel {
+  overflow: hidden;
+  border: 1px solid #dde4ee;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}
+.chat-interaction-region > header button,
+.chat-status-header {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px;
+  color: #33445d;
+}
+.chat-interaction-region > header button strong {
+  font-size: 13px;
+}
+.chat-interaction-region > header button small {
+  color: #8a96a8;
+  font-size: 11px;
+}
+.chat-interaction-region > header button > svg:last-child {
+  width: 15px;
+  margin-left: auto;
+}
+.chat-interaction-region > header button > svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+.chat-interaction-icon {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 7px;
+  background: #eef4ff;
+  color: #2d69db;
+}
+.chat-interaction-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.chat-permission-body,
+.chat-question-body {
+  padding: 2px 14px 13px;
+}
+.chat-permission-copy span,
+.chat-question-copy span {
+  display: block;
+  color: #8a96a8;
+  font-size: 11px;
+}
+.chat-permission-copy strong,
+.chat-question-copy strong {
+  display: block;
+  margin-top: 3px;
+  color: #26364f;
+  font-size: 14px;
+}
+.chat-permission-copy p {
+  margin-top: 3px;
+  color: #718096;
+  font-size: 12px;
+}
+.chat-permission-body code {
+  display: block;
+  overflow: hidden;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #f5f7fa;
+  color: #55657d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-permission-audit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: #7f8ca0;
+  font-size: 11px;
+}
+.chat-permission-audit svg {
+  width: 13px;
+  height: 13px;
+}
+.chat-permission-body footer,
+.chat-question-body footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+.chat-question-body footer > div {
+  display: flex;
+  margin-right: auto;
+}
+.chat-question-options {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+.chat-question-options > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 8px;
+  color: #53627a;
+  text-align: left;
+}
+.chat-question-options > button:hover,
+.chat-question-options > button.is-selected {
+  background: #f0f5ff;
+  color: #245fc9;
+}
+.chat-question-options > button > span {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border-radius: 5px;
+  background: #eef1f5;
+  font-size: 11px;
+}
+.chat-question-options > button svg {
+  width: 13px;
+  height: 13px;
+}
+.chat-question-options strong,
+.chat-question-options small {
+  display: block;
+}
+.chat-question-options strong {
+  font-size: 12px;
+}
+.chat-question-options small {
+  margin-top: 2px;
+  color: #8a96a8;
+  font-size: 11px;
+}
+
+.chat-status-header {
+  padding: 4px 9px;
+}
+.chat-status-tabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+.chat-status-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  color: #748197;
+  font-size: 12px;
+}
+.chat-status-tabs button.is-active {
+  background: #f1f5fc;
+  color: #285eb8;
+}
+.chat-status-tabs svg {
+  width: 15px;
+  height: 15px;
+}
+.chat-status-tabs small {
+  color: #8a96a8;
+  font-size: 10px;
+}
+.chat-status-collapse {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  place-items: center;
+  color: #8290a5;
+}
+.chat-status-collapse svg {
+  width: 15px;
+}
+.chat-status-list {
+  display: grid;
+  padding: 2px 12px 10px;
+}
+.chat-status-list > div,
+.chat-status-list > button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 29px;
+  color: #526178;
+  text-align: left;
+}
+.chat-status-list svg {
+  width: 15px;
+  height: 15px;
+  color: #8c9bb0;
+}
+.chat-status-list [data-status="completed"] svg {
+  color: #25a47a;
+}
+.chat-status-list [data-status="in_progress"] svg,
+.chat-status-list [data-status="running"] svg {
+  color: #d28a27;
+}
+.chat-status-list [data-status="failed"] svg {
+  color: #db5d56;
+}
+.chat-status-list span {
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-status-list small {
+  color: #8a96a8;
+  font-size: 10px;
+}
+.chat-status-list small.is-added {
+  color: #259a70;
+}
+.chat-status-note {
+  padding: 6px 12px 10px;
+  color: #7f8ca0;
+  font-size: 11px;
+}

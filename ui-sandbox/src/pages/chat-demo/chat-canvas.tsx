@@ -1,4 +1,4 @@
-import { ArrowDown, ChevronDown, Paperclip, Plus, Send, Square } from "lucide-react";
+import { ArrowDown, ChevronDown, Paperclip, Plus, Send, Shield, Square } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AskUserQuestionPanel } from "./ask-user-question-panel";
 import { ChatQuoteProvider } from "./chat-quote-context";
@@ -312,16 +312,20 @@ export function ChatCanvas({ scenarioId }: ChatCanvasProps) {
                     <Paperclip />
                   </Button>
                   <ComposerContextMeter percentage={contextUsage} />
-                </div>
-                <div className="chat-demo__composer-tools-right">
                   <button
                     type="button"
-                    className="chat-demo__composer-text-action"
+                    className="chat-demo__composer-text-action chat-demo__composer-model"
                     aria-label={`${t("conversation.model")} 模型`}
                   >
                     {t("conversation.model")}
                     <ChevronDown />
                   </button>
+                  <span className="chat-demo__composer-policy" title="Agent 可执行">
+                    <Shield />
+                    <span>Agent 可执行</span>
+                  </span>
+                </div>
+                <div className="chat-demo__composer-tools-right">
                   <button type="button" className="chat-demo__composer-text-action" onClick={startNewSession}>
                     <Plus />
                     {t("conversation.newSession")}

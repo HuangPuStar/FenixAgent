@@ -215,6 +215,7 @@
 }
 
 .file-tree-panel {
+  min-height: 0;
   color: var(--color-text-secondary);
 }
 
@@ -297,7 +298,43 @@
   font-size: 12px;
 }
 
-.file-tree-workspace-label {
+.file-tree-sections {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-tree-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.file-tree-section--workspace {
+  min-height: 112px;
+  flex: 1 1 auto;
+}
+
+.file-tree-section--user {
+  min-height: 68px;
+  max-height: 40%;
+  flex: 0 1 40%;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.file-tree-section-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.file-tree-workspace-label,
+.file-tree-user-heading {
   flex-shrink: 0;
   padding: 1px 10px 5px;
   color: var(--color-text-dim);
@@ -308,7 +345,36 @@
   text-transform: uppercase;
 }
 
+.file-tree-user-heading {
+  display: flex;
+  min-width: 0;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding-block: 5px;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.file-tree-user-heading svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--color-brand);
+}
+
+.file-tree-user-heading small {
+  margin-left: auto;
+  color: var(--color-text-dim);
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .file-tree-panel [data-slot="tree"] {
+  min-width: 0;
   padding: 0 6px 10px;
   font-size: 12px;
 }
@@ -325,14 +391,7 @@
   color: var(--color-text-primary);
 }
 
-.file-tree-panel [data-node-id="user"] {
-  margin-top: 9px;
-  border-top: 1px solid var(--color-border-subtle);
-  padding-top: 7px;
-}
-
 .file-tree-folder-label,
-.file-tree-user-root,
 .file-tree-file-label {
   display: flex;
   min-width: 0;
@@ -342,18 +401,6 @@
 
 .file-tree-folder-label {
   font-weight: 600;
-}
-
-.file-tree-user-root {
-  color: var(--color-text-primary);
-  font-weight: 650;
-}
-
-.file-tree-user-root small {
-  margin-left: auto;
-  color: var(--color-text-dim);
-  font-size: 9px;
-  font-weight: 500;
 }
 
 .file-tree-file-label {
@@ -371,6 +418,16 @@
   color: var(--color-text-muted);
   font-size: 12px;
   text-align: center;
+}
+
+.file-tree-section--user .file-tree-feedback {
+  min-height: 44px;
+  padding: 8px;
+}
+
+.file-tree-section--user .file-tree-feedback > svg,
+.file-tree-section--user .file-tree-feedback p + p {
+  display: none;
 }
 
 .file-tree-feedback > svg {

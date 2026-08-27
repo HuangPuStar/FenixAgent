@@ -12,6 +12,7 @@ import {
   findFileNode,
   type ParsedFileNode,
   parsePathsToTree,
+  splitFileTreeSections,
   toTreeNodeData,
 } from "./file-tree-model";
 import { FileTreeView } from "./file-tree-view";
@@ -155,8 +156,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   // 从缓存的 ParsedNode 树中查找指定路径的子节点
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const visibleTree = filterFileTree(treeDataRef.current, normalizedSearch);
+  const visibleSections = splitFileTreeSections(visibleTree);
   const visibleTreeRef = useRef(visibleTree);
+  const visibleSectionsRef = useRef(visibleSections);
   visibleTreeRef.current = visibleTree;
+  visibleSectionsRef.current = visibleSections;
 
   const findChildren = useCallback((parentPath: string | null): ParsedFileNode[] => {
     if (parentPath === null) return visibleTreeRef.current;
@@ -173,9 +177,17 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     return find(visibleTreeRef.current) ?? [];
   }, []);
 
-  const getChildren = useCallback(
+  const getWorkspaceChildren = useCallback(
     async (parentId: string | null): Promise<TreeNodeData[]> => {
-      const children = findChildren(parentId);
+      const children = parentId === null ? visibleSectionsRef.current.workspace : findChildren(parentId);
+      return children.map(toTreeNodeData);
+    },
+    [findChildren],
+  );
+
+  const getUserChildren = useCallback(
+    async (parentId: string | null): Promise<TreeNodeData[]> => {
+      const children = parentId === null ? visibleSectionsRef.current.user : findChildren(parentId);
       return children.map(toTreeNodeData);
     },
     [findChildren],
@@ -344,7 +356,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   );
 
   const isEmpty = !loading && treeDataRef.current.length === 0;
-  const hasSearchResults = visibleTree.length > 0;
+  const hasSearchResults = visibleSections.workspace.length > 0 || visibleSections.user.length > 0;
   const searchExpandedIds = normalizedSearch ? collectDirectoryPaths(visibleTree) : [];
   const showTree = !!envId && !(isEmpty && !stale);
   const isDirectory = useCallback((path: string) => findFileNode(treeDataRef.current, path)?.isDir ?? false, []);
@@ -377,12 +389,15 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       treeVersion={treeVersion}
       showTree={showTree}
       hasSearchResults={hasSearchResults}
-      expandedIds={normalizedSearch ? searchExpandedIds : ["user", ...expandedIdsRef.current]}
+      workspaceHasNodes={visibleSections.workspace.length > 0}
+      userHasNodes={visibleSections.user.length > 0}
+      expandedIds={normalizedSearch ? searchExpandedIds : [...expandedIdsRef.current]}
       contextMenu={contextMenu}
       deleteConfirm={deleteConfirm}
       fileInputRef={fileInputRef}
       folderInputRef={folderInputRef}
-      getChildren={getChildren}
+      getWorkspaceChildren={getWorkspaceChildren}
+      getUserChildren={getUserChildren}
       onSelect={handleSelect}
       onToggle={handleToggle}
       onSearchChange={setSearchQuery}

@@ -85,7 +85,7 @@ export function FilesPanel({ scenarioId }: { scenarioId: DemoScenarioId }) {
   const folderLabels: Record<FolderId, string> = {
     docs: t("context.rootDocs"),
     web: t("context.rootWeb"),
-    user: "user",
+    user: "用户",
   };
   const visibleFiles = (folder: FolderId) => {
     const folderMatches = folderLabels[folder].toLocaleLowerCase().includes(normalizedQuery);
@@ -175,6 +175,24 @@ export function FilesPanel({ scenarioId }: { scenarioId: DemoScenarioId }) {
       </TreeFolder>
     );
   };
+  const renderUserFiles = () => {
+    const files = visibleFiles("user");
+    return (
+      <>
+        {files.map((file) => (
+          <TreeFile
+            key={file.id}
+            label={file.label}
+            active={selectedFile === file.id}
+            changed={file.changed}
+            onSelect={() => selectFile(file.id)}
+            onContextMenu={(event) => openTreeMenu(event, file.id, file.label)}
+          />
+        ))}
+        {creatingIn === "user" && <NewTreeItem onCommit={(name) => commitNewFile("user", name)} />}
+      </>
+    );
+  };
 
   return (
     <div className="chat-demo__vscode" onClick={() => treeMenu && setTreeMenu(null)}>
@@ -205,20 +223,22 @@ export function FilesPanel({ scenarioId }: { scenarioId: DemoScenarioId }) {
               </button>
             )}
           </label>
-          <div className="chat-demo__vscode-root">{t("context.workspaceRoot")}</div>
-          {!deletedNodes.has("docs") && renderFolder("docs")}
-          {!deletedNodes.has("web") && renderFolder("web")}
+          <div className="chat-demo__explorer-workspace">
+            <div className="chat-demo__vscode-root">{t("context.workspaceRoot")}</div>
+            {!deletedNodes.has("docs") && renderFolder("docs")}
+            {!deletedNodes.has("web") && renderFolder("web")}
+            {normalizedQuery && !hasSearchResults && <p className="chat-demo__file-search-empty">没有匹配的文件</p>}
+          </div>
           {!deletedNodes.has("user") && (
-            <section className="chat-demo__user-files-area" aria-label="用户文件">
+            <section className="chat-demo__user-files-area" aria-label="用户">
               <div className="chat-demo__user-files-label">
                 <UserRound />
-                <span>用户文件</span>
+                <span>用户</span>
                 <small>当前用户</small>
               </div>
-              {renderFolder("user", true)}
+              <div className="chat-demo__user-files-list">{renderUserFiles()}</div>
             </section>
           )}
-          {normalizedQuery && !hasSearchResults && <p className="chat-demo__file-search-empty">没有匹配的文件</p>}
         </section>
         <section className="chat-demo__vscode-workbench">
           <div className="chat-demo__file-tabs">

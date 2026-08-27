@@ -131,6 +131,7 @@
     "clearSearch": "Clear file search",
     "noSearchResults": "No matching files",
     "workspace": "Workspace",
+    "user": "User",
     "currentUser": "Current user",
     "retry": "Retry",
     "uploadFolder": "Upload Folder",
@@ -210,7 +211,7 @@
   "conversation": {
     "noMessages": "No messages yet",
     "startConversation": "Start a conversation to see messages here",
-    "scrollToBottom": "Scroll to bottom",
+    "scrollToBottom": "Back to latest",
     "scrollToLastUserMessage": "Scroll to last user message"
   },
   "message": {
@@ -443,7 +444,8 @@
     "viewParams": "View Parameters",
     "previewFile": "Preview {{path}}",
     "openFile": "Open File",
-    "toolName": "Tool"
+    "toolName": "Tool",
+    "running": "Tool is running…"
   },
   "subAgentPanel": {
     "title": "Sub-agent activity",

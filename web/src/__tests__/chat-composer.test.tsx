@@ -60,14 +60,14 @@ describe("ChatComposer", () => {
     expect(html).toContain("chatComposer.attach");
   });
 
-  // 浮动按钮组：仅有 commands 无 envId 时，只有技能按钮
-  test("renders only command button when no envId", async () => {
+  // 无环境时仍展示文件入口以保持工具栏稳定，但入口必须禁用，不能触发无作用上传。
+  test("disables file button when commands exist without an environment", async () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const mockCommands = [{ name: "review", description: "Code review" }];
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
     expect(html).toContain("chatComposer.commandButton");
     expect(html).toContain('aria-label="chatComposer.attach"');
-    expect(html).toContain('class="chat-composer-icon-button" disabled=""');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="chatComposer\.attach"/);
   });
 
   // 浮动按钮组：仅有 envId 无 commands 时，只有文件按钮

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterFileTree, parsePathsToTree } from "../components/agent-panel/file-tree-model";
+import { filterFileTree, parsePathsToTree, splitFileTreeSections } from "../components/agent-panel/file-tree-model";
 
 describe("file-tree-model", () => {
   // 搜索命中文件时保留完整祖先链，确保结果仍能在树中定位。
@@ -27,5 +27,15 @@ describe("file-tree-model", () => {
     const tree = parsePathsToTree([]);
 
     expect(tree).toEqual([{ name: "user", path: "user", isDir: true, children: [] }]);
+  });
+
+  // 用户区只移除重复的展示根节点，文件操作仍必须使用受服务端校验的 user 相对路径。
+  test("projects user children without losing their workspace-relative paths", () => {
+    const tree = parsePathsToTree(["docs/guide.md", "user/references/brief.md", "user/logo.png"]);
+    const sections = splitFileTreeSections(tree);
+
+    expect(sections.workspace.map((node) => node.path)).toEqual(["docs"]);
+    expect(sections.user.map((node) => node.path)).toEqual(["user/references", "user/logo.png"]);
+    expect(sections.user.some((node) => node.path === "user")).toBe(false);
   });
 });

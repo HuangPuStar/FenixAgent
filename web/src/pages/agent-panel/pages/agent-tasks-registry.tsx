@@ -217,6 +217,13 @@ function TaskRow({
           >
             {triggering ? <Loader2 className="animate-spin" /> : <Play />}
           </Button>
+          <Switch
+            checked={task.enabled}
+            onCheckedChange={onToggle}
+            size="sm"
+            aria-label={task.enabled ? t("card.disabled") : t("card.enabled")}
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 [&_svg]:w-3.5">
@@ -239,12 +246,6 @@ function TaskRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Switch
-            checked={task.enabled}
-            onCheckedChange={onToggle}
-            size="sm"
-            aria-label={task.enabled ? t("card.disabled") : t("card.enabled")}
-          />
         </div>
       </TableCell>
     </TableRow>

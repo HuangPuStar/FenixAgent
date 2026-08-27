@@ -1,11 +1,11 @@
 import { ChevronDown, Copy, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NS } from "../../src/i18n";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import { splitSystemReminderBlocks } from "../../src/lib/strip-html-tags";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
 import { Button } from "../ui/button";
@@ -26,7 +26,7 @@ interface UserBubbleProps {
 }
 
 export function UserBubble({ entry }: UserBubbleProps) {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   // 切分注入的系统上下文段与用户文本段：system 段合并为原始块文本，渲染为
   // 系统消息标签默认隐藏注入内容；双击后以 Popover 展示。
   const segments = useMemo(() => splitSystemReminderBlocks(entry.content ?? ""), [entry.content]);
@@ -62,7 +62,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
       {/* 用户文本与图片附件 — 右对齐气泡（正文） */}
       {visibleContent && (
         <div className="flex justify-end">
-          <div className="max-w-[85%] sm:max-w-[70%]">
+          <div className="chat-user-message-frame">
             {/* 图片附件 */}
             {entry.images && entry.images.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2 justify-center">
@@ -75,10 +75,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
             <div className="chat-user-bubble message-bubble-enter">
               <div
                 ref={contentRef}
-                className={cn(
-                  "px-4 py-2.5 text-sm whitespace-pre-wrap font-display leading-relaxed",
-                  !expanded && overflowing && `max-h-[${COLLAPSED_MAX_HEIGHT}px]`,
-                )}
+                className="chat-user-message-content px-4 py-2.5 text-sm font-display leading-relaxed"
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
               >
                 {visibleContent}
@@ -121,7 +118,7 @@ interface AssistantBubbleProps {
 }
 
 export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmitterRef }: AssistantBubbleProps) {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   // 每个助手消息创建独立的 emitter 实例
   const emitter = useMemo(() => new CardEventEmitter(), []);
   const visibleText = useMemo(
@@ -151,7 +148,7 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
     <MessageEmitterContext.Provider value={emitter}>
       <div className="chat-assistant-message message-bubble-enter">
         {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="chat-assistant-chunks flex-1 min-w-0">
           {entry.chunks.map((chunk, i, all) => {
             if (chunk.type === "thought") {
               // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
@@ -159,9 +156,9 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
               const thoughtStreaming = isStreaming && isLastThought;
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-                <Reasoning key={i} isStreaming={thoughtStreaming}>
-                  <ReasoningTrigger />
-                  <ReasoningContent>
+                <Reasoning key={i} isStreaming={thoughtStreaming} className="chat-thinking-block">
+                  <ReasoningTrigger className="chat-thinking-trigger" />
+                  <ReasoningContent className="chat-thinking-content">
                     <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
                   </ReasoningContent>
                 </Reasoning>
@@ -177,7 +174,7 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
             // 普通消息块 — 直接输出，无包裹卡片
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-              <div key={i} className="message-content text-text-primary leading-[1.75]">
+              <div key={i} className="message-content chat-markdown-content text-text-primary leading-[1.75]">
                 <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
               </div>
             );
@@ -227,7 +224,7 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
 // =============================================================================
 
 function ImageThumbnail({ image }: { image: UserMessageImage }) {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   const [open, setOpen] = useState(false);
   const dataUrl = `data:${image.mimeType};base64,${image.data}`;
   return (

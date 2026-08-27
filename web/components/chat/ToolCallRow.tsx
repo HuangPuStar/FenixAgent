@@ -1,4 +1,4 @@
-import { CodeXml, ExternalLink, Loader2 } from "lucide-react";
+import { CircleX, CodeXml, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
@@ -49,6 +49,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
 
   // 调用 narrate 拿到统一的展示数据
   const result = narrate(tool, tool.status, elapsedMs, tNarrator);
+  const titleText = typeof result.title === "string" ? result.title : undefined;
 
   // 通过 kind 获取卡片样式
   const kind: ToolCardKind = tool.kind ?? "unknown";
@@ -59,6 +60,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
   const isError = tool.status === "error";
   const isPending = tool.status === "waiting_for_confirmation";
   const isCanceled = tool.status === "canceled" || tool.status === "rejected";
+  const RowIcon = isError ? CircleX : Icon;
   const hasSubEntries = (tool.subEntries?.length ?? 0) > 0;
 
   const hasParams =
@@ -85,13 +87,13 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
       {/* 卡片主体 */}
       <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
         {/* 图标 */}
-        <div className={cn("tool-call-row-icon", style.iconColor)}>
-          {isRunning ? <Loader2 className="animate-spin" /> : <Icon />}
+        <div className="tool-call-row-icon" aria-hidden>
+          {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
         </div>
 
         {/* 工具内容 — 渲染 narrate 结果 */}
         <div className="tool-call-row-copy">
-          <strong>{result.title}</strong>
+          <strong title={titleText}>{result.title}</strong>
           <div>
             <span className="truncate">{result.subtitle}</span>
             {result.badge && (
@@ -119,7 +121,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
         {/* 右侧状态标签 */}
         <span
           className={cn(
-            "text-[10px] font-medium shrink-0",
+            "tool-call-row-status text-[10px] font-medium shrink-0",
             isError && "text-status-error",
             isPending && "text-brand",
             isCanceled && "text-text-dim",
@@ -254,7 +256,7 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
               </pre>
             </div>
           )}
-          {isRunning && !hasOutput && <p className="text-xs text-text-dim italic">工具正在执行中...</p>}
+          {isRunning && !hasOutput && <p className="text-xs text-text-dim italic">{t("toolCallRow.running")}</p>}
         </div>
       </DialogContent>
     </Dialog>

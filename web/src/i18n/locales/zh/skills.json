@@ -25,6 +25,12 @@
     "title": "技能库加载失败",
     "retry": "重新加载"
   },
+  "detail": {
+    "contentTitle": "技能指令",
+    "contentHint": "Agent 实际读取并执行的 SKILL.md 内容",
+    "loadError": "技能正文加载失败，可打开详情重试",
+    "emptyContent": "暂无技能指令内容"
+  },
   "column": {
     "name": "技能名称",
     "description": "描述"

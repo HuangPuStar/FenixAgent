@@ -2,7 +2,6 @@ import type { AvailableCommand } from "@fenix/chat-channel";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 
@@ -96,24 +95,24 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
   }, []);
 
   return (
-    <div ref={containerRef} className={cn("rounded-xl border border-border bg-surface-2 shadow-lg", className)}>
+    <div ref={containerRef} className={`chat-command-menu${className ? ` ${className}` : ""}`}>
       {/* 搜索框：Popover 场景下独立搜索 */}
       {showSearch && (
-        <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-          <Search className="h-4 w-4 text-text-muted flex-shrink-0" />
+        <div className="chat-command-menu-search">
+          <Search />
           <Input
             type="text"
             placeholder={t("commandMenu.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 rounded-lg border border-border bg-surface-1 px-2 py-1.5 text-sm"
+            className="chat-command-menu-input"
           />
         </div>
       )}
-      <ScrollArea className="h-[320px]">
-        <div className="py-1">
+      <ScrollArea className="chat-command-menu-scroll">
+        <div className="chat-command-menu-list">
           {filtered.length === 0 ? (
-            <div className="text-xs text-text-muted font-display py-3 text-center">{t("commandMenu.noMatch")}</div>
+            <div className="chat-command-menu-empty">{t("commandMenu.noMatch")}</div>
           ) : (
             filtered.map((cmd, index) => (
               <button
@@ -122,16 +121,11 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
                 data-active={index === activeIndex}
                 onClick={() => onSelect(cmd)}
                 onMouseEnter={() => setActiveIndex(index)}
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 cursor-pointer rounded-lg mx-1 text-left",
-                  "transition-colors",
-                  index === activeIndex ? "bg-brand/10 text-text-primary" : "text-text-secondary hover:bg-surface-1/50",
-                )}
-                style={{ width: "calc(100% - 8px)" }}
+                className={`chat-command-menu-item${index === activeIndex ? " is-active" : ""}`}
               >
-                <span className="text-sm font-display font-medium text-brand">/{cmd.name}</span>
-                <span className="text-xs text-text-muted truncate flex-1">{cmd.description}</span>
-                {cmd.input?.hint && <span className="text-[10px] text-text-muted italic">{cmd.input.hint}</span>}
+                <span className="chat-command-menu-name">/{cmd.name}</span>
+                <span className="chat-command-menu-description">{cmd.description}</span>
+                {cmd.input?.hint && <span className="chat-command-menu-hint">{cmd.input.hint}</span>}
               </button>
             ))
           )}

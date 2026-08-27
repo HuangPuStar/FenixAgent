@@ -82,6 +82,7 @@ export function AgentSkillsPage() {
     },
   });
   const skills = catalog.data?.skills ?? [];
+  const loadSkillDetail = useCallback((skill: SkillInfo) => unwrap(skillConfigApi.get(getSkillLookupKey(skill))), []);
 
   const createSkill = useRequest(
     (params: { name: string; description: string; content: string }) =>
@@ -276,6 +277,7 @@ export function AgentSkillsPage() {
         onDelete={(skill) => setDeleteTarget(skill.name)}
         onToggleSharing={(skill) => void toggleSharing(skill)}
         onRetry={catalog.refresh}
+        onLoadDetail={loadSkillDetail}
       />
       <AgentSkillsDialogs
         dialogOpen={dialogOpen}

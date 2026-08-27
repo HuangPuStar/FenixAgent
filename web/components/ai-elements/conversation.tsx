@@ -82,15 +82,16 @@ export const ConversationScrollButton = ({ className, ...props }: ConversationSc
 
   return (
     <Button
-      className={cn("rounded-full", className)}
+      className={cn("chat-scroll-to-latest rounded-full", className)}
       onClick={handleScrollToBottom}
-      size="icon"
+      size="sm"
       type="button"
       variant="outline"
       title={t("conversation.scrollToBottom")}
       {...props}
     >
       <ArrowDownIcon className="size-4" />
+      <span>{t("conversation.scrollToBottom")}</span>
     </Button>
   );
 };
@@ -155,7 +156,7 @@ export const ConversationScrollButtons = ({
   if (isAtBottom) return null;
 
   return (
-    <div className={cn("absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2", className)} {...props}>
+    <div className={cn("chat-scroll-navigation", className)} {...props}>
       <ConversationScrollButton />
     </div>
   );

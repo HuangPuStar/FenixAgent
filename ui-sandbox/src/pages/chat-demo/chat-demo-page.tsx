@@ -1,5 +1,5 @@
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
 import { ChatCanvas } from "./chat-canvas";
 import { ContextInspector } from "./context-inspector";
 import { type ContextTab, type DemoScenarioId, getDemoScenario } from "./demo-model";
@@ -20,6 +20,9 @@ export function ChatDemoPage() {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const scenario = getDemoScenario(scenarioId);
+  const workspaceStyle: CSSProperties & { "--chat-floating-context-width": string } = {
+    "--chat-floating-context-width": contextOpen && contextMode === "floating" ? `${contextWidth}px` : "0px",
+  };
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 1050px)");
@@ -40,7 +43,12 @@ export function ChatDemoPage() {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <main className="chat-demo" data-context-open={contextOpen} data-context-mode={contextMode}>
+      <main
+        className="chat-demo"
+        data-context-open={contextOpen}
+        data-context-mode={contextMode}
+        style={workspaceStyle}
+      >
         <section className="chat-demo__workspace">
           <header className="chat-demo__topbar">
             <div className="chat-demo__topbar-title">

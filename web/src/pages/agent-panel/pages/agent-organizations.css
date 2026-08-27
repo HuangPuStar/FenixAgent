@@ -1,11 +1,4 @@
 .agent-organizations-page {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 28px 32px 40px;
-  background: #f4f7fb;
   color: #14213d;
 }
 
@@ -115,7 +108,7 @@
 
 .org-detail {
   min-width: 0;
-  padding: 30px 36px 36px;
+  padding: 24px 28px 32px;
 }
 .org-detail-loading {
   display: grid;
@@ -132,10 +125,12 @@
 }
 .org-detail-header {
   display: flex;
-  align-items: flex-start;
+  min-height: 104px;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding-bottom: 24px;
+  padding: 20px 28px;
+  border-bottom: 1px solid #e7ecf3;
 }
 .org-detail-identity {
   display: flex;
@@ -159,11 +154,12 @@
   border-radius: 10px;
   font-size: 18px;
 }
-.org-detail h2 {
+.org-detail-header h2 {
   margin: 0;
   color: #162440;
-  font-size: 22px;
-  line-height: 1.2;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 .org-detail-meta {
   gap: 10px;
@@ -451,9 +447,6 @@
 }
 
 @media (max-width: 900px) {
-  .agent-organizations-page {
-    padding: 20px 18px 32px;
-  }
   .org-workspace {
     grid-template-columns: 1fr;
   }

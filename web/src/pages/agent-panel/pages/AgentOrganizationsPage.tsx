@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { type OrgMember, type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
 import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { useSession } from "@/src/lib/auth-client";
 import { useOrg } from "../../../contexts/OrgContext";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";
 import "./agent-organizations.css";
 import type { MachineCreateResult, MachineFormState, OrganizationListItem } from "./agent-organizations-types";
@@ -296,8 +297,8 @@ export function AgentOrganizationsPage() {
   }, [selectedOrgId]);
 
   return (
-    <div className="agent-organizations-page">
-      <AgentPageHeader
+    <AppPage className="agent-organizations-page">
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -433,6 +434,6 @@ export function AgentOrganizationsPage() {
         onUpdateMachine={() => machineEditTarget && runUpdateMachine(machineEditTarget.id, machineForm)}
         onDeleteMachine={() => machineDeleteTarget && runDeleteMachine(machineDeleteTarget.id)}
       />
-    </div>
+    </AppPage>
   );
 }

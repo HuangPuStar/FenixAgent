@@ -103,7 +103,7 @@
   min-height: 30px;
   border-radius: 7px;
   padding: 3px 4px;
-  color: inherit;
+  color: #657287;
   text-align: left;
   background: transparent;
   transition: background 140ms ease;
@@ -131,7 +131,7 @@
   border: 0;
   border-radius: inherit;
   padding: 6px 9px;
-  color: #34415a;
+  color: #69768a;
   text-align: left;
   background: #fff;
   cursor: pointer;
@@ -150,7 +150,7 @@
   height: 18px;
   flex: 0 0 18px;
   place-items: center;
-  color: #58719a;
+  color: #7d899b;
 }
 .chat-demo__tool-cluster-chevron svg {
   width: 13px;
@@ -176,7 +176,7 @@
   color: var(--demo-amber);
 }
 .chat-demo__tool-cluster-action {
-  color: #5575ae;
+  color: #8390a2;
   font-size: 9px;
 }
 .chat-demo__tool-cluster-body {
@@ -191,7 +191,9 @@
   height: 18px;
   flex: 0 0 18px;
   place-items: center;
-  color: var(--demo-green);
+  color: #7d899b;
+  border-radius: 999px;
+  background: #fff;
 }
 .chat-demo__tool-row[data-status="running"] .chat-demo__tool-status {
   color: var(--demo-amber);
@@ -204,22 +206,33 @@
   width: 14px;
   height: 14px;
 }
+.chat-demo__activity-chain .chat-demo__tool-row {
+  margin-left: -30px;
+}
+.chat-demo__activity-chain .chat-demo__tool-summary {
+  padding-left: 0;
+}
 .chat-demo__tool-copy {
-  display: flex;
+  display: grid;
   min-width: 0;
   flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(64px, 0.55fr);
   align-items: center;
   gap: 7px;
+  overflow: hidden;
 }
 .chat-demo__tool-copy strong {
-  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   font-size: 11px;
+  color: #657287;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .chat-demo__tool-copy small {
+  min-width: 0;
   overflow: hidden;
   color: var(--demo-muted);
   font:
@@ -228,6 +241,16 @@
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .chat-demo__tool-copy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-demo__tool-copy small {
+    display: none;
+  }
 }
 .chat-demo__tool-state {
   color: var(--demo-muted);

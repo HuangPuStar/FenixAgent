@@ -27,10 +27,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "../../../i18n";
 import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import type { McpServerInfo, McpToolInfo } from "../../../types/config";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import {
   countMcpScopes,
   filterMcpServers,
@@ -77,7 +78,7 @@ export function AgentMcpCatalog(props: Props) {
   if (props.loading) return <McpCatalogLoading />;
   if (props.error && props.servers.length === 0) {
     return (
-      <main className="agent-mcp-page">
+      <AppPage className="agent-mcp-page">
         <section className="mcp-load-error" role="alert">
           <AlertTriangle />
           <strong>{t("loadState.title")}</strong>
@@ -87,13 +88,13 @@ export function AgentMcpCatalog(props: Props) {
             {t("loadState.retry")}
           </Button>
         </section>
-      </main>
+      </AppPage>
     );
   }
 
   return (
-    <main className="agent-mcp-page">
-      <AgentPageHeader
+    <AppPage className="agent-mcp-page" busy>
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -334,7 +335,7 @@ export function AgentMcpCatalog(props: Props) {
           })}
         </section>
       )}
-    </main>
+    </AppPage>
   );
 }
 
@@ -362,7 +363,7 @@ function McpToolList({ tools, loading }: { tools: McpToolInfo[]; loading: boolea
 
 function McpCatalogLoading() {
   return (
-    <main className="agent-mcp-page" aria-busy="true">
+    <AppPage className="agent-mcp-page">
       <Skeleton className="h-7 w-36" />
       <Skeleton className="mt-2 h-4 w-80" />
       <Skeleton className="mt-7 h-10 w-full" />
@@ -372,6 +373,6 @@ function McpCatalogLoading() {
           <Skeleton key={index} className="h-48 w-full rounded-[10px]" />
         ))}
       </div>
-    </main>
+    </AppPage>
   );
 }

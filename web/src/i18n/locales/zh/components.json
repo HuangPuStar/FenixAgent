@@ -131,6 +131,7 @@
     "clearSearch": "清除文件搜索",
     "noSearchResults": "没有匹配的文件",
     "workspace": "工作区",
+    "user": "用户",
     "currentUser": "当前用户",
     "retry": "重试",
     "uploadFolder": "上传文件夹",
@@ -210,7 +211,7 @@
   "conversation": {
     "noMessages": "暂无消息",
     "startConversation": "开始对话以查看消息",
-    "scrollToBottom": "滚动到底部",
+    "scrollToBottom": "回到最新消息",
     "scrollToLastUserMessage": "滚动到最后一条用户消息"
   },
   "message": {
@@ -443,7 +444,8 @@
     "viewParams": "查看参数",
     "previewFile": "预览 {{path}}",
     "openFile": "打开文件",
-    "toolName": "工具"
+    "toolName": "工具",
+    "running": "工具正在执行中…"
   },
   "subAgentPanel": {
     "title": "子 Agent 执行轨迹",

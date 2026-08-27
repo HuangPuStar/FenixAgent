@@ -6,11 +6,7 @@
   --model-muted: #65728a;
   --model-faint: #98a4b8;
   --model-line: #e7ecf3;
-  min-height: 100%;
-  overflow: auto;
-  padding: 28px 32px;
   color: var(--model-ink);
-  background: #f5f7fb;
 }
 
 .models-search-toolbar {
@@ -175,7 +171,8 @@
   height: 28px;
   place-items: center;
   border-radius: 6px;
-  background: #fff;
+  background: white;
+  color: #747474;
 }
 .models-provider-copy {
   display: flex;

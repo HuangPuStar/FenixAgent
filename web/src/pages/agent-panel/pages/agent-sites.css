@@ -5,11 +5,7 @@
   --site-muted: #65728a;
   --site-faint: #96a2b5;
   --site-line: #e7ecf3;
-  min-height: 100%;
-  overflow: auto;
-  padding: 28px 32px 40px;
   color: var(--site-ink);
-  background: #f5f7fb;
 }
 
 .site-create-button {
@@ -136,9 +132,6 @@
 }
 
 @media (max-width: 950px) {
-  .agent-sites-page {
-    padding: 22px 20px 32px;
-  }
   .site-commandbar {
     align-items: stretch;
     flex-direction: column;

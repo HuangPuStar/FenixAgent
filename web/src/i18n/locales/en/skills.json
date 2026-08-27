@@ -25,6 +25,12 @@
     "title": "Could not load skills",
     "retry": "Try again"
   },
+  "detail": {
+    "contentTitle": "Skill instructions",
+    "contentHint": "The SKILL.md content read and followed by Agents",
+    "loadError": "Could not load the skill content. Open details to retry.",
+    "emptyContent": "No skill instructions"
+  },
   "column": {
     "name": "Skill Name",
     "description": "Description"

@@ -13,11 +13,12 @@ import type { PaginatedResponse } from "@/src/api/request";
 import { unwrap } from "@/src/api/request";
 import type { TaskV2CreateBody, TaskV2Info, TaskV2UpdateBody } from "@/src/api/tasks-v2";
 import { taskV2Api } from "@/src/api/tasks-v2";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import type { AgentInfo } from "@/src/types/config";
 import { TaskForm, type TaskFormValues } from "../components/TaskForm";
 import { TaskLogDialog } from "../components/TaskLogDialog";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import { AgentTaskRuntimeBoard } from "./agent-task-runtime-board";
 import { AgentTasksRegistry, AgentTasksToolbar } from "./agent-tasks-registry";
 import { buildTaskDefinition, INITIAL_TASK_FORM_VALUES, taskFormSchema, taskToFormValues } from "./agent-tasks-utils";
@@ -278,7 +279,7 @@ export function AgentTasksPage() {
   if (!initialLoadDone.current && loading) {
     return (
       <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
+        <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
@@ -294,9 +295,9 @@ export function AgentTasksPage() {
   }
 
   return (
-    <main className="agent-tasks-page">
+    <AppPage className="agent-tasks-page">
       {/* ── 标题栏 ── */}
-      <AgentPageHeader
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -377,6 +378,6 @@ export function AgentTasksPage() {
         loading={clearingLogs}
         onConfirm={() => logTask && runClearLogs(logTask.id)}
       />
-    </main>
+    </AppPage>
   );
 }

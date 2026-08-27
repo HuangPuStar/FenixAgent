@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
+import { UserBubble } from "../../components/chat/MessageBubble";
 import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
 import { SystemMessage } from "../../components/chat/SystemMessage";
 
@@ -36,6 +37,21 @@ describe("消息组件的服务端渲染", () => {
     );
   });
 
+  // 生产用户气泡必须保留作者输入的换行，并挂载不会被长路径撑破的内容样式契约。
+  test("用户气泡保留换行并启用长文本换行样式", () => {
+    const content =
+      "/Users/demo/workspaces/organization/environment/this-is-a-very-long-directory-name-without-spaces/output.md\n请继续检查";
+    const markup = renderToStaticMarkup(
+      createElement(UserBubble, {
+        entry: { type: "user_message", id: "long-user-prompt", content },
+      }),
+    );
+
+    expect(markup).toContain("chat-user-message-frame");
+    expect(markup).toContain("chat-user-message-content");
+    expect(markup).toContain("output.md\n请继续检查");
+  });
+
   test("助手消息展示文本并使用助手角色样式", () => {
     const markup = renderToStaticMarkup(
       createElement(Message, { from: "assistant" }, createElement(MessageContent, null, "这是助手回复")),
@@ -46,11 +62,35 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).not.toContain("is-user ml-auto");
   });
 
-  test("流式服务端渲染将 Markdown 转换为标题和强调内容", async () => {
-    const markup = await renderStreaming(createElement(MessageResponse, null, "# 部署结果\n\n**验证通过**"));
+  // Markdown 输出必须保留结构化语义，样式层才能稳定呈现标题、列表、引用、代码和表格。
+  test("流式服务端渲染保留完整 Markdown 结构", async () => {
+    const markdown = [
+      "# 部署结果",
+      "",
+      "**验证通过**",
+      "",
+      "- 第一项",
+      "- 第二项",
+      "",
+      "> 克制的引用",
+      "",
+      "```ts",
+      "const ready = true;",
+      "```",
+      "",
+      "| 模块 | 状态 |",
+      "| --- | --- |",
+      "| Chat | ready |",
+    ].join("\n");
+    const markup = await renderStreaming(createElement(MessageResponse, null, markdown));
 
+    expect(markup).toContain("chat-markdown-response");
     expect(markup).toContain('<h1 class="mt-6 mb-2 font-semibold text-3xl" data-streamdown="heading-1">部署结果</h1>');
     expect(markup).toContain('<span class="font-semibold" data-streamdown="strong">验证通过</span>');
+    expect(markup).toContain('data-streamdown="unordered-list"');
+    expect(markup).toContain("<blockquote");
+    expect(markup).toContain('data-streamdown="code-block"');
+    expect(markup).toContain("<table");
   });
 
   // 系统消息默认仅输出标签；原文仅在客户端双击触发的 Popover 中展示。

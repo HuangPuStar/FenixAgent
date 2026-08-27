@@ -20,8 +20,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SiteApp } from "@/src/api/sites";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
@@ -50,7 +51,7 @@ export function AgentSitesCatalog(props: Props) {
   if (props.loading) return <SitesLoading />;
   if (props.error && props.apps.length === 0) {
     return (
-      <main className="agent-sites-page">
+      <AppPage className="agent-sites-page">
         <section className="site-empty-state" role="alert">
           <AlertTriangle />
           <strong>{t("siteDeployment.errors.load")}</strong>
@@ -60,13 +61,13 @@ export function AgentSitesCatalog(props: Props) {
             {t("siteDeployment.actions.retry")}
           </Button>
         </section>
-      </main>
+      </AppPage>
     );
   }
 
   return (
-    <main className="agent-sites-page">
-      <AgentPageHeader
+    <AppPage className="agent-sites-page" busy>
+      <AppHeader
         title={t("siteDeployment.title")}
         subtitle={t("siteDeployment.subtitle")}
         actions={
@@ -219,13 +220,13 @@ export function AgentSitesCatalog(props: Props) {
           </Button>
         </nav>
       )}
-    </main>
+    </AppPage>
   );
 }
 
 function SitesLoading() {
   return (
-    <main className="agent-sites-page" aria-busy="true">
+    <AppPage className="agent-sites-page">
       <Skeleton className="h-7 w-36" />
       <Skeleton className="mt-2 h-4 w-80" />
       <Skeleton className="mt-7 h-10 w-full" />
@@ -235,6 +236,6 @@ function SitesLoading() {
           <Skeleton key={index} className="h-64 rounded-[10px]" />
         ))}
       </div>
-    </main>
+    </AppPage>
   );
 }

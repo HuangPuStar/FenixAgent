@@ -3,6 +3,7 @@ import {
   countSkillsByScope,
   filterSkills,
   getSkillFormValidationError,
+  getSkillOrganizationBadgeStyle,
 } from "../pages/agent-panel/pages/agent-skills-utils";
 import type { ResourceAccess } from "../types/config";
 
@@ -50,6 +51,36 @@ describe("getSkillFormValidationError", () => {
   // 名称和内容都填写时不应报校验错误。
   test("returns null when name and content are both present", () => {
     expect(getSkillFormValidationError("demo-skill", "# Skill")).toBeNull();
+  });
+});
+
+describe("skill organization badge colors", () => {
+  // 同一组织的技能应始终得到同一配色，避免筛选或排序后视觉标识变化。
+  test("keeps colors stable for the same organization", () => {
+    const first = getSkillOrganizationBadgeStyle(skills[1]);
+    const second = getSkillOrganizationBadgeStyle({
+      ...skills[1],
+      name: "another-skill",
+    });
+    expect(first).toEqual(second);
+  });
+
+  // 不同组织应由组织 ID 映射到不同颜色，而不是复用统一的共享 badge 颜色。
+  test("uses different colors for different organizations", () => {
+    const first = getSkillOrganizationBadgeStyle(skills[1]);
+    const second = getSkillOrganizationBadgeStyle({
+      ...skills[1],
+      resourceAccess: {
+        ...skills[1].resourceAccess,
+        sourceOrganizationId: "org-b",
+      },
+    });
+    expect(first).not.toEqual(second);
+  });
+
+  // 缺少后端组织标识时不应臆造颜色键，交由组件默认样式兜底。
+  test("returns undefined without an organization id", () => {
+    expect(getSkillOrganizationBadgeStyle({ name: "legacy-skill" })).toBeUndefined();
   });
 });
 

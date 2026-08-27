@@ -6,11 +6,7 @@
   --mcp-muted: #65728a;
   --mcp-faint: #96a2b5;
   --mcp-line: #e7ecf3;
-  min-height: 100%;
-  overflow: auto;
-  padding: 28px 32px 40px;
   color: var(--mcp-ink);
-  background: #f5f7fb;
 }
 
 .mcp-create-button {
@@ -223,10 +219,6 @@
 }
 
 @media (max-width: 900px) {
-  .agent-mcp-page {
-    padding: 22px 20px 32px;
-  }
-
   .mcp-commandbar {
     align-items: stretch;
     flex-direction: column;

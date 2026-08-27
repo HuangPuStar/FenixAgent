@@ -349,7 +349,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
 
   return (
-    <div className="flex h-full">
+    <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
       <div ref={interfaceColumnRef} className="chat-interface-column flex flex-col flex-1 min-w-0">
         {agentId && detailSessionId ? (
           <PeriTaskDetailSheet

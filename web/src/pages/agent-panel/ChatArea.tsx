@@ -1,6 +1,7 @@
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
 import {
+  type CSSProperties,
   lazy,
   type PointerEvent as ReactPointerEvent,
   Suspense,
@@ -16,8 +17,9 @@ import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
-import { cn } from "@/src/lib/utils";
+import { NS } from "@/src/i18n";
 import "./artifacts-workspace.css";
+import "./chat-layout.css";
 
 const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() => import("./ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })));
@@ -70,7 +72,7 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
 export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAreaProps) {
-  const { t } = useTranslation("agentPanel");
+  const { t } = useTranslation(NS.AGENT_PANEL);
 
   const artifactsCollapsedRef = useRef(true);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
@@ -207,6 +209,10 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   }, []);
 
   const effectiveLayout: ArtifactsLayoutMode = compactLayout ? "floating" : artifactsLayout;
+  const workspaceStyle: CSSProperties & { "--chat-floating-artifacts-width": string } = {
+    "--chat-floating-artifacts-width":
+      effectiveLayout === "floating" && !artifactsCollapsed ? `${artifactsWidth}px` : "0px",
+  };
 
   const clampArtifactsWidth = useCallback(
     (width: number) => {
@@ -271,8 +277,11 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
       }
     >
       <ChatPageVisibleContext.Provider value={visible}>
-        <div className="agent-panel-content" style={{ display: visible ? undefined : "none" }}>
-          <div className="agent-chat-workspace" data-artifacts-layout={effectiveLayout}>
+        <div
+          className="agent-panel-content agent-panel-content--chat"
+          style={{ display: visible ? undefined : "none" }}
+        >
+          <div className="agent-chat-workspace" data-artifacts-layout={effectiveLayout} style={workspaceStyle}>
             <div className="agent-chat-area">{chatPanels}</div>
             {hasPanelModules && (
               <>
@@ -288,7 +297,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
                   </button>
                 )}
                 <aside
-                  className={cn("artifacts-shell", artifactsCollapsed && "is-collapsed")}
+                  className={`artifacts-shell${artifactsCollapsed ? " is-collapsed" : ""}`}
                   data-layout={effectiveLayout}
                   style={{
                     width: artifactsWidth,

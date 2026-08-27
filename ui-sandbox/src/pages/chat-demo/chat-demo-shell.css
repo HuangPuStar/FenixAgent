@@ -262,7 +262,10 @@
   align-items: flex-end;
 }
 .chat-demo__user-bubble {
-  max-width: min(520px, 82%);
+  max-width: 90%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   border: 1px solid #e5e9f0;
   border-radius: 18px 18px 5px 18px;
   padding: 11px 15px;
@@ -282,6 +285,9 @@
   flex-direction: column;
   align-items: stretch;
 }
+.chat-demo__message--assistant.is-compact {
+  margin-bottom: 7px;
+}
 .chat-demo__assistant-body {
   min-width: 0;
   flex: 1;
@@ -293,6 +299,19 @@
   height: 25px;
   align-items: center;
   margin-top: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition:
+    opacity 120ms ease,
+    visibility 120ms ease,
+    transform 120ms ease;
+}
+.chat-demo__message--assistant:hover .chat-demo__message-actions,
+.chat-demo__message--assistant:focus-within .chat-demo__message-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 .chat-demo__message-actions button {
   display: grid;
@@ -313,6 +332,13 @@
   width: 13px;
   height: 13px;
 }
+@media (hover: none) {
+  .chat-demo__message-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
 .chat-demo__assistant-lead {
   margin: 2px 0 13px;
 }
@@ -322,13 +348,32 @@
 .chat-demo__thought {
   margin: 0 0 12px;
 }
+.chat-demo__activity-chain {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding-left: 30px;
+}
+.chat-demo__activity-chain::before {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 9px;
+  width: 1px;
+  background: #dce3ec;
+  content: "";
+}
+.chat-demo__activity-chain .chat-demo__thought {
+  margin: 0;
+  padding: 3px 4px;
+}
 .chat-demo__thought-trigger {
   display: flex;
   align-items: center;
   gap: 5px;
   border: 0;
   padding: 0;
-  color: #747e91;
+  color: #8d9aab;
   background: none;
   font-size: 11px;
   cursor: pointer;
@@ -336,10 +381,11 @@
 .chat-demo__thought-trigger svg {
   width: 12px;
   height: 12px;
+  margin-left: 1px;
 }
 .chat-demo__thought-body {
-  margin-top: 7px;
-  color: #7b8392;
+  margin-top: 6px;
+  color: #68768b;
   font-size: 11px;
   line-height: 1.6;
 }

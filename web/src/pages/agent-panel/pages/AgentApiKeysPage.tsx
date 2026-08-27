@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ApiKeyInfo, apiKeyApi } from "@/src/api/api-keys";
 import { unwrap } from "@/src/api/request";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { filterApiKeys, formatApiKeyDate, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
 import "./agent-api-keys.css";
 
@@ -54,36 +56,57 @@ function ApiKeyTable({
   }
   return (
     <section className="api-key-table" aria-label={t("title")}>
-      <header>
-        <span />
-        <span>{t("column.name")}</span>
-        <span>{t("column.prefix")}</span>
-        <span>{t("column.created")}</span>
-        <span>{t("column.lastUsed")}</span>
-        <span>{t("column.expires")}</span>
-        <span />
-      </header>
-      {keys.map((key) => (
-        <article key={key.id}>
-          <span className="api-key-row-icon">
-            <KeyRound className="size-4" />
-          </span>
-          <strong>{key.name}</strong>
-          <code>{key.prefix}••••••••</code>
-          <time>{formatApiKeyDate(key.createdAt, i18n.language, t("date.never"))}</time>
-          <time>{formatApiKeyDate(key.lastUsedAt, i18n.language, t("date.neverUsed"))}</time>
-          <time>{formatApiKeyDate(key.expiresAt, i18n.language, t("date.neverExpires"))}</time>
-          <Button variant="ghost" size="icon-sm" onClick={() => onRevoke(key.id)} aria-label={t("btn.revoke")}>
-            <Trash2 className="size-4" />
-          </Button>
-        </article>
-      ))}
       {keys.length === 0 ? (
         <div className="api-key-empty">
           <KeyRound className="size-6" />
           <span>{t("emptyMessage")}</span>
         </div>
-      ) : null}
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="api-key-icon-column" aria-label={t("title")} />
+              <TableHead>{t("column.name")}</TableHead>
+              <TableHead>{t("column.prefix")}</TableHead>
+              <TableHead>{t("column.created")}</TableHead>
+              <TableHead>{t("column.lastUsed")}</TableHead>
+              <TableHead>{t("column.expires")}</TableHead>
+              <TableHead className="api-key-action-column" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {keys.map((key) => (
+              <TableRow key={key.id}>
+                <TableCell className="api-key-icon-column">
+                  <span className="api-key-row-icon">
+                    <KeyRound className="size-4" />
+                  </span>
+                </TableCell>
+                <TableCell className="api-key-name-cell">
+                  <strong>{key.name}</strong>
+                </TableCell>
+                <TableCell>
+                  <code>{key.prefix.slice(0, 10)}••••••••</code>
+                </TableCell>
+                <TableCell>
+                  <time>{formatApiKeyDate(key.createdAt, i18n.language, t("date.never"))}</time>
+                </TableCell>
+                <TableCell>
+                  <time>{formatApiKeyDate(key.lastUsedAt, i18n.language, t("date.neverUsed"))}</time>
+                </TableCell>
+                <TableCell>
+                  <time>{formatApiKeyDate(key.expiresAt, i18n.language, t("date.neverExpires"))}</time>
+                </TableCell>
+                <TableCell className="api-key-action-column">
+                  <Button variant="ghost" size="icon-sm" onClick={() => onRevoke(key.id)} aria-label={t("btn.revoke")}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </section>
   );
 }
@@ -161,8 +184,8 @@ export function AgentApiKeysPage() {
   };
 
   return (
-    <div className="agent-api-keys-page">
-      <AgentPageHeader
+    <AppPage className="agent-api-keys-page">
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -257,6 +280,6 @@ export function AgentApiKeysPage() {
         loading={deleting}
         onConfirm={() => deleteTarget && runDelete(deleteTarget)}
       />
-    </div>
+    </AppPage>
   );
 }

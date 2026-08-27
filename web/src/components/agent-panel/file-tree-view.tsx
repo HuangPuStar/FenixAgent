@@ -40,12 +40,15 @@ interface FileTreeViewProps {
   treeVersion: number;
   showTree: boolean;
   hasSearchResults: boolean;
+  workspaceHasNodes: boolean;
+  userHasNodes: boolean;
   expandedIds: string[];
   contextMenu: ContextMenuState | null;
   deleteConfirm: { path: string; name: string } | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
-  getChildren: TreeProps["getChildren"];
+  getWorkspaceChildren: TreeProps["getChildren"];
+  getUserChildren: TreeProps["getChildren"];
   onSelect: NonNullable<TreeProps["onSelect"]>;
   onToggle: NonNullable<TreeProps["onToggle"]>;
   onSearchChange: (query: string) => void;
@@ -112,15 +115,13 @@ export function FileTreeView(props: FileTreeViewProps) {
   const renderLabel = useCallback(
     (node: TreeNodeData, state: NodeState) => {
       if (props.isDirectory(node.id)) {
-        const isUserRoot = node.id === "user";
-        const Icon = isUserRoot ? UserRound : state.expanded ? FolderOpen : Folder;
+        const Icon = state.expanded ? FolderOpen : Folder;
         return (
-          <span className={isUserRoot ? "file-tree-user-root" : "file-tree-folder-label"}>
+          <span className="file-tree-folder-label">
             <Icon className="h-4 w-4 flex-shrink-0" />
             <span className="truncate" title={node.label}>
               {node.label}
             </span>
-            {isUserRoot && <small>{t("fileTree.currentUser")}</small>}
           </span>
         );
       }
@@ -135,7 +136,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         </span>
       );
     },
-    [props.isDirectory, t],
+    [props.isDirectory],
   );
 
   const createAtSelected = (kind: "file" | "folder") => {
@@ -209,8 +210,6 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
         )}
       </label>
-      <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
-
       {props.stale && (
         <div role="status" className="file-tree-stale">
           <Loader2 className="animate-spin" aria-hidden />
@@ -222,7 +221,7 @@ export function FileTreeView(props: FileTreeViewProps) {
       )}
 
       <div
-        className="flex-1 overflow-auto relative"
+        className="file-tree-sections"
         onDragOver={props.onDragOver}
         onDragEnter={props.onDragEnter}
         onDragLeave={props.onDragLeave}
@@ -232,20 +231,14 @@ export function FileTreeView(props: FileTreeViewProps) {
         {props.dragOver && <div className="file-tree-drop-overlay">{t("fileTree.dropToUpload")}</div>}
         {props.loading ? (
           <Feedback icon={<Loader2 className="animate-spin" />} text={t("tree.loading")} />
-        ) : props.showTree && (!props.normalizedSearch || props.hasSearchResults) ? (
-          <Tree
-            key={`${props.treeVersion}:${props.normalizedSearch}`}
-            getChildren={props.getChildren}
-            defaultExpandedIds={props.expandedIds}
-            onSelect={props.onSelect}
-            onToggle={props.onToggle}
-            renderActions={renderActions}
-            renderLabel={renderLabel}
-          />
         ) : props.normalizedSearch ? (
-          <Feedback icon={<Search />} text={t("fileTree.noSearchResults")} />
+          props.hasSearchResults ? (
+            <FileTreeSections {...props} renderActions={renderActions} renderLabel={renderLabel} />
+          ) : (
+            <Feedback icon={<Search />} text={t("fileTree.noSearchResults")} />
+          )
         ) : (
-          <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
+          <FileTreeSections {...props} renderActions={renderActions} renderLabel={renderLabel} />
         )}
       </div>
 
@@ -260,6 +253,61 @@ export function FileTreeView(props: FileTreeViewProps) {
         confirmLabel={t("fileTree.contextMenu.delete")}
       />
     </div>
+  );
+}
+
+function FileTreeSections({
+  renderActions,
+  renderLabel,
+  ...props
+}: FileTreeViewProps & {
+  renderActions: (node: TreeNodeData) => ReactNode;
+  renderLabel: (node: TreeNodeData, state: NodeState) => ReactNode;
+}) {
+  const { t } = useTranslation(NS.COMPONENTS);
+  const commonTreeProps = {
+    defaultExpandedIds: props.expandedIds,
+    onSelect: props.onSelect,
+    onToggle: props.onToggle,
+    renderActions,
+    renderLabel,
+  };
+
+  return (
+    <>
+      <section className="file-tree-section file-tree-section--workspace">
+        <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
+        <div className="file-tree-section-scroll">
+          {props.showTree && props.workspaceHasNodes ? (
+            <Tree
+              key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
+              getChildren={props.getWorkspaceChildren}
+              {...commonTreeProps}
+            />
+          ) : (
+            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
+          )}
+        </div>
+      </section>
+      <section className="file-tree-section file-tree-section--user">
+        <div className="file-tree-user-heading">
+          <UserRound aria-hidden />
+          <span>{t("fileTree.user")}</span>
+          <small>{t("fileTree.currentUser")}</small>
+        </div>
+        <div className="file-tree-section-scroll">
+          {props.showTree && props.userHasNodes ? (
+            <Tree
+              key={`user:${props.treeVersion}:${props.normalizedSearch}`}
+              getChildren={props.getUserChildren}
+              {...commonTreeProps}
+            />
+          ) : (
+            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} />
+          )}
+        </div>
+      </section>
+    </>
   );
 }
 

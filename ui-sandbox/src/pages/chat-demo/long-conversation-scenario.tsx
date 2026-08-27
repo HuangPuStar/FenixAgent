@@ -37,6 +37,23 @@ export function LongConversationScenario() {
       </div>
       <UserMessage promptAnchorId="long-prompt-tools">{t("longConversation.toolStressUser")}</UserMessage>
       <AssistantMessage compact copyable={false}>
+        <div className="chat-demo__activity-chain">
+          <ThoughtBlock label="思考了一会">先确认用户目录与备忘录目录，再读取项目配置。</ThoughtBlock>
+          <ToolRow title="执行 $ ls -la user/" detail="检查用户文件目录" status="complete" />
+          <ThoughtBlock label="思考了一会">目录存在，继续检查备忘录内容和依赖配置。</ThoughtBlock>
+          <ToolRow
+            title={
+              '执行 $ bun -e "const entry = /Users/konghayao/code/pazhou/remote-control-server/workspaces/very-long-path/index.ts"'
+            }
+            detail="检查超长命令的截断与状态保留"
+            status="complete"
+          />
+          <ThoughtBlock label="思考了一会">结构已确认，读取 package.json 获取脚本与依赖。</ThoughtBlock>
+          <ToolRow title="读取 package.json" detail="读取项目配置" status="complete" />
+          <ThoughtBlock label="思考了一会">工具结果已经齐全，准备组织最终回复。</ThoughtBlock>
+        </div>
+      </AssistantMessage>
+      <AssistantMessage compact copyable={false}>
         <ToolCallGroup
           count={LONG_TOOL_CALL_COUNT}
           complete={101}
