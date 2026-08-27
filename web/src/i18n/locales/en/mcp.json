@@ -1,6 +1,6 @@
 {
-  "title": "Plugin Marketplace",
-  "subtitle": "Manage the MCP plugins and connections available to agents",
+  "title": "MCP Plugin Marketplace",
+  "subtitle": "Browse curated MCP servers and connect files, browsers, repositories, and business systems through standard configuration.",
   "search": "Search plugins, transports, or use cases",
   "searchInstalled": "Search installed plugins",
   "empty": "No plugins are available yet",
@@ -18,14 +18,25 @@
     "organization": "Organization",
     "shared": "Shared with me"
   },
-  "filter": { "installed": "Installed" },
+  "filter": {
+    "installed": "Installed",
+    "all": "All",
+    "development": "Developer tools",
+    "data": "Data",
+    "browser": "Browser",
+    "cloud": "Cloud"
+  },
   "directory": {
     "title": "Plugin directory",
     "summary": "Showing {{visible}} of {{total}}",
     "noDescription": "No description",
     "toolCount": "{{count}} tools",
     "details": "Details",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "resultCount": "{{count}} results",
+    "totalTools": "{{count}} tools",
+    "installedCount": "{{count}} installed",
+    "manage": "Manage"
   },
   "type": { "local": "Local process", "remote": "Remote service" },
   "status": { "enabled": "Enabled", "disabled": "Disabled" },

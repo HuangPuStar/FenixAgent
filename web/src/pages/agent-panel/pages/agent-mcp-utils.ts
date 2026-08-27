@@ -3,6 +3,7 @@ import type { McpServerConfig, McpServerInfo } from "../../../types/config";
 
 export type McpCatalogScope = "all" | "organization" | "shared";
 export type McpCatalogFilter = "all" | "installed";
+export type McpCatalogCategory = "all" | "development" | "data" | "browser" | "cloud";
 export type KeyValueEntry = { key: string; value: string };
 
 /** 校验 MCP 编辑器必填字段，返回可直接展示的 i18n key。 */
@@ -91,6 +92,7 @@ export function filterMcpServers(
   query: string,
   scope: McpCatalogScope,
   filter: McpCatalogFilter,
+  category: McpCatalogCategory = "all",
 ): McpServerInfo[] {
   const keyword = query.trim().toLowerCase();
   return servers.filter((server) => {
@@ -98,6 +100,7 @@ export function filterMcpServers(
     if (scope === "organization" && shared) return false;
     if (scope === "shared" && !shared) return false;
     if (filter === "installed" && shared) return false;
+    if (category !== "all" && getMcpCategory(server) !== category) return false;
     if (!keyword) return true;
     return [getMcpDisplayName(server), server.name, server.summary, server.type]
       .filter(Boolean)
@@ -105,6 +108,15 @@ export function filterMcpServers(
       .toLowerCase()
       .includes(keyword);
   });
+}
+
+/** 仅从真实名称、说明和传输类型推导展示分类，不向协议 DTO 注入分类字段。 */
+export function getMcpCategory(server: McpServerInfo): Exclude<McpCatalogCategory, "all"> {
+  const value = `${server.name} ${server.summary}`.toLowerCase();
+  if (/browser|playwright|chrome|浏览器/.test(value)) return "browser";
+  if (/database|postgres|mysql|redis|data|数据/.test(value)) return "data";
+  if (/cloud|aws|azure|cloudflare|remote|云/.test(value) || server.type !== "local") return "cloud";
+  return "development";
 }
 
 /** 返回插件目录的真实归属计数。 */

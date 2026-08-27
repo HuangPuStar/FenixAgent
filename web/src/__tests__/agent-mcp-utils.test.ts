@@ -3,6 +3,7 @@ import {
   buildMcpPayload,
   countMcpScopes,
   filterMcpServers,
+  getMcpCategory,
   parseMcpCommand,
 } from "../pages/agent-panel/pages/agent-mcp-utils";
 import type { McpServerInfo, ResourceAccess } from "../types/config";
@@ -87,5 +88,14 @@ describe("plugin marketplace filters", () => {
   // 搜索应覆盖名称、说明与传输类型。
   test("searches plugin names and summaries", () => {
     expect(filterMcpServers(servers, "浏览器", "all", "all").map((server) => server.name)).toEqual(["browser-control"]);
+  });
+
+  // 市场分类只由真实名称、说明和传输类型推导，不向 MCP DTO 写入不存在的分类字段。
+  test("derives and filters marketplace categories", () => {
+    expect(getMcpCategory(servers[0])).toBe("development");
+    expect(getMcpCategory(servers[1])).toBe("browser");
+    expect(filterMcpServers(servers, "", "all", "all", "browser").map((server) => server.name)).toEqual([
+      "browser-control",
+    ]);
   });
 });
