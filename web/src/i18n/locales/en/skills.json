@@ -1,7 +1,7 @@
 {
   "title": "Skill Library",
-  "subtitle": "Manage reusable Agent workflows and control how skills are shared across your organization.",
-  "search": "Search skills by name or purpose",
+  "subtitle": "Package Agent workflows as readable instructions so capabilities stay consistent across agents.",
+  "search": "Search Skills",
   "empty": "Your skill library is empty",
   "emptyHint": "Create or upload a skill to give Agents a reusable way of working.",
   "emptySearch": "No matching skills",
@@ -34,10 +34,10 @@
     "edit": "Edit",
     "view": "View",
     "delete": "Delete",
-    "createSkill": "+ New Skill",
+    "createSkill": "Add Skill",
     "manualCreate": "Create Manually",
     "conversationCreate": "Create via Chat",
-    "uploadSkill": "Upload Skill",
+    "uploadSkill": "Import",
     "batchDelete": "Batch Delete",
     "reselect": "Reselect",
     "more": "More actions"

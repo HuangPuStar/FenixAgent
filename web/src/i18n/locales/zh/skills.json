@@ -1,7 +1,7 @@
 {
   "title": "技能库",
-  "subtitle": "集中管理 Agent 的工作方式，并控制技能的组织共享范围。",
-  "search": "搜索技能名称或用途",
+  "subtitle": "以可读指令封装 Agent 的工作方法，让同一种能力在不同智能体中被一致复用。",
+  "search": "搜索 Skill",
   "empty": "技能库还是空的",
   "emptyHint": "创建或上传第一个技能，让 Agent 获得可复用的工作方式。",
   "emptySearch": "没有匹配的技能",
@@ -34,10 +34,10 @@
     "edit": "编辑",
     "view": "查看",
     "delete": "删除",
-    "createSkill": "新建技能",
+    "createSkill": "添加 Skill",
     "manualCreate": "手动创建",
     "conversationCreate": "对话创建",
-    "uploadSkill": "上传技能",
+    "uploadSkill": "导入",
     "batchDelete": "批量删除",
     "reselect": "重新选择",
     "more": "更多操作"

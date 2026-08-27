@@ -1,9 +1,14 @@
 import {
   AlertTriangle,
   ChevronDown,
+  ChevronRight,
+  Code2,
   Download,
   Eye,
   FileText,
+  Globe2,
+  LockKeyhole,
+  type LucideIcon,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -23,7 +28,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { NS } from "../../../i18n";
 import {
   canManageSkillSharing,
@@ -53,6 +57,15 @@ type AgentSkillsCatalogProps = {
   onToggleSharing: (skill: SkillInfo) => void;
   onRetry: () => void;
 };
+
+function getSkillIcon(skill: SkillInfo): LucideIcon {
+  const value = `${skill.name} ${skill.description ?? ""}`.toLowerCase();
+  if (/research|检索|搜索/.test(value)) return Search;
+  if (/api|code|review|代码/.test(value)) return Code2;
+  if (/html|picture|browser|网页|图片/.test(value)) return Globe2;
+  if (/document|文档/.test(value)) return FileText;
+  return Sparkles;
+}
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const { t } = useTranslation(NS.SKILLS);
@@ -162,9 +175,10 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
             const manageable = canManageSkillSharing(skill);
             const external = skill.resourceAccess?.ownership === "external";
             const downloading = props.downloadingKey === getSkillKey(skill);
+            const SkillIcon = getSkillIcon(skill);
             return (
               <article
-                className="skill-directory-item grid min-h-16 min-w-0 grid-cols-[36px_minmax(0,1fr)_auto_30px] items-center gap-3 border-[var(--skills-line)] border-b px-3.5 py-2 last:border-b-0 hover:bg-[#f8faff] max-[720px]:grid-cols-[36px_minmax(0,1fr)_30px]"
+                className="skill-directory-item group grid min-h-[62px] min-w-0 grid-cols-[38px_minmax(0,1fr)_auto_30px_16px] items-center gap-3 border-[var(--skills-line)] border-b px-4 py-2 last:border-b-0 hover:bg-[#f8faff] max-[720px]:grid-cols-[38px_minmax(0,1fr)_30px_16px]"
                 key={getSkillKey(skill)}
               >
                 <div
@@ -174,43 +188,42 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                       : "grid size-9 place-items-center rounded-lg bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-4"
                   }
                 >
-                  {external ? <Share2 /> : <Sparkles />}
+                  {external ? <Share2 /> : <SkillIcon />}
                 </div>
-                <div className="min-w-0">
+                <button type="button" className="min-w-0 text-left" onClick={() => props.onOpen(skill)}>
                   <div className="flex min-w-0 items-center gap-2">
                     <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
                       {external ? getSkillOptionLabel(skill) : skill.name}
                     </strong>
-                    <span className="shrink-0 text-[10px] text-[var(--skills-faint)]">
-                      {external ? t("scope.shared") : t("scope.organization")}
-                    </span>
                   </div>
                   <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--skills-muted)] leading-[1.45]">
                     {skill.description || t("directory.noDescription")}
                   </p>
-                </div>
-                <div className="max-[720px]:hidden">
-                  {manageable ? (
-                    <label className="flex items-center gap-1.5 text-[10px] text-[var(--skills-muted)]">
-                      <Switch
-                        aria-label={tComponents("resource.public")}
-                        checked={Boolean(skill.resourceAccess?.publicReadable)}
-                        onCheckedChange={() => props.onToggleSharing(skill)}
-                      />
-                      <span>{tComponents("resource.public")}</span>
-                    </label>
-                  ) : (
-                    <span className="text-[10px] text-[var(--skills-muted)]">
-                      {writable ? t("directory.private") : tComponents("resource.readOnly")}
-                    </span>
-                  )}
+                </button>
+                <div className="flex items-center gap-1.5 max-[720px]:hidden">
+                  <span
+                    className={
+                      external
+                        ? "rounded-md bg-[#f1eeff] px-2 py-1 text-[9px] text-[#6e55c7]"
+                        : "rounded-md bg-[#edf5ff] px-2 py-1 text-[9px] text-[#1e72c8]"
+                    }
+                  >
+                    {external ? t("scope.shared") : t("scope.organization")}
+                  </span>
+                  <span className="rounded-md bg-[#f3f5f8] px-2 py-1 text-[9px] text-[var(--skills-muted)]">
+                    {skill.resourceAccess?.publicReadable
+                      ? tComponents("resource.public")
+                      : writable
+                        ? t("directory.private")
+                        : tComponents("resource.readOnly")}
+                  </span>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-[30px] text-[var(--skills-muted)] hover:text-[var(--skills-ink)] [&_svg]:w-4"
+                      className="size-[30px] text-[var(--skills-muted)] opacity-0 hover:text-[var(--skills-ink)] focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 [&_svg]:w-4"
                       aria-label={t("btn.more")}
                     >
                       <MoreHorizontal />
@@ -225,6 +238,14 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                       {writable ? <Pencil /> : <Eye />}
                       {writable ? t("btn.edit") : t("btn.view")}
                     </DropdownMenuItem>
+                    {manageable ? (
+                      <DropdownMenuItem onClick={() => props.onToggleSharing(skill)}>
+                        {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
+                        {skill.resourceAccess?.publicReadable
+                          ? tComponents("resource.makePrivate")
+                          : tComponents("resource.makePublic")}
+                      </DropdownMenuItem>
+                    ) : null}
                     {writable ? (
                       <DropdownMenuItem className="text-destructive" onClick={() => props.onDelete(skill)}>
                         <Trash2 />
@@ -233,6 +254,14 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                     ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <button
+                  type="button"
+                  className="grid size-4 place-items-center text-[var(--skills-muted)] hover:text-[var(--skills-blue)] [&_svg]:w-3.5"
+                  aria-label={writable ? t("btn.edit") : t("btn.view")}
+                  onClick={() => props.onOpen(skill)}
+                >
+                  <ChevronRight />
+                </button>
               </article>
             );
           })}
@@ -250,10 +279,19 @@ function SkillsLoading() {
         <Skeleton className="mt-2 h-4 w-72" />
       </div>
       <Skeleton className="mt-5 h-10 w-full max-w-4xl" />
-      <div className="mt-6 grid grid-cols-1 gap-2 xl:grid-cols-2">
+      <div className="mt-6 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white">
         {Array.from({ length: 8 }).map((_, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static loading placeholders
-          <Skeleton key={index} className="h-24 rounded-lg" />
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: static loading placeholders
+            key={index}
+            className="flex h-[62px] items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
+          >
+            <Skeleton className="size-9 rounded-lg" />
+            <div className="flex-1">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="mt-2 h-2.5 w-3/5" />
+            </div>
+          </div>
         ))}
       </div>
     </main>
