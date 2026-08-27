@@ -20,12 +20,14 @@ import { useTranslation } from "react-i18next";
 import { ModelIcon } from "@/components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { NS } from "@/src/i18n";
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 import type { ModelTestState } from "./agent-models-types";
 import {
   canWriteProvider,
   getProviderColor,
+  getProviderIconModelId,
   getProviderKey,
   getProviderScope,
   type ProviderScope,
@@ -64,7 +66,7 @@ interface ModelsCatalogProps {
 }
 
 export function AgentModelsCatalog(props: ModelsCatalogProps) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(NS.MODELS);
   const counts = SCOPES.reduce<Record<ProviderScope, number>>(
     (result, scope) => {
       result[scope] =
@@ -122,6 +124,7 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
       <section className="models-workspace">
         <ProviderIndex
           providers={props.providers}
+          modelsByProvider={props.modelsByProvider}
           selected={props.selectedProvider}
           onSelect={props.onSelectProvider}
         />
@@ -137,14 +140,16 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
 
 function ProviderIndex({
   providers,
+  modelsByProvider,
   selected,
   onSelect,
 }: {
   providers: ProviderInfo[];
+  modelsByProvider: Record<string, ProviderModel[]>;
   selected: ProviderInfo | null;
   onSelect: (provider: ProviderInfo) => void;
 }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(NS.MODELS);
   return (
     <aside className="models-provider-index">
       <header>
@@ -158,6 +163,7 @@ function ProviderIndex({
         <nav aria-label={t("providerIndex.title")}>
           {providers.map((provider) => {
             const key = getProviderKey(provider);
+            const iconModelId = getProviderIconModelId(provider, modelsByProvider[key] ?? []);
             const active = key === (selected ? getProviderKey(selected) : null);
             return (
               <button
@@ -167,8 +173,8 @@ function ProviderIndex({
                 aria-current={active ? "page" : undefined}
                 onClick={() => onSelect(provider)}
               >
-                <span className="models-provider-brand">
-                  <ModelIcon modelId={provider.id} size={18} />
+                <span className="models-provider-brand [--ant-color-text-description:currentColor] text-secondary">
+                  <ModelIcon modelId={iconModelId} size={18} />
                 </span>
                 <span className="models-provider-copy">
                   <strong>{provider.name || provider.id}</strong>
@@ -196,18 +202,19 @@ function ProviderIndex({
 }
 
 function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(NS.MODELS);
   const provider = props.provider;
   const key = getProviderKey(provider);
   const models = props.modelsByProvider[key] ?? [];
+  const iconModelId = getProviderIconModelId(provider, models);
   const writable = canWriteProvider(provider);
   const color = getProviderColor(provider.id);
   return (
     <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
       <header className="models-provider-detail__header">
         <div className="models-provider-identity">
-          <span className="models-provider-detail-brand">
-            <ModelIcon modelId={provider.id} size={25} />
+          <span className="models-provider-detail-brand [--ant-color-text-description:currentColor]">
+            <ModelIcon modelId={iconModelId} size={25} />
           </span>
           <div>
             <div className="models-provider-meta">
@@ -338,12 +345,12 @@ function ModelRow({
   onView: (provider: ProviderInfo, model: ProviderModel) => void;
   onDelete: (provider: ProviderInfo, model: ProviderModel) => void;
 }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(NS.MODELS);
   const thinking = supportsThinking(model);
   return (
     <div className="models-model-row">
       <div className="models-model-summary">
-        <span className="models-model-icon">
+        <span className="models-model-icon [--ant-color-text-description:currentColor]">
           <ModelIcon modelId={model.id} size={17} />
         </span>
         <span className="models-model-identity">
@@ -391,7 +398,7 @@ function ModelRow({
 }
 
 function CatalogEmpty({ query }: { query: string }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(NS.MODELS);
   return (
     <div className="models-catalog-empty">
       <FileSearch />

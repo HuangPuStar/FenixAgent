@@ -6,6 +6,7 @@ import {
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderDisplayName,
+  getProviderIconModelId,
   getProviderKey,
   getProviderResourceBadgeKey,
   getProviderScope,
@@ -93,6 +94,16 @@ describe("provider model resource access flow", () => {
   test("derives only provable provider scopes", () => {
     expect(getProviderScope(internalProvider)).toBe("organization");
     expect(getProviderScope(externalProvider)).toBe("shared");
+  });
+
+  // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。
+  test("uses a configured model id for the provider brand icon", () => {
+    expect(
+      getProviderIconModelId({ ...internalProvider, id: "admin@example.com" }, [
+        { id: "gpt-5.2", name: "GPT-5.2", modalities: null, limit: null, cost: null },
+      ]),
+    ).toBe("gpt-5.2");
+    expect(getProviderIconModelId({ ...internalProvider, id: "custom-provider" }, [])).toBe("custom-provider");
   });
 
   // 思考能力必须读取真实 options.thinking.enabled，不能根据模型名称推测。

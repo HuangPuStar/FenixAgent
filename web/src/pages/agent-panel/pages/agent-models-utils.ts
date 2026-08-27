@@ -1,4 +1,4 @@
-import type { ProviderInfo } from "../../../types/config";
+import type { ProviderInfo, ProviderModel } from "../../../types/config";
 
 export type ProviderScope = "all" | "organization" | "shared";
 
@@ -27,6 +27,14 @@ export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
 
 export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
+}
+
+/**
+ * Provider 配置 ID 可能是邮箱或自定义别名，不能用于推断品牌。
+ * 已配置模型 ID 更接近真实厂商，因此优先用于品牌图标解析。
+ */
+export function getProviderIconModelId(provider: ProviderInfo, models: ProviderModel[]): string {
+  return models[0]?.id ?? provider.id;
 }
 
 /**
