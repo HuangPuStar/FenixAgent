@@ -9,6 +9,8 @@
     "scenarios": "场景",
     "openContext": "打开上下文面板",
     "closeContext": "关闭上下文面板",
+    "openSessions": "打开会话列表",
+    "closeSessions": "关闭会话列表",
     "dockContext": "固定右侧栏",
     "floatContext": "浮动右侧栏",
     "resizeContext": "调整右侧栏宽度",

@@ -15,6 +15,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { SidebarSessionList } from "./chat/sidebar-session-list";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 
 interface ACPMainProps {
   agentId?: string;
@@ -112,6 +113,7 @@ export function ACPMain({
       return true;
     }
   });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
@@ -184,6 +186,7 @@ export function ACPMain({
         }
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(session.sessionId);
+        if (source === "user") setMobileSidebarOpen(false);
       } catch (error) {
         console.error("Failed to load/resume session:", error);
       }
@@ -299,13 +302,59 @@ export function ACPMain({
           activeSessionId={initialActiveSessionId}
           onSelectSession={handleSelectSession}
           onNewSession={() => chatRef.current?.newSession()}
-          onToggleSidebar={!hideSidebar ? () => setSidebarOpen((v) => !v) : undefined}
-          sidebarOpen={sidebarOpen}
+          onToggleSidebar={
+            !hideSidebar
+              ? () => {
+                  if (window.matchMedia("(max-width: 767px)").matches) {
+                    setMobileSidebarOpen((open) => !open);
+                  } else {
+                    setSidebarOpen((open) => !open);
+                  }
+                }
+              : undefined
+          }
+          sidebarOpen={sidebarOpen || mobileSidebarOpen}
           sessions={sessions}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
           showSessionList={false}
         />
+      )}
+
+      {!readonly && !hideSidebar && (
+        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <SheetContent side="left" className="w-[85vw] max-w-sm gap-0 p-0 md:hidden">
+            <SheetHeader className="border-b border-border/40 pr-12">
+              <SheetTitle>{t("acpMain.sessions")}</SheetTitle>
+              <SheetDescription className="sr-only">{t("acpMain.historySessions")}</SheetDescription>
+            </SheetHeader>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex items-center justify-end px-3 py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setMobileSidebarOpen(false);
+                    chatRef.current?.newSession();
+                  }}
+                  className="gap-1.5 text-text-muted hover:bg-brand/10 hover:text-brand"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t("acpMain.newSession")}
+                </Button>
+              </div>
+              <ScrollArea className="min-h-0 flex-1">
+                <SidebarSessionList
+                  initialActiveSessionId={initialActiveSessionId}
+                  onSelectSession={handleSelectSession}
+                  sessions={sessions}
+                  onRenameSession={onRenameSession}
+                  onDeleteSession={onDeleteSession}
+                />
+              </ScrollArea>
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* 主体：横向 sidebar + chat */}

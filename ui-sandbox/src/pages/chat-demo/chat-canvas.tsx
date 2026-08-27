@@ -53,10 +53,16 @@ const SCENARIO_CONTEXT_USAGE: Partial<Record<DemoScenarioId, number>> = {
   assets: 41,
 };
 
+interface SentMessage {
+  id: number;
+  text: string;
+  attachments: ComposerAsset[];
+}
+
 export function ChatCanvas({ scenarioId }: ChatCanvasProps) {
   const { t } = useDemoTranslation();
   const [draft, setDraft] = useState("");
-  const [sentMessages, setSentMessages] = useState<string[]>([]);
+  const [sentMessages, setSentMessages] = useState<SentMessage[]>([]);
   const [generating, setGenerating] = useState(false);
   const [pluginOpen, setPluginOpen] = useState(false);
   const [selectedPluginIds, setSelectedPluginIds] = useState<Set<string>>(() => new Set(DEFAULT_SELECTED_PLUGIN_IDS));
@@ -68,6 +74,7 @@ export function ChatCanvas({ scenarioId }: ChatCanvasProps) {
   const inputDockRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const generationTimerRef = useRef<number | null>(null);
+  const sentMessageIdRef = useRef(0);
   const quoteIdRef = useRef(0);
 
   useEffect(() => {
@@ -160,7 +167,10 @@ export function ChatCanvas({ scenarioId }: ChatCanvasProps) {
     event.preventDefault();
     const message = draft.trim();
     if (!message && composerAssets.length === 0) return;
-    setSentMessages((messages) => [...messages, message || `已发送 ${composerAssets.length} 个 Asset`]);
+    setSentMessages((messages) => [
+      ...messages,
+      { id: ++sentMessageIdRef.current, text: message, attachments: composerAssets.map((asset) => ({ ...asset })) },
+    ]);
     setDraft("");
     setComposerAssets([]);
     setPluginOpen(false);
@@ -211,9 +221,17 @@ export function ChatCanvas({ scenarioId }: ChatCanvasProps) {
           onScroll={() => setTextSelection(null)}
         >
           <ScenarioContent scenarioId={scenarioId} />
-          {sentMessages.map((message, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: local demo messages have no persisted identifier
-            <UserMessage key={index}>{message}</UserMessage>
+          {sentMessages.map((message) => (
+            <UserMessage
+              key={message.id}
+              attachments={
+                message.attachments.length > 0 ? (
+                  <ComposerAssets assets={message.attachments} onRemove={() => undefined} />
+                ) : undefined
+              }
+            >
+              {message.text || `已发送 ${message.attachments.length} 个附件`}
+            </UserMessage>
           ))}
           {generating && (
             <div className="chat-demo__mock-thinking" aria-live="polite">

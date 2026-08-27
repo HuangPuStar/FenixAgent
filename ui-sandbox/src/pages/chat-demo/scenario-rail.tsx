@@ -2,8 +2,6 @@ import {
   AppWindow,
   BotMessageSquare,
   Braces,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
   CircleHelp,
   FileStack,
@@ -49,9 +47,8 @@ const SCENARIO_ICONS = {
 
 interface ScenarioRailProps {
   activeScenarioId: DemoScenarioId;
-  collapsed: boolean;
   onScenarioChange: (scenarioId: DemoScenarioId) => void;
-  onCollapsedChange: (collapsed: boolean) => void;
+  onClose: () => void;
 }
 
 interface MockSession {
@@ -69,7 +66,7 @@ const MOCK_SESSIONS: readonly MockSession[] = [
 ] as const;
 
 /** Provides local-only scene switching for UI review. */
-export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, onCollapsedChange }: ScenarioRailProps) {
+export function ScenarioRail({ activeScenarioId, onScenarioChange, onClose }: ScenarioRailProps) {
   const { t } = useDemoTranslation();
   const [railMode, setRailMode] = useState<"scenarios" | "sessions">("sessions");
   const [sessions, setSessions] = useState<MockSession[]>(() => MOCK_SESSIONS.map((session) => ({ ...session })));
@@ -144,11 +141,17 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
   };
 
   return (
-    <aside className={`chat-demo__rail${collapsed ? " is-collapsed" : ""}`} aria-label="Chat 会话与设计场景">
+    <aside className="chat-demo__rail" aria-label="Chat 会话与设计场景">
+      <div className="chat-demo__rail-heading">
+        <strong>会话</strong>
+        <Button variant="ghost" size="icon-sm" aria-label="关闭会话列表" onClick={onClose}>
+          <X />
+        </Button>
+      </div>
       <div className="chat-demo__rail-actions">
         <button type="button" className="chat-demo__new-chat" aria-label="新对话" onClick={createSession}>
           <Plus />
-          {!collapsed && <span>新对话</span>}
+          <span>新对话</span>
         </button>
         <button
           type="button"
@@ -164,28 +167,26 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
         </button>
       </div>
 
-      {!collapsed && (
-        <div className="chat-demo__rail-modes" aria-label="左侧内容" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={railMode === "scenarios"}
-            className={railMode === "scenarios" ? "is-active" : undefined}
-            onClick={() => setRailMode("scenarios")}
-          >
-            设计场景
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={railMode === "sessions"}
-            className={railMode === "sessions" ? "is-active" : undefined}
-            onClick={() => setRailMode("sessions")}
-          >
-            会话
-          </button>
-        </div>
-      )}
+      <div className="chat-demo__rail-modes" aria-label="左侧内容" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={railMode === "scenarios"}
+          className={railMode === "scenarios" ? "is-active" : undefined}
+          onClick={() => setRailMode("scenarios")}
+        >
+          设计场景
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={railMode === "sessions"}
+          className={railMode === "sessions" ? "is-active" : undefined}
+          onClick={() => setRailMode("sessions")}
+        >
+          会话
+        </button>
+      </div>
 
       {railMode === "scenarios" ? (
         <nav className="chat-demo__scenario-list">
@@ -198,25 +199,23 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
                 type="button"
                 className={`chat-demo__scenario${isActive ? " is-active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
-                aria-label={collapsed ? t(`scenarios.${scenario.id}.label`) : undefined}
+                aria-label={undefined}
                 onClick={() => onScenarioChange(scenario.id)}
               >
                 <span className="chat-demo__scenario-icon">
                   <Icon />
                 </span>
-                {!collapsed && (
-                  <span className="chat-demo__scenario-copy">
-                    <strong>{t(`scenarios.${scenario.id}.label`)}</strong>
-                    <small>{t(`scenarios.${scenario.id}.description`)}</small>
-                  </span>
-                )}
+                <span className="chat-demo__scenario-copy">
+                  <strong>{t(`scenarios.${scenario.id}.label`)}</strong>
+                  <small>{t(`scenarios.${scenario.id}.description`)}</small>
+                </span>
               </button>
             );
           })}
         </nav>
       ) : (
         <div className="chat-demo__session-browser">
-          {!collapsed && searchOpen && (
+          {searchOpen && (
             <label className="chat-demo__session-search">
               <Search />
               <input
@@ -245,13 +244,13 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
               if (sessions.length === 0) return null;
               return (
                 <section key={group} className="chat-demo__session-group" aria-label={group}>
-                  {!collapsed && <h2>{group}</h2>}
+                  <h2>{group}</h2>
                   {sessions.map((session) => {
                     const isSelected = selectedSessionId === session.id;
                     const isEditing = editingSessionId === session.id;
                     return (
                       <div key={session.id} className={`chat-demo__session-row${isSelected ? " is-active" : ""}`}>
-                        {isEditing && !collapsed ? (
+                        {isEditing ? (
                           <div className="chat-demo__session-editor">
                             <input
                               ref={editInputRef}
@@ -279,7 +278,7 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
                               type="button"
                               className="chat-demo__session"
                               aria-current={isSelected ? "page" : undefined}
-                              aria-label={collapsed ? session.title : undefined}
+                              aria-label={undefined}
                               title={session.title}
                               onClick={() => {
                                 setSelectedSessionId(session.id);
@@ -288,34 +287,32 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
                                 );
                               }}
                             >
-                              {!collapsed && <strong>{session.title}</strong>}
+                              <strong>{session.title}</strong>
                             </button>
-                            {!collapsed && (
-                              <div className="chat-demo__session-actions">
-                                {session.unread && (
-                                  <>
-                                    <span className="chat-demo__session-unread" aria-hidden="true" />
-                                    <span className="sr-only">未读</span>
-                                  </>
-                                )}
-                                <button
-                                  type="button"
-                                  aria-label={`重命名 ${session.title}`}
-                                  title="重命名"
-                                  onClick={() => startRename(session)}
-                                >
-                                  <Pencil />
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label={`删除 ${session.title}`}
-                                  title="删除"
-                                  onClick={() => setDeleteTarget(session)}
-                                >
-                                  <Trash2 />
-                                </button>
-                              </div>
-                            )}
+                            <div className="chat-demo__session-actions">
+                              {session.unread && (
+                                <>
+                                  <span className="chat-demo__session-unread" aria-hidden="true" />
+                                  <span className="sr-only">未读</span>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                aria-label={`重命名 ${session.title}`}
+                                title="重命名"
+                                onClick={() => startRename(session)}
+                              >
+                                <Pencil />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`删除 ${session.title}`}
+                                title="删除"
+                                onClick={() => setDeleteTarget(session)}
+                              >
+                                <Trash2 />
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>
@@ -327,16 +324,6 @@ export function ScenarioRail({ activeScenarioId, collapsed, onScenarioChange, on
           </div>
         </div>
       )}
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="chat-demo__rail-toggle"
-        aria-label={collapsed ? t("controls.expand") : t("controls.collapse")}
-        onClick={() => onCollapsedChange(!collapsed)}
-      >
-        {collapsed ? <ChevronRight /> : <ChevronLeft />}
-      </Button>
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent size="sm">

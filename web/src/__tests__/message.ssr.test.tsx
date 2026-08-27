@@ -52,6 +52,19 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("output.md\n请继续检查");
   });
 
+  // 发送后的文件引用应恢复为附件 pill，而不是继续显示为普通裸文本。
+  test("用户气泡将文件引用渲染为附件语义", () => {
+    const markup = renderToStaticMarkup(
+      createElement(UserBubble, {
+        entry: { type: "user_message", id: "file-reference", content: "请检查\n@./src/report.md" },
+      }),
+    );
+
+    expect(markup).toContain('data-file-attachment="src/report.md"');
+    expect(markup).toContain("report.md");
+    expect(markup).not.toContain("@./src/report.md");
+  });
+
   test("助手消息展示文本并使用助手角色样式", () => {
     const markup = renderToStaticMarkup(
       createElement(Message, { from: "assistant" }, createElement(MessageContent, null, "这是助手回复")),

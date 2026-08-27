@@ -219,7 +219,7 @@
 }
 
 .chat-demo__composer-wrap {
-  width: min(760px, calc(100% - 56px));
+  width: min(820px, calc(100% - 56px));
   flex: 0 0 auto;
   align-self: center;
   padding: 0 0 16px;

@@ -1,4 +1,4 @@
-import { ChevronDown, Copy, Quote } from "lucide-react";
+import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
@@ -16,6 +16,21 @@ import { SystemMessage } from "./SystemMessage";
 const COLLAPSED_MAX_HEIGHT = 200;
 // 思考内容流式显示的最大高度（≈4 行）
 const THOUGHT_STREAMING_MAX_HEIGHT = 96;
+const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
+
+/** 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。 */
+export function splitFileReferences(content: string): Array<{ type: "text" | "file"; value: string; offset: number }> {
+  const parts: Array<{ type: "text" | "file"; value: string; offset: number }> = [];
+  let offset = 0;
+  for (const match of content.matchAll(FILE_REFERENCE_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > offset) parts.push({ type: "text", value: content.slice(offset, index), offset });
+    parts.push({ type: "file", value: match[0].slice(3), offset: index });
+    offset = index + match[0].length;
+  }
+  if (offset < content.length) parts.push({ type: "text", value: content.slice(offset), offset });
+  return parts;
+}
 
 // =============================================================================
 // 用户消息 — 右对齐，品牌色淡底，可折叠；注入的 system-reminder 渲染为系统消息
@@ -43,6 +58,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
     .filter((segment) => segment.kind === "text")
     .map((segment) => segment.text)
     .join("\n");
+  const visibleParts = useMemo(() => splitFileReferences(visibleContent), [visibleContent]);
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -78,7 +94,21 @@ export function UserBubble({ entry }: UserBubbleProps) {
                 className="chat-user-message-content px-4 py-2.5 text-sm font-display leading-relaxed"
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
               >
-                {visibleContent}
+                {visibleParts.map((part) =>
+                  part.type === "file" ? (
+                    <span
+                      key={`${part.type}-${part.offset}`}
+                      className="mx-0.5 inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-0.5 align-middle text-xs text-text-secondary"
+                      title={part.value}
+                      data-file-attachment={part.value}
+                    >
+                      <File className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{part.value.split("/").at(-1) || part.value}</span>
+                    </span>
+                  ) : (
+                    part.value
+                  ),
+                )}
               </div>
               {/* 折叠渐变遮罩 + 展开按钮 */}
               {!expanded && overflowing && (

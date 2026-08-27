@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Menu, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useState } from "react";
 import { ChatCanvas } from "./chat-canvas";
 import { ContextInspector } from "./context-inspector";
@@ -17,9 +17,8 @@ export function ChatDemoPage() {
   const [contextMode, setContextMode] = useState<"floating" | "docked">("floating");
   const [contextWidth, setContextWidth] = useState(430);
   const [contextCompact, setContextCompact] = useState(() => window.matchMedia("(max-width: 1050px)").matches);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(() => window.matchMedia("(min-width: 761px)").matches);
   const [resetKey, setResetKey] = useState(0);
-  const scenario = getDemoScenario(scenarioId);
   const workspaceStyle: CSSProperties & { "--chat-floating-context-width": string } = {
     "--chat-floating-context-width": contextOpen && contextMode === "floating" ? `${contextWidth}px` : "0px",
   };
@@ -52,7 +51,16 @@ export function ChatDemoPage() {
         <section className="chat-demo__workspace">
           <header className="chat-demo__topbar">
             <div className="chat-demo__topbar-title">
-              <span className="chat-demo__status-dot" data-status={scenario.status} />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="chat-demo__sessions-trigger"
+                aria-label={sessionsOpen ? t("controls.closeSessions") : t("controls.openSessions")}
+                aria-expanded={sessionsOpen}
+                onClick={() => setSessionsOpen((open) => !open)}
+              >
+                <Menu />
+              </Button>
               <h1>{t(`scenarios.${scenarioId}.title`)}</h1>
             </div>
             <div className="chat-demo__topbar-actions">
@@ -72,14 +80,26 @@ export function ChatDemoPage() {
           </header>
 
           <div className="chat-demo__workspace-body">
-            <DemoPanelBoundary>
-              <ScenarioRail
-                activeScenarioId={scenarioId}
-                collapsed={railCollapsed}
-                onScenarioChange={handleScenarioChange}
-                onCollapsedChange={setRailCollapsed}
-              />
-            </DemoPanelBoundary>
+            {sessionsOpen && (
+              <>
+                <button
+                  type="button"
+                  className="chat-demo__rail-scrim"
+                  aria-label={t("controls.closeSessions")}
+                  onClick={() => setSessionsOpen(false)}
+                />
+                <DemoPanelBoundary>
+                  <ScenarioRail
+                    activeScenarioId={scenarioId}
+                    onScenarioChange={(nextId) => {
+                      handleScenarioChange(nextId);
+                      if (window.matchMedia("(max-width: 760px)").matches) setSessionsOpen(false);
+                    }}
+                    onClose={() => setSessionsOpen(false)}
+                  />
+                </DemoPanelBoundary>
+              </>
+            )}
             <div className="chat-demo__workgrid">
               <DemoPanelBoundary>
                 <ChatCanvas key={`${scenarioId}-${resetKey}`} scenarioId={scenarioId} />
