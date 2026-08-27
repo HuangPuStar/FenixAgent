@@ -9,7 +9,6 @@ import {
   Globe2,
   LockKeyhole,
   type LucideIcon,
-  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -19,6 +18,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,9 +69,14 @@ function getSkillIcon(skill: SkillInfo): LucideIcon {
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const { t } = useTranslation(NS.SKILLS);
-  const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const filtered = filterSkills(props.skills, props.query, props.scope);
   const { organization: organizationCount, shared: sharedCount } = countSkillsByScope(props.skills);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedSkill = filtered.find((skill) => getSkillKey(skill) === selectedKey) ?? filtered[0] ?? null;
+
+  useEffect(() => {
+    if (selectedSkill && selectedKey !== getSkillKey(selectedSkill)) setSelectedKey(getSkillKey(selectedSkill));
+  }, [selectedKey, selectedSkill]);
 
   if (props.loading) return <SkillsLoading />;
   if (props.error && props.skills.length === 0) {
@@ -155,13 +160,6 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
         </div>
       </section>
 
-      <header className="skills-directory-heading">
-        <div>
-          <h2>{t("directory.title")}</h2>
-          <p>{t("directory.summary", { visible: filtered.length, total: props.skills.length })}</p>
-        </div>
-      </header>
-
       {filtered.length === 0 ? (
         <section className="skills-empty-state">
           <Sparkles />
@@ -169,105 +167,128 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           <p>{props.skills.length === 0 ? t("emptyHint") : t("emptySearchHint")}</p>
         </section>
       ) : (
-        <section className="skills-directory-grid mt-3 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white shadow-sm">
-          {filtered.map((skill) => {
-            const writable = canWriteSkill(skill);
-            const manageable = canManageSkillSharing(skill);
-            const external = skill.resourceAccess?.ownership === "external";
-            const downloading = props.downloadingKey === getSkillKey(skill);
-            const SkillIcon = getSkillIcon(skill);
-            return (
-              <article
-                className="skill-directory-item group grid min-h-[62px] min-w-0 grid-cols-[38px_minmax(0,1fr)_auto_30px_16px] items-center gap-3 border-[var(--skills-line)] border-b px-4 py-2 last:border-b-0 hover:bg-[#f8faff] max-[720px]:grid-cols-[38px_minmax(0,1fr)_30px_16px]"
-                key={getSkillKey(skill)}
-              >
-                <div
-                  className={
-                    external
-                      ? "grid size-9 place-items-center rounded-lg bg-[#f0edff] text-[#6d55c7] [&_svg]:w-4"
-                      : "grid size-9 place-items-center rounded-lg bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-4"
-                  }
-                >
-                  {external ? <Share2 /> : <SkillIcon />}
-                </div>
-                <button type="button" className="min-w-0 text-left" onClick={() => props.onOpen(skill)}>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
-                      {external ? getSkillOptionLabel(skill) : skill.name}
-                    </strong>
-                  </div>
-                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--skills-muted)] leading-[1.45]">
-                    {skill.description || t("directory.noDescription")}
-                  </p>
-                </button>
-                <div className="flex items-center gap-1.5 max-[720px]:hidden">
-                  <span
-                    className={
-                      external
-                        ? "rounded-md bg-[#f1eeff] px-2 py-1 text-[9px] text-[#6e55c7]"
-                        : "rounded-md bg-[#edf5ff] px-2 py-1 text-[9px] text-[#1e72c8]"
-                    }
+        <section className="mt-[18px] grid min-h-[620px] grid-cols-[238px_minmax(0,1fr)] overflow-hidden rounded-[10px] bg-white shadow-[0_12px_38px_rgb(36_57_92_/_8%)] max-[760px]:grid-cols-1">
+          <aside className="bg-[#f6f8fb] px-[10px] py-[19px] shadow-[inset_-1px_0_#e7ecf3]">
+            <header className="px-2 pb-[14px]">
+              <div className="flex items-center justify-between text-[13px] font-semibold">
+                <strong>{t("directory.title")}</strong>
+                <span className="grid h-5 min-w-[22px] place-items-center rounded-[5px] bg-[#e9edf4] text-[11px] text-[var(--skills-muted)]">
+                  {filtered.length}
+                </span>
+              </div>
+              <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
+                {t("directory.summary", { visible: filtered.length, total: props.skills.length })}
+              </small>
+            </header>
+            <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
+              {filtered.map((skill) => {
+                const external = skill.resourceAccess?.ownership === "external";
+                const SkillIcon = getSkillIcon(skill);
+                const active = getSkillKey(skill) === getSkillKey(selectedSkill);
+                return (
+                  <button
+                    type="button"
+                    key={getSkillKey(skill)}
+                    aria-current={active ? "page" : undefined}
+                    className={`grid min-h-[57px] min-w-0 grid-cols-[28px_minmax(0,1fr)_auto_12px] items-center gap-2 rounded-[7px] border-0 p-2 text-left ${active ? "bg-[#e8f0ff] text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
+                    onClick={() => setSelectedKey(getSkillKey(skill))}
                   >
-                    {external ? t("scope.shared") : t("scope.organization")}
-                  </span>
-                  <span className="rounded-md bg-[#f3f5f8] px-2 py-1 text-[9px] text-[var(--skills-muted)]">
-                    {skill.resourceAccess?.publicReadable
-                      ? tComponents("resource.public")
-                      : writable
-                        ? t("directory.private")
-                        : tComponents("resource.readOnly")}
-                  </span>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-[30px] text-[var(--skills-muted)] opacity-0 hover:text-[var(--skills-ink)] focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 [&_svg]:w-4"
-                      aria-label={t("btn.more")}
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem disabled={downloading} onClick={() => props.onDownload(skill)}>
-                      <Download />
-                      {t("btn.download")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => props.onOpen(skill)}>
-                      {writable ? <Pencil /> : <Eye />}
-                      {writable ? t("btn.edit") : t("btn.view")}
-                    </DropdownMenuItem>
-                    {manageable ? (
-                      <DropdownMenuItem onClick={() => props.onToggleSharing(skill)}>
-                        {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
-                        {skill.resourceAccess?.publicReadable
-                          ? tComponents("resource.makePrivate")
-                          : tComponents("resource.makePublic")}
-                      </DropdownMenuItem>
-                    ) : null}
-                    {writable ? (
-                      <DropdownMenuItem className="text-destructive" onClick={() => props.onDelete(skill)}>
-                        <Trash2 />
-                        {t("btn.delete")}
-                      </DropdownMenuItem>
-                    ) : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <button
-                  type="button"
-                  className="grid size-4 place-items-center text-[var(--skills-muted)] hover:text-[var(--skills-blue)] [&_svg]:w-3.5"
-                  aria-label={writable ? t("btn.edit") : t("btn.view")}
-                  onClick={() => props.onOpen(skill)}
-                >
-                  <ChevronRight />
-                </button>
-              </article>
-            );
-          })}
+                    <span className="grid size-7 place-items-center rounded-md bg-white [&_svg]:w-4">
+                      {external ? <Share2 /> : <SkillIcon />}
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--skills-ink)]">
+                        {external ? getSkillOptionLabel(skill) : skill.name}
+                      </strong>
+                      <small className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] text-[var(--skills-faint)]">
+                        {skill.description || t("directory.noDescription")}
+                      </small>
+                    </span>
+                    <span className="text-[9px]">{external ? t("scope.shared") : t("scope.organization")}</span>
+                    <ChevronRight className={`w-3 ${active ? "opacity-100" : "opacity-0"}`} />
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
+          {selectedSkill ? <SkillDetail skill={selectedSkill} props={props} /> : null}
         </section>
       )}
     </main>
+  );
+}
+
+function SkillDetail({ skill, props }: { skill: SkillInfo; props: AgentSkillsCatalogProps }) {
+  const { t } = useTranslation(NS.SKILLS);
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  const writable = canWriteSkill(skill);
+  const manageable = canManageSkillSharing(skill);
+  const external = skill.resourceAccess?.ownership === "external";
+  const downloading = props.downloadingKey === getSkillKey(skill);
+  const SkillIcon = getSkillIcon(skill);
+  return (
+    <article className="min-w-0">
+      <header className="flex min-h-[144px] items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
+            {external ? <Share2 /> : <SkillIcon />}
+          </span>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold tracking-[0.08em] text-[var(--skills-blue)] uppercase">
+              {external ? t("scope.shared") : t("scope.organization")}
+            </span>
+            <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
+              {external ? getSkillOptionLabel(skill) : skill.name}
+            </h2>
+            <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
+              {skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}
+            </small>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => props.onOpen(skill)}>
+          {writable ? <Pencil /> : <Eye />}
+          {writable ? t("btn.edit") : t("btn.view")}
+        </Button>
+      </header>
+      <div className="p-8">
+        <section className="rounded-lg bg-[#f5f8fc] px-5 py-4">
+          <span className="text-[10px] font-bold tracking-[0.1em] text-[var(--skills-blue)] uppercase">Skill</span>
+          <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--skills-muted)]">
+            {skill.description || t("directory.noDescription")}
+          </p>
+        </section>
+        <div className="mt-7 flex flex-wrap items-center gap-2 border-b border-[var(--skills-line)] pb-7">
+          <span className="rounded-md bg-[#edf5ff] px-2.5 py-1.5 text-[10px] text-[#1e72c8]">
+            {external ? t("scope.shared") : t("scope.organization")}
+          </span>
+          <span className="rounded-md bg-[#f3f5f8] px-2.5 py-1.5 text-[10px] text-[var(--skills-muted)]">
+            {skill.resourceAccess?.publicReadable
+              ? tComponents("resource.public")
+              : writable
+                ? t("directory.private")
+                : tComponents("resource.readOnly")}
+          </span>
+        </div>
+        <div className="mt-6 flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={downloading} onClick={() => props.onDownload(skill)}>
+            <Download /> {t("btn.download")}
+          </Button>
+          {manageable ? (
+            <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
+              {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
+              {skill.resourceAccess?.publicReadable
+                ? tComponents("resource.makePrivate")
+                : tComponents("resource.makePublic")}
+            </Button>
+          ) : null}
+          {writable ? (
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => props.onDelete(skill)}>
+              <Trash2 /> {t("btn.delete")}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 
