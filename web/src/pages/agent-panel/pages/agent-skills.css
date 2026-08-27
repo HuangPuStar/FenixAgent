@@ -153,100 +153,6 @@
   font-size: 11px;
 }
 
-.skills-directory-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 22px;
-  padding-top: 8px;
-}
-
-.skill-directory-item {
-  display: grid;
-  min-width: 0;
-  min-height: 92px;
-  grid-template-columns: 36px minmax(0, 1fr) auto 30px;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 8px;
-  box-shadow: inset 0 -1px var(--skills-line);
-}
-
-.skill-directory-item:hover {
-  background: rgb(255 255 255 / 72%);
-}
-
-.skill-directory-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--skills-blue);
-  background: var(--skills-blue-soft);
-}
-
-.skill-directory-icon.is-shared {
-  color: #6d55c7;
-  background: #f0edff;
-}
-
-.skill-directory-icon svg {
-  width: 17px;
-}
-
-.skill-directory-copy {
-  min-width: 0;
-}
-
-.skill-directory-copy > div {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.skill-directory-copy strong {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-directory-copy span,
-.skill-directory-sharing > span {
-  flex: 0 0 auto;
-  color: var(--skills-faint);
-  font-size: 10px;
-}
-
-.skill-directory-copy p {
-  overflow: hidden;
-  margin-top: 6px;
-  color: var(--skills-muted);
-  font-size: 11px;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-directory-sharing label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--skills-muted);
-  font-size: 10px;
-}
-
-.skill-directory-menu {
-  width: 30px;
-  height: 30px;
-  color: var(--skills-muted);
-}
-
-.skill-directory-menu svg {
-  width: 16px;
-}
-
 .skills-empty-state {
   display: grid;
   min-height: 320px;
@@ -271,12 +177,6 @@
   font-size: 11px;
 }
 
-@media (max-width: 980px) {
-  .skills-directory-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 720px) {
   .agent-skills-page {
     padding: 20px 16px 32px;
@@ -291,13 +191,5 @@
     width: max-content;
     max-width: 100%;
     overflow-x: auto;
-  }
-
-  .skill-directory-item {
-    grid-template-columns: 36px minmax(0, 1fr) 30px;
-  }
-
-  .skill-directory-sharing {
-    display: none;
   }
 }

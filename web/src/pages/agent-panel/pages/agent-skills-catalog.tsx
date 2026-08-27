@@ -156,27 +156,42 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           <p>{props.skills.length === 0 ? t("emptyHint") : t("emptySearchHint")}</p>
         </section>
       ) : (
-        <section className="skills-directory-grid">
+        <section className="skills-directory-grid mt-3 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white shadow-sm">
           {filtered.map((skill) => {
             const writable = canWriteSkill(skill);
             const manageable = canManageSkillSharing(skill);
             const external = skill.resourceAccess?.ownership === "external";
             const downloading = props.downloadingKey === getSkillKey(skill);
             return (
-              <article className="skill-directory-item" key={getSkillKey(skill)}>
-                <div className={`skill-directory-icon${external ? " is-shared" : ""}`}>
+              <article
+                className="skill-directory-item grid min-h-16 min-w-0 grid-cols-[36px_minmax(0,1fr)_auto_30px] items-center gap-3 border-[var(--skills-line)] border-b px-3.5 py-2 last:border-b-0 hover:bg-[#f8faff] max-[720px]:grid-cols-[36px_minmax(0,1fr)_30px]"
+                key={getSkillKey(skill)}
+              >
+                <div
+                  className={
+                    external
+                      ? "grid size-9 place-items-center rounded-lg bg-[#f0edff] text-[#6d55c7] [&_svg]:w-4"
+                      : "grid size-9 place-items-center rounded-lg bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-4"
+                  }
+                >
                   {external ? <Share2 /> : <Sparkles />}
                 </div>
-                <div className="skill-directory-copy">
-                  <div>
-                    <strong>{external ? getSkillOptionLabel(skill) : skill.name}</strong>
-                    <span>{external ? t("scope.shared") : t("scope.organization")}</span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
+                      {external ? getSkillOptionLabel(skill) : skill.name}
+                    </strong>
+                    <span className="shrink-0 text-[10px] text-[var(--skills-faint)]">
+                      {external ? t("scope.shared") : t("scope.organization")}
+                    </span>
                   </div>
-                  <p>{skill.description || t("directory.noDescription")}</p>
+                  <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--skills-muted)] leading-[1.45]">
+                    {skill.description || t("directory.noDescription")}
+                  </p>
                 </div>
-                <div className="skill-directory-sharing">
+                <div className="max-[720px]:hidden">
                   {manageable ? (
-                    <label>
+                    <label className="flex items-center gap-1.5 text-[10px] text-[var(--skills-muted)]">
                       <Switch
                         aria-label={tComponents("resource.public")}
                         checked={Boolean(skill.resourceAccess?.publicReadable)}
@@ -185,12 +200,19 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                       <span>{tComponents("resource.public")}</span>
                     </label>
                   ) : (
-                    <span>{writable ? t("directory.private") : tComponents("resource.readOnly")}</span>
+                    <span className="text-[10px] text-[var(--skills-muted)]">
+                      {writable ? t("directory.private") : tComponents("resource.readOnly")}
+                    </span>
                   )}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="skill-directory-menu" aria-label={t("btn.more")}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-[30px] text-[var(--skills-muted)] hover:text-[var(--skills-ink)] [&_svg]:w-4"
+                      aria-label={t("btn.more")}
+                    >
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
