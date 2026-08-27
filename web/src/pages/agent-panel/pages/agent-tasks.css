@@ -214,7 +214,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin: 14px 0 12px;
 }
 
 .task-search-field {
@@ -269,21 +269,6 @@
   font-weight: 650;
 }
 
-.task-registry-heading {
-  min-height: 51px;
-  box-shadow: inset 0 -1px var(--task-line);
-}
-
-.task-registry-heading h2 {
-  font-size: 15px;
-  font-weight: 700;
-}
-.task-registry-heading p {
-  margin-top: 3px;
-  color: var(--task-faint);
-  font-size: 10px;
-}
-
 .task-table-wrap {
   overflow-x: auto;
   background: #fff;
@@ -291,6 +276,25 @@
 
 .task-table-wrap table {
   min-width: 920px;
+  table-layout: fixed;
+}
+.task-table-wrap th:nth-child(1) {
+  width: 32%;
+}
+.task-table-wrap th:nth-child(2) {
+  width: 9%;
+}
+.task-table-wrap th:nth-child(3) {
+  width: 23%;
+}
+.task-table-wrap th:nth-child(4) {
+  width: 13%;
+}
+.task-table-wrap th:nth-child(5) {
+  width: 13%;
+}
+.task-table-wrap th:nth-child(6) {
+  width: 10%;
 }
 .task-table-wrap th {
   height: 38px;

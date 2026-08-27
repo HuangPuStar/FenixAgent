@@ -19,7 +19,7 @@ import { TaskForm, type TaskFormValues } from "../components/TaskForm";
 import { TaskLogDialog } from "../components/TaskLogDialog";
 import { AgentPageHeader } from "../shared/AgentPageHeader";
 import { AgentTaskRuntimeBoard } from "./agent-task-runtime-board";
-import { AgentTasksRegistry } from "./agent-tasks-registry";
+import { AgentTasksRegistry, AgentTasksToolbar } from "./agent-tasks-registry";
 import { buildTaskDefinition, INITIAL_TASK_FORM_VALUES, taskFormSchema, taskToFormValues } from "./agent-tasks-utils";
 import "./agent-tasks.css";
 
@@ -307,17 +307,20 @@ export function AgentTasksPage() {
         }
       />
 
+      <AgentTasksToolbar
+        query={searchKeyword}
+        typeFilter={typeFilter}
+        onQueryChange={setSearchKeyword}
+        onTypeFilterChange={setTypeFilter}
+      />
       <AgentTaskRuntimeBoard tasks={tasks} loading={loading} />
       <AgentTasksRegistry
         tasks={tasks}
         agents={agents}
         query={searchKeyword}
-        typeFilter={typeFilter}
         page={page}
         totalPages={totalPages}
         triggeringIds={triggeredTasks}
-        onQueryChange={setSearchKeyword}
-        onTypeFilterChange={setTypeFilter}
         onPageChange={setPage}
         onCreate={handleOpenCreate}
         onToggle={(task) => runToggle(task.id)}

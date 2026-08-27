@@ -38,12 +38,9 @@ type Props = {
   tasks: TaskV2Info[];
   agents: AgentInfo[];
   query: string;
-  typeFilter: TaskTypeFilter;
   page: number;
   totalPages: number;
   triggeringIds: Set<string>;
-  onQueryChange: (value: string) => void;
-  onTypeFilterChange: (value: TaskTypeFilter) => void;
   onPageChange: (page: number) => void;
   onCreate: () => void;
   onToggle: (task: TaskV2Info) => void;
@@ -57,34 +54,6 @@ export function AgentTasksRegistry(props: Props) {
   const { t } = useTranslation(NS.TASKS_V2);
   return (
     <section className="task-registry-section">
-      <div className="task-commandbar">
-        <label className="task-search-field">
-          <Search />
-          <TaskSearchInput
-            value={props.query}
-            onChange={props.onQueryChange}
-            placeholder={t("filter.searchPlaceholder")}
-          />
-        </label>
-        <div className="task-type-filter" role="group" aria-label={t("filter.typeLabel")}>
-          {(["all", "http", "agent"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={props.typeFilter === value}
-              onClick={() => props.onTypeFilterChange(value)}
-            >
-              {value === "all" ? t("filter.all") : t(`type.${value}`)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <header className="task-registry-heading">
-        <div>
-          <h2>{t("registry.title")}</h2>
-          <p>{t("registry.summary", { count: props.tasks.length })}</p>
-        </div>
-      </header>
       {props.tasks.length === 0 ? (
         <div className="task-registry-empty">
           <strong>{props.query.trim() ? t("emptySearchResult") : t("empty")}</strong>
@@ -148,6 +117,40 @@ export function AgentTasksRegistry(props: Props) {
         </nav>
       )}
     </section>
+  );
+}
+
+export function AgentTasksToolbar({
+  query,
+  typeFilter,
+  onQueryChange,
+  onTypeFilterChange,
+}: {
+  query: string;
+  typeFilter: TaskTypeFilter;
+  onQueryChange: (value: string) => void;
+  onTypeFilterChange: (value: TaskTypeFilter) => void;
+}) {
+  const { t } = useTranslation(NS.TASKS_V2);
+  return (
+    <div className="task-commandbar">
+      <label className="task-search-field">
+        <Search />
+        <TaskSearchInput value={query} onChange={onQueryChange} placeholder={t("filter.searchPlaceholder")} />
+      </label>
+      <div className="task-type-filter" role="group" aria-label={t("filter.typeLabel")}>
+        {(["all", "http", "agent"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={typeFilter === value}
+            onClick={() => onTypeFilterChange(value)}
+          >
+            {value === "all" ? t("filter.all") : t(`type.${value}`)}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
