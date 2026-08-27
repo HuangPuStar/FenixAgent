@@ -391,7 +391,12 @@
   },
   "chatEmpty": {
     "startConversation": "开始对话",
-    "startConversationDesc": "输入消息开始与 ACP agent 聊天",
+    "startConversationDesc": "描述目标、贴入上下文，或从一个常见任务开始。",
+    "eyebrow": "从一个明确结果开始",
+    "readyWithAgent": "{{agentName}} 已准备就绪",
+    "suggestionReview": "审查一组代码变更",
+    "suggestionPlan": "整理一份技术方案",
+    "suggestionBuild": "分析一次构建失败",
     "skills": "已加载 Skills",
     "skillsHint": "输入 / 打开 Skill 弹窗",
     "noSkills": "暂无绑定 Skills"

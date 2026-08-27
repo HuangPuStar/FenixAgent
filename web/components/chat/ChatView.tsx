@@ -1,13 +1,9 @@
+import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThreadEntry, ToolCallEntry } from "../../src/lib/types";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButtons,
-} from "../ai-elements/conversation";
-import { AgentBadge, AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
+import { Conversation, ConversationContent, ConversationScrollButtons } from "../ai-elements/conversation";
+import { AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
 import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
 import { buildChatRenderBlocks, type ChatRenderItem } from "./chat-render-layout";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
@@ -37,8 +33,6 @@ export const ChatView = React.memo(
     emptyTitle,
     emptyDescription,
     agentName,
-    agentDescription,
-    agentSkills,
     sessionId,
     envId,
   }: ChatViewProps) {
@@ -65,10 +59,8 @@ export const ChatView = React.memo(
           {!hasMessages ? (
             isLoading && !agentName ? (
               <AgentBadgeSkeleton />
-            ) : agentName ? (
-              <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
             ) : (
-              <ConversationEmptyState title={finalEmptyTitle} description={finalEmptyDescription} />
+              <ChatEmptyState title={finalEmptyTitle} description={finalEmptyDescription} agentName={agentName} />
             )
           ) : (
             <>
@@ -121,6 +113,40 @@ export const ChatView = React.memo(
     prev.sessionId === next.sessionId &&
     prev.envId === next.envId,
 );
+
+// =============================================================================
+// 空状态 — 与 Chat 设计稿保持一致
+// =============================================================================
+
+function ChatEmptyState({ title, description, agentName }: { title: string; description: string; agentName?: string }) {
+  const { t } = useTranslation("components");
+  const suggestions = [t("chatEmpty.suggestionReview"), t("chatEmpty.suggestionPlan"), t("chatEmpty.suggestionBuild")];
+
+  return (
+    <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+      <span className="chat-empty-mark" aria-hidden="true">
+        <img src={`${import.meta.env.BASE_URL}brand/fenix-agent-logo-mark.png`} alt="" />
+      </span>
+      <small>{agentName ? t("chatEmpty.readyWithAgent", { agentName }) : t("chatEmpty.eyebrow")}</small>
+      <h2 id="chat-empty-title">{title}</h2>
+      <p>{description}</p>
+      <div className="chat-empty-suggestions">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("chat:apply-suggested-prompt", { detail: { prompt: suggestion } }))
+            }
+          >
+            <span>{suggestion}</span>
+            <ArrowUpRight aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 // =============================================================================
 // 间距逻辑 — 用户消息前后间距大，工具调用紧贴

@@ -92,6 +92,15 @@ export function ChatComposer({
   const [commandFilter, setCommandFilter] = useState("");
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+
+  useEffect(() => {
+    const applySuggestedPrompt = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (prompt) setText(prompt);
+    };
+    window.addEventListener("chat:apply-suggested-prompt", applySuggestedPrompt);
+    return () => window.removeEventListener("chat:apply-suggested-prompt", applySuggestedPrompt);
+  }, []);
   const [quotes, setQuotes] = useState<ComposerQuote[]>([]);
   const quoteSequenceRef = useRef(0);
 

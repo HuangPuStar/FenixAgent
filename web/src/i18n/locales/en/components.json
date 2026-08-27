@@ -391,7 +391,12 @@
   },
   "chatEmpty": {
     "startConversation": "Start Conversation",
-    "startConversationDesc": "Send a message to start chatting with the ACP agent",
+    "startConversationDesc": "Describe the outcome, add context, or start with a common task.",
+    "eyebrow": "Start with a clear outcome",
+    "readyWithAgent": "{{agentName}} is ready",
+    "suggestionReview": "Review a set of code changes",
+    "suggestionPlan": "Draft a technical plan",
+    "suggestionBuild": "Analyze a build failure",
     "skills": "Loaded Skills",
     "skillsHint": "Type / to open skill menu",
     "noSkills": "No skills bound"
