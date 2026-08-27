@@ -1,3 +1,4 @@
+import { parseExpression } from "cron-parser";
 import { z } from "zod/v4";
 import type { AgentDefinition, HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
 import type { TaskFormValues } from "../components/TaskForm";
@@ -100,11 +101,71 @@ export function formatTaskRelativeTime(
   }).format(new Date(timestamp * 1000));
 }
 
-/** 将绝对时间投影到以当前整点开始的 24 小时时间轴。 */
-export function projectTaskTime(timestamp: number | null, now = Date.now()): number | null {
+/** 将绝对时间投影到从当前时刻开始的可选未来时间窗。 */
+export function projectTaskTime(timestamp: number | null, now = Date.now(), windowHours = 24): number | null {
   if (timestamp == null) return null;
-  const start = new Date(now);
-  start.setMinutes(0, 0, 0);
-  const position = ((timestamp * 1000 - start.getTime()) / 86_400_000) * 100;
+  const duration = windowHours * 3_600_000;
+  const position = ((timestamp * 1000 - now) / duration) * 100;
   return position >= 0 && position <= 100 ? position : null;
+}
+
+/**
+ * 展开当前时刻起指定时间窗口内的未来 cron 触发点，并转换为时间轴百分比。
+ * 返回空数组代表计划无效或窗口内没有触发点；调用方可回退到后端 nextRunAt。
+ */
+export function projectCronOccurrences(
+  cron: string,
+  timezone: string | null | undefined,
+  now = Date.now(),
+  nextRunAt?: number | null,
+  windowHours = 24,
+): number[] {
+  const duration = windowHours * 3_600_000;
+  const end = new Date(now + duration);
+
+  const fixedMinutes = /^\*\/([1-9]\d*) \* \* \* \*$/.exec(cron.trim());
+  if (fixedMinutes) {
+    const interval = Number(fixedMinutes[1]) * 60_000;
+    let occurrence: number;
+    if (nextRunAt != null) {
+      occurrence = nextRunAt * 1000;
+    } else {
+      try {
+        occurrence = parseExpression(cron, {
+          currentDate: new Date(now),
+          endDate: end,
+          tz: timezone?.trim() || undefined,
+        })
+          .next()
+          .getTime();
+      } catch (error) {
+        console.warn("[task-runtime] unable to project fixed-minute cron expression", { cron, error });
+        return [];
+      }
+    }
+    if (occurrence < now) occurrence += Math.ceil((now - occurrence) / interval) * interval;
+    const positions: number[] = [];
+    for (; occurrence <= end.getTime(); occurrence += interval) {
+      positions.push(((occurrence - now) / duration) * 100);
+    }
+    return positions;
+  }
+
+  try {
+    const schedule = parseExpression(cron, {
+      currentDate: new Date(now),
+      endDate: end,
+      tz: timezone?.trim() || undefined,
+    });
+    const positions: number[] = [];
+    while (schedule.hasNext()) {
+      const occurrence = schedule.next();
+      const position = ((occurrence.getTime() - now) / duration) * 100;
+      if (position >= 0 && position <= 100) positions.push(position);
+    }
+    return positions;
+  } catch (error) {
+    console.warn("[task-runtime] unable to project cron expression", { cron, error });
+    return [];
+  }
 }

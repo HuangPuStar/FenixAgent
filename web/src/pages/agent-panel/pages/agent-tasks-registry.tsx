@@ -203,13 +203,20 @@ function TaskRow({
         <LastRun status={task.lastStatus} time={formatTaskRelativeTime(task.lastRunAt, t)} />
       </TableCell>
       <TableCell>
-        <div className="task-row-actions">
-          <Button variant="ghost" size="sm" disabled={triggering} onClick={onTrigger} title={t("action.execute")}>
+        <div className="flex items-center justify-end gap-0.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 [&_svg]:w-3.5"
+            disabled={triggering}
+            onClick={onTrigger}
+            title={t("action.execute")}
+          >
             {triggering ? <Loader2 className="animate-spin" /> : <Play />}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 [&_svg]:w-3.5">
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>

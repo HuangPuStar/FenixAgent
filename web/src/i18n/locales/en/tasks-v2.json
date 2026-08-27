@@ -9,12 +9,14 @@
     "typeLabel": "Task type"
   },
   "runtime": {
-    "title": "Next 24 hours",
+    "title": "Next {{hours}} hours",
     "description": "An approximate timeline based on actual last runs, next runs, and timeout limits.",
+    "windowLabel": "Runtime window",
+    "windowHours": "{{hours}}h",
     "legendLabel": "Run status legend",
     "scheduled": "Scheduled",
     "paused": "Paused",
-    "outsideWindow": "No runs in the current 24-hour window"
+    "outsideWindow": "No runs in the current window"
   },
   "registry": {
     "title": "Task management",

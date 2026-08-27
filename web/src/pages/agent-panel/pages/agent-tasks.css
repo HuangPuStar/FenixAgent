@@ -390,21 +390,6 @@
   color: #d39a36;
 }
 
-.task-row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-}
-.task-row-actions button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-}
-.task-row-actions button svg {
-  width: 14px;
-}
-
 .task-pagination {
   display: flex;
   align-items: center;
