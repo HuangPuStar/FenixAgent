@@ -398,7 +398,7 @@
 .models-model-row {
   display: grid;
   min-height: 54px;
-  grid-template-columns: minmax(180px, 1fr) minmax(100px, 0.45fr) auto;
+  grid-template-columns: minmax(180px, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
@@ -440,22 +440,6 @@
   margin-top: 2px;
   color: var(--model-faint);
   font-size: 9px;
-}
-.models-model-thinking {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.models-model-thinking svg {
-  width: 12px;
-}
-.models-model-thinking.supports-thinking {
-  color: var(--model-blue);
-}
-.models-model-thinking.no-thinking {
-  color: var(--model-faint);
 }
 .models-model-actions {
   display: flex;

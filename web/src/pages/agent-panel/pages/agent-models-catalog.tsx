@@ -1,5 +1,4 @@
 import {
-  BrainCircuit,
   CheckCircle2,
   ChevronRight,
   CircleOff,
@@ -31,7 +30,6 @@ import {
   getProviderKey,
   getProviderScope,
   type ProviderScope,
-  supportsThinking,
 } from "./agent-models-utils";
 
 const SCOPES: ProviderScope[] = ["all", "organization", "shared"];
@@ -346,7 +344,6 @@ function ModelRow({
   onDelete: (provider: ProviderInfo, model: ProviderModel) => void;
 }) {
   const { t } = useTranslation(NS.MODELS);
-  const thinking = supportsThinking(model);
   return (
     <div className="models-model-row">
       <div className="models-model-summary">
@@ -357,10 +354,6 @@ function ModelRow({
           <strong>{model.name || model.id}</strong>
           <code>{model.id}</code>
         </span>
-      </div>
-      <div className={`models-model-thinking ${thinking ? "supports-thinking" : "no-thinking"}`}>
-        {thinking ? <BrainCircuit /> : <CircleOff />}
-        <span>{thinking ? t("modelTraits.thinking") : t("modelTraits.noThinking")}</span>
       </div>
       <div className="models-model-actions">
         {test && (
