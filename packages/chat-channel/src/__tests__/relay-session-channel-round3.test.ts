@@ -9,7 +9,7 @@ import { type RelayMessage, type SharedRelay } from "../channel/connection-types
 import { RelayEventHandler } from "../channel/relay-event-handler";
 import { SessionChannel, type SessionConnection } from "../channel/session-channel";
 import type { ActionAck, ActionError } from "../channel/types";
-import { getAgentStatus, getEntriesMap, getSessionInfo } from "../state/chat-writer";
+import { getAgentStatus, getEntriesMap, getPeriTasksMap, getSessionInfo } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 
 function message(value: Record<string, unknown>): RelayMessage {
@@ -132,6 +132,34 @@ describe("relay 与会话频道的内存边界", () => {
     const turnId = getSessionInfo(manager.getSessionYdoc("rcs-1")!).get("activeTurnId") as string;
     expect(assistantText(manager.getChatYdoc("rcs-1")!, turnId)).toBe("raw");
     expect(sent).toEqual([]);
+  });
+
+  // Peri registry 的真实 unstable_event 信封必须穿过 relay 并写入 Session Doc，且不依赖活动 turn。
+  test("projects Peri background registry events into the bound Session document", async () => {
+    const { manager, handler } = await setupRelay();
+    const shared = relay("rcs-1");
+
+    await handler.createMessageHandler(shared)(
+      message({
+        jsonrpc: "2.0",
+        method: "peri/unstable_event",
+        params: {
+          sessionId: "ses-1",
+          event: "bg-task-started",
+          data: {
+            task_id: "shell-1",
+            kind: "shell",
+            summary: "run tests",
+            started_at: "2026-08-28T12:00:00+00:00",
+          },
+        },
+      }),
+    );
+
+    const tasks = getPeriTasksMap(manager.getSessionYdoc("rcs-1")!);
+    expect(tasks.get("shell-1")?.get("status")).toBe("running");
+    expect(tasks.get("shell-1")?.get("taskSubtype")).toBe("shell");
+    expect(tasks.get("shell-1")?.get("title")).toBe("run tests");
   });
 
   // 包裹 JSON-RPC 帧与原始帧必须共享同一翻译路径；状态就绪只向该 RCS 自动请求一次列表。

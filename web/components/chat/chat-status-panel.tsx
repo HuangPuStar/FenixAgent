@@ -11,7 +11,7 @@ import {
   Network,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChangedFile } from "../../src/lib/extract-changed-files";
 import type { TodoItem } from "../../src/lib/types";
@@ -47,6 +47,25 @@ export function ChatStatusPanel({
   }, [todos.length, tasks.length, changedFiles.length]);
   const [activeTab, setActiveTab] = useState<StatusTab>("todo");
   const [collapsed, setCollapsed] = useState(false);
+  const todoSnapshotRef = useRef<string | null>(null);
+  const todoSnapshot = useMemo(
+    () => JSON.stringify(todos.map(({ content, status, activeForm }) => [content, status, activeForm ?? null])),
+    [todos],
+  );
+
+  useEffect(() => {
+    if (todoSnapshotRef.current === null) {
+      todoSnapshotRef.current = todoSnapshot;
+      return;
+    }
+    if (todoSnapshotRef.current === todoSnapshot) return;
+
+    todoSnapshotRef.current = todoSnapshot;
+    if (todos.length > 0) {
+      setActiveTab("todo");
+      setCollapsed(false);
+    }
+  }, [todoSnapshot, todos.length]);
 
   useEffect(() => {
     if (!availableTabs.includes(activeTab) && availableTabs[0]) setActiveTab(availableTabs[0]);
