@@ -258,7 +258,13 @@
     "searchPlaceholder": "Search command names or descriptions",
     "navigate": "Navigate",
     "select": "Select",
-    "close": "Close"
+    "close": "Close",
+    "skills": "Skills",
+    "skillsCaption": "Ways of working for this conversation",
+    "mcps": "MCP plugins",
+    "mcpsCaption": "Connections bound to this agent",
+    "connected": "Connected",
+    "selectedCapabilities": "Capabilities selected for this turn"
   },
   "messageBubble": {
     "expand": "Expand",
@@ -360,6 +366,9 @@
     "loadError": "Failed to load",
     "retry": "Retry",
     "empty": "No items"
+  },
+  "planPanel": {
+    "title": "Execution plan"
   },
   "todoPanel": {
     "collapse": "Collapse",

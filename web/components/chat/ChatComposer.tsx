@@ -1,16 +1,25 @@
 import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
-import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
 import { pushContext, removeContext } from "../../src/lib/context-queue";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import type { FileInfo } from "../../src/types";
-import { CommandMenu } from "./CommandMenu";
+import { CommandMenu, type McpOption } from "./CommandMenu";
 import { ComposerAssets, type ComposerQuote } from "./composer-assets";
 import { processImageFiles, uploadComposerFiles } from "./composer-file-processing";
 import { ComposerToolbar } from "./composer-toolbar";
 import { useDragUpload } from "./useDragUpload";
+
+function removeSlashCommand(text: string, commandName: string): string {
+  return text
+    .split(/(\s+)/)
+    .filter((token) => token !== `/${commandName}`)
+    .join("")
+    .replace(/^\s+/, "");
+}
 
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
 interface ChatComposerProps {
@@ -25,6 +34,8 @@ interface ChatComposerProps {
   supportsImages?: boolean;
   /** Agent 提供的可用 slash 命令 */
   commands?: AvailableCommand[];
+  /** 当前 Agent 已绑定的 MCP，只作为本轮上下文候选。 */
+  mcps?: McpOption[];
   /** 环境 ID，用于文件上传/浏览（workspace 按环境隔离） */
   envId?: string;
   /** 确定性会话标识，用于隔离 keep-alive Chat 的引用上下文。 */
@@ -62,6 +73,7 @@ export function ChatComposer({
   placeholder,
   supportsImages = false,
   commands,
+  mcps = [],
   envId,
   contextScope,
   availableModes,
@@ -91,6 +103,12 @@ export function ChatComposer({
   const [commandPanelOpen, setCommandPanelOpen] = useState(false);
   const [commandPanelSearch, setCommandPanelSearch] = useState(false);
   const [commandFilter, setCommandFilter] = useState("");
+  const selectedCommandNames = useMemo(() => {
+    const availableNames = new Set((commands ?? []).map((command) => command.name));
+    const names = text.match(/(?:^|\s)\/([^\s]+)/g)?.map((token) => token.trim().slice(1)) ?? [];
+    return new Set(names.filter((name) => availableNames.has(name)));
+  }, [commands, text]);
+  const [selectedMcpIds, setSelectedMcpIds] = useState<Set<string>>(new Set());
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
 
@@ -167,11 +185,14 @@ export function ChatComposer({
       text: trimmed,
       images: images.length > 0 ? images : undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
+      mcps:
+        selectedMcpIds.size > 0 ? mcps.filter((mcp) => selectedMcpIds.has(mcp.id)).map((mcp) => mcp.name) : undefined,
     });
     setText("");
     setImages([]);
     setAttachments([]);
     setQuotes([]);
+    setSelectedMcpIds(new Set());
     setCommandPanelOpen(false);
     setCommandPanelSearch(false);
     setCommandFilter("");
@@ -179,7 +200,7 @@ export function ChatComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, images, attachments, quotes, disabled, onSubmit]);
+  }, [text, images, attachments, quotes, selectedMcpIds, mcps, disabled, onSubmit]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -319,12 +340,33 @@ export function ChatComposer({
     [contextScope],
   );
 
-  const handleCommandSelect = useCallback((command: AvailableCommand) => {
-    setText(`/${command.name} `);
-    setCommandPanelOpen(false);
-    setCommandPanelSearch(false);
-    setCommandFilter("");
-    textareaRef.current?.focus();
+  const handleCommandSelect = useCallback(
+    (command: AvailableCommand) => {
+      if (!commandPanelSearch) {
+        setText(`/${command.name} `);
+        setCommandPanelOpen(false);
+        setCommandFilter("");
+        textareaRef.current?.focus();
+        return;
+      }
+      setText((current) => {
+        if (selectedCommandNames.has(command.name)) return removeSlashCommand(current, command.name);
+        const separator = current.length > 0 && !current.endsWith(" ") ? " " : "";
+        return `${current}${separator}/${command.name} `;
+      });
+      setCommandFilter("");
+      textareaRef.current?.focus();
+    },
+    [commandPanelSearch, selectedCommandNames],
+  );
+
+  const handleMcpToggle = useCallback((mcp: McpOption) => {
+    setSelectedMcpIds((current) => {
+      const next = new Set(current);
+      if (next.has(mcp.id)) next.delete(mcp.id);
+      else next.add(mcp.id);
+      return next;
+    });
   }, []);
 
   const handleFilePickerSelect = useCallback((file: FileInfo) => {
@@ -365,6 +407,7 @@ export function ChatComposer({
     setImages([]);
     setAttachments([]);
     setQuotes([]);
+    setSelectedMcpIds(new Set());
     onNewSession?.();
   }, [contextScope, onNewSession, quotes]);
 
@@ -376,12 +419,16 @@ export function ChatComposer({
       className={`chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2${className ? ` ${className}` : ""}`}
     >
       <div className="relative">
-        {commandPanelOpen && commands && commands.length > 0 && (
+        {commandPanelOpen && ((commands?.length ?? 0) > 0 || mcps.length > 0) && (
           <CommandMenu
-            commands={commands}
+            commands={commands ?? []}
+            mcps={commandPanelSearch ? mcps : []}
+            selectedCommandNames={selectedCommandNames}
+            selectedMcpIds={selectedMcpIds}
             filter={commandFilter}
             showSearch={commandPanelSearch}
             onSelect={handleCommandSelect}
+            onToggleMcp={handleMcpToggle}
             onClose={() => {
               setCommandPanelOpen(false);
               setCommandPanelSearch(false);
@@ -431,6 +478,29 @@ export function ChatComposer({
             onRemoveQuote={removeQuote}
           />
 
+          {(selectedCommandNames.size > 0 || selectedMcpIds.size > 0) && (
+            <div className="chat-composer-capabilities" role="group" aria-label={t("commandMenu.selectedCapabilities")}>
+              {Array.from(selectedCommandNames).map((name) => (
+                <button
+                  key={`skill:${name}`}
+                  type="button"
+                  onClick={() => setText((current) => removeSlashCommand(current, name))}
+                >
+                  /{name}
+                  <X />
+                </button>
+              ))}
+              {mcps
+                .filter((mcp) => selectedMcpIds.has(mcp.id))
+                .map((mcp) => (
+                  <button key={`mcp:${mcp.id}`} type="button" className="is-mcp" onClick={() => handleMcpToggle(mcp)}>
+                    MCP: {mcp.name}
+                    <X />
+                  </button>
+                ))}
+            </div>
+          )}
+
           <div className="px-4 pt-4 pb-2">
             <textarea
               ref={textareaRef}
@@ -447,6 +517,7 @@ export function ChatComposer({
 
           <ComposerToolbar
             commands={commands}
+            mcpCount={mcps.length}
             disabled={disabled}
             isLoading={isLoading}
             canCancel={canCancel}

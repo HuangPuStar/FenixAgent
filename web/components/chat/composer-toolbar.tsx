@@ -8,6 +8,7 @@ import { SessionModeSelector } from "./SessionModeSelector";
 
 interface ComposerToolbarProps {
   commands?: AvailableCommand[];
+  mcpCount?: number;
   disabled: boolean;
   isLoading: boolean;
   canCancel: boolean;
@@ -32,6 +33,7 @@ interface ComposerToolbarProps {
 /** Composer 底部操作行；插件菜单只展示 Agent 实际公布的命令。 */
 export function ComposerToolbar({
   commands,
+  mcpCount = 0,
   disabled,
   isLoading,
   canCancel,
@@ -58,7 +60,7 @@ export function ComposerToolbar({
   return (
     <div className="chat-composer-meta">
       <div className="chat-composer-meta-main">
-        {commands?.length ? (
+        {(commands?.length ?? 0) + mcpCount > 0 ? (
           <button
             type="button"
             className="chat-composer-plugin"
@@ -67,7 +69,7 @@ export function ComposerToolbar({
             disabled={disabled || isLoading}
             onClick={() => onCommandPanelOpenChange(!commandPanelOpen)}
           >
-            <Blocks /> {t("chatComposer.commandButton")} <small>{commands.length}</small>
+            <Blocks /> {t("chatComposer.commandButton")} <small>{(commands?.length ?? 0) + mcpCount}</small>
           </button>
         ) : null}
 

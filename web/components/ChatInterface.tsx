@@ -2,6 +2,11 @@ import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/c
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { agentApi } from "../src/api/agents";
+import { envApi } from "../src/api/environments";
+import { mcpApi } from "../src/api/mcp";
+import { unwrap } from "../src/api/request";
+import { getAgentConfigLookupKey } from "../src/lib/agent-resource-access";
 import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";
 import { extractChangedFiles } from "../src/lib/extract-changed-files";
@@ -10,9 +15,40 @@ import type { ChatInputMessage, ThreadEntry } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
+import type { McpOption } from "./chat/CommandMenu";
 import { derivePendingPermissions, deriveTodoItems } from "./chat/chat-derived-state";
 import { prepareImageContent } from "./chat/chat-image-content";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat/chat-interface-types";
+import { buildPromptText } from "./chat/composer-prompt";
+
+const DEBUG_SENSITIVE_KEY = /(?:api[-_]?key|authorization|cookie|credential|password|secret|token|connectionString)/i;
+
+/** 创建可安全打印的静态快照：保留完整结构，仅遮蔽明确的敏感字段并处理 Map/Set。 */
+function createDebugSnapshot(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Map) {
+    return Object.fromEntries(
+      Array.from(value.entries(), ([key, item]) => [
+        String(key),
+        DEBUG_SENSITIVE_KEY.test(String(key)) ? "[REDACTED]" : createDebugSnapshot(item, seen),
+      ]),
+    );
+  }
+  if (value instanceof Set) return Array.from(value, (item) => createDebugSnapshot(item, seen));
+  if (Array.isArray(value)) return value.map((item) => createDebugSnapshot(item, seen));
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      DEBUG_SENSITIVE_KEY.test(key) ? "[REDACTED]" : createDebugSnapshot(item, seen),
+    ]),
+  );
+}
+
 import { ChatStatusPanel } from "./chat/chat-status-panel";
 import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
 import { PermissionPanel } from "./chat/PermissionPanel";
@@ -55,6 +91,34 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   ref,
 ) {
   const { t } = useTranslation("components");
+  const [boundMcps, setBoundMcps] = useState<McpOption[]>([]);
+
+  useEffect(() => {
+    if (!agentId) {
+      setBoundMcps([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([unwrap(envApi.get({ id: agentId })), unwrap(agentApi.list()), unwrap(mcpApi.list())])
+      .then(async ([environment, agentList, mcpList]) => {
+        const agent = agentList.agents.find((item) => item.id === environment.agentConfigId);
+        if (!agent) return [];
+        const detail = await unwrap(agentApi.get(getAgentConfigLookupKey(agent)));
+        const boundIds = new Set(detail.mcpIds ?? []);
+        return mcpList.servers
+          .filter((server) => boundIds.has(server.id))
+          .map((server) => ({ id: server.id, name: server.name, description: server.summary }));
+      })
+      .then((mcps) => {
+        if (!cancelled) setBoundMcps(mcps);
+      })
+      .catch(() => {
+        if (!cancelled) setBoundMcps([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
 
   // ── YJS-driven computed state ──
 
@@ -267,10 +331,84 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     return Array.from(map.values());
   }, [sessionState?.pendingQuestions]);
 
+  // 按 Ctrl + Alt + Shift + D 即时输出当前完整状态快照。对象结构全部保留，
+  // 仅递归遮蔽密钥、token、密码、cookie 等敏感字段。
+  useEffect(() => {
+    const handleDebugShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey && event.altKey && event.shiftKey && event.code === "KeyD")) return;
+      event.preventDefault();
+
+      console.warn(
+        "[chat-debug-snapshot]",
+        createDebugSnapshot({
+          capturedAt: new Date(),
+          props: {
+            agentId,
+            readonly,
+            hideContextPanel,
+            rcsSessionId,
+            detailSessionId,
+            availableCommands,
+            availableModes,
+            currentModeId,
+            supportsImages,
+            modelName,
+            tokenUsage,
+            periTasks,
+            periTasksLoaded,
+            connectionState,
+          },
+          derivedState: {
+            activeSessionId,
+            isLoading,
+            canCancel,
+            sessionReady,
+            pendingPermissions,
+            pendingQuestions,
+            renderEntries,
+            promptUsage,
+            errorMessage,
+          },
+          chatState,
+          sessionState,
+        }),
+      );
+    };
+
+    window.addEventListener("keydown", handleDebugShortcut);
+    return () => window.removeEventListener("keydown", handleDebugShortcut);
+  }, [
+    activeSessionId,
+    agentId,
+    availableCommands,
+    availableModes,
+    canCancel,
+    chatState,
+    connectionState,
+    currentModeId,
+    detailSessionId,
+    errorMessage,
+    hideContextPanel,
+    isLoading,
+    modelName,
+    pendingPermissions,
+    pendingQuestions,
+    periTasks,
+    periTasksLoaded,
+    promptUsage,
+    rcsSessionId,
+    readonly,
+    renderEntries,
+    sessionReady,
+    sessionState,
+    supportsImages,
+    tokenUsage,
+  ]);
+
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
   const handleChatInputSubmit = useCallback(
     async (message: ChatInputMessage) => {
-      const draftText = message.text.trim();
+      const draftText = buildPromptText(message).trim();
       const images = message.images || [];
       const attachmentReferences = (message.attachments ?? [])
         .filter((attachment) => !draftText.includes(`@./${attachment.path}`))
@@ -416,6 +554,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
                 supportsImages={supportsImages}
                 commands={availableCommands.length > 0 ? availableCommands : undefined}
+                mcps={boundMcps}
                 envId={agentId}
                 contextScope={composerContextScope}
                 availableModes={availableModes}

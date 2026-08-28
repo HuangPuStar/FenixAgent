@@ -1,5 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
+import { buildPromptText } from "../../components/chat/composer-prompt";
+
+describe("Composer prompt capabilities", () => {
+  // 未选择能力时保持用户正文原样，不产生额外 reminder。
+  test("keeps plain prompt unchanged without selected capabilities", () => {
+    expect(buildPromptText({ text: "检查这个改动" })).toBe("检查这个改动");
+  });
+
+  // Skill slash command 已在用户正文中，发送边界只为 MCP 注入 system-reminder。
+  test("injects only selected mcps at the send boundary", () => {
+    expect(buildPromptText({ text: "/review 检查这个改动", mcps: ["filesystem"] })).toBe(
+      "<system-reminder>\nThe user selected these MCP connections for this turn: filesystem\nUse the selected MCP connections when they are relevant to the user's request.\n</system-reminder>\n\n/review 检查这个改动",
+    );
+  });
+});
 
 describe("ChatComposer", () => {
   test("exports as function", async () => {

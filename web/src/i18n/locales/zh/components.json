@@ -258,7 +258,13 @@
     "searchPlaceholder": "搜索命令名称或说明",
     "navigate": "切换",
     "select": "选择",
-    "close": "关闭"
+    "close": "关闭",
+    "skills": "Skills",
+    "skillsCaption": "当前对话的工作方式",
+    "mcps": "MCP 插件",
+    "mcpsCaption": "Agent 已绑定的连接",
+    "connected": "已连接",
+    "selectedCapabilities": "本轮已选择能力"
   },
   "messageBubble": {
     "expand": "展开",
@@ -360,6 +366,9 @@
     "loadError": "加载失败",
     "retry": "重试",
     "empty": "暂无内容"
+  },
+  "planPanel": {
+    "title": "执行计划"
   },
   "todoPanel": {
     "collapse": "收起",

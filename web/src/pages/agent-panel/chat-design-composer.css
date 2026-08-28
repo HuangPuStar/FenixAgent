@@ -544,3 +544,77 @@
 .chat-composer-plugin[data-open] {
   color: #315a9f;
 }
+
+.chat-command-menu-section + .chat-command-menu-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #edf0f4;
+}
+
+.chat-command-menu-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 8px 5px;
+}
+
+.chat-command-menu-section-title strong {
+  color: #263247;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.chat-command-menu-section-title span {
+  color: #8b94a5;
+  font-size: 8px;
+}
+
+.chat-command-menu-check,
+.chat-command-menu-mcp-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.chat-command-menu-check {
+  color: #2764e7;
+}
+
+.chat-command-menu-mcp-state {
+  margin-left: auto;
+  color: #25856e;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.chat-composer-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 10px 14px 0;
+}
+
+.chat-composer-capabilities button {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cfdaed;
+  border-radius: 6px;
+  padding: 0 7px;
+  color: #315a9f;
+  background: #f4f7fc;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.chat-composer-capabilities button.is-mcp {
+  border-color: #cfe4dc;
+  color: #25745f;
+  background: #f3faf7;
+}
+
+.chat-composer-capabilities svg {
+  width: 9px;
+  height: 9px;
+}

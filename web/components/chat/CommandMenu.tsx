@@ -1,28 +1,31 @@
 import type { AvailableCommand } from "@fenix/chat-channel";
-import { Search } from "lucide-react";
+import { CheckCircle2, Plug, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 
-// =============================================================================
-// Slash command picker — floating above ChatInput
-// =============================================================================
+export interface McpOption {
+  id: string;
+  name: string;
+  description: string;
+}
 
 interface CommandMenuProps {
   commands: AvailableCommand[];
-  /** Text after "/" used for filtering */
+  mcps?: McpOption[];
+  selectedCommandNames?: ReadonlySet<string>;
+  selectedMcpIds?: ReadonlySet<string>;
+  /** Text after "/" used for filtering. */
   filter: string;
   onSelect: (command: AvailableCommand) => void;
+  onToggleMcp?: (mcp: McpOption) => void;
   onClose: () => void;
   className?: string;
-  /** 是否显示搜索框（用于 Popover 场景独立搜索，不依赖 textarea 输入） */
+  /** Toolbar mode owns a search input; slash mode keeps focus in the textarea. */
   showSearch?: boolean;
 }
 
-/**
- * Prefix match — checks if the text starts with the query.
- */
 function commandMatches(query: string, command: AvailableCommand): boolean {
   if (!query) return true;
   const normalizedQuery = query.toLowerCase();
@@ -31,70 +34,72 @@ function commandMatches(query: string, command: AvailableCommand): boolean {
   );
 }
 
-export function CommandMenu({ commands, filter, onSelect, onClose, className, showSearch }: CommandMenuProps) {
+/**
+ * Slash mode renders command results only. Toolbar mode renders selectable Skills
+ * and Agent-bound MCP connections without changing the textarea draft.
+ */
+export function CommandMenu({
+  commands,
+  mcps = [],
+  selectedCommandNames = new Set<string>(),
+  selectedMcpIds = new Set<string>(),
+  filter,
+  onSelect,
+  onToggleMcp,
+  onClose,
+  className,
+  showSearch,
+}: CommandMenuProps) {
   const { t } = useTranslation("components");
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-
-  // 合并搜索：showSearch 时用内部 searchQuery，否则用外部 filter
   const effectiveFilter = showSearch ? searchQuery : filter;
 
-  // Filter commands by current input
-  const filtered = useMemo(() => {
+  const filteredCommands = useMemo(() => {
     if (!effectiveFilter) return commands;
     return commands.filter((command) => commandMatches(effectiveFilter, command));
   }, [commands, effectiveFilter]);
 
-  // Close on outside click
+  const filteredMcps = useMemo(() => {
+    if (!effectiveFilter) return mcps;
+    const query = effectiveFilter.toLowerCase();
+    return mcps.filter(
+      (mcp) => mcp.name.toLowerCase().includes(query) || mcp.description.toLowerCase().includes(query),
+    );
+  }, [effectiveFilter, mcps]);
+
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    const handleClick = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) onClose();
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose]);
 
-  // Handle keyboard navigation (ArrowUp/ArrowDown/Enter) via document-level listener
-  // Uses capture phase + stopPropagation to prevent events from reaching the textarea
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Always intercept these keys when menu is open, even with no filtered results
-      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
-        if (e.shiftKey && e.key === "Enter") return; // allow Shift+Enter for newline
-        e.preventDefault();
-        e.stopPropagation();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") {
+        if (event.shiftKey && event.key === "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
       }
+      if (filteredCommands.length === 0) return;
 
-      if (filtered.length === 0) return;
-
-      if (e.key === "ArrowDown") {
-        setActiveIndex((prev) => {
-          const next = (prev + 1) % filtered.length;
-          requestAnimationFrame(() =>
-            containerRef.current?.querySelector("[data-active='true']")?.scrollIntoView({ block: "nearest" }),
-          );
-          return next;
-        });
-      } else if (e.key === "ArrowUp") {
-        setActiveIndex((prev) => {
-          const next = (prev - 1 + filtered.length) % filtered.length;
-          requestAnimationFrame(() =>
-            containerRef.current?.querySelector("[data-active='true']")?.scrollIntoView({ block: "nearest" }),
-          );
-          return next;
-        });
-      } else if (e.key === "Enter") {
-        const cmd = filtered[activeIndex];
-        if (cmd) onSelect(cmd);
+      if (event.key === "ArrowDown") {
+        setActiveIndex((current) => (current + 1) % filteredCommands.length);
+      } else if (event.key === "ArrowUp") {
+        setActiveIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
+      } else if (event.key === "Enter") {
+        const command = filteredCommands[activeIndex];
+        if (command) onSelect(command);
       }
     };
-
-    document.addEventListener("keydown", handleKeyDown, true); // capture phase
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [filtered, activeIndex, onSelect]);
+  }, [activeIndex, filteredCommands, onSelect]);
+
+  const empty = filteredCommands.length === 0 && filteredMcps.length === 0;
 
   return (
     <div ref={containerRef} className={`chat-command-menu${className ? ` ${className}` : ""}`}>
@@ -105,8 +110,8 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
             type="text"
             placeholder={t("commandMenu.searchPlaceholder")}
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
               setActiveIndex(0);
             }}
             className="chat-command-menu-input"
@@ -116,23 +121,65 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
       )}
       <ScrollArea className="chat-command-menu-scroll">
         <div className="chat-command-menu-list">
-          {filtered.length === 0 ? (
+          {empty ? (
             <div className="chat-command-menu-empty">{t("commandMenu.noMatch")}</div>
           ) : (
-            filtered.map((cmd, index) => (
-              <button
-                key={cmd.name}
-                type="button"
-                data-active={index === activeIndex}
-                onClick={() => onSelect(cmd)}
-                onMouseEnter={() => setActiveIndex(index)}
-                className={`chat-command-menu-item${index === activeIndex ? " is-active" : ""}`}
-              >
-                <span className="chat-command-menu-name">/{cmd.name}</span>
-                <span className="chat-command-menu-description">{cmd.description}</span>
-                {cmd.input?.hint && <span className="chat-command-menu-hint">{cmd.input.hint}</span>}
-              </button>
-            ))
+            <>
+              {filteredCommands.length > 0 && (
+                <section className="chat-command-menu-section">
+                  {showSearch && (
+                    <div className="chat-command-menu-section-title">
+                      <strong>{t("commandMenu.skills")}</strong>
+                      <span>{t("commandMenu.skillsCaption")}</span>
+                    </div>
+                  )}
+                  {filteredCommands.map((command, index) => {
+                    const selected = selectedCommandNames.has(command.name);
+                    return (
+                      <button
+                        key={command.name}
+                        type="button"
+                        data-active={index === activeIndex}
+                        aria-pressed={selected}
+                        onClick={() => onSelect(command)}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        className={`chat-command-menu-item${index === activeIndex ? " is-active" : ""}${selected ? " is-selected" : ""}`}
+                      >
+                        <span className="chat-command-menu-name">/{command.name}</span>
+                        <span className="chat-command-menu-description">{command.description}</span>
+                        {command.input?.hint && <span className="chat-command-menu-hint">{command.input.hint}</span>}
+                        {selected && <CheckCircle2 className="chat-command-menu-check" />}
+                      </button>
+                    );
+                  })}
+                </section>
+              )}
+              {showSearch && filteredMcps.length > 0 && (
+                <section className="chat-command-menu-section">
+                  <div className="chat-command-menu-section-title">
+                    <strong>{t("commandMenu.mcps")}</strong>
+                    <span>{t("commandMenu.mcpsCaption")}</span>
+                  </div>
+                  {filteredMcps.map((mcp) => {
+                    const selected = selectedMcpIds.has(mcp.id);
+                    return (
+                      <button
+                        key={mcp.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => onToggleMcp?.(mcp)}
+                        className={`chat-command-menu-item chat-command-menu-mcp${selected ? " is-selected" : ""}`}
+                      >
+                        <Plug className="chat-command-menu-mcp-icon" />
+                        <span className="chat-command-menu-name">{mcp.name}</span>
+                        <span className="chat-command-menu-description">{mcp.description}</span>
+                        <em className="chat-command-menu-mcp-state">{t("commandMenu.connected")}</em>
+                      </button>
+                    );
+                  })}
+                </section>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>

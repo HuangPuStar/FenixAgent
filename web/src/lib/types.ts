@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, ToolCallContent } from "@fenix/chat-channel";
+import type { PermissionOption, PlanEntryData, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
@@ -125,8 +125,16 @@ export interface ToolCallEntry {
   toolCall: ToolCallData;
 }
 
+/** 标准 ACP plan 在时间线中的展示条目。 */
+export interface PlanThreadEntry {
+  type: "plan";
+  id: string;
+  turnId?: string | null;
+  entries: PlanEntryData[];
+}
+
 // 统一聊天条目类型
-export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry;
+export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry | PlanThreadEntry;
 
 /** 展示层公开错误（脱敏 code/message，与 chat-channel PublicErrorInfo 结构一致） */
 export interface PublicErrorInfo {
@@ -143,6 +151,8 @@ export interface ChatInputMessage {
   text: string;
   images?: UserMessageImage[];
   attachments?: FileAttachment[];
+  /** 本轮选择的 Agent 已绑定 MCP 名称，仅在发送边界注入 system-reminder。 */
+  mcps?: string[];
 }
 
 export interface FileAttachment {
