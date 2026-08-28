@@ -59,6 +59,9 @@
     "title": "心理模型",
     "description": "已形成的观点和认知结构",
     "search": "搜索心理模型...",
+    "clearSearch": "清除心理模型搜索",
+    "openDetail": "查看心理模型 {{name}}",
+    "deleteNamed": "删除心理模型 {{name}}",
     "noModels": "暂无心理模型",
     "totalCount": "{{count}} 个心理模型",
     "confidence": "置信度",
@@ -116,6 +119,7 @@
     "graph": "图谱",
     "table": "表格",
     "timeline": "时间线",
+    "viewSwitcher": "记忆视图切换",
     "hidePanel": "隐藏面板",
     "showPanel": "显示面板",
     "expand": "展开",
@@ -196,6 +200,7 @@
     "sectionMemoryId": "记忆 ID"
   },
   "memoryDetailPanel": {
+    "close": "关闭记忆详情",
     "title": "记忆详情",
     "subtitle": "完整记忆内容及元数据",
     "loadingDetails": "正在加载记忆详情...",
@@ -218,6 +223,7 @@
     "viewHistory": "查看历史"
   },
   "entitiesView": {
+    "viewSwitcher": "实体视图切换",
     "na": "无",
     "viewRelations": "关系图",
     "viewList": "列表",

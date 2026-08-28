@@ -77,7 +77,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
         {/* 头部关闭按钮 */}
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-border">
           <h3 className="text-xl font-bold text-foreground">{memoryTypeTitle}</h3>
-          <Button variant="secondary" size="sm" onClick={onClose} className="h-8 w-8 p-0">
+          <Button variant="secondary" size="icon-sm" onClick={onClose} aria-label={t("memoryDetailPanel.close")}>
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -221,7 +221,12 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
     >
       <div className="flex justify-between items-start mb-4">
         <h3 className={`${titleSize} font-bold text-card-foreground`}>{memoryTypeTitle}</h3>
-        <Button variant="ghost" size="sm" onClick={onClose} className={compact ? "h-6 w-6 p-0" : "h-8 w-8 p-0"}>
+        <Button
+          variant="ghost"
+          size={compact ? "icon-xs" : "icon-sm"}
+          onClick={onClose}
+          aria-label={t("memoryDetailPanel.close")}
+        >
           <X className={compact ? "h-3 w-3" : "h-4 w-4"} />
         </Button>
       </div>

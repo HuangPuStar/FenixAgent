@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hindsightApi } from "@/src/api/hindsight";
+import { WorkbenchPanel } from "@/src/components/agent-panel/WorkbenchPanel";
 import { NS } from "@/src/i18n";
 import { DataView as HindsightDataView } from "./components/DataView";
 import { EntitiesView } from "./components/EntitiesView";
@@ -14,26 +15,41 @@ type MemoryPerspective = "world" | "experience" | "observation" | "mental-models
 type FactPerspective = Extract<MemoryPerspective, "world" | "experience" | "observation">;
 
 const PERSPECTIVES = [
-  { id: "world", icon: Globe, labelKey: "tabs.worldFacts", descriptionKey: "perspectives.worldDescription" },
+  {
+    id: "world",
+    icon: Globe,
+    labelKey: "tabs.worldFacts",
+    descriptionKey: "perspectives.worldDescription",
+    markClass: "bg-sky-500",
+  },
   {
     id: "experience",
     icon: Fingerprint,
     labelKey: "tabs.experience",
     descriptionKey: "perspectives.experienceDescription",
+    markClass: "bg-violet-500",
   },
   {
     id: "observation",
     icon: Eye,
     labelKey: "tabs.observations",
     descriptionKey: "perspectives.observationDescription",
+    markClass: "bg-amber-500",
   },
   {
     id: "mental-models",
     icon: Lightbulb,
     labelKey: "tabs.mentalModels",
     descriptionKey: "perspectives.mentalModelsDescription",
+    markClass: "bg-emerald-500",
   },
-  { id: "entities", icon: Network, labelKey: "tabs.entities", descriptionKey: "perspectives.entitiesDescription" },
+  {
+    id: "entities",
+    icon: Network,
+    labelKey: "tabs.entities",
+    descriptionKey: "perspectives.entitiesDescription",
+    markClass: "bg-rose-500",
+  },
 ] as const;
 
 function isFactPerspective(perspective: MemoryPerspective): perspective is FactPerspective {
@@ -69,12 +85,12 @@ export function MemoriesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-full overflow-auto bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-        <div className="mb-4 space-y-2">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
+        <div className="mb-4 shrink-0 space-y-2">
           <Skeleton className="h-7 w-28 rounded-md" />
           <Skeleton className="h-3 w-56 rounded-md" />
         </div>
-        <div className="grid min-h-[36rem] gap-4 md:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[15rem_minmax(0,1fr)]">
           <Skeleton className="rounded-xl" />
           <Skeleton className="rounded-xl" />
         </div>
@@ -84,7 +100,7 @@ export function MemoriesPage() {
 
   if (statusError) {
     return (
-      <div className="min-h-full overflow-auto bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
+      <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
           <AlertCircle className="size-8 text-destructive" />
           <p className="text-sm font-medium">{t("status.loadFailed")}</p>
@@ -99,7 +115,7 @@ export function MemoriesPage() {
 
   if (!enabled) {
     return (
-      <div className="min-h-full overflow-auto bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
+      <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <p className="text-sm">{t("status.notConfigured")}</p>
         </div>
@@ -108,22 +124,22 @@ export function MemoriesPage() {
   }
 
   return (
-    <div className="min-h-full overflow-auto bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-      <header className="mb-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
+      <header className="mb-4 shrink-0">
         <h1 className="text-[22px] font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("description")}</p>
       </header>
 
-      <div className="grid min-h-[36rem] overflow-hidden rounded-xl border bg-background shadow-sm md:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="flex min-w-0 flex-col border-b bg-muted/30 p-3 md:border-r md:border-b-0">
-          <div className="px-2 pb-3">
+      <WorkbenchPanel className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
+        <aside className="flex min-h-0 min-w-0 flex-col border-b bg-muted/30 p-2 md:p-3 md:border-r md:border-b-0">
+          <div className="hidden px-2 pb-3 md:block">
             <strong className="block text-sm">{t("perspectives.title")}</strong>
             <span className="mt-1 block text-xs text-muted-foreground">{t("perspectives.description")}</span>
           </div>
 
           {isFactPerspective(perspective) && (
             <form
-              className="relative mb-3"
+              className="relative mb-2 md:mb-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 setSearchQuery(searchInput.trim());
@@ -140,8 +156,11 @@ export function MemoriesPage() {
             </form>
           )}
 
-          <nav className="grid gap-1" aria-label={t("perspectives.title")}>
-            {PERSPECTIVES.map(({ id, icon: Icon, labelKey, descriptionKey }) => {
+          <nav
+            className="flex min-w-0 gap-1 overflow-x-auto pb-1 md:grid md:overflow-visible md:pb-0"
+            aria-label={t("perspectives.title")}
+          >
+            {PERSPECTIVES.map(({ id, icon: Icon, labelKey, descriptionKey, markClass }) => {
               const selected = perspective === id;
               return (
                 <button
@@ -149,18 +168,30 @@ export function MemoriesPage() {
                   type="button"
                   aria-pressed={selected}
                   onClick={() => setPerspective(id)}
-                  className={`grid min-h-14 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                  className={`grid min-h-11 shrink-0 grid-cols-[2.25rem_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors md:min-h-14 md:w-auto md:grid-cols-[2.25rem_minmax(0,1fr)] md:px-2.5 md:py-2 ${
                     selected
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-background hover:text-foreground"
                   }`}
                 >
-                  <span className="grid size-8 place-items-center rounded-md bg-background shadow-sm">
+                  <span
+                    className={`relative grid size-9 place-items-center rounded-full border ring-2 ring-inset transition-colors ${
+                      selected
+                        ? "border-primary/40 bg-primary/10 text-primary ring-primary/25"
+                        : "border-border bg-background text-muted-foreground ring-muted"
+                    }`}
+                    aria-hidden="true"
+                  >
                     <Icon className="size-4" />
+                    <span
+                      className={`absolute right-0.5 bottom-0.5 size-2 rounded-full border border-background ${markClass}`}
+                    />
                   </span>
                   <span className="min-w-0">
                     <strong className="block text-sm text-foreground">{t(labelKey)}</strong>
-                    <small className="block truncate text-[11px] text-muted-foreground">{t(descriptionKey)}</small>
+                    <small className="hidden truncate text-[11px] text-muted-foreground md:block">
+                      {t(descriptionKey)}
+                    </small>
                   </span>
                 </button>
               );
@@ -168,7 +199,7 @@ export function MemoriesPage() {
           </nav>
         </aside>
 
-        <main className="min-w-0 p-3 sm:p-5">
+        <main className="h-full min-h-0 min-w-0 overflow-hidden p-3 sm:p-5">
           {isFactPerspective(perspective) ? (
             <HindsightDataView
               key={`${perspective}:${searchQuery}`}
@@ -181,7 +212,7 @@ export function MemoriesPage() {
             <EntitiesView />
           )}
         </main>
-      </div>
+      </WorkbenchPanel>
     </div>
   );
 }

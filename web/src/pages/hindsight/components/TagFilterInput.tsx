@@ -2,6 +2,7 @@ import { Tag, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NS } from "@/src/i18n";
 
@@ -68,23 +69,20 @@ export function TagFilterInput({ value, onChange, placeholder, className }: TagF
             >
               <span className="opacity-50 select-none font-mono">#</span>
               {tag}
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => removeTag(tag)}
-                className="opacity-50 hover:opacity-100 transition-opacity ml-0.5"
+                className="ml-0.5 size-4 opacity-50 hover:opacity-100"
                 aria-label={t("dataView.removeTag", { tag })}
               >
-                <X className="w-3 h-3" />
-              </button>
+                <X className="size-3" />
+              </Button>
             </span>
           ))}
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="text-xs text-muted-foreground hover:text-foreground underline"
-          >
+          <Button variant="link" size="xs" onClick={() => onChange([])} className="text-muted-foreground">
             {t("common.clear", { defaultValue: "Clear" })}
-          </button>
+          </Button>
         </div>
       )}
     </div>

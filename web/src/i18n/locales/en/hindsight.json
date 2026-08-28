@@ -59,6 +59,9 @@
     "title": "Mental Models",
     "description": "Formed opinions and cognitive structures",
     "search": "Search mental models...",
+    "clearSearch": "Clear mental model search",
+    "openDetail": "View mental model {{name}}",
+    "deleteNamed": "Delete mental model {{name}}",
     "noModels": "No mental models found",
     "totalCount": "{{count}} mental models",
     "confidence": "Confidence",
@@ -116,6 +119,7 @@
     "graph": "Graph",
     "table": "Table",
     "timeline": "Timeline",
+    "viewSwitcher": "Memory view switcher",
     "hidePanel": "Hide panel",
     "showPanel": "Show panel",
     "expand": "Expand",
@@ -196,6 +200,7 @@
     "sectionMemoryId": "Memory ID"
   },
   "memoryDetailPanel": {
+    "close": "Close memory details",
     "title": "Memory Details",
     "subtitle": "Full memory content and metadata",
     "loadingDetails": "Loading memory details...",
@@ -218,6 +223,7 @@
     "viewHistory": "View History"
   },
   "entitiesView": {
+    "viewSwitcher": "Entity view switcher",
     "na": "N/A",
     "viewRelations": "Relations",
     "viewList": "List",
