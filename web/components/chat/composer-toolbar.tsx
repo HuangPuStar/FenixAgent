@@ -1,10 +1,8 @@
 import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
 import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
-import { type RefObject, useState } from "react";
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { CommandMenu } from "./CommandMenu";
 import { ComposerContextMeter } from "./composer-context-meter";
 import { SessionModeSelector } from "./SessionModeSelector";
 
@@ -18,7 +16,8 @@ interface ComposerToolbarProps {
   supportsAttachments: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onFileSelect: () => void;
-  onCommandSelect: (command: AvailableCommand) => void;
+  commandPanelOpen: boolean;
+  onCommandPanelOpenChange: (open: boolean) => void;
   contextUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
   availableModes?: SessionMode[];
   currentModeId?: string | null;
@@ -41,7 +40,8 @@ export function ComposerToolbar({
   supportsAttachments,
   fileInputRef,
   onFileSelect,
-  onCommandSelect,
+  commandPanelOpen,
+  onCommandPanelOpenChange,
   contextUsage,
   availableModes,
   currentModeId,
@@ -53,33 +53,22 @@ export function ComposerToolbar({
   onInterrupt,
 }: ComposerToolbarProps) {
   const { t } = useTranslation("components");
-  const [pluginOpen, setPluginOpen] = useState(false);
   const showStop = canCancel || isCancelling;
 
   return (
     <div className="chat-composer-meta">
       <div className="chat-composer-meta-main">
         {commands?.length ? (
-          <Popover open={pluginOpen} onOpenChange={setPluginOpen}>
-            <PopoverTrigger asChild>
-              <button type="button" className="chat-composer-plugin" disabled={disabled || isLoading}>
-                <Blocks /> {t("chatComposer.commandButton")} <small>{commands.length}</small>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="start" sideOffset={8} className="chat-command-popover p-0">
-              <CommandMenu
-                commands={commands}
-                filter=""
-                showSearch
-                className="chat-command-menu--popover"
-                onSelect={(command) => {
-                  onCommandSelect(command);
-                  setPluginOpen(false);
-                }}
-                onClose={() => setPluginOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+          <button
+            type="button"
+            className="chat-composer-plugin"
+            data-open={commandPanelOpen || undefined}
+            aria-expanded={commandPanelOpen}
+            disabled={disabled || isLoading}
+            onClick={() => onCommandPanelOpenChange(!commandPanelOpen)}
+          >
+            <Blocks /> {t("chatComposer.commandButton")} <small>{commands.length}</small>
+          </button>
         ) : null}
 
         <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={onFileSelect} />

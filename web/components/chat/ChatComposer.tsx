@@ -88,7 +88,8 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   const [text, setText] = useState("");
   const [images, setImages] = useState<UserMessageImage[]>([]);
-  const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [commandPanelOpen, setCommandPanelOpen] = useState(false);
+  const [commandPanelSearch, setCommandPanelSearch] = useState(false);
   const [commandFilter, setCommandFilter] = useState("");
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -171,7 +172,8 @@ export function ChatComposer({
     setImages([]);
     setAttachments([]);
     setQuotes([]);
-    setShowCommandMenu(false);
+    setCommandPanelOpen(false);
+    setCommandPanelSearch(false);
     setCommandFilter("");
     // 重置 textarea 高度
     if (textareaRef.current) {
@@ -181,21 +183,16 @@ export function ChatComposer({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (showCommandMenu) {
+      if (commandPanelOpen) {
         if (e.key === "Escape") {
           e.preventDefault();
-          setShowCommandMenu(false);
+          setCommandPanelOpen(false);
+          setCommandPanelSearch(false);
+          setCommandFilter("");
           return;
         }
-        // Arrow keys and Enter are handled by CommandMenu via document-level listener
-        // Don't submit or move cursor when menu is open
         if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter") {
           e.preventDefault();
-          return;
-        }
-        if (e.key === "Tab") {
-          e.preventDefault();
-          setShowCommandMenu(false);
           return;
         }
       }
@@ -208,7 +205,7 @@ export function ChatComposer({
         handleSubmit();
       }
     },
-    [handleSubmit, isLoading, showCommandMenu],
+    [commandPanelOpen, handleSubmit, isLoading],
   );
 
   const handleInput = useCallback(
@@ -216,20 +213,22 @@ export function ChatComposer({
       const value = e.target.value;
       setText(value);
 
-      // 检测 slash 命令模式：仅在输入开头输入 / 且还未输入参数时触发
-      if (value.startsWith("/") && commands && commands.length > 0) {
-        const parts = value.slice(1).split(/\s/);
-        // 只在输入命令名阶段（没有空格后跟参数）才显示菜单
-        if (parts.length <= 1) {
-          setShowCommandMenu(true);
-          setCommandFilter(parts[0] || "");
+      // Slash command 仅在输入开头、且仍处于命令名阶段时打开同一个能力面板。
+      if (value.startsWith("/") && commands?.length) {
+        const commandText = value.slice(1);
+        if (!/\s/.test(commandText)) {
+          setCommandFilter(commandText);
+          setCommandPanelSearch(false);
+          setCommandPanelOpen(true);
         } else {
-          setShowCommandMenu(false);
           setCommandFilter("");
+          setCommandPanelSearch(false);
+          setCommandPanelOpen(false);
         }
-      } else if (showCommandMenu) {
-        setShowCommandMenu(false);
+      } else if (commandFilter || commandPanelOpen) {
         setCommandFilter("");
+        setCommandPanelSearch(false);
+        setCommandPanelOpen(false);
       }
 
       // 检测 @ 文件引用触发
@@ -245,7 +244,7 @@ export function ChatComposer({
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
     },
-    [commands, showCommandMenu, fileWorkspaceId],
+    [commandFilter, commandPanelOpen, commands, fileWorkspaceId],
   );
 
   // 粘贴图片
@@ -322,7 +321,8 @@ export function ChatComposer({
 
   const handleCommandSelect = useCallback((command: AvailableCommand) => {
     setText(`/${command.name} `);
-    setShowCommandMenu(false);
+    setCommandPanelOpen(false);
+    setCommandPanelSearch(false);
     setCommandFilter("");
     textareaRef.current?.focus();
   }, []);
@@ -375,19 +375,19 @@ export function ChatComposer({
     <div
       className={`chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2${className ? ` ${className}` : ""}`}
     >
-      {/* relative wrapper：CommandMenu 在此层定位，不受 .chat-composer-card 的 overflow: clip 裁剪 */}
       <div className="relative">
-        {/* Slash command menu —— 浮在 composer-card 上方，不被 overflow 裁剪 */}
-        {showCommandMenu && commands && commands.length > 0 && (
+        {commandPanelOpen && commands && commands.length > 0 && (
           <CommandMenu
             commands={commands}
             filter={commandFilter}
+            showSearch={commandPanelSearch}
             onSelect={handleCommandSelect}
             onClose={() => {
-              setShowCommandMenu(false);
+              setCommandPanelOpen(false);
+              setCommandPanelSearch(false);
               setCommandFilter("");
             }}
-            className="chat-command-menu--inline"
+            className="chat-command-menu--panel"
           />
         )}
 
@@ -455,7 +455,12 @@ export function ChatComposer({
             supportsAttachments={supportsImages || Boolean(fileWorkspaceId)}
             fileInputRef={fileInputRef}
             onFileSelect={() => void _handleFileSelect()}
-            onCommandSelect={handleCommandSelect}
+            commandPanelOpen={commandPanelOpen}
+            onCommandPanelOpenChange={(open) => {
+              setCommandFilter("");
+              setCommandPanelSearch(open);
+              setCommandPanelOpen(open);
+            }}
             contextUsage={contextUsage}
             availableModes={availableModes}
             currentModeId={currentModeId}

@@ -252,8 +252,13 @@
     "thinking": "Thinking..."
   },
   "commandMenu": {
+    "title": "Commands",
+    "count": "{{count}} available",
     "noMatch": "No matching commands",
-    "searchPlaceholder": "Search skills..."
+    "searchPlaceholder": "Search command names or descriptions",
+    "navigate": "Navigate",
+    "select": "Select",
+    "close": "Close"
   },
   "messageBubble": {
     "expand": "Expand",

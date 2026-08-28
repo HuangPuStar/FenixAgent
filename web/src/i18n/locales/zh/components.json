@@ -252,8 +252,13 @@
     "thinking": "思考中"
   },
   "commandMenu": {
+    "title": "命令",
+    "count": "{{count}} 项可用",
     "noMatch": "没有匹配的命令",
-    "searchPlaceholder": "搜索技能..."
+    "searchPlaceholder": "搜索命令名称或说明",
+    "navigate": "切换",
+    "select": "选择",
+    "close": "关闭"
   },
   "messageBubble": {
     "expand": "展开",

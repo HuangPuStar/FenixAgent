@@ -23,9 +23,12 @@ interface CommandMenuProps {
 /**
  * Prefix match — checks if the text starts with the query.
  */
-function prefixMatch(query: string, text: string): boolean {
+function commandMatches(query: string, command: AvailableCommand): boolean {
   if (!query) return true;
-  return text.toLowerCase().startsWith(query.toLowerCase());
+  const normalizedQuery = query.toLowerCase();
+  return (
+    command.name.toLowerCase().includes(normalizedQuery) || command.description.toLowerCase().includes(normalizedQuery)
+  );
 }
 
 export function CommandMenu({ commands, filter, onSelect, onClose, className, showSearch }: CommandMenuProps) {
@@ -40,13 +43,8 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
   // Filter commands by current input
   const filtered = useMemo(() => {
     if (!effectiveFilter) return commands;
-    return commands.filter((cmd) => prefixMatch(effectiveFilter, cmd.name));
+    return commands.filter((command) => commandMatches(effectiveFilter, command));
   }, [commands, effectiveFilter]);
-
-  // Reset active index when filter changes
-  useEffect(() => {
-    setActiveIndex(0);
-  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -73,9 +71,21 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
       if (filtered.length === 0) return;
 
       if (e.key === "ArrowDown") {
-        setActiveIndex((prev) => (prev + 1) % filtered.length);
+        setActiveIndex((prev) => {
+          const next = (prev + 1) % filtered.length;
+          requestAnimationFrame(() =>
+            containerRef.current?.querySelector("[data-active='true']")?.scrollIntoView({ block: "nearest" }),
+          );
+          return next;
+        });
       } else if (e.key === "ArrowUp") {
-        setActiveIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
+        setActiveIndex((prev) => {
+          const next = (prev - 1 + filtered.length) % filtered.length;
+          requestAnimationFrame(() =>
+            containerRef.current?.querySelector("[data-active='true']")?.scrollIntoView({ block: "nearest" }),
+          );
+          return next;
+        });
       } else if (e.key === "Enter") {
         const cmd = filtered[activeIndex];
         if (cmd) onSelect(cmd);
@@ -86,17 +96,8 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [filtered, activeIndex, onSelect]);
 
-  // Scroll active item into view
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const active = container.querySelector("[data-active='true']");
-    active?.scrollIntoView({ block: "nearest" });
-  }, []);
-
   return (
     <div ref={containerRef} className={`chat-command-menu${className ? ` ${className}` : ""}`}>
-      {/* 搜索框：Popover 场景下独立搜索 */}
       {showSearch && (
         <div className="chat-command-menu-search">
           <Search />
@@ -104,8 +105,12 @@ export function CommandMenu({ commands, filter, onSelect, onClose, className, sh
             type="text"
             placeholder={t("commandMenu.searchPlaceholder")}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setActiveIndex(0);
+            }}
             className="chat-command-menu-input"
+            autoFocus
           />
         </div>
       )}
