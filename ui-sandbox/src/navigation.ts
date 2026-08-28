@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
+  Bot,
   Brain,
   CalendarClock,
   Cpu,
@@ -17,6 +18,7 @@ import {
 
 export type PageId =
   | "home"
+  | "agents"
   | "chat"
   | "workflow"
   | "templates"
@@ -46,6 +48,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "核心",
     items: [
       { id: "home", label: "首页", icon: Home },
+      { id: "agents", label: "智能体管理", icon: Bot },
       { id: "chat", label: "Chat 设计", icon: MessageSquareText },
       { id: "workflow", label: "智能体编排", icon: Workflow },
       { id: "templates", label: "沙盒模版", icon: LayoutTemplate },

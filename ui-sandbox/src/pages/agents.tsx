@@ -1,18 +1,19 @@
 import {
   Bot,
   Boxes,
+  ChevronDown,
   ChevronRight,
-  Copy,
-  FileText,
   MessageSquareText,
   MoreHorizontal,
+  Pencil,
   Play,
   Settings2,
-  Share2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { FormFields, Modal, PageHeader, PrimaryButton, SearchField, Status, Tag, Toast } from "../components/ui";
 import type { PageId } from "../navigation";
+import { AgentEditorDialog } from "./agents/agent-editor-dialog";
+import { AgentTemplateDialog } from "./agents/agent-template-dialog";
 
 const AGENTS = [
   {
@@ -75,7 +76,9 @@ export function AgentsPage({ onNavigate }: { onNavigate: (page: PageId) => void 
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [creating, setCreating] = useState(false);
-  const [toast, setToast] = useState(false);
+  const [creatingFromTemplate, setCreatingFromTemplate] = useState(false);
+  const [editing, setEditing] = useState(true);
+  const [toastText, setToastText] = useState<string | null>(null);
   const filtered = useMemo(
     () =>
       AGENTS.filter((agent) => `${agent.name}${agent.desc}${agent.model}`.toLowerCase().includes(query.toLowerCase())),
@@ -83,13 +86,20 @@ export function AgentsPage({ onNavigate }: { onNavigate: (page: PageId) => void 
   );
   const save = () => {
     setCreating(false);
-    setToast(true);
-    window.setTimeout(() => setToast(false), 1800);
+    setToastText("智能体已创建（Mock）");
+    window.setTimeout(() => setToastText(null), 1800);
   };
   return (
     <div className="page-frame agents-page">
       <PageHeader title="智能体管理" description="创建、配置和发布面向不同业务的 Agent，并在一个位置查看运行状态。">
-        <PrimaryButton onClick={() => setCreating(true)}>新建智能体</PrimaryButton>
+        <button className="button" type="button" onClick={() => setEditing(true)}>
+          <Pencil />
+          打开编辑设计稿
+        </button>
+        <PrimaryButton onClick={() => setCreating(true)}>
+          空白创建
+          <ChevronDown />
+        </PrimaryButton>
       </PageHeader>
       <div className="toolbar">
         <SearchField value={query} onChange={setQuery} placeholder="搜索智能体、模型或能力" />
@@ -148,7 +158,12 @@ export function AgentsPage({ onNavigate }: { onNavigate: (page: PageId) => void 
                     <Status kind={agent.tone}>{agent.status}</Status>
                   </td>
                   <td>
-                    <button className="kebab" type="button">
+                    <button
+                      className="kebab"
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      aria-label={`编辑 ${agent.name}`}
+                    >
                       <MoreHorizontal />
                     </button>
                   </td>
@@ -182,7 +197,7 @@ export function AgentsPage({ onNavigate }: { onNavigate: (page: PageId) => void 
                   <Play />
                   运行
                 </button>
-                <button type="button">
+                <button type="button" onClick={() => setEditing(true)} aria-label={`编辑 ${agent.name}`}>
                   <ChevronRight />
                 </button>
               </footer>
@@ -191,25 +206,36 @@ export function AgentsPage({ onNavigate }: { onNavigate: (page: PageId) => void 
         </section>
       )}
       {creating && (
-        <Modal title="新建智能体" onClose={() => setCreating(false)} onConfirm={save}>
+        <Modal title="空白创建智能体" onClose={() => setCreating(false)} onConfirm={save} confirmText="继续配置">
           <FormFields kind="智能体" />
-          <div className="template-choice">
-            <button type="button" className="is-active">
-              <FileText />
-              空白配置
-            </button>
-            <button type="button">
-              <Copy />
-              从现有复制
-            </button>
-            <button type="button">
-              <Share2 />
-              使用模板
-            </button>
-          </div>
+          <p className="agent-blank-create-note">
+            将创建一个不带 Prompt、Skills 和知识库的空白智能体，之后进入完整配置。
+          </p>
         </Modal>
       )}
-      {toast && <Toast text="智能体已创建（Mock）" />}
+      {creatingFromTemplate && (
+        <AgentTemplateDialog
+          open={creatingFromTemplate}
+          onClose={() => setCreatingFromTemplate(false)}
+          onCreate={(name) => {
+            setCreatingFromTemplate(false);
+            setToastText(`已从模板创建「${name}」（Mock）`);
+            window.setTimeout(() => setToastText(null), 2200);
+          }}
+        />
+      )}
+      {editing && (
+        <AgentEditorDialog
+          open={editing}
+          onClose={() => setEditing(false)}
+          onBuildFromTemplate={() => setCreatingFromTemplate(true)}
+          onSaved={(message) => {
+            setToastText(message);
+            window.setTimeout(() => setToastText(null), 2200);
+          }}
+        />
+      )}
+      {toastText && <Toast text={toastText} />}
     </div>
   );
 }

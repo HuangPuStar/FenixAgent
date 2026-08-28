@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shell } from "./components/shell";
 import { NAV_GROUPS, type PageId } from "./navigation";
 import { ApiKeysPage, OrganizationsPage } from "./pages/access";
+import { AgentsPage } from "./pages/agents";
 import { ChatDemoPage } from "./pages/chat-demo/chat-demo-page";
 import { SitesPage } from "./pages/delivery";
 import { DesignTemplatesPage } from "./pages/design-templates";
@@ -42,6 +43,8 @@ function renderPage(page: PageId, navigate: (page: PageId) => void) {
   switch (page) {
     case "home":
       return <HomePage onNavigate={navigate} />;
+    case "agents":
+      return <AgentsPage onNavigate={navigate} />;
     case "chat":
       return <ChatDemoPage />;
     case "workflow":
