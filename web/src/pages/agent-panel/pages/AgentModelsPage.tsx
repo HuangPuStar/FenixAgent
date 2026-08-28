@@ -147,8 +147,6 @@ export function AgentModelsPage() {
   const [mfOutput, setMfOutput] = useState("");
   const [mfInputModalities, setMfInputModalities] = useState<string[]>(["text"]);
   const [mfOutputModalities, setMfOutputModalities] = useState<string[]>(["text"]);
-  const [mfThinkingEnabled, setMfThinkingEnabled] = useState(false);
-  const [mfThinkingBudget, setMfThinkingBudget] = useState("");
   const [mfCostInput, setMfCostInput] = useState("");
   const [mfCostOutput, setMfCostOutput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -549,8 +547,6 @@ export function AgentModelsPage() {
     setMfOutput("");
     setMfInputModalities(["text"]);
     setMfOutputModalities(["text"]);
-    setMfThinkingEnabled(false);
-    setMfThinkingBudget("");
     setMfCostInput("");
     setMfCostOutput("");
     setShowAdvanced(false);
@@ -572,11 +568,7 @@ export function AgentModelsPage() {
     const cost = (m.cost as Record<string, number | undefined>) ?? {};
     setMfCostInput(cost.input ? String(cost.input) : "");
     setMfCostOutput(cost.output ? String(cost.output) : "");
-    const options = (m.options ?? {}) as Record<string, unknown>;
-    const thinking = options.thinking as Record<string, unknown> | undefined;
-    setMfThinkingEnabled(!!thinking?.enabled);
-    setMfThinkingBudget(thinking?.budgetTokens ? String(thinking.budgetTokens) : "");
-    setShowAdvanced(!!thinking?.enabled || !!cost.input || !!cost.output);
+    setShowAdvanced(!!cost.input || !!cost.output);
     setModelDialogOpen(true);
   };
 
@@ -595,11 +587,7 @@ export function AgentModelsPage() {
     const cost = (m.cost as Record<string, number | undefined>) ?? {};
     setMfCostInput(cost.input ? String(cost.input) : "");
     setMfCostOutput(cost.output ? String(cost.output) : "");
-    const options = (m.options ?? {}) as Record<string, unknown>;
-    const thinking = options.thinking as Record<string, unknown> | undefined;
-    setMfThinkingEnabled(!!thinking?.enabled);
-    setMfThinkingBudget(thinking?.budgetTokens ? String(thinking.budgetTokens) : "");
-    setShowAdvanced(!!thinking?.enabled || !!cost.input || !!cost.output);
+    setShowAdvanced(!!cost.input || !!cost.output);
     setModelDialogOpen(true);
   };
 
@@ -614,13 +602,6 @@ export function AgentModelsPage() {
     if (mfOutput) limit.output = Number(mfOutput);
     if (Object.keys(limit).length > 0) data.limit = limit;
     data.modalities = { input: mfInputModalities, output: mfOutputModalities };
-    const options: Record<string, unknown> = {};
-    if (mfThinkingEnabled) {
-      const th: Record<string, unknown> = { enabled: true };
-      if (mfThinkingBudget) th.budgetTokens = Number(mfThinkingBudget);
-      options.thinking = th;
-    }
-    if (Object.keys(options).length > 0) data.options = options;
     const cost: Record<string, unknown> = {};
     if (mfCostInput) cost.input = Number(mfCostInput);
     if (mfCostOutput) cost.output = Number(mfCostOutput);
@@ -1236,22 +1217,6 @@ export function AgentModelsPage() {
           </Button>
           {showAdvanced && (
             <div className="space-y-3 border-t pt-3">
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-text-primary">{t("modelSubrow.thinkingEnabled")}</label>
-                <Switch checked={mfThinkingEnabled} disabled={modelReadOnly} onCheckedChange={setMfThinkingEnabled} />
-              </div>
-              {mfThinkingEnabled && (
-                <div>
-                  <label className="text-sm font-medium text-text-primary">{t("modelSubrow.thinkingBudget")}</label>
-                  <Input
-                    type="number"
-                    value={mfThinkingBudget}
-                    onChange={(e) => setMfThinkingBudget(e.target.value)}
-                    disabled={modelReadOnly}
-                    className="mt-1"
-                  />
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium text-text-primary">{t("modelSubrow.inputCost")}</label>

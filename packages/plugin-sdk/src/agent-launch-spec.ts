@@ -16,6 +16,15 @@ export interface AgentConfig {
 }
 
 /**
+ * Model 限制配置，从 model 表 limitConfig JSONB 透传。
+ */
+export interface ModelLimitConfig {
+  context?: number;
+  output?: number;
+  rpm?: number;
+}
+
+/**
  * Model 配置。
  */
 export interface ModelConfig {
@@ -26,6 +35,8 @@ export interface ModelConfig {
   model: string;
   modelName?: string;
   modalities?: { input?: ("text" | "image")[]; output?: ("text" | "image")[] } | string[];
+  /** 模型限制配置，从 model 表 limitConfig JSONB 透传 */
+  limitConfig?: ModelLimitConfig | null;
 }
 
 /**

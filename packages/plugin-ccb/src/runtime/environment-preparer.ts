@@ -78,30 +78,40 @@ export async function writePeriSettings(workspace: string, launchSpec: AgentLaun
     }
   }
 
-  const settings: Record<string, unknown> = {
-    config: {
-      active_provider_id: model.provider,
-      active_alias: "sonnet",
-      providers: [
-        {
-          id: model.provider,
-          type: model.protocol,
-          apiKey: model.apiKey,
-          baseUrl: model.baseUrl,
-          models: {
-            opus: modelId,
-            sonnet: modelId,
-            haiku: modelId,
-          },
+  const config: Record<string, unknown> = {
+    active_provider_id: model.provider,
+    active_alias: "sonnet",
+    providers: [
+      {
+        id: model.provider,
+        type: model.protocol,
+        apiKey: model.apiKey,
+        baseUrl: model.baseUrl,
+        models: {
+          opus: modelId,
+          sonnet: modelId,
+          haiku: modelId,
         },
-      ],
-      thinking: {
-        enabled: true,
-        budget_tokens: 8000,
-        effort: "high",
       },
+    ],
+    thinking: {
+      enabled: true,
+      budget_tokens: 8000,
+      effort: "high",
     },
   };
+
+  // 上下文窗口：仅当 model 配置了且 > 0 时下发
+  if (model.limitConfig?.context && model.limitConfig.context > 0) {
+    config.context_window = model.limitConfig.context;
+  }
+
+  // 输出限制：仅当 model 配置了且 > 0 时下发
+  if (model.limitConfig?.output && model.limitConfig.output > 0) {
+    config.max_tokens = model.limitConfig.output;
+  }
+
+  const settings: Record<string, unknown> = { config };
 
   if (Object.keys(periEnv).length > 0) {
     settings.env = periEnv;
