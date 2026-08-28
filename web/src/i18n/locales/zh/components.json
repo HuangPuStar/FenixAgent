@@ -156,6 +156,19 @@
     "closeTab": "关闭标签",
     "moreTabs": "还有 {{count}} 个标签",
     "noTabsHint": "从左侧文件树选择文件预览",
+    "dialog": {
+      "renameTitle": "重命名",
+      "renameDescription": "输入新的文件或文件夹名称",
+      "moveTitle": "移动",
+      "moveDescription": "输入目标完整路径",
+      "newFileTitle": "新建文件",
+      "newFileDescription": "输入新文件名称",
+      "newFolderTitle": "新建文件夹",
+      "newFolderDescription": "输入新文件夹名称",
+      "invalidName": "名称不能为空，且不能包含 /、NUL，也不能是 . 或 ..",
+      "invalidPath": "目标路径不能为空且不能包含 NUL",
+      "confirm": "确认"
+    },
     "contextMenu": {
       "reference": "引用到聊天",
       "rename": "重命名",

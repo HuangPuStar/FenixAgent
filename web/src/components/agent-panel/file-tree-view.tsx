@@ -17,6 +17,7 @@ import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "r
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { NodeState, TreeNodeData, TreeProps } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
@@ -66,8 +67,8 @@ interface FileTreeViewProps {
   onOpen: (path: string) => void;
   onReference: () => void;
   onDownload: (path: string, isDir: boolean) => void;
-  onRename: (path: string, name: string) => void;
-  onMove: (path: string, destination: string) => void;
+  onRenameRequest: (path: string, name: string) => void;
+  onMoveRequest: (path: string) => void;
   onDeleteRequest: (path: string, name: string) => void;
   onNewFile: (parentPath: string) => void;
   onNewFolder: (parentPath: string) => void;
@@ -274,40 +275,45 @@ function FileTreeSections({
   };
 
   return (
-    <>
-      <section className="file-tree-section file-tree-section--workspace">
-        <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
-        <div className="file-tree-section-scroll">
-          {props.showTree && props.workspaceHasNodes ? (
-            <Tree
-              key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
-              getChildren={props.getWorkspaceChildren}
-              {...commonTreeProps}
-            />
-          ) : (
-            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
-          )}
-        </div>
-      </section>
-      <section className="file-tree-section file-tree-section--user">
-        <div className="file-tree-user-heading">
-          <UserRound aria-hidden />
-          <span>{t("fileTree.user")}</span>
-          <small>{t("fileTree.currentUser")}</small>
-        </div>
-        <div className="file-tree-section-scroll">
-          {props.showTree && props.userHasNodes ? (
-            <Tree
-              key={`user:${props.treeVersion}:${props.normalizedSearch}`}
-              getChildren={props.getUserChildren}
-              {...commonTreeProps}
-            />
-          ) : (
-            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} />
-          )}
-        </div>
-      </section>
-    </>
+    <ResizablePanelGroup orientation="vertical" className="file-tree-sections-resizable">
+      <ResizablePanel defaultSize={60} minSize={112}>
+        <section className="file-tree-section file-tree-section--workspace">
+          <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
+          <div className="file-tree-section-scroll">
+            {props.showTree && props.workspaceHasNodes ? (
+              <Tree
+                key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
+                getChildren={props.getWorkspaceChildren}
+                {...commonTreeProps}
+              />
+            ) : (
+              <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
+            )}
+          </div>
+        </section>
+      </ResizablePanel>
+      <ResizableHandle className="file-tree-sections-divider" />
+      <ResizablePanel defaultSize={40} minSize={68}>
+        <section className="file-tree-section file-tree-section--user">
+          <div className="file-tree-user-heading">
+            <UserRound aria-hidden />
+            <span>{t("fileTree.user")}</span>
+            <small>{t("fileTree.currentUser")}</small>
+          </div>
+          <div className="file-tree-section-scroll">
+            {props.showTree && props.userHasNodes ? (
+              <Tree
+                key={`user:${props.treeVersion}:${props.normalizedSearch}`}
+                getChildren={props.getUserChildren}
+                {...commonTreeProps}
+              />
+            ) : (
+              <Feedback icon={<Folder />} text={t("fileTree.emptyState")} />
+            )}
+          </div>
+        </section>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 
@@ -333,22 +339,10 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
         <Download aria-hidden />
         {state.isDir ? t("fileTree.downloadZip") : t("fileTree.download")}
       </button>
-      <button
-        type="button"
-        onClick={() => {
-          const next = window.prompt(t("fileTree.contextMenu.rename"), name);
-          if (next) props.onRename(state.path, next);
-        }}
-      >
+      <button type="button" onClick={() => props.onRenameRequest(state.path, name)}>
         {t("fileTree.contextMenu.rename")}
       </button>
-      <button
-        type="button"
-        onClick={() => {
-          const next = window.prompt(t("fileTree.contextMenu.movePrompt"), state.path);
-          if (next) props.onMove(state.path, next);
-        }}
-      >
+      <button type="button" onClick={() => props.onMoveRequest(state.path)}>
         <Move aria-hidden />
         {t("fileTree.contextMenu.move")}
       </button>

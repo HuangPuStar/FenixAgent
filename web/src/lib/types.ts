@@ -74,7 +74,9 @@ export interface ToolCallData {
   description?: string;
   /** 引擎提供的 display 元数据，用于前端精确渲染工具调用类型 */
   display?: ToolCallDisplay;
-  /** 工具调用统一类型标识，由 resolveToolCardKind() 在 construct 阶段一次性解析 */
+  /** 前端投影边界解析出的统一工具语义。 */
+  semantic?: import("./tool-semantic").ToolSemantic;
+  /** 工具调用统一类型标识，由前端投影边界一次性解析。 */
   kind?: ToolCardKind;
   /** TodoWrite 相较上一轮的条目变更；只用于历史工具调用卡片展示。 */
   todoChanges?: TodoChange[];

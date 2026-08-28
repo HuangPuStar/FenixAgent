@@ -6,6 +6,7 @@ import type { TreeNodeData } from "@/components/ui/tree";
 import { fsApi } from "@/src/api/fs";
 import { unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
+import { FileTreeInputDialog } from "./file-tree-input-dialog";
 import {
   collectDirectoryPaths,
   filterFileTree,
@@ -19,6 +20,16 @@ import { FileTreeView } from "./file-tree-view";
 import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
+
+export function isValidFileTreeBasename(value: string) {
+  const trimmed = value.trim();
+  return !!trimmed && !trimmed.includes("\0") && !trimmed.includes("/") && trimmed !== "." && trimmed !== "..";
+}
+
+export function isValidFileTreeMovePath(value: string) {
+  const trimmed = value.trim();
+  return !!trimmed && !trimmed.includes("\0");
+}
 
 interface FileTreeTabProps {
   envId: string | null;
@@ -41,6 +52,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const [searchQuery, setSearchQuery] = useState("");
   const expandedIdsRef = useRef<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{
+    kind: "rename" | "move" | "newFile" | "newFolder";
+    path: string;
+    value: string;
+    error?: string;
+  } | null>(null);
   // 加载失败时保留旧树并展示过期横幅（文件服务不可用 ≠ 空目录，docs/arch/12-files.md §7.3）
   const [stale, setStale] = useState(false);
 
@@ -79,7 +96,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   useImperativeHandle(ref, () => ({ uploadFiles }), [uploadFiles]);
 
   // ── 重命名 ──
-  const { run: runRename } = useRequest(
+  const { run: runRename, loading: renaming } = useRequest(
     (oldPath: string, newName: string) => {
       const parentDir = oldPath.includes("/") ? oldPath.substring(0, oldPath.lastIndexOf("/")) : "";
       const newPath = parentDir ? `${parentDir}/${newName}` : newName;
@@ -87,7 +104,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     },
     {
       manual: true,
-      onSuccess: () => refreshTree(),
+      onSuccess: () => {
+        setInputDialog(null);
+        refreshTree();
+      },
       onError: (err) => {
         console.error("Rename failed:", err);
         toast.error(err.message || t("fileTree.renameFailed"));
@@ -96,11 +116,14 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   );
 
   // 移动使用完整目标路径；路径合法性、workspace 越界与 symlink 防护仍由服务端统一校验。
-  const { run: runMove } = useRequest(
+  const { run: runMove, loading: moving } = useRequest(
     (oldPath: string, newPath: string) => unwrap(fsApi.rename(envId!, oldPath, newPath)),
     {
       manual: true,
-      onSuccess: () => refreshTree(),
+      onSuccess: () => {
+        setInputDialog(null);
+        refreshTree();
+      },
       onError: (err) => {
         console.error("Move failed:", err);
         toast.error(err.message || t("fileTree.moveFailed"));
@@ -127,9 +150,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   // ── 创建目录 ──
-  const { run: runMkdir } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
+  const { run: runMkdir, loading: makingDirectory } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
     manual: true,
-    onSuccess: () => refreshTree(),
+    onSuccess: () => {
+      setInputDialog(null);
+      refreshTree();
+    },
     onError: (err) => {
       console.error("Mkdir failed:", err);
       toast.error(err.message || t("fileTree.mkdirFailed"));
@@ -137,14 +163,20 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   // ── 创建新文件 ──
-  const { run: runNewFile } = useRequest((path: string) => unwrap(fsApi.writeFile(envId!, path, "")), {
-    manual: true,
-    onSuccess: () => refreshTree(),
-    onError: (err) => {
-      console.error("New file failed:", err);
-      toast.error(err.message || t("fileTree.newFileFailed"));
+  const { run: runNewFile, loading: makingFile } = useRequest(
+    (path: string) => unwrap(fsApi.writeFile(envId!, path, "")),
+    {
+      manual: true,
+      onSuccess: () => {
+        setInputDialog(null);
+        refreshTree();
+      },
+      onError: (err) => {
+        console.error("New file failed:", err);
+        toast.error(err.message || t("fileTree.newFileFailed"));
+      },
     },
-  });
+  );
 
   const handleEventsUnavailable = useCallback((error: unknown) => {
     console.error("Failed to revalidate file tree:", error);
@@ -361,70 +393,99 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const showTree = !!envId && !(isEmpty && !stale);
   const isDirectory = useCallback((path: string) => findFileNode(treeDataRef.current, path)?.isDir ?? false, []);
 
-  const handleNewFile = useCallback(
-    (parentPath: string) => {
-      const name = window.prompt(t("fileTree.newFileName"));
-      if (name) runNewFile(`${parentPath}/${name}`);
-    },
-    [runNewFile, t],
-  );
+  const openInputDialog = useCallback((kind: "rename" | "move" | "newFile" | "newFolder", path: string, value = "") => {
+    setInputDialog({ kind, path, value });
+    setContextMenu(null);
+  }, []);
 
-  const handleNewFolder = useCallback(
-    (parentPath: string) => {
-      const name = window.prompt(t("fileTree.contextMenu.newFolderName"));
-      if (name) runMkdir(`${parentPath}/${name}`);
-    },
-    [runMkdir, t],
-  );
+  const handleInputSubmit = useCallback(() => {
+    if (!inputDialog) return;
+    const value = inputDialog.value.trim();
+    const isBasename = inputDialog.kind !== "move";
+    const invalid = isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value);
+    if (invalid) {
+      setInputDialog((current) =>
+        current ? { ...current, error: t(`fileTree.dialog.${isBasename ? "invalidName" : "invalidPath"}`) } : null,
+      );
+      return;
+    }
+
+    if (inputDialog.kind === "rename") runRename(inputDialog.path, value);
+    else if (inputDialog.kind === "move") runMove(inputDialog.path, value);
+    else if (inputDialog.kind === "newFile") runNewFile(`${inputDialog.path}/${value}`);
+    else runMkdir(`${inputDialog.path}/${value}`);
+  }, [inputDialog, runMkdir, runMove, runNewFile, runRename, t]);
+
+  const dialogKind = inputDialog?.kind;
+  const dialogSubmitting = renaming || moving || makingFile || makingDirectory;
+  const dialogTitle = dialogKind ? t(`fileTree.dialog.${dialogKind}Title`) : "";
+  const dialogDescription = dialogKind ? t(`fileTree.dialog.${dialogKind}Description`) : "";
 
   return (
-    <FileTreeView
-      envId={envId}
-      loading={loading && treeDataRef.current.length === 0}
-      stale={stale}
-      uploading={uploading}
-      dragOver={dragOver}
-      searchQuery={searchQuery}
-      normalizedSearch={normalizedSearch}
-      treeVersion={treeVersion}
-      showTree={showTree}
-      hasSearchResults={hasSearchResults}
-      workspaceHasNodes={visibleSections.workspace.length > 0}
-      userHasNodes={visibleSections.user.length > 0}
-      expandedIds={normalizedSearch ? searchExpandedIds : [...expandedIdsRef.current]}
-      contextMenu={contextMenu}
-      deleteConfirm={deleteConfirm}
-      fileInputRef={fileInputRef}
-      folderInputRef={folderInputRef}
-      getWorkspaceChildren={getWorkspaceChildren}
-      getUserChildren={getUserChildren}
-      onSelect={handleSelect}
-      onToggle={handleToggle}
-      onSearchChange={setSearchQuery}
-      onRefresh={refreshTree}
-      onUploadClick={handleUploadClick}
-      onFolderUploadClick={handleFolderUploadClick}
-      onFileInputChange={handleFileInputChange}
-      onFolderInputChange={handleFolderInputChange}
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      onContextMenu={handleContextMenu}
-      isDirectory={isDirectory}
-      onOpen={onPreviewFile}
-      onReference={handleReference}
-      onDownload={handleDownload}
-      onRename={runRename}
-      onMove={runMove}
-      onDeleteRequest={(path, name) => {
-        setDeleteConfirm({ path, name });
-        setContextMenu(null);
-      }}
-      onNewFile={handleNewFile}
-      onNewFolder={handleNewFolder}
-      onCloseDelete={() => setDeleteConfirm(null)}
-      onConfirmDelete={() => deleteConfirm && runDelete(deleteConfirm.path)}
-    />
+    <>
+      <FileTreeView
+        envId={envId}
+        loading={loading && treeDataRef.current.length === 0}
+        stale={stale}
+        uploading={uploading}
+        dragOver={dragOver}
+        searchQuery={searchQuery}
+        normalizedSearch={normalizedSearch}
+        treeVersion={treeVersion}
+        showTree={showTree}
+        hasSearchResults={hasSearchResults}
+        workspaceHasNodes={visibleSections.workspace.length > 0}
+        userHasNodes={visibleSections.user.length > 0}
+        expandedIds={normalizedSearch ? searchExpandedIds : [...expandedIdsRef.current]}
+        contextMenu={contextMenu}
+        deleteConfirm={deleteConfirm}
+        fileInputRef={fileInputRef}
+        folderInputRef={folderInputRef}
+        getWorkspaceChildren={getWorkspaceChildren}
+        getUserChildren={getUserChildren}
+        onSelect={handleSelect}
+        onToggle={handleToggle}
+        onSearchChange={setSearchQuery}
+        onRefresh={refreshTree}
+        onUploadClick={handleUploadClick}
+        onFolderUploadClick={handleFolderUploadClick}
+        onFileInputChange={handleFileInputChange}
+        onFolderInputChange={handleFolderInputChange}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onContextMenu={handleContextMenu}
+        isDirectory={isDirectory}
+        onOpen={onPreviewFile}
+        onReference={handleReference}
+        onDownload={handleDownload}
+        onRenameRequest={(path, name) => openInputDialog("rename", path, name)}
+        onMoveRequest={(path) => openInputDialog("move", path, path)}
+        onDeleteRequest={(path, name) => {
+          setDeleteConfirm({ path, name });
+          setContextMenu(null);
+        }}
+        onNewFile={(path) => openInputDialog("newFile", path)}
+        onNewFolder={(path) => openInputDialog("newFolder", path)}
+        onCloseDelete={() => setDeleteConfirm(null)}
+        onConfirmDelete={() => deleteConfirm && runDelete(deleteConfirm.path)}
+      />
+      <FileTreeInputDialog
+        open={inputDialog !== null}
+        title={dialogTitle}
+        description={dialogDescription}
+        value={inputDialog?.value ?? ""}
+        error={inputDialog?.error}
+        submitting={dialogSubmitting}
+        confirmLabel={t("fileTree.dialog.confirm")}
+        cancelLabel={t("confirmDialog.cancel")}
+        onValueChange={(value) =>
+          setInputDialog((current) => (current ? { ...current, value, error: undefined } : null))
+        }
+        onOpenChange={(open) => !open && !dialogSubmitting && setInputDialog(null)}
+        onSubmit={handleInputSubmit}
+      />
+    </>
   );
 });

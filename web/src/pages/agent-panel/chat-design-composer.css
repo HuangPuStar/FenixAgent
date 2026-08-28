@@ -177,7 +177,7 @@
 }
 
 .chat-command-popover {
-  width: min(520px, calc(100vw - 32px));
+  width: min(680px, calc(100vw - 32px));
   overflow: hidden;
   border: 1px solid #e1e6ed;
   border-radius: 10px;
@@ -202,35 +202,36 @@
 .chat-command-menu--inline {
   position: absolute;
   z-index: 50;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
-  width: min(520px, 100%);
+  width: 100%;
 }
 
 .chat-command-menu-search {
   display: flex;
-  height: 42px;
+  height: 58px;
   align-items: center;
-  gap: 7px;
-  padding-inline: 10px;
-  border-bottom: 1px solid #edf0f4;
+  gap: 14px;
+  padding-inline: 14px;
+  border-bottom: 1px solid #e6ebf2;
 }
 
 .chat-command-menu-search > svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  color: #8b97a9;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: #8391a7;
 }
 
 .chat-command-menu-input {
-  height: 30px;
+  height: 44px;
   flex: 1;
   border: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: #f6f8fb;
-  padding-inline: 8px;
-  font-size: 12px;
+  padding-inline: 14px;
+  color: #33445f;
+  font-size: 16px;
   box-shadow: none;
 }
 
@@ -240,56 +241,58 @@
 }
 
 .chat-command-menu-scroll {
-  height: min(248px, 42vh);
+  height: min(360px, 48vh);
 }
 
 .chat-command-menu-list {
-  padding: 4px;
+  padding: 8px;
 }
 
 .chat-command-menu-item {
   display: grid;
   width: 100%;
-  min-height: 32px;
+  min-height: 44px;
   grid-template-columns: max-content minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
-  border-radius: 5px;
-  padding: 4px 7px;
+  gap: 12px;
+  border-radius: 7px;
+  padding: 8px 10px;
   color: #69768a;
   text-align: left;
 }
 
 .chat-command-menu-item:hover,
 .chat-command-menu-item.is-active {
-  background: #f2f5fa;
+  background: #f1f4fa;
   color: #34445f;
 }
 
 .chat-command-menu-name {
-  color: #3d6ebc;
-  font-size: 12px;
-  font-weight: 600;
+  color: #356bc4;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .chat-command-menu-description {
   overflow: hidden;
-  color: #8490a2;
-  font-size: 10.5px;
+  color: #8491a6;
+  font-size: 14px;
+  line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-command-menu-hint {
-  color: #9da6b4;
-  font-size: 9px;
+  color: #99a4b5;
+  font-size: 12px;
   font-style: italic;
 }
 
 .chat-command-menu-empty {
-  padding: 18px;
+  padding: 32px 18px;
   color: #8b97a9;
-  font-size: 11px;
+  font-size: 13px;
   text-align: center;
 }
 

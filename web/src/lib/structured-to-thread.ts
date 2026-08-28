@@ -17,7 +17,8 @@ import {
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
 import i18n from "i18next";
 import * as Y from "yjs";
-import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall } from "./todo";
+import { getTodoChanges, getTodosFromRawInput } from "./todo";
+import { classifyToolSemantic, semanticToToolCardKind } from "./tool-semantic";
 import type { AssistantChunk, ThreadEntry, TodoItem, ToolCallData, ToolCallStatus } from "./types";
 
 /**
@@ -123,7 +124,20 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
               options: [...m.permissionRequest.options],
             } as unknown as ToolCallData["permissionRequest"])
           : undefined;
-        const todos = isTodoWriteToolCall(m.title, m.rawInput) ? getTodosFromRawInput(m.rawInput) : null;
+        const display = m.display
+          ? {
+              type: m.display.type,
+              path: m.display.path,
+              lineStart: m.display.lineStart,
+              lineEnd: m.display.lineEnd,
+              totalLines: m.display.totalLines,
+              text: m.display.text,
+              truncated: m.display.truncated,
+            }
+          : undefined;
+        const semantic = classifyToolSemantic({ name: m.title, rawInput: m.rawInput, display });
+        const projectedSemantic = semantic === "todo" && !m.rawInput ? "other" : semantic;
+        const todos = projectedSemantic === "todo" ? getTodosFromRawInput(m.rawInput) : null;
         const todoChanges = todos ? getTodoChanges(previousTodos ?? [], todos) : undefined;
         if (todos) previousTodos = todos;
 
@@ -134,17 +148,9 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
           content: m.content as ToolCallData["content"],
           rawInput: m.rawInput,
           rawOutput: m.rawOutput,
-          display: m.display
-            ? {
-                type: m.display.type,
-                path: m.display.path,
-                lineStart: m.display.lineStart,
-                lineEnd: m.display.lineEnd,
-                totalLines: m.display.totalLines,
-                text: m.display.text,
-                truncated: m.display.truncated,
-              }
-            : undefined,
+          display,
+          semantic: projectedSemantic,
+          kind: semanticToToolCardKind(projectedSemantic),
           todoChanges,
           permissionRequest: permReq,
           isStandalonePermission: m.isStandalonePermission,

@@ -1,25 +1,6 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import {
-  BookOpen,
-  Braces,
-  Cpu,
-  Download,
-  ExternalLink,
-  File,
-  FileCode,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  Globe,
-  Layers,
-  Plus,
-  Presentation,
-  RefreshCw,
-  Scissors,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -50,7 +31,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/knowledge-bases";
@@ -71,27 +51,9 @@ import type {
   KnowledgeResourceInfo,
   UnassociatedKnowledgeBase,
 } from "../../../types/knowledge";
-
-function formatTimestamp(timestamp: number | null | undefined): string {
-  if (!timestamp) return "—";
-  return new Date(timestamp * 1000).toLocaleString();
-}
-
-/** 根据文件扩展名返回对应的 lucide 图标组件 */
-function getFileIcon(filename: string) {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext))
-    return <FileImage className="h-4 w-4 text-blue-500" />;
-  if (["pdf"].includes(ext)) return <FileText className="h-4 w-4 text-red-500" />;
-  if (["docx", "doc"].includes(ext)) return <FileText className="h-4 w-4 text-blue-600" />;
-  if (["xlsx", "xls", "csv"].includes(ext)) return <FileSpreadsheet className="h-4 w-4 text-green-600" />;
-  if (["pptx", "ppt"].includes(ext)) return <Presentation className="h-4 w-4 text-orange-500" />;
-  if (["md", "markdown", "txt", "json", "xml", "yaml", "yml", "log", "env"].includes(ext))
-    return <FileCode className="h-4 w-4 text-gray-500" />;
-  if (["html", "htm", "js", "ts", "tsx", "jsx", "css", "py", "go", "rs", "sh", "sql"].includes(ext))
-    return <FileCode className="h-4 w-4 text-purple-500" />;
-  return <File className="h-4 w-4 text-text-muted" />;
-}
+import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
+import { AgentKnowledgeResources } from "./agent-knowledge-resources";
+import "./agent-knowledge.css";
 
 /** 资源状态 → 语义色 badge 样式 */
 function getStatusBadge(status: string) {
@@ -123,38 +85,6 @@ function getStatusDot(status: string) {
     default:
       return "bg-slate-300";
   }
-}
-
-/**
- * 头像配色板：浅底 + 深字，适配浅色主题。
- * 不同知识库按名称 hash 分配稳定颜色，避免每次渲染抖动。
- */
-const AVATAR_COLORS = [
-  "bg-blue-50 text-blue-600",
-  "bg-emerald-50 text-emerald-600",
-  "bg-violet-50 text-violet-600",
-  "bg-amber-50 text-amber-600",
-  "bg-rose-50 text-rose-600",
-  "bg-cyan-50 text-cyan-600",
-  "bg-indigo-50 text-indigo-600",
-  "bg-orange-50 text-orange-600",
-];
-
-/** 根据名称稳定地取一个头像配色（bg + text 组合类名） */
-function pickAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
-}
-
-/** 取名称首字符作为头像文字（支持中英文，统一取第一个码点） */
-function getInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "?";
-  const first = Array.from(trimmed)[0] ?? "?";
-  return first.toUpperCase();
 }
 
 export function AgentKnowledgeBasesPage() {
@@ -590,80 +520,19 @@ export function AgentKnowledgeBasesPage() {
       <AgentMasterDetailWorkspace
         className="flex-1"
         index={
-          <aside className="px-[10px] py-[19px]">
-            <header className="flex items-center justify-between px-2 pb-[14px] text-[13px] font-semibold">
-              <strong>{t("directory.title")}</strong>
-              <span className="grid h-5 min-w-[22px] place-items-center rounded-[5px] bg-[#e9edf4] px-1 text-[11px] text-[#64748b]">
-                {items.length}
-              </span>
-            </header>
-            {loading ? (
-              <div className="space-y-2 px-2 py-2" role="status" aria-busy="true" aria-label={t("directory.loading")}>
-                <Skeleton className="h-[62px] w-full" />
-                <Skeleton className="h-[62px] w-full" />
-                <Skeleton className="h-[62px] w-full" />
-              </div>
-            ) : listError ? (
-              <div className="px-2 py-8 text-center text-[12px] text-[#64748b]" role="alert">
-                <p>{listError instanceof Error ? listError.message : t("loadError")}</p>
-                <Button className="mt-3" size="sm" variant="outline" onClick={refresh}>
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                  {t("actions.retry")}
-                </Button>
-              </div>
-            ) : items.length === 0 ? (
-              <div className="px-2 py-10 text-center text-[12px] text-[#94a3b8]">{t("emptyMessage")}</div>
-            ) : (
-              <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
-                {items.map((kb) => {
-                  const active = kb.id === kbId;
-                  const unavailable = kb.remoteExists === false;
-                  return (
-                    <div
-                      key={kb.id}
-                      className={`grid min-h-[62px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[7px] transition-colors ${
-                        active ? "bg-[#e8f0ff]" : "hover:bg-white"
-                      } ${unavailable ? "opacity-60" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        aria-current={active ? "page" : undefined}
-                        aria-disabled={unavailable}
-                        onClick={() => handleSelect(kb)}
-                        className="grid min-h-[62px] min-w-0 grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-[7px] p-2 text-left text-[#64748b]"
-                      >
-                        <span className="grid size-8 place-items-center rounded-lg bg-white shadow-sm">
-                          <BookOpen className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0">
-                          <strong className="block truncate text-[12px] text-[#334155]">{kb.name}</strong>
-                          <span className="mt-1 flex items-center gap-2 text-[10px]">
-                            <span className={`size-1.5 rounded-full ${getStatusDot(kb.status)}`} />
-                            <span>{t("card.resourcesUnit", { count: kb.resourcesCount })}</span>
-                          </span>
-                        </span>
-                      </button>
-                      {unavailable && canManage && (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="mr-1 size-8 text-red-500 hover:bg-red-50 hover:text-red-600"
-                          aria-label={t("btn.delete")}
-                          onClick={() => {
-                            setDeleteTarget(kb);
-                            setConfirmOpen(true);
-                          }}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </nav>
-            )}
-          </aside>
+          <AgentKnowledgeDirectory
+            items={items}
+            selectedId={kbId}
+            loading={loading}
+            error={listError}
+            canManage={canManage}
+            onRetry={refresh}
+            onSelect={handleSelect}
+            onDelete={(item) => {
+              setDeleteTarget(item);
+              setConfirmOpen(true);
+            }}
+          />
         }
       >
         {!kbId ? (
@@ -694,31 +563,6 @@ export function AgentKnowledgeBasesPage() {
         {/* ===== 详情视图 ===== */}
         {selectedDetail && (
           <div className="flex flex-col flex-1 min-h-0">
-            <div className="flex items-center justify-end border-b border-[#eef2f6] px-6 py-3">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!canManageDetail}
-                onClick={openEditDialog}
-                className="h-8 text-[12px] rounded-lg"
-              >
-                {t("btn.edit")}
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={!canManageDetail}
-                onClick={() => {
-                  const found = items.find((i) => i.id === kbId);
-                  setDeleteTarget(found ?? null);
-                  setConfirmOpen(true);
-                }}
-                className="h-8 text-[12px] rounded-lg"
-              >
-                {t("btn.delete")}
-              </Button>
-            </div>
-
             {/* 加载中 */}
             {detailLoading && (
               <div className="flex items-center justify-center h-64">
@@ -731,88 +575,90 @@ export function AgentKnowledgeBasesPage() {
 
             {!detailLoading && (
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                <div className="mx-auto flex min-h-full w-full max-w-[1480px] flex-col space-y-6 pb-6">
-                  {/* 详情头部卡片：头像 + 名称 + 元数据 + 配置 */}
-                  <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
-                    {/* 顶部渐变装饰条 */}
-                    <div className="h-1.5 w-full bg-gradient-to-r from-indigo-400 via-violet-400 to-purple-400" />
-                    <div className="p-7 relative">
-                      <div className="flex items-start gap-5">
-                        {/* 头像 */}
-                        <div
-                          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-[22px] font-bold bg-gradient-to-br ${pickAvatarColor(
-                            selectedDetail.name,
-                          ).replace(
-                            /bg-(\w+)-\d+ text-(\w+)-\d+/,
-                            "from-$1-100 to-$1-200 text-$2-600",
-                          )} shadow-sm ring-1 ring-black/5`}
-                        >
-                          {getInitial(selectedDetail.name)}
+                <div className="knowledge-detail">
+                  <section className="knowledge-detail-header">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`size-2 rounded-full ${getStatusDot(selectedDetail.status)}`} />
+                          <h2 className="truncate text-xl font-semibold text-[#17233a]">{selectedDetail.name}</h2>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getStatusBadge(selectedDetail.status)}`}
+                          >
+                            {t(`status.${selectedDetail.status}`, { defaultValue: selectedDetail.status })}
+                          </span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2.5">
-                            <h2 className="text-[22px] font-bold text-[#0f172a] truncate">{selectedDetail.name}</h2>
-                            <span
-                              className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusDot(selectedDetail.status)} ring-2 ring-white`}
-                            />
-                          </div>
-                          <p className="text-[12px] text-[#94a3b8] font-mono mt-0.5">{selectedDetail.slug}</p>
-                          {selectedDetail.description && (
-                            <p className="mt-3 text-[13px] text-[#475569] leading-relaxed max-w-[640px]">
-                              {selectedDetail.description}
-                            </p>
+                        <p className="mt-1 font-mono text-[11px] text-[#94a3b8]">{selectedDetail.slug}</p>
+                        {selectedDetail.description && (
+                          <p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#64748b]">
+                            {selectedDetail.description}
+                          </p>
+                        )}
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[#64748b]">
+                          <span className="inline-flex items-center gap-1.5">
+                            <File className="size-3.5" />
+                            {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
+                          </span>
+                          {selectedDetail.bindingsCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Braces className="size-3.5" />
+                              {t("detail.boundAgents", { count: selectedDetail.bindingsCount })}
+                            </span>
                           )}
-                          <div className="flex items-center gap-4 mt-4">
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase shadow-sm ${getStatusBadge(
-                                selectedDetail.status,
-                              )}`}
-                            >
-                              {t(`status.${selectedDetail.status}`, { defaultValue: selectedDetail.status })}
+                          {selectedDetail.remoteId && (
+                            <span className="inline-flex min-w-0 items-center gap-1.5 text-[#94a3b8]">
+                              <Globe className="size-3.5 shrink-0" />
+                              <span className="truncate">Remote ID: {selectedDetail.remoteId}</span>
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
-                              <File className="h-3.5 w-3.5" />
-                              {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
-                            </span>
-                            {selectedDetail.bindingsCount > 0 && (
-                              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#64748b] rounded-full bg-[#f1f5f9] px-3 py-1">
-                                <Braces className="h-3.5 w-3.5" />
-                                {t("detail.boundAgents", { count: selectedDetail.bindingsCount })}
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
-
-                      {/* 创建时选定的配置（只读展示） */}
-                      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5 border-t border-[#f0f3f8] pt-5">
-                        <ConfigItem
-                          icon={<Cpu className="h-4 w-4 text-[#6366f1]" />}
-                          label={t("detailConfig.embeddingModel")}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button size="sm" variant="outline" disabled={!canManageDetail} onClick={openEditDialog}>
+                          {t("btn.edit")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                          disabled={!canManageDetail}
+                          onClick={() => {
+                            const found = items.find((i) => i.id === kbId);
+                            setDeleteTarget(found ?? null);
+                            setConfirmOpen(true);
+                          }}
                         >
-                          {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
-                        </ConfigItem>
-                        <ConfigItem
-                          icon={<Layers className="h-4 w-4 text-violet-500" />}
-                          label={t("detailConfig.parseMethod")}
-                        >
-                          {parseMethodLabel(selectedDetail.parseMethod)}
-                        </ConfigItem>
-                        <ConfigItem
-                          icon={<Scissors className="h-4 w-4 text-emerald-500" />}
-                          label={t("detailConfig.chunkMethod")}
-                        >
-                          {chunkMethodLabel(selectedDetail.chunkMethod)}
-                        </ConfigItem>
+                          {t("btn.delete")}
+                        </Button>
                       </div>
                     </div>
-                  </div>
+                    <div className="knowledge-detail-summary">
+                      <ConfigItem
+                        icon={<Cpu className="size-4 text-[#4f7edb]" />}
+                        label={t("detailConfig.embeddingModel")}
+                      >
+                        {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
+                      </ConfigItem>
+                      <ConfigItem
+                        icon={<Layers className="size-4 text-[#6f72d9]" />}
+                        label={t("detailConfig.parseMethod")}
+                      >
+                        {parseMethodLabel(selectedDetail.parseMethod)}
+                      </ConfigItem>
+                      <ConfigItem
+                        icon={<Scissors className="size-4 text-[#23a67a]" />}
+                        label={t("detailConfig.chunkMethod")}
+                      >
+                        {chunkMethodLabel(selectedDetail.chunkMethod)}
+                      </ConfigItem>
+                    </div>
+                  </section>
 
                   {/* Tab 切换：文档 | 检索测试 */}
                   <Tabs
                     value={detailTab}
                     onValueChange={(v) => setDetailTab(v as "documents" | "graph" | "retrieval")}
-                    className="flex flex-col flex-1 min-h-0 space-y-4"
+                    className="knowledge-tabs"
                   >
                     <TabsList>
                       <TabsTrigger value="documents">{t("tabs.documents")}</TabsTrigger>
@@ -821,212 +667,50 @@ export function AgentKnowledgeBasesPage() {
                     </TabsList>
 
                     <TabsContent value="documents" className="flex flex-col flex-1 min-h-0 space-y-6">
-                      {/* 外部链接 */}
-                      {selectedDetail.remoteId && (
-                        <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 p-4">
-                          <div className="flex items-center gap-2 text-[12px] text-[#64748b]">
-                            <Globe className="h-3.5 w-3.5 text-[#6366f1]" />
-                            <span>Remote ID: {selectedDetail.remoteId}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 资源列表 — 表格形式 */}
-                      <div className="flex flex-col flex-1 min-h-0 rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
-                        {/* 表头工具栏 */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-[#eef2f6]">
-                          <h3 className="text-[14px] font-semibold text-[#0f172a]">
-                            {t("resources.title", { count: resources.length })}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              multiple
-                              onChange={(e) => {
-                                if (e.target.files && e.target.files.length > 0 && kbId) {
-                                  const filesArr = Array.from(e.target.files);
-                                  const formData = new FormData();
-                                  for (const file of filesArr) {
-                                    formData.append("files", file);
-                                  }
-                                  // 检查与现有资源的同名冲突
-                                  const existingNames = new Set(resources.map((r) => r.sourceName));
-                                  const dupNames = filesArr.map((f) => f.name).filter((n) => existingNames.has(n));
-                                  if (dupNames.length > 0) {
-                                    // 先存起来，弹窗确认后再上传
-                                    pendingOverwriteRef.current = { kbId: kbId, formData, dupNames };
-                                    setOverwriteConfirmOpen(true);
-                                    // 重置 input 值，否则第二次选同名文件不会触发 onChange
-                                    if (fileInputRef.current) fileInputRef.current.value = "";
-                                    return;
-                                  }
-                                  runUpload(kbId, formData);
-                                }
-                              }}
-                              className="hidden"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={uploading || !canManageDetail}
-                              onClick={() => fileInputRef.current?.click()}
-                              className="h-8 gap-1.5 text-[12px] rounded-lg border-[#e2e8f0] hover:border-[#6366f1] hover:text-[#6366f1] hover:bg-[#f0f4ff] transition-all duration-150"
-                            >
-                              <Upload className="h-3.5 w-3.5" />
-                              {uploading ? t("btn.uploading") : t("btn.upload")}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* 表头 */}
-                        <div className="flex items-center gap-3 border-b border-[#eef2f6] bg-[#f8fafc] px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#94a3b8]">
-                          <div className="flex-[2] min-w-0">{t("columns.name")}</div>
-                          <div className="w-[60px] shrink-0 text-center">{t("resources.colChunks")}</div>
-                          <div className="w-[100px] shrink-0">{t("resources.colStatus")}</div>
-                          <div className="w-[80px] shrink-0 text-center">{t("resources.colEnabled")}</div>
-                          <div className="w-[130px] shrink-0">{t("columns.updatedAt")}</div>
-                          <div className="w-[200px] shrink-0 text-right">{t("resources.colActions")}</div>
-                        </div>
-
-                        {/* 表格行 — 自动填充剩余空间并滚动 */}
-                        <div className="divide-y divide-[#f0f3f8] flex-1 overflow-y-auto">
-                          {resources.map((r) => (
-                            <div
-                              key={r.id}
-                              className="group flex items-center gap-3 px-6 py-3.5 hover:bg-[#fafbfd] transition-all duration-150 border-l-[3px] border-l-transparent hover:border-l-[#6366f1]"
-                            >
-                              {/* 文件名 + 方法标签 — 点击文件名进入切片详情 */}
-                              <div className="flex-[2] min-w-0 flex items-center gap-2.5">
-                                <span className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-[#f1f5f9] group-hover:bg-[#eef0ff] transition-colors">
-                                  {getFileIcon(r.sourceName)}
-                                </span>
-                                {r.chunkCount != null && r.chunkCount > 0 ? (
-                                  <button
-                                    type="button"
-                                    className="text-[13px] font-semibold text-[#0f172a] hover:text-[#6366f1] truncate transition-colors text-left"
-                                    onClick={() => setSelectedChunkResource(r)}
-                                  >
-                                    {r.sourceName}
-                                  </button>
-                                ) : (
-                                  <span className="text-[13px] font-semibold text-[#0f172a] truncate">
-                                    {r.sourceName}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* 分块数 */}
-                              <div className="w-[60px] shrink-0 text-center text-[12px] text-[#94a3b8]">
-                                {r.chunkCount != null ? r.chunkCount : "—"}
-                              </div>
-
-                              {/* 状态 */}
-                              <div className="w-[100px] shrink-0">
-                                {r.runStatus === "RUNNING" && r.parseProgress != null ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="flex-1 h-1.5 rounded-full bg-[#eef2f8] overflow-hidden">
-                                      <div
-                                        className="h-full rounded-full bg-gradient-to-r from-[#1677ff] to-[#6366f1] shadow-[0_0_6px_rgba(99,102,241,0.3)] transition-all duration-500"
-                                        style={{ width: `${Math.round(r.parseProgress * 100)}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-[10px] font-medium text-[#6366f1] shrink-0">
-                                      {Math.round(r.parseProgress * 100)}%
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusBadge(r.status)}`}
-                                  >
-                                    <span
-                                      className={`inline-block h-1.5 w-1.5 rounded-full ${getStatusDot(r.status)}`}
-                                    />
-                                    {r.status}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* 启用 */}
-                              <div className="w-[80px] shrink-0 flex justify-center">
-                                <Switch
-                                  checked={r.enabled ?? true}
-                                  disabled={!canManageDetail}
-                                  onCheckedChange={(checked) => {
-                                    kbApi
-                                      .toggleResourceEnabled({ kbId: kbId!, resourceId: r.id }, { enabled: checked })
-                                      .then(() => runLoadDetail(kbId!))
-                                      .catch((err) => {
-                                        toast.error(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
-                                        runLoadDetail(kbId!);
-                                      });
-                                  }}
-                                />
-                              </div>
-
-                              {/* 更新时间 */}
-                              <div className="w-[130px] shrink-0 text-[12px] text-[#94a3b8]">
-                                {formatTimestamp(r.createdAt)}
-                              </div>
-
-                              {/* 操作 */}
-                              <div className="w-[200px] shrink-0 flex items-center justify-end gap-2">
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  className="h-7 gap-1 rounded-md border-[#dbe1ea] px-2 text-[11px] text-[#1677ff] hover:border-[#1677ff] hover:bg-[#e8f4ff] shrink-0"
-                                  disabled={!canManageDetail || reparsingResourceId === r.id}
-                                  onClick={() => {
-                                    setReparseDeleteOld(false);
-                                    setReparseTarget(r);
-                                    setReparseConfirmOpen(true);
-                                  }}
-                                >
-                                  <RefreshCw
-                                    className={`h-3 w-3 ${reparsingResourceId === r.id ? "animate-spin" : ""}`}
-                                  />
-                                  {t("reparse.btn")}
-                                </Button>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {r.status === "ready" && (
-                                    <Button
-                                      size="xs"
-                                      variant="ghost"
-                                      className="h-7 w-7 p-0 text-[#94a3b8] hover:text-[#1677ff]"
-                                      title={t("preview.btn")}
-                                      onClick={() => setPreviewResource(r)}
-                                    >
-                                      <ExternalLink className="h-3.5 w-3.5" />
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    className="h-7 w-7 p-0 text-[#94a3b8] hover:text-red-500"
-                                    title={t("actions.delete")}
-                                    disabled={!canManageDetail || deletingResourceId === r.id}
-                                    onClick={() => {
-                                      setResourceDeleteTarget({ kbId: kbId!, resourceId: r.id, name: r.sourceName });
-                                      setResourceDeleteConfirmOpen(true);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-
-                          {resources.length === 0 && (
-                            <div className="flex flex-col items-center justify-center py-24 text-[#94a3b8] gap-5">
-                              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
-                                <File className="h-8 w-8 opacity-25" />
-                              </div>
-                              <p className="text-[14px] font-medium">{t("resources.empty")}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <AgentKnowledgeResources
+                        resources={resources}
+                        canManage={canManageDetail}
+                        uploading={uploading}
+                        deletingResourceId={deletingResourceId}
+                        reparsingResourceId={reparsingResourceId}
+                        fileInputRef={fileInputRef}
+                        onFilesSelected={(files) => {
+                          if (!kbId) return;
+                          const formData = new FormData();
+                          for (const file of files) formData.append("files", file);
+                          const existingNames = new Set(resources.map((resource) => resource.sourceName));
+                          const dupNames = files.map((file) => file.name).filter((name) => existingNames.has(name));
+                          if (dupNames.length > 0) {
+                            pendingOverwriteRef.current = { kbId, formData, dupNames };
+                            setOverwriteConfirmOpen(true);
+                            if (fileInputRef.current) fileInputRef.current.value = "";
+                            return;
+                          }
+                          runUpload(kbId, formData);
+                        }}
+                        onOpenChunks={setSelectedChunkResource}
+                        onToggleEnabled={(resource, enabled) => {
+                          if (!kbId) return;
+                          kbApi
+                            .toggleResourceEnabled({ kbId, resourceId: resource.id }, { enabled })
+                            .then(() => runLoadDetail(kbId))
+                            .catch((error) => {
+                              toast.error(`操作失败: ${error instanceof Error ? error.message : "未知错误"}`);
+                              runLoadDetail(kbId);
+                            });
+                        }}
+                        onReparse={(resource) => {
+                          setReparseDeleteOld(false);
+                          setReparseTarget(resource);
+                          setReparseConfirmOpen(true);
+                        }}
+                        onPreview={setPreviewResource}
+                        onDelete={(resource) => {
+                          if (!kbId) return;
+                          setResourceDeleteTarget({ kbId, resourceId: resource.id, name: resource.sourceName });
+                          setResourceDeleteConfirmOpen(true);
+                        }}
+                      />
                     </TabsContent>
 
                     <TabsContent value="graph" forceMount className="data-[state=inactive]:hidden">
@@ -1498,13 +1182,13 @@ export function AgentKnowledgeBasesPage() {
 /** 详情头部配置项：图标 + 标签 + 值 */
 function ConfigItem({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="mt-0.5 shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#f1f5f9] to-[#f8fafc] ring-1 ring-inset ring-[#e2e8f0]/60">
-        {icon}
-      </div>
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-[#f7f9fc] px-3 py-2.5">
+      <div className="grid size-8 shrink-0 place-items-center rounded-md border border-[#e2e8f0] bg-white">{icon}</div>
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.06em]">{label}</p>
-        <p className="mt-0.5 text-[13px] font-semibold text-[#0f172a] truncate">{children}</p>
+        <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#94a3b8]">{label}</div>
+        <div className="mt-0.5 truncate text-[12px] font-medium text-[#334155]" title={String(children)}>
+          {children}
+        </div>
       </div>
     </div>
   );

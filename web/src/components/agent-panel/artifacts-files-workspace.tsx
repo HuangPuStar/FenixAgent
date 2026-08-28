@@ -41,14 +41,6 @@ export function ArtifactsFilesWorkspace({
   const [fileTreeWidth, setFileTreeWidth] = useState(readFileTreeWidth);
   return (
     <>
-      <FileTabsBar
-        openFiles={openFiles}
-        activeFile={activeFile}
-        changedFiles={changedFiles}
-        onSelectFile={onSelectFile}
-        onCloseFile={onCloseFile}
-        onPreviewChangedFile={onOpenFile}
-      />
       <div className="flex-1 min-h-0 min-w-0">
         <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel
@@ -83,6 +75,14 @@ export function ArtifactsFilesWorkspace({
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+      <FileTabsBar
+        openFiles={openFiles}
+        activeFile={activeFile}
+        changedFiles={changedFiles}
+        onSelectFile={onSelectFile}
+        onCloseFile={onCloseFile}
+        onPreviewChangedFile={onOpenFile}
+      />
     </>
   );
 }

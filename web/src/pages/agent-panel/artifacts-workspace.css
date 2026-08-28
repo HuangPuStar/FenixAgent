@@ -307,22 +307,42 @@
   overflow: hidden;
 }
 
+.file-tree-sections-resizable {
+  min-height: 0;
+  flex: 1;
+}
+
 .file-tree-section {
   display: flex;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
 }
 
 .file-tree-section--workspace {
-  min-height: 112px;
-  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.file-tree-sections-divider {
+  height: 7px;
+  flex: 0 0 7px;
+  border-block: 1px solid transparent;
+  background: transparent;
+  cursor: row-resize;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.file-tree-sections-divider:hover,
+.file-tree-sections-divider:focus-visible,
+.file-tree-sections-divider[data-resize-handle-active] {
+  border-color: color-mix(in srgb, var(--color-brand) 35%, transparent);
+  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
 }
 
 .file-tree-section--user {
-  min-height: 68px;
-  max-height: 40%;
-  flex: 0 1 40%;
-  border-top: 1px solid var(--color-border-subtle);
+  min-height: 0;
 }
 
 .file-tree-section-scroll {

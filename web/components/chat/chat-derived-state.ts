@@ -1,5 +1,6 @@
 import type { PermissionRequest } from "@fenix/chat-channel";
-import { isTodoWriteToolCall, parseTodosFromRawInput } from "../../src/lib/todo";
+import { parseTodosFromRawInput } from "../../src/lib/todo";
+import { classifyToolSemantic } from "../../src/lib/tool-semantic";
 import type { PendingPermission, ThreadEntry } from "../../src/lib/types";
 
 /** 从当前消息投影读取最后一次 TodoWrite 的真实状态。 */
@@ -8,7 +9,7 @@ export function deriveTodoItems(entries: ThreadEntry[]) {
     const entry = entries[index];
     if (entry.type !== "tool_call") continue;
     const { toolCall } = entry;
-    if (isTodoWriteToolCall(toolCall.title, toolCall.rawInput) && toolCall.rawInput) {
+    if (toolCall.semantic === "todo" && toolCall.rawInput) {
       return parseTodosFromRawInput(toolCall.rawInput);
     }
   }
@@ -19,7 +20,10 @@ export function deriveTodoItems(entries: ThreadEntry[]) {
 export function derivePendingPermissions(permissions?: PermissionRequest[]): PendingPermission[] {
   if (!permissions) return [];
   return permissions
-    .filter((permission) => permission.status === "pending")
+    .filter(
+      (permission) =>
+        permission.status === "pending" && classifyToolSemantic({ name: permission.tool }) !== "ask-user-question",
+    )
     .map((permission) => ({
       requestId: permission.id,
       toolName: permission.tool,
