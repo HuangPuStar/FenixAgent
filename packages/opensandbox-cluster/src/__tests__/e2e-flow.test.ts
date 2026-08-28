@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
 import type { ClusterConfig } from "../types";
@@ -11,6 +12,13 @@ const config: ClusterConfig = {
   serverApiKeyEncryptionKey: new Uint8Array(32),
   proxyConnectTimeoutMs: 3000,
   proxyResponseTimeoutMs: 120000,
+  frpPluginPort: 8081,
+  frpPublicAddress: "cluster.example.com",
+  frpBindPort: 7000,
+  frpInternalUrl: "http://frps:7080",
+  frpToken: "shared-token",
+  frpConnectionStaleMs: 40000,
+  frpHealthIntervalMs: 30000,
 };
 
 function createMockServer(apiKey: string) {
@@ -42,7 +50,7 @@ describe("OpenSandbox Cluster end-to-end flow", () => {
   test("allocates, proxies lifecycle calls and releases explicitly", async () => {
     const nodeA = createMockServer("node-a-key");
     const nodeB = createMockServer("node-b-key");
-    const databasePath = `/tmp/opensandbox-cluster-e2e-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-e2e-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const auth = { Authorization: "Bearer cluster-key" };

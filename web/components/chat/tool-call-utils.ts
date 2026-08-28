@@ -95,6 +95,11 @@ export function cardKindToStyle(kind: ToolCardKind): CardStyle {
   return CARD_STYLES[kind] ?? CARD_STYLES.unknown;
 }
 
+/** 仅文件读写工具可在 ArtifactsPanel 中打开文件。 */
+export function supportsFilePreview(kind: ToolCardKind): boolean {
+  return kind === "read-file" || kind === "edit" || kind === "write";
+}
+
 // =============================================================================
 // 工具名称 — kind → 可读名
 // =============================================================================

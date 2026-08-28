@@ -38,6 +38,21 @@ export interface AcpConnectionEntry {
   remoteTransport?: RemoteTransport;
 }
 
+/**
+ * ACP 连接的只读快照：供 Observer 等只读消费者遍历活跃连接。
+ * 刻意不包含 ws/unsub/keepalive 等句柄字段，避免句柄外泄与生命周期干扰。
+ */
+export interface AcpConnectionSnapshot {
+  wsId: string;
+  userId: string;
+  agentId: string | null;
+  boundEnvId: string | null;
+  machineId: string | null;
+  isMachine: boolean;
+  openTime: number;
+  capabilities: Record<string, unknown> | null;
+}
+
 // ────────────────────────────────────────────
 // WS Session Cleanup
 // Extracted from: src/transport/ws-handler.ts
@@ -74,28 +89,6 @@ export interface InstanceSupplement {
   relayCount: number;
   /** 最后一次 relay 全部断开、实例进入空闲观察窗口的时间 */
   lastRelayDetachedAt: number | null;
-}
-
-// ────────────────────────────────────────────
-// Scheduler Job
-// Extracted from: src/services/scheduler.ts
-// ────────────────────────────────────────────
-
-/** Active scheduled job entry */
-export interface ScheduledJobEntry {
-  taskId: string;
-  job: import("node-schedule").Job;
-}
-
-// ────────────────────────────────────────────
-// Rate Limit
-// Extracted from: src/plugins/rate-limit.ts
-// ────────────────────────────────────────────
-
-/** Per-IP rate limit sliding window entry */
-export interface RateLimitEntry {
-  count: number;
-  resetAt: number;
 }
 
 // ────────────────────────────────────────────

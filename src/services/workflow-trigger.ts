@@ -184,5 +184,8 @@ async function triggerWorkflow(organizationId: string, workflowId: string, input
   });
   if (!yaml) throw new Error(`No YAML found for workflow ${workflowId} version ${version}`);
 
+  // C-P2.5：webhook 匿名触发无 HTTP 发起人（workflow_trigger 表无 userId 列），
+  // 不传 RunOptions.userId，由 agent-chat-transport 回退 "system" 配额桶。
+  // 有真实 userId 的入口（/web、/api 路由）均显式透传触发者身份。
   await engine.run(yaml, inputs);
 }

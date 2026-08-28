@@ -1,7 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { createCcbHandler } from "@fenix/ccb";
@@ -13,6 +11,7 @@ import { type AgentType, type EngineHandler, InstanceManager } from "./client/in
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import { extractModelState, extractModeState } from "./config-options-utils.js";
+import { createElicitationHandler, type ElicitationHandler } from "./elicitation.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -23,8 +22,10 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "./json-rpc.js";
+import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
+import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
 
 // ── WebSocket 抽象接口 ──────────────────────────────
@@ -56,6 +57,16 @@ function getAdapter(): AdapterFn {
 
 export { MAX_CLIENT_WS_PAYLOAD_BYTES } from "./ws-message.js";
 
+const TERMINAL_CLOSE_CODES = new Set<number>([
+  WEBSOCKET_CODES.UNAUTHORIZED.code,
+  WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code,
+]);
+
+/** server 主 machine 连接的终态关闭码；具体策略属于本使用方。 */
+export function isTerminalWebSocketCloseCode(code: number): boolean {
+  return TERMINAL_CLOSE_CODES.has(code);
+}
+
 export interface ServerConfig {
   port: number;
   host: string;
@@ -74,7 +85,7 @@ export interface ServerConfig {
   supportedEngineTypes?: { type: string; cliPath?: string }[];
   /** 用户指定的机器显示名称，可选 */
   name?: string;
-  /** 客户端指定的 machine id（可选），用于固定 machine 标识 */
+  /** 客户端指定的 machine ID，用于固定 machine 标识 */
   machineId?: string;
 }
 
@@ -95,6 +106,8 @@ interface ClientState {
   connection: acp.ClientSideConnection | null;
   sessionId: string | null;
   pendingPermissions: Map<string, PendingPermission>;
+  /** AskUserQuestion 提问处理器（interactive_question 帧发出/答案回传/超时/取消） */
+  elicitation: ElicitationHandler;
   agentCapabilities: AgentCapabilities | null;
   promptCapabilities: PromptCapabilities | null;
   modelState: SessionModelState | null;
@@ -122,36 +135,17 @@ function cancelPendingPermissions(clientState: ClientState): void {
   clientState.pendingPermissions.clear();
 }
 
-// ---------------------------------------------------------------------------
-// Node identity persistence: 持久化 machine_id 避免重复注册
-// ---------------------------------------------------------------------------
-
-const NODE_ID_FILENAME = ".acp-link-node-id";
-
-/** 从 cwd 加载持久化的 node_id（上次注册时服务器分配的 machine_id） */
-async function loadNodeId(cwd: string): Promise<string | null> {
-  try {
-    const id = (await readFile(join(cwd, NODE_ID_FILENAME), "utf-8")).trim();
-    return id || null;
-  } catch {
-    return null;
-  }
-}
-
-/** 将 node_id 持久化到 cwd，后续重连时携带以精确匹配已有 machine 记录 */
-async function saveNodeId(cwd: string, machineId: string): Promise<void> {
-  try {
-    await writeFile(join(cwd, NODE_ID_FILENAME), machineId, "utf-8");
-  } catch (err) {
-    console.error("[acp-client] Failed to persist node_id:", err);
-  }
+/** 将服务端 close reason 限制为单行诊断信息，避免日志注入和超长输出。 */
+function formatCloseReason(reason: unknown): string {
+  if (typeof reason !== "string" || reason.length === 0) return "(empty)";
+  return reason.replace(/[\r\n\t]/g, " ").slice(0, 300);
 }
 
 // ---------------------------------------------------------------------------
 // Registry helpers: build register message for RCS client mode
 // ---------------------------------------------------------------------------
 
-export function buildRegisterMessage(config: ServerConfig, nodeId?: string | null): object {
+export function buildRegisterMessage(config: ServerConfig): object {
   let ip = "127.0.0.1";
   let mac = "";
   try {
@@ -194,15 +188,8 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
     user_id: config.userId ?? null,
   };
 
-  // 携带持久化的 node_id，服务端据此精确匹配已有记录，避免重复注册
-  if (nodeId) {
-    msg.node_id = nodeId;
-  }
-
-  // 客户端指定的 machine id，用于固定机器标识
-  if (config.machineId) {
-    msg.machine_id = config.machineId;
-  }
+  // machine_id 是 ACP runtime 注册的唯一身份。
+  msg.machine_id = config.machineId;
 
   return msg;
 }
@@ -214,6 +201,9 @@ export function buildRegisterMessage(config: ServerConfig, nodeId?: string | nul
 export function createAcpClient(config: ServerConfig): { close: () => void } {
   if (!config.rcsUrl) {
     throw new Error("rcsUrl is required for client mode");
+  }
+  if (!config.machineId) {
+    throw new Error("machineId is required for client mode");
   }
 
   const cwd = config.cwd || process.cwd();
@@ -235,13 +225,18 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   let fileWsHeartbeat: ReturnType<typeof setInterval> | null = null;
   let fileWsReconnectAttempt = 0;
   let fileWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectFileWs: (() => void) | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempt = 0;
   const MAX_RECONNECT_MS = 30_000;
   const MAX_FILE_WS_RECONNECT_MS = 30_000;
   let manualClose = false;
-  // 持久化的 node_id，首次注册后由服务器分配，后续重连携带以精确匹配
-  let cachedNodeId: string | null = null;
+  // 实例 start 完成前到达的 connect 帧缓存（instId → payload）。
+  // relay 的 connect 帧只在实例 dispatcher 就绪后才会被消费；若在前端建连
+  // （spawn + connection.initialize 耗时秒级）期间到达，会被静默丢弃，
+  // 导致 status（含 capabilities）永不发送、前端能力信息缺失（"not supported"）。
+  // start 成功后补发缓存帧，保证能力信息最终到达前端。
+  const pendingConnects = new Map<string, unknown>();
 
   function setupSessionCallbacks(): void {
     sessionMgr.on("session_data", (sessionId: string, payload: unknown) => {
@@ -283,11 +278,13 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   function connect(): void {
     if (manualClose) return;
+    const connectionStartedAt = Date.now();
+    let registered = false;
     ws = new WebSocket(url);
 
     ws.onopen = () => {
       reconnectAttempt = 0;
-      ws!.send(JSON.stringify(buildRegisterMessage(config, cachedNodeId)));
+      ws!.send(JSON.stringify(buildRegisterMessage(config)));
 
       // 重连后：为所有存活的子进程发送 session_resumed
       for (const sessionId of sessionMgr.getAliveSessionIds()) {
@@ -305,12 +302,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
           case "registered": {
+            registered = true;
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
-            // 持久化服务器分配的 machine_id 作为 node_id，后续重连精确匹配
-            if (msg.machine_id && msg.machine_id !== cachedNodeId) {
-              cachedNodeId = msg.machine_id;
-              saveNodeId(cwd, msg.machine_id).catch(() => {});
-            }
             heartbeatTimer = setInterval(() => {
               if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: "heartbeat" }));
@@ -342,19 +335,34 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               fileWsHeartbeat = null;
             }
             const fileWsUrl = `${config.rcsUrl}/acp/file-ws?secret=${encodeURIComponent(config.rcsSecret ?? "")}`;
+            const scheduleFileWsReconnect = () => {
+              if (manualClose || fileWsReconnectTimer) return;
+              fileWsReconnectAttempt++;
+              const rawDelay = Math.min(1000 * 2 ** (fileWsReconnectAttempt - 1), MAX_FILE_WS_RECONNECT_MS);
+              // Full jitter: randomize between 50%–100% of raw delay
+              const delay = Math.round(rawDelay * (0.5 + Math.random() * 0.5));
+              console.log(
+                `[acp-client] file-ws disconnected, reconnecting in ${delay}ms (attempt ${fileWsReconnectAttempt})`,
+              );
+              fileWsReconnectTimer = setTimeout(connectFileWs, delay);
+            };
             const connectFileWs = () => {
               fileWsReconnectTimer = null;
               if (manualClose) return;
+              let nextFileWs: WebSocket;
               try {
-                fileWs = new WebSocket(fileWsUrl);
+                nextFileWs = new WebSocket(fileWsUrl);
               } catch (err) {
                 console.error("[acp-client] Failed to create file-ws:", err);
+                scheduleFileWsReconnect();
                 return;
               }
-              fileWs.onopen = () => {
+              fileWs = nextFileWs;
+              nextFileWs.onopen = () => {
+                if (fileWs !== nextFileWs) return;
                 console.log("[acp-client] file-ws connected, registering...");
-                if (fileWs && fileWs.readyState === 1) {
-                  fileWs.send(
+                if (nextFileWs.readyState === 1) {
+                  nextFileWs.send(
                     JSON.stringify({
                       type: "register",
                       machine_id: msg.machine_id,
@@ -362,8 +370,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   );
                 }
                 fileWsHeartbeat = setInterval(() => {
-                  if (fileWs && fileWs.readyState === 1) {
-                    fileWs.send(
+                  if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
+                    nextFileWs.send(
                       JSON.stringify({
                         type: "keep_alive",
                       }),
@@ -371,40 +379,66 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   }
                 }, 30000);
               };
-              fileWs.onmessage = async (event) => {
+              nextFileWs.onmessage = async (event) => {
+                if (fileWs !== nextFileWs) return;
                 try {
                   const fmsg = JSON.parse(event.data as string);
                   if (fmsg.type === "file_op") {
                     const result = await handleFileOp(fmsg);
-                    if (fileWs && fileWs.readyState === 1) {
-                      fileWs.send(JSON.stringify(result));
+                    if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
+                      nextFileWs.send(JSON.stringify(result));
                     }
                   }
                 } catch {
                   // ignore
                 }
               };
-              fileWs.onclose = () => {
+              nextFileWs.onclose = () => {
+                if (fileWs !== nextFileWs) return;
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
                 }
                 fileWs = null;
-                if (!manualClose) {
-                  fileWsReconnectAttempt++;
-                  const rawDelay = Math.min(1000 * 2 ** (fileWsReconnectAttempt - 1), MAX_FILE_WS_RECONNECT_MS);
-                  // Full jitter: randomize between 50%–100% of raw delay
-                  const delay = Math.round(rawDelay * (0.5 + Math.random() * 0.5));
-                  console.log(
-                    `[acp-client] file-ws disconnected, reconnecting in ${delay}ms (attempt ${fileWsReconnectAttempt})`,
-                  );
-                  fileWsReconnectTimer = setTimeout(connectFileWs, delay);
-                }
+                scheduleFileWsReconnect();
               };
-              fileWs.onerror = () => {
-                // onclose will handle
+              nextFileWs.onerror = () => {
+                if (fileWs !== nextFileWs) return;
+                if (fileWsHeartbeat) {
+                  clearInterval(fileWsHeartbeat);
+                  fileWsHeartbeat = null;
+                }
+                // Node.js WebSocket 在连接不上服务端时可能只触发 error，不触发 close。
+                // 该 socket 已不可再用，先解除引用，让 chat relay 恢复能立即触发重建。
+                fileWs = null;
+                // scheduleFileWsReconnect 会合并 error/close，避免同一断连重复连接。
+                scheduleFileWsReconnect();
               };
             };
+            const reconnectFileWsNow = () => {
+              if (manualClose) return;
+              if (fileWsReconnectTimer) {
+                clearTimeout(fileWsReconnectTimer);
+                fileWsReconnectTimer = null;
+              }
+              if (fileWsHeartbeat) {
+                clearInterval(fileWsHeartbeat);
+                fileWsHeartbeat = null;
+              }
+              if (fileWs) {
+                fileWs.onclose = null;
+                fileWs.onerror = null;
+                try {
+                  fileWs.close();
+                } catch {
+                  /* ignore */
+                }
+                fileWs = null;
+              }
+              fileWsReconnectAttempt = 0;
+              connectFileWs();
+            };
+            reconnectFileWs = reconnectFileWsNow;
             connectFileWs();
             break;
           }
@@ -562,6 +596,30 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   capabilities: result.capabilities,
                 }),
               );
+              // 补发 start 完成前缓存的 connect 帧：dispatcher 此刻已就绪，
+              // 重放后回传 status（含 capabilities），避免前端能力信息永久缺失。
+              const pendingConnect = pendingConnects.get(instId);
+              if (pendingConnect) {
+                pendingConnects.delete(instId);
+                const dispatcher = instanceMgr.getDispatcher(instId);
+                if (dispatcher) {
+                  // 缓存的 connect 同样代表 chat relay 已恢复；与即时帧保持一致，
+                  // 在交给 dispatcher 前唤醒 file-ws 的重建。
+                  reconnectFileWs?.();
+                  try {
+                    await dispatcher.handleMessage(pendingConnect);
+                  } catch (err) {
+                    ws!.send(
+                      JSON.stringify({
+                        type: "relay",
+                        instance_id: instId,
+                        session_id: instanceMgr.getSessionId(instId) ?? instId,
+                        payload: createErrorResponse(null, -32603, (err as Error).message),
+                      }),
+                    );
+                  }
+                }
+              }
             } catch (err) {
               ws!.send(
                 JSON.stringify({
@@ -604,6 +662,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload;
+            // relay connect 是 chat 链已在同一 runtime 恢复的权威信号。若 file-ws
+            // 曾在 sandbox 重启窗口遗失，则立即重建，避免等待最长 30s 的退避周期。
+            if ((relayPayload as { type?: string })?.type === "connect") {
+              reconnectFileWs?.();
+            }
             // 回写前端 session_id 到实例 state，使 relaySend 回传时使用正确的会话标识
             if (sessId) {
               instanceMgr.setSessionId(instId, sessId);
@@ -623,6 +686,11 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                     }),
                   );
                 }
+              } else if ((relayPayload as { type?: string })?.type === "connect") {
+                // dispatcher 尚未就绪（实例仍在 start：spawn 子进程 + initialize 握手）：
+                // connect 帧必须先缓存，start 完成后补发，否则 status 永不发送。
+                // 仅缓存 connect（幂等握手），其余消息在 dispatcher 就绪前没有消费者，直接忽略。
+                pendingConnects.set(instId, relayPayload);
               }
             } else {
               sessionMgr.sendData(sessId, relayPayload);
@@ -668,12 +736,18 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
       if (manualClose) return;
 
+      const lifetimeMs = Date.now() - connectionStartedAt;
+      const closeCode = typeof event.code === "number" ? event.code : "unknown";
+      const closeReason = formatCloseReason(event.reason);
+      console.warn(
+        `[acp-client] main-ws closed machineId=${config.machineId} code=${closeCode} reason=${closeReason} registered=${registered} lifetimeMs=${lifetimeMs}`,
+      );
+
       // 提供有意义的断连原因提示
-      if (event.code === 4003) {
+      if (isTerminalWebSocketCloseCode(event.code)) {
         reconnectScheduler.cancel();
-        console.error(
-          `[acp-client] 认证失败: ${event.reason || "secret 不匹配"}，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致`,
-        );
+        const reason = event.reason ? ` reason=${event.reason}` : "";
+        console.error(`${getWebSocketCodeMessage(event.code)}${reason}`);
         manualClose = true;
         return;
       }
@@ -682,6 +756,10 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     };
 
     ws.onerror = () => {
+      const lifetimeMs = Date.now() - connectionStartedAt;
+      console.warn(
+        `[acp-client] main-ws error machineId=${config.machineId} registered=${registered} lifetimeMs=${lifetimeMs}; awaiting close event for code/reason`,
+      );
       // Node.js WebSocket 在连接不上服务端时可能只触发 error，不触发 close。
       // 因此 error 也必须进入重连调度，否则服务端重启后 Runtime 会永久离线。
       scheduleReconnect("error");
@@ -699,15 +777,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
     console.log(`[acp-client] disconnected (${reason}), reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
   }
 
-  // 先加载持久化的 node_id，完成后建立连接（确保首次注册即带上 node_id）
-  loadNodeId(cwd)
-    .then((id) => {
-      cachedNodeId = id;
-      if (!manualClose) connect();
-    })
-    .catch(() => {
-      if (!manualClose) connect();
-    });
+  connect();
 
   return {
     close: () => {
@@ -802,6 +872,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         return { outcome };
       },
 
+      // AskUserQuestion：委托公共 elicitation handler（解析 schema、发帧、
+      // 60s 超时空答案、control_response 回传均在其中，见 elicitation.ts）
+      unstable_createElicitation: (params) => clientState.elicitation.handle(params),
+
       async sessionUpdate(params) {
         sendMsg(ws, createNotification(ACP_METHOD.SESSION_UPDATE, params));
       },
@@ -812,6 +886,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       async writeTextFile(_params) {
         return {};
+      },
+
+      // SDK 扩展 notification 入口：把 peri/* 通知经现有 WS 帧转发到 relay
+      // （同一 NDJSON/WS 输入流，不创建第二套连接），只放行已知两个 method
+      extNotification: async (method: string, params: Record<string, unknown>) => {
+        if (isPeriTaskNotificationMethod(method)) {
+          console.log(`[acp-link] forwarding Peri notification: method=${method}`);
+          sendMsg(ws, createNotification(method, params));
+        }
       },
     };
   }
@@ -935,6 +1018,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     // Kill existing process if any (only if not healthy)
     if (state.process) {
       cancelPendingPermissions(state);
+      state.elicitation.cancelAll();
       state.process.kill();
       state.process = null;
       state.connection = null;
@@ -969,11 +1053,18 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       state.connection = connection;
 
+      const periMeta = buildPeriCapabilityMeta();
       const initResult = await connection.initialize({
         protocolVersion: acp.PROTOCOL_VERSION,
         clientInfo: { name: "zed", version: "1.0.0" },
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
+          // 声明支持 form 模式 elicitation（AskUserQuestion）：ACP 要求 client 在
+          // initialize 时声明 elicitation capability，agent 才会发送 elicitation/create；
+          // 工厂已实现 unstable_createElicitation（缺失 handler 时声明会导致 -32601）
+          elicitation: { form: {} },
+          // Peri Task View capability（_meta.peri.*，见 peri-task-capability.ts）
+          ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
         },
       });
 
@@ -989,6 +1080,10 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `sessionList=${!!state.agentCapabilities?.sessionCapabilities?.list}`,
         `sessionResume=${!!state.agentCapabilities?.sessionCapabilities?.resume}`,
         `hasMcp=${!!state.agentCapabilities?.mcpCapabilities}`,
+        // 本机已声明 elicitation.form capability：agent 可发送 elicitation/create
+        `elicitationForm=true`,
+        `periAgentEvent=${periMeta["peri.agentEvent"] === true}`,
+        `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
       );
 
       sendMsg(ws, {
@@ -1208,14 +1303,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         .filter((c) => c.type === "text")
         .map((c) => (c as { text: string }).text)
         .join(" ");
+      // 优先按请求携带的 sessionId 路由（并发 run 各自会话）；
+      // yjs 前端 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话，保持向后兼容
+      const promptSessionId = (params.sessionId as string | undefined) ?? state.sessionId;
       console.log("[acp-server] prompt:", {
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         id,
         text: promptText.slice(0, 200),
         blocks: content.length,
       });
       const result = await state.connection.prompt({
-        sessionId: state.sessionId,
+        sessionId: promptSessionId,
         prompt: content as acp.ContentBlock[],
       });
 
@@ -1251,6 +1349,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
     console.log("cancel requested, sessionId:", state.sessionId);
     cancelPendingPermissions(state);
+    state.elicitation.cancelAll();
 
     try {
       await state.connection.cancel({ sessionId: state.sessionId });
@@ -1345,12 +1444,26 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         case "ping":
           sendMsg(ws, { type: "pong" });
           break;
+        case "control_response": {
+          // AskUserQuestion 答案回传（translator 构造的传输帧，非 JSON-RPC）：
+          // request_id = questionId，extra.answers = 选中选项 label 数组（按问题顺序）。
+          // 与 acp-dispatcher.ts:194 handleTransportMessage 消费形态对齐。
+          const state = clients.get(ws);
+          if (state) {
+            const requestId = (msg.request_id as string) ?? "";
+            if (!state.elicitation.resolve(requestId, (msg.extra ?? {}) as Record<string, unknown>)) {
+              console.warn("question response for unknown request:", requestId);
+            }
+          }
+          break;
+        }
         case "cancel_pending_permissions": {
           // 前端 relay 断连时，主服务通过 relay handle 发送此消息，
           // 通知 acp-link server 立即取消所有待决权限请求，避免 agent 等待 30s 超时。
           const state = clients.get(ws);
           if (state) {
             cancelPendingPermissions(state);
+            state.elicitation.cancelAll();
           }
           break;
         }
@@ -1426,6 +1539,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         connection: null,
         sessionId: null,
         pendingPermissions: new Map(),
+        elicitation: createElicitationHandler((payload) => sendMsg(ws, { type: "interactive_question", payload })),
         agentCapabilities: null,
         promptCapabilities: null,
         modelState: null,
@@ -1456,6 +1570,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const state = clients.get(ws);
       if (state) {
         cancelPendingPermissions(state);
+        state.elicitation.cancelAll();
       }
       handleDisconnect(ws);
       clients.delete(ws);
@@ -1496,6 +1611,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       }
       for (const [, cs] of clients) {
         cancelPendingPermissions(cs);
+        cs.elicitation.cancelAll();
         if (cs.process) cs.process.kill();
       }
       clients.clear();

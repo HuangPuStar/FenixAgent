@@ -12,6 +12,7 @@ import {
   isTransportMessage,
   type JsonRpcRequest,
 } from "../json-rpc.js";
+import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
@@ -97,6 +98,16 @@ export class SessionManager {
         this.currentAcpSessionId = null;
       });
 
+      // agent 可执行文件缺失等 spawn 失败场景必须捕获，否则未监听的 error 事件会崩溃整个进程
+      // biome-ignore lint/suspicious/noExplicitAny: 同上，Bun.ChildProcessByStdio 需 cast 监听 error
+      (proc as any).on("error", (err: Error) => {
+        console.error("[session-manager] spawn failed:", err.message);
+        this.sharedProc = null;
+        this.sharedConnection = null;
+        this.initPromise = null;
+        this.currentAcpSessionId = null;
+      });
+
       const input = Writable.toWeb(proc.stdin!) as unknown as WritableStream<Uint8Array>;
       const output = Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
       const stream = acp.ndJsonStream(input, output);
@@ -111,14 +122,26 @@ export class SessionManager {
           },
           readTextFile: async (_p) => ({ content: "" }),
           writeTextFile: async (_p) => ({}),
+          // SDK 扩展 notification 入口：把 peri/* 通知经 session_data 包裹转发到
+          // 现有 relay（extractJsonRpc 兼容包裹格式），不创建第二套 JSON-RPC 栈
+          extNotification: async (method: string, params: Record<string, unknown>) => {
+            if (this.activeRelayId && isPeriTaskNotificationMethod(method)) {
+              this.emit(this.activeRelayId, "session_data", createNotification(method, params));
+            }
+          },
         }),
         stream,
       );
 
+      const periMeta = buildPeriCapabilityMeta();
       const initResult = await connection.initialize({
         protocolVersion: acp.PROTOCOL_VERSION,
         clientInfo: { name: "rcs-relay", version: "1.0.0" },
-        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          // Peri Task View capability（_meta.peri.*，默认关闭，见 peri-task-capability.ts）
+          ...(Object.keys(periMeta).length > 0 ? { _meta: periMeta } : {}),
+        },
       });
       this.initPromise = Promise.resolve();
 
@@ -132,6 +155,27 @@ export class SessionManager {
       console.error("[session-manager] startSession failed:", err);
       this.initPromise = null;
       return "error";
+    }
+  }
+
+  private async emitSessionList(sessionId: string): Promise<void> {
+    try {
+      const r = await this.sharedConnection!.listSessions({});
+      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
+      const withOverrides = r.sessions.map((s) => {
+        const override = this.titleOverrides.get(s.sessionId);
+        return override !== undefined ? { ...s, title: override } : s;
+      });
+      // 过滤掉标题为空或以 "New session" 开头的会话
+      const filtered = {
+        ...r,
+        sessions: withOverrides.filter(
+          (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
+        ),
+      };
+      this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
+    } catch (err) {
+      this.emit(sessionId, "session_error", String(err));
     }
   }
 
@@ -266,27 +310,7 @@ export class SessionManager {
           }
           break;
         case "list_sessions":
-          try {
-            const r = await this.sharedConnection.listSessions({});
-            // 应用本地标题覆盖（agent 可能不支持 session_info_update）
-            const withOverrides = r.sessions.map((s) => {
-              const override = this.titleOverrides.get(s.sessionId);
-              if (override !== undefined) {
-                return { ...s, title: override };
-              }
-              return s;
-            });
-            // 过滤掉标题为空或以 "New session" 开头的会话
-            const filtered = {
-              ...r,
-              sessions: withOverrides.filter(
-                (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
-              ),
-            };
-            this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
-          } catch (err) {
-            this.emit(sessionId, "session_error", String(err));
-          }
+          await this.emitSessionList(sessionId);
           break;
         case "load_session":
           try {
@@ -314,6 +338,8 @@ export class SessionManager {
               type: "session_deleted",
               payload: { sessionId: targetSid },
             });
+            // 删除成功后立即刷新 session/list，让前端历史列表无需等待轮询
+            await this.emitSessionList(sessionId);
           } catch (err) {
             console.error("[session-manager] deleteSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));
@@ -342,6 +368,9 @@ export class SessionManager {
               type: "session_renamed",
               payload: { sessionId: targetSid, title },
             });
+            // 重命名成功后立即刷新 session/list，让历史列表立刻显示最新标题。
+            // titleOverrides 已先写入，可覆盖 Agent 列表响应中的旧标题。
+            await this.emitSessionList(sessionId);
           } catch (err) {
             console.error("[session-manager] renameSession failed:", String(err));
             this.emit(sessionId, "session_error", String(err));

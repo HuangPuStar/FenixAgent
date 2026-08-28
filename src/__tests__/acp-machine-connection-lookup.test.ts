@@ -159,6 +159,7 @@ describe("handleAcpWsMessage — session 消息转发", () => {
 });
 
 describe("handleRegister 走 machine 路径", () => {
+  // 注册消息携带 machine_id 时应触发 machine 注册流程。
   test("register 消息触发 handleMachineRegister 流程", async () => {
     const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
 
@@ -168,6 +169,7 @@ describe("handleRegister 走 machine 路径", () => {
     await handleAcpWsMessage(ws, "ws_reg", {
       type: "register",
       agent_name: "test-agent",
+      machine_id: "mach_test_001",
     });
 
     // 注册成功后会发送 registered 消息
@@ -176,6 +178,84 @@ describe("handleRegister 走 machine 路径", () => {
     const lastMsg = JSON.parse(msgs[msgs.length - 1]);
     expect(lastMsg.type).toBe("registered");
     expect(lastMsg.machine_id).toBe("mach_test_001");
+  });
+
+  // 同一 machine 已有在线连接时，第二个连接必须收到明确错误并以终态关闭码断开。
+  test("重复 machine 连接被拒绝且不替换已有连接", async () => {
+    stubRegistry({
+      registerMachine: async ({ machineId }: { machineId: string }) => ({ id: machineId, isNew: true }),
+    });
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+
+    const firstWs = createMockWs();
+    handleAcpWsOpen(firstWs, "ws_duplicate_first", "user_reg", null, true);
+    await handleAcpWsMessage(firstWs, "ws_duplicate_first", {
+      type: "register",
+      agent_name: "test-agent",
+      machine_id: "mach_duplicate_001",
+    });
+
+    const secondWs = createMockWs();
+    handleAcpWsOpen(secondWs, "ws_duplicate_second", "user_reg", null, true);
+    await handleAcpWsMessage(secondWs, "ws_duplicate_second", {
+      type: "register",
+      agent_name: "test-agent",
+      machine_id: "mach_duplicate_001",
+    });
+
+    const messages = (secondWs as WsConnection & { _messages: string[] })._messages;
+    expect(JSON.parse(messages.at(-1) ?? "{}")).toMatchObject({
+      type: "error",
+      code: "MACHINE_ALREADY_CONNECTED",
+    });
+    expect(secondWs.close).toHaveBeenCalledWith(4503, "machine_already_connected");
+    expect(firstWs.close).not.toHaveBeenCalled();
+  });
+
+  // 两个新连接同时注册时，数据库 await 期间也必须由 pending 占位保证只有一个继续注册。
+  test("并发 machine 注册在数据库完成前拒绝第二个连接", async () => {
+    let resolveRegistration: ((result: { id: string; isNew: boolean }) => void) | undefined;
+    stubRegistry({
+      registerMachine: ({ machineId }: { machineId: string }) =>
+        new Promise((resolve) => {
+          resolveRegistration = (result) => resolve(result ?? { id: machineId, isNew: true });
+        }),
+    });
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+
+    const firstWs = createMockWs();
+    handleAcpWsOpen(firstWs, "ws_pending_first", "user_reg", null, true);
+    const firstRegistration = handleAcpWsMessage(firstWs, "ws_pending_first", {
+      type: "register",
+      machine_id: "mach_pending_001",
+    });
+    await Promise.resolve();
+
+    const secondWs = createMockWs();
+    handleAcpWsOpen(secondWs, "ws_pending_second", "user_reg", null, true);
+    await handleAcpWsMessage(secondWs, "ws_pending_second", {
+      type: "register",
+      machine_id: "mach_pending_001",
+    });
+
+    expect(secondWs.close).toHaveBeenCalledWith(4503, "machine_already_connected");
+    resolveRegistration?.({ id: "mach_pending_001", isNew: true });
+    await firstRegistration;
+  });
+
+  // 缺少 machine_id 时不得回退到历史 node_id。
+  test("缺少 machine_id 时关闭连接", async () => {
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+
+    const ws = createMockWs();
+    handleAcpWsOpen(ws, "ws_missing_machine", "user_reg", null, true);
+
+    await handleAcpWsMessage(ws, "ws_missing_machine", {
+      type: "register",
+      agent_name: "test-agent",
+    });
+
+    expect(ws.close).toHaveBeenCalledWith(4004, "machine_id is required");
   });
 });
 

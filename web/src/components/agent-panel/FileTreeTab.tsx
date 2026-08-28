@@ -1,5 +1,15 @@
 import { useRequest } from "ahooks";
-import { Download, Folder, FolderInput, FolderOpen, FolderTree, RefreshCw, Trash2, Upload } from "lucide-react";
+import {
+  Download,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  FolderTree,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,9 +17,10 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NodeState, TreeNodeData } from "@/components/ui/tree";
 import { Tree } from "@/components/ui/tree";
-import { fsApi } from "@/src/api/fs";
-import { ApiError, unwrap } from "@/src/api/request";
+import { buildUploadUrl, fsApi, MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
+import { ApiError, UPLOAD_TIMEOUT_MS, unwrap } from "@/src/api/request";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
+import { randomUUID } from "@/src/lib/utils";
 import { NS } from "../../i18n";
 import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 
@@ -72,6 +83,16 @@ function parsedToTreeNodeData(node: ParsedNode): TreeNodeData {
   };
 }
 
+/**
+ * 额外传递原始文件名，兼容 Bun multipart 解析器丢失 0 字节文件名的情况。
+ */
+function appendUploadFileNames(formData: FormData, files: File[]): void {
+  formData.append("fileNames", JSON.stringify(files.map((file) => file.name)));
+}
+
+/** 上传大小上限的展示文案（由 MAX_UPLOAD_SIZE_BYTES 派生，避免与硬编码漂移） */
+const MAX_SIZE_LABEL = `${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB`;
+
 /** 工具栏按钮：点击后压制 tooltip，鼠标真正离开再重新进入后才恢复 */
 function ToolbarTip({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -120,22 +141,28 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // 加载失败时保留旧树并展示过期横幅（文件服务不可用 ≠ 空目录，docs/arch/12-files.md §7.3）
+  const [stale, setStale] = useState(false);
+
+  // 用最新树数据替换当前树：加载/重校验共用，成功后同时清除过期横幅
+  const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>) => {
+    // 按文件修改时间倒序排列（最新上传的在前）
+    const sorted = [...paths].sort((a, b) => (mtimes?.[b] ?? 0) - (mtimes?.[a] ?? 0));
+    treeDataRef.current = parsePathsToTree(sorted);
+    setStale(false);
+    setTreeVersion((v) => v + 1);
+  }, []);
 
   // ── 文件树加载 ──
   const { loading, refresh: refreshTree } = useRequest(() => unwrap(fsApi.tree(envId!)), {
     ready: !!envId,
     onSuccess: (data) => {
-      const paths = data?.paths ?? [];
-      const mtimes = data?.mtimes ?? {};
-      // 按文件修改时间倒序排列（最新上传的在前）
-      const sorted = [...paths].sort((a, b) => (mtimes[b] ?? 0) - (mtimes[a] ?? 0));
-      treeDataRef.current = parsePathsToTree(sorted);
-      setTreeVersion((v) => v + 1);
+      applyTree(data?.paths ?? [], data?.mtimes);
     },
     onError: (err) => {
       console.error("Failed to load file tree:", err);
-      treeDataRef.current = [];
-      setTreeVersion((v) => v + 1);
+      // 失败不清空旧树：断连/降级期间继续展示上次数据 + 过期横幅，禁止渲染为空目录
+      setStale(true);
     },
   });
 
@@ -168,7 +195,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     {
       manual: true,
       onSuccess: () => refreshTree(),
-      onError: (err) => console.error("Rename failed:", err),
+      onError: (err) => {
+        console.error("Rename failed:", err);
+        toast.error(err.message || t("fileTree.renameFailed"));
+      },
     },
   );
 
@@ -194,14 +224,20 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const { run: runMkdir } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
     manual: true,
     onSuccess: () => refreshTree(),
-    onError: (err) => console.error("Mkdir failed:", err),
+    onError: (err) => {
+      console.error("Mkdir failed:", err);
+      toast.error(err.message || t("fileTree.mkdirFailed"));
+    },
   });
 
   // ── 创建新文件 ──
   const { run: runNewFile } = useRequest((path: string) => unwrap(fsApi.writeFile(envId!, path, "")), {
     manual: true,
     onSuccess: () => refreshTree(),
-    onError: (err) => console.error("New file failed:", err),
+    onError: (err) => {
+      console.error("New file failed:", err);
+      toast.error(err.message || t("fileTree.newFileFailed"));
+    },
   });
 
   useImperativeHandle(
@@ -211,14 +247,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         if (!envId || files.length === 0) return;
 
         // 客户端补齐总上传量校验（外部直接调 ref 方法时也需要）
-        const maxSize = 100 * 1024 * 1024;
         const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-        if (totalSize > maxSize) {
+        if (totalSize > MAX_UPLOAD_SIZE_BYTES) {
           const sizeStr =
             totalSize > 1024 * 1024 * 1024
               ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
               : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-          toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+          toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: MAX_SIZE_LABEL }));
           return;
         }
 
@@ -227,10 +262,15 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         for (const file of files) {
           formData.append("files", file);
         }
+        appendUploadFileNames(formData, files);
 
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const url = targetDir ? `/web/environments/${envId}/fs/${targetDir}` : `/web/environments/${envId}/fs`;
+          // 未选中目录（targetDir 为空）时上传到 workspace 根：必须保留尾斜杠（/fs/），
+          // 否则 Elysia splat 路由不匹配空段返回 404；与 fsApi.upload 共用同一拼装逻辑
+          const url = buildUploadUrl(envId, targetDir);
+          // 写操作幂等契约的 HTTP 载体：每次上传生成一个 opId，超时/断网后调用方重发可被服务端去重
+          const opId = randomUUID();
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable && onProgress) {
@@ -247,8 +287,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           };
 
           xhr.onerror = () => reject(new Error("Upload network error"));
+          // 超时与后端 upload 120s 对齐：慢网络不提前掐断（docs/arch/12-files.md §10 P1-12 D19）
+          xhr.timeout = UPLOAD_TIMEOUT_MS;
+          xhr.ontimeout = () => reject(new Error("Upload timeout"));
           xhr.open("POST", url);
           xhr.withCredentials = true;
+          xhr.setRequestHeader("x-file-op-id", opId);
           xhr.send(formData);
         });
 
@@ -257,6 +301,140 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     }),
     [envId, selectedDir, refreshTree, t],
   );
+
+  // ── 过期重校验与变更订阅（docs/arch/12-files.md §4.1/§4.3）──
+  // 可见性恢复 / invalidate_all / 订阅重连成功时，带 If-None-Match（上次 ETag）重拉；
+  // 304 表示无变化，不重挂树。request() 不透传响应头，故此处用原生 fetch（与下载同模式），
+  // ETag 从重校验响应头累积（W13' 服务端 ETag 上线前恒为 200，自动退化为无条件重拉）。
+  const etagRef = useRef<string | null>(null);
+  const revalidateTimerRef = useRef<number | null>(null);
+  const lastRevalidateAtRef = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const shouldReconnectRef = useRef(false);
+
+  // 带 If-None-Match 的树重校验：200 全量替换并更新 ETag，304 跳过，失败保留旧树 + 过期横幅
+  const revalidateTree = useCallback(async () => {
+    if (!envId) return;
+    // 消费者侧 coalescing：同一环境 30s 窗口内多次失效帧合并为一次重拉（§4.3）
+    const now = Date.now();
+    if (now - lastRevalidateAtRef.current < 30_000) return;
+    lastRevalidateAtRef.current = now;
+    try {
+      const headers: Record<string, string> = {};
+      if (etagRef.current) headers["If-None-Match"] = etagRef.current;
+      const res = await fetch(`/web/environments/${encodeURIComponent(envId)}/fs/tree`, {
+        credentials: "include",
+        headers,
+      });
+      if (res.status === 304) return;
+      if (!res.ok) throw new Error(`Tree revalidate failed: ${res.status}`);
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: { paths?: string[]; mtimes?: Record<string, number> };
+      };
+      if (json.success === false) throw new Error("Tree revalidate rejected");
+      etagRef.current = res.headers.get("etag");
+      applyTree(json.data?.paths ?? [], json.data?.mtimes);
+    } catch (err) {
+      // 重校验失败 = 文件服务不可用：保留旧树并展示过期横幅
+      console.error("Failed to revalidate file tree:", err);
+      setStale(true);
+    }
+  }, [envId, applyTree]);
+
+  // 防抖调度：file_changed 按 500ms 合并；invalidate_all / 可见性恢复立即触发（coalescing 兜底）
+  const scheduleRevalidate = useCallback(
+    (debounceMs: number) => {
+      if (revalidateTimerRef.current !== null) window.clearTimeout(revalidateTimerRef.current);
+      revalidateTimerRef.current = window.setTimeout(() => {
+        revalidateTimerRef.current = null;
+        void revalidateTree();
+      }, debounceMs);
+    },
+    [revalidateTree],
+  );
+
+  // 建立 /web/file-events 订阅（W4b 端点），断开后指数退避自动重连（3s 起，封顶 30s）
+  const connectFileEvents = useCallback(() => {
+    if (!envId) return;
+    shouldReconnectRef.current = true;
+    const existing = wsRef.current;
+    if (existing && existing.readyState === WebSocket.OPEN) return;
+    if (existing) existing.close();
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    let url = `${protocol}//${window.location.host}/web/file-events`;
+    const activeOrgId = localStorage.getItem("active_org_id");
+    if (activeOrgId) url += `?active_org_id=${encodeURIComponent(activeOrgId)}`;
+
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "subscribe", environments: [envId] }));
+      // 订阅重连成功：断连窗口内的变更未知，强制带 If-None-Match 重校验（§4.1 无订阅窗口上界）
+      void revalidateTree();
+    };
+    ws.onmessage = (e) => {
+      let frame: { type?: string; environment_id?: string };
+      try {
+        frame = JSON.parse(String(e.data)) as { type?: string; environment_id?: string };
+      } catch (err) {
+        // 非 JSON 帧按协议外输入忽略，保留解析错误便于诊断
+        console.error("Invalid file-events frame:", err);
+        return;
+      }
+      if (frame.environment_id !== envId) return;
+      if (frame.type === "invalidate_all") {
+        scheduleRevalidate(0);
+      } else if (frame.type === "file_changed" || frame.type === "file_changed_batch") {
+        // 目录粒度局部更新为可选增强；此处统一 500ms 防抖重拉，304 时几乎免费
+        scheduleRevalidate(500);
+      }
+    };
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return; // 已被新连接或卸载主动替换，不再重连
+      wsRef.current = null;
+      if (!shouldReconnectRef.current) return;
+      const delay = Math.min(3_000 * 2 ** reconnectAttemptRef.current, 30_000);
+      reconnectAttemptRef.current++;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connectFileEvents();
+      }, delay);
+    };
+  }, [envId, revalidateTree, scheduleRevalidate]);
+
+  // envId 变化或组件卸载：重建订阅连接（卸载时禁止重连并清理定时器）
+  useEffect(() => {
+    if (!envId) return;
+    connectFileEvents();
+    return () => {
+      shouldReconnectRef.current = false;
+      reconnectAttemptRef.current = 0;
+      if (wsRef.current) wsRef.current.close();
+      wsRef.current = null;
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      if (revalidateTimerRef.current !== null) window.clearTimeout(revalidateTimerRef.current);
+      revalidateTimerRef.current = null;
+    };
+  }, [envId, connectFileEvents]);
+
+  // 页面恢复可见：强制重校验；订阅断开则先重连（重连成功会触发重校验）
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (wsRef.current) {
+        scheduleRevalidate(0);
+      } else {
+        connectFileEvents();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [scheduleRevalidate, connectFileEvents]);
 
   // 从缓存的 ParsedNode 树中查找指定路径的子节点
   const findChildren = useCallback((parentPath: string | null): ParsedNode[] => {
@@ -379,10 +557,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       if (files.length === 0) return;
 
       // 客户端提前校验
-      const maxSize = 100 * 1024 * 1024;
+      const maxSize = MAX_UPLOAD_SIZE_BYTES;
       for (const file of files) {
         if (file.size > maxSize) {
-          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: MAX_SIZE_LABEL }));
           return;
         }
       }
@@ -394,7 +572,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           totalSize > 1024 * 1024 * 1024
             ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
             : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: MAX_SIZE_LABEL }));
         return;
       }
 
@@ -402,6 +580,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       runUpload(formData, selectedDir);
     },
     [envId, runUpload, selectedDir, t],
@@ -426,10 +605,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
-      const maxSize = 100 * 1024 * 1024;
+      const maxSize = MAX_UPLOAD_SIZE_BYTES;
       for (const file of files) {
         if (file.size > maxSize) {
-          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: MAX_SIZE_LABEL }));
           if (fileInputRef.current) fileInputRef.current.value = "";
           return;
         }
@@ -442,7 +621,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           totalSize > 1024 * 1024 * 1024
             ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
             : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: MAX_SIZE_LABEL }));
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
@@ -451,6 +630,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       runUpload(formData, selectedDir);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
@@ -466,10 +646,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       const files = Array.from(e.target.files);
 
       // 客户端提前校验单文件大小
-      const maxSize = 100 * 1024 * 1024;
+      const maxSize = MAX_UPLOAD_SIZE_BYTES;
       for (const file of files) {
         if (file.size > maxSize) {
-          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: "100MB" }));
+          toast.error(t("filePicker.fileTooLarge", { name: file.name, max: MAX_SIZE_LABEL }));
           if (folderInputRef.current) folderInputRef.current.value = "";
           return;
         }
@@ -482,7 +662,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
           totalSize > 1024 * 1024 * 1024
             ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB`
             : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: "100MB" }));
+        toast.error(t("filePicker.totalTooLarge", { total: sizeStr, max: MAX_SIZE_LABEL }));
         if (folderInputRef.current) folderInputRef.current.value = "";
         return;
       }
@@ -493,6 +673,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       for (const file of files) {
         formData.append("files", file);
       }
+      appendUploadFileNames(formData, files);
       formData.append("relativePaths", JSON.stringify(relativePaths));
       runUpload(formData, selectedDir);
       if (folderInputRef.current) folderInputRef.current.value = "";
@@ -520,7 +701,27 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) {
-          throw new Error(`Download failed: ${res.status}`);
+          let errorMessage: string | undefined;
+          try {
+            const payload: unknown = await res.clone().json();
+            if (typeof payload === "object" && payload !== null && "error" in payload) {
+              const error = payload.error;
+              if (typeof error === "string") {
+                errorMessage = error;
+              } else if (
+                typeof error === "object" &&
+                error !== null &&
+                "message" in error &&
+                typeof error.message === "string"
+              ) {
+                errorMessage = error.message;
+              }
+            }
+          } catch {
+            // 非 JSON 响应没有结构化错误信息，继续使用状态码提示。
+          }
+
+          throw new Error(errorMessage || `Download failed: ${res.status}`);
         }
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
@@ -531,8 +732,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
-      } catch {
-        toast.error(t("fileTree.downloadFailed"));
+      } catch (error) {
+        toast.error(error instanceof Error && error.message ? error.message : t("fileTree.downloadFailed"));
       }
     },
     [envId, t],
@@ -615,6 +816,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   }, []);
 
   const isEmpty = !loading && treeDataRef.current.length === 0;
+  // 服务不可用（stale）时始终渲染树区域（旧树或空白 + 横幅），不落入"空目录"空态误导
+  const showTree = !!envId && !(isEmpty && !stale);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
@@ -669,6 +872,17 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         </div>
       </div>
 
+      {/* 加载失败/服务不可用：保留旧树并显示过期横幅，禁止把失败渲染为空目录 */}
+      {stale && (
+        <div
+          role="status"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs text-amber-600 bg-amber-500/10 border-b border-amber-500/20 flex-shrink-0"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>{t("fileTree.staleBanner")}</span>
+        </div>
+      )}
+
       {/* 文件树 */}
       <div
         className="flex-1 overflow-auto relative"
@@ -685,13 +899,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
             </span>
           </div>
         )}
-        {!envId || isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
-            <Folder className="h-8 w-8 text-text-muted/40" />
-            <p className="text-sm text-text-muted">{t("fileTree.emptyState")}</p>
-            <p className="text-xs text-text-muted/60 text-center max-w-[200px]">{t("fileTree.emptyHint")}</p>
-          </div>
-        ) : (
+        {showTree ? (
           <Tree
             key={treeVersion}
             getChildren={getChildren}
@@ -701,6 +909,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
             renderActions={renderActions}
             renderLabel={renderLabel}
           />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
+            <Folder className="h-8 w-8 text-text-muted/40" />
+            <p className="text-sm text-text-muted">{t("fileTree.emptyState")}</p>
+            <p className="text-xs text-text-muted/60 text-center max-w-[200px]">{t("fileTree.emptyHint")}</p>
+          </div>
         )}
       </div>
 

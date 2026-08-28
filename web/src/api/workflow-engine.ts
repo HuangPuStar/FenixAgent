@@ -90,7 +90,8 @@ export interface DAGRunResult {
   runId: string;
   status: DAGStatus;
   summary: RunSummary;
-  spawnedEnvIds?: string[];
+  /** 本次运行期间实际拉起的实例 ID 列表（复用实例不计入） */
+  spawnedInstanceIds?: string[];
 }
 
 export interface PendingApproval {

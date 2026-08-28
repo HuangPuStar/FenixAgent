@@ -72,7 +72,7 @@ describe("readNarrator", () => {
   });
 
   // 基本场景：从 file_path 提取文件名作为 object
-  test("提取文件名（file_path）", () => {
+  test("提取文件路径（file_path）", () => {
     const { object, detail } = readNarrator.getDisplay(makeCtx({ file_path: "/a/b/c.ts" }));
     expect(object).toBe("c.ts");
     expect(detail).toBeUndefined();
@@ -124,7 +124,7 @@ describe("readNarrator", () => {
     expect(detail).toBe("3 个条目");
   });
 
-  // opencode 文件读取场景（<type>file</type>）：object 提取文件名，无条目数 detail
+  // opencode 文件读取场景（<type>file</type>）：object 显示文件名，无条目数 detail
   test("文件场景（<type>file</type>）显示文件名且无条目数 detail", () => {
     const tool = {
       ...makeCtx({ filePath: "/workspaces/env_xxx/foo.ts" }, OPENCODE_FILE_OUTPUT, "read-file").tool,

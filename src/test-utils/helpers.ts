@@ -15,6 +15,13 @@ export function resetAllStubs() {
   resetSystemApiStubs();
 }
 
+/** 以运行时 JSON 值读取路由响应，避免测试被路由声明中的窄响应类型限制。 */
+type ResponseJson = ReturnType<typeof JSON.parse>;
+
+export async function readJson(response: Response): Promise<ResponseJson> {
+  return response.json();
+}
+
 export {
   getApiKeyServiceStub,
   getAuthApiStub,
@@ -36,6 +43,7 @@ export {
   stubEnvironmentRepo,
   stubEnvironmentService,
   stubEnvironmentWeb,
+  stubFileWsHandler,
   stubInstance,
   stubKnowledgeBaseService,
   stubLaunchSpecBuilder,

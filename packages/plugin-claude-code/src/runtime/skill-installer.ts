@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { SkillConfig } from "@fenix/plugin-sdk";
@@ -19,21 +19,22 @@ async function defaultExtractArchive(archivePath: string, targetDir: string): Pr
   await execFileAsync("unzip", ["-oq", archivePath, "-d", targetDir]);
 }
 
-/**
- * 清空 workspace 中已安装的所有 skill 目录，prepare 阶段再按当前 launchSpec 全量重建。
- */
-async function clearInstalledSkills(skillsDir: string): Promise<void> {
-  const entries = await readdir(skillsDir, { withFileTypes: true });
-
-  await Promise.all(
-    entries.map(async (entry) => {
-      await rm(join(skillsDir, entry.name), { recursive: true, force: true });
-    }),
-  );
+async function replaceInstalledSkills(skillsDir: string, stagedSkillsDir: string): Promise<void> {
+  const backupDir = `${skillsDir}.backup-${randomUUID()}`;
+  await rename(skillsDir, backupDir);
+  try {
+    await rename(stagedSkillsDir, skillsDir);
+    await rm(backupDir, { recursive: true, force: true });
+  } catch (error) {
+    await rm(skillsDir, { recursive: true, force: true });
+    await rename(backupDir, skillsDir).catch(() => {});
+    throw error;
+  }
 }
 
 /**
  * 下载并安装 launchSpec 中声明的 skills 到 .claude/skills/ 目录。
+ * 所有归档先在临时目录完成解压，再整体替换线上目录；下载或解压失败时保留旧 Skills。
  */
 export async function installSkills(
   workspace: string,
@@ -41,30 +42,37 @@ export async function installSkills(
   dependencies: SkillInstallerDependencies = {},
 ): Promise<InstalledSkillReference[]> {
   const { skillsDir } = await ensureWorkspaceRuntimeDirs(workspace);
-  await clearInstalledSkills(skillsDir);
-
-  if (skills.length === 0) {
-    console.log(`[claude-code-skill-installer] 无 skills 需要安装, workspace=${workspace}`);
-    return [];
-  }
-
   const fetchImpl = dependencies.fetch ?? fetch;
   const extractArchive = dependencies.extractArchive ?? defaultExtractArchive;
+  // 暂存目录必须与 .claude/skills 同属 workspace 文件系统，目录替换才能安全使用 rename。
+  const tempRoot = await mkdtemp(join(dirname(skillsDir), ".claude-code-skills-"));
+  const stagedSkillsDir = join(tempRoot, "skills");
+  await mkdir(stagedSkillsDir, { recursive: true });
+
+  if (skills.length === 0) {
+    try {
+      await replaceInstalledSkills(skillsDir, stagedSkillsDir);
+      console.log(`[claude-code-skill-installer] 无 skills 需要安装, workspace=${workspace}`);
+      return [];
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  }
+
   console.log(
     `[claude-code-skill-installer] 开始安装 ${skills.length} 个 skills: workspace=${workspace}, skillsDir=${skillsDir}`,
   );
-  const tempRoot = await mkdtemp(join(tmpdir(), "claude-code-skills-"));
 
   try {
     const installed: InstalledSkillReference[] = [];
 
     for (const skill of skills) {
       const archivePath = join(tempRoot, `${skill.name}.zip`);
-      const targetDir = join(skillsDir, skill.name);
+      const stagedTargetDir = join(stagedSkillsDir, skill.name);
+      const installedTargetDir = join(skillsDir, skill.name);
 
       console.log(`[claude-code-skill-installer] 下载 skill "${skill.name}"`);
-      await rm(targetDir, { recursive: true, force: true });
-      await mkdir(targetDir, { recursive: true });
+      await mkdir(stagedTargetDir, { recursive: true });
       await mkdir(dirname(archivePath), { recursive: true });
 
       const response = await fetchImpl(skill.url);
@@ -78,15 +86,16 @@ export async function installSkills(
       const archiveBuffer = Buffer.from(await response.arrayBuffer());
       console.log(`[claude-code-skill-installer] 下载 skill "${skill.name}" 成功: 大小=${archiveBuffer.length} bytes`);
       await writeFile(archivePath, archiveBuffer);
-      await extractArchive(archivePath, targetDir);
-      console.log(`[claude-code-skill-installer] 解压 skill "${skill.name}" 完成: targetDir=${targetDir}`);
+      await extractArchive(archivePath, stagedTargetDir);
+      console.log(`[claude-code-skill-installer] 解压 skill "${skill.name}" 完成: targetDir=${installedTargetDir}`);
 
       installed.push({
         name: skill.name,
-        path: targetDir,
+        path: installedTargetDir,
       });
     }
 
+    await replaceInstalledSkills(skillsDir, stagedSkillsDir);
     console.log(`[claude-code-skill-installer] 全部 skills 安装完成: 共 ${installed.length} 个`);
     return installed;
   } finally {

@@ -1,6 +1,6 @@
 services:
   opensandbox-cluster:
-    image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.1.0
+    image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.2.0
     ports:
       - "${OPENSANDBOX_CLUSTER_PORT:-8080}:8080"
     environment:
@@ -11,14 +11,34 @@ services:
       SERVER_API_KEY_ENCRYPTION_KEY: ${SERVER_API_KEY_ENCRYPTION_KEY:?SERVER_API_KEY_ENCRYPTION_KEY is required}
       PROXY_CONNECT_TIMEOUT_MS: ${PROXY_CONNECT_TIMEOUT_MS:-3000}
       PROXY_RESPONSE_TIMEOUT_MS: ${PROXY_RESPONSE_TIMEOUT_MS:-120000}
+      FRP_PUBLIC_ADDRESS: ${FRP_PUBLIC_ADDRESS:?FRP_PUBLIC_ADDRESS is required}
+      FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
+      FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN is required}
     volumes:
       - ./opensandbox-cluster-data:/data
     networks:
       - opensandbox
     restart: unless-stopped
 
+  frps:
+    image: ghcr.io/fatedier/frps:v0.69.0
+    command: ["-c", "/etc/frp/frps.toml"]
+    ports:
+      - "${FRP_BIND_PORT:-7000}:7000"
+    expose:
+      - "7080"
+    environment:
+      FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN is required}
+    volumes:
+      - ../frps.toml:/etc/frp/frps.toml:ro
+    depends_on:
+      - opensandbox-cluster
+    networks:
+      - opensandbox
+    restart: unless-stopped
+
   opensandbox-server:
-    image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.1.0
+    image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.2.0
     command:
       - opensandbox-server
       - --config

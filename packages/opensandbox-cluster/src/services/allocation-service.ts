@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import type { ClusterDatabase } from "../db/client";
-import { opensandboxServer, sandboxBinding, sandboxPool } from "../db/schema";
+import { opensandboxServer, opensandboxTunnelConnection, sandboxPool } from "../db/schema";
 import { BindingRepository } from "../repositories/binding-repository";
+import type { ClusterConfig } from "../types";
 import { SchedulerLock } from "./scheduler-lock";
 
 export class AllocationError extends Error {
@@ -16,6 +17,7 @@ export class AllocationService {
   constructor(
     private readonly db: ClusterDatabase,
     sqlite: Database,
+    private readonly config?: ClusterConfig,
   ) {
     this.bindings = new BindingRepository(db);
     this.lock = new SchedulerLock(sqlite);
@@ -31,12 +33,29 @@ export class AllocationService {
 
       if (!this.db.select().from(sandboxPool).where(eq(sandboxPool.id, poolId)).get())
         throw new Error("pool not found");
+      const connections = new Map(
+        this.db
+          .select()
+          .from(opensandboxTunnelConnection)
+          .all()
+          .map((connection) => [connection.serverId, connection]),
+      );
+      const now = Date.now();
       const servers = this.db
         .select()
         .from(opensandboxServer)
         .where(eq(opensandboxServer.poolId, poolId))
         .all()
-        .filter((server) => server.status === "active" && server.healthStatus === "healthy")
+        .filter((server) => {
+          if (server.status !== "active") return false;
+          if (server.transportMode === "direct") return server.healthStatus === "healthy";
+          const connection = connections.get(server.id);
+          return (
+            connection?.status === "connected" &&
+            connection.healthStatus === "healthy" &&
+            connection.lastSeenAt >= now - (this.config?.frpConnectionStaleMs ?? 40000)
+          );
+        })
         .map((server) => ({ server, current: this.bindings.countByServer(server.id) }))
         .filter(({ server, current }) => current < server.maxSandboxes)
         .sort((left, right) => left.current / left.server.maxSandboxes - right.current / right.server.maxSandboxes);

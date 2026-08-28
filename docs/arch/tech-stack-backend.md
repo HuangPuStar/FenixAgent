@@ -80,7 +80,7 @@ better-auth 是认证的唯一实现，提供用户登录/注册、组织多租�
 ## 5. 实时通信：WebSocket + ACP 协议
 
 - **ACP WS Handler**：远端 machine 注册入口，NDJSON 协议
-- **Relay**：前端与 Agent 进程之间的消息中继，详见 [Agent 接口文档](./05-chat.md)
+- **YJS WS Handler**：前端与 Agent 进程之间的 CRDT 增量同步单通道（`/acp/yjs`），详见 [YJS 流式链路](./19-yjs-chat-streaming.md)
 - **EventBus**：per-session 隔离，支持 SSE `last-event-id` 断点续传
 
 **空闲回收**：通过空闲超时控制 relay 断开后的实例回收窗口，超时阈值和扫描周期可通过环境变量配置。

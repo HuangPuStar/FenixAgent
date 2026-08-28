@@ -4,7 +4,11 @@ import { EnginePluginRegistry } from "../registry/engine-plugin-registry";
 import { createInstanceOrchestrator } from "../runtime/instance-orchestrator";
 import { createRuntimeInstanceStore, type RuntimeInstanceStore } from "../runtime/runtime-instance-store";
 import type { CoreNode, CoreNodeStatus, CreateCoreNodeInput } from "../types/core-node";
-import type { ConnectInstanceRelayRequest, LaunchInstanceRequest } from "../types/launch-request";
+import type {
+  ConnectInstanceRelayRequest,
+  LaunchInstanceRequest,
+  RefreshInstanceEnvironmentRequest,
+} from "../types/launch-request";
 import type { RuntimeInstanceSnapshot } from "../types/runtime-instance";
 
 /**
@@ -17,6 +21,8 @@ export interface CoreRuntimeFacade {
   registerNode(node: CreateCoreNodeInput): CoreNode;
   /** 启动一个实例直到进入 `running`。 */
   launchInstance(request: LaunchInstanceRequest): Promise<RuntimeInstanceSnapshot>;
+  /** 在不重启实例的前提下刷新 workspace 环境。 */
+  refreshInstanceEnvironment(request: RefreshInstanceEnvironmentRequest): Promise<RuntimeInstanceSnapshot>;
   /** 为实例建立或复用 relay 连接。 */
   connectInstanceRelay(request: ConnectInstanceRelayRequest): Promise<EngineRelayHandle>;
   /** 停止指定实例。 */
@@ -102,6 +108,10 @@ export function createCoreRuntime(options?: CreateCoreRuntimeOptions): CoreRunti
     /** 委托 orchestrator 执行完整启动链路。 */
     launchInstance(request) {
       return orchestrator.launch(request);
+    },
+    /** 委托 orchestrator 刷新运行实例的 workspace 环境。 */
+    refreshInstanceEnvironment(request) {
+      return orchestrator.refreshEnvironment(request);
     },
     /** 委托 orchestrator 建立或复用 relay。 */
     connectInstanceRelay(request) {

@@ -28,5 +28,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     serverApiKeyEncryptionKey: keyBytes,
     proxyConnectTimeoutMs: positiveInt(env.PROXY_CONNECT_TIMEOUT_MS, 3000, "PROXY_CONNECT_TIMEOUT_MS"),
     proxyResponseTimeoutMs: positiveInt(env.PROXY_RESPONSE_TIMEOUT_MS, 120000, "PROXY_RESPONSE_TIMEOUT_MS"),
+    frpPluginPort: positiveInt(env.FRP_PLUGIN_PORT, 8081, "FRP_PLUGIN_PORT"),
+    frpPublicAddress: required(env, "FRP_PUBLIC_ADDRESS"),
+    frpBindPort: positiveInt(env.FRP_BIND_PORT, 7000, "FRP_BIND_PORT"),
+    frpInternalUrl: env.FRP_INTERNAL_URL ?? "http://frps:7080",
+    frpToken: required(env, "FRP_TOKEN"),
+    frpConnectionStaleMs: positiveInt(env.FRP_CONNECTION_STALE_MS, 40000, "FRP_CONNECTION_STALE_MS"),
+    frpHealthIntervalMs: positiveInt(env.FRP_HEALTH_INTERVAL_MS, 30000, "FRP_HEALTH_INTERVAL_MS"),
   };
 }

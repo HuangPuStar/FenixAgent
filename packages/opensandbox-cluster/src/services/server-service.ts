@@ -2,6 +2,7 @@ import type { ClusterDatabase } from "../db/client";
 import { BindingRepository } from "../repositories/binding-repository";
 import { PoolRepository } from "../repositories/pool-repository";
 import { ServerRepository } from "../repositories/server-repository";
+import { TunnelConnectionRepository } from "../repositories/tunnel-connection-repository";
 import type { SecretBox } from "../security/secret-box";
 import { ConflictError } from "./pool-service";
 
@@ -14,21 +15,25 @@ export interface ServerMutation {
   api_key?: string;
   max_sandboxes?: number;
   status?: string;
+  transport_mode?: "direct" | "tunnel";
+  route_host?: string;
 }
 
 export class ServerService {
   private readonly pools: PoolRepository;
   private readonly servers: ServerRepository;
   private readonly bindings: BindingRepository;
+  private readonly tunnelConnections: TunnelConnectionRepository;
 
   constructor(
-    private readonly db: ClusterDatabase,
+    db: ClusterDatabase,
     private readonly secretBox: SecretBox,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     this.pools = new PoolRepository(db);
     this.servers = new ServerRepository(db);
     this.bindings = new BindingRepository(db);
+    this.tunnelConnections = new TunnelConnectionRepository(db);
   }
 
   list(poolId?: string) {
@@ -43,18 +48,26 @@ export class ServerService {
 
   create(
     input: Required<
-      Pick<ServerMutation, "id" | "pool_id" | "name" | "base_url" | "workspace_root" | "api_key" | "max_sandboxes">
+      Pick<ServerMutation, "id" | "pool_id" | "name" | "workspace_root" | "api_key" | "max_sandboxes">
     > & {
+      base_url?: string;
+      transport_mode?: "direct" | "tunnel";
+      route_host?: string;
       status?: string;
     },
   ) {
     if (!this.pools.findById(input.pool_id)) throw new Error("pool not found");
     const now = Date.now();
+    const transportMode = input.transport_mode ?? "direct";
+    if (transportMode === "direct" && !input.base_url) throw new Error("base_url is required for direct transport");
     const row = this.servers.insert({
       id: input.id,
       poolId: input.pool_id,
       name: input.name,
-      baseUrl: input.base_url,
+      transportMode,
+      // Keep the legacy NOT NULL column compatible with tunnel rows.
+      baseUrl: input.base_url ?? "",
+      routeHost: input.route_host ?? null,
       workspaceRoot: normalizeWorkspaceRoot(input.workspace_root),
       apiKeyCiphertext: this.secretBox.encryptApiKey(input.api_key),
       maxSandboxes: input.max_sandboxes,
@@ -68,7 +81,7 @@ export class ServerService {
 
   update(id: string, input: ServerMutation) {
     const current = this.servers.findById(id);
-    if (!current) return undefined;
+    if (!current) return;
     if (input.pool_id && input.pool_id !== current.poolId && this.bindings.countByServer(id) > 0) {
       throw new ConflictError("server with bindings cannot move pools");
     }
@@ -76,10 +89,17 @@ export class ServerService {
     if (input.max_sandboxes !== undefined && input.max_sandboxes < this.bindings.countByServer(id)) {
       throw new ConflictError("max_sandboxes cannot be below current bindings");
     }
+    if (input.transport_mode === "tunnel" && current.transportMode === "direct") {
+      throw new ConflictError("use the tunnel endpoint to switch a direct server");
+    }
+    if (input.transport_mode === "direct" && !(input.base_url ?? current.baseUrl)) {
+      throw new Error("base_url is required for direct transport");
+    }
     const row = this.servers.update(id, {
       ...(input.pool_id ? { poolId: input.pool_id } : {}),
       ...(input.name ? { name: input.name } : {}),
-      ...(input.base_url ? { baseUrl: input.base_url } : {}),
+      ...(input.base_url !== undefined ? { baseUrl: input.base_url } : {}),
+      ...(input.transport_mode ? { transportMode: input.transport_mode } : {}),
       ...(input.workspace_root ? { workspaceRoot: normalizeWorkspaceRoot(input.workspace_root) } : {}),
       ...(input.api_key ? { apiKeyCiphertext: this.secretBox.encryptApiKey(input.api_key) } : {}),
       ...(input.max_sandboxes !== undefined ? { maxSandboxes: input.max_sandboxes } : {}),
@@ -87,6 +107,20 @@ export class ServerService {
       updatedAt: Date.now(),
     });
     return row ? this.publicRow(row) : undefined;
+  }
+
+  /** Reject tunnel migration while a direct Server is still reachable. */
+  async ensureOfflineForTunnel(id: string): Promise<void> {
+    const current = this.servers.findById(id);
+    if (!current) throw new Error("server not found");
+    if (current.transportMode !== "direct" || !current.baseUrl) return;
+    try {
+      await this.fetchImpl(new URL("/health", current.baseUrl), { signal: AbortSignal.timeout(3000) });
+      throw new ConflictError("server must be offline before switching to tunnel");
+    } catch (error) {
+      if (error instanceof ConflictError) throw error;
+      // Network failure or timeout is the expected offline state.
+    }
   }
 
   delete(id: string) {
@@ -101,8 +135,12 @@ export class ServerService {
 
   async healthCheck(id: string) {
     const row = this.servers.findById(id);
-    if (!row) return undefined;
+    if (!row) return;
+    // Tunnel 的健康探测由 ServerConnectionMonitor 通过 FRP 路由定时执行，不能把保留的
+    // baseUrl 当作 Direct 地址再次拼接 /health；管理端手动检查只返回当前连接结论。
+    if (row.transportMode === "tunnel") return this.findById(id);
     try {
+      if (!row.baseUrl) return this.findById(id);
       const response = await this.fetchImpl(new URL("/health", row.baseUrl), { signal: AbortSignal.timeout(3000) });
       const healthy = response.ok;
       this.servers.update(id, {
@@ -124,7 +162,18 @@ export class ServerService {
 
   private publicRow(row: NonNullable<ReturnType<ServerRepository["findById"]>>) {
     const { apiKeyCiphertext: _apiKeyCiphertext, ...publicRow } = row;
-    return { ...publicRow, currentSandboxes: this.bindings.countByServer(row.id) };
+    const tunnelHealth = row.transportMode === "tunnel" ? this.tunnelConnections.findByServerId(row.id) : undefined;
+    return {
+      ...publicRow,
+      ...(row.transportMode === "tunnel"
+        ? {
+            healthStatus: tunnelHealth?.healthStatus ?? "unknown",
+            lastHealthAt: tunnelHealth?.lastHealthAt ?? null,
+            lastError: tunnelHealth?.lastError ?? null,
+          }
+        : {}),
+      currentSandboxes: this.bindings.countByServer(row.id),
+    };
   }
 }
 

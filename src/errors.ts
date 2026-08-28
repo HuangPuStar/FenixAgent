@@ -23,6 +23,13 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message: string) {
+    super(message, "FORBIDDEN", 403);
+    this.name = "ForbiddenError";
+  }
+}
+
 export class ConflictError extends AppError {
   constructor(message: string) {
     super(message, "ALREADY_EXISTS", 409);

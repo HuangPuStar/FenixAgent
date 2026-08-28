@@ -26,6 +26,7 @@ export type {
 export type {
   ConnectInstanceRelayRequest,
   LaunchInstanceRequest,
+  RefreshInstanceEnvironmentRequest,
   StopInstanceRequest,
 } from "./types/launch-request";
 export type {

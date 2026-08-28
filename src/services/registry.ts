@@ -4,6 +4,7 @@ import { db } from "../db";
 import { agentConfig, machine, organization, registryEvent } from "../db/schema";
 import type { AuthContext } from "../plugins/auth";
 import { markSandboxInstanceReadyByMachineId } from "../repositories/sandbox-instance-repository";
+import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 
 function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
@@ -204,6 +205,16 @@ export async function createSandboxMachine(params: {
 }
 
 /**
+ * 删除 sandbox machine 记录。
+ *
+ * 与 deleteMachine（管理面删除，含引用校验与 file-ws 清理）语义不同：此处只
+ * 用于 sandbox 生命周期的补偿清理，机器通常尚未注册运行，仅需删除记录。
+ */
+export async function deleteSandboxMachine(id: string): Promise<void> {
+  await db.delete(machine).where(eq(machine.id, id));
+}
+
+/**
  * Machine 注册连接处理器。
  *
  * 仅负责运行时状态激活/重连（status、lastHeartbeatAt、updatedAt），
@@ -211,98 +222,56 @@ export async function createSandboxMachine(params: {
  * machine 必须在管理面通过 `POST /web/registry/machines` 预创建后才能连接，
  * 未预创建的连接将被拒绝（不再支持自动注册）。
  *
- * @param params.machineId - 客户端指定的 machine ID（优先），对应管理面预创建记录
- * @param params.nodeId - 客户端持久化的 node_id（去重用），用于未指定 machineId 时的回退匹配
+ * @param params.machineId - 客户端指定的 machine ID，对应管理面预创建记录
  * @param params.agentName - 引擎名称，用于 bindAgentConfigs 自动匹配
  * @param params.tenantId - 组织 ID，用于 bindAgentConfigs 范围限定
  */
 export async function registerMachine(params: {
   agentName: string;
   tenantId: string | null;
-  nodeId?: string | null;
-  machineId?: string | null;
+  machineId: string;
 }): Promise<{ id: string; isNew: boolean }> {
-  let existingId: string | null = null;
+  const existing = await db
+    .select({ id: machine.id, status: machine.status })
+    .from(machine)
+    .where(eq(machine.id, params.machineId))
+    .limit(1);
 
-  // ── 客户端指定 machineId 分支：验证预创建记录并激活 ──
-  if (params.machineId) {
-    const existing = await db
-      .select({ id: machine.id, status: machine.status })
-      .from(machine)
-      .where(eq(machine.id, params.machineId))
-      .limit(1);
-
-    // machine 不存在：必须在组织管理界面先创建
-    if (existing.length === 0) {
-      throw new Error(`machine '${params.machineId}' not found, please create it first in your organization`);
-    }
-
-    const now = new Date();
-
-    // server 重启后 DB 状态可能过期，允许重连
-    if (existing[0].status === "online") {
-      log(`[registry] machine id '${params.machineId}' was already online (stale), allowing reconnection`);
-    }
-
-    const isFirstRegistration = existing[0].status === "pending";
-    const eventType = isFirstRegistration ? "register" : "reconnect";
-
-    // pending 或 offline → 激活为 online
-    await db
-      .update(machine)
-      .set({
-        status: "online",
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .where(eq(machine.id, params.machineId));
-
-    await db.insert(registryEvent).values({
-      id: genId("evt"),
-      machineId: params.machineId,
-      type: eventType,
-      detail: {},
-    });
-
-    await markSandboxInstanceReadyByMachineId(params.machineId, now);
-    await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
-    return { id: params.machineId, isNew: isFirstRegistration };
-  }
-
-  // ── 去重策略（machineId 未指定时走此分支）──
-  // 优先级 1：按客户端持久化的 node_id 精确匹配（最可靠，跨 IP/MAC 变化稳定）
-  if (params.nodeId) {
-    const byNodeId = await db.select({ id: machine.id }).from(machine).where(eq(machine.id, params.nodeId)).limit(1);
-    existingId = byNodeId[0]?.id ?? null;
+  // machine 不存在：必须在组织管理界面先创建
+  if (existing.length === 0) {
+    throw new Error(`machine '${params.machineId}' not found, please create it first in your organization`);
   }
 
   const now = new Date();
 
-  // ── 已存在的机器重连：更新状态，写 reconnect 事件 ──
-  if (existingId) {
-    await db
-      .update(machine)
-      .set({
-        status: "online",
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .where(eq(machine.id, existingId));
-
-    // 重连事件与首次注册区分，避免 registry_event 表堆积无意义的重复 register 记录
-    await db.insert(registryEvent).values({
-      id: genId("evt"),
-      machineId: existingId,
-      type: "reconnect",
-      detail: {},
-    });
-
-    await markSandboxInstanceReadyByMachineId(existingId, now);
-    await bindAgentConfigs(existingId, params.agentName, params.tenantId);
-    return { id: existingId, isNew: false };
+  // server 重启后 DB 状态可能过期，允许重连
+  if (existing[0].status === "online") {
+    log(`[registry] machine id '${params.machineId}' was already online (stale), allowing reconnection`);
   }
 
-  throw new Error("machine not found, please create it first in your organization's admin panel");
+  const isFirstRegistration = existing[0].status === "pending";
+  const eventType = isFirstRegistration ? "register" : "reconnect";
+
+  // pending 或 offline → 激活为 online
+  await db
+    .update(machine)
+    .set({
+      status: "online",
+      lastHeartbeatAt: now,
+      updatedAt: now,
+    })
+    .where(eq(machine.id, params.machineId));
+
+  await db.insert(registryEvent).values({
+    id: genId("evt"),
+    machineId: params.machineId,
+    type: eventType,
+    detail: {},
+  });
+
+  await markSandboxInstanceReadyByMachineId(params.machineId, now);
+  await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
+  return { id: params.machineId, isNew: isFirstRegistration };
 }
 
 export async function disconnectMachine(machineId: string, reason: string): Promise<void> {
@@ -329,6 +298,27 @@ export async function markHeartbeatTimeout(machineId: string): Promise<void> {
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
   await db.update(machine).set({ lastHeartbeatAt: new Date(), updatedAt: new Date() }).where(eq(machine.id, machineId));
+}
+
+/**
+ * 通用 registry 事件落库（P0-5，D18）。
+ *
+ * 供机器生命周期各路径复用：`deleteMachine` 的 retired 事件（本文件）、
+ * file-ws-handler 的 degraded 落库（W1 预留钩子）与波次 4 W7 的告警。
+ * 业务语义（type / detail）由调用方定义，本函数只负责生成事件 id 并插入，
+ * 保证所有调用方的事件格式与落库行为一致。
+ */
+export async function writeRegistryEvent(
+  machineId: string,
+  type: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  await db.insert(registryEvent).values({
+    id: genId("evt"),
+    machineId,
+    type,
+    detail,
+  });
 }
 
 /**
@@ -411,6 +401,24 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
   }
 
   await db.delete(machine).where(and(eq(machine.id, id), ...ownershipConditions));
+
+  // P0-5（D18）：DB 删除后立即切断退役机器的 file-ws 连接（reject pending + 清索引 + close），
+  // 避免机器已删除但 machineFileWsIndex 残留导致 isFileWsConnected 恒真、请求悬挂；
+  // 并写 retired 事件归档。两者为尽力而为的后置清理：失败只记录日志，不阻断删除结果——
+  // 机器记录此时已删除，若返回错误会造成"实际已删但界面报错"的不一致。
+  try {
+    closeMachineFileWsConnection(id);
+  } catch (err) {
+    log(`[registry] file-ws cleanup failed for machine '${id}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    await writeRegistryEvent(id, "retired", { reason: "machine deleted" });
+  } catch (err) {
+    log(
+      `[registry] retired event write failed for machine '${id}': ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   return { deleted: true };
 }
 

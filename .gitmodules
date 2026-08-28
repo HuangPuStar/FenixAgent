@@ -1,0 +1,3 @@
+[submodule "e2e"]
+	path = e2e
+	url = /tmp/fenix-e2e

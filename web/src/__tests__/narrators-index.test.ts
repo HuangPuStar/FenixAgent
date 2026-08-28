@@ -92,6 +92,18 @@ describe("narrate 中央入口", () => {
     expect(result.statusLabel).toBe("失败");
   });
 
+  // error 状态优先用后端脱敏的 publicError.message，rawOutput 仅作缺失时兜底
+  test("error 状态优先展示 publicError.message", () => {
+    const tool = makeTool({
+      title: "SomeUnknownTool",
+      status: "error",
+      publicError: { code: "exit_1", message: "command failed" },
+      rawOutput: { isError: true, content: [{ type: "text", text: "raw stderr" }] },
+    });
+    const result = narrate(tool, "error", undefined, t);
+    expect(result.errorDetail).toBe("command failed");
+  });
+
   // detail 字段需保留 rawInput / rawOutput 供 Dialog 展示
   test("detail 字段保留原始 rawInput 和 rawOutput", () => {
     const rawInput = { foo: "bar" };

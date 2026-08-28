@@ -58,7 +58,7 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
 
 /**
  * IS_PERI 环境下，额外创建 .peri/settings.json 供 Peri 客户端使用。
- * 将 AgentLaunchSpec 的 model 信息转换为 Peri provider 格式。
+ * 将 AgentLaunchSpec 的模型信息映射为 Peri 当前的 provider/profile 配置格式。
  */
 export async function writePeriSettings(workspace: string, launchSpec: AgentLaunchSpec): Promise<string | null> {
   if (!process.env.IS_PERI) return null;
@@ -68,56 +68,50 @@ export async function writePeriSettings(workspace: string, launchSpec: AgentLaun
   await mkdir(periDir, { recursive: true });
 
   const modelId = model.modelName ?? model.model;
-  const periEnv: Record<string, string> = {};
-  // 仅透传 HINDSIGHT_* 环境变量给 Peri，模型认证信息已通过 config.providers 注入
-  if (launchSpec.env) {
-    for (const key of Object.keys(launchSpec.env)) {
-      if (key.startsWith("HINDSIGHT_")) {
-        periEnv[key] = launchSpec.env[key];
-      }
-    }
-  }
-
-  const config: Record<string, unknown> = {
-    active_provider_id: model.provider,
-    active_alias: "sonnet",
-    providers: [
-      {
-        id: model.provider,
-        type: model.protocol,
-        apiKey: model.apiKey,
-        baseUrl: model.baseUrl,
-        models: {
-          opus: modelId,
-          sonnet: modelId,
-          haiku: modelId,
+  const periEnv = launchSpec.env ? { ...launchSpec.env } : undefined;
+  const configPath = join(periDir, "settings.json");
+  const settings = {
+    config: {
+      active_alias: "opus",
+      providers: [
+        {
+          id: model.provider,
+          type: model.protocol,
+          apiKey: model.apiKey,
+          baseUrl: model.baseUrl,
+          name: model.provider,
+          models: {
+            opus: modelId,
+            sonnet: modelId,
+            haiku: modelId,
+            fable: modelId,
+          },
+        },
+      ],
+      profiles: {
+        opus: {
+          provider: model.provider,
+          model: modelId,
+          effort: "medium",
+        },
+        sonnet: {
+          provider: model.provider,
+          effort: "max",
+        },
+        haiku: {
+          provider: model.provider,
+          effort: "low",
         },
       },
-    ],
-    thinking: {
-      enabled: true,
-      budget_tokens: 8000,
-      effort: "high",
+      skills_dir: null,
+      ...(periEnv && Object.keys(periEnv).length > 0 ? { env: periEnv } : {}),
+      // 模型限制由控制台配置透传；未配置或非正值时保持 Peri 默认行为。
+      ...(model.limitConfig?.context && model.limitConfig.context > 0
+        ? { context_window: model.limitConfig.context }
+        : {}),
+      ...(model.limitConfig?.output && model.limitConfig.output > 0 ? { max_tokens: model.limitConfig.output } : {}),
     },
   };
-
-  // 上下文窗口：仅当 model 配置了且 > 0 时下发
-  if (model.limitConfig?.context && model.limitConfig.context > 0) {
-    config.context_window = model.limitConfig.context;
-  }
-
-  // 输出限制：仅当 model 配置了且 > 0 时下发
-  if (model.limitConfig?.output && model.limitConfig.output > 0) {
-    config.max_tokens = model.limitConfig.output;
-  }
-
-  const settings: Record<string, unknown> = { config };
-
-  if (Object.keys(periEnv).length > 0) {
-    settings.env = periEnv;
-  }
-
-  const configPath = join(periDir, "settings.json");
   await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   return configPath;
 }

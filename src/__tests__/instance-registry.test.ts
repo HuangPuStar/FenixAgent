@@ -94,6 +94,32 @@ describe("InstanceRegistry", () => {
     expect(registry.nextInstanceNumber("env-1")).toBe(1);
   });
 
+  // 强制卸载同时回收 supplement、索引和空环境计数器
+  test("unregisterAndDeleteCounter 在环境无实例时释放计数器", () => {
+    const registry = new InstanceRegistry();
+    registry.register("inst-1", makeSupplement());
+    expect(registry.nextInstanceNumber("env-1")).toBe(2);
+
+    registry.unregisterAndDeleteCounter("inst-1");
+
+    expect(registry.get("inst-1")).toBeUndefined();
+    expect(registry.getByEnvironment("env-1")).toEqual([]);
+    expect(registry.nextInstanceNumber("env-1")).toBe(1);
+  });
+
+  // 强制卸载一个实例时不能删除同环境仍有实例的计数器
+  test("unregisterAndDeleteCounter 保留有实例环境的计数器", () => {
+    const registry = new InstanceRegistry();
+    registry.register("inst-1", makeSupplement({ instanceNumber: 1 }));
+    registry.register("inst-2", makeSupplement({ instanceNumber: 2 }));
+    expect(registry.nextInstanceNumber("env-1")).toBe(3);
+
+    registry.unregisterAndDeleteCounter("inst-1");
+
+    expect(registry.getByEnvironment("env-1")).toHaveLength(1);
+    expect(registry.nextInstanceNumber("env-1")).toBe(4);
+  });
+
   // clear 清空所有数据
   test("clear 清空所有注册数据", () => {
     const registry = new InstanceRegistry();

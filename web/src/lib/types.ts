@@ -2,10 +2,31 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, PlanEntry, ToolCallContent } from "../acp/types";
+import type { PermissionOption, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
+
+/** TodoWrite 条目的状态。 */
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/** TodoWrite 工具在每次调用中提交的完整条目。 */
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+  activeForm?: string;
+}
+
+/** 相较前一次 TodoWrite 调用的条目变更类型。 */
+export type TodoChangeKind = "added" | "removed" | "pending" | "in_progress" | "completed" | "updated";
+
+/** TodoWrite 条目的增量投影，仅用于历史工具调用卡片展示。 */
+export interface TodoChange {
+  /** 当前工具调用内唯一的展示标识；TodoWrite 协议未提供条目 ID。 */
+  id: string;
+  kind: TodoChangeKind;
+  todo: TodoItem;
+}
 
 /**
  * 工具卡片统一类型标识。驱动 narrator 匹配、卡片样式、图标和文案。
@@ -55,6 +76,8 @@ export interface ToolCallData {
   display?: ToolCallDisplay;
   /** 工具调用统一类型标识，由 resolveToolCardKind() 在 construct 阶段一次性解析 */
   kind?: ToolCardKind;
+  /** TodoWrite 相较上一轮的条目变更；只用于历史工具调用卡片展示。 */
+  todoChanges?: TodoChange[];
   // 权限请求（仅当 status === "waiting_for_confirmation"）
   permissionRequest?: {
     requestId: string;
@@ -62,6 +85,8 @@ export interface ToolCallData {
   };
   // 独立权限请求（无匹配工具调用时创建）
   isStandalonePermission?: boolean;
+  /** 工具执行失败的脱敏错误（后端 ToolCallProjection.publicError 投影） */
+  publicError?: PublicErrorInfo;
   // 子 agent 嵌套条目（Task/Agent 工具调用的子 agent 输出）
   subEntries?: ThreadEntry[];
 }
@@ -88,6 +113,8 @@ export interface AssistantMessageEntry {
   type: "assistant_message";
   id: string;
   chunks: AssistantChunk[];
+  /** 本 turn 失败的脱敏错误（后端 ChatEntry.error 投影，挂在最后一段助手消息） */
+  error?: PublicErrorInfo;
 }
 
 // 工具调用条目
@@ -96,15 +123,14 @@ export interface ToolCallEntry {
   toolCall: ToolCallData;
 }
 
-// Plan 展示条目（Agent 执行计划）
-export interface PlanDisplayEntry {
-  type: "plan";
-  id: string;
-  entries: PlanEntry[];
-}
-
 // 统一聊天条目类型
-export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry | PlanDisplayEntry;
+export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry;
+
+/** 展示层公开错误（脱敏 code/message，与 chat-channel PublicErrorInfo 结构一致） */
+export interface PublicErrorInfo {
+  code: string;
+  message: string;
+}
 
 // =============================================================================
 // Chat 组件 Props 类型
@@ -129,12 +155,4 @@ export interface PendingPermission {
   toolInput: Record<string, unknown>;
   description?: string;
   options?: PermissionOption[];
-}
-
-// 会话列表条目（用于 SessionSidebar）
-export interface SessionListItem {
-  id: string;
-  title?: string | null;
-  updatedAt?: string | null;
-  isActive?: boolean;
 }

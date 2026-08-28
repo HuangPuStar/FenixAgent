@@ -230,6 +230,13 @@ export {
   type OrganizationMember,
   OrganizationMemberSchema,
 } from "./organization.schema";
+export {
+  type PeriTaskDetail,
+  PeriTaskDetailParamsSchema,
+  PeriTaskDetailQuerySchema,
+  PeriTaskDetailResponseSchema,
+  PeriTaskDetailSchema,
+} from "./peri-task-details";
 // Registry
 export {
   type EventQuery,
@@ -274,33 +281,6 @@ export {
   SidebarConfigResponseSchema,
   SidebarConfigSchema,
 } from "./sidebar-config.schema";
-// Tasks
-export {
-  type ClearTaskLogsResponse,
-  ClearTaskLogsResponseSchema,
-  type CreateTaskRequest,
-  CreateTaskRequestSchema,
-  type DeleteTaskResponse,
-  DeleteTaskResponseSchema,
-  type ExecutionLogInfo,
-  ExecutionLogInfoSchema,
-  type PaginatedLogs,
-  PaginatedLogsSchema,
-  type TaskInfo,
-  TaskInfoSchema,
-  type TaskListResponse,
-  TaskListResponseSchema,
-  type TaskLogsResponse,
-  TaskLogsResponseSchema,
-  type TaskResponse,
-  TaskResponseSchema,
-  type ToggleTaskResponse,
-  ToggleTaskResponseSchema,
-  type TriggerTaskResponse,
-  TriggerTaskResponseSchema,
-  type UpdateTaskRequest,
-  UpdateTaskRequestSchema,
-} from "./task.schema";
 export {
   CreateTriggerRequestSchema,
   CreateWorkflowDefRequestSchema,

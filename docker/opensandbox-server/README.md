@@ -123,3 +123,77 @@ curl -X POST "$CLUSTER_URL/api/v1/servers" \
 curl -X POST "$CLUSTER_URL/api/v1/servers/server-node-1/health-check" \
   -H "Authorization: Bearer $CLUSTER_SERVICE_API_KEY"
 ```
+## 连接模式
+
+### direct 模式
+
+使用 `docker-compose.dind.yml`，会发布 Server 管理端口和沙盒动态端口：
+
+```bash
+docker compose -f docker-compose.dind.yml up -d --build
+```
+
+Cluster 注册时提供 Server 的可达地址：
+
+```json
+{
+  "transport_mode": "direct",
+  "base_url": "http://server-host:8090"
+}
+```
+
+### tunnel 模式
+
+tunnel 模式已独立到 [`../opensandbox-server-tunnel/`](../opensandbox-server-tunnel/)。该模式不发布任何宿主机端口，Server 只需要能够访问 Cluster 的 FRP 登录地址。
+
+选择以下一种方式准备 tunnel Server：
+
+#### 方案 A：新建 tunnel Server
+
+在创建接口中直接指定 `transport_mode=tunnel`，不需要调用 `PUT /tunnel`：
+
+```bash
+curl -X POST "$CLUSTER_URL/api/v1/servers" \
+  -H "Authorization: Bearer $CLUSTER_SERVICE_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id":"server-node-1",
+    "pool_id":"pool-default",
+    "name":"Node 1",
+    "transport_mode":"tunnel",
+    "workspace_root":"/workspace",
+    "api_key":"replace-with-server-api-key",
+    "max_sandboxes":10
+  }'
+```
+
+#### 方案 B：已有 direct Server 切换为 tunnel
+
+先停止 Server，再调用 `PUT /tunnel`。接口会确认 Server 已离线，并一次性切换 `transport_mode=tunnel`、生成或复用隧道配置：
+
+```bash
+curl -X PUT "$CLUSTER_URL/api/v1/servers/server-node-1/tunnel" \
+  -H "Authorization: Bearer $CLUSTER_SERVICE_API_KEY"
+```
+
+#### 获取并挂载 frpc.toml
+
+完成方案 A 或方案 B 后，统一下载配置：
+
+```bash
+curl -fsS "$CLUSTER_URL/api/v1/servers/server-node-1/tunnel/frpc.toml" \
+  -H "Authorization: Bearer $CLUSTER_SERVICE_API_KEY" \
+  -o frpc.toml
+
+chmod 600 frpc.toml
+```
+
+将 `frpc.toml` 放在 `docker/opensandbox-server-tunnel/` 后启动：
+
+```bash
+cd ../opensandbox-server-tunnel
+docker compose up -d --build
+docker compose ps
+```
+
+该目录的 README 提供完整的 tunnel 部署说明。

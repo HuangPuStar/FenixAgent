@@ -16,7 +16,7 @@ flowchart TD
 
 ## 资源引用
 
-Agent Config 是一个**引用节点**——它不拥有任何资源，只是把分散在系统各处的配置资源串联起来。spawn 时系统沿着这些引用逐级解析，组装成 `AgentLaunchSpec`，交给 `@fenix/core` 分派到对应的 engine plugin。
+Agent Config 是一个**引用节点**——它不拥有任何资源，只是把分散在系统各处的配置资源串联起来。spawn 时系统沿着这些引用逐级解析，由 `LaunchSpecBuilder`（`packages/orchestration`，见 [AgentController 编排域](./20-orchestration-management.md)）组装成不可变 `AgentLaunchSpec`（含 cwd），经宿主桥接交给 core runtime 启动。
 
 ```mermaid
 flowchart LR
@@ -38,7 +38,7 @@ Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 
 
 - **Model** — 用哪个 AI 模型。spawn 时从 model → provider 逐级解析出完整配置（apiKey / baseUrl / protocol）
 - **Engine** — 用什么运行时。opencode 走 spawn 子进程，claude-code 走 SDK 内联
-- **Machine** — 跑在哪里。不填走本地 @fenix/core，填写则向远端 Machine 下发 spawn 指令
+- **Machine** — 跑在哪里。不填走本地 core runtime，填写则经 core runtime 的 remote transport 向远端 Machine 下发启动协议（双层启动模型，见 [AgentController 编排域](./20-orchestration-management.md) §4）
 - **Skill** — 有哪些技能。文件系统源目录打包为 ZIP，生成签名下载 URL
 - **McpServer** — 有哪些外部工具。校验后注入配置，禁用/缺失直接拒绝启动
 - **KnowledgeBase** — 连接哪些知识库。装配 `kb` MCP 端点（streamable-http + Bearer token）
@@ -50,4 +50,4 @@ Agent Config 引用什么，Agent 实例就拥有什么。六类引用决定了 
 ## 上下级关系
 
 - **← Environment**：通过 agentConfigId 绑定，一套配置可被多个 Environment 复用
-- **→ LaunchSpec Builder**：spawn 时消费全部引用关系，产出 `AgentLaunchSpec` 注入 engine plugin
+- **→ LaunchSpecBuilder**（`packages/orchestration`）：spawn 时消费全部引用关系，产出不可变 `AgentLaunchSpec`（含 cwd）

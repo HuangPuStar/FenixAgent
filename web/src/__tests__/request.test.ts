@@ -90,3 +90,34 @@ describe("request helpers", () => {
     }
   });
 });
+
+describe("request bearerToken", () => {
+  // 帮助函数：执行请求后取出 fetch 调用的 RequestInit，便于断言注入的请求头。
+  async function fetchInitFor(options: Parameters<typeof import("../api/request").request>[1]) {
+    const { request } = await import("../api/request");
+    await request<{ ok: boolean }>("/web/test", options);
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    return calls[calls.length - 1]?.[1];
+  }
+
+  // bearerToken 置入时应自动注入 Authorization: Bearer <token>。
+  test("bearerToken 注入 Authorization 头", async () => {
+    const init = await fetchInitFor({ bearerToken: "sys-key-1" });
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer sys-key-1");
+  });
+
+  // 未设置 bearerToken 时行为完全不变，不注入任何 Authorization 头。
+  test("未设置 bearerToken 时不注入 Authorization", async () => {
+    const init = await fetchInitFor({});
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  // 调用方显式 headers.Authorization 与 bearerToken 冲突时，显式 headers 优先。
+  test("显式 headers.Authorization 优先于 bearerToken", async () => {
+    const init = await fetchInitFor({ bearerToken: "sys-key-1", headers: { Authorization: "Bearer explicit-key" } });
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer explicit-key");
+  });
+});

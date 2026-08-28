@@ -1,14 +1,32 @@
-import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/acp-server";
-import { MessageSquare, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
+import type {
+  AgentSessionInfo,
+  AvailableCommand,
+  ChatStateSnapshot,
+  ContentBlock,
+  PeriTaskViewProjection,
+  SessionMode,
+  SessionStateSnapshot,
+} from "@fenix/chat-channel";
+import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AgentSessionInfo, AvailableCommand, ContentBlock, SessionMode } from "../src/acp/types";
 import { stripHtmlTags } from "../src/lib/strip-html-tags";
 import { cn } from "../src/lib/utils";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import { ChatHeader } from "./chat/ChatHeader";
+import { canDeleteSession } from "./chat/session-actions";
 import { groupByRecency } from "./chat/session-grouping";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -19,6 +37,8 @@ interface ACPMainProps {
   readonly?: boolean;
   hideSidebar?: boolean;
   rcsSessionId?: string;
+  /** 服务端确定性计算 rcsSessionId 使用的实例会话标识 */
+  detailSessionId?: string;
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
@@ -32,17 +52,16 @@ interface ACPMainProps {
   onCreateSession: () => Promise<void> | void;
   onLoadSession: (sessionId: string) => void;
   onResumeSession: (sessionId: string) => void;
-  onListSessions: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
+  /** AskUserQuestion 选项回传（questionId + 选中选项 label 数组，按问题顺序） */
+  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
 
   // ── 状态 props（替代 client.state / client.xxx 读取）──
   supportsImages?: boolean;
   supportsLoadSession?: boolean;
   supportsResumeSession?: boolean;
-  /** @deprecated 通过 chatState.sessions 获取会话列表，此参数可移除 */
-  _supportsSessionList?: boolean;
   availableCommands?: AvailableCommand[];
   availableModes?: SessionMode[];
   currentModeId?: string | null;
@@ -50,6 +69,12 @@ interface ACPMainProps {
   supportsModeSelection?: boolean;
   modelName?: string;
   tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+
+  // ── Peri Task 视图（切片 2，会话活动面板）──
+  /** Session Doc tasks/taskOrder 派生任务视图（非终态在前排序，引用稳定） */
+  periTasks?: readonly PeriTaskViewProjection[];
+  /** tasks/taskOrder 子树是否已同步（未同步时任务面板显示加载态） */
+  periTasksLoaded?: boolean;
 }
 
 /**
@@ -61,6 +86,7 @@ export function ACPMain({
   readonly,
   hideSidebar,
   rcsSessionId,
+  detailSessionId,
   scenePrompt,
   contextKey,
   onPromptComplete,
@@ -72,15 +98,13 @@ export function ACPMain({
   onCreateSession,
   onLoadSession,
   onResumeSession,
-  onListSessions: _onListSessions,
   onRenameSession,
   onDeleteSession,
   onRespondPermission,
+  onRespondQuestion,
   supportsImages = false,
   supportsLoadSession = false,
   supportsResumeSession = false,
-  /** @deprecated 通过 chatState.sessions 获取会话列表，此参数可移除 */
-  _supportsSessionList = true,
   availableCommands = [],
   availableModes = [],
   currentModeId = null,
@@ -88,6 +112,8 @@ export function ACPMain({
   supportsModeSelection = false,
   modelName,
   tokenUsage,
+  periTasks = [],
+  periTasksLoaded = false,
 }: ACPMainProps) {
   const { t } = useTranslation("components");
   const sessions = chatState?.sessions ?? [];
@@ -101,7 +127,6 @@ export function ACPMain({
       return true;
     }
   });
-  const [forcePopoverOpen, setForcePopoverOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
@@ -110,13 +135,10 @@ export function ACPMain({
   // 防抖：sessions 增量更新可能分多次到达（list_sessions 返回 N 条 registerSession 逐条广播），
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 防止空会话时重复发送 create_session
-  const autoCreateTriggeredRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 连接重建时需重置 bootstrap 状态
   useEffect(() => {
     sessionEnteredRef.current = false;
-    autoCreateTriggeredRef.current = false;
     if (bootstrapTimerRef.current) {
       clearTimeout(bootstrapTimerRef.current);
       bootstrapTimerRef.current = null;
@@ -159,10 +181,11 @@ export function ACPMain({
     [onRespondPermission],
   );
 
-  // Handle session selection
+  // Handle session selection. 刷新后的会话恢复必须继续加载正在进行的会话；
+  // 仅用户主动切换时，才需要以 loading 保护当前对话不被切走。
   const handleSelectSession = useCallback(
-    async (session: AgentSessionInfo) => {
-      if (chatRef.current?.isLoading) {
+    async (session: AgentSessionInfo, source: "user" | "restore" = "user") => {
+      if (source === "user" && chatRef.current?.isLoading) {
         toast.warning(t("acpMain.chatBusy"));
         return;
       }
@@ -183,22 +206,14 @@ export function ACPMain({
     [supportsLoadSession, supportsResumeSession, onLoadSession, onResumeSession, t],
   );
 
-  // 关闭侧边栏并打开弹窗
-  const handleCloseSidebarAndOpenPopover = useCallback(() => {
-    setSidebarOpen(false);
-    setForcePopoverOpen(true);
-  }, []);
-
-  // 重置弹窗强制打开状态
-  const handlePopoverOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setForcePopoverOpen(false);
-    }
-  }, []);
-
   // Bootstrap: 通过 YJS chatState 获取会话列表，自动进入最近会话。
   // 使用防抖避免增量更新分片到达时的过早触发（如 list_sessions 逐条 broadcast）。
-  // 会话为空时不自动创建新会话，等待后端 session_list 设置 activeSessionId。
+  // 列表未确认（sessionListLoaded=false）时不自动创建新会话：连接建立瞬间
+  // list_sessions 响应通常尚未到达（agent 初始化 + 列表查询约 1s），此时自动
+  // create_session 会制造"假空"会话竞态（有历史会话却新建空会话，页面无数据）。
+  // 等待列表到达后本 effect 因 sessions 变化重新触发并加载最新会话；列表确认
+  // 为空（sessionListLoaded=true 且 sessions 空）时自动创建新会话，打开页面即
+  // 可对话，无需用户手动输入第一条消息触发懒创建（见下方分支）。
   useEffect(() => {
     if (connectionState !== "connected") return;
     if (sessionEnteredRef.current) return;
@@ -220,7 +235,7 @@ export function ACPMain({
         const activeSession = sessions.find((s) => s.sessionId === chatState.activeSessionId);
         if (activeSession) {
           sessionEnteredRef.current = true;
-          handleSelectSession(activeSession as AgentSessionInfo);
+          handleSelectSession(activeSession as AgentSessionInfo, "restore");
         }
         return;
       }
@@ -235,14 +250,18 @@ export function ACPMain({
       if (latest) {
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(latest.sessionId);
-        handleSelectSession(latest as AgentSessionInfo);
+        handleSelectSession(latest as AgentSessionInfo, "restore");
         return;
       }
 
-      // 无历史会话 → 自动创建新会话，让前端直接进入可输入状态
-      if (!autoCreateTriggeredRef.current) {
-        autoCreateTriggeredRef.current = true;
-        handleCreateSession();
+      // 无历史会话：仅当列表已权威确认（sessionListLoaded）且确实为空时才自动创建
+      // 新会话——列表未到达时的空列表不可信（有历史会话时误创建"假空"会话，
+      // 页面无数据）；session_list 到达后本 effect 因 sessions 变化重新触发，
+      // 确认空列表即自动进入可对话状态，用户无需手动输入第一条消息触发懒创建。
+      if (chatState?.sessionListLoaded && sessions.length === 0) {
+        sessionEnteredRef.current = true;
+        void handleCreateSession();
+        return;
       }
     }, 300);
 
@@ -252,12 +271,22 @@ export function ACPMain({
         bootstrapTimerRef.current = null;
       }
     };
-  }, [connectionState, sessions, chatState?.activeSessionId, handleSelectSession, handleCreateSession]);
+  }, [
+    connectionState,
+    sessions,
+    chatState?.activeSessionId,
+    chatState?.sessionListLoaded,
+    handleSelectSession,
+    handleCreateSession,
+  ]);
 
   // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
   // 当服务端 session_list 响应到达并设置 activeSessionId 后，
   // 需要首次进入该会话，避免前端停留在空状态。
   useEffect(() => {
+    // 连接守卫：断线/重连期间服务端 activeSessionId 可能残留旧值，不得据其进入
+    // 会话（与 bootstrap effect 共享同一守卫，避免两处条件不一致）
+    if (connectionState !== "connected") return;
     const sid = chatState?.activeSessionId;
     if (!sid || sessionEnteredRef.current) return;
     // 确认 sessions 中包含该 activeSessionId 对应的会话
@@ -267,18 +296,18 @@ export function ACPMain({
     sessionEnteredRef.current = true;
     setInitialActiveSessionId(sid);
     try {
-      handleSelectSession(activeSession as AgentSessionInfo);
+      handleSelectSession(activeSession as AgentSessionInfo, "restore");
     } catch (err) {
       console.error("[ACPMain] Delayed session enter failed:", err);
     }
-  }, [chatState?.activeSessionId, sessions, handleSelectSession]);
+  }, [chatState?.activeSessionId, sessions, connectionState, handleSelectSession]);
 
   return (
     // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
     // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
     // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
     <div className="acp-main-root flex h-full w-full flex-col gap-3 p-3">
-      {/* 顶部 ChatHeader — 跨整个宽度，承担会话面板开关 + 当前会话标题 + popover 历史会话列表 */}
+      {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
       {/* readonly 时整体隐藏 */}
       {!readonly && (
         <ChatHeader
@@ -287,11 +316,10 @@ export function ACPMain({
           onNewSession={() => chatRef.current?.newSession()}
           onToggleSidebar={!hideSidebar ? () => setSidebarOpen((v) => !v) : undefined}
           sidebarOpen={sidebarOpen}
-          forceOpen={forcePopoverOpen}
-          onPopoverChange={handlePopoverOpenChange}
           sessions={sessions}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          showSessionList={false}
         />
       )}
 
@@ -303,7 +331,7 @@ export function ACPMain({
             className="hidden md:flex flex-col bg-surface-1 transition-all duration-200 flex-shrink-0 w-64 rounded-xl"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
-            {/* 头部：标题 + 新会话按钮 + 钉子按钮 */}
+            {/* 头部：标题 + 新会话按钮 */}
             <div className="flex items-center justify-between px-3 py-4">
               <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
                 {t("acpMain.sessions")}
@@ -317,15 +345,6 @@ export function ACPMain({
                   title={t("acpMain.newSession")}
                 >
                   <Plus className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCloseSidebarAndOpenPopover}
-                  className="h-7 w-7 text-text-muted hover:text-text-primary hover:bg-surface-2/60"
-                  title={t("acpMain.closeToPopover")}
-                >
-                  <Pin className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -351,6 +370,7 @@ export function ACPMain({
             readonly={readonly}
             hideContextPanel={true}
             rcsSessionId={rcsSessionId}
+            detailSessionId={detailSessionId}
             scenePrompt={scenePrompt}
             contextKey={contextKey}
             onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
@@ -361,6 +381,7 @@ export function ACPMain({
             onCancel={handleCancel}
             onCreateSession={handleCreateSession}
             onRespondPermission={handleRespondPermission}
+            onRespondQuestion={onRespondQuestion}
             availableCommands={availableCommands}
             availableModes={availableModes}
             currentModeId={currentModeId}
@@ -369,6 +390,9 @@ export function ACPMain({
             supportsImages={supportsImages}
             modelName={modelName}
             tokenUsage={tokenUsage}
+            connectionState={connectionState}
+            periTasks={periTasks}
+            periTasksLoaded={periTasksLoaded}
           />
         </div>
       </div>
@@ -399,6 +423,7 @@ function SidebarSessionList({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
 
   // 重命名处理
   const handleStartRename = (session: AgentSessionInfo) => {
@@ -424,20 +449,32 @@ function SidebarSessionList({
     setEditTitle("");
   };
 
-  // 删除处理
+  // 删除处理：二次确认通过 AlertDialog 收集 sessionId 与展示标题；确认后删除并清理本地选中态。
   const handleDelete = useCallback(
     async (sessionId: string) => {
-      try {
-        onDeleteSession(sessionId);
-        if (activeId === sessionId) {
-          setActiveId(null);
-        }
-      } catch (err) {
-        toast.error(`删除失败: ${(err as Error).message}`);
-      }
+      if (!canDeleteSession(sessionId, initialActiveSessionId)) return;
+      const target = sessions.find((s) => s.sessionId === sessionId);
+      setDeleteTarget({
+        sessionId,
+        title: stripHtmlTags(target?.title?.trim() || "") || t("acpMain.newSession"),
+      });
     },
-    [onDeleteSession, activeId],
+    [initialActiveSessionId, sessions, t],
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      onDeleteSession(deleteTarget.sessionId);
+      if (activeId === deleteTarget.sessionId) {
+        setActiveId(null);
+      }
+    } catch (err) {
+      toast.error(`删除失败: ${(err as Error).message}`);
+    } finally {
+      setDeleteTarget(null);
+    }
+  }, [activeId, deleteTarget, onDeleteSession]);
 
   useEffect(() => {
     if (initialActiveSessionId) {
@@ -550,19 +587,26 @@ function SidebarSessionList({
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-text-muted hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(session.sessionId);
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <span className="inline-flex">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={session.sessionId === initialActiveSessionId}
+                              className="h-6 w-6 p-0 text-text-muted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(session.sessionId);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </span>
                         </TooltipTrigger>
-                        <TooltipContent>{t("acpMain.delete")}</TooltipContent>
+                        <TooltipContent>
+                          {session.sessionId === initialActiveSessionId
+                            ? t("acpMain.cannotDeleteActiveSession")
+                            : t("acpMain.delete")}
+                        </TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
@@ -572,6 +616,27 @@ function SidebarSessionList({
           })}
         </div>
       ))}
+
+      {/* 会话删除二次确认 */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("acpMain.deleteSessionTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>{t("acpMain.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+              onClick={() => void handleConfirmDelete()}
+            >
+              {t("acpMain.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </nav>
   );
 }
@@ -590,7 +655,8 @@ interface SessionTitleButtonProps {
  */
 function SessionTitleButton({ session, isActive, onSelect }: SessionTitleButtonProps) {
   const { t } = useTranslation("components");
-  // 标题清洗：剔除混入的 HTML 标签（如 <system-reminder>），清洗后为空则回退到"新会话"占位
+  // 与 ChatHeader 历史列表一致的标题清洗：剔除混入的 HTML 标签（如
+  // <system-reminder> 上下文块，见 strip-html-tags.ts），清洗后为空则回退到"新会话"
   const displayTitle = stripHtmlTags(session.title?.trim() || "") || t("acpMain.newSession");
 
   return (

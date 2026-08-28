@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 mock.module("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children: unknown }) => children,
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const map: Record<string, string> = {
@@ -17,6 +18,7 @@ mock.module("react-i18next", () => ({
 }));
 
 mock.module("../../src/i18n", () => ({
+  default: { t: (key: string) => key },
   NS: { COMPONENTS: "components" },
 }));
 

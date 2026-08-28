@@ -343,7 +343,10 @@ export const WorkflowDagRunResultSchema = z
     runId: z.string().describe("运行 ID。"),
     status: WorkflowDagStatusSchema.describe("最终运行状态。"),
     summary: WorkflowRunSummarySchema.describe("运行摘要。"),
-    spawnedEnvIds: z.array(z.string()).optional().describe("本次运行期间拉起的环境 ID 列表。"),
+    spawnedInstanceIds: z
+      .array(z.string())
+      .optional()
+      .describe("本次运行期间实际拉起的实例 ID 列表（复用实例不计入）。"),
   })
   .describe("工作流运行结果。");
 

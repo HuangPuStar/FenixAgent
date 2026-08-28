@@ -1,9 +1,16 @@
+// ────────────────────────────────────────────
+// 编排域重构保留说明（I4：旧代码删除与精简）
+// ────────────────────────────────────────────
+// 此文件保留：非交互式实例的空闲回收机制仍依赖它（routes/web/instances 的监控视图、
+// src/index.ts 的定时器启停）。Chat 交互实例不再因 idle/activity 自动停止，但
+// scheduled / system 实例仍需要回收出口，避免后台任务长期泄漏。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { config } from "../config";
 import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
+import { docManager } from "./doc-manager-instance";
 import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
 import { globalInstanceRegistry } from "./instance-registry";
 
@@ -173,16 +180,25 @@ async function reclaimInstance(
 
 /** 扫描实例；满足空闲超时或业务无活动硬超时条件时自动停止实例。 */
 export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
+  // SP-C2 观测信号：周期输出内存实时 Doc 数量，供长期采集"实例回收 → Doc 回收"
+  // 是否生效的曲线（只含数量，不含会话 ID / 内容）。实例停止后的 Doc 回收接线在
+  // stopInstanceViaController 完成处（orchestration-instance）。
+  const docCount = docManager.openedDocCount();
+  logger.info(`[ACP-IDLE] yjs realtime docs: chat=${docCount.chat} session=${docCount.session}`);
+
   const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
   const activityTimeoutMs = config.acpActivityTimeoutSeconds * 1000;
   const snapshots = listInstanceActivitySnapshots(now);
   for (const snapshot of snapshots) {
     const supplement = globalInstanceRegistry.get(snapshot.id);
     if (!supplement) continue;
+    // Chat interactive 实例的连接和 Agent 进程由用户显式停止或正常连接关闭管理；
+    // 不再基于业务静默或 relay 缺失回收，确保长期打开的会话不会被服务端主动断链。
+    // 非交互式 scheduled / system 实例继续采用既有 idle/activity 回收策略。
+    if (supplement.spawnSource === "interactive") continue;
 
-    // activity 回收与 relay 是否存在无关：前端保持连接（页面打开中）但 Agent
-    // 长时间无业务消息（卡死、失去响应、relay 状态异常）时，仍按硬超时回收，
-    // 避免实例因 relay_count 永不归零而失去自动回收出口。
+    // activity 回收与 relay 是否存在无关：后台任务长时间无业务消息（卡死、失去响应、
+    // relay 状态异常）时，仍按硬超时回收，避免实例因 relay_count 永不归零而失去自动回收出口。
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
     if (inactiveTooLong) {
       logger.info(

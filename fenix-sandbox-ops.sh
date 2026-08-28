@@ -62,9 +62,11 @@ usage() {
   fenix-sandbox-ops.sh cluster server update <server_id> <json|@file>
   fenix-sandbox-ops.sh cluster server delete <server_id> [--yes]
   fenix-sandbox-ops.sh cluster server health-check <server_id>
+  fenix-sandbox-ops.sh cluster server tunnel <server_id> <frpc.toml_path>
 
   fenix-sandbox-ops.sh fenix sandbox list [query]
   fenix-sandbox-ops.sh fenix sandbox get <instance_id>
+  fenix-sandbox-ops.sh fenix sandbox update <instance_id> <json|@file>
   fenix-sandbox-ops.sh fenix sandbox delete <instance_id> [--yes]
   fenix-sandbox-ops.sh fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]
   fenix-sandbox-ops.sh fenix sandbox rebuild-instance <pool_id> <instance_id> [--dry-run] [--yes]
@@ -186,6 +188,29 @@ cluster_server() {
     update) [[ $# -eq 3 ]] || die "用法：cluster server update <server_id> <json|@file>"; request cluster PUT "/api/v1/servers/$2" "$3" ;;
     delete) [[ $# -ge 2 && $# -le 3 ]] || die "用法：cluster server delete <server_id> [--yes]"; confirm "删除 Cluster Server '$2'"; request cluster DELETE "/api/v1/servers/$2" ;;
     health-check) [[ $# -eq 2 ]] || die "用法：cluster server health-check <server_id>"; request cluster POST "/api/v1/servers/$2/health-check" ;;
+    tunnel)
+      [[ $# -eq 3 ]] || die "用法：cluster server tunnel <server_id> <frpc.toml_path>"
+      local server_id="$2"
+      local output_path="$3"
+      local temp_path="${output_path}.tmp.$$"
+      [[ -n "$output_path" ]] || die "frpc.toml 输出路径不能为空"
+
+      # tunnel action 会检查已有 direct Server 是否已离线，并以幂等方式切换/准备配置。
+      if ! request cluster PUT "/api/v1/servers/$server_id/tunnel"; then
+        die "切换 Server 到 tunnel 失败：$server_id"
+      fi
+      mkdir -p "$(dirname -- "$output_path")"
+      if ! curl -fsS \
+        -H "Authorization: Bearer $RCS_SANDBOX_CLUSTER_API_KEY" \
+        -o "$temp_path" \
+        "${RCS_SANDBOX_CLUSTER_URL%/}/api/v1/servers/$server_id/tunnel/frpc.toml"; then
+        rm -f "$temp_path"
+        die "下载 frpc.toml 失败：$server_id"
+      fi
+      chmod 600 "$temp_path"
+      mv -f "$temp_path" "$output_path"
+      printf 'frpc.toml 已写入：%s\n' "$output_path"
+      ;;
     *) die "未知的 Cluster Server 操作" ;;
   esac
 }
@@ -197,6 +222,7 @@ fenix_sandbox() {
       if [[ $# -eq 2 ]]; then request fenix GET "/api/system/sandbox-instances?$2"; else request fenix GET "/api/system/sandbox-instances"; fi
       ;;
     get) [[ $# -eq 2 ]] || die "用法：fenix sandbox get <instance_id>"; request fenix GET "/api/system/sandbox-instances/$2" ;;
+    update) [[ $# -eq 3 ]] || die "用法：fenix sandbox update <instance_id> <json|@file>"; request fenix PUT "/api/system/sandbox-instances/$2" "$3" ;;
     delete) [[ $# -ge 2 && $# -le 3 ]] || die "用法：fenix sandbox delete <instance_id> [--yes]"; confirm "删除 Fenix 沙盒实例 '$2'"; request fenix DELETE "/api/system/sandbox-instances/$2" ;;
     rebuild-all)
       [[ $# -ge 2 && $# -le 4 ]] || die "用法：fenix sandbox rebuild-all <pool_id> [--dry-run] [--yes]"

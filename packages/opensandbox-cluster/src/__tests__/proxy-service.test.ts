@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../app";
 import { migrateDatabase } from "../db/migrate";
 import type { ClusterConfig } from "../types";
@@ -11,6 +12,13 @@ const config: ClusterConfig = {
   serverApiKeyEncryptionKey: new Uint8Array(32),
   proxyConnectTimeoutMs: 3000,
   proxyResponseTimeoutMs: 120000,
+  frpPluginPort: 8081,
+  frpPublicAddress: "cluster.example.com",
+  frpBindPort: 7000,
+  frpInternalUrl: "http://frps:7080",
+  frpToken: "shared-token",
+  frpConnectionStaleMs: 40000,
+  frpHealthIntervalMs: 30000,
 };
 
 describe("OpenSandbox proxy", () => {
@@ -24,7 +32,7 @@ describe("OpenSandbox proxy", () => {
         return new Response(`echo:${await request.text()}`, { status: 207, headers: { "x-provider": "ok" } });
       },
     });
-    const databasePath = `/tmp/opensandbox-cluster-proxy-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-proxy-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const headers = { Authorization: "Bearer cluster-key", "Content-Type": "application/json" };
@@ -69,7 +77,7 @@ describe("OpenSandbox proxy", () => {
         return Response.json({ id: "provider-sandbox" }, { status: 201 });
       },
     });
-    const databasePath = `/tmp/opensandbox-cluster-volume-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-volume-${randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const headers = { Authorization: "Bearer cluster-key", "Content-Type": "application/json" };

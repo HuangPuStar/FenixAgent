@@ -466,4 +466,288 @@ describe("RagFlowKnowledgeProvider", () => {
       "Content-Type": "application/json",
     });
   });
+
+  // 验证数据集详情在不同 RagFlow 字段版本间保持一致的解析语义。
+  test("getDataset 区分内置分块器、pipeline 并在请求失败时返回空值", async () => {
+    const fetchSpy = mock()
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            code: 0,
+            data: { embedding_model: " embed@instance@provider ", parser_id: "naive", chunk_method: "book" },
+          }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 0, data: { parser_id: "pipeline_1" } }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: false,
+        status: 503,
+        text: async () => JSON.stringify({ code: 503, message: "unavailable" }),
+      }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(provider.getDataset({ datasetId: "builtin" })).resolves.toEqual({
+      embeddingModel: "embed@instance@provider",
+      chunkMethod: "naive",
+      parseMethod: "builtin",
+    });
+    await expect(provider.getDataset({ datasetId: "pipeline" })).resolves.toEqual({
+      embeddingModel: null,
+      chunkMethod: "pipeline_1",
+      parseMethod: "pipeline",
+    });
+    await expect(provider.getDataset({ datasetId: "unavailable" })).resolves.toBeNull();
+  });
+
+  // 验证厂商目录会过滤无效项，并统一对象和字符串形式的官网地址。
+  test("listFactories 映射可用厂商并在上游异常时降级为空数组", async () => {
+    const fetchSpy = mock()
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            code: 0,
+            data: [
+              { name: "Qwen", tags: "embedding", url: { default: "https://example.test/qwen" } },
+              { name: "Local", url: "https://example.test/local" },
+              { name: "  " },
+              {},
+            ],
+          }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ code: 500, message: "failed" }),
+      }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(provider.listFactories()).resolves.toEqual([
+      { name: "Qwen", tags: "embedding", url: "https://example.test/qwen" },
+      { name: "Local", tags: null, url: "https://example.test/local" },
+    ]);
+    await expect(provider.listFactories()).resolves.toEqual([]);
+  });
+
+  // 验证供应商连接检查仅报告错误摘要，不向调用方抛出上游异常。
+  test("verifyProviderConnection 编码厂商路径并返回验证结果", async () => {
+    const fetchSpy = mock()
+      .mockImplementationOnce(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 0 }) }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 401, message: "invalid provider key" }),
+      }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(
+      provider.verifyProviderConnection({
+        provider: "Vendor / One",
+        providerApiKey: "provider-key",
+        baseUrl: " https://provider.test ",
+      }),
+    ).resolves.toEqual({ success: true });
+    await expect(provider.verifyProviderConnection({ provider: "Vendor", providerApiKey: "invalid" })).resolves.toEqual(
+      { success: false, message: "code=401: invalid provider key" },
+    );
+
+    expect((fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[0]).toContain("Vendor%20%2F%20One/connection");
+    const request = (fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toEqual({ api_key: "provider-key", base_url: "https://provider.test" });
+  });
+
+  // 验证实例模型管理仅展示嵌入模型，并保留模型启用状态。
+  test("listInstanceModels 过滤非 embedding 模型并映射实例状态", async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          code: 0,
+          data: [
+            { name: "embed-1", model_type: ["chat", "embedding"], max_tokens: 8192, status: "inactive" },
+            { name: "chat-1", model_type: "chat" },
+            { model_type: "embedding" },
+          ],
+        }),
+    })) as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(provider.listInstanceModels({ provider: "Qwen", instanceName: "main" })).resolves.toEqual([
+      {
+        name: "embed-1",
+        provider: "Qwen",
+        instance: "main",
+        modelType: "chat,embedding",
+        maxTokens: 8192,
+        status: "inactive",
+      },
+    ]);
+  });
+
+  // 验证模型列表兼容新旧 RagFlow 接口，并排除不匹配类型和无效记录。
+  test("listEmbeddingModels 与 listRerankModels 兼容新旧模型响应", async () => {
+    const fetchSpy = mock()
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            code: 0,
+            data: [
+              { name: "embed", provider_name: "Qwen", instance_name: "tenant", model_type: ["embedding"] },
+              { name: "chat", model_type: ["chat"] },
+              null,
+            ],
+          }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ code: 404, message: "not found" }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ code: 0, data: [{ llm_name: "rerank-v1", name: "Legacy", model_type: "rerank" }] }),
+      }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(provider.listEmbeddingModels()).resolves.toEqual([
+      { name: "embed@tenant@Qwen", label: "tenant › embed", provider: "Qwen", instance: "tenant" },
+    ]);
+    await expect(provider.listRerankModels()).resolves.toEqual([
+      { name: "rerank-v1@Legacy", label: "Legacy · rerank-v1", provider: "Legacy", instance: "" },
+    ]);
+  });
+
+  // 验证检索请求只透传已启用的可选参数，并把缺省字段映射为稳定结果。
+  test("search 构造可选检索参数并映射结果回退字段", async () => {
+    const fetchSpy = mock(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          code: 0,
+          data: {
+            chunks: [
+              { content: "answer", id: "chunk-1" },
+              { content: "other", document_keyword: "keyword", similarity: 0.8 },
+            ],
+          },
+        }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    const result = await provider.search({
+      knowledgeBases: [{ remoteId: "dataset-1", remoteAccountId: "account", remoteUserId: "user" }],
+      query: "question",
+      topK: 3,
+      similarityThreshold: 0.6,
+      keyword: false,
+      highlight: true,
+      crossLanguages: ["en", "zh"],
+      metaDataFilter: { method: "manual", logic: "and", manual: [] },
+    });
+
+    expect(result).toEqual([
+      { title: "chunk-1", snippet: "answer", source: "chunk-1", score: 0, knowledgeBaseId: null, resourceId: null },
+      { title: "keyword", snippet: "other", source: "keyword", score: 0.8, knowledgeBaseId: null, resourceId: null },
+    ]);
+    const request = (fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      question: "question",
+      dataset_ids: ["dataset-1"],
+      top_k: 3,
+      similarity_threshold: 0.6,
+      keyword: false,
+      highlight: true,
+      cross_languages: ["en", "zh"],
+      meta_data_filter: { method: "manual", logic: "and", manual: [] },
+    });
+  });
+
+  // 验证切片列表保留分页位置、可用状态和关键词数组的防御性默认值。
+  test("listChunks 映射切片分页数据并清理空关键词", async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          code: 0,
+          data: {
+            total: 5,
+            chunks: [
+              { id: "chunk-1", content: "first", important_keywords: ["one"], available_int: 0 },
+              { id: "chunk-2", content: "second", available_int: 1 },
+            ],
+          },
+        }),
+    })) as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(
+      provider.listChunks({
+        knowledgeBaseRemoteId: "dataset",
+        resourceRemoteId: "document",
+        remoteAccountId: "account",
+        remoteUserId: "user",
+        page: 2,
+        pageSize: 2,
+        keyword: " useful ",
+      }),
+    ).resolves.toEqual({
+      items: [
+        { id: "chunk-1", content: "first", chunkIndex: 3, importantKeywords: ["one"], enabled: false },
+        { id: "chunk-2", content: "second", chunkIndex: 4, importantKeywords: [], enabled: true },
+      ],
+      total: 5,
+      page: 2,
+      pageSize: 2,
+    });
+  });
+
+  // 验证知识图谱删除将“图不存在”作为幂等成功，其余上游错误仍会传播。
+  test("deleteKnowledgeGraph 仅忽略图不存在错误", async () => {
+    const fetchSpy = mock()
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 102, message: "graph not found" }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 500, message: "failed" }),
+      }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(
+      provider.deleteKnowledgeGraph({
+        knowledgeBaseRemoteId: "dataset",
+        remoteAccountId: "account",
+        remoteUserId: "user",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      provider.deleteKnowledgeGraph({
+        knowledgeBaseRemoteId: "dataset",
+        remoteAccountId: "account",
+        remoteUserId: "user",
+      }),
+    ).rejects.toThrow("code=500: failed");
+  });
 });

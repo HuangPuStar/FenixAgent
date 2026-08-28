@@ -49,7 +49,7 @@ POST /api/agents/:agentId/instances/connect
 
 - 准备 environment
 - 启动或复用可用 instance
-- 返回可连接的 `relay.wsUrl`
+- 返回可连接的 `relay.wsUrl`（相对路径，可能带 `instanceId` query，用于多实例环境精确指定实例；原样拼接使用即可）
 
 ### Workspace
 

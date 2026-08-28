@@ -7,10 +7,16 @@ docker_socket="unix:///var/run/docker.sock"
 docker_log_file="${DOCKER_LOG_FILE:-/var/log/dockerd.log}"
 docker_pid=""
 server_pid=""
+frpc_pid=""
 
 stop_children() {
   status=$?
   trap - INT TERM EXIT
+
+  if [ -n "$frpc_pid" ] && kill -0 "$frpc_pid" 2>/dev/null; then
+    kill -TERM "$frpc_pid" 2>/dev/null || true
+    wait "$frpc_pid" 2>/dev/null || true
+  fi
 
   if [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null; then
     kill -TERM "$server_pid" 2>/dev/null || true
@@ -63,17 +69,32 @@ if [ -f /opt/opensandbox/seed-images/opensandbox-execd.tar ] \
   docker -H "$docker_socket" load -i /opt/opensandbox/seed-images/opensandbox-execd.tar
 fi
 
+if [ -f /etc/frp/frpc.toml ]; then
+  mode="$(stat -c '%a' /etc/frp/frpc.toml)"
+  case "$mode" in 400|600|440|640) ;; *) echo "frpc.toml permissions must not allow other users" >&2; exit 1 ;; esac
+  frpc verify -c /etc/frp/frpc.toml
+  frpc -c /etc/frp/frpc.toml &
+  frpc_pid=$!
+fi
+
 # Server 和 dockerd 共用当前容器生命周期；任一进程退出时，另一个进程也会被优雅停止。
 "$@" &
 server_pid=$!
 
-while kill -0 "$server_pid" 2>/dev/null && kill -0 "$docker_pid" 2>/dev/null; do
+while kill -0 "$server_pid" 2>/dev/null && kill -0 "$docker_pid" 2>/dev/null && { [ -z "$frpc_pid" ] || kill -0 "$frpc_pid" 2>/dev/null; }; do
   sleep 1
 done
 
 if ! kill -0 "$docker_pid" 2>/dev/null; then
   echo "docker daemon exited while OpenSandbox Server was running" >&2
   cat "$docker_log_file" >&2 || true
+  kill -TERM "$server_pid" 2>/dev/null || true
+  wait "$server_pid" 2>/dev/null || true
+  exit 1
+fi
+
+if [ -n "$frpc_pid" ] && ! kill -0 "$frpc_pid" 2>/dev/null; then
+  echo "frpc exited while OpenSandbox Server was running" >&2
   kill -TERM "$server_pid" 2>/dev/null || true
   wait "$server_pid" 2>/dev/null || true
   exit 1

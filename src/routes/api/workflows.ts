@@ -33,7 +33,8 @@ app.post(
     const payload = body as typeof ApiWorkflowExecuteRequestBodySchema._output;
 
     try {
-      const result = await executeWorkflow(authCtx.organizationId, workflowId, payload);
+      // C-P2.5：透传 API Key 调用方的真实 userId，实例计入该用户配额桶
+      const result = await executeWorkflow(authCtx.organizationId, workflowId, payload, authCtx.userId);
       return result;
     } catch (err: unknown) {
       if (err instanceof WorkflowError) {

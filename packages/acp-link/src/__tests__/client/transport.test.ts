@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { TransportEvents } from "../../client/transport.js";
 import { WSTransport } from "../../client/transport.js";
+import { WEBSOCKET_CODES } from "../../websocket-code.js";
 
 // WSTransport 需要真实 WebSocket 环境，这里测试状态机和重连逻辑
 // 通过构造假的 CloseEvent 来模拟
@@ -38,5 +39,12 @@ describe("WSTransport", () => {
     expect(typeof transport.close).toBe("function");
     // disconnect() 方法存在且可调用
     expect(typeof transport.disconnect).toBe("function");
+  });
+
+  // 服务端拒绝重复 machine 连接后，客户端不得把永久冲突当作瞬时断线重连。
+  test("4503 machine connection conflict — does not auto-reconnect", () => {
+    expect(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code).toBe(4503);
+    expect(WEBSOCKET_CODES.MACHINE_UNAVAILABLE.code).toBe(4500);
+    expect(WEBSOCKET_CODES.UNAUTHORIZED.code).toBe(4003);
   });
 });

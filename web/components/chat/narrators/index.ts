@@ -75,8 +75,10 @@ export function narrate(
   // 第 5 阶段：拿状态词（全局统一）
   const statusLabel = t(`common.status.${normalizedStatus}`);
 
-  // 第 6 阶段：error 状态从 rawOutput 提取错误信息，单独显示在 title 下方
-  const errorDetail = normalizedStatus === "error" ? extractErrorMessage(tool.rawOutput) : undefined;
+  // 第 6 阶段：error 状态提取错误信息。优先用后端脱敏的 publicError.message
+  // （可靠、无敏感细节），缺失时回退 rawOutput 启发式提取
+  const errorDetail =
+    normalizedStatus === "error" ? tool.publicError?.message || extractErrorMessage(tool.rawOutput) : undefined;
 
   // 第 7 阶段：耗时徽章。complete/error 终态且有 elapsedMs 时显示
   // narrator 自定义徽章已合并到 detail（subtitle 行），这里只处理耗时徽章

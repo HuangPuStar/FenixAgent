@@ -52,6 +52,36 @@ const envSchema = z.object({
   RCS_SANDBOX_PROVIDER_RESUME_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   RCS_SANDBOX_PROVIDER_DESTROY_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
+  // ── 可选：file-ws 心跳巡检（P0-1）──
+  // keep_alive 间隔 ≤30s 是跨仓库软契约（acp-link 独立仓库），3 倍间隔（90s）判定僵尸；
+  // 巡检间隔 30s。默认关闭：旧机器端未实现 keep_alive 或间隔 >90s 时会被误判僵尸，
+  // 需灰度逐步开启（见 docs/arch/12-files.md §7.4）。
+  RCS_FILE_WS_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
+  RCS_FILE_WS_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+  RCS_FILE_WS_SWEEP_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
+  // ── 可选：file-ws 载荷上限（P1-11a，D12）──
+  // file-ws 单帧最大载荷 32MB（§7.6）：远程 upload 单文件 20MB → base64 帧 ~27MB < 32MB。
+  // 默认值须与 src/transport/file-ws-payload.ts 的 DEFAULT_FILE_WS_MAX_PAYLOAD_MB 保持一致。
+  RCS_FILE_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(32),
+
+  // ── 可选：file-ws 身份绑定（P2-14，§7.1）──
+  // register 对账 core runtime node 注册（registerRemoteNode 产物），未知 machine
+  // 严格模式 close(4404)；默认 false（宽松）放行 + 告警。两阶段过渡软开关：
+  // 旧机器端（acp-link）无 4404 退避语义、可能 file-ws 先连，服务端先上严格校验会
+  // 硬阻塞旧机器端——须机器端先行升级后再开启（见 docs/arch/12-files.md §7.1/§10）。
+  RCS_FILE_WS_IDENTITY_STRICT: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+
+  // ── 可选：file-events 订阅端点（P1-6b）──
+  // 服务级连接上限，与 YJS_MAX_CLIENTS 分池（互不挤占）；超限 close 1013。
+  RCS_FILE_EVENTS_MAX_CLIENTS: z.coerce.number().int().positive().default(200),
+
   // ── 可选：知识库（RagFlow）──
   RAGFLOW_API_URL: z.string().default("http://localhost:9380"),
   RAGFLOW_API_KEY: z.string().default(""),
@@ -89,10 +119,15 @@ const envSchema = z.object({
 
   // ── 可选：引擎 ──
   // 默认 fallback 机器 ID。agent config 未绑定 machineId 时使用此机器替代 local-default
-  RCS_DEFAULT_MACHINE_ID: z
-    .string()
-    .regex(/^mach_/, "RCS_DEFAULT_MACHINE_ID must start with 'mach_'")
-    .optional(),
+  // preprocess 归一空串：docker-compose 的 `${RCS_DEFAULT_MACHINE_ID:-}` 在 .env 未设置时
+  // 会透传空串（而非 undefined），若不归一将触发下方 regex 校验导致服务拒绝启动。
+  RCS_DEFAULT_MACHINE_ID: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z
+      .string()
+      .regex(/^mach_/, "RCS_DEFAULT_MACHINE_ID must start with 'mach_'")
+      .optional(),
+  ),
 
   // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
   RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
@@ -110,8 +145,23 @@ const envSchema = z.object({
   RCS_REDIS_PASSWORD: z.string().optional(),
   RCS_REDIS_CLUSTER: z.string().optional(),
 
+  // ── 可选：YJS Redis 快照持久化（C2 切片：SP-A1 节流 / SP-C1 TTL）──
+  // 类型/默认值/部署文档的真相来源；包内持久层（packages/chat-channel/src/persist/
+  // redis.ts）按同名变量直读（provider 创建于包内 factory 深处，暂无宿主 DI 通道），
+  // 宿主把校验后的值经 provider options 注入后应删除包内直读。非法值由包内回落默认。
+  RCS_YJS_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
+  RCS_YJS_SNAPSHOT_IDLE_MS: z.coerce.number().int().positive().default(500),
+  RCS_YJS_SNAPSHOT_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
+
   // ── 可选：Workspace 路径 ──
   WORKSPACE_ROOT: z.string().optional(),
+
+  // ── 可选：Langfuse 观测透传（统一派发到 machine 上 agent 进程）──
+  // 主服务声明后由 launch-spec-builder 经 launchSpec.env 透传到 machine 上
+  // agent 进程（peri 的 langfuse-client 直读同名变量）；未设置则不注入。
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_BASE_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -129,4 +179,18 @@ export function validateEnv(): Env {
     process.exit(1);
   }
   return result.data;
+}
+
+/**
+ * 查找仍被设置但已被新变量取代的废弃环境变量。
+ *
+ * 仅硬编码维护一条映射（RCS_DEFAULT_MACHINE_TYPE → RCS_DEFAULT_ENGINE_TYPE）：
+ * 不做通用扫描——代码无法区分"历史上存在过的变量"与"用户拼写错误的变量"，
+ * 通用扫描会产生大量误报。新增废弃变量时必须在此显式登记。
+ * 该函数为纯函数，由 index.ts 启动时调用输出告警；不放 validateEnv 内是因为
+ * validateEnv 被测试直接调用，告警日志会污染测试输出。
+ */
+export function findDeprecatedEnvVars(): Array<{ name: string; replacement: string }> {
+  const DEPRECATED_ENV_MAP = [{ name: "RCS_DEFAULT_MACHINE_TYPE", replacement: "RCS_DEFAULT_ENGINE_TYPE" }] as const;
+  return DEPRECATED_ENV_MAP.filter(({ name }) => process.env[name] !== undefined);
 }

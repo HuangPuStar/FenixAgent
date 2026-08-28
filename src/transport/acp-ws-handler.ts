@@ -1,16 +1,35 @@
 import { createLogger, error as logError } from "@fenix/logger";
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { config } from "../config";
 import { touchInstanceActivity } from "../services/acp-idle-monitor";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
 import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../services/registry-heartbeat";
-import type { AcpConnectionEntry } from "../types/store";
+import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../types/store";
+import {
+  dispatchAgentNodeDisconnect,
+  dispatchAgentNodeWsClose,
+  getAgentNodeService,
+  wsToAgentNodeSocket,
+} from "./agent-node-bridge";
 import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-acp-ws-handler");
 
+/**
+ * 当前连接互斥只在单进程内生效：连接表和注册中的 pending 占位均保存在内存中。
+ *
+ * TODO(distributed-machine-connection-lock): 服务水平扩展前改为 Redis 或 DB 租约，
+ * 记录 machine 的 connection owner/token/lease，并让注册、心跳、断连清理都带 owner
+ * 条件，避免不同服务实例同时接受同一 machine，或旧连接误清理新连接。迁移完成前
+ * 不得将当前内存集合视为跨实例锁。
+ */
 const connections = new Map<string, AcpConnectionEntry>();
+
+/** 服务端明确拒绝的 machine 重复连接：客户端收到后不得自动重连。 */
+const pendingMachineRegistrations = new Set<string>();
+const MACHINE_CONNECTION_CONFLICT_REASON = "machine_already_connected";
 
 const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
 const _CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
@@ -131,16 +150,38 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
     ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
     : [{ type: "opencode" }];
-  // 客户端持久化的 node_id，用于精确去重（避免 IP/MAC 变化导致重复注册）
-  const nodeId = (msg.node_id as string) || null;
-  // 客户端指定的 machine id，用于固定机器标识
   const specifiedMachineId = (msg.machine_id as string) || null;
+  if (!specifiedMachineId) {
+    sendToWs(entry.ws, { type: "error", message: "machine_id is required" });
+    entry.ws.close(4004, "machine_id is required");
+    return;
+  }
+
+  // registerMachine 包含数据库 await。用 pending 集合先占住 machine_id，避免两个新 WS
+  // 在数据库写入完成前同时通过在线检查；已完成注册的连接则从 connections 直接识别。
+  const hasActiveConnection = [...connections.values()].some(
+    (candidate) => candidate.isMachine && candidate.machineId === specifiedMachineId && candidate.ws.readyState === 1,
+  );
+  const hasActiveAgentNodeConnection = getAgentNodeService().hasActiveConnection(specifiedMachineId);
+  if (hasActiveConnection || hasActiveAgentNodeConnection || pendingMachineRegistrations.has(specifiedMachineId)) {
+    sendToWs(entry.ws, {
+      type: "error",
+      code: "MACHINE_ALREADY_CONNECTED",
+      message: `Machine '${specifiedMachineId}' already has an active connection`,
+    });
+    entry.ws.close(WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code, MACHINE_CONNECTION_CONFLICT_REASON);
+    logger.warn(
+      `[MACHINE-CONNECTION-CONFLICT] rejected duplicate connection machineId=${specifiedMachineId} wsId=${wsId}`,
+    );
+    return;
+  }
+
+  pendingMachineRegistrations.add(specifiedMachineId);
 
   try {
     const result = await registerMachine({
       agentName,
       tenantId,
-      nodeId,
       machineId: specifiedMachineId,
     });
 
@@ -160,6 +201,21 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
     const engineTypes = supportedEngineTypes.map((e) => e.type);
     registerRemoteNode(result.id, entry.ws, entry, engineTypes);
+
+    // 接入编排域 AgentNodeService：machine 注册成功后由新包管理节点生命周期。
+    // 编排域接入失败不阻断机器注册（relay / core 通道不依赖编排域节点），记录诊断即可。
+    // 竞态防护：registerMachine 的 await 期间 WS 可能已关闭（handleAcpWsClose 已删
+    // entry，且此时 entry.machineId 尚为 null 不会触发清理），用已关闭的 socket 建节点
+    // 会让节点以死信道进入 connected 且永远收不到 close 事件（事件已过），导致节点
+    // 永久 stuck；关闭中的连接不接入编排域，等待机器重连。
+    if (entry.ws.readyState === 1) {
+      try {
+        getAgentNodeService().handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
+      } catch (err) {
+        logError("AgentNodeService handleIncomingConnection error:", err);
+      }
+    }
+
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (replacedInstanceIds.length > 0) {
       import("./relay").then(({ closeClientsForMachineInstances }) => {
@@ -186,6 +242,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   } catch (err) {
     logError("Machine register error:", err);
     sendToWs(entry.ws, { type: "error", message: "Machine registration failed" });
+  } finally {
+    pendingMachineRegistrations.delete(specifiedMachineId);
   }
 }
 
@@ -344,6 +402,12 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     return;
   }
 
+  // 通知编排域 AgentNode 断连（触发 _handleDisconnected：进入 disconnected 并停止
+  // 重连尝试，等待机器主动重连；E-P2.2 方案 A）。
+  // 必须放在快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用为
+  // connected，旧 socket 的 close 事件不应把节点打断为 disconnected。
+  dispatchAgentNodeWsClose(entry.ws);
+
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
   const instanceIds = getCoreRuntime()
@@ -396,6 +460,12 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   const activeConn = findMachineConnectionById(machineId);
   if (activeConn) return;
 
+  // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 语义一致，
+  // 置于快速重连检查之后：若新连接已接管，节点已被 handleIncomingConnection 复用
+  // 为 connected，不得再打断）。sweep 路径无 entry.ws 可引用，走 machineId 维度
+  // 通知（幂等：节点未管理或已断连时忽略）。
+  dispatchAgentNodeDisconnect(machineId);
+
   // 更新 DB 状态
   disconnectMachine(machineId, reason).catch((err) => {
     logError("Machine disconnect error:", err);
@@ -447,6 +517,20 @@ export function findMachineConnectionById(machineId: string): AcpConnectionEntry
     }
   }
   return null;
+}
+
+/** 只读快照：供 Observer 等只读消费者遍历活跃连接，不暴露 ws/unsub 句柄。 */
+export function listAcpConnections(): AcpConnectionSnapshot[] {
+  return [...connections.values()].map((entry) => ({
+    wsId: entry.wsId,
+    userId: entry.userId,
+    agentId: entry.agentId,
+    boundEnvId: entry.boundEnvId,
+    machineId: entry.machineId,
+    isMachine: entry.isMachine,
+    openTime: entry.openTime,
+    capabilities: entry.capabilities,
+  }));
 }
 
 /** 通过 agentId 查找在线的 machine WebSocket 连接（异步，含 DB 查询）。结果会缓存到 agentMachineCache。 */
@@ -520,6 +604,8 @@ export function closeAllAcpConnections(): void {
         entry.ws.close(1001, "server_shutdown");
       }
       if (entry.isMachine && entry.machineId) {
+        // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 幂等）
+        dispatchAgentNodeWsClose(entry.ws);
         disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
       }
     } catch {

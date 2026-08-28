@@ -1,17 +1,12 @@
-import { CheckCircle, Circle, Loader2 } from "lucide-react";
+import { CheckCircle, Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TodoItem } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 
 // =============================================================================
-// Todo 条目类型 — 从 todowrite 工具调用的 rawInput 中解析
+// Todo 条目类型
 // =============================================================================
-
-export interface TodoItem {
-  content: string;
-  status: "pending" | "in_progress" | "completed";
-  activeForm?: string;
-}
 
 interface TodoPanelProps {
   todos: TodoItem[];
@@ -66,7 +61,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 
           {inProgress > 0 && (
             <span className="flex items-center gap-1 text-status-running">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Circle className="h-3 w-3 text-status-running" />
               <span>
                 {inProgress} {t("todoPanel.inProgress")}
               </span>
@@ -84,7 +79,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
                 {todo.status === "completed" ? (
                   <CheckCircle className="h-3.5 w-3.5 mt-0.5 text-status-active flex-shrink-0" />
                 ) : todo.status === "in_progress" ? (
-                  <Loader2 className="h-3.5 w-3.5 mt-0.5 text-status-running animate-spin flex-shrink-0" />
+                  <Circle className="h-3.5 w-3.5 mt-0.5 text-status-running flex-shrink-0" />
                 ) : (
                   <Circle className="h-3.5 w-3.5 mt-0.5 text-text-muted/40 flex-shrink-0" />
                 )}
@@ -105,33 +100,4 @@ export function TodoPanel({ todos }: TodoPanelProps) {
       </div>
     </div>
   );
-}
-
-// =============================================================================
-// 从 todowrite rawInput 中解析 todo 列表
-// =============================================================================
-
-export function parseTodosFromRawInput(rawInput: Record<string, unknown>): TodoItem[] {
-  // todowrite 的 rawInput 通常是 { todos: [...] }
-  const todosArr = rawInput.todos;
-  if (!Array.isArray(todosArr)) return [];
-
-  return todosArr
-    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-    .map((item) => ({
-      content: typeof item.content === "string" ? item.content : String(item.content ?? ""),
-      status: validateTodoStatus(item.status),
-      activeForm: typeof item.activeForm === "string" ? item.activeForm : undefined,
-    }));
-}
-
-function validateTodoStatus(status: unknown): TodoItem["status"] {
-  if (status === "pending" || status === "in_progress" || status === "completed") return status;
-  return "pending";
-}
-
-// 判断工具调用是否为 todowrite
-export function isTodoWriteToolCall(title: string, rawInput?: Record<string, unknown>): boolean {
-  const lower = title.toLowerCase();
-  return (lower.includes("todowrite") || lower.includes("todo_write")) && !!rawInput;
 }

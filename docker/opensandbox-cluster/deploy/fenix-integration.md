@@ -13,12 +13,10 @@ FenixAgent :3000
       | RCS_SANDBOX_CLUSTER_URL
       v
 OpenSandbox Cluster :8080
-      |
-      | 宿主机地址：http://<宿主机局域网 IP>:8090
+      |---------------- direct：宿主机地址 http://<宿主机局域网 IP>:8090
+      |---------------- tunnel：Cluster/frps ← Server 内 frpc（Server 不暴露入站端口）
       v
 OpenSandbox Server 容器 :8080
-      |
-      | 宿主机映射 :8090
       v
     DinD Docker + 沙盒容器
 ```
@@ -32,7 +30,8 @@ Cluster 负责资源池、Server 注册、容量分配和请求代理；Server �
 - 已安装 Docker Engine 和 Docker Compose v2；
 - 支持特权容器和 host cgroup；
 - 为 DinD 数据卷和 `/workspace` 预留足够磁盘空间；
-- 放通 `3000`、`8080`、`8090` 以及 `sandbox.toml` 中配置的沙盒端口范围；
+- direct 部署放通 `3000`、`8080`、`8090` 以及 `sandbox.toml` 中配置的沙盒端口范围；
+- tunnel 部署只需放通 frps 的 `FRP_BIND_PORT`（默认 `7000`），Server 侧允许主动访问该端口；
 - 准备一个 Fenix、Cluster、Server 和沙盒容器都能访问的主机或局域网地址。
 
 跨容器通信不要使用 `localhost` 或 `127.0.0.1`，应使用宿主机局域网 IP 或可解析的服务地址。
@@ -109,6 +108,11 @@ SERVER_API_KEY_ENCRYPTION_KEY="替换为随机加密 Server API Key"
 PROXY_CONNECT_TIMEOUT_MS=3000
 PROXY_RESPONSE_TIMEOUT_MS=120000
 
+# FRP tunnel（使用 tunnel Server 时必填）
+FRP_PUBLIC_ADDRESS=<宿主机局域网 IP 或域名>
+FRP_BIND_PORT=7000
+FRP_TOKEN="替换为 URL 安全的随机 FRP Token"
+
 ########### server
 
 # 对外端口
@@ -170,7 +174,7 @@ docker compose exec opensandbox-server \
   docker images
 ```
 
-使用运维脚本创建默认资源池并注册 Server 进去 Cluster。
+使用运维脚本创建默认资源池并注册 direct Server 进去 Cluster。
 
 如果在 Fenix 镜像容器内运行 `/app/fenix-sandbox-ops.sh`，脚本会直接读取容器已有的 `RCS_SANDBOX_CLUSTER_URL` 和 `RCS_SANDBOX_CLUSTER_API_KEY`，无需再次设置。以下环境变量仅适用于在宿主机或其他独立环境中运行脚本的场景：
 
@@ -190,6 +194,29 @@ export SERVER_API_KEY='替换为 Server API Key'
 ```
 
 注册 Server 时使用宿主机局域网 IP 和映射端口 `http://<宿主机局域网 IP>:8090`。
+
+### tunnel Server（与 direct 二选一）
+
+如果 Server 无法提供入站端口，不使用上面的 `opensandbox-server` direct 服务配置，改为单独部署
+[`docker/opensandbox-server-tunnel/`](../../opensandbox-server-tunnel/)。Cluster 和 frps 仍使用本目录的 Compose。
+
+新建 tunnel Server 与已有 direct Server 切换为 tunnel 是两种入口，二选一。两种入口完成后，都要执行 `server tunnel` 下载配置，再将配置挂载到 Server 并重启：
+
+```bash
+# 方案 A：新建 tunnel Server
+./fenix-sandbox-ops.sh cluster server create \
+  '{"id":"server-tunnel-1","pool_id":"default","name":"server-tunnel-1","transport_mode":"tunnel","workspace_root":"/workspace","api_key":"替换为 Server API Key","max_sandboxes":200}'
+
+# 生成并下载 frpc.toml（重复执行安全）
+./fenix-sandbox-ops.sh cluster server tunnel \
+  server-tunnel-1 /path/to/opensandbox-server-tunnel/frpc.toml
+
+# 方案 B：已有 direct Server。先停止 Server，确认其不再提供健康检查响应后再执行。
+./fenix-sandbox-ops.sh cluster server tunnel \
+  server-1 /path/to/opensandbox-server-tunnel/frpc.toml
+```
+
+然后在 `docker/opensandbox-server-tunnel/` 目录使用 `docker compose up -d` 启动。该 Compose 不发布 Server 或沙盒端口，Server 只需能访问 `${FRP_PUBLIC_ADDRESS}:${FRP_BIND_PORT}`。
 
 ## 5. 配置并启动 FenixAgent
 
@@ -323,6 +350,10 @@ curl -fsS http://127.0.0.1:3000/health
 
 ## 6. 日常运维操作
 
+完成 Fenix 部署并确认 Fenix 已经可以访问 Cluster 服务后，资源池、Cluster Server 以及沙盒实例的日常维护，既可以继续使用 `/app/fenix-sandbox-ops.sh`，也可以直接使用 Admin 管理端的“沙盒管理”功能。Admin 页面适合部署完成后的查看、配置更新、健康检查和实例维护；脚本适合自动化操作或无法通过 Admin 页面访问 Fenix 的场景。
+
+首次部署时仍需先使用 `fenix-sandbox-ops.sh` 完成 Cluster Server 注册等初始化操作，因为此时 Fenix 尚未启动，或尚未具备访问沙盒服务的条件。初始化完成后，再通过 Admin 页面进行后续维护即可。
+
 在 Fenix 镜像容器中运行 `/app/fenix-sandbox-ops.sh` 时，Cluster 和 Fenix 相关配置会直接复用容器已有的环境变量，无需额外设置。只有在宿主机或其他独立环境运行脚本时，才需要通过项目根目录 `.env` 或 shell 环境变量提供这些配置；shell 环境变量优先于 `.env`：
 
 ```bash
@@ -336,6 +367,7 @@ export POOL_ID='资源池 ID'
 export SERVER_ID='Server ID'
 export SERVER_UPDATE_FILE='./server-update.json'
 export SANDBOX_INSTANCE_ID='sandbox_instance ID'
+export INSTANCE_UPDATE_FILE='./instance-update.json'
 export USER_ID='用户 ID'
 ```
 
@@ -378,9 +410,16 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh cluster server update "${SERVER_ID}" @"${SERVER_UPDATE_FILE}"
 # 检查 Server 的 OpenSandbox Server 接口是否可访问，并同步健康状态
 ./fenix-sandbox-ops.sh cluster server health-check "${SERVER_ID}"
+# 生成并下载 tunnel Server 使用的 frpc.toml；已有 direct Server 切换前必须先停机
+./fenix-sandbox-ops.sh cluster server tunnel \
+  "${SERVER_ID}" /path/to/opensandbox-server-tunnel/frpc.toml
 # 删除指定 Server；--yes 表示跳过交互确认
 ./fenix-sandbox-ops.sh cluster server delete "${SERVER_ID}" --yes
 ```
+
+`server tunnel` 对已经是 tunnel 模式的 Server 可重复执行；对于 direct Server，Cluster
+会先确认 Server 已离线，再切换为 tunnel 并生成配置。下载完成后，将 `frpc.toml` 挂载到
+Server 容器并重启 Server。
 
 `server-update.json` 示例：
 
@@ -404,6 +443,8 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh fenix sandbox list "sandbox_pool_id=${POOL_ID}&status=ready"
 # 查询指定 Sandbox Instance 详情
 ./fenix-sandbox-ops.sh fenix sandbox get "${SANDBOX_INSTANCE_ID}"
+# 使用 JSON 文件更新指定 Sandbox Instance 的资源覆盖配置
+./fenix-sandbox-ops.sh fenix sandbox update "${SANDBOX_INSTANCE_ID}" @"${INSTANCE_UPDATE_FILE}"
 # 预览指定资源池中需要重建的 Instance，不执行删除和重建
 ./fenix-sandbox-ops.sh fenix sandbox rebuild-all "${POOL_ID}" --dry-run
 # 重建指定资源池中配置已变化的全部 Instance
@@ -416,9 +457,30 @@ export USER_ID='用户 ID'
 ./fenix-sandbox-ops.sh fenix sandbox delete "${SANDBOX_INSTANCE_ID}" --yes
 ```
 
-修改资源池或单个 Instance 的沙盒配置时，变更只会写入数据库配置，不会直接修改正在运行的 Provider 沙盒，也不会自动重启它。要让配置对已有实例生效，需要执行 `rebuild`。在用户下次进入 Agent 时，按新配置创建或启动沙盒。
+`instance-update.json` 示例：
 
-`rebuild` 用于让已有 Instance 按新配置重建沙盒，适用于资源池默认配置或 Instance 配置发生变化的情况。`--dry-run` 只查询配置发生变化的 Instance，不执行重建。
+```json
+{
+  "resourceOverrides": {
+    "cpu": 4,
+    "memoryMb": 8192,
+    "diskGb": 50,
+    "gpuCount": 0,
+    "environment": {
+      "EXAMPLE_VARIABLE": "example-value"
+    },
+    "volumes": []
+  }
+}
+```
+
+`resourceOverrides` 中的字段均可按需省略。传入 `{ "resourceOverrides": null }` 可清除 Instance 的资源覆盖配置，使它重新继承资源池默认配置。
+
+使用 `sandbox update` 修改单个 Instance 时，Fenix 会立即保存新的资源覆盖值并重新计算配置快照。如果快照发生变化，Fenix 会销毁当前 Provider 沙盒并将 Instance 置为 `stopped`，但不会自动重新启动；用户下次进入 Agent 时会按新配置启动沙盒。如果配置快照没有变化，则只更新数据库记录，不销毁 Provider 沙盒。
+
+修改资源池默认配置只会影响之后新建的 Instance，已有 Instance 仍保留原配置快照。要让资源池新配置应用到已有实例，需要执行 `rebuild`。
+
+`rebuild` 用于让已有 Instance 按资源池最新配置重建沙盒。`--dry-run` 只查询配置发生变化的 Instance，不执行重建。
 
 `delete` 用于删除目标沙盒配置，下次用户进入 Agent 时按默认配置重建沙盒，日常较少使用。`rebuild` 和 `delete` 都不会清理工作空间、OpenCode 配置或会话数据。
 

@@ -1,5 +1,5 @@
 import { type DragEvent, useCallback, useEffect, useRef, useState } from "react";
-import { fileApi } from "../../src/api/files";
+import { fsApi } from "../../src/api/fs";
 import type { FileInfo } from "../../src/types";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -30,7 +30,7 @@ interface UseDragUploadReturn {
 
 /**
  * 处理操作系统文件拖入 → 上传 → 进度状态管理。
- * 上传行为与 FilePickerPanel 一致：走 fileApi.upload → workspace 目录。
+ * 上传行为与 FilePickerPanel 一致：走 fsApi.upload → workspace 根目录（不传 targetDir）。
  */
 export function useDragUpload({
   envId,
@@ -106,7 +106,7 @@ export function useDragUpload({
 
         const formData = new FormData();
         formData.append("files", file);
-        const result = await fileApi.upload(envId, formData);
+        const result = await fsApi.upload(envId, formData);
         console.log("[useDragUpload] 上传响应:", result);
         if (!result.success) {
           console.error(`[useDragUpload] 文件 ${file.name} 上传失败:`, result.error);
@@ -118,10 +118,10 @@ export function useDragUpload({
             | undefined;
           const uploadedFile = responseData?.files?.[0];
           if (mountedRef.current) {
-            // /fs 端点返回的是 workspace 相对路径，拖拽上传统一按 user/ 目录定位
+            // v2 fsApi 上传到 workspace 根（未传 targetDir），返回的 path 已是
+            // workspace 相对路径（如 `foo.txt`），@./ 引用直接使用，无需再加 user/ 前缀。
             const name = uploadedFile?.name ?? file.name;
-            const rawPath = uploadedFile?.path ?? name;
-            const refPath = rawPath.startsWith("user/") ? rawPath : `user/${rawPath}`;
+            const refPath = uploadedFile?.path ?? name;
             console.log(`[useDragUpload] ${file.name} 上传成功, 回填路径: @./${refPath}`);
             onUploaded({
               name,

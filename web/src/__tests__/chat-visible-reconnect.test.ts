@@ -34,6 +34,26 @@ describe("shouldAutoReconnectOnVisible", () => {
     expect(shouldAutoReconnectOnVisible(false, true, "error", "machine_unavailable")).toBe(false);
   });
 
+  // auto_start_disabled（4502）是配置性永久失败，切回前台自动重连无意义，仅保留手动重试
+  test("does not fire when auto start is disabled", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "auto_start_disabled")).toBe(false);
+  });
+
+  // launch_spec_build_failed（4502）同样是配置性永久失败，切回前台不自动重连
+  test("does not fire when launch spec build failed", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "launch_spec_build_failed")).toBe(false);
+  });
+
+  // environment_unavailable（4004）是引用失效终态，重试相同 URL 永远失败，切回前台不自动重连
+  test("does not fire when environment is unavailable", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "environment_unavailable")).toBe(false);
+  });
+
+  // max_sessions_reached 是配置上限但实例可能随后被释放：切回前台应自动重连一次尝试恢复
+  test("fires when max sessions reached so a released instance can be recovered", () => {
+    expect(shouldAutoReconnectOnVisible(false, true, "error", "max_sessions_reached")).toBe(true);
+  });
+
   // 停留在可见状态（连续 render）不重复触发
   test("does not fire repeatedly while visible", () => {
     expect(shouldAutoReconnectOnVisible(true, true, "error", null)).toBe(false);

@@ -1,200 +1,247 @@
 // web/src/hooks/use-session-state.ts
+// 订阅两份 Y.Doc 派生 SessionStateSnapshot（展示形状保持，数据来源切到新 schema）：
+// - Chat Doc（chat:{rcsSessionId}）= 消息时间线：entries/blocks/toolCalls
+// - Session Doc（session:{rcsSessionId}）= 会话元信息：session.presenting/loading/canCancel
+//   展示态投影字段（后端聚合层 setActiveTurn 统一投影）+ agent
+//
+// 展示态（status/loading/canCancel）为纯读后端投影字段，前端零派生；
+// 职责错位纠正后时间线在 Chat Doc。
+// Y.Doc 副本合一（SP-B1 / 根因 B1）：两份 doc 从 DocHub 取共享实例（引用计数），
+// 本 hook 只读派生，WS update 由 ChatPanel 经 hub 单写（不再自带 applyUpdate）。
 
 import type {
-  ArtifactRef,
   LoadingState,
+  PermissionOption,
+  PublicErrorInfo,
+  QuestionProjection,
+  SessionDocStatus,
   SessionStateSnapshot,
   SessionStatus,
-  StructuredMessage,
-  ToolRun,
-} from "@fenix/acp-server";
-import { createYjsStore, stableKey } from "@fenix/acp-server";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import * as Y from "yjs";
+} from "@fenix/chat-channel";
+import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type * as Y from "yjs";
+import { chatDocEntriesToStructuredMessages, sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
+import {
+  createChatDocBinding,
+  createSessionDocBinding,
+  getDocHubReplacementVersion,
+  subscribeDocHubReplacement,
+} from "../yjs/doc-hub";
 
-/** 从 Y.Doc 同步读取 SessionStateSnapshot（纯函数，无副作用，不捕获外部 key） */
-function computeSessionSnapshot(ydoc: Y.Doc): SessionStateSnapshot {
-  const meta = ydoc.getMap("meta");
-  const messages = ydoc.getArray("messages");
-  const streaming = ydoc.getMap("streaming");
-  const tools = ydoc.getMap("tools") as Y.Map<Y.Map<unknown>>;
-  const artifacts = ydoc.getArray("artifacts");
-  const structuredMessagesArray = ydoc.getArray("structuredMessages") as Y.Array<Y.Map<unknown>>;
+// ── Chat Doc 派生：时间线（消息/工具/资源）──
 
-  const rawLoading = meta.get("loading") as Record<string, unknown> | null;
+interface SessionTimelineSnapshot {
+  structuredMessages: SessionStateSnapshot["structuredMessages"];
+}
+
+/** 从 Chat Doc 派生时间线快照（纯函数，无副作用） */
+function computeTimelineSnapshot(ydoc: Y.Doc): SessionTimelineSnapshot {
+  const root = ydoc.getMap("root");
+  const order = root.get("entryOrder") as Y.Array<string> | undefined;
+  const entries = root.get("entries") as Y.Map<Y.Map<unknown>> | undefined;
+
+  // Chat Doc 尚未同步（快照未到达）时返回空时间线：不得创建未插入 doc 的
+  // Y 类型占位后读取（Yjs 会抛 "Invalid access: Add Yjs type to a document..."）
+  if (!order || !entries) {
+    return { structuredMessages: [] };
+  }
+
+  // 注：历史派生字段 messages/streaming/tools/artifacts 已删除（SP-B2 死字段，
+  // 全仓零消费），此处只保留唯一被消费的 structuredMessages；流式状态、工具
+  // 执行态均已由后端投影字段（session.presenting/loading）与 toolCall 块承载。
+  return { structuredMessages: chatDocEntriesToStructuredMessages(ydoc) };
+}
+
+// ── Session Doc 派生：元信息（展示态投影/agent）──
+
+interface SessionMetaSnapshot {
+  acpSessionId: string;
+  /** Session Doc 会话级状态（session.status，create/load 成功后 "ready"），用于会话就绪判定 */
+  sessionStatus: SessionDocStatus | null;
+  /** 展示态（后端投影字段 session.presenting 直接读取，前端零派生） */
+  presenting: SessionStatus;
+  /** 展示态（后端投影字段 session.loading 直接读取） */
+  loading: LoadingState | null;
+  /** 展示态（后端投影字段 session.canCancel 直接读取） */
+  canCancel: boolean;
+  /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
+  permissionOptions: Map<string, PermissionOption[]>;
+  /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，60s 过期自动剔除） */
+  pendingQuestions: Map<string, QuestionProjection>;
+  /** Agent 运行时错误（Session Doc agent.publicError 直接读取，未发生错误时为 null） */
+  agentPublicError: PublicErrorInfo | null;
+}
+
+function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
+  const root = ydoc.getMap("root");
+  // Session Doc 尚未同步（快照未到达）时字段缺失按默认值处理；
+  // 不得用 new Y.Map() 占位后读取（Yjs 抛 "Invalid access: Add Yjs type to a document..."）
+  const session = root.get("session") as Y.Map<unknown> | undefined;
+  const agent = root.get("agent") as Y.Map<unknown> | undefined;
+  const pending = root.get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined;
+  const questions = root.get("pendingQuestions") as Y.Map<Y.Map<unknown>> | undefined;
+
+  // 行内权限按钮数据源：Session Doc 的 options（3 值 kind）翻译为 acp-link PermissionOption[]
+  const permissionOptions = new Map<string, PermissionOption[]>();
+  if (pending) {
+    for (const [permissionId, permission] of pending.entries()) {
+      permissionOptions.set(permissionId, sessionOptionKindsToPermissionOptions(permission.get("options")));
+    }
+  }
+
+  // AskUserQuestion 弹窗数据源：只投影 status=pending 且未过期的问题（双保险：
+  // 后端 60s 超时定时器会 CAS 迁移 expired，前端按 expiresAt 本地剔除兜底，
+  // 与后端失效时刻一致——acp-link 侧 60s 自动 resolve 空答案，过期面板必须消失）
+  const pendingQuestions = new Map<string, QuestionProjection>();
+  if (questions) {
+    const now = Date.now();
+    for (const [questionId, question] of questions.entries()) {
+      if (question.get("status") !== "pending") continue;
+      const expiresAt = question.get("expiresAt") as string | undefined;
+      if (expiresAt && new Date(expiresAt).getTime() <= now) continue;
+      pendingQuestions.set(questionId, {
+        questionId,
+        status: "pending",
+        questions: (question.get("questions") as QuestionProjection["questions"]) ?? [],
+        description: (question.get("description") as string | null | undefined) ?? null,
+        expiresAt: expiresAt ?? new Date(now + 60_000).toISOString(),
+        answer: null,
+      });
+    }
+  }
 
   return {
-    acpSessionId: (meta.get("acpSessionId") as string) || "",
-    status: (meta.get("status") as SessionStatus) || "idle",
-    loading: rawLoading
-      ? {
-          kind: rawLoading.kind as LoadingState["kind"],
-          label: rawLoading.label as string | undefined,
-          since: rawLoading.since as number,
-        }
-      : null,
-    messages: (messages.toArray() as Y.Map<unknown>[]).map((m) => ({
-      role: (m.get("role") as "user" | "assistant") || "assistant",
-      content: (m.get("content") as string) || "",
-      seq: (m.get("seq") as number) || 0,
-      ts: (m.get("ts") as number) || 0,
-    })),
-    streaming: streaming.size
-      ? {
-          text: (streaming.get("text") as string) || "",
-          reasoning: (streaming.get("reasoning") as string) || "",
-        }
-      : null,
-    tools: new Map(
-      Array.from(tools.entries()).map(([k, v]) => [
-        k,
-        {
-          name: (v.get("name") as string) || "",
-          status: (v.get("status") as ToolRun["status"]) || "running",
-          input: v.get("input"),
-          output: v.get("output"),
-          startedAt: (v.get("startedAt") as number) || 0,
-        },
-      ]),
-    ),
-    artifacts: (artifacts.toArray() as Y.Map<unknown>[]).map((a) => ({
-      kind: (a.get("kind") as ArtifactRef["kind"]) || "url",
-      url: (a.get("url") as string) || "",
-      title: (a.get("title") as string) || "",
-      seq: (a.get("seq") as number) || 0,
-    })),
-    structuredMessages: (structuredMessagesArray.toArray() as Y.Map<unknown>[])
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: returns undefined for unknown types, filtered by .filter(Boolean)
-      .map((m) => {
-        const t = m.get("type") as string;
-        if (t === "assistant_message") {
-          const rawChunks = (m.get("chunks") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "assistant_message" as const,
-            id: (m.get("id") as string) || "",
-            chunks: rawChunks.map((c) => ({
-              type: (c.get("type") as "thought" | "message") || "message",
-              text: (c.get("text") as string) || "",
-            })),
-            seq: (m.get("seq") as number) || 0,
-            ts: (m.get("ts") as number) || 0,
-          } as StructuredMessage;
-        }
-        if (t === "tool_call") {
-          const rawContent = (m.get("content") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "tool_call" as const,
-            id: (m.get("id") as string) || "",
-            title: (m.get("title") as string) || "",
-            status: (m.get("status") as string) || "running",
-            content: rawContent.map((c) => ({
-              type: (c.get("type") as string) || "content",
-              content: c.get("content") as Record<string, unknown> | undefined,
-              path: c.get("path") as string | undefined,
-            })),
-            rawInput: m.get("rawInput") as Record<string, unknown> | undefined,
-            rawOutput: m.get("rawOutput") as Record<string, unknown> | undefined,
-          } as StructuredMessage;
-        }
-        if (t === "user_message") {
-          return {
-            type: "user_message" as const,
-            id: (m.get("id") as string) || "",
-            content: (m.get("content") as string) || "",
-            seq: (m.get("seq") as number) || 0,
-            ts: (m.get("ts") as number) || 0,
-          } as StructuredMessage;
-        }
-        if (t === "plan") {
-          const rawEntries = (m.get("entries") as Y.Array<Y.Map<unknown>>)?.toArray() ?? [];
-          return {
-            type: "plan" as const,
-            id: (m.get("id") as string) || "",
-            entries: rawEntries.map((e) => ({
-              content: (e.get("content") as string) || "",
-              priority: (e.get("priority") as "high" | "medium" | "low") || "medium",
-              status: (e.get("status") as "pending" | "in_progress" | "completed") || "pending",
-            })),
-          } as StructuredMessage;
-        }
-        return;
-      })
-      .filter(Boolean) as StructuredMessage[],
+    // agent.acpSessionId 只在 agent_status 帧投影（连接建立时，值为 null）；
+    // create/load 成功后回退读取 session.sessionId（session_updated 投影），
+    // 否则前端 send_prompt 永远不带 sessionId（多会话共享 relay 时路由错乱）
+    acpSessionId:
+      (agent?.get("acpSessionId") as string | undefined) ?? (session?.get("sessionId") as string | undefined) ?? "",
+    sessionStatus: (session?.get("status") as SessionDocStatus | undefined) ?? null,
+    // 展示态投影字段缺失（Session Doc 尚未同步）时给安全默认值：
+    // presenting="idle"、loading=null、canCancel=false
+    presenting: (session?.get("presenting") as SessionStatus | undefined) ?? "idle",
+    loading: (session?.get("loading") as LoadingState | null | undefined) ?? null,
+    canCancel: (session?.get("canCancel") as boolean | undefined) ?? false,
+    permissionOptions,
+    pendingQuestions,
+    agentPublicError: normalizePublicError(agent?.get("publicError")),
   };
 }
 
+/** 规范化 Session Doc agent.publicError 为展示层错误（message 为空视为无错误） */
+function normalizePublicError(raw: unknown): PublicErrorInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const code = typeof record.code === "string" && record.code ? record.code : "agent_error";
+  const message = typeof record.message === "string" && record.message ? record.message : "";
+  return message ? { code, message } : null;
+}
+
+// ── 合并快照 ──
+
 /**
- * Session 领域快照去重 key — 覆盖全部 UI 字段（含 messages content、
- * tool_call output/status、streaming、permission、loading 等）。
- * 使用 stableKey 对整个快照做稳定序列化，任意 UI 字段变化都会触发通知。
+ * 合并时间线 + 会话元信息为展示快照（纯函数，无副作用）。
+ * 导出仅供测试：直接构造 meta 投影字段验证 status/loading/canCancel 透传
+ * （展示态全部来自后端投影字段 session.presenting / session.loading / session.canCancel，
+ * 前端零派生；后端 turn 状态机 → 展示态映射由 packages/chat-channel 包内测试覆盖）。
  */
-function getSessionSnapshotKey(s: SessionStateSnapshot): string {
-  return stableKey(s);
-}
-
-function getInitialSessionSnapshot(rcsSessionId: string): SessionStateSnapshot {
+export function computeSessionSnapshot(
+  timeline: SessionTimelineSnapshot,
+  meta: SessionMetaSnapshot,
+): SessionStateSnapshot {
+  // 按 permissionRequest.requestId 合并 Session Doc 的真实选项（Chat Doc 侧为占位空数组）
+  const structuredMessages = timeline.structuredMessages.map((m) => {
+    if (m.type !== "tool_call" || !m.permissionRequest) return m;
+    return {
+      ...m,
+      permissionRequest: {
+        requestId: m.permissionRequest.requestId,
+        options: meta.permissionOptions.get(m.permissionRequest.requestId) ?? [],
+      },
+    };
+  });
   return {
-    acpSessionId: rcsSessionId,
-    status: "idle",
-    loading: null,
-    messages: [],
-    streaming: null,
-    tools: new Map(),
-    artifacts: [],
-    structuredMessages: [],
+    acpSessionId: meta.acpSessionId,
+    sessionStatus: meta.sessionStatus,
+    // 展示态直接透传后端投影字段（presenting/loading/canCancel），前端不再做任何派生
+    status: meta.presenting,
+    canCancel: meta.canCancel,
+    loading: meta.loading,
+    structuredMessages,
+    pendingQuestions: meta.pendingQuestions,
+    agentPublicError: meta.agentPublicError,
   };
 }
 
 /**
- * 订阅指定 ACP Session 的状态。
- *
- * 使用 useSyncExternalStore + createYjsStore 替代 useState + useEffect + Y.Doc.observe 模式：
- * - getSnapshot 在渲染期间同步执行，消除"幽灵消息"的 stale frame 问题
- * - Y.Doc 的 update 事件统一监听所有变更
- * - rcsSessionId 变化时同步切换 Y.Doc（在渲染函数体内，非 useEffect）
+ * 订阅指定 RCS 会话的会话状态（时间线 + 展示态投影元信息）。
+ * 内部双 store（Chat Doc / Session Doc）绑定 DocHub 的共享 doc 实例
+ * （SP-B1），WS update 由 ChatPanel 经 applyDocHubUpdate 单写，本 hook 只读派生。
  */
 export function useSessionState(rcsSessionId: string) {
-  // 1. 创建 store 实例（per-component-instance，通过 ref lazy init 保持稳定）
-  const storeRef = useRef<ReturnType<typeof createYjsStore<SessionStateSnapshot>> | null>(null);
+  const storeRef = useRef<{
+    chat: YjsStore<SessionTimelineSnapshot>;
+    meta: YjsStore<SessionMetaSnapshot>;
+  } | null>(null);
   if (!storeRef.current) {
-    storeRef.current = createYjsStore<SessionStateSnapshot>(
-      computeSessionSnapshot,
-      getInitialSessionSnapshot(rcsSessionId),
-      getSessionSnapshotKey,
-    );
+    storeRef.current = {
+      chat: createYjsStore<SessionTimelineSnapshot>(computeTimelineSnapshot, { structuredMessages: [] }),
+      meta: createYjsStore<SessionMetaSnapshot>(computeMetaSnapshot, {
+        acpSessionId: "",
+        sessionStatus: null,
+        presenting: "idle",
+        loading: null,
+        canCancel: false,
+        permissionOptions: new Map(),
+        pendingQuestions: new Map(),
+        agentPublicError: null,
+      }),
+    };
   }
-  const store = storeRef.current;
+  const stores = storeRef.current;
 
-  // 2. key 变化时同步切换 Y.Doc（在渲染期间，非 useEffect）
-  //    使用 prevKeyRef 做幂等保护：相同 key 重复切换是 no-op（Strict Mode / Concurrent Mode 安全）
-  //    注意：prevKeyRef 必须初始化为 null（非 rcsSessionId），否则首次渲染时 key 相等，switchDoc 被跳过
-  const prevKeyRef = useRef<string | null>(null);
-  if (prevKeyRef.current !== rcsSessionId) {
-    prevKeyRef.current = rcsSessionId;
+  // 绑定工厂：从 DocHub 取共享 doc（ownsDoc=false，生命周期归 hub 引用计数）；
+  // useCallback 保持引用稳定，渲染期与 effect 期复用同一工厂
+  const bindChatDoc = useCallback(() => createChatDocBinding(rcsSessionId), [rcsSessionId]);
+  const bindSessionDoc = useCallback(() => createSessionDocBinding(rcsSessionId), [rcsSessionId]);
 
-    store.switchDoc(rcsSessionId, () => {
-      const ydoc = new Y.Doc();
-      // meta.acpSessionId 字段名不变，但值变为 rcsSessionId（与 doc-factory 保持一致）
-      ydoc.getMap("meta").set("acpSessionId", rcsSessionId);
-      return { ydoc };
-    });
-  }
-
-  // 3. useSyncExternalStore — subscribe 和 getSnapshot 是稳定引用
-  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
-
-  // 4. 组件卸载时清理 store
-  useEffect(() => {
-    return () => store.destroy();
-  }, [store]);
-
-  // 5. applyUpdate — 向后兼容
-  const applyUpdate = useCallback(
-    (update: Uint8Array, sessionId?: string) => {
-      store.applyUpdate(update, sessionId);
-    },
-    [store],
+  // 重订阅驱动（bind epoch）：destroy 会清空 store listeners（store 契约），
+  // 而 useSyncExternalStore 只在 subscribe 引用变化时重订阅——cleanup destroy
+  // 后必须重建订阅，否则切换会话 / StrictMode 双挂载后后续 update 不再触发
+  // 渲染（快照永久 stale，SP-B1 回归测试捕获的真实缺陷）。
+  const [bindEpoch, setBindEpoch] = useState(0);
+  const subscribeReplacement = useCallback(
+    (listener: () => void) => subscribeDocHubReplacement(rcsSessionId, listener),
+    [rcsSessionId],
   );
+  const getReplacementVersion = useCallback(() => getDocHubReplacementVersion(rcsSessionId), [rcsSessionId]);
+  const replacementVersion = useSyncExternalStore(subscribeReplacement, getReplacementVersion, getReplacementVersion);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）
+  const subscribeChat = useCallback((cb: () => void) => stores.chat.subscribe(cb), [bindEpoch]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，bindEpoch 仅驱动引用变化
+  const subscribeMeta = useCallback((cb: () => void) => stores.meta.subscribe(cb), [bindEpoch]);
 
-  return { state, applyUpdate };
+  const timeline = useSyncExternalStore(subscribeChat, stores.chat.getSnapshot);
+  const meta = useSyncExternalStore(subscribeMeta, stores.meta.getSnapshot);
+  const state = useMemo(() => computeSessionSnapshot(timeline, meta), [timeline, meta]);
+
+  useEffect(() => {
+    // Doc 绑定只在 effect 期执行（不在渲染期 switchDoc）：渲染期 switchDoc 的
+    // notify() 会在渲染进行中触发已订阅组件的 setState（React 报错），且本组件
+    // 的 listeners 已被 cleanup destroy 清空，必须经 bindEpoch 重订阅兜底。
+    // StrictMode 双挂载 / 切换会话：cleanup destroy 已重置 activeKey（""），
+    // 此处 switchDoc 重建 hub 绑定；destroy 经 binding.cleanup 释放 hub 引用，
+    // 计数归零才销毁共享 doc。绑定完成后推进 epoch 驱动重订阅。
+    const bindingKey = `${rcsSessionId}:${replacementVersion}`;
+    stores.chat.switchDoc(bindingKey, bindChatDoc);
+    stores.meta.switchDoc(bindingKey, bindSessionDoc);
+    setBindEpoch((e) => e + 1);
+    return () => {
+      stores.chat.destroy();
+      stores.meta.destroy();
+    };
+  }, [stores, rcsSessionId, bindChatDoc, bindSessionDoc, replacementVersion]);
+
+  return { state };
 }

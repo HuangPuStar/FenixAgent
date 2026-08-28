@@ -93,8 +93,10 @@ function sanitizeTask(row: ScheduledTaskV2Row): TaskV2Response {
 
 /** 仅校验 Zod schema 无法覆盖的跨字段约束和 cron 语义 */
 function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): string | null {
-  // cron 语义格式校验（5 字段 + 合法字符，Zod 只校验非空）
-  if (data.cron) {
+  // cron 语义格式校验（5 字段 + 合法字符，Zod 只校验非空）。
+  // 用 !== undefined 而非真值判断：更新路径传空串 cron 时也必须被拒绝（R36 不变量），
+  // 否则空 cron 会被写入并仅靠 reschedule 时静默失败。
+  if (data.cron !== undefined) {
     const parts = data.cron.trim().split(/\s+/);
     if (parts.length !== 5) return "cron 表达式必须为 5 字段（分 时 日 月 周）";
     const validPattern = /^[\d*/?\-,LW#]+$/;

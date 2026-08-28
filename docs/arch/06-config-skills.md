@@ -1,6 +1,6 @@
 # Skills 配置
 
-> 涉及模块：Skill 配置服务、Skill 文件系统、LaunchSpec Builder
+> 涉及模块：Skill 配置服务、Skill 文件系统、LaunchSpecBuilder
 
 ## 概述
 
@@ -29,7 +29,7 @@ flowchart LR
 
 AgentConfig 通过 `agentConfigSkill` 多对多表绑定 Skill。更新 AgentConfig 时全量覆盖——新集合替换旧集合，不留残留绑定。
 
-spawn 时 LaunchSpec Builder 将绑定关系转换为 `SkillConfig[]`：从文件系统源目录打包为 ZIP 归档 → 生成 HMAC 签名的一次性下载 URL → 注入到 `AgentLaunchSpec`。
+spawn 时 LaunchSpecBuilder 将绑定关系转换为 `SkillConfig[]`：从文件系统源目录打包为 ZIP 归档 → 生成 HMAC 签名的一次性下载 URL → 注入到 `AgentLaunchSpec`。
 
 详见 [Agent Config 资源引用](./04-agent-config.md)。
 

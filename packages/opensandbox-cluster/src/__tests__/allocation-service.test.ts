@@ -11,11 +11,18 @@ const config: ClusterConfig = {
   serverApiKeyEncryptionKey: new Uint8Array(32),
   proxyConnectTimeoutMs: 3000,
   proxyResponseTimeoutMs: 120000,
+  frpPluginPort: 8081,
+  frpPublicAddress: "cluster.example.com",
+  frpBindPort: 7000,
+  frpInternalUrl: "http://frps:7080",
+  frpToken: "shared-token",
+  frpConnectionStaleMs: 40000,
+  frpHealthIntervalMs: 30000,
 };
 
 describe("sandbox allocation", () => {
   test("allocates idempotently and respects server capacity", async () => {
-    const databasePath = `/tmp/opensandbox-cluster-allocation-${Date.now()}.db`;
+    const databasePath = `/tmp/opensandbox-cluster-allocation-${crypto.randomUUID()}.db`;
     migrateDatabase(databasePath);
     const app = createApp({ ...config, databasePath }, { fetch: Bun.fetch });
     const mockServer = Bun.serve({ port: 0, fetch: () => Response.json({ status: "healthy" }) });

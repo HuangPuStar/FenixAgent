@@ -1,0 +1,27 @@
+serverAddr = "cluster.example.com"
+serverPort = 7000
+loginFailExit = false
+
+[auth]
+method = "token"
+token = "replace-with-FRP_TOKEN"
+additionalScopes = ["HeartBeats", "NewWorkConns"]
+
+[transport]
+heartbeatInterval = 10
+heartbeatTimeout = 30
+dialServerKeepalive = 30
+
+[transport.tls]
+enable = true
+
+[metadatas]
+server_id = "server-id-from-cluster"
+node_token = "download-from-cluster"
+
+[[proxies]]
+name = "os-server-id"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 8080
+customDomains = ["os-route.tunnel.internal"]

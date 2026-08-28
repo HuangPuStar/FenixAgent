@@ -5,22 +5,27 @@ let store: Record<string, string> = {};
 
 beforeEach(() => {
   store = {};
-  (globalThis as any).localStorage = {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => {
-      store[k] = v;
+  // CI 环境（GitHub Actions）中 globalThis.localStorage 是只读属性，直接赋值会抛
+  // TypeError；必须用 defineProperty 定义（同 auth-preference.test.ts 的模式）。
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+      clear: () => {
+        store = {};
+      },
+      get length() {
+        return Object.keys(store).length;
+      },
+      key: () => null,
     },
-    removeItem: (k: string) => {
-      delete store[k];
-    },
-    clear: () => {
-      store = {};
-    },
-    get length() {
-      return Object.keys(store).length;
-    },
-    key: () => null,
-  };
+  });
 });
 
 // Mock fetch
@@ -57,36 +62,24 @@ beforeEach(() => {
 // =============================================================================
 
 describe("file SDK functions", () => {
-  // 测试列出文件发送请求（method 未显式设置时 fetch 默认 GET）
-  test("fileApi.listDir — GET /web/environments/:id/user", async () => {
+  // 测试列出文件发送请求（method 未显式设置时 fetch 默认 GET；fsApi 根路径不带 query）
+  test("fsApi.listDir — GET /web/environments/:id/fs", async () => {
     fetchMock.responseData = { success: true, data: { entries: [] } };
-    const { fileApi } = await import("../api/files");
-    await fileApi.listDir("s1");
-    expect(fetchMock.lastUrl).toContain("/web/environments/s1/user");
+    const { fsApi } = await import("../api/fs");
+    await fsApi.listDir("s1");
+    expect(fetchMock.lastUrl).toContain("/web/environments/s1/fs");
+    expect(fetchMock.lastUrl).not.toContain("path=");
     expect(fetchMock.lastOpts.method ?? "GET").toBe("GET");
   });
 
-  // 测试列出文件带路径参数
-  test("fileApi.listDir — with path query param", async () => {
+  // 测试列出文件带路径参数（子目录通过 path query 传递）
+  test("fsApi.listDir — with path query param", async () => {
     fetchMock.responseData = { success: true, data: { entries: [] } };
-    const { fileApi } = await import("../api/files");
-    await fileApi.listDir("s1", "docs/");
-    expect(fetchMock.lastUrl).toContain("/web/environments/s1/user");
+    const { fsApi } = await import("../api/fs");
+    await fsApi.listDir("s1", "docs/");
+    expect(fetchMock.lastUrl).toContain("/web/environments/s1/fs");
     expect(fetchMock.lastUrl).toContain("path=docs");
     expect(fetchMock.lastOpts.method ?? "GET").toBe("GET");
-  });
-
-  // 测试上传文件使用 FormData 和 POST
-  test("fileApi.upload — uses FormData and POST", async () => {
-    fetchMock.responseData = { success: true, data: { files: [] } };
-    const { fileApi } = await import("../api/files");
-    const file = new File(["content"], "test.txt");
-    const formData = new FormData();
-    formData.append("files", file);
-    await fileApi.upload("s1", formData);
-    expect(fetchMock.lastUrl).toContain("/web/environments/s1/user/");
-    expect(fetchMock.lastOpts.method).toBe("POST");
-    expect(fetchMock.lastOpts.body).toBeInstanceOf(FormData);
   });
 });
 

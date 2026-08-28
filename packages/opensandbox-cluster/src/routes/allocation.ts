@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { isValidClusterApiKey } from "../security/api-auth";
-import { AllocationError, AllocationService } from "../services/allocation-service";
+import { AllocationError, type AllocationService } from "../services/allocation-service";
 import type { ClusterConfig } from "../types";
 
 export function createAllocationRoutes(config: ClusterConfig, allocations: AllocationService) {

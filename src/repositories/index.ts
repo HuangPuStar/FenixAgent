@@ -1,3 +1,6 @@
+export { agentConfigRepo, findAgentConfigNamesByIds } from "./agent-config";
+export { agentEngineRepo } from "./agent-engine";
+export { agentMachineRepo } from "./agent-machine";
 export type { AgentSiteAppInsert, AgentSiteAppRow, Visibility } from "./agent-site-app";
 export { agentSiteAppRepo } from "./agent-site-app";
 export type { ChannelBindingInsert, ChannelBindingRow, IChannelBindingRepo } from "./channel-binding";
@@ -9,6 +12,7 @@ export type {
   IEnvironmentRepo,
 } from "./environment";
 export { environmentRepo } from "./environment";
+export { environmentOrchestrationRepo } from "./environment-orchestration";
 export type {
   AgentKnowledgeBindingRow,
   IAgentKnowledgeBindingRepo,
@@ -32,12 +36,10 @@ export type {
   ResourcePermissionType,
 } from "./resource-permission";
 export { resourcePermissionRepo } from "./resource-permission";
-export type { ISessionRepo, SessionCreateParams, SessionRecord } from "./session";
-export { sessionRepo } from "./session";
 export type { IShareLinkRepo } from "./share-link";
 export { shareLinkRepo } from "./share-link";
-export type { IScheduledTaskRepo, ITaskExecutionLogRepo, ScheduledTaskRow, TaskExecutionLogRow } from "./task";
-export { scheduledTaskRepo, taskExecutionLogRepo } from "./task";
+export type { ITaskExecutionLogRepo, TaskExecutionLogRow } from "./task";
+export { taskExecutionLogRepo } from "./task";
 export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
 export { findUsersBasicInfoByIds } from "./user";
@@ -60,11 +62,9 @@ export {
 export type { IWorkflowTriggerRepo, WorkflowTriggerInsert, WorkflowTriggerRow } from "./workflow-trigger";
 export { workflowTriggerRepo } from "./workflow-trigger";
 
-import { sessionRepo } from "./session";
 import { tokenRepo } from "./token";
 
 /** 重置所有内存仓储（仅用于测试） */
 export function resetAllRepos(): void {
-  if (typeof sessionRepo?.reset === "function") sessionRepo.reset();
   if (typeof tokenRepo?.reset === "function") tokenRepo.reset();
 }

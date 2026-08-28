@@ -48,6 +48,10 @@ const EXTERNAL_OPENAPI_TAGS = [
     description: "系统级 API Key 管理接口，用于代指定用户签发兼容现有外部 API 的用户级 API key。",
   },
   {
+    name: "System Sandbox",
+    description: "系统级沙盒与 Cluster 基础设施管理接口。",
+  },
+  {
     name: "External Workflow",
     description: "面向外部系统的工作流执行接口，支持同步和异步两种模式。",
   },

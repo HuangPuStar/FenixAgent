@@ -8,7 +8,7 @@ import type { NodeExecutionContext } from "../../scheduler/dag-scheduler";
 import { createInMemoryStorage } from "../../storage/in-memory-storage";
 import type { AgentRequest, AgentResponse, AgentSession, Transport } from "../../transport/transport";
 import type { AgentNodeDef } from "../../types/dag";
-import { WorkflowError } from "../../types/errors";
+import { WorkflowError, WorkflowErrorCode } from "../../types/errors";
 
 // ---------- FakeTransport（测试专用） ----------
 
@@ -18,6 +18,8 @@ class FakeTransport implements Transport {
   private connectedAgents: Set<string> = new Set();
   private lastRequests: Map<string, AgentRequest> = new Map();
   private shouldThrow: Error | null = null;
+  private lastConnectOptions: { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined;
+  private disposedSessions: string[] = [];
 
   /** 设置指定 agent 的响应 */
   setResponse(agentId: string, response: AgentResponse): void {
@@ -34,13 +36,24 @@ class FakeTransport implements Transport {
     return this.connectedAgents;
   }
 
+  /** 获取最近一次 connect 的 options（验证 spawnedInstanceIds 透传） */
+  getLastConnectOptions(): { cwd?: string; spawnedInstanceIds?: Set<string> } | undefined {
+    return this.lastConnectOptions;
+  }
+
+  /** 获取已被 dispose 的 session 列表（按 agentId 记录，C-P2.3） */
+  getDisposedSessions(): string[] {
+    return this.disposedSessions;
+  }
+
   /** 设置下一次连接时抛出的错误 */
   setThrowError(error: Error): void {
     this.shouldThrow = error;
   }
 
-  async connect(agentId: string): Promise<AgentSession> {
+  async connect(agentId: string, options?: { cwd?: string; spawnedInstanceIds?: Set<string> }): Promise<AgentSession> {
     this.connectedAgents.add(agentId);
+    this.lastConnectOptions = options;
 
     if (this.shouldThrow) {
       const err = this.shouldThrow;
@@ -54,6 +67,9 @@ class FakeTransport implements Transport {
         const response = this.responses.get(agentId);
         if (!response) throw new Error(`No response configured for agent: ${agentId}`);
         return response;
+      },
+      dispose: async () => {
+        this.disposedSessions.push(agentId);
       },
     };
   }
@@ -128,6 +144,24 @@ describe("AgentExecutor", () => {
 
     expect(output.stdout).toBe("Agent response");
     expect(transport.getConnectedAgents().has("my-agent")).toBe(true);
+  });
+
+  // 执行器应把运行级 spawnedInstanceIds 集合原样透传给 transport.connect
+  // （引用同一 Set：Transport 层在 spawn 时向其中写入 instanceId，DAG 结束后由
+  // 调度器聚合回 DAGRunResult 供宿主 cleanup 精确停止）
+  test("connect 收到 ctx.spawnedInstanceIds 同一引用", async () => {
+    transport.setResponse("my-agent", {
+      stdout: "ok",
+      exit_code: 0,
+      messages: [],
+    });
+
+    const spawned = new Set<string>();
+    const ctx = makeCtx({ spawnedInstanceIds: spawned });
+    const node = agentNode("collect", { agent: "my-agent" });
+    await executor.execute(node, ctx);
+
+    expect(transport.getLastConnectOptions()?.spawnedInstanceIds).toBe(spawned);
   });
 
   // 非法节点类型
@@ -347,6 +381,84 @@ describe("AgentExecutor retry", () => {
     const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-agent" });
     const retryEvents = events.filter((e) => e.type === "node.retrying");
     expect(retryEvents.length).toBe(2);
+  });
+
+  // transport 超时兜底（agent-chat-transport 的 NODE_TIMEOUT）与节点级 abort 超时
+  // 同语义：不重试、直接失败，避免每个重试轮再等一个兜底周期
+  test("execute 抛 WorkflowError(NODE_TIMEOUT) → 不重试直接失败", async () => {
+    const timeoutTransport = new FakeTransport();
+    const origConnect = timeoutTransport.connect.bind(timeoutTransport);
+    timeoutTransport.connect = async (agentId: string) => {
+      await origConnect(agentId);
+      return {
+        execute: async () => {
+          throw new WorkflowError("Agent execute timed out", WorkflowErrorCode.NODE_TIMEOUT);
+        },
+      };
+    };
+
+    const customExecutor = new AgentExecutor(timeoutTransport);
+    const ctx = makeCtx();
+    const node = agentNode("timeout", { retry: { count: 2, delay: 50, backoff: "fixed" } });
+
+    await expect(customExecutor.execute(node, ctx)).rejects.toMatchObject({
+      name: "WorkflowError",
+      code: WorkflowErrorCode.NODE_TIMEOUT,
+    });
+
+    const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-agent" });
+    const retryEvents = events.filter((e) => e.type === "node.retrying");
+    expect(retryEvents.length).toBe(0);
+  });
+});
+
+// ========== 会话释放测试（C-P2.3） ==========
+
+describe("AgentExecutor session disposal", () => {
+  let transport: FakeTransport;
+  let executor: AgentExecutor;
+
+  beforeEach(() => {
+    transport = new FakeTransport();
+    executor = new AgentExecutor(transport);
+  });
+
+  // C-P2.3：engine 对每次 connect 的会话负责释放，杜绝同实例复用场景下
+  // 每次 run 累积一个死 listener
+  test("正常执行后 session.dispose 被调用", async () => {
+    transport.setResponse("default", { stdout: "ok", exit_code: 0, messages: [] });
+
+    const ctx = makeCtx();
+    const node = agentNode("test");
+    await executor.execute(node, ctx);
+
+    expect(transport.getDisposedSessions()).toEqual(["default"]);
+  });
+
+  // C-P2.3：失败/重试路径同样释放——每个 attempt 重新 connect 新 session，
+  // 失败后 finally 释放，不因重试累积死 listener
+  test("execute 抛错后每次 attempt 的 session 均被 dispose", async () => {
+    const ctx = makeCtx();
+    const node = agentNode("fail", {
+      agent: "no-response",
+      retry: { count: 1, delay: 50, backoff: "fixed" },
+    });
+
+    await expect(executor.execute(node, ctx)).rejects.toThrow();
+
+    // retry.count=1 → maxAttempts=2，两次 attempt 各 connect 一个 session 并释放
+    expect(transport.getDisposedSessions()).toEqual(["no-response", "no-response"]);
+  });
+
+  // C-P2.3：connect 抛错时无 session 产生，dispose 调用为空操作、不产生副作用
+  test("connect 抛错时 dispose 不被调用", async () => {
+    transport.setThrowError(new Error("connect failed"));
+
+    const ctx = makeCtx();
+    const node = agentNode("test", { retry: { count: 0 } });
+
+    await expect(executor.execute(node, ctx)).rejects.toThrow("connect failed");
+    expect(transport.getDisposedSessions()).toEqual([]);
   });
 });
 

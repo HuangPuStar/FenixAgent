@@ -217,6 +217,29 @@ export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise
   if (!row) return false;
 
   assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
+
+  // 删除前先停止绑定 environment 上的运行实例：删除 DB 只移记录，不停止编排实例，
+  // Agent 进程 / controller 活跃表 / registry supplement 与并发额度会残留为泄漏
+  // （见 docs/issues/2026-08-19-agent-delete-instance-leak.md）。
+  // stop 在 DB 事务外执行（stopInstanceViaController 不读 DB，避免把慢速 kill 关进
+  // DB 长事务）；"先停后删"即使 DB 删除失败也只是实例已停、DB 行仍在（可重新 spawn
+  // 恢复），比"先删后停、stop 失败 → 对已删 env 的实例彻底孤儿"更安全。
+  const boundEnvs = await db
+    .select({ id: environment.id })
+    .from(environment)
+    .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
+  if (boundEnvs.length > 0) {
+    // 动态 import 打破模块循环：orchestration-instance 顶层静态 import ./config 的
+    // getReadableAgentConfigById（本文件所在 index 的 re-export），此处若静态反向
+    // import 会形成 agent-config → orchestration-instance → config 的循环依赖
+    // （同 orchestration-instance 内 reclaimYjsDocs 的惰性导入模式）。
+    const { stopInstancesForEnvironments } = await import("../orchestration-instance");
+    await stopInstancesForEnvironments(
+      boundEnvs.map((env) => env.id),
+      { organizationId: row.organizationId },
+    );
+  }
+
   return db.transaction(async (tx) => {
     // 绑定 agent 的 runtime environment 在 agent 删除后没有独立业务价值，直接清理掉，
     // 避免遗留为无绑定环境继续出现在 /web/environments 列表里。
