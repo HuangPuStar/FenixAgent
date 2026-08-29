@@ -7,8 +7,7 @@
   }
 }
 @media (max-width: 759px) {
-  .agent-editor-panel.agent-editor-mobile,
-  .agent-editor-create {
+  .agent-editor-panel.agent-editor-mobile {
     position: fixed;
     inset: 0;
     width: 100vw;

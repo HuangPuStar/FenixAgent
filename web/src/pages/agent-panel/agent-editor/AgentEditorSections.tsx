@@ -62,7 +62,12 @@ function Identity({
           label={t("form.name")}
           hint={mode === "edit" ? t("editor.nameImmutable") : undefined}
         >
-          <EditorInput id="agent-editor-name" disabled={mode === "edit" || disabled} {...form.register("name")} />
+          <EditorInput
+            id="agent-editor-name"
+            disabled={mode === "edit" || disabled}
+            placeholder={t("form.namePlaceholder")}
+            {...form.register("name")}
+          />
         </Field>
         {mode === "edit" && data.agentId && (
           <Field className="agent-editor-field--agent-id" label={t("editor.agentId")} hint={t("editor.agentIdHint")}>
@@ -75,7 +80,12 @@ function Identity({
           </Field>
         )}
         <Field className="agent-editor-field--description" label={t("form.description")}>
-          <EditorInput id="agent-editor-description" disabled={disabled} {...form.register("description")} />
+          <EditorInput
+            id="agent-editor-description"
+            disabled={disabled}
+            placeholder={t("form.descriptionPlaceholder")}
+            {...form.register("description")}
+          />
         </Field>
         <Field
           className="agent-editor-field--prompt"
@@ -86,6 +96,7 @@ function Identity({
             id="agent-editor-prompt"
             className="agent-editor-prompt-editor"
             disabled={disabled}
+            placeholder={t("form.promptPlaceholder")}
             {...form.register("prompt")}
           />
         </Field>
@@ -417,6 +428,7 @@ function Advanced({ form, disabled }: { form: Props["form"]; disabled: boolean }
         <EditorTextarea
           id="agent-editor-extra"
           disabled={disabled}
+          placeholder={t("form.extraPlaceholder")}
           aria-invalid={!!error}
           aria-describedby="agent-editor-extra-status"
           {...form.register("extra")}

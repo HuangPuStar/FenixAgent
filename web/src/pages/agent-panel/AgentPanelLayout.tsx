@@ -122,6 +122,7 @@ export function AgentPanelLayout() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         mode="create"
+        portalContainer={panelHost}
         onSuccess={handleCreateSuccess}
       />
       <AgentFormDialog

@@ -342,7 +342,7 @@
   padding: 5px;
   overflow-y: auto;
 }
-.agent-editor-root .agent-resource-picker__list > button {
+.agent-editor-root .agent-resource-picker__list > label {
   display: grid;
   min-height: 53px;
   grid-template-columns: 21px minmax(0, 1fr) auto;
@@ -355,35 +355,37 @@
   background: transparent;
   text-align: left;
 }
-.agent-editor-root .agent-resource-picker__list > button:hover,
-.agent-editor-root .agent-resource-picker__list > button.is-selected {
+.agent-editor-root .agent-resource-picker__list > label:hover,
+.agent-editor-root .agent-resource-picker__list > label.is-selected {
   border-color: #d5e3fb;
   background: #f4f8ff;
 }
-.agent-editor-root .agent-resource-picker__list > button.is-unavailable {
+.agent-editor-root .agent-resource-picker__list > label.is-unavailable {
   border-color: #ead9bc;
   color: #755d3b;
   background: #fffaf1;
 }
-.agent-editor-root .agent-resource-picker__list > button.is-unavailable small {
+.agent-editor-root .agent-resource-picker__list > label.is-unavailable small {
   color: #93651f;
 }
-.agent-editor-root .agent-resource-picker__check {
-  display: grid;
+.agent-editor-root .agent-resource-picker__list [data-slot="checkbox"] {
   width: 18px;
   height: 18px;
-  place-items: center;
-  border: 1px solid #d1d9e4;
-  border-radius: 6px;
-  color: #fff;
-  background: #fff;
+  border-color: #cbd5e1;
+  border-radius: 5px;
+  box-shadow: none;
 }
-.agent-editor-root .agent-resource-picker__list button.is-selected .agent-resource-picker__check {
+.agent-editor-root .agent-resource-picker__list [data-slot="checkbox"]:focus-visible {
+  border-color: #2764e7;
+  box-shadow: 0 0 0 3px rgb(39 100 231 / 16%);
+}
+.agent-editor-root .agent-resource-picker__list [data-slot="checkbox"][data-state="checked"] {
   border-color: #2764e7;
   background: #2764e7;
 }
-.agent-editor-root .agent-resource-picker__check svg {
-  width: 10px;
+.agent-editor-root .agent-resource-picker__list [data-slot="checkbox"] svg {
+  width: 12px;
+  height: 12px;
 }
 .agent-editor-root .agent-resource-picker__list strong {
   font-size: 9px;
@@ -415,13 +417,13 @@
 
 .agent-editor-root .agent-model-options > button:disabled,
 .agent-editor-root .agent-node-list > button:disabled,
-.agent-editor-root .agent-resource-picker__list > button:disabled {
+.agent-editor-root .agent-resource-picker__list > label:has([data-slot="checkbox"]:disabled) {
   cursor: not-allowed;
   opacity: 0.58;
 }
 .agent-editor-root .agent-model-options > button.is-selected:disabled,
 .agent-editor-root .agent-node-list > button.is-selected:disabled,
-.agent-editor-root .agent-resource-picker__list > button.is-selected:disabled {
+.agent-editor-root .agent-resource-picker__list > label.is-selected:has([data-slot="checkbox"]:disabled) {
   border-color: #b8ccef;
   background: #f3f7ff;
   opacity: 0.78;

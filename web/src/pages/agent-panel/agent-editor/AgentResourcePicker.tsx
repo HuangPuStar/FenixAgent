@@ -1,6 +1,7 @@
-import { Check, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 import { NS } from "../../../i18n";
 import { EditorPagination } from "./agent-editor-controls";
 import { AGENT_EDITOR_PAGE_SIZE, type AgentEditorOption, paginateAgentEditorOptions } from "./agent-editor-model";
@@ -98,40 +99,35 @@ export function AgentResourcePicker({
         />
         <kbd>{filtered.length.toLocaleString()}</kbd>
       </label>
-      <div className="agent-resource-picker__list" role="listbox" aria-label={label}>
+      <div className="agent-resource-picker__list" role="group" aria-label={label}>
         {paged.items.map((item) => {
           const checked = selected.has(item.id);
+          const checkboxId = `agent-resource-${item.id}`;
+          const unavailableLabel = item.unavailable
+            ? checked
+              ? t("editor.removeUnavailableResource", { name: item.label })
+              : t("editor.unavailableResource", { name: item.label })
+            : item.label;
           return (
-            <button
+            <label
               className={`${checked ? "is-selected " : ""}${item.unavailable ? "is-unavailable" : ""}`}
-              type="button"
               key={item.id}
-              role="option"
-              aria-selected={checked}
-              aria-label={
-                item.unavailable
-                  ? checked
-                    ? t("editor.removeUnavailableResource", { name: item.label })
-                    : t("editor.unavailableResource", { name: item.label })
-                  : undefined
-              }
-              title={
-                item.unavailable
-                  ? checked
-                    ? t("editor.selectedUnavailableResource", { name: item.label })
-                    : t("editor.unavailableResource", { name: item.label })
-                  : undefined
-              }
-              disabled={readOnly || (item.unavailable && !checked)}
-              onClick={() => toggle(item)}
+              htmlFor={checkboxId}
+              title={item.unavailable ? unavailableLabel : undefined}
             >
-              <span className="agent-resource-picker__check">{checked && <Check />}</span>
+              <Checkbox
+                id={checkboxId}
+                checked={checked}
+                disabled={readOnly || (item.unavailable && !checked)}
+                onCheckedChange={() => toggle(item)}
+                aria-label={unavailableLabel}
+              />
               <span>
                 <strong>{item.label}</strong>
                 <small>{item.description ?? (item.unavailable ? t("editor.unavailable") : "")}</small>
               </span>
               {item.meta && <em>{item.meta}</em>}
-            </button>
+            </label>
           );
         })}
         {!filtered.length && <p>{emptyText ?? t("editor.noMatchingResources")}</p>}

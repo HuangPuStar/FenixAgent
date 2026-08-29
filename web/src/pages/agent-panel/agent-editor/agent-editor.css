@@ -10,11 +10,6 @@
   padding: 0;
   box-shadow: var(--shadow-xl);
 }
-.agent-editor-create {
-  width: min(1180px, calc(100vw - 32px));
-  height: min(820px, calc(100dvh - 32px));
-  max-width: none;
-}
 .agent-editor-panel {
   position: absolute;
   z-index: 40;

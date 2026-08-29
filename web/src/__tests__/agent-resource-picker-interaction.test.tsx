@@ -21,6 +21,7 @@ const originalGlobals = new Map(
     "Element",
     "Node",
     "CustomEvent",
+    "getComputedStyle",
     "MutationObserver",
     "ResizeObserver",
   ].map((key) => [key, globals[key]]),
@@ -32,6 +33,7 @@ globals.HTMLElement = win.HTMLElement;
 globals.Element = win.Element;
 globals.Node = win.Node;
 globals.CustomEvent = win.CustomEvent;
+globals.getComputedStyle = win.getComputedStyle.bind(win);
 globals.MutationObserver = win.MutationObserver;
 globals.ResizeObserver = class {
   observe() {}
@@ -187,10 +189,14 @@ describe("AgentResourcePicker 组件交互", () => {
     await act(async () => root?.render(<UnavailablePickerFixture />));
     const buttons = Array.from(container.querySelectorAll("button"));
     const chip = buttons.find((button) => button.classList.contains("is-unavailable"));
-    const options = buttons.filter((button) => button.getAttribute("role") === "option");
+    const checkboxes = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-slot='checkbox']"));
+    const hidden = checkboxes.find(
+      (checkbox) => checkbox.getAttribute("aria-label") === "editor.removeUnavailableResource",
+    );
+    const blocked = checkboxes.find((checkbox) => checkbox.getAttribute("aria-label") === "editor.unavailableResource");
     expect(chip?.getAttribute("aria-label")).toBe("editor.removeUnavailableResource");
-    expect(options.find((option) => option.textContent?.includes("Hidden"))?.disabled).toBe(false);
-    expect(options.find((option) => option.textContent?.includes("Blocked"))?.disabled).toBe(true);
+    expect(hidden?.disabled).toBe(false);
+    expect(blocked?.disabled).toBe(true);
     act(() => chip?.click());
     expect(container.querySelector(".agent-resource-picker__chips .is-unavailable")).toBeNull();
   });

@@ -242,7 +242,13 @@ export function AgentManagementPage() {
           </div>
         )}
 
-        <AgentFormDialog open={createOpen} onOpenChange={setCreateOpen} mode="create" onSuccess={refresh} />
+        <AgentFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          mode="create"
+          portalContainer={editorHost}
+          onSuccess={refresh}
+        />
         <AgentFormDialog
           open={editAgentName !== null}
           onOpenChange={(open) => {

@@ -28,7 +28,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NS } from "../../../i18n";
@@ -419,32 +418,13 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
   useEffect(() => {
     if (props.open) {
       openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      if (props.mode === "edit" && !mobile) {
+      if (!mobile) {
         requestAnimationFrame(() => document.querySelector<HTMLElement>(".agent-editor-panel[role='dialog']")?.focus());
       }
     } else {
       openerRef.current?.focus();
     }
-  }, [mobile, props.mode, props.open]);
-
-  if (props.mode === "create")
-    return (
-      <Dialog open={props.open} onOpenChange={(open) => (open ? props.onOpenChange(true) : closeHandlerRef.current())}>
-        <DialogContent
-          showCloseButton={false}
-          disableOverlayClose
-          onEscapeKeyDown={(event) => {
-            event.preventDefault();
-            closeHandlerRef.current();
-          }}
-          className="agent-editor-shell agent-editor-create"
-        >
-          <DialogTitle className="sr-only">{t("dialog.createTitle")}</DialogTitle>
-          <DialogDescription className="sr-only">{t("editor.dialogDescription")}</DialogDescription>
-          <AgentEditorBody {...props} mobile={mobile} registerCloseHandler={registerCloseHandler} />
-        </DialogContent>
-      </Dialog>
-    );
+  }, [mobile, props.open]);
 
   if (mobile)
     return (
@@ -464,7 +444,9 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
           }}
           className="agent-editor-shell agent-editor-panel agent-editor-mobile"
         >
-          <SheetTitle className="sr-only">{t("dialog.editTitle")}</SheetTitle>
+          <SheetTitle className="sr-only">
+            {props.mode === "create" ? t("dialog.createTitle") : t("dialog.editTitle")}
+          </SheetTitle>
           <SheetDescription className="sr-only">{t("editor.dialogDescription")}</SheetDescription>
           <AgentEditorBody {...props} mobile registerCloseHandler={registerCloseHandler} />
         </SheetContent>
@@ -473,13 +455,14 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
 
   if (!props.open || typeof document === "undefined") return null;
   const host = props.portalContainer ?? document.body;
+  const dialogTitle = props.mode === "create" ? t("dialog.createTitle") : t("dialog.editTitle");
   return createPortal(
     <section
       className="agent-editor-shell agent-editor-panel"
       role="dialog"
       aria-modal="false"
       tabIndex={-1}
-      aria-label={t("dialog.editTitle")}
+      aria-label={dialogTitle}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented) {
           event.preventDefault();
