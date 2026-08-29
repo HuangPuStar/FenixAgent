@@ -22,6 +22,7 @@ import { NS } from "../../../i18n";
 import { isAgentWritable } from "../../../lib/agent-resource-access";
 import { isValidAgentNameInput } from "../../../lib/agent-utils";
 import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./AgentEditorChrome";
+import { AgentEditorLoadingShell } from "./AgentEditorLoadingShell";
 import { type AgentEditorSection, AgentEditorSections } from "./AgentEditorSections";
 import {
   type AgentEditorValues,
@@ -39,6 +40,7 @@ import "./agent-editor-form-fields.css";
 import "./agent-editor-form-surfaces.css";
 import "./agent-editor-library.css";
 import "./agent-editor-knowledge.css";
+import "./agent-editor-loading.css";
 import "./agent-editor-form-responsive.css";
 
 export type AgentFormDialogProps =
@@ -203,10 +205,11 @@ function AgentEditorBody(
 
   if (shouldShowAgentEditorLoading(editor.loading, !!editor.data, !!editor.loadError))
     return (
-      <div className="agent-editor-state" role="status" aria-live="polite" aria-busy="true">
-        <Loader2 className="size-5 animate-spin" />
-        {t("editor.loading")}
-      </div>
+      <AgentEditorLoadingShell
+        mode={props.mode}
+        name={props.mode === "create" ? (props.defaultName ?? "") : props.agentName}
+        onClose={requestClose}
+      />
     );
   if (editor.loadError)
     return (
@@ -234,8 +237,12 @@ function AgentEditorBody(
 
   return (
     <FormProvider {...form}>
-      <form className="agent-editor-root" onSubmit={submit} aria-busy={editor.saving || editor.restarting}>
-        <fieldset disabled={editor.saving || editor.restarting} className="contents">
+      <form
+        className="agent-editor-root"
+        onSubmit={submit}
+        aria-busy={editor.loading || editor.saving || editor.restarting}
+      >
+        <fieldset disabled={editor.loading || editor.saving || editor.restarting} className="contents">
           {data.resourceErrors.length > 0 && (
             <div className="agent-editor-resource-error" role="alert">
               {t("editor.optionalResourcesFailed", { resources: data.resourceErrors.join(", ") })}
@@ -333,7 +340,7 @@ function AgentEditorBody(
                 type="button"
                 variant="ghost"
                 onClick={() => form.reset()}
-                disabled={editor.saving}
+                disabled={editor.loading || editor.saving}
               >
                 <RotateCcw />
                 {t("editor.reset")}
@@ -344,7 +351,11 @@ function AgentEditorBody(
                 {readOnly ? t("editor.close") : t("dialog.cancel")}
               </Button>
               {!readOnly && (
-                <Button className="is-primary" type="submit" disabled={editor.saving || !!editor.loadError}>
+                <Button
+                  className="is-primary"
+                  type="submit"
+                  disabled={editor.loading || editor.saving || !!editor.loadError}
+                >
                   {editor.saving && <Loader2 className="animate-spin" />}
                   {props.mode === "create" ? t("dialog.createConfirm") : t("actions.save")}
                 </Button>

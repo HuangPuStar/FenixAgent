@@ -52,8 +52,8 @@ describe("Agent Editor 关闭保护与分页", () => {
     ]);
   });
 
-  // 首次数据尚未到达时应显示整页加载，避免渲染不完整表单。
-  test("首批数据加载显示整页状态", () => {
+  // 首批数据尚未到达时应进入稳定加载框架，避免渲染可编辑的不完整表单。
+  test("首批数据加载进入稳定框架", () => {
     expect(shouldShowAgentEditorLoading(true, false, false)).toBe(true);
     expect(shouldShowAgentEditorLoading(false, false, false)).toBe(true);
   });

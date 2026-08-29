@@ -95,12 +95,36 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const defaultName = options.mode === "create" ? options.defaultName : undefined;
   const { open, mode, onOpenChange, onSuccess, translate: t, translatePanel: tp } = options;
   const [loadError, setLoadError] = useState<Error | null>(null);
+  const [progressiveData, setProgressiveData] = useState<AgentEditorData | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [savedAgentId, setSavedAgentId] = useState<string | null>(null);
 
   const loadService = useCallback(async (): Promise<AgentEditorData> => {
     if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));
     setLoadError(null);
+    const detail = mode === "edit" ? ((await unwrap(agentApi.get(agentName!))) as AgentDetail) : null;
+    const initialValues = detail ? agentDetailToEditorValues(detail) : createAgentEditorDefaults(defaultName);
+    setProgressiveData({
+      initialValues,
+      agentId: detail?.id ?? null,
+      resourceAccess: detail?.resourceAccess,
+      relatedResources: detail?.relatedResources,
+      hindsightEnabled: false,
+      sandboxEnabled: false,
+      models: mergeSelectedOptions(
+        [],
+        detail?.modelId && detail.relatedResources?.modelLabel
+          ? [{ id: detail.modelId, label: detail.relatedResources.modelLabel }]
+          : undefined,
+      ),
+      skills: mergeSelectedOptions([], detail?.relatedResources?.skills),
+      mcps: mergeSelectedOptions([], detail?.relatedResources?.mcps),
+      sites: mergeSelectedOptions([], detail?.relatedResources?.siteApps),
+      knowledgeBases: mergeSelectedOptions([], detail?.relatedResources?.knowledgeBases),
+      nodes: [],
+      templates: [],
+      resourceErrors: [],
+    });
 
     const resourceErrors: string[] = [];
     const optional = async <T>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
@@ -112,44 +136,33 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       }
     };
 
-    const [
-      detail,
-      modelData,
-      kbData,
-      skillsData,
-      mcpsData,
-      machinesData,
-      poolsData,
-      sitesData,
-      templatesData,
-      hindsight,
-    ] = await Promise.all([
-      mode === "edit" ? unwrap(agentApi.get(agentName!)) : Promise.resolve(null),
-      unwrap(modelApi.get()),
-      unwrap(kbApi.list()),
-      unwrap(skillConfigApi.list()),
-      unwrap(mcpApi.list()),
-      (async () => {
-        const first = await unwrap(registryApi.list({ status: "online", limit: 100, offset: 0 }));
-        const items = [...first.items];
-        while (items.length < first.total) {
-          const page = await unwrap(registryApi.list({ status: "online", limit: 100, offset: items.length }));
-          if (!page.items.length) break;
-          items.push(...page.items);
-        }
-        return { ...first, items };
-      })(),
-      optional(unwrap(sandboxPoolApi.list()), { enabled: false, pools: [] }, "sandbox pools unavailable"),
-      optional(unwrap(agentSitesApi.list()), [], "sites unavailable"),
-      optional(
-        agentApi.templates().then(async (response) => unwrap(Promise.resolve(response))),
-        { templates: [] },
-        "templates unavailable",
-      ),
-      optional(hindsightApi.getStatus(), null, "hindsight unavailable"),
-    ]);
+    const [modelData, kbData, skillsData, mcpsData, machinesData, poolsData, sitesData, templatesData, hindsight] =
+      await Promise.all([
+        unwrap(modelApi.get()),
+        unwrap(kbApi.list()),
+        unwrap(skillConfigApi.list()),
+        unwrap(mcpApi.list()),
+        (async () => {
+          const first = await unwrap(registryApi.list({ status: "online", limit: 100, offset: 0 }));
+          const items = [...first.items];
+          while (items.length < first.total) {
+            const page = await unwrap(registryApi.list({ status: "online", limit: 100, offset: items.length }));
+            if (!page.items.length) break;
+            items.push(...page.items);
+          }
+          return { ...first, items };
+        })(),
+        optional(unwrap(sandboxPoolApi.list()), { enabled: false, pools: [] }, "sandbox pools unavailable"),
+        optional(unwrap(agentSitesApi.list()), [], "sites unavailable"),
+        optional(
+          agentApi.templates().then(async (response) => unwrap(Promise.resolve(response))),
+          { templates: [] },
+          "templates unavailable",
+        ),
+        optional(hindsightApi.getStatus(), null, "hindsight unavailable"),
+      ]);
 
-    const typedDetail = detail as AgentDetail | null;
+    const typedDetail = detail;
     const related = typedDetail?.relatedResources;
     const rawModelOptions = mapModelOptions(modelData.available ?? []);
     const modelOptions = rawModelOptions.map((option) => ({
@@ -191,12 +204,12 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
           : undefined;
     appendUnavailableNodeOption(nodes, selectedNode, selectedNodeLabel);
 
-    const initialValues = typedDetail
-      ? agentDetailToEditorValues(typedDetail)
-      : { ...createAgentEditorDefaults(defaultName), modelId: modelOptions[0]?.id ?? "" };
+    const resolvedInitialValues = typedDetail
+      ? initialValues
+      : { ...initialValues, modelId: modelOptions[0]?.id ?? "" };
 
     return {
-      initialValues,
+      initialValues: resolvedInitialValues,
       agentId: typedDetail?.id ?? null,
       resourceAccess: typedDetail?.resourceAccess,
       relatedResources: related,
@@ -266,6 +279,11 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const loadRequest = useRequest(loadService, {
     ready: open && (mode === "create" || !!agentName),
     refreshDeps: [open, mode, agentName, defaultName],
+    onBefore: () => {
+      setLoadError(null);
+      setProgressiveData(null);
+    },
+    onSuccess: (data) => setProgressiveData(data),
     onError: (error) => setLoadError(error instanceof Error ? error : new Error(String(error))),
   });
 
@@ -345,7 +363,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
 
   return useMemo(
     () => ({
-      data: loadRequest.data,
+      data: progressiveData ?? (!loadRequest.loading ? loadRequest.data : undefined),
       loading: loadRequest.loading,
       loadError: loadError ?? (open && mode === "edit" && !agentName ? new Error(t("editor.missingTarget")) : null),
       retry: loadRequest.refresh,
@@ -362,6 +380,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       loadRequest,
       mode,
       open,
+      progressiveData,
       restartDialogOpen,
       restartRequest.loading,
       restartRequest.run,
