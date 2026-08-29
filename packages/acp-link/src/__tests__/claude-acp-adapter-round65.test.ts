@@ -83,6 +83,60 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
     expect((await connection.listSessions({})).sessions[0]).toMatchObject({ title: "检查发布配置" });
   });
 
+  // 当前 prompt 的 SDK 根用户回显必须被抑制，但 replay、异步来源和工具结果仍需进入时间线。
+  test("仅抑制当前提示回显并保留合法 SDK 用户消息", async () => {
+    const path = await workspace();
+    const sent: unknown[] = [];
+    const promptText = "检查消息归属";
+    spyOn(claudeAgentSdk, "query").mockImplementation(() => {
+      const userMessage = (extra: Record<string, unknown> = {}) => ({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: promptText }] },
+        parent_tool_use_id: null,
+        ...extra,
+      });
+      return fakeQuery([
+        userMessage(),
+        userMessage({ isReplay: true, uuid: "replay-1", session_id: "cc-replay" }),
+        userMessage({ origin: { kind: "channel", server: "inbox" } }),
+        userMessage({ origin: { kind: "peer", from: "peer-1" } }),
+        userMessage({ origin: { kind: "task-notification" } }),
+        userMessage({ origin: { kind: "coordinator" } }),
+        userMessage({
+          message: {
+            role: "user",
+            content: [
+              { type: "tool_result", tool_use_id: "tool-1", content: "done" },
+              { type: "text", text: promptText },
+            ],
+          },
+          tool_use_result: { status: "completed" },
+        }),
+        userMessage({
+          message: {
+            role: "user",
+            content: [
+              { type: "image", source: "opaque" },
+              { type: "text", text: promptText },
+            ],
+          },
+        }),
+        userMessage({ origin: { kind: "human" } }),
+        userMessage({ message: { role: "user", content: [{ type: "text", text: "异步补充" }] } }),
+      ]) as never;
+    });
+
+    const connection = createClaudeAcpConnection(path, "round65", (message) => sent.push(message));
+    const session = await connection.newSession({});
+    await connection.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: promptText }] });
+
+    const userTexts = updates(sent)
+      .map((message) => (message.params as { update?: { sessionUpdate?: string; content?: { text?: string } } }).update)
+      .filter((update) => update?.sessionUpdate === "user_message_chunk")
+      .map((update) => update?.content?.text);
+    expect(userTexts).toEqual([...Array.from({ length: 7 }, () => promptText), "异步补充"]);
+  });
+
   // 前端批准一次工具调用后，适配器应解析挂起权限请求并将本会话切换为自动批准。
   test("权限控制响应解析工具请求并启用同会话自动批准", async () => {
     const path = await workspace();
@@ -131,6 +185,12 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
         message: {
           content: [
             { type: "text", text: "历史回答" },
+            {
+              type: "tool_use",
+              id: "todo-history",
+              name: "TodoWrite",
+              input: { todos: [{ content: "恢复计划", status: "in_progress" }] },
+            },
             { type: "tool_use", id: "t1", name: "Read" },
           ],
         },
@@ -165,9 +225,19 @@ describe("Claude ACP adapter round65 SDK 内存分支", () => {
       sessionUpdate: "agent_message_chunk",
       content: { type: "text", text: "历史回答" },
     });
+    expect(sessionUpdates).toContainEqual({
+      sessionUpdate: "plan",
+      entries: [{ content: "恢复计划", priority: "medium", status: "in_progress" }],
+    });
     expect(sessionUpdates).toContainEqual(
       expect.objectContaining({ sessionUpdate: "tool_call", content: expect.objectContaining({ type: "tool_use" }) }),
     );
+    expect(
+      sessionUpdates.some(
+        (update) =>
+          update.sessionUpdate === "tool_call" && (update.content as Record<string, unknown>)?.name === "TodoWrite",
+      ),
+    ).toBe(false);
     expect(queryCalls[0]).toMatchObject({ prompt: "继续", options: { resume: "cc-restored" } });
     expect(result).toEqual({ stopReason: "end_turn", content: [] });
   });

@@ -197,6 +197,19 @@ describe("spawnAcpAgent round48 内存 ACP 管道", () => {
     await expect(pending).resolves.toEqual({ outcome: { outcome: "selected", optionId: "once" } });
   });
 
+  // AskUserQuestion 的工具门禁必须自动批准，避免在真正提问前错误展示权限卡片。
+  test("AskUserQuestion 权限门禁不转发到前端", async () => {
+    const { harness } = await start();
+    const outcome = await harness.agent.requestPermission({
+      sessionId: "s1",
+      options: [{ kind: "allow_once", name: "仅此一次", optionId: "once" }],
+      toolCall: { toolCallId: "question1", title: "AskUserQuestion" },
+    });
+
+    expect(outcome).toEqual({ outcome: { outcome: "selected", optionId: "allow_once" } });
+    expect(harness.sent).toHaveLength(0);
+  });
+
   // 未知权限响应必须被拒绝，避免错误完成已有待决请求。
   test("未知权限响应返回 false", async () => {
     const { result } = await start();

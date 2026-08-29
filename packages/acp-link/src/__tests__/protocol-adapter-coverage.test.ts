@@ -9,7 +9,12 @@ interface SentEvent {
 function createAdapter(): { adapter: ProtocolAdapter; sent: SentEvent[] } {
   const sent: SentEvent[] = [];
   return {
-    adapter: new ProtocolAdapter((type, payload) => sent.push({ type, payload })),
+    adapter: new ProtocolAdapter((update) =>
+      sent.push({
+        type: update.sessionUpdate,
+        payload: update.content ?? ("entries" in update ? { entries: update.entries } : undefined),
+      }),
+    ),
     sent,
   };
 }
@@ -112,8 +117,8 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
     expect(sent).toEqual([{ type: "agent_thought_chunk", payload: { type: "text", text: "分析中" } }]);
   });
 
-  // 工具 JSON 增量应保留 partial 内容，使前端可展示尚未完成的工具输入
-  test("翻译流式工具输入增量", () => {
+  // 工具 JSON 增量不具备完整语义，不得伪装成文本或发布半成品计划。
+  test("忽略流式工具输入增量", () => {
     const { adapter, sent } = createAdapter();
 
     adapter.handleSdkOutput({
@@ -121,13 +126,11 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
       event: { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: '{"path":"' } },
     });
 
-    expect(sent).toEqual([
-      { type: "agent_message_chunk", payload: { type: "tool_input_delta", partial: '{"path":"' } },
-    ]);
+    expect(sent).toEqual([]);
   });
 
-  // tool_use 起始事件必须保留工具标识和名称，以便权限与结果回传关联同一次调用
-  test("翻译工具调用起始事件", () => {
+  // 工具起始帧没有完整 input，必须等待完整 assistant 块以避免创建重复调用。
+  test("工具调用起始事件不发布半成品调用", () => {
     const { adapter, sent } = createAdapter();
 
     adapter.handleSdkOutput({
@@ -135,7 +138,7 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
       event: { type: "content_block_start", content_block: { type: "tool_use", id: "tool-1", name: "Bash" } },
     });
 
-    expect(sent).toEqual([{ type: "tool_call", payload: { id: "tool-1", name: "Bash", input: {} } }]);
+    expect(sent).toEqual([]);
   });
 
   // 不完整流事件和消息边界事件不得生成伪消息，保证流式错误隔离
@@ -150,19 +153,19 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
     expect(sent).toEqual([]);
   });
 
-  // 流式文本已发送后，assistant 汇总文本必须跳过，避免同一消息在客户端重复渲染
-  test("流式文本与 assistant 汇总之间保持去重隔离", () => {
+  // 流式文本已发送后，完整 assistant 只补齐未发送后缀，普通工具仅发布一次。
+  test("流式文本与 assistant 汇总按块补齐", () => {
     const { adapter, sent } = createAdapter();
 
     adapter.handleSdkOutput({
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "流式" } },
+      event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "流式" } },
     });
     adapter.handleSdkOutput({
       type: "assistant",
       message: {
         content: [
-          { type: "text", text: "汇总" },
+          { type: "text", text: "流式补齐" },
           { type: "tool_use", id: "tool-2", name: "Read", input: {} },
         ],
       },
@@ -170,6 +173,7 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
 
     expect(sent).toEqual([
       { type: "agent_message_chunk", payload: { type: "text", text: "流式" } },
+      { type: "agent_message_chunk", payload: { type: "text", text: "补齐" } },
       { type: "tool_call", payload: { type: "tool_use", id: "tool-2", name: "Read", input: {} } },
     ]);
   });
@@ -211,6 +215,103 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
       { type: "agent_message_chunk", payload: { type: "text", text: "第一回合" } },
       { type: "prompt_complete", payload: { stopReason: "max_turns" } },
       { type: "agent_message_chunk", payload: { type: "text", text: "下一回合" } },
+    ]);
+  });
+
+  // TodoWrite 必须发布标准 ACP plan 完整快照，且不得作为普通工具双重展示。
+  test("将 TodoWrite 转换为标准 plan 快照", () => {
+    const { adapter, sent } = createAdapter();
+
+    adapter.handleSdkOutput({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "todo-1",
+            name: "TodoWrite",
+            input: {
+              todos: [
+                { content: "检查", status: "pending", activeForm: "正在检查" },
+                { content: "修复", status: "in_progress" },
+                { content: "验证", status: "completed" },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(sent).toEqual([
+      {
+        type: "plan",
+        payload: {
+          entries: [
+            { content: "检查", priority: "medium", status: "pending" },
+            { content: "修复", priority: "medium", status: "in_progress" },
+            { content: "验证", priority: "medium", status: "completed" },
+          ],
+        },
+      },
+    ]);
+  });
+
+  // 空 TodoWrite 是清理计划的有效完整快照，不能被 truthy 判断吞掉。
+  test("TodoWrite 空数组清空 plan", () => {
+    const { adapter, sent } = createAdapter();
+
+    adapter.handleSdkOutput({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "todo-empty", name: "TodoWrite", input: { todos: [] } }] },
+    });
+
+    expect(sent).toEqual([{ type: "plan", payload: { entries: [] } }]);
+  });
+
+  // 非法 TodoWrite 不得损坏现有计划，诊断信息也不能包含原始用户内容。
+  test("拒绝非法 TodoWrite 快照并保留脱敏诊断", () => {
+    const sent: SentEvent[] = [];
+    const diagnostics: string[] = [];
+    const adapter = new ProtocolAdapter(
+      (update) => sent.push({ type: update.sessionUpdate, payload: update.content }),
+      (message) => diagnostics.push(message),
+    );
+
+    adapter.handleSdkOutput({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", name: "TodoWrite", input: { todos: [{ content: "敏感内容", status: "invalid" }] } },
+        ],
+      },
+    });
+
+    expect(sent).toEqual([]);
+    expect(diagnostics).toEqual(["TodoWrite input is not a valid complete plan snapshot"]);
+    expect(diagnostics[0]).not.toContain("敏感内容");
+  });
+
+  // 仅 thinking 走流式通道时，完整 assistant 的正文仍必须正常发送。
+  test("thinking 与 text 按块独立去重", () => {
+    const { adapter, sent } = createAdapter();
+
+    adapter.handleSdkOutput({
+      type: "stream_event",
+      event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "推理" } },
+    });
+    adapter.handleSdkOutput({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "thinking", thinking: "推理" },
+          { type: "text", text: "答案" },
+        ],
+      },
+    });
+
+    expect(sent).toEqual([
+      { type: "agent_thought_chunk", payload: { type: "text", text: "推理" } },
+      { type: "agent_message_chunk", payload: { type: "text", text: "答案" } },
     ]);
   });
 

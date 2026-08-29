@@ -3,6 +3,7 @@ import {
   buildElicitationContent,
   createElicitationHandler,
   extractPropertyKeys,
+  isInteractiveQuestionPermission,
   parseElicitationSchema,
 } from "../elicitation.js";
 
@@ -34,6 +35,17 @@ function createMemorySender() {
 }
 
 describe("elicitation 第四十九轮真实协议分支", () => {
+  // AskUserQuestion 的工具门禁应自动通过，真正的用户交互由后续 elicitation/create 承担。
+  test("识别 AskUserQuestion 权限门禁", () => {
+    expect(isInteractiveQuestionPermission({ title: "AskUserQuestion" })).toBe(true);
+  });
+
+  // 名称相似的普通工具不能被误放行。
+  test("不放行非 AskUserQuestion 工具", () => {
+    expect(isInteractiveQuestionPermission({ title: "AskUserQuestionPreview" })).toBe(false);
+    expect(isInteractiveQuestionPermission({ title: "Bash" })).toBe(false);
+  });
+
   // 非对象 schema 属于协议错误输入，解析器应安全地忽略。
   test("拒绝原始值 schema", () => {
     expect(parseElicitationSchema("schema")).toEqual([]);

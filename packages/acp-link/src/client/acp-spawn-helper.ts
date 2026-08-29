@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { createElicitationHandler } from "../elicitation.js";
+import { createElicitationHandler, isInteractiveQuestionPermission } from "../elicitation.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
 
@@ -108,6 +108,9 @@ export async function spawnAcpAgent(
         const toolCall = (params?.toolCall as Record<string, unknown>) ?? {};
         const toolCallId = (toolCall?.toolCallId as string) ?? (toolCall?.tool_call_id as string) ?? "";
         const title = (toolCall?.title as string) ?? `OpenCode tool: ${toolCallId}`;
+        if (isInteractiveQuestionPermission(toolCall)) {
+          return { outcome: { outcome: "selected", optionId: "allow_once" } };
+        }
         const reqOptions = Array.isArray(params?.options) ? (params.options as acp.PermissionOption[]) : [];
 
         // 生成唯一 requestId（前端 response 通过此 id 匹配）

@@ -18,6 +18,14 @@ import type { InteractiveQuestionPayload } from "./types.js";
 /** 等待前端应答的超时（与 claude-adapter 的 interactive_question 60s 对齐） */
 export const ELICITATION_TIMEOUT_MS = 60_000;
 
+/**
+ * AskUserQuestion 的 ACP requestPermission 只是进入 elicitation/create 前的工具门禁，
+ * 不是需要展示给用户的权限决策。仅精确匹配工具名，避免误放行名称相似的普通工具。
+ */
+export function isInteractiveQuestionPermission(toolCall: Record<string, unknown>): boolean {
+  return toolCall.title === "AskUserQuestion";
+}
+
 /** 解析 form 模式 requestedSchema → interactive_question 帧的 questions 数组 */
 export function parseElicitationSchema(schema: unknown): InteractiveQuestionPayload["questions"] {
   if (!schema || typeof schema !== "object") return [];

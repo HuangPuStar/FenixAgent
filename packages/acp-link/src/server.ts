@@ -11,7 +11,7 @@ import { type AgentType, type EngineHandler, InstanceManager } from "./client/in
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
 import { extractModelState, extractModeState } from "./config-options-utils.js";
-import { createElicitationHandler, type ElicitationHandler } from "./elicitation.js";
+import { createElicitationHandler, type ElicitationHandler, isInteractiveQuestionPermission } from "./elicitation.js";
 import {
   ACP_METHOD,
   createErrorResponse,
@@ -833,6 +833,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         const toolCall = (params?.toolCall as Record<string, unknown>) ?? {};
         const toolCallId = (toolCall?.toolCallId as string) ?? "";
         const title = (toolCall?.title as string) ?? `OpenCode tool: ${toolCallId}`;
+        if (isInteractiveQuestionPermission(toolCall)) {
+          return { outcome: { outcome: "selected", optionId: "allow_once" } };
+        }
         const reqOptions = Array.isArray(params?.options) ? (params.options as acp.PermissionOption[]) : [];
 
         const requestId = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

@@ -3,7 +3,7 @@ import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
-import { ProtocolAdapter } from "./protocol-adapter.js";
+import { type AcpSessionUpdate, ProtocolAdapter, translateCompleteAssistantMessage } from "./protocol-adapter.js";
 import { ActiveQueryRegistry } from "./query-registry.js";
 
 /** 会话状态 */
@@ -53,6 +53,34 @@ export function resolvePromptTargetSession(
   const targetSession = requestedSessionId ? sessions.get(requestedSessionId) : undefined;
   const targetSessionId = targetSession ? requestedSessionId : activeSessionId;
   return { targetSessionId, targetSession };
+}
+
+/**
+ * 判断 SDK user 帧是否只是本次 ACP prompt 的实时回显。
+ *
+ * replay、工具结果与带异步来源的 user 帧承载真实时间线边界，必须保留；仅抑制
+ * 主会话中与本次 prompt 文本完全一致的首次人类输入回显，避免 Chat Doc 双写。
+ */
+function isCurrentPromptEcho(message: Record<string, unknown>, promptText: string): boolean {
+  if (message.type !== "user" || message.isReplay === true || message.isSynthetic === true) return false;
+  if (message.shouldQuery === false || (message.parent_tool_use_id ?? null) !== null) return false;
+  const origin = message.origin as Record<string, unknown> | undefined;
+  if (origin?.kind !== undefined && origin.kind !== "human") return false;
+
+  const inner = (message.message ?? {}) as Record<string, unknown>;
+  const content = inner.content;
+  if (message.tool_use_result !== undefined) return false;
+  if (typeof content === "string") return content === promptText;
+  if (!Array.isArray(content) || content.length === 0) return false;
+
+  const textBlocks: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) return false;
+    const record = block as Record<string, unknown>;
+    if (record.type !== "text" || typeof record.text !== "string") return false;
+    textBlocks.push(record.text);
+  }
+  return textBlocks.join("\n") === promptText;
 }
 
 /** Claude Code 支持的模型列表（从环境变量读取，或使用默认值） */
@@ -249,10 +277,10 @@ export function createClaudeAcpConnection(
   const activeQueries = new ActiveQueryRegistry<Query>({
     reportError: (message, error) => console.warn(`[claude-acp-adapter] ${message}`, error),
   });
-  // 标记：下次 prompt 需要 resume 的 CC session UUID
-  let pendingResumeSessionId: string | null = null;
-  // 标记：历史消息已由 unstable_resumeSession 发送到前端，prompt 中跳过 SDK resume 回放
-  let historyReplayed = false;
+  const resumeStates = new Map<
+    string,
+    { ccSessionId: string; historyDelivered: boolean; replayUpdates: string[]; phase: "idle" | "replaying" | "live" }
+  >();
 
   // send 回调已由 InstanceManager.start() 包裹 relay 信封（type/instance_id/session_id）
   // 此处只需发送原始 JSON-RPC payload
@@ -371,9 +399,9 @@ export function createClaudeAcpConnection(
 
       const isFollowUp = targetSession?.ccSessionId != null;
 
-      // 加载历史 session 时用 resume 回放消息；follow-up 用 continue
-      const resumeId = pendingResumeSessionId;
-      pendingResumeSessionId = null;
+      // 加载历史 session 时用 resume；恢复状态按 RCS session 隔离。
+      const resumeState = targetSessionId ? resumeStates.get(targetSessionId) : undefined;
+      const resumeId = resumeState?.ccSessionId;
 
       // 每个 RCS session 使用独立的 CC SDK cwd，避免所有 session 共享同一个 CC 内部 session
       let sessionCwd = cwd;
@@ -392,7 +420,7 @@ export function createClaudeAcpConnection(
       }
 
       const q = query({
-        prompt: resumeId && !historyReplayed ? "" : text,
+        prompt: resumeId && !resumeState?.historyDelivered ? "" : text,
         options: {
           cwd: sessionCwd,
           systemPrompt,
@@ -409,10 +437,7 @@ export function createClaudeAcpConnection(
       });
       activeQueries.register(targetSessionId, q);
 
-      // historyReplayed 时 unstable_resumeSession 已发送历史消息
-      // 仍需 streamInput 推送新 prompt，但 ProtocolAdapter 跳过 SDK resume 回放的消息
-      const skipReplay = historyReplayed && resumeId != null;
-      historyReplayed = false;
+      if (resumeState) resumeState.phase = resumeState.historyDelivered ? "replaying" : "live";
 
       if (resumeId && text.trim()) {
         const rq = new AsyncQueue<{
@@ -431,17 +456,28 @@ export function createClaudeAcpConnection(
         } catch {}
       }
 
-      const adapter = new ProtocolAdapter((type: string, payload?: unknown) => {
-        if (type === "prompt_complete") return;
-        // 跳过 resume 回放的历史消息（已由 unstable_resumeSession 发送到前端）
-        if (skipReplay && (type === "user_message_chunk" || type === "agent_message_chunk")) return;
-        sendJsonRpc(null, { sessionId: targetSessionId!, update: { sessionUpdate: type, content: payload } });
-      });
+      const adapter = new ProtocolAdapter(
+        (update: AcpSessionUpdate) => {
+          if (update.sessionUpdate === "prompt_complete") return;
+          if (resumeState?.phase === "replaying") {
+            const replayKey = JSON.stringify(update);
+            if (resumeState.replayUpdates[0] === replayKey) {
+              resumeState.replayUpdates.shift();
+              return;
+            }
+            resumeState.phase = "live";
+          }
+          sendJsonRpc(null, { sessionId: targetSessionId!, update });
+        },
+        (message) => console.warn(`[claude-acp-adapter] session ${targetSessionId}: ${message}`),
+      );
       const outputBlocks: Array<Record<string, unknown>> = [];
       let cancelled = false;
       try {
         for await (const msg of q) {
-          adapter.handleSdkOutput(msg);
+          if (!isCurrentPromptEcho(msg as unknown as Record<string, unknown>, text)) {
+            adapter.handleSdkOutput(msg);
+          }
           if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
             const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
             // ccSessionId 必须写回本次调用的目标会话，否则并发 run 会把 SDK 会话
@@ -516,6 +552,7 @@ export function createClaudeAcpConnection(
         // 残留条目会让后续 cancel 命中已结束的 query 并调用 interrupt()（必然 reject）。
         // 异常路径不吞错：unregister 后异常继续向上传播，handlePrompt 回 error RPC。
         activeQueries.unregister(targetSessionId);
+        if (targetSessionId && resumeId) resumeStates.delete(targetSessionId);
       }
       return { stopReason: cancelled ? ("cancelled" as const) : ("end_turn" as const), content: outputBlocks };
     },
@@ -554,7 +591,12 @@ export function createClaudeAcpConnection(
         const ccId = s.ccSessionId || disk?.ccSessionId;
         if (ccId) {
           s.ccSessionId = ccId;
-          pendingResumeSessionId = ccId;
+          resumeStates.set(requestedId, {
+            ccSessionId: ccId,
+            historyDelivered: false,
+            replayUpdates: [],
+            phase: "idle",
+          });
         }
         return {
           sessionId: activeSessionId,
@@ -602,52 +644,39 @@ export function createClaudeAcpConnection(
         const ccId = sess.ccSessionId;
         if (ccId) {
           sess.ccSessionId = ccId;
-          pendingResumeSessionId = ccId;
-          // 从 SDK session 中读取历史消息并推送到前端
-          // 标记 historyReplayed，避免 prompt() 中 SDK resume 再次回放
-          historyReplayed = true;
+          const resumeState = {
+            ccSessionId: ccId,
+            historyDelivered: false,
+            replayUpdates: [] as string[],
+            phase: "idle" as const,
+          };
+          resumeStates.set(requestedId, resumeState);
           try {
-            // 使用 session 隔离目录读取消息，避免不同 session 的消息混合
             const msgDir = sess.sessionCwd || cwd;
-            const msgs = await getSessionMessages(ccId, { dir: msgDir });
-            for (const m of msgs) {
-              if (m.type === "user") {
-                const inner = (m.message as Record<string, unknown>) ?? {};
-                const content = (inner.content ?? []) as Array<Record<string, unknown>>;
-                for (const b of content) {
-                  if (b.type === "text" && b.text) {
-                    sendJsonRpc(null, {
-                      sessionId: activeSessionId!,
-                      update: {
-                        sessionUpdate: "user_message_chunk",
-                        content: { type: "text", text: b.text as string },
-                      },
-                    });
-                  }
-                }
-              } else if (m.type === "assistant") {
-                const inner = (m.message as Record<string, unknown>) ?? {};
+            const messages = await getSessionMessages(ccId, { dir: msgDir });
+            for (const message of messages) {
+              let replayUpdates: AcpSessionUpdate[] = [];
+              if (message.type === "user") {
+                const inner = (message.message as Record<string, unknown>) ?? {};
                 const blocks = (inner.content ?? []) as Array<Record<string, unknown>>;
-                for (const b of blocks) {
-                  if (b.type === "text" && b.text) {
-                    sendJsonRpc(null, {
-                      sessionId: activeSessionId!,
-                      update: {
-                        sessionUpdate: "agent_message_chunk",
-                        content: { type: "text", text: b.text as string },
-                      },
-                    });
-                  } else if (b.type === "tool_use") {
-                    sendJsonRpc(null, {
-                      sessionId: activeSessionId!,
-                      update: { sessionUpdate: "tool_call", content: b },
-                    });
-                  }
-                }
+                replayUpdates = blocks.flatMap((block) =>
+                  block.type === "text" && typeof block.text === "string"
+                    ? [{ sessionUpdate: "user_message_chunk", content: { type: "text", text: block.text } }]
+                    : [],
+                );
+              } else if (message.type === "assistant") {
+                replayUpdates = translateCompleteAssistantMessage(message, new Map(), (diagnostic) =>
+                  console.warn(`[claude-acp-adapter] session ${requestedId}: ${diagnostic}`),
+                );
+              }
+              for (const update of replayUpdates) {
+                sendJsonRpc(null, { sessionId: requestedId, update });
+                resumeState.replayUpdates.push(JSON.stringify(update));
               }
             }
-          } catch {
-            /* best effort */
+            resumeState.historyDelivered = true;
+          } catch (error) {
+            console.warn(`[claude-acp-adapter] failed to replay session ${requestedId} history`, error);
           }
         }
       }
