@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 function access(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
@@ -29,6 +29,7 @@ function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
 }
 
 describe("AgentFormDialog 补充 MCP 选项转换", () => {
+  // 未共享 MCP 的特殊字符边界应原样保留。
   test.each([
     ["连字符标识", "mcp-alpha-01", "filesystem", "mcp-alpha-01", "filesystem"],
     ["下划线标识", "mcp_alpha_02", "code_search", "mcp_alpha_02", "code_search"],
@@ -56,6 +57,7 @@ describe("AgentFormDialog 补充 MCP 选项转换", () => {
     ]);
   });
 
+  // 共享 MCP 的资源键、来源和名称边界应按既有契约转换。
   test.each([
     ["共享键含斜杠", "team-a/filesystem", "Team A", "files", "Team A/files"],
     ["共享键含冒号", "team-a:files", "平台组", "files", "平台组/files"],
@@ -86,6 +88,7 @@ describe("AgentFormDialog 补充 MCP 选项转换", () => {
 });
 
 describe("AgentFormDialog 补充模型选项转换", () => {
+  // 本组织模型的 provider 与显示名特殊字符应原样进入标签。
   test.each([
     ["Unicode 标识", "模型-一", "提供商", "模型", "模型-一", "提供商/模型"],
     ["空标识", "", "提供商", "模型", "", "提供商/模型"],
@@ -111,6 +114,7 @@ describe("AgentFormDialog 补充模型选项转换", () => {
     expect(mapModelOptions([model({ id, providerDisplayName, displayName })])).toEqual([{ value, label }]);
   });
 
+  // 共享模型应在所有边界下保留来源组织前缀。
   test.each([
     ["共享组织为中文", "研发部", "Provider", "Model", "研发部/Provider/Model"],
     ["共享组织为零", "0", "Provider", "Model", "0/Provider/Model"],
@@ -148,6 +152,7 @@ function isModelEntries(
 }
 
 describe("AgentFormDialog 转换不可变性", () => {
+  // MCP 与模型映射都不得修改输入数组及嵌套访问描述。
   test.each([
     ["MCP 启用项", [{ id: "one", name: "files", enabled: true }]],
     ["MCP 禁用项", [{ id: "one", name: "files", enabled: false }]],

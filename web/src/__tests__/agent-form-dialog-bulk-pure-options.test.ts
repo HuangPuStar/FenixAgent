@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 type McpServer = Parameters<typeof mapMcpOptions>[0][number];
@@ -87,6 +87,7 @@ function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
 }
 
 describe("AgentFormDialog MCP 选项批量边界转换", () => {
+  // 批量边界值应完整保留启用 MCP 的原始标识与名称。
   test.each(mcpNames)("保留启用 MCP 的原始字段：%s", (name) => {
     const server: McpServer = { id: `enabled-${name}`, name, enabled: true };
 
@@ -95,12 +96,14 @@ describe("AgentFormDialog MCP 选项批量边界转换", () => {
     ]);
   });
 
+  // 显式禁用的 MCP 在所有名称边界下都不得成为可选项。
   test.each(mcpNames)("过滤禁用 MCP：%s", (name) => {
     const server: McpServer = { id: `disabled-${name}`, name, enabled: false };
 
     expect(mapMcpOptions([server])).toEqual([]);
   });
 
+  // 共享 MCP 标签应对各类来源组织名称保持稳定拼接规则。
   test.each(organizationNames)("拼接共享 MCP 的来源组织：%s", (sourceOrganizationName) => {
     const server: McpServer = {
       id: `shared-${sourceOrganizationName}`,
@@ -123,6 +126,7 @@ describe("AgentFormDialog MCP 选项批量边界转换", () => {
     ]);
   });
 
+  // 混合数据映射后应保持启用项顺序、重复项和资源访问引用。
   test("保持 MCP 顺序、重复项和资源引用", () => {
     const shared = resourceAccess({ resourceKey: "shared/key", sourceOrganizationName: "共享组" });
     const servers: McpServer[] = [
@@ -141,6 +145,7 @@ describe("AgentFormDialog MCP 选项批量边界转换", () => {
 });
 
 describe("AgentFormDialog 模型选项批量格式化", () => {
+  // 本组织模型标签应在各类显示名边界下保持 provider/model 格式。
   test.each(mcpNames)("格式化本组织模型标签：%s", (displayName) => {
     const entry = model({
       id: `internal-${displayName}`,
@@ -151,6 +156,7 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
     expect(mapModelOptions([entry])).toEqual([{ value: entry.id, label: `Open AI/${displayName}` }]);
   });
 
+  // 共享模型标签应在各种来源名称下包含来源组织上下文。
   test.each(organizationNames)("格式化共享模型标签：%s", (sourceOrganizationName) => {
     const entry = model({
       id: `external-${sourceOrganizationName}`,
@@ -163,6 +169,7 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
     expect(mapModelOptions([entry])).toEqual([{ value: entry.id, label: expectedLabel }]);
   });
 
+  // 模型映射不得重排输入或合并重复显示名。
   test("保持模型的输入顺序与重复显示名", () => {
     const entries = [
       model({ id: "one", providerDisplayName: "P1", displayName: "重复" }),
@@ -179,6 +186,7 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
 });
 
 describe("AgentFormDialog 选项转换不可变性", () => {
+  // MCP 映射不得修改调用方传入的数据对象。
   test.each(mcpNames.slice(0, 10))("不修改 MCP 输入：%s", (name) => {
     const input: McpServer[] = [
       { id: `plain-${name}`, name },
@@ -196,6 +204,7 @@ describe("AgentFormDialog 选项转换不可变性", () => {
     expect(input).toEqual(snapshot);
   });
 
+  // 模型映射不得修改调用方传入的数据对象。
   test.each(mcpNames.slice(10, 20))("不修改模型输入：%s", (displayName) => {
     const input = [
       model({ id: `internal-${displayName}`, displayName }),

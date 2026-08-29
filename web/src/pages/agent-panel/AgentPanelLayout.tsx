@@ -3,8 +3,8 @@ import { useCallback, useRef, useState } from "react";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
-import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
+import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
 
@@ -18,6 +18,7 @@ export function AgentPanelLayout() {
     .split("/")
     .filter(Boolean);
 
+  const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
     open: false,
@@ -113,7 +114,7 @@ export function AgentPanelLayout() {
         onCreateAgent={() => setCreateDialogOpen(true)}
         onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
       />
-      <div className="agent-panel-body">
+      <div className="agent-panel-body" ref={setPanelHost}>
         <Outlet />
         <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
       </div>
@@ -128,6 +129,7 @@ export function AgentPanelLayout() {
         onOpenChange={(open) => setConfigDialog((prev) => ({ ...prev, open }))}
         mode="edit"
         agentName={configDialog.agentName}
+        portalContainer={panelHost}
       />
     </div>
   );

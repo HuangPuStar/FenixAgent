@@ -25,7 +25,7 @@ import {
 } from "../lib/mcp-resource-access";
 import { buildModelOptions } from "../lib/model-config-utils";
 import { mapSkillOptions, normalizeSkillOptionsPayload } from "../lib/skill-resource-access";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 const externalAccess: ResourceAccess = {

@@ -7,9 +7,9 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
-import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
+import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatPanel } from "./ChatPanel";
 import "./agent-panel.css";
 
