@@ -152,7 +152,7 @@ const app = new Elysia({
   .use(createWebOpenApiPlugin(config.version))
   .derive(deriveRequestId)
   .onBeforeHandle(logRequest)
-  .onAfterHandle(logResponse)
+  .onAfterResponse(logResponse)
   .onAfterHandle(injectRequestId)
   // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
   // 在链中先执行，命中时返回 index.html 终止链；errorPlugin 对所有错误返回 JSON
