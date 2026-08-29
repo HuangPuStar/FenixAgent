@@ -82,12 +82,13 @@ export function setChatChannelBootstrapDeps(overrides: Partial<ChatChannelBootst
  */
 export async function persistClearedSessionSnapshot(
   redis: Redis | Cluster,
-  redisKey: string,
+  rcsSessionId: string,
+  generation: string,
   ydoc: Y.Doc,
 ): Promise<void> {
   const persisted = await persistYjsClearedSnapshotWithCas(
     redis,
-    redisKey,
+    { rcsSessionId, generation },
     Y.encodeStateAsUpdate(ydoc),
     clearSessionDocContent,
   );
@@ -127,7 +128,7 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
         connection.agentId,
         connection.rcsSessionId,
       );
-      await persistClearedSessionSnapshot(redis, `yjs:session:${connection.rcsSessionId}`, sessionDoc.ydoc);
+      await persistClearedSessionSnapshot(redis, connection.rcsSessionId, sessionDoc.generation, sessionDoc.ydoc);
     },
     resolveInstanceNumberFromSession: async (sessionId) => {
       // 从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析实例编号；

@@ -1,1 +1,7 @@
-export { createRedisProvider, persistYjsClearedSnapshotWithCas, persistYjsSnapshotWithCas } from "./redis";
+export {
+  buildRedisProviderKeys,
+  buildRedisSessionKeys,
+  createRedisProvider,
+  persistYjsClearedSnapshotWithCas,
+  persistYjsSnapshotWithCas,
+} from "./redis";

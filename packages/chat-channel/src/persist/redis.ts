@@ -11,10 +11,12 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import { buildRedisProviderKeys, buildRedisSessionKeys } from "./redis-keys";
 import { mergeYjsSnapshotWithCas, type RedisSnapshotConnection } from "./snapshot-cas";
 import { defaultSnapshotMetricsLog, getSnapshotEnvConfig, reportSnapshotCasMetric } from "./snapshot-config";
 import { framePublishUpdate, isSamePublisherId, PUBLISHER_ID, parseFramedPublish } from "./snapshot-framing";
 
+export { buildRedisProviderKeys, buildRedisSessionKeys } from "./redis-keys";
 export type { RedisSnapshotConnection, RedisSnapshotTransaction } from "./snapshot-cas";
 // CAS 写入工具经本模块再导出，保持 persist/index.ts 与既有调用方的导入路径不变。
 export {
@@ -23,16 +25,23 @@ export {
   persistYjsSnapshotWithCas,
 } from "./snapshot-cas";
 
-const REDIS_KEY_PREFIX = "yjs:";
-const REDIS_CHANNEL_PREFIX = "yjs:channel:";
-const ACTIVE_GENERATION_PREFIX = "yjs:active-generation:";
-
 export async function getOrCreateActiveGeneration(redis: Redis | Cluster, rcsSessionId: string): Promise<string> {
-  const key = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
-  const proposed = `gen_${crypto.randomUUID()}`;
+  const { activeGenerationKey, legacyActiveGenerationKey } = buildRedisSessionKeys(rcsSessionId);
   const r = redis as Redis;
-  await r.set(key, proposed, "NX");
-  return (await r.get(key)) ?? proposed;
+  const current = await r.get(activeGenerationKey);
+  if (current !== null) {
+    if (current.length === 0) throw new Error("active projection generation is empty");
+    return current;
+  }
+
+  // 滚动升级时沿用旧 fence 的 generation，才能读取同 generation 的旧快照；
+  // 仅在新键缺失时读取旧键，且所有写入仍只落到新键。
+  const legacy = legacyActiveGenerationKey ? await r.get(legacyActiveGenerationKey) : null;
+  const proposed = legacy && legacy.length > 0 ? legacy : `gen_${crypto.randomUUID()}`;
+  await r.set(activeGenerationKey, proposed, "NX");
+  const active = await r.get(activeGenerationKey);
+  if (active !== null && active.length === 0) throw new Error("active projection generation is empty");
+  return active ?? proposed;
 }
 
 /** 仅当前 active generation 可发布后继，防止并发 replacement 后到者覆盖胜者。 */
@@ -42,7 +51,7 @@ export async function publishActiveGeneration(
   expected: string,
   next: string,
 ): Promise<boolean> {
-  const key = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
+  const key = buildRedisSessionKeys(rcsSessionId).activeGenerationKey;
   const result = await (redis as Redis).eval(
     "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2]); return 1 else return 0 end",
     1,
@@ -51,6 +60,19 @@ export async function publishActiveGeneration(
     next,
   );
   return Number(result) === 1;
+}
+
+/**
+ * 仅失败事务发布的 generation 仍为当前值时恢复旧 generation。该独立命名用于
+ * 强调失败补偿不能覆盖并发事务已经发布的新 winner。
+ */
+export async function revertActiveGeneration(
+  redis: Redis | Cluster,
+  rcsSessionId: string,
+  published: string,
+  previous: string,
+): Promise<boolean> {
+  return publishActiveGeneration(redis, rcsSessionId, published, previous);
 }
 
 /** createRedisProvider 的可选配置（宿主 DI / 测试注入通道）。 */
@@ -85,11 +107,12 @@ export function createRedisProvider(
   const snapshotTtlSeconds = options?.snapshotTtlSeconds ?? envConfig.ttlSeconds;
   const metricsLog = options?.log ?? defaultSnapshotMetricsLog;
 
-  const persistenceName = options?.generation ? `${docName}:${options.generation}` : docName;
-  const redisKey = `${REDIS_KEY_PREFIX}${persistenceName}`;
-  const channel = `${REDIS_CHANNEL_PREFIX}${persistenceName}`;
-  const rcsSessionId = docName.slice(docName.indexOf(":") + 1);
-  const activeGenerationKey = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
+  const {
+    snapshotKey: redisKey,
+    legacySnapshotKey,
+    channel,
+    activeGenerationKey,
+  } = buildRedisProviderKeys(docName, options?.generation);
   const generation = options?.generation;
 
   // ioredis Cluster supports pub/sub at runtime but TypeScript types differ;
@@ -309,14 +332,17 @@ export function createRedisProvider(
   const loadInitialSnapshot = async () => {
     try {
       if (generation && (await r.get(activeGenerationKey)) !== generation) return;
-      const buf = await r.getBuffer(redisKey);
+      const current = await r.getBuffer(redisKey);
+      // 双读单写迁移：只有新键确实不存在时才读取旧键。空值或损坏的新值必须
+      // 在新键上失败，不能回退并复活可能已经过期的旧投影。
+      const buf = current === null && legacySnapshotKey ? await r.getBuffer(legacySnapshotKey) : current;
       if (destroyed) return;
 
-      if (buf) {
+      if (buf !== null) {
         try {
           Y.applyUpdate(ydoc, new Uint8Array(buf), remoteUpdateOrigin);
         } catch {
-          // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
+          // 兼容此前在同一个键中错误写入的 base64 快照；这不是旧键回退。
           Y.applyUpdate(ydoc, new Uint8Array(Buffer.from(buf.toString(), "base64")), remoteUpdateOrigin);
         }
       }

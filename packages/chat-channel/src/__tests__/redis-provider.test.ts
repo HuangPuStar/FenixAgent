@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { createRedisProvider, persistYjsClearedSnapshotWithCas } from "../persist/redis";
+import { buildRedisProviderKeys, createRedisProvider, persistYjsClearedSnapshotWithCas } from "../persist/redis";
 
 type MessageListener = (channel: Buffer | string, message: Buffer) => void;
 type ErrorListener = () => void;
@@ -70,6 +70,7 @@ class SubscriberDouble {
 }
 
 class PersistenceDouble {
+  readonly watchedKeys: string[][] = [];
   disconnected = false;
   watchCalls = 0;
   unwatchCalls = 0;
@@ -77,8 +78,9 @@ class PersistenceDouble {
 
   constructor(private readonly redis: RedisDouble) {}
 
-  watch(_key: string): Promise<"OK"> {
+  watch(...keys: string[]): Promise<"OK"> {
     this.watchCalls += 1;
+    this.watchedKeys.push(keys);
     this.watchedVersion = this.redis.version;
     return Promise.resolve("OK");
   }
@@ -91,6 +93,10 @@ class PersistenceDouble {
 
   getBuffer(): Promise<Buffer | null> {
     return this.redis.readStored();
+  }
+
+  get(key: string): Promise<string | null> {
+    return Promise.resolve(this.redis.readString(key));
   }
 
   multi(): {
@@ -132,6 +138,7 @@ class RedisDouble {
   version = 0;
   conflictNextExecs = 0;
   private stored: Buffer | null;
+  private readonly strings = new Map<string, string>();
 
   constructor(
     stored: Buffer | null = null,
@@ -143,6 +150,14 @@ class RedisDouble {
 
   readStored(): Promise<Buffer | null> {
     return Promise.resolve(this.stored ? Buffer.from(this.stored) : null);
+  }
+
+  readString(key: string): string | null {
+    return this.strings.get(key) ?? null;
+  }
+
+  setString(key: string, value: string): void {
+    this.strings.set(key, value);
   }
 
   writeStored(key: string, value: Buffer, ttlSeconds?: number): void {
@@ -240,7 +255,7 @@ describe("createRedisProvider", () => {
     const subscriber = redis.subscribers[0];
     expect(redis.duplicateCalls).toBe(2);
     expect(redis.persistences).toHaveLength(1);
-    expect(subscriber?.subscriptions).toEqual(["yjs:channel:session:commands"]);
+    expect(subscriber?.subscriptions).toEqual([buildRedisProviderKeys("session:commands").channel]);
 
     ydoc.getMap("state").set("value", "written");
     await nextMicrotask();
@@ -272,7 +287,7 @@ describe("createRedisProvider", () => {
     await nextMicrotask();
 
     expect(redis.sets).toHaveLength(1);
-    expect(redis.sets[0]?.key).toBe("yjs:session:one");
+    expect(redis.sets[0]?.key).toBe(buildRedisProviderKeys("session:one").snapshotKey);
     expect(redis.sets[0]?.value).toBeInstanceOf(Buffer);
     expect(redis.published).toHaveLength(2);
     expect(redis.published.every(({ value }) => Buffer.isBuffer(value))).toBe(true);
@@ -346,7 +361,10 @@ describe("createRedisProvider", () => {
     await nextMicrotask();
 
     source.getMap("state").set("remote", "applied");
-    redis.emitMessage(Buffer.from("yjs:channel:session:remote"), Buffer.from(Y.encodeStateAsUpdate(source)));
+    redis.emitMessage(
+      Buffer.from(buildRedisProviderKeys("session:remote").channel),
+      Buffer.from(Y.encodeStateAsUpdate(source)),
+    );
 
     expect(ydoc.getMap("state").toJSON()).toEqual({ remote: "applied" });
     expect(redis.sets).toHaveLength(0);
@@ -368,7 +386,7 @@ describe("createRedisProvider", () => {
     await nextMicrotask();
 
     source.getMap("state").set("remote", "first-only");
-    redis.emitMessage("yjs:channel:session:first", Buffer.from(Y.encodeStateAsUpdate(source)));
+    redis.emitMessage(buildRedisProviderKeys("session:first").channel, Buffer.from(Y.encodeStateAsUpdate(source)));
 
     expect(firstDoc.getMap("state").toJSON()).toEqual({ remote: "first-only" });
     expect(secondDoc.getMap("state").toJSON()).toEqual({});
@@ -393,7 +411,10 @@ describe("createRedisProvider", () => {
     docs.push(ydoc);
     const provider = createRedisProvider(redis as never, "session:initial-order", ydoc);
 
-    redis.emitMessage("yjs:channel:session:initial-order", Buffer.from(Y.encodeStateAsUpdate(remoteSource)));
+    redis.emitMessage(
+      buildRedisProviderKeys("session:initial-order").channel,
+      Buffer.from(Y.encodeStateAsUpdate(remoteSource)),
+    );
     expect(redis.getBufferCalls).toBe(0);
 
     subscribe.resolve(1);
@@ -401,7 +422,10 @@ describe("createRedisProvider", () => {
     expect(redis.getBufferCalls).toBe(1);
 
     remoteSource.getMap("state").set("remote", "received-during-load");
-    redis.emitMessage("yjs:channel:session:initial-order", Buffer.from(Y.encodeStateAsUpdate(remoteSource)));
+    redis.emitMessage(
+      buildRedisProviderKeys("session:initial-order").channel,
+      Buffer.from(Y.encodeStateAsUpdate(remoteSource)),
+    );
     snapshotSource.getMap("state").set("snapshot", "loaded-after-subscribe");
     snapshot.resolve(Buffer.from(Y.encodeStateAsUpdate(snapshotSource)));
     await nextMicrotask();
@@ -426,7 +450,10 @@ describe("createRedisProvider", () => {
     const provider = createRedisProvider(redis as never, "session:subscribe-handoff", ydoc);
 
     source.getMap("state").set("remote", "received-before-ready");
-    redis.emitMessage("yjs:channel:session:subscribe-handoff", Buffer.from(Y.encodeStateAsUpdate(source)));
+    redis.emitMessage(
+      buildRedisProviderKeys("session:subscribe-handoff").channel,
+      Buffer.from(Y.encodeStateAsUpdate(source)),
+    );
     expect(ydoc.getMap("state").toJSON()).toEqual({ remote: "received-before-ready" });
 
     subscribe.resolve(1);
@@ -592,9 +619,12 @@ describe("createRedisProvider", () => {
     Y.applyUpdate(localBaseline, baselineSnapshot);
 
     const redis = new RedisDouble(Buffer.from(Y.encodeStateAsUpdate(current)));
+    const generation = "gen_clear_concurrent";
+    const target = buildRedisProviderKeys("session:clear-concurrent", generation);
+    redis.setString(target.activeGenerationKey, generation);
     const persisted = await persistYjsClearedSnapshotWithCas(
       redis as never,
-      "yjs:session:clear-concurrent",
+      { rcsSessionId: "clear-concurrent", generation },
       Y.encodeStateAsUpdate(localBaseline),
       (ydoc) => {
         ydoc.transact(() => {
@@ -613,6 +643,7 @@ describe("createRedisProvider", () => {
 
     expect(persisted).toBe(true);
     expect(redis.sets).toHaveLength(1);
+    expect(redis.sets[0]?.key).toBe(target.snapshotKey);
     expect(redis.sets[0]?.ttlSeconds).toBeGreaterThan(0); // SP-C1：快照写入附带 TTL
     Y.applyUpdate(restored, redis.sets[0]?.value ?? Buffer.alloc(0));
     expect(restored.getArray("messages").toArray()).toEqual([]);
@@ -648,7 +679,7 @@ describe("createRedisProvider", () => {
     const publishCountBeforeRemoteMessage = redis.published.length;
 
     source.getMap("state").set("remote", "ignored");
-    redis.emitMessage("yjs:channel:session:destroyed", Buffer.from(Y.encodeStateAsUpdate(source)));
+    redis.emitMessage(buildRedisProviderKeys("session:destroyed").channel, Buffer.from(Y.encodeStateAsUpdate(source)));
 
     expect(ydoc.getMap("state").toJSON()).toEqual({ value: "pending" });
     expect(redis.sets).toHaveLength(setCountBeforeRemoteMessage);
@@ -774,7 +805,7 @@ describe("createRedisProvider", () => {
     expect(baselinePublished).toBe(1);
 
     // 自身发布的原始载荷回灌（真实 Redis 会把消息投回发布进程的 subscriber）
-    redis.emitMessage("yjs:channel:session:self-loop", redis.published[0]!.value);
+    redis.emitMessage(buildRedisProviderKeys("session:self-loop").channel, redis.published[0]!.value);
     expect(updateCount).toBe(baselineCount);
     expect(redis.published).toHaveLength(baselinePublished);
     expect(redis.sets).toHaveLength(baselineSets);
@@ -785,7 +816,7 @@ describe("createRedisProvider", () => {
     foreign.getMap("state").set("foreign", "must-not-apply");
     const ownHeader = redis.published[0]!.value.subarray(0, 21); // flag + id + length
     redis.emitMessage(
-      "yjs:channel:session:self-loop",
+      buildRedisProviderKeys("session:self-loop").channel,
       Buffer.concat([ownHeader, Buffer.from(Y.encodeStateAsUpdate(foreign))]),
     );
     expect(ydoc.getMap("state").toJSON()).toEqual({ local: "value" });
@@ -801,7 +832,7 @@ describe("createRedisProvider", () => {
     otherFrame.fill(7, 1, 17);
     otherFrame.writeUInt32BE(otherUpdate.length, 17);
     otherUpdate.copy(otherFrame, 21);
-    redis.emitMessage("yjs:channel:session:self-loop", otherFrame);
+    redis.emitMessage(buildRedisProviderKeys("session:self-loop").channel, otherFrame);
     expect(ydoc.getMap("state").toJSON()).toEqual({ local: "value", fromOther: "applied" });
 
     await provider.destroy();

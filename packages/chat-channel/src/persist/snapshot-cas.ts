@@ -6,6 +6,7 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import { buildRedisProviderKeys } from "./redis-keys";
 import { getSnapshotEnvConfig } from "./snapshot-config";
 
 const SNAPSHOT_PERSIST_RETRIES = 5;
@@ -82,33 +83,48 @@ export async function persistYjsSnapshotWithCas(
   }
 }
 
+export interface ClearedSessionSnapshotTarget {
+  /** 未编码的 RCS session ID；键构造器会把它转换为受控 hash tag。 */
+  rcsSessionId: string;
+  /** 调用方当前持有的投影世代；只有它仍 active 时才允许提交。 */
+  generation: string;
+}
+
 /**
- * 原子地持久化一个清空后的会话快照。
+ * 原子地持久化一个清空后的 Session Doc 快照。
  *
  * 与普通合并 CAS 不同，冲突重试时会重新读取 Redis 当前状态并再次清空，
- * 因此清空者未见的并发内容不会被 Yjs 合并重新带回。
+ * 因此清空者未见的并发内容不会被 Yjs 合并重新带回。snapshot 与 generation
+ * fence 由同一个受控 hash tag 派生并一起 WATCH，旧世代写入不会越过投影换代。
  */
 export async function persistYjsClearedSnapshotWithCas(
   redis: Redis | Cluster,
-  redisKey: string,
+  target: ClearedSessionSnapshotTarget,
   localBaseline: Uint8Array,
   clear: (ydoc: Y.Doc) => void,
   ttlSeconds?: number,
 ): Promise<boolean> {
+  if (target.generation.length === 0) throw new Error("projection generation must not be empty");
+  const { snapshotKey, activeGenerationKey } = buildRedisProviderKeys(
+    `session:${target.rcsSessionId}`,
+    target.generation,
+  );
   const persistence = redis.duplicate() as unknown as RedisSnapshotConnection;
   try {
     for (let attempt = 0; attempt < SNAPSHOT_PERSIST_RETRIES; attempt += 1) {
       let watched = false;
       const clearedDoc = new Y.Doc();
       try {
-        await persistence.watch(redisKey);
+        await persistence.watch(snapshotKey, activeGenerationKey);
         watched = true;
-        const existingRaw = await persistence.getBuffer(redisKey);
+        if ((await persistence.get(activeGenerationKey)) !== target.generation) return false;
+
+        const existingRaw = await persistence.getBuffer(snapshotKey);
         if (existingRaw) {
           try {
             Y.applyUpdate(clearedDoc, new Uint8Array(existingRaw));
           } catch {
-            // 兼容此前错误写入的 base64 快照；新写入始终为原始二进制。
+            // 兼容此前在受控键中错误写入的 base64 快照；新写入始终为原始二进制。
             Y.applyUpdate(clearedDoc, new Uint8Array(Buffer.from(existingRaw.toString(), "base64")));
           }
         }
@@ -118,7 +134,7 @@ export async function persistYjsClearedSnapshotWithCas(
         const result = await persistence
           .multi()
           .set(
-            redisKey,
+            snapshotKey,
             Buffer.from(Y.encodeStateAsUpdate(clearedDoc)),
             "EX",
             ttlSeconds ?? getSnapshotEnvConfig().ttlSeconds,
