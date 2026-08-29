@@ -6,13 +6,13 @@ import {
   Download,
   FileText,
   Layers3,
+  Network,
   RefreshCcw,
-  SlidersHorizontal,
   TestTube2,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
-import { Modal, PageHeader, PrimaryButton, SearchToolbar, Status, Tag, Toast, ToolbarSummary } from "../components/ui";
+import { Modal, PageHeader, PrimaryButton, Status, Tag, Toast } from "../components/ui";
 
 interface KnowledgeBaseSummary {
   id: string;
@@ -96,13 +96,14 @@ function statusKind(status: KnowledgeResource["status"]) {
 }
 
 export function KnowledgeBasesPage() {
-  const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(KNOWLEDGE_BASES[0].id);
-  const [detailTab, setDetailTab] = useState<"documents" | "retrieval">("documents");
+  const [detailTab, setDetailTab] = useState<"documents" | "retrieval" | "graph">("documents");
+  const [parseMethod, setParseMethod] = useState<"builtin" | "pipeline">("builtin");
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [resources, setResources] = useState(INITIAL_RESOURCES);
   const [createOpen, setCreateOpen] = useState(false);
   const [toast, setToast] = useState("");
-  const bases = KNOWLEDGE_BASES.filter((base) => `${base.name}${base.slug}${base.description}`.includes(query));
+  const bases = KNOWLEDGE_BASES;
   const selected = KNOWLEDGE_BASES.find((base) => base.id === selectedId) ?? KNOWLEDGE_BASES[0];
 
   const notify = (message: string) => {
@@ -129,20 +130,8 @@ export function KnowledgeBasesPage() {
         <PrimaryButton onClick={() => setCreateOpen(true)}>创建知识库</PrimaryButton>
       </PageHeader>
 
-      <SearchToolbar value={query} onChange={setQuery} placeholder="搜索知识库" className="knowledge-toolbar">
-        <button className="button button--ghost" type="button">
-          <SlidersHorizontal />
-          筛选状态
-        </button>
-        <ToolbarSummary>
-          <span>
-            <strong>{bases.length}</strong> 个知识库
-          </span>
-        </ToolbarSummary>
-      </SearchToolbar>
-
       <div className="knowledge-workspace">
-        <aside className="panel knowledge-directory">
+        <aside className="knowledge-directory">
           <header>
             <span>知识库</span>
             <strong>{bases.length}</strong>
@@ -170,7 +159,7 @@ export function KnowledgeBasesPage() {
         </aside>
 
         <main className="knowledge-detail">
-          <section className="panel knowledge-summary">
+          <section className="knowledge-summary">
             <header>
               <div>
                 <span
@@ -224,6 +213,13 @@ export function KnowledgeBasesPage() {
               文档 <span>{resources.length}</span>
             </button>
             <button
+              className={detailTab === "graph" ? "is-active" : ""}
+              type="button"
+              onClick={() => setDetailTab("graph")}
+            >
+              知识图谱
+            </button>
+            <button
               className={detailTab === "retrieval" ? "is-active" : ""}
               type="button"
               onClick={() => setDetailTab("retrieval")}
@@ -233,13 +229,13 @@ export function KnowledgeBasesPage() {
           </nav>
 
           {detailTab === "documents" ? (
-            <section className="panel knowledge-documents">
+            <section className="knowledge-documents">
               <header>
                 <div>
                   <h3>文档资源</h3>
                   <span>上传后自动解析；同名文件会进入覆盖确认。</span>
                 </div>
-                <button className="button button--primary" type="button" onClick={() => notify("选择要上传的文件")}>
+                <button className="button button--primary" type="button" onClick={() => setUploadOpen(true)}>
                   <Upload />
                   上传文件
                 </button>
@@ -281,8 +277,70 @@ export function KnowledgeBasesPage() {
                 </article>
               ))}
             </section>
+          ) : detailTab === "graph" ? (
+            <section className="knowledge-graph-lab">
+              <header>
+                <Network />
+                <div>
+                  <h3>知识图谱</h3>
+                  <p>从知识库文档中抽取实体与关系，辅助理解跨文档知识结构。</p>
+                </div>
+                <button className="button" type="button" onClick={() => notify("知识图谱已重新生成")}>
+                  重新生成
+                </button>
+              </header>
+              <div className="knowledge-graph-canvas">
+                <svg viewBox="0 0 620 280" aria-hidden="true">
+                  <defs>
+                    <marker id="kb-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                      <path d="M0,0 L8,4 L0,8 Z" />
+                    </marker>
+                  </defs>
+                  <path d="M142 137C205 137 210 69 274 69" />
+                  <path d="M142 143C205 143 210 211 274 211" />
+                  <path d="M354 69C424 69 423 137 486 137" />
+                  <path d="M354 211C424 211 423 143 486 143" />
+                  <text x="192" y="94">
+                    规范
+                  </text>
+                  <text x="192" y="196">
+                    要求
+                  </text>
+                  <text x="404" y="94">
+                    保护
+                  </text>
+                  <text x="404" y="197">
+                    约束
+                  </text>
+                </svg>
+                <b className="kb-graph-node kb-graph-node--root">
+                  公共数据授权运营<small>业务领域</small>
+                </b>
+                <b className="kb-graph-node kb-graph-node--top">
+                  数据安全管理条例<small>法规</small>
+                </b>
+                <b className="kb-graph-node kb-graph-node--bottom">
+                  访问控制<small>安全措施</small>
+                </b>
+                <b className="kb-graph-node kb-graph-node--right">
+                  公共数据产品<small>数据资产</small>
+                </b>
+              </div>
+              <footer>
+                <span>
+                  <strong>42</strong> 个实体
+                </span>
+                <span>
+                  <strong>67</strong> 条关系
+                </span>
+                <span>
+                  <strong>8</strong> 个实体类型
+                </span>
+                <span>更新于今天 10:42</span>
+              </footer>
+            </section>
           ) : (
-            <section className="panel retrieval-lab">
+            <section className="retrieval-lab">
               <header>
                 <TestTube2 />
                 <div>
@@ -294,18 +352,34 @@ export function KnowledgeBasesPage() {
                 <span>测试问题</span>
                 <textarea defaultValue="公共数据授权运营需要满足哪些安全要求？" />
               </label>
-              <div className="retrieval-actions">
+              <div className="retrieval-actions retrieval-actions--actual">
                 <label>
-                  <span>返回片段</span>
-                  <select defaultValue="5">
-                    <option>3</option>
+                  <span>相似度阈值</span>
+                  <input type="number" min="0" max="1" step="0.01" defaultValue="0.2" />
+                </label>
+                <label>
+                  <span>向量相似度权重</span>
+                  <input type="number" min="0" max="1" step="0.1" defaultValue="0.3" />
+                </label>
+                <label>
+                  <span>结果数量</span>
+                  <select defaultValue="10">
                     <option>5</option>
                     <option>10</option>
+                    <option>20</option>
+                    <option>50</option>
                   </select>
                 </label>
                 <label>
-                  <span>相似度阈值</span>
-                  <input defaultValue="0.45" />
+                  <span>Rerank 模型</span>
+                  <select defaultValue="none">
+                    <option value="none">不使用</option>
+                    <option value="bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+                  </select>
+                </label>
+                <label className="retrieval-check">
+                  <input type="checkbox" />
+                  关键词匹配
                 </label>
                 <button className="button button--primary" type="button" onClick={() => notify("检索测试已完成")}>
                   运行检索
@@ -343,30 +417,77 @@ export function KnowledgeBasesPage() {
           confirmText="创建"
         >
           <div className="field">
-            <label>名称</label>
-            <input defaultValue="新的知识库" />
+            <label>名称 *</label>
+            <input placeholder="输入知识库名称" />
           </div>
           <div className="field">
-            <label>向量模型</label>
-            <select>
+            <label>标识 Slug</label>
+            <input placeholder="留空则根据名称自动生成" />
+          </div>
+          <div className="field">
+            <label>描述</label>
+            <textarea placeholder="说明这个知识库包含什么内容" />
+          </div>
+          <div className="field">
+            <label>嵌入模型</label>
+            <select defaultValue="BAAI/bge-m3">
               <option>BAAI/bge-m3</option>
               <option>text-embedding-v4</option>
             </select>
+            <small>创建后不可修改</small>
           </div>
           <div className="field">
-            <label>解析方式</label>
-            <select>
-              <option>通用解析</option>
-              <option>说明书解析</option>
+            <label>解析方法</label>
+            <select
+              value={parseMethod}
+              onChange={(event) => setParseMethod(event.target.value as "builtin" | "pipeline")}
+            >
+              <option value="builtin">内置解析器</option>
+              <option value="pipeline">自定义 Pipeline</option>
             </select>
+            <small>创建后不可修改</small>
           </div>
-          <div className="field">
-            <label>分块方式</label>
-            <select>
-              <option>智能分块</option>
-              <option>按标题分块</option>
-            </select>
+          {parseMethod === "builtin" ? (
+            <div className="field">
+              <label>分块方法</label>
+              <select defaultValue="naive">
+                <option value="naive">通用</option>
+                <option value="manual">手册</option>
+                <option value="paper">论文</option>
+                <option value="book">书籍</option>
+              </select>
+            </div>
+          ) : (
+            <div className="field">
+              <label>Pipeline</label>
+              <select defaultValue="document-structure-parser">
+                <option value="document-structure-parser">文档结构解析 Pipeline</option>
+                <option value="table-extraction">表格抽取 Pipeline</option>
+              </select>
+            </div>
+          )}
+        </Modal>
+      )}
+      {uploadOpen && (
+        <Modal
+          title="上传文档"
+          onClose={() => setUploadOpen(false)}
+          onConfirm={() => {
+            setUploadOpen(false);
+            notify("文件已上传，正在解析");
+          }}
+          confirmText="上传并解析"
+        >
+          <div className="knowledge-upload-zone">
+            <Upload />
+            <strong>选择一个或多个文件</strong>
+            <span>文件将上传到“{selected.name}”，上传后自动进入解析队列。</span>
+            <input type="file" multiple />
           </div>
+          <label className="knowledge-overwrite">
+            <input type="checkbox" />
+            覆盖知识库中已存在的同名文件
+          </label>
         </Modal>
       )}
       {toast && <Toast text={toast} />}

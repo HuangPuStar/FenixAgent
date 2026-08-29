@@ -1,12 +1,30 @@
-import { Activity, Brain, CalendarClock, Check, Clock3, Pause, Play, Settings2, Trash2 } from "lucide-react";
+import {
+  Activity,
+  Brain,
+  CalendarClock,
+  Check,
+  Clock3,
+  Eye,
+  Fingerprint,
+  Globe2,
+  Lightbulb,
+  ListTree,
+  Network,
+  Orbit,
+  Pause,
+  Play,
+  Settings2,
+  Table2,
+  Trash2,
+} from "lucide-react";
 import { type CSSProperties, useState } from "react";
-import { Sparkline } from "../components/sparkline";
 import {
   FormFields,
   Modal,
   PageHeader,
   PrimaryButton,
   RowMenu,
+  SearchField,
   SearchToolbar,
   Status,
   Tag,
@@ -286,88 +304,263 @@ export function TasksPage() {
 
 export function MemoriesPage() {
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState("全部");
+  const [scope, setScope] = useState("世界事实");
+  const [displayMode, setDisplayMode] = useState<"constellation" | "graph" | "table" | "timeline">("constellation");
+  const [selectedMemory, setSelectedMemory] = useState(0);
+  const views = [
+    ["世界事实", "可验证的客观信息", Globe2, "128"],
+    ["经验", "用户与 Agent 的经历", Fingerprint, "54"],
+    ["观察", "从行为中形成的判断", Eye, "31"],
+    ["心智模型", "归纳后的长期认知", Lightbulb, "12"],
+    ["实体", "人物、项目与关系", Network, "23"],
+  ] as const;
   const memories = [
-    ["用户偏好简洁的汇报格式，不使用过多小标题。", "公文写手", "偏好", "今天 09:18"],
-    ["凤凰科技的投标文档统一使用 2026 版公司简介。", "投标文件审查", "事实", "昨天 16:42"],
-    ["经营简报需在每周一增加环比和同比解释。", "经营数据助手", "规则", "8 月 21 日"],
-    ["用户负责 UI/UX 设计，当前关注 Chat 面板重构。", "全局记忆", "背景", "8 月 20 日"],
-    ["发布站点前先执行移动端截图检查。", "AgentSites 建站助手", "流程", "8 月 18 日"],
-  ].filter((row) => row.join("").toLowerCase().includes(query.toLowerCase()) && (scope === "全部" || row[2] === scope));
+    {
+      content: "FenixAgent 的生产部署要求 PostgreSQL 连接池与 Agent 并发配置保持独立，避免突发任务占满数据库连接。",
+      source: "产品与交付手册",
+      type: "世界事实",
+      agent: "交付助手",
+      time: "今天 10:42",
+      confidence: 92,
+      evidence: "3 个来源 · 5 次引用",
+    },
+    {
+      content: "用户更倾向先查看可运行示例，再阅读完整配置说明。回答部署问题时，应先给出最小命令和验证结果。",
+      source: "会话归纳",
+      type: "经验",
+      agent: "技术支持",
+      time: "昨天 16:18",
+      confidence: 86,
+      evidence: "6 段会话 · 4 次强化",
+    },
+    {
+      content: "最近三次知识库同步失败都发生在超大 PDF 文件，需要在上传前展示文件预检结果和明确的失败重试入口。",
+      source: "运行记录",
+      type: "观察",
+      agent: "文档管理员",
+      time: "8 月 24 日",
+      confidence: 78,
+      evidence: "3 次运行 · 待确认",
+    },
+  ].filter(
+    (memory) =>
+      `${memory.content}${memory.source}${memory.agent}`.toLowerCase().includes(query.toLowerCase()) &&
+      (scope === "全部" || memory.type === scope),
+  );
+  const selected = memories[selectedMemory] ?? memories[0];
+
   return (
-    <div className="page-frame">
-      <PageHeader title="记忆" description="查看 Agent 长期保留的事实、偏好和工作规则，决定哪些内容应该继续被使用。">
-        <button className="button" type="button">
-          <Settings2 />
-          记忆策略
-        </button>
-      </PageHeader>
-      <div className="memory-summary">
-        <section className="memory-orbit">
-          <span>
+    <div className="page-frame memory-page">
+      <PageHeader title="记忆" description="理解 Agent 记住了什么，追溯记忆如何形成，并及时修正不再可靠的认知。" />
+      <div className="memory-workspace">
+        <aside className="memory-index">
+          <header>
+            <strong>记忆视角</strong>
+            <small>按形成方式查看长期认知</small>
+          </header>
+          <SearchField value={query} onChange={setQuery} placeholder="搜索记忆" />
+          <nav>
+            {views.map(([label, description, Icon, count]) => (
+              <button
+                className={scope === label ? "is-selected" : ""}
+                key={label}
+                type="button"
+                onClick={() => {
+                  setScope(label);
+                  setSelectedMemory(0);
+                }}
+              >
+                <span>
+                  <Icon />
+                </span>
+                <span>
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+                <b>{count}</b>
+              </button>
+            ))}
+          </nav>
+          <footer>
             <Brain />
-          </span>
-          <div>
-            <strong>248</strong>
-            <small>有效记忆</small>
-          </div>
-          <i style={{ transform: "rotate(24deg)" }} />
-          <i style={{ transform: "rotate(146deg)" }} />
-          <i style={{ transform: "rotate(270deg)" }} />
-        </section>
-        <div className="panel memory-stats">
-          <div>
-            <span>本周新增</span>
-            <strong>32</strong>
-          </div>
-          <div>
-            <span>本周使用</span>
-            <strong>186 次</strong>
-          </div>
-          <div>
-            <span>平均置信度</span>
-            <strong>0.87</strong>
-          </div>
-          <Sparkline values={[12, 15, 13, 21, 24, 19, 31]} tone="green" />
-        </div>
-      </div>
-      <SearchToolbar value={query} onChange={setQuery} placeholder="搜索记忆内容或智能体">
-        <div className="segmented">
-          {["全部", "事实", "偏好", "规则", "背景", "流程"].map((item) => (
-            <button
-              className={scope === item ? "is-active" : ""}
-              onClick={() => setScope(item)}
-              type="button"
-              key={item}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <ToolbarSummary>
-          <span>
-            <strong>{memories.length}</strong> 条记忆
-          </span>
-        </ToolbarSummary>
-      </SearchToolbar>
-      <section className="memory-list panel">
-        {memories.map((memory) => (
-          <article key={memory[0]}>
-            <span className="memory-list__dot" />
+            <span>
+              <strong>本周形成 32 条</strong>
+              <small>平均可信度 87%</small>
+            </span>
+          </footer>
+        </aside>
+        <main className="memory-canvas">
+          <section className="memory-pulse">
             <div>
-              <p>{memory[0]}</p>
-              <footer>
-                <Tag tone="blue">{memory[1]}</Tag>
-                <Tag>{memory[2]}</Tag>
-                <time>{memory[3]}</time>
-              </footer>
+              <Activity />
+              <span>
+                <strong>记忆脉冲</strong>
+                <small>最近 24 小时持续形成</small>
+              </span>
             </div>
-            <button type="button">
-              <Trash2 />
-            </button>
-          </article>
-        ))}
-      </section>
+            <div className="memory-pulse__flow">
+              <i />
+            </div>
+            <span>12 条待确认</span>
+          </section>
+          <div className="memory-columns">
+            <section className="memory-feed">
+              <header>
+                <div>
+                  <strong>{scope}</strong>
+                  <small>按最近强化排序</small>
+                </div>
+                {scope === "世界事实" ? (
+                  <nav className="memory-display-modes" aria-label="世界事实展示方式">
+                    {[
+                      ["constellation", Orbit, "星座图"],
+                      ["graph", Network, "图谱"],
+                      ["table", Table2, "表格"],
+                      ["timeline", ListTree, "时间线"],
+                    ].map(([mode, Icon, label]) => (
+                      <button
+                        className={displayMode === mode ? "is-active" : ""}
+                        key={label as string}
+                        type="button"
+                        title={label as string}
+                        onClick={() => setDisplayMode(mode as typeof displayMode)}
+                      >
+                        <Icon />
+                        <span>{label as string}</span>
+                      </button>
+                    ))}
+                  </nav>
+                ) : (
+                  <span>{memories.length} 条结果</span>
+                )}
+              </header>
+              {scope === "世界事实" && (
+                <div className={`memory-view-preview is-${displayMode}`}>
+                  {displayMode === "constellation" && (
+                    <>
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                      <svg viewBox="0 0 300 74">
+                        <path d="M32 42L106 18L174 52L266 24M106 18L174 52" />
+                      </svg>
+                      <span>事实聚类 · 4 个主题星群</span>
+                    </>
+                  )}
+                  {displayMode === "graph" && (
+                    <div className="memory-relation-preview">
+                      <Network />
+                      <span>记忆之间的关联脉络</span>
+                      <b>部署偏好</b>
+                      <b>失败观察</b>
+                      <b>交付经验</b>
+                    </div>
+                  )}
+                  {displayMode === "table" && (
+                    <>
+                      <span>事实内容</span>
+                      <span>来源</span>
+                      <span>可信度</span>
+                      <strong>生产部署约束</strong>
+                      <span>交付手册</span>
+                      <em>92%</em>
+                    </>
+                  )}
+                  {displayMode === "timeline" && (
+                    <>
+                      <i />
+                      <span>
+                        <strong>今天</strong>形成 3 条部署事实
+                      </span>
+                      <i />
+                      <span>
+                        <strong>昨天</strong>强化 5 条产品事实
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              {memories.map((memory, index) => (
+                <button
+                  className={selected === memory ? "is-selected" : ""}
+                  key={memory.content}
+                  type="button"
+                  onClick={() => setSelectedMemory(index)}
+                >
+                  <span className="memory-feed__dot" />
+                  <span>
+                    <small>
+                      {memory.source} · {memory.time}
+                    </small>
+                    <p>{memory.content}</p>
+                    <span>
+                      <Tag tone="blue">{memory.agent}</Tag>
+                      <Tag>{memory.type}</Tag>
+                      <em>{memory.evidence}</em>
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {memories.length === 0 && (
+                <div className="memory-empty">
+                  <Brain />
+                  <strong>没有匹配的记忆</strong>
+                  <span>尝试其他关键词或记忆视角。</span>
+                </div>
+              )}
+            </section>
+            <aside className="memory-inspector">
+              {selected ? (
+                <>
+                  <header>
+                    <small>当前记忆</small>
+                    <strong>记忆检查器</strong>
+                  </header>
+                  <div className="memory-confidence">
+                    <strong>{selected.confidence}</strong>
+                    <span>可信度</span>
+                  </div>
+                  <div className="memory-meter">
+                    <i style={{ width: `${selected.confidence}%` }} />
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>形成方式</dt>
+                      <dd>{selected.type}</dd>
+                    </div>
+                    <div>
+                      <dt>来源</dt>
+                      <dd>{selected.source}</dd>
+                    </div>
+                    <div>
+                      <dt>最近强化</dt>
+                      <dd>{selected.time}</dd>
+                    </div>
+                    <div>
+                      <dt>证据覆盖</dt>
+                      <dd>{selected.evidence}</dd>
+                    </div>
+                  </dl>
+                  <button className="button" type="button">
+                    查看来源与引用
+                  </button>
+                  <button className="button button--danger" type="button">
+                    <Trash2 />
+                    删除这条记忆
+                  </button>
+                </>
+              ) : (
+                <div className="memory-empty">
+                  <Brain />
+                  <strong>选择一条记忆</strong>
+                  <span>检查它的来源和可信度。</span>
+                </div>
+              )}
+            </aside>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
