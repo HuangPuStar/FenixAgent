@@ -27,6 +27,30 @@ type LaunchModelProtocol = ModelConfig["protocol"];
 type SkillRow = typeof skill.$inferSelect;
 type McpServerRow = typeof mcpServer.$inferSelect;
 
+export interface RuntimeCredentialInput {
+  gatewayProviderId: string;
+  organizationId: string;
+  userId: string;
+  agentConfigId: string;
+}
+
+export type RuntimeCredentialResult =
+  | {
+      status: "ready";
+      externalCredentialId: string;
+      secret: string;
+    }
+  | { status: "budget-exhausted" };
+
+type RuntimeCredentialResolver = (input: RuntimeCredentialInput) => Promise<RuntimeCredentialResult>;
+
+let runtimeCredentialResolver: RuntimeCredentialResolver | null = null;
+
+/** 注入宿主的 Gateway 凭证服务；builder 不直接依赖 LiteLLM 或具体网关实现。 */
+export function setRuntimeCredentialResolver(resolver: RuntimeCredentialResolver | null): void {
+  runtimeCredentialResolver = resolver;
+}
+
 function summarizeSkills(skills: SkillRow[]) {
   return skills.map((row) => ({
     id: row.id,
@@ -81,7 +105,7 @@ function toLaunchModelProtocol(
 }
 
 /** 运行时只认正式的 modelId 外键；未指定时回退到当前组织第一个可用模型。 */
-async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Promise<ModelConfig> {
+async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess, userId: string): Promise<ModelConfig> {
   if (!agentConfig.modelId) {
     log(
       `[launch-spec-builder] agentConfig '${agentConfig.id}' has no modelId, falling back to first available model in org '${agentConfig.organizationId}'`,
@@ -117,17 +141,45 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess): Pro
   log(
     `[launch-spec-builder] resolveModelConfig: resolved modelId='${agentConfig.modelId}' to provider='${matchedProvider.organizationId}/${matchedProvider.id}', model='${matchedModel.modelId}'`,
   );
+  let apiKey = resolveApiKey(matchedProvider.apiKey) ?? "";
+  if (matchedProvider.kind === "gateway") {
+    if (!runtimeCredentialResolver) {
+      throwInvalidConfig(
+        `AgentConfig '${agentConfig.id}' requires a configured model gateway`,
+        `[launch-spec-builder] model gateway resolver is not configured for agentConfig='${agentConfig.id}'`,
+      );
+    }
+    const credential = await runtimeCredentialResolver({
+      gatewayProviderId: matchedProvider.id,
+      organizationId: organizationIdForAgent(agentConfig),
+      userId,
+      agentConfigId: agentConfig.id,
+    });
+    if (credential.status === "budget-exhausted") {
+      const message = "模型网关预算已耗尽，无法启动 Agent";
+      logError(
+        `[launch-spec-builder] ${message}: agentConfig='${agentConfig.id}', user='${userId}', provider='${matchedProvider.id}'`,
+      );
+      throw new AppError(message, "MODEL_GATEWAY_BUDGET_EXHAUSTED", 400);
+    }
+    apiKey = credential.secret;
+  }
+
   return {
     provider: matchedProvider.name,
     protocol: toLaunchModelProtocol(matchedProvider.protocol, matchedProvider.name, agentConfig.id),
     baseUrl: matchedProvider.baseUrl || "",
-    apiKey: resolveApiKey(matchedProvider.apiKey) ?? "",
+    apiKey,
     model: matchedModel.modelId,
     // opencode / ccb 引擎用 modelName 作为运行时模型标识（如 ANTHROPIC_MODEL 环境变量）。
     // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。
     modelName: matchedModel.modelId,
     modalities: matchedModel.modalities ?? undefined,
   };
+}
+
+function organizationIdForAgent(agentConfig: AgentConfigDetailWithAccess): string {
+  return agentConfig.organizationId;
 }
 
 /**
@@ -461,7 +513,7 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
 
   // Phase 1: 先并行拿到构造 launchSpec 的原始资源，确保错误尽早暴露。
   const [model, skillRows, rawMcpServers, knowledgeBindings] = await Promise.all([
-    resolveModelConfig(agentConfig),
+    resolveModelConfig(agentConfig, userId),
     loadAgentSkills(agentConfig),
     loadAgentMcpServers(agentConfig),
     listAgentKnowledgeBindingsById(agentConfig.id),
