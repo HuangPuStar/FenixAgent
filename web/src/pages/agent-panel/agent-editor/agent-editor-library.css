@@ -1,0 +1,96 @@
+/* Agent Editor 两层资源库：来源导航、结果区域与资源类型图标。 */
+.agent-editor-root .agent-editor-library-picker {
+  display: grid;
+  min-height: 250px;
+  grid-template-columns: 142px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #dfe6f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.agent-editor-root .agent-editor-group-filter {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  border-right: 1px solid #edf1f5;
+  padding: 6px;
+  background: #f8fafc;
+}
+.agent-editor-root .agent-editor-group-filter button {
+  display: grid;
+  min-height: 36px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 8px;
+  color: #617088;
+  background: transparent;
+  text-align: left;
+}
+.agent-editor-root .agent-editor-group-filter button:hover,
+.agent-editor-root .agent-editor-group-filter button.is-active {
+  color: #214f9f;
+  background: #eaf2ff;
+}
+.agent-editor-root .agent-editor-group-filter button span {
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-editor-root .agent-editor-group-filter button em {
+  min-width: 20px;
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: #77869c;
+  background: #fff;
+  font-size: 7px;
+  font-style: normal;
+  text-align: center;
+}
+.agent-editor-root .agent-editor-library-picker__results {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 8px;
+  overflow: hidden;
+}
+.agent-editor-root .agent-editor-library-picker__results .agent-editor-pagination {
+  margin-top: auto;
+  padding: 8px 2px 0;
+}
+.agent-editor-root .agent-resource-picker .agent-editor-library-picker {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.agent-editor-root .agent-resource-picker .agent-editor-library-picker__results {
+  padding-block: 4px;
+}
+.agent-editor-root .agent-resource-picker .agent-editor-library-picker__results .agent-editor-pagination {
+  margin-top: 0;
+}
+.agent-editor-root .agent-editor-library-picker.is-flat {
+  min-height: 0;
+  grid-template-columns: 1fr;
+}
+.agent-editor-root .agent-resource-picker__list > label.has-icon {
+  grid-template-columns: 32px minmax(0, 1fr) 21px;
+}
+.agent-editor-root .agent-resource-picker__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: #3168c9;
+  background: #eaf2ff;
+}
+.agent-editor-root .agent-resource-picker__icon svg {
+  width: 14px;
+}

@@ -68,6 +68,18 @@
   .agent-editor-field--prompt {
     grid-column: 1;
   }
+  .agent-editor-library-picker {
+    grid-template-columns: 1fr;
+  }
+  .agent-editor-group-filter {
+    overflow-x: auto;
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid #edf1f5;
+  }
+  .agent-editor-group-filter button {
+    min-width: 112px;
+  }
   .agent-editor-footer {
     align-items: stretch;
     flex-direction: column;

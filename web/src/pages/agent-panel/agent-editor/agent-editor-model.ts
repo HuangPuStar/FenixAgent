@@ -21,17 +21,27 @@ export interface AgentRelatedResources {
   siteApps?: Array<{ id: string; label: string; remoteAppId: string | null }>;
 }
 
+export interface AgentEditorOptionGroup {
+  id: string;
+  label: string;
+  scope?: "organization" | "shared";
+}
+
 export interface AgentEditorOption {
   id: string;
   label: string;
   description?: string;
   meta?: string;
+  iconKey?: string;
+  group?: AgentEditorOptionGroup;
   unavailable?: boolean;
 }
 
 export interface AgentModelOption {
   value: string;
   label: string;
+  modelId: string;
+  group: AgentEditorOptionGroup;
 }
 
 export interface AgentMcpOption {
@@ -137,6 +147,37 @@ export function agentDetailToEditorValues(detail: AgentDetail): AgentEditorValue
 
 export const AGENT_EDITOR_PAGE_SIZE = 50;
 
+/** 仅在首批编辑器数据尚未到达时显示整页加载，后台刷新不得替换已渲染表单。 */
+export function shouldShowAgentEditorLoading(loading: boolean, hasData: boolean, hasError: boolean): boolean {
+  return !hasData && (loading || !hasError);
+}
+
+/** 选择器搜索后只保留真实匹配项，并在当前分组消失时安全回退到全部来源。 */
+export function filterAgentEditorOptions(
+  options: AgentEditorOption[],
+  query: string,
+  group: string,
+): { matching: AgentEditorOption[]; visible: AgentEditorOption[]; activeGroup: string } {
+  const needle = query.trim().toLocaleLowerCase();
+  const matching = options.filter(
+    (item) =>
+      !needle || `${item.label} ${item.description ?? ""} ${item.meta ?? ""}`.toLocaleLowerCase().includes(needle),
+  );
+  const activeGroup =
+    group === "all" ||
+    matching.some((item) => item.group?.id === group || (group === "unavailable" && item.unavailable))
+      ? group
+      : "all";
+  return {
+    matching,
+    activeGroup,
+    visible: matching.filter(
+      (item) =>
+        activeGroup === "all" || item.group?.id === activeGroup || (activeGroup === "unavailable" && item.unavailable),
+    ),
+  };
+}
+
 /** 所有关闭来源（包括 Escape）共用同一草稿保护判断。 */
 export function shouldConfirmAgentEditorClose(isDirty: boolean, readOnly: boolean): boolean {
   return isDirty && !readOnly;
@@ -192,9 +233,18 @@ export function buildAgentEditorPayload(values: AgentEditorValues, mode: "create
 /** 模型选项始终使用数据库 UUID，展示标签保留 provider 来源组织。 */
 export function mapModelOptions(models: ModelEntry[]): AgentModelOption[] {
   return models.map((model) => {
-    const source = model.providerResourceAccess?.sourceOrganizationName;
-    const provider = source ? `${source}/${model.providerDisplayName}` : model.providerDisplayName;
-    return { value: model.id, label: `${provider}/${model.displayName}` };
+    const access = model.providerResourceAccess;
+    const provider = model.providerDisplayName;
+    return {
+      value: model.id,
+      label: model.displayName,
+      modelId: model.modelId,
+      group: {
+        id: `${access?.sourceOrganizationId ?? "organization"}:${model.providerResourceKey ?? model.provider}`,
+        label: provider,
+        scope: access?.ownership === "external" ? "shared" : "organization",
+      },
+    };
   });
 }
 

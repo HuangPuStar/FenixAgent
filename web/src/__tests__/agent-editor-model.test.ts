@@ -4,7 +4,9 @@ import {
   agentEditorSchema,
   buildAgentEditorPayload,
   createAgentEditorDefaults,
+  filterAgentEditorOptions,
   filterValidKnowledgeIds,
+  mapModelOptions,
   mergeSelectedOptions,
 } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentDetail } from "../types/config";
@@ -108,6 +110,40 @@ describe("Agent 编辑器表单模型", () => {
     expect(agentEditorSchema.safeParse({ ...base, extra: '{"ok":true}' }).success).toBe(true);
   });
 
+  // 模型卡片只显示短名称，Provider 与品牌图标键必须保留在结构化字段中。
+  test("模型选项拆分 Provider 和短名称", () => {
+    expect(
+      mapModelOptions([
+        {
+          id: "model-uuid",
+          modelId: "mimo-v2.5",
+          displayName: "mimo-v2.5",
+          provider: "provider-id",
+          providerDisplayName: "mimo",
+          providerResourceKey: "provider-key",
+          providerResourceAccess: {
+            ownership: "external",
+            sourceOrganizationId: "org-personal",
+            sourceOrganizationName: "Personal1",
+            resourceUid: "provider-uid",
+            resourceKey: "provider-key",
+            manageable: false,
+            writable: false,
+          },
+          contextLimit: null,
+          outputLimit: null,
+        },
+      ]),
+    ).toEqual([
+      {
+        value: "model-uuid",
+        label: "mimo-v2.5",
+        modelId: "mimo-v2.5",
+        group: { id: "org-personal:provider-key", label: "mimo", scope: "shared" },
+      },
+    ]);
+  });
+
   // 已绑定但不可见的共享资源必须补入选项并标记不可用，不能静默解绑。
   test("合并已选不可见资源", () => {
     expect(
@@ -116,6 +152,28 @@ describe("Agent 编辑器表单模型", () => {
       { id: "visible", label: "Visible" },
       { id: "hidden", label: "Source/Hidden", unavailable: true },
     ]);
+  });
+
+  // 两层过滤应按真实来源筛选，并让搜索只作用于当前匹配资源。
+  test("按来源和关键词过滤资源", () => {
+    const options = [
+      { id: "a", label: "Alpha", group: { id: "provider-a", label: "Provider A" } },
+      { id: "b", label: "Beta", group: { id: "provider-b", label: "Provider B" } },
+    ];
+    const result = filterAgentEditorOptions(options, "alpha", "provider-a");
+    expect(result.activeGroup).toBe("provider-a");
+    expect(result.visible.map((item) => item.id)).toEqual(["a"]);
+  });
+
+  // 搜索后当前来源无匹配项时必须回退全部来源，避免第二层出现空白假象。
+  test("失效来源过滤自动回退", () => {
+    const options = [
+      { id: "a", label: "Alpha", group: { id: "provider-a", label: "Provider A" } },
+      { id: "b", label: "Beta", group: { id: "provider-b", label: "Provider B" } },
+    ];
+    const result = filterAgentEditorOptions(options, "beta", "provider-a");
+    expect(result.activeGroup).toBe("all");
+    expect(result.visible.map((item) => item.id)).toEqual(["b"]);
   });
 
   // 保存只信任最新可访问列表；relatedResources 中历史可见的绑定不应被当作仍有效。

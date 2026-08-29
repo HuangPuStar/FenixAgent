@@ -3,6 +3,7 @@ import {
   type AgentEditorOption,
   paginateAgentEditorOptions,
   shouldConfirmAgentEditorClose,
+  shouldShowAgentEditorLoading,
 } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
   appendUnavailableNodeOption,
@@ -49,6 +50,18 @@ describe("Agent Editor 关闭保护与分页", () => {
       { id: "sandbox:pool-visible", label: "Visible Pool" },
       { id: "machine:machine-hidden", label: "Builder", unavailable: true },
     ]);
+  });
+
+  // 首次数据尚未到达时应显示整页加载，避免渲染不完整表单。
+  test("首批数据加载显示整页状态", () => {
+    expect(shouldShowAgentEditorLoading(true, false, false)).toBe(true);
+    expect(shouldShowAgentEditorLoading(false, false, false)).toBe(true);
+  });
+
+  // 已有表单数据后的后台刷新不得替换整个编辑器，只保留局部请求反馈。
+  test("后台刷新保留已渲染编辑器", () => {
+    expect(shouldShowAgentEditorLoading(true, true, false)).toBe(false);
+    expect(shouldShowAgentEditorLoading(false, false, true)).toBe(false);
   });
 
   // 大数据选择器每次只允许一页数据进入 DOM，并保留完整结果计数。

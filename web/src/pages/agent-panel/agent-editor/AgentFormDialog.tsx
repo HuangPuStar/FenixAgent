@@ -1,17 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  AlertTriangle,
-  Braces,
-  Check,
-  Cpu,
-  Database,
-  Eye,
-  Layers3,
-  Loader2,
-  RotateCcw,
-  Server,
-  Sparkles,
-} from "lucide-react";
+import { AlertTriangle, Check, Cpu, Database, Eye, Layers3, Loader2, RotateCcw, Server, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type FieldErrors, FormProvider, useForm } from "react-hook-form";
@@ -41,6 +29,7 @@ import {
   agentEditorSchema,
   createAgentEditorDefaults,
   shouldConfirmAgentEditorClose,
+  shouldShowAgentEditorLoading,
 } from "./agent-editor-model";
 import { useAgentEditor } from "./use-agent-editor";
 import "./agent-editor.css";
@@ -48,6 +37,8 @@ import "./agent-editor-design.css";
 import "./agent-editor-responsive.css";
 import "./agent-editor-form-fields.css";
 import "./agent-editor-form-surfaces.css";
+import "./agent-editor-library.css";
+import "./agent-editor-knowledge.css";
 import "./agent-editor-form-responsive.css";
 
 export type AgentFormDialogProps =
@@ -76,7 +67,6 @@ const SECTIONS: Array<{ id: AgentEditorSection; icon: typeof Sparkles }> = [
   { id: "knowledge", icon: Database },
   { id: "runtime", icon: Server },
   { id: "sharing", icon: Eye },
-  { id: "advanced", icon: Braces },
 ];
 
 const FIELD_SECTIONS: Partial<Record<keyof AgentEditorValues, AgentEditorSection>> = {
@@ -90,14 +80,12 @@ const FIELD_SECTIONS: Partial<Record<keyof AgentEditorValues, AgentEditorSection
   maxResults: "knowledge",
   agentNode: "runtime",
   publicReadable: "sharing",
-  extra: "advanced",
 };
 
 const FIELD_IDS: Partial<Record<keyof AgentEditorValues, string>> = {
   name: "agent-editor-name",
   defaultNamespaces: "agent-editor-default-namespaces",
   maxResults: "agent-editor-max-results",
-  extra: "agent-editor-extra",
 };
 
 function firstInvalidField(errors: FieldErrors<AgentEditorValues>): keyof AgentEditorValues | undefined {
@@ -213,7 +201,7 @@ function AgentEditorBody(
     return () => window.removeEventListener("keydown", saveShortcut);
   }, [editor.data, editor.saving, props.open, readOnly, submit]);
 
-  if (editor.loading || (!editor.data && !editor.loadError))
+  if (shouldShowAgentEditorLoading(editor.loading, !!editor.data, !!editor.loadError))
     return (
       <div className="agent-editor-state" role="status" aria-live="polite" aria-busy="true">
         <Loader2 className="size-5 animate-spin" />

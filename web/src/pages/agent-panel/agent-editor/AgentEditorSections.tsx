@@ -1,31 +1,16 @@
-import { Braces, Brain, Check, Cpu, Database, Globe2, Info, Plug, Search, Server, Sparkles } from "lucide-react";
-import { useId, useState } from "react";
+import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
+import { lazy, Suspense, useId, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../../i18n";
 import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
 import { canManageAgentSharing } from "../../../lib/agent-resource-access";
+import { AgentKnowledgeSection } from "./AgentKnowledgeSection";
 import { AgentResourcePicker } from "./AgentResourcePicker";
-import {
-  EditorButton,
-  EditorInput,
-  EditorStepperField,
-  EditorTextarea,
-  Field,
-  Intro,
-  SinglePicker,
-  Toggle,
-} from "./agent-editor-controls";
+import { EditorButton, EditorInput, EditorTextarea, Field, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
-export type AgentEditorSection =
-  | "identity"
-  | "model"
-  | "capabilities"
-  | "knowledge"
-  | "runtime"
-  | "sharing"
-  | "advanced";
+export type AgentEditorSection = "identity" | "model" | "capabilities" | "knowledge" | "runtime" | "sharing";
 type Props = {
   section: AgentEditorSection;
   form: UseFormReturn<AgentEditorValues>;
@@ -34,6 +19,10 @@ type Props = {
   readOnly: boolean;
   onCopyAgentId: () => void;
 };
+const ModelIcon = lazy(() =>
+  import("@/components/model-icon/ModelIcon").then((module) => ({ default: module.ModelIcon })),
+);
+
 const capabilityIcons = { skills: Sparkles, mcp: Plug, sites: Globe2 } as const;
 function Identity({
   form,
@@ -123,6 +112,12 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
             onChange={field.onChange}
             label={t("form.model")}
             icon={Cpu}
+            requireGroup
+            renderIcon={(item) => (
+              <Suspense fallback={<Cpu />}>
+                <ModelIcon modelId={item.iconKey} size={20} />
+              </Suspense>
+            )}
             disabled={disabled}
           />
         )}
@@ -145,12 +140,12 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
   const [kind, setKind] = useState<keyof typeof capabilityIcons>("skills");
   const tabsId = useId();
   const config = {
-    skills: { name: "skillIds" as const, options: data.skills, label: t("skills.tabTitle") },
-    mcp: { name: "mcpIds" as const, options: data.mcps, label: t("mcps.tabTitle") },
-    sites: { name: "siteAppIds" as const, options: data.sites, label: t("sites.tabTitle") },
-  };
+    skills: ["skillIds", data.skills, t("skills.tabTitle"), "auto", Sparkles],
+    mcp: ["mcpIds", data.mcps, t("mcps.tabTitle"), "auto", Plug],
+    sites: ["siteAppIds", data.sites, t("sites.tabTitle"), "auto", Globe2],
+  } as const;
   const tabs = Object.keys(config) as Array<keyof typeof config>;
-  const current = config[kind];
+  const [name, options, label, groupMode, ItemIcon] = config[kind];
   const tabId = (item: keyof typeof config) => `${tabsId}-tab-${item}`;
   const panelId = (item: keyof typeof config) => `${tabsId}-panel-${item}`;
   return (
@@ -184,124 +179,28 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
               }}
             >
               <Icon />
-              {config[item].label}
-              <span>{form.watch(config[item].name).length}</span>
+              {config[item][2]}
+              <span>{form.watch(config[item][0]).length}</span>
             </button>
           );
         })}
       </div>
       <div id={panelId(kind)} role="tabpanel" aria-labelledby={tabId(kind)}>
         <Controller
-          name={current.name}
+          name={name}
           control={form.control}
           render={({ field }) => (
             <AgentResourcePicker
-              label={current.label}
-              options={current.options}
+              label={label}
+              options={options}
               value={field.value}
               onChange={field.onChange}
               readOnly={disabled}
+              groupMode={groupMode}
+              renderIcon={() => <ItemIcon />}
             />
           )}
         />
-      </div>
-    </section>
-  );
-}
-function Knowledge({ form, data, disabled }: { form: Props["form"]; data: Props["data"]; disabled: boolean }) {
-  const { t } = useTranslation(NS.AGENTS);
-  return (
-    <section className="agent-editor-section">
-      <Intro
-        eyebrow="CONTEXT"
-        title={t("editor.sections.knowledge")}
-        description={t("editor.sectionDescriptions.knowledge")}
-      />
-      {data.hindsightEnabled && (
-        <div className="agent-memory-section">
-          <div className="agent-memory-section__heading">
-            <Brain />
-            <div>
-              <strong>{t("memory.enableTitle")}</strong>
-              <small>{t("memory.enableDescription")}</small>
-            </div>
-          </div>
-          <Controller
-            name="enableMemory"
-            control={form.control}
-            render={({ field }) => (
-              <Toggle
-                checked={field.value}
-                onChange={field.onChange}
-                icon={<Brain />}
-                title={t("memory.enableTitle")}
-                description={t("memory.enableDescription")}
-                badge="Hindsight"
-                disabled={disabled}
-              />
-            )}
-          />
-        </div>
-      )}
-      <Controller
-        name="knowledgeBaseIds"
-        control={form.control}
-        render={({ field }) => (
-          <AgentResourcePicker
-            label={t("knowledge.bindTitle")}
-            options={data.knowledgeBases}
-            value={field.value}
-            onChange={field.onChange}
-            readOnly={disabled}
-          />
-        )}
-      />
-      <Field label={t("knowledge.defaultNamespaces")} hint={t("knowledge.defaultNamespacesDescription")}>
-        <EditorTextarea
-          id="agent-editor-default-namespaces"
-          disabled={disabled}
-          placeholder={t("knowledge.defaultNamespacesPlaceholder")}
-          {...form.register("defaultNamespaces")}
-        />
-      </Field>
-      <div className="agent-policy-card">
-        <div className="agent-policy-card__heading">
-          <span>
-            <Database />
-          </span>
-          <div>
-            <strong>{t("editor.retrievalPolicy")}</strong>
-            <small>{t("knowledge.defaultNamespacesDescription")}</small>
-          </div>
-        </div>
-        <Controller
-          name="searchFirst"
-          control={form.control}
-          render={({ field }) => (
-            <Toggle
-              checked={field.value}
-              onChange={field.onChange}
-              icon={<Search />}
-              title={t("knowledge.searchFirst")}
-              description={t("editor.searchFirstDescription")}
-              badge={t("editor.recommended")}
-              disabled={disabled}
-            />
-          )}
-        />
-        <Field label={t("knowledge.maxResults")}>
-          <EditorStepperField
-            value={Number(form.watch("maxResults"))}
-            min={1}
-            max={20}
-            disabled={disabled}
-            decreaseLabel={t("editor.decreaseMaxResults")}
-            increaseLabel={t("editor.increaseMaxResults")}
-            onChange={(value) =>
-              form.setValue("maxResults", String(value), { shouldDirty: true, shouldValidate: true })
-            }
-          />
-        </Field>
       </div>
     </section>
   );
@@ -394,60 +293,6 @@ function Sharing({
     </section>
   );
 }
-function Advanced({ form, disabled }: { form: Props["form"]; disabled: boolean }) {
-  const { t } = useTranslation(NS.AGENTS);
-  const extra = form.watch("extra");
-  let error = "";
-  if (extra.trim())
-    try {
-      JSON.parse(extra);
-    } catch {
-      error = t("form.extraValidationError");
-    }
-  const format = () => {
-    if (!error && extra.trim())
-      form.setValue("extra", JSON.stringify(JSON.parse(extra), null, 2), { shouldDirty: true });
-  };
-  return (
-    <section className="agent-editor-section">
-      <Intro
-        eyebrow="ADVANCED"
-        title={t("editor.sections.advanced")}
-        description={t("editor.sectionDescriptions.advanced")}
-      />
-      <div className={`agent-json-editor${error ? " has-error" : ""}`}>
-        <header>
-          <span>
-            <Braces />
-            {t("editor.runtimeJson")}
-          </span>
-          <EditorButton type="button" onClick={format} disabled={disabled || !!error || !extra.trim()}>
-            {t("editor.formatJson")}
-          </EditorButton>
-        </header>
-        <EditorTextarea
-          id="agent-editor-extra"
-          disabled={disabled}
-          placeholder={t("form.extraPlaceholder")}
-          aria-invalid={!!error}
-          aria-describedby="agent-editor-extra-status"
-          {...form.register("extra")}
-        />
-        <footer id="agent-editor-extra-status">
-          {error ? (
-            <span>{error}</span>
-          ) : (
-            <span>
-              <Check />
-              {t("editor.jsonValid")}
-            </span>
-          )}
-          <small>{t("editor.extraSecurityWarning")}</small>
-        </footer>
-      </div>
-    </section>
-  );
-}
 export function AgentEditorSections(props: Props) {
   const disabled = props.readOnly;
   switch (props.section) {
@@ -466,12 +311,10 @@ export function AgentEditorSections(props: Props) {
     case "capabilities":
       return <Capabilities form={props.form} data={props.data} disabled={disabled} />;
     case "knowledge":
-      return <Knowledge form={props.form} data={props.data} disabled={disabled} />;
+      return <AgentKnowledgeSection form={props.form} data={props.data} disabled={disabled} />;
     case "runtime":
       return <Runtime form={props.form} data={props.data} disabled={disabled} />;
     case "sharing":
       return <Sharing form={props.form} data={props.data} mode={props.mode} disabled={disabled} />;
-    default:
-      return <Advanced form={props.form} disabled={disabled} />;
   }
 }

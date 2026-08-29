@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../../i18n";
-import { type AgentEditorOption, paginateAgentEditorOptions } from "./agent-editor-model";
+import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
 
 export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
@@ -190,6 +190,52 @@ export function EditorPagination({
   );
 }
 
+export function EditorGroupFilter({
+  options,
+  value,
+  onChange,
+  hideAll = false,
+}: {
+  options: AgentEditorOption[];
+  value: string;
+  onChange: (value: string) => void;
+  hideAll?: boolean;
+}) {
+  const { t } = useTranslation(NS.AGENTS);
+  const groups = Array.from(
+    options.reduce((result, option) => {
+      const group =
+        option.group ?? (option.unavailable ? { id: "unavailable", label: t("editor.unavailableBindings") } : null);
+      if (!group) return result;
+      const current = result.get(group.id);
+      result.set(group.id, { ...group, count: (current?.count ?? 0) + 1 });
+      return result;
+    }, new Map<string, { id: string; label: string; scope?: "organization" | "shared"; count: number }>()),
+  ).map(([, group]) => group);
+  if (groups.length === 0) return null;
+  return (
+    <nav className="agent-editor-group-filter" aria-label={t("editor.resourceSources")}>
+      {!hideAll && (
+        <button type="button" className={value === "all" ? "is-active" : ""} onClick={() => onChange("all")}>
+          <span>{t("editor.allSources")}</span>
+          <em>{options.length}</em>
+        </button>
+      )}
+      {groups.map((group) => (
+        <button
+          type="button"
+          key={group.id}
+          className={value === group.id ? "is-active" : ""}
+          onClick={() => onChange(group.id)}
+        >
+          <span>{group.label}</span>
+          <em>{group.count}</em>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export function SinglePicker({
   options,
   value,
@@ -197,6 +243,8 @@ export function SinglePicker({
   label,
   icon: Icon,
   disabled,
+  requireGroup = false,
+  renderIcon,
 }: {
   options: AgentEditorOption[];
   value: string;
@@ -204,17 +252,25 @@ export function SinglePicker({
   label: string;
   icon: typeof Cpu;
   disabled: boolean;
+  requireGroup?: boolean;
+  renderIcon?: (item: AgentEditorOption) => ReactNode;
 }) {
   const { t } = useTranslation(NS.AGENTS);
   const [query, setQuery] = useState("");
+  const [group, setGroup] = useState("all");
   const [page, setPage] = useState(0);
   const size = 6;
-  const visible = options.filter((item) =>
-    `${item.label} ${item.description ?? ""} ${item.meta ?? ""}`
-      .toLocaleLowerCase()
-      .includes(query.toLocaleLowerCase()),
-  );
+  const showGroups = options.some((item) => item.group);
   const selected = options.find((item) => item.id === value);
+  const defaultGroup = selected?.group?.id ?? options.find((item) => item.group)?.group?.id ?? "all";
+  const requestedGroup = requireGroup && group === "all" ? defaultGroup : group;
+  const firstPass = filterAgentEditorOptions(options, query, requestedGroup);
+  const fallbackGroup = requireGroup ? firstPass.matching.find((item) => item.group)?.group?.id : undefined;
+  const filtered =
+    requireGroup && firstPass.activeGroup === "all" && fallbackGroup
+      ? filterAgentEditorOptions(options, query, fallbackGroup)
+      : firstPass;
+  const { matching, visible, activeGroup } = filtered;
   const paged = paginateAgentEditorOptions(visible, page, size);
   const listClass = Icon === Cpu ? "agent-model-options" : "agent-node-list";
   return (
@@ -238,49 +294,64 @@ export function SinglePicker({
           <small>{t("editor.currentSelection")}</small>
           <strong>{selected.label}</strong>
           <span>
-            {[selected.description, selected.meta].filter(Boolean).join(" · ")}
+            {selected.description}
             {selected.unavailable && ` · ${t("editor.unavailable")}`}
           </span>
         </div>
       )}
-      <div className={listClass} role="radiogroup" aria-label={label}>
-        {paged.items.map((item) => (
-          <button
-            className={`${item.id === value ? "is-selected " : ""}${item.unavailable ? "is-unavailable" : ""}`}
-            type="button"
-            role="radio"
-            aria-checked={item.id === value}
-            aria-label={
-              item.unavailable
-                ? item.id === value
-                  ? t("editor.selectedUnavailableResource", { name: item.label })
-                  : t("editor.unavailableResource", { name: item.label })
-                : undefined
-            }
-            title={
-              item.unavailable
-                ? item.id === value
-                  ? t("editor.selectedUnavailableResource", { name: item.label })
-                  : t("editor.unavailableResource", { name: item.label })
-                : undefined
-            }
-            disabled={disabled || item.unavailable}
-            key={item.id}
-            onClick={() => onChange(item.id)}
-          >
-            <span className="agent-model-options__icon">
-              <Icon />
-            </span>
-            <span className="agent-model-options__copy">
-              <strong>{item.label}</strong>
-              <small>{item.description ?? (item.unavailable ? t("editor.unavailable") : "")}</small>
-            </span>
-            <em>{item.meta}</em>
-            <i>{item.id === value && <Check />}</i>
-          </button>
-        ))}
+      <div className={`agent-editor-library-picker${showGroups ? "" : " is-flat"}`}>
+        {showGroups && (
+          <EditorGroupFilter
+            options={matching}
+            value={activeGroup}
+            hideAll={requireGroup}
+            onChange={(next) => {
+              setGroup(next);
+              setPage(0);
+            }}
+          />
+        )}
+        <div className="agent-editor-library-picker__results">
+          <div className={listClass} role="radiogroup" aria-label={label}>
+            {paged.items.map((item) => (
+              <button
+                className={`${item.id === value ? "is-selected " : ""}${item.unavailable ? "is-unavailable" : ""}`}
+                type="button"
+                role="radio"
+                aria-checked={item.id === value}
+                aria-label={
+                  item.unavailable
+                    ? item.id === value
+                      ? t("editor.selectedUnavailableResource", { name: item.label })
+                      : t("editor.unavailableResource", { name: item.label })
+                    : undefined
+                }
+                title={
+                  item.unavailable
+                    ? item.id === value
+                      ? t("editor.selectedUnavailableResource", { name: item.label })
+                      : t("editor.unavailableResource", { name: item.label })
+                    : undefined
+                }
+                disabled={disabled || item.unavailable}
+                key={item.id}
+                onClick={() => {
+                  setGroup(item.group?.id ?? activeGroup);
+                  onChange(item.id);
+                }}
+              >
+                <span className="agent-model-options__icon">{renderIcon ? renderIcon(item) : <Icon />}</span>
+                <span className="agent-model-options__copy">
+                  <strong>{item.label}</strong>
+                  <small>{item.description ?? (item.unavailable ? t("editor.unavailable") : "")}</small>
+                </span>
+                <i>{item.id === value && <Check />}</i>
+              </button>
+            ))}
+          </div>
+          <EditorPagination page={page} total={visible.length} pageSize={size} onPageChange={setPage} />
+        </div>
       </div>
-      <EditorPagination page={page} total={visible.length} pageSize={size} onPageChange={setPage} />
     </>
   );
 }

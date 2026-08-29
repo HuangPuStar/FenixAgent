@@ -169,6 +169,67 @@ describe("AgentResourcePicker 组件交互", () => {
     expect(pages).toEqual([1]);
   });
 
+  // 选择资源只改变选中状态，不得把条目置顶导致指针目标和阅读位置跳动。
+  test("选择后保持资源列表顺序", async () => {
+    const container = win.document.createElement("div");
+    win.document.body.appendChild(container);
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () => root?.render(<PickerFixture />));
+    const labels = () =>
+      Array.from(container.querySelectorAll(".agent-resource-picker__list strong"), (item) => item.textContent);
+    expect(labels()).toEqual(["Alpha", "Beta"]);
+    const beta = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-slot='checkbox']")).find(
+      (item) => item.getAttribute("aria-label") === "Beta",
+    );
+    await act(async () => beta?.click());
+    expect(labels()).toEqual(["Alpha", "Beta"]);
+  });
+
+  // 必选来源模式不显示“全部来源”，并默认定位已选资源所属来源。
+  test("多来源资源库默认定位真实来源", async () => {
+    const container = win.document.createElement("div");
+    win.document.body.appendChild(container);
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () =>
+      root?.render(
+        <AgentResourcePicker
+          label="Skills"
+          groupMode="required"
+          options={[
+            { id: "a", label: "Alpha", group: { id: "org-a", label: "Org A" } },
+            { id: "b", label: "Beta", group: { id: "org-b", label: "Org B" } },
+          ]}
+          value={["b"]}
+          onChange={() => undefined}
+        />,
+      ),
+    );
+    expect(container.textContent).not.toContain("editor.allSources");
+    expect(container.querySelector(".agent-editor-group-filter .is-active")?.textContent).toContain("Org B");
+    expect(container.querySelector(".agent-resource-picker__list")?.textContent).toContain("Beta");
+    expect(container.querySelector(".agent-resource-picker__list")?.textContent).not.toContain("Alpha");
+  });
+
+  // 只有一个真实分类的 Sites 应退化为平铺结果，不保留无意义来源栏。
+  test("单分类资源库隐藏来源栏", async () => {
+    const container = win.document.createElement("div");
+    win.document.body.appendChild(container);
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () =>
+      root?.render(
+        <AgentResourcePicker
+          label="Sites"
+          groupMode="auto"
+          options={[{ id: "site", label: "Portal", group: { id: "visibility:org", label: "Organization" } }]}
+          value={[]}
+          onChange={() => undefined}
+        />,
+      ),
+    );
+    expect(container.querySelector(".agent-editor-group-filter")).toBeNull();
+    expect(container.querySelector(".agent-editor-library-picker")?.classList.contains("is-flat")).toBe(true);
+  });
+
   // 首次 mount 不得抢走当前焦点，避免编辑工作区打开时焦点被资源选择器截获。
   test("首次渲染不抢焦点", async () => {
     const before = win.document.createElement("button");

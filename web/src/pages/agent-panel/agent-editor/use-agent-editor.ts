@@ -152,18 +152,33 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     const typedDetail = detail as AgentDetail | null;
     const related = typedDetail?.relatedResources;
     const rawModelOptions = mapModelOptions(modelData.available ?? []);
-    const modelOptions = rawModelOptions.map((option) => ({ id: option.value, label: option.label }));
+    const modelOptions = rawModelOptions.map((option) => ({
+      id: option.value,
+      label: option.label,
+      iconKey: option.modelId,
+      group: option.group,
+    }));
     const skillViews = normalizeSkillOptionsPayload(skillsData);
     const knowledge = (Array.isArray(kbData) ? kbData : []) as KnowledgeBaseInfo[];
     const machineItems = machinesData?.items ?? [];
     const nodes: AgentEditorOption[] = [
-      { id: "default", label: poolsData.enabled ? t("form.sandboxDefault") : t("form.machineDefault") },
+      {
+        id: "default",
+        label: poolsData.enabled ? t("form.sandboxDefault") : t("form.machineDefault"),
+        description: t("editor.defaultRuntime"),
+      },
       ...(poolsData.enabled
-        ? poolsData.pools.map((pool) => ({ id: `sandbox:${pool.id}`, label: pool.name, meta: pool.id }))
+        ? poolsData.pools.map((pool) => ({
+            id: `sandbox:${pool.id}`,
+            label: pool.name,
+            description: t("form.sandboxPool"),
+            meta: pool.id,
+          }))
         : []),
       ...machineItems.map((machine) => ({
         id: `machine:${machine.id}`,
         label: machine.name || String(machine.machineInfo?.hostname ?? machine.agentName),
+        description: t("form.machine"),
         meta: machine.id,
       })),
     ];
@@ -196,14 +211,28 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       skills: mergeSelectedOptions(
         skillViews.map((skill) => ({
           id: getSkillOptionValue(skill),
-          label: skill.label,
+          label: skill.name,
           description: skill.description,
           meta: skill.key,
+          group: {
+            id: skill.resourceAccess?.sourceOrganizationId ?? "organization",
+            label: skill.resourceAccess?.sourceOrganizationName ?? t("editor.currentOrganization"),
+            scope: skill.resourceAccess?.ownership === "external" ? ("shared" as const) : ("organization" as const),
+          },
         })),
         related?.skills,
       ),
       mcps: mergeSelectedOptions(
-        mapMcpOptions(mcpsData.servers).map((mcp) => ({ id: mcp.id, label: mcp.label, meta: mcp.key })),
+        mapMcpOptions(mcpsData.servers).map((mcp) => ({
+          id: mcp.id,
+          label: mcp.name,
+          meta: mcp.key,
+          group: {
+            id: mcp.resourceAccess?.sourceOrganizationId ?? "organization",
+            label: mcp.resourceAccess?.sourceOrganizationName ?? t("editor.currentOrganization"),
+            scope: mcp.resourceAccess?.ownership === "external" ? ("shared" as const) : ("organization" as const),
+          },
+        })),
         related?.mcps,
       ),
       sites: mergeSelectedOptions(
@@ -212,6 +241,10 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
           label: site.name,
           description: site.description ?? undefined,
           meta: site.remoteAppId,
+          group: {
+            id: `visibility:${site.visibility}`,
+            label: t(`editor.siteVisibility.${site.visibility}`),
+          },
         })),
         related?.siteApps,
       ),

@@ -262,7 +262,7 @@
 }
 .agent-editor-root .agent-resource-picker__selected > div:first-child,
 .agent-editor-root .agent-resource-picker__chips,
-.agent-editor-root .agent-resource-picker__list button > span:nth-child(2) {
+.agent-editor-root .agent-resource-picker__copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -345,7 +345,7 @@
 .agent-editor-root .agent-resource-picker__list > label {
   display: grid;
   min-height: 53px;
-  grid-template-columns: 21px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 21px;
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
