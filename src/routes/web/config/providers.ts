@@ -83,8 +83,13 @@ const app = new Elysia({ name: "web-config-providers" }).use(authGuardPlugin);
 async function handleList(ctx: AuthContext) {
   const providers = await configPg.listProviders(ctx);
   const list = providers.map((p) => ({
+    // TODO(model-gateway): 统一 Provider 列表契约为 id=UUID、name=配置名、displayName=展示名，
+    // 并同步迁移仍依赖 id=配置名的配置接口调用方；届时删除 providerId 过渡字段。
+    providerId: p.id,
     id: p.name,
     name: p.displayName ?? "",
+    kind: p.kind,
+    gatewayType: p.gatewayType,
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
@@ -111,6 +116,8 @@ async function handleGet(ctx: AuthContext, name: string) {
   return configSuccess({
     id: name,
     name: p.displayName ?? "",
+    kind: p.kind,
+    gatewayType: p.gatewayType,
     protocol: p.protocol,
     keyHint: toKeyHint(p.apiKey),
     baseURL: p.baseUrl ?? null,
@@ -125,6 +132,9 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
 
   // 读取现有 provider 以保留 models
   const existing = await configPg.getProvider(ctx, name);
+  if (existing?.kind === "gateway") {
+    return configError("FORBIDDEN", "Gateway Provider is managed by the system");
+  }
   if (existing?.resourceAccess?.writable === false) {
     throw new AppError("External provider is read-only", "FORBIDDEN", 403);
   }
@@ -461,6 +471,7 @@ async function handleTestModel(ctx: AuthContext, providerName: string, modelId: 
 async function handleDelete(ctx: AuthContext, name: string) {
   const row = await configPg.assertProviderInternalWritable(ctx, name);
   if (!row) return configError("NOT_FOUND", `Provider '${name}' not found`);
+  if (row.kind === "gateway") return configError("FORBIDDEN", "Gateway Provider is managed by the system");
   const deleted = await configPg.deleteProvider(ctx, name);
   if (!deleted) return configError("NOT_FOUND", `Provider '${name}' not found`);
   invalidateAvailableCache();
@@ -473,6 +484,7 @@ async function handleAddModel(ctx: AuthContext, providerName: string, data: Reco
 
   const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (p.kind === "gateway") return configError("FORBIDDEN", "Gateway Provider models are managed by the system");
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (existingModel) return configError("VALIDATION_ERROR", `Model '${modelId}' already exists`);
@@ -492,6 +504,7 @@ async function handleUpdateModel(
 
   const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (p.kind === "gateway") return configError("FORBIDDEN", "Gateway Provider models are managed by the system");
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);
@@ -506,6 +519,7 @@ async function handleRemoveModel(ctx: AuthContext, providerName: string, modelId
 
   const p = await configPg.assertProviderInternalWritable(ctx, providerName);
   if (!p) return configError("NOT_FOUND", `Provider '${providerName}' not found`);
+  if (p.kind === "gateway") return configError("FORBIDDEN", "Gateway Provider models are managed by the system");
 
   const existingModel = p.models?.find((m) => m.modelId === modelId);
   if (!existingModel) return configError("NOT_FOUND", `Model '${modelId}' not found`);

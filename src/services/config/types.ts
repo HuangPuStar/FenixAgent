@@ -92,6 +92,8 @@ export type ProviderExtraOptions = Record<string, unknown>;
 /** Data shape accepted by upsertProvider */
 export interface ProviderUpsertData {
   displayName?: string | null;
+  kind?: "direct" | "gateway";
+  gatewayType?: string | null;
   protocol?: "openai" | "anthropic";
   baseUrl?: string | null;
   apiKey?: string | null;

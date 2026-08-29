@@ -144,8 +144,12 @@ export interface OpenCodeConfig {
 // --- Providers ---
 
 export interface ProviderInfo {
+  /** 数据库主键；Provider 配置 API 的 id 字段仍表示名称。 */
+  providerId: string;
   id: string;
   name: string;
+  kind: "direct" | "gateway";
+  gatewayType: string | null;
   protocol: "openai" | "anthropic";
   keyHint: string | null;
   baseURL: string | null;
@@ -168,6 +172,8 @@ export interface ProviderModel {
 export interface ProviderDetail {
   id: string;
   name: string;
+  kind: "direct" | "gateway";
+  gatewayType: string | null;
   protocol: "openai" | "anthropic";
   keyHint: string | null;
   baseURL: string | null;

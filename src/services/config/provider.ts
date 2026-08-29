@@ -74,6 +74,8 @@ export async function listProviders(ctx: AuthContext) {
     id: r.id,
     name: r.name,
     displayName: r.displayName,
+    kind: r.kind,
+    gatewayType: r.gatewayType,
     protocol: r.protocol,
     baseUrl: r.baseUrl,
     apiKey: r.apiKey,
@@ -167,6 +169,8 @@ export async function upsertProvider(
 ) {
   const set = {
     displayName: data.displayName,
+    ...(data.kind !== undefined ? { kind: data.kind } : {}),
+    ...(data.gatewayType !== undefined ? { gatewayType: data.gatewayType } : {}),
     protocol: data.protocol,
     baseUrl: data.baseUrl,
     apiKey: data.apiKey,
