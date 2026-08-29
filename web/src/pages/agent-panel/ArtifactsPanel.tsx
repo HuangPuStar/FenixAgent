@@ -3,26 +3,14 @@ import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { FileTabsBar } from "../../components/agent-panel/FileTabsBar";
-import { FileTreeTab, type FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
-import { MountSiteDialog } from "../../components/agent-panel/MountSiteDialog";
-import { PreviewTab } from "../../components/agent-panel/PreviewTab";
+import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
+import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
+import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { SiteFrame } from "../../components/agent-panel/SiteFrame";
 import { SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
@@ -41,36 +29,29 @@ interface ArtifactsPanelProps {
   changedFiles?: ChangedFile[];
   /** ProdView 模块配置，控制面板 tab 的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
+  /** 面板相对 Chat 的布局方式。窄屏由父级强制传入 floating。 */
+  layoutMode?: "floating" | "docked";
+  /** 窄屏不展示布局切换，避免提供不可执行的操作。 */
+  canDock?: boolean;
+  onLayoutModeChange?: (mode: "floating" | "docked") => void;
+  onClose?: () => void;
 }
 
-/**
- * ArtifactsPanel —— chat 右侧区域，两级 tab 结构：
- *
- * - 一级 tab（TopModeTabs）：Files / Sites 二选一
- * - Files 模式：完整三段式（FileTabsBar + PreviewTab + 文件树 popover）
- * - Sites 模式：下方出现二级 SiteTabsBar 切换具体 site，再渲染对应 SiteFrame iframe
- *
- * Files / Sites 互斥渲染避免 iframe 与文件预览抢占地盘，也避免后台 iframe 持续消耗资源。
- * 二级 site 切换不动 pendingDiffCount：用户仍在 Sites 区浏览，没回 Files，角标继续累计。
- *
- * agentConfigId 解析优先级：外部 prop > envId 内部加载。
- * 把加载逻辑放这里是为了让 chat.$agentId.tsx / chat.$agentId_.$sessionId.tsx
- * 两个路由文件都不用重复实现 environment 拉取——历史上 chat.$agentId_.$sessionId.tsx
- * 漏传 agentConfigId prop 导致 sites 永远显示"未绑定"就是这种重复埋的坑。
- */
+/** Chat 右侧真实工作区；环境、Site 和文件状态均保持原有 API 数据流。 */
 export function ArtifactsPanel({
   envId,
   agentConfigId: agentConfigIdProp,
   changedFiles = [],
   modulesConfig,
+  layoutMode = "floating",
+  canDock = true,
+  onLayoutModeChange,
+  onClose,
 }: ArtifactsPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
 
-  // ── 一级 + 二级 tab 状态 ─────────────────────────────
   const [topMode, setTopMode] = useState<TopMode>("files");
 
-  // 根据 ProdView modulesConfig 计算可用的一级 tab 模式
-  // 若模块配置中某面板 enabled 为明确 false，则从 tabs 中移除
   const availableModes = useMemo<TopMode[]>(() => {
     if (!modulesConfig) return ["files", "sites", "tasks", "views"];
     const modes: TopMode[] = [];
@@ -82,27 +63,16 @@ export function ArtifactsPanel({
   }, [modulesConfig]);
 
   const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
-  // 用户主动切到 Sites 模式的标记：一旦主动离开 Files，后续 agent 产生 diff
-  // 时不再粗暴切回 Files（避免长任务运行中持续打断浏览 site 的用户）。
-  // 切回 Files 由用户主动操作（点 Files tab 或拖拽上传）触发清零。
-  // 二级 site 切换不触发此 ref：用户仍在 Sites 区浏览，pendingDiffCount 应继续累计。
+  // 用户主动离开 Files 后不因后续 diff 打断当前浏览；切回 Files 时清零。
   const userPickedSiteRef = useRef(false);
   // 待展示的 diff 文件数：用户在 Sites 模式时累计，切回 Files 时清零
   const [pendingDiffCount, setPendingDiffCount] = useState(0);
   const configIdRef = useRef(agentConfigIdProp);
   configIdRef.current = agentConfigIdProp;
 
-  // ── 挂载/卸载 state ───────────────────────────────────
-  // mountDialogOpen：挂载弹层（多选 + 确认）
-  // unmountConfirm：卸载确认弹层（{id, name} 单槽位，null=关闭）
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [unmountConfirm, setUnmountConfirm] = useState<{ id: string; name: string } | null>(null);
 
-  // ── useRequest：环境详情加载 ──────────────────────────
-  // 外部 prop 优先；未传或传 null 时根据 envId 拉 environment 详情获取 agent_config_id。
-  // ready 条件控制是否发起请求：仅当外部未提供有效 prop 且 envId 存在时才拉取。
-  // 注意：ChatArea 在 sessionId 存在时传 agentConfigId={null}，
-  // 这里用 == null 同时覆盖 undefined 和 null，确保能回退到 envId 解析。
   const { data: envData } = useRequest(() => unwrap(envApi.get({ id: envId! })), {
     ready: agentConfigIdProp == null && !!envId,
     onError: (err: unknown) => {
@@ -113,8 +83,6 @@ export function ArtifactsPanel({
   const agentConfigId = agentConfigIdProp != null ? agentConfigIdProp : resolvedAgentConfigId;
   configIdRef.current = agentConfigId ?? undefined;
 
-  // ── useRequest：Sites 列表加载（manual） ──────────────
-  // 挂载/卸载成功后复用 loadSites 刷新列表。
   const {
     run: loadSites,
     loading: sitesLoading,
@@ -143,7 +111,6 @@ export function ArtifactsPanel({
     },
   );
 
-  // sites / agentConfigId 的 ref 镜像：事件处理器（useEffect []）内需要访问最近值。
   const sitesRef = useRef(sites);
   sitesRef.current = sites;
 
@@ -225,7 +192,6 @@ export function ArtifactsPanel({
     return () => window.removeEventListener("artifacts:select-site", handler);
   }, []);
 
-  // 工具卡片点击预览按钮（artifacts:preview-file）→ 切到 Files 模式并打开文件预览
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { path: string } | undefined;
@@ -258,12 +224,6 @@ export function ArtifactsPanel({
     setActiveSiteId(siteId);
   }, []);
 
-  // ── 挂载/卸载 handlers ───────────────────────────────
-  // 挂载流程：点 + → 打开 MountSiteDialog → 多选 + 确认 → 内部串行 bindSite →
-  //   成功后 onMounted 关闭弹层 + 调 loadSites 刷新。
-  // 卸载流程：点 × → setUnmountConfirm 弹 AlertDialog → 确认 → unbindSite →
-  //   loadSites 刷新。activeSiteId 不显式重置：validActiveSiteId 派生会回退到 sites[0]，
-  //   若卸载完 sites 为空，render 时 validActiveSiteId=null 走空状态分支。
   const handleMount = useCallback(() => {
     if (!agentConfigId) return;
     setMountDialogOpen(true);
@@ -280,9 +240,6 @@ export function ArtifactsPanel({
     [sites],
   );
 
-  // agentConfigId 变化（切换 agent）时：重置 UI state + 重新加载绑定的 sites。
-  // 挂载/卸载不走这里——直接调 loadSites（不重置 topMode/activeSiteId/pendingDiff，
-  // 用户挂载完希望留在 Sites 模式看到新 tab，卸载完希望保留剩余 site 的浏览状态）。
   useEffect(() => {
     setTopMode("files");
     setActiveSiteId(null);
@@ -296,26 +253,12 @@ export function ArtifactsPanel({
     void loadSites(agentConfigId);
   }, [agentConfigId, loadSites, setSites]);
 
-  // ── Files 模式内部状态 ─────────────────────────────────
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
-  // 文件树宽度：从 localStorage 读取记忆值，默认 200px
-  const [fileTreeWidth, setFileTreeWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("fenix:file-tree-width");
-      const parsed = saved ? Number(saved) : NaN;
-      return Number.isFinite(parsed) && parsed >= 180 && parsed <= 400 ? parsed : 200;
-    } catch {
-      return 200;
-    }
-  });
-
-  // ── 拖拽上传 ─────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
   const fileTreeRef = useRef<FileTreeTabHandle>(null);
-  // 非 Files 模式下拖入文件时暂存，等模式切换 → FileTreeTab 挂载 → useEffect 触发上传
   const pendingUploadRef = useRef<File[]>([]);
 
   const openFile = useCallback((path: string) => {
@@ -326,7 +269,6 @@ export function ArtifactsPanel({
     setActiveFile(path);
   }, []);
 
-  // 事件监听器中需要访问最新的 openFile，用 ref 保持引用同步
   const openFileRef = useRef(openFile);
   openFileRef.current = openFile;
 
@@ -365,15 +307,17 @@ export function ArtifactsPanel({
     });
   }, []);
 
-  const handleReferenceFile = useCallback((path: string, name: string) => {
-    window.dispatchEvent(
-      new CustomEvent("file-tree:reference", {
-        detail: { path, name },
-      }),
-    );
-  }, []);
+  const handleReferenceFile = useCallback(
+    (path: string, name: string) => {
+      window.dispatchEvent(
+        new CustomEvent("file-tree:reference", {
+          detail: { path, name, envId },
+        }),
+      );
+    },
+    [envId],
+  );
 
-  // ── 拖拽：整个面板区域的 dragEnter/Over/Leave 只控制遮罩显隐 ──
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current++;
@@ -396,7 +340,6 @@ export function ArtifactsPanel({
     }
   }, []);
 
-  // ── 拖拽：释放文件时触发上传 ──
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -421,7 +364,6 @@ export function ArtifactsPanel({
     [topMode],
   );
 
-  // 非 Files 模式下拖入文件 → 切到 Files 后，等 FileTreeTab 挂载完成再上传
   useEffect(() => {
     if (topMode === "files" && pendingUploadRef.current.length > 0) {
       const files = pendingUploadRef.current;
@@ -440,8 +382,7 @@ export function ArtifactsPanel({
 
   return (
     <div
-      className="relative flex h-full min-w-0 flex-col bg-surface-1 rounded-xl border border-border/75"
-      style={{ boxShadow: "var(--shadow-card)" }}
+      className="artifacts-workspace relative flex h-full min-w-0 flex-col bg-surface-1"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -454,6 +395,10 @@ export function ArtifactsPanel({
         pendingDiffCount={pendingDiffCount}
         onChange={handleTopChange}
         availableModes={availableModes}
+        layoutMode={layoutMode}
+        canDock={canDock}
+        onLayoutModeChange={onLayoutModeChange}
+        onClose={onClose}
       />
 
       {/* 加载中/错误提示仅在 Sites 模式下展示，避免在 Files/Tasks/Views 模式下干扰 */}
@@ -470,51 +415,17 @@ export function ArtifactsPanel({
 
       {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Sites 模式：二级 site tab + iframe */}
       {isFilesMode ? (
-        <>
-          <FileTabsBar
-            openFiles={openFiles}
-            activeFile={activeFile}
-            changedFiles={normalizedChangedFiles}
-            onSelectFile={setActiveFile}
-            onCloseFile={handleCloseFile}
-            onPreviewChangedFile={openFile}
-          />
-          <div className="flex-1 min-h-0 min-w-0">
-            <ResizablePanelGroup orientation="horizontal">
-              <ResizablePanel defaultSize={100} minSize={30}>
-                <div className="h-full min-h-0 min-w-0 flex flex-col">
-                  <PreviewTab envId={envId} filePath={activeFile} />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel
-                defaultSize={fileTreeWidth}
-                minSize={180}
-                maxSize={400}
-                onResize={(panelSize) => {
-                  const w = panelSize.inPixels;
-                  if (w != null && Number.isFinite(w)) {
-                    setFileTreeWidth(w);
-                    try {
-                      localStorage.setItem("fenix:file-tree-width", String(w));
-                    } catch {
-                      // localStorage 不可用时静默忽略
-                    }
-                  }
-                }}
-              >
-                <div className="h-full min-h-0 flex flex-col overflow-hidden">
-                  <FileTreeTab
-                    ref={fileTreeRef}
-                    envId={envId}
-                    onPreviewFile={openFile}
-                    onReferenceFile={handleReferenceFile}
-                  />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
-        </>
+        <ArtifactsFilesWorkspace
+          envId={envId}
+          fileTreeRef={fileTreeRef}
+          openFiles={openFiles}
+          activeFile={activeFile}
+          changedFiles={normalizedChangedFiles}
+          onSelectFile={setActiveFile}
+          onCloseFile={handleCloseFile}
+          onOpenFile={openFile}
+          onReferenceFile={handleReferenceFile}
+        />
       ) : topMode === "tasks" ? (
         <TasksPanel agentId={agentConfigId} />
       ) : topMode === "views" ? (
@@ -571,39 +482,17 @@ export function ArtifactsPanel({
         </div>
       )}
 
-      {/* 挂载弹层：仅在 agentConfigId 就绪时启用，避免环境未绑定 agentConfig 时无效调用 */}
-      {agentConfigId && (
-        <MountSiteDialog
-          open={mountDialogOpen}
-          onOpenChange={setMountDialogOpen}
-          agentConfigId={agentConfigId}
-          boundSiteAppIds={sites.map((s) => s.id)}
-          onMounted={handleMounted}
-        />
-      )}
-
-      {/* 卸载确认：单槽位 state，null=关闭。不预先 close，让用户必须做选择 */}
-      <AlertDialog open={unmountConfirm !== null} onOpenChange={(o) => !o && setUnmountConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("panelMode.unmountConfirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {unmountConfirm ? t("panelMode.unmountConfirm", { name: unmountConfirm.name }) : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={unmounting}>{t("confirmDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (unmountConfirm && agentConfigId) runUnmount(agentConfigId, unmountConfirm.id);
-              }}
-              disabled={unmounting}
-            >
-              {unmounting ? t("confirmDialog.processing") : t("panelMode.unmountSite")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ArtifactsDialogs
+        agentConfigId={agentConfigId}
+        siteIds={sites.map((site) => site.id)}
+        mountOpen={mountDialogOpen}
+        onMountOpenChange={setMountDialogOpen}
+        onMounted={handleMounted}
+        unmountTarget={unmountConfirm}
+        unmounting={unmounting}
+        onUnmountOpenChange={(open) => !open && setUnmountConfirm(null)}
+        onConfirmUnmount={(siteId) => agentConfigId && runUnmount(agentConfigId, siteId)}
+      />
     </div>
   );
 }

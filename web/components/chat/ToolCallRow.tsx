@@ -1,10 +1,9 @@
-import { CodeXml, ExternalLink, Loader2 } from "lucide-react";
+import { CircleX, CodeXml, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
 import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
-import { ToolPermissionButtons } from "../ai-elements/permission-request";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
@@ -28,10 +27,9 @@ function extractPreviewPath(rawInput: Record<string, unknown> | undefined): stri
 
 interface ToolCallRowProps {
   tool: ToolCallData;
-  onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
 }
 
-export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
+export function ToolCallRow({ tool }: ToolCallRowProps) {
   const { t: tComponents } = useTranslation("components");
   const { t: tNarrator } = useTranslation(NS.TOOL_NARRATOR);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -51,6 +49,7 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
 
   // 调用 narrate 拿到统一的展示数据
   const result = narrate(tool, tool.status, elapsedMs, tNarrator);
+  const titleText = typeof result.title === "string" ? result.title : undefined;
 
   // 通过 kind 获取卡片样式
   const kind: ToolCardKind = tool.kind ?? "unknown";
@@ -61,11 +60,14 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
   const isError = tool.status === "error";
   const isPending = tool.status === "waiting_for_confirmation";
   const isCanceled = tool.status === "canceled" || tool.status === "rejected";
+  const RowIcon = isError ? CircleX : Icon;
   const hasSubEntries = (tool.subEntries?.length ?? 0) > 0;
 
-  const hasParams =
+  const hasParams = Boolean(
     (tool.rawInput && Object.keys(tool.rawInput).length > 0) ||
-    (!isRunning && !isPending && (tool.rawOutput || tool.content));
+      (!isRunning && !isPending && (tool.rawOutput || tool.content)),
+  );
+  const hasDetails = hasParams && !isPending;
 
   // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput。
   const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
@@ -73,8 +75,8 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
   const canPreviewFile = previewPath && supportsFilePreview(kind);
 
   const openDialog = useCallback(() => {
-    if (hasParams && !isPending) setDialogOpen(true);
-  }, [hasParams, isPending]);
+    if (hasDetails) setDialogOpen(true);
+  }, [hasDetails]);
 
   // 点击预览按钮：发送事件通知 ArtifactsPanel 展开并打开文件预览
   const handlePreviewFile = useCallback(() => {
@@ -84,99 +86,79 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
 
   return (
     <div>
-      {/* 卡片主体 */}
-      <div
-        className={cn(
-          "flex items-center gap-3 px-3 py-2.5 rounded-lg",
-          style.cardBg,
-          isError && "ring-1 ring-inset ring-status-error/30",
-          isCanceled && "opacity-50",
-        )}
-      >
-        {/* 图标 */}
-        <div
-          className={cn(
-            "h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
-            style.iconBg,
-            isRunning && "animate-pulse",
-          )}
+      <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
+        {/* 整行只在确有详情时可交互；disabled 由 native button 语义统一暴露。 */}
+        <button
+          type="button"
+          className="chat-tool-call-row"
+          data-kind={kind}
+          disabled={!hasDetails}
+          onClick={openDialog}
         >
-          {isRunning ? (
-            <Loader2 className={cn("h-[18px] w-[18px] animate-spin", style.iconColor)} />
-          ) : (
-            <Icon className={cn("h-[18px] w-[18px]", style.iconColor)} />
-          )}
-        </div>
+          <span className="tool-call-row-icon" aria-hidden>
+            {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
+          </span>
 
-        {/* 工具内容 — 渲染 narrate 结果 */}
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium text-text-primary truncate">{result.title}</div>
-          <div className="text-[11px] text-text-dim mt-0.5 truncate flex items-center gap-1.5">
-            <span className="truncate">{result.subtitle}</span>
-            {result.badge && (
-              <span
-                className={cn(
-                  "text-[10px] shrink-0",
-                  result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
-                  result.badge.tone === "error" && "text-status-error",
-                  result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
-                  result.badge.tone === "info" && "text-text-dim",
-                )}
-              >
-                {result.badge.text}
-              </span>
+          <span className="tool-call-row-copy">
+            <span className="tool-call-row-heading">
+              <strong title={titleText}>{result.title}</strong>
+              {result.errorDetail && (
+                <span className="tool-call-row-error" title={result.errorDetail}>
+                  {result.errorDetail}
+                </span>
+              )}
+            </span>
+            <span className="tool-call-row-meta">
+              <span className="truncate">{result.subtitle}</span>
+              {result.badge && (
+                <span
+                  className={cn(
+                    "text-[10px] shrink-0",
+                    result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
+                    result.badge.tone === "error" && "text-status-error",
+                    result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
+                    result.badge.tone === "info" && "text-text-dim",
+                  )}
+                >
+                  {result.badge.text}
+                </span>
+              )}
+            </span>
+          </span>
+
+          <span
+            className={cn(
+              "tool-call-row-status text-[10px] font-medium shrink-0",
+              isError && "text-status-error",
+              isPending && "text-brand",
+              isCanceled && "text-text-dim",
+              !isError && !isPending && !isCanceled && "text-text-dim",
             )}
+          >
+            {result.statusLabel}
+          </span>
+
+          {hasDetails && <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />}
+        </button>
+
+        {tool.publicError && (
+          <div className="tool-call-row-public-error text-[10px] text-status-error/80" role="alert">
+            <p>{tool.publicError.message}</p>
+            <p className="break-all">Type: {tool.publicError.type}</p>
+            <p className="break-all">ID: {tool.publicError.id}</p>
           </div>
-          {tool.publicError && (
-            <div className="mt-1 text-[10px] text-status-error/80" role="alert">
-              <p className="break-all">Type: {tool.publicError.type}</p>
-              <p className="break-all">ID: {tool.publicError.id}</p>
-              <p>{tool.publicError.message}</p>
-            </div>
-          )}
-        </div>
+        )}
 
-        {/* 右侧状态标签 */}
-        <span
-          className={cn(
-            "text-[10px] font-medium shrink-0",
-            isError && "text-status-error",
-            isPending && "text-brand",
-            isCanceled && "text-text-dim",
-            !isError && !isPending && !isCanceled && "text-text-dim",
-          )}
-        >
-          {result.statusLabel}
-        </span>
-
-        {/* 文件预览按钮：仅 Read、Edit、Write 工具显示 */}
+        {/* 文件预览是独立操作，不嵌套在整行 button 中。 */}
         {canPreviewFile && !isPending && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handlePreviewFile();
-            }}
+            onClick={handlePreviewFile}
             className="h-6 px-2 gap-1 rounded-md flex items-center shrink-0 text-xs text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
             title={tComponents("toolCallRow.previewFile", { path: previewPath })}
           >
             <ExternalLink className="h-3 w-3" />
             <span>{tComponents("toolCallRow.openFile", "打开文件")}</span>
-          </button>
-        )}
-
-        {/* 参数弹窗按钮 */}
-        {hasParams && !isPending && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openDialog();
-            }}
-            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-text-dim hover:text-text-muted hover:bg-surface-2/80 transition-colors"
-            title={tComponents("toolCallRow.viewParams")}
-          >
-            <CodeXml className="h-3 w-3" />
           </button>
         )}
       </div>
@@ -190,17 +172,6 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
           <div className="px-2 py-2">
             <SubAgentPanel entries={tool.subEntries!} />
           </div>
-        </div>
-      )}
-
-      {/* 权限请求按钮（保留） */}
-      {isPending && tool.permissionRequest && (
-        <div className="px-4 pb-2.5 pt-1" onClick={(e) => e.stopPropagation()}>
-          <ToolPermissionButtons
-            requestId={tool.permissionRequest.requestId}
-            options={tool.permissionRequest.options}
-            onRespond={onPermissionRespond || (() => {})}
-          />
         </div>
       )}
 
@@ -285,7 +256,7 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
               </pre>
             </div>
           )}
-          {isRunning && !hasOutput && <p className="text-xs text-text-dim italic">工具正在执行中...</p>}
+          {isRunning && !hasOutput && <p className="text-xs text-text-dim italic">{t("toolCallRow.running")}</p>}
         </div>
       </DialogContent>
     </Dialog>

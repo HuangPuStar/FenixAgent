@@ -1,0 +1,151 @@
+/* 知识与记忆使用三个同级表面，避免标题、开关与边框重复嵌套。 */
+.agent-editor-root .agent-knowledge-layout {
+  display: grid;
+  gap: 10px;
+}
+.agent-editor-root .agent-knowledge-block {
+  overflow: hidden;
+  border: 1px solid #e0e7f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.agent-editor-root .agent-knowledge-block__heading {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #edf1f5;
+  padding: 10px 12px;
+  background: #f9fbfe;
+}
+.agent-editor-root .agent-knowledge-block__heading > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: #2d66c8;
+  background: #eaf2ff;
+}
+.agent-editor-root .agent-knowledge-block__heading svg {
+  width: 14px;
+  height: 14px;
+}
+.agent-editor-root .agent-knowledge-block__heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-editor-root .agent-knowledge-block__heading strong {
+  color: #31425b;
+  font-size: 10px;
+}
+.agent-editor-root .agent-knowledge-block__heading small {
+  color: #8492a7;
+  font-size: 8px;
+  line-height: 1.45;
+}
+.agent-editor-root .agent-knowledge-block__body {
+  padding: 10px 12px;
+}
+.agent-editor-root .agent-knowledge-block--bases .agent-knowledge-block__body {
+  padding: 0;
+}
+.agent-editor-root .agent-knowledge-block--bases .agent-resource-picker {
+  border: 0;
+  border-radius: 0;
+}
+.agent-editor-root .agent-knowledge-switch {
+  display: grid;
+  width: 100%;
+  min-height: 48px;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 10px;
+  color: #42526a;
+  background: #f8fafc;
+  text-align: left;
+}
+.agent-editor-root .agent-knowledge-switch:hover,
+.agent-editor-root .agent-knowledge-switch.is-on {
+  background: #f1f6ff;
+}
+.agent-editor-root .agent-knowledge-switch > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.agent-editor-root .agent-knowledge-switch strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #33445c;
+  font-size: 9px;
+}
+.agent-editor-root .agent-knowledge-switch strong em {
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: #285fbf;
+  background: #e4efff;
+  font-size: 7px;
+  font-style: normal;
+}
+.agent-editor-root .agent-knowledge-switch small {
+  color: #8996a9;
+  font-size: 8px;
+  line-height: 1.45;
+}
+.agent-editor-root .agent-knowledge-switch > i {
+  display: block;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 2px;
+  background: #cfd7e3;
+}
+.agent-editor-root .agent-knowledge-switch > i b {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(25 43 75 / 20%);
+}
+.agent-editor-root .agent-knowledge-switch.is-on > i {
+  background: #2764e7;
+}
+.agent-editor-root .agent-knowledge-switch.is-on > i b {
+  transform: translateX(14px);
+}
+.agent-editor-root .agent-retrieval-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.7fr);
+  gap: 12px;
+  align-items: start;
+}
+.agent-editor-root .agent-retrieval-fields #agent-editor-default-namespaces {
+  min-height: 92px;
+  resize: vertical;
+}
+.agent-editor-root .agent-retrieval-options {
+  display: grid;
+  gap: 9px;
+}
+.agent-editor-root .agent-retrieval-options .agent-editor-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #edf1f5;
+  padding-top: 9px;
+}
+@media (max-width: 900px) {
+  .agent-editor-root .agent-retrieval-fields {
+    grid-template-columns: 1fr;
+  }
+}

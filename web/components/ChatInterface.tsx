@@ -1,129 +1,62 @@
-import type {
-  AvailableCommand,
-  ChatStateSnapshot,
-  ContentBlock,
-  ImageContent,
-  PeriTaskViewProjection,
-  PromptUsage,
-  SessionMode,
-  SessionStateSnapshot,
-} from "@fenix/chat-channel";
-import imageCompression from "browser-image-compression";
+import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/chat-channel";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { agentApi } from "../src/api/agents";
+import { envApi } from "../src/api/environments";
+import { mcpApi } from "../src/api/mcp";
+import { unwrap } from "../src/api/request";
+import { getAgentConfigLookupKey } from "../src/lib/agent-resource-access";
 import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";
 import { extractChangedFiles } from "../src/lib/extract-changed-files";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
-import { isTodoWriteToolCall, parseTodosFromRawInput } from "../src/lib/todo";
-import { computeStats, type TokenStats } from "../src/lib/token-stats";
-import type { ChatInputMessage, PendingPermission, ThreadEntry, UserMessageImage } from "../src/lib/types";
+import type { ChatInputMessage, ThreadEntry } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
 import { ChatComposer } from "./chat/ChatComposer";
 import { ChatView } from "./chat/ChatView";
+import type { McpOption } from "./chat/CommandMenu";
+import { derivePendingPermissions, deriveTodoItems } from "./chat/chat-derived-state";
+import { prepareImageContent } from "./chat/chat-image-content";
+import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat/chat-interface-types";
+import { buildPromptText } from "./chat/composer-prompt";
+
+const DEBUG_SENSITIVE_KEY = /(?:api[-_]?key|authorization|cookie|credential|password|secret|token|connectionString)/i;
+
+/** 创建可安全打印的静态快照：保留完整结构，仅遮蔽明确的敏感字段并处理 Map/Set。 */
+function createDebugSnapshot(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Map) {
+    return Object.fromEntries(
+      Array.from(value.entries(), ([key, item]) => [
+        String(key),
+        DEBUG_SENSITIVE_KEY.test(String(key)) ? "[REDACTED]" : createDebugSnapshot(item, seen),
+      ]),
+    );
+  }
+  if (value instanceof Set) return Array.from(value, (item) => createDebugSnapshot(item, seen));
+  if (Array.isArray(value)) return value.map((item) => createDebugSnapshot(item, seen));
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      DEBUG_SENSITIVE_KEY.test(key) ? "[REDACTED]" : createDebugSnapshot(item, seen),
+    ]),
+  );
+}
+
+import { ChatStatusPanel } from "./chat/chat-status-panel";
 import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
-import { PeriTaskList } from "./chat/PeriTaskList";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import { QuestionPanel } from "./chat/QuestionPanel";
-import { TodoPanel } from "./chat/TodoPanel";
-
-// Image compression options
-// Claude API has a 5MB limit, so we target 2MB to be safe
-const IMAGE_COMPRESSION_OPTIONS = {
-  maxSizeMB: 2, // Max output size in MB
-  maxWidthOrHeight: 2048, // Max dimension (scales proportionally, no cropping)
-  useWebWorker: true, // Non-blocking compression
-  fileType: "image/jpeg" as const, // Convert to JPEG for better compression
-};
-
-// Convert data URL to Blob without using fetch()
-// This is critical for Chrome extensions where fetch(dataUrl) violates CSP
-function dataUrlToBlob(dataUrl: string): Blob {
-  // Parse the data URL: data:[<mediatype>][;base64],<data>
-  const commaIndex = dataUrl.indexOf(",");
-  if (commaIndex === -1) {
-    throw new Error("Invalid data URL: missing comma separator");
-  }
-
-  const header = dataUrl.slice(0, commaIndex);
-  const base64Data = dataUrl.slice(commaIndex + 1);
-
-  // Extract MIME type from header (e.g., "data:image/png;base64")
-  const mimeMatch = header.match(/^data:([^;,]+)/);
-  const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-
-  // Decode base64 to binary
-  const binaryString = atob(base64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  return new Blob([bytes], { type: mimeType });
-}
 
 import { Button } from "./ui/button";
 
-// =============================================================================
-// Type Definitions - imported from shared types module
-// =============================================================================
-
-interface ChatInterfaceProps {
-  agentId?: string;
-  readonly?: boolean;
-  hideContextPanel?: boolean;
-  rcsSessionId?: string;
-  detailSessionId?: string;
-  onSessionCreated?: (sessionId: string) => void;
-  scenePrompt?: string;
-  onPromptComplete?: () => void;
-  /** 上下文标识：变化时自动触发 newSession（如工作流 ID 变化） */
-  contextKey?: string;
-  /** Yjs Session 级状态快照 — 替代旧 SessionUpdate handler */
-  sessionState?: SessionStateSnapshot | null;
-  /** Yjs Chat 级状态快照 — 替代旧 session 创建/切换/权限 handler */
-  chatState?: ChatStateSnapshot;
-
-  // ── Callbacks（替代 client 方法）──
-  onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
-  onCancel: () => void;
-  onCreateSession: () => Promise<void>;
-  onRespondPermission: (requestId: string, optionId: string | null) => void;
-  /** AskUserQuestion 选项回传（questionId + 用户选择的选项 label） */
-  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
-
-  // ── 提升的状态（原 useCommands/useModes 结果）──
-  availableCommands: AvailableCommand[];
-  availableModes: SessionMode[];
-  currentModeId: string | null;
-  onSetMode: (modeId: string) => void;
-  supportsModeSelection: boolean;
-
-  // ── 提升的状态（原从 client 直接读）──
-  supportsImages: boolean;
-  modelName: string | undefined;
-  /** ACP prompt_complete 返回的真实 token 用量 */
-  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
-
-  // ── Peri Task 视图（切片 2，会话活动面板）──
-  /** Session Doc tasks/taskOrder 派生任务视图（引用稳定，任务内容未变时不变） */
-  periTasks?: readonly PeriTaskViewProjection[];
-  /** tasks/taskOrder 子树是否已同步（未同步时面板显示加载态） */
-  periTasksLoaded?: boolean;
-  /** WS 连接状态（重连中时任务面板提示列表可能不完整） */
-  connectionState?: string;
-}
-
-// =============================================================================
-// ChatInterface Component
-// =============================================================================
-
-export interface ChatInterfaceHandle {
-  newSession: () => void;
-  /** 当前是否正在等待 agent 响应（prompt 已发送、尚未收到 prompt_complete） */
-  isLoading: boolean;
-}
+export type { ChatInterfaceHandle } from "./chat/chat-interface-types";
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
   {
@@ -158,11 +91,40 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   ref,
 ) {
   const { t } = useTranslation("components");
+  const [boundMcps, setBoundMcps] = useState<McpOption[]>([]);
+
+  useEffect(() => {
+    if (!agentId) {
+      setBoundMcps([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([unwrap(envApi.get({ id: agentId })), unwrap(agentApi.list()), unwrap(mcpApi.list())])
+      .then(async ([environment, agentList, mcpList]) => {
+        const agent = agentList.agents.find((item) => item.id === environment.agentConfigId);
+        if (!agent) return [];
+        const detail = await unwrap(agentApi.get(getAgentConfigLookupKey(agent)));
+        const boundIds = new Set(detail.mcpIds ?? []);
+        return mcpList.servers
+          .filter((server) => boundIds.has(server.id))
+          .map((server) => ({ id: server.id, name: server.name, description: server.summary }));
+      })
+      .then((mcps) => {
+        if (!cancelled) setBoundMcps(mcps);
+      })
+      .catch(() => {
+        if (!cancelled) setBoundMcps([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
 
   // ── YJS-driven computed state ──
 
   // 从 Yjs chatState 获取当前活跃会话 ID
   const activeSessionId = chatState?.activeSessionId ?? null;
+  const composerContextScope = rcsSessionId ?? activeSessionId ?? undefined;
 
   // 从 Yjs sessionState 计算 loading 状态
   const isLoading = sessionState?.loading != null;
@@ -198,6 +160,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 缓存用户首次发送的 prompt，等 activeSessionId 就绪后自动发送
   const pendingSendRef = useRef<ContentBlock[] | null>(null);
   const pendingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interfaceColumnRef = useRef<HTMLDivElement>(null);
+  const inputDockRef = useRef<HTMLDivElement>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   // ACP 返回的真实 token 用量（prompt/complete 响应），用于 ContextPanel 优先展示
   const [promptUsage, setPromptUsage] = useState<PromptUsage | null>(null);
@@ -207,6 +171,18 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Reset scene prompt flag when session changes
   useEffect(() => {
     scenePromptUsedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const column = interfaceColumnRef.current;
+    const dock = inputDockRef.current;
+    if (!column || !dock) return;
+    const updateClearance = () =>
+      column.style.setProperty("--chat-input-clearance", `${Math.ceil(dock.offsetHeight + 8)}px`);
+    updateClearance();
+    const observer = new ResizeObserver(updateClearance);
+    observer.observe(dock);
+    return () => observer.disconnect();
   }, []);
 
   // Persist active session id to localStorage when it changes via YJS
@@ -272,20 +248,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。
   // 使用 renderEntries 而不是直接读取 structuredMessages，确保输入框上方的 Todo
   // 列表与当前消息投影保持一致；执行计划等非消息条目不会影响此列表。
-  const todoItems = useMemo(() => {
-    for (let i = renderEntries.length - 1; i >= 0; i--) {
-      const entry = renderEntries[i];
-      if (entry.type !== "tool_call") continue;
-      const { toolCall } = entry;
-      if (isTodoWriteToolCall(toolCall.title, toolCall.rawInput) && toolCall.rawInput) {
-        return parseTodosFromRawInput(toolCall.rawInput);
-      }
-    }
-    return [];
-  }, [renderEntries]);
-
-  // 计算 token 统计，传给 ChatComposer 元信息条
-  const tokenStats: TokenStats = useMemo(() => computeStats(renderEntries), [renderEntries]);
+  const todoItems = useMemo(() => deriveTodoItems(renderEntries), [renderEntries]);
 
   // 会话内被 Agent 修改过的文件列表 — 路由层 ArtifactsPanel 消费（经 chat:stats 摘要事件）
   const changedFiles = useMemo(() => extractChangedFiles(renderEntries), [renderEntries]);
@@ -353,48 +316,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // Safety: if agent is dead and loading never clears, server handles the timeout.
   }, [onCancel]);
 
-  // Permission response — called from ChatView inline permission buttons
-  const handlePermissionResponse = useCallback(
-    (requestId: string, optionId: string | null) => {
-      onRespondPermission(requestId, optionId);
-    },
-    [onRespondPermission],
-  );
-
-  // Stable callback matching ChatView's onPermissionRespond signature (3-param)
-  const handlePermissionRespond = useCallback(
-    (requestId: string, optionId: string | null, _optionKind: string | null) => {
-      handlePermissionResponse(requestId, optionId);
-    },
-    [handlePermissionResponse],
-  );
-
   // =============================================================================
   // Render helpers
   // =============================================================================
 
   // Collect pending permissions from YJS chatState
-  const pendingPermissions: PendingPermission[] = useMemo(() => {
-    if (!chatState?.permissions) return [];
-    return chatState.permissions
-      .filter((p) => p.status === "pending")
-      .map((p) => ({
-        requestId: p.id,
-        toolName: p.tool,
-        toolInput: (p.args as Record<string, unknown>) ?? {},
-        description: p.tool,
-        // 统一面板当前仍渲染 allow/deny 两键；options 透传供面板后续消费（二期）
-        options: p.options,
-      }));
-  }, [chatState?.permissions]);
-
-  // Handle permission respond for unified PermissionPanel
-  const handlePermissionPanelRespond = useCallback(
-    (requestId: string, approved: boolean) => {
-      onRespondPermission(requestId, approved ? "allow" : null);
-    },
-    [onRespondPermission],
-  );
+  const pendingPermissions = useMemo(() => derivePendingPermissions(chatState?.permissions), [chatState?.permissions]);
 
   // AskUserQuestion 待应答问题（Session Doc pendingQuestions 投影，已过滤 pending+未过期）：
   // 依赖收窄到 Map 引用本身（快照中其他字段变化不触发重建）
@@ -404,11 +331,89 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     return Array.from(map.values());
   }, [sessionState?.pendingQuestions]);
 
+  // 按 Ctrl + Alt + Shift + D 即时输出当前完整状态快照。对象结构全部保留，
+  // 仅递归遮蔽密钥、token、密码、cookie 等敏感字段。
+  useEffect(() => {
+    const handleDebugShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey && event.altKey && event.shiftKey && event.code === "KeyD")) return;
+      event.preventDefault();
+
+      console.warn(
+        "[chat-debug-snapshot]",
+        createDebugSnapshot({
+          capturedAt: new Date(),
+          props: {
+            agentId,
+            readonly,
+            hideContextPanel,
+            rcsSessionId,
+            detailSessionId,
+            availableCommands,
+            availableModes,
+            currentModeId,
+            supportsImages,
+            modelName,
+            tokenUsage,
+            periTasks,
+            periTasksLoaded,
+            connectionState,
+          },
+          derivedState: {
+            activeSessionId,
+            isLoading,
+            canCancel,
+            sessionReady,
+            pendingPermissions,
+            pendingQuestions,
+            renderEntries,
+            promptUsage,
+            errorMessage,
+          },
+          chatState,
+          sessionState,
+        }),
+      );
+    };
+
+    window.addEventListener("keydown", handleDebugShortcut);
+    return () => window.removeEventListener("keydown", handleDebugShortcut);
+  }, [
+    activeSessionId,
+    agentId,
+    availableCommands,
+    availableModes,
+    canCancel,
+    chatState,
+    connectionState,
+    currentModeId,
+    detailSessionId,
+    errorMessage,
+    hideContextPanel,
+    isLoading,
+    modelName,
+    pendingPermissions,
+    pendingQuestions,
+    periTasks,
+    periTasksLoaded,
+    promptUsage,
+    rcsSessionId,
+    readonly,
+    renderEntries,
+    sessionReady,
+    sessionState,
+    supportsImages,
+    tokenUsage,
+  ]);
+
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
   const handleChatInputSubmit = useCallback(
     async (message: ChatInputMessage) => {
-      const text = message.text.trim();
+      const draftText = buildPromptText(message).trim();
       const images = message.images || [];
+      const attachmentReferences = (message.attachments ?? [])
+        .filter((attachment) => !draftText.includes(`@./${attachment.path}`))
+        .map((attachment) => `@./${attachment.path}`);
+      const text = [draftText, ...attachmentReferences].filter(Boolean).join("\n");
 
       if ((!text && images.length === 0) || isLoading) return;
 
@@ -418,53 +423,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         contentBlocks.push({ type: "text", text });
       }
 
-      // Convert images to ContentBlock
-      const userImages: UserMessageImage[] = [];
-
-      for (const img of images) {
+      // 图片保持 ContentBlock 顺序；单张失败不阻塞其余正文与附件引用。
+      for (const image of images) {
         try {
-          const dataUrl = `data:${img.mimeType};base64,${img.data}`;
-          let blob: Blob;
-          if (dataUrl.startsWith("data:")) {
-            blob = dataUrlToBlob(dataUrl);
-          } else {
-            const response = await fetch(dataUrl);
-            blob = await response.blob();
-          }
-
-          let finalBlob: Blob = blob;
-          let finalMimeType = img.mimeType;
-
-          if (blob.size > 2 * 1024 * 1024) {
-            const imageFile = new File([blob], "image.jpg", { type: blob.type });
-            finalBlob = await imageCompression(imageFile, IMAGE_COMPRESSION_OPTIONS);
-            finalMimeType = "image/jpeg";
-          }
-
-          const base64Data = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              const commaIndex = result.indexOf(",");
-              resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
-            };
-            reader.onerror = () => reject(new Error(`FileReader error: ${reader.error?.message}`));
-            reader.readAsDataURL(finalBlob);
-          });
-
-          const imageContent: ImageContent = {
-            type: "image",
-            mimeType: finalMimeType,
-            data: base64Data,
-          };
-          contentBlocks.push(imageContent);
-
-          userImages.push({
-            mimeType: finalMimeType,
-            data: base64Data,
-          });
-        } catch {
-          // 图片处理失败静默跳过
+          contentBlocks.push(await prepareImageContent(image));
+        } catch (error) {
+          console.error("[ChatInterface] Failed to prepare image:", error);
+          toast.error(t("composerAssets.prepareImageFailed"));
+          return;
         }
       }
 
@@ -477,7 +443,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       }
 
       // 注入上下文队列（flush 后清空）
-      const contextBlock = flushContext();
+      const contextBlock = flushContext(composerContextScope);
       if (contextBlock) {
         contentBlocks.unshift({ type: "text", text: contextBlock });
       }
@@ -515,23 +481,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         console.error("[ChatInterface] Failed to send prompt:", error);
       }
     },
-    [isLoading, onSendPrompt, scenePrompt, activeSessionId, onCreateSession],
+    [isLoading, onSendPrompt, scenePrompt, activeSessionId, onCreateSession, composerContextScope, t],
   );
 
   const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
 
   return (
-    <div className="flex h-full">
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Peri Task 会话活动面板仅在当前会话存在任务时展示，避免空面板占用聊天空间。 */}
-        {periTasks.length > 0 && (
-          <PeriTaskList
-            tasks={periTasks}
-            loaded={periTasksLoaded}
-            reconnecting={connectionState !== "connected"}
-            onOpenDetail={agentId && detailSessionId ? setSelectedPeriTask : undefined}
-          />
-        )}
+    <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
+      <div ref={interfaceColumnRef} className="chat-interface-column flex flex-col flex-1 min-w-0">
         {agentId && detailSessionId ? (
           <PeriTaskDetailSheet
             environmentId={agentId}
@@ -545,62 +502,72 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         <ChatView
           entries={renderEntries}
           isLoading={isLoading && !sessionReady ? false : isLoading}
-          onPermissionRespond={handlePermissionRespond}
           emptyTitle={sessionReady ? t("chatEmpty.startConversation") : undefined}
           emptyDescription={sessionReady ? t("chatEmpty.startConversationDesc") : undefined}
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}
           envId={agentId}
         />
 
-        {/* Permission panel — fixed above input */}
-        <PermissionPanel requests={pendingPermissions} onRespond={handlePermissionPanelRespond} />
-
-        {/* AskUserQuestion 面板 — 输入框上方（选中选项后点提交才回传，空列表不渲染） */}
-        <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
-
-        {/* Todo panel — 显示在输入框上方 */}
-        <TodoPanel todos={todoItems} />
-
-        {/* Error banner */}
-        {errorMessage && (
-          <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
-            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
-              <span>{errorMessage}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setErrorMessage(null)}
-                className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
-              >
-                {"\u00D7"}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
-        {!readonly && (
-          <div className="flex-shrink-0">
-            <ChatComposer
-              onSubmit={handleChatInputSubmit}
-              isLoading={isLoading}
-              onInterrupt={handleCancel}
-              canCancel={canCancel}
-              disabled={!sessionReady}
-              placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
-              supportsImages={supportsImages}
-              commands={availableCommands.length > 0 ? availableCommands : undefined}
-              envId={agentId}
-              availableModes={availableModes}
-              currentModeId={currentModeId}
-              onModeChange={onSetMode}
-              tokenStats={tokenStats}
-              onNewSession={handleNewSession}
-              showNewSession={renderEntries.length > 0}
-              modelName={modelName}
+        <div ref={inputDockRef} className="chat-input-dock">
+          {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
+          {pendingPermissions.length > 0 ? (
+            <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />
+          ) : pendingQuestions.length > 0 ? (
+            <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
+          ) : (
+            <ChatStatusPanel
+              todos={todoItems}
+              tasks={periTasks}
+              tasksLoaded={periTasksLoaded}
+              reconnecting={Boolean(connectionState && connectionState !== "connected")}
+              changedFiles={changedFiles}
+              onOpenTask={agentId && detailSessionId ? setSelectedPeriTask : undefined}
             />
-          </div>
-        )}
+          )}
+
+          {/* Error banner */}
+          {errorMessage && (
+            <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
+              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
+                <span>{errorMessage}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setErrorMessage(null)}
+                  className="ml-2 h-6 w-6 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 flex-shrink-0"
+                >
+                  {"\u00D7"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ChatComposer — 玻璃磨砂命令岛，整合输入框 + 元信息条 */}
+          {!readonly && (
+            <div className="flex-shrink-0">
+              <ChatComposer
+                onSubmit={handleChatInputSubmit}
+                isLoading={isLoading}
+                onInterrupt={handleCancel}
+                canCancel={canCancel}
+                disabled={!sessionReady}
+                placeholder={sessionReady ? t("chatInterface.agentPlaceholder") : t("chatInterface.waitingSession")}
+                supportsImages={supportsImages}
+                commands={availableCommands.length > 0 ? availableCommands : undefined}
+                mcps={boundMcps}
+                envId={agentId}
+                contextScope={composerContextScope}
+                availableModes={availableModes}
+                currentModeId={currentModeId}
+                onModeChange={onSetMode}
+                contextUsage={tokenUsage ?? promptUsage}
+                onNewSession={handleNewSession}
+                showNewSession={renderEntries.length > 0}
+                modelName={modelName}
+              />
+            </div>
+          )}
+        </div>
         {readonly && (
           <div className="flex-shrink-0">
             <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-3 text-center">

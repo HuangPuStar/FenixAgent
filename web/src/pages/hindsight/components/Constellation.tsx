@@ -728,6 +728,10 @@ export function Constellation({
 
     animRef.current = requestAnimationFrame(animate);
 
+    // 父容器与 fullscreen 变化都需要同步 canvas backing store。
+    const resizeObserver = new ResizeObserver(resize);
+    if (wrapperRef.current) resizeObserver.observe(wrapperRef.current);
+
     // Events
     const handleResize = () => resize();
 
@@ -778,74 +782,45 @@ export function Constellation({
         const documentId = (meta?.document_id as string) || null;
 
         const muted = isDark ? "#a1a1aa" : "#71717a";
-        const dimmed = isDark ? "#71717a" : "#a1a1aa";
-        const labelStyle = `font-size:10px;color:${dimmed};text-transform:uppercase;letter-spacing:0.04em;font-weight:500`;
-        const valStyle = `font-size:12px;color:${isDark ? "#e4e4e7" : "#18181b"}`;
-        const rowStyle = `display:flex;justify-content:space-between;align-items:baseline;gap:12px`;
+        const addLine = (label: string, value: string) => {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;justify-content:space-between;align-items:baseline;gap:12px";
+          const key = document.createElement("span");
+          key.style.cssText = `font-size:10px;color:${muted};text-transform:uppercase`;
+          key.textContent = label;
+          const content = document.createElement("span");
+          content.style.cssText = "font-size:12px;text-align:right;overflow-wrap:anywhere";
+          content.textContent = value;
+          row.append(key, content);
+          tip.append(row);
+        };
 
-        // Type badge + link count
-        let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`;
-        html += `<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:${nodeColor};background:${nodeColor}18;padding:2px 8px;border-radius:4px">${factType}</span>`;
-        html += `<span style="font-size:10px;color:${muted}">${t("constellation.tooltipLinks", { count: linkCount })}</span>`;
-        html += `</div>`;
-
-        // Text
-        html += `<div style="font-size:12px;line-height:1.6;margin-bottom:8px">${fullText}</div>`;
-
-        // Metadata grid
-        html += `<div style="display:flex;flex-direction:column;gap:4px;border-top:1px solid ${isDark ? "#27272a" : "#e4e4e7"};padding-top:8px">`;
-
-        if (context) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipContext")}</span><span style="${valStyle}">${context}</span></div>`;
-        }
-
-        // Format ISO timestamp as "YYYY-MM-DD HH:MM" — keeps the row compact
-        // while still surfacing the time-of-day the user asked for.
-        const fmtTs = (iso: string) => iso.slice(0, 16).replace("T", " ");
-
-        if (occurredStart) {
-          const start = fmtTs(occurredStart);
-          const end = occurredEnd ? fmtTs(occurredEnd) : null;
-          const occurredDisplay = end && end !== start ? `${start} → ${end}` : start;
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipOccurred")}</span><span style="${valStyle}">${occurredDisplay}</span></div>`;
-        }
-
-        if (mentionedAt) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipMentioned")}</span><span style="${valStyle}">${fmtTs(mentionedAt)}</span></div>`;
-        }
-
-        if (proofCount && proofCount > 1) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipEvidence")}</span><span style="${valStyle}">${t("constellation.tooltipSources", { count: proofCount })}</span></div>`;
-        }
-
-        if (documentId) {
-          html += `<div style="${rowStyle}"><span style="${labelStyle}">${t("constellation.tooltipDocument")}</span><span style="font-size:11px;font-family:monospace;color:${muted}">${String(documentId).slice(0, 12)}...</span></div>`;
-        }
-
-        html += `</div>`;
-
-        // Entities
-        if (entities.length > 0 && !(entities.length === 1 && entities[0] === "None")) {
-          html += `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">`;
-          for (const ent of entities) {
-            html += `<span style="font-size:10px;background:${isDark ? "#27272a" : "#f4f4f5"};color:${isDark ? "#d4d4d8" : "#3f3f46"};padding:2px 7px;border-radius:4px">${ent}</span>`;
-          }
-          html += `</div>`;
-        }
-
-        // Tags
-        if (tags.length > 0) {
-          html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">`;
-          for (const tag of tags) {
-            html += `<span style="font-size:10px;background:${nodeColor}15;color:${nodeColor};padding:2px 7px;border-radius:4px">#${tag}</span>`;
-          }
-          html += `</div>`;
-        }
-
-        // ID
-        html += `<div style="margin-top:8px;font-size:9px;font-family:monospace;color:${dimmed}">${node.id}</div>`;
-
-        tip.innerHTML = html;
+        tip.replaceChildren();
+        const heading = document.createElement("div");
+        heading.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px";
+        const badge = document.createElement("span");
+        badge.style.cssText = `font-size:10px;font-weight:600;color:${nodeColor}`;
+        badge.textContent = factType;
+        const links = document.createElement("span");
+        links.style.cssText = `font-size:10px;color:${muted}`;
+        links.textContent = t("constellation.tooltipLinks", { count: linkCount });
+        heading.append(badge, links);
+        const text = document.createElement("div");
+        text.style.cssText = "font-size:12px;line-height:1.6;margin-bottom:8px;overflow-wrap:anywhere";
+        text.textContent = fullText;
+        tip.append(heading, text);
+        if (context) addLine(t("constellation.tooltipContext"), context);
+        if (entities.length) addLine(t("constellation.tooltipEntities"), entities.join(", "));
+        if (occurredStart)
+          addLine(
+            t("constellation.tooltipOccurred"),
+            occurredEnd ? `${occurredStart} — ${occurredEnd}` : occurredStart,
+          );
+        if (mentionedAt) addLine(t("constellation.tooltipMentioned"), mentionedAt);
+        if (proofCount) addLine(t("constellation.tooltipProofs"), String(proofCount));
+        if (documentId) addLine(t("constellation.tooltipDocument"), documentId);
+        if (tags.length) addLine(t("constellation.tooltipTags"), tags.map((tag) => `#${tag}`).join(" "));
+        addLine(t("constellation.tooltipId"), node.id);
       }
 
       tip.style.display = "block";
@@ -915,6 +890,7 @@ export function Constellation({
     return () => {
       cancelAnimationFrame(animRef.current);
       window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       canvas.removeEventListener("wheel", handleWheel);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("mousedown", handleMouseDown);
@@ -936,22 +912,6 @@ export function Constellation({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [isFullscreen]);
-
-  // Re-measure canvas when fullscreen changes
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    // Small delay to let the DOM update
-    const timer = setTimeout(() => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvasRef.current!.getBoundingClientRect();
-      canvasRef.current!.width = rect.width * dpr;
-      canvasRef.current!.height = rect.height * dpr;
-      stateRef.current.dpr = dpr;
-      stateRef.current.W = rect.width;
-      stateRef.current.H = rect.height;
-    }, 50);
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <div

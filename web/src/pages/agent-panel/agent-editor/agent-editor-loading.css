@@ -1,0 +1,43 @@
+/* 首批数据到达前的稳定编辑器框架。 */
+.agent-editor-loading-shell .agent-editor-title-row em,
+.agent-editor-loading-shell .agent-editor-save-meta {
+  visibility: hidden;
+}
+.agent-editor-loading-shell__map {
+  display: grid;
+  gap: 3px;
+}
+.agent-editor-loading-shell__map > div {
+  display: grid;
+  min-height: 46px;
+  grid-template-columns: 27px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-radius: 11px;
+  padding: 5px 8px;
+  color: #56657c;
+}
+.agent-editor-loading-shell__map > div.is-active {
+  color: #174aa9;
+  background: #eaf2ff;
+}
+.agent-editor-loading-shell__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.agent-editor-loading-shell__fields > div {
+  height: 62px;
+}
+.agent-editor-loading-shell__fields > .is-wide {
+  height: 170px;
+  grid-column: 1 / -1;
+}
+.agent-editor-loading-shell .agent-editor-footer {
+  display: flex;
+}
+@media (max-width: 759px) {
+  .agent-editor-loading-shell__fields {
+    grid-template-columns: 1fr;
+  }
+}

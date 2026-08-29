@@ -215,7 +215,7 @@ export function MentalModelsView() {
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {/* 工具栏：搜索 + 总数 */}
       <div className="flex items-center gap-3 px-4 py-3 border-b">
         <div className="relative flex-1 max-w-sm">
@@ -232,6 +232,7 @@ export function MentalModelsView() {
               size="icon-xs"
               className="absolute right-1 top-1/2 -translate-y-1/2"
               onClick={() => setSearch("")}
+              aria-label={t("mentalModels.clearSearch")}
             >
               <X className="size-3.5" />
             </Button>
@@ -260,7 +261,16 @@ export function MentalModelsView() {
               <Card
                 key={model.id}
                 className="cursor-pointer hover:shadow-md transition-shadow py-4"
+                role="button"
+                tabIndex={0}
+                aria-label={t("mentalModels.openDetail", { name: model.name })}
                 onClick={() => setDetailModel(model)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setDetailModel(model);
+                  }
+                }}
               >
                 <CardHeader className="pb-0">
                   <CardTitle className="text-sm flex items-center gap-2">
@@ -276,6 +286,8 @@ export function MentalModelsView() {
                       variant="ghost"
                       size="icon-xs"
                       className="text-muted-foreground hover:text-destructive"
+                      aria-label={t("mentalModels.deleteNamed", { name: model.name })}
+                      onKeyDown={(event) => event.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteTarget(model);

@@ -1,14 +1,11 @@
+import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThreadEntry, ToolCallEntry } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButtons,
-} from "../ai-elements/conversation";
-import { AgentBadge, AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
+import { Conversation, ConversationContent, ConversationScrollButtons } from "../ai-elements/conversation";
+import { AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
+import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
+import { buildChatRenderBlocks, type ChatRenderItem } from "./chat-render-layout";
 import { AssistantBubble, UserBubble } from "./MessageBubble";
 import { ToolCallGroup } from "./ToolCallGroup";
 
@@ -20,7 +17,6 @@ import { ToolCallGroup } from "./ToolCallGroup";
 interface ChatViewProps {
   entries: ThreadEntry[];
   isLoading?: boolean;
-  onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
   emptyTitle?: string;
   emptyDescription?: string;
   agentName?: string;
@@ -34,12 +30,9 @@ export const ChatView = React.memo(
   function ChatView({
     entries,
     isLoading = false,
-    onPermissionRespond,
     emptyTitle,
     emptyDescription,
     agentName,
-    agentDescription,
-    agentSkills,
     sessionId,
     envId,
   }: ChatViewProps) {
@@ -47,48 +40,54 @@ export const ChatView = React.memo(
     const finalEmptyTitle = emptyTitle ?? t("chatView.startConversation");
     const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
     // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
-    const grouped = useMemo(() => groupToolCalls(entries), [entries]);
-    const hasMessages = entries.length > 0;
+    const renderBlocks = useMemo(() => buildChatRenderBlocks(entries), [entries]);
+    const hasMessages = renderBlocks.length > 0;
     // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
     const hasUserMessages = useMemo(() => entries.some((e) => e.type === "user_message"), [entries]);
+    const userEntries = useMemo(
+      () =>
+        entries.filter(
+          (entry): entry is Extract<ThreadEntry, { type: "user_message" }> => entry.type === "user_message",
+        ),
+      [entries],
+    );
 
     return (
-      <Conversation className="flex-1">
-        <ConversationContent>
+      <Conversation className="chat-conversation flex-1">
+        <PromptJumpRail entries={userEntries} />
+        <ConversationContent className="chat-conversation-content">
           {!hasMessages ? (
             isLoading && !agentName ? (
               <AgentBadgeSkeleton />
-            ) : agentName ? (
-              <AgentBadge name={agentName} description={agentDescription} skills={agentSkills ?? []} />
             ) : (
-              <ConversationEmptyState title={finalEmptyTitle} description={finalEmptyDescription} />
+              <ChatEmptyState title={finalEmptyTitle} description={finalEmptyDescription} agentName={agentName} />
             )
           ) : (
             <>
-              {grouped.map((item, i) => {
-                const isLastEntry = i === grouped.length - 1;
-                if (item.type === "single") {
-                  const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
-                  // 只有最后一条 assistant 消息且全局 loading 时才标记 streaming
-                  const entryIsStreaming = isLoading && isLastEntry && item.entry.type === "assistant_message";
+              {renderBlocks.map((block, blockIndex) => {
+                if (block.type === "activity_chain") {
                   return (
-                    <div key={entryId} className={cn(entrySpacing(entries, i))}>
-                      <EntryRenderer
-                        entry={item.entry}
-                        isLoading={entryIsStreaming}
-                        onPermissionRespond={onPermissionRespond}
-                        sessionId={sessionId}
-                        envId={envId}
-                      />
+                    <div key={`activity-${renderItemKey(block.items[0], blockIndex)}`} className="chat-activity-chain">
+                      {block.items.map((item, itemIndex) => (
+                        <ChatRenderItemView
+                          key={renderItemKey(item, itemIndex)}
+                          item={item}
+                          isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
+                          sessionId={sessionId}
+                          envId={envId}
+                        />
+                      ))}
                     </div>
                   );
                 }
-                // 工具调用组 — 紧贴在助手消息下方
                 return (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: tool group entries lack a unique identifier
-                  <div key={`group-${i}`} className="-mt-2">
-                    <ToolCallGroup entries={item.entries} onPermissionRespond={onPermissionRespond} />
-                  </div>
+                  <ChatRenderItemView
+                    key={renderItemKey(block.item, blockIndex)}
+                    item={block.item}
+                    isLoading={isLoading && block.item.type === "entry" && block.item.entry === entries.at(-1)}
+                    sessionId={sessionId}
+                    envId={envId}
+                  />
                 );
               })}
 
@@ -98,6 +97,7 @@ export const ChatView = React.memo(
           )}
           <ConversationScrollButtons hasUserMessages={hasUserMessages} />
         </ConversationContent>
+        <ChatSelectionAction contextScope={sessionId} />
       </Conversation>
     );
   },
@@ -105,7 +105,6 @@ export const ChatView = React.memo(
   (prev, next) =>
     prev.entries === next.entries &&
     prev.isLoading === next.isLoading &&
-    prev.onPermissionRespond === next.onPermissionRespond &&
     prev.emptyTitle === next.emptyTitle &&
     prev.emptyDescription === next.emptyDescription &&
     prev.agentName === next.agentName &&
@@ -116,24 +115,89 @@ export const ChatView = React.memo(
 );
 
 // =============================================================================
+// 空状态 — 与 Chat 设计稿保持一致
+// =============================================================================
+
+function ChatEmptyState({ title, description, agentName }: { title: string; description: string; agentName?: string }) {
+  const { t } = useTranslation("components");
+  const suggestions = [t("chatEmpty.suggestionReview"), t("chatEmpty.suggestionPlan"), t("chatEmpty.suggestionBuild")];
+
+  return (
+    <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+      <span className="chat-empty-mark" aria-hidden="true">
+        <img src={`${import.meta.env.BASE_URL}brand/fenix-agent-logo-mark.png`} alt="" />
+      </span>
+      <small>{agentName ? t("chatEmpty.readyWithAgent", { agentName }) : t("chatEmpty.eyebrow")}</small>
+      <h2 id="chat-empty-title">{title}</h2>
+      <p>{description}</p>
+      <div className="chat-empty-suggestions">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("chat:apply-suggested-prompt", { detail: { prompt: suggestion } }))
+            }
+          >
+            <span>{suggestion}</span>
+            <ArrowUpRight aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// =============================================================================
 // 间距逻辑 — 用户消息前后间距大，工具调用紧贴
 // =============================================================================
 
-function entrySpacing(entries: ThreadEntry[], index: number): string {
-  const entry = entries[index];
+function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): string {
+  if (item.density === "activity") return "chat-entry chat-entry--activity";
+  const { entry } = item;
   // 用户消息前后大留白 — Claude.ai 式宽松间距
   if (entry?.type === "user_message") {
-    return "pt-10 pb-3";
+    return "chat-entry chat-entry--user pt-10 pb-3";
   }
   // 助手消息 — 工具调用紧贴，否则多留白
   if (entry?.type === "assistant_message") {
-    const next = entries[index + 1];
-    if (next?.type === "tool_call") {
-      return "pt-3 pb-1";
-    }
-    return "pt-3 pb-8";
+    return "chat-entry chat-entry--assistant pt-3 pb-6";
   }
-  return "py-2";
+  return "chat-entry py-2";
+}
+
+function renderItemKey(item: ChatRenderItem | undefined, fallbackIndex: number): string {
+  if (!item) return `item-${fallbackIndex}`;
+  if (item.type === "tool_group") return item.entries[0]?.toolCall.id ?? `tool-group-${fallbackIndex}`;
+  return item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
+}
+
+function ChatRenderItemView({
+  item,
+  isLoading,
+  sessionId,
+  envId,
+}: {
+  item: ChatRenderItem;
+  isLoading: boolean;
+  sessionId?: string;
+  envId?: string;
+}) {
+  if (item.type === "tool_group") {
+    return (
+      <div className="chat-entry chat-entry--tool-group">
+        <ToolCallGroup entries={item.entries} />
+      </div>
+    );
+  }
+
+  const entryId = item.entry.type === "tool_call" ? item.entry.toolCall.id : item.entry.id;
+  const entryIsStreaming = isLoading && item.entry.type === "assistant_message";
+  return (
+    <div id={`chat-entry-${entryId}`} className={entryClassName(item)}>
+      <EntryRenderer entry={item.entry} isLoading={entryIsStreaming} sessionId={sessionId} envId={envId} />
+    </div>
+  );
 }
 
 // =============================================================================
@@ -144,13 +208,11 @@ const EntryRenderer = React.memo(
   function EntryRenderer({
     entry,
     isLoading,
-    onPermissionRespond,
     sessionId,
     envId,
   }: {
     entry: ThreadEntry;
     isLoading: boolean;
-    onPermissionRespond?: (requestId: string, optionId: string | null, optionKind: string | null) => void;
     sessionId?: string;
     envId?: string;
   }) {
@@ -160,7 +222,9 @@ const EntryRenderer = React.memo(
       case "assistant_message":
         return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
       case "tool_call":
-        return <ToolCallGroup entries={[entry as ToolCallEntry]} onPermissionRespond={onPermissionRespond} />;
+        return <ToolCallGroup entries={[entry as ToolCallEntry]} />;
+      case "plan":
+        return null;
       default:
         return null;
     }
@@ -169,40 +233,9 @@ const EntryRenderer = React.memo(
   (prev, next) =>
     prev.entry === next.entry &&
     prev.isLoading === next.isLoading &&
-    prev.onPermissionRespond === next.onPermissionRespond &&
     prev.sessionId === next.sessionId &&
     prev.envId === next.envId,
 );
-
-// =============================================================================
-// 工具调用分组逻辑
-// =============================================================================
-
-type GroupedItem = { type: "single"; entry: ThreadEntry } | { type: "tool_group"; entries: ToolCallEntry[] };
-
-function groupToolCalls(entries: ThreadEntry[]): GroupedItem[] {
-  const result: GroupedItem[] = [];
-  let currentToolGroup: ToolCallEntry[] = [];
-
-  const flushToolGroup = () => {
-    if (currentToolGroup.length > 0) {
-      result.push({ type: "tool_group", entries: currentToolGroup });
-    }
-    currentToolGroup = [];
-  };
-
-  for (const entry of entries) {
-    if (entry.type === "tool_call") {
-      currentToolGroup.push(entry);
-    } else {
-      flushToolGroup();
-      result.push({ type: "single", entry });
-    }
-  }
-  flushToolGroup();
-
-  return result;
-}
 
 // =============================================================================
 // 加载指示器 — 品牌色渐变脉冲

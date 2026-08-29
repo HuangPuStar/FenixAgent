@@ -1,0 +1,174 @@
+.chat-demo__markdown {
+  color: #344158;
+}
+.chat-demo__markdown h1 {
+  margin: 0 0 13px;
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -0.035em;
+}
+.chat-demo__markdown h2 {
+  margin: 24px 0 9px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+}
+.chat-demo__markdown h3 {
+  margin: 18px 0 7px;
+  font-size: 13px;
+}
+.chat-demo__markdown p {
+  margin: 0 0 12px;
+}
+.chat-demo__markdown a {
+  color: #2862c9;
+  text-decoration: underline;
+  text-decoration-color: #b4c8ed;
+  text-underline-offset: 3px;
+}
+.chat-demo__markdown del {
+  color: #8a94a4;
+}
+.chat-demo__markdown ul,
+.chat-demo__markdown ol {
+  margin: 8px 0 15px;
+  padding-left: 22px;
+  list-style-position: outside;
+}
+.chat-demo__markdown ul {
+  list-style-type: disc;
+}
+.chat-demo__markdown ol {
+  list-style-type: decimal;
+}
+.chat-demo__markdown ul ul {
+  list-style-type: circle;
+}
+.chat-demo__markdown li {
+  margin: 4px 0;
+}
+.chat-demo__markdown li::marker {
+  color: #738098;
+  font-size: 0.9em;
+}
+.chat-demo__markdown li > ul {
+  margin: 4px 0;
+}
+.chat-demo__markdown blockquote {
+  margin: 14px 0 18px;
+  border: 0;
+  padding: 0 14px;
+  color: #5e6e89;
+  background: #fff;
+  font-style: italic;
+}
+.chat-demo__markdown blockquote p {
+  margin: 3px 0 0;
+}
+.chat-demo__markdown ul.chat-demo__task-markdown {
+  padding-left: 0;
+  list-style: none;
+}
+.chat-demo__task-markdown li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.chat-demo__task-markdown svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: #8290a5;
+}
+.chat-demo__task-markdown [data-checked="true"] svg {
+  color: var(--demo-green);
+}
+.chat-demo__table-scroll {
+  margin: 13px 0 17px;
+  overflow-x: auto;
+  border-radius: 9px;
+  background: #fff;
+}
+.chat-demo__table-scroll table {
+  min-width: 540px;
+  margin: 0;
+}
+.chat-demo__code-block {
+  margin: 10px 0 14px;
+}
+.chat-demo__code-block[data-tone="diff"] code {
+  color: #397963;
+}
+.chat-demo__md-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 86px;
+  margin: 10px 0 14px;
+  border-radius: 10px;
+  border: 1px solid #e1e6ee;
+  background: #fff;
+}
+.chat-demo__md-diagram span {
+  border-radius: 7px;
+  padding: 7px 10px;
+  color: #355b9e;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(43, 72, 123, 0.08);
+  font-size: 10px;
+}
+.chat-demo__md-diagram i {
+  color: #8fa4c9;
+  font-style: normal;
+}
+.chat-demo__md-math {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 16px;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #6d7890;
+  border: 1px solid #e1e6ee;
+  background: #fff;
+  font-size: 9px;
+}
+.chat-demo__markdown details {
+  margin: 12px 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e1e6ee;
+  background: #fff;
+}
+.chat-demo__markdown summary {
+  color: #465670;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chat-demo__markdown details p {
+  margin: 8px 0 0;
+  color: #6e798c;
+  font-size: 10px;
+}
+.chat-demo__markdown hr {
+  height: 1px;
+  margin: 22px 0;
+  border: 0;
+  background: #e4e8ef;
+}
+.chat-demo__footnote {
+  color: #8590a2;
+  font-size: 9px;
+}
+.chat-demo__markdown--long section {
+  padding-top: 2px;
+}
+.chat-demo__markdown--long section + section {
+  margin-top: 10px;
+}
+.chat-demo__tool-group--long {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3400px;
+}

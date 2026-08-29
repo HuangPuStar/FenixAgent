@@ -25,7 +25,7 @@ import {
 } from "../lib/mcp-resource-access";
 import { buildModelOptions } from "../lib/model-config-utils";
 import { mapSkillOptions, normalizeSkillOptionsPayload } from "../lib/skill-resource-access";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 const externalAccess: ResourceAccess = {
@@ -72,7 +72,14 @@ describe("Agent 表单与资源访问纯逻辑", () => {
 
   // Agent 表单模型 value 使用模型 UUID，避免与 provider/modelId 格式的配置值混淆。
   test("将共享模型转换为 Agent 表单选项", () => {
-    expect(mapModelOptions([sharedModel])).toEqual([{ value: "model-uuid", label: "Source Team/OpenAI/Shared Model" }]);
+    expect(mapModelOptions([sharedModel])).toEqual([
+      {
+        value: "model-uuid",
+        label: "Shared Model",
+        modelId: "gpt-shared",
+        group: { id: "org-source:org-source/provider-openai", label: "OpenAI", scope: "shared" },
+      },
+    ]);
   });
 
   // 模型配置选择器须优先使用共享 provider key，保证跨组织同名 provider 不冲突。

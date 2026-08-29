@@ -36,9 +36,9 @@ export function SessionModeSelector({
   if (readOnly) {
     const label = current?.name ?? t("sessionModeSelector.default");
     return (
-      <span className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-muted-foreground" title={label}>
-        <Shield className="h-3 w-3" />
-        <span className="max-w-24 truncate">{label}</span>
+      <span className="chat-composer-security-policy" title={label}>
+        <Shield />
+        <span>{label}</span>
       </span>
     );
   }

@@ -11,6 +11,16 @@
   "emptyClearSearch": "Clear search",
   "emptyMessage": "No knowledge bases",
   "selectHint": "Select a knowledge base on the left to view details",
+  "directory": {
+    "title": "Knowledge Base Directory",
+    "loading": "Loading knowledge bases"
+  },
+  "toolbar": {
+    "embeddingModels": "Embedding Models",
+    "embeddingModelManager": "Embedding Model Management",
+    "embeddingModelDescription": "Manage embedding models for the RAGFlow tenant.",
+    "importRagflow": "Import from RAGFlow"
+  },
   "newKnowledgeBase": "New Knowledge Base",
   "loadFailed": "Failed to load knowledge bases",
   "loadDetailFailed": "Failed to load knowledge base details",
@@ -39,6 +49,7 @@
   },
   "validation": {
     "nameRequired": "Name is required",
+    "embeddingModelRequired": "Please select an embedding model",
     "embeddingModelFormat": "Embedding model format error: please select from the dropdown (format: <model>@<instance>@<provider>)"
   },
   "toast": {
@@ -84,12 +95,21 @@
     "searchPlaceholder": "Search knowledge bases...",
     "emptyMessage": "No knowledge bases"
   },
+  "status": {
+    "ready": "Ready",
+    "processing": "Processing",
+    "pending": "Pending",
+    "indexing": "Indexing",
+    "error": "Error"
+  },
   "actions": {
+    "retry": "Retry",
     "detail": "Detail",
     "upload": "Upload",
     "delete": "Delete"
   },
   "detail": {
+    "loading": "Loading...",
     "slug": "slug",
     "edit": "Edit",
     "boundAgents": "Bound to {{count}} Agent(s)",
@@ -187,6 +207,7 @@
   },
   "tabs": {
     "documents": "Documents",
+    "graph": "Knowledge Graph",
     "retrievalTest": "Retrieval Test"
   },
   "retrieval": {
@@ -226,6 +247,10 @@
     "generating": "Generating",
     "generateSuccess": "Knowledge graph generated",
     "generateFailed": "Knowledge graph generation failed",
+    "progressFailed": "Failed to fetch generation progress. Please retry.",
+    "loadFailed": "Failed to load knowledge graph",
+    "loading": "Loading knowledge graph...",
+    "retry": "Retry",
     "delete": "Delete",
     "deleteSuccess": "Knowledge graph deleted",
     "deleteFailed": "Delete knowledge graph failed",

@@ -52,6 +52,21 @@ describe("context-queue", () => {
     clearContextQueue();
     expect(() => removeContext("nonexistent")).not.toThrow();
   });
+
+  // 意图：keep-alive 会话的引用上下文只能由对应会话消费，全局上下文仍可随当前会话发送。
+  test("flushContext 隔离会话队列", () => {
+    clearContextQueue();
+    pushContext("route", "全局页面");
+    pushContext("quote-a", "会话 A 引用", "session-a");
+    pushContext("quote-b", "会话 B 引用", "session-b");
+
+    const sessionA = flushContext("session-a");
+    expect(sessionA).toContain("全局页面");
+    expect(sessionA).toContain("会话 A 引用");
+    expect(sessionA).not.toContain("会话 B 引用");
+    expect(flushContext("session-a")).toBeNull();
+    expect(flushContext("session-b")).toContain("会话 B 引用");
+  });
 });
 
 describe("isVisibleContentBlock", () => {

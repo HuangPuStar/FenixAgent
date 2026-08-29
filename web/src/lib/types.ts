@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { PermissionOption, PublicError, ToolCallContent } from "@fenix/chat-channel";
+import type { PermissionOption, PlanEntryData, PublicError, ToolCallContent } from "@fenix/chat-channel";
 
 // 工具调用状态
 export type ToolCallStatus = "running" | "complete" | "error" | "waiting_for_confirmation" | "rejected" | "canceled";
@@ -74,7 +74,9 @@ export interface ToolCallData {
   description?: string;
   /** 引擎提供的 display 元数据，用于前端精确渲染工具调用类型 */
   display?: ToolCallDisplay;
-  /** 工具调用统一类型标识，由 resolveToolCardKind() 在 construct 阶段一次性解析 */
+  /** 前端投影边界解析出的统一工具语义。 */
+  semantic?: import("./tool-semantic").ToolSemantic;
+  /** 工具调用统一类型标识，由前端投影边界一次性解析。 */
   kind?: ToolCardKind;
   /** TodoWrite 相较上一轮的条目变更；只用于历史工具调用卡片展示。 */
   todoChanges?: TodoChange[];
@@ -123,8 +125,16 @@ export interface ToolCallEntry {
   toolCall: ToolCallData;
 }
 
+/** 标准 ACP plan 在时间线中的展示条目。 */
+export interface PlanThreadEntry {
+  type: "plan";
+  id: string;
+  turnId?: string | null;
+  entries: PlanEntryData[];
+}
+
 // 统一聊天条目类型
-export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry;
+export type ThreadEntry = UserMessageEntry | AssistantMessageEntry | ToolCallEntry | PlanThreadEntry;
 
 /** 前端展示直接使用公开错误 DTO，不重新分类。 */
 export type PublicErrorInfo = PublicError;
@@ -138,6 +148,8 @@ export interface ChatInputMessage {
   text: string;
   images?: UserMessageImage[];
   attachments?: FileAttachment[];
+  /** 本轮选择的 Agent 已绑定 MCP 名称，仅在发送边界注入 system-reminder。 */
+  mcps?: string[];
 }
 
 export interface FileAttachment {

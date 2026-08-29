@@ -1,21 +1,36 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NS } from "../../src/i18n";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import { splitSystemReminderBlocks } from "../../src/lib/strip-html-tags";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
 import { Button } from "../ui/button";
-import { AgentAvatar } from "./AgentAvatar";
+import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { SystemMessage } from "./SystemMessage";
 
 // 用户消息折叠最大高度（px）
 const COLLAPSED_MAX_HEIGHT = 200;
 // 思考内容流式显示的最大高度（≈4 行）
 const THOUGHT_STREAMING_MAX_HEIGHT = 96;
+const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
+
+/** 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。 */
+export function splitFileReferences(content: string): Array<{ type: "text" | "file"; value: string; offset: number }> {
+  const parts: Array<{ type: "text" | "file"; value: string; offset: number }> = [];
+  let offset = 0;
+  for (const match of content.matchAll(FILE_REFERENCE_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > offset) parts.push({ type: "text", value: content.slice(offset, index), offset });
+    parts.push({ type: "file", value: match[0].slice(3), offset: index });
+    offset = index + match[0].length;
+  }
+  if (offset < content.length) parts.push({ type: "text", value: content.slice(offset), offset });
+  return parts;
+}
 
 // =============================================================================
 // 用户消息 — 右对齐，品牌色淡底，可折叠；注入的 system-reminder 渲染为系统消息
@@ -26,7 +41,7 @@ interface UserBubbleProps {
 }
 
 export function UserBubble({ entry }: UserBubbleProps) {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   // 切分注入的系统上下文段与用户文本段：system 段合并为原始块文本，渲染为
   // 系统消息标签默认隐藏注入内容；双击后以 Popover 展示。
   const segments = useMemo(() => splitSystemReminderBlocks(entry.content ?? ""), [entry.content]);
@@ -43,6 +58,7 @@ export function UserBubble({ entry }: UserBubbleProps) {
     .filter((segment) => segment.kind === "text")
     .map((segment) => segment.text)
     .join("\n");
+  const visibleParts = useMemo(() => splitFileReferences(visibleContent), [visibleContent]);
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -62,35 +78,46 @@ export function UserBubble({ entry }: UserBubbleProps) {
       {/* 用户文本与图片附件 — 右对齐气泡（正文） */}
       {visibleContent && (
         <div className="flex justify-end">
-          <div className="max-w-[85%] sm:max-w-[70%]">
+          <div className="chat-user-message-frame">
             {/* 图片附件 */}
             {entry.images && entry.images.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 justify-end">
+              <div className="flex flex-wrap gap-2 mb-2 justify-center">
                 {entry.images.map((img) => (
                   <ImageThumbnail key={img.data} image={img} />
                 ))}
               </div>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
-            <div className="relative bg-user-bubble border border-user-bubble-border rounded-2xl overflow-hidden message-bubble-enter">
+            <div className="chat-user-bubble message-bubble-enter">
               <div
                 ref={contentRef}
-                className={cn(
-                  "px-5 py-3 text-sm text-white whitespace-pre-wrap font-display leading-relaxed",
-                  !expanded && overflowing && `max-h-[${COLLAPSED_MAX_HEIGHT}px]`,
-                )}
+                className="chat-user-message-content px-4 py-2.5 text-sm font-display leading-relaxed"
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
               >
-                {visibleContent}
+                {visibleParts.map((part) =>
+                  part.type === "file" ? (
+                    <span
+                      key={`${part.type}-${part.offset}`}
+                      className="mx-0.5 inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-0.5 align-middle text-xs text-text-secondary"
+                      title={part.value}
+                      data-file-attachment={part.value}
+                    >
+                      <File className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{part.value.split("/").at(-1) || part.value}</span>
+                    </span>
+                  ) : (
+                    part.value
+                  ),
+                )}
               </div>
               {/* 折叠渐变遮罩 + 展开按钮 */}
               {!expanded && overflowing && (
-                <div className="absolute bottom-0 inset-x-0 flex flex-col items-center pt-8 bg-gradient-to-t from-user-bubble via-user-bubble/80 to-transparent">
+                <div className="absolute bottom-0 inset-x-0 flex flex-col items-center pt-8 bg-gradient-to-t from-white via-white/90 to-transparent">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setExpanded(true)}
-                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-display font-medium text-white/90 hover:bg-white/15 h-auto"
+                    className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-display font-medium text-text-secondary hover:bg-surface-2 h-auto"
                   >
                     <span>{t("messageBubble.expand")}</span>
                     <ChevronDown className="h-3 w-3" />
@@ -120,9 +147,19 @@ interface AssistantBubbleProps {
   cardEmitterRef?: MutableRefObject<CardEventEmitter | null>;
 }
 
-export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: AssistantBubbleProps) {
+export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmitterRef }: AssistantBubbleProps) {
+  const { t } = useTranslation(NS.COMPONENTS);
   // 每个助手消息创建独立的 emitter 实例
   const emitter = useMemo(() => new CardEventEmitter(), []);
+  const visibleText = useMemo(
+    () =>
+      entry.chunks
+        .filter((chunk) => chunk.type === "message" && isVisibleContentBlock({ type: "text", text: chunk.text }))
+        .map((chunk) => chunk.text)
+        .join("\n\n")
+        .trim(),
+    [entry.chunks],
+  );
 
   // 暴露 emitter 给外部监听器，组件卸载时清理
   useEffect(() => {
@@ -139,11 +176,9 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
 
   return (
     <MessageEmitterContext.Provider value={emitter}>
-      <div className="flex gap-4 items-start message-bubble-enter">
-        {/* Agent avatar — 窄屏隐藏 */}
-        <AgentAvatar className="hidden md:flex mt-0.5" />
+      <div className="chat-assistant-message message-bubble-enter">
         {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="chat-assistant-chunks flex-1 min-w-0">
           {entry.chunks.map((chunk, i, all) => {
             if (chunk.type === "thought") {
               // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
@@ -151,9 +186,9 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               const thoughtStreaming = isStreaming && isLastThought;
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-                <Reasoning key={i} isStreaming={thoughtStreaming}>
-                  <ReasoningTrigger />
-                  <ReasoningContent>
+                <Reasoning key={i} isStreaming={thoughtStreaming} className="chat-thinking-block">
+                  <ReasoningTrigger className="chat-thinking-trigger" />
+                  <ReasoningContent className="chat-thinking-content">
                     <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
                   </ReasoningContent>
                 </Reasoning>
@@ -169,7 +204,7 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
             // 普通消息块 — 直接输出，无包裹卡片
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
-              <div key={i} className="message-content text-text-primary leading-[1.75]">
+              <div key={i} className="message-content chat-markdown-content text-text-primary leading-[1.75]">
                 <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
               </div>
             );
@@ -180,15 +215,39 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
               role="alert"
             >
-              <p className="font-medium">执行出错</p>
-              <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
-                <span className="break-all">Type: {entry.error.type}</span>
-                <span className="break-all">ID: {entry.error.id}</span>
+              <span className="font-medium">{t("messageBubble.turnError")}</span>
+              {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span>Type: {entry.error.type}</span>
+                <span>ID: {entry.error.id}</span>
               </div>
             </div>
           )}
         </div>
+        {visibleText && (
+          <div className="chat-message-actions" role="group" aria-label={t("messageBubble.actions")}>
+            <button
+              type="button"
+              title={t("messageBubble.copy")}
+              aria-label={t("messageBubble.copy")}
+              onClick={() => void navigator.clipboard.writeText(visibleText)}
+            >
+              <Copy />
+            </button>
+            <button
+              type="button"
+              title={t("messageBubble.quote")}
+              aria-label={t("messageBubble.quote")}
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
+                )
+              }
+            >
+              <Quote />
+            </button>
+          </div>
+        )}
       </div>
     </MessageEmitterContext.Provider>
   );
@@ -199,21 +258,21 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
 // =============================================================================
 
 function ImageThumbnail({ image }: { image: UserMessageImage }) {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
+  const [open, setOpen] = useState(false);
   const dataUrl = `data:${image.mimeType};base64,${image.data}`;
   return (
-    <Button
-      variant="ghost"
-      className="rounded-lg overflow-hidden border border-border hover:border-brand/40 p-0 h-auto"
-      onClick={() => {
-        const w = window.open("");
-        if (w) {
-          w.document.write(`<img src="${dataUrl}" style="max-width:100%;max-height:100%" />`);
-        }
-      }}
-    >
-      <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="h-20 w-20 object-cover" />
-    </Button>
+    <>
+      <Button variant="ghost" className="rounded-lg overflow-hidden p-0 h-auto" onClick={() => setOpen(true)}>
+        <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="h-20 w-20 object-cover" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-[min(92vw,960px)] p-3 bg-white">
+          <DialogTitle className="sr-only">{t("messageBubble.imagePreview")}</DialogTitle>
+          <img src={dataUrl} alt={t("messageBubble.uploadedImage")} className="max-h-[82vh] w-full object-contain" />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
