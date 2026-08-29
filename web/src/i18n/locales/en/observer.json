@@ -5,6 +5,175 @@
     "title": "Admin",
     "backToConsole": "Back to Console"
   },
+  "modelGateway": {
+    "nav": "Model Gateway",
+    "title": "Model Gateway",
+    "subtitle": "Publish gateway models, manage user budgets, and review system-wide usage.",
+    "openLiteLlm": "Open LiteLLM",
+    "models": "Model configuration",
+    "tabs": {
+      "overview": "Overview",
+      "models": "Models",
+      "budgets": "Budgets",
+      "usage": "Usage"
+    },
+    "budgets": "Global user budgets",
+    "query": "Query",
+    "queryHint": "Click Query to load usage data.",
+    "totalSpend": "Total spend",
+    "unlimited": "Not configured",
+    "selectAll": "Select all users",
+    "amount": "Amount",
+    "once": "One-time",
+    "applySelected": "Apply to selected",
+    "check": "Check status",
+    "connectionCheck": {
+      "succeeded": "Connection check completed: LiteLLM is reachable and {{count}} models were found.",
+      "failed": "Connection check failed: {{message}}",
+      "requestFailed": "Connection check request failed. Please try again."
+    },
+    "sync": "Sync models",
+    "checkHint": "Check LiteLLM's model catalog to see whether the projection is current.",
+    "synced": "Synced",
+    "pending": "Pending sync",
+    "unknown": "Unable to read gateway status",
+    "requestError": "The model gateway request failed. Check LiteLLM and database service status.",
+    "syncDone": "Model sync completed",
+    "modelsPage": {
+      "title": "Model configuration",
+      "description": "Configure models in the LiteLLM admin console. Fenix checks and synchronizes the model catalog.",
+      "litellmConfig": {
+        "title": "Configure models in the LiteLLM admin console",
+        "description": "Return here after configuration, check status, then synchronize models to the Gateway Provider.",
+        "action": "Configure in LiteLLM"
+      },
+      "searchPlaceholder": "Search models",
+      "filters": {
+        "all": "All statuses",
+        "pending": "Pending changes",
+        "synced": "Synced"
+      },
+      "columns": {
+        "model": "Model",
+        "source": "Source",
+        "syncStatus": "Sync status"
+      },
+      "noMatches": "No matching models. Check status first.",
+      "providerBaseUrlChanged": "The Gateway Provider public URL changed and is waiting to be synchronized.",
+      "catalogChanges": "{{count}} catalog changes found. Synchronization will not modify Fenix model configuration."
+    },
+    "budgetsPage": {
+      "defaultTitle": "Default budget for new users",
+      "defaultAmountLabel": "Default budget amount",
+      "defaultDurationLabel": "Default budget period",
+      "duration30d": "30 days",
+      "filters": {
+        "all": "All statuses",
+        "pending": "Not active",
+        "active": "Active",
+        "exhausted": "Exhausted"
+      },
+      "defaultHint": "Determined by the server default and applies only when users first use the gateway.",
+      "searchPlaceholder": "Search name, email, or phone number",
+      "organizationLabel": "Organization",
+      "allOrganizations": "All organizations",
+      "allUsers": "All users",
+      "selectedCount": "{{count}} selected",
+      "resetBudget": "Reset spend",
+      "resetTitle": "Reset user spend",
+      "resetDescription": "Clear the spend for {{count}} users without changing their budget amount or period.",
+      "resetSuccess": "The selected users' spend has been reset",
+      "resetError": "Unable to reset spend. Please try again.",
+      "edit": "Set",
+      "budgetScope": "The budget is shared globally across organizations, Agents, and models.",
+      "singleUserEditing": "Editing one user: change the amount and period above, then click Apply to selected.",
+      "editTitle": "Set global user budget",
+      "confirmSet": "Set",
+      "batchTitle": "Set global user budgets",
+      "dialogHint": "{{count}} users selected; their budget is shared across organizations, Agents, and models.",
+      "cancel": "Cancel",
+      "columns": {
+        "user": "User",
+        "policy": "Budget policy",
+        "spent": "Spent",
+        "remaining": "Remaining",
+        "progress": "Usage progress",
+        "resetAt": "Reset time"
+      },
+      "activeBudget": "Active",
+      "defaultPreview": "Current default preview",
+      "startsOnFirstUse": "Starts on first use",
+      "neverResets": "Never resets",
+      "resetNotScheduled": "Awaiting reset schedule",
+      "exhausted": "Exhausted",
+      "noMatches": "No matching users",
+      "selectUser": "Select {{name}}",
+      "pagination_total": "{{total}} users",
+      "pagination_page_size": "{{size}} / page"
+    },
+    "usagePage": {
+      "querying": "Querying…",
+      "ranges": {
+        "last30d": "Last 30 days",
+        "last7d": "Last 7 days",
+        "custom": "Custom date range"
+      },
+      "filters": {
+        "user": "user",
+        "organization": "organization",
+        "agent": "Agent",
+        "model": "model"
+      },
+      "allSubjects": "All {{subject}}s",
+      "userOption": "{{name}} ({{email}})",
+      "searchSubject": "Search {{subject}}",
+      "noMatches": "No matching options",
+      "rangeHint": "Any date range is supported, up to 90 days per query. Use offline reports for longer periods.",
+      "metrics": {
+        "spend": "Total spend",
+        "gatewayOnly": "Current Gateway Provider only",
+        "tokens": "Total tokens",
+        "tokenDetail": "Input {{prompt}} · Output {{completion}}",
+        "requests": "Requests",
+        "activeAgents": "Active Agents",
+        "coveredUsers": "{{count}} users covered"
+      },
+      "breakdowns": {
+        "model": "By model",
+        "organization": "By organization",
+        "user": "By user",
+        "agent": "By Agent"
+      },
+      "noData": "No data"
+    },
+    "overview": {
+      "recent7dSpend": "Total spend, last 7 days",
+      "onlyGateway": "Model Gateway only",
+      "tokenSummary": "Input {{prompt}} · Output {{completion}} tokens",
+      "activeUsers": "Active users",
+      "activeUsersFoot7d": "With calls in the last 7 days",
+      "configuredModels": "Configured models",
+      "modelsSynced": "Gateway Provider is synced",
+      "modelsPending": "Awaiting sync status check",
+      "usageTrend": "Usage trend",
+      "recent7dGateway": "Last 7 days · Model Gateway only",
+      "amountUsd": "Amount (USD)",
+      "trendPoint": "{{date}}: {{spend}}",
+      "noUsage": "No usage data",
+      "gatewayProvider": "Gateway Provider",
+      "connected": "Connected",
+      "notChecked": "Not checked",
+      "owner": "Owner",
+      "gatewayType": "Gateway type",
+      "connectionAddress": "Connection URL",
+      "defaultProviderName": "Fenix Model Gateway",
+      "manageModels": "Manage model configuration",
+      "refreshStatus": "Refresh status",
+      "loadFailed": "Unable to load model gateway data",
+      "gatewayTypes": { "litellm": "LiteLLM OSS" }
+    },
+    "change": { "added": "Added", "updated": "Updated", "removed": "Removed" }
+  },
   "login": {
     "title": "Master Key Required",
     "description": "Enter the system master key (RCS_SYSTEM_API_KEYS) to view the observation dashboard. The key is kept only in sessionStorage and is never logged.",

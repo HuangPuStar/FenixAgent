@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { CheckCircle2, LoaderCircle, Plus, Search, X, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -73,6 +74,7 @@ import {
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  const navigate = useNavigate();
 
   // 列表数据加载
   const {
@@ -708,6 +710,7 @@ export function AgentModelsPage() {
           const brandColor = getProviderColor(provider.id);
           const sourceName = provider.resourceAccess?.sourceOrganizationName;
           const hasModels = models.length > 0;
+          const isModelGateway = provider.kind === "gateway";
           // 当前卡片是否有模型在测试中
           const testingPrefix = `${providerKey}:`;
           const testingModelId = testingModelKey?.startsWith(testingPrefix)
@@ -734,7 +737,14 @@ export function AgentModelsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-text-bright truncate">{provider.id}</span>
-                    {sourceName && <span className="text-xs text-text-muted flex-shrink-0">{sourceName}</span>}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {isModelGateway && (
+                        <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium text-brand">
+                          {t("gateway.tag")}
+                        </span>
+                      )}
+                      {sourceName && <span className="text-xs text-text-muted">{sourceName}</span>}
+                    </div>
                   </div>
                   <div className="text-[11px] text-text-muted mt-0.5">
                     {t(`protocolOptions.${provider.protocol}`)} · {t("columns.models")} ({models.length})
@@ -902,6 +912,20 @@ export function AgentModelsPage() {
                     <>
                       {/* 左侧：获取模型列表 & 编辑 */}
                       <div className="flex items-center gap-2">
+                        {isModelGateway && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void navigate({
+                                to: "/agent/model-gateway-usage/$providerId",
+                                params: { providerId: provider.providerId },
+                              })
+                            }
+                            className="text-brand transition-colors hover:text-brand/80"
+                          >
+                            {t("gateway.myUsage")}
+                          </button>
+                        )}
                         {hasModels && (
                           <button
                             type="button"
@@ -958,16 +982,32 @@ export function AgentModelsPage() {
                       </div>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleOpenEdit(provider);
-                      }}
-                      className="text-text-secondary hover:text-text-primary transition-colors"
-                    >
-                      {t("actions.view")}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenEdit(provider);
+                        }}
+                        className="text-text-secondary hover:text-text-primary transition-colors"
+                      >
+                        {t("actions.view")}
+                      </button>
+                      {isModelGateway && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void navigate({
+                              to: "/agent/model-gateway-usage/$providerId",
+                              params: { providerId: provider.providerId },
+                            })
+                          }
+                          className="text-brand transition-colors hover:text-brand/80"
+                        >
+                          {t("gateway.myUsage")}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

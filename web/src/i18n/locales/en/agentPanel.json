@@ -4,6 +4,7 @@
   "workflow": "Workflow",
   "agentManagement": "Agent Management",
   "models": "Model Library",
+  "modelGatewayUsage": "My model gateway usage",
   "sessions": "Sessions",
   "skills": "Skill Library",
   "algorithms": "Algorithms",
