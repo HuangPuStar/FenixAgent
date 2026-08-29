@@ -30,6 +30,7 @@ import apiSandboxServerRoutes from "./routes/api/sandbox-server";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiSystemLogsRoutes from "./routes/api/system-logs";
+import apiSystemModelGatewayRoutes from "./routes/api/system-model-gateway";
 import apiSystemObserverRoutes from "./routes/api/system-observer";
 import apiSystemPeopleTreeRoutes from "./routes/api/system-people-tree";
 import apiWorkflowRoutes from "./routes/api/workflows";
@@ -46,6 +47,9 @@ import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
 import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
+import { setRuntimeCredentialResolver } from "./services/launch-spec-builder";
+import { createSystemModelGatewayProviderService } from "./services/model-gateway/provider-service";
+import { createModelGatewayRuntime } from "./services/model-gateway/runtime";
 import { registerConfiguredSandboxProviders, sandboxManager } from "./services/sandbox";
 import { initializeDefaultSandboxPool } from "./services/sandbox/sandbox-default-pool";
 import { schedulerService } from "./services/scheduler/index";
@@ -81,6 +85,23 @@ startupLog.info(`System admin ready: ${systemAdmin.email}`);
 // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
 await runDataMigrations();
 startupLog.info("Data migrations completed");
+
+const modelGatewayRuntime = createModelGatewayRuntime();
+if (modelGatewayRuntime) {
+  await modelGatewayRuntime.services.provider.ensureProvider();
+  setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
+  modelGatewayRuntime.reconcile.start();
+  startupLog.info("Model gateway runtime initialized");
+} else {
+  // Provider 投影即使未配置管理凭证也需要存在，便于管理端显示待配置状态。
+  await createSystemModelGatewayProviderService(
+    {},
+    {
+      baseUrl: config.modelGatewayPublicBaseUrl,
+      gatewayType: config.modelGatewayType,
+    },
+  ).ensureProvider();
+}
 
 // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
 // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
@@ -152,7 +173,7 @@ const app = new Elysia({
   .use(createWebOpenApiPlugin(config.version))
   .derive(deriveRequestId)
   .onBeforeHandle(logRequest)
-  .onAfterHandle(logResponse)
+  .onAfterResponse(logResponse)
   .onAfterHandle(injectRequestId)
   // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
   // 在链中先执行，命中时返回 index.html 终止链；errorPlugin 对所有错误返回 JSON
@@ -223,6 +244,7 @@ const app = new Elysia({
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
   .use(apiSystemLogsRoutes)
+  .use(apiSystemModelGatewayRoutes)
   .use(apiSystemObserverRoutes)
   .use(apiSystemPeopleTreeRoutes)
   .use(apiSandboxRoutes)
@@ -284,6 +306,7 @@ async function gracefulShutdown(signal: string) {
   closeAllFileWsConnections();
   await stopAllInstances();
   schedulerService.stop();
+  modelGatewayRuntime?.reconcile.stop();
   await closeCache();
   await pgClient.end();
   process.exit(0);

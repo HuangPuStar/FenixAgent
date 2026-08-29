@@ -7,6 +7,12 @@ function makeEnv(skillDir: string): Env {
   return {
     DATABASE_URL: "postgres://u:p@h:5432/db",
     RCS_API_KEYS: "test-key",
+    RCS_MODEL_GATEWAY_TYPE: "litellm",
+    RCS_MODEL_GATEWAY_BASE_URL: "http://localhost:4000",
+    RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: undefined,
+    RCS_MODEL_GATEWAY_ADMIN_UI_URL: "http://localhost:4000/ui/",
+    RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON: "0 3 * * *",
+    RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE: "Asia/Shanghai",
     NODE_ENV: "test",
     RCS_HOST: "0.0.0.0",
     RCS_PORT: 3000,
@@ -66,5 +72,20 @@ describe("skill dir config", () => {
   test("relative SKILL_DIR is resolved from cwd", () => {
     applyEnv(makeEnv("./tmp-skills"));
     expect(config.skillDir).toBe(resolve("./tmp-skills"));
+  });
+});
+
+describe("model gateway endpoint config", () => {
+  // 未配置 Agent 公开地址时，Provider 地址回退为管理地址。
+  test("public model gateway URL falls back to management URL", () => {
+    applyEnv(makeEnv("/tmp/rcs-skills"));
+    expect(config.modelGatewayPublicBaseUrl).toBe("http://localhost:4000");
+  });
+
+  // 公开地址配置后，Fenix 管理调用地址保持独立。
+  test("public model gateway URL can be configured independently", () => {
+    applyEnv({ ...makeEnv("/tmp/rcs-skills"), RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: "http://host.docker.internal:4000" });
+    expect(config.modelGatewayBaseUrl).toBe("http://localhost:4000");
+    expect(config.modelGatewayPublicBaseUrl).toBe("http://host.docker.internal:4000");
   });
 });

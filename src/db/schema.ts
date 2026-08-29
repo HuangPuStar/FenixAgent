@@ -15,6 +15,12 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
+export const providerKindEnum = pgEnum("provider_kind", ["direct", "gateway"]);
+export const modelGatewayCredentialStatusEnum = pgEnum("model_gateway_credential_status", [
+  "active",
+  "blocked",
+  "error",
+]);
 export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
   "provider",
   "skill",
@@ -450,6 +456,8 @@ export const provider = pgTable(
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
     displayName: varchar("display_name"),
+    kind: providerKindEnum("kind").notNull().default("direct"),
+    gatewayType: varchar("gateway_type"),
     protocol: providerProtocolEnum("protocol").notNull().default("openai"),
     baseUrl: text("base_url"),
     apiKey: text("api_key"),
@@ -483,6 +491,34 @@ export const model = pgTable(
   (table) => ({
     providerModelIdx: uniqueIndex("idx_model_provider_model").on(table.providerId, table.modelId),
     orgModelIdx: uniqueIndex("idx_model_org_provider_model").on(table.organizationId, table.providerId, table.modelId),
+  }),
+);
+
+// 模型网关凭证映射：主体删除后仍保留，用于夜间对账和历史用量归属。
+export const modelGatewayCredential = pgTable(
+  "model_gateway_credential",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gatewayProviderId: uuid("gateway_provider_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    userId: text("user_id").notNull(),
+    agentConfigId: uuid("agent_config_id").notNull(),
+    externalCredentialId: text("external_credential_id").notNull(),
+    encryptedCredential: text("encrypted_credential"),
+    status: modelGatewayCredentialStatusEnum("status").notNull().default("active"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    subjectIdx: uniqueIndex("idx_model_gateway_credential_subject").on(
+      table.gatewayProviderId,
+      table.organizationId,
+      table.userId,
+      table.agentConfigId,
+    ),
+    externalIdIdx: index("idx_model_gateway_credential_external_id").on(table.externalCredentialId),
+    statusIdIdx: index("idx_model_gateway_credential_status_id").on(table.status, table.id),
   }),
 );
 

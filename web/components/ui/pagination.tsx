@@ -9,13 +9,23 @@ interface PaginationProps {
   pageSize: number;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  translationPrefix?: string;
   /** 翻译函数 */
   t: (key: string, opts?: Record<string, unknown>) => string;
 }
 
 const PAGE_SIZES = [20, 50, 100];
 
-export function Pagination({ page, totalPages, total, pageSize, onPageChange, onPageSizeChange, t }: PaginationProps) {
+export function Pagination({
+  page,
+  totalPages,
+  total,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  translationPrefix = "runs",
+  t,
+}: PaginationProps) {
   // 生成页码列表（含省略号）
   const getPageNumbers = useCallback((): (number | "ellipsis")[] => {
     if (totalPages <= 7) {
@@ -37,7 +47,7 @@ export function Pagination({ page, totalPages, total, pageSize, onPageChange, on
     <div className="flex items-center justify-between gap-4 py-3">
       {/* 左侧：总数 + pageSize 切换 */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-muted-foreground">{t("runs.pagination_total", { total })}</span>
+        <span className="text-xs text-muted-foreground">{t(`${translationPrefix}.pagination_total`, { total })}</span>
         {onPageSizeChange && (
           <select
             value={pageSize}
@@ -49,7 +59,7 @@ export function Pagination({ page, totalPages, total, pageSize, onPageChange, on
           >
             {PAGE_SIZES.map((s) => (
               <option key={s} value={s}>
-                {t("runs.pagination_page_size", { size: s })}
+                {t(`${translationPrefix}.pagination_page_size`, { size: s })}
               </option>
             ))}
           </select>

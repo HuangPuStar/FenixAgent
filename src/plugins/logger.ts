@@ -83,19 +83,34 @@ export function logRequest({ request }: { request: Request }) {
   }
 }
 
-/** 请求结束日志。挂到主 app 的 onAfterHandle 上。 */
-export function logResponse({ request, set }: { request: Request; set: { status?: number | string } }) {
+/** 请求结束日志。挂到主 app 的 onAfterResponse 上，以读取最终 HTTP 状态码。 */
+export function logResponse({
+  request,
+  set,
+  responseValue,
+  response,
+}: {
+  request: Request;
+  set: { status?: number | string };
+  responseValue?: unknown;
+  /** Elysia 1.4.x 当前 afterHandle 运行时仍通过 response 提供原始响应值。 */
+  response?: unknown;
+}) {
   // biome-ignore lint/suspicious/noExplicitAny: custom request property
   const start = (request as any).__startTime as number | undefined;
   // biome-ignore lint/suspicious/noExplicitAny: custom request property
   const id = (request as any).__requestId as string;
   const ms = start != null ? performance.now() - start : -1;
-  const status = typeof set.status === "number" ? set.status : 200;
+  const status = resolveResponseStatus(set.status, responseValue ?? response);
   const url = new URL(request.url);
   if (url.pathname === "/health") return;
 
   const msg = `${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id}]`;
-  if (isPollingPath(url.pathname)) {
+  if (status >= 500) {
+    logger.error(msg);
+  } else if (status >= 400) {
+    logger.warn(msg);
+  } else if (isPollingPath(url.pathname)) {
     logger.debug(msg);
   } else {
     logger.info(msg);
@@ -105,6 +120,21 @@ export function logResponse({ request, set }: { request: Request; set: { status?
       logger.warn(`SLOW REQUEST ${request.method} ${url.pathname} ${ms.toFixed(0)}ms [${id}]`);
     }
   }
+}
+
+/**
+ * 从统一响应日志层解析最终状态码。
+ * Elysia 会在 afterHandle 之后才把 custom status response 映射到 `set.status`，
+ * 因此必须在 afterResponse 阶段读取，避免把实际 4xx/5xx 记录为 200。
+ */
+function resolveResponseStatus(setStatus: number | string | undefined, responseValue: unknown): number {
+  if (typeof setStatus === "number") return setStatus;
+  if (responseValue instanceof Response) return responseValue.status;
+  if (typeof responseValue === "object" && responseValue !== null && "code" in responseValue) {
+    const customStatus = responseValue.code;
+    if (typeof customStatus === "number") return customStatus;
+  }
+  return 200;
 }
 
 /**

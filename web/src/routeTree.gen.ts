@@ -19,6 +19,7 @@ import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
 import { Route as AdminSandboxRouteImport } from "./routes/admin/sandbox"
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
+import { Route as AdminModelGatewayRouteImport } from "./routes/admin/model-gateway"
 import { Route as AdminLogsRouteImport } from "./routes/admin/logs"
 import { Route as AgentPanelIndexRouteImport } from "./routes/agent/_panel/index"
 import { Route as AgentPanelWorkflowRouteImport } from "./routes/agent/_panel/workflow"
@@ -39,6 +40,7 @@ import { Route as AgentPanelApikeysRouteImport } from "./routes/agent/_panel/api
 import { Route as AgentPanelAlgorithmsRouteImport } from "./routes/agent/_panel/algorithms"
 import { Route as AgentPanelAgentsRouteImport } from "./routes/agent/_panel/agents"
 import { Route as AgentAgentIdSessionIdRouteImport } from "./routes/agent/$agentId_.$sessionId"
+import { Route as AgentPanelModelGatewayUsageProviderIdRouteImport } from "./routes/agent/_panel/model-gateway-usage.$providerId"
 import { Route as AgentPanelChatAgentIdRouteImport } from "./routes/agent/_panel/chat.$agentId"
 import { Route as AgentPanelWorkflowIdVersionsRouteImport } from "./routes/agent/_panel/workflow_.$id.versions"
 import { Route as AgentPanelWorkflowIdEditRouteImport } from "./routes/agent/_panel/workflow_.$id.edit"
@@ -92,6 +94,11 @@ const AdminSandboxRoute = AdminSandboxRouteImport.update({
 const AdminPeopleRoute = AdminPeopleRouteImport.update({
   id: "/people",
   path: "/people",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminModelGatewayRoute = AdminModelGatewayRouteImport.update({
+  id: "/model-gateway",
+  path: "/model-gateway",
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminLogsRoute = AdminLogsRouteImport.update({
@@ -196,6 +203,12 @@ const AgentAgentIdSessionIdRoute = AgentAgentIdSessionIdRouteImport.update({
   path: "/agent/$agentId/$sessionId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentPanelModelGatewayUsageProviderIdRoute =
+  AgentPanelModelGatewayUsageProviderIdRouteImport.update({
+    id: "/model-gateway-usage/$providerId",
+    path: "/model-gateway-usage/$providerId",
+    getParentRoute: () => AgentPanelRoute,
+  } as any)
 const AgentPanelChatAgentIdRoute = AgentPanelChatAgentIdRouteImport.update({
   id: "/chat/$agentId",
   path: "/chat/$agentId",
@@ -226,6 +239,7 @@ export interface FileRoutesByFullPath {
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
+  "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
@@ -252,6 +266,7 @@ export interface FileRoutesByFullPath {
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent/": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
   "/agent/workflow/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
@@ -261,6 +276,7 @@ export interface FileRoutesByTo {
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
+  "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
@@ -286,6 +302,7 @@ export interface FileRoutesByTo {
   "/agent/workflow": typeof AgentPanelWorkflowRoute
   "/agent": typeof AgentPanelIndexRoute
   "/agent/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/chat/$agentId/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/workflow/$id/edit": typeof AgentPanelWorkflowIdEditRoute
   "/agent/workflow/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
@@ -297,6 +314,7 @@ export interface FileRoutesById {
   "/login": typeof LoginRoute
   "/no-access": typeof NoAccessRoute
   "/admin/logs": typeof AdminLogsRoute
+  "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
@@ -323,6 +341,7 @@ export interface FileRoutesById {
   "/agent/_panel/workflow": typeof AgentPanelWorkflowRoute
   "/agent/_panel/": typeof AgentPanelIndexRoute
   "/agent/_panel/chat/$agentId": typeof AgentPanelChatAgentIdRoute
+  "/agent/_panel/model-gateway-usage/$providerId": typeof AgentPanelModelGatewayUsageProviderIdRoute
   "/agent/_panel/chat/$agentId_/$sessionId": typeof AgentPanelChatAgentIdSessionIdRoute
   "/agent/_panel/workflow_/$id/edit": typeof AgentPanelWorkflowIdEditRoute
   "/agent/_panel/workflow_/$id/versions": typeof AgentPanelWorkflowIdVersionsRoute
@@ -335,6 +354,7 @@ export interface FileRouteTypes {
     | "/login"
     | "/no-access"
     | "/admin/logs"
+    | "/admin/model-gateway"
     | "/admin/people"
     | "/admin/sandbox"
     | "/agent/$agentId"
@@ -361,6 +381,7 @@ export interface FileRouteTypes {
     | "/agent/workflow"
     | "/agent/"
     | "/agent/chat/$agentId"
+    | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
     | "/agent/workflow/$id/edit"
     | "/agent/workflow/$id/versions"
@@ -370,6 +391,7 @@ export interface FileRouteTypes {
     | "/login"
     | "/no-access"
     | "/admin/logs"
+    | "/admin/model-gateway"
     | "/admin/people"
     | "/admin/sandbox"
     | "/agent/$agentId"
@@ -395,6 +417,7 @@ export interface FileRouteTypes {
     | "/agent/workflow"
     | "/agent"
     | "/agent/chat/$agentId"
+    | "/agent/model-gateway-usage/$providerId"
     | "/agent/chat/$agentId/$sessionId"
     | "/agent/workflow/$id/edit"
     | "/agent/workflow/$id/versions"
@@ -405,6 +428,7 @@ export interface FileRouteTypes {
     | "/login"
     | "/no-access"
     | "/admin/logs"
+    | "/admin/model-gateway"
     | "/admin/people"
     | "/admin/sandbox"
     | "/agent/$agentId"
@@ -431,6 +455,7 @@ export interface FileRouteTypes {
     | "/agent/_panel/workflow"
     | "/agent/_panel/"
     | "/agent/_panel/chat/$agentId"
+    | "/agent/_panel/model-gateway-usage/$providerId"
     | "/agent/_panel/chat/$agentId_/$sessionId"
     | "/agent/_panel/workflow_/$id/edit"
     | "/agent/_panel/workflow_/$id/versions"
@@ -517,6 +542,13 @@ declare module "@tanstack/react-router" {
       path: "/people"
       fullPath: "/admin/people"
       preLoaderRoute: typeof AdminPeopleRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/model-gateway": {
+      id: "/admin/model-gateway"
+      path: "/model-gateway"
+      fullPath: "/admin/model-gateway"
+      preLoaderRoute: typeof AdminModelGatewayRouteImport
       parentRoute: typeof AdminRoute
     }
     "/admin/logs": {
@@ -659,6 +691,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AgentAgentIdSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/agent/_panel/model-gateway-usage/$providerId": {
+      id: "/agent/_panel/model-gateway-usage/$providerId"
+      path: "/model-gateway-usage/$providerId"
+      fullPath: "/agent/model-gateway-usage/$providerId"
+      preLoaderRoute: typeof AgentPanelModelGatewayUsageProviderIdRouteImport
+      parentRoute: typeof AgentPanelRoute
+    }
     "/agent/_panel/chat/$agentId": {
       id: "/agent/_panel/chat/$agentId"
       path: "/chat/$agentId"
@@ -692,6 +731,7 @@ declare module "@tanstack/react-router" {
 
 interface AdminRouteChildren {
   AdminLogsRoute: typeof AdminLogsRoute
+  AdminModelGatewayRoute: typeof AdminModelGatewayRoute
   AdminPeopleRoute: typeof AdminPeopleRoute
   AdminSandboxRoute: typeof AdminSandboxRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -699,6 +739,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLogsRoute: AdminLogsRoute,
+  AdminModelGatewayRoute: AdminModelGatewayRoute,
   AdminPeopleRoute: AdminPeopleRoute,
   AdminSandboxRoute: AdminSandboxRoute,
   AdminIndexRoute: AdminIndexRoute,
@@ -726,6 +767,7 @@ interface AgentPanelRouteChildren {
   AgentPanelWorkflowRoute: typeof AgentPanelWorkflowRoute
   AgentPanelIndexRoute: typeof AgentPanelIndexRoute
   AgentPanelChatAgentIdRoute: typeof AgentPanelChatAgentIdRoute
+  AgentPanelModelGatewayUsageProviderIdRoute: typeof AgentPanelModelGatewayUsageProviderIdRoute
   AgentPanelChatAgentIdSessionIdRoute: typeof AgentPanelChatAgentIdSessionIdRoute
   AgentPanelWorkflowIdEditRoute: typeof AgentPanelWorkflowIdEditRoute
   AgentPanelWorkflowIdVersionsRoute: typeof AgentPanelWorkflowIdVersionsRoute
@@ -751,6 +793,8 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelWorkflowRoute: AgentPanelWorkflowRoute,
   AgentPanelIndexRoute: AgentPanelIndexRoute,
   AgentPanelChatAgentIdRoute: AgentPanelChatAgentIdRoute,
+  AgentPanelModelGatewayUsageProviderIdRoute:
+    AgentPanelModelGatewayUsageProviderIdRoute,
   AgentPanelChatAgentIdSessionIdRoute: AgentPanelChatAgentIdSessionIdRoute,
   AgentPanelWorkflowIdEditRoute: AgentPanelWorkflowIdEditRoute,
   AgentPanelWorkflowIdVersionsRoute: AgentPanelWorkflowIdVersionsRoute,

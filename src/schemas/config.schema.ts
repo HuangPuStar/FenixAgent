@@ -57,6 +57,8 @@ export const ConfigBodySchema = z
 // ── Providers ──
 
 export const ProviderInfoSchema = z.object({
+  /** 数据库主键；配置读写仍使用 id（Provider name）。 */
+  providerId: z.string(),
   id: z.string(),
   name: z.string(),
   protocol: z.enum(["openai", "anthropic"]),
