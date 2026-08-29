@@ -244,6 +244,7 @@ const app = new Elysia({
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
   .use(apiSystemLogsRoutes)
+  .use(apiSystemModelGatewayRoutes)
   .use(apiSystemObserverRoutes)
   .use(apiSystemPeopleTreeRoutes)
   .use(apiSandboxRoutes)
