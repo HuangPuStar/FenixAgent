@@ -59,6 +59,8 @@
   "restarting": "Restarting...",
   "restartSuccess": "Instance restarted",
   "restartFailed": "Restart failed: {{message}}",
+  "restartFailedSaved": "Configuration was saved, but restart failed: {{message}}",
+  "restartPartialFailed": "{{failed}} of {{total}} instances failed to restart",
   "stopSuccess": "Instance stopped",
   "noInstancesToRestart": "No running instances to restart",
   "restartTitle": "Restart Agent Instances",

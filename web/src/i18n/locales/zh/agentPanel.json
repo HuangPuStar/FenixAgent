@@ -58,6 +58,8 @@
   "restarting": "重启中...",
   "restartSuccess": "实例已重启",
   "restartFailed": "重启失败: {{message}}",
+  "restartFailedSaved": "配置已保存，但重启失败: {{message}}",
+  "restartPartialFailed": "共 {{total}} 个实例，其中 {{failed}} 个重启失败",
   "stopSuccess": "实例已停止",
   "noInstancesToRestart": "没有运行中的实例可重启",
   "restartTitle": "重启智能体实例",

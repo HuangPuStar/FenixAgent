@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 
 import { ChatComposer } from "../../components/chat/ChatComposer";
+import { CommandMenu } from "../../components/chat/CommandMenu";
 import i18n from "../i18n";
 
 function renderComposer(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): string {
@@ -70,6 +71,28 @@ describe("ChatComposer 服务端渲染", () => {
     expect(html).toContain("chatComposer.commandButton");
     expect(html).toContain("lucide-blocks");
     expect(html).toContain("lucide-paperclip");
+  });
+
+  // 命令菜单必须可独立渲染，避免键盘导航状态重构残留未定义变量导致整个聊天页崩溃。
+  test("命令菜单渲染时不访问未定义的导航状态", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        I18nextProvider,
+        { i18n },
+        createElement(CommandMenu, {
+          commands: [{ name: "review", description: "审查代码" }],
+          mcps: [{ id: "filesystem", name: "Filesystem", description: "读取工作区" }],
+          filter: "",
+          showSearch: true,
+          onSelect: () => {},
+          onClose: () => {},
+        }),
+      ),
+    );
+
+    expect(html).toContain("/review");
+    expect(html).toContain("Filesystem");
+    expect(html).toContain('data-active="true"');
   });
 
   // 协议真实 token 用量只显示绝对值，不伪造上下文百分比。

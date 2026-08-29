@@ -1,17 +1,13 @@
 import type { PermissionRequest } from "@fenix/chat-channel";
-import { parseTodosFromRawInput } from "../../src/lib/todo";
 import { classifyToolSemantic } from "../../src/lib/tool-semantic";
-import type { PendingPermission, ThreadEntry } from "../../src/lib/types";
+import type { PendingPermission, ThreadEntry, TodoItem } from "../../src/lib/types";
 
-/** 从当前消息投影读取最后一次 TodoWrite 的真实状态。 */
-export function deriveTodoItems(entries: ThreadEntry[]) {
+/** 从当前消息投影读取最新的标准 ACP plan 完整快照。 */
+export function deriveTodoItems(entries: ThreadEntry[]): TodoItem[] {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry.type !== "tool_call") continue;
-    const { toolCall } = entry;
-    if (toolCall.semantic === "todo" && toolCall.rawInput) {
-      return parseTodosFromRawInput(toolCall.rawInput);
-    }
+    if (entry.type !== "plan") continue;
+    return entry.entries.map((item) => ({ content: item.content, status: item.status }));
   }
   return [];
 }

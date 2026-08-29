@@ -162,6 +162,7 @@ export function structuredToThreadEntries(messages: StructuredMessage[]): Thread
       }
 
       case "plan":
+        entries.push({ type: "plan", id: m.id, turnId: m.turnId, entries: m.entries });
         break;
 
       default:

@@ -219,31 +219,31 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
               {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
             </div>
           )}
-          {visibleText && (
-            <div className="chat-message-actions" role="group" aria-label={t("messageBubble.actions")}>
-              <button
-                type="button"
-                title={t("messageBubble.copy")}
-                aria-label={t("messageBubble.copy")}
-                onClick={() => void navigator.clipboard.writeText(visibleText)}
-              >
-                <Copy />
-              </button>
-              <button
-                type="button"
-                title={t("messageBubble.quote")}
-                aria-label={t("messageBubble.quote")}
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
-                  )
-                }
-              >
-                <Quote />
-              </button>
-            </div>
-          )}
         </div>
+        {visibleText && (
+          <div className="chat-message-actions" role="group" aria-label={t("messageBubble.actions")}>
+            <button
+              type="button"
+              title={t("messageBubble.copy")}
+              aria-label={t("messageBubble.copy")}
+              onClick={() => void navigator.clipboard.writeText(visibleText)}
+            >
+              <Copy />
+            </button>
+            <button
+              type="button"
+              title={t("messageBubble.quote")}
+              aria-label={t("messageBubble.quote")}
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
+                )
+              }
+            >
+              <Quote />
+            </button>
+          </div>
+        )}
       </div>
     </MessageEmitterContext.Provider>
   );

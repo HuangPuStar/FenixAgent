@@ -63,9 +63,11 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
   const RowIcon = isError ? CircleX : Icon;
   const hasSubEntries = (tool.subEntries?.length ?? 0) > 0;
 
-  const hasParams =
+  const hasParams = Boolean(
     (tool.rawInput && Object.keys(tool.rawInput).length > 0) ||
-    (!isRunning && !isPending && (tool.rawOutput || tool.content));
+      (!isRunning && !isPending && (tool.rawOutput || tool.content)),
+  );
+  const hasDetails = hasParams && !isPending;
 
   // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput。
   const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
@@ -73,8 +75,8 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
   const canPreviewFile = previewPath && supportsFilePreview(kind);
 
   const openDialog = useCallback(() => {
-    if (hasParams && !isPending) setDialogOpen(true);
-  }, [hasParams, isPending]);
+    if (hasDetails) setDialogOpen(true);
+  }, [hasDetails]);
 
   // 点击预览按钮：发送事件通知 ArtifactsPanel 展开并打开文件预览
   const handlePreviewFile = useCallback(() => {
@@ -84,81 +86,71 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
 
   return (
     <div>
-      {/* 卡片主体 */}
       <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
-        {/* 图标 */}
-        <div className="tool-call-row-icon" aria-hidden>
-          {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
-        </div>
-
-        {/* 工具内容 — 渲染 narrate 结果 */}
-        <div className="tool-call-row-copy">
-          <strong title={titleText}>{result.title}</strong>
-          <div>
-            <span className="truncate">{result.subtitle}</span>
-            {result.badge && (
-              <span
-                className={cn(
-                  "text-[10px] shrink-0",
-                  result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
-                  result.badge.tone === "error" && "text-status-error",
-                  result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
-                  result.badge.tone === "info" && "text-text-dim",
-                )}
-              >
-                {result.badge.text}
-              </span>
-            )}
-          </div>
-          {/* 错误细节单独一行 */}
-          {result.errorDetail && (
-            <div className="text-[10px] text-status-error/80 mt-0.5 truncate" title={result.errorDetail}>
-              {result.errorDetail}
-            </div>
-          )}
-        </div>
-
-        {/* 右侧状态标签 */}
-        <span
-          className={cn(
-            "tool-call-row-status text-[10px] font-medium shrink-0",
-            isError && "text-status-error",
-            isPending && "text-brand",
-            isCanceled && "text-text-dim",
-            !isError && !isPending && !isCanceled && "text-text-dim",
-          )}
+        {/* 整行只在确有详情时可交互；disabled 由 native button 语义统一暴露。 */}
+        <button
+          type="button"
+          className="chat-tool-call-row"
+          data-kind={kind}
+          disabled={!hasDetails}
+          onClick={openDialog}
         >
-          {result.statusLabel}
-        </span>
+          <span className="tool-call-row-icon" aria-hidden>
+            {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
+          </span>
 
-        {/* 文件预览按钮：仅 Read、Edit、Write 工具显示 */}
+          <span className="tool-call-row-copy">
+            <span className="tool-call-row-heading">
+              <strong title={titleText}>{result.title}</strong>
+              {result.errorDetail && (
+                <span className="tool-call-row-error" title={result.errorDetail}>
+                  {result.errorDetail}
+                </span>
+              )}
+            </span>
+            <span className="tool-call-row-meta">
+              <span className="truncate">{result.subtitle}</span>
+              {result.badge && (
+                <span
+                  className={cn(
+                    "text-[10px] shrink-0",
+                    result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
+                    result.badge.tone === "error" && "text-status-error",
+                    result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
+                    result.badge.tone === "info" && "text-text-dim",
+                  )}
+                >
+                  {result.badge.text}
+                </span>
+              )}
+            </span>
+          </span>
+
+          <span
+            className={cn(
+              "tool-call-row-status text-[10px] font-medium shrink-0",
+              isError && "text-status-error",
+              isPending && "text-brand",
+              isCanceled && "text-text-dim",
+              !isError && !isPending && !isCanceled && "text-text-dim",
+            )}
+          >
+            {result.statusLabel}
+          </span>
+
+          {hasDetails && <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />}
+        </button>
+
+        {/* 文件预览是独立操作，不嵌套在整行 button 中。 */}
         {canPreviewFile && !isPending && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handlePreviewFile();
-            }}
+            onClick={handlePreviewFile}
             className="h-6 px-2 gap-1 rounded-md flex items-center shrink-0 text-xs text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
             title={tComponents("toolCallRow.previewFile", { path: previewPath })}
           >
             <ExternalLink className="h-3 w-3" />
             <span>{tComponents("toolCallRow.openFile", "打开文件")}</span>
-          </button>
-        )}
-
-        {/* 参数弹窗按钮 */}
-        {hasParams && !isPending && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openDialog();
-            }}
-            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-text-dim hover:text-text-muted hover:bg-surface-2/80 transition-colors"
-            title={tComponents("toolCallRow.viewParams")}
-          >
-            <CodeXml className="h-3 w-3" />
           </button>
         )}
       </div>

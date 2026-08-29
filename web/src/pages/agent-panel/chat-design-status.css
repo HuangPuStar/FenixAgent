@@ -3,13 +3,16 @@
 .chat-interaction-stack,
 .chat-status-panel {
   width: min(760px, calc(100% - 32px));
-  margin: 0 auto 8px;
+  margin: 0 auto;
 }
 .chat-interaction-region,
 .chat-status-panel {
+  /* 用户权威：半圆，只有上半有圆角 */
   overflow: hidden;
-  border: 1px solid #dde4ee;
-  border-radius: 14px;
+  border-width: 1px 1px 0 1px;
+  border-color: #dde4ee;
+  border-style: solid;
+  border-radius: 14px 14px 0 0;
   background: #fff;
   box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
 }

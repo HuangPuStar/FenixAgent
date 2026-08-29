@@ -5,6 +5,8 @@ import { Message, MessageContent, MessageResponse } from "../../components/ai-el
 import { UserBubble } from "../../components/chat/MessageBubble";
 import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
 import { SystemMessage } from "../../components/chat/SystemMessage";
+import componentsEN from "../i18n/locales/en/components.json";
+import componentsZH from "../i18n/locales/zh/components.json";
 
 async function renderStreaming(element: ReactNode) {
   const stream = await renderToReadableStream(element);
@@ -106,15 +108,20 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("<table");
   });
 
-  // 系统消息默认仅输出标签；原文仅在客户端双击触发的 Popover 中展示。
-  test("系统消息默认不展示原始提示或浮层内容", () => {
+  // 系统消息只展示标签，并与助手消息正文左边界对齐；原始注入内容不得暴露。
+  test("系统消息左对齐且不暴露原始内容", () => {
     const markup = renderToStaticMarkup(
-      createElement(SystemMessage, { rawText: "<system-reminder>仅双击后显示</system-reminder>" }),
+      createElement(SystemMessage, { rawText: "<system-reminder>不可展示</system-reminder>" }),
     );
 
-    expect(markup).toContain("messageBubble.systemMessage");
-    expect(markup).not.toContain("仅双击后显示");
-    expect(markup).not.toContain('data-slot="popover-content"');
+    expect(markup).toContain('class="flex justify-start"');
+    expect(markup).not.toContain("不可展示");
+  });
+
+  // system-reminder 标签必须提供中英文资源，不能在中文界面继续显示硬编码英文。
+  test("系统消息标签提供中英文翻译", () => {
+    expect(componentsZH.messageBubble.systemMessage).toBe("系统提醒");
+    expect(componentsEN.messageBubble.systemMessage).toBe("SYSTEM REMINDER");
   });
 
   // 子 Agent 详情默认折叠，只展示执行轨迹摘要，避免占满父工具调用。

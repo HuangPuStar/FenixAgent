@@ -41,7 +41,7 @@ export const ChatView = React.memo(
     const finalEmptyDescription = emptyDescription ?? t("chatView.startConversationDesc");
     // 将相邻的 ToolCallEntry 合并为一组；memo 化避免 isLoading 等无关 prop 变化时重复 O(N) 分组
     const renderBlocks = useMemo(() => buildChatRenderBlocks(entries), [entries]);
-    const hasMessages = entries.length > 0;
+    const hasMessages = renderBlocks.length > 0;
     // 滚动按钮只关心是否存在用户消息，memo 化避免每次渲染全量扫描
     const hasUserMessages = useMemo(() => entries.some((e) => e.type === "user_message"), [entries]);
     const userEntries = useMemo(
@@ -223,6 +223,8 @@ const EntryRenderer = React.memo(
         return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
       case "tool_call":
         return <ToolCallGroup entries={[entry as ToolCallEntry]} />;
+      case "plan":
+        return null;
       default:
         return null;
     }

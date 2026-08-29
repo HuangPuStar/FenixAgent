@@ -1,9 +1,10 @@
 import type { AvailableCommand } from "@fenix/chat-channel";
 import { CheckCircle2, Plug, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
+import { useRovingListNavigation } from "../ui/use-roving-list-navigation";
 
 export interface McpOption {
   id: string;
@@ -52,7 +53,6 @@ export function CommandMenu({
 }: CommandMenuProps) {
   const { t } = useTranslation("components");
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const effectiveFilter = showSearch ? searchQuery : filter;
 
@@ -69,6 +69,30 @@ export function CommandMenu({
     );
   }, [effectiveFilter, mcps]);
 
+  const navigationKeys = useMemo(
+    () => [
+      ...filteredCommands.map((command) => `skill:${command.name}`),
+      ...filteredMcps.map((mcp) => `mcp:${mcp.id}`),
+    ],
+    [filteredCommands, filteredMcps],
+  );
+  const handleNavigationSelect = useCallback(
+    (key: string) => {
+      if (key.startsWith("skill:")) {
+        const command = filteredCommands.find((item) => `skill:${item.name}` === key);
+        if (command) onSelect(command);
+        return;
+      }
+      const mcp = filteredMcps.find((item) => `mcp:${item.id}` === key);
+      if (mcp) onToggleMcp?.(mcp);
+    },
+    [filteredCommands, filteredMcps, onSelect, onToggleMcp],
+  );
+  const { activeKey, setActiveKey, registerItem, handleKeyDown } = useRovingListNavigation({
+    itemKeys: navigationKeys,
+    onSelect: handleNavigationSelect,
+  });
+
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) onClose();
@@ -78,26 +102,9 @@ export function CommandMenu({
   }, [onClose]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") {
-        if (event.shiftKey && event.key === "Enter") return;
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      if (filteredCommands.length === 0) return;
-
-      if (event.key === "ArrowDown") {
-        setActiveIndex((current) => (current + 1) % filteredCommands.length);
-      } else if (event.key === "ArrowUp") {
-        setActiveIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
-      } else if (event.key === "Enter") {
-        const command = filteredCommands[activeIndex];
-        if (command) onSelect(command);
-      }
-    };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeIndex, filteredCommands, onSelect]);
+  }, [handleKeyDown]);
 
   const empty = filteredCommands.length === 0 && filteredMcps.length === 0;
 
@@ -110,10 +117,7 @@ export function CommandMenu({
             type="text"
             placeholder={t("commandMenu.searchPlaceholder")}
             value={searchQuery}
-            onChange={(event) => {
-              setSearchQuery(event.target.value);
-              setActiveIndex(0);
-            }}
+            onChange={(event) => setSearchQuery(event.target.value)}
             className="chat-command-menu-input"
             autoFocus
           />
@@ -133,17 +137,20 @@ export function CommandMenu({
                       <span>{t("commandMenu.skillsCaption")}</span>
                     </div>
                   )}
-                  {filteredCommands.map((command, index) => {
+                  {filteredCommands.map((command) => {
+                    const navigationKey = `skill:${command.name}`;
+                    const active = navigationKey === activeKey;
                     const selected = selectedCommandNames.has(command.name);
                     return (
                       <button
+                        ref={registerItem(navigationKey)}
                         key={command.name}
                         type="button"
-                        data-active={index === activeIndex}
+                        data-active={active}
                         aria-pressed={selected}
                         onClick={() => onSelect(command)}
-                        onMouseEnter={() => setActiveIndex(index)}
-                        className={`chat-command-menu-item${index === activeIndex ? " is-active" : ""}${selected ? " is-selected" : ""}`}
+                        onMouseEnter={() => setActiveKey(navigationKey)}
+                        className={`chat-command-menu-item${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
                       >
                         <span className="chat-command-menu-name">/{command.name}</span>
                         <span className="chat-command-menu-description">{command.description}</span>
@@ -161,14 +168,19 @@ export function CommandMenu({
                     <span>{t("commandMenu.mcpsCaption")}</span>
                   </div>
                   {filteredMcps.map((mcp) => {
+                    const navigationKey = `mcp:${mcp.id}`;
+                    const active = navigationKey === activeKey;
                     const selected = selectedMcpIds.has(mcp.id);
                     return (
                       <button
+                        ref={registerItem(navigationKey)}
                         key={mcp.id}
                         type="button"
+                        data-active={active}
                         aria-pressed={selected}
                         onClick={() => onToggleMcp?.(mcp)}
-                        className={`chat-command-menu-item chat-command-menu-mcp${selected ? " is-selected" : ""}`}
+                        onMouseEnter={() => setActiveKey(navigationKey)}
+                        className={`chat-command-menu-item chat-command-menu-mcp${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
                       >
                         <Plug className="chat-command-menu-mcp-icon" />
                         <span className="chat-command-menu-name">{mcp.name}</span>

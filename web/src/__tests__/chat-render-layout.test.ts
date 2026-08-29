@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { deriveTodoItems } from "../../components/chat/chat-derived-state";
 import { buildChatRenderBlocks, buildChatRenderItems } from "../../components/chat/chat-render-layout";
 import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "../lib/types";
 
@@ -52,5 +53,34 @@ describe("Chat 渲染布局 ViewModel", () => {
     expect(items[0]?.density).toBe("normal");
     expect(items[1]?.density).toBe("activity");
     expect(items[2]?.density).toBe("activity");
+  });
+
+  // 标准 ACP Plan 只进入独立状态区，不能出现在消息时间线或打断工具活动链。
+  test("plan 从时间线隐藏并由独立 Todo 区消费", () => {
+    const plan: ThreadEntry = {
+      type: "plan",
+      id: "plan:turn_1",
+      turnId: "turn_1",
+      entries: [{ content: "检查", priority: "medium", status: "pending" }],
+    };
+
+    const items = buildChatRenderItems([tool("read"), plan, tool("write")]);
+
+    expect(items.map((item) => item.type)).toEqual(["tool_group"]);
+    expect(items[0]?.type === "tool_group" ? items[0].entries : []).toHaveLength(2);
+    expect(buildChatRenderBlocks([tool("read"), plan, tool("write")])).toHaveLength(1);
+    expect(deriveTodoItems([plan])).toEqual([{ content: "检查", status: "pending" }]);
+  });
+
+  // 最新 Plan 是完整快照，空 entries 必须清空独立 Todo 区而不能回退到旧快照。
+  test("独立 Todo 区消费最新 Plan 完整快照", () => {
+    const previous: ThreadEntry = {
+      type: "plan",
+      id: "plan:turn_1",
+      entries: [{ content: "旧任务", priority: "medium", status: "in_progress" }],
+    };
+    const cleared: ThreadEntry = { type: "plan", id: "plan:turn_2", entries: [] };
+
+    expect(deriveTodoItems([previous, message("answer"), cleared])).toEqual([]);
   });
 });

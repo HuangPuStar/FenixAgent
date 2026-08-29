@@ -30,7 +30,10 @@ describe("ToolCallRow 服务端渲染", () => {
 
     expect(html).toContain("common.subtitle");
     expect(html).toContain("common.status.complete");
-    expect(html).toContain("toolCallRow.viewParams");
+    expect(html).toContain('class="chat-tool-call-row"');
+    expect(html).toContain('data-kind="read-file"');
+    expect(html).not.toContain('class="chat-tool-call-row" data-kind="read-file" disabled=""');
+    expect(html).toContain("toolCallRow.previewFile");
   });
 
   // 运行中的工具需要展示进行中状态，避免被误认为已成功结束。
@@ -53,8 +56,38 @@ describe("ToolCallRow 服务端渲染", () => {
     );
 
     expect(html).toContain("没有写入权限");
+    expect(html).toContain("tool-call-row-heading");
+    expect(html).toContain('class="tool-call-row-error"');
     expect(html).toContain("common.status.error");
     expect(html).toContain("toolCallRow.previewFile");
+  });
+
+  // 无参数和结果的行没有详情可打开，native button 必须禁用且不能伪装成可点击行。
+  test("无详情工具行使用 disabled 语义", () => {
+    const html = renderTool(
+      tool({
+        title: "Bash",
+        kind: "bash",
+        status: "running",
+        rawInput: undefined,
+        rawOutput: undefined,
+        content: undefined,
+      }),
+    );
+
+    expect(html).toContain('class="chat-tool-call-row" data-kind="bash" disabled=""');
+  });
+
+  // data-kind 只描述工具语义；即使 kind 相同，有详情与无详情仍由 disabled 决定交互性。
+  test("同一 kind 的交互性由详情状态决定", () => {
+    const enabled = renderTool(tool({ kind: "unknown", rawInput: { value: 1 } }));
+    const disabled = renderTool(
+      tool({ kind: "unknown", status: "running", rawInput: undefined, rawOutput: undefined, content: undefined }),
+    );
+
+    expect(enabled).toContain('data-kind="unknown"');
+    expect(enabled).not.toContain('data-kind="unknown" disabled=""');
+    expect(disabled).toContain('data-kind="unknown" disabled=""');
   });
 
   // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。

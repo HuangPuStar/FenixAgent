@@ -21,9 +21,10 @@
 }
 
 .chat-assistant-message {
+  position: relative;
   min-width: 0;
 }
-.chat-assistant-message > div {
+.chat-assistant-message > .chat-assistant-chunks {
   width: 100%;
 }
 
@@ -86,9 +87,20 @@
 }
 
 .chat-message-actions {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% - 2px);
+  left: 0;
   display: flex;
   gap: 3px;
-  margin-top: 4px;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid #e4eaf2;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-2px);
@@ -103,11 +115,6 @@
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
-}
-
-.chat-assistant-chunks > .chat-message-actions {
-  width: max-content;
-  margin-top: -10px;
 }
 
 .chat-message-actions button {
@@ -231,13 +238,45 @@
 .tool-call-row-compact {
   display: grid;
   /* min-height: 38px; */
-  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   padding: 2px;
   border-radius: 6px;
   /* background: #fff; */
 }
+
+.chat-tool-call-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  border-radius: 6px;
+  color: inherit;
+  text-align: left;
+}
+
+.chat-tool-call-row:not(:disabled) {
+  cursor: pointer;
+}
+
+.chat-tool-call-row:disabled {
+  cursor: default;
+}
+
+.chat-tool-call-row:focus-visible {
+  outline: 2px solid #8aa4c7;
+  outline-offset: 2px;
+}
+
+.chat-tool-call-row-details-icon {
+  width: 13px;
+  height: 13px;
+  color: #8a96a8;
+}
+
 .tool-call-row-compact:hover {
   background: #f7f9fc;
 }
@@ -299,17 +338,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tool-call-row-copy > div {
+.tool-call-row-heading,
+.tool-call-row-meta {
   display: flex;
   min-width: 0;
+  align-items: baseline;
   gap: 5px;
   overflow: hidden;
-  color: #8a96a8;
-  font-size: 11px;
 }
 
-.tool-call-row-copy > div.text-status-error\/80 {
-  grid-column: 1 / -1;
+.tool-call-row-heading {
+  gap: 9px;
+}
+
+.tool-call-row-error {
+  min-width: 0;
+  overflow: hidden;
+  color: #d5534f;
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
@@ -318,7 +367,7 @@
     gap: 1px;
   }
 
-  .tool-call-row-copy > div {
+  .tool-call-row-meta {
     display: none;
   }
 }

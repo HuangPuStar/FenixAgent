@@ -33,6 +33,8 @@ export function buildChatRenderItems(entries: readonly ThreadEntry[]): ChatRende
   };
 
   for (const entry of entries) {
+    // 标准 ACP plan 由输入区上方的 ChatStatusPanel 独立展示，不进入消息时间线。
+    if (entry.type === "plan") continue;
     if (entry.type === "tool_call") {
       currentToolGroup.push(entry);
       continue;
