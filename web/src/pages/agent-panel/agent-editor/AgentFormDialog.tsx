@@ -407,12 +407,15 @@ function AgentEditorBody(
 /** 创建与移动端使用模态容器；桌面编辑是局部 portal 中的非模态工作区。 */
 export function AgentFormDialog(props: AgentFormDialogProps) {
   const { t } = useTranslation(NS.AGENTS);
+  const [mounted, setMounted] = useState(false);
   const mobile = useMobileEditor(props.open);
   const closeHandlerRef = useRef<() => void>(() => props.onOpenChange(false));
   const openerRef = useRef<HTMLElement | null>(null);
   const registerCloseHandler = useCallback((handler: () => void) => {
     closeHandlerRef.current = handler;
   }, []);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (props.open) {
@@ -424,6 +427,8 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
       openerRef.current?.focus();
     }
   }, [mobile, props.open]);
+
+  if (!mounted || !props.open || typeof document === "undefined") return null;
 
   if (mobile)
     return (
@@ -452,7 +457,6 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
       </Sheet>
     );
 
-  if (!props.open || typeof document === "undefined") return null;
   const host = props.portalContainer ?? document.body;
   const dialogTitle = props.mode === "create" ? t("dialog.createTitle") : t("dialog.editTitle");
   return createPortal(

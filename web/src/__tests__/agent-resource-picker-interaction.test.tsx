@@ -136,7 +136,7 @@ describe("AgentResourcePicker 组件交互", () => {
         />,
       ),
     );
-    const [decrease, increase] = Array.from(container.querySelectorAll("button"));
+    const [decrease, increase] = Array.from(container.querySelectorAll<"button">("button"));
     expect(increase.disabled).toBe(true);
     act(() => decrease.click());
     expect(values).toEqual([19]);
@@ -163,7 +163,7 @@ describe("AgentResourcePicker 组件交互", () => {
       root?.render(<EditorPagination page={0} pageSize={5} total={12} onPageChange={(page) => pages.push(page)} />),
     );
     expect(container.textContent).toContain("1–5 / 12");
-    const buttons = Array.from(container.querySelectorAll("button"));
+    const buttons = Array.from(container.querySelectorAll<"button">("button"));
     expect(buttons[0].disabled).toBe(true);
     act(() => buttons[1].click());
     expect(pages).toEqual([1]);
@@ -176,9 +176,11 @@ describe("AgentResourcePicker 组件交互", () => {
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<PickerFixture />));
     const labels = () =>
-      Array.from(container.querySelectorAll(".agent-resource-picker__list strong"), (item) => item.textContent);
+      Array.from(container.querySelectorAll("strong"), (item) => item.textContent).filter(
+        (label) => label === "Alpha" || label === "Beta",
+      );
     expect(labels()).toEqual(["Alpha", "Beta"]);
-    const beta = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-slot='checkbox']")).find(
+    const beta = Array.from(container.querySelectorAll<"button">("button")).find(
       (item) => item.getAttribute("aria-label") === "Beta",
     );
     await act(async () => beta?.click());
@@ -248,9 +250,9 @@ describe("AgentResourcePicker 组件交互", () => {
     win.document.body.appendChild(container);
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<UnavailablePickerFixture />));
-    const buttons = Array.from(container.querySelectorAll("button"));
+    const buttons = Array.from(container.querySelectorAll<"button">("button"));
     const chip = buttons.find((button) => button.classList.contains("is-unavailable"));
-    const checkboxes = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-slot='checkbox']"));
+    const checkboxes = Array.from(container.querySelectorAll<"button">("button"));
     const hidden = checkboxes.find(
       (checkbox) => checkbox.getAttribute("aria-label") === "editor.removeUnavailableResource",
     );
@@ -268,7 +270,7 @@ describe("AgentResourcePicker 组件交互", () => {
     win.document.body.appendChild(container);
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<CapabilitiesFixture />));
-    const tabs = Array.from(container.querySelectorAll("button")).filter(
+    const tabs = Array.from(container.querySelectorAll<"button">("button")).filter(
       (button) => button.getAttribute("role") === "tab",
     );
     expect(tabs[0].getAttribute("aria-controls")).toBeTruthy();

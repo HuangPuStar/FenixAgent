@@ -25,8 +25,12 @@ describe("Agent Editor 关闭保护与分页", () => {
   // 重启多个 environment 时必须逐个携带权威 environment ID，并去除重复通知。
   test("逐个派发 reconnect environment ID", () => {
     const details: unknown[] = [];
-    const target = new EventTarget();
-    target.addEventListener("agent:reconnect", (event) => details.push((event as CustomEvent).detail));
+    const target = {
+      dispatchEvent(event: Event) {
+        details.push((event as CustomEvent).detail);
+        return true;
+      },
+    };
     dispatchAgentReconnect(["env-a", "env-b", "env-a"], target);
     expect(details).toEqual([{ envId: "env-a" }, { envId: "env-b" }]);
   });

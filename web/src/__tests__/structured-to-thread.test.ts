@@ -19,7 +19,11 @@ import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from ".
 
 let pair: DocPair;
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: Exclude<NormalizedEvent["type"], "peri_task_started" | "peri_task_completed" | "peri_task_cancelled">,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return { type, update, content: (update.content as Record<string, unknown>) ?? null, turnId };
 }
 

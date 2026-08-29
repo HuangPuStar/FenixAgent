@@ -110,8 +110,19 @@ describe("AgentFormDialog 补充模型选项转换", () => {
     ["显示名含表情", "model-emoji-name", "提供商", "助手", "model-emoji-name", "提供商/助手"],
     ["提供商保留大小写", "model-case-provider", "OpenAI", "模型", "model-case-provider", "OpenAI/模型"],
     ["显示名保留大小写", "model-case-name", "提供商", "GPT-Next", "model-case-name", "提供商/GPT-Next"],
-  ])("保留本组织模型的%s", (_caseName, id, providerDisplayName, displayName, value, label) => {
-    expect(mapModelOptions([model({ id, providerDisplayName, displayName })])).toEqual([{ value, label }]);
+  ])("保留本组织模型的%s", (_caseName, id, providerDisplayName, displayName, value) => {
+    expect(mapModelOptions([model({ id, providerDisplayName, displayName })])).toEqual([
+      {
+        value,
+        label: displayName,
+        modelId: "model-name",
+        group: {
+          id: "organization:provider-name",
+          label: providerDisplayName,
+          scope: "organization",
+        },
+      },
+    ]);
   });
 
   // 共享模型应在所有边界下保留来源组织前缀。
@@ -136,12 +147,19 @@ describe("AgentFormDialog 补充模型选项转换", () => {
     ["共享显示名含表情", "Team A", "Provider", "助手", "Team A/Provider/助手"],
     ["共享组织保留前导空格", " Team", "Provider", "Model", " Team/Provider/Model"],
     ["共享组织保留尾随空格", "Team ", "Provider", "Model", "Team /Provider/Model"],
-  ])("拼接共享模型的%s", (_caseName, sourceOrganizationName, providerDisplayName, displayName, label) => {
+  ])("拼接共享模型的%s", (_caseName, sourceOrganizationName, providerDisplayName, displayName) => {
     expect(
       mapModelOptions([
         model({ providerDisplayName, displayName, providerResourceAccess: access({ sourceOrganizationName }) }),
       ]),
-    ).toEqual([{ value: "model-id", label }]);
+    ).toEqual([
+      {
+        value: "model-id",
+        label: displayName,
+        modelId: "model-name",
+        group: { id: "source-org:provider-name", label: providerDisplayName, scope: "shared" },
+      },
+    ]);
   });
 });
 

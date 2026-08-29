@@ -23,6 +23,10 @@ class SnapshotPersistenceDouble {
     return Promise.resolve("OK");
   }
 
+  get(): Promise<string> {
+    return Promise.resolve("gen-1");
+  }
+
   getBuffer(): Promise<Buffer | null> {
     return Promise.resolve(this.redis.stored ? Buffer.from(this.redis.stored) : null);
   }
@@ -81,10 +85,10 @@ describe("persistClearedSessionSnapshot", () => {
     source.getMap("root").set("agent", new Y.Map());
     const redis = new SnapshotRedisDouble();
 
-    await persistClearedSessionSnapshot(redis as never, "yjs:session:rcs-1", source);
+    await persistClearedSessionSnapshot(redis as never, "rcs-1", "gen-1", source);
 
     expect(redis.writes).toHaveLength(1);
-    expect(redis.writes[0]?.key).toBe("yjs:session:rcs-1");
+    expect(redis.writes[0]?.key).toMatch(/^yjs:\{rcs-[A-Za-z0-9_-]+\}:session:/);
     expect(redis.writes[0]?.value).toBeInstanceOf(Buffer);
     expect(redis.writes[0]?.ttlSeconds).toBeGreaterThan(0); // SP-C1：快照写入附带滑动 TTL
     expect(redis.persistences[0]?.watchCalls).toBe(1);
@@ -116,7 +120,7 @@ describe("persistClearedSessionSnapshot", () => {
     (currentRoot.get("pendingPermissions") as Y.Map<unknown>).set("p1", new Y.Map());
     const redis = new SnapshotRedisDouble(undefined, Buffer.from(Y.encodeStateAsUpdate(current)));
 
-    await persistClearedSessionSnapshot(redis as never, "yjs:session:rcs-1", source);
+    await persistClearedSessionSnapshot(redis as never, "rcs-1", "gen-1", source);
 
     Y.applyUpdate(restored, redis.writes[0]?.value ?? Buffer.alloc(0));
     const restoredRoot = restored.getMap("root");
@@ -136,7 +140,8 @@ describe("persistClearedSessionSnapshot", () => {
     await expect(
       persistClearedSessionSnapshot(
         new SnapshotRedisDouble(new Error("Redis unavailable")) as never,
-        "yjs:session:rcs-1",
+        "rcs-1",
+        "gen-1",
         source,
       ),
     ).rejects.toThrow("Redis unavailable");

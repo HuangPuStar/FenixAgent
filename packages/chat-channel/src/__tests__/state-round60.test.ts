@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import * as Y from "yjs";
+import { buildRedisProviderKeys } from "../persist/redis";
 import {
   mergeYjsSnapshotWithCas,
   persistYjsClearedSnapshotWithCas,
@@ -103,6 +104,16 @@ function snapshotValue(snapshot: Buffer, key: string): unknown {
 
 function clearState(doc: Y.Doc): void {
   doc.getMap("state").clear();
+}
+
+function prepareClearedTarget(
+  storage: MemorySnapshotConnection,
+  rcsSessionId: string,
+  generation: string,
+): { target: { rcsSessionId: string; generation: string }; snapshotKey: string } {
+  const keys = buildRedisProviderKeys(`session:${rcsSessionId}`, generation);
+  storage.strings.set(keys.activeGenerationKey, generation);
+  return { target: { rcsSessionId, generation }, snapshotKey: keys.snapshotKey };
 }
 
 // 空快照写入必须仅持久化当前会话键，并保留指定的 TTL。
@@ -243,13 +254,14 @@ test("清理快照删除状态而保留无关数据", async () => {
   const source = new Y.Doc();
   source.getMap("state").set("message", "remove");
   source.getMap("metadata").set("owner", "keep");
-  storage.values.set("snapshot:clear", Buffer.from(Y.encodeStateAsUpdate(source)));
-  source.destroy();
   const redis = new MemoryRedis(storage);
+  const { target, snapshotKey } = prepareClearedTarget(storage, "clear", "gen-clear");
+  storage.values.set(snapshotKey, Buffer.from(Y.encodeStateAsUpdate(source)));
+  source.destroy();
 
   const persisted = await persistYjsClearedSnapshotWithCas(
     redis as never,
-    "snapshot:clear",
+    target,
     updateWith("baseline", "also-remove"),
     clearState,
     42,
@@ -267,13 +279,14 @@ test("清理快照删除状态而保留无关数据", async () => {
 // 清理 CAS 冲突后必须重新读取并清除冲突期间新写入的内容。
 test("清理快照冲突重试不会带回并发内容", async () => {
   const storage = new MemorySnapshotConnection([null, [[null, "OK"]]]);
-  storage.values.set("snapshot:clear", Buffer.from(updateWith("old", "remove")));
-  storage.onConflict = () => storage.values.set("snapshot:clear", Buffer.from(updateWith("concurrent", "remove-too")));
   const redis = new MemoryRedis(storage);
+  const { target, snapshotKey } = prepareClearedTarget(storage, "clear-conflict", "gen-clear-conflict");
+  storage.values.set(snapshotKey, Buffer.from(updateWith("old", "remove")));
+  storage.onConflict = () => storage.values.set(snapshotKey, Buffer.from(updateWith("concurrent", "remove-too")));
 
   const persisted = await persistYjsClearedSnapshotWithCas(
     redis as never,
-    "snapshot:clear",
+    target,
     updateWith("baseline", "remove-baseline"),
     clearState,
     43,
@@ -287,12 +300,13 @@ test("清理快照冲突重试不会带回并发内容", async () => {
 // 清理路径也必须兼容旧版 base64 快照。
 test("清理快照兼容旧版 base64 输入", async () => {
   const storage = new MemorySnapshotConnection();
-  storage.values.set("snapshot:legacy-clear", Buffer.from(Buffer.from(updateWith("old", "remove")).toString("base64")));
   const redis = new MemoryRedis(storage);
+  const { target, snapshotKey } = prepareClearedTarget(storage, "legacy-clear", "gen-legacy-clear");
+  storage.values.set(snapshotKey, Buffer.from(Buffer.from(updateWith("old", "remove")).toString("base64")));
 
   const persisted = await persistYjsClearedSnapshotWithCas(
     redis as never,
-    "snapshot:legacy-clear",
+    target,
     updateWith("baseline", "remove"),
     clearState,
     44,
@@ -306,9 +320,10 @@ test("清理快照兼容旧版 base64 输入", async () => {
 test("清理回调失败时释放监听和临时连接", async () => {
   const storage = new MemorySnapshotConnection();
   const redis = new MemoryRedis(storage);
+  const { target } = prepareClearedTarget(storage, "clear-error", "gen-clear-error");
 
   await expect(
-    persistYjsClearedSnapshotWithCas(redis as never, "snapshot:clear-error", updateWith("message", "x"), () => {
+    persistYjsClearedSnapshotWithCas(redis as never, target, updateWith("message", "x"), () => {
       throw new Error("clear failed");
     }),
   ).rejects.toThrow("clear failed");
@@ -321,10 +336,11 @@ test("清理回调失败时释放监听和临时连接", async () => {
 test("清理快照冲突耗尽后断开临时连接", async () => {
   const storage = new MemorySnapshotConnection([null, null, null, null, null]);
   const redis = new MemoryRedis(storage);
+  const { target } = prepareClearedTarget(storage, "clear-conflict-exhausted", "gen-clear-conflict-exhausted");
 
   const persisted = await persistYjsClearedSnapshotWithCas(
     redis as never,
-    "snapshot:clear-conflict",
+    target,
     updateWith("message", "x"),
     clearState,
     45,

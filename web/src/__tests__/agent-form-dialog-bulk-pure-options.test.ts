@@ -153,7 +153,14 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
       displayName,
     });
 
-    expect(mapModelOptions([entry])).toEqual([{ value: entry.id, label: `Open AI/${displayName}` }]);
+    expect(mapModelOptions([entry])).toEqual([
+      {
+        value: entry.id,
+        label: displayName,
+        modelId: "model-name",
+        group: { id: "organization:provider-name", label: "Open AI", scope: "organization" },
+      },
+    ]);
   });
 
   // 共享模型标签应在各种来源名称下包含来源组织上下文。
@@ -164,9 +171,14 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
       displayName: "Model",
       providerResourceAccess: resourceAccess({ sourceOrganizationName }),
     });
-    const expectedLabel = sourceOrganizationName ? `${sourceOrganizationName}/Provider/Model` : "Provider/Model";
-
-    expect(mapModelOptions([entry])).toEqual([{ value: entry.id, label: expectedLabel }]);
+    expect(mapModelOptions([entry])).toEqual([
+      {
+        value: entry.id,
+        label: "Model",
+        modelId: "model-name",
+        group: { id: "source-org:provider-name", label: "Provider", scope: "shared" },
+      },
+    ]);
   });
 
   // 模型映射不得重排输入或合并重复显示名。
@@ -178,9 +190,24 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
     ];
 
     expect(mapModelOptions(entries)).toEqual([
-      { value: "one", label: "P1/重复" },
-      { value: "two", label: "P2/重复" },
-      { value: "three", label: "P3/末尾" },
+      {
+        value: "one",
+        label: "重复",
+        modelId: "model-name",
+        group: { id: "organization:provider-name", label: "P1", scope: "organization" },
+      },
+      {
+        value: "two",
+        label: "重复",
+        modelId: "model-name",
+        group: { id: "organization:provider-name", label: "P2", scope: "organization" },
+      },
+      {
+        value: "three",
+        label: "末尾",
+        modelId: "model-name",
+        group: { id: "organization:provider-name", label: "P3", scope: "organization" },
+      },
     ]);
   });
 });
