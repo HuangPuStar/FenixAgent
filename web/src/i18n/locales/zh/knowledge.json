@@ -49,6 +49,7 @@
   },
   "validation": {
     "nameRequired": "名称为必填项",
+    "embeddingModelRequired": "请选择向量模型",
     "embeddingModelFormat": "向量模型格式错误：需要从下拉列表中选择（格式: <模型名>@<实例名>@<厂商名>）"
   },
   "toast": {

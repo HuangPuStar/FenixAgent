@@ -1,6 +1,18 @@
 .agent-knowledge-page {
   color: #17233a;
 }
+.knowledge-workspace {
+  margin-top: 18px;
+}
+.knowledge-page-header-skeleton {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e4eaf2;
+}
 .knowledge-directory {
   padding: 18px 10px;
 }
@@ -281,5 +293,103 @@
   }
   .knowledge-directory {
     display: none;
+  }
+}
+
+.knowledge-model-dialog {
+  display: flex;
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  max-height: min(720px, calc(100vh - 48px));
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+.knowledge-model-dialog__header {
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #e4eaf2;
+}
+.knowledge-model-dialog__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #17233a;
+  font-size: 17px;
+}
+.knowledge-model-dialog__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #dbe5f1;
+  border-radius: 9px;
+  background: #f4f7fb;
+  color: #53657e;
+}
+.knowledge-model-dialog__icon svg {
+  width: 17px;
+  height: 17px;
+}
+.knowledge-model-dialog__header [data-slot="dialog-description"] {
+  padding-left: 44px;
+  color: #8492a8;
+  font-size: 12px;
+  line-height: 18px;
+}
+.knowledge-model-dialog__body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 22px;
+}
+.embedding-model-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.embedding-model-toolbar {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.embedding-model-toolbar p {
+  color: #8492a8;
+  font-size: 12px;
+}
+.embedding-model-toolbar svg {
+  width: 15px;
+  height: 15px;
+}
+.embedding-model-tree {
+  overflow: hidden;
+  border: 1px solid #e1e7f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.embedding-model-manager--dialog .embedding-model-tree > div {
+  border-color: #edf1f6;
+}
+.embedding-model-manager--dialog .embedding-model-tree button:hover {
+  background: #f7f9fc;
+}
+
+@media (max-width: 640px) {
+  .knowledge-model-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+  .knowledge-model-dialog__header {
+    padding: 18px 18px 14px;
+  }
+  .knowledge-model-dialog__header [data-slot="dialog-description"] {
+    padding-left: 0;
+  }
+  .knowledge-model-dialog__body {
+    padding: 14px 18px 18px;
   }
 }

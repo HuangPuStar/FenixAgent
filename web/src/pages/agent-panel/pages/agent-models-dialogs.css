@@ -170,13 +170,6 @@
   .models-provider-index > header {
     display: none;
   }
-  .models-provider-index nav {
-    display: flex;
-    overflow-x: auto;
-  }
-  .models-provider-index nav > button {
-    min-width: 220px;
-  }
   .models-provider-connection {
     grid-template-columns: 1fr 1fr;
   }

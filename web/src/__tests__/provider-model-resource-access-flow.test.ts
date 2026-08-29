@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
@@ -154,10 +154,19 @@ describe("provider model resource access flow", () => {
     ]);
   });
 
-  // AgentFormDialog 保存模型 UUID，并展示由前端拼接的 provider/source 文案
+  // Agent Editor 保存模型 UUID，并以 Provider 分组展示短模型名称和品牌标识。
   test("agent form model options use modelId and display name", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "model-uuid-shared", label: "Source Team/OpenAI Shared/Shared Model" },
+      {
+        value: "model-uuid-shared",
+        label: "Shared Model",
+        modelId: "shared-model",
+        group: {
+          id: "org-source:org-source/provider-external",
+          label: "OpenAI Shared",
+          scope: "shared",
+        },
+      },
     ]);
   });
 

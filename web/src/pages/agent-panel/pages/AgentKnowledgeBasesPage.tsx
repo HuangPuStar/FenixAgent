@@ -35,6 +35,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/knowledge-bases";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import { ChunkDetailSheet } from "@/src/pages/agent-panel/components/ChunkDetailSheet";
 import { EmbeddingModelManager } from "@/src/pages/agent-panel/components/EmbeddingModelManager";
@@ -433,16 +435,15 @@ export function AgentKnowledgeBasesPage() {
   // 加载中骨架屏
   if (loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f7f8fa] px-6 py-6 text-[#0f172a]">
-        <div className="mb-8 flex items-end justify-between">
+      <AppPage className="agent-knowledge-page" busy>
+        <div className="knowledge-page-header-skeleton">
           <div>
             <Skeleton className="h-7 w-28 rounded-lg" />
             <Skeleton className="mt-2 h-3.5 w-56 rounded-md" />
           </div>
-          <Skeleton className="h-10 w-[260px] rounded-xl" />
+          <Skeleton className="h-9 w-[260px] rounded-lg" />
         </div>
-        <div className="mb-6 h-px bg-gradient-to-r from-transparent via-[#e2e8f0] to-transparent" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }, (_, i) => `kb-skeleton-${i}`).map((placeholderKey) => (
             <div
               key={placeholderKey}
@@ -460,7 +461,7 @@ export function AgentKnowledgeBasesPage() {
             </div>
           ))}
         </div>
-      </div>
+      </AppPage>
     );
   }
 
@@ -486,39 +487,32 @@ export function AgentKnowledgeBasesPage() {
   const canManageDetail = selectedDetail ? session?.user?.id === selectedDetail.userId || isOrgOwner : false;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f8fa] px-4 py-4 text-[#0f172a] sm:px-6 sm:py-6">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight text-[#0f172a]">{t("title")}</h1>
-          <p className="mt-1.5 text-[13px] text-[#94a3b8]">{t("subtitle")}</p>
-        </div>
-        {canManage && (
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <Button
-              onClick={openCreateDialog}
-              className="h-9 gap-2 rounded-lg bg-[#6366f1] text-[13px] hover:bg-[#5558e6]"
-            >
-              <Plus className="h-4 w-4" />
-              {t("btn.create")}
-            </Button>
-            <Button
-              onClick={() => setModelDialogOpen(true)}
-              variant="outline"
-              className="h-9 gap-2 rounded-lg text-[13px]"
-            >
-              <Cpu className="h-4 w-4" />
-              {t("toolbar.embeddingModels")}
-            </Button>
-            <Button onClick={openImportDialog} variant="outline" className="h-9 gap-2 rounded-lg text-[13px]">
-              <Download className="h-4 w-4" />
-              {t("toolbar.importRagflow")}
-            </Button>
-          </div>
-        )}
-      </div>
+    <AppPage className="agent-knowledge-page" busy>
+      <AppHeader
+        title={t("title")}
+        subtitle={t("subtitle")}
+        actions={
+          canManage ? (
+            <>
+              <Button onClick={openCreateDialog}>
+                <Plus />
+                {t("btn.create")}
+              </Button>
+              <Button onClick={() => setModelDialogOpen(true)} variant="outline">
+                <Cpu />
+                {t("toolbar.embeddingModels")}
+              </Button>
+              <Button onClick={openImportDialog} variant="outline">
+                <Download />
+                {t("toolbar.importRagflow")}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       <AgentMasterDetailWorkspace
-        className="flex-1"
+        className="knowledge-workspace flex-1"
         index={
           <AgentKnowledgeDirectory
             items={items}
@@ -737,15 +731,17 @@ export function AgentKnowledgeBasesPage() {
 
       {/* 向量模型管理弹窗 */}
       <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
-        <DialogContent className="sm:max-w-[1100px] w-[92vw] h-[82vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#eef2f6] shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-[18px]">
-              <Cpu className="h-5 w-5 text-[#6366f1]" />
+        <DialogContent className="knowledge-model-dialog">
+          <DialogHeader className="knowledge-model-dialog__header">
+            <DialogTitle className="knowledge-model-dialog__title">
+              <span className="knowledge-model-dialog__icon">
+                <Cpu />
+              </span>
               {t("toolbar.embeddingModelManager")}
             </DialogTitle>
-            <DialogDescription className="text-[12px]">{t("toolbar.embeddingModelDescription")}</DialogDescription>
+            <DialogDescription>{t("toolbar.embeddingModelDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+          <div className="knowledge-model-dialog__body">
             <EmbeddingModelManager canManage={canManage} inDialog onModelsChanged={refreshFormOptions} />
           </div>
         </DialogContent>
@@ -770,8 +766,12 @@ export function AgentKnowledgeBasesPage() {
           }
           // 创建模式：透传嵌入模型 / 解析方法 / 分块方法
           const embeddingModel = formEmbeddingModel || null;
+          if (!embeddingModel) {
+            toast.error(t("validation.embeddingModelRequired"));
+            return;
+          }
           // 前端校验：嵌入模型必须含 @（RagFlow v0.26 要求 model@provider 格式）
-          if (embeddingModel && !embeddingModel.includes("@")) {
+          if (!embeddingModel.includes("@")) {
             toast.error(t("validation.embeddingModelFormat") || "向量模型格式不对，必须包含@");
             return;
           }
@@ -819,7 +819,7 @@ export function AgentKnowledgeBasesPage() {
               <p className="text-[12px] text-[#94a3b8]">{t("form.configLockedAfterCreate")}</p>
 
               {/* 嵌入模型 */}
-              <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")}>
+              <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")} required>
                 <Select
                   value={formEmbeddingModel}
                   onValueChange={setFormEmbeddingModel}
@@ -1175,7 +1175,7 @@ export function AgentKnowledgeBasesPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppPage>
   );
 }
 

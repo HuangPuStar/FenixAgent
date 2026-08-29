@@ -49,6 +49,7 @@
   },
   "validation": {
     "nameRequired": "Name is required",
+    "embeddingModelRequired": "Please select an embedding model",
     "embeddingModelFormat": "Embedding model format error: please select from the dropdown (format: <model>@<instance>@<provider>)"
   },
   "toast": {
