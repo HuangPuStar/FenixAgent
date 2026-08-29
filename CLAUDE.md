@@ -77,7 +77,7 @@ bun run dev:web                     # 前端开发
 bun run build:web                   # 前端生产构建
 bun run docs:dev                    # 文档开发
 bun run docs:build                  # 文档构建
-bun run precheck                    # format、import-sort、server/web tsc、lint、后端测试
+bun run precheck                    # format、import-sort、architecture、server/web tsc、lint、后端测试
 bun run db:generate --name <name>   # 生成 Drizzle 迁移
 bun run db:migrate                  # 执行迁移
 ```
