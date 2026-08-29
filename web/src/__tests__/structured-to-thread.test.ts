@@ -19,7 +19,11 @@ import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from ".
 
 let pair: DocPair;
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: Exclude<NormalizedEvent["type"], "peri_task_started" | "peri_task_completed" | "peri_task_cancelled">,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return { type, update, content: (update.content as Record<string, unknown>) ?? null, turnId };
 }
 
@@ -79,22 +83,81 @@ describe("chatDocEntriesToStructuredMessages", () => {
     expect(assistant.chunks).toEqual([{ type: "message", text: "ab" }]);
   });
 
-  // Plan 是状态同步数据而非消息流内容，转换层必须忽略，避免渲染执行计划组件。
-  test("ignores plan snapshots", () => {
+  // 标准 Plan 必须保留完整快照及稳定标识，供时间线复用 Todo 视觉展示。
+  test("保留 plan 快照", () => {
     const entries = structuredToThreadEntries([
       {
         type: "plan",
-        id: "plan:turn_1:0",
+        id: "plan:turn_1",
+        turnId: "turn_1",
         entries: [{ content: "inspect files", priority: "medium", status: "in_progress" }],
-      },
-      {
-        type: "plan",
-        id: "plan:turn_1:1",
-        entries: [{ content: "inspect files", priority: "medium", status: "completed" }],
       },
     ]);
 
-    expect(entries).toEqual([]);
+    expect(entries).toEqual([
+      {
+        type: "plan",
+        id: "plan:turn_1",
+        turnId: "turn_1",
+        entries: [{ content: "inspect files", priority: "medium", status: "in_progress" }],
+      },
+    ]);
+  });
+
+  // Chat Doc 中同 turn 的后续 Plan 必须原位替换完整快照，删除旧条目而非合并。
+  test("同 turn plan 使用最新完整快照", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(
+      pair,
+      event("plan", {
+        entries: [
+          { content: "A", priority: "medium", status: "pending" },
+          { content: "B", priority: "medium", status: "pending" },
+        ],
+      }),
+    );
+    applyNormalizedEvent(pair, event("plan", { entries: [{ content: "A", priority: "medium", status: "completed" }] }));
+
+    const plans = structuredToThreadEntries(chatDocEntriesToStructuredMessages(pair.chat)).filter(
+      (entry) => entry.type === "plan",
+    );
+    expect(plans).toEqual([
+      {
+        type: "plan",
+        id: "plan:turn_1",
+        turnId: "turn_1",
+        entries: [{ content: "A", priority: "medium", status: "completed" }],
+      },
+    ]);
+  });
+
+  // 空 Plan 是清理旧状态的有效快照，必须继续投影为空列表。
+  test("空 plan 清理旧快照", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(pair, event("plan", { entries: [{ content: "A", priority: "medium", status: "pending" }] }));
+    applyNormalizedEvent(pair, event("plan", { entries: [] }));
+
+    expect(structuredToThreadEntries(chatDocEntriesToStructuredMessages(pair.chat)).at(-1)).toEqual({
+      type: "plan",
+      id: "plan:turn_1",
+      turnId: "turn_1",
+      entries: [],
+    });
+  });
+
+  // 标准 Plan 不得进入普通工具投影，避免执行计划与 TodoWrite 工具卡双重展示。
+  test("plan 不生成普通工具卡", () => {
+    applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
+    applyNormalizedEvent(
+      pair,
+      event("plan", {
+        entries: [{ content: "修复工具显示", priority: "medium", status: "in_progress" }],
+      }),
+    );
+
+    const entries = structuredToThreadEntries(chatDocEntriesToStructuredMessages(pair.chat));
+    expect(entries.some((entry) => entry.type === "tool_call")).toBe(false);
+    expect(entries.at(-1)?.type).toBe("plan");
   });
 
   // 无文本直接工具调用：不得产生空的 assistant_message（切分点仅在文本段之间）

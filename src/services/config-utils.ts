@@ -34,11 +34,11 @@ export function isValidResourceName(name: string): boolean {
   );
 }
 
-/** 从 apiKey 字段生成 keyHint：短 key 或空 key 统一返回固定 7 位掩码。 */
+/** 从 apiKey 字段生成 keyHint：仅暴露前 4 位和后 3 位，短 key 或空 key 返回固定掩码。 */
 export function toKeyHint(apiKey: string | undefined | null): string | null {
   const realKey = resolveApiKey(apiKey);
-  if (!realKey || realKey.length < 4) return "*******";
-  return `***${realKey.slice(-4)}`;
+  if (!realKey || realKey.length <= 7) return "*******";
+  return `${realKey.slice(0, 4)}***${realKey.slice(-3)}`;
 }
 
 /** 解析 apiKey：明文直接返回，{env:XXX} 引用尝试环境变量 */

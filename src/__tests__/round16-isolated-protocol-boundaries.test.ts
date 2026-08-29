@@ -158,9 +158,9 @@ describe("round16 isolated protocol and boundary coverage", () => {
     expect(resolveApiKey(null)).toBeNull();
   });
 
-  // Key hint 仅暴露末四位，短密钥统一掩码。
+  // Key hint 仅暴露前四位和后三位，短密钥统一掩码。
   test("API Key 提示掩码不泄露完整密钥", () => {
-    expect(toKeyHint("abcdefgh")).toBe("***efgh");
+    expect(toKeyHint("abcdefgh")).toBe("abcd***fgh");
     expect(toKeyHint("abc")).toBe("*******");
     expect(toKeyHint(null)).toBe("*******");
   });

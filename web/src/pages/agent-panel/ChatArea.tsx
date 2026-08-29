@@ -1,15 +1,25 @@
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  lazy,
+  type PointerEvent as ReactPointerEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { usePanelRef } from "react-resizable-panels";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
-import { cn } from "@/src/lib/utils";
+import { NS } from "@/src/i18n";
+import "./artifacts-workspace.css";
+import "./chat-layout.css";
 
 const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() => import("./ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })));
@@ -27,6 +37,29 @@ interface SessionSlot {
   sessionId: string | null;
 }
 
+type ArtifactsLayoutMode = "floating" | "docked";
+
+const ARTIFACTS_MIN_WIDTH = 320;
+const ARTIFACTS_DEFAULT_WIDTH = 520;
+const COMPACT_LAYOUT_QUERY = "(max-width: 1050px)";
+
+function readArtifactsWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem("fenix:artifacts-width"));
+    return Number.isFinite(saved) && saved >= ARTIFACTS_MIN_WIDTH ? saved : ARTIFACTS_DEFAULT_WIDTH;
+  } catch {
+    return ARTIFACTS_DEFAULT_WIDTH;
+  }
+}
+
+function readArtifactsLayout(): ArtifactsLayoutMode {
+  try {
+    return localStorage.getItem("fenix:artifacts-layout") === "docked" ? "docked" : "floating";
+  } catch {
+    return "floating";
+  }
+}
+
 /**
  * ChatArea — 始终挂载的聊天区域组件。
  *
@@ -39,11 +72,14 @@ interface SessionSlot {
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
 export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAreaProps) {
-  const { t } = useTranslation("agentPanel");
+  const { t } = useTranslation(NS.AGENT_PANEL);
 
-  const artifactsPanelRef = usePanelRef();
   const artifactsCollapsedRef = useRef(true);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
+  const [artifactsLayout, setArtifactsLayout] = useState<ArtifactsLayoutMode>(readArtifactsLayout);
+  const [artifactsWidth, setArtifactsWidth] = useState(readArtifactsWidth);
+  const [compactLayout, setCompactLayout] = useState(() => window.matchMedia(COMPACT_LAYOUT_QUERY).matches);
+  const resizeStartRef = useRef<{ pointerId: number; clientX: number; width: number } | null>(null);
 
   // 加载 environment.agentConfigId，供 ArtifactsPanel 站点绑定等功能使用。
   // 无论是否有 sessionId 都需加载——有 session 时按 agentId 拉取。
@@ -139,77 +175,98 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     );
   });
 
-  // 记录用户是否已手动操作面板（展开/折叠/拖拽），
-  // 防止 layout 重新计算时 panelRef 短暂重置导致意外 collapse
-  const userInteractedRef = useRef(false);
-
   // artifacts:select-site → 展开右侧面板
   useEffect(() => {
     const handler = () => {
       if (artifactsCollapsedRef.current) {
-        userInteractedRef.current = true;
-        artifactsPanelRef.current?.expand();
+        artifactsCollapsedRef.current = false;
+        setArtifactsCollapsed(false);
       }
     };
     window.addEventListener("artifacts:select-site", handler);
     return () => window.removeEventListener("artifacts:select-site", handler);
-  }, [artifactsPanelRef.current?.expand]);
+  }, []);
 
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
     const handler = () => {
       if (artifactsCollapsedRef.current) {
-        userInteractedRef.current = true;
-        artifactsPanelRef.current?.expand();
+        artifactsCollapsedRef.current = false;
+        setArtifactsCollapsed(false);
       }
     };
     window.addEventListener("artifacts:preview-file", handler);
     return () => window.removeEventListener("artifacts:preview-file", handler);
-  }, [artifactsPanelRef.current?.expand]);
+  }, []);
 
-  // ResizablePanel onResize 同步折叠状态
-  const handleArtifactsResize = useCallback(() => {
-    const panel = artifactsPanelRef.current;
-    if (!panel) return;
-    const collapsed = panel.isCollapsed();
-    if (collapsed !== artifactsCollapsedRef.current) {
-      artifactsCollapsedRef.current = collapsed;
-      setArtifactsCollapsed(collapsed);
-      // 用户拖拽分隔条后标记为已交互，阻止后续意外 collapse
-      if (!collapsed) userInteractedRef.current = true;
-    }
-  }, [artifactsPanelRef]);
-
-  // mount 时默认折叠右侧面板，仅首次挂载执行；
-  // ref 重置导致的二次触发会被 userInteractedRef 拦截
+  // 小屏只允许浮动模式。模式选择被保留，回到大屏时恢复用户偏好。
   useEffect(() => {
-    const panel = artifactsPanelRef.current;
-    if (!panel || userInteractedRef.current) return;
-    // 延迟到下一帧执行，避免与 ResizablePanelGroup 的 layout 计算冲突
-    const frame = requestAnimationFrame(() => {
-      panel.collapse();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [artifactsPanelRef.current?.collapse, artifactsPanelRef.current]);
-
-  // 窄屏自动折叠 — 仅在用户未手动展开时生效
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    const handler = (e: MediaQueryListEvent) => {
-      if (e.matches && !userInteractedRef.current) {
-        artifactsPanelRef.current?.collapse();
-      }
-    };
+    const mq = window.matchMedia(COMPACT_LAYOUT_QUERY);
+    const handler = (event: MediaQueryListEvent) => setCompactLayout(event.matches);
+    setCompactLayout(mq.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [artifactsPanelRef.current?.collapse]);
+  }, []);
+
+  const effectiveLayout: ArtifactsLayoutMode = compactLayout ? "floating" : artifactsLayout;
+  const workspaceStyle: CSSProperties & { "--chat-floating-artifacts-width": string } = {
+    "--chat-floating-artifacts-width":
+      effectiveLayout === "floating" && !artifactsCollapsed ? `${artifactsWidth}px` : "0px",
+  };
+
+  const clampArtifactsWidth = useCallback(
+    (width: number) => {
+      const viewportAllowance = effectiveLayout === "docked" ? window.innerWidth - 720 : window.innerWidth - 32;
+      return Math.max(ARTIFACTS_MIN_WIDTH, Math.min(width, Math.max(ARTIFACTS_MIN_WIDTH, viewportAllowance), 720));
+    },
+    [effectiveLayout],
+  );
+
+  const updateArtifactsWidth = useCallback(
+    (width: number) => {
+      const next = clampArtifactsWidth(width);
+      setArtifactsWidth(next);
+      try {
+        localStorage.setItem("fenix:artifacts-width", String(next));
+      } catch {
+        // Storage is an enhancement only; layout remains usable when it is unavailable.
+      }
+    },
+    [clampArtifactsWidth],
+  );
+
+  const handleResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const start = resizeStartRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      updateArtifactsWidth(start.width + start.clientX - event.clientX);
+    },
+    [updateArtifactsWidth],
+  );
+
+  const stopResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = resizeStartRef.current;
+    if (start && event.currentTarget.hasPointerCapture(start.pointerId)) {
+      event.currentTarget.releasePointerCapture(start.pointerId);
+    }
+    resizeStartRef.current = null;
+  }, []);
+
+  const setLayout = useCallback((layout: ArtifactsLayoutMode) => {
+    setArtifactsLayout(layout);
+    try {
+      localStorage.setItem("fenix:artifacts-layout", layout);
+    } catch {
+      // Storage is an enhancement only; the selected mode still applies for this session.
+    }
+  }, []);
 
   const toggleArtifacts = useCallback(() => {
-    const panel = artifactsPanelRef.current;
-    if (!panel) return;
-    userInteractedRef.current = true;
-    panel.isCollapsed() ? panel.expand() : panel.collapse();
-  }, [artifactsPanelRef]);
+    setArtifactsCollapsed((collapsed) => {
+      artifactsCollapsedRef.current = !collapsed;
+      return !collapsed;
+    });
+  }, []);
 
   return (
     <Suspense
@@ -220,49 +277,75 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
       }
     >
       <ChatPageVisibleContext.Provider value={visible}>
-        <div className="agent-panel-content" style={{ display: visible ? undefined : "none" }}>
-          <ResizablePanelGroup orientation="horizontal" className="agent-panel-resizable">
-            <ResizablePanel defaultSize={hasPanelModules ? 60 : 100} minSize={30}>
-              <div className="agent-chat-area">{chatPanels}</div>
-            </ResizablePanel>
-
+        <div
+          className="agent-panel-content agent-panel-content--chat"
+          style={{ display: visible ? undefined : "none" }}
+        >
+          <div className="agent-chat-workspace" data-artifacts-layout={effectiveLayout} style={workspaceStyle}>
+            <div className="agent-chat-area">{chatPanels}</div>
             {hasPanelModules && (
               <>
-                <ResizableHandle>
+                {artifactsCollapsed && (
                   <button
                     type="button"
-                    className={cn("agent-artifacts-expand-btn", !artifactsCollapsed && "open")}
+                    className="artifacts-open-button"
                     onClick={toggleArtifacts}
-                    title={artifactsCollapsed ? t("showArtifacts") : t("hideArtifacts")}
+                    title={t("showArtifacts")}
+                    aria-label={t("showArtifacts")}
                   >
-                    {artifactsCollapsed ? (
-                      <PanelRight className="h-3.5 w-3.5" />
-                    ) : (
-                      <PanelRight className="h-3.5 w-3.5 -scale-x-100" />
-                    )}
+                    <PanelRight aria-hidden />
                   </button>
-                </ResizableHandle>
-
-                <ResizablePanel
-                  panelRef={artifactsPanelRef}
-                  defaultSize="40%"
-                  minSize="20%"
-                  maxSize="70%"
-                  collapsible
-                  collapsedSize="0%"
-                  onResize={handleArtifactsResize}
+                )}
+                <aside
+                  className={`artifacts-shell${artifactsCollapsed ? " is-collapsed" : ""}`}
+                  data-layout={effectiveLayout}
+                  style={{
+                    width: artifactsWidth,
+                    flexBasis: effectiveLayout === "docked" ? artifactsWidth : undefined,
+                  }}
+                  aria-label={t("showArtifacts")}
                 >
+                  <div
+                    className="artifacts-shell__resizer"
+                    role="separator"
+                    tabIndex={0}
+                    aria-orientation="vertical"
+                    aria-label={t("resizeArtifacts")}
+                    aria-valuemin={ARTIFACTS_MIN_WIDTH}
+                    aria-valuemax={720}
+                    aria-valuenow={Math.round(artifactsWidth)}
+                    onPointerDown={(event) => {
+                      resizeStartRef.current = {
+                        pointerId: event.pointerId,
+                        clientX: event.clientX,
+                        width: artifactsWidth,
+                      };
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={handleResizeMove}
+                    onPointerUp={stopResize}
+                    onPointerCancel={stopResize}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                      event.preventDefault();
+                      updateArtifactsWidth(artifactsWidth + (event.key === "ArrowLeft" ? 16 : -16));
+                    }}
+                  />
                   <ArtifactsPanel
                     key={`${agentId}-${activeAgentRestartVersion}`}
                     envId={agentId}
                     agentConfigId={agentConfigId}
                     changedFiles={changedFiles}
                     modulesConfig={modulesConfig}
+                    layoutMode={effectiveLayout}
+                    canDock={!compactLayout}
+                    onLayoutModeChange={setLayout}
+                    onClose={toggleArtifacts}
                   />
-                </ResizablePanel>
+                </aside>
               </>
             )}
-          </ResizablePanelGroup>
+          </div>
         </div>
       </ChatPageVisibleContext.Provider>
     </Suspense>

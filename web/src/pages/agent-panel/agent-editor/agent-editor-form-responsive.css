@@ -1,0 +1,215 @@
+/* 短桌面视口下的 Agent Editor 专用布局；在基础响应规则之后加载。 */
+@media (min-width: 760px) and (max-width: 1399px) {
+  .agent-editor-root .agent-editor-workspace {
+    grid-template-columns: 168px minmax(360px, 1fr) 220px;
+  }
+  .agent-editor-root .agent-editor-summary {
+    display: block;
+    padding: 12px 10px 10px;
+  }
+  .agent-editor-root .agent-editor-map {
+    padding: 8px 7px 7px;
+  }
+  .agent-editor-root .agent-editor-map [data-slot="tabs-trigger"] {
+    min-height: 44px;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: 4px 7px;
+  }
+  .agent-editor-root .agent-editor-map-icon {
+    width: 26px;
+    height: 26px;
+  }
+  .agent-editor-root .agent-editor-map-copy strong {
+    font-size: 10px;
+  }
+  .agent-editor-root .agent-editor-content {
+    padding: 14px 18px 16px;
+  }
+  .agent-editor-root .agent-editor-section__intro {
+    margin-bottom: 20px;
+  }
+  .agent-editor-root .agent-editor-section__intro h3 {
+    font-size: 20px;
+  }
+  .agent-editor-root .agent-editor-section__intro p {
+    margin-top: 6px;
+    font-size: 10px;
+  }
+  .agent-editor-root .agent-editor-footer {
+    min-height: 52px;
+    flex-basis: 52px;
+  }
+  .agent-editor-root .agent-editor-footer__actions button {
+    height: 30px;
+  }
+}
+
+@media (min-width: 760px) and (max-height: 700px) {
+  .agent-editor-root .agent-editor-header {
+    min-height: 58px;
+    flex-basis: 58px;
+  }
+  .agent-editor-root .agent-editor-content {
+    padding-block: 12px 14px;
+  }
+  .agent-editor-root .agent-editor-section__intro {
+    margin-bottom: 12px;
+  }
+  .agent-editor-root .agent-editor-form-grid {
+    gap: 10px 12px;
+  }
+  .agent-editor-root .agent-editor-prompt-editor {
+    min-height: 112px;
+  }
+  .agent-editor-root .agent-editor-guidance {
+    margin-top: 8px;
+    font-size: 8px;
+    line-height: 1.45;
+  }
+  .agent-editor-root .agent-model-options,
+  .agent-editor-root .agent-node-list,
+  .agent-editor-root .agent-resource-picker__list {
+    max-height: 210px;
+  }
+}
+
+@media (min-width: 760px) and (max-width: 1119px) {
+  .agent-editor-root .agent-editor-workspace {
+    grid-template-columns: 148px minmax(280px, 1fr) 190px;
+  }
+  .agent-editor-root .agent-editor-map {
+    padding-inline: 6px;
+  }
+  .agent-editor-root .agent-editor-map [data-slot="tabs-trigger"] {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding-inline: 6px;
+  }
+  .agent-editor-root .agent-editor-map [data-slot="tabs-trigger"] > em,
+  .agent-editor-root .agent-editor-map-copy small,
+  .agent-editor-root .agent-editor-readiness {
+    display: none;
+  }
+  .agent-editor-root .agent-editor-summary {
+    padding: 10px 8px 8px;
+  }
+  .agent-editor-root .agent-editor-summary > p,
+  .agent-editor-root .agent-editor-summary-note,
+  .agent-editor-root .agent-editor-summary-safety {
+    display: none;
+  }
+  .agent-editor-root .agent-editor-summary-cards {
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .agent-editor-root .agent-editor-summary-cards button {
+    min-height: 48px;
+    grid-template-columns: 24px minmax(0, 1fr) 10px;
+    padding: 6px 7px;
+  }
+  .agent-editor-root .agent-editor-summary-cards button > span {
+    width: 24px;
+    height: 24px;
+  }
+  .agent-editor-root .agent-editor-content {
+    padding-inline: 12px;
+  }
+  .agent-editor-root .agent-editor-section__intro p {
+    max-width: 52ch;
+  }
+  .agent-editor-root .agent-editor-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .agent-editor-root .agent-editor-form-grid > .agent-editor-field {
+    grid-column: 1;
+  }
+  .agent-editor-root .agent-model-options {
+    grid-template-columns: 1fr;
+  }
+  .agent-editor-root .agent-editor-library-picker {
+    grid-template-columns: 110px minmax(0, 1fr);
+  }
+  .agent-editor-root .agent-editor-group-filter button {
+    padding-inline: 6px;
+  }
+  .agent-editor-root .agent-editor-summary-cards button em {
+    display: none;
+  }
+  .agent-editor-root .agent-editor-summary-cards button strong {
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .agent-editor-root .agent-resource-picker__selected {
+    min-height: 46px;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 8px;
+  }
+  .agent-editor-root .agent-resource-picker__selected small {
+    display: none;
+  }
+  .agent-editor-root .agent-resource-picker__search {
+    height: 32px;
+    padding-inline: 8px;
+  }
+  .agent-editor-root .agent-resource-picker__list {
+    max-height: 180px;
+    padding: 3px;
+  }
+  .agent-editor-root .agent-resource-picker__list > label {
+    min-height: 40px;
+    padding: 4px 6px;
+  }
+  .agent-editor-root .agent-resource-picker__list small {
+    max-width: 24ch;
+  }
+  .agent-editor-root #agent-editor-default-namespaces {
+    min-height: 72px;
+  }
+  .agent-editor-root .agent-editor-toggle-row {
+    min-height: 56px;
+    margin-top: 9px;
+    padding: 7px 9px;
+  }
+}
+
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #edf1f5;
+  padding: 0 8px;
+  color: #8996a8;
+  font-size: 8px;
+}
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination button {
+  display: grid;
+  width: 24px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid #dde4ed;
+  border-radius: 6px;
+  color: #62738b;
+  background: #fff;
+}
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination svg {
+  width: 11px;
+}
+:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination strong {
+  min-width: 36px;
+  color: #53647b;
+  text-align: center;
+}

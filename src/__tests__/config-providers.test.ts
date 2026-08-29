@@ -47,7 +47,10 @@ function setupStubs() {
       }));
     },
     getProvider: async (_ctx: any, name: string) => {
-      const p = _providers.get(name);
+      const resourceId = name.startsWith("test-team/") ? name.slice("test-team/".length) : null;
+      const p = resourceId
+        ? [..._providers.values()].find((provider) => provider.id === resourceId)
+        : _providers.get(name);
       if (!p) return null;
       return {
         ...p,
@@ -78,6 +81,21 @@ function setupStubs() {
         };
       })();
       return p;
+    },
+    updateProviderById: async (_ctx: any, providerId: string, data: any, options: { publicReadable?: boolean }) => {
+      const existing = [..._providers.values()].find((provider) => provider.id === providerId);
+      if (!existing) return false;
+      Object.assign(existing, {
+        displayName: data.displayName ?? existing.displayName,
+        protocol: data.protocol ?? existing.protocol,
+        baseUrl: data.baseUrl ?? existing.baseUrl,
+        apiKey: data.apiKey ?? existing.apiKey,
+        extraOptions: data.extraOptions ?? existing.extraOptions,
+      });
+      if (options.publicReadable !== undefined) {
+        internalAccess(existing.id).publicReadable = options.publicReadable;
+      }
+      return true;
     },
     upsertProvider: async (_ctx: any, name: string, data: any) => {
       const existing = _providers.get(name);
@@ -221,7 +239,7 @@ describe("Providers Config Route", () => {
       id: "bailian-token-plan",
       name: "",
       protocol: "openai",
-      keyHint: "***7890",
+      keyHint: "sk-a***890",
       modelCount: 2,
     });
     expect(json.data.providers[1]).toMatchObject({
@@ -263,7 +281,7 @@ describe("Providers Config Route", () => {
     expect(json.data.id).toBe("bailian-token-plan");
     expect(json.data.name).toBe("");
     expect(json.data.protocol).toBe("openai");
-    expect(json.data.keyHint).toBe("***1234");
+    expect(json.data.keyHint).toBe("sk-a***234");
     expect(json.data.models).toHaveLength(1);
     expect(json.data.models[0].id).toBe("qwen3.6-plus");
     expect("options" in json.data).toBe(false);
@@ -377,6 +395,34 @@ describe("Providers Config Route", () => {
     expect(p).toBeDefined();
     expect(p!.models.size).toBe(1);
     expect(p!.baseUrl).toBe("https://new.api.com");
+  });
+
+  // 资源键更新必须命中原 Provider，不能把 org/id 误当成新名称创建资源
+  test("set action — 使用 resource key 更新组织共享状态", async () => {
+    _providers.set("bailian-token-plan", {
+      id: "prov-bailian",
+      name: "bailian-token-plan",
+      displayName: "Bailian",
+      protocol: "openai",
+      baseUrl: "https://example.com",
+      apiKey: "old",
+      extraOptions: null,
+      models: new Map(),
+    });
+
+    const res = await providersRoute.handle(
+      new Request("http://localhost/config/providers?name=test-team%2Fprov-bailian", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicReadable: true }),
+      }),
+    );
+    const json = await res.json();
+
+    expect(json.success).toBe(true);
+    expect(_providers.size).toBe(1);
+    expect(_providers.has("test-team/prov-bailian")).toBe(false);
+    expect(_providers.get("bailian-token-plan")?.name).toBe("bailian-token-plan");
   });
 
   // set → PUT /config/providers?name=xxx

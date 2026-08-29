@@ -1,3 +1,4 @@
+import { classifyToolSemantic } from "./tool-semantic";
 import type { ThreadEntry, ToolCallData } from "./types";
 
 /** 文件变更操作类型：edit 修改已有文件，write 新建或覆盖文件 */
@@ -36,10 +37,14 @@ export function extractChangedFiles(entries: ThreadEntry[]): ChangedFile[] {
  * write 优先判断，避免 "write_edit_tool" 类名被误判为 edit。
  * 无法识别时返回 null（如 bash、read 等非写入工具）。
  */
-function inferToolType(title: string): ChangedFileType | null {
-  const lower = title.toLowerCase();
-  if (lower.includes("write")) return "write";
-  if (lower.includes("edit") || lower === "str_replace") return "edit";
+function inferToolType(
+  toolCall: Pick<ToolCallData, "title" | "rawInput" | "display" | "semantic">,
+): ChangedFileType | null {
+  const semantic =
+    toolCall.semantic ??
+    classifyToolSemantic({ name: toolCall.title, rawInput: toolCall.rawInput, display: toolCall.display });
+  if (semantic === "write") return "write";
+  if (semantic === "edit") return "edit";
   return null;
 }
 
@@ -57,7 +62,7 @@ function collectFromToolCall(toolCall: ToolCallData, pathMap: Map<string, Change
   if (toolCall.content) {
     let hasDiff = false;
     // diff 通常由 edit 类工具产生，以工具名推断，无法识别时兜底为 "edit"
-    const diffType = inferToolType(toolCall.title) ?? "edit";
+    const diffType = inferToolType(toolCall) ?? "edit";
     for (const c of toolCall.content) {
       if (c.type === "diff" && c.path) {
         // 同路径以首次出现为准
@@ -73,7 +78,7 @@ function collectFromToolCall(toolCall: ToolCallData, pathMap: Map<string, Change
   }
 
   // 兜底：按工具名推断（没有 diff content 时）
-  const toolType = inferToolType(toolCall.title);
+  const toolType = inferToolType(toolCall);
   if (toolType && toolCall.rawInput) {
     // 尝试 file_path 字段（Edit 工具常用）
     const filePath = toolCall.rawInput.file_path;

@@ -1,8 +1,36 @@
 {
-  "title": "Skill Management",
-  "subtitle": "Manage global skill templates available to AI Agents",
-  "search": "Search skills...",
-  "empty": "No skills yet",
+  "title": "Skill Library",
+  "subtitle": "Package Agent workflows as readable instructions so capabilities stay consistent across agents.",
+  "search": "Search Skills",
+  "empty": "Your skill library is empty",
+  "emptyHint": "Create or upload a skill to give Agents a reusable way of working.",
+  "emptySearch": "No matching skills",
+  "emptySearchHint": "Try another search term or ownership filter.",
+  "toolbar": {
+    "label": "Search and ownership filters"
+  },
+  "scope": {
+    "label": "Skill ownership",
+    "all": "All",
+    "organization": "This organization",
+    "shared": "Shared with me"
+  },
+  "directory": {
+    "title": "Skill directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No purpose documented",
+    "private": "Private"
+  },
+  "loadState": {
+    "title": "Could not load skills",
+    "retry": "Try again"
+  },
+  "detail": {
+    "contentTitle": "Skill instructions",
+    "contentHint": "The SKILL.md content read and followed by Agents",
+    "loadError": "Could not load the skill content. Open details to retry.",
+    "emptyContent": "No skill instructions"
+  },
   "column": {
     "name": "Skill Name",
     "description": "Description"
@@ -12,12 +40,13 @@
     "edit": "Edit",
     "view": "View",
     "delete": "Delete",
-    "createSkill": "+ New Skill",
+    "createSkill": "Add Skill",
     "manualCreate": "Create Manually",
     "conversationCreate": "Create via Chat",
-    "uploadSkill": "Upload Skill",
+    "uploadSkill": "Import",
     "batchDelete": "Batch Delete",
-    "reselect": "Reselect"
+    "reselect": "Reselect",
+    "more": "More actions"
   },
   "dialog": {
     "editTitle": "Edit Skill",

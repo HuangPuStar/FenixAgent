@@ -1,0 +1,15 @@
+.chat-selection-action {
+  position: fixed;
+  z-index: 100;
+  overflow: hidden;
+  border: 1px solid #dfe5ed;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 9px 26px rgb(30 50 80 / 14%);
+}
+.chat-selection-action button {
+  padding: 8px 12px;
+  color: #275ebd;
+  font-size: 12px;
+  font-weight: 600;
+}

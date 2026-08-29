@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderDisplayName,
+  getProviderIconModelId,
   getProviderKey,
   getProviderResourceBadgeKey,
+  getProviderScope,
+  supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
 
@@ -87,6 +90,29 @@ describe("provider model resource access flow", () => {
     expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
   });
 
+  // Provider API 未提供个人/平台 scope 时，只显示可由 ownership 证明的本组织与共享范围。
+  test("derives only provable provider scopes", () => {
+    expect(getProviderScope(internalProvider)).toBe("organization");
+    expect(getProviderScope(externalProvider)).toBe("shared");
+  });
+
+  // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。
+  test("uses a configured model id for the provider brand icon", () => {
+    expect(
+      getProviderIconModelId({ ...internalProvider, id: "admin@example.com" }, [
+        { id: "gpt-5.2", name: "GPT-5.2", modalities: null, limit: null, cost: null },
+      ]),
+    ).toBe("gpt-5.2");
+    expect(getProviderIconModelId({ ...internalProvider, id: "custom-provider" }, [])).toBe("custom-provider");
+  });
+
+  // 思考能力必须读取真实 options.thinking.enabled，不能根据模型名称推测。
+  test("reads thinking capability from model options", () => {
+    expect(supportsThinking({ options: { thinking: { enabled: true } } })).toBe(true);
+    expect(supportsThinking({ options: { thinking: { enabled: false } } })).toBe(false);
+    expect(supportsThinking({})).toBe(false);
+  });
+
   // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
   test("builds public readable provider set payload", () => {
     expect(buildProviderPublicReadablePayload(true)).toEqual({
@@ -128,10 +154,19 @@ describe("provider model resource access flow", () => {
     ]);
   });
 
-  // AgentFormDialog 保存模型 UUID，并展示由前端拼接的 provider/source 文案
+  // Agent Editor 保存模型 UUID，并以 Provider 分组展示短模型名称和品牌标识。
   test("agent form model options use modelId and display name", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "model-uuid-shared", label: "Source Team/OpenAI Shared/Shared Model" },
+      {
+        value: "model-uuid-shared",
+        label: "Shared Model",
+        modelId: "shared-model",
+        group: {
+          id: "org-source:org-source/provider-external",
+          label: "OpenAI Shared",
+          scope: "shared",
+        },
+      },
     ]);
   });
 

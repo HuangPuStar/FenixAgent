@@ -31,6 +31,7 @@
     "addCustomRule": "+ Add Custom Rule"
   },
   "panelMode": {
+    "panelTabs": "Right workspace",
     "files": "Files",
     "sites": "Sites",
     "sitesTabAriaLabel": "Site selector",
@@ -94,7 +95,12 @@
     "viewsChatModules": "Chat Modules",
     "viewsPanelModules": "Additional Panels",
     "viewsEnabled": "Enabled",
-    "viewsDisabled": "Disabled"
+    "viewsDisabled": "Disabled",
+    "floating": "Floating",
+    "docked": "Docked",
+    "dock": "Dock right workspace",
+    "float": "Float right workspace",
+    "close": "Close right workspace"
   },
   "siteFrame": {
     "share": "Share",
@@ -117,12 +123,23 @@
     "upload": "Upload",
     "download": "Download",
     "newFile": "New File",
+    "newFileIn": "Create a file in {{name}}",
     "newFileName": "New file name",
+    "open": "Open",
+    "openFile": "Open {{name}}",
+    "searchPlaceholder": "Search files",
+    "clearSearch": "Clear file search",
+    "noSearchResults": "No matching files",
+    "workspace": "Workspace",
+    "user": "User",
+    "currentUser": "Current user",
+    "retry": "Retry",
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
     "staleBanner": "File service temporarily unavailable, reconnecting...",
     "renameFailed": "Rename failed",
+    "moveFailed": "Move failed",
     "mkdirFailed": "Create folder failed",
     "newFileFailed": "Create file failed",
     "dropToUpload": "Drop files to upload",
@@ -139,9 +156,24 @@
     "closeTab": "Close tab",
     "moreTabs": "{{count}} more tabs",
     "noTabsHint": "Pick a file from the tree to preview",
+    "dialog": {
+      "renameTitle": "Rename",
+      "renameDescription": "Enter a new file or folder name",
+      "moveTitle": "Move",
+      "moveDescription": "Enter the full destination path",
+      "newFileTitle": "New File",
+      "newFileDescription": "Enter the new file name",
+      "newFolderTitle": "New Folder",
+      "newFolderDescription": "Enter the new folder name",
+      "invalidName": "The name is required and cannot contain / or NUL, or be . or ..",
+      "invalidPath": "The destination path is required and cannot contain NUL",
+      "confirm": "Confirm"
+    },
     "contextMenu": {
       "reference": "Reference in chat",
       "rename": "Rename",
+      "move": "Move",
+      "movePrompt": "Enter the full destination path",
       "delete": "Delete",
       "newFolder": "New Folder",
       "newFolderName": "New folder name"
@@ -192,7 +224,7 @@
   "conversation": {
     "noMessages": "No messages yet",
     "startConversation": "Start a conversation to see messages here",
-    "scrollToBottom": "Scroll to bottom",
+    "scrollToBottom": "Back to latest",
     "scrollToLastUserMessage": "Scroll to last user message"
   },
   "message": {
@@ -220,14 +252,30 @@
     "thinking": "Thinking..."
   },
   "commandMenu": {
+    "title": "Commands",
+    "count": "{{count}} available",
     "noMatch": "No matching commands",
-    "searchPlaceholder": "Search skills..."
+    "searchPlaceholder": "Search command names or descriptions",
+    "navigate": "Navigate",
+    "select": "Select",
+    "close": "Close",
+    "skills": "Skills",
+    "skillsCaption": "Ways of working for this conversation",
+    "mcps": "MCP plugins",
+    "mcpsCaption": "Connections bound to this agent",
+    "connected": "Connected",
+    "selectedCapabilities": "Capabilities selected for this turn"
   },
   "messageBubble": {
     "expand": "Expand",
     "uploadedImage": "Uploaded image",
-    "systemMessage": "System message",
-    "turnError": "Execution failed"
+    "imagePreview": "Image preview",
+    "systemMessage": "SYSTEM REMINDER",
+    "turnError": "Execution failed",
+    "actions": "Message actions",
+    "copy": "Copy",
+    "quote": "Quote",
+    "addToConversation": "Add to conversation"
   },
   "planView": {
     "high": "High",
@@ -238,6 +286,11 @@
   "toolCallGroup": {
     "running": "Running",
     "failed": "{{count}} failed",
+    "count": "{{count}} tool calls",
+    "completedCount": "{{count}} succeeded",
+    "runningCount": "{{count}} running",
+    "expand": "Expand",
+    "collapse": "Collapse",
     "input": "Input",
     "output": "Output"
   },
@@ -269,7 +322,9 @@
     "deleteSessionTitle": "Delete Session",
     "deleteConfirm": "Delete session \"{{title}}\"? This action cannot be undone.",
     "cancel": "Cancel",
-    "chatBusy": "Please wait for the current conversation to finish before switching"
+    "chatBusy": "Please wait for the current conversation to finish before switching",
+    "renameFailed": "Rename failed: {{message}}",
+    "deleteFailed": "Delete failed: {{message}}"
   },
   "chatInterface": {
     "processingError": "The request could not be processed properly. Please check the Agent or model status and try again.",
@@ -312,6 +367,9 @@
     "retry": "Retry",
     "empty": "No items"
   },
+  "planPanel": {
+    "title": "Execution plan"
+  },
   "todoPanel": {
     "collapse": "Collapse",
     "completed": "completed",
@@ -347,12 +405,25 @@
     "newSession": "New Thread",
     "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
     "skillButton": "Skill",
+    "commandButton": "Commands",
     "fileButton": "File",
-    "uploadingFiles": "Uploading {{count}} files…"
+    "attach": "Add image or file",
+    "context": "Context",
+    "contextUnknown": "Context usage is unavailable",
+    "contextUsedUnknownLimit": "{{count}} tokens used; context limit unknown",
+    "uploadingFiles": "Uploading {{count}} files…",
+    "fileTooLarge": "A file cannot exceed 100 MB",
+    "filesTooLarge": "The total upload cannot exceed 100 MB",
+    "uploadFailed": "File upload failed"
   },
   "chatEmpty": {
     "startConversation": "Start Conversation",
-    "startConversationDesc": "Send a message to start chatting with the ACP agent",
+    "startConversationDesc": "Describe the outcome, add context, or start with a common task.",
+    "eyebrow": "Start with a clear outcome",
+    "readyWithAgent": "{{agentName}} is ready",
+    "suggestionReview": "Review a set of code changes",
+    "suggestionPlan": "Draft a technical plan",
+    "suggestionBuild": "Analyze a build failure",
     "skills": "Loaded Skills",
     "skillsHint": "Type / to open skill menu",
     "noSkills": "No skills bound"
@@ -405,13 +476,18 @@
     "viewParams": "View Parameters",
     "previewFile": "Preview {{path}}",
     "openFile": "Open File",
-    "toolName": "Tool"
+    "toolName": "Tool",
+    "running": "Tool is running…"
   },
   "subAgentPanel": {
     "title": "Sub-agent activity",
     "summary": "{{messages}} messages · {{tools}} tool steps"
   },
   "permissionPanel": {
+    "title": "Permission required",
+    "waiting": "Agent is waiting",
+    "aboutToRun": "About to run",
+    "audit": "This decision will be recorded in the session audit",
     "allow": "Allow",
     "allowSession": "Allow Session",
     "deny": "Deny"
@@ -453,6 +529,33 @@
   "askUser": {
     "title": "Question from Agent",
     "description": "The agent needs your input to continue",
-    "submit": "Submit"
+    "submit": "Submit",
+    "previous": "Previous question",
+    "next": "Next question"
+  },
+  "chatStatus": {
+    "title": "Status",
+    "todo": "Todo",
+    "subtasks": "Subtasks",
+    "changes": "Changes",
+    "toggle": "Expand or collapse status",
+    "added": "Added",
+    "modified": "Modified",
+    "todoStatus": { "pending": "Queued", "in_progress": "Running", "completed": "Completed" }
+  },
+  "composerAssets": {
+    "title": "Assets to send",
+    "image": "Image to send",
+    "imageNumber": "Image {{count}}",
+    "quoteNumber": "Quote {{count}}",
+    "removeImage": "Remove image",
+    "removeFile": "Remove {{name}}",
+    "removeQuote": "Remove quote",
+    "prepareImageFailed": "The image could not be processed. Remove it and try again.",
+    "quoteContext": "Quoted conversation text:"
+  },
+  "promptJump": {
+    "title": "Jump to user prompts",
+    "untitled": "Untitled prompt"
   }
 }
