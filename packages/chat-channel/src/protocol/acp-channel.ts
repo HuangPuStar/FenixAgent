@@ -14,8 +14,8 @@
 // 控制事件暴露到 UI）；raw payload 不写入日志，拒绝原因只记录脱敏 code。
 
 import {
+  type NonPeriNormalizedEventType,
   type NormalizedEvent,
-  type NormalizedEventType,
   type NormalizedPeriTaskEvent,
   PERI_AGENT_EVENT_METHOD,
   PERI_AGENT_EVENT_TYPES,
@@ -95,7 +95,7 @@ export function extractAcpEvent(
 }
 
 /** 私有帧类型 → 规范化事件类型映射（终态判定依赖 payload 内容，见 normalize 内分支） */
-const PRIVATE_FRAME_TO_NORMALIZED: Record<string, NormalizedEventType> = {
+const PRIVATE_FRAME_TO_NORMALIZED: Record<string, NonPeriNormalizedEventType> = {
   agent_message_chunk: "message_delta",
   agent_thought_chunk: "reasoning_delta",
   user_message_chunk: "user_message",
@@ -115,7 +115,7 @@ const PRIVATE_FRAME_TO_NORMALIZED: Record<string, NormalizedEventType> = {
 };
 
 /** 提取规范化事件类型（sessionUpdate 值 → 规范化类型；tool_call 系列在 normalize 中细分） */
-function mapSessionUpdateType(sessionUpdate: string): NormalizedEventType | null {
+function mapSessionUpdateType(sessionUpdate: string): NonPeriNormalizedEventType | null {
   switch (sessionUpdate) {
     case "agent_message_chunk":
       return "message_delta";
@@ -148,7 +148,7 @@ function mapSessionUpdateType(sessionUpdate: string): NormalizedEventType | null
 /** 判断 tool_call 帧是否已携带终态（非流式 agent 可能直接发送完整结果）。
  * 标准 ACP（agent-client-protocol）工具失败序列化为 "failed"（ToolCallStatus::Failed），
  * 与私有帧的 "error" 一并收敛为 tool_call_failed，避免标准失败被误判为 started。 */
-function resolveToolCallType(payload: Record<string, unknown> | undefined): NormalizedEventType {
+function resolveToolCallType(payload: Record<string, unknown> | undefined): NonPeriNormalizedEventType {
   const status = (payload?.status as string | undefined) ?? "running";
   if (status === "completed" || status === "complete" || status === "done") return "tool_call_completed";
   if (status === "error" || status === "failed") return "tool_call_failed";

@@ -16,7 +16,55 @@ import {
   createWs,
   textFrames,
 } from "./connection-test-helpers";
-import type { RelayMessage, SharedRelay } from "./connection-types";
+import {
+  abortPendingRpc,
+  getRelayRpcState,
+  type PendingRpc,
+  type RelayMessage,
+  reserveRelayRpc,
+  type SharedRelay,
+  setPendingRpcTimer,
+} from "./connection-types";
+
+function registerPrompt(
+  shared: SharedRelay,
+  turnId: string | null,
+  timeout: ReturnType<typeof setTimeout> | null = null,
+): PendingRpc {
+  const request = reserveRelayRpc(shared, { kind: "prompt", turnId });
+  if (timeout) setPendingRpcTimer(request, timeout);
+  return request;
+}
+
+function registerSessionSync(
+  shared: SharedRelay,
+  registry: ConnectionRegistry,
+  options: { replay?: boolean; targetSessionId?: string | null } = {},
+): PendingRpc {
+  const targetSessionId = options.targetSessionId ?? null;
+  return reserveRelayRpc(shared, {
+    kind: "session-sync",
+    lifecycle: {
+      targetSessionId,
+      replay: options.replay ?? false,
+      queueEvent: () => "queued",
+      drainEvents: () => [],
+      commit(result, isCurrent) {
+        const sessionId = result.sessionId;
+        if (!isCurrent() || typeof sessionId !== "string" || sessionId.length === 0) return false;
+        if (targetSessionId && targetSessionId !== sessionId) return false;
+        registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
+          entry.acpSessionId = sessionId;
+          entry.sessionLoaded = true;
+        });
+        return true;
+      },
+      rollback() {
+        return true;
+      },
+    },
+  });
+}
 
 /** 构造挂在 rcs-1 上的共享 relay（handle 可覆写） */
 function relayOn(rcsSessionId: string, handleOverrides: Partial<SharedRelay["handle"]> = {}): SharedRelay {
@@ -40,6 +88,27 @@ describe("RelayEventHandler", () => {
     } as unknown as RelayMessage);
 
     expect(processed).toEqual([]);
+  });
+
+  // session-bound 通知缺少 sessionId 时归属不可证明，必须在 relay 边界拒绝而不是写入当前投影。
+  test("rejects session-bound notifications without a session id", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const processed: string[] = [];
+    const reports: Array<[string, unknown]> = [];
+    const handler = createRelayEvents(registry, broadcaster, processed, {
+      reportError: (context, error) => reports.push([context, error]),
+    });
+    registry.addClient("ws-1", createClient({ acpSessionId: "active-session" }));
+
+    await handler.createMessageHandler(relayOn("rcs-1"))({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "orphan" } } },
+    } as unknown as RelayMessage);
+
+    expect(processed).toEqual([]);
+    expect(reports[0]?.[0]).toBe("[YJS-FE] session-bound notification missing sessionId");
   });
 
   // Agent 原始错误不得泄露到浏览器，且仅向当前 RCS 会话发送固定的安全错误。
@@ -225,7 +294,7 @@ describe("RelayEventHandler", () => {
     });
     const shared = relayOn("rcs-1");
     // prompt 请求出口登记（session-channel send_prompt 分支）
-    shared.pendingPromptIds = new Set([1]);
+    registerPrompt(shared, "turn-1");
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -234,7 +303,7 @@ describe("RelayEventHandler", () => {
     } as unknown as RelayMessage);
 
     expect(processed).toContain("turn_failed");
-    expect(shared.pendingPromptIds?.size).toBe(0);
+    expect(getRelayRpcState(shared).pendingRpcRequests?.size).toBe(0);
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toContain("prompt rejected");
     expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
@@ -269,14 +338,13 @@ describe("RelayEventHandler", () => {
     });
     const shared = relayOn("rcs-1");
     const timer = setTimeout(() => {}, 1000);
-    shared.pendingPromptIds = new Set([1]);
-    shared.pendingPromptTimeouts = new Map([[1, timer]]);
+    const request = registerPrompt(shared, "turn-1", timer);
 
-    handler.convergeStuckPrompt(shared, 1);
+    handler.convergeStuckPrompt(shared, request);
 
     expect(processed).toContain("turn_failed");
-    expect(shared.pendingPromptIds?.size).toBe(0);
-    expect(shared.pendingPromptTimeouts?.size).toBe(0);
+    expect(getRelayRpcState(shared).pendingRpcRequests.size).toBe(0);
+    expect(request.timeout).toBeNull();
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toContain("prompt timed out");
     clearTimeout(timer);
@@ -289,8 +357,10 @@ describe("RelayEventHandler", () => {
     const processed: string[] = [];
     const handler = createRelayEvents(registry, broadcaster, processed);
     const shared = relayOn("rcs-1");
+    const request = registerPrompt(shared, "turn-1");
+    await abortPendingRpc(request);
 
-    handler.convergeStuckPrompt(shared, 99);
+    handler.convergeStuckPrompt(shared, request);
 
     expect(processed).not.toContain("turn_failed");
   });
@@ -304,17 +374,16 @@ describe("RelayEventHandler", () => {
     const handler = createRelayEvents(registry, broadcaster, processed);
     const shared = relayOn("rcs-1");
     const timer = setTimeout(() => {}, 1000);
-    shared.pendingPromptIds = new Set([1]);
-    shared.pendingPromptTimeouts = new Map([[1, timer]]);
+    const request = registerPrompt(shared, "turn-1", timer);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
-      id: 1,
+      id: request.id,
       result: { turnId: "turn_1" },
     } as unknown as RelayMessage);
 
-    expect(shared.pendingPromptIds?.size).toBe(0);
-    expect(shared.pendingPromptTimeouts?.size).toBe(0);
+    expect(getRelayRpcState(shared).pendingRpcRequests.size).toBe(0);
+    expect(request.timeout).toBeNull();
     clearTimeout(timer);
   });
 
@@ -392,8 +461,10 @@ describe("RelayEventHandler", () => {
   test("session/new does not overwrite another RCS session for the same user", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-a");
     const registered: string[] = [];
     const handler = createRelayEvents(registry, broadcaster, [], {
+      docManager,
       registerYjsDocListener: (_ydoc, docName) => {
         registered.push(docName);
       },
@@ -402,7 +473,7 @@ describe("RelayEventHandler", () => {
     registry.addClient("ws-b", createClient({ rcsSessionId: "rcs-b", acpSessionId: "ses-user-b" }));
     const shared = relayOn("rcs-a");
     // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
-    shared.pendingSessionSyncIds = new Set([1]);
+    registerSessionSync(shared, registry);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -426,13 +497,14 @@ describe("RelayEventHandler", () => {
         registered.push(docName);
       },
     });
-    const shared = { ...relayOn("rcs-1"), destroyed: true };
+    const shared = relayOn("rcs-1");
     // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
-    shared.pendingSessionSyncIds = new Set([1]);
+    const request = registerSessionSync(shared, registry);
+    shared.destroyed = true;
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
-      id: 1,
+      id: request.id,
       result: { sessionId: "ses_new", configOptions: [] },
     } as unknown as RelayMessage);
 
@@ -451,7 +523,7 @@ describe("RelayEventHandler", () => {
     const handler = createRelayEvents(registry, broadcaster, [], { docManager });
     const shared = relayOn("rcs-1");
     // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
-    shared.pendingSessionSyncIds = new Set([1]);
+    registerSessionSync(shared, registry);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -497,7 +569,7 @@ describe("RelayEventHandler", () => {
     registry.addClient("ws-1", createClient({ acpSessionId: "ses-current" }));
     const shared = relayOn("rcs-1");
 
-    // rename 非当前会话 ses-other 的响应：未登记（pendingSessionSyncIds 为空）
+    // rename 非当前会话 ses-other 的响应：未登记（canonical owner 表为空）
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       id: 1,
@@ -521,7 +593,7 @@ describe("RelayEventHandler", () => {
     const shared = relayOn("rcs-1");
 
     // 先以登记过的 id=1 投影 "My Session"
-    shared.pendingSessionSyncIds = new Set([1]);
+    registerSessionSync(shared, registry);
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
       id: 1,
@@ -529,15 +601,16 @@ describe("RelayEventHandler", () => {
     } as unknown as RelayMessage);
 
     // title 缺失（id=2）与空串（id=3）都不覆盖现有值
-    shared.pendingSessionSyncIds = new Set([2, 3]);
+    const missingTitleRequest = registerSessionSync(shared, registry);
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
-      id: 2,
+      id: missingTitleRequest.id,
       result: { sessionId: "ses-1" },
     } as unknown as RelayMessage);
+    const emptyTitleRequest = registerSessionSync(shared, registry);
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
-      id: 3,
+      id: emptyTitleRequest.id,
       result: { sessionId: "ses-1", title: "   " },
     } as unknown as RelayMessage);
 
@@ -618,8 +691,8 @@ describe("RelayEventHandler replay window", () => {
     const { docManager } = await createBoundDocs("rcs-1");
     const handler = createRelayEvents(registry, broadcaster, [], { docManager });
     const shared = relayOn("rcs-1");
-    // 会话同步分支只放行请求出口登记过的在途请求（id → 会话同步身份）
-    shared.pendingSessionSyncIds = new Set([1]);
+    // load 会话同步由请求实体显式标记 replay，成功响应只重置该请求拥有的窗口。
+    registerSessionSync(shared, registry, { replay: true, targetSessionId: "ses-loaded" });
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",

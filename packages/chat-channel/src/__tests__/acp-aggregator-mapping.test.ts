@@ -6,6 +6,7 @@ import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
 import {
+  type NonPeriNormalizedEventType,
   type NormalizedEvent,
   type NormalizedPeriTaskEvent,
   PERI_TASK_FALLBACK_TITLE,
@@ -40,7 +41,11 @@ beforeEach(() => {
   };
 });
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: NonPeriNormalizedEventType,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return { type, update, content: (update.content as Record<string, unknown>) ?? null, turnId };
 }
 
@@ -177,6 +182,29 @@ test("history main-agent session update keeps tool call", () => {
   runTurn(pair, "turn_replay_1");
   expect(applyNormalizedEvent(pair, normalized!).applied).toBe(true);
   expect(getToolCallsMap(pair.chat).has("history_tool")).toBe(true);
+});
+
+// 兼容路径收到 TodoWrite 工具帧时必须拒绝普通工具投影，避免与标准 Plan 双显。
+test("history TodoWrite standard tool content does not create tool projection", () => {
+  const todos = [{ content: "修复工具显示", status: "in_progress", activeForm: "正在修复工具显示" }];
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      update: {
+        sessionUpdate: "tool_call",
+        content: { id: "history_todo", type: "tool_use", name: "TodoWrite", input: { todos } },
+      },
+    },
+  });
+
+  runTurn(pair, "turn_replay_1");
+  expect(applyNormalizedEvent(pair, normalized!)).toEqual({
+    applied: false,
+    reason: "TodoWrite is represented by ACP plan",
+  });
+  expect(getToolCallsMap(pair.chat).has("history_todo")).toBe(false);
 });
 
 // 重放同一 tool_call 帧（同 toolCallId）不重复创建工具调用

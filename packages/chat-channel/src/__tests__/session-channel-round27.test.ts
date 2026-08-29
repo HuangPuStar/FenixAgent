@@ -2,6 +2,7 @@
 // SessionChannel 的内存边界测试：不启动 WebSocket、Redis 或 Agent 进程。
 
 import { describe, expect, test } from "bun:test";
+import { createTestRpcReservationFactory, type TestRpcReservation } from "../channel/connection-test-helpers";
 import { SessionChannel, type SessionConnection } from "../channel/session-channel";
 import type { ActionAck, ActionError } from "../channel/types";
 import { getSessionInfo } from "../state/chat-writer";
@@ -15,7 +16,8 @@ interface Harness {
   acks: ActionAck[];
   errors: ActionError[];
   replacements: number[];
-  synced: string[];
+  synced: Array<string | null>;
+  reservations: TestRpcReservation[];
   reports: Array<{ message: string; error: unknown }>;
 }
 
@@ -27,9 +29,9 @@ async function createHarness(overrides: Partial<SessionConnection> = {}): Promis
   const acks: ActionAck[] = [];
   const errors: ActionError[] = [];
   const replacements: number[] = [];
-  const synced: string[] = [];
+  const synced: Array<string | null> = [];
   const reports: Array<{ message: string; error: unknown }> = [];
-  let rpcId = 0;
+  const reserveRpc = createTestRpcReservationFactory();
   const connection: SessionConnection = {
     userId: "user-1",
     agentId: "agent-1",
@@ -39,8 +41,10 @@ async function createHarness(overrides: Partial<SessionConnection> = {}): Promis
     agentStatusReceived: true,
     sessionLoaded: false,
     workspacePath: "/trusted-workspace",
-    sendToRelay: (message) => sent.push(message),
-    getNextRpcId: () => ++rpcId,
+    sendToRelay: (message) => {
+      sent.push(message);
+    },
+    reserveRpc,
     ...overrides,
   };
   const channel = new SessionChannel({
@@ -49,7 +53,27 @@ async function createHarness(overrides: Partial<SessionConnection> = {}): Promis
     syncSessionId: (_connection, sessionId) => synced.push(sessionId),
     reportError: (message, error) => reports.push({ message, error }),
   });
-  return { channel, manager, connection, sent, acks, errors, replacements, synced, reports };
+  return {
+    channel,
+    manager,
+    connection,
+    sent,
+    acks,
+    errors,
+    replacements,
+    synced,
+    reservations: reserveRpc.reservations,
+    reports,
+  };
+}
+
+async function commitSessionSync(harness: Harness, sessionId: string): Promise<void> {
+  const reservation = harness.reservations.at(-1);
+  if (!reservation || reservation.owner.kind !== "session-sync") {
+    throw new Error("expected a session-sync reservation");
+  }
+  const committed = await reservation.owner.lifecycle.commit({ sessionId }, () => !reservation.aborted);
+  if (!committed) throw new Error(`expected session-sync commit for ${sessionId}`);
 }
 
 async function submit(harness: Harness, action: Record<string, unknown>): Promise<void> {
@@ -93,7 +117,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
       jsonrpc: "2.0",
       id: 1,
       method: "session/cancel",
-      params: { sessionId: undefined },
+      params: { sessionId: "ses-1" },
     });
   });
 
@@ -101,6 +125,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("create_session 注入可信 workspace", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "create_session", commandId: "create-1", cwd: "/untrusted" });
+    await commitSessionSync(harness, "ses-created");
     expect(harness.sent[0]).toEqual({
       jsonrpc: "2.0",
       id: 1,
@@ -132,14 +157,15 @@ describe("SessionChannel 内存协议与状态边界", () => {
 
   // resume_session 必须登记且转发指定 session。
   test("resume_session 转发指定会话", async () => {
-    const registered: Array<number | string> = [];
-    const harness = await createHarness({ registerSessionSyncRpcId: (id) => registered.push(id) });
+    const harness = await createHarness();
     await submit(harness, { action: "resume_session", commandId: "resume-1", sessionId: "ses-old" });
     expect(harness.sent[0]).toMatchObject({
       method: "session/resume",
       params: { sessionId: "ses-old", cwd: "/trusted-workspace" },
     });
-    expect(registered).toEqual([1]);
+    expect(harness.reservations).toHaveLength(1);
+    expect(harness.reservations[0]?.id).toBe(1);
+    expect(harness.reservations[0]?.owner.kind).toBe("session-sync");
   });
 
   // rename_session 保留标题并绑定传入会话。
@@ -184,12 +210,14 @@ describe("SessionChannel 内存协议与状态边界", () => {
 
   // 新会话 load 必须替换投影并同步绑定。
   test("load_session 新会话替换投影并同步", async () => {
-    const registered: Array<number | string> = [];
-    const harness = await createHarness({ registerSessionSyncRpcId: (id) => registered.push(id) });
+    const harness = await createHarness();
     await submit(harness, { action: "load_session", commandId: "load-new", sessionId: "ses-2" });
+    await commitSessionSync(harness, "ses-2");
     expect(harness.replacements).toHaveLength(1);
     expect(harness.synced).toEqual(["ses-2"]);
-    expect(registered).toEqual([1]);
+    expect(harness.reservations).toHaveLength(1);
+    expect(harness.reservations[0]?.id).toBe(1);
+    expect(harness.reservations[0]?.owner.kind).toBe("session-sync");
     expect(harness.sent[0]).toMatchObject({
       method: "session/load",
       params: { sessionId: "ses-2", cwd: "/trusted-workspace" },
@@ -308,12 +336,102 @@ describe("SessionChannel 内存协议与状态边界", () => {
 
   // prompt 注册必须记录 RPC 与创建的 turnId。
   test("send_prompt 登记待决 prompt", async () => {
-    const pending: Array<[number | string, string | undefined]> = [];
-    const harness = await createHarness({ registerPendingPrompt: (id, turnId) => pending.push([id, turnId]) });
-    await submit(harness, { action: "send_prompt", commandId: "pending-prompt", content: "记录" });
-    expect(pending).toHaveLength(1);
-    expect(pending[0]?.[0]).toBe(1);
-    expect(pending[0]?.[1]).toBe(committed(harness)?.turnId);
+    const harness = await createHarness();
+    await submit(harness, {
+      action: "send_prompt",
+      commandId: "pending-prompt",
+      content: [{ type: "text", text: "记录" }],
+    });
+    expect(harness.reservations).toHaveLength(1);
+    expect(harness.reservations[0]?.id).toBe(1);
+    const owner = harness.reservations[0]?.owner;
+    expect(owner?.kind).toBe("prompt");
+    expect(owner?.kind === "prompt" ? owner.turnId : undefined).toBe(committed(harness)?.turnId);
+  });
+
+  // prompt 登记必须先于 relay send，以覆盖 send 内同步回送 JSON-RPC 响应的 transport。
+  test("send_prompt 在 relay 发送前登记所有权", async () => {
+    let registered = false;
+    let consumed = false;
+    const reserveRpc = createTestRpcReservationFactory();
+    const harness = await createHarness({
+      reserveRpc: (owner) => {
+        registered = true;
+        return reserveRpc(owner);
+      },
+      sendToRelay: () => {
+        expect(registered).toBe(true);
+        registered = false;
+        consumed = true;
+      },
+    });
+
+    await submit(harness, {
+      action: "send_prompt",
+      commandId: "sync-prompt",
+      content: [{ type: "text", text: "同步响应" }],
+    });
+
+    expect(consumed).toBe(true);
+    expect(registered).toBe(false);
+    expect(reserveRpc.reservations[0]?.owner.kind).toBe("prompt");
+    expect(committed(harness)?.turnId).toBeDefined();
+  });
+
+  // prompt relay send 抛错时必须撤销所有权登记并只把该 prompt 的 turn 收敛为失败。
+  test("send_prompt 发送失败回滚登记并收敛所属 turn", async () => {
+    const reserveRpc = createTestRpcReservationFactory();
+    const harness = await createHarness({
+      reserveRpc,
+      sendToRelay: () => {
+        expect(reserveRpc.reservations[0]?.owner.kind).toBe("prompt");
+        expect(reserveRpc.reservations[0]?.aborted).toBe(false);
+        throw new Error("private relay detail");
+      },
+    });
+
+    await submit(harness, {
+      action: "send_prompt",
+      commandId: "prompt-send-fail",
+      content: [{ type: "text", text: "任务" }],
+    });
+
+    expect(reserveRpc.reservations[0]?.aborted).toBe(true);
+    expect(getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).get("activeTurnStatus")).toBe("failed");
+    expect(harness.errors).toMatchObject([{ code: "AGENT_UNAVAILABLE", retryable: true }]);
+  });
+
+  // cancel relay send 抛错时必须撤销该请求的 turn 所有权，且未发出的取消不能改变活动 turn。
+  test("cancel 发送失败回滚登记且不取消活动 turn", async () => {
+    const reserveRpc = createTestRpcReservationFactory();
+    const harness = await createHarness({
+      reserveRpc,
+      sendToRelay: (message) => {
+        if (message.method === "session/cancel") {
+          const cancelReservation = reserveRpc.reservations.at(-1);
+          expect(cancelReservation?.owner.kind).toBe("cancel");
+          expect(cancelReservation?.aborted).toBe(false);
+          throw new Error("private cancel detail");
+        }
+        harness.sent.push(message);
+      },
+    });
+    await submit(harness, {
+      action: "send_prompt",
+      commandId: "before-cancel-fail",
+      content: [{ type: "text", text: "任务" }],
+    });
+    const turnId = getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).get("activeTurnId");
+
+    await submit(harness, { action: "cancel", commandId: "cancel-send-fail" });
+
+    const sessionInfo = getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!);
+    const cancelReservation = reserveRpc.reservations.at(-1);
+    expect(cancelReservation?.owner.kind).toBe("cancel");
+    expect(cancelReservation?.aborted).toBe(true);
+    expect(sessionInfo.get("activeTurnId")).toBe(turnId);
+    expect(sessionInfo.get("activeTurnStatus")).toBe("accepting");
+    expect(harness.errors).toMatchObject([{ code: "AGENT_UNAVAILABLE", retryable: true }]);
   });
 
   // cancel 在活动 turn 上应进入 cancelling 状态。
@@ -377,7 +495,9 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const order: string[] = [];
     const channel = new SessionChannel({
       docManager: manager,
-      refreshInstanceEnvironment: async () => order.push("refresh"),
+      refreshInstanceEnvironment: async () => {
+        order.push("refresh");
+      },
       replaceProjection: () => order.push("replace"),
       syncSessionId() {},
       reportError() {},
@@ -388,6 +508,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
       { action: "create_session", commandId: "refresh-success" },
       { sendAck: (ack) => harness.acks.push(ack), sendError: (error) => harness.errors.push(error) },
     );
+    await commitSessionSync(harness, "ses-created");
     expect(order).toEqual(["refresh", "replace"]);
   });
 
@@ -395,6 +516,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("load_session 更新后续 prompt 的绑定会话", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "load_session", commandId: "switch", sessionId: "ses-2" });
+    await commitSessionSync(harness, "ses-2");
     await submit(harness, {
       action: "send_prompt",
       commandId: "prompt-after-switch",
@@ -408,6 +530,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const harness = await createHarness();
     const action = { action: "load_session", commandId: "switch-once", sessionId: "ses-2" };
     await submit(harness, action);
+    await commitSessionSync(harness, "ses-2");
     await submit(harness, action);
     expect(harness.replacements).toHaveLength(1);
     expect(harness.sent).toHaveLength(1);
@@ -418,6 +541,110 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const harness = await createHarness({ sessionLoaded: false });
     await submit(harness, { action: "load_session", commandId: "projection-mismatch", sessionId: "ses-3" });
     expect(harness.sent[0]).toMatchObject({ method: "session/load", params: { sessionId: "ses-3" } });
+  });
+
+  // 激活回调中后续步骤失败时，已修改的本地 binding 必须恢复且候选不得成为活动投影。
+  test("会话激活中途失败时补偿 binding 并恢复旧投影", async () => {
+    const manager = new DocManager({ acpBatchWindowMs: 0 });
+    await manager.openChat("rcs-1");
+    await manager.openSession("user-1", "agent-1", "rcs-1");
+    const previousChat = manager.getChat("rcs-1");
+    const previousSession = manager.getSession("rcs-1");
+    const reserveRpc = createTestRpcReservationFactory();
+    const connection: SessionConnection = {
+      userId: "user-1",
+      agentId: "agent-1",
+      instanceId: "instance-1",
+      rcsSessionId: "rcs-1",
+      acpSessionId: "ses-old",
+      agentStatusReceived: true,
+      sessionLoaded: false,
+      workspacePath: "/trusted-workspace",
+      sendToRelay() {},
+      reserveRpc,
+    };
+    const channel = new SessionChannel({
+      docManager: manager,
+      replaceProjection() {
+        throw new Error("listener replacement failed");
+      },
+      syncSessionId() {},
+      reportError() {},
+    });
+
+    await channel.handleAction(
+      connection,
+      { action: "load_session", commandId: "rollback-binding", sessionId: "ses-new" },
+      { sendAck() {}, sendError() {} },
+    );
+    const reservation = reserveRpc.reservations[0];
+    if (!reservation || reservation.owner.kind !== "session-sync") throw new Error("expected session sync");
+
+    await expect(reservation.owner.lifecycle.commit({ sessionId: "ses-new" }, () => true)).rejects.toThrow(
+      "listener replacement failed",
+    );
+    expect(connection.acpSessionId).toBe("ses-old");
+    expect(connection.sessionLoaded).toBe(false);
+    expect(manager.getChat("rcs-1")).toBe(previousChat);
+    expect(manager.getSession("rcs-1")).toBe(previousSession);
+    await manager.closeAll();
+  });
+
+  // session/new 响应前目标会话未知，任意 session-bound 事件必须忽略且不占用有界队列。
+  test("create_session 在目标会话未知时忽略过渡事件", async () => {
+    const harness = await createHarness();
+    await submit(harness, { action: "create_session", commandId: "create-ignore-events" });
+    const reservation = harness.reservations.at(-1);
+    if (!reservation || reservation.owner.kind !== "session-sync") throw new Error("expected session sync");
+
+    for (let index = 0; index < 300; index += 1) {
+      expect(
+        reservation.owner.lifecycle.queueEvent({
+          type: "session_updated",
+          acpSessionId: `ses-unrelated-${index}`,
+          update: { sessionId: `ses-unrelated-${index}`, title: "Unrelated" },
+          content: null,
+        }),
+      ).toBe("ignored");
+    }
+
+    expect(await reservation.owner.lifecycle.commit({ sessionId: "ses-created" }, () => true)).toBe(true);
+    expect(harness.replacements).toHaveLength(1);
+  });
+
+  // load_session 只允许目标 ACP session 的事件进入候选队列，缺失或错配 ID 必须忽略。
+  test("load_session 只暂存精确匹配目标会话的事件", async () => {
+    const harness = await createHarness();
+    await submit(harness, { action: "load_session", commandId: "load-filter-events", sessionId: "ses-target" });
+    const reservation = harness.reservations.at(-1);
+    if (!reservation || reservation.owner.kind !== "session-sync") throw new Error("expected session sync");
+
+    expect(
+      reservation.owner.lifecycle.queueEvent({
+        type: "session_updated",
+        update: { title: "Missing ID" },
+        content: null,
+      }),
+    ).toBe("ignored");
+    expect(
+      reservation.owner.lifecycle.queueEvent({
+        type: "session_updated",
+        acpSessionId: "ses-other",
+        update: { sessionId: "ses-other", title: "Other" },
+        content: null,
+      }),
+    ).toBe("ignored");
+    expect(
+      reservation.owner.lifecycle.queueEvent({
+        type: "session_updated",
+        acpSessionId: "ses-target",
+        update: { sessionId: "ses-target", title: "Target" },
+        content: null,
+      }),
+    ).toBe("queued");
+
+    expect(reservation.owner.lifecycle.drainEvents("ses-target")).toHaveLength(1);
+    await reservation.owner.lifecycle.rollback();
   });
 
   // respond_permission 缺少 requestId 时仅确认，不可向 Agent 发送无效响应。
@@ -461,10 +688,10 @@ describe("SessionChannel 内存协议与状态边界", () => {
 
   // load_session 注册回调必须只收到该会话同步请求的 RPC id。
   test("create_session 登记会话同步 RPC id", async () => {
-    const ids: Array<number | string> = [];
-    const harness = await createHarness({ registerSessionSyncRpcId: (id) => ids.push(id) });
+    const harness = await createHarness();
     await submit(harness, { action: "create_session", commandId: "create-register" });
-    expect(ids).toEqual([1]);
+    expect(harness.reservations.map((reservation) => reservation.id)).toEqual([1]);
+    expect(harness.reservations[0]?.owner.kind).toBe("session-sync");
   });
 
   // 已完成命令的 duplicate ack 应保留原始投影版本。
@@ -473,6 +700,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const action = { action: "list_sessions", commandId: "duplicate-result" };
     await submit(harness, action);
     const original = committed(harness);
+    if (!original) throw new Error("expected committed acknowledgement");
     await submit(harness, action);
     expect(harness.acks.at(-1)).toEqual({ ...original, status: "duplicate" });
   });
@@ -543,6 +771,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("切换后同会话 load 保持静默", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "load_session", commandId: "load-first", sessionId: "ses-2" });
+    await commitSessionSync(harness, "ses-2");
     await submit(harness, { action: "load_session", commandId: "load-second", sessionId: "ses-2" });
     expect(harness.sent).toHaveLength(1);
   });

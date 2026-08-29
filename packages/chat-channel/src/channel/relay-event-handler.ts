@@ -27,7 +27,21 @@ import {
 import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { clearPendingPromptTimeout, REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+import {
+  beginRpcResponse,
+  claimPendingRpcAbort,
+  claimRelayRpcTeardown,
+  cleanupAbortedRpc,
+  getActiveSessionTransition,
+  isPendingRpcCurrent,
+  markPendingRpcSent,
+  type PendingRpc,
+  REPLAY_WINDOW_MS,
+  type RelayMessage,
+  reserveRelayRpc,
+  type SharedRelay,
+  settlePendingRpc,
+} from "./connection-types";
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
@@ -41,6 +55,14 @@ const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
   // AskUserQuestion 可能是 Agent 恢复后的首个业务帧；没有可写 turn 时必须与
   // permission 一样先补建回放 turn，否则聚合层会拒绝投影，前端不会显示提问面板。
   "question_requested",
+]);
+
+/** callback assistant 可消费的 turn 终态。 */
+const CALLBACK_TERMINAL_TYPES: ReadonlySet<NormalizedEventType> = new Set([
+  "turn_completed",
+  "turn_cancelled",
+  "turn_failed",
+  "turn_interrupted",
 ]);
 
 /** 生成回放 turnId（turn_replay_ 前缀与实时 turn 区分，便于日志排查） */
@@ -141,7 +163,7 @@ export class RelayEventHandler {
     // 与私有帧（流式输出/工具/权限）代表 agent 活跃；JSON-RPC 响应帧（result/error）
     // 不刷新——否则 10s 一次的 list_sessions 轮询响应会持续刷新时间戳，卡死的
     // prompt（agent 全程静默）永远等不到超时收敛（判定被无限重排，loading 永久）。
-    // prompt 自身的 result/error 由 pendingPromptIds 消费分支收敛，不依赖此时间戳。
+    // prompt 自身的 result/error 由唯一 pending RPC owner 分支收敛，不依赖此时间戳。
     const isRpcResponse =
       rpcCheck != null && rpcCheck.id !== undefined && ("result" in rpcCheck || "error" in rpcCheck);
     if (!isKeepaliveMsgType(msgType) && !isRpcResponse) {
@@ -153,22 +175,47 @@ export class RelayEventHandler {
     // 不一致（过期会话/串流）直接丢弃，不得写入 Y.Doc——扩展自原 session/update
     // 单方法检查，防止旧 session 的 Peri 事件写入当前 rcsSessionId。
     if (typeof rpcCheck?.method === "string" && SESSION_BOUND_NOTIFICATION_METHODS.has(rpcCheck.method)) {
-      const msgSessionId = (rpcCheck.params as Record<string, unknown> | undefined)?.sessionId as string | undefined;
-      if (msgSessionId) {
-        const activeSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
-        if (activeSessionId && activeSessionId !== msgSessionId) {
-          // 脱敏计数观测（规格 §五）：只记录 method（低基数），不记录 payload/sessionId
-          this.dependencies.reportError("[YJS-FE] peri task session mismatch", {
+      const msgSessionId = (rpcCheck.params as Record<string, unknown> | undefined)?.sessionId;
+      if (typeof msgSessionId !== "string" || msgSessionId.length === 0) {
+        this.dependencies.reportError("[YJS-FE] session-bound notification missing sessionId", {
+          method: rpcCheck.method,
+          instanceId: shared.instanceId,
+        });
+        return;
+      }
+
+      const transition = getActiveSessionTransition(shared);
+      if (transition?.owner.kind === "session-sync") {
+        const normalized = normalizeAcpMessage(raw, msgType);
+        if (normalized) {
+          const queued = transition.owner.lifecycle.queueEvent(normalized);
+          if (queued === "queued" || queued === "ignored") return;
+          this.dependencies.reportError("[YJS-FE] session transition event buffer overflow", {
             method: rpcCheck.method,
             instanceId: shared.instanceId,
           });
+          this.abortSessionSync(shared, transition, "buffer_overflow");
           return;
         }
+      }
+      const activeSessionId = registry.findActiveSessionIdByRcsSession(shared.rcsSessionId);
+      if (activeSessionId && activeSessionId !== msgSessionId) {
+        this.dependencies.reportError("[YJS-FE] peri task session mismatch", {
+          method: rpcCheck.method,
+          instanceId: shared.instanceId,
+        });
+        return;
       }
     }
 
     if (msgType === "relay_closed") {
       return this.handleRelayClosed(shared);
+    }
+
+    // 所有无 method 的 JSON-RPC result/error 都在请求所有权边界拦截。无 id 帧直接丢弃，
+    // 不得进入 normalizer 后按响应到达时的 active turn 猜测归属。
+    if (rpcCheck && !rpcCheck.method && ("result" in rpcCheck || "error" in rpcCheck)) {
+      return this.handleJsonRpcResponse(shared, raw, msgType, rpcCheck);
     }
 
     if (msgType === "error") {
@@ -177,11 +224,6 @@ export class RelayEventHandler {
         instanceId: shared.instanceId,
       });
       this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
-      this.dispatch(shared, {
-        type: "turn_failed",
-        update: { error: "Agent request failed" },
-        content: null,
-      });
       return;
     }
 
@@ -191,23 +233,10 @@ export class RelayEventHandler {
         instanceId: shared.instanceId,
       });
       this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
-      this.dispatch(shared, {
-        type: "turn_failed",
-        update: { error: "Agent session request failed" },
-        content: null,
-      });
       return;
     }
 
-    // 第二级：JSON-RPC 响应帧（id + result/error 且无 method）。通知帧
-    // （method 存在，如 session/update）与无 id 帧不落入此处：
-    // - 通知帧语义是事件，交给第三级规范化投递；
-    // - 无 id 的 result 帧原语义为"无副作用"（登记消费与会话同步都按 id 寻址），
-    //   保持不处理（否则会被 normalize 误投递为 prompt_complete）。
-    if (rpcCheck && !rpcCheck.method && ("result" in rpcCheck || (rpcCheck.error && rpcCheck.id != null))) {
-      return this.handleJsonRpcResponse(shared, raw, msgType, rpcCheck);
-    }
-
+    // 第二级 JSON-RPC 响应已在通用 error 帧之前拦截，避免无 id error 下沉 normalizer。
     if (msgType === "status") {
       return this.handleStatus(shared, raw);
     }
@@ -215,7 +244,7 @@ export class RelayEventHandler {
     // 第三级：规范化事件帧（acp-link 私有帧 / session/update 通知），在此边界
     // 翻译为 session/update 语义投递聚合层。JSON-RPC 响应帧已被第二级拦截
     // （prompt 结果由 handleJsonRpcResponse 投递），此处不再处理 result/error 帧。
-    let normalized = normalizeAcpMessage(raw, msgType);
+    const normalized = normalizeAcpMessage(raw, msgType);
     const periMethod = rpcCheck?.method;
     if (periMethod === "peri/agent_event" || periMethod === "peri/unstable_event") {
       this.dependencies.log?.(
@@ -223,18 +252,7 @@ export class RelayEventHandler {
       );
     }
     if (normalized) {
-      // 终态归属回传：JSON-RPC prompt 响应帧（result 带 stopReason / error）本身
-      // 不携带 turnId，聚合层按 active turn 归位会误伤——连续 prompt 时旧 turn 的
-      // 迟到终态会提前终结新 turn（新 turn 增量全被丢弃、答案永不出现）。按
-      // pendingPromptTurns 登记把 turnId 附加到事件上，聚合层据此校验归属；
-      // 非 prompt 响应帧（list_sessions 等）无登记，保持无 turnId 原语义。
-      const promptTurnId =
-        rpcCheck?.id !== undefined && rpcCheck.id !== null
-          ? shared.pendingPromptTurns?.get(rpcCheck.id as number | string)
-          : undefined;
-      if (promptTurnId) {
-        normalized = { ...normalized, turnId: promptTurnId };
-      }
+      // 非 response 的通知只携带自身显式 turnId；禁止从响应到达时的 active turn 推断归属。
       this.dispatchReplayAware(shared, normalized);
     }
   }
@@ -250,47 +268,88 @@ export class RelayEventHandler {
    * eligibleForDispose 注释。
    */
   private async handleRelayClosed(shared: SharedRelay): Promise<void> {
+    const teardown = claimRelayRpcTeardown(shared, "relay_closed");
+    if (!teardown.primary) {
+      await teardown.cleanup;
+      return;
+    }
+
+    // teardown claim 已在任何 await 前冻结物理 handle 上的全部 owner。回放窗口属于
+    // request 的精确包装，不能统一按最先收到 relay_closed 的包装关闭。
+    for (const request of teardown.requests) {
+      if (request.owner.kind === "session-sync") this.closeReplayWindow(request.relay, request);
+    }
+    await teardown.cleanup;
+
     const { registry } = this.dependencies;
-    // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
-    // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
-    // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
-    // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
-    void this.dependencies.terminateLocalDeadInstance(shared.instanceId);
-    // 连接丢失迁移边（文档 8.1）：活动 turn 收敛为 interrupted 终态，
-    // 晚到增量由聚合层丢弃，UI 不会出现"已断连还在输出"
-    this.dispatch(shared, {
-      type: "turn_interrupted",
-      update: {},
-      content: null,
-    });
-    registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-      try {
-        this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
-          type: "error",
-          payload: {
-            code: "agent_connection_lost",
-            message: "Agent connection lost",
-          },
-        });
-      } catch {
-        /* ignore */
-      }
-      try {
-        entry.ws.close(1011, "relay handle closed");
-      } catch {
-        /* ignore */
-      }
-    });
-    // 先注销广播监听再销毁 Doc：即使客户端 close 事件延迟到达，也不会残留僵尸监听器。
-    // 归属防误伤：后继实例已接管该会话（旧实例停止窗口内客户端重连 spawn 新实例
-    // 并重绑后，本 relay 才收到迟到断链）时不销毁实时 Doc——客户端已被 1011 关闭
-    // 并自动重连到后继实例，Doc 保留即可无缝续流；销毁只会静默冻结新实例的实时流。
-    const eligibleForDispose = () => {
-      const owner = this.findSessionOwner(shared.rcsSessionId);
-      return owner === undefined || owner === shared.instanceId;
+    const isCurrentRelay = (relay: SharedRelay) => {
+      const registered = registry.getShared(relay.instanceId, relay.userId, relay.rcsSessionId);
+      return registered === undefined || registered === relay;
     };
-    if (eligibleForDispose()) {
-      await this.disposeRealtimeResources(shared.rcsSessionId, eligibleForDispose);
+    const currentRelays = teardown.relays.filter(isCurrentRelay);
+    if (currentRelays.length === 0) return;
+
+    // 同一物理 handle 可被多个 RCS session 包装。请求按其精确包装投递，并以
+    // rcsSessionId + turnId 去重，确保一个 turn 只收敛一次且不会写入另一会话。
+    const interruptedTurns = new Map<string, { relay: SharedRelay; turnId: string }>();
+    for (const request of teardown.requests) {
+      if (!isCurrentRelay(request.relay)) continue;
+      if ((request.owner.kind === "prompt" || request.owner.kind === "cancel") && request.owner.turnId) {
+        interruptedTurns.set(`${request.relay.rcsSessionId}\u0000${request.owner.turnId}`, {
+          relay: request.relay,
+          turnId: request.owner.turnId,
+        });
+      }
+    }
+    for (const { relay, turnId } of interruptedTurns.values()) {
+      this.dispatch(relay, {
+        type: "turn_interrupted",
+        update: {},
+        content: null,
+        turnId,
+      });
+    }
+
+    // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
+    // 持续占并发额度。多个包装可能属于同一实例，宿主清理只触发一次。
+    for (const instanceId of new Set(currentRelays.map((relay) => relay.instanceId))) {
+      void this.dependencies.terminateLocalDeadInstance(instanceId);
+    }
+
+    const relaysBySession = new Map<string, SharedRelay>();
+    for (const relay of currentRelays) {
+      if (isCurrentRelay(relay)) relaysBySession.set(relay.rcsSessionId, relay);
+    }
+    for (const relay of relaysBySession.values()) {
+      registry.forEachByRcsSession(relay.rcsSessionId, (entry) => {
+        try {
+          this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
+            type: "error",
+            payload: {
+              code: "agent_connection_lost",
+              message: "Agent connection lost",
+            },
+          });
+        } catch {
+          /* ignore */
+        }
+        try {
+          entry.ws.close(1011, "relay handle closed");
+        } catch {
+          /* ignore */
+        }
+      });
+
+      // 精确 wrapper identity 与实例归属共同构成 projection incarnation fence：
+      // await 窗口内若后继 relay 接管，立即失去销毁当前 Doc 的资格。
+      const eligibleForDispose = () => {
+        if (!isCurrentRelay(relay)) return false;
+        const owner = this.findSessionOwner(relay.rcsSessionId);
+        return owner === undefined || owner === relay.instanceId;
+      };
+      if (eligibleForDispose()) {
+        await this.disposeRealtimeResources(relay.rcsSessionId, eligibleForDispose);
+      }
     }
   }
 
@@ -396,7 +455,7 @@ export class RelayEventHandler {
     // 否则 turn 永久卡 accepting/running、前端 loading 永不消失；晚到增量由
     // 聚合层丢弃。agent_status 投影仍正常执行（capabilities 为空 → initializing）。
     if (payload?.connected === false) {
-      this.dispatch(shared, {
+      this.dispatchReplayAware(shared, {
         type: "turn_interrupted",
         update: {},
         content: null,
@@ -434,9 +493,11 @@ export class RelayEventHandler {
       });
       if (needsListSessions) {
         try {
+          const request = reserveRelayRpc(shared, { kind: "session-list" });
           await shared.handle.send(
-            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, request.id) as never,
           );
+          markPendingRpcSent(request);
         } catch (err) {
           this.dependencies.reportError(
             `[YJS-FE] auto list_sessions send failed: instanceId=${shared.instanceId}`,
@@ -471,118 +532,135 @@ export class RelayEventHandler {
     msgType: string | undefined,
     rpcCheck: Record<string, unknown>,
   ): Promise<void> {
-    const { registry } = this.dependencies;
     const rpcId = rpcCheck.id as number | string | null | undefined;
+    if (rpcId === undefined || rpcId === null) return;
 
-    // error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
-    // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
-    // 不关 relay；prompt 请求以 -32000 "No active session" / -32603 "Prompt failed"
-    // 拒绝。静默丢弃会让 turn 永久卡 accepting、前端 loading 永不消失（仅刷新可恢复）。
-    // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛 turn_failed；错误内容
-    // 脱敏，只记录 code，不泄露 acp-link 原始错误。未登记的 error 响应无副作用。
+    const owner = beginRpcResponse(shared, rpcId);
+    if (!owner) return;
+    const processing = this.processOwnedResponse(shared, raw, msgType, rpcCheck, owner);
+    owner.responsePromise = processing;
+    try {
+      await processing;
+    } finally {
+      if (owner.responsePromise === processing) owner.responsePromise = null;
+      settlePendingRpc(owner);
+    }
+  }
+
+  private async processOwnedResponse(
+    shared: SharedRelay,
+    raw: Record<string, unknown>,
+    msgType: string | undefined,
+    rpcCheck: Record<string, unknown>,
+    owner: PendingRpc,
+  ): Promise<void> {
     if (rpcCheck.error) {
-      const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
-      if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
-        shared.pendingPromptIds?.delete(rpcId);
-        clearPendingPromptTimeout(shared, rpcId);
-        // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
-        const turnId = shared.pendingPromptTurns?.get(rpcId);
-        shared.pendingPromptTurns?.delete(rpcId);
+      if (owner.owner.kind === "prompt") {
+        const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
         this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
           instanceId: shared.instanceId,
           code: rpcError?.code,
         });
-        this.dispatch(shared, {
-          type: "turn_failed",
-          update: { error: "Agent request failed" },
-          content: null,
-          turnId,
-        });
+        if (owner.owner.turnId) {
+          this.dispatchReplayAware(shared, {
+            type: "turn_failed",
+            update: { error: "Agent request failed" },
+            content: null,
+            turnId: owner.owner.turnId,
+          });
+        }
+      }
+      if (owner.owner.kind === "session-sync") await this.rollbackSessionSync(shared, owner);
+      return;
+    }
+
+    if (!("result" in rpcCheck)) {
+      if (owner.owner.kind === "session-sync") await this.rollbackSessionSync(shared, owner);
+      return;
+    }
+    const result = rpcCheck.result as Record<string, unknown> | undefined;
+    if (!result || typeof result !== "object") {
+      if (owner.owner.kind === "session-sync") await this.rollbackSessionSync(shared, owner);
+      return;
+    }
+
+    if (owner.owner.kind === "prompt") {
+      if (!("stopReason" in result) || !owner.owner.turnId) return;
+      const normalized = normalizeAcpMessage(raw, msgType);
+      if (normalized) this.dispatchReplayAware(shared, { ...normalized, turnId: owner.owner.turnId });
+      return;
+    }
+
+    if (owner.owner.kind === "cancel") {
+      if (result.cancelled === true && owner.owner.turnId) {
+        const normalized = normalizeAcpMessage(raw, msgType);
+        if (normalized) this.dispatchReplayAware(shared, { ...normalized, turnId: owner.owner.turnId });
       }
       return;
     }
 
-    // result 响应：先补 prompt 完成投递（原规范化事件投递路径承担：result 带
-    // stopReason 的 prompt 响应 → turn_completed，此投递是结果型响应下 turn 完成的
-    // 唯一事件来源），再消费登记与会话同步——保持原帧处理顺序（投递先于消费）。
-    let normalized = normalizeAcpMessage(raw, msgType);
-    if (normalized) {
-      // 终态归属回传：见 handleMessage 第三级注释（JSON-RPC prompt 响应无 turnId，
-      // 按 pendingPromptTurns 登记附加，聚合层据此校验归属）
-      const promptTurnId = rpcId !== undefined && rpcId !== null ? shared.pendingPromptTurns?.get(rpcId) : undefined;
-      if (promptTurnId) {
-        normalized = { ...normalized, turnId: promptTurnId };
+    if (owner.owner.kind === "session-list") {
+      if (Array.isArray(result.sessions)) {
+        const normalized = normalizeAcpMessage(raw, msgType);
+        if (normalized) this.dispatchReplayAware(shared, normalized);
       }
-      this.dispatchReplayAware(shared, normalized);
+      return;
     }
 
+    if (owner.owner.kind !== "session-sync") return;
+    const newSessionId = result.sessionId;
+    if (typeof newSessionId !== "string" || newSessionId.length === 0) {
+      await this.rollbackSessionSync(shared, owner);
+      return;
+    }
     try {
-      const rpc = rpcCheck;
-      if (!("result" in rpc)) return;
-      const result = rpc.result as Record<string, unknown> | undefined;
-      if (!result || typeof result !== "object") return;
-      const newSessionId = result.sessionId;
-      // 会话同步响应身份校验：JSON-RPC 响应帧只有 id 无 method，无法区分响应来源；
-      // 仅放行请求出口登记过的在途 create/load/resume 请求。rename/delete 等其他
-      // 携带 sessionId 的响应未经登记必须拒绝——否则 registry 活跃会话被 clobber、
-      // 绑定校验丢弃当前会话全部增量（重命名非当前会话即冻结当前输出流）、误开
-      // 10s 回放窗口、错误投影 title/status。消费后删除登记，避免 id 空间残留。
-      // prompt 成功响应消费：result 到达说明请求已被 agent 正常处理（即时 ack 或
-      // 完成时返回），不再需要超时收敛；同时修复成功路径 pendingPromptIds 残留
-      // （此前只有 error 路径消费，成功结果会永久占用登记）。
-      if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
-        shared.pendingPromptIds.delete(rpcId);
-        shared.pendingPromptTurns?.delete(rpcId);
-        clearPendingPromptTimeout(shared, rpcId);
-      }
-      const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
-      if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
-      if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
-        // load/resume 成功后开启回放窗口：Agent 即将回放历史增量（无持久化快照时
-        // 历史恢复的唯一来源），窗口内由 dispatchReplayAware 补全 turn 上下文投影时间线；
-        // 窗口到期定时器收敛回放 turn 终态（回放流无终态信号，见 openReplayWindow）
-        this.openReplayWindow(shared);
-        const sessionDoc = await this.dependencies.docManager.openSession(
-          shared.userId,
-          shared.agentId,
-          shared.rcsSessionId,
-        );
-        // await 挂起期间 relay 可能已因全部客户端断开而释放（closeReleasedRelay 已置 destroyed 并注销），
-        // 跳过注册避免产生无注销点的僵尸监听器；relay 已销毁时后续 session 同步也无接收者。
-        if (shared.destroyed) return;
-        this.dependencies.registerYjsDocListener(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
-        registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
-          entry.acpSessionId = newSessionId;
-        });
-        // 会话元信息（sessionId/status）经规范化事件写入 Session Doc session；
-        // model/mode 来自 session/new、load 响应（acp-link 已从 configOptions 提取
-        // models/modes 字段，SDK 0.28+ 无独立 models 字段），投影为会话级元数据，
-        // 前端据此显示模型名与模式选择器
-        this.dispatch(shared, {
-          type: "session_updated",
-          update: {
-            sessionId: newSessionId,
-            status: "ready",
-            // title 投影：session/new、load 响应携带 agent 侧标题；空串视为缺省
-            // （与 acp-link list 过滤语义一致），不得用空标题覆盖已有值；缺省时
-            // 保持现有值（清空后为 null，前端兜底显示"新会话"——由后续
-            // session_list 轮询以权威列表覆盖）
-            ...(typeof result.title === "string" && result.title.trim().length > 0 ? { title: result.title } : {}),
-            ...(result.models && typeof result.models === "object" ? { modelState: result.models } : {}),
-            ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
-          },
-          content: null,
-        });
-        try {
-          this.dependencies.broadcaster.broadcastSnapshot(sessionDoc.ydoc, `session:${shared.rcsSessionId}`);
-        } catch (err) {
-          this.dependencies.reportError("[YJS-FE] Failed to push session init state:", err);
-        }
+      if (!(await owner.owner.lifecycle.commit(result, () => isPendingRpcCurrent(owner)))) {
+        await this.rollbackSessionSync(shared, owner);
         return;
       }
+      if (!isPendingRpcCurrent(owner)) return;
+      if (owner.owner.lifecycle.replay) this.openReplayWindow(shared, owner);
+      const sessionDoc = this.dependencies.docManager.getSession(shared.rcsSessionId);
+      if (!sessionDoc || !isPendingRpcCurrent(owner)) return;
+      this.dependencies.registerYjsDocListener(
+        sessionDoc.ydoc,
+        `session:${shared.rcsSessionId}`,
+        sessionDoc.generation,
+      );
+      this.dispatch(shared, {
+        type: "session_updated",
+        update: {
+          sessionId: newSessionId,
+          status: "ready",
+          ...(typeof result.title === "string" && result.title.trim().length > 0 ? { title: result.title } : {}),
+          ...(result.models && typeof result.models === "object" ? { modelState: result.models } : {}),
+          ...(result.modes && typeof result.modes === "object" ? { modeState: result.modes } : {}),
+        },
+        content: null,
+      });
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] session sync failed:", err);
+      await this.rollbackSessionSync(shared, owner);
     }
+  }
+
+  private async rollbackSessionSync(shared: SharedRelay, request: PendingRpc): Promise<void> {
+    this.closeReplayWindow(shared, request);
+    if (request.owner.kind !== "session-sync") return;
+    try {
+      await request.owner.lifecycle.rollback();
+    } catch (err) {
+      this.dependencies.reportError("[YJS-FE] session sync rollback failed:", err);
+    }
+  }
+
+  /** timeout/缓冲溢出路径先同步剥夺 owner，再异步销毁候选。 */
+  abortSessionSync(shared: SharedRelay, request: PendingRpc, _reason: "timeout" | "buffer_overflow"): void {
+    if (request.owner.kind !== "session-sync" || !claimPendingRpcAbort(request)) return;
+    this.closeReplayWindow(shared, request);
+    void cleanupAbortedRpc(request).catch((err) => {
+      this.dependencies.reportError("[YJS-FE] session sync rollback failed:", err);
+    });
   }
 
   /**
@@ -592,7 +670,8 @@ export class RelayEventHandler {
    * 否则回放 turn 永久卡 running、前端一直显示输出中。期间用户发出新消息时
    * 聚合层按 turnId 归属拒绝该终态（见 aggregator.applyTurnTerminal），不误伤新 turn。
    */
-  openReplayWindow(shared: SharedRelay): void {
+  openReplayWindow(shared: SharedRelay, owner?: PendingRpc): void {
+    if (owner) shared.replayWindowOwner = owner;
     shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
     // 窗口开启瞬间判定一次 Chat Doc 是否已有时间线内容（重连跳过回放语义）并缓存：
     // 合成投影本身会写 Chat Doc，若窗口内实时检查，回放自己写入的第一条会把后续
@@ -600,8 +679,21 @@ export class RelayEventHandler {
     shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
     if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
     shared.replayWindowTimer = setTimeout(() => {
+      if (owner && shared.replayWindowOwner !== owner) return;
       this.convergeReplayWindow(shared);
     }, REPLAY_WINDOW_MS);
+  }
+
+  /** 仅拥有当前 replay window 的 session-sync 请求可在失败路径关闭窗口。 */
+  closeReplayWindow(shared: SharedRelay, owner: PendingRpc): boolean {
+    if (shared.replayWindowOwner !== owner) return false;
+    if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
+    shared.replayWindowTimer = null;
+    shared.replayWindowOwner = null;
+    shared.replayWindowUntil = null;
+    shared.replaySkipSynthesis = undefined;
+    shared.replayTurnId = null;
+    return true;
   }
 
   /**
@@ -613,6 +705,7 @@ export class RelayEventHandler {
    * 幂等：窗口未开启或无回放 turn 时 no-op。
    */
   convergeReplayWindow(shared: SharedRelay): void {
+    shared.replayWindowOwner = null;
     shared.replayWindowUntil = null;
     shared.replaySkipSynthesis = undefined;
     const replayTurnId = shared.replayTurnId;
@@ -671,25 +764,77 @@ export class RelayEventHandler {
         }
       }
     }
+    const currentCallback = shared.callbackAssistant;
     if (!inReplayWindow && event.type === "user_message" && !event.turnId) {
-      const callbackEntryId = `callback_${crypto.randomUUID()}`;
-      shared.callbackAssistantEntryId = callbackEntryId;
-      event = { ...event, callbackEntryId };
+      // 新 callback 用户消息是明确的时间线边界；先收敛尚未结束的上一条，避免
+      // 替换路由指针后留下永久 streaming/pending 的孤儿 assistant entry。
+      if (currentCallback) {
+        this.dispatchCallbackTerminal(shared, currentCallback, {
+          type: "turn_completed",
+          update: {},
+          content: null,
+        });
+      }
+      const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
+      const callbackAssistant = {
+        entryId: `callback_${crypto.randomUUID()}`,
+        ownerTurnId: isTurnWritable(active.turnStatus) ? active.turnId : null,
+      };
+      shared.callbackAssistant = callbackAssistant;
+      event = { ...event, callbackEntryId: callbackAssistant.entryId };
+    } else if (CALLBACK_TERMINAL_TYPES.has(event.type) && event.turnId) {
+      // 带 turnId 的 prompt 终态仍归属于主 turn；若当前 callback 在该 turn 内创建，
+      // 再以同一终态收敛它。所有权不匹配时保持新 callback，避免旧终态迟到误清理。
+      this.dispatch(shared, event);
+      const callback = shared.callbackAssistant;
+      if (callback?.ownerTurnId === event.turnId) {
+        this.dispatchCallbackTerminal(shared, callback, event);
+      }
+      return;
     } else if (
-      shared.callbackAssistantEntryId &&
-      (event.type === "message_delta" ||
-        event.type === "reasoning_delta" ||
-        event.type === "turn_completed" ||
-        event.type === "turn_cancelled" ||
-        event.type === "turn_failed") &&
+      shared.callbackAssistant &&
+      (event.type === "message_delta" || event.type === "reasoning_delta") &&
       !event.turnId
     ) {
-      event = { ...event, callbackEntryId: shared.callbackAssistantEntryId };
-      if (event.type === "turn_completed" || event.type === "turn_cancelled" || event.type === "turn_failed") {
-        shared.callbackAssistantEntryId = null;
+      const callback = shared.callbackAssistant;
+      const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
+      // callback 创建后若活动 turn 已切换（包括从 idle 进入新 turn），后续无头增量
+      // 应归入新活动 turn；先完成旧 callback，不能继续把新回答写回旧时间线位置。
+      if (callback.ownerTurnId !== active.turnId || (callback.ownerTurnId && !isTurnWritable(active.turnStatus))) {
+        this.dispatchCallbackTerminal(shared, callback, {
+          type: "turn_completed",
+          update: {},
+          content: null,
+        });
+      } else {
+        event = { ...event, callbackEntryId: callback.entryId };
       }
+    } else if (shared.callbackAssistant && CALLBACK_TERMINAL_TYPES.has(event.type) && !event.turnId) {
+      const callback = shared.callbackAssistant;
+      const active = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId);
+      if (callback.ownerTurnId && callback.ownerTurnId === active.turnId) {
+        // 只有 callback 创建时冻结的 turn 仍是当前活动 turn，才能把无 turnId 的私有
+        // 终态安全归位。独立 callback 或 owner 已变化时没有可信关联，必须忽略；后继
+        // callback 边界或当前 relay 的全局断连会负责显式收敛。
+        event = { ...event, turnId: callback.ownerTurnId };
+        this.dispatch(shared, event);
+        this.dispatchCallbackTerminal(shared, callback, event);
+      }
+      return;
     }
     this.dispatch(shared, event);
+  }
+
+  /** 向 callback assistant 投递终态，并仅在仍指向同一 entry 时释放路由状态。 */
+  private dispatchCallbackTerminal(
+    shared: SharedRelay,
+    callback: { entryId: string; ownerTurnId: string | null },
+    event: NormalizedEvent,
+  ): void {
+    this.dispatch(shared, { ...event, callbackEntryId: callback.entryId });
+    if (shared.callbackAssistant?.entryId === callback.entryId) {
+      shared.callbackAssistant = null;
+    }
   }
 
   /** 投递规范化事件到聚合层（binding 不存在时由 docManager 丢弃） */
@@ -706,17 +851,15 @@ export class RelayEventHandler {
    * 消费登记并清除定时器后收敛 turn_failed——与 error 拒绝路径相同的终态语义，
    * 使前端 loading 不会永久卡死。错误内容脱敏（通用文案），只记录实例上下文。
    */
-  convergeStuckPrompt(shared: SharedRelay, rpcId: number | string): void {
-    if (!shared.pendingPromptIds?.has(rpcId)) return;
-    shared.pendingPromptIds.delete(rpcId);
-    clearPendingPromptTimeout(shared, rpcId);
-    // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
-    const turnId = shared.pendingPromptTurns?.get(rpcId);
-    shared.pendingPromptTurns?.delete(rpcId);
+  convergeStuckPrompt(shared: SharedRelay, request: PendingRpc): void {
+    if (request.owner.kind !== "prompt" || !claimPendingRpcAbort(request)) return;
+    const turnId = request.owner.turnId;
     this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
       instanceId: shared.instanceId,
     });
-    this.dispatch(shared, {
+    // 空 prompt 的 null 所有权只消费请求，不得回退到响应时的 active turn。
+    if (!turnId) return;
+    this.dispatchReplayAware(shared, {
       type: "turn_failed",
       update: { error: "Agent request failed" },
       content: null,

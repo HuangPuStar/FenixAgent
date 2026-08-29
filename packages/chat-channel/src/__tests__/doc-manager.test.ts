@@ -3,7 +3,7 @@
 
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { type NormalizedEvent } from "../schema";
+import { type NonPeriNormalizedEventType, type NormalizedEvent } from "../schema";
 import {
   getAgentStatus,
   getEntriesMap,
@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 /** 构造最小规范化事件，保持测试数据与聚合入口的协议一致。 */
-function event(type: NormalizedEvent["type"], update: Record<string, unknown>, turnId?: string): NormalizedEvent {
+function event(type: NonPeriNormalizedEventType, update: Record<string, unknown>, turnId?: string): NormalizedEvent {
   return {
     type,
     update,
@@ -267,6 +267,132 @@ test("replaces an RCS projection with a new generation and empty timeline", asyn
   expect(manager.getProjectionGeneration("rcs_generation")).toBe(replacement.generation);
   expect(getEntryOrder(replacement.chat.ydoc).toArray()).toEqual([]);
   expect(replacement.targetAcpSessionId).toBe("ses-new");
+  await manager.closeAll();
+});
+
+// 投影激活中途失败时必须逆序补偿外部副作用，并恢复旧 Doc 身份而非只恢复 generation 值。
+test("rolls back activation side effects and restores the exact previous projection", async () => {
+  await manager.openChat("rcs_replace_failure");
+  await manager.openSession("user-1", "agent-1", "rcs_replace_failure");
+  const previousChat = manager.getChat("rcs_replace_failure");
+  const previousSession = manager.getSession("rcs_replace_failure");
+  const previousGeneration = manager.getProjectionGeneration("rcs_replace_failure");
+  const replacement = await manager.prepareProjectionReplacement("rcs_replace_failure", "ses_new");
+  const sideEffects: string[] = [];
+
+  await expect(
+    replacement.commit(() => true, {
+      activate(registerRollback) {
+        registerRollback(() => {
+          sideEffects.push("binding:old");
+        });
+        sideEffects.push("binding:new");
+        registerRollback(() => {
+          sideEffects.push("listener:old");
+        });
+        sideEffects.push("listener:new");
+        throw new Error("listener activation failed");
+      },
+    }),
+  ).rejects.toThrow("listener activation failed");
+
+  expect(sideEffects).toEqual(["binding:new", "listener:new", "listener:old", "binding:old"]);
+  expect(manager.getChat("rcs_replace_failure")).toBe(previousChat);
+  expect(manager.getSession("rcs_replace_failure")).toBe(previousSession);
+  expect(manager.getProjectionGeneration("rcs_replace_failure")).toBe(previousGeneration);
+  expect(replacement.projection.chat.ydoc.isDestroyed).toBe(true);
+  expect(replacement.projection.session.ydoc.isDestroyed).toBe(true);
+  await manager.closeAll();
+});
+
+// owner 在同步激活段后失效时同样必须执行补偿，候选内容不能污染旧投影。
+test("compensates activation when the projection owner changes", async () => {
+  await manager.openChat("rcs_owner_change");
+  await manager.openSession("user-1", "agent-1", "rcs_owner_change");
+  const previousSession = manager.getSessionYdoc("rcs_owner_change");
+  const replacement = await manager.prepareProjectionReplacement("rcs_owner_change", "ses_new");
+  let currentChecks = 0;
+  let binding = "old";
+
+  await expect(
+    replacement.commit(() => ++currentChecks < 4, {
+      stagedEvents: [event("session_updated", { sessionId: "ses_new", title: "Hidden candidate" })],
+      activate(registerRollback) {
+        registerRollback(() => {
+          binding = "old";
+        });
+        binding = "new";
+      },
+    }),
+  ).rejects.toThrow("projection owner changed during activation");
+
+  expect(binding).toBe("old");
+  expect(manager.getSessionYdoc("rcs_owner_change")).toBe(previousSession);
+  expect(getSessionInfo(previousSession!).get("title")).toBeUndefined();
+  expect(replacement.projection.session.ydoc.isDestroyed).toBe(true);
+  await manager.closeAll();
+});
+
+// 候选中的交互请求只重建文档状态，不得在提交前后触发控制面 timer 通知。
+test("stages permission and question events without external scheduling side effects", async () => {
+  const notifications: string[] = [];
+  manager.setPermissionRequestedHandler((_rcsSessionId, permission) => notifications.push(permission.permissionId));
+  manager.setQuestionRequestedHandler((_rcsSessionId, question) => notifications.push(question.questionId));
+  await manager.openChat("rcs_staged_controls");
+  await manager.openSession("user-1", "agent-1", "rcs_staged_controls");
+  const replacement = await manager.prepareProjectionReplacement("rcs_staged_controls", "ses_new");
+
+  const committed = await replacement.commit(() => true, {
+    stagedEvents: [
+      event("user_message", { content: { type: "text", text: "question" } }, "turn-staged"),
+      event("permission_requested", {
+        permissionId: "perm-staged",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      }),
+      event("question_requested", {
+        questionId: "question-staged",
+        questions: [{ question: "continue?", options: [{ label: "yes" }] }],
+        expiresAt: "2030-01-01T00:00:00.000Z",
+      }),
+    ],
+  });
+
+  expect(committed).toBe(true);
+  expect(notifications).toEqual([]);
+  expect(getPendingPermissions(replacement.projection.session.ydoc).has("perm-staged")).toBe(true);
+  expect(getPendingQuestions(replacement.projection.session.ydoc).has("question-staged")).toBe(true);
+  await manager.closeAll();
+});
+
+// staged 交互请求后的激活失败也不能留下通知或候选资源。
+test("rolls back staged controls without scheduling external side effects", async () => {
+  const notifications: string[] = [];
+  manager.setPermissionRequestedHandler((_rcsSessionId, permission) => notifications.push(permission.permissionId));
+  manager.setQuestionRequestedHandler((_rcsSessionId, question) => notifications.push(question.questionId));
+  await manager.openChat("rcs_staged_rollback");
+  await manager.openSession("user-1", "agent-1", "rcs_staged_rollback");
+  const previousSession = manager.getSession("rcs_staged_rollback");
+  const replacement = await manager.prepareProjectionReplacement("rcs_staged_rollback", "ses_new");
+
+  await expect(
+    replacement.commit(() => true, {
+      stagedEvents: [
+        event("user_message", { content: { type: "text", text: "question" } }, "turn-staged"),
+        event("permission_requested", { permissionId: "perm-staged" }),
+        event("question_requested", {
+          questionId: "question-staged",
+          questions: [{ question: "continue?", options: [{ label: "yes" }] }],
+        }),
+      ],
+      activate() {
+        throw new Error("activation failed");
+      },
+    }),
+  ).rejects.toThrow("activation failed");
+
+  expect(notifications).toEqual([]);
+  expect(manager.getSession("rcs_staged_rollback")).toBe(previousSession);
+  expect(replacement.projection.session.ydoc.isDestroyed).toBe(true);
   await manager.closeAll();
 });
 

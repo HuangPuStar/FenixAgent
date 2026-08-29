@@ -1,6 +1,6 @@
 // packages/chat-channel/src/types.ts
 import type * as Y from "yjs";
-import type { QuestionProjection, SessionDocStatus } from "./schema";
+import type { NormalizedEvent, QuestionProjection, SessionDocStatus } from "./schema";
 
 // ── Session 级别状态 ──
 
@@ -47,6 +47,8 @@ export interface ChatDoc {
   ydoc: Y.Doc;
   generation: string;
   provider: RedisProvider;
+  /** 隐藏候选投影在 generation CAS 成功后才激活 Redis provider。 */
+  activateProvider(): void;
   destroy(): Promise<void>;
 }
 
@@ -54,6 +56,8 @@ export interface SessionDoc {
   ydoc: Y.Doc;
   generation: string;
   provider: RedisProvider;
+  /** 隐藏候选投影在 generation CAS 成功后才激活 Redis provider。 */
+  activateProvider(): void;
   destroy(): Promise<void>;
 }
 
@@ -64,6 +68,33 @@ export interface ProjectionDocs {
   targetAcpSessionId: string | null;
   chat: ChatDoc;
   session: SessionDoc;
+}
+
+export type ProjectionRollback = () => Promise<void> | void;
+
+/** 激活步骤必须在产生副作用前登记补偿；DocManager 在失败时按逆序执行。 */
+export type RegisterProjectionRollback = (rollback: ProjectionRollback) => void;
+
+export interface ProjectionCommitHooks {
+  /** 在候选仍不可见、provider 与广播监听器均未激活时投影的过渡期事件。 */
+  stagedEvents?: readonly NormalizedEvent[];
+  /** 候选成为内存权威后执行可逆的 binding/listener/publication 激活。 */
+  activate?: (registerRollback: RegisterProjectionRollback) => void;
+}
+
+/**
+ * 隐藏候选投影换代事务。prepare 不改变活动 Doc 或 Redis generation；commit 仅在
+ * isCurrent 仍成立时发布并激活候选，rollback 只销毁自己的候选。
+ */
+export interface ProjectionReplacement {
+  readonly projection: ProjectionDocs;
+  readonly previousProjection: ProjectionDocs | null;
+  /**
+   * 原子提交候选。stagedEvents 只修改隐藏候选；activate 的每个外部副作用都必须预先登记
+   * 补偿，commit 后续失败或 owner 丢失时由 DocManager 逆序恢复。
+   */
+  commit(isCurrent: () => boolean, hooks?: ProjectionCommitHooks): Promise<boolean>;
+  rollback(): Promise<boolean>;
 }
 
 // ── Redis Provider 接口 ──

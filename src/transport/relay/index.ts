@@ -31,9 +31,9 @@ export async function reclaimInstanceYjsDocs(instanceId: string): Promise<void> 
   await getChatChannelController().relayEvents.reclaimInstanceRealtimeResources(instanceId);
 }
 
-/** 关闭所有前端 yjs WS 连接（graceful shutdown） */
-export function closeAllRelayConnections(): void {
-  getChatChannelController().registry.closeAll(1001, "server_shutdown");
+/** 关闭所有前端 yjs WS 连接，并等待候选投影回滚完成（graceful shutdown）。 */
+export async function closeAllRelayConnections(): Promise<void> {
+  await getChatChannelController().gateway.closeAll(1001, "server_shutdown");
 }
 
 /** 精确关闭指定实例的前端 yjs WS；machine 生命周期调用方须在删除 runtime 实例前捕获实例 ID。 */

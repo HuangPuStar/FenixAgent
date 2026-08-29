@@ -9,17 +9,22 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
-import type { NormalizedEvent } from "../schema";
+import type { NonPeriNormalizedEventType, NormalizedEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import { getEntry, getEntryOrder, getSessionInfo } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { createChatDoc, createSessionDoc } from "../state/factory";
+import { createTestRpcReservationFactory } from "./connection-test-helpers";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
 
 let pair: DocPair;
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: NonPeriNormalizedEventType,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return { type, update, content: (update.content as Record<string, unknown>) ?? null, turnId };
 }
 
@@ -54,6 +59,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Har
   const channel = new SessionChannel({
     docManager,
     prepareClearSessionSnapshot: async () => {},
+    replaceProjection: () => {},
     syncSessionId: () => {},
     reportError: () => {},
     ...overrides,
@@ -62,7 +68,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Har
 }
 
 function createConnection(overrides: Partial<SessionConnection> = {}): SessionConnection {
-  let nextRpcId = 0;
+  const reserveRpc = createTestRpcReservationFactory();
   return {
     userId: "user-1",
     agentId: "agent-1",
@@ -72,9 +78,8 @@ function createConnection(overrides: Partial<SessionConnection> = {}): SessionCo
     agentStatusReceived: true,
     sessionLoaded: false,
     workspacePath: "/workspace/org-1/user-1/env-1",
-    lastClientKeepalive: 0,
     sendToRelay: () => {},
-    getNextRpcId: () => ++nextRpcId,
+    reserveRpc,
     ...overrides,
   };
 }

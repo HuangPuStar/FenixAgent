@@ -7,11 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import type { NormalizedEvent } from "../schema";
+import type { NonPeriNormalizedEventType, NormalizedEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import { getPendingPermissions, getSessionInfo, getToolCallsMap, readActiveTurn } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { createChatDoc, createSessionDoc } from "../state/factory";
+import { createTestRpcReservationFactory, type TestRpcReservation } from "./connection-test-helpers";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
 
@@ -35,6 +36,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
   const channel = new SessionChannel({
     docManager,
     prepareClearSessionSnapshot: async () => {},
+    replaceProjection: () => {},
     syncSessionId: () => {},
     reportError: (message, error) => {
       state.errors.push({ message, error });
@@ -63,9 +65,10 @@ interface RelayRecord {
 function createConnection(overrides: Partial<SessionConnection> = {}): {
   connection: SessionConnection;
   relayMessages: RelayRecord[];
+  reservations: TestRpcReservation[];
 } {
   const relayMessages: RelayRecord[] = [];
-  let nextRpcId = 0;
+  const reserveRpc = createTestRpcReservationFactory();
   const connection: SessionConnection = {
     userId: "user-1",
     agentId: "agent-1",
@@ -75,15 +78,23 @@ function createConnection(overrides: Partial<SessionConnection> = {}): {
     agentStatusReceived: true,
     sessionLoaded: false,
     workspacePath: "/workspace/org-1/user-1/env-1",
-    lastClientKeepalive: 0,
     sendToRelay: (message) => {
       const record = message as unknown as RelayRecord;
       if (record.jsonrpc === "2.0" && "result" in record) relayMessages.push(record);
     },
-    getNextRpcId: () => ++nextRpcId,
+    reserveRpc,
     ...overrides,
   };
-  return { connection, relayMessages };
+  return { connection, relayMessages, reservations: reserveRpc.reservations };
+}
+
+async function commitSessionSync(reservations: TestRpcReservation[], sessionId: string): Promise<void> {
+  const reservation = reservations.at(-1);
+  if (!reservation || reservation.owner.kind !== "session-sync") {
+    throw new Error("expected a session-sync reservation");
+  }
+  const committed = await reservation.owner.lifecycle.commit({ sessionId }, () => !reservation.aborted);
+  if (!committed) throw new Error(`expected session-sync commit for ${sessionId}`);
 }
 
 function createSinks(harness: TestHarness): {
@@ -273,7 +284,7 @@ describe("permission CAS (C5)", () => {
   // 会话切换（load_session 到新会话）→ pendingPermissions 整体清空，不残留可授权项。
   // sessionLoaded=true 表示非重连的正常切换（重连场景保留已有 Doc 内容，见 C3 守卫）
   test("session switch clears pending permissions", async () => {
-    const { connection } = createConnection({ sessionLoaded: true });
+    const { connection, reservations } = createConnection({ sessionLoaded: true });
     await setupTurnWithPendingPermission(harness, "p1", "t1", new Date(Date.now() + 60_000).toISOString());
 
     await harness.channel.handleAction(
@@ -281,6 +292,7 @@ describe("permission CAS (C5)", () => {
       { action: "load_session", commandId: "cmd-load", sessionId: "ses_new" },
       createSinks(harness),
     );
+    await commitSessionSync(reservations, "ses_new");
 
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1")!;
     expect(getPendingPermissions(sessionDoc).size).toBe(0);
@@ -311,7 +323,7 @@ describe("permission CAS on turn terminal (aggregator)", () => {
   });
 
   function event(
-    type: NormalizedEvent["type"],
+    type: NonPeriNormalizedEventType,
     update: Record<string, unknown> = {},
     turnId?: string,
   ): NormalizedEvent {

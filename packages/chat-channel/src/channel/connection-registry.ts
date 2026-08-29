@@ -117,6 +117,14 @@ export class ConnectionRegistry {
     }
   }
 
+  /** 同一 RCS 会话是否仍有前端客户端；projection 回滚时用于避免无消费者的监听器重绑。 */
+  hasClientByRcsSession(rcsSessionId: string): boolean {
+    for (const client of this.clients.values()) {
+      if (client.rcsSessionId === rcsSessionId) return true;
+    }
+    return false;
+  }
+
   /** 返回同一 RCS 会话当前绑定的 ACP session ID。 */
   findActiveSessionIdByRcsSession(rcsSessionId: string): string | undefined {
     for (const client of this.clients.values()) {
@@ -265,17 +273,15 @@ export class ConnectionRegistry {
     }
   }
 
-  /** 关闭所有客户端连接（graceful shutdown） */
-  closeAll(code?: number, reason?: string): void {
-    for (const [, client] of this.clients) {
+  /** 请求所有客户端关闭；注册表与 relay 资源由 Gateway.handleClose 统一释放。 */
+  requestCloseAllClients(code = 1001, reason = "server_shutdown"): void {
+    for (const client of this.clients.values()) {
       try {
-        client.relayHandle?.close?.(code ?? 1001, reason ?? "server_shutdown");
+        client.ws.close(code, reason);
       } catch {
-        // ignore
+        // 单连接失败不阻塞其他客户端关闭；Gateway 随后仍会按 wsId 强制释放。
       }
-      clearInterval(client.keepalive);
     }
-    this.clients.clear();
   }
 
   /** 迭代所有客户端（用于外部关闭逻辑） */

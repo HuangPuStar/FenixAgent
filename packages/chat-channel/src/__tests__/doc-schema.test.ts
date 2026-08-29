@@ -6,6 +6,7 @@ import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
 import {
   CHAT_DOC_SCHEMA_VERSION,
+  type NonPeriNormalizedEventType,
   type NormalizedEvent,
   type PeriTaskViewProjection,
   SESSION_DOC_SCHEMA_VERSION,
@@ -36,7 +37,11 @@ beforeEach(() => {
 });
 
 /** 构造规范化事件（测试辅助） */
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: NonPeriNormalizedEventType,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return {
     type,
     update,

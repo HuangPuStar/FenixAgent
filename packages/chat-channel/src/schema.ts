@@ -229,8 +229,8 @@ export type NormalizedEventType =
  * - content：update.content（文本增量/内容块）
  * - turnId：宿主在用户消息写入时生成；聚合层以此做映射幂等
  */
-export interface NormalizedEvent {
-  type: NormalizedEventType;
+/** 所有规范化事件共享的安全边界字段。 */
+interface NormalizedEventFields {
   update: Record<string, unknown>;
   content: Record<string, unknown> | null;
   /** 帧携带的 ACP sessionId，仅用于 binding 校验，不得用于 Y.Doc 寻址 */
@@ -241,6 +241,14 @@ export interface NormalizedEvent {
   /** callback 流本地关联键，仅用于隔离无 turnId 的 Peri callback 历史输出。 */
   callbackEntryId?: string | null;
 }
+
+export type NonPeriNormalizedEventType = Exclude<
+  NormalizedEventType,
+  "peri_task_started" | "peri_task_completed" | "peri_task_cancelled"
+>;
+
+/** 规范化事件以 type 为判别字段；Peri task 分支额外强制其领域字段。 */
+export type NormalizedEvent = (NormalizedEventFields & { type: NonPeriNormalizedEventType }) | NormalizedPeriTaskEvent;
 
 /** Turn 终态集合：终态后到达的同 turn 增量一律丢弃 */
 export const TURN_TERMINAL_STATUSES: ReadonlySet<TurnStatus> = new Set([
@@ -370,7 +378,7 @@ export function truncateUtf8Safe(value: string, max: number): string {
  * 聚合层 switch 后经最小范围类型收窄读取扁平字段。
  */
 export type NormalizedPeriTaskEvent =
-  | (NormalizedEvent & {
+  | (NormalizedEventFields & {
       type: "peri_task_started";
       taskId: string;
       kind: PeriTaskKind;
@@ -382,7 +390,7 @@ export type NormalizedPeriTaskEvent =
       isBackground: boolean;
       detailAvailability: "preview" | "unavailable";
     })
-  | (NormalizedEvent & {
+  | (NormalizedEventFields & {
       type: "peri_task_completed";
       taskId: string;
       kind: PeriTaskKind;
@@ -392,7 +400,7 @@ export type NormalizedPeriTaskEvent =
       receivedAt: string;
       detailAvailability: "preview" | "unavailable";
     })
-  | (NormalizedEvent & {
+  | (NormalizedEventFields & {
       type: "peri_task_cancelled";
       taskId: string;
       kind: "background";

@@ -14,6 +14,7 @@ import {
   createWs,
   textFrames,
 } from "./connection-test-helpers";
+import { getRelayRpcState, type RelayMessage, reserveRelayRpc, type SharedRelay } from "./connection-types";
 
 type ScheduledInterval = {
   callback: () => void;
@@ -60,6 +61,29 @@ function restoreProperty(target: object, name: PropertyKey, descriptor: Property
 /** 解析连接收到的 JSON 文本帧（yjs:update 快照为二进制帧，SP-A4，须过滤后再 parse） */
 function parseTextFrames(ws: ReturnType<typeof createWs>): Array<Record<string, unknown>> {
   return textFrames(ws).map((message) => JSON.parse(message) as Record<string, unknown>);
+}
+
+async function deliverSessionSyncResult(
+  shared: SharedRelay,
+  relayEvents: ReturnType<typeof createRelayEvents>,
+  sessionId: string,
+): Promise<void> {
+  const request = reserveRelayRpc(shared, {
+    kind: "session-sync",
+    lifecycle: {
+      targetSessionId: sessionId,
+      replay: true,
+      queueEvent: () => "queued",
+      drainEvents: () => [],
+      commit: (_result, isCurrent) => isCurrent(),
+      rollback: () => true,
+    },
+  });
+  await relayEvents.createMessageHandler(shared)({
+    jsonrpc: "2.0",
+    id: request.id,
+    result: { sessionId },
+  } as unknown as RelayMessage);
 }
 
 describe("Gateway handleOpen", () => {
@@ -460,13 +484,11 @@ describe("Gateway handleOpen", () => {
   });
 });
 
-// 回放窗口开启：load/resume 会话的窗口必须在会话命令执行完成（含清空 Chat/Session
-// Doc 与 RPC 发送）后开启，使 replaySkipSynthesis 以空 Doc 为基准捕获（在清空前开启
-// 会缓存旧会话内容，回放增量被全部拒绝导致新会话内容空白）；Agent 回放流到达需要
-// 网络往返，窗口必然先于回放流开启，result 分支幂等重置窗口（兜底）。
+// 回放窗口开启：load/resume 的 canonical session-sync owner 收到成功响应后开启窗口，
+// 使后续无头历史回放有投影机会；测试显式预留 owner 并投递对应 JSON-RPC result。
 describe("Gateway replay window", () => {
-  // load_session action 处理完成后开启回放窗口（此时会话 Doc 已清空）。
-  test("load_session opens the replay window after the command (doc clearing) completes", async () => {
+  // load_session 命令之后的 session-sync 成功响应开启回放窗口。
+  test("load_session sync result opens the replay window", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);
@@ -482,13 +504,15 @@ describe("Gateway replay window", () => {
       "ws-1",
       JSON.stringify({ action: "load_session", commandId: "cmd-1", sessionId: "ses-1" }),
     );
+    if (!shared) throw new Error("expected shared relay");
+    await deliverSessionSyncResult(shared, relayEvents, "ses-1");
 
-    expect(shared?.replayWindowUntil).not.toBeNull();
+    expect(shared.replayWindowUntil).not.toBeNull();
     expect(shared!.replayWindowUntil!).toBeGreaterThan(Date.now());
   });
 
-  // resume_session 与 load_session 同样触发历史回放，窗口必须同步开启。
-  test("resume_session opens the replay window after the command (doc clearing) completes", async () => {
+  // resume_session 与 load_session 使用相同的 session-sync owner 回放语义。
+  test("resume_session sync result opens the replay window", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const relayEvents = createRelayEvents(registry, broadcaster, []);
@@ -503,8 +527,10 @@ describe("Gateway replay window", () => {
       "ws-1",
       JSON.stringify({ action: "resume_session", commandId: "cmd-2", sessionId: "ses-2" }),
     );
+    if (!shared) throw new Error("expected shared relay");
+    await deliverSessionSyncResult(shared, relayEvents, "ses-2");
 
-    expect(shared?.replayWindowUntil).not.toBeNull();
+    expect(shared.replayWindowUntil).not.toBeNull();
   });
 });
 
@@ -645,11 +671,22 @@ describe("Gateway session list polling", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
     const shared = registry.getShared("instance-1", "user-1", "rcs-1");
     expect(shared).toBeDefined();
-    shared!.pendingSessionSyncIds = new Set([42]);
+    const pendingRequest = reserveRelayRpc(shared!, {
+      kind: "session-sync",
+      lifecycle: {
+        targetSessionId: null,
+        replay: false,
+        queueEvent: () => "queued",
+        drainEvents: () => [],
+        commit: () => true,
+        rollback: () => true,
+      },
+    });
 
     await lifecycle.handleClose("ws-1");
 
     expect(intervals.find((interval) => interval.delay === 10_000)?.cleared).toBe(true);
-    expect(shared!.pendingSessionSyncIds?.size).toBe(0);
+    expect(getRelayRpcState(shared!).pendingRpcRequests.size).toBe(0);
+    expect(pendingRequest.state).toBe("aborted");
   });
 });

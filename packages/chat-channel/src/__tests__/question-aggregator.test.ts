@@ -8,7 +8,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
-import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
+import { DEFAULT_QUESTION_TIMEOUT_MS, type NonPeriNormalizedEventType, type NormalizedEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import { clearSessionDocContent, getPendingQuestions, getSessionRoot } from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
@@ -23,7 +23,11 @@ beforeEach(() => {
   };
 });
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: NonPeriNormalizedEventType,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return { type, update, content: null, turnId };
 }
 

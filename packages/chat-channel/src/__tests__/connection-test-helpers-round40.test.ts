@@ -11,12 +11,14 @@ import {
   createSessionChannelStub,
   createSharedRelay,
   createSpawnClassifier,
+  createTestRpcReservationFactory,
   createWs,
   decodeSnapshot,
   decodeUpdateFrames,
   deferred,
   textFrames,
 } from "../channel/connection-test-helpers";
+import { getRelayRpcState, type RelayMessage } from "../channel/connection-types";
 import { encodeYjsUpdateFrame } from "../protocol/update-frame";
 
 async function flushMicrotasks(): Promise<void> {
@@ -116,8 +118,8 @@ describe("connection-test-helpers 内存连接语义", () => {
       instanceId: "instance-1",
       rcsSessionId: "rcs-1",
       workspacePath: "/workspace",
-      nextRpcId: 0,
     });
+    expect(getRelayRpcState(relay).pendingRpcRequests.size).toBe(0);
     expect(relay.unsubscribe).toBeNull();
   });
 
@@ -157,9 +159,18 @@ describe("connection-test-helpers 内存连接语义", () => {
 
     await channel.handleAction(
       {
+        userId: "user-1",
+        agentId: "agent-1",
+        instanceId: "instance-1",
+        rcsSessionId: "rcs-1",
+        acpSessionId: "ses-1",
+        agentStatusReceived: true,
+        sessionLoaded: true,
+        workspacePath: "/workspace",
         sendToRelay: (message) => {
           relayed.push(message);
         },
+        reserveRpc: createTestRpcReservationFactory(),
       },
       {},
       { sendAck() {}, sendError() {} },
@@ -222,7 +233,7 @@ describe("connection-test-helpers 内存连接语义", () => {
       jsonrpc: "2.0",
       method: "session/update",
       params: { sessionId: "session-1", update: { sessionUpdate: "agent_message_chunk" } },
-    });
+    } as unknown as RelayMessage);
 
     expect(processed).toEqual(["message_delta"]);
   });

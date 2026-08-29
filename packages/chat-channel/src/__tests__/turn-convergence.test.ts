@@ -5,7 +5,7 @@
 
 import { beforeEach, expect, test } from "bun:test";
 import * as Y from "yjs";
-import { type NormalizedEvent } from "../schema";
+import { type NonPeriNormalizedEventType, type NormalizedEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
   getEntry,
@@ -29,7 +29,11 @@ beforeEach(() => {
   };
 });
 
-function event(type: NormalizedEvent["type"], update: Record<string, unknown> = {}, turnId?: string): NormalizedEvent {
+function event(
+  type: NonPeriNormalizedEventType,
+  update: Record<string, unknown> = {},
+  turnId?: string,
+): NormalizedEvent {
   return {
     type,
     update,

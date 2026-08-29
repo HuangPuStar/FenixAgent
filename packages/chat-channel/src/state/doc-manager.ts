@@ -12,10 +12,10 @@
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import { getOrCreateActiveGeneration, publishActiveGeneration, revertActiveGeneration } from "../persist/redis";
 import { encodeYjsReplaceFrame } from "../protocol/update-frame";
 import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
-import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
+import type { ChatDoc, ProjectionDocs, ProjectionReplacement, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
 import { hasChatDocContent } from "./chat-writer";
 import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
@@ -52,6 +52,38 @@ function preserveAgentProjection(source: Y.Doc | undefined, target: Y.Doc): void
   });
 }
 
+/** load/resume 缺少 title 时，从旧投影的当前会话或列表摘要保留目标会话标题。 */
+function preserveTargetSessionProjection(
+  source: Y.Doc | undefined,
+  target: Y.Doc,
+  targetSessionId: string | null,
+): void {
+  if (!source || !targetSessionId) return;
+  const sourceRoot = source.getMap("root");
+  const current = sourceRoot.get("session") as Y.Map<unknown> | undefined;
+  const summaries = sourceRoot.get("sessions") as Y.Map<Y.Map<unknown>> | undefined;
+  const currentTitle = current?.get("sessionId") === targetSessionId ? current.get("title") : undefined;
+  const summaryTitle = summaries?.get(targetSessionId)?.get("title");
+  const title =
+    typeof currentTitle === "string" && currentTitle.trim().length > 0
+      ? currentTitle
+      : typeof summaryTitle === "string" && summaryTitle.trim().length > 0
+        ? summaryTitle
+        : undefined;
+
+  target.transact(() => {
+    const session = target.getMap("root").get("session") as Y.Map<unknown>;
+    session.set("sessionId", targetSessionId);
+    if (title !== undefined) session.set("title", title);
+  });
+}
+
+function readProjectionSessionId(session: SessionDoc): string | null {
+  const info = session.ydoc.getMap("root").get("session") as Y.Map<unknown> | undefined;
+  const sessionId = info?.get("sessionId");
+  return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+}
+
 export interface DocManagerOptions {
   /** Redis 连接获取器（惰性求值，支持连接延迟建立） */
   getRedis?: () => Redis | Cluster | null;
@@ -77,6 +109,15 @@ export type QuestionRequestedHandler = (
   question: { questionId: string; expiresAt: string },
 ) => void;
 
+type ProjectionReplacementStatus = "prepared" | "committing" | "committed" | "rolling_back" | "rolled_back";
+
+interface PendingProjectionReplacementState {
+  projection: ProjectionDocs;
+  previousProjection: ProjectionDocs | null;
+  previousGeneration: string;
+  status: ProjectionReplacementStatus;
+}
+
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
@@ -88,6 +129,8 @@ export class DocManager {
   private onQuestionRequested: QuestionRequestedHandler | null;
   private batchWindowMs: number;
   private acpBatchBuffers = new Map<string, { events: NormalizedEvent[]; timer: ReturnType<typeof setTimeout> }>();
+  private pendingProjectionReplacements = new Set<PendingProjectionReplacementState>();
+  private projectionReplacementLocks = new Map<string, Promise<void>>();
 
   constructor(options?: DocManagerOptions) {
     this.getRedis = options?.getRedis ?? (() => null);
@@ -211,49 +254,209 @@ export class DocManager {
     return chat && session && chat.generation === session.generation ? chat.generation : null;
   }
 
-  /**
-   * 创建全新 StructStore 并原子替换 Chat/Session 投影组。
-   * 新 Doc 完整构造并绑定广播后才交换 map；旧 provider 在交换后销毁，迟到事件因
-   * processNormalizedEvent 总是从 map 取当前 Doc，不会写回旧 generation。
-   */
-  async replaceProjection(rcsSessionId: string, targetAcpSessionId: string | null): Promise<ProjectionDocs> {
-    this.cancelACPBatch(rcsSessionId);
-    const generation = `gen_${crypto.randomUUID()}`;
-    const redis = this.getRedis();
-    const expectedGeneration = redis
-      ? await getOrCreateActiveGeneration(redis, rcsSessionId)
-      : (this.getProjectionGeneration(rcsSessionId) ?? generation);
-    let chat: ChatDoc | null = null;
-    let session: SessionDoc | null = null;
+  /** 串行化同一 RCS 会话的 projection prepare/commit/rollback，避免异步 CAS 交错。 */
+  private async withProjectionReplacementLock<T>(rcsSessionId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.projectionReplacementLocks.get(rcsSessionId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = previous.then(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    this.projectionReplacementLocks.set(rcsSessionId, current);
+    await previous;
     try {
-      chat = createChatDoc(rcsSessionId, redis, generation);
-      session = createSessionDoc(rcsSessionId, redis, generation);
-      const oldChat = this.chatDocs.get(rcsSessionId);
-      const oldSession = this.sessionDocs.get(rcsSessionId);
-      preserveAgentProjection(oldSession?.ydoc, session.ydoc);
+      return await operation();
+    } finally {
+      release();
+      if (this.projectionReplacementLocks.get(rcsSessionId) === current) {
+        this.projectionReplacementLocks.delete(rcsSessionId);
+      }
+    }
+  }
 
-      // 在 generation 提交前完成编码验证；失败时新 provider 只存在于未激活私有 channel。
-      encodeYjsReplaceFrame(`chat:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(chat.ydoc));
-      encodeYjsReplaceFrame(`session:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(session.ydoc));
-      if (redis && !(await publishActiveGeneration(redis, rcsSessionId, expectedGeneration, generation))) {
+  /** 尽力释放一组已不再可达的 projection provider，并保留逐项诊断上下文。 */
+  private async destroyProjection(projection: ProjectionDocs | null, context: string): Promise<void> {
+    if (!projection) return;
+    const destroyed = await Promise.allSettled([projection.chat.destroy(), projection.session.destroy()]);
+    for (const result of destroyed) {
+      if (result.status === "rejected") this.onError?.(context, result.reason);
+    }
+  }
+
+  /**
+   * 准备隐藏候选投影。prepare 只构造内存 Y.Doc：不发布 Redis generation、不创建
+   * provider、不替换活动 map，也不触发广播；旧投影在 ACP 成功且 owner 仍有效前
+   * 始终是唯一权威投影。
+   */
+  async prepareProjectionReplacement(
+    rcsSessionId: string,
+    targetAcpSessionId: string | null,
+  ): Promise<ProjectionReplacement> {
+    return this.withProjectionReplacementLock(rcsSessionId, async () => {
+      let oldChat = this.chatDocs.get(rcsSessionId);
+      let oldSession = this.sessionDocs.get(rcsSessionId);
+      if (oldChat && !oldSession) oldSession = await this.openSession("", "", rcsSessionId);
+      if (!oldChat && oldSession) oldChat = await this.openChat(rcsSessionId);
+      if (oldChat && oldSession && oldChat.generation !== oldSession.generation) {
+        throw new Error("chat/session projection generation mismatch");
+      }
+
+      const currentGeneration = oldChat?.generation ?? oldSession?.generation ?? null;
+      const redis = this.getRedis();
+      const activeGeneration = redis
+        ? await getOrCreateActiveGeneration(redis, rcsSessionId)
+        : (currentGeneration ?? `gen_${crypto.randomUUID()}`);
+      if (currentGeneration && activeGeneration !== currentGeneration) {
         throw new Error("projection generation changed concurrently");
       }
 
-      this.registerDocBroadcast(chat.ydoc, `chat:${rcsSessionId}`);
-      this.registerDocBroadcast(session.ydoc, `session:${rcsSessionId}`);
-      this.chatDocs.set(rcsSessionId, chat);
-      this.sessionDocs.set(rcsSessionId, session);
+      const previousProjection =
+        oldChat && oldSession
+          ? {
+              rcsSessionId,
+              generation: oldChat.generation,
+              targetAcpSessionId: readProjectionSessionId(oldSession),
+              chat: oldChat,
+              session: oldSession,
+            }
+          : null;
+      const generation = `gen_${crypto.randomUUID()}`;
+      const chat = createChatDoc(rcsSessionId, redis, generation, { deferProvider: true });
+      const session = createSessionDoc(rcsSessionId, redis, generation, { deferProvider: true });
+      preserveAgentProjection(oldSession?.ydoc, session.ydoc);
+      preserveTargetSessionProjection(oldSession?.ydoc, session.ydoc, targetAcpSessionId);
 
       try {
-        await Promise.all([oldChat?.destroy(), oldSession?.destroy()]);
-      } catch (err) {
-        this.onError?.("destroy replaced projection", err);
+        // 在请求发送前验证 replacement 帧可编码；候选仍不可见。
+        encodeYjsReplaceFrame(`chat:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(chat.ydoc));
+        encodeYjsReplaceFrame(`session:${rcsSessionId}`, generation, Y.encodeStateAsUpdate(session.ydoc));
+      } catch (error) {
+        await Promise.allSettled([chat.destroy(), session.destroy()]);
+        throw error;
       }
-      return { rcsSessionId, generation, targetAcpSessionId, chat, session };
-    } catch (err) {
-      await Promise.allSettled([chat?.destroy(), session?.destroy()]);
-      throw err;
-    }
+
+      const projection: ProjectionDocs = { rcsSessionId, generation, targetAcpSessionId, chat, session };
+      const state: PendingProjectionReplacementState = {
+        projection,
+        previousProjection,
+        previousGeneration: activeGeneration,
+        status: "prepared",
+      };
+      this.pendingProjectionReplacements.add(state);
+
+      const discardCandidate = async (): Promise<void> => {
+        this.pendingProjectionReplacements.delete(state);
+        state.status = "rolled_back";
+        await this.destroyProjection(projection, "destroy rolled back projection");
+      };
+
+      return {
+        projection,
+        previousProjection,
+        commit: (isCurrent, hooks) =>
+          this.withProjectionReplacementLock(rcsSessionId, async () => {
+            if (!this.pendingProjectionReplacements.has(state) || state.status !== "prepared" || !isCurrent()) {
+              return false;
+            }
+            state.status = "committing";
+            let generationPublished = false;
+            let activated = false;
+            const rollbacks: Array<() => Promise<void> | void> = [];
+            try {
+              // 回放事件先写入无 provider、无 listener、未进入活动 map 的候选，不产生外部可见更新。
+              for (const event of hooks?.stagedEvents ?? []) {
+                const result = applyNormalizedEvent({ chat: chat.ydoc, session: session.ydoc }, event);
+                if (!result.applied && result.reason) {
+                  this.onLog?.(`[DocManager] staged event rejected (${event.type}): ${result.reason}`);
+                }
+              }
+              if (!isCurrent()) {
+                await discardCandidate();
+                return false;
+              }
+
+              if (redis) {
+                if (!(await publishActiveGeneration(redis, rcsSessionId, state.previousGeneration, generation))) {
+                  throw new Error("projection generation changed concurrently");
+                }
+                generationPublished = true;
+              }
+
+              // CAS 的 await 窗口内 owner 可能被 teardown/supersession 剥夺。
+              if (!isCurrent()) {
+                if (generationPublished && redis) {
+                  await revertActiveGeneration(redis, rcsSessionId, generation, state.previousGeneration);
+                }
+                await discardCandidate();
+                return false;
+              }
+
+              chat.activateProvider();
+              session.activateProvider();
+              this.registerDocBroadcast(chat.ydoc, `chat:${rcsSessionId}`);
+              this.registerDocBroadcast(session.ydoc, `session:${rcsSessionId}`);
+              this.chatDocs.set(rcsSessionId, chat);
+              this.sessionDocs.set(rcsSessionId, session);
+              activated = true;
+
+              // 每个外部副作用必须在执行前登记补偿，才能覆盖 callback 中途抛错。
+              hooks?.activate?.((rollback) => rollbacks.push(rollback));
+              if (!isCurrent()) throw new Error("projection owner changed during activation");
+
+              state.status = "committed";
+              this.pendingProjectionReplacements.delete(state);
+              await this.destroyProjection(previousProjection, "destroy replaced projection");
+              return true;
+            } catch (error) {
+              if (activated) {
+                if (previousProjection) {
+                  this.chatDocs.set(rcsSessionId, previousProjection.chat);
+                  this.sessionDocs.set(rcsSessionId, previousProjection.session);
+                } else {
+                  this.chatDocs.delete(rcsSessionId);
+                  this.sessionDocs.delete(rcsSessionId);
+                }
+              }
+              for (let index = rollbacks.length - 1; index >= 0; index--) {
+                try {
+                  await rollbacks[index]?.();
+                } catch (rollbackError) {
+                  this.onError?.("restore failed projection activation side effect", rollbackError);
+                }
+              }
+              if (generationPublished && redis) {
+                try {
+                  if (!(await revertActiveGeneration(redis, rcsSessionId, generation, state.previousGeneration))) {
+                    this.onError?.("restore failed projection generation", new Error("generation owner changed"));
+                  }
+                } catch (restoreError) {
+                  this.onError?.("restore failed projection generation", restoreError);
+                }
+              }
+              await discardCandidate();
+              throw error;
+            }
+          }),
+        rollback: () =>
+          this.withProjectionReplacementLock(rcsSessionId, async () => {
+            if (!this.pendingProjectionReplacements.has(state) || state.status !== "prepared") {
+              return false;
+            }
+            state.status = "rolling_back";
+            await discardCandidate();
+            return true;
+          }),
+      };
+    });
+  }
+
+  /** 立即提交的换代入口；保留给无需跨 RPC 回滚的内部调用与测试。 */
+  async replaceProjection(rcsSessionId: string, targetAcpSessionId: string | null): Promise<ProjectionDocs> {
+    const replacement = await this.prepareProjectionReplacement(rcsSessionId, targetAcpSessionId);
+    if (!(await replacement.commit(() => true))) throw new Error("projection replacement was superseded");
+    return replacement.projection;
   }
 
   /**

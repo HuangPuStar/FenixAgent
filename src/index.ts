@@ -277,7 +277,7 @@ async function gracefulShutdown(signal: string) {
   const hermesClient = getHermesClient();
   await hermesClient?.stop();
   stopAcpIdleMonitor();
-  closeAllRelayConnections();
+  await closeAllRelayConnections();
   closeAllAcpConnections();
   // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
   stopFileWsSweep();

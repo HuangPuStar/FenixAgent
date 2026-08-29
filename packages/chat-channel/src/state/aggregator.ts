@@ -107,6 +107,29 @@ function extractToolCallId(event: NormalizedEvent): string | null {
   return null;
 }
 
+/**
+ * 提取工具名称与入参。标准 ACP ToolCallContent 将字段放在 content.name/input，
+ * 私有增量帧则使用 update.title/name/rawInput；顶层字段优先以保留更新帧语义。
+ */
+function extractToolCallDetails(event: NormalizedEvent): {
+  name: string;
+  arguments: Record<string, unknown> | null;
+} {
+  const directName = event.update.title ?? event.update.name;
+  const contentName = event.content?.name;
+  const name = typeof directName === "string" ? directName : typeof contentName === "string" ? contentName : "";
+
+  const directArguments = event.update.rawInput ?? event.update.input ?? event.update.arguments;
+  const contentArguments = event.content?.input ?? event.content?.arguments;
+  const rawArguments = directArguments ?? contentArguments;
+  const argumentsValue =
+    typeof rawArguments === "object" && rawArguments !== null && !Array.isArray(rawArguments)
+      ? (rawArguments as Record<string, unknown>)
+      : null;
+
+  return { name, arguments: argumentsValue };
+}
+
 /** 处理用户消息：创建新 turn（幂等：同 turnId 重放跳过），终结未完成的旧 turn */
 function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
   const turnId = event.turnId;
@@ -220,6 +243,11 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
     return { applied: false, reason: "subagent tool call is rendered by peri task scope" };
   }
 
+  const toolDetails = extractToolCallDetails(event);
+  // TodoWrite 已由 Claude 协议边界转换为标准 ACP plan；迟到或重复的工具帧不得再生成普通工具卡。
+  if (toolDetails.name === "TodoWrite") {
+    return { applied: false, reason: "TodoWrite is represented by ACP plan" };
+  }
   const result =
     event.update.rawOutput !== undefined
       ? (event.update.rawOutput as Record<string, unknown> | null)
@@ -241,9 +269,9 @@ function applyToolCall(pair: DocPair, event: NormalizedEvent, status: "running" 
   upsertToolCall(pair.chat, {
     toolCallId,
     turnId: active.turnId,
-    name: (event.update.title as string) ?? (event.update.name as string) ?? "",
+    name: toolDetails.name,
     status,
-    arguments: (event.update.rawInput as Record<string, unknown> | null) ?? null,
+    arguments: toolDetails.arguments,
     result: status === "completed" ? result : undefined,
     publicError: status === "error" ? extractPublicError(event.update) : undefined,
   });
@@ -808,7 +836,7 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         default: {
           // 防御：新加的规范化类型未实现处理时拒绝，不静默吞掉
-          const exhaustive: never = event.type;
+          const exhaustive: never = event;
           result = {
             applied: false,
             reason: `unhandled normalized event: ${String(exhaustive)}`,

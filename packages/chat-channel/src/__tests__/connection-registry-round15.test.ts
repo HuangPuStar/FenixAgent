@@ -291,35 +291,21 @@ describe("ConnectionRegistry round15", () => {
     expect(healthyWs.closed).toEqual([[4001, "terminated"]]);
   });
 
-  // 全局关闭应释放每个客户端的 relay、清空注册表，并隔离单个 relay 的关闭异常。
-  test("全局关闭清理客户端并隔离 relay 关闭异常", () => {
+  // 全局关闭请求只关闭客户端 WS；registry 与 relay 生命周期由 Gateway.handleClose 统一释放。
+  test("全局关闭请求隔离单个 WebSocket 关闭异常", () => {
     const registry = new ConnectionRegistry();
-    let healthyClosed = 0;
-    const broken = createClient({
-      relayHandle: {
-        state: "open",
-        send() {},
-        close() {
-          throw new Error("broken");
-        },
-      },
-    });
-    const healthy = createClient({
-      relayHandle: {
-        state: "open",
-        send() {},
-        close() {
-          healthyClosed++;
-        },
-      },
-    });
-    registry.addClient("broken", broken);
-    registry.addClient("healthy", healthy);
+    const brokenWs = createWs();
+    brokenWs.close = () => {
+      throw new Error("broken");
+    };
+    const healthyWs = createWs();
+    registry.addClient("broken", createClient({ ws: brokenWs }));
+    registry.addClient("healthy", createClient({ ws: healthyWs }));
 
-    registry.closeAll(4000, "shutdown");
+    registry.requestCloseAllClients(4000, "shutdown");
 
-    expect(healthyClosed).toBe(1);
-    expect(registry.clientCount).toBe(0);
+    expect(healthyWs.closed).toEqual([[4000, "shutdown"]]);
+    expect(registry.clientCount).toBe(2);
   });
 
   // 所有客户端遍历应在清理前暴露完整集合，便于宿主统一回收资源。

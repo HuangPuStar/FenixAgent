@@ -13,7 +13,14 @@ import { decodeYjsUpdateFrame } from "../protocol/update-frame";
 import { DocManager } from "../state/doc-manager";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import type { ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import {
+  attachRelayRpcState,
+  type ClientConnection,
+  type RpcOwnerInput,
+  type RpcReservation,
+  type SharedRelay,
+  type WsConnection,
+} from "./connection-types";
 import { Gateway, type GatewayDependencies } from "./gateway";
 import { RelayEventHandler, type RelayEventHandlerDependencies } from "./relay-event-handler";
 import type { SessionChannel } from "./session-channel";
@@ -66,7 +73,7 @@ export function decodeSnapshot(ws: MockWs, docName: string): Y.Doc {
 }
 
 export function createSharedRelay(overrides: Partial<SharedRelay> = {}): SharedRelay {
-  return {
+  const shared: SharedRelay = {
     handle: { state: "open", send() {}, close() {} },
     unsubscribe: null,
     refCount: 1,
@@ -75,10 +82,11 @@ export function createSharedRelay(overrides: Partial<SharedRelay> = {}): SharedR
     instanceId: "instance-1",
     rcsSessionId: "rcs-1",
     workspacePath: "/workspace",
-    nextRpcId: 0,
     replayWindowUntil: null,
     ...overrides,
   };
+  attachRelayRpcState(shared);
+  return shared;
 }
 
 export function createClient(overrides: Partial<ClientConnection> = {}): ClientConnection {
@@ -96,7 +104,6 @@ export function createClient(overrides: Partial<ClientConnection> = {}): ClientC
     pendingMessages: [],
     relayReady: true,
     agentStatusReceived: false,
-    lastClientKeepalive: 0,
     sessionLoaded: false,
     ...overrides,
   };
@@ -112,7 +119,50 @@ export function createSessionChannelStub(): SessionChannel {
   } as unknown as SessionChannel;
 }
 
-/** 按错误 code 判定的 spawn 错误分类器（与宿主 offline-error.ts 语义对齐） */
+export interface TestRpcReservation extends RpcReservation {
+  readonly owner: RpcOwnerInput;
+  readonly aborted: boolean;
+  readonly sent: boolean;
+}
+
+export type TestRpcReservationFactory = ((owner: RpcOwnerInput) => TestRpcReservation) & {
+  readonly reservations: TestRpcReservation[];
+};
+
+/** 测试专用 reservation：保留 canonical owner，并暴露 id、sent 与 abort 结果供断言。 */
+export function createTestRpcReservationFactory(): TestRpcReservationFactory {
+  let nextId = 0;
+  const reservations: TestRpcReservation[] = [];
+  const reserve = (owner: RpcOwnerInput): TestRpcReservation => {
+    let active = true;
+    let sent = false;
+    const reservation: TestRpcReservation = {
+      id: ++nextId,
+      owner,
+      get aborted() {
+        return !active;
+      },
+      get sent() {
+        return sent;
+      },
+      markSent: () => {
+        if (!active) return false;
+        sent = true;
+        return true;
+      },
+      abort: async () => {
+        if (!active) return false;
+        active = false;
+        if (owner.kind === "session-sync") await owner.lifecycle.rollback();
+        return true;
+      },
+    };
+    reservations.push(reservation);
+    return reservation;
+  };
+  return Object.assign(reserve, { reservations });
+}
+
 export function createSpawnClassifier(): {
   isMachineOffline: GatewayDependencies["isMachineOffline"];
   classifyPermanentSpawnFailure: GatewayDependencies["classifyPermanentSpawnFailure"];
@@ -172,9 +222,11 @@ export function createRelayEvents(
   processed: string[],
   overrides: Partial<RelayEventHandlerDependencies> = {},
 ): RelayEventHandler {
+  const sessionDoc = new Y.Doc();
   const docManager = {
     processNormalizedEvent: (_sessionId: string, event: { type: string }) => processed.push(event.type),
-    openSession: async () => ({ ydoc: new Y.Doc() }),
+    openSession: async () => ({ ydoc: sessionDoc, generation: "test-generation" }),
+    getSession: () => ({ ydoc: sessionDoc, generation: "test-generation" }),
     // 回放窗口判断需要读取聚合层活动 turn；默认 mock 无 Session Doc 时视为无活动 turn
     getSessionYdoc: () => undefined,
     // 回放窗口开启时判定 Chat Doc 是否有内容；默认 mock 无 doc → 视为空（允许合成）

@@ -79,9 +79,37 @@ export class ChatChannelController {
       refreshInstanceEnvironment: (connection) =>
         dependencies.refreshInstanceEnvironment(connection.instanceId, connection.agentId, connection.userId),
       prepareClearSessionSnapshot: dependencies.prepareClearSessionSnapshot,
-      replaceProjection: (projection) => {
+      replaceProjection: (projection, previousProjection, registerRollback) => {
+        if (!this.registry.hasClientByRcsSession(projection.rcsSessionId)) return;
         const chatName = `chat:${projection.rcsSessionId}`;
         const sessionName = `session:${projection.rcsSessionId}`;
+        registerRollback(() => {
+          if (previousProjection) {
+            this.broadcaster.registerYjsDocListener(
+              previousProjection.chat.ydoc,
+              chatName,
+              previousProjection.generation,
+            );
+            this.broadcaster.registerYjsDocListener(
+              previousProjection.session.ydoc,
+              sessionName,
+              previousProjection.generation,
+            );
+            this.broadcaster.broadcastReplacement(
+              previousProjection.chat.ydoc,
+              chatName,
+              previousProjection.generation,
+            );
+            this.broadcaster.broadcastReplacement(
+              previousProjection.session.ydoc,
+              sessionName,
+              previousProjection.generation,
+            );
+            return;
+          }
+          this.broadcaster.unregisterYjsDocListener(chatName);
+          this.broadcaster.unregisterYjsDocListener(sessionName);
+        });
         this.broadcaster.registerYjsDocListener(projection.chat.ydoc, chatName, projection.generation);
         this.broadcaster.registerYjsDocListener(projection.session.ydoc, sessionName, projection.generation);
         this.broadcaster.broadcastReplacement(projection.chat.ydoc, chatName, projection.generation);
@@ -89,11 +117,29 @@ export class ChatChannelController {
       },
       // 会话切换后同步 ACP session ID 到同一 RCS 会话的所有客户端，
       // 使同一会话的多标签页保持一致，且不污染其他 RCS 会话（YJS 不变量 8）。
-      syncSessionId: (connection, newSessionId) => {
+      syncSessionId: (connection, newSessionId, sessionLoaded, registerRollback) => {
+        const previousBindings: Array<{
+          connection: { acpSessionId: string | null; sessionLoaded: boolean };
+          acpSessionId: string | null;
+          sessionLoaded: boolean;
+        }> = [];
         this.registry.forEachByRcsSession(connection.rcsSessionId, (other) => {
-          other.acpSessionId = newSessionId;
-          other.sessionLoaded = true;
+          previousBindings.push({
+            connection: other,
+            acpSessionId: other.acpSessionId,
+            sessionLoaded: other.sessionLoaded,
+          });
         });
+        registerRollback?.(() => {
+          for (const previous of previousBindings) {
+            previous.connection.acpSessionId = previous.acpSessionId;
+            previous.connection.sessionLoaded = previous.sessionLoaded;
+          }
+        });
+        for (const previous of previousBindings) {
+          previous.connection.acpSessionId = newSessionId;
+          previous.connection.sessionLoaded = sessionLoaded;
+        }
       },
       reportError: dependencies.reportError,
     });

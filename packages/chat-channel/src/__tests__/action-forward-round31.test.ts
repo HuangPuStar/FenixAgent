@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type ForwardYjsActionDependencies, flushPendingYjsActions, forwardYjsAction } from "../channel/action-forward";
+import { createTestRpcReservationFactory } from "../channel/connection-test-helpers";
 import type { SessionChannel, SessionConnection } from "../channel/session-channel";
 import type { ActionAck, ActionError } from "../channel/types";
 
@@ -16,7 +17,7 @@ function createEntry(rcsSessionId = "rcs-test"): SessionConnection {
     sessionLoaded: false,
     workspacePath: null,
     sendToRelay: () => undefined,
-    getNextRpcId: () => 1,
+    reserveRpc: createTestRpcReservationFactory(),
   };
 }
 

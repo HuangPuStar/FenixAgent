@@ -254,10 +254,8 @@ describe("Gateway 内存协议、状态、错误、隔离与清理", () => {
     const harness = createHarness();
     const ws = await open(harness, new FakeWebSocket(), `ws-${rcsSessionId}`, rcsSessionId);
     const client = harness.registry.getClient(`ws-${rcsSessionId}`);
-    const generation =
-      harness.registry.getClient(`ws-${rcsSessionId}`)?.rcsSessionId === rcsSessionId
-        ? await (async () => harness.registry.getClient(`ws-${rcsSessionId}`)?.rcsSessionId)()
-        : "missing";
+    const generation = client?.rcsSessionId;
+    if (generation === undefined) throw new Error(`missing client generation for ${rcsSessionId}`);
 
     await harness.gateway.handleMessage(
       ws,

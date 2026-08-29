@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getPendingQuestions, getSessionInfo } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
+import { createTestRpcReservationFactory, type TestRpcReservation } from "./connection-test-helpers";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
 
@@ -31,6 +32,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
   const channel = new SessionChannel({
     docManager,
     prepareClearSessionSnapshot: async () => {},
+    replaceProjection: () => {},
     syncSessionId: () => {},
     reportError: (message, error) => {
       state.errors.push({ message, error });
@@ -55,15 +57,16 @@ interface ControlResponseRecord {
   type: "control_response";
   request_id: string;
   approved: boolean;
-  extra: { outcome: { optionId: string } };
+  extra: { answers: string[] } | { outcome: { optionId: string } };
 }
 
 function createConnection(overrides: Partial<SessionConnection> = {}): {
   connection: SessionConnection;
   relayMessages: ControlResponseRecord[];
+  reservations: TestRpcReservation[];
 } {
   const relayMessages: ControlResponseRecord[] = [];
-  let nextRpcId = 0;
+  const reserveRpc = createTestRpcReservationFactory();
   const connection: SessionConnection = {
     userId: "user-1",
     agentId: "agent-1",
@@ -73,15 +76,23 @@ function createConnection(overrides: Partial<SessionConnection> = {}): {
     agentStatusReceived: true,
     sessionLoaded: false,
     workspacePath: "/workspace/org-1/user-1/env-1",
-    lastClientKeepalive: 0,
     sendToRelay: (message) => {
       const record = message as unknown as ControlResponseRecord;
       if (record.type === "control_response") relayMessages.push(record);
     },
-    getNextRpcId: () => ++nextRpcId,
+    reserveRpc,
     ...overrides,
   };
-  return { connection, relayMessages };
+  return { connection, relayMessages, reservations: reserveRpc.reservations };
+}
+
+async function commitSessionSync(reservations: TestRpcReservation[], sessionId: string): Promise<void> {
+  const reservation = reservations.at(-1);
+  if (!reservation || reservation.owner.kind !== "session-sync") {
+    throw new Error("expected a session-sync reservation");
+  }
+  const committed = await reservation.owner.lifecycle.commit({ sessionId }, () => !reservation.aborted);
+  if (!committed) throw new Error(`expected session-sync commit for ${sessionId}`);
 }
 
 function createSinks(harness: TestHarness): {
@@ -166,7 +177,8 @@ describe("question CAS (AskUserQuestion)", () => {
     expect(relayMessages[0]?.request_id).toBe("iqa_1");
     expect(relayMessages[0]?.approved).toBe(true);
     // extra.answers 即用户选择的选项 label 数组（按问题顺序，acp-link adapter 组装为答案注入）
-    expect(relayMessages[0]?.extra.answers).toEqual(["production"]);
+    const extra = relayMessages[0]?.extra;
+    expect(extra && "answers" in extra ? extra.answers : undefined).toEqual(["production"]);
     // 两次响应都返回 committed（幂等成功，不报错）
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed", "accepted", "committed"]);
     // Session Doc 投影为 resolved，answer 落盘为首选答案数组（JSON 序列化）
@@ -217,7 +229,7 @@ describe("question CAS (AskUserQuestion)", () => {
 
   // 会话切换（load_session 到新会话）→ pendingQuestions 整体清空，不残留可应答项
   test("session switch clears pending questions", async () => {
-    const { connection } = createConnection({ sessionLoaded: true });
+    const { connection, reservations } = createConnection({ sessionLoaded: true });
     await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 60_000).toISOString());
 
     await harness.channel.handleAction(
@@ -225,6 +237,7 @@ describe("question CAS (AskUserQuestion)", () => {
       { action: "load_session", commandId: "cmd-load", sessionId: "ses_new" },
       createSinks(harness),
     );
+    await commitSessionSync(reservations, "ses_new");
 
     const sessionDoc = harness.docManager.getSessionYdoc("rcs-1")!;
     expect(getPendingQuestions(sessionDoc).size).toBe(0);

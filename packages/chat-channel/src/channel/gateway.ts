@@ -6,7 +6,21 @@ import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { type ClientConnection, PROMPT_TIMEOUT_MS, type SharedRelay, type WsConnection } from "./connection-types";
+import {
+  abortPendingRpc,
+  attachRelayRpcState,
+  type ClientConnection,
+  getRelayRpcState,
+  markPendingRpcSent,
+  PROMPT_TIMEOUT_MS,
+  type RpcOwnerInput,
+  releaseRelayRpcState,
+  reserveRelayRpc,
+  SESSION_SYNC_TIMEOUT_MS,
+  type SharedRelay,
+  setPendingRpcTimer,
+  type WsConnection,
+} from "./connection-types";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
@@ -14,8 +28,6 @@ import type { SessionChannel, SessionConnection } from "./session-channel";
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
 const SESSION_LIST_POLL_INTERVAL = 10_000;
-/** 兜底 JSON-RPC id 计数器，当 SharedRelay 不可用时使用 */
-let entryRelayNextId = 0;
 /** 已认证 environment 的最小形状（route 鉴权后注入） */
 export interface GatewayEnvironment {
   organizationId?: string | null;
@@ -144,9 +156,9 @@ export class Gateway {
           instanceId,
           rcsSessionId: resolvedRcsSessionId,
           workspacePath,
-          nextRpcId: 0,
           replayWindowUntil: null,
         };
+        attachRelayRpcState(shared);
         const fullHandle = handle as ClientConnection["relayHandle"] & {
           onMessage?: (callback: ReturnType<RelayEventHandler["createMessageHandler"]>) => () => void;
         };
@@ -201,9 +213,11 @@ export class Gateway {
         }
         shared.sessionListSkipCount = 0;
         try {
+          const request = this.reserveRpc(shared, { kind: "session-list" });
           shared.handle.send(
-            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, ++shared.nextRpcId) as never,
+            translateSimpleAction({ action: "list_sessions" }, shared.workspacePath, request.id) as never,
           );
+          markPendingRpcSent(request);
         } catch (err) {
           // 轮询失败不中断连接，但必须暴露（静默失败会导致 sessions map 长期缺失更新）
           this.dependencies.reportError(`[YJS-FE] session list poll failed: rcsSessionId=${shared.rcsSessionId}`, err);
@@ -333,16 +347,26 @@ export class Gateway {
     if (parsed.type === "keep_alive") return;
     if (parsed.action) await this.forward(entry, parsed, ws);
   }
-  handleClose(wsId: string): void {
+  /** graceful shutdown：先请求关闭 WS，再按快照中的 wsId 强制走正常引用释放并等待候选回滚。 */
+  async closeAll(code = 1001, reason = "server_shutdown"): Promise<void> {
+    const wsIds: string[] = [];
+    this.dependencies.registry.forEachClientEntry((wsId) => wsIds.push(wsId));
+    this.dependencies.registry.requestCloseAllClients(code, reason);
+    const cleanups = wsIds.map((wsId) => this.handleClose(wsId)).filter((cleanup) => cleanup !== undefined);
+    await Promise.allSettled(cleanups);
+  }
+
+  handleClose(wsId: string): Promise<void> | undefined {
     this.pendingInitialSync.get(wsId)?.resolve();
     const { registry } = this.dependencies;
     registry.discardPending(wsId);
     const entry = registry.removeClient(wsId);
     if (!entry) return;
     clearInterval(entry.keepalive);
-    this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
+    const cleanup = this.releaseRelay(entry.instanceId, entry.userId, entry.rcsSessionId);
     const duration = Math.round((Date.now() - entry.openTime) / 1000);
     this.dependencies.reportLog(`[YJS-FE] Disconnected: wsId=${wsId} agentId=${entry.agentId} duration=${duration}s`);
+    return cleanup;
   }
   private reportError(message: string, error: unknown): void {
     try {
@@ -364,36 +388,36 @@ export class Gateway {
       /* ignore */
     }
   }
-  private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
+  private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): Promise<void> | undefined {
     const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);
     if (!released) return;
-    this.closeReleasedRelay(released);
+    const cleanup = this.closeReleasedRelay(released);
     if (released.idleMonitorAttached) this.dependencies.markRelayDetached(instanceId);
+    return cleanup;
   }
-  private closeReleasedRelay(shared: SharedRelay | undefined): void {
+  private closeReleasedRelay(shared: SharedRelay | undefined): Promise<void> | undefined {
     if (!shared) return;
     shared.destroyed = true;
-    // commandId 去重表与频道状态随实例生命周期释放（同一 rcsSessionId 的最后连接关闭）
+    const release = releaseRelayRpcState(shared);
+    // 在任何 await 前 owner 已被剥夺、epoch 已在最后一个包装释放时推进；graceful
+    // shutdown 会等待该 Promise，普通断链调用方可忽略返回值而保持既有同步入口。
+    shared.teardownPromise = release.cleanup.catch((err) => {
+      this.dependencies.reportError(
+        `[YJS-FE] pending request teardown failed: rcsSessionId=${shared.rcsSessionId}`,
+        err,
+      );
+    });
     this.dependencies.sessionChannel.disposeRcsSession(shared.rcsSessionId);
     if (shared.sessionListTimer) {
       clearInterval(shared.sessionListTimer);
       shared.sessionListTimer = undefined;
-    }
-    // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
-    shared.pendingSessionSyncIds?.clear();
-    // 在途 prompt 登记与超时定时器一并清空：relay 释放后不再需要收敛，
-    // 残留定时器到点会 dispatch 到已销毁的 doc（且引用泄漏）
-    shared.pendingPromptIds?.clear();
-    shared.pendingPromptTurns?.clear();
-    if (shared.pendingPromptTimeouts) {
-      for (const timer of shared.pendingPromptTimeouts.values()) clearTimeout(timer);
-      shared.pendingPromptTimeouts.clear();
     }
     // 回放窗口定时器一并清理（同泄漏语义），窗口判定缓存随之重置
     if (shared.replayWindowTimer) {
       clearTimeout(shared.replayWindowTimer);
       shared.replayWindowTimer = null;
     }
+    shared.replayWindowOwner = null;
     shared.replaySkipSynthesis = undefined;
     try {
       this.dependencies.broadcaster.unregisterYjsDocListener(`chat:${shared.rcsSessionId}`);
@@ -409,11 +433,14 @@ export class Gateway {
     } catch {
       /* ignore */
     }
-    try {
-      shared.handle.close(1000, "all yjs frontend clients disconnected");
-    } catch {
-      /* ignore */
+    if (release.shouldCloseHandle) {
+      try {
+        shared.handle.close(1000, "all yjs frontend clients disconnected");
+      } catch {
+        /* ignore */
+      }
     }
+    return shared.teardownPromise;
   }
   private async forward(entry: ClientConnection, action: Record<string, unknown>, ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
@@ -423,9 +450,6 @@ export class Gateway {
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
     });
-    if (shared && (action.action === "load_session" || action.action === "resume_session")) {
-      this.dependencies.relayEvents.openReplayWindow(shared);
-    }
   }
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {
     const shared = this.dependencies.registry.getShared(entry.instanceId, entry.userId, entry.rcsSessionId);
@@ -436,7 +460,7 @@ export class Gateway {
       reportError: this.dependencies.reportError,
     });
   }
-  /** ClientConnection → 包内 SessionConnection 适配（rpcId 与 relay 发送来自连接/共享 relay） */
+  /** ClientConnection → SessionConnection；请求 owner 通过共享 relay 原子预留。 */
   private toSessionConnection(entry: ClientConnection, shared: SharedRelay | undefined): SessionConnection {
     return {
       userId: entry.userId,
@@ -448,35 +472,49 @@ export class Gateway {
       sessionLoaded: entry.sessionLoaded,
       workspacePath: entry.workspacePath,
       sendToRelay: (message) => entry.relayHandle.send(message as never),
-      getNextRpcId: () => (shared ? ++shared.nextRpcId : ++entryRelayNextId),
-      registerSessionSyncRpcId: (rpcId) => {
-        if (!shared) return;
-        if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
-        shared.pendingSessionSyncIds.add(rpcId);
+      reserveRpc: (owner) => {
+        if (!shared) throw new Error("Shared relay is not available");
+        const request = this.reserveRpc(shared, owner);
+        return {
+          id: request.id,
+          markSent: () => markPendingRpcSent(request),
+          abort: () => abortPendingRpc(request),
+        };
       },
-      registerPendingPrompt: (rpcId, turnId) => {
-        if (!shared) return;
-        if (!shared.pendingPromptIds) shared.pendingPromptIds = new Set();
-        shared.pendingPromptIds.add(rpcId);
-        if (turnId) {
-          if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
-          shared.pendingPromptTurns.set(rpcId, turnId);
-        }
-        if (!shared.pendingPromptTimeouts) shared.pendingPromptTimeouts = new Map();
-        const schedule = () => {
-          const timer = setTimeout(() => {
-            if (!shared.pendingPromptIds?.has(rpcId)) return;
-            const lastInboundAt = shared.lastInboundAt ?? 0;
-            if (Date.now() - lastInboundAt < PROMPT_TIMEOUT_MS) {
+    };
+  }
+
+  /** 原子预留后按 owner 类型安装请求专属 timeout。 */
+  private reserveRpc(shared: SharedRelay, owner: RpcOwnerInput) {
+    const request = reserveRelayRpc(shared, owner);
+    if (owner.kind === "prompt") {
+      const schedule = () => {
+        const state = getRelayRpcState(shared);
+        if (state.pendingRpcRequests.get(request.id) !== request) return;
+        const elapsed = Date.now() - (shared.lastInboundAt ?? 0);
+        const delay = Math.max(PROMPT_TIMEOUT_MS - elapsed, 1);
+        setPendingRpcTimer(
+          request,
+          setTimeout(() => {
+            if (getRelayRpcState(shared).pendingRpcRequests.get(request.id) !== request) return;
+            if (Date.now() - (shared.lastInboundAt ?? 0) < PROMPT_TIMEOUT_MS) {
               schedule();
               return;
             }
-            this.dependencies.relayEvents.convergeStuckPrompt(shared, rpcId);
-          }, PROMPT_TIMEOUT_MS);
-          shared.pendingPromptTimeouts?.set(rpcId, timer);
-        };
-        schedule();
-      },
-    };
+            this.dependencies.relayEvents.convergeStuckPrompt(shared, request);
+          }, delay),
+        );
+      };
+      schedule();
+    } else if (owner.kind === "session-sync") {
+      setPendingRpcTimer(
+        request,
+        setTimeout(() => {
+          if (getRelayRpcState(shared).pendingRpcRequests.get(request.id) !== request) return;
+          this.dependencies.relayEvents.abortSessionSync(shared, request, "timeout");
+        }, SESSION_SYNC_TIMEOUT_MS),
+      );
+    }
+    return request;
   }
 }

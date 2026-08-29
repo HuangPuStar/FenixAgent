@@ -15,6 +15,7 @@ import {
   setSessionInfo,
 } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
+import { createTestRpcReservationFactory, type TestRpcReservation } from "./connection-test-helpers";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
 import type { ActionAck, ActionError } from "./types";
 
@@ -23,7 +24,7 @@ interface TestHarness {
   docManager: DocManager;
   prepareCalls: number;
   refreshCalls: string[];
-  syncCalls: string[];
+  syncCalls: Array<string | null>;
   errors: Array<{ message: string; error: unknown }>;
   acks: ActionAck[];
   errorFrames: ActionError[];
@@ -33,7 +34,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
   const state = {
     prepareCalls: 0,
     refreshCalls: [] as string[],
-    syncCalls: [] as string[],
+    syncCalls: [] as Array<string | null>,
     errors: [] as Array<{ message: string; error: unknown }>,
     acks: [] as ActionAck[],
     errorFrames: [] as ActionError[],
@@ -80,9 +81,10 @@ interface RelayRecord {
 function createConnection(overrides: Partial<SessionConnection> = {}): {
   connection: SessionConnection;
   relayMessages: RelayRecord[];
+  reservations: TestRpcReservation[];
 } {
   const relayMessages: RelayRecord[] = [];
-  let nextRpcId = 0;
+  const reserveRpc = createTestRpcReservationFactory();
   const connection: SessionConnection = {
     userId: "user-1",
     agentId: "agent-1",
@@ -92,15 +94,23 @@ function createConnection(overrides: Partial<SessionConnection> = {}): {
     agentStatusReceived: true,
     sessionLoaded: false,
     workspacePath: "/workspace/org-1/user-1/env-1",
-    lastClientKeepalive: 0,
     sendToRelay: (message) => {
       const record = message as unknown as RelayRecord;
       relayMessages.push(record);
     },
-    getNextRpcId: () => ++nextRpcId,
+    reserveRpc,
     ...overrides,
   };
-  return { connection, relayMessages };
+  return { connection, relayMessages, reservations: reserveRpc.reservations };
+}
+
+async function commitSessionSync(reservations: TestRpcReservation[], sessionId: string): Promise<void> {
+  const reservation = reservations.at(-1);
+  if (!reservation || reservation.owner.kind !== "session-sync") {
+    throw new Error("expected a session-sync reservation");
+  }
+  const committed = await reservation.owner.lifecycle.commit({ sessionId }, () => !reservation.aborted);
+  if (!committed) throw new Error(`expected session-sync commit for ${sessionId}`);
 }
 
 function createSinks(harness: TestHarness): {
@@ -290,7 +300,7 @@ describe("SessionChannel action flow", () => {
   // load_session 合法：换代两份 Doc 后再转发 session/load（cwd 服务端注入）。
   test("load_session replaces docs and forwards session/load with server-injected cwd", async () => {
     const harness = createHarness();
-    const { connection, relayMessages } = createConnection({ acpSessionId: "ses-old" });
+    const { connection, relayMessages, reservations } = createConnection({ acpSessionId: "ses-old" });
     const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
     const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
     const oldGeneration = harness.docManager.getProjectionGeneration("rcs-1");
@@ -301,6 +311,7 @@ describe("SessionChannel action flow", () => {
       { action: "load_session", commandId: "cmd-1", sessionId: "ses-new" },
       sinks,
     );
+    await commitSessionSync(reservations, "ses-new");
 
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
     expect(harness.docManager.getChatYdoc("rcs-1")).not.toBe(oldChat);
@@ -321,7 +332,7 @@ describe("SessionChannel action flow", () => {
   // 新目标已加载，否则前端会先高亮目标但仍显示旧会话，需先切换其他项才会触发真正 load。
   test("first load replaces a persisted timeline when it belongs to another session", async () => {
     const harness = createHarness();
-    const { connection, relayMessages } = createConnection({ acpSessionId: null, sessionLoaded: false });
+    const { connection, relayMessages, reservations } = createConnection({ acpSessionId: null, sessionLoaded: false });
     const oldChat = (await harness.docManager.openChat("rcs-1")).ydoc;
     const oldSession = (await harness.docManager.openSession("user-1", "agent-1", "rcs-1")).ydoc;
     harness.docManager.registerUserMessage("rcs-1", "message from the previous session");
@@ -332,6 +343,7 @@ describe("SessionChannel action flow", () => {
       { action: "load_session", commandId: "cmd-1", sessionId: "ses-target" },
       createSinks(harness),
     );
+    await commitSessionSync(reservations, "ses-target");
 
     expect(harness.docManager.getChatYdoc("rcs-1")).not.toBe(oldChat);
     expect(harness.docManager.getSessionYdoc("rcs-1")).not.toBe(oldSession);
@@ -451,16 +463,15 @@ describe("SessionChannel action flow", () => {
     expect(cancelled.get("canCancel")).toBe(false);
   });
 
-  // P2-4：cancel RPC 透传目标 sessionId——多会话并发下 dispatcher 必须按 RPC 中的
-  // sessionId 精确路由到对应 query，而不是一律 fallback 当前会话（否则可能取消错 query）。
-  test("cancel forwards session/cancel with the target sessionId from the action payload", async () => {
+  // cancel 的目标会话必须取服务端连接绑定，忽略浏览器 payload，避免跨会话取消其他 query。
+  test("cancel forwards session/cancel with the server-bound sessionId", async () => {
     const harness = createHarness();
     const { connection, relayMessages } = createConnection({ acpSessionId: "ses-current" });
     await harness.docManager.openChat("rcs-1");
     await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
     const sinks = createSinks(harness);
 
-    // action payload 携带目标会话（前端 onCancel 从 sessionState.acpSessionId 填充）
+    // 浏览器伪造的目标会话必须被服务端连接绑定覆盖。
     await harness.channel.handleAction(
       connection,
       { action: "cancel", commandId: "cmd-2", sessionId: "ses-target" },
@@ -469,7 +480,7 @@ describe("SessionChannel action flow", () => {
 
     expect(relayMessages).toHaveLength(1);
     expect(relayMessages[0]?.method).toBe("session/cancel");
-    expect(relayMessages[0]?.params).toMatchObject({ sessionId: "ses-target" });
+    expect(relayMessages[0]?.params).toMatchObject({ sessionId: "ses-current" });
   });
 
   // acpSessionId 为 null（session/new 的 RPC 往返尚未完成）时 cancel 仍必须进入状态机：
@@ -628,7 +639,7 @@ describe("SessionChannel action flow", () => {
   // 投影换代失败：保留旧会话绑定，返回稳定错误且不转发 relay。
   test("keeps old session binding when projection replacement rejects", async () => {
     const harness = createHarness();
-    harness.docManager.replaceProjection = async () => {
+    harness.docManager.prepareProjectionReplacement = async () => {
       throw new Error("Redis unavailable");
     };
     const { connection, relayMessages } = createConnection({ acpSessionId: "ses-old" });

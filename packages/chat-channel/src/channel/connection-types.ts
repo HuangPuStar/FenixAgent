@@ -1,45 +1,37 @@
 // packages/chat-channel/src/channel/connection-types.ts
-// 连接层类型（迁移自 src/transport/relay/yjs-frontend/types.ts，语义原样保留）。
+// 连接层类型与共享 ACP relay 的 JSON-RPC 请求所有权状态机。
 //
-// ClientConnection / SharedRelay 承载多标签页共享 relay handle 的引用计数语义：
-// 同一 instanceId + userId 的多个前端连接共享同一 SharedRelay，引用计数归零才释放。
-// WsConnection 为最小 WebSocket 抽象（纯接口，无框架依赖），宿主侧适配注入。
+// 同一个 EngineRelayHandle 可能被多个 RCS 连接包装。RPC id、owner 与 relay 生命周期
+// 必须按底层 handle 共享；否则不同包装可分配相同 id，并让迟到响应劫持其他会话。
 
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import type { NormalizedEvent } from "../schema";
 
 export type RelayMessage = EngineRelayMessage;
+export type RpcId = number | string;
 
-/**
- * load_session 回放窗口时长（ms）。load/resume 的 RPC 转发时开启（早于 Agent 历史
- * 回放流到达，JSON-RPC result 分支兜底重置），窗口内且 Chat Doc 无时间线内容时，
- * 到达的 Agent 历史回放（无头增量流 / 无 turnId user_message）由 relay-event-handler
- * 补全 turn 上下文投影时间线——无持久化快照时历史恢复的唯一来源；窗口外或
- * doc 已有内容（重连跳过回放语义）保持原语义由聚合层拒绝。
- */
+/** load/resume 成功后接收无头历史回放的窗口。 */
 export const REPLAY_WINDOW_MS = 10_000;
-
-/**
- * prompt 静默超时阈值（ms）。send_prompt 登记后若 agent 全程无任何业务帧
- * （流式输出/事件/JSON-RPC 响应均刷新 lastInboundAt，保活帧除外）持续超过该阈值，
- * 判定 prompt 已卡死（如被路由到错误 session 后 agent 无响应），收敛 turn_failed，
- * 防止前端 loading 永久卡死。期间有任何业务帧则超时判定顺延，不误杀长输出。
- */
+/** prompt 全程无业务入站帧时的失败收敛上限。 */
 export const PROMPT_TIMEOUT_MS = 5 * 60_000;
+/** session/list 与普通控制 RPC 无响应时的 owner 回收上限。 */
+export const CONTROL_RPC_TIMEOUT_MS = 30_000;
+/** session/new、session/load、session/resume 无响应时的回滚上限。 */
+export const SESSION_SYNC_TIMEOUT_MS = 30_000;
 
-/** 最小 WebSocket 连接抽象：与传输框架解耦（Elysia WS / Hono WSContext 适配为同一形状） */
+/** 单个会话事务在 ACP 响应前最多暂存的规范化事件数。 */
+export const SESSION_TRANSITION_EVENT_LIMIT = 256;
+/** 单个会话事务暂存事件的近似 JSON 字节上限。 */
+export const SESSION_TRANSITION_BYTE_LIMIT = 1024 * 1024;
+
+/** 最小 WebSocket 连接抽象。 */
 export interface WsConnection {
-  /**
-   * 向客户端发送数据：JSON 文本帧（keep_alive/pong/error/action ack 等控制消息）
-   * 或 yjs:update 二进制帧（Uint8Array，SP-A4 线协议，见 protocol/update-frame.ts）
-   */
   send(data: string | Uint8Array): void;
-  /** 以指定码与原因关闭连接 */
   close(code?: number, reason?: string): void;
-  /** 当前就绪状态（0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED） */
   readonly readyState: number;
 }
 
-/** 单个前端 WebSocket 客户端在连接生命周期内的全部状态 */
+/** 单个前端 WebSocket 客户端在连接生命周期内的全部状态。 */
 export interface ClientConnection {
   ws: WsConnection;
   userId: string;
@@ -47,24 +39,89 @@ export interface ClientConnection {
   relayHandle: EngineRelayHandle;
   keepalive: ReturnType<typeof setInterval>;
   instanceId: string;
-  /** RCS 会话标识符 (rcs_xxx)，连接生命周期内不变 */
   rcsSessionId: string;
-  /** 当前活跃的 ACP 会话标识符 (ses_xxx)，session/new、session/load 后更新；初始为 null */
   acpSessionId: string | null;
-  /** 是否已执行过至少一次 load_session（用于区分重连首次加载 vs 后续正常切换） */
   sessionLoaded: boolean;
   workspacePath: string | null;
   openTime: number;
   pendingMessages: string[];
   relayReady: boolean;
-  /** agent 是否已发送过 status（确认 ACP 初始化完成） */
   agentStatusReceived: boolean;
 }
 
+export type SessionTransitionQueueResult = "queued" | "ignored" | "overflow";
+
+/** session/new、load、resume 在请求响应前持有的隐藏候选投影事务。 */
+export interface SessionSyncRequestLifecycle {
+  /** load/resume 的目标；create 在响应返回 sessionId 前为 null。 */
+  readonly targetSessionId: string | null;
+  /** 成功后是否开启历史回放窗口。 */
+  readonly replay: boolean;
+  /** 仅暂存属于候选 ACP session 的规范化事件；溢出必须安全终止事务。 */
+  queueEvent(event: NormalizedEvent): SessionTransitionQueueResult;
+  /** 原子停止继续缓冲，并仅返回最终 ACP session 对应的事件。 */
+  drainEvents(acceptedSessionId: string): NormalizedEvent[];
+  /** 验证响应并在 owner 仍有效时提交隐藏候选投影。 */
+  commit(result: Record<string, unknown>, isCurrent: () => boolean): Promise<boolean> | boolean;
+  /** 销毁候选投影；必须幂等且不得触碰后继事务。 */
+  rollback(): Promise<boolean> | boolean;
+}
+
+/** SessionChannel 在分配 id 前提供的不可变请求 owner。 */
+export type RpcOwnerInput =
+  | { readonly kind: "session-sync"; readonly lifecycle: SessionSyncRequestLifecycle }
+  | { readonly kind: "prompt"; readonly turnId: string | null }
+  | { readonly kind: "cancel"; readonly turnId: string | null }
+  | { readonly kind: "session-list" }
+  | { readonly kind: "generic"; readonly method: string };
+
+export type PendingRpcState = "registered" | "sent" | "responding" | "settled" | "superseded" | "aborted";
+
+/** 一个底层 ACP relay handle 的共享 RPC 状态。 */
+export interface RelayRpcState {
+  lifecycle: "open" | "closing" | "closed";
+  epoch: number;
+  nextRpcId: number;
+  readonly pendingRpcRequests: Map<RpcId, PendingRpc>;
+  readonly activeSessionTransitions: Map<string, PendingRpc>;
+  readonly relays: Set<SharedRelay>;
+  teardownReason: "relay_closed" | "released" | null;
+  teardownPromise: Promise<void> | null;
+}
+
+/** 物理 relay teardown 的一次性同步 claim；只有 primary 调用方执行跨包装副作用。 */
+export interface RelayRpcTeardownClaim {
+  readonly primary: boolean;
+  readonly reason: "relay_closed" | "released";
+  readonly relays: readonly SharedRelay[];
+  readonly requests: readonly PendingRpc[];
+  readonly cleanup: Promise<void>;
+}
+
+/** 唯一 owner 表中的请求实体；对象身份本身就是防止陈旧清理的 capability。 */
+export interface PendingRpc {
+  readonly id: number;
+  readonly token: symbol;
+  readonly relayState: RelayRpcState;
+  readonly relay: SharedRelay;
+  readonly epoch: number;
+  readonly owner: RpcOwnerInput;
+  readonly abortController: AbortController;
+  state: PendingRpcState;
+  timeout: ReturnType<typeof setTimeout> | null;
+  responsePromise: Promise<void> | null;
+}
+
+/** SessionChannel 只依赖该最小预留能力，不接触底层 owner 表。 */
+export interface RpcReservation {
+  readonly id: number;
+  markSent(): boolean;
+  abort(): Promise<boolean> | boolean;
+}
+
 /**
- * 同一 instanceId + userId 的前端连接共享的 relay 句柄。
- * refCount 归零（最后客户端断开）后由 gateway 统一释放；relay_closed 后由
- * relay-event-handler 触发实例级清理并销毁对应实时资源。
+ * 同一 instance/user/rcsSession 的前端连接共享的包装对象。不同包装仍可能引用同一个
+ * EngineRelayHandle，因此 rpcState 由 attachRelayRpcState 按 handle 复用。
  */
 export interface SharedRelay {
   handle: EngineRelayHandle;
@@ -73,87 +130,319 @@ export interface SharedRelay {
   userId: string;
   agentId: string;
   instanceId: string;
-  /** 空闲监控已记录为 relay 已连接，最后释放时必须成对注销。 */
   idleMonitorAttached?: boolean;
-  /** RCS 会话标识符，同一实例的所有前端连接共享 */
   rcsSessionId: string;
-  /** 服务端根据 environment 解析的工作目录，供 ACP session RPC 使用 */
   workspacePath: string;
-  /** session/list 定时轮询器，用于同步 agent 侧 session 变更到 Chat Doc */
   sessionListTimer?: ReturnType<typeof setInterval>;
-  /** 销毁标志，timer 回调中检查避免被 GC 前仍发送 RPC */
   destroyed?: boolean;
-  /** JSON-RPC 请求 id 递增计数器，保证同一 instance 下 translateSimpleAction 生成唯一 id */
-  nextRpcId: number;
-  /**
-   * 在途会话同步请求（create_session/load_session/resume_session）的 rpcId 集合。
-   * JSON-RPC 响应帧只有 id 无 method，relay 的会话同步 result 分支无法区分响应来源；
-   * rename/delete 等其他携带 sessionId 的响应不得进入该分支（否则 registry 活跃会话
-   * 被 clobber、绑定校验丢弃当前会话增量、误开回放窗口）。请求出口登记、响应消费后删除。
-   */
-  pendingSessionSyncIds?: Set<number | string>;
-  /**
-   * 在途 prompt 请求（send_prompt）的 rpcId 集合。Agent 子进程死亡等场景下 acp-link
-   * 以 JSON-RPC error 响应（-32000 No active session / -32603 Prompt failed）拒绝
-   * prompt，该错误无法归一化为终态事件，若不收敛则 turn 永久卡 accepting、前端
-   * loading 永不消失。仅登记过的 prompt id 匹配时收敛 turn_failed，其余错误帧
-   * 静默丢弃（不派发终态事件）。
-   */
-  pendingPromptIds?: Set<number | string>;
-  /**
-   * 在途 prompt 请求的 turnId 登记（rpcId → turnId）。聚合层按 active turn 归位
-   * 增量/终态，不校验事件归属 turnId——连续 prompt 时前一条的终态会提前终结
-   * 后一条的 turn（后一条增量全被丢弃）。终态事件按此登记附加 turnId 后，
-   * 聚合层能区分终态归属，stale turn 的迟到终态不再误伤新 turn。
-   */
-  pendingPromptTurns?: Map<number | string, string>;
-  /**
-   * 在途 prompt 的超时定时器（rpcId → timer）。registerPendingPrompt 登记时启动，
-   * 到点时若 agent 全程静默（lastInboundAt 距今 ≥ PROMPT_TIMEOUT_MS）收敛 turn_failed，
-   * 有业务帧则重排等待；JSON-RPC result/error 消费登记时清除（见 clearPendingPromptTimeout）。
-   */
-  pendingPromptTimeouts?: Map<number | string, ReturnType<typeof setTimeout>>;
-  /** 最近一次收到 Agent 业务入站消息的时间戳（ms），流式输出期间持续刷新；保活帧不更新 */
+  relayClosed?: boolean;
+  rpcState?: RelayRpcState;
+  teardownPromise?: Promise<void> | null;
   lastInboundAt?: number;
-  /** session/list 轮询因 status 门禁未置位而连续跳过的次数（连续 3 次告警，成功后清零） */
   sessionListSkipCount?: number;
-  /**
-   * load_session 回放窗口截止时间戳（ms）。load_session 成功后短暂开启，
-   * 期间到达的无 turnId user_message 由 relay-event-handler 分配回放 turnId，
-   * 使 Agent 全量回放的历史增量能够投影为时间线（无持久化快照时的历史恢复来源）；
-   * 窗口外到达的无 turnId user_message（实时回显）保持原语义丢弃。
-   */
   replayWindowUntil: number | null;
-  /**
-   * 回放窗口内合成/分配的回放 turnId（turn_replay_ 前缀，窗口内最后一个）。
-   * 回放流无终态信号（unstable_resumeSession 只回放 chunk 帧），不收敛则回放
-   * turn 永久卡 running、前端一直显示输出中；窗口到期定时器按此 id 收敛 completed。
-   * 期间用户发出新消息（active turn 已被替换）时聚合层按 turnId 归属拒绝该终态，
-   * 不误伤新 turn。
-   */
   replayTurnId?: string | null;
-  /** 回放窗口到期定时器：到期收敛 replayTurnId 对应回放 turn 并重置窗口 */
+  replayWindowOwner?: PendingRpc | null;
   replayWindowTimer?: ReturnType<typeof setTimeout> | null;
-  /**
-   * 回放窗口开启瞬间"Chat Doc 是否已有时间线内容"的判定缓存（窗口内固定，不实时
-   * 检查）。合成投影本身会写 Chat Doc，实时检查会把回放自己写入的内容误判为
-   * "重连前已有内容"、挡住窗口内后续回放帧（多轮历史回放只投影第一条）。窗口
-   * 开启时判定一次：空 doc（冷启动/切换清空）→ 允许合成；有内容（重连）→ 跳过。
-   */
   replaySkipSynthesis?: boolean;
-  /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
-  callbackAssistantEntryId?: string | null;
+  callbackAssistant?: { entryId: string; ownerTurnId: string | null } | null;
+}
+
+const RELAY_RPC_STATES = new WeakMap<object, RelayRpcState>();
+
+function createRelayRpcState(): RelayRpcState {
+  return {
+    lifecycle: "open",
+    epoch: 0,
+    nextRpcId: 0,
+    pendingRpcRequests: new Map(),
+    activeSessionTransitions: new Map(),
+    relays: new Set(),
+    teardownReason: null,
+    teardownPromise: null,
+  };
+}
+
+/** 把包装对象附着到其底层 handle 的共享 RPC 状态。 */
+export function attachRelayRpcState(shared: SharedRelay): RelayRpcState {
+  let state = RELAY_RPC_STATES.get(shared.handle as object);
+  if (!state) {
+    state = createRelayRpcState();
+    RELAY_RPC_STATES.set(shared.handle as object, state);
+  }
+  state.relays.add(shared);
+  shared.rpcState = state;
+  return state;
+}
+
+/** 读取状态；测试构造的 SharedRelay 也可在首次使用时惰性附着。 */
+export function getRelayRpcState(shared: SharedRelay): RelayRpcState {
+  return shared.rpcState ?? attachRelayRpcState(shared);
+}
+
+/** 包装、底层 handle 与共享生命周期均开放时才允许预留新请求。 */
+export function isRelayAvailable(shared: SharedRelay): boolean {
+  const state = getRelayRpcState(shared);
+  return (
+    !shared.destroyed &&
+    !shared.relayClosed &&
+    shared.handle.state === "open" &&
+    state.lifecycle === "open" &&
+    state.teardownReason === null &&
+    state.relays.has(shared)
+  );
+}
+
+function allocateRpcId(state: RelayRpcState): number {
+  for (let attempt = 0; attempt <= state.pendingRpcRequests.size; attempt++) {
+    state.nextRpcId = state.nextRpcId >= Number.MAX_SAFE_INTEGER ? 1 : state.nextRpcId + 1;
+    if (!state.pendingRpcRequests.has(state.nextRpcId)) return state.nextRpcId;
+  }
+  throw new Error("No JSON-RPC request id is available");
+}
+
+function clearPendingRpcTimer(request: PendingRpc): void {
+  if (request.timeout !== null) clearTimeout(request.timeout);
+  request.timeout = null;
+}
+
+function removeExactOwner(request: PendingRpc, state: PendingRpcState): boolean {
+  const relayState = request.relayState;
+  if (relayState.pendingRpcRequests.get(request.id) !== request) return false;
+  relayState.pendingRpcRequests.delete(request.id);
+  if (relayState.activeSessionTransitions.get(request.relay.rcsSessionId) === request) {
+    relayState.activeSessionTransitions.delete(request.relay.rcsSessionId);
+  }
+  clearPendingRpcTimer(request);
+  request.state = state;
+  request.abortController.abort();
+  return true;
+}
+
+async function rollbackOwner(request: PendingRpc): Promise<void> {
+  if (request.owner.kind !== "session-sync") return;
+  await request.owner.lifecycle.rollback();
 }
 
 /**
- * 清除指定 rpcId 的 prompt 超时定时器。
- * 在 JSON-RPC result（成功）/error（拒绝）消费登记时调用，防止定时器到点后
- * 对已正常完成的 prompt 误收敛；超时收敛路径自身也会消费登记并清除定时器。
+ * 在同一同步段内分配 id 并写入唯一 owner 表。session transition 会原子剥夺同一
+ * RCS 会话的旧 owner；旧事务的异步 rollback 只能销毁自己的候选投影。
  */
-export function clearPendingPromptTimeout(shared: SharedRelay, rpcId: number | string): void {
-  const timer = shared.pendingPromptTimeouts?.get(rpcId);
-  if (timer) {
-    clearTimeout(timer);
-    shared.pendingPromptTimeouts?.delete(rpcId);
+export function reserveRelayRpc(shared: SharedRelay, owner: RpcOwnerInput): PendingRpc {
+  if (!isRelayAvailable(shared)) throw new Error("Relay is not available");
+  const relayState = getRelayRpcState(shared);
+  const id = allocateRpcId(relayState);
+
+  let superseded: PendingRpc | undefined;
+  if (owner.kind === "session-sync") {
+    const current = relayState.activeSessionTransitions.get(shared.rcsSessionId);
+    if (current && removeExactOwner(current, "superseded")) superseded = current;
   }
+
+  const request: PendingRpc = {
+    id,
+    token: Symbol(`rpc:${id}`),
+    relayState,
+    relay: shared,
+    epoch: relayState.epoch,
+    owner,
+    abortController: new AbortController(),
+    state: "registered",
+    timeout: null,
+    responsePromise: null,
+  };
+  relayState.pendingRpcRequests.set(id, request);
+  if (owner.kind === "session-sync") {
+    relayState.activeSessionTransitions.set(shared.rcsSessionId, request);
+  }
+  if (owner.kind === "session-list" || owner.kind === "generic") {
+    request.timeout = setTimeout(() => {
+      void abortPendingRpc(request);
+    }, CONTROL_RPC_TIMEOUT_MS);
+    (request.timeout as { unref?: () => void }).unref?.();
+  }
+
+  if (superseded) {
+    void rollbackOwner(superseded).catch(() => {
+      // 新 owner 已完成同步接管；旧候选回收失败由其 DocManager onError 保留诊断上下文。
+    });
+  }
+  return request;
+}
+
+/** send 返回后标记 sent；同步响应已先进入 responding 时仍视为成功发送。 */
+export function markPendingRpcSent(request: PendingRpc): boolean {
+  if (request.relayState.pendingRpcRequests.get(request.id) !== request) return false;
+  if (request.state === "registered") request.state = "sent";
+  return request.state === "sent" || request.state === "responding";
+}
+
+/** 仅当前 owner 可安装或替换自己的 timeout。 */
+export function setPendingRpcTimer(request: PendingRpc, timer: ReturnType<typeof setTimeout>): boolean {
+  if (
+    request.relayState.pendingRpcRequests.get(request.id) !== request ||
+    (request.state !== "registered" && request.state !== "sent")
+  ) {
+    clearTimeout(timer);
+    return false;
+  }
+  clearPendingRpcTimer(request);
+  request.timeout = timer;
+  return true;
+}
+
+/** 响应按 id 对 owner 做一次 CAS；异步处理完成前 owner 保持在 responding。 */
+export function beginRpcResponse(shared: SharedRelay, rpcId: RpcId): PendingRpc | null {
+  const relayState = getRelayRpcState(shared);
+  if (relayState.lifecycle !== "open" || relayState.teardownReason !== null) return null;
+  const request = relayState.pendingRpcRequests.get(rpcId);
+  // 同一物理 handle 会把响应分发给多个 listener；只有创建 reservation 的精确包装
+  // 才能 claim，否则先执行的错误 listener 会按共享数字 id 劫持另一会话的响应。
+  if (request?.relay !== shared || (request.state !== "registered" && request.state !== "sent")) return null;
+  if (request.epoch !== relayState.epoch || request.abortController.signal.aborted) return null;
+  request.state = "responding";
+  clearPendingRpcTimer(request);
+  return request;
+}
+
+/** 异步 commit 内部的生命周期栅栏。 */
+export function isPendingRpcCurrent(request: PendingRpc): boolean {
+  return (
+    request.relayState.lifecycle === "open" &&
+    request.relayState.teardownReason === null &&
+    request.relayState.epoch === request.epoch &&
+    request.relayState.pendingRpcRequests.get(request.id) === request &&
+    request.state === "responding" &&
+    !request.abortController.signal.aborted &&
+    !request.relay.destroyed &&
+    !request.relay.relayClosed &&
+    request.relay.handle.state === "open"
+  );
+}
+
+/** 成功处理后只结算同一对象 owner。 */
+export function settlePendingRpc(request: PendingRpc): boolean {
+  return removeExactOwner(request, "settled");
+}
+
+/** 同步剥夺 owner，供 timeout/failed-send/teardown 在任何 await 前建立栅栏。 */
+export function claimPendingRpcAbort(request: PendingRpc, state: "aborted" | "superseded" = "aborted"): boolean {
+  return removeExactOwner(request, state);
+}
+
+/** 回滚已被剥夺的 session candidate。 */
+export async function cleanupAbortedRpc(request: PendingRpc): Promise<void> {
+  await rollbackOwner(request);
+}
+
+/** 精确 abort；响应处理已经开始后由 response/teardown 路径负责结算。 */
+export async function abortPendingRpc(request: PendingRpc): Promise<boolean> {
+  if (request.state !== "registered" && request.state !== "sent") return false;
+  if (!claimPendingRpcAbort(request)) return false;
+  await cleanupAbortedRpc(request);
+  return true;
+}
+
+/** 当前 RCS 会话仍有效的 session transition。 */
+export function getActiveSessionTransition(shared: SharedRelay): PendingRpc | null {
+  const state = getRelayRpcState(shared);
+  const request = state.activeSessionTransitions.get(shared.rcsSessionId);
+  if (!request || request.relay !== shared || request.owner.kind !== "session-sync") return null;
+  if (state.pendingRpcRequests.get(request.id) !== request) return null;
+  if (request.state !== "registered" && request.state !== "sent" && request.state !== "responding") return null;
+  return request;
+}
+
+/** 只读快照，供诊断与精确的包装级清理使用。 */
+export function listPendingRpcForRelay(shared: SharedRelay): PendingRpc[] {
+  return [...getRelayRpcState(shared).pendingRpcRequests.values()].filter((request) => request.relay === shared);
+}
+
+function claimRequestsForRelay(shared: SharedRelay): PendingRpc[] {
+  const requests = listPendingRpcForRelay(shared);
+  return requests.filter((request) => claimPendingRpcAbort(request));
+}
+
+/** 已同步剥夺的 owner 先等待在途 response handler，再幂等回滚其候选资源。 */
+async function cleanupClaimedRpc(request: PendingRpc): Promise<void> {
+  try {
+    if (request.responsePromise) await request.responsePromise;
+  } finally {
+    await cleanupAbortedRpc(request);
+  }
+}
+
+/**
+ * 一次性 claim 底层 handle teardown。首个调用者在任何 await 前冻结全部包装与 owner
+ * 快照、推进 epoch 并剥夺 owner；后继监听器仅复用同一 cleanup Promise，不重复副作用。
+ */
+export function claimRelayRpcTeardown(shared: SharedRelay, reason: "relay_closed" | "released"): RelayRpcTeardownClaim {
+  const state = getRelayRpcState(shared);
+  if (state.teardownPromise) {
+    return {
+      primary: false,
+      reason: state.teardownReason ?? reason,
+      relays: [],
+      requests: [],
+      cleanup: state.teardownPromise,
+    };
+  }
+
+  const relays = [...state.relays];
+  const requests = [...state.pendingRpcRequests.values()];
+  state.lifecycle = "closing";
+  state.teardownReason = reason;
+  state.epoch += 1;
+  if (reason === "relay_closed") {
+    for (const relay of relays) relay.relayClosed = true;
+  }
+
+  const claimed = requests.filter((request) => claimPendingRpcAbort(request));
+  state.pendingRpcRequests.clear();
+  state.activeSessionTransitions.clear();
+  const cleanup = Promise.allSettled(claimed.map(cleanupClaimedRpc)).then(() => {
+    state.lifecycle = "closed";
+  });
+  state.teardownPromise = cleanup;
+
+  return { primary: true, reason, relays, requests, cleanup };
+}
+
+/** 兼容调用入口；新代码若需执行一次性副作用应使用 claimRelayRpcTeardown。 */
+export function beginRelayRpcTeardown(shared: SharedRelay): Promise<void> {
+  return claimRelayRpcTeardown(shared, "relay_closed").cleanup;
+}
+
+/**
+ * 释放单个 RCS 包装。非最后包装只剥夺自己的 owner；最后包装同步 claim 物理
+ * teardown。返回 true 仅表示本调用拥有主动关闭底层 handle 的权利。
+ */
+export function releaseRelayRpcState(shared: SharedRelay): {
+  readonly shouldCloseHandle: boolean;
+  readonly cleanup: Promise<void>;
+} {
+  const state = getRelayRpcState(shared);
+  if (!state.relays.has(shared)) {
+    return { shouldCloseHandle: false, cleanup: state.teardownPromise ?? Promise.resolve() };
+  }
+
+  const isLastWrapper = state.relays.size === 1;
+  if (isLastWrapper) {
+    const teardown = claimRelayRpcTeardown(shared, "released");
+    state.relays.delete(shared);
+    return {
+      shouldCloseHandle: teardown.primary && teardown.reason === "released",
+      cleanup: teardown.cleanup,
+    };
+  }
+
+  state.relays.delete(shared);
+  const owned = claimRequestsForRelay(shared);
+  const ownedCleanup = Promise.allSettled(owned.map(cleanupClaimedRpc)).then(() => undefined);
+  return {
+    shouldCloseHandle: false,
+    cleanup: state.teardownPromise
+      ? Promise.all([ownedCleanup, state.teardownPromise]).then(() => undefined)
+      : ownedCleanup,
+  };
 }
