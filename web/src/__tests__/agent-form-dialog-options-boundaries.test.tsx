@@ -160,29 +160,38 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     );
   });
 
-  // 本组织模型标签由 provider 和模型显示名组成。
-  test("本组织模型组合 provider 与模型标签", () => {
-    expect(mapModelOptions([model()])[0].label).toBe("Provider One/Model One");
+  // 本组织模型使用短模型名，并将 Provider 作为独立分组信息。
+  test("本组织模型拆分 Provider 与模型标签", () => {
+    expect(mapModelOptions([model()])[0]).toMatchObject({
+      label: "Model One",
+      modelId: "gpt-1",
+      group: { id: "organization:provider-1", label: "Provider One", scope: "organization" },
+    });
   });
 
-  // 共享模型标签应在 provider 前添加来源组织。
-  test("共享模型标签包含来源组织", () => {
-    expect(mapModelOptions([model({ providerResourceAccess: externalAccess })])[0].label).toBe(
-      "Source Team/Provider One/Model One",
-    );
+  // 共享模型仍使用短模型名，来源属性通过 Provider 分组的 scope 表达。
+  test("共享模型保留 Provider 分组与来源范围", () => {
+    expect(mapModelOptions([model({ providerResourceAccess: externalAccess })])[0]).toMatchObject({
+      label: "Model One",
+      modelId: "gpt-1",
+      group: { id: "org-source:provider-1", label: "Provider One", scope: "shared" },
+    });
   });
 
-  // 空来源组织名不应造成标签中的空路径段。
-  test("空模型来源组织名不添加前缀", () => {
+  // 空来源组织名不影响短模型名，Provider 分组仍保留。
+  test("空模型来源组织名不影响分组", () => {
     expect(
-      mapModelOptions([model({ providerResourceAccess: { ...externalAccess, sourceOrganizationName: "" } })])[0].label,
-    ).toBe("Provider One/Model One");
+      mapModelOptions([model({ providerResourceAccess: { ...externalAccess, sourceOrganizationName: "" } })])[0],
+    ).toMatchObject({ label: "Model One", group: { label: "Provider One", scope: "shared" } });
   });
 
-  // 缺失来源组织名应退回本组织模型的展示格式。
-  test("缺失模型来源组织名不添加前缀", () => {
+  // 缺失来源组织名不影响短模型名和共享 Provider 分组。
+  test("缺失模型来源组织名不影响分组", () => {
     const { sourceOrganizationName: _sourceOrganizationName, ...providerResourceAccess } = externalAccess;
-    expect(mapModelOptions([model({ providerResourceAccess })])[0].label).toBe("Provider One/Model One");
+    expect(mapModelOptions([model({ providerResourceAccess })])[0]).toMatchObject({
+      label: "Model One",
+      group: { label: "Provider One", scope: "shared" },
+    });
   });
 
   // 模型映射必须保留输入排列顺序，确保下拉选项稳定。
@@ -208,13 +217,16 @@ describe("AgentFormDialog 选项数据转换边界", () => {
   });
 
   // 模型显示名为空时应原样保留，而不是擅自填充 modelId。
-  test("空模型显示名保持空路径段", () => {
-    expect(mapModelOptions([model({ displayName: "" })])[0].label).toBe("Provider One/");
+  test("空模型显示名保持为空", () => {
+    expect(mapModelOptions([model({ displayName: "" })])[0].label).toBe("");
   });
 
-  // provider 显示名为空时应保留分隔符结构，避免隐式数据修复。
-  test("空 provider 显示名保持空路径段", () => {
-    expect(mapModelOptions([model({ providerDisplayName: "" })])[0].label).toBe("/Model One");
+  // Provider 显示名为空时只影响独立分组，不污染短模型名。
+  test("空 Provider 显示名保留模型短名称", () => {
+    expect(mapModelOptions([model({ providerDisplayName: "" })])[0]).toMatchObject({
+      label: "Model One",
+      group: { label: "" },
+    });
   });
 
   // 模型转换不得修改输入数组。
@@ -270,13 +282,14 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     ).toEqual(["files", "Source Team/search"]);
   });
 
-  // 混合本组织和共享模型时应分别使用对应的展示策略。
-  test("混合模型使用各自标签策略", () => {
-    expect(
-      mapModelOptions([model({ id: "local" }), model({ id: "shared", providerResourceAccess: externalAccess })]).map(
-        (option) => option.label,
-      ),
-    ).toEqual(["Provider One/Model One", "Source Team/Provider One/Model One"]);
+  // 混合本组织和共享模型时均保留稳定短名称，并分别标记 Provider 范围。
+  test("混合模型使用短名称与独立范围", () => {
+    const options = mapModelOptions([
+      model({ id: "local" }),
+      model({ id: "shared", providerResourceAccess: externalAccess }),
+    ]);
+    expect(options.map((option) => option.label)).toEqual(["Model One", "Model One"]);
+    expect(options.map((option) => option.group.scope)).toEqual(["organization", "shared"]);
   });
 
   // 资源访问中的权限字段不应影响 MCP 的可选性，启用状态才是过滤依据。
@@ -284,8 +297,11 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess: externalAccess }])).toHaveLength(1);
   });
 
-  // 模型的来源组织仅依赖 providerResourceAccess，modelId 内容不应改变标签。
+  // modelId 内容不应改变短标签，但必须作为品牌图标映射键保留。
   test("模型标签不依赖 modelId 内容", () => {
-    expect(mapModelOptions([model({ modelId: "unexpected/internal-id" })])[0].label).toBe("Provider One/Model One");
+    expect(mapModelOptions([model({ modelId: "unexpected/internal-id" })])[0]).toMatchObject({
+      label: "Model One",
+      modelId: "unexpected/internal-id",
+    });
   });
 });
