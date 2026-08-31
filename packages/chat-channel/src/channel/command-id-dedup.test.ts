@@ -155,8 +155,7 @@ describe("CommandCoordinator dedup", () => {
     expect(overflow.errors[0]).toMatchObject({
       type: "action_error",
       commandId: "cmd-4",
-      code: "RATE_LIMITED",
-      retryable: true,
+      error: { type: "ACTION.RATE_LIMITED" },
     });
 
     gate.resolve();
@@ -169,14 +168,14 @@ describe("CommandCoordinator dedup", () => {
     let executions = 0;
     const { coordinator } = createCoordinator(async () => {
       executions += 1;
-      if (executions === 1) throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      if (executions === 1) throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
       return {};
     });
     const first = createSinks();
     const retry = createSinks();
 
     await coordinator.submit(command(), first);
-    expect(first.errors[0]).toMatchObject({ code: "AGENT_UNAVAILABLE", retryable: true });
+    expect(first.errors[0]).toMatchObject({ error: { type: "ACTION.AGENT_UNAVAILABLE" } });
     expect(first.acks.map((a) => a.status)).toEqual(["accepted"]);
 
     await coordinator.submit(command(), retry);
@@ -202,10 +201,14 @@ describe("CommandCoordinator dedup", () => {
   // 形状校验：缺 commandId 或未知 action type 返回 INVALID_STATE，且不发 accepted。
   test("rejects malformed commands with INVALID_STATE before enqueueing", async () => {
     let executions = 0;
-    const { coordinator } = createCoordinator(async () => {
-      executions += 1;
-      return {};
-    });
+    const diagnostics: Array<{ context: string; error: unknown }> = [];
+    const { coordinator } = createCoordinator(
+      async () => {
+        executions += 1;
+        return {};
+      },
+      { reportError: (context, error) => diagnostics.push({ context, error }) },
+    );
     const missingId = createSinks();
     const unknownType = createSinks();
 
@@ -214,8 +217,18 @@ describe("CommandCoordinator dedup", () => {
 
     expect(executions).toBe(0);
     expect(missingId.acks).toHaveLength(0);
-    expect(missingId.errors[0]).toMatchObject({ code: "INVALID_STATE", retryable: false });
-    expect(unknownType.errors[0]).toMatchObject({ code: "INVALID_STATE", retryable: false });
+    expect(missingId.errors[0]).toMatchObject({ error: { type: "ACTION.INVALID_STATE" } });
+    expect(unknownType.errors[0]).toMatchObject({ error: { type: "ACTION.INVALID_STATE" } });
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics[0]).toMatchObject({
+      context: "[ChatError] public action failure",
+      error: {
+        event: "chat.error",
+        errorId: missingId.errors[0]?.error.id,
+        errorType: "ACTION.INVALID_STATE",
+        stage: "action.command",
+      },
+    });
   });
 
   // payload 超过大小上限返回 PAYLOAD_TOO_LARGE（稳定错误码）。
@@ -233,10 +246,10 @@ describe("CommandCoordinator dedup", () => {
     await coordinator.submit(oversized, sinks);
 
     expect(executions).toBe(0);
-    expect(sinks.errors[0]).toMatchObject({ code: "PAYLOAD_TOO_LARGE", retryable: false });
+    expect(sinks.errors[0]).toMatchObject({ error: { type: "ACTION.PAYLOAD_TOO_LARGE" } });
   });
 
-  // expectedProjectionVersion 与当前投影版本不一致返回 VERSION_CONFLICT（retryable）。
+  // expectedProjectionVersion 与当前投影版本不一致返回稳定 VERSION_CONFLICT Type。
   test("rejects version conflicts with VERSION_CONFLICT", async () => {
     let executions = 0;
     const { coordinator } = createCoordinator(
@@ -252,7 +265,7 @@ describe("CommandCoordinator dedup", () => {
 
     expect(executions).toBe(0);
     expect(sinks.acks).toHaveLength(0);
-    expect(sinks.errors[0]).toMatchObject({ code: "VERSION_CONFLICT", retryable: true });
+    expect(sinks.errors[0]).toMatchObject({ error: { type: "ACTION.VERSION_CONFLICT" } });
   });
 
   // validateAction 拒绝（会话不存在等）时不得发送 accepted，错误码由注入方决定。
@@ -265,7 +278,7 @@ describe("CommandCoordinator dedup", () => {
       },
       {
         validateAction: () => {
-          throw new CommandExecutionError("SESSION_NOT_FOUND", "Session not found", false);
+          throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
         },
       },
     );
@@ -275,7 +288,7 @@ describe("CommandCoordinator dedup", () => {
 
     expect(executions).toBe(0);
     expect(sinks.acks).toHaveLength(0);
-    expect(sinks.errors[0]).toMatchObject({ code: "SESSION_NOT_FOUND", retryable: false });
+    expect(sinks.errors[0]).toMatchObject({ error: { type: "ACTION.SESSION_NOT_FOUND" } });
   });
 
   // committed Ack 携带执行后读到的投影版本（getProjectionVersion 注入值）。

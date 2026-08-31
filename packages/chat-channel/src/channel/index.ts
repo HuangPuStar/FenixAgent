@@ -32,11 +32,9 @@ export {
 } from "./session-channel";
 export {
   ACTION_ACK_STATUSES,
-  ACTION_ERROR_CODES,
   type ActionAck,
   type ActionAckStatus,
   type ActionError,
-  type ActionErrorCode,
   type ActionSinks,
   type Command,
   CommandExecutionError,

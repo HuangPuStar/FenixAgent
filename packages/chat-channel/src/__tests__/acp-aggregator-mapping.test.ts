@@ -252,6 +252,36 @@ test("deltas after terminal turn are dropped", () => {
   expect(getSessionInfo(pair.session).get("canCancel")).toBe(false);
 });
 
+// turn 失败只接受受控公开错误；原始 error 字符串不得进入共享 Y.Doc。
+test("turn failure records the stable Type and ID without exposing raw errors", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(
+    pair,
+    event("turn_failed", {
+      publicError: {
+        type: "AGENT_RUNTIME.PROMPT_REJECTED",
+        id: "err_00000000000000000000000000000001",
+        message: "The Agent rejected the request.",
+      },
+      error: "token=secret /private/runtime.log",
+    }),
+  );
+
+  expect(getEntry(pair.chat, "turn_1:assistant")?.get("error")).toEqual({
+    type: "AGENT_RUNTIME.PROMPT_REJECTED",
+    id: "err_00000000000000000000000000000001",
+    message: "The Agent rejected the request.",
+  });
+});
+
+// 未分类的原始错误字符串只能降级为固定安全错误，不能泄露到浏览器。
+test("turn failure redacts unclassified raw error strings", () => {
+  runTurn(pair, "turn_1");
+  applyNormalizedEvent(pair, event("turn_failed", { error: "token=secret /private/runtime.log" }));
+
+  expect(getEntry(pair.chat, "turn_1:assistant")?.get("error")).toBeNull();
+});
+
 // 终态不可逆：completed 后再收到 turn_failed 不覆盖终态
 test("terminal turn status cannot be overwritten", () => {
   runTurn(pair, "turn_1");

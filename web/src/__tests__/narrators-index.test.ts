@@ -97,11 +97,12 @@ describe("narrate 中央入口", () => {
     const tool = makeTool({
       title: "SomeUnknownTool",
       status: "error",
-      publicError: { code: "exit_1", message: "command failed" },
+      publicError: { type: "ACTION.FAILED", id: "err_00000000000000000000000000000001", message: "The action failed." },
       rawOutput: { isError: true, content: [{ type: "text", text: "raw stderr" }] },
     });
     const result = narrate(tool, "error", undefined, t);
-    expect(result.errorDetail).toBe("command failed");
+    expect(result.errorDetail).toBe("The action failed.");
+    expect(result.errorDetail).not.toContain("raw stderr");
   });
 
   // detail 字段需保留 rawInput / rawOutput 供 Dialog 展示

@@ -5,6 +5,7 @@
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import type { ActionAck, ActionError } from "../channel/types";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
+import { isPublicError, type PublicError } from "../public-error";
 
 /** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
 const NO_RECONNECT_CODES = new Set<number>([
@@ -21,10 +22,7 @@ const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
 export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
 
-export interface YjsWsError {
-  code?: string;
-  message?: string;
-}
+export type YjsWsError = PublicError;
 
 export interface YjsWsClose {
   code: number;
@@ -213,13 +211,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
         }
         if (msg.type === "error") {
           const payload = msg.payload;
-          if (payload && typeof payload === "object") {
-            const record = payload as Record<string, unknown>;
-            onError?.({
-              code: typeof record.code === "string" ? record.code : undefined,
-              message: typeof record.message === "string" ? record.message : undefined,
-            });
-          }
+          if (isPublicError(payload)) onError?.(payload);
           return;
         }
         if (msg.type === "action_ack") {
@@ -240,7 +232,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       ws = null;
       const close = { code: event.code, reason: event.reason };
       onClose?.(close);
-      // 服务端主动关闭码表示当前连接不可自动恢复，交由上层提供手动恢复入口。
+      // close code 只控制连接生命周期，不产生或改变用户可见错误。
       if (NO_RECONNECT_CODES.has(event.code)) {
         setState("error");
         return;

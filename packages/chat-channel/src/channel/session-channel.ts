@@ -171,12 +171,12 @@ export class SessionChannel {
       !this.activeConnections.has(command.rcsSessionId) ||
       !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)
     ) {
-      throw new CommandExecutionError("SESSION_NOT_FOUND", "Session not found", false);
+      throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
     }
     if (command.type === "load_session") {
       const sessionId = command.payload.sessionId;
       if (typeof sessionId !== "string" || sessionId.length === 0) {
-        throw new CommandExecutionError("INVALID_STATE", "load_session requires a valid sessionId", false);
+        throw new CommandExecutionError("ACTION.INVALID_STATE");
       }
     }
   }
@@ -192,7 +192,7 @@ export class SessionChannel {
 
   private async executeCommand(command: Command): Promise<CommandOutcome> {
     const connection = this.activeConnections.get(command.rcsSessionId);
-    if (!connection) throw new CommandExecutionError("SESSION_NOT_FOUND", "Session not found", false);
+    if (!connection) throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
 
     const { docManager } = this.dependencies;
 
@@ -264,7 +264,7 @@ export class SessionChannel {
       await connection.sendToRelay(rpc);
     } catch (err) {
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
-      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
 
     if (command.type === "cancel") {
@@ -312,7 +312,7 @@ export class SessionChannel {
   /** load_session 守卫：非法 sessionId 拒绝；同会话重复加载静默跳过（不重复 RPC） */
   private async prepareLoadSession(connection: SessionConnection, sessionId: unknown): Promise<boolean> {
     if (typeof sessionId !== "string" || sessionId.length === 0) {
-      throw new CommandExecutionError("INVALID_STATE", "load_session requires a valid sessionId", false);
+      throw new CommandExecutionError("ACTION.INVALID_STATE");
     }
 
     if (connection.acpSessionId === sessionId) {
@@ -350,7 +350,7 @@ export class SessionChannel {
       await this.dependencies.refreshInstanceEnvironment?.(connection);
     } catch (error) {
       this.dependencies.reportError("[SessionChannel] instance environment refresh failed", error);
-      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
     const projection = await this.dependencies.docManager.replaceProjection(connection.rcsSessionId, null);
     this.dependencies.replaceProjection(projection);

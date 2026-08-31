@@ -223,6 +223,13 @@
     "noMatch": "No matching commands",
     "searchPlaceholder": "Search skills..."
   },
+  "errorArea": {
+    "agent_runtime": "Agent Runtime Error",
+    "sync_relay": "Sync Relay Error",
+    "control_plane": "Control Plane Error",
+    "action": "Action Error",
+    "code": "Error code: {{code}}"
+  },
   "messageBubble": {
     "expand": "Expand",
     "uploadedImage": "Uploaded image",

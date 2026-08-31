@@ -17,9 +17,11 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
+import { createPublicError, type PublicErrorType } from "../public-error";
 import {
   type NormalizedEvent,
   type NormalizedEventType,
+  type PublicError,
   SESSION_BOUND_NOTIFICATION_METHODS,
   TURN_TERMINAL_STATUSES,
   type TurnStatus,
@@ -28,6 +30,25 @@ import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { clearPendingPromptTimeout, REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+
+/** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
+function agentRuntimeError(
+  type: PublicErrorType,
+  stage: string,
+  log: ((message: string) => void) | undefined,
+): PublicError {
+  const error = createPublicError(type);
+  log?.(
+    JSON.stringify({
+      event: "chat.error",
+      errorId: error.id,
+      errorType: error.type,
+      stage,
+      occurredAt: new Date().toISOString(),
+    }),
+  );
+  return error;
+}
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
@@ -176,10 +197,11 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
+      const publicError = agentRuntimeError("AGENT_RUNTIME.REQUEST_FAILED", "relay.agent_error", this.dependencies.log);
+      this.sendSafeErrorToRcsSession(shared, publicError);
       this.dispatch(shared, {
         type: "turn_failed",
-        update: { error: "Agent request failed" },
+        update: { publicError },
         content: null,
       });
       return;
@@ -190,10 +212,15 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
+      const publicError = agentRuntimeError(
+        "AGENT_RUNTIME.SESSION_FAILED",
+        "relay.session_error",
+        this.dependencies.log,
+      );
+      this.sendSafeErrorToRcsSession(shared, publicError);
       this.dispatch(shared, {
         type: "turn_failed",
-        update: { error: "Agent session request failed" },
+        update: { publicError },
         content: null,
       });
       return;
@@ -492,9 +519,15 @@ export class RelayEventHandler {
           instanceId: shared.instanceId,
           code: rpcError?.code,
         });
+        const publicError = agentRuntimeError(
+          "AGENT_RUNTIME.PROMPT_REJECTED",
+          "relay.prompt_response",
+          this.dependencies.log,
+        );
+        this.sendSafeErrorToRcsSession(shared, publicError);
         this.dispatch(shared, {
           type: "turn_failed",
-          update: { error: "Agent request failed" },
+          update: { publicError },
           content: null,
           turnId,
         });
@@ -716,19 +749,25 @@ export class RelayEventHandler {
     this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
       instanceId: shared.instanceId,
     });
+    const publicError = agentRuntimeError(
+      "AGENT_RUNTIME.PROMPT_TIMEOUT",
+      "relay.prompt_timeout",
+      this.dependencies.log,
+    );
+    this.sendSafeErrorToRcsSession(shared, publicError);
     this.dispatch(shared, {
       type: "turn_failed",
-      update: { error: "Agent request failed" },
+      update: { publicError },
       content: null,
       turnId,
     });
   }
 
-  private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
+  private sendSafeErrorToRcsSession(shared: SharedRelay, error: PublicError): void {
     this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
       this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
         type: "error",
-        payload: { code, message },
+        payload: error,
       });
     });
   }

@@ -4,6 +4,8 @@
 // 前端最小配合：只新增 commandId（UUID）；protocolVersion / expectedProjectionVersion /
 // client 信封字段在类型中保留定义，由服务端按会话绑定补充与校验（乐观并发增强留二期）。
 
+import type { PublicError, PublicErrorType } from "../public-error";
+
 /** 控制面已知 Action 类型（与 translateSimpleAction 的 action 一一对应） */
 export const KNOWN_ACTION_TYPES = [
   "send_prompt",
@@ -31,27 +33,11 @@ export interface ActionAck {
   committedProjectionVersion?: number;
 }
 
-export const ACTION_ERROR_CODES = [
-  "UNAUTHENTICATED",
-  "FORBIDDEN",
-  "SESSION_NOT_FOUND",
-  "VERSION_CONFLICT",
-  "INVALID_STATE",
-  "RATE_LIMITED",
-  "AGENT_UNAVAILABLE",
-  "PAYLOAD_TOO_LARGE",
-] as const;
-
-export type ActionErrorCode = (typeof ACTION_ERROR_CODES)[number];
-
-/** Action 失败响应：稳定错误码 + retryable 标记，不泄露内部实现细节 */
+/** Action 失败响应：commandId 仅用于协议关联，公开错误使用统一 DTO。 */
 export interface ActionError {
   type: "action_error";
   commandId: string;
-  code: ActionErrorCode;
-  message: string;
-  retryable: boolean;
-  retryAfterMs?: number;
+  error: PublicError;
 }
 
 /** 归一化后的服务端命令（SessionChannel 产出，CommandCoordinator 消费） */
@@ -77,18 +63,10 @@ export interface ActionSinks {
   sendError: (error: ActionError) => void;
 }
 
-/**
- * 命令执行失败：携带稳定错误码与重试语义。
- * 只允许在业务校验与执行边界抛出，message 必须可安全展示给客户端。
- */
+/** 业务校验边界的已分类失败；公开摘要由注册表产生。 */
 export class CommandExecutionError extends Error {
-  constructor(
-    readonly code: ActionErrorCode,
-    message: string,
-    readonly retryable: boolean,
-    readonly retryAfterMs?: number,
-  ) {
-    super(message);
+  constructor(readonly publicErrorType: PublicErrorType) {
+    super(publicErrorType);
     this.name = "CommandExecutionError";
   }
 }

@@ -126,14 +126,8 @@ describe("action-forward 协议、错误隔离与缓冲清理", () => {
 
     await forwardYjsAction(createEntry("rcs-isolated"), action, fixture.dependencies);
 
-    expect(fixture.errors).toEqual([
-      {
-        type: "action_error",
-        commandId: "",
-        code: "AGENT_UNAVAILABLE",
-        message: "Agent connection error",
-        retryable: true,
-      },
+    expect(fixture.errors).toMatchObject([
+      { type: "action_error", commandId: "", error: { type: "INTERNAL.UNCLASSIFIED" } },
     ]);
     expect(fixture.reports).toEqual([
       ["[YJS-FE] failed to process action before relay forward: action=send_prompt rcsSessionId=rcs-isolated", "Error"],
@@ -152,7 +146,7 @@ describe("action-forward 协议、错误隔离与缓冲清理", () => {
 
     await forwardYjsAction(createEntry(), { action: "cancel", commandId: "cmd-cancel" }, fixture.dependencies);
 
-    expect(fixture.errors[0]).toMatchObject({ commandId: "cmd-cancel", code: "AGENT_UNAVAILABLE", retryable: true });
+    expect(fixture.errors[0]).toMatchObject({ commandId: "cmd-cancel", error: { type: "INTERNAL.UNCLASSIFIED" } });
     expect(fixture.reports[0]?.[1]).toBe(expectedKind);
   });
 

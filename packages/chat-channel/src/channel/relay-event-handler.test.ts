@@ -46,12 +46,14 @@ describe("RelayEventHandler", () => {
   test.each([
     ["error", "agent_error", "Agent request failed"],
     ["session_error", "session_error", "Agent session request failed"],
-  ])("redacts %s payloads before sending them to the current RCS session", async (messageType, code, message) => {
+  ])("redacts %s payloads before sending them to the current RCS session", async (messageType, _code, _message) => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const reports: Array<[string, unknown]> = [];
+    const logs: string[] = [];
     const handler = createRelayEvents(registry, broadcaster, [], {
       reportError: (context, error) => reports.push([context, error]),
+      log: (message) => logs.push(message),
     });
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws, agentStatusReceived: true }));
@@ -65,7 +67,20 @@ describe("RelayEventHandler", () => {
         { messageType, instanceId: "instance-1" },
       ],
     ]);
-    expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual({ type: "error", payload: { code, message } });
+    const frame = JSON.parse(textFrames(ws)[0] ?? "{}") as { payload: { type: string; id: string; message: string } };
+    expect(frame.payload.type).toBe(
+      messageType === "error" ? "AGENT_RUNTIME.REQUEST_FAILED" : "AGENT_RUNTIME.SESSION_FAILED",
+    );
+    expect(frame.payload.id).toMatch(/^err_[0-9a-f]{32}$/);
+    expect(frame.payload.message).toBe(
+      messageType === "error" ? "The Agent request failed." : "The Agent session failed.",
+    );
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: frame.payload.id,
+      errorType: frame.payload.type,
+    });
   });
 
   // 同一用户的不同 RCS 会话中，session/update 只能以当前 RCS 的 ACP session 过滤。
@@ -382,10 +397,10 @@ describe("RelayEventHandler", () => {
 
     expect(ws1.messages.length).toBeGreaterThanOrEqual(1);
     expect(ws2.messages).toHaveLength(0);
-    expect(JSON.parse(textFrames(ws1)[0] ?? "{}")).toEqual({
-      type: "error",
-      payload: { code: "agent_error", message: "Agent request failed" },
-    });
+    const frame = JSON.parse(textFrames(ws1)[0] ?? "{}") as { payload: { type: string; id: string; message: string } };
+    expect(frame.payload.type).toBe("AGENT_RUNTIME.REQUEST_FAILED");
+    expect(frame.payload.id).toMatch(/^err_[0-9a-f]{32}$/);
+    expect(frame.payload.message).toBe("The Agent request failed.");
   });
 
   // 同一用户的不同 RCS 会话中，session/new 只能更新当前 RCS 的 ACP session ID。

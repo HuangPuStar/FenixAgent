@@ -196,11 +196,8 @@ import type { PermissionOption } from "acp-link/client";
 
 export type { PermissionOption };
 
-/** 展示层公开错误（脱敏 code/message，不含内部实现细节与敏感信息；与 Chat Doc schema 的 PublicError 结构一致） */
-export interface PublicErrorInfo {
-  code: string;
-  message: string;
-}
+/** 展示层公开错误与 Chat Doc 使用同一 DTO；ViewModel 只透明复制字段。 */
+export type PublicErrorInfo = import("./public-error").PublicError;
 
 export interface ToolCallMessage {
   type: "tool_call";

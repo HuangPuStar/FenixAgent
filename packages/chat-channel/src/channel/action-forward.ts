@@ -4,6 +4,7 @@
 // 独立成文件使 gateway.ts 保持在行数上限内；两者共享同一依赖注入面，
 // 以便协议层测试用 fake SessionChannel 覆盖缓冲/重放时序。
 
+import { createPublicError } from "../public-error";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import type { ActionAck, ActionError } from "./types";
 
@@ -33,9 +34,7 @@ export async function forwardYjsAction(
     dependencies.sendError({
       type: "action_error",
       commandId: typeof action.commandId === "string" ? action.commandId : "",
-      code: "AGENT_UNAVAILABLE",
-      message: "Agent connection error",
-      retryable: true,
+      error: createPublicError("INTERNAL.UNCLASSIFIED"),
     });
   }
 }
@@ -52,7 +51,7 @@ export async function flushPendingYjsActions(
       if (!action.action || action.action === "list_sessions") continue;
       await forwardYjsAction(entry, action, dependencies);
     } catch (err) {
-      dependencies.reportError("[YJS-FE] flush message failed:", err);
+      dependencies.reportError("[YJS-FE] flush message failed", typeof err);
     }
   }
 }

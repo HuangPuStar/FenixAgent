@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
+import { AssistantBubble } from "../../components/chat/MessageBubble";
 import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
 import { SystemMessage } from "../../components/chat/SystemMessage";
 
@@ -51,6 +52,30 @@ describe("消息组件的服务端渲染", () => {
 
     expect(markup).toContain('<h1 class="mt-6 mb-2 font-semibold text-3xl" data-streamdown="heading-1">部署结果</h1>');
     expect(markup).toContain('<span class="font-semibold" data-streamdown="strong">验证通过</span>');
+  });
+
+  // 失败消息必须展示稳定 Type 和 Error ID，避免所有故障都退化为“执行出错”。
+  test("助手失败消息展示 Type、ID 和安全摘要", () => {
+    const markup = renderToStaticMarkup(
+      createElement(AssistantBubble, {
+        entry: {
+          type: "assistant_message",
+          id: "assistant-error",
+          chunks: [],
+          error: {
+            type: "AGENT_RUNTIME.REQUEST_FAILED",
+            id: "err_00000000000000000000000000000001",
+            message: "The Agent request failed.",
+          },
+        },
+      }),
+    );
+
+    expect(markup).toContain("Type: AGENT_RUNTIME.REQUEST_FAILED");
+    expect(markup).toContain("ID: err_00000000000000000000000000000001");
+    expect(markup).toContain("The Agent request failed.");
+    expect(markup).not.toContain("errorArea.code");
+    expect(markup).toContain("Agent request failed");
   });
 
   // 系统消息默认仅输出标签；原文仅在客户端双击触发的 Popover 中展示。
