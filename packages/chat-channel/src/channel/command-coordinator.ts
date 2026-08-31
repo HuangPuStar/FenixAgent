@@ -11,7 +11,7 @@
 // 本类不承载任何宿主业务（会话守卫 / Doc 写入 / relay 发送），全部通过依赖注入，
 // 以便协议层测试 seam 用 fake 依赖实例化（Q12）。
 
-import { createPublicError, type PublicError, type PublicErrorType } from "../public-error";
+import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import {
   type ActionAck,
   type ActionError,
@@ -38,6 +38,8 @@ export interface CommandCoordinatorDependencies {
   maxPendingPerSession?: number;
   /** 诊断日志（不得包含命令正文等敏感内容） */
   reportError?: (context: string, err: unknown) => void;
+  /** 公开错误安全事件 sink；只接受 serializePublicErrorLog 的低敏 JSON。 */
+  reportLog?: (message: string) => void;
 }
 
 interface QueueItem {
@@ -212,13 +214,7 @@ export class CommandCoordinator {
 
   private publicError(type: PublicErrorType): PublicError {
     const error = createPublicError(type);
-    this.dependencies.reportError?.("[ChatError] public action failure", {
-      event: "chat.error",
-      errorId: error.id,
-      errorType: error.type,
-      stage: "action.command",
-      occurredAt: new Date().toISOString(),
-    });
+    this.dependencies.reportLog?.(serializePublicErrorLog(error, "action.command"));
     return error;
   }
 

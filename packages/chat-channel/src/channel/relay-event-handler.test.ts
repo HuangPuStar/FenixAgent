@@ -912,8 +912,8 @@ describe("RelayEventHandler replay window", () => {
 // rcsSessionId 的 Chat Doc、Session Doc 热缓存与广播订阅；新连接创建全新投影，
 // 绝不加载已删除的旧 Y.Doc（PRD 8.2 / issue C6 验收）。
 describe("RelayEventHandler relay_closed cleanup", () => {
-  // 本地实例的 relay 意外关闭：触发实例级清理（注入）、客户端收到 agent_connection_lost
-  // 并关闭 1011（允许自动重连）、Chat/Session Doc 与广播订阅全部销毁。
+  // 本地实例的 relay 意外关闭：触发实例级清理（注入），并以同一公开错误通知日志、Y.Doc 与客户端；
+  // 随后关闭 1011（允许自动重连）、销毁 Chat/Session Doc 与广播订阅。
   test("relay_closed disposes realtime resources and notifies every client of the RCS session", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
@@ -930,9 +930,17 @@ describe("RelayEventHandler relay_closed cleanup", () => {
     broadcaster.registerYjsDocListener(chatDoc, "chat:rcs-1");
     broadcaster.registerYjsDocListener(sessionDoc, "session:rcs-1");
     const stops: string[] = [];
+    const logs: string[] = [];
+    const processed: Array<{ type: string; publicError?: unknown }> = [];
+    const originalProcess = docManager.processNormalizedEvent.bind(docManager);
+    docManager.processNormalizedEvent = (rcsSessionId, event) => {
+      processed.push({ type: event.type, publicError: event.update.publicError });
+      return originalProcess(rcsSessionId, event);
+    };
     const handler = createRelayEvents(registry, broadcaster, [], {
       docManager,
       terminateLocalDeadInstance: (instanceId) => stops.push(instanceId),
+      log: (message) => logs.push(message),
     });
     const ws1 = createWs();
     const ws2 = createWs();
@@ -945,13 +953,25 @@ describe("RelayEventHandler relay_closed cleanup", () => {
     } as unknown as RelayMessage);
 
     expect(stops).toEqual(["instance-1"]);
+    const frame = JSON.parse(textFrames(ws1)[0] ?? "{}") as {
+      type: string;
+      payload: { type: string; id: string; message: string };
+    };
+    expect(frame).toMatchObject({
+      type: "error",
+      payload: { type: "AGENT_RUNTIME.DISCONNECTED", message: "The Agent disconnected." },
+    });
     for (const ws of [ws1, ws2]) {
-      expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual({
-        type: "error",
-        payload: { code: "agent_connection_lost", message: "Agent connection lost" },
-      });
+      expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual(frame);
       expect(ws.closed).toEqual([[1011, "relay handle closed"]]);
     }
+    expect(processed).toContainEqual({ type: "turn_failed", publicError: frame.payload });
+    expect(JSON.parse(logs[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: frame.payload.id,
+      errorType: frame.payload.type,
+      stage: "relay.connection_closed",
+    });
     expect(unregistered).toContain("chat:rcs-1");
     expect(unregistered).toContain("session:rcs-1");
     // 热缓存删除：内存中不再有 Chat / Session Doc

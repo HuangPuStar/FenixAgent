@@ -68,6 +68,8 @@ export interface SessionChannelDependencies {
   /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */
   syncSessionId: (connection: SessionConnection, newSessionId: string) => void;
   reportError: (message: string, error: unknown) => void;
+  /** 公开错误安全事件 sink；不得记录原始异常或 Action payload。 */
+  reportLog?: (message: string) => void;
   /** 每 rcsSessionId 有界队列上限（透传给 CommandCoordinator） */
   maxPendingPerSession?: number;
   /** 取消超时（毫秒）：cancel 后 Agent 未确认时 turn 收敛为 interrupted，默认 10s */
@@ -94,6 +96,7 @@ export class SessionChannel {
       getProjectionVersion: (rcsSessionId) => this.getProjectionVersion(rcsSessionId),
       maxPendingPerSession: dependencies.maxPendingPerSession,
       reportError: dependencies.reportError,
+      reportLog: dependencies.reportLog,
     });
     // 权限请求投影成功 → 安排超时迁移（控制面持有定时器；聚合层保持纯投影无 I/O）。
     // 单槽位装配：DocManager 为单例，同一实例只应有一个控制面绑定。

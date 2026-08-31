@@ -96,6 +96,7 @@ export class ChatChannelController {
         });
       },
       reportError: dependencies.reportError,
+      reportLog: dependencies.log,
     });
     this.relayEvents = new RelayEventHandler({
       registry: this.registry,

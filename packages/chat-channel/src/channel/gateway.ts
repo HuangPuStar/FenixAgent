@@ -2,7 +2,7 @@
 
 import { translateSimpleAction } from "../protocol/translator";
 import { decodeYjsSyncFrame } from "../protocol/update-frame";
-import { createPublicError, type PublicError, type PublicErrorType } from "../public-error";
+import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import type { DocManager } from "../state";
 import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
@@ -364,15 +364,7 @@ export class Gateway {
   }
   private sendPublicError(ws: WsConnection, type: PublicErrorType, stage: string): PublicError {
     const error = createPublicError(type);
-    this.dependencies.reportLog(
-      JSON.stringify({
-        event: "chat.error",
-        errorId: error.id,
-        errorType: error.type,
-        stage,
-        occurredAt: new Date().toISOString(),
-      }),
-    );
+    this.dependencies.reportLog(serializePublicErrorLog(error, stage));
     this.dependencies.broadcaster.sendToYjsWs(ws, { type: "error", payload: error });
     return error;
   }
@@ -441,6 +433,7 @@ export class Gateway {
       sendAck: (ack) => this.dependencies.broadcaster.sendToYjsWs(ws, ack),
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
+      reportLog: this.dependencies.reportLog,
     });
     if (shared && (action.action === "load_session" || action.action === "resume_session")) {
       this.dependencies.relayEvents.openReplayWindow(shared);
@@ -453,6 +446,7 @@ export class Gateway {
       sendAck: (ack) => this.dependencies.broadcaster.sendToYjsWs(ws, ack),
       sendError: (error) => this.dependencies.broadcaster.sendToYjsWs(ws, error),
       reportError: this.dependencies.reportError,
+      reportLog: this.dependencies.reportLog,
     });
   }
   /** ClientConnection → 包内 SessionConnection 适配（rpcId 与 relay 发送来自连接/共享 relay） */

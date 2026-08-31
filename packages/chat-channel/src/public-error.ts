@@ -39,6 +39,17 @@ export interface PublicError {
   message: string;
 }
 
+/** 将公开错误序列化为低敏、可解析的统一诊断事件。 */
+export function serializePublicErrorLog(error: PublicError, stage: string): string {
+  return JSON.stringify({
+    event: "chat.error",
+    errorId: error.id,
+    errorType: error.type,
+    stage,
+    occurredAt: new Date().toISOString(),
+  });
+}
+
 export interface PublicErrorMessages {
   zh: string;
   en: string;

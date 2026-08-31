@@ -219,7 +219,11 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           return;
         }
         if (msg.type === "action_error") {
-          onActionError?.(msg as unknown as ActionError);
+          const commandId = msg.commandId;
+          const error = msg.error;
+          if (typeof commandId === "string" && isPublicError(error)) {
+            onActionError?.({ type: "action_error", commandId, error });
+          }
           return;
         }
       } catch {

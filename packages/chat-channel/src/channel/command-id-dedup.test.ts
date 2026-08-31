@@ -201,13 +201,13 @@ describe("CommandCoordinator dedup", () => {
   // 形状校验：缺 commandId 或未知 action type 返回 INVALID_STATE，且不发 accepted。
   test("rejects malformed commands with INVALID_STATE before enqueueing", async () => {
     let executions = 0;
-    const diagnostics: Array<{ context: string; error: unknown }> = [];
+    const diagnostics: string[] = [];
     const { coordinator } = createCoordinator(
       async () => {
         executions += 1;
         return {};
       },
-      { reportError: (context, error) => diagnostics.push({ context, error }) },
+      { reportLog: (message) => diagnostics.push(message) },
     );
     const missingId = createSinks();
     const unknownType = createSinks();
@@ -220,14 +220,11 @@ describe("CommandCoordinator dedup", () => {
     expect(missingId.errors[0]).toMatchObject({ error: { type: "ACTION.INVALID_STATE" } });
     expect(unknownType.errors[0]).toMatchObject({ error: { type: "ACTION.INVALID_STATE" } });
     expect(diagnostics).toHaveLength(2);
-    expect(diagnostics[0]).toMatchObject({
-      context: "[ChatError] public action failure",
-      error: {
-        event: "chat.error",
-        errorId: missingId.errors[0]?.error.id,
-        errorType: "ACTION.INVALID_STATE",
-        stage: "action.command",
-      },
+    expect(JSON.parse(diagnostics[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: missingId.errors[0]?.error.id,
+      errorType: "ACTION.INVALID_STATE",
+      stage: "action.command",
     });
   });
 

@@ -17,7 +17,7 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
-import { createPublicError, type PublicErrorType } from "../public-error";
+import { createPublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import {
   type NormalizedEvent,
   type NormalizedEventType,
@@ -38,15 +38,7 @@ function agentRuntimeError(
   log: ((message: string) => void) | undefined,
 ): PublicError {
   const error = createPublicError(type);
-  log?.(
-    JSON.stringify({
-      event: "chat.error",
-      errorId: error.id,
-      errorType: error.type,
-      stage,
-      occurredAt: new Date().toISOString(),
-    }),
-  );
+  log?.(serializePublicErrorLog(error, stage));
   return error;
 }
 
@@ -283,21 +275,23 @@ export class RelayEventHandler {
     // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
     // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
     void this.dependencies.terminateLocalDeadInstance(shared.instanceId);
-    // 连接丢失迁移边（文档 8.1）：活动 turn 收敛为 interrupted 终态，
-    // 晚到增量由聚合层丢弃，UI 不会出现"已断连还在输出"
+    // relay 意外关闭是 Agent Runtime 故障：同一公开错误必须先进入日志、Y.Doc 与 WS，
+    // 再关闭连接；close code 仅承担连接生命周期语义。
+    const publicError = agentRuntimeError(
+      "AGENT_RUNTIME.DISCONNECTED",
+      "relay.connection_closed",
+      this.dependencies.log,
+    );
     this.dispatch(shared, {
-      type: "turn_interrupted",
-      update: {},
+      type: "turn_failed",
+      update: { publicError },
       content: null,
     });
     registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
       try {
         this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
           type: "error",
-          payload: {
-            code: "agent_connection_lost",
-            message: "Agent connection lost",
-          },
+          payload: publicError,
         });
       } catch {
         /* ignore */
