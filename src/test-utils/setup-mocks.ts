@@ -97,6 +97,7 @@ const CONFIG_PG_KEYS = [
   "removeModelById",
   "resolveAgentNode",
   "setMcpServerEnabled",
+  "setSkillPublicReadable",
   "setUserConfig",
   "syncAgentMcps",
   "syncAgentSiteApps",

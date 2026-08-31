@@ -114,6 +114,14 @@ describe("round47 skill fs", () => {
     });
   });
 
+  // frontmatter 数组必须按 YAML 集合写入，不能被字符串化为非法的内联标量。
+  test("buildSkillMd preserves array metadata as YAML collections", () => {
+    const markdown = buildSkillMd("demo", "说明", "正文", { required_skills: ["agent-platform-api"] });
+
+    expect(markdown).toContain("required_skills:\n  - agent-platform-api");
+    expect(parseFrontmatter(markdown).metadata.required_skills).toBe("- agent-platform-api");
+  });
+
   // 上传路径统一转换 Windows 分隔符且移除外围空白。
   test("normalizeUploadPath normalizes Windows separators", () => {
     expect(normalizeUploadPath("  references\\guide.md ")).toBe("references/guide.md");
