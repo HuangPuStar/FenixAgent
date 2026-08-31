@@ -15,6 +15,7 @@ import { createElicitationHandler, type ElicitationHandler } from "./elicitation
 import {
   ACP_METHOD,
   createErrorResponse,
+  createForwardedErrorResponse,
   createNotification,
   createSuccessResponse,
   isJsonRpcMessage,
@@ -1321,7 +1322,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
       console.error("prompt failed:", (error as Error).message);
-      sendMsg(ws, createErrorResponse(id, -32603, `Prompt failed: ${(error as Error).message}`));
+      sendMsg(ws, createForwardedErrorResponse(id, error, `Prompt failed: ${(error as Error).message}`));
     }
   }
 

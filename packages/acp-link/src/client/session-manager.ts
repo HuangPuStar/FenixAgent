@@ -5,6 +5,7 @@ import { extractModelState, extractModeState } from "../config-options-utils.js"
 import {
   ACP_METHOD,
   createErrorResponse,
+  createForwardedErrorResponse,
   createNotification,
   createSuccessResponse,
   isJsonRpcMessage,
@@ -16,6 +17,30 @@ import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-t
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
+
+const MAX_AGENT_ERROR_LOG_LENGTH = 1_000;
+
+/** Agent/SDK 错误只经脱敏、折叠与截断后进入 acp-link 日志；协议响应保持原有错误契约。 */
+function sanitizeAgentErrorForLog(error: unknown): string {
+  const raw = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return Array.from(
+    raw
+      .replace(/\b(?:https?|wss?):\/\/[^\s<>'"`]+/giu, "[REDACTED_URL]")
+      .replace(
+        /\b(?:bearer\s+)?[A-Za-z0-9_-]*(?:token|secret|password|api[_-]?key)[A-Za-z0-9_-]*\s*[:=]\s*[^\s,;]+/giu,
+        "[REDACTED_SECRET]",
+      )
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/giu, "[REDACTED_SECRET]")
+      .replace(
+        /(?:^|\s)(?:~\/|\/(?:Users|home|var|tmp|private|etc|opt|srv|workspace)\/)[^\s<>'"`]+/gu,
+        (value) => `${value.startsWith(" ") ? " " : ""}[REDACTED_PATH]`,
+      )
+      .replace(/\s+/g, " ")
+      .trim(),
+  )
+    .slice(0, MAX_AGENT_ERROR_LOG_LENGTH)
+    .join("");
+}
 
 export class SessionManager {
   private listeners = new Map<string, SessionEventCallback[]>();
@@ -432,7 +457,8 @@ export class SessionManager {
               this.emit(sessionId, "session_data", { type: "prompt_complete", payload: result });
             })
             .catch((err) => {
-              this.emit(sessionId, "session_data", createErrorResponse(id, -32603, String(err)));
+              console.error("[session-manager] prompt failed:", sanitizeAgentErrorForLog(err));
+              this.emit(sessionId, "session_data", createForwardedErrorResponse(id, err, String(err)));
             });
           break;
         }
