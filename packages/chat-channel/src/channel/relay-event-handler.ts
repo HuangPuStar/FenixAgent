@@ -528,7 +528,8 @@ export class RelayEventHandler {
           "relay.prompt_response",
           this.dependencies.log,
         );
-        this.sendSafeErrorToRcsSession(shared, publicError);
+        // Prompt 错误属于当前 turn，只经 Y.Doc 投影到对应 assistant entry。
+        // 不再发送连接级 error 帧，否则 ChatPanel 会在会话顶部重复展示同一故障。
         this.dispatch(shared, {
           type: "turn_failed",
           update: { publicError },
@@ -758,7 +759,7 @@ export class RelayEventHandler {
       "relay.prompt_timeout",
       this.dependencies.log,
     );
-    this.sendSafeErrorToRcsSession(shared, publicError);
+    // Prompt 超时同样是 turn 终态，只进入会话时间线，不生成顶部连接错误。
     this.dispatch(shared, {
       type: "turn_failed",
       update: { publicError },

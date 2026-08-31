@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
+import { getEntry } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
@@ -255,23 +256,23 @@ describe("RelayEventHandler", () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toContain("prompt rejected");
     expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
-    expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toMatchObject({
-      payload: {
-        type: "AGENT_RUNTIME.PROMPT_REJECTED",
-        message: "The Agent rejected the request.",
-      },
-    });
+    // Prompt 失败只附着到会话 turn，不发送会被 ChatPanel 渲染为顶部 banner 的 error 帧。
+    expect(textFrames(ws)).toEqual([]);
   });
 
-  // Peri 的已知 LLM API 配置错误映射为稳定公开 Type；传输换行不影响白名单匹配。
-  test("classifies the known Peri LLM API configuration error", async () => {
+  // Peri 的已知 LLM API 配置错误映射为稳定公开 Type 并附着到当前会话；
+  // 传输换行不影响白名单匹配，且不得额外发送顶部 error 帧。
+  test("classifies the known Peri LLM API configuration error in the conversation turn", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
-    const handler = createRelayEvents(registry, broadcaster, []);
+    const { docManager, chatDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws }));
     const shared = relayOn("rcs-1");
+    const turnId = docManager.registerUserMessage("rcs-1", "hello");
     shared.pendingPromptIds = new Set([1]);
+    shared.pendingPromptTurns = new Map([[1, turnId]]);
 
     await handler.createMessageHandler(shared)({
       jsonrpc: "2.0",
@@ -282,9 +283,10 @@ describe("RelayEventHandler", () => {
       },
     } as unknown as RelayMessage);
 
-    const frame = JSON.parse(textFrames(ws)[0] ?? "{}") as { payload?: { type?: string; message?: string } };
-    expect(frame.payload).toMatchObject({
+    expect(textFrames(ws)).toEqual([]);
+    expect(getEntry(chatDoc, `${turnId}:assistant`)?.get("error")).toMatchObject({
       type: "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR",
+      id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
       message: "An LLM API error occurred. Please check your API configuration.",
     });
   });

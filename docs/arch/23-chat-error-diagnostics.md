@@ -189,7 +189,7 @@ UI → 根据 Type 生成恢复操作
 
 ## 5. WebSocket 与 Y.Doc 规则
 
-1. 已知服务端错误优先发送完整 `PublicError` 帧；若同时关闭连接，close code 只控制连接生命周期。
+1. 已知服务端错误按归属投影：Prompt reject/timeout 等 turn 终态只写入对应 assistant entry，不发送连接级错误帧；连接、同步和控制面错误才发送完整 `PublicError` 帧。若连接错误同时关闭连接，close code 只控制连接生命周期。
 2. 浏览器缓存最近一条完整错误帧；close 后不得用本地推断覆盖它。
 3. 未收到错误帧的异常关闭只能生成客户端 transport fallback；它不能伪装成 Machine、Agent 或 Environment 的确定事实。
 4. Y.Doc 仅接收完整、合法的 `PublicError`。非法结构应被拒绝并在服务端生成独立 `INTERNAL.UNCLASSIFIED` 诊断，不能把原始值写入文档。
