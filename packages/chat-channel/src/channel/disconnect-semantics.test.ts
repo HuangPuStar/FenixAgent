@@ -77,7 +77,7 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
     const { registry, docManager, gateway } = createRealStack();
     const ws1 = createWs();
 
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     // 预写时间线内容（旧投影产物）
     const chatDoc = docManager.getChatYdoc("rcs-1");
     expect(chatDoc).toBeDefined();
@@ -91,7 +91,7 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
 
     // 重连：openChat 返回同一内存 Doc，snapshot 包含断开前的内容
     const ws2 = createWs();
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     expect(decodeSnapshot(ws2, "chat:rcs-1").getMap("root").get("projectionVersion")).toBe(3);
     gateway.handleClose("ws-2");
   });
@@ -102,7 +102,7 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
     const { docManager, gateway, registry } = createRealStack();
     const ws1 = createWs();
 
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     // 模拟 ACP 会话已建立：session_updated 投影写入 Session Doc session.sessionId
     docManager.processNormalizedEvent("rcs-1", {
       type: "session_updated",
@@ -112,7 +112,7 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
     gateway.handleClose("ws-1");
 
     const ws2 = createWs();
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
 
     expect(registry.getClient("ws-2")?.acpSessionId).toBe("ses-active");
     gateway.handleClose("ws-2");
@@ -124,8 +124,8 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(2);
 
     gateway.handleClose("ws-1");
@@ -150,8 +150,8 @@ describe("断链语义二：relay_closed 删除全部实时资源，新实例绝
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     docManager.getChatYdoc("rcs-1")?.getMap("root").set("projectionVersion", 9);
 
     // 实例 ACP session 断链（relay 异常关闭）
@@ -181,7 +181,7 @@ describe("断链语义二：relay_closed 删除全部实时资源，新实例绝
     // 新实例新连接：全新实时投影，绝不加载旧 Y.Doc
     // （projectionVersion 为 createChatDoc 初始值 1，旧实例写入的 9 不残留）
     const ws3 = createWs();
-    await gateway.handleOpen(ws3, "ws-3", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws3, "ws-3", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     expect(getConnectCalls()).toBe(2);
     expect(decodeSnapshot(ws3, "chat:rcs-1").getMap("root").get("projectionVersion")).toBe(1);
     gateway.handleClose("ws-3");
@@ -200,8 +200,8 @@ describe("实例停止回收（SP-C2）：确认停止后关闭实例名下全�
     const ws1 = createWs();
     const ws2 = createWs();
     // 同一实例（ensureRunning fake 恒返回 instance-1）的两个 RCS 会话
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-2");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-2" });
 
     // 仅前端断开（实例可能存活）：Doc 必须保留（C6 断链语义一，重连同步实时 Doc）
     gateway.handleClose("ws-1");
@@ -220,7 +220,7 @@ describe("实例停止回收（SP-C2）：确认停止后关闭实例名下全�
 
     // 回收后新连接（新实例 spawn）：全新投影，且重新登记归属（下次停止可再次回收）
     const ws3 = createWs();
-    await gateway.handleOpen(ws3, "ws-3", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws3, "ws-3", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     expect(docManager.getChatYdoc("rcs-1")).toBeDefined();
     expect(docManager.openedDocCount()).toEqual({ chat: 1, session: 1 });
     await relayEvents.reclaimInstanceRealtimeResources("instance-1");
@@ -239,7 +239,7 @@ describe("实例停止回收（SP-C2）：确认停止后关闭实例名下全�
       ensureRunning: async () => ({ instance: { id: currentInstanceId } }),
     });
     const ws1 = createWs();
-    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     // 旧实例投影的实时内容
     docManager.processNormalizedEvent("rcs-1", {
       type: "session_updated",
@@ -253,7 +253,7 @@ describe("实例停止回收（SP-C2）：确认停止后关闭实例名下全�
     // 新 relay 创建时重绑同一 rcsSessionId 并复用内存实时 Doc
     currentInstanceId = "instance-new";
     const ws2 = createWs();
-    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await gateway.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
 
     // 旧实例停止完成（stopInstanceViaController 末尾的 reclaimYjsDocs(old)）
     await relayEvents.reclaimInstanceRealtimeResources("instance-old");

@@ -40,7 +40,9 @@ describe("instance concurrency limits", () => {
       getRuntime: () => makeRuntime(["running"]) as never,
     });
 
-    await expect(spawnInstanceViaController("env-1", "user-1", "interactive")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController("env-1", "user-1", "interactive", { instanceUid: "inst_test_interactive" }),
+    ).rejects.toMatchObject({
       code: "AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });
@@ -56,7 +58,6 @@ describe("instance concurrency limits", () => {
     globalInstanceRegistry.register("inst_1", {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "scheduled",
       lastActivityAt: Date.now(),
@@ -67,7 +68,9 @@ describe("instance concurrency limits", () => {
       getRuntime: () => makeRuntime(["running"]) as never,
     });
 
-    await expect(spawnInstanceViaController("env-2", "user-1", "scheduled")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController("env-2", "user-1", "scheduled", { instanceUid: "inst_test_scheduled" }),
+    ).rejects.toMatchObject({
       code: "SCHEDULED_AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });

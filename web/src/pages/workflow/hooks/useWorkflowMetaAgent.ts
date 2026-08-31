@@ -76,7 +76,7 @@ export function useWorkflowMetaAgent({
   const { data: agentList = [] } = useRequest(
     async () => {
       const envsResult = await unwrap(envApi.list());
-      return (envsResult as Record<string, unknown>[])
+      return (envsResult as unknown as Record<string, unknown>[])
         .filter((env) => env.agentName) // 只保留已绑定 Agent 配置的环境
         .map((env) => ({
           envId: env.id as string,

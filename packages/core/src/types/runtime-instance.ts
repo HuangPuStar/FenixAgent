@@ -19,6 +19,10 @@ export type RuntimeInstanceStatus =
 export interface RuntimeInstanceRecord {
   /** Core 侧生成的实例唯一标识。 */
   instanceId: string;
+  /** coordinator runtime 世代（仅远程 runtime 使用）。 */
+  runtimeGeneration?: number;
+  /** 创建该 runtime 的主服务进程 epoch。 */
+  serverEpoch?: string;
   /** 实例当前使用的 engine 类型。 */
   engineType: string;
   /** 实例被调度到的 node 标识。 */

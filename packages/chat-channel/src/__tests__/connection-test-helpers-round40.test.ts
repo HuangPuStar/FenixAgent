@@ -235,7 +235,10 @@ describe("connection-test-helpers 内存连接语义", () => {
     const gateway = createGateway(registry, broadcaster, relayEvents);
     const ws = createWs();
 
-    await gateway.handleOpen(ws, "ws-memory", "user-1", "agent-1", "rcs-memory");
+    await gateway.handleOpen(ws, "ws-memory", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-memory",
+    });
 
     expect(registry.getClient("ws-memory")?.rcsSessionId).toBe("rcs-memory");
     gateway.handleClose("ws-memory");

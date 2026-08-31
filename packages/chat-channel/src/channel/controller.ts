@@ -29,13 +29,8 @@ export interface ChatChannelDependencies {
   authorizeEnvironment: (userId: string, environment: GatewayEnvironment) => boolean;
   /** workspace 注入（宿主 resolveWorkspacePath 语义）：{WORKSPACE_ROOT}/{orgId}/{userId}/{environmentId} */
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
-  /** 实例生命周期（宿主 ensureRunning 语义）：先复用运行实例，仅创建新实例时检查并发配额 */
-  ensureRunning: (
-    userId: string,
-    agentId: string,
-    mode: "interactive",
-    instanceNumber?: number,
-  ) => Promise<{ instance: { id: string } }>;
+  /** 持久实例生命周期：省略 UID 时解析 user/default，并经 Coordinator ensure。 */
+  ensureRunning: (ownerUserId: string, agentId: string, requestedInstanceUid?: string) => Promise<string>;
   /** relay 连接（宿主 connectAgentRelay 语义） */
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<ClientConnection["relayHandle"]>;
   /** 新 ACP session 创建前刷新复用实例的 workspace 配置与 Skills。 */
@@ -48,8 +43,6 @@ export interface ChatChannelDependencies {
   terminateLocalDeadInstance: (instanceId: string) => void;
   /** Redis 快照持久化（宿主 cache/yjs-store 语义）：会话切换前以 CAS 持久化 Session Doc */
   prepareClearSessionSnapshot: (connection: SessionConnection) => Promise<void>;
-  /** 从会话标识解析 instance 编号（多实例 YJS doc 隔离）；无法解析返回 null，由 gateway 按默认实例降级 */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | null>;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连 */
@@ -123,7 +116,6 @@ export class ChatChannelController {
       reportLog: dependencies.log,
       reportError: dependencies.reportError,
       maxClients: dependencies.maxClients,
-      resolveInstanceNumberFromSession: dependencies.resolveInstanceNumberFromSession,
       isMachineOffline: dependencies.isMachineOffline,
       classifyPermanentSpawnFailure: dependencies.classifyPermanentSpawnFailure,
     });

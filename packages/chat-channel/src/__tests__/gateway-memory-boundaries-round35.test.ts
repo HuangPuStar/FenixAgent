@@ -95,10 +95,10 @@ function createHarness(overrides: Partial<GatewayDependencies> = {}): Harness {
     broadcaster,
     relayEvents,
     sessionChannel,
-    getEnvironment: async () => ({ organizationId: "org-1" }),
+    getEnvironment: async () => ({ organizationId: "org-1", userId: "user-1" }),
     authorizeEnvironment: () => true,
     resolveWorkspacePath: () => "/workspace",
-    ensureRunning: async () => ({ instance: { id: "instance-1" } }),
+    ensureRunning: async () => "instance-1",
     connectAgentRelay: async () => relay,
     docManager,
     markRelayAttached: (instanceId) => attached.push(instanceId),
@@ -106,7 +106,6 @@ function createHarness(overrides: Partial<GatewayDependencies> = {}): Harness {
     reportLog: (message) => logs.push(message),
     reportError: (message, error) => reports.push([message, error]),
     maxClients: () => 4,
-    resolveInstanceNumberFromSession: async () => null,
     isMachineOffline: () => false,
     classifyPermanentSpawnFailure: () => null,
     ...overrides,
@@ -134,7 +133,7 @@ async function open(
       });
     }
   };
-  await harness.gateway.handleOpen(ws, wsId, "user-1", "agent-1", rcsSessionId);
+  await harness.gateway.handleOpen(ws, wsId, "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId });
   return ws;
 }
 
@@ -185,7 +184,10 @@ describe("Gateway 内存协议、状态、错误、隔离与清理", () => {
     const harness = createHarness(overrides);
     const ws = new FakeWebSocket();
 
-    await harness.gateway.handleOpen(ws, "ws-error", "user-1", "agent-1", "rcs-error");
+    await harness.gateway.handleOpen(ws, "ws-error", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-error",
+    });
 
     expect(ws.closed).toEqual([{ code, reason }]);
     expect(harness.registry.getClient("ws-error")).toBeUndefined();
@@ -198,7 +200,10 @@ describe("Gateway 内存协议、状态、错误、隔离与清理", () => {
     const harness = createHarness({ maxClients: () => 0 });
     const ws = new FakeWebSocket();
 
-    await harness.gateway.handleOpen(ws, "ws-full", "user-1", "agent-1", "rcs-full");
+    await harness.gateway.handleOpen(ws, "ws-full", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-full",
+    });
 
     expect(ws.closed).toEqual([{ code: 1013, reason: "too many connections" }]);
     expect(harness.relay.sent).toEqual([]);

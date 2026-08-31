@@ -27,15 +27,22 @@ describe("API Instance Routes", () => {
     setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
-      groupActiveInstancesByEnvironment: () => new Map(),
       getReadableAgentConfigById: async () => null,
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () => {
-        throw new Error("not stubbed");
-      },
+      resolveInstance: async (input) => ({
+        id: "inst-created",
+        environmentId: input.environmentId,
+        ownerUserId: input.ownerUserId,
+        creationSource: "api",
+        name: "primary",
+        isDefault: false,
+        createdByUserId: input.ownerUserId,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      }),
+      ensureInstanceRuntime: async () => {},
     });
   });
 
@@ -74,8 +81,7 @@ describe("API Instance Routes", () => {
           userId: "user-1",
           status: "active",
         }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () =>
+      ensureInstanceRuntime: async () =>
         ({
           instanceId: "inst-created",
           environmentId: "env-created",
@@ -104,7 +110,7 @@ describe("API Instance Routes", () => {
   // D-P2.2：OrchestrationError（无 statusCode 字段）不再被 mapApiError 兜底降级
   // 500，按编排域映射返回 409，且 message 脱敏（ConcurrencyExceededError 实际
   // 抛出时拼接 envId，属内部资源标识）
-  test("spawnInstanceViaController 抛 ConcurrencyExceededError 返回 409 且 message 脱敏", async () => {
+  test("ensureInstanceRuntime 抛 ConcurrencyExceededError 返回 409 且 message 脱敏", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({ id: "agc-demo", organizationId: "org-1", userId: "user-1", name: "Demo Agent" }) as never,
@@ -119,8 +125,7 @@ describe("API Instance Routes", () => {
           userId: "user-1",
           status: "active",
         }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () => {
+      ensureInstanceRuntime: async () => {
         throw new ConcurrencyExceededError("Environment 'env_x' reached max concurrency (1)");
       },
     });
@@ -142,16 +147,14 @@ describe("API Instance Routes", () => {
   // 与 D-P2.2 的 OrchestrationError 映射不同：sandbox 错误属"服务暂不可用"
   // 语义；message 固定通用文案 —— ProviderNotConfiguredError 携带 providerKey，
   // 直出会向外部 API Key 调用方泄漏内部标识（main 遗留透传，合并后已脱敏）。
-  test("spawnInstanceViaController 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE 且 message 脱敏", async () => {
+  test("ensureInstanceRuntime 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE 且 message 脱敏", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
-      groupActiveInstancesByEnvironment: () => new Map(),
       listEnvironmentsByOrganizationId: async () => [],
       createWebEnvironment: async () =>
         ({ id: "env-sandbox", name: "runtime-sandbox", agentConfigId: "agc-sandbox" }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () => {
+      ensureInstanceRuntime: async () => {
         throw new SandboxProviderNotConfiguredError("missing-provider");
       },
     });
@@ -171,16 +174,14 @@ describe("API Instance Routes", () => {
 
   // Sandbox Runtime 未就绪错误同样返回 503；message 固定文案，
   // 不得泄漏 sbi_* sandboxId（main 遗留透传点，合并后已脱敏）。
-  test("spawnInstanceViaController 抛 SandboxRuntimeNotReadyError 返回 503 且不泄漏 sandboxId", async () => {
+  test("ensureInstanceRuntime 抛 SandboxRuntimeNotReadyError 返回 503 且不泄漏 sandboxId", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
-      groupActiveInstancesByEnvironment: () => new Map(),
       listEnvironmentsByOrganizationId: async () => [],
       createWebEnvironment: async () =>
         ({ id: "env-sandbox", name: "runtime-sandbox", agentConfigId: "agc-sandbox" }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () => {
+      ensureInstanceRuntime: async () => {
         throw new SandboxRuntimeNotReadyError("sbi_secret_sandbox_1");
       },
     });
@@ -199,7 +200,7 @@ describe("API Instance Routes", () => {
 
   // D-P2.2：未知错误（如 CoreRuntimeError 500）兜底 message 固定通用文案，
   // 不再拼接 error.message（可能携带 machineId，属泄漏口）
-  test("spawnInstanceViaController 抛普通 Error 返回 500 INTERNAL_ERROR 且 message 脱敏", async () => {
+  test("ensureInstanceRuntime 抛普通 Error 返回 500 INTERNAL_ERROR 且 message 脱敏", async () => {
     setApiInstanceDeps({
       getReadableAgentConfigById: async () =>
         ({ id: "agc-demo", organizationId: "org-1", userId: "user-1", name: "Demo Agent" }) as never,
@@ -214,8 +215,7 @@ describe("API Instance Routes", () => {
           userId: "user-1",
           status: "active",
         }) as never,
-      getRunningInstancesByEnvironment: () => [],
-      spawnInstanceViaController: async () => {
+      ensureInstanceRuntime: async () => {
         throw new Error("Core node is offline: machine-42");
       },
     });

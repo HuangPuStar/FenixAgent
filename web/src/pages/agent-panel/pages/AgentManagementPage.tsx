@@ -132,10 +132,10 @@ export function AgentManagementPage() {
       }
       const enterResult = await unwrap(envApi.enter({ id: envId }, {}));
       const targetEnvId = enterResult.environmentId ?? envId;
-      if (enterResult.sessionId) {
+      if (enterResult.instanceUid) {
         void navigate({
           to: "/agent/chat/$agentId/$sessionId",
-          params: { agentId: targetEnvId, sessionId: enterResult.sessionId },
+          params: { agentId: targetEnvId, sessionId: enterResult.instanceUid },
         });
       } else {
         void navigate({ to: "/agent/chat/$agentId", params: { agentId: targetEnvId } });

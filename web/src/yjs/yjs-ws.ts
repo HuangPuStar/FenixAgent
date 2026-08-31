@@ -36,8 +36,14 @@ export function getTerminalYjsWsErrorCode(code: number, reason?: string): YjsTer
   return null;
 }
 
-/** Build the YJS WebSocket URL for a given agent */
-export function buildYjsUrl(agentId: string, sessionId?: string): string {
+export interface YjsChatLocator {
+  instanceUid: string;
+  rcsSessionId: string;
+  acpSessionId?: string;
+}
+
+/** 构造显式区分实例、RCS Doc 与 ACP 会话的 YJS WebSocket URL。 */
+export function buildYjsUrl(agentId: string, locator: YjsChatLocator): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${protocol}//${window.location.host}/acp/yjs/${agentId}`;
   const params = new URLSearchParams();
@@ -45,8 +51,10 @@ export function buildYjsUrl(agentId: string, sessionId?: string): string {
   if (activeOrgId) {
     params.set("active_org_id", activeOrgId);
   }
-  if (sessionId) {
-    params.set("sessionId", sessionId);
+  params.set("instanceUid", locator.instanceUid);
+  params.set("rcsSessionId", locator.rcsSessionId);
+  if (locator.acpSessionId) {
+    params.set("acpSessionId", locator.acpSessionId);
   }
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;

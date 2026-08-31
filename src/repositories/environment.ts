@@ -152,7 +152,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       directory: params.directory ?? null,
       branch: params.branch ?? null,
       gitRepoUrl: params.gitRepoUrl ?? null,
-      maxSessions: params.maxSessions ?? 10,
+      maxSessions: params.maxSessions ?? 1,
       workerType: params.workerType ?? "acp",
       capabilities: params.capabilities ?? null,
       status,

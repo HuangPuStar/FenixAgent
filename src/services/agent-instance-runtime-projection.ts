@@ -19,12 +19,12 @@ import { error as logError } from "@fenix/logger";
 import { AppError, NotFoundError } from "../errors";
 import { environmentRepo } from "../repositories";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
+import { agentInstanceService } from "./agent-instance-service";
 import { getCoreRuntime } from "./core-bootstrap";
 import { EnvironmentStartupLock } from "./environment-startup-lock";
 import { globalInstanceRegistry } from "./instance-registry";
-import { createInstanceSessionId } from "./instance-session";
 import { getOrchestrationController } from "./orchestration-bootstrap";
-import { spawnInstanceViaController, stopInstanceViaController } from "./orchestration-instance";
+import { stopInstanceViaController } from "./orchestration-instance";
 
 // ────────────────────────────────────────────
 // 公共类型
@@ -42,7 +42,6 @@ export interface SpawnedInstance {
   createdAt: Date;
   environmentId?: string;
   sessionId?: string;
-  instanceNumber: number;
 }
 
 /** 对外 `/web/instances/*` API 使用的实例详情结构。 */
@@ -54,14 +53,13 @@ export interface InstanceInfo {
   group_id: string;
   environment_id: string | null;
   session_id: string | null;
-  instance_number: number;
   created_at: number;
 }
 
 /**
  * toInstanceInfo 的输入视图：兼容旧路径 SpawnedInstance（id 字段）与编排域
  * Instance（instanceId 字段 + status() 方法）。编排域 Instance 数据面不携带
- * port/error/createdAt/instanceNumber 等展示字段，由 toInstanceInfo 实现从
+ * port/error/createdAt 等展示字段，由 toInstanceInfo 实现从
  * core 运行时快照与 RCS supplement 补全，仍缺失时兜底默认值。
  */
 export interface InstanceInfoSource {
@@ -72,7 +70,6 @@ export interface InstanceInfoSource {
   port?: number;
   error?: string | null;
   sessionId?: string;
-  instanceNumber?: number;
   createdAt?: Date;
 }
 
@@ -138,7 +135,6 @@ function toSpawnedInstance(snapshot: RuntimeInstanceSnapshot, supplement: Instan
     createdAt: snapshot.createdAt,
     environmentId: supplement.environmentId,
     sessionId: undefined,
-    instanceNumber: supplement.instanceNumber,
   };
 }
 
@@ -151,7 +147,7 @@ function toSpawnedInstance(snapshot: RuntimeInstanceSnapshot, supplement: Instan
  * 输入兼容两类来源：
  *   1. SpawnedInstance（旧路径实例，字段完整）；
  *   2. 编排域 Instance 的最小视图（仅 instanceId + environmentId + status()），
- *      其 port/error/createdAt/instanceNumber 由实现从 core 运行时快照与
+ *      其 port/error/createdAt 由实现从 core 运行时快照与
  *      RCS supplement 补全，两者都缺失时（如启动回滚竞态）兜底默认值。
  */
 export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): InstanceInfo {
@@ -165,11 +161,9 @@ export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): 
   let port = instance.port ?? 0;
   let error = instance.error ?? null;
   const sessionId = instance.sessionId ?? null;
-  let instanceNumber = instance.instanceNumber ?? 0;
   let createdAt = instance.createdAt;
 
   // 编排域 Instance 分支（仅 instanceId、无 id 字段）：core 快照补 port/error/createdAt，
-  // supplement 补 instanceNumber。SpawnedInstance 必带 id，不会进入此分支。
   if (instanceId !== undefined && instance.id === undefined) {
     const snapshot = getCoreRuntime()
       .listInstances()
@@ -182,7 +176,6 @@ export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): 
     }
     const sup = registry.get(instanceId);
     if (sup) {
-      instanceNumber = sup.instanceNumber;
     }
   }
 
@@ -196,7 +189,6 @@ export function toInstanceInfo(instance: SpawnedInstance | InstanceInfoSource): 
     group_id: environmentId ?? "",
     environment_id: environmentId,
     session_id: sessionId,
-    instance_number: instanceNumber,
     created_at: createdAt ? Math.floor(createdAt.getTime() / 1000) : 0,
   };
 }
@@ -378,167 +370,4 @@ export async function stopAllInstances(): Promise<void> {
       }),
   );
   registry.clear();
-}
-
-export async function ensureRunning(
-  userId: string,
-  environmentId: string,
-  source: InstanceSpawnSource = "interactive",
-  instanceNumber?: number,
-): Promise<EnsureRunningResult> {
-  const runningInstances = getRunningInstancesByEnvironment(environmentId);
-
-  // 指定了 instanceNumber：精准匹配该编号的运行实例
-  if (instanceNumber !== undefined) {
-    const targetInstance = runningInstances.find((i) => i.instanceNumber === instanceNumber);
-    if (targetInstance) return { instance: targetInstance, status: "reused" };
-
-    // 目标实例未运行，尝试新启
-    const env = await environmentRepo.getById(environmentId);
-    if (!env) throw new NotFoundError("Environment not found");
-
-    if (!env.autoStart) {
-      throw new AppError(`实例 ${instanceNumber} 未运行且 autoStart 已禁用`, "AUTO_START_DISABLED", 409);
-    }
-
-    const currentRunning = getRunningInstancesByEnvironment(environmentId);
-    if (currentRunning.length >= env.maxSessions) {
-      // 目标实例未运行且已达上限时，回退到首个运行实例（relay key 已做隔离，共享实例不会串数据）
-      if (currentRunning[0]) return { instance: currentRunning[0], status: "reused" };
-      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
-    }
-
-    const instance = await spawnViaOrchestration(userId, environmentId, source);
-    return { instance, status: "spawned" };
-  }
-
-  // 未指定 instanceNumber：复用第一个运行实例
-  const existing = runningInstances[0];
-  if (existing) return { instance: existing, status: "reused" };
-
-  const startup = await environmentStartupLock.run(environmentId, async () => {
-    // 进入锁后再次检查，避免前一个启动流程刚完成时重复创建实例。
-    // 锁回调返回 { instance, spawned }：spawned=false 表示复用了锁内已存在的
-    // 实例（前一个启动流程刚完成、或 maxSessions 回退），必须与真正新启的
-    // 实例区分 —— 若外层统一标 "spawned"，workflow 的 cleanupSpawnedInstances
-    // 会把复用的共享实例记入 spawnedInstanceIds 并在 run 结束时误杀
-    // （agent-chat-transport 按 status === "spawned" 记录待清理实例）。
-    const started = getRunningInstancesByEnvironment(environmentId)[0];
-    if (started) return { instance: started, spawned: false };
-
-    const env = await environmentRepo.getById(environmentId);
-    if (!env) throw new NotFoundError("Environment not found");
-
-    if (!env.autoStart) {
-      throw new AppError("Instance not running and autoStart is disabled", "AUTO_START_DISABLED", 409);
-    }
-
-    const currentRunning = getRunningInstancesByEnvironment(environmentId);
-    if (currentRunning.length >= env.maxSessions) {
-      if (currentRunning[0]) return { instance: currentRunning[0], spawned: false };
-      throw new AppError(`已达到最大实例数 ${env.maxSessions}`, "MAX_SESSIONS_REACHED", 409);
-    }
-
-    const instance = await spawnViaOrchestration(userId, environmentId, source);
-    return { instance, spawned: true };
-  });
-
-  return {
-    instance: startup.value.instance,
-    status: startup.joined || !startup.value.spawned ? "reused" : "spawned",
-  };
-}
-
-/**
- * 编排域启动并组装 RCS SpawnedInstance（ensureRunning 的 spawn 分支专用）。
- *
- * spawnInstanceViaController 内部已完成 core launchInstance + registerSupplement，
- * 因此 getInstance 必然命中；防御性判空用于在编排域未来调整注册时机时快速定位，
- * 而不是静默返回空实例导致调用方解引用崩溃。
- */
-async function spawnViaOrchestration(
-  userId: string,
-  environmentId: string,
-  source: InstanceSpawnSource,
-): Promise<SpawnedInstance> {
-  const orchestrationInstance = await spawnInstanceViaController(environmentId, userId, source);
-  const instance = getInstance(orchestrationInstance.instanceId);
-  if (!instance) {
-    throw new AppError(
-      `Instance '${orchestrationInstance.instanceId}' spawned but missing from runtime registry`,
-      "INSTANCE_NOT_VISIBLE",
-      500,
-    );
-  }
-  return instance;
-}
-
-// ────────────────────────────────────────────
-// 响应组装视图函数（供路由层直接返回）
-// ────────────────────────────────────────────
-
-export interface EnterEnvironmentResult {
-  session_id: string | null;
-  instance_id: string;
-  instance_number: number;
-  instance_status: string;
-  environment_id: string;
-}
-
-export async function enterEnvironment(
-  userId: string,
-  environmentId: string,
-  instanceNumber?: number,
-): Promise<EnterEnvironmentResult> {
-  let inst: SpawnedInstance | undefined;
-
-  if (instanceNumber !== undefined) {
-    const runningInstances = getRunningInstancesByEnvironment(environmentId);
-    inst = runningInstances.find((i) => i.instanceNumber === instanceNumber);
-    if (!inst) {
-      throw new NotFoundError(`实例 ${instanceNumber} 不存在或未运行`);
-    }
-  } else {
-    const result = await ensureRunning(userId, environmentId);
-    inst = result.instance;
-  }
-
-  // 为该实例生成确定性会话 ID（agent_session 表已废弃，不再持久化 "Instance N" 标题会话）。
-  // 同一环境 + 同一实例编号始终得到相同 ID；前端透传后在 YJS WS 连接时解析实例编号。
-  const sessionId = createInstanceSessionId(environmentId, inst.instanceNumber);
-
-  return {
-    session_id: sessionId,
-    instance_id: inst.id,
-    instance_number: inst.instanceNumber,
-    instance_status: inst.status,
-    environment_id: environmentId,
-  };
-}
-
-export interface InstanceListResponse {
-  environment_id: string;
-  instances: Array<{
-    id: string;
-    instance_number: number;
-    status: string;
-    session_id: string | null;
-    port: number | undefined;
-    created_at: number;
-  }>;
-}
-
-export function listInstancesResponse(environmentId: string): InstanceListResponse {
-  const activeInstances = listInstancesByEnvironment(environmentId);
-  return {
-    environment_id: environmentId,
-    instances: activeInstances.map((inst) => ({
-      id: inst.id,
-      instance_number: inst.instanceNumber,
-      status: inst.status,
-      session_id: inst.sessionId ?? null,
-      port: inst.port,
-      created_at: Math.floor(inst.createdAt.getTime() / 1000),
-    })),
-  };
 }

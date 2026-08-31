@@ -10,16 +10,11 @@ import { request } from "./request";
 
 /** 单个 Instance 信息（camelCase 转换后） */
 export interface InstanceInfo {
-  id: string;
-  port: number;
+  instanceUid: string;
+  environmentId: string;
+  name: string;
   status: string;
-  error: string | null;
-  groupId: string;
-  environmentId: string | null;
-  sessionId: string | null;
-  instanceNumber: number;
-  createdAt: number;
-  [key: string]: unknown;
+  createdAt: string;
 }
 
 // ── snake_case → camelCase 键名映射 ──

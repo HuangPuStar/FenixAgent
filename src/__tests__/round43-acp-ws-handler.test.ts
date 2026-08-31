@@ -171,7 +171,7 @@ describe("round43 acp ws handler", () => {
     await handleAcpWsMessage(
       ws,
       "register-lines",
-      '{"type":"register","agent_name":"alpha","machine_id":"machine-lines"}\nnot-json\n',
+      '{"type":"register","protocol_version":2,"agent_name":"alpha","machine_id":"machine-lines"}\nnot-json\n',
     );
     await flushRegistration();
 
@@ -188,6 +188,7 @@ describe("round43 acp ws handler", () => {
       agent_name: "beta",
       tenant_id: "org-a",
       node_id: "node-a",
+      protocol_version: 2,
       machine_id: "machine-fixed",
     });
     await flushRegistration();
@@ -204,11 +205,21 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-success", "user-a", null, true);
 
-    await handleAcpWsMessage(ws, "register-success", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "register-success", {
+      type: "register",
+      protocol_version: 2,
+      machine_id: "machine-43",
+    });
     await flushRegistration();
 
-    expect(frame(ws)).toEqual({ type: "registered", machine_id: "machine-43", is_new: true });
-    expect(registeredEntries).toHaveLength(1);
+    expect(frame(ws)).toMatchObject({
+      type: "registered",
+      protocol_version: 2,
+      machine_id: "machine-43",
+      is_new: true,
+      clean_slate_required: true,
+    });
+    expect(frame(ws).server_epoch).toBeString();
     expect(findMachineConnectionById("machine-43")?.wsId).toBe("register-success");
   });
 
@@ -216,10 +227,10 @@ describe("round43 acp ws handler", () => {
   test("重复注册回送既有 machineId", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-twice", "user-a", null, true);
-    await handleAcpWsMessage(ws, "register-twice", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "register-twice", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
 
-    await handleAcpWsMessage(ws, "register-twice", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "register-twice", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
 
     expect(registeredMachines).toHaveLength(1);
@@ -236,7 +247,11 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "register-failure", "user-a", null, true);
 
-    await handleAcpWsMessage(ws, "register-failure", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "register-failure", {
+      type: "register",
+      protocol_version: 2,
+      machine_id: "machine-43",
+    });
     await flushRegistration();
 
     expect(frame(ws)).toEqual({ type: "error", message: "Machine registration failed" });
@@ -246,7 +261,7 @@ describe("round43 acp ws handler", () => {
   test("heartbeat 路由到已注册 machine", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "heartbeat-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "heartbeat-43", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "heartbeat-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
 
     await handleAcpWsMessage(ws, "heartbeat-43", { type: "heartbeat" });
@@ -259,17 +274,36 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     const injected: unknown[] = [];
     handleAcpWsOpen(ws, "remote-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "remote-43", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "remote-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
-    registeredEntries[0].remoteTransport = {
+    const entry = findMachineConnectionById("machine-43");
+    if (!entry) throw new Error("machine connection was not registered");
+    entry.cleanSlateConfirmed = true;
+    entry.remoteTransport = {
       injectMessage: (message: unknown) => {
         injected.push(message);
       },
     } as unknown as RemoteTransport;
 
-    await handleAcpWsMessage(ws, "remote-43", { type: "start_result", instance_id: "instance-a", ok: true });
+    await handleAcpWsMessage(ws, "remote-43", {
+      type: "start_result",
+      instance_id: "instance-a",
+      instance_uid: "instance-a",
+      runtime_generation: 1,
+      server_epoch: frame(ws).server_epoch,
+      ok: true,
+    });
 
-    expect(injected).toEqual([{ type: "start_result", instance_id: "instance-a", ok: true }]);
+    expect(injected).toEqual([
+      {
+        type: "start_result",
+        instance_id: "instance-a",
+        instance_uid: "instance-a",
+        runtime_generation: 1,
+        ok: true,
+        server_epoch: expect.any(String),
+      },
+    ]);
   });
 
   // session 消息只调用匹配 sessionId 的监听器，避免跨会话转发。
@@ -277,19 +311,30 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     const delivered: Array<[string, string, unknown]> = [];
     handleAcpWsOpen(ws, "session-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "session-43", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "session-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
-    registeredEntries[0].sessionMessageListeners?.set("session-a", (id, type, payload) => {
+    const entry = findMachineConnectionById("machine-43");
+    if (!entry) throw new Error("machine connection was not registered");
+    entry.cleanSlateConfirmed = true;
+    entry.sessionMessageListeners?.set("session-a", (id, type, payload) => {
       delivered.push([id, type, payload]);
     });
 
     await handleAcpWsMessage(ws, "session-43", {
       type: "session_data",
+      instance_id: "instance-a",
+      instance_uid: "instance-a",
+      runtime_generation: 1,
+      server_epoch: frame(ws).server_epoch,
       session_id: "session-b",
       payload: { secret: "not-for-a" },
     });
     await handleAcpWsMessage(ws, "session-43", {
       type: "session_data",
+      instance_id: "instance-a",
+      instance_uid: "instance-a",
+      runtime_generation: 1,
+      server_epoch: frame(ws).server_epoch,
       session_id: "session-a",
       payload: { text: "for-a" },
     });
@@ -311,6 +356,7 @@ describe("round43 acp ws handler", () => {
     await handleAcpWsMessage(first, "agent-first", {
       type: "register",
       agent_name: "first",
+      protocol_version: 2,
       machine_id: "machine-first",
     });
     await flushRegistration();
@@ -318,6 +364,7 @@ describe("round43 acp ws handler", () => {
     await handleAcpWsMessage(second, "agent-second", {
       type: "register",
       agent_name: "second",
+      protocol_version: 2,
       machine_id: "machine-second",
     });
     await flushRegistration();
@@ -329,14 +376,20 @@ describe("round43 acp ws handler", () => {
       session_id: "auto_environment-a",
       payload: { type: "relay", payload: "only-bound" },
     });
-    expect(frame(second)).toEqual({ type: "registered", machine_id: "machine-second", is_new: true });
+    expect(frame(second)).toMatchObject({
+      type: "registered",
+      protocol_version: 2,
+      machine_id: "machine-second",
+      is_new: true,
+      clean_slate_required: true,
+    });
   });
 
   // 缺少环境所属的 agentConfig 绑定时，不得解析或缓存任意机器连接。
   test("findMachineConnectionByAgentId 拒绝未绑定 agentConfig 的环境", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "lookup-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "lookup-43", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "lookup-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
     stubEnvironmentRepo({ getById: async () => ({ agentConfigId: null }) });
 
@@ -349,7 +402,7 @@ describe("round43 acp ws handler", () => {
     const ws = new FakeWs();
     facadeInstances = [{ instanceId: "instance-a", nodeId: "machine-43" }];
     handleAcpWsOpen(ws, "close-43", "user-a", null, true);
-    await handleAcpWsMessage(ws, "close-43", { type: "register", machine_id: "machine-43" });
+    await handleAcpWsMessage(ws, "close-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
 
     handleAcpWsClose(ws, "close-43", 1006, "network lost");

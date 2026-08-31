@@ -328,7 +328,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
           const data = await unwrap(envApi.listInstances({ id: environment.id }));
           return (data.instances ?? [])
             .filter((instance) => instance.status === "running" || instance.status === "starting")
-            .map((instance) => ({ environmentId: environment.id, instanceId: instance.id }));
+            .map((instance) => ({ environmentId: environment.id, instanceId: instance.instanceUid }));
         }),
       );
       const active = targets.flat();

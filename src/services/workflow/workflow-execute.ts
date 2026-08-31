@@ -17,7 +17,7 @@ import {
   resolveWorkflowExecutionVersion,
 } from "../../repositories/workflow-def";
 import type { ApiWorkflowExecuteRequestBody } from "../../schemas/api-workflow.schema";
-import { cleanupSpawnedInstances, getTeamEngine } from "./index";
+import { getTeamEngine } from "./index";
 import { resolveYaml } from "./resolve-yaml";
 
 const logger = createLogger("wf-execute");
@@ -101,20 +101,13 @@ export async function executeWorkflow(
 
   const { runId, result } = engine.runAsync(yaml, body.inputs, { userId });
 
-  // 后台收尾
+  // 后台只维护 Workflow 快照关联；持久 Instance 不归单次 run 所有，run settle 不停止 runtime。
   result.then(
-    async (r) => {
+    async () => {
       try {
         await linkWorkflowSnapshotToWorkflow(runId, organizationId, workflowId);
       } catch (err) {
         logger.error(`workflow execute background update failed: runId=${runId}`, err);
-      }
-      if (r.spawnedInstanceIds && r.spawnedInstanceIds.length > 0) {
-        try {
-          await cleanupSpawnedInstances(new Set(r.spawnedInstanceIds), organizationId);
-        } catch (err) {
-          logger.error(`workflow execute background cleanup failed: runId=${runId}`, err);
-        }
       }
     },
     async (err) => {

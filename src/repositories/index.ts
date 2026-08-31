@@ -1,5 +1,12 @@
 export { agentConfigRepo, findAgentConfigNamesByIds } from "./agent-config";
 export { agentEngineRepo } from "./agent-engine";
+export type {
+  AgentInstanceRecord,
+  CreateAgentInstanceInput,
+  IAgentInstanceRepo,
+  InstanceCreationSource,
+} from "./agent-instance";
+export { agentInstanceRepo } from "./agent-instance";
 export { agentMachineRepo } from "./agent-machine";
 export type { AgentSiteAppInsert, AgentSiteAppRow, Visibility } from "./agent-site-app";
 export { agentSiteAppRepo } from "./agent-site-app";

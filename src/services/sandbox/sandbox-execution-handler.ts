@@ -1,6 +1,10 @@
 import { createLogger } from "@fenix/logger";
 import { config } from "../../config";
-import { type MachineStatusReader, waitForMachineConnection } from "../machine-connection-waiter";
+import {
+  MachineConnectionTimeoutError,
+  type MachineStatusReader,
+  waitForMachineConnection,
+} from "../machine-connection-waiter";
 import { SandboxRuntimeNotReadyError } from "./sandbox-errors";
 import type { SandboxManager, SandboxManagerCreateInput } from "./sandbox-manager";
 
@@ -41,20 +45,21 @@ export class SandboxExecutionHandler {
 
     try {
       await waitForConnection(instance.machineId);
-    } catch {
+    } catch (error) {
+      if (!(error instanceof MachineConnectionTimeoutError)) throw error;
       logger.warn(`[prepare] first ACP wait timed out, retrying provider resource sandboxId='${instance.id}'`);
       try {
         const restarted = await this.manager.restart(instance.id);
         logger.info(`[prepare] provider retry completed, waiting for ACP sandboxId='${restarted.id}'`);
         await waitForConnection(restarted.machineId);
       } catch {
-        logger.warn(`[prepare] provider retry failed, rebuilding sandboxId='${instance.id}'`);
+        logger.warn(`[prepare] provider retry unavailable, rebuilding sandboxId='${instance.id}'`);
         try {
           const recovered = await this.manager.recover(instance.id);
           logger.info(`[prepare] recovery completed, waiting for ACP sandboxId='${recovered.id}'`);
           await waitForConnection(recovered.machineId);
-        } catch {
-          logger.error(`[prepare] ACP wait failed after provider retry and recovery sandboxId='${instance.id}'`);
+        } catch (recoveryError) {
+          logger.error(`[prepare] ACP recovery failed sandboxId='${instance.id}'`, recoveryError);
           await this.manager.markError(instance.id, "sandbox ACP runtime did not connect in time");
           throw new SandboxRuntimeNotReadyError(instance.id);
         }

@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION } from "../machine-protocol";
+import { createRemoteRuntime } from "../remote-runtime";
 import { createWsRemoteTransport, type TransportMessage, type WsConnectionLike } from "../remote-transport";
 
 class FakeWsConnection implements WsConnectionLike {
@@ -37,6 +39,48 @@ function sentMessage(ws: FakeWsConnection, index = 0): TransportMessage {
   if (!data) throw new Error("未找到已发送的传输消息");
   return JSON.parse(data) as TransportMessage;
 }
+
+// Machine 协议 v2 以 instanceUid + generation + serverEpoch 构成完整 fencing token。
+test("远程 lifecycle 请求端到端携带 fencing 字段", async () => {
+  expect(MACHINE_PROTOCOL_VERSION).toBe(2);
+  const { transport, ws } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  const pending = runtime.startInstance({
+    instanceId: "inst-current",
+    instanceUid: "inst-current",
+    runtimeGeneration: 7,
+    serverEpoch: "epoch-current",
+  });
+  const request = sentMessage(ws);
+
+  expect(request).toMatchObject({
+    type: "start",
+    instance_id: "inst-current",
+    instance_uid: "inst-current",
+    runtime_generation: 7,
+    server_epoch: "epoch-current",
+  });
+  transport.injectMessage({ ...request, type: "start_result", status: "ok" });
+  await pending;
+});
+
+// 旧 epoch 或 generation 的结果不能通过当前 fencing 校验。
+test("旧 generation 或 epoch 的结果被拒绝", () => {
+  const expected = { instanceUid: "inst-current", runtimeGeneration: 8, serverEpoch: "epoch-current" };
+  expect(
+    hasRuntimeFence({ instance_uid: "inst-current", runtime_generation: 7, server_epoch: "epoch-current" }, expected),
+  ).toBeFalse();
+  expect(
+    hasRuntimeFence({ instance_uid: "inst-current", runtime_generation: 8, server_epoch: "epoch-old" }, expected),
+  ).toBeFalse();
+});
+
+// 缺失 generation/epoch 的旧调用必须 fail-closed，不能静默降级到无 fencing 协议。
+test("远程 lifecycle 缺失 fencing 字段时 fail-closed", async () => {
+  const { transport } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  await expect(runtime.startInstance({ instanceId: "inst-current" })).rejects.toThrow("fence is required");
+});
 
 // 明确 request_id 必须原样用于请求匹配，避免同一连接上的并发响应串线。
 test.each([

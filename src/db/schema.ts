@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -210,6 +211,8 @@ export const shareEventSnapshot = pgTable("share_event_snapshot", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const agentInstanceCreationSourceEnum = pgEnum("agent_instance_creation_source", ["user", "api", "workflow"]);
+
 // Environment 持久化表
 export const environment = pgTable(
   "environment",
@@ -244,6 +247,44 @@ export const environment = pgTable(
       .where(sql`${table.agentConfigId} is not null`),
   }),
 );
+
+export const agentInstance = pgTable(
+  "agent_instance",
+  {
+    id: varchar("id", { length: 80 }).primaryKey(),
+    environmentId: varchar("environment_id")
+      .notNull()
+      .references(() => environment.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    creationSource: agentInstanceCreationSourceEnum("creation_source").notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    creationKeyIdx: uniqueIndex("idx_agent_instance_creation_key").on(
+      table.environmentId,
+      table.ownerUserId,
+      table.creationSource,
+      table.name,
+    ),
+    defaultOwnerIdx: uniqueIndex("idx_agent_instance_default_owner")
+      .on(table.environmentId, table.ownerUserId)
+      .where(sql`${table.isDefault} = true`),
+    defaultConstraint: check(
+      "agent_instance_default_check",
+      sql`${table.isDefault} = (${table.creationSource} = 'user' AND ${table.name} = 'default')`,
+    ),
+    nameConstraint: check("agent_instance_name_check", sql`char_length(btrim(${table.name})) BETWEEN 1 AND 100`),
+  }),
+);
+
+export type AgentInstance = typeof agentInstance.$inferSelect;
+export type NewAgentInstance = typeof agentInstance.$inferInsert;
 
 export const knowledgeBase = pgTable(
   "knowledge_base",

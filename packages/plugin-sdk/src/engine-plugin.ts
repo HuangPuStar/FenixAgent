@@ -15,6 +15,12 @@ export interface EnginePluginMeta {
  */
 export interface PrepareEnvironmentInput {
   instanceId: string;
+  /** 持久实例 uid（当前与 instanceId 相同，显式字段用于协议 fencing）。 */
+  instanceUid?: string;
+  /** coordinator 分配的 runtime 世代。 */
+  runtimeGeneration?: number;
+  /** 主服务进程 epoch。 */
+  serverEpoch?: string;
   launchSpec: AgentLaunchSpec;
   /** 引擎类型（opencode / claude-code），远端 machine 据此选择 bridge 模块 */
   engineType?: string;
@@ -25,6 +31,9 @@ export interface PrepareEnvironmentInput {
  */
 export interface StartInstanceInput {
   instanceId: string;
+  instanceUid?: string;
+  runtimeGeneration?: number;
+  serverEpoch?: string;
 }
 
 /**
@@ -32,6 +41,9 @@ export interface StartInstanceInput {
  */
 export interface StopInstanceInput {
   instanceId: string;
+  instanceUid?: string;
+  runtimeGeneration?: number;
+  serverEpoch?: string;
 }
 
 /**

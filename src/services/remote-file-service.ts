@@ -5,7 +5,7 @@ import { machine } from "../db/schema";
 import { AppError } from "../errors";
 import { environmentRepo } from "../repositories";
 import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
-import { findSandboxPoolById } from "../repositories/sandbox-pool-repository";
+import { findReadableSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected } from "../transport/file-ws-handler";
 import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";
 import { getAgentConfigById, resolveAgentNode } from "./config/agent-config";
@@ -70,7 +70,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
 
   let sandboxMachineId: string | null = null;
   if (sandboxPoolId && env.userId) {
-    const pool = await findSandboxPoolById(sandboxPoolId);
+    const pool = await findReadableSandboxPoolById(sandboxPoolId, env.organizationId ?? env.userId);
     if (pool) {
       const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, env.userId);
       sandboxMachineId = instance?.machineId ?? null;

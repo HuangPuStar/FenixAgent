@@ -230,7 +230,12 @@ export function ChatPanel({
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
-    const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
+    if (!sessionId) return;
+    const relayUrl = buildYjsUrl(agentId, {
+      instanceUid: sessionId,
+      rcsSessionId: rcsSessionKey,
+      acpSessionId: sessionState.acpSessionId || undefined,
+    });
 
     const yjsWs = createYjsWs({
       url: relayUrl,
@@ -532,7 +537,6 @@ export function ChatPanel({
           initialCwd={initialCwd}
           hideSidebar={hideSidebar}
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
-          // URL sessionId 是实例会话标识（ses_inst_*），仅用于 WS 建连参数
           rcsSessionId={rcsSessionKey ?? undefined}
           detailSessionId={sessionId ?? undefined}
           scenePrompt={scenePrompt}

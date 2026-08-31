@@ -14,12 +14,12 @@ import { join } from "node:path";
 import { log } from "@fenix/logger";
 import { auth } from "../auth/better-auth";
 import type { AuthContext } from "../plugins/auth";
+import { agentInstanceService } from "./agent-instance-service";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
 import { deleteSkill, getSkill, listSkills } from "./config/skill";
 import type { SkillConfigRowWithAccess } from "./config/types";
-import { spawnInstanceViaController } from "./orchestration-instance";
 import { setPublicRead } from "./resource-permission";
 import { getGlobalSkillsDir, setSkill } from "./skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir, parseFrontmatter } from "./skill-fs";
@@ -383,20 +383,18 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   // meta env 按 (organizationId, userId, name="meta-agent") 三元组隔离：
   // 每个用户有自己的 runtime environment，避免触发 acp/index.ts 的 forbiddenSharedRuntime
   // 校验（env 绑定 agentConfig 且 env.userId !== 当前用户 → 4003 → 前端反复重连刷新）。
-  // extraEnv 把当前 ctx 的 user/org 注入进程环境变量，meta agent 回调平台 API 时定位到正确上下文。
-  const extraEnv: Record<string, string> = {
-    USER_META_API_KEY: apiKey,
-    USER_META_USER_ID: ctx.userId,
-    USER_META_ORG_ID: ctx.organizationId,
-  };
-
   const existing = await findMetaEnvironment(ctx);
   if (existing) {
     try {
-      const inst = await spawnInstanceViaController(existing.id, ctx.userId, "system", { extraEnv });
+      const instance = await agentInstanceService.resolveInstanceForOperation({
+        environmentId: existing.id,
+        ownerUserId: ctx.userId,
+        automaticSelection: "chat",
+      });
+      await agentInstanceService.ensureInstanceRuntime(instance);
       return {
         environmentId: existing.id,
-        instanceId: inst.instanceId,
+        instanceId: instance.id,
         status: "reused",
         apiKey,
       };
@@ -418,10 +416,15 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
   });
 
   try {
-    const inst = await spawnInstanceViaController(env.id, ctx.userId, "system", { extraEnv });
+    const instance = await agentInstanceService.resolveInstanceForOperation({
+      environmentId: env.id,
+      ownerUserId: ctx.userId,
+      automaticSelection: "chat",
+    });
+    await agentInstanceService.ensureInstanceRuntime(instance);
     return {
       environmentId: env.id,
-      instanceId: inst.instanceId,
+      instanceId: instance.id,
       status: "created",
       apiKey,
     };

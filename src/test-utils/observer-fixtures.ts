@@ -8,7 +8,7 @@
 
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { EnvironmentRecord } from "../repositories";
-import type { SpawnedInstance } from "../services/instance";
+import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
 import type { ChatClientSnapshot, ObserverServiceDeps } from "../services/observer";
 import type { ExternalRelayConnectionSnapshot } from "../transport/relay/external-relay";
 import type { WsConnection } from "../transport/ws-types";
@@ -107,7 +107,7 @@ export function makeFakeDeps(overrides: Partial<ObserverServiceDeps> = {}): Part
     listChatClients: () => [],
     getAgentConfigById: async () => null,
     getDefaultMachineId: () => null,
-    getInstanceSupplement: () => undefined,
+    getInstanceName: async () => undefined,
     listOrganizationNamesByIds: async () => new Map(),
     listUserNamesByIds: async () => new Map(),
     listAgentConfigNamesByIds: async () => new Map(),
@@ -133,7 +133,6 @@ export function makeSpawnedInstance(id: string): SpawnedInstance {
     error: null,
     apiKey: "api-key",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    instanceNumber: 1,
   };
 }
 

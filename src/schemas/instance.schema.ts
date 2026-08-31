@@ -13,19 +13,23 @@ export const InstanceActivityUserSchema = z.object({
 
 /** 实例详情信息 */
 export const InstanceInfoSchema = z.object({
-  id: z.string().describe("实例 ID。"),
-  port: z.number().describe("实例当前监听端口。"),
-  status: InstanceStatusSchema,
-  error: z.string().nullable().describe("实例错误信息；没有错误时为 null。"),
-  group_id: z.string().describe("实例所属分组 ID。"),
-  environment_id: z.string().nullable().describe("实例关联的环境 ID；未关联时为 null。"),
-  session_id: z.string().nullable().describe("实例当前关联的会话 ID；未创建会话时为 null。"),
-  instance_number: z.number().describe("实例在所属环境内的序号。"),
-  created_at: z.number().describe("实例创建时间戳，单位为秒。"),
+  instanceUid: z.string().describe("持久 Agent Instance UID。"),
+  environmentId: z.string().describe("实例关联的环境 ID。"),
+  name: z.string().describe("实例名称。"),
+  status: z.enum(["stopped", "starting", "running", "stopping", "unknown"]).describe("实例 runtime 状态。"),
+  createdAt: z.string().datetime().describe("实例创建时间。"),
 });
 
 /** ACP 实例活跃度监控视图 */
-export const InstanceActivityInfoSchema = InstanceInfoSchema.extend({
+export const InstanceActivityInfoSchema = z.object({
+  id: z.string(),
+  port: z.number(),
+  status: InstanceStatusSchema,
+  error: z.string().nullable(),
+  group_id: z.string(),
+  environment_id: z.string().nullable(),
+  session_id: z.string().nullable(),
+  created_at: z.number(),
   user: InstanceActivityUserSchema.nullable().describe("实例所属用户信息；缺少 supplement 时为 null。"),
   spawn_source: InstanceSpawnSourceSchema.nullable().describe("实例启动来源；缺少 supplement 时为 null。"),
   last_activity_at: z.number().describe("最近一次非保活 ACP 业务消息时间戳，单位为秒。"),
@@ -56,7 +60,7 @@ export const SpawnInstanceFromEnvironmentResponseSchema = z.object({
 /** GET /web/instances — 实例列表响应 */
 export const InstanceListResponseSchema = InstanceInfoSchema.array();
 export const InstanceActivityQuerySchema = z.object({
-  all: z.coerce.boolean().optional().describe("为 true 时忽略组织过滤，返回所有活跃实例。"),
+  all: z.coerce.boolean().optional().describe("跨组织查询不对控制台用户开放；传入 true 返回 403。"),
   showError: z.coerce.boolean().optional().describe("为 true 时额外返回 error 状态实例，便于排查问题。"),
 });
 export const InstanceActivityListResponseSchema = WebOkSchema(
