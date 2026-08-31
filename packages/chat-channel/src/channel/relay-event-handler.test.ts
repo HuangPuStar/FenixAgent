@@ -238,6 +238,8 @@ describe("RelayEventHandler", () => {
     const handler = createRelayEvents(registry, broadcaster, processed, {
       reportError: (message, error) => reports.push([message, error]),
     });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
     const shared = relayOn("rcs-1");
     // prompt 请求出口登记（session-channel send_prompt 分支）
     shared.pendingPromptIds = new Set([1]);
@@ -253,6 +255,38 @@ describe("RelayEventHandler", () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toContain("prompt rejected");
     expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
+    expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toMatchObject({
+      payload: {
+        type: "AGENT_RUNTIME.PROMPT_REJECTED",
+        message: "The Agent rejected the request.",
+      },
+    });
+  });
+
+  // Peri 的已知 LLM API 配置错误映射为稳定公开 Type；传输换行不影响白名单匹配。
+  test("classifies the known Peri LLM API configuration error", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const handler = createRelayEvents(registry, broadcaster, []);
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    const shared = relayOn("rcs-1");
+    shared.pendingPromptIds = new Set([1]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      error: {
+        code: -32000,
+        message: "An LLM API error occurred. Please check your API \nconfiguration.",
+      },
+    } as unknown as RelayMessage);
+
+    const frame = JSON.parse(textFrames(ws)[0] ?? "{}") as { payload?: { type?: string; message?: string } };
+    expect(frame.payload).toMatchObject({
+      type: "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR",
+      message: "An LLM API error occurred. Please check your API configuration.",
+    });
   });
 
   // 未登记的 JSON-RPC error（非 send_prompt 在途请求）不得收敛 turn：

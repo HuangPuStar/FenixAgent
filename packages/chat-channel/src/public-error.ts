@@ -5,6 +5,7 @@ export const PUBLIC_ERROR_TYPES = [
   "AGENT_RUNTIME.SESSION_FAILED",
   "AGENT_RUNTIME.PROMPT_REJECTED",
   "AGENT_RUNTIME.PROMPT_TIMEOUT",
+  "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR",
   "AGENT_RUNTIME.DISCONNECTED",
   "SYNC_RELAY.CONNECTION_LOST",
   "SYNC_RELAY.CAPACITY_EXCEEDED",
@@ -60,6 +61,10 @@ export const PUBLIC_ERROR_MESSAGES: Readonly<Record<PublicErrorType, PublicError
   "AGENT_RUNTIME.SESSION_FAILED": { zh: "Agent 会话失败。", en: "The Agent session failed." },
   "AGENT_RUNTIME.PROMPT_REJECTED": { zh: "Agent 拒绝了请求。", en: "The Agent rejected the request." },
   "AGENT_RUNTIME.PROMPT_TIMEOUT": { zh: "Agent 请求处理超时。", en: "The Agent request timed out." },
+  "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR": {
+    zh: "LLM API 请求失败，请检查 API 配置。",
+    en: "An LLM API error occurred. Please check your API configuration.",
+  },
   "AGENT_RUNTIME.DISCONNECTED": { zh: "Agent 连接已断开。", en: "The Agent disconnected." },
   "SYNC_RELAY.CONNECTION_LOST": { zh: "同步连接已断开。", en: "The synchronization connection was lost." },
   "SYNC_RELAY.CAPACITY_EXCEEDED": {

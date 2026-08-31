@@ -42,6 +42,16 @@ function agentRuntimeError(
   return error;
 }
 
+const LLM_API_CONFIGURATION_ERROR_MESSAGE = "An LLM API error occurred. Please check your API configuration.";
+
+/** 只识别受控白名单语义；任意 Agent error message 均不得直接进入公开错误。 */
+function classifyPromptRejection(error: Record<string, unknown> | undefined): PublicErrorType {
+  const message = typeof error?.message === "string" ? error.message.replace(/\s+/g, " ").trim() : "";
+  return message === LLM_API_CONFIGURATION_ERROR_MESSAGE
+    ? "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"
+    : "AGENT_RUNTIME.PROMPT_REJECTED";
+}
+
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
   "reasoning_delta",
@@ -514,7 +524,7 @@ export class RelayEventHandler {
           code: rpcError?.code,
         });
         const publicError = agentRuntimeError(
-          "AGENT_RUNTIME.PROMPT_REJECTED",
+          classifyPromptRejection(rpcError),
           "relay.prompt_response",
           this.dependencies.log,
         );

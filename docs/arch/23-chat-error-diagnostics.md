@@ -93,10 +93,11 @@ AGENT_RUNTIME.REQUEST_FAILED
 AGENT_RUNTIME.SESSION_FAILED
 AGENT_RUNTIME.PROMPT_REJECTED
 AGENT_RUNTIME.PROMPT_TIMEOUT
+AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR
 AGENT_RUNTIME.DISCONNECTED
 ```
 
-只允许 Agent 进程、ACP Session、Prompt 执行与 Agent relay 明确报告的运行时事实进入此域。
+只允许 Agent 进程、ACP Session、Prompt 执行与 Agent relay 明确报告的运行时事实进入此域。`AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR` 只对白名单 Peri 文案 `An LLM API error occurred. Please check your API configuration.`（允许传输换行与空白差异）进行稳定映射；其他 Agent `Error.message` 仍不得进入公开错误。
 
 ### 3.2 Sync Relay
 
