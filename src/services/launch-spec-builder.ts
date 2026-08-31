@@ -8,7 +8,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
-import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
+import type { AgentLaunchSpec, McpServerConfig, ModelConfig, ModelLimitConfig } from "@fenix/plugin-sdk";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { config, getBaseUrl } from "../config";
 import { db } from "../db";
@@ -175,6 +175,7 @@ async function resolveModelConfig(agentConfig: AgentConfigDetailWithAccess, user
     // 数据库 model.modelId 即用户配置的模型名（如 deepseek-v4-flash），直接透传。
     modelName: matchedModel.modelId,
     modalities: matchedModel.modalities ?? undefined,
+    limitConfig: (matchedModel.limitConfig as ModelLimitConfig | null) ?? null,
   };
 }
 

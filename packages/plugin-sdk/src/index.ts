@@ -7,6 +7,7 @@ export type {
   McpOAuthConfig,
   McpServerConfig,
   ModelConfig,
+  ModelLimitConfig,
   SkillConfig,
   StdioMcpServerConfig,
   StreamableHttpMcpServerConfig,

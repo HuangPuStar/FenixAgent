@@ -11,6 +11,15 @@ export interface OpencodeProviderModelConfig {
     input?: ("text" | "image")[];
     output?: ("text" | "image")[];
   };
+  /**
+   * 模型限制配置；OpenCode schema 要求 context 和 output 同时提供。
+   * 仅当 context > output 时下发：OpenCode 按 usable = context - min(output, 32000) 计算可用上下文，
+   * context <= output 会令 usable ≤ 0 从而卡死 agent。
+   */
+  limit?: {
+    context: number;
+    output: number;
+  };
 }
 
 export interface OpencodeProviderConfig {
@@ -144,6 +153,22 @@ export function buildOpencodeRuntimeConfig(
             } else {
               modelEntry.modalities = { input: ["text"], output: ["text"] };
             }
+
+            // 限制配置：context/output 必须同时 > 0，且 context > output。
+            // OpenCode 用 usable = context - min(output, 32000) 计算可用上下文（overflow.ts），
+            // 当 context <= output 时 usable ≤ 0，每条消息立即触发 compaction 导致 agent 卡死/无输出。
+            // 因此 context 不大于 output 时跳过 limit，回退到引擎默认值。
+            const limitConfig = launchSpec.model.limitConfig;
+            if (
+              limitConfig?.context &&
+              limitConfig.context > 0 &&
+              limitConfig?.output &&
+              limitConfig.output > 0 &&
+              limitConfig.context > limitConfig.output
+            ) {
+              modelEntry.limit = { context: limitConfig.context, output: limitConfig.output };
+            }
+
             return modelEntry;
           })(),
         },

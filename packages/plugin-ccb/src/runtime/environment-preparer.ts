@@ -105,9 +105,13 @@ export async function writePeriSettings(workspace: string, launchSpec: AgentLaun
       },
       skills_dir: null,
       ...(periEnv && Object.keys(periEnv).length > 0 ? { env: periEnv } : {}),
+      // 模型限制由控制台配置透传；未配置或非正值时保持 Peri 默认行为。
+      ...(model.limitConfig?.context && model.limitConfig.context > 0
+        ? { context_window: model.limitConfig.context }
+        : {}),
+      ...(model.limitConfig?.output && model.limitConfig.output > 0 ? { max_tokens: model.limitConfig.output } : {}),
     },
   };
-
   await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   return configPath;
 }
