@@ -198,7 +198,12 @@ export function ChatPanel({
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
-    const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
+    if (!sessionId) return;
+    const relayUrl = buildYjsUrl(agentId, {
+      instanceUid: sessionId,
+      rcsSessionId: rcsSessionKey,
+      acpSessionId: sessionState.acpSessionId || undefined,
+    });
 
     const yjsWs = createYjsWs({
       url: relayUrl,
@@ -261,7 +266,17 @@ export function ChatPanel({
     // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
     // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
     // rcsSessionKey 变化触发重建（建连守卫，见上）；authState 变化驱动登录态守卫
-  }, [agentId, sessionId, rcsSessionKey, authState, sendViaWs, handleActionAck, releaseCommandId, showActionError]);
+  }, [
+    agentId,
+    sessionId,
+    rcsSessionKey,
+    authState,
+    sessionState.acpSessionId,
+    sendViaWs,
+    handleActionAck,
+    releaseCommandId,
+    showActionError,
+  ]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
   const derivedState = useMemo(() => {
@@ -419,7 +434,6 @@ export function ChatPanel({
           initialCwd={initialCwd}
           hideSidebar={hideSidebar}
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
-          // URL sessionId 是实例会话标识（ses_inst_*），仅用于 WS 建连参数
           rcsSessionId={rcsSessionKey ?? undefined}
           detailSessionId={sessionId ?? undefined}
           scenePrompt={scenePrompt}

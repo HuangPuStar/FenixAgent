@@ -176,7 +176,9 @@ describe("spawnInstanceViaController rollback", () => {
   test("registerSupplement failure rolls back controller, core and registry", async () => {
     failOnSecondCall = true;
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toThrow("db down");
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_rollback" }),
+    ).rejects.toThrow("db down");
 
     expect(controllerStopCalls).toEqual([INSTANCE_ID]);
     expect(facadeStopCalls).toEqual([INSTANCE_ID]);
@@ -189,7 +191,9 @@ describe("spawnInstanceViaController rollback", () => {
   test("launch failure still rolls back controller and propagates error", async () => {
     launchShouldFail = true;
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toThrow("launch failed");
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_rollback" }),
+    ).rejects.toThrow("launch failed");
 
     expect(controllerStopCalls).toEqual([INSTANCE_ID]);
     expect(facadeStopCalls).toEqual([INSTANCE_ID]);
@@ -198,7 +202,9 @@ describe("spawnInstanceViaController rollback", () => {
 
   // 成功路径回归：supplement 正常注册且回滚不误触发（两处 stop 均不应被调用）
   test("successful spawn registers supplement without triggering rollback", async () => {
-    const instance = await spawnInstanceViaController(ENV_ID, USER_ID, "interactive");
+    const instance = await spawnInstanceViaController(ENV_ID, USER_ID, "interactive", {
+      instanceUid: "inst_test_rollback",
+    });
 
     expect(instance.instanceId).toBe(INSTANCE_ID);
     const sup = globalInstanceRegistry.get(INSTANCE_ID);

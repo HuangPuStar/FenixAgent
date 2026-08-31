@@ -158,7 +158,7 @@ export class SessionChannel {
       rcsSessionId: connection.rcsSessionId,
       commandId: typeof commandId === "string" ? commandId : "",
       type: typeof action === "string" ? action : "",
-      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : (connection.acpSessionId ?? ""),
+      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : "",
       payload,
       ...(typeof expectedProjectionVersion === "number" ? { expectedProjectionVersion } : {}),
     };

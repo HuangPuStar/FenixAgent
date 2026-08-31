@@ -25,7 +25,10 @@ import {
   markInstanceRelayDetached,
   touchInstanceActivity,
 } from "../../services/acp-idle-monitor";
-import { getRunningInstancesByEnvironment, type SpawnedInstance } from "../../services/instance";
+import {
+  getRunningInstancesByEnvironment,
+  type SpawnedInstance,
+} from "../../services/agent-instance-runtime-projection";
 import { connectAgentRelay, type FullRelayHandle } from "../agent-relay";
 import type { WsConnection } from "../ws-types";
 

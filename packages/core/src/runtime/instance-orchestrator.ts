@@ -178,6 +178,8 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
 
       store.create({
         instanceId: request.instanceId,
+        runtimeGeneration: request.runtimeGeneration,
+        serverEpoch: request.serverEpoch,
         engineType: effectiveEngineType,
         nodeId: request.nodeId,
         launchSpec: request.launchSpec,
@@ -192,13 +194,21 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         store.update(request.instanceId, { status: "preparing" });
         await runtime.prepareEnvironment({
           instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: request.runtimeGeneration,
+          serverEpoch: request.serverEpoch,
           launchSpec: request.launchSpec,
           // remote 时不传 engineType，由 machine 端自行决定
           engineType: node.mode === "remote" ? undefined : effectiveEngineType,
         });
         store.update(request.instanceId, { status: "prepared" });
         store.update(request.instanceId, { status: "starting" });
-        await runtime.startInstance({ instanceId: request.instanceId });
+        await runtime.startInstance({
+          instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: request.runtimeGeneration,
+          serverEpoch: request.serverEpoch,
+        });
         store.update(request.instanceId, {
           status: "running",
           relayConnected: false,
@@ -321,7 +331,12 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         if (runtimeEntry.relay?.state === "open") {
           await runtimeEntry.relay.close();
         }
-        await runtimeEntry.runtime.stopInstance({ instanceId });
+        await runtimeEntry.runtime.stopInstance({
+          instanceId,
+          instanceUid: instanceId,
+          runtimeGeneration: record.runtimeGeneration,
+          serverEpoch: record.serverEpoch,
+        });
         store.clearRelay(instanceId);
         store.update(instanceId, {
           status: "stopped",

@@ -53,7 +53,7 @@ export class AgentController {
   }
 
   /** 创建 Agent 运行实例（完整 6 步流程，见类注释错误映射）。 */
-  async spawnInstance(envId: string, userId: string): Promise<Instance> {
+  async spawnInstance(envId: string, userId: string, instanceUid: string): Promise<Instance> {
     // 1. 环境校验（透传 userId：宿主 Repo 解析 machineId 时可能按用户归属
     //    准备执行节点，如 sandbox 实例按 pool + userId 复用）
     const environment = await this.#environmentRepo.getEnvironment(envId, userId);
@@ -83,8 +83,12 @@ export class AgentController {
     }
     const agentNode = this.#agentNodeService.ensureNode(machineId);
 
-    // 5. 创建 Instance（AgentNode 工厂）
-    const instance = agentNode._spawnInstance(launchSpec);
+    if (this.#instances.has(instanceUid)) {
+      throw new OrchestrationError(`Instance '${instanceUid}' is already active`, "INSTANCE_ALREADY_ACTIVE");
+    }
+
+    // 5. 使用宿主持久化 uid 创建 Instance（AgentNode 不再生成第二套身份）
+    const instance = agentNode._spawnInstance(launchSpec, instanceUid);
 
     // 6. 注册前二次并发校验（同步段，无 await 间隙）：步骤 2 的检查在
     //    launchSpecBuilder.build 的 await 之后可能已过期（并发 spawn 在此期间完成

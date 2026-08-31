@@ -91,7 +91,7 @@ describe("round69 environment repository 真实行为", () => {
       id: "env-created",
       organizationId: "org-owner",
       workspacePath: "/tmp",
-      maxSessions: 10,
+      maxSessions: 1,
     });
   });
 

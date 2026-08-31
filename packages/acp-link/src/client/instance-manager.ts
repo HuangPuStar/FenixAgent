@@ -47,6 +47,9 @@ interface InstanceState {
   agentType: AgentType;
   /** 前端 relay 连接的 sessionId，用于 relaySend 回传时匹配正确的会话 */
   sessionId: string | null;
+  /** 当前 runtime fence；所有异步 stop/session 输出必须与该世代匹配。 */
+  runtimeGeneration: number;
+  serverEpoch: string;
 }
 
 // ── InstanceManager ───────────────────────────────────────────
@@ -84,16 +87,26 @@ export class InstanceManager {
     return handler;
   }
 
-  async prepare(instanceId: string, launchSpec: AgentLaunchSpec, engineType?: string): Promise<void> {
+  async prepare(
+    instanceId: string,
+    launchSpec: AgentLaunchSpec,
+    engineType: string | undefined,
+    runtimeGeneration: number,
+    serverEpoch: string,
+  ): Promise<void> {
     const effectiveType = (engineType ?? this.defaultEngine) as AgentType;
     const handler = this.getHandler(effectiveType);
     const workspace = this.resolveWorkspace(launchSpec);
     const existing = this.instances.get(instanceId);
+    if (existing && (existing.runtimeGeneration !== runtimeGeneration || existing.serverEpoch !== serverEpoch)) {
+      await this.stop(instanceId, existing.runtimeGeneration, existing.serverEpoch);
+    }
+    const current = this.instances.get(instanceId);
 
-    if (existing?.agentType !== undefined && existing.agentType !== effectiveType) {
+    if (current?.agentType !== undefined && current.agentType !== effectiveType) {
       throw new Error(`Cannot change engine type for running instance ${instanceId}`);
     }
-    if (existing?.workspace !== undefined && existing.workspace !== workspace) {
+    if (current?.workspace !== undefined && current.workspace !== workspace) {
       throw new Error(`Cannot change workspace for running instance ${instanceId}`);
     }
 
@@ -105,10 +118,10 @@ export class InstanceManager {
 
     await handler.prepareWorkspace(workspace, launchSpec);
 
-    if (existing) {
+    if (current) {
       // 在线实例刷新只替换配置快照，必须保留 process/connection/dispatcher/sessionState；
       // 否则下一条 session/new 会因 dispatcher 被清空而无法送达现有 Agent 进程。
-      existing.launchSpec = launchSpec;
+      current.launchSpec = launchSpec;
       console.log(`[instance-manager] refreshed: ${instanceId} at ${workspace} (type=${effectiveType})`);
       return;
     }
@@ -124,6 +137,8 @@ export class InstanceManager {
       dispatcher: null,
       agentType: effectiveType,
       sessionId: null,
+      runtimeGeneration,
+      serverEpoch,
     });
 
     console.log(`[instance-manager] prepared: ${instanceId} at ${workspace} (type=${effectiveType})`);
@@ -140,9 +155,15 @@ export class InstanceManager {
     return handler.startInstance({ state, instanceId, send });
   }
 
-  async stop(instanceId: string): Promise<void> {
+  async stop(instanceId: string, runtimeGeneration?: number, serverEpoch?: string): Promise<void> {
     const state = this.instances.get(instanceId);
     if (!state) return;
+    if (
+      runtimeGeneration !== undefined &&
+      (state.runtimeGeneration !== runtimeGeneration || state.serverEpoch !== serverEpoch)
+    ) {
+      return;
+    }
 
     const handler = this.handlers.get(state.agentType);
     if (handler?.stopInstance) {
@@ -165,6 +186,11 @@ export class InstanceManager {
     console.log(`[instance-manager] stopped: ${instanceId}`);
   }
 
+  /** 服务 epoch 切换时停止并遗忘全部旧 runtime，完成后才允许确认 clean-slate。 */
+  async cleanSlate(): Promise<void> {
+    await Promise.all([...this.instances.keys()].map((instanceId) => this.stop(instanceId)));
+  }
+
   getConnection(instanceId: string): acp.ClientSideConnection | null {
     return this.instances.get(instanceId)?.connection ?? null;
   }
@@ -175,6 +201,12 @@ export class InstanceManager {
 
   hasInstance(instanceId: string): boolean {
     return this.instances.has(instanceId);
+  }
+
+  /** 返回当前 runtime fence，供所有 session/relay 输出绑定到所属世代。 */
+  getRuntimeFence(instanceId: string): { runtimeGeneration: number; serverEpoch: string } | null {
+    const state = this.instances.get(instanceId);
+    return state ? { runtimeGeneration: state.runtimeGeneration, serverEpoch: state.serverEpoch } : null;
   }
 
   /** 更新实例对应的前端 relay sessionId，使 relaySend 回传时使用正确的会话标识 */

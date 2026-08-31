@@ -17,6 +17,7 @@ import {
   UpdateEnvironmentRequestSchema,
   UpdateEnvironmentResponseSchema,
 } from "../../schemas/environment.schema";
+import { agentInstanceService } from "../../services/agent-instance-service";
 import {
   createWebEnvironment,
   deleteEnvironment,
@@ -25,8 +26,6 @@ import {
   sanitizeResponse,
   updateWebEnvironment,
 } from "../../services/environment";
-import { enterEnvironment, listInstancesResponse } from "../../services/instance";
-import { spawnInstanceViaController } from "../../services/orchestration-instance";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
 
 const logger = createLogger("env-route");
@@ -104,7 +103,9 @@ app.post(
     }
 
     if (b.autoStart && record.userId) {
-      spawnInstanceViaController(record.id, record.userId, "interactive")
+      agentInstanceService
+        .findOrCreateDefaultInstance(record.id, record.userId)
+        .then((instance) => agentInstanceService.ensureInstanceRuntime(instance))
         .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
         .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
     }
@@ -223,9 +224,25 @@ app.post(
       throw err;
     }
 
-    const b = body as { instance_number?: number };
+    const b = body as { instanceUid?: string };
     try {
-      return { success: true as const, data: await enterEnvironment(user.id, params.id, b.instance_number) };
+      const instance = await agentInstanceService.resolveInstanceForOperation({
+        environmentId: params.id,
+        ownerUserId: user.id,
+        requestedInstanceUid: b.instanceUid,
+        automaticSelection: "chat",
+      });
+      await agentInstanceService.ensureInstanceRuntime(instance);
+      return {
+        success: true as const,
+        data: {
+          instanceUid: instance.id,
+          environmentId: instance.environmentId,
+          name: instance.name,
+          status: agentInstanceService.getRuntimeSnapshot(instance.id).state,
+          createdAt: instance.createdAt.toISOString(),
+        },
+      };
     } catch (err: unknown) {
       if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND") {
         return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
@@ -303,7 +320,19 @@ app.get(
         return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
       throw err;
     }
-    return { success: true as const, data: await listInstancesResponse(params.id) };
+    const instances = await agentInstanceService.listInstances(user.id, params.id);
+    return {
+      success: true as const,
+      data: {
+        environment_id: params.id,
+        instances: instances.map((instance) => ({
+          instanceUid: instance.id,
+          name: instance.name,
+          status: instance.runtime.state,
+          createdAt: instance.createdAt.toISOString(),
+        })),
+      },
+    };
   },
   {
     sessionAuth: true,

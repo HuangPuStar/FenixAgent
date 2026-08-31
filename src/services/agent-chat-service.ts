@@ -6,15 +6,15 @@ import { environment } from "../db/schema";
 import { NotFoundError } from "../errors";
 import { connectAgentRelay } from "../transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/store";
+import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";
-import { spawnInstanceViaController, stopInstanceViaController } from "./orchestration-instance";
 
 // 编排域依赖注入点（对齐 openai-chat.ts 的 setOpenAIChatRouteDeps 模式）：
 // openAgentSession 的「spawn → relay → turn」编排依赖集中在此，测试可注入 fake
 // 覆盖失败回滚路径，避免 mock.module。
 const deps = {
-  spawnInstanceViaController,
-  stopInstanceViaController,
+  resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
+  ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
   connectAgentRelay,
 };
 
@@ -24,8 +24,8 @@ export function setAgentChatServiceDeps(overrides: Partial<typeof deps> | null):
     Object.assign(deps, overrides);
     return;
   }
-  deps.spawnInstanceViaController = spawnInstanceViaController;
-  deps.stopInstanceViaController = stopInstanceViaController;
+  deps.resolveInstance = agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService);
+  deps.ensureInstanceRuntime = agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService);
   deps.connectAgentRelay = connectAgentRelay;
 }
 
@@ -231,7 +231,7 @@ export function createPromptTurn(session: AgentSession, sessionId: string): Prom
 
   return {
     prompt(promptContent) {
-      log(`[openai] Sending session/prompt: sessionId=${sessionId} turnId=${turnId}`);
+      log(`[openai] Sending session/prompt: turnId=${turnId}`);
       const rpcMsg = {
         jsonrpc: "2.0" as const,
         id: turnId,
@@ -322,15 +322,15 @@ export async function startPromptTurn(
 
       const sid = rpc.result?.id || rpc.result?.sessionId;
       if (sid) {
-        log(`[openai] Session created/loaded: sessionId=${sid}`);
+        log("[openai] Session created/loaded");
         resolve(sid);
       } else if (options.sessionId) {
-        log(`[openai] Session loaded: sessionId=${options.sessionId}`);
+        log("[openai] Session loaded");
         resolve(options.sessionId);
       } else {
         // 追加唯一后缀：并发 run 的 fallback 分支也必须拿到互不相同的 sessionId
         const fallback = `ses_${Date.now().toString(36)}_${nextRpcId()}`;
-        log(`[openai] Session created (fallback id): sessionId=${fallback}`);
+        log("[openai] Session created with fallback id");
         resolve(fallback);
       }
     });
@@ -413,56 +413,33 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
     log(`[agent-chat] Auto-created environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);
   }
 
-  // 2. 基于解析出的 environmentId 启动实例
-  // I4 调用方迁移：经编排域 AgentController（orchestration-instance 桥接层）
-  // 替代旧 spawnInstanceFromEnvironment —— controller.spawnInstance 负责环境校验/
-  // 并发检查/节点获取/Instance 创建，桥接层再调 core launchInstance 真实启动进程。
-  // startSource 透传以保留 RCS supplement 的 spawn_source 审计字段。
-  // 经 deps 引用：与步骤 3-5 的编排依赖同源（测试注入 fake 时整链可覆盖），
-  // spawn 内部（registerSupplement 等）的回滚治理属 orchestration-instance 自身职责。
-  const instance = await deps.spawnInstanceViaController(environmentId, input.userId, input.startSource);
-  log(`[agent-chat] Instance spawned: instanceId=${instance.instanceId}`);
+  // 2. 解析并确保持久 api/primary runtime。请求只拥有 turn/relay，不拥有 runtime 生命周期。
+  const instance = await deps.resolveInstance({
+    environmentId,
+    ownerUserId: input.userId,
+    automaticSelection: "api",
+  });
+  await deps.ensureInstanceRuntime(instance);
+  log(`[agent-chat] Instance ready: instanceId=${instance.id}`);
 
   // 3-5. 连接 relay → 创建 AgentSession → startPromptTurn。
-  // 步骤 3-5 任一失败都必须回滚本次 spawn 的实例，否则实例残留：spawn 成功时
-  // registerSupplement 已在返回前完成（实例计入用户并发额度），且 relay 未建立
-  // 连接（relayCount=0）满足 idle 回收条件，需 300s 后才被回收，期间持续占用
-  // RCS_USER_AGENT_MAX_CONCURRENCY 额度。
-  // session 提升到 try 外供 catch 判断：createAgentSession 是同步纯构造（不抛错），
-  // session 为 null 仅当 connectAgentRelay 抛错（此时无 relay handle 可关，直接停止
-  // 实例）；session 非 null 时其 dispose() 关闭 relay handle 并停止实例，覆盖
-  // startPromptTurn 失败（session/new、session/load 的 rpc error / send 抛错）。
+  // 失败和正常 dispose 都只关闭本请求的 relay/listener；持久 runtime 由 Coordinator 管理。
   let session: AgentSession | null = null;
   try {
-    const handle = await deps.connectAgentRelay(instance.instanceId, input.sessionId ?? "");
-    log(`[agent-chat] Relay connected: instanceId=${instance.instanceId}`);
+    const handle = await deps.connectAgentRelay(instance.id, input.sessionId ?? "");
+    log(`[agent-chat] Relay connected: instanceId=${instance.id}`);
 
-    // 创建 AgentSession（dispose 时销毁实例；stopInstanceViaController 组合
-    // controller.stopInstance + core 进程停止 + registry 清理，确保无进程残留）
     session = createAgentSession({
       relayHandle: handle,
-      instanceId: instance.instanceId,
-      stopInstance: async () => {
-        await deps.stopInstanceViaController(instance.instanceId);
-      },
+      instanceId: instance.id,
     });
 
-    // 创建 ACP session + PromptTurn
     const { turn } = await startPromptTurn({ session, sessionId: input.sessionId });
-
-    return { turn, instanceId: instance.instanceId };
+    return { turn, instanceId: instance.id };
   } catch (err) {
-    // 回滚：步骤 3-5 失败时实例已在 core 运行、controller 活跃表与节点 refCount 均
-    // 未归还，不清理将泄漏至 idle 回收并持续占用用户并发额度。stopInstanceViaController
-    // 与 session.dispose 均幂等（重复 dispose / 已停止实例安全）；回滚自身失败只记录
-    // 日志并继续抛原始错误，不掩盖失败原因、不改变调用方错误语义。
     if (session) {
       await session.dispose().catch((rollbackErr) => {
-        logError(`[agent-chat] Failed to rollback session for instance ${instance.instanceId}:`, rollbackErr);
-      });
-    } else {
-      await deps.stopInstanceViaController(instance.instanceId).catch((rollbackErr) => {
-        logError(`[agent-chat] Failed to rollback instance ${instance.instanceId}:`, rollbackErr);
+        logError(`[agent-chat] Failed to release session for instance ${instance.id}:`, rollbackErr);
       });
     }
     throw err;

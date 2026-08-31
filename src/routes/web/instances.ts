@@ -9,10 +9,8 @@ import {
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "../../schemas/instance.schema";
 import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-monitor";
-import { getCoreRuntime } from "../../services/core-bootstrap";
+import { agentInstanceService } from "../../services/agent-instance-service";
 import { getOwnedEnvironment } from "../../services/environment";
-import { stopInstance, toInstanceInfo } from "../../services/instance";
-import { spawnInstanceViaController } from "../../services/orchestration-instance";
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "instance-activity-query": InstanceActivityQuerySchema,
@@ -25,8 +23,14 @@ const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
 app.get(
   "/instances/activity",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
-  async ({ store, query }: any) => {
-    const organizationId = query.all === true ? undefined : (store.authContext?.organizationId ?? store.user?.id);
+  async ({ store, query, error }: any) => {
+    if (query.all === true) {
+      return error(403, {
+        success: false,
+        error: { code: "FORBIDDEN", message: "Cross-organization instance activity is not available" },
+      });
+    }
+    const organizationId = store.authContext?.organizationId ?? store.user?.id;
     return {
       success: true as const,
       data: await listInstanceActivitySnapshotsWithUsers(Date.now(), organizationId, query.showError === true),
@@ -35,12 +39,15 @@ app.get(
   {
     sessionAuth: true,
     query: "instance-activity-query",
-    response: InstanceActivityListResponseSchema,
+    response: {
+      200: InstanceActivityListResponseSchema,
+      403: WebErrSchema,
+    },
     detail: {
       tags: ["Instances"],
       summary: "查看 ACP 实例活跃度",
       description:
-        "默认返回当前组织下活跃实例的 ACP 连接观测数据；当 query `all=true` 时忽略组织过滤，当 query `showError=true` 时额外返回 error 状态实例。",
+        "返回当前组织下活跃实例的 ACP 连接观测数据；跨组织查询不对控制台用户开放，query `showError=true` 时额外返回 error 状态实例。",
     },
   },
 );
@@ -63,9 +70,23 @@ app.post(
       throw err;
     }
 
-    // 编排域启动入口：envId 在前，source 为 interactive；toInstanceInfo 已兼容编排域 Instance（仅 instanceId）
-    const instance = await spawnInstanceViaController(b.environmentId, user.id, "interactive");
-    return { success: true as const, data: toInstanceInfo(instance) };
+    const persistentInstance = await agentInstanceService.createUserInstance({
+      environmentId: b.environmentId,
+      ownerUserId: user.id,
+      actorUserId: user.id,
+      name: `instance-${crypto.randomUUID()}`,
+    });
+    await agentInstanceService.ensureInstanceRuntime(persistentInstance);
+    return {
+      success: true as const,
+      data: {
+        instanceUid: persistentInstance.id,
+        environmentId: persistentInstance.environmentId,
+        name: persistentInstance.name,
+        status: agentInstanceService.getRuntimeSnapshot(persistentInstance.id).state,
+        createdAt: persistentInstance.createdAt.toISOString(),
+      },
+    };
   },
   {
     sessionAuth: true,
@@ -88,28 +109,25 @@ app.delete(
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
   async ({ store, params, error }: any) => {
     const authCtx = store.authContext!;
-    const result = await stopInstance(params.id, authCtx.organizationId);
-
-    if (!result.ok) {
-      // "Already stopped" 是幂等终态（重复删除 / 从未存在 / 三侧已无痕）：按成功返回。
-      // 该分支三侧状态全无，deleteInstance 调用必然 no-op 且误导"清理了东西"，故不调用
-      //（AE-P2.1：原 404 映射与死代码分支一并移除）。
-      if (result.error === "Already stopped") {
-        return { success: true as const, data: null };
+    const user = store.user!;
+    try {
+      const instance = await agentInstanceService.getOwnedInstance(params.id, user.id);
+      await getOwnedEnvironment(instance.environmentId, authCtx.organizationId, user.id);
+      await agentInstanceService.deleteInstance(instance);
+      return { success: true as const, data: null };
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
+      if (code === "INSTANCE_NOT_FOUND" || code === "NOT_FOUND") {
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Agent Instance not found" } });
       }
-      // 其余失败（跨组织访问或停止过程真实异常）统一 403；"Instance not found" 已随
-      // 幂等语义不再产生，404 分支删除。
-      return error(403, { success: false, error: { code: "FORBIDDEN", message: result.error! } });
+      throw err;
     }
-
-    getCoreRuntime().deleteInstance(params.id);
-    return { success: true as const, data: null };
   },
   {
     sessionAuth: true,
     response: {
       200: WebOkSchema(z.null().describe("实例删除成功后固定返回 null。")).describe("删除实例响应。"),
-      403: WebErrSchema,
+      404: WebErrSchema,
     },
     detail: {
       tags: ["Instances"],

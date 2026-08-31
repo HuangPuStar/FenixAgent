@@ -66,14 +66,17 @@ describe("chat channel bootstrap", () => {
       } as never,
       ensureRunning: (async (userId: string) => {
         ensureRunningCalls.push(userId);
-        return { instance: { id: "instance-1" }, status: "spawned" };
+        return "instance-1";
       }) as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
     });
 
     const controller = getChatChannelController();
     const ws = createWs();
-    await controller.gateway.handleOpen(ws, "yjs_1", "user-1", "env-1", "rcs-1");
+    await controller.gateway.handleOpen(ws, "yjs_1", "user-1", "env-1", {
+      instanceUid: "inst-test",
+      rcsSessionId: "rcs-1",
+    });
 
     expect(ws.closed).toHaveLength(0);
     expect(ensureRunningCalls).toEqual(["user-1"]);
@@ -94,21 +97,27 @@ describe("chat channel bootstrap", () => {
         ensureRunningCalls += 1;
         if (spawnedAgents.includes(agentId)) {
           reusedAgents.push(agentId);
-          return { instance: { id: `instance-${agentId}` }, status: "reused" };
+          return `instance-${agentId}`;
         }
         spawnedAgents.push(agentId);
-        return { instance: { id: `instance-${agentId}` }, status: "spawned" };
+        return `instance-${agentId}`;
       }) as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
     });
 
     const controller = getChatChannelController();
     const firstWs = createWs();
-    await controller.gateway.handleOpen(firstWs, "yjs_1", "user-1", "agent-1", "rcs-1");
+    await controller.gateway.handleOpen(firstWs, "yjs_1", "user-1", "agent-1", {
+      instanceUid: "inst-test",
+      rcsSessionId: "rcs-1",
+    });
     expect(firstWs.closed).toHaveLength(0);
 
     const secondWs = createWs();
-    await controller.gateway.handleOpen(secondWs, "yjs_2", "user-1", "agent-1", "rcs-2");
+    await controller.gateway.handleOpen(secondWs, "yjs_2", "user-1", "agent-1", {
+      instanceUid: "inst-test",
+      rcsSessionId: "rcs-2",
+    });
     expect(secondWs.closed).toHaveLength(0);
 
     expect(ensureRunningCalls).toBe(2);
@@ -129,33 +138,38 @@ describe("chat channel bootstrap", () => {
       } as never,
       ensureRunning: (async () => {
         ensureRunningCalls.push("called");
-        return { instance: { id: "instance-1" }, status: "spawned" };
+        return "instance-1";
       }) as never,
     });
 
     const controller = getChatChannelController();
     const ws = createWs();
-    await controller.gateway.handleOpen(ws, "yjs_1", "user-b", "env-1", "rcs-1");
+    await controller.gateway.handleOpen(ws, "yjs_1", "user-b", "env-1", {
+      instanceUid: "inst-test",
+      rcsSessionId: "rcs-1",
+    });
 
     expect(ws.closed).toEqual([[4003, "unauthorized"]]);
     expect(ensureRunningCalls).toHaveLength(0);
   });
 
-  // 组织环境的访问权由路由 authContext 决定，桥接层纵深防御必须放行组织环境
-  test("allows an organization environment regardless of the opening user", async () => {
+  // 组织成员不能绕过 Environment owner 边界共享 runtime 或 workspace。
+  test("rejects an organization environment opened by another user", async () => {
     setChatChannelBootstrapDeps({
       environmentRepo: {
         getById: async () => ({ id: "env-1", organizationId: "org-1", machineName: "Agent", userId: "user-a" }),
       } as never,
-      ensureRunning: (async () => ({ instance: { id: "instance-1" }, status: "spawned" })) as never,
+      ensureRunning: (async () => "instance-1") as never,
       connectAgentRelay: (async () => fakeRelayHandle()) as never,
     });
 
     const controller = getChatChannelController();
     const ws = createWs();
-    await controller.gateway.handleOpen(ws, "yjs_1", "user-b", "env-1", "rcs-1");
+    await controller.gateway.handleOpen(ws, "yjs_1", "user-b", "env-1", {
+      instanceUid: "inst-test",
+      rcsSessionId: "rcs-1",
+    });
 
-    expect(ws.closed).toHaveLength(0);
-    controller.gateway.handleClose("yjs_1");
+    expect(ws.closed).toEqual([[4003, "unauthorized"]]);
   });
 });

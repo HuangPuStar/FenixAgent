@@ -21,18 +21,17 @@ import * as Y from "yjs";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "./acp-idle-monitor";
+import { agentInstanceService } from "./agent-instance-service";
 import { getRedisConnection } from "./cache";
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "./chat-channel-error-classify";
 import { docManager } from "./doc-manager-instance";
-import { ensureRunning } from "./instance";
-import { parseInstanceSessionId } from "./instance-session";
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "./orchestration-instance";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 type ChatChannelBootstrapDeps = {
   environmentRepo: typeof environmentRepo;
   resolveWorkspacePath: typeof resolveWorkspacePath;
-  ensureRunning: typeof ensureRunning;
+  ensureRunning: (ownerUserId: string, environmentId: string, requestedInstanceUid?: string) => Promise<string>;
   connectAgentRelay: typeof connectAgentRelay;
   refreshInstanceEnvironment: typeof refreshInstanceEnvironment;
   markInstanceRelayAttached: typeof markInstanceRelayAttached;
@@ -41,7 +40,6 @@ type ChatChannelBootstrapDeps = {
   terminateLocalDeadInstance: typeof terminateLocalDeadInstance;
   getRedisConnection: typeof getRedisConnection;
   docManager: typeof docManager;
-  parseInstanceSessionId: typeof parseInstanceSessionId;
   isMachineOfflineError: typeof isMachineOfflineError;
   classifyPermanentSpawnFailure: typeof classifyPermanentSpawnFailure;
   log: typeof log;
@@ -52,7 +50,16 @@ type ChatChannelBootstrapDeps = {
 const defaultDeps: ChatChannelBootstrapDeps = {
   environmentRepo,
   resolveWorkspacePath,
-  ensureRunning,
+  ensureRunning: async (ownerUserId, environmentId, requestedInstanceUid) => {
+    const instance = await agentInstanceService.resolveInstanceForOperation({
+      environmentId,
+      ownerUserId,
+      requestedInstanceUid,
+      automaticSelection: "chat",
+    });
+    await agentInstanceService.ensureInstanceRuntime(instance);
+    return instance.id;
+  },
   connectAgentRelay,
   refreshInstanceEnvironment,
   markInstanceRelayAttached,
@@ -61,7 +68,6 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   terminateLocalDeadInstance,
   getRedisConnection,
   docManager,
-  parseInstanceSessionId,
   isMachineOfflineError,
   classifyPermanentSpawnFailure,
   log,
@@ -97,18 +103,11 @@ export async function persistClearedSessionSnapshot(
 function buildChatChannelDependencies(): ChatChannelDependencies {
   return {
     docManager: deps.docManager,
-    // 路由已用 authContext 验证组织成员资格；这里仅作为纵深防御，不能把组织环境
-    // 误当成个人环境（无 owner 的历史/桥接环境可继续访问）。
-    authorizeEnvironment: (userId, environment) =>
-      environment.organizationId !== null && environment.organizationId !== undefined
-        ? true
-        : !environment.userId || environment.userId === userId,
+    // 路由和宿主边界均要求当前用户是 Environment owner，避免组织成员间共享 runtime/workspace。
+    authorizeEnvironment: (userId, environment) => Boolean(environment.userId) && environment.userId === userId,
     getEnvironment: deps.environmentRepo.getById.bind(deps.environmentRepo),
     resolveWorkspacePath: deps.resolveWorkspacePath,
-    // I4 说明：YJS 前端 Chat 走 Chat 域重构（ChatChannelController），继续复用
-    // ensureRunning 的实例复用语义（先复用运行实例、仅新建时检查并发配额，场景 K）；
-    // spawn 分支内部委托 spawnInstanceViaController 创建独立实例并负责销毁。
-    ensureRunning: (userId, agentId, mode, instanceNumber) => deps.ensureRunning(userId, agentId, mode, instanceNumber),
+    ensureRunning: deps.ensureRunning,
     connectAgentRelay: deps.connectAgentRelay,
     refreshInstanceEnvironment: deps.refreshInstanceEnvironment,
     markRelayAttached: deps.markInstanceRelayAttached,
@@ -128,15 +127,6 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
         connection.rcsSessionId,
       );
       await persistClearedSessionSnapshot(redis, `yjs:session:${connection.rcsSessionId}`, sessionDoc.ydoc);
-    },
-    resolveInstanceNumberFromSession: async (sessionId) => {
-      // 从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析实例编号；
-      // agent_session 表已废弃，不再查 DB 标题。
-      // 无法解析（历史 session_* 书签、ACP ses_* 混入、格式非法）返回 null 而非抛错：
-      // 这是可预期的前端输入形态，由 gateway 按默认实例降级连接；
-      // message 不得包含 sessionId——其可含 envId 等标识，进入日志即构成敏感信息泄漏
-      const parsed = deps.parseInstanceSessionId(sessionId);
-      return parsed?.instanceNumber ?? null;
     },
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,

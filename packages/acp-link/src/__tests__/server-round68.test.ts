@@ -140,7 +140,10 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     const mainSocket = InMemoryWebSocket.instances[0];
     if (!mainSocket) throw new Error("main socket was not created");
     mainSocket.open();
-    mainSocket.message('{"type":"registered"}');
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = InMemoryWebSocket.instances[1];
     if (!fileSocket) throw new Error("file socket was not created");
     fileSocket.open();
@@ -158,7 +161,10 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     const mainSocket = InMemoryWebSocket.instances[0];
     if (!mainSocket) throw new Error("main socket was not created");
     mainSocket.open();
-    mainSocket.message('{"type":"registered"}');
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = InMemoryWebSocket.instances[1];
     if (!fileSocket) throw new Error("file socket was not created");
     fileSocket.open();
@@ -176,7 +182,10 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     await waitForSockets(1);
     const mainSocket = InMemoryWebSocket.instances[0];
     if (!mainSocket) throw new Error("main socket was not created");
-    mainSocket.message('{"type":"registered"}');
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = InMemoryWebSocket.instances[1];
     if (!fileSocket) throw new Error("file socket was not created");
 
@@ -197,12 +206,17 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     await waitForSockets(1);
     const mainSocket = InMemoryWebSocket.instances[0];
     if (!mainSocket) throw new Error("main socket was not created");
-    mainSocket.message('{"type":"registered"}');
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = InMemoryWebSocket.instances[1];
     if (!fileSocket) throw new Error("file socket was not created");
     fileSocket.open();
 
-    mainSocket.message('{"type":"relay","instance_id":"inst-1","session_id":"ses-1","payload":{"type":"connect"}}');
+    mainSocket.message(
+      '{"type":"relay","instance_id":"inst-1","instance_uid":"inst-1","runtime_generation":1,"server_epoch":"epoch-test","session_id":"ses-1","payload":{"type":"connect"}}',
+    );
 
     expect(timeoutCallbacks.size).toBe(0);
     expect(fileSocket.closeCalls).toBe(1);
@@ -218,7 +232,10 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     const mainSocket = InMemoryWebSocket.instances[0];
     if (!mainSocket) throw new Error("main socket was not created");
 
-    mainSocket.message('{"type":"registered"}');
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
 
     expect(timeoutCallbacks.size).toBe(1);
 

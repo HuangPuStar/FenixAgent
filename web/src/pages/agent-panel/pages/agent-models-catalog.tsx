@@ -62,6 +62,7 @@ interface ModelsCatalogProps {
   onViewModel: (provider: ProviderInfo, model: ProviderModel) => void;
   onDeleteModel: (provider: ProviderInfo, model: ProviderModel) => void;
   onTestModel: (provider: ProviderInfo, model: ProviderModel) => void;
+  onViewGatewayUsage: (provider: ProviderInfo) => void;
   onRetry: () => void;
 }
 
@@ -225,6 +226,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
           <div>
             <div className="models-provider-meta">
               <span>{t(`protocolOptions.${provider.protocol}`)}</span>
+              {provider.kind === "gateway" && <span>{t("gateway.tag")}</span>}
               <code>{provider.id}</code>
             </div>
             <h2>{provider.name || provider.id}</h2>
@@ -235,6 +237,11 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
           </div>
         </div>
         <div className="models-provider-controls">
+          {provider.kind === "gateway" && (
+            <button type="button" onClick={() => props.onViewGatewayUsage(provider)}>
+              {t("gateway.myUsage")}
+            </button>
+          )}
           {writable ? (
             <>
               <button type="button" onClick={() => props.onEditProvider(provider)}>

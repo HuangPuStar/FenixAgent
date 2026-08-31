@@ -65,6 +65,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         organizationId: environment.organizationId,
         agentConfigId: environment.agentConfigId,
         autoStart: environment.autoStart,
+        maxSessions: environment.maxSessions,
         configMachineId: agentConfig.machineId,
         agentNode: agentConfig.agentNode,
         envUserId: environment.userId,
@@ -112,11 +113,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。
         (config.disableLocalExecution ? null : "local-default"),
-      // 特例（临时放宽）：当前 Web 创建路径将 maxSessions 硬编码为 1 且无配置入口，
-      // 导致多实例场景被单环境并发闸门拦截。暂不从 DB 读取，并发上限写死为 1000；
-      // 移除条件：Web 控制台提供 maxSessions 配置入口并完成存量数据调整后，
-      // 恢复为 maxConcurrency: row.maxSessions。
-      maxConcurrency: 1000,
+      maxConcurrency: row.maxSessions,
       autoStart: row.autoStart ?? false,
     };
   }
