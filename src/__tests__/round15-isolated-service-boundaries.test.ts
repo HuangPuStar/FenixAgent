@@ -11,6 +11,17 @@ import {
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
 import { EventBus, getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 
+async function withFrozenClock<T>(run: () => Promise<T>): Promise<T> {
+  const originalNow = Date.now;
+  Date.now = () => 10_000;
+
+  try {
+    return await run();
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
 afterEach(async () => {
   setTestOrgContext(null);
   await clearOrgCache();
@@ -52,7 +63,9 @@ describe("round15 isolated service boundaries", () => {
       delays.push(delayMs);
     };
 
-    await waitForMachineConnection("machine-1", 1_000, reader, wait);
+    await withFrozenClock(async () => {
+      await waitForMachineConnection("machine-1", 1_000, reader, wait);
+    });
 
     expect(reads).toBe(3);
     expect(delays).toEqual([1_000, 1_000]);
