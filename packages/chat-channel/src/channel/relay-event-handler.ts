@@ -42,7 +42,6 @@ function agentRuntimeError(
   return error;
 }
 
-const LLM_API_CONFIGURATION_ERROR_MESSAGE = "An LLM API error occurred. Please check your API configuration.";
 const MAX_UPSTREAM_ERROR_LOG_LENGTH = 1_000;
 
 /**
@@ -68,12 +67,22 @@ function sanitizeUpstreamErrorMessage(raw: unknown): string | undefined {
   return Array.from(sanitized).slice(0, MAX_UPSTREAM_ERROR_LOG_LENGTH).join("");
 }
 
-/** 只识别受控白名单语义；任意 Agent error message 均不得直接进入公开错误。 */
+/** 只识别 Peri 当前稳定的 error.data.kind/status 白名单；message 和未知 data 不参与公开分类。 */
 function classifyPromptRejection(error: Record<string, unknown> | undefined): PublicErrorType {
-  const message = typeof error?.message === "string" ? error.message.replace(/\s+/g, " ").trim() : "";
-  return message === LLM_API_CONFIGURATION_ERROR_MESSAGE
-    ? "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"
-    : "AGENT_RUNTIME.PROMPT_REJECTED";
+  const data = error?.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return "AGENT_RUNTIME.PROMPT_REJECTED";
+  }
+
+  const failure = data as Record<string, unknown>;
+  if (failure.kind === "internal") return "AGENT_RUNTIME.REQUEST_FAILED";
+  if (failure.kind === "llm") return "AGENT_RUNTIME.LLM_API_ERROR";
+  if (failure.kind !== "llm_http") return "AGENT_RUNTIME.PROMPT_REJECTED";
+
+  const status = failure.status;
+  if (status === 401 || status === 403) return "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR";
+  if (status === 429) return "AGENT_RUNTIME.LLM_API_RATE_LIMITED";
+  return "AGENT_RUNTIME.LLM_API_ERROR";
 }
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */

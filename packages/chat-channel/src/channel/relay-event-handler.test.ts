@@ -297,35 +297,48 @@ describe("RelayEventHandler", () => {
     expect((diagnostic.message as string).length).toBeLessThanOrEqual(1_000);
   });
 
-  // Peri 的已知 LLM API 配置错误映射为稳定公开 Type 并附着到当前会话；
-  // 传输换行不影响白名单匹配，且不得额外发送顶部 error 帧。
-  test("classifies the known Peri LLM API configuration error in the conversation turn", async () => {
-    const registry = new ConnectionRegistry();
-    const broadcaster = new YjsBroadcaster(registry);
-    const { docManager, chatDoc } = await createBoundDocs("rcs-1");
-    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
-    const ws = createWs();
-    registry.addClient("ws-1", createClient({ ws }));
-    const shared = relayOn("rcs-1");
-    const turnId = docManager.registerUserMessage("rcs-1", "hello");
-    shared.pendingPromptIds = new Set([1]);
-    shared.pendingPromptTurns = new Map([[1, turnId]]);
+  // Peri 的结构化 prompt failure 必须按 error.data.kind/status 白名单分类；
+  // message 不参与分类，未知 data 保守退化为 PROMPT_REJECTED，且原始 data 不进入前端。
+  test("classifies the Peri prompt failure wire contract", async () => {
+    const cases = [
+      [{ kind: "internal" }, "AGENT_RUNTIME.REQUEST_FAILED"],
+      [{ kind: "llm" }, "AGENT_RUNTIME.LLM_API_ERROR"],
+      [{ kind: "llm_http", status: 401 }, "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"],
+      [{ kind: "llm_http", status: 403 }, "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"],
+      [{ kind: "llm_http", status: 429 }, "AGENT_RUNTIME.LLM_API_RATE_LIMITED"],
+      [{ kind: "llm_http", status: 500 }, "AGENT_RUNTIME.LLM_API_ERROR"],
+      [{ kind: "llm_http" }, "AGENT_RUNTIME.LLM_API_ERROR"],
+      [{ kind: "llm_http", status: "401" }, "AGENT_RUNTIME.LLM_API_ERROR"],
+      [{ kind: "unknown", status: 401 }, "AGENT_RUNTIME.PROMPT_REJECTED"],
+      [{ peri: { type: "llm_api_error" } }, "AGENT_RUNTIME.PROMPT_REJECTED"],
+    ] as const;
 
-    await handler.createMessageHandler(shared)({
-      jsonrpc: "2.0",
-      id: 1,
-      error: {
-        code: -32000,
-        message: "An LLM API error occurred. Please check your API \nconfiguration.",
-      },
-    } as unknown as RelayMessage);
+    for (const [data, expectedType] of cases) {
+      const registry = new ConnectionRegistry();
+      const broadcaster = new YjsBroadcaster(registry);
+      const rcsSessionId = `rcs-${expectedType}-${JSON.stringify(data)}`;
+      const { docManager, chatDoc } = await createBoundDocs(rcsSessionId);
+      const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+      const shared = relayOn(rcsSessionId);
+      const turnId = docManager.registerUserMessage(rcsSessionId, "hello");
+      shared.pendingPromptIds = new Set([1]);
+      shared.pendingPromptTurns = new Map([[1, turnId]]);
 
-    expect(textFrames(ws)).toEqual([]);
-    expect(getEntry(chatDoc, `${turnId}:assistant`)?.get("error")).toMatchObject({
-      type: "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR",
-      id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
-      message: "An LLM API error occurred. Please check your API configuration.",
-    });
+      await handler.createMessageHandler(shared)({
+        jsonrpc: "2.0",
+        id: 1,
+        error: {
+          code: -32000,
+          message: "An LLM API error occurred. Please check your API configuration.",
+          data,
+        },
+      } as unknown as RelayMessage);
+
+      expect(getEntry(chatDoc, `${turnId}:assistant`)?.get("error")).toMatchObject({
+        type: expectedType,
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+      });
+    }
   });
 
   // 未登记的 JSON-RPC error（非 send_prompt 在途请求）不得收敛 turn：

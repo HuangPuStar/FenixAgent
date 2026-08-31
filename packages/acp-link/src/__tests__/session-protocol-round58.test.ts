@@ -201,12 +201,9 @@ describe("SessionManager round58 内存协议分支", () => {
   test("session/prompt 透传 Peri RequestError 信封", async () => {
     const { manager, connection, events } = createHarness();
     setActiveSession(manager);
-    connection.failure = new RequestError(-32000, "An LLM API error occurred. Please check your API configuration.", {
-      peri: {
-        type: "llm_api_error",
-        retryable: false,
-        provider: "example",
-      },
+    connection.failure = new RequestError(-32000, "LLM HTTP 429: rate limit exceeded", {
+      kind: "llm_http",
+      status: 429,
     });
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
 
@@ -223,13 +220,10 @@ describe("SessionManager round58 内存协议分支", () => {
             id: 7,
             error: {
               code: -32000,
-              message: "An LLM API error occurred. Please check your API configuration.",
+              message: "LLM HTTP 429: rate limit exceeded",
               data: {
-                peri: {
-                  type: "llm_api_error",
-                  retryable: false,
-                  provider: "example",
-                },
+                kind: "llm_http",
+                status: 429,
               },
             },
           },

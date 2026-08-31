@@ -97,8 +97,9 @@ describe("AcpDispatcher session/prompt", () => {
   test("prompt 原样转发 Peri RequestError", async () => {
     const conn = {
       async prompt() {
-        throw new RequestError(-32000, "Peri prompt failed", {
-          peri: { type: "llm_api_error", retryable: false },
+        throw new RequestError(-32000, "LLM HTTP 429: rate limit exceeded", {
+          kind: "llm_http",
+          status: 429,
         });
       },
     } as unknown as acp.ClientSideConnection;
@@ -117,8 +118,8 @@ describe("AcpDispatcher session/prompt", () => {
         id: 4,
         error: {
           code: -32000,
-          message: "Peri prompt failed",
-          data: { peri: { type: "llm_api_error", retryable: false } },
+          message: "LLM HTTP 429: rate limit exceeded",
+          data: { kind: "llm_http", status: 429 },
         },
       },
     ]);
