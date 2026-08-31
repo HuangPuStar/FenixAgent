@@ -15,8 +15,11 @@ import {
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
 
 const internalProvider: ProviderInfo = {
+  providerId: "provider-internal",
   id: "openai",
   name: "OpenAI",
+  kind: "direct",
+  gatewayType: null,
   protocol: "openai",
   keyHint: "***1234",
   baseURL: "https://internal.example.com",
@@ -34,8 +37,11 @@ const internalProvider: ProviderInfo = {
 };
 
 const externalProvider: ProviderInfo = {
+  providerId: "provider-external",
   id: "openai",
   name: "OpenAI Shared",
+  kind: "direct",
+  gatewayType: null,
   protocol: "openai",
   keyHint: "***5678",
   baseURL: "https://external.example.com",

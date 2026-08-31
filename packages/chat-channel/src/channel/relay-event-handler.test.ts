@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as Y from "yjs";
+import { getEntry } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
 import { YjsBroadcaster } from "./broadcaster";
 import { ConnectionRegistry } from "./connection-registry";
@@ -115,12 +116,14 @@ describe("RelayEventHandler", () => {
   test.each([
     ["error", "agent_error", "Agent request failed"],
     ["session_error", "session_error", "Agent session request failed"],
-  ])("redacts %s payloads before sending them to the current RCS session", async (messageType, code, message) => {
+  ])("redacts %s payloads before sending them to the current RCS session", async (messageType, _code, _message) => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
     const reports: Array<[string, unknown]> = [];
+    const logs: string[] = [];
     const handler = createRelayEvents(registry, broadcaster, [], {
       reportError: (context, error) => reports.push([context, error]),
+      log: (message) => logs.push(message),
     });
     const ws = createWs();
     registry.addClient("ws-1", createClient({ ws, agentStatusReceived: true }));
@@ -134,7 +137,20 @@ describe("RelayEventHandler", () => {
         { messageType, instanceId: "instance-1" },
       ],
     ]);
-    expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual({ type: "error", payload: { code, message } });
+    const frame = JSON.parse(textFrames(ws)[0] ?? "{}") as { payload: { type: string; id: string; message: string } };
+    expect(frame.payload.type).toBe(
+      messageType === "error" ? "AGENT_RUNTIME.REQUEST_FAILED" : "AGENT_RUNTIME.SESSION_FAILED",
+    );
+    expect(frame.payload.id).toMatch(/^err_[0-9a-f]{32}$/);
+    expect(frame.payload.message).toBe(
+      messageType === "error" ? "The Agent request failed." : "The Agent session failed.",
+    );
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: frame.payload.id,
+      errorType: frame.payload.type,
+    });
   });
 
   // 同一用户的不同 RCS 会话中，session/update 只能以当前 RCS 的 ACP session 过滤。
@@ -292,6 +308,8 @@ describe("RelayEventHandler", () => {
     const handler = createRelayEvents(registry, broadcaster, processed, {
       reportError: (message, error) => reports.push([message, error]),
     });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
     const shared = relayOn("rcs-1");
     // prompt 请求出口登记（session-channel send_prompt 分支）
     registerPrompt(shared, "turn-1");
@@ -306,7 +324,77 @@ describe("RelayEventHandler", () => {
     expect(getRelayRpcState(shared).pendingRpcRequests?.size).toBe(0);
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toContain("prompt rejected");
-    expect(reports[0]?.[1]).toEqual({ instanceId: "instance-1", code: -32000 });
+    expect(reports[0]?.[1]).toEqual({
+      instanceId: "instance-1",
+      code: -32000,
+      message: "No active session",
+    });
+    // Prompt 失败只附着到会话 turn，不发送会被 ChatPanel 渲染为顶部 banner 的 error 帧。
+    expect(textFrames(ws)).toEqual([]);
+  });
+
+  // Agent 原始错误可能包含凭证、URL、本机路径和超长内容；诊断日志应保留可定位文本，
+  // 但必须先脱敏、折叠空白并截断，公开错误仍维持稳定分类。
+  test("prompt rejection logs a bounded redacted diagnostic message", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const reports: Array<[string, unknown]> = [];
+    const handler = createRelayEvents(registry, broadcaster, [], {
+      reportError: (message, error) => reports.push([message, error]),
+    });
+    const shared = relayOn("rcs-1");
+    shared.pendingPromptIds = new Set([1]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      error: {
+        code: -32603,
+        message:
+          "Provider failed token=live-secret at https://provider.example/error from /Users/alice/project " +
+          "x".repeat(2_000),
+      },
+    } as unknown as RelayMessage);
+
+    expect(reports).toHaveLength(1);
+    const diagnostic = reports[0]?.[1] as Record<string, unknown>;
+    expect(diagnostic.code).toBe(-32603);
+    expect(diagnostic.message).toContain("Provider failed [REDACTED_SECRET]");
+    expect(diagnostic.message).toContain("[REDACTED_URL]");
+    expect(diagnostic.message).toContain("[REDACTED_PATH]");
+    expect(diagnostic.message).not.toContain("live-secret");
+    expect((diagnostic.message as string).length).toBeLessThanOrEqual(1_000);
+  });
+
+  // Peri 的已知 LLM API 配置错误映射为稳定公开 Type 并附着到当前会话；
+  // 传输换行不影响白名单匹配，且不得额外发送顶部 error 帧。
+  test("classifies the known Peri LLM API configuration error in the conversation turn", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, chatDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const ws = createWs();
+    registry.addClient("ws-1", createClient({ ws }));
+    const shared = relayOn("rcs-1");
+    const turnId = docManager.registerUserMessage("rcs-1", "hello");
+    shared.pendingPromptIds = new Set([1]);
+    shared.pendingPromptTurns = new Map([[1, turnId]]);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 1,
+      error: {
+        code: -32000,
+        message: "An LLM API error occurred. Please check your API \nconfiguration.",
+      },
+    } as unknown as RelayMessage);
+
+    expect(textFrames(ws)).toEqual([]);
+    expect(getEntry(chatDoc, `${turnId}:assistant`)?.get("error")).toMatchObject({
+      type: "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR",
+      id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+      message: "An LLM API error occurred. Please check your API configuration.",
+    });
   });
 
   // 未登记的 JSON-RPC error（非 send_prompt 在途请求）不得收敛 turn：
@@ -451,10 +539,10 @@ describe("RelayEventHandler", () => {
 
     expect(ws1.messages.length).toBeGreaterThanOrEqual(1);
     expect(ws2.messages).toHaveLength(0);
-    expect(JSON.parse(textFrames(ws1)[0] ?? "{}")).toEqual({
-      type: "error",
-      payload: { code: "agent_error", message: "Agent request failed" },
-    });
+    const frame = JSON.parse(textFrames(ws1)[0] ?? "{}") as { payload: { type: string; id: string; message: string } };
+    expect(frame.payload.type).toBe("AGENT_RUNTIME.REQUEST_FAILED");
+    expect(frame.payload.id).toMatch(/^err_[0-9a-f]{32}$/);
+    expect(frame.payload.message).toBe("The Agent request failed.");
   });
 
   // 同一用户的不同 RCS 会话中，session/new 只能更新当前 RCS 的 ACP session ID。
@@ -970,8 +1058,8 @@ describe("RelayEventHandler replay window", () => {
 // rcsSessionId 的 Chat Doc、Session Doc 热缓存与广播订阅；新连接创建全新投影，
 // 绝不加载已删除的旧 Y.Doc（PRD 8.2 / issue C6 验收）。
 describe("RelayEventHandler relay_closed cleanup", () => {
-  // 本地实例的 relay 意外关闭：触发实例级清理（注入）、客户端收到 agent_connection_lost
-  // 并关闭 1011（允许自动重连）、Chat/Session Doc 与广播订阅全部销毁。
+  // 本地实例的 relay 意外关闭：触发实例级清理（注入），并以同一公开错误通知日志、Y.Doc 与客户端；
+  // 随后关闭 1011（允许自动重连）、销毁 Chat/Session Doc 与广播订阅。
   test("relay_closed disposes realtime resources and notifies every client of the RCS session", async () => {
     const registry = new ConnectionRegistry();
     const broadcaster = new YjsBroadcaster(registry);
@@ -988,9 +1076,17 @@ describe("RelayEventHandler relay_closed cleanup", () => {
     broadcaster.registerYjsDocListener(chatDoc, "chat:rcs-1");
     broadcaster.registerYjsDocListener(sessionDoc, "session:rcs-1");
     const stops: string[] = [];
+    const logs: string[] = [];
+    const processed: Array<{ type: string; publicError?: unknown }> = [];
+    const originalProcess = docManager.processNormalizedEvent.bind(docManager);
+    docManager.processNormalizedEvent = (rcsSessionId, event) => {
+      processed.push({ type: event.type, publicError: event.update.publicError });
+      return originalProcess(rcsSessionId, event);
+    };
     const handler = createRelayEvents(registry, broadcaster, [], {
       docManager,
       terminateLocalDeadInstance: (instanceId) => stops.push(instanceId),
+      log: (message) => logs.push(message),
     });
     const ws1 = createWs();
     const ws2 = createWs();
@@ -1003,13 +1099,25 @@ describe("RelayEventHandler relay_closed cleanup", () => {
     } as unknown as RelayMessage);
 
     expect(stops).toEqual(["instance-1"]);
+    const frame = JSON.parse(textFrames(ws1)[0] ?? "{}") as {
+      type: string;
+      payload: { type: string; id: string; message: string };
+    };
+    expect(frame).toMatchObject({
+      type: "error",
+      payload: { type: "AGENT_RUNTIME.DISCONNECTED", message: "The Agent disconnected." },
+    });
     for (const ws of [ws1, ws2]) {
-      expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual({
-        type: "error",
-        payload: { code: "agent_connection_lost", message: "Agent connection lost" },
-      });
+      expect(JSON.parse(textFrames(ws)[0] ?? "{}")).toEqual(frame);
       expect(ws.closed).toEqual([[1011, "relay handle closed"]]);
     }
+    expect(processed).toContainEqual({ type: "turn_failed", publicError: frame.payload });
+    expect(JSON.parse(logs[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: frame.payload.id,
+      errorType: frame.payload.type,
+      stage: "relay.connection_closed",
+    });
     expect(unregistered).toContain("chat:rcs-1");
     expect(unregistered).toContain("session:rcs-1");
     // 热缓存删除：内存中不再有 Chat / Session Doc

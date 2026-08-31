@@ -86,8 +86,35 @@ export function createSuccessResponse(id: number | string, result: unknown): Jso
   return { jsonrpc: "2.0", id, result };
 }
 
-export function createErrorResponse(id: number | string | null, code: number, message: string): JsonRpcErrorResponse {
-  return { jsonrpc: "2.0", id, error: { code, message } };
+export function createErrorResponse(
+  id: number | string | null,
+  code: number,
+  message: string,
+  data?: unknown,
+): JsonRpcErrorResponse {
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: { code, message, ...(data !== undefined ? { data } : {}) },
+  };
+}
+
+/**
+ * 将 SDK 抛出的 JSON-RPC 错误重新关联到当前外层请求 id，同时保留扩展 code/message/data。
+ * 非结构化运行时异常使用调用方提供的内部错误文案降级。
+ */
+export function createForwardedErrorResponse(
+  id: number | string | null,
+  error: unknown,
+  fallbackMessage: string,
+): JsonRpcErrorResponse {
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as Record<string, unknown>;
+    if (Number.isInteger(candidate.code) && typeof candidate.message === "string") {
+      return createErrorResponse(id, candidate.code as number, candidate.message, candidate.data);
+    }
+  }
+  return createErrorResponse(id, -32603, fallbackMessage);
 }
 
 export function isJsonRpcMessage(msg: unknown): msg is JsonRpcMessage {

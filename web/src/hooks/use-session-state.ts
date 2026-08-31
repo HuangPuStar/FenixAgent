@@ -18,7 +18,7 @@ import type {
   SessionStateSnapshot,
   SessionStatus,
 } from "@fenix/chat-channel";
-import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
+import { createYjsStore, isPublicError, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
 import { chatDocEntriesToStructuredMessages, sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
@@ -129,13 +129,9 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   };
 }
 
-/** 规范化 Session Doc agent.publicError 为展示层错误（message 为空视为无错误） */
+/** Session Doc 仅接受完整公开错误，ViewModel 不补字段或重分类。 */
 function normalizePublicError(raw: unknown): PublicErrorInfo | null {
-  if (!raw || typeof raw !== "object") return null;
-  const record = raw as Record<string, unknown>;
-  const code = typeof record.code === "string" && record.code ? record.code : "agent_error";
-  const message = typeof record.message === "string" && record.message ? record.message : "";
-  return message ? { code, message } : null;
+  return isPublicError(raw) ? raw : null;
 }
 
 // ── 合并快照 ──

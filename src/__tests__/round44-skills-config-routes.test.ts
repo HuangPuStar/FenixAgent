@@ -74,6 +74,8 @@ function installConfigStubs() {
     listSkills: async () => [],
     getSkill: async () => null,
     getSkillByResourceKey: async () => null,
+    setSkillPublicReadable: async (_ctx, name, publicReadable) =>
+      skill({ name, resourceAccess: { ...skill().resourceAccess, publicReadable } }),
     upsertSkill: async () => "skill-1",
     deleteSkill: async () => true,
   });
@@ -306,6 +308,29 @@ describe("round44 Skill 配置路由", () => {
     expect(response.status).toBe(200);
     expect(name).toBe("renamed");
     expect(JSON.stringify(await readJson(response))).toContain('"name":"renamed"');
+  });
+
+  // 公开状态走独立权限接口，不得复用内容保存路由。
+  test("公开状态更新不写入 SKILL.md", async () => {
+    let writeCalled = false;
+    let receivedPublicReadable: boolean | undefined;
+    _deps.skillFs.writeSkillMd = mock(async () => {
+      writeCalled = true;
+      return "/skills/org-1/demo/SKILL.md";
+    });
+    stubConfigPg({
+      setSkillPublicReadable: async (_ctx, name, publicReadable) => {
+        receivedPublicReadable = publicReadable;
+        return skill({ name, resourceAccess: { ...skill().resourceAccess, publicReadable } });
+      },
+    });
+
+    const response = await jsonRequest("/config/skills/demo/access", "PUT", { publicReadable: true });
+
+    expect(response.status).toBe(200);
+    expect(receivedPublicReadable).toBe(true);
+    expect(writeCalled).toBe(false);
+    expect(JSON.stringify(await readJson(response))).toContain('"publicReadable":true');
   });
 
   // 删除目标不存在时必须明确反馈 404，不能伪造幂等成功。

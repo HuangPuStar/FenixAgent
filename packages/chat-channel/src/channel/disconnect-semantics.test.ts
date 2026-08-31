@@ -144,7 +144,7 @@ describe("断链语义一：前端断开仅释放连接级资源，重连同步�
 
 describe("断链语义二：relay_closed 删除全部实时资源，新实例绝不加载旧 Y.Doc", () => {
   // relay_closed 全链路（gateway + relay-event-handler + docManager）：
-  // 同一 rcsSessionId 的所有客户端收到 agent_connection_lost 并关闭 1011，
+  // 同一 rcsSessionId 的所有客户端收到 AGENT_RUNTIME.DISCONNECTED 并关闭 1011，
   // relay handle 与热缓存销毁；随后新连接创建全新 Doc（旧 projectionVersion 不残留）。
   test("instance relay loss tears down all realtime resources and a new connection starts fresh", async () => {
     const { registry, docManager, gateway, getListener, getConnectCalls } = createRealStack();
@@ -167,7 +167,11 @@ describe("断链语义二：relay_closed 删除全部实时资源，新实例绝
         .find((m) => m.type === "error");
       expect(errorFrame).toMatchObject({
         type: "error",
-        payload: { code: "agent_connection_lost" },
+        payload: {
+          type: "AGENT_RUNTIME.DISCONNECTED",
+          id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+          message: "The Agent disconnected.",
+        },
       });
       expect(ws.closed).toEqual([[1011, "relay handle closed"]]);
     }

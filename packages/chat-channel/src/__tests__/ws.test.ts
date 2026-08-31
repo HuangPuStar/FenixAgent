@@ -214,9 +214,9 @@ describe("createYjsWsClient", () => {
     expect(timers).toHaveLength(0);
   });
 
-  // 服务端 error 帧必须透传安全的 code 和 message，不能被当作 Yjs update 丢弃。
-  test("forwards server error frames to onError", () => {
-    const errors: Array<{ code?: string; message?: string }> = [];
+  // 服务端 error 帧仅在完整且匹配受控注册表时透明转发。
+  test("forwards classified server error frames to onError", () => {
+    const errors: Array<{ type: string; id: string; message: string }> = [];
     const client = createYjsWsClient({
       url: "ws://example.test/acp/yjs/agent_1",
       onYjsUpdate: () => {},
@@ -224,12 +224,14 @@ describe("createYjsWsClient", () => {
     });
     client.connect();
 
-    FakeWebSocket.instances[0]?.receiveFromServer({
-      type: "error",
-      payload: { code: "machine_unavailable", message: "Agent connection error" },
-    });
+    const publicError = {
+      type: "AGENT_RUNTIME.REQUEST_FAILED",
+      id: "err_00000000000000000000000000000001",
+      message: "The Agent request failed.",
+    } as const;
+    FakeWebSocket.instances[0]?.receiveFromServer({ type: "error", payload: publicError });
 
-    expect(errors).toEqual([{ code: "machine_unavailable", message: "Agent connection error" }]);
+    expect(errors).toEqual([publicError]);
   });
 
   // action_error 帧必须透传完整 ActionError 对象给 onActionError，
@@ -246,25 +248,48 @@ describe("createYjsWsClient", () => {
     });
     client.connect();
 
+    const publicError = {
+      type: "ACTION.RATE_LIMITED",
+      id: "err_00000000000000000000000000000002",
+      message: "Too many actions were submitted.",
+    } as const;
     FakeWebSocket.instances[0]?.receiveFromServer({
       type: "action_error",
       commandId: "c1",
-      code: "RATE_LIMITED",
-      message: "too many requests",
-      retryable: true,
+      error: publicError,
     });
 
-    expect(actionErrors).toEqual([
-      {
-        type: "action_error",
-        commandId: "c1",
-        code: "RATE_LIMITED",
-        message: "too many requests",
-        retryable: true,
-      },
-    ]);
+    expect(actionErrors).toEqual([{ type: "action_error", commandId: "c1", error: publicError }]);
     expect(yjsUpdates).toHaveLength(0);
     expect(wsErrors).toHaveLength(0);
+  });
+
+  // 非法 action_error 信封不得越过不可信 WebSocket 边界进入 UI。
+  test("rejects action_error frames with invalid public errors", () => {
+    const actionErrors: ActionError[] = [];
+    const client = createYjsWsClient({
+      url: "ws://example.test/acp/yjs/agent_1",
+      onYjsUpdate: () => {},
+      onActionError: (error) => actionErrors.push(error),
+    });
+    client.connect();
+
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "action_error",
+      commandId: "c1",
+      error: { type: "ACTION.FAILED", id: "invalid", message: "raw internal error" },
+    });
+    FakeWebSocket.instances[0]?.receiveFromServer({
+      type: "action_error",
+      commandId: 7,
+      error: {
+        type: "ACTION.FAILED",
+        id: "err_00000000000000000000000000000003",
+        message: "The action failed.",
+      },
+    });
+
+    expect(actionErrors).toHaveLength(0);
   });
 
   // 未注册 onActionError 时 action_error 帧静默忽略（不抛错、不影响其他分支）。

@@ -32,6 +32,7 @@ import {
   importSkillDirectories,
   listSkills,
   setSkill,
+  setSkillPublicReadable,
 } from "../../../services/skill";
 import { assertValidSkillName, createSkillArchiveBuffer, getSkillSourceDir } from "../../../services/skill-fs";
 
@@ -56,6 +57,10 @@ interface UpdateSkillBody {
     metadata?: Record<string, string>;
     publicReadable?: boolean;
   };
+}
+
+interface UpdateSkillAccessBody {
+  publicReadable?: boolean;
 }
 
 interface UploadManifestEntry {
@@ -126,6 +131,23 @@ async function handleUpdate(
     return errorFn(400, configValidationError("Missing required field: data.content"));
   }
   const result = await setSkill(ctx, name, data);
+  return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
+}
+
+/** 仅更新 Skill 的公开读取权限，不触碰 SKILL.md。 */
+async function handleUpdateAccess(
+  ctx: AuthContext,
+  name: string,
+  body: UpdateSkillAccessBody,
+  errorFn: (status: number, body: unknown) => Response,
+) {
+  if (typeof body.publicReadable !== "boolean") {
+    return errorFn(400, configValidationError("Missing required field: publicReadable"));
+  }
+  const result = await setSkillPublicReadable(ctx, name, body.publicReadable);
+  if (!result) {
+    return errorFn(404, configNotFound(`Skill '${name}' not found`));
+  }
   return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
 }
 
@@ -412,7 +434,43 @@ app.put(
     detail: {
       tags: ["SkillConfig"],
       summary: "更新已有 Skill",
-      description: "更新指定 Skill 的配置内容、描述、元数据和公开可读性。",
+      description: "更新指定 Skill 的配置内容、描述和元数据。公开读取权限请使用独立 access 接口。",
+      parameters: [
+        {
+          name: "name",
+          in: "path",
+          required: true,
+          description: "要更新的 Skill 名称。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
+
+/** 更新 Skill 公开读取权限（PUT /config/skills/:name/access） */
+app.put(
+  "/config/skills/:name/access",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, params, body, error }: any) => {
+    const authCtx = store.authContext!;
+    const name = params.name as string;
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
+    return (await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, result) =>
+      error(status, result),
+    )) as any;
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: UpdateSkillResponseSchema,
+      400: WebErrSchema,
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["SkillConfig"],
+      summary: "更新 Skill 公开读取权限",
+      description: "仅更新资源公开读取权限，不读取、解析或改写 SKILL.md。",
       parameters: [
         {
           name: "name",

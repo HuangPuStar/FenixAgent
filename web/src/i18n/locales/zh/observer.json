@@ -5,6 +5,175 @@
     "title": "管理面板",
     "backToConsole": "返回主控制台"
   },
+  "modelGateway": {
+    "nav": "模型网关",
+    "title": "模型网关",
+    "subtitle": "统一发布网关模型、管理用户预算并查看全系统消耗。",
+    "openLiteLlm": "打开 LiteLLM",
+    "models": "模型配置",
+    "tabs": {
+      "overview": "概览",
+      "models": "模型",
+      "budgets": "配额管理",
+      "usage": "消耗统计"
+    },
+    "budgets": "全局用户预算",
+    "query": "查询",
+    "queryHint": "点击“查询”后读取统计数据。",
+    "totalSpend": "总消耗",
+    "unlimited": "未设置",
+    "selectAll": "全选用户",
+    "amount": "金额",
+    "once": "一次性",
+    "applySelected": "批量设置",
+    "check": "检查状态",
+    "connectionCheck": {
+      "succeeded": "连接检查完成：LiteLLM 可访问，发现 {{count}} 个模型。",
+      "failed": "连接检查失败：{{message}}",
+      "requestFailed": "连接检查请求失败，请稍后重试。"
+    },
+    "sync": "同步模型",
+    "checkHint": "点击“检查状态”读取 LiteLLM 模型目录。",
+    "synced": "已同步",
+    "pending": "待同步",
+    "unknown": "无法获取网关状态",
+    "requestError": "模型网关请求失败，请检查 LiteLLM 和数据库服务状态",
+    "syncDone": "模型同步完成",
+    "modelsPage": {
+      "title": "模型配置",
+      "description": "模型配置在 LiteLLM 管理后台完成，Fenix 负责检查并同步模型目录。",
+      "litellmConfig": {
+        "title": "模型配置在 LiteLLM 管理后台完成",
+        "description": "配置完成后返回本页，先检查状态，再同步模型，即可同步到 Gateway Provider。",
+        "action": "前往 LiteLLM 配置"
+      },
+      "searchPlaceholder": "搜索模型",
+      "filters": {
+        "all": "全部状态",
+        "pending": "待同步变更",
+        "synced": "已同步"
+      },
+      "columns": {
+        "model": "模型",
+        "source": "来源",
+        "syncStatus": "同步状态"
+      },
+      "noMatches": "暂无匹配模型，请先检查状态。",
+      "providerBaseUrlChanged": "Gateway Provider 公开地址已变更，等待同步。",
+      "catalogChanges": "发现 {{count}} 项目录差异；同步前不会修改 Fenix 模型配置。"
+    },
+    "budgetsPage": {
+      "defaultTitle": "全局新用户默认预算",
+      "defaultAmountLabel": "默认预算金额",
+      "defaultDurationLabel": "默认预算周期",
+      "duration30d": "30 天",
+      "filters": {
+        "all": "全部状态",
+        "pending": "尚未生效",
+        "active": "已生效",
+        "exhausted": "已耗尽"
+      },
+      "defaultHint": "由服务端默认配置决定，只影响后续首次使用网关的用户",
+      "searchPlaceholder": "搜索用户名、邮箱或手机号",
+      "organizationLabel": "组织",
+      "allOrganizations": "全部组织",
+      "allUsers": "全部用户",
+      "selectedCount": "已选 {{count}} 位",
+      "resetBudget": "重置额度",
+      "resetTitle": "重置用户已消耗额度",
+      "resetDescription": "将 {{count}} 位用户的已消耗额度清零，不会修改预算金额和周期。",
+      "resetSuccess": "已重置所选用户的已消耗额度",
+      "resetError": "重置额度失败，请重试。",
+      "edit": "设置",
+      "budgetScope": "预算在所有组织、Agent 和模型之间全局共享。",
+      "singleUserEditing": "已进入单用户编辑：修改上方金额和周期后点击“批量设置”保存。",
+      "editTitle": "设置用户全局预算",
+      "confirmSet": "设置",
+      "batchTitle": "批量设置用户全局预算",
+      "dialogHint": "已选择 {{count}} 位用户；预算在所有组织、Agent 和模型之间共享。",
+      "cancel": "取消",
+      "columns": {
+        "user": "用户",
+        "policy": "预算策略",
+        "spent": "已消耗",
+        "remaining": "剩余额度",
+        "progress": "使用进度",
+        "resetAt": "重置时间"
+      },
+      "activeBudget": "已生效",
+      "defaultPreview": "当前默认预览",
+      "startsOnFirstUse": "首次使用后生效",
+      "neverResets": "永不重置",
+      "resetNotScheduled": "等待重置时间",
+      "exhausted": "已耗尽",
+      "noMatches": "暂无匹配用户",
+      "selectUser": "选择{{name}}",
+      "pagination_total": "共 {{total}} 位用户",
+      "pagination_page_size": "{{size}} 位/页"
+    },
+    "usagePage": {
+      "querying": "查询中…",
+      "ranges": {
+        "last30d": "最近 30 天",
+        "last7d": "最近 7 天",
+        "custom": "自定义日期"
+      },
+      "filters": {
+        "user": "用户",
+        "organization": "组织",
+        "agent": "Agent",
+        "model": "模型"
+      },
+      "allSubjects": "全部{{subject}}",
+      "userOption": "{{name}}（{{email}}）",
+      "searchSubject": "搜索{{subject}}",
+      "noMatches": "暂无匹配项",
+      "rangeHint": "支持任意起止日期，单次最长 90 天；更长周期建议后续使用离线报表。",
+      "metrics": {
+        "spend": "总消耗金额",
+        "gatewayOnly": "仅当前 Gateway Provider",
+        "tokens": "总 Token",
+        "tokenDetail": "输入 {{prompt}} · 输出 {{completion}}",
+        "requests": "请求数",
+        "activeAgents": "活跃 Agent",
+        "coveredUsers": "覆盖 {{count}} 位用户"
+      },
+      "breakdowns": {
+        "model": "按模型",
+        "organization": "按组织",
+        "user": "按用户",
+        "agent": "按 Agent"
+      },
+      "noData": "暂无数据"
+    },
+    "overview": {
+      "recent7dSpend": "最近 7 天总消耗",
+      "onlyGateway": "仅模型网关",
+      "tokenSummary": "输入 {{prompt}} · 输出 {{completion}} Token",
+      "activeUsers": "活跃用户",
+      "activeUsersFoot7d": "近 7 天有调用",
+      "configuredModels": "已配置模型",
+      "modelsSynced": "Gateway Provider 已同步",
+      "modelsPending": "等待检查同步状态",
+      "usageTrend": "消耗趋势",
+      "recent7dGateway": "最近 7 天 · 仅模型网关",
+      "amountUsd": "金额（USD）",
+      "trendPoint": "{{date}}：{{spend}}",
+      "noUsage": "暂无消耗数据",
+      "gatewayProvider": "Gateway Provider",
+      "connected": "连接正常",
+      "notChecked": "未检查",
+      "owner": "所有者",
+      "gatewayType": "网关类型",
+      "connectionAddress": "连接地址",
+      "defaultProviderName": "Fenix 模型网关",
+      "manageModels": "管理模型配置",
+      "refreshStatus": "刷新状态",
+      "loadFailed": "模型网关数据加载失败",
+      "gatewayTypes": { "litellm": "LiteLLM OSS" }
+    },
+    "change": { "added": "新增", "updated": "更新", "removed": "删除" }
+  },
   "login": {
     "title": "需要 Master Key",
     "description": "输入系统 master key（RCS_SYSTEM_API_KEYS）后进入观察面板。key 仅存于 sessionStorage，不落日志。",

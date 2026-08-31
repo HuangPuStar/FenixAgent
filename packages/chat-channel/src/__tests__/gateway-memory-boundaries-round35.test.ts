@@ -189,9 +189,18 @@ describe("Gateway 内存协议、状态、错误、隔离与清理", () => {
 
     expect(ws.closed).toEqual([{ code, reason }]);
     expect(harness.registry.getClient("ws-error")).toBeUndefined();
-    const expectedMessage =
-      _name === "环境不存在" || _name === "环境未授权" ? "Environment not found" : "Agent connection error";
-    expect(jsonMessages(ws)[0]).toMatchObject({ type: "error", payload: { message: expectedMessage } });
+    const expectedType =
+      _name === "环境不存在"
+        ? "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE"
+        : _name === "环境未授权"
+          ? "ACTION.FORBIDDEN"
+          : _name === "离线机器"
+            ? "CONTROL_PLANE.MACHINE_UNAVAILABLE"
+            : _name === "环境查询异常"
+              ? "INTERNAL.UNCLASSIFIED"
+              : "CONTROL_PLANE.INSTANCE_START_FAILED";
+    expect(jsonMessages(ws)[0]).toMatchObject({ type: "error", payload: { type: expectedType } });
+    expect(JSON.stringify(jsonMessages(ws)[0])).not.toContain(reason);
   });
 
   test("超过连接配额时拒绝连接且不创建 relay", async () => {

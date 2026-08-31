@@ -64,6 +64,7 @@ export {
   getSkillById,
   getSkillByResourceKey,
   listSkills,
+  setSkillPublicReadable,
   upsertSkill,
 } from "./skill";
 export type {

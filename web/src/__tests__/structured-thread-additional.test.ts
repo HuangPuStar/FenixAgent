@@ -127,7 +127,11 @@ describe("structuredToThreadEntries 扩展纯逻辑", () => {
 
   // 公共错误的空 message 仍由上游决定，转换层不得补充内部诊断信息。
   test("保留空消息的公开错误", () => {
-    const publicError = { code: "SAFE_ERROR", message: "" };
+    const publicError = {
+      type: "ACTION.FAILED" as const,
+      id: "err_00000000000000000000000000000001",
+      message: "The action failed.",
+    };
     expect(onlyTool(tool({ status: "error", publicError })).publicError).toBe(publicError);
   });
 
@@ -194,7 +198,11 @@ describe("structuredToThreadEntries 扩展纯逻辑", () => {
 
   // assistant 错误对象由脱敏边界生成，转换层必须原样传递。
   test("保留 assistant 公开错误对象", () => {
-    const error = { code: "AGENT_ERROR", message: "请求失败" };
+    const error = {
+      type: "AGENT_RUNTIME.REQUEST_FAILED" as const,
+      id: "err_00000000000000000000000000000001",
+      message: "The Agent request failed.",
+    };
     const entry = structuredToThreadEntries([
       { type: "assistant_message", id: "a-error", chunks: [], seq: 1, ts: 1, error },
     ])[0];

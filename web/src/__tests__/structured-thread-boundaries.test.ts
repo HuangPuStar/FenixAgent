@@ -83,7 +83,11 @@ describe("structuredToThreadEntries 边界转换", () => {
 
   // assistant 脱敏错误应挂在对应消息上，供用户看到可安全展示的失败原因。
   test("保留 assistant 公开错误", () => {
-    const error = { code: "AGENT_FAILED", message: "执行失败" };
+    const error = {
+      type: "AGENT_RUNTIME.REQUEST_FAILED" as const,
+      id: "err_00000000000000000000000000000001",
+      message: "The Agent request failed.",
+    };
     const entries = structuredToThreadEntries([
       { type: "assistant_message", id: "assistant-1", chunks: [], seq: 1, ts: 1, error },
     ]);
@@ -146,7 +150,11 @@ describe("structuredToThreadEntries 边界转换", () => {
 
   // 工具公开错误必须在卡片层保留，且不从其他字段推断内部错误。
   test("保留工具公开错误", () => {
-    const publicError = { code: "TOOL_FAILED", message: "命令失败" };
+    const publicError = {
+      type: "ACTION.FAILED" as const,
+      id: "err_00000000000000000000000000000001",
+      message: "The action failed.",
+    };
     const entry = structuredToThreadEntries([{ ...tool("error"), publicError }])[0];
     if (entry?.type !== "tool_call") throw new Error("expected tool call entry");
     expect(entry.toolCall.publicError).toEqual(publicError);

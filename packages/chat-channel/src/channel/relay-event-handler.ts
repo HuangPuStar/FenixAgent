@@ -17,9 +17,11 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
+import { createPublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import {
   type NormalizedEvent,
   type NormalizedEventType,
+  type PublicError,
   SESSION_BOUND_NOTIFICATION_METHODS,
   TURN_TERMINAL_STATUSES,
   type TurnStatus,
@@ -42,6 +44,46 @@ import {
   type SharedRelay,
   settlePendingRpc,
 } from "./connection-types";
+
+/** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
+function agentRuntimeError(
+  type: PublicErrorType,
+  stage: string,
+  log: ((message: string) => void) | undefined,
+): PublicError {
+  const error = createPublicError(type);
+  log?.(serializePublicErrorLog(error, stage));
+  return error;
+}
+
+const LLM_API_CONFIGURATION_ERROR_MESSAGE = "An LLM API error occurred. Please check your API configuration.";
+const MAX_UPSTREAM_ERROR_LOG_LENGTH = 1_000;
+
+function sanitizeUpstreamErrorMessage(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const sanitized = raw
+    .replace(/\b(?:https?|wss?):\/\/[^\s<>'"`]+/giu, "[REDACTED_URL]")
+    .replace(
+      /\b(?:bearer\s+)?[A-Za-z0-9_-]*(?:token|secret|password|api[_-]?key)[A-Za-z0-9_-]*\s*[:=]\s*[^\s,;]+/giu,
+      "[REDACTED_SECRET]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/giu, "[REDACTED_SECRET]")
+    .replace(
+      /(?:^|\s)(?:~\/|\/(?:Users|home|var|tmp|private|etc|opt|srv|workspace)\/)[^\s<>'"`]+/gu,
+      (value) => `${value.startsWith(" ") ? " " : ""}[REDACTED_PATH]`,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) return undefined;
+  return Array.from(sanitized).slice(0, MAX_UPSTREAM_ERROR_LOG_LENGTH).join("");
+}
+
+function classifyPromptRejection(error: Record<string, unknown> | undefined): PublicErrorType {
+  const message = typeof error?.message === "string" ? error.message.replace(/\s+/g, " ").trim() : "";
+  return message === LLM_API_CONFIGURATION_ERROR_MESSAGE
+    ? "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"
+    : "AGENT_RUNTIME.PROMPT_REJECTED";
+}
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
@@ -223,7 +265,13 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
+      const publicError = agentRuntimeError("AGENT_RUNTIME.REQUEST_FAILED", "relay.agent_error", this.dependencies.log);
+      this.sendSafeErrorToRcsSession(shared, publicError);
+      this.dispatch(shared, {
+        type: "turn_failed",
+        update: { publicError },
+        content: null,
+      });
       return;
     }
 
@@ -232,7 +280,17 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
+      const publicError = agentRuntimeError(
+        "AGENT_RUNTIME.SESSION_FAILED",
+        "relay.session_error",
+        this.dependencies.log,
+      );
+      this.sendSafeErrorToRcsSession(shared, publicError);
+      this.dispatch(shared, {
+        type: "turn_failed",
+        update: { publicError },
+        content: null,
+      });
       return;
     }
 
@@ -321,14 +379,21 @@ export class RelayEventHandler {
       if (isCurrentRelay(relay)) relaysBySession.set(relay.rcsSessionId, relay);
     }
     for (const relay of relaysBySession.values()) {
+      const publicError = agentRuntimeError(
+        "AGENT_RUNTIME.DISCONNECTED",
+        "relay.connection_closed",
+        this.dependencies.log,
+      );
+      this.dispatch(relay, {
+        type: "turn_failed",
+        update: { publicError },
+        content: null,
+      });
       registry.forEachByRcsSession(relay.rcsSessionId, (entry) => {
         try {
           this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
             type: "error",
-            payload: {
-              code: "agent_connection_lost",
-              message: "Agent connection lost",
-            },
+            payload: publicError,
           });
         } catch {
           /* ignore */
@@ -536,7 +601,42 @@ export class RelayEventHandler {
     if (rpcId === undefined || rpcId === null) return;
 
     const owner = beginRpcResponse(shared, rpcId);
-    if (!owner) return;
+    if (!owner) {
+      const legacyPromptState = shared as SharedRelay & {
+        pendingPromptIds?: Set<number | string>;
+        pendingPromptTurns?: Map<number | string, string>;
+        pendingPromptTimeouts?: Map<number | string, ReturnType<typeof setTimeout>>;
+      };
+      if (rpcCheck.error && legacyPromptState.pendingPromptIds?.has(rpcId)) {
+        legacyPromptState.pendingPromptIds.delete(rpcId);
+        const timer = legacyPromptState.pendingPromptTimeouts?.get(rpcId);
+        if (timer) clearTimeout(timer);
+        legacyPromptState.pendingPromptTimeouts?.delete(rpcId);
+        const turnId = legacyPromptState.pendingPromptTurns?.get(rpcId);
+        legacyPromptState.pendingPromptTurns?.delete(rpcId);
+        const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
+        const diagnosticMessage = sanitizeUpstreamErrorMessage(rpcError?.message);
+        this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
+          instanceId: shared.instanceId,
+          code: rpcError?.code,
+          ...(diagnosticMessage ? { message: diagnosticMessage } : {}),
+        });
+        if (turnId) {
+          const publicError = agentRuntimeError(
+            classifyPromptRejection(rpcError),
+            "relay.prompt_response",
+            this.dependencies.log,
+          );
+          this.dispatch(shared, {
+            type: "turn_failed",
+            update: { publicError },
+            content: null,
+            turnId,
+          });
+        }
+      }
+      return;
+    }
     const processing = this.processOwnedResponse(shared, raw, msgType, rpcCheck, owner);
     owner.responsePromise = processing;
     try {
@@ -557,14 +657,21 @@ export class RelayEventHandler {
     if (rpcCheck.error) {
       if (owner.owner.kind === "prompt") {
         const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
+        const diagnosticMessage = sanitizeUpstreamErrorMessage(rpcError?.message);
         this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
           instanceId: shared.instanceId,
           code: rpcError?.code,
+          ...(diagnosticMessage ? { message: diagnosticMessage } : {}),
         });
         if (owner.owner.turnId) {
+          const publicError = agentRuntimeError(
+            classifyPromptRejection(rpcError),
+            "relay.prompt_response",
+            this.dependencies.log,
+          );
           this.dispatchReplayAware(shared, {
             type: "turn_failed",
-            update: { error: "Agent request failed" },
+            update: { publicError },
             content: null,
             turnId: owner.owner.turnId,
           });
@@ -859,19 +966,24 @@ export class RelayEventHandler {
     });
     // 空 prompt 的 null 所有权只消费请求，不得回退到响应时的 active turn。
     if (!turnId) return;
+    const publicError = agentRuntimeError(
+      "AGENT_RUNTIME.PROMPT_TIMEOUT",
+      "relay.prompt_timeout",
+      this.dependencies.log,
+    );
     this.dispatchReplayAware(shared, {
       type: "turn_failed",
-      update: { error: "Agent request failed" },
+      update: { publicError },
       content: null,
       turnId,
     });
   }
 
-  private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
+  private sendSafeErrorToRcsSession(shared: SharedRelay, error: PublicError): void {
     this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
       this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
         type: "error",
-        payload: { code, message },
+        payload: error,
       });
     });
   }

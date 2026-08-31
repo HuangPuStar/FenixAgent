@@ -28,6 +28,7 @@ import {
   groupUploadFiles as _groupUploadFiles,
   parseFrontmatter as _parseFrontmatter,
   readSkillDetailFromMd as _readSkillDetailFromMd,
+  readSkillDocumentFromMd as _readSkillDocumentFromMd,
   resolveImportPlan as _resolveImportPlan,
   restoreFromBackup as _restoreFromBackup,
   writeImportFiles as _writeImportFiles,
@@ -144,7 +145,7 @@ function skillArchivePath(organizationId: string, name: string): string {
 }
 
 /** 过滤 metadata 中的 name 和 description 字段 */
-function stripNameAndDescription(metadata: Record<string, string>): Record<string, string> {
+function stripNameAndDescription<T>(metadata: Record<string, T>): Record<string, T> {
   return Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== "name" && k !== "description"));
 }
 
@@ -231,6 +232,28 @@ export async function getSkillById(ctx: AuthContext, id: string): Promise<SkillD
   };
 }
 
+/**
+ * 更新 Skill 的公开读取权限，不读取或改写 SKILL.md。
+ */
+export async function setSkillPublicReadable(
+  ctx: AuthContext,
+  name: string,
+  publicReadable: boolean,
+): Promise<SkillInfo | null> {
+  const safeName = _deps.skillFs.assertValidSkillName(name);
+  const meta = await _deps.configPg.setSkillPublicReadable(ctx, safeName, publicReadable);
+  if (!meta) return null;
+
+  return {
+    id: meta.id,
+    name: meta.name,
+    enabled: true,
+    description: meta.description ?? "",
+    path: skillContentPath(resolveSkillSourceOrganizationId(meta, ctx.organizationId), meta.name),
+    resourceAccess: meta.resourceAccess,
+  };
+}
+
 export async function setSkill(
   ctx: AuthContext,
   name: string,
@@ -240,6 +263,9 @@ export async function setSkill(
   const normalizedSkillData = normalizeSkillWriteData(skillData);
   const safeName = _deps.skillFs.assertValidSkillName(name);
   const skillDir = skillSourceDir(ctx.organizationId, safeName);
+  const existingDocument = await _readSkillDocumentFromMd(skillContentPath(ctx.organizationId, safeName));
+  const preservedMetadata = stripNameAndDescription(existingDocument?.metadata ?? {});
+  const writeMetadata = { ...preservedMetadata, ...(normalizedSkillData.metadata ?? {}) };
   const archivePath = skillArchivePath(ctx.organizationId, safeName);
   const backupRoot = await _deps.skillFs.createBackupDir("rcs-skill-set-");
   const targetDir = skillOrganizationDir(ctx.organizationId);
@@ -251,7 +277,7 @@ export async function setSkill(
       safeName,
       normalizedSkillData.description,
       normalizedSkillData.content,
-      normalizedSkillData.metadata,
+      Object.keys(writeMetadata).length > 0 ? writeMetadata : undefined,
     );
     await _deps.skillFs.buildSkillArchive(skillDir, archivePath);
     await _deps.configPg.upsertSkill(

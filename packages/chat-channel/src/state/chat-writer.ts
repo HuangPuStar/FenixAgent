@@ -7,6 +7,7 @@
 // 幂等性由调用方（aggregator）按 entryId / toolCallId / permissionId 保证。
 
 import * as Y from "yjs";
+import type { PublicError } from "../public-error";
 import {
   CHAT_DOC_SCHEMA_VERSION,
   type ChatEntryKind,
@@ -311,7 +312,7 @@ export interface ToolCallInit {
   arguments?: Record<string, unknown> | null;
   result?: Record<string, unknown> | null;
   /** 工具失败的脱敏错误（error 状态由聚合层传 extractPublicError，其余状态不携带） */
-  publicError?: { code: string; message: string } | null;
+  publicError?: PublicError | null;
   permissionId?: string | null;
 }
 

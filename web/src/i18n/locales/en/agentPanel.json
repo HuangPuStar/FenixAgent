@@ -5,6 +5,7 @@
   "workflow": "Workflow",
   "agentManagement": "Agent Management",
   "models": "Model Library",
+  "modelGatewayUsage": "My model gateway usage",
   "sessions": "Sessions",
   "skills": "Skill Library",
   "algorithms": "Algorithms",
@@ -40,6 +41,13 @@
   "instanceIdleReclaimedDesc": "The Agent instance was reclaimed after being inactive. Click reconnect to start it again.",
   "clientKeepaliveTimeoutDesc": "The connection was closed after keepalive timed out. Click reconnect to resume the conversation.",
   "agentRequestFailedDesc": "The operation did not complete. Try again; the connection is still available.",
+  "errorArea": {
+    "agent_runtime": "Agent Runtime Error",
+    "sync_relay": "Sync Relay Error",
+    "control_plane": "Control Plane Error",
+    "action": "Action Error"
+  },
+  "errorCode": "Error code: {{code}}",
   "actionErrorRetryableDesc": "Operation failed. Please retry later: {{message}}",
   "actionErrorFatalDesc": "Operation failed: {{message}}",
   "reconnect": "Reconnect",

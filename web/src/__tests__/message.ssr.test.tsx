@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
-import { UserBubble } from "../../components/chat/MessageBubble";
+import { AssistantBubble, UserBubble } from "../../components/chat/MessageBubble";
 import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
 import { SystemMessage } from "../../components/chat/SystemMessage";
 import componentsEN from "../i18n/locales/en/components.json";
@@ -106,6 +106,28 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("<blockquote");
     expect(markup).toContain('data-streamdown="code-block"');
     expect(markup).toContain("<table");
+  });
+
+  // 失败消息必须展示稳定 Type 和 Error ID，避免所有故障都退化为“执行出错”。
+  test("助手失败消息展示 Type、ID 和安全摘要", () => {
+    const markup = renderToStaticMarkup(
+      createElement(AssistantBubble, {
+        entry: {
+          type: "assistant_message",
+          id: "assistant-error",
+          chunks: [],
+          error: {
+            type: "AGENT_RUNTIME.REQUEST_FAILED",
+            id: "err_00000000000000000000000000000001",
+            message: "The Agent request failed.",
+          },
+        },
+      }),
+    );
+
+    expect(markup).toContain("Type: AGENT_RUNTIME.REQUEST_FAILED");
+    expect(markup).toContain("ID: err_00000000000000000000000000000001");
+    expect(markup).toContain("The Agent request failed.");
   });
 
   // 系统消息只展示标签，并与助手消息正文左边界对齐；原始注入内容不得暴露。

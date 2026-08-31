@@ -217,6 +217,10 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
             >
               <span className="font-medium">{t("messageBubble.turnError")}</span>
               {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-80">
+                <span>Type: {entry.error.type}</span>
+                <span>ID: {entry.error.id}</span>
+              </div>
             </div>
           )}
         </div>

@@ -12,6 +12,16 @@ function buildConfig(env: Env) {
     /** Workspace 根目录，默认运行目录下 workspaces；与 workspace-resolver 的默认值保持一致。 */
     workspaceRoot: resolve(env.WORKSPACE_ROOT ?? "./workspaces"),
     systemAdminPasswordFile: resolve(env.RCS_SYSTEM_ADMIN_PASSWORD_FILE ?? "./data/password.txt"),
+    modelGatewayCredentialEncryptionKey: env.RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY,
+    modelGatewayType: env.RCS_MODEL_GATEWAY_TYPE,
+    modelGatewayBaseUrl: env.RCS_MODEL_GATEWAY_BASE_URL,
+    modelGatewayPublicBaseUrl: env.RCS_MODEL_GATEWAY_PUBLIC_BASE_URL ?? env.RCS_MODEL_GATEWAY_BASE_URL,
+    modelGatewayAdminKey: env.RCS_MODEL_GATEWAY_ADMIN_KEY,
+    modelGatewayAdminUiUrl: env.RCS_MODEL_GATEWAY_ADMIN_UI_URL,
+    modelGatewayDefaultUserBudgetUsd: env.RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD,
+    modelGatewayDefaultBudgetDuration: env.RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION,
+    modelGatewayCredentialReconcileCron: env.RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON,
+    modelGatewayCredentialReconcileTimezone: env.RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE,
     pollTimeout: env.RCS_POLL_TIMEOUT,
     heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,
     /** Bun WebSocket idle timeout (seconds). Bun sends protocol-level pings after

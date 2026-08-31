@@ -9,6 +9,10 @@
 // session map 的会话级元数据投影（session/new、load 响应与 available_commands_update
 // 通知经聚合层写入，见 state/aggregator.ts applySessionControl）。
 
+import type { PublicError } from "./public-error";
+
+export type { PublicError, PublicErrorType } from "./public-error";
+
 // ── 版本 ──
 
 /** Chat Doc 结构版本（schemaVersion，描述结构而非投影进度） */
@@ -28,12 +32,6 @@ export const INITIAL_PROJECTION_VERSION = 1;
 export type ChatEntryKind = "message" | "tool" | "system";
 export type ChatEntryRole = "user" | "assistant" | "system";
 export type ChatEntryStatus = "pending" | "streaming" | "completed" | "cancelled" | "error";
-
-/** 对外暴露的公开错误（不含内部实现细节与敏感信息） */
-export interface PublicError {
-  code: string;
-  message: string;
-}
 
 /** ContentBlock 逻辑类型（物理存储为 Y.Map，流式文本用 Y.Text） */
 export type ContentBlock =

@@ -7,6 +7,24 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   RCS_API_KEYS: z.string().min(1, "RCS_API_KEYS is required — used for skill download token HMAC signing"),
   RCS_SYSTEM_API_KEYS: z.string().optional(),
+  RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY: z.string().optional(),
+  RCS_MODEL_GATEWAY_TYPE: z.string().default("litellm"),
+  RCS_MODEL_GATEWAY_BASE_URL: z.string().url().default("http://localhost:4000"),
+  // Fenix 后端和沙盒 Agent 可能处于不同网络命名空间，公开给 Agent 的地址允许单独配置。
+  RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: z.string().url().optional(),
+  RCS_MODEL_GATEWAY_ADMIN_KEY: z.string().optional(),
+  RCS_MODEL_GATEWAY_ADMIN_UI_URL: z.string().url().default("http://localhost:4000/ui/"),
+  RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD: z.coerce.number().nonnegative().optional(),
+  RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const normalized = value?.trim().toLowerCase();
+      return !normalized || normalized === "permanent" || normalized === "once" ? undefined : value;
+    })
+    .optional(),
+  RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON: z.string().default("0 3 * * *"),
+  RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE: z.string().default("Asia/Shanghai"),
 
   // ── 可选：服务器 ──
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

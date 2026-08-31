@@ -197,7 +197,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const harness = await createHarness();
     await submit(harness, { action: "load_session", commandId: "load-invalid" });
     expect(harness.acks).toEqual([]);
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE", retryable: false }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // 同一 ACP 会话重复 load 必须避免重复 RPC。
@@ -246,7 +246,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("缺失 action 返回 INVALID_STATE", async () => {
     const harness = await createHarness();
     await submit(harness, { commandId: "missing-action" });
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE", retryable: false }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // 未知 action 不得转发到 relay。
@@ -254,14 +254,14 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const harness = await createHarness();
     await submit(harness, { action: "unknown", commandId: "unknown-1" });
     expect(harness.sent).toEqual([]);
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE" }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // 非字符串 commandId 必须被协议校验拒绝。
   test("非字符串 commandId 返回 INVALID_STATE", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "list_sessions", commandId: 1 });
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE" }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // 过期投影版本必须拒绝，避免旧客户端覆盖新状态。
@@ -269,7 +269,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
     const harness = await createHarness();
     await submit(harness, { action: "list_sessions", commandId: "version-old", expectedProjectionVersion: -1 });
     expect(harness.sent).toEqual([]);
-    expect(harness.errors).toMatchObject([{ code: "VERSION_CONFLICT", retryable: true }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.VERSION_CONFLICT" } }]);
   });
 
   // 正确投影版本仍可提交命令。
@@ -289,9 +289,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("relay 发送失败返回 AGENT_UNAVAILABLE", async () => {
     const harness = await createHarness({ sendToRelay: () => Promise.reject(new Error("private relay detail")) });
     await submit(harness, { action: "list_sessions", commandId: "relay-fail" });
-    expect(harness.errors).toMatchObject([
-      { code: "AGENT_UNAVAILABLE", message: "Agent connection error", retryable: true },
-    ]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.AGENT_UNAVAILABLE" } }]);
     expect(harness.reports[0]?.message).toContain("relay send failed");
   });
 
@@ -331,7 +329,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
       { action: "create_session", commandId: "refresh-fail" },
       { sendAck: (ack) => harness.acks.push(ack), sendError: (error) => errors.push(error) },
     );
-    expect(errors).toMatchObject([{ code: "AGENT_UNAVAILABLE", retryable: true }]);
+    expect(errors).toMatchObject([{ error: { type: "ACTION.AGENT_UNAVAILABLE" } }]);
   });
 
   // prompt 注册必须记录 RPC 与创建的 turnId。
@@ -472,7 +470,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("缺失 commandId 返回 INVALID_STATE", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "list_sessions" });
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE", retryable: false }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // protocolVersion 与 client 是信封字段，不能污染发给 ACP 的 payload。
@@ -709,7 +707,7 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("load_session 空 sessionId 返回 INVALID_STATE", async () => {
     const harness = await createHarness();
     await submit(harness, { action: "load_session", commandId: "load-empty", sessionId: "" });
-    expect(harness.errors).toMatchObject([{ code: "INVALID_STATE" }]);
+    expect(harness.errors).toMatchObject([{ error: { type: "ACTION.INVALID_STATE" } }]);
   });
 
   // 非数值 expectedProjectionVersion 不应进入并发校验。
@@ -780,7 +778,11 @@ describe("SessionChannel 内存协议与状态边界", () => {
   test("relay 错误响应不泄露内部信息", async () => {
     const harness = await createHarness({ sendToRelay: () => Promise.reject(new Error("credential=secret")) });
     await submit(harness, { action: "list_sessions", commandId: "sanitized-error" });
-    expect(harness.errors[0]?.message).toBe("Agent connection error");
+    expect(harness.errors[0]?.error).toMatchObject({
+      type: "ACTION.AGENT_UNAVAILABLE",
+      message: "The Agent is unavailable for the action.",
+    });
+    expect(JSON.stringify(harness.errors[0])).not.toContain("credential=secret");
     expect(JSON.stringify(harness.errors)).not.toContain("credential=secret");
   });
 

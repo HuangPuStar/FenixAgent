@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,7 @@ import "./agent-models-states.css";
 
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
+  const navigate = useNavigate();
   const data = useAgentModelsData();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<ProviderScope>("all");
@@ -82,7 +84,16 @@ export function AgentModelsPage() {
         onSelectProvider={(provider) => setSelectedKey(getProviderKey(provider))}
         onCreateProvider={() => setProviderDialog({ mode: "create" })}
         onEditProvider={(provider) => setProviderDialog({ mode: "edit", provider })}
-        onViewProvider={(provider) => setProviderDialog({ mode: "view", provider })}
+        onViewProvider={(provider) => {
+          if (provider.kind === "gateway") {
+            void navigate({
+              to: "/agent/model-gateway-usage/$providerId",
+              params: { providerId: provider.providerId },
+            });
+            return;
+          }
+          setProviderDialog({ mode: "view", provider });
+        }}
         onDeleteProvider={setDeleteProvider}
         onTogglePublic={(provider, value) => data.togglePublic.run(provider, value)}
         onDiscoverModels={(provider) =>

@@ -103,6 +103,26 @@ export async function getSkillByResourceKey(
   return decorated;
 }
 
+/**
+ * 仅更新当前组织内部 Skill 的公开读取权限。
+ *
+ * 权限是资源授权数据，不属于 SKILL.md 内容；因此此函数不得经由 upsertSkill
+ * 或任何文件系统写入路径，避免设置公开性时重写 Skill 文档。
+ */
+export async function setSkillPublicReadable(
+  ctx: AuthContext,
+  name: string,
+  publicReadable: boolean,
+): Promise<SkillConfigRowWithAccess | null> {
+  const row = await getSkill(ctx, name);
+  if (!row) return null;
+
+  assertInternalWritable(ctx, "skill", row.id, row.organizationId);
+  await setPublicRead(ctx, "skill", row.organizationId, row.id, publicReadable);
+
+  return await getSkill(ctx, name);
+}
+
 export async function upsertSkill(
   ctx: AuthContext,
   name: string,

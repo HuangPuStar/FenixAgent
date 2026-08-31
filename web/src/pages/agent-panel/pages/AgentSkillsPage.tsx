@@ -182,18 +182,10 @@ export function AgentSkillsPage() {
 
   const toggleSharing = async (skill: SkillInfo) => {
     if (!canManageSkillSharing(skill)) return;
-    const publicReadable = !skill.resourceAccess?.publicReadable;
+    const nextPublicReadable = !skill.resourceAccess?.publicReadable;
     try {
-      const detail = await unwrap(skillConfigApi.get(getSkillLookupKey(skill)));
-      await unwrap(
-        skillConfigApi.update(skill.name, {
-          description: detail.description ?? skill.description ?? "",
-          content: detail.content ?? "",
-          metadata: detail.metadata ?? {},
-          publicReadable,
-        }),
-      );
-      toast.success(publicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+      await unwrap(skillConfigApi.updateAccess(skill.name, nextPublicReadable));
+      toast.success(nextPublicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
       catalog.refresh();
       dispatchConfigChange("skills");
     } catch (error) {

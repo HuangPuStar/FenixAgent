@@ -27,7 +27,7 @@ services:
 
     # ── LiteLLM AI 网关 ────────────────────────────────────────────────────
     litellm:
-        image: ghcr.io/berriai/litellm:main-stable
+        image: ghcr.io/berriai/litellm:v1.93.0
         restart: unless-stopped
         depends_on:
             postgres:
@@ -38,6 +38,8 @@ services:
             DATABASE_URL: postgresql://rcs:rcs@postgres:5432/litellm
             LITELLM_MASTER_KEY: sk-litellm-admin-dev-key
             LITELLM_SALT_KEY: sk-litellm-salt-dev-key
+            # 丢弃上游模型不支持的请求参数，例如当前模型不接受的 thinking。
+            LITELLM_DROP_PARAMS: "True"
             STORE_MODEL_IN_DB: "True"
             SERVER_ROOT_PATH: "/litellm"
             UI_USERNAME: admin

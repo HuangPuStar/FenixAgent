@@ -82,6 +82,8 @@ export interface SessionChannelDependencies {
     registerRollback?: RegisterProjectionRollback,
   ) => void;
   reportError: (message: string, error: unknown) => void;
+  /** 公开错误安全事件 sink；不得记录原始异常或 Action payload。 */
+  reportLog?: (message: string) => void;
   /** 每 rcsSessionId 有界队列上限（透传给 CommandCoordinator） */
   maxPendingPerSession?: number;
   /** 取消超时（毫秒）：cancel 后 Agent 未确认时 turn 收敛为 interrupted，默认 10s */
@@ -111,6 +113,7 @@ export class SessionChannel {
       getProjectionVersion: (rcsSessionId) => this.getProjectionVersion(rcsSessionId),
       maxPendingPerSession: dependencies.maxPendingPerSession,
       reportError: dependencies.reportError,
+      reportLog: dependencies.reportLog,
     });
     // 权限请求投影成功 → 安排超时迁移（控制面持有定时器；聚合层保持纯投影无 I/O）。
     // 单槽位装配：DocManager 为单例，同一实例只应有一个控制面绑定。
@@ -189,12 +192,12 @@ export class SessionChannel {
       !this.activeConnections.has(command.rcsSessionId) ||
       !this.dependencies.docManager.getChatYdoc(command.rcsSessionId)
     ) {
-      throw new CommandExecutionError("SESSION_NOT_FOUND", "Session not found", false);
+      throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
     }
     if (command.type === "load_session") {
       const sessionId = command.payload.sessionId;
       if (typeof sessionId !== "string" || sessionId.length === 0) {
-        throw new CommandExecutionError("INVALID_STATE", "load_session requires a valid sessionId", false);
+        throw new CommandExecutionError("ACTION.INVALID_STATE");
       }
     }
   }
@@ -210,7 +213,7 @@ export class SessionChannel {
 
   private async executeCommand(command: Command): Promise<CommandOutcome> {
     const connection = this.activeConnections.get(command.rcsSessionId);
-    if (!connection) throw new CommandExecutionError("SESSION_NOT_FOUND", "Session not found", false);
+    if (!connection) throw new CommandExecutionError("ACTION.SESSION_NOT_FOUND");
 
     const { docManager } = this.dependencies;
 
@@ -289,13 +292,13 @@ export class SessionChannel {
         controlFrame = translateSimpleAction(toLegacyAction(command), connection.workspacePath, 0);
       } catch (err) {
         this.dependencies.reportError(`[SessionChannel] control translation failed: action=${command.type}`, err);
-        throw new CommandExecutionError("INVALID_STATE", "Agent request is invalid", false);
+        throw new CommandExecutionError("ACTION.INVALID_STATE");
       }
       try {
         await connection.sendToRelay(controlFrame);
       } catch (err) {
         this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
-        throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+        throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
       }
       return {};
     }
@@ -328,7 +331,7 @@ export class SessionChannel {
         });
       }
       this.dependencies.reportError(`[SessionChannel] RPC reservation failed: action=${command.type}`, err);
-      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
 
     let rpc: Record<string, unknown>;
@@ -337,7 +340,7 @@ export class SessionChannel {
     } catch (err) {
       await reservation.abort();
       this.dependencies.reportError(`[SessionChannel] RPC translation failed: action=${command.type}`, err);
-      throw new CommandExecutionError("INVALID_STATE", "Agent request is invalid", false);
+      throw new CommandExecutionError("ACTION.INVALID_STATE");
     }
 
     try {
@@ -354,7 +357,7 @@ export class SessionChannel {
         });
       }
       this.dependencies.reportError(`[SessionChannel] relay send failed: action=${command.type}`, err);
-      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
 
     const rollbackPendingRequest: PendingRequestRollback = () => reservation.abort();
@@ -422,7 +425,7 @@ export class SessionChannel {
     allowSkip: boolean,
   ): Promise<SessionSyncRequestLifecycle | null> {
     if (typeof sessionId !== "string" || sessionId.length === 0) {
-      throw new CommandExecutionError("INVALID_STATE", "load_session requires a valid sessionId", false);
+      throw new CommandExecutionError("ACTION.INVALID_STATE");
     }
 
     if (allowSkip && connection.acpSessionId === sessionId) {
@@ -461,7 +464,7 @@ export class SessionChannel {
       await this.dependencies.refreshInstanceEnvironment?.(connection);
     } catch (error) {
       this.dependencies.reportError("[SessionChannel] instance environment refresh failed", error);
-      throw new CommandExecutionError("AGENT_UNAVAILABLE", "Agent connection error", true);
+      throw new CommandExecutionError("ACTION.AGENT_UNAVAILABLE");
     }
     const previousSessionId = connection.acpSessionId;
     const previousLoaded = connection.sessionLoaded;

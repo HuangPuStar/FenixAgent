@@ -134,10 +134,14 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "machine_unavailable", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.MACHINE_UNAVAILABLE",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent machine is unavailable.",
+      },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
   });
@@ -160,10 +164,14 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "machine_unavailable", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.MACHINE_UNAVAILABLE",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent machine is unavailable.",
+      },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
     // 客户端帧不得出现 machineId 与原始诊断文案（machine_unavailable 为合法脱敏错误码，不在此列）
@@ -188,10 +196,14 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "machine_unavailable", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.MACHINE_UNAVAILABLE",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent machine is unavailable.",
+      },
     });
     expect(ws.closed).toEqual([[4500, "machine offline"]]);
     expect(textFrames(ws).join("")).not.toContain("mach_x");
@@ -216,9 +228,13 @@ describe("Gateway handleOpen", () => {
 
       await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-      expect(parseTextFrames(ws)[0]).toEqual({
+      expect(parseTextFrames(ws)[0]).toMatchObject({
         type: "error",
-        payload: { message: "Agent connection error" },
+        payload: {
+          type: "CONTROL_PLANE.INSTANCE_START_FAILED",
+          id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+          message: "The Agent instance failed to start.",
+        },
       });
       expect(ws.closed).toEqual([[1011, "spawn failed"]]);
     }
@@ -242,15 +258,18 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "auto_start_disabled", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.CONFIGURATION_INVALID",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent configuration is invalid.",
+      },
     });
     expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
-    // 客户端帧不得泄漏实例编号与原始诊断文案
+    // 客户端帧不得泄漏原始配置诊断文案；随机 Error ID 不参与内容断言。
     expect(textFrames(ws).join("")).not.toContain("autoStart");
-    expect(textFrames(ws).join("")).not.toContain("2");
   });
 
   // maxSessions 上限是配置态，重连不会释放实例：同样 close 4502 终态并携带诊断码。
@@ -270,10 +289,14 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "max_sessions_reached", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.INSTANCE_START_FAILED",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent instance failed to start.",
+      },
     });
     expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
   });
@@ -299,10 +322,14 @@ describe("Gateway handleOpen", () => {
 
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
 
-    expect(errors).toEqual([thrown]);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(errors).toEqual(["object"]);
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { code: "launch_spec_build_failed", message: "Agent connection error" },
+      payload: {
+        type: "CONTROL_PLANE.INSTANCE_START_FAILED",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The Agent instance failed to start.",
+      },
     });
     expect(ws.closed).toEqual([[4502, "spawn rejected"]]);
     // 客户端帧不得泄漏 envId 与原始诊断文案
@@ -395,9 +422,13 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(firstWs, "ws-1", "user-1", "agent-1", null);
     await lifecycle.handleOpen(secondWs, "ws-2", "user-1", "agent-1", null);
 
-    expect(parseTextFrames(firstWs)[0]).toEqual({
+    expect(parseTextFrames(firstWs)[0]).toMatchObject({
       type: "error",
-      payload: { message: "Agent connection error" },
+      payload: {
+        type: "INTERNAL.UNCLASSIFIED",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "An unclassified system error occurred.",
+      },
     });
     expect(firstWs.closed).toEqual([[1011, "environment lookup failed"]]);
     expect(secondWs.closed).toEqual([[1011, "environment lookup failed"]]);
@@ -454,9 +485,13 @@ describe("Gateway handleOpen", () => {
     await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", null);
 
     expect(ensureCalls).toBe(0);
-    expect(parseTextFrames(ws)[0]).toEqual({
+    expect(parseTextFrames(ws)[0]).toMatchObject({
       type: "error",
-      payload: { message: "Environment not found" },
+      payload: {
+        type: "ACTION.FORBIDDEN",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The action is not authorized.",
+      },
     });
     expect(ws.closed).toEqual([[4003, "unauthorized"]]);
   });

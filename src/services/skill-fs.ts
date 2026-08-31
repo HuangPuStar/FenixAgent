@@ -128,14 +128,10 @@ export function parseFrontmatter(raw: string): { metadata: Record<string, string
   return { metadata, content: parsed.content };
 }
 
-/** 将值格式化为安全的 YAML 标量值；包含换行时使用 `|` 块标量语法 */
-function yamlScalar(value: string): string {
-  if (!value.includes("\n")) return value;
-  const indented = value
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
-  return `|\n${indented}`;
+/** 解析 Skill 文档并保留 frontmatter 的 YAML 原始类型，供写回时避免有损转换。 */
+export function parseSkillDocument(raw: string): { metadata: Record<string, unknown>; content: string } {
+  const parsed = matter(raw);
+  return { metadata: parsed.data as Record<string, unknown>, content: parsed.content };
 }
 
 /** 构建 SKILL.md 文件内容（含 frontmatter） */
@@ -143,12 +139,11 @@ export function buildSkillMd(
   name: string,
   description: string,
   content: string,
-  metadata?: Record<string, string>,
+  metadata?: Record<string, unknown>,
 ): string {
-  const meta: Record<string, string> = { name, description, ...(metadata ?? {}) };
-  const frontmatter = Object.entries(meta)
-    .map(([k, v]) => `${k}: ${yamlScalar(v)}`)
-    .join("\n");
+  const meta: Record<string, unknown> = { name, description, ...(metadata ?? {}) };
+  // 保持历史块标量的末尾换行语义；`js-yaml` 默认的 `|-` 会丢弃该换行。
+  const frontmatter = yaml.dump(meta, { lineWidth: 120, noRefs: true }).trimEnd().replaceAll(": |-\n", ": |\n");
   return `---\n${frontmatter}\n---\n${content}`;
 }
 
@@ -350,13 +345,21 @@ export async function readSkillDetailFromMd(
   return parseFrontmatter(raw);
 }
 
+/** 读取 Skill 文档并保留 frontmatter 类型；文件不存在时返回 null。 */
+export async function readSkillDocumentFromMd(
+  mdPath: string,
+): Promise<{ metadata: Record<string, unknown>; content: string } | null> {
+  if (!existsSync(mdPath)) return null;
+  return parseSkillDocument(await readFile(mdPath, "utf-8"));
+}
+
 /** 创建 skillDir，写入 SKILL.md（含 frontmatter），返回 mdPath */
 export async function writeSkillMd(
   skillDir: string,
   name: string,
   description: string,
   content: string,
-  metadata?: Record<string, string>,
+  metadata?: Record<string, unknown>,
 ): Promise<string> {
   await mkdir(skillDir, { recursive: true });
   const mdPath = join(skillDir, "SKILL.md");

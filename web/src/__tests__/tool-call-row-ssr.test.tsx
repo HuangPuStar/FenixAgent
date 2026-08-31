@@ -51,13 +51,18 @@ describe("ToolCallRow 服务端渲染", () => {
         title: "Write",
         kind: "write",
         status: "error",
-        publicError: { code: "PERMISSION_DENIED", message: "没有写入权限" },
+        publicError: {
+          type: "ACTION.FAILED",
+          id: "err_00000000000000000000000000000001",
+          message: "The action failed.",
+        },
       }),
     );
 
-    expect(html).toContain("没有写入权限");
-    expect(html).toContain("tool-call-row-heading");
-    expect(html).toContain('class="tool-call-row-error"');
+    expect(html).toContain("Type: ACTION.FAILED");
+    expect(html).toContain("ID: err_00000000000000000000000000000001");
+    expect(html).toContain("The action failed.");
+    expect(html).toContain('class="tool-call-row-error');
     expect(html).toContain("common.status.error");
     expect(html).toContain("toolCallRow.previewFile");
   });

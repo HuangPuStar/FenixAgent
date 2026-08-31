@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type * as acp from "@agentclientprotocol/sdk";
+import { RequestError } from "@agentclientprotocol/sdk";
 import { AcpDispatcher, createAcpSessionState } from "../acp-dispatcher";
 
 /** 构造只实现 prompt 的 fake ClientSideConnection（其余方法不参与本测试） */
@@ -89,5 +90,37 @@ describe("AcpDispatcher session/prompt", () => {
     });
 
     expect(responses[0]).toMatchObject({ id: 3, error: { code: -32000 } });
+  });
+
+  // SDK 的 RequestError 是 stdio JSON-RPC error 的结构化表示；dispatcher 不得将
+  // Peri implementation-defined code/data 降级成通用 -32603。
+  test("prompt 原样转发 Peri RequestError", async () => {
+    const conn = {
+      async prompt() {
+        throw new RequestError(-32000, "Peri prompt failed", {
+          peri: { type: "llm_api_error", retryable: false },
+        });
+      },
+    } as unknown as acp.ClientSideConnection;
+    const { dispatcher, responses } = createDispatcher(conn, "ses-current");
+
+    await dispatcher.handleMessage({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "session/prompt",
+      params: { content: [{ type: "text", text: "hi" }] },
+    });
+
+    expect(responses).toEqual([
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        error: {
+          code: -32000,
+          message: "Peri prompt failed",
+          data: { peri: { type: "llm_api_error", retryable: false } },
+        },
+      },
+    ]);
   });
 });

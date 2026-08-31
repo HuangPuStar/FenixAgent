@@ -155,6 +155,14 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
         )}
       </div>
 
+      {tool.publicError && (
+        <div className="tool-call-row-error mt-1 text-[10px] text-status-error/80" role="alert">
+          <p className="break-all">Type: {tool.publicError.type}</p>
+          <p className="break-all">ID: {tool.publicError.id}</p>
+          <p>{tool.publicError.message}</p>
+        </div>
+      )}
+
       {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的 TodoPanel 承载。 */}
       {tool.todoChanges && <TodoChanges changes={tool.todoChanges} />}
 
