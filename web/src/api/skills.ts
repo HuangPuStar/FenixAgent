@@ -49,6 +49,14 @@ export const skillConfigApi = {
   update: (name: string, data: SkillData) =>
     request<SkillSaveResult>("/web/config/skills/:name", { method: "PUT", params: { name }, body: { data } }),
 
+  /** 仅更新 Skill 的公开读取权限，不修改 SKILL.md 内容。 */
+  updateAccess: (name: string, publicReadable: boolean) =>
+    request<SkillSaveResult>("/web/config/skills/:name/access", {
+      method: "PUT",
+      params: { name },
+      body: { publicReadable },
+    }),
+
   /** 删除 Skill（DELETE /config/skills/:name） */
   del: (name: string) => request<void>("/web/config/skills/:name", { method: "DELETE", params: { name } }),
 
