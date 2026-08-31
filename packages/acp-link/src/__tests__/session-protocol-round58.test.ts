@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { RequestError } from "@agentclientprotocol/sdk";
 import { SessionManager } from "../client/session-manager";
 
 interface SessionEvent {
@@ -193,6 +194,81 @@ describe("SessionManager round58 内存协议分支", () => {
         payload: { jsonrpc: "2.0", id: 6, error: { code: -32603, message: "Error: prompt failed" } },
       },
     ]);
+  });
+
+  // SDK 会将 stdio JSON-RPC error 解码为 RequestError；acp-link 必须原样保留 Peri 的
+  // implementation-defined code/message/data，只替换外层响应 id 以关联 relay 请求。
+  test("session/prompt 透传 Peri RequestError 信封", async () => {
+    const { manager, connection, events } = createHarness();
+    setActiveSession(manager);
+    connection.failure = new RequestError(-32000, "An LLM API error occurred. Please check your API configuration.", {
+      peri: {
+        type: "llm_api_error",
+        retryable: false,
+        provider: "example",
+      },
+    });
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await manager.sendData("relay-peri-error", rpc(7, "session/prompt", { content: [] }));
+      await Promise.resolve();
+
+      expect(events).toEqual([
+        {
+          relayId: "relay-peri-error",
+          event: "session_data",
+          payload: {
+            jsonrpc: "2.0",
+            id: 7,
+            error: {
+              code: -32000,
+              message: "An LLM API error occurred. Please check your API configuration.",
+              data: {
+                peri: {
+                  type: "llm_api_error",
+                  retryable: false,
+                  provider: "example",
+                },
+              },
+            },
+          },
+        },
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // JSON-RPC prompt 失败必须在 ACP 边界记录脱敏诊断，同时保留发往 relay 的错误协议。
+  test("session/prompt 失败记录安全 ACP 日志", async () => {
+    const { manager, connection, events } = createHarness();
+    setActiveSession(manager);
+    connection.failure = new Error(
+      "Provider token=live-secret failed at https://provider.example/error from /Users/alice/project",
+    );
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await manager.sendData("relay-failure", rpc(6, "session/prompt", { content: [] }));
+      await Promise.resolve();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[session-manager] prompt failed:",
+        "Error: Provider [REDACTED_SECRET] failed at [REDACTED_URL] from [REDACTED_PATH]",
+      );
+      expect(events[0]?.payload).toEqual({
+        jsonrpc: "2.0",
+        id: 6,
+        error: {
+          code: -32603,
+          message:
+            "Error: Provider token=live-secret failed at https://provider.example/error from /Users/alice/project",
+        },
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   // 没有活动会话的取消仍应确认，方便客户端无条件收敛取消状态。

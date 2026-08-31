@@ -181,9 +181,11 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               role="alert"
             >
               <p className="font-medium">执行出错</p>
-              <p className="mt-1 break-all">Type: {entry.error.type}</p>
-              <p className="mt-1 break-all">ID: {entry.error.id}</p>
-              <p className="mt-2 whitespace-pre-wrap">{entry.error.message}</p>
+              <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
+                <span className="break-all">Type: {entry.error.type}</span>
+                <span className="break-all">ID: {entry.error.id}</span>
+              </div>
             </div>
           )}
         </div>

@@ -3,6 +3,7 @@ import { extractModelState, extractModeState } from "./config-options-utils.js";
 import {
   ACP_METHOD,
   createErrorResponse,
+  createForwardedErrorResponse,
   createSuccessResponse,
   isTransportMessage,
   type JsonRpcRequest,
@@ -319,7 +320,7 @@ export class AcpDispatcher {
       });
       this.send(createSuccessResponse(id, result));
     } catch (error) {
-      this.send(createErrorResponse(id, -32603, `Prompt failed: ${(error as Error).message}`));
+      this.send(createForwardedErrorResponse(id, error, `Prompt failed: ${(error as Error).message}`));
     }
   }
 

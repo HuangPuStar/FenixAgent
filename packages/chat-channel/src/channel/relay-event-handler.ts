@@ -43,6 +43,30 @@ function agentRuntimeError(
 }
 
 const LLM_API_CONFIGURATION_ERROR_MESSAGE = "An LLM API error occurred. Please check your API configuration.";
+const MAX_UPSTREAM_ERROR_LOG_LENGTH = 1_000;
+
+/**
+ * 上游错误只进入服务端诊断日志：擦除常见凭证、URL 与本机绝对路径，折叠空白并限制长度。
+ * 该文本不得进入 PublicError 或浏览器响应。
+ */
+function sanitizeUpstreamErrorMessage(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const sanitized = raw
+    .replace(/\b(?:https?|wss?):\/\/[^\s<>'"`]+/giu, "[REDACTED_URL]")
+    .replace(
+      /\b(?:bearer\s+)?[A-Za-z0-9_-]*(?:token|secret|password|api[_-]?key)[A-Za-z0-9_-]*\s*[:=]\s*[^\s,;]+/giu,
+      "[REDACTED_SECRET]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/giu, "[REDACTED_SECRET]")
+    .replace(
+      /(?:^|\s)(?:~\/|\/(?:Users|home|var|tmp|private|etc|opt|srv|workspace)\/)[^\s<>'"`]+/gu,
+      (value) => `${value.startsWith(" ") ? " " : ""}[REDACTED_PATH]`,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) return undefined;
+  return Array.from(sanitized).slice(0, MAX_UPSTREAM_ERROR_LOG_LENGTH).join("");
+}
 
 /** 只识别受控白名单语义；任意 Agent error message 均不得直接进入公开错误。 */
 function classifyPromptRejection(error: Record<string, unknown> | undefined): PublicErrorType {
@@ -509,8 +533,8 @@ export class RelayEventHandler {
     // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
     // 不关 relay；prompt 请求以 -32000 "No active session" / -32603 "Prompt failed"
     // 拒绝。静默丢弃会让 turn 永久卡 accepting、前端 loading 永不消失（仅刷新可恢复）。
-    // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛 turn_failed；错误内容
-    // 脱敏，只记录 code，不泄露 acp-link 原始错误。未登记的 error 响应无副作用。
+    // 若该 id 是 send_prompt 出口登记过的在途 prompt，收敛 turn_failed；原始错误
+    // message 只经脱敏、截断后进入服务端诊断日志，不进入 PublicError 或浏览器响应。
     if (rpcCheck.error) {
       const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
       if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
@@ -519,16 +543,19 @@ export class RelayEventHandler {
         // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
         const turnId = shared.pendingPromptTurns?.get(rpcId);
         shared.pendingPromptTurns?.delete(rpcId);
+        const diagnosticMessage = sanitizeUpstreamErrorMessage(rpcError?.message);
         this.dependencies.reportError("[YJS-FE] prompt rejected by agent", {
           instanceId: shared.instanceId,
           code: rpcError?.code,
+          ...(diagnosticMessage ? { message: diagnosticMessage } : {}),
         });
         const publicError = agentRuntimeError(
           classifyPromptRejection(rpcError),
           "relay.prompt_response",
           this.dependencies.log,
         );
-        this.sendSafeErrorToRcsSession(shared, publicError);
+        // Prompt 错误属于当前 turn，只经 Y.Doc 投影到对应 assistant entry。
+        // 不再发送连接级 error 帧，否则 ChatPanel 会在会话顶部重复展示同一故障。
         this.dispatch(shared, {
           type: "turn_failed",
           update: { publicError },
@@ -758,7 +785,7 @@ export class RelayEventHandler {
       "relay.prompt_timeout",
       this.dependencies.log,
     );
-    this.sendSafeErrorToRcsSession(shared, publicError);
+    // Prompt 超时同样是 turn 终态，只进入会话时间线，不生成顶部连接错误。
     this.dispatch(shared, {
       type: "turn_failed",
       update: { publicError },

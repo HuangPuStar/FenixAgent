@@ -74,6 +74,10 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("Type: AGENT_RUNTIME.REQUEST_FAILED");
     expect(markup).toContain("ID: err_00000000000000000000000000000001");
     expect(markup).toContain("The Agent request failed.");
+    expect(markup.indexOf("The Agent request failed.")).toBeLessThan(
+      markup.indexOf("Type: AGENT_RUNTIME.REQUEST_FAILED"),
+    );
+    expect(markup).toContain('class="mt-4 flex flex-wrap gap-x-4 gap-y-1"');
     expect(markup).not.toContain("errorArea.code");
     expect(markup).toContain("Agent request failed");
   });

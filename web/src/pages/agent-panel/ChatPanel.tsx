@@ -464,9 +464,11 @@ function PublicErrorCard({ error, className }: { error: PublicErrorInfo; classNa
       role="alert"
     >
       <p className="font-medium">执行出错</p>
-      <p className="mt-1 break-all">Type: {error.type}</p>
-      <p className="mt-1 break-all">ID: {error.id}</p>
-      <p className="mt-2">{error.message}</p>
+      <p className="mt-1 whitespace-pre-wrap">{error.message}</p>
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
+        <span className="break-all">Type: {error.type}</span>
+        <span className="break-all">ID: {error.id}</span>
+      </div>
     </div>
   );
 }
