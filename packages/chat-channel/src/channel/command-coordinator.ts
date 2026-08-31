@@ -11,6 +11,7 @@
 // 本类不承载任何宿主业务（会话守卫 / Doc 写入 / relay 发送），全部通过依赖注入，
 // 以便协议层测试 seam 用 fake 依赖实例化（Q12）。
 
+import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import {
   type ActionAck,
   type ActionError,
@@ -25,7 +26,6 @@ import {
 /** 每 rcsSessionId 有界队列默认上限（超出返回 RATE_LIMITED） */
 const DEFAULT_MAX_PENDING_PER_SESSION = 64;
 /** 队列满时的建议重试间隔（毫秒） */
-const RATE_LIMITED_RETRY_AFTER_MS = 1000;
 
 export interface CommandCoordinatorDependencies {
   /** 串行执行命令（同一 rcsSessionId 内互不并发；恰好一次由去重表保证） */
@@ -38,6 +38,8 @@ export interface CommandCoordinatorDependencies {
   maxPendingPerSession?: number;
   /** 诊断日志（不得包含命令正文等敏感内容） */
   reportError?: (context: string, err: unknown) => void;
+  /** 公开错误安全事件 sink；只接受 serializePublicErrorLog 的低敏 JSON。 */
+  reportLog?: (message: string) => void;
 }
 
 interface QueueItem {
@@ -70,7 +72,7 @@ export class CommandCoordinator {
   submit(command: Command, sinks: ActionSinks): Promise<void> {
     const shapeError = this.validateShape(command);
     if (shapeError) {
-      sinks.sendError({ type: "action_error", commandId: command.commandId, ...shapeError });
+      sinks.sendError({ type: "action_error", commandId: command.commandId, error: this.publicError(shapeError) });
       return Promise.resolve();
     }
 
@@ -80,9 +82,7 @@ export class CommandCoordinator {
         sinks.sendError({
           type: "action_error",
           commandId: command.commandId,
-          code: "VERSION_CONFLICT",
-          message: "Projection version conflict",
-          retryable: true,
+          error: this.publicError("ACTION.VERSION_CONFLICT"),
         });
         return Promise.resolve();
       }
@@ -132,10 +132,7 @@ export class CommandCoordinator {
       sinks.sendError({
         type: "action_error",
         commandId: command.commandId,
-        code: "RATE_LIMITED",
-        message: "Too many pending actions",
-        retryable: true,
-        retryAfterMs: RATE_LIMITED_RETRY_AFTER_MS,
+        error: this.publicError("ACTION.RATE_LIMITED"),
       });
       return;
     }
@@ -198,42 +195,27 @@ export class CommandCoordinator {
     }
   }
 
-  private validateShape(command: Command): Omit<ActionError, "type" | "commandId"> | null {
-    if (typeof command.commandId !== "string" || command.commandId.length === 0) {
-      return { code: "INVALID_STATE", message: "commandId is required", retryable: false };
-    }
-    if (!KNOWN_ACTION_TYPES.includes(command.type as (typeof KNOWN_ACTION_TYPES)[number])) {
-      return { code: "INVALID_STATE", message: "Unknown action type", retryable: false };
-    }
-    if (!command.payload || typeof command.payload !== "object") {
-      return { code: "INVALID_STATE", message: "Action payload must be an object", retryable: false };
-    }
-    if (JSON.stringify(command.payload).length > MAX_ACTION_PAYLOAD_BYTES) {
-      return { code: "PAYLOAD_TOO_LARGE", message: "Action payload too large", retryable: false };
-    }
+  private validateShape(command: Command): PublicErrorType | null {
+    if (typeof command.commandId !== "string" || command.commandId.length === 0) return "ACTION.INVALID_STATE";
+    if (!KNOWN_ACTION_TYPES.includes(command.type as (typeof KNOWN_ACTION_TYPES)[number]))
+      return "ACTION.INVALID_STATE";
+    if (!command.payload || typeof command.payload !== "object") return "ACTION.INVALID_STATE";
+    if (JSON.stringify(command.payload).length > MAX_ACTION_PAYLOAD_BYTES) return "ACTION.PAYLOAD_TOO_LARGE";
     return null;
   }
 
   private toActionError(err: unknown, commandId: string): ActionError {
-    if (err instanceof CommandExecutionError) {
-      return {
-        type: "action_error",
-        commandId,
-        code: err.code,
-        message: err.message,
-        retryable: err.retryable,
-        ...(err.retryAfterMs !== undefined ? { retryAfterMs: err.retryAfterMs } : {}),
-      };
+    const type = err instanceof CommandExecutionError ? err.publicErrorType : "INTERNAL.UNCLASSIFIED";
+    if (!(err instanceof CommandExecutionError)) {
+      this.dependencies.reportError?.("[CommandCoordinator] unexpected command failure", typeof err);
     }
-    // 非预期错误：保留诊断上下文，对外只给脱敏通用文案
-    this.dependencies.reportError?.("[CommandCoordinator] unexpected command failure", err);
-    return {
-      type: "action_error",
-      commandId,
-      code: "AGENT_UNAVAILABLE",
-      message: "Agent request failed",
-      retryable: true,
-    };
+    return { type: "action_error", commandId, error: this.publicError(type) };
+  }
+
+  private publicError(type: PublicErrorType): PublicError {
+    const error = createPublicError(type);
+    this.dependencies.reportLog?.(serializePublicErrorLog(error, "action.command"));
+    return error;
   }
 
   private toDuplicateAck(original: ActionAck): ActionAck {

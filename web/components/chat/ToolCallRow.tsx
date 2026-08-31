@@ -127,10 +127,11 @@ export function ToolCallRow({ tool, onPermissionRespond }: ToolCallRowProps) {
               </span>
             )}
           </div>
-          {/* 错误细节单独一行 */}
-          {result.errorDetail && (
-            <div className="text-[10px] text-status-error/80 mt-0.5 truncate" title={result.errorDetail}>
-              {result.errorDetail}
+          {tool.publicError && (
+            <div className="mt-1 text-[10px] text-status-error/80" role="alert">
+              <p className="break-all">Type: {tool.publicError.type}</p>
+              <p className="break-all">ID: {tool.publicError.id}</p>
+              <p>{tool.publicError.message}</p>
             </div>
           )}
         </div>

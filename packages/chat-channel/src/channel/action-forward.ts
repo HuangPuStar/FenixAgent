@@ -4,6 +4,7 @@
 // 独立成文件使 gateway.ts 保持在行数上限内；两者共享同一依赖注入面，
 // 以便协议层测试用 fake SessionChannel 覆盖缓冲/重放时序。
 
+import { createPublicError, serializePublicErrorLog } from "../public-error";
 import type { SessionChannel, SessionConnection } from "./session-channel";
 import type { ActionAck, ActionError } from "./types";
 
@@ -12,6 +13,8 @@ export type ForwardYjsActionDependencies = {
   sendAck: (ack: ActionAck) => void;
   sendError: (error: ActionError) => void;
   reportError: (message: string, error: unknown) => void;
+  /** 公开错误安全事件 sink；只接受低敏结构化 JSON。 */
+  reportLog: (message: string) => void;
 };
 
 /** 转发一条 Action 到 SessionChannel；失败时回退为脱敏 AGENT_UNAVAILABLE 错误（保留诊断上下文） */
@@ -26,16 +29,16 @@ export async function forwardYjsAction(
       sendError: dependencies.sendError,
     });
   } catch (err) {
+    const error = createPublicError("INTERNAL.UNCLASSIFIED");
     dependencies.reportError(
-      `[YJS-FE] failed to process action before relay forward: action=${String(action.action)} rcsSessionId=${entry.rcsSessionId}`,
+      "[YJS-FE] failed to process action before relay forward",
       err instanceof Error ? err.name : typeof err,
     );
+    dependencies.reportLog(serializePublicErrorLog(error, "action.forward"));
     dependencies.sendError({
       type: "action_error",
       commandId: typeof action.commandId === "string" ? action.commandId : "",
-      code: "AGENT_UNAVAILABLE",
-      message: "Agent connection error",
-      retryable: true,
+      error,
     });
   }
 }
@@ -52,7 +55,7 @@ export async function flushPendingYjsActions(
       if (!action.action || action.action === "list_sessions") continue;
       await forwardYjsAction(entry, action, dependencies);
     } catch (err) {
-      dependencies.reportError("[YJS-FE] flush message failed:", err);
+      dependencies.reportError("[YJS-FE] flush message failed", typeof err);
     }
   }
 }

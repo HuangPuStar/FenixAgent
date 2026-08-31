@@ -17,9 +17,11 @@
 
 import type * as Y from "yjs";
 import { extractJsonRpc, normalizeAcpMessage, translateSimpleAction } from "../protocol";
+import { createPublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import {
   type NormalizedEvent,
   type NormalizedEventType,
+  type PublicError,
   SESSION_BOUND_NOTIFICATION_METHODS,
   TURN_TERMINAL_STATUSES,
   type TurnStatus,
@@ -28,6 +30,27 @@ import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { clearPendingPromptTimeout, REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+
+/** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
+function agentRuntimeError(
+  type: PublicErrorType,
+  stage: string,
+  log: ((message: string) => void) | undefined,
+): PublicError {
+  const error = createPublicError(type);
+  log?.(serializePublicErrorLog(error, stage));
+  return error;
+}
+
+const LLM_API_CONFIGURATION_ERROR_MESSAGE = "An LLM API error occurred. Please check your API configuration.";
+
+/** 只识别受控白名单语义；任意 Agent error message 均不得直接进入公开错误。 */
+function classifyPromptRejection(error: Record<string, unknown> | undefined): PublicErrorType {
+  const message = typeof error?.message === "string" ? error.message.replace(/\s+/g, " ").trim() : "";
+  return message === LLM_API_CONFIGURATION_ERROR_MESSAGE
+    ? "AGENT_RUNTIME.LLM_API_CONFIGURATION_ERROR"
+    : "AGENT_RUNTIME.PROMPT_REJECTED";
+}
 
 /** 需要活动 turn 才能投影的增量类事件（无头回放流的开头需要合成回放 turn） */
 const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
@@ -176,10 +199,11 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "agent_error", "Agent request failed");
+      const publicError = agentRuntimeError("AGENT_RUNTIME.REQUEST_FAILED", "relay.agent_error", this.dependencies.log);
+      this.sendSafeErrorToRcsSession(shared, publicError);
       this.dispatch(shared, {
         type: "turn_failed",
-        update: { error: "Agent request failed" },
+        update: { publicError },
         content: null,
       });
       return;
@@ -190,10 +214,15 @@ export class RelayEventHandler {
         messageType: msgType,
         instanceId: shared.instanceId,
       });
-      this.sendSafeErrorToRcsSession(shared, "session_error", "Agent session request failed");
+      const publicError = agentRuntimeError(
+        "AGENT_RUNTIME.SESSION_FAILED",
+        "relay.session_error",
+        this.dependencies.log,
+      );
+      this.sendSafeErrorToRcsSession(shared, publicError);
       this.dispatch(shared, {
         type: "turn_failed",
-        update: { error: "Agent session request failed" },
+        update: { publicError },
         content: null,
       });
       return;
@@ -256,21 +285,23 @@ export class RelayEventHandler {
     // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
     // （dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
     void this.dependencies.terminateLocalDeadInstance(shared.instanceId);
-    // 连接丢失迁移边（文档 8.1）：活动 turn 收敛为 interrupted 终态，
-    // 晚到增量由聚合层丢弃，UI 不会出现"已断连还在输出"
+    // relay 意外关闭是 Agent Runtime 故障：同一公开错误必须先进入日志、Y.Doc 与 WS，
+    // 再关闭连接；close code 仅承担连接生命周期语义。
+    const publicError = agentRuntimeError(
+      "AGENT_RUNTIME.DISCONNECTED",
+      "relay.connection_closed",
+      this.dependencies.log,
+    );
     this.dispatch(shared, {
-      type: "turn_interrupted",
-      update: {},
+      type: "turn_failed",
+      update: { publicError },
       content: null,
     });
     registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
       try {
         this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
           type: "error",
-          payload: {
-            code: "agent_connection_lost",
-            message: "Agent connection lost",
-          },
+          payload: publicError,
         });
       } catch {
         /* ignore */
@@ -492,9 +523,15 @@ export class RelayEventHandler {
           instanceId: shared.instanceId,
           code: rpcError?.code,
         });
+        const publicError = agentRuntimeError(
+          classifyPromptRejection(rpcError),
+          "relay.prompt_response",
+          this.dependencies.log,
+        );
+        this.sendSafeErrorToRcsSession(shared, publicError);
         this.dispatch(shared, {
           type: "turn_failed",
-          update: { error: "Agent request failed" },
+          update: { publicError },
           content: null,
           turnId,
         });
@@ -716,19 +753,25 @@ export class RelayEventHandler {
     this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
       instanceId: shared.instanceId,
     });
+    const publicError = agentRuntimeError(
+      "AGENT_RUNTIME.PROMPT_TIMEOUT",
+      "relay.prompt_timeout",
+      this.dependencies.log,
+    );
+    this.sendSafeErrorToRcsSession(shared, publicError);
     this.dispatch(shared, {
       type: "turn_failed",
-      update: { error: "Agent request failed" },
+      update: { publicError },
       content: null,
       turnId,
     });
   }
 
-  private sendSafeErrorToRcsSession(shared: SharedRelay, code: string, message: string): void {
+  private sendSafeErrorToRcsSession(shared: SharedRelay, error: PublicError): void {
     this.dependencies.registry.forEachByRcsSession(shared.rcsSessionId, (entry) => {
       this.dependencies.broadcaster.sendToYjsWs(entry.ws, {
         type: "error",
-        payload: { code, message },
+        payload: error,
       });
     });
   }

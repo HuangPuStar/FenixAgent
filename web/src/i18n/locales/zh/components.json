@@ -223,6 +223,13 @@
     "noMatch": "没有匹配的命令",
     "searchPlaceholder": "搜索技能..."
   },
+  "errorArea": {
+    "agent_runtime": "Agent Runtime Error",
+    "sync_relay": "Sync Relay Error",
+    "control_plane": "Control Plane Error",
+    "action": "Action Error",
+    "code": "错误代码：{{code}}"
+  },
   "messageBubble": {
     "expand": "展开",
     "uploadedImage": "已上传图片",

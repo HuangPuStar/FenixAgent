@@ -28,11 +28,13 @@ function createDependencies(
   acknowledgements: ActionAck[];
   errors: ActionError[];
   reports: Array<[string, unknown]>;
+  logs: string[];
 } {
   const invocations: Invocation[] = [];
   const acknowledgements: ActionAck[] = [];
   const errors: ActionError[] = [];
   const reports: Array<[string, unknown]> = [];
+  const logs: string[] = [];
   const sessionChannel = {
     async handleAction(
       entry: SessionConnection,
@@ -55,11 +57,13 @@ function createDependencies(
       sendAck: (ack) => acknowledgements.push(ack),
       sendError: (error) => errors.push(error),
       reportError: (message, error) => reports.push([message, error]),
+      reportLog: (message) => logs.push(message),
     },
     invocations,
     acknowledgements,
     errors,
     reports,
+    logs,
   };
 }
 
@@ -126,18 +130,16 @@ describe("action-forward 协议、错误隔离与缓冲清理", () => {
 
     await forwardYjsAction(createEntry("rcs-isolated"), action, fixture.dependencies);
 
-    expect(fixture.errors).toEqual([
-      {
-        type: "action_error",
-        commandId: "",
-        code: "AGENT_UNAVAILABLE",
-        message: "Agent connection error",
-        retryable: true,
-      },
+    expect(fixture.errors).toMatchObject([
+      { type: "action_error", commandId: "", error: { type: "INTERNAL.UNCLASSIFIED" } },
     ]);
-    expect(fixture.reports).toEqual([
-      ["[YJS-FE] failed to process action before relay forward: action=send_prompt rcsSessionId=rcs-isolated", "Error"],
-    ]);
+    expect(fixture.reports).toEqual([["[YJS-FE] failed to process action before relay forward", "Error"]]);
+    expect(JSON.parse(fixture.logs[0] ?? "{}")).toMatchObject({
+      event: "chat.error",
+      errorId: fixture.errors[0]?.error.id,
+      errorType: "INTERNAL.UNCLASSIFIED",
+      stage: "action.forward",
+    });
   });
 
   // 失败报告仅保留 Error 名称，避免将内部错误消息回传或写入诊断上下文。
@@ -152,7 +154,7 @@ describe("action-forward 协议、错误隔离与缓冲清理", () => {
 
     await forwardYjsAction(createEntry(), { action: "cancel", commandId: "cmd-cancel" }, fixture.dependencies);
 
-    expect(fixture.errors[0]).toMatchObject({ commandId: "cmd-cancel", code: "AGENT_UNAVAILABLE", retryable: true });
+    expect(fixture.errors[0]).toMatchObject({ commandId: "cmd-cancel", error: { type: "INTERNAL.UNCLASSIFIED" } });
     expect(fixture.reports[0]?.[1]).toBe(expectedKind);
   });
 

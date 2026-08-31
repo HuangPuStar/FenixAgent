@@ -1,10 +1,14 @@
-import { type ActionAck, type ActionError, createDeterministicRcsSessionId } from "@fenix/chat-channel";
-import { Bot, Loader2, RefreshCw } from "lucide-react";
+import {
+  type ActionAck,
+  type ActionError,
+  createDeterministicRcsSessionId,
+  type PublicErrorInfo,
+} from "@fenix/chat-channel";
+import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ACPMain } from "@/components/ACPMain";
-import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatState } from "../../hooks/use-chat-state";
 import { useSessionState } from "../../hooks/use-session-state";
@@ -14,9 +18,9 @@ import { NS } from "../../i18n";
 import { useSession } from "../../lib/auth-client";
 import { randomUUID } from "../../lib/utils";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../../yjs/doc-hub";
-import { buildYjsUrl, createYjsWs, getTerminalYjsWsErrorCode, type YjsWsState } from "../../yjs/yjs-ws";
+import { buildYjsUrl, createYjsWs, type YjsWsState } from "../../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
-import { type ChatWsConnectionState, shouldAutoReconnectOnVisible } from "./chat-visible-reconnect";
+import type { ChatWsConnectionState } from "./chat-visible-reconnect";
 import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";
 
 type WsConnectionState = ChatWsConnectionState;
@@ -42,58 +46,27 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
-  const [errorCode, setErrorCode] = useState<string | null>(null);
+  /** 最近一次服务端分类错误；责任域由错误产生边界提供，不能按 WebSocket 通道猜测。 */
+  const [classifiedError, setClassifiedError] = useState<PublicErrorInfo | null>(null);
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
   const [actionError, setActionError] = useState<ActionError | null>(null);
-  const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 手动重连计数器：点击「重连」按钮时 +1，作为连接 effect 的依赖强制重建 WS。
   // 4500、4502 等同一 URL 无法恢复的关闭码仍需用户手动触发；Chat idle/activity
   // 与客户端 keepalive 超时不再由服务端主动断开。
-  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
   // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
   const [autoReconnecting, setAutoReconnecting] = useState(false);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
 
-  // 手动重连：立即进入 connecting 状态并递增计数器，useLayoutEffect 清理旧连接后重新建连
-  const handleReconnect = useCallback(() => {
-    setConnectionState("connecting");
-    setErrorCode(null);
-    setReconnectAttempt((n) => n + 1);
-  }, []);
-
-  /** 展示 action_error transient banner（5s 自动清除），重复错误重置计时 */
-  const showActionError = useCallback((err: ActionError) => {
-    setActionError(err);
-    if (actionErrorTimerRef.current) clearTimeout(actionErrorTimerRef.current);
-    actionErrorTimerRef.current = setTimeout(() => setActionError(null), 5000);
-  }, []);
-
-  // 卸载清理 banner 计时器，避免卸载后 setState
-  useEffect(() => {
-    return () => {
-      if (actionErrorTimerRef.current) clearTimeout(actionErrorTimerRef.current);
-    };
-  }, []);
-
-  // 缓存 ChatPanel 从后台切回前台且连接已断开时，立即触发一次重连：浏览器可能节流后台
-  // 的 WS 退避计时器。machine_unavailable（4500）保留手动重试，避免无意义循环。
-  const previousPageVisibleRef = useRef(pageVisible);
-  useEffect(() => {
-    const wasVisible = previousPageVisibleRef.current;
-    previousPageVisibleRef.current = pageVisible;
-    if (!shouldAutoReconnectOnVisible(wasVisible, pageVisible, connectionState, errorCode)) return;
-    setConnectionState("connecting");
-    setErrorCode(null);
-    setReconnectAttempt((n) => n + 1);
-  }, [pageVisible, connectionState, errorCode]);
+  /** 保存服务端 Action 公开错误；不按重试语义分支或自动清除诊断标识。 */
+  const showActionError = useCallback((err: ActionError) => setActionError(err), []);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
   // 登录态驱动 rcsSessionKey 与建连守卫；useSession 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
-  const { data: session, isPending: sessionPending, error: sessionError, refetch: refetchSession } = useSession();
+  const { data: session, isPending: sessionPending, error: sessionError, refetch: _refetchSession } = useSession();
   const userId = session?.user?.id;
   const authState = resolveChatAuthState({ pending: sessionPending, error: sessionError, userId });
 
@@ -166,7 +139,6 @@ export function ChatPanel({
     (data: Record<string, unknown>): boolean => {
       const ws = yjsWsRef.current;
       if (!ws?.isConnected()) return false;
-      setErrorCode(null);
       const key = commandKey(data);
       // 后台刷新显式携带独立 commandId，避免连续 mutation 的 list_sessions
       // 在前一个 Ack 到达前复用幂等键而被服务端去重。
@@ -206,11 +178,9 @@ export function ChatPanel({
   }, [pageVisible, connectionState]);
 
   // 创建 YjsWs 连接
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectAttempt 仅作为手动重连触发器，未在 effect 内读取
   useLayoutEffect(() => {
     if (!agentId) {
       setConnectionState("disconnected");
-      setErrorCode(null);
       return;
     }
 
@@ -221,12 +191,10 @@ export function ChatPanel({
     if (authState === "loading") return;
     if (authState === "failed") {
       setConnectionState("error");
-      setErrorCode("auth_failed");
       return;
     }
 
     setConnectionState("connecting");
-    setErrorCode(null);
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
@@ -245,21 +213,14 @@ export function ChatPanel({
         replaceDocHubUpdate(rcsSessionKey, docName, generation, data);
       },
       getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
-      onError: (error) => {
-        if (error.code) setErrorCode(error.code);
-      },
-      onClose: ({ code, reason }) => {
-        const terminalErrorCode = getTerminalYjsWsErrorCode(code, reason);
-        if (terminalErrorCode) {
-          setErrorCode(terminalErrorCode);
-        } else {
-          // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避）。
-          // 必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
-          // 断开，sendViaWs 会静默失败（消息无声消失）；disconnected 渲染分支
-          // 由 autoReconnecting 标记展示"正在自动重连"轻提示。
-          setAutoReconnecting(true);
-          setConnectionState("disconnected");
-        }
+      onError: (error) => setClassifiedError(error),
+      onClose: () => {
+        // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避）。
+        // 必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
+        // 断开，sendViaWs 会静默失败（消息无声消失）；disconnected 渲染分支
+        // 由 autoReconnecting 标记展示"正在自动重连"轻提示。
+        setAutoReconnecting(true);
+        setConnectionState("disconnected");
       },
       onConnectionState: (state: YjsWsState) => {
         if (state === "connecting") {
@@ -300,17 +261,7 @@ export function ChatPanel({
     // reconnectAttempt 变化时重建连接：断连（含机器不可用等不自动重连场景）后用户可点击「重连」恢复；
     // sendViaWs / handleActionAck / releaseCommandId / showActionError 为稳定 useCallback，
     // rcsSessionKey 变化触发重建（建连守卫，见上）；authState 变化驱动登录态守卫
-  }, [
-    agentId,
-    sessionId,
-    rcsSessionKey,
-    authState,
-    reconnectAttempt,
-    sendViaWs,
-    handleActionAck,
-    releaseCommandId,
-    showActionError,
-  ]);
+  }, [agentId, sessionId, rcsSessionKey, authState, sendViaWs, handleActionAck, releaseCommandId, showActionError]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
   const derivedState = useMemo(() => {
@@ -417,48 +368,8 @@ export function ChatPanel({
   }
 
   // 错误状态
-  if (connectionState === "error") {
-    const isMachineUnavailable = errorCode === "machine_unavailable";
-    const isIdleReclaimed = errorCode === "instance_idle_reclaimed";
-    const isKeepaliveTimeout = errorCode === "client_keepalive_timeout";
-    const isAutoStartDisabled = errorCode === "auto_start_disabled";
-    const isMaxSessionsReached = errorCode === "max_sessions_reached";
-    const isLaunchSpecBuildFailed = errorCode === "launch_spec_build_failed";
-    // spawn_rejected 来自 WS close 4502（error 帧未先到时）；error 帧先到则为
-    // auto_start_disabled/max_sessions_reached/launch_spec_build_failed 细分码
-    const isSpawnRejected =
-      isAutoStartDisabled || isMaxSessionsReached || isLaunchSpecBuildFailed || errorCode === "spawn_rejected";
-    const isEnvironmentUnavailable = errorCode === "environment_unavailable";
-    const title = isEnvironmentUnavailable
-      ? t("environmentUnavailable")
-      : isMachineUnavailable || isSpawnRejected
-        ? t("instanceStartFailed")
-        : t("agentDisconnected");
-    const desc = isEnvironmentUnavailable
-      ? t("environmentUnavailableDesc")
-      : isMachineUnavailable
-        ? t("machineUnavailableDesc")
-        : isAutoStartDisabled
-          ? t("autoStartDisabledDesc")
-          : isMaxSessionsReached
-            ? t("maxSessionsReachedDesc")
-            : isLaunchSpecBuildFailed
-              ? t("launchSpecBuildFailedDesc")
-              : isIdleReclaimed
-                ? t("instanceIdleReclaimedDesc")
-                : isKeepaliveTimeout
-                  ? t("clientKeepaliveTimeoutDesc")
-                  : t("agentOfflineDesc");
-    return (
-      <div className="agent-welcome-empty">
-        <p className="title">{title}</p>
-        <p className="desc">{desc}</p>
-        <Button variant="outline" onClick={handleReconnect} className="mt-2">
-          <RefreshCw className="h-4 w-4" />
-          {t("reconnect")}
-        </Button>
-      </div>
-    );
+  if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
+    return <PublicErrorCard error={classifiedError} className="agent-welcome-empty" />;
   }
 
   // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
@@ -478,10 +389,6 @@ export function ChatPanel({
       <div className="agent-welcome-empty">
         <p className="title">{t("authFailed")}</p>
         <p className="desc">{t("authFailedDesc")}</p>
-        <Button variant="outline" onClick={() => refetchSession()} className="mt-2">
-          <RefreshCw className="h-4 w-4" />
-          {t("reconnect")}
-        </Button>
       </div>
     );
   }
@@ -500,33 +407,13 @@ export function ChatPanel({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
-        {errorCode && (
-          <div
-            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            {t("agentRequestFailedDesc")}
-          </div>
-        )}
-        {actionError && (
-          <div
-            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            {actionError.retryable
-              ? t("actionErrorRetryableDesc", { message: actionError.message })
-              : t("actionErrorFatalDesc", { message: actionError.message })}
-          </div>
-        )}
-        {/* Agent 运行时错误（后端 agent.publicError 脱敏投影）— 展示在会话顶部 */}
-        {sessionState.agentPublicError?.message && (
-          <div
-            className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            {sessionState.agentPublicError.message}
-          </div>
-        )}
+        {classifiedError && <PublicErrorCard error={classifiedError} />}
+        {actionError && <PublicErrorCard error={actionError.error} />}
+        {sessionState.agentPublicError &&
+          sessionState.agentPublicError.id !== classifiedError?.id &&
+          sessionState.agentPublicError.id !== actionError?.error.id && (
+            <PublicErrorCard error={sessionState.agentPublicError} />
+          )}
         <ACPMain
           agentId={agentId}
           initialCwd={initialCwd}
@@ -558,17 +445,28 @@ export function ChatPanel({
     );
   }
 
-  // 断开（非错误，非连接中）。
-  // 非终态断开时客户端正在自动重连，展示轻提示而非整屏错误；
-  // 4500 等终态断开才需要手动点击重连。
+  // 断开仅表示连接生命周期；状态机可自行重连，不生成业务错误或恢复操作。
   return (
     <div className="agent-welcome-empty">
       <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>
       <p className="desc">{autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}</p>
-      <Button variant="outline" onClick={handleReconnect} className="mt-2">
-        <RefreshCw className="h-4 w-4" />
-        {t("reconnect")}
-      </Button>
+    </div>
+  );
+}
+
+function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
+  return (
+    <div
+      className={
+        className ??
+        "mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      }
+      role="alert"
+    >
+      <p className="font-medium">执行出错</p>
+      <p className="mt-1 break-all">Type: {error.type}</p>
+      <p className="mt-1 break-all">ID: {error.id}</p>
+      <p className="mt-2">{error.message}</p>
     </div>
   );
 }

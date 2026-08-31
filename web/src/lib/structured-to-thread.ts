@@ -9,7 +9,9 @@ import {
   getEntriesMap,
   getEntryOrder,
   getToolCallsMap,
+  isPublicError,
   type PermissionOption,
+  type PublicErrorInfo,
   type StructuredMessage,
 } from "@fenix/chat-channel";
 // 直接引用 i18next 全局实例（web/src/i18n/index.ts 在此实例上注册各语言资源）：
@@ -53,12 +55,10 @@ export function sessionOptionKindsToPermissionOptions(rawOptions: unknown): Perm
   return result;
 }
 
-/** 规范化脱敏错误（后端 ChatEntry.error / ToolCallProjection.publicError 投影），message 为空则视为无错误 */
-function extractPublicErrorInfo(raw: Record<string, unknown>): { code: string; message: string } | undefined {
-  const code = typeof raw.code === "string" && raw.code ? raw.code : "agent_error";
-  const message = typeof raw.message === "string" && raw.message ? raw.message : "";
-  if (!message) return;
-  return { code, message };
+/** 透明读取普通对象或 Y.Map 中的完整公开错误。 */
+function extractPublicErrorInfo(raw: unknown): PublicErrorInfo | undefined {
+  const value = raw instanceof Y.Map ? raw.toJSON() : raw;
+  return isPublicError(value) ? { type: value.type, id: value.id, message: value.message } : undefined;
 }
 
 function mapStatus(status: string): ToolCallStatus {
@@ -341,11 +341,7 @@ function deriveEntryMessages(
         const status = (tool.get("status") as string) || "running";
         const permissionId = tool.get("permissionId") as string | null | undefined;
         // 工具失败脱敏错误：后端 ToolCallProjection.publicError 投影，取 message 兜底为空
-        const publicErrorRaw = tool.get("publicError");
-        const publicError =
-          publicErrorRaw && typeof publicErrorRaw === "object"
-            ? extractPublicErrorInfo(publicErrorRaw as Record<string, unknown>)
-            : undefined;
+        const publicError = extractPublicErrorInfo(tool.get("publicError"));
         const toolMessage: StructuredMessage = {
           type: "tool_call",
           id: toolCallId,

@@ -121,7 +121,6 @@ interface AssistantBubbleProps {
 }
 
 export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: AssistantBubbleProps) {
-  const { t } = useTranslation("components");
   // 每个助手消息创建独立的 emitter 实例
   const emitter = useMemo(() => new CardEventEmitter(), []);
 
@@ -181,8 +180,10 @@ export function AssistantBubble({ entry, isStreaming, envId, cardEmitterRef }: A
               className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
               role="alert"
             >
-              <span className="font-medium">{t("messageBubble.turnError")}</span>
-              {entry.error.message && <p className="mt-1 whitespace-pre-wrap">{entry.error.message}</p>}
+              <p className="font-medium">执行出错</p>
+              <p className="mt-1 break-all">Type: {entry.error.type}</p>
+              <p className="mt-1 break-all">ID: {entry.error.id}</p>
+              <p className="mt-2 whitespace-pre-wrap">{entry.error.message}</p>
             </div>
           )}
         </div>

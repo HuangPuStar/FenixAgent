@@ -9,6 +9,7 @@
 //
 // 本模块为纯投影（无 I/O、无日志）；拒绝原因通过返回值交给调用方记录诊断。
 
+import { isPublicError } from "../public-error";
 import {
   DEFAULT_PERMISSION_TIMEOUT_MS,
   DEFAULT_QUESTION_TIMEOUT_MS,
@@ -64,17 +65,10 @@ const USER_ENTRY = (turnId: string) => `${turnId}:user`;
 // assistant entryId 派生统一在 turn-machine（turnAssistantEntryId）：收敛入口
 // 与聚合层共用同一规则，禁止此处再次定义造成派生漂移
 
-/** 提取公共错误（过滤内部细节，仅保留脱敏 code/message） */
+/** Y.Doc 只接受来源边界产生的完整公开错误；非法值拒绝投影，不在下游猜测分类。 */
 function extractPublicError(update: Record<string, unknown>): PublicError | null {
   const raw = update.publicError ?? update.error;
-  if (raw && typeof raw === "object") {
-    const record = raw as Record<string, unknown>;
-    const code = typeof record.code === "string" ? record.code : "agent_error";
-    const message = typeof record.message === "string" ? record.message : "Agent request failed";
-    return { code, message };
-  }
-  if (typeof raw === "string") return { code: "agent_error", message: raw };
-  return null;
+  return isPublicError(raw) ? raw : null;
 }
 
 /**

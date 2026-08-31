@@ -181,12 +181,10 @@ describe("SessionChannel action flow", () => {
     );
 
     expect(relayMessages).toHaveLength(0);
-    expect(harness.errorFrames).toContainEqual({
+    expect(harness.errorFrames[0]).toMatchObject({
       type: "action_error",
       commandId: "cmd-create-error",
-      code: "AGENT_UNAVAILABLE",
-      message: "Agent connection error",
-      retryable: true,
+      error: { type: "ACTION.AGENT_UNAVAILABLE" },
     });
     expect(harness.errors).toHaveLength(1);
   });
@@ -281,8 +279,7 @@ describe("SessionChannel action flow", () => {
     expect(harness.errorFrames[0]).toMatchObject({
       type: "action_error",
       commandId: "cmd-1",
-      code: "INVALID_STATE",
-      retryable: false,
+      error: { type: "ACTION.INVALID_STATE" },
     });
     expect(relayMessages).toHaveLength(0);
   });
@@ -605,7 +602,7 @@ describe("SessionChannel action flow", () => {
     );
 
     expect(harness.acks).toHaveLength(0);
-    expect(harness.errorFrames[0]).toMatchObject({ code: "SESSION_NOT_FOUND", retryable: false });
+    expect(harness.errorFrames[0]).toMatchObject({ error: { type: "ACTION.SESSION_NOT_FOUND" } });
     expect(relayMessages).toHaveLength(0);
   });
 
@@ -621,7 +618,7 @@ describe("SessionChannel action flow", () => {
     await harness.channel.handleAction(failing, { action: "cancel", commandId: "cmd-1" }, sinks);
 
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted"]);
-    expect(harness.errorFrames[0]).toMatchObject({ code: "AGENT_UNAVAILABLE", retryable: true });
+    expect(harness.errorFrames[0]).toMatchObject({ error: { type: "ACTION.AGENT_UNAVAILABLE" } });
     expect(harness.errors).toHaveLength(1);
   });
 
@@ -645,8 +642,7 @@ describe("SessionChannel action flow", () => {
     expect(connection.acpSessionId).toBe("ses-old");
     expect(relayMessages).toHaveLength(0);
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted"]);
-    expect(harness.errorFrames[0]?.retryable).toBe(true);
-    expect(harness.errorFrames[0]?.code).toBe("AGENT_UNAVAILABLE");
+    expect(harness.errorFrames[0]?.error.type).toBe("INTERNAL.UNCLASSIFIED");
   });
 });
 
