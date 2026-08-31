@@ -171,7 +171,14 @@ describe("Gateway shared relay", () => {
     expect(ensureCalls).toBe(1);
     expect(connectCalls).toBe(1);
     expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(1);
-    expect(JSON.parse(textFrames(ws2)[0] ?? "{}")).toMatchObject({ payload: { code: "too_many_connections" } });
+    expect(JSON.parse(textFrames(ws2)[0] ?? "{}")).toMatchObject({
+      type: "error",
+      payload: {
+        type: "SYNC_RELAY.CAPACITY_EXCEEDED",
+        id: expect.stringMatching(/^err_[0-9a-f]{32}$/),
+        message: "The synchronization service cannot accept more connections.",
+      },
+    });
     lifecycle.handleClose("ws-1");
   });
 
