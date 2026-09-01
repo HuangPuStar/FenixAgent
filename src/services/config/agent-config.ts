@@ -229,7 +229,7 @@ export async function restartAgentConfigInstances(
 
   // 惰性导入避免 agent-config → agent-instance-service → orchestration-instance → config 的循环依赖。
   const { agentInstanceService } = await import("../agent-instance-service");
-  const restartedInstanceIds = await agentInstanceService.restartRunningInstancesForEnvironments(environmentIds);
+  const restartedInstanceIds = await agentInstanceService.restartInstancesForEnvironments(environmentIds);
   return { environmentIds, restartedInstanceIds };
 }
 

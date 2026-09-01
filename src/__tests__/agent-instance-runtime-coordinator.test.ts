@@ -237,12 +237,38 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     const service = new AgentInstanceService(repository, coordinator);
     await service.ensureInstanceRuntime(instance);
 
-    const restarted = await service.restartRunningInstancesForEnvironments([instance.environmentId]);
+    const restarted = await service.restartInstancesForEnvironments([instance.environmentId]);
 
     expect(restarted).toEqual([instance.id]);
     expect(starts).toBe(2);
     expect(stops).toBe(1);
     expect(deletes).toBe(0);
+    expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
+  });
+
+  // Agent 配置确认后必须重启停止中的持久 Instance，restart 语义不能退化为“仅重启当前进程”。
+  test("restart stopped instances starts runtime and keeps persistent identity", async () => {
+    let starts = 0;
+    let stops = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+      },
+      async stop() {
+        stops += 1;
+      },
+    };
+    const repository = {
+      listByEnvironment: async (environmentId: string) => (environmentId === instance.environmentId ? [instance] : []),
+    } as unknown as IAgentInstanceRepo;
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    const service = new AgentInstanceService(repository, coordinator);
+
+    const restarted = await service.restartInstancesForEnvironments([instance.environmentId]);
+
+    expect(restarted).toEqual([instance.id]);
+    expect(starts).toBe(1);
+    expect(stops).toBe(0);
     expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
   });
 

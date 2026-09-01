@@ -212,7 +212,7 @@ export class AgentInstanceRuntimeCoordinator {
   ): Promise<void> {
     const entry = this.#entry(instance.id);
     try {
-      if (operation === "restart") {
+      if (operation === "restart" && entry.state !== "stopped") {
         entry.state = "stopping";
         await this.adapter.stop(instance.id, generation - 1, signal);
       }

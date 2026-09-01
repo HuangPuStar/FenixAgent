@@ -419,7 +419,7 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   return configSuccess({ name, id: createdAgent?.id, resourceAccess: createdAgent?.resourceAccess });
 }
 
-/** 重启该 Agent 绑定 Environment 下的活跃 runtime，持久 Instance 记录保持不变。 */
+/** 重启该 Agent 绑定 Environment 下的持久 Instance runtime，Instance 记录保持不变。 */
 async function handleRestart(ctx: AuthContext, name: string) {
   let result: Awaited<ReturnType<typeof configPg.restartAgentConfigInstances>>;
   try {
