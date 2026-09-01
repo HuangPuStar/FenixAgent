@@ -132,6 +132,73 @@ describe("env validation", () => {
     expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
   });
 
+  // 未配置连接池变量时必须保留 postgres.js 当前的默认连接策略。
+  test("数据库连接池变量未设置时使用默认值", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    delete process.env.RCS_DB_POOL_MAX;
+    delete process.env.RCS_DB_IDLE_TIMEOUT_SECONDS;
+    delete process.env.RCS_DB_CONNECT_TIMEOUT_SECONDS;
+    delete process.env.RCS_DB_MAX_LIFETIME_SECONDS;
+
+    const env = validateEnv();
+    expect(env.RCS_DB_POOL_MAX).toBe(20);
+    expect(env.RCS_DB_IDLE_TIMEOUT_SECONDS).toBeUndefined();
+    expect(env.RCS_DB_CONNECT_TIMEOUT_SECONDS).toBeUndefined();
+    expect(env.RCS_DB_MAX_LIFETIME_SECONDS).toBeUndefined();
+    expect(env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS).toBe(150);
+    expect(env.RCS_DB_LOCK_TIMEOUT_SECONDS).toBe(5);
+  });
+
+  // 显式连接池配置应被转换为数值并透传给运行时数据库客户端。
+  test("数据库连接池变量使用显式配置", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_DB_POOL_MAX = "20";
+    process.env.RCS_DB_IDLE_TIMEOUT_SECONDS = "60";
+    process.env.RCS_DB_CONNECT_TIMEOUT_SECONDS = "15";
+    process.env.RCS_DB_MAX_LIFETIME_SECONDS = "3600";
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "90";
+    process.env.RCS_DB_LOCK_TIMEOUT_SECONDS = "3";
+
+    expect(validateEnv()).toMatchObject({
+      RCS_DB_POOL_MAX: 20,
+      RCS_DB_IDLE_TIMEOUT_SECONDS: 60,
+      RCS_DB_CONNECT_TIMEOUT_SECONDS: 15,
+      RCS_DB_MAX_LIFETIME_SECONDS: 3600,
+      RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS: 90,
+      RCS_DB_LOCK_TIMEOUT_SECONDS: 3,
+    });
+  });
+
+  // 所有已设置的连接池变量必须为正整数，避免无效运行时策略。
+  test("数据库连接池变量为零时校验失败", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_DB_POOL_MAX = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_POOL_MAX/);
+
+    process.env.RCS_DB_POOL_MAX = "10";
+    process.env.RCS_DB_CONNECT_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_CONNECT_TIMEOUT_SECONDS/);
+
+    process.env.RCS_DB_CONNECT_TIMEOUT_SECONDS = "30";
+    process.env.RCS_DB_IDLE_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_IDLE_TIMEOUT_SECONDS/);
+
+    delete process.env.RCS_DB_IDLE_TIMEOUT_SECONDS;
+    process.env.RCS_DB_MAX_LIFETIME_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_MAX_LIFETIME_SECONDS/);
+
+    delete process.env.RCS_DB_MAX_LIFETIME_SECONDS;
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS/);
+
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "150";
+    process.env.RCS_DB_LOCK_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_LOCK_TIMEOUT_SECONDS/);
+  });
+
   // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
   test("RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
