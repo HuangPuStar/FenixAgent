@@ -41,6 +41,11 @@ interface AgentSetDefaultResult {
   resourceAccess?: unknown;
 }
 
+interface AgentRestartResult {
+  environmentIds: string[];
+  restartedInstanceIds: string[];
+}
+
 /** 删除响应：后端返回 data: null */
 type AgentDeleteResult = null;
 
@@ -61,6 +66,10 @@ export const agentApi = {
   /** 创建新的 Agent 配置 */
   create: (name: string, data: Record<string, unknown>) =>
     request<AgentSaveResult>("/web/config/agents", { method: "POST", body: { name, data } }),
+
+  /** 使用最新配置重启该 Agent 绑定 Environment 下的活跃 runtime，保留持久 Instance。 */
+  restart: (name: string) =>
+    request<AgentRestartResult>("/web/config/agents/restart", { method: "POST", query: { name } }),
 
   /** 删除 Agent 配置（内置 Agent 不可删除） */
   del: (name: string) => request<AgentDeleteResult>("/web/config/agents", { method: "DELETE", query: { name } }),

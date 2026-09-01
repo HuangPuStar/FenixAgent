@@ -2,9 +2,7 @@ import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { agentApi } from "../../../api/agents";
-import { envApi } from "../../../api/environments";
 import { hindsightApi } from "../../../api/hindsight";
-import { instanceApi } from "../../../api/instances";
 import { kbApi } from "../../../api/knowledge-bases";
 import { mcpApi } from "../../../api/mcp";
 import { modelApi } from "../../../api/models";
@@ -97,7 +95,6 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [progressiveData, setProgressiveData] = useState<AgentEditorData | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [savedAgentId, setSavedAgentId] = useState<string | null>(null);
 
   const loadService = useCallback(async (): Promise<AgentEditorData> => {
     if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));
@@ -303,8 +300,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
         return;
       }
       if (options.mode !== "edit") return;
-      const result = await unwrap(agentApi.set(options.agentName, payload));
-      setSavedAgentId(result.id ?? loadRequest.data.agentId);
+      await unwrap(agentApi.set(options.agentName, payload));
       toast.success(t("save.successUpdate"));
       dispatchConfigChange("agents");
       setRestartDialogOpen(true);
@@ -320,36 +316,15 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
 
   const restartRequest = useRequest(
     async () => {
-      const agentId = savedAgentId ?? loadRequest.data?.agentId;
-      if (!agentId) throw new Error(tp("noInstancesToRestart"));
-      const environments = await unwrap(envApi.list({ agentConfigId: agentId }));
-      const targets = await Promise.all(
-        environments.map(async (environment) => {
-          const data = await unwrap(envApi.listInstances({ id: environment.id }));
-          return (data.instances ?? [])
-            .filter((instance) => instance.status === "running" || instance.status === "starting")
-            .map((instance) => ({ environmentId: environment.id, instanceId: instance.instanceUid }));
-        }),
-      );
-      const active = targets.flat();
-      if (!active.length) {
+      if (options.mode !== "edit") return;
+      const result = await unwrap(agentApi.restart(options.agentName));
+      if (!result.restartedInstanceIds.length) {
         toast.info(tp("noInstancesToRestart"));
         setRestartDialogOpen(false);
         onOpenChange(false);
         return;
       }
-      const results = await Promise.allSettled(
-        active.map(async ({ environmentId, instanceId }) => {
-          await unwrap(instanceApi.del({ id: instanceId }));
-          await unwrap(instanceApi.spawn({ environmentId }));
-        }),
-      );
-      const successfulEnvironmentIds = results.flatMap((result, index) =>
-        result.status === "fulfilled" ? [active[index].environmentId] : [],
-      );
-      const failed = results.length - successfulEnvironmentIds.length;
-      dispatchAgentReconnect(successfulEnvironmentIds);
-      if (failed) throw new Error(tp("restartPartialFailed", { failed, total: active.length }));
+      dispatchAgentReconnect(result.environmentIds);
       toast.success(tp("restartSuccess"));
       setRestartDialogOpen(false);
       onOpenChange(false);

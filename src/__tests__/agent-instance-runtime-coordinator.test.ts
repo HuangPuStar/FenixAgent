@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentInstanceRecord } from "../repositories";
+import type { AgentInstanceRecord, IAgentInstanceRepo } from "../repositories";
 import { AgentInstanceRuntimeCoordinator, type RuntimeAdapter } from "../services/agent-instance-runtime-coordinator";
+import { AgentInstanceService } from "../services/agent-instance-service";
 
 const instance: AgentInstanceRecord = {
   id: "inst_00000000000000000000000000000001",
@@ -210,6 +211,39 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     void coordinator.ensureRuntime(instance);
     await coordinator.shutdown();
     expect(coordinator.snapshot(instance.id).state).toBe("unknown");
+  });
+
+  // Agent 配置确认后必须重启活跃 runtime，默认持久 Instance 仍保留且不会走 deleteById。
+  test("restart running instances keeps default persistent instance", async () => {
+    let starts = 0;
+    let stops = 0;
+    let deletes = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+      },
+      async stop() {
+        stops += 1;
+      },
+    };
+    const repository = {
+      listByEnvironment: async (environmentId: string) => (environmentId === instance.environmentId ? [instance] : []),
+      deleteById: async () => {
+        deletes += 1;
+        return true;
+      },
+    } as unknown as IAgentInstanceRepo;
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    const service = new AgentInstanceService(repository, coordinator);
+    await service.ensureInstanceRuntime(instance);
+
+    const restarted = await service.restartRunningInstancesForEnvironments([instance.environmentId]);
+
+    expect(restarted).toEqual([instance.id]);
+    expect(starts).toBe(2);
+    expect(stops).toBe(1);
+    expect(deletes).toBe(0);
+    expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
   });
 
   // disconnect 只接受当前 generation，并标记 unknown；迟到 death 不得覆盖该 fence 后状态。

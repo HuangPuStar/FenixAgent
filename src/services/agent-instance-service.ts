@@ -137,6 +137,21 @@ export class AgentInstanceService {
     await this.coordinator.restartRuntime(instance);
   }
 
+  /** 重启指定 Environment 下当前正在运行或启动中的持久 Instance，保留其持久身份。 */
+  async restartRunningInstancesForEnvironments(environmentIds: string[]): Promise<string[]> {
+    const instances = (
+      await Promise.all(
+        [...new Set(environmentIds)].map((environmentId) => this.repository.listByEnvironment(environmentId)),
+      )
+    ).flat();
+    const running = instances.filter((instance) => {
+      const state = this.coordinator.snapshot(instance.id).state;
+      return state === "running" || state === "starting";
+    });
+    await Promise.all(running.map((instance) => this.coordinator.restartRuntime(instance)));
+    return running.map((instance) => instance.id);
+  }
+
   async deleteInstance(instance: AgentInstanceRecord): Promise<void> {
     if (instance.isDefault)
       throw new AppError("Default Agent Instance cannot be deleted", "DEFAULT_INSTANCE_DELETE_DENIED", 409);
