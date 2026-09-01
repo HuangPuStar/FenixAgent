@@ -89,6 +89,29 @@ export interface ModelGatewayBudgetItem {
   isActivated: boolean;
 }
 
+export interface ModelGatewayManagedKey {
+  id: string;
+  externalCredentialId: string;
+  organizationId: string;
+  organizationName: string | null;
+  userId: string;
+  userName: string | null;
+  agentConfigId: string;
+  agentName: string | null;
+  status: "active" | "blocked" | "error";
+  createdAt: string;
+  updatedAt: string;
+  usable: boolean;
+  invalidReason:
+    | "USER_NOT_FOUND"
+    | "ORGANIZATION_NOT_FOUND"
+    | "MEMBERSHIP_NOT_FOUND"
+    | "AGENT_NOT_FOUND"
+    | "AGENT_ACCESS_REVOKED"
+    | "CREDENTIAL_UNUSABLE"
+    | null;
+}
+
 function adminOptions() {
   return { bearerToken: getAdminKey() ?? undefined };
 }
@@ -206,6 +229,24 @@ export function resetModelGatewayBudgets(userIds: string[]) {
       method: "POST",
       body: { userIds },
     }),
+  );
+}
+
+export function listModelGatewayKeys(page = 1, pageSize = 20) {
+  return unwrap(
+    request<{ items: ModelGatewayManagedKey[]; total: number; page: number; pageSize: number }>(
+      "/api/system/model-gateway/keys",
+      { ...adminOptions(), query: { page, pageSize } },
+    ),
+  );
+}
+
+export function removeModelGatewayKeys(ids: string[]) {
+  return unwrap(
+    request<{ deletedIds: string[]; skipped: Array<{ id: string; reason: string }>; failed: Array<{ id: string }> }>(
+      "/api/system/model-gateway/keys/actions/remove",
+      { ...adminOptions(), method: "POST", body: { ids } },
+    ),
   );
 }
 

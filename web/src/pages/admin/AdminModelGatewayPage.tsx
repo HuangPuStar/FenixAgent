@@ -35,6 +35,7 @@ import { fetchSystemPeopleTree } from "../../api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
 import { MasterKeyGate } from "./components/MasterKeyGate";
+import { ModelGatewayKeyManagementPanel } from "./components/ModelGatewayKeyManagementPanel";
 import { SearchableUsageFilter } from "./components/SearchableUsageFilter";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
 import { buildModelGatewayOverviewUsageQuery, buildSevenDayUsageTrend } from "./model-gateway-overview";
@@ -70,7 +71,7 @@ export function AdminModelGatewayPage() {
 function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const { i18n, t } = useTranslation("observer");
   const [status, setStatus] = useState<ModelSyncStatus | null>(null);
-  const [tab, setTab] = useState<"overview" | "models" | "budgets" | "usage">("overview");
+  const [tab, setTab] = useState<"overview" | "models" | "budgets" | "usage" | "keys">("overview");
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetDuration, setBudgetDuration] = useState("30d");
@@ -257,7 +258,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
         </header>
 
         <div className="flex gap-1 border-b border-border">
-          {(["overview", "models", "budgets", "usage"] as const).map((item) => (
+          {(["overview", "models", "budgets", "usage", "keys"] as const).map((item) => (
             <Button
               key={item}
               variant={tab === item ? "secondary" : "ghost"}
@@ -293,6 +294,8 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
             }}
             onModels={() => setTab("models")}
           />
+        ) : tab === "keys" ? (
+          <ModelGatewayKeyManagementPanel onAuthFailure={onAuthFailure} />
         ) : tab === "models" ? (
           <div className="space-y-4">
             <Card className="border-primary/30 bg-primary/5">

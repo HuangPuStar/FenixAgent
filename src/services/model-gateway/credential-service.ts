@@ -86,7 +86,6 @@ export function createModelGatewayCredentialService(deps: ModelGatewayCredential
 
     const created = await deps.adapter.createCredential({
       externalUserId: internalUserId,
-      keyAlias: `fenix:${input.organizationId}:${input.userId}:${input.agentConfigId}`,
       metadata: {
         fenix_gateway_provider_id: input.gatewayProviderId,
         fenix_organization_id: input.organizationId,

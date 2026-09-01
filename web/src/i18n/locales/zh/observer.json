@@ -15,7 +15,8 @@
       "overview": "概览",
       "models": "模型",
       "budgets": "配额管理",
-      "usage": "消耗统计"
+      "usage": "消耗统计",
+      "keys": "Key 管理"
     },
     "budgets": "全局用户预算",
     "query": "查询",
@@ -110,6 +111,45 @@
       "selectUser": "选择{{name}}",
       "pagination_total": "共 {{total}} 位用户",
       "pagination_page_size": "{{size}} 位/页"
+    },
+    "keysPage": {
+      "title": "Key 管理",
+      "description": "仅显示由 Fenix 创建的模型网关 Key；不会显示 Key 明文。无用状态按当前权限实时计算。",
+      "refresh": "刷新",
+      "remove": "删除所选 Key",
+      "empty": "暂无 Fenix 管理的 Key。",
+      "loadError": "Key 列表读取失败，请重试。",
+      "removeTitle": "删除 Key",
+      "removeDescription": "确认删除 {{count}} 个 Key？系统会先尝试禁用远端 Key，成功或远端不存在后删除本地映射。",
+      "removeSuccess": "已删除 {{count}} 个 Key。",
+      "removeSkipped": "{{count}} 个 Key 已不存在于本地映射中。",
+      "removeFailed": "{{count}} 个 Key 删除失败，请稍后重试。",
+      "select": "选择 Key {{id}}",
+      "unknownSubject": "未知",
+      "subjectLabels": {
+        "organization": "组织",
+        "user": "用户",
+        "agent": "agent"
+      },
+      "columns": {
+        "id": "ID",
+        "key": "Key ID",
+        "subject": "主体",
+        "availability": "当前可用性",
+        "createdAt": "创建时间"
+      },
+      "reasons": {
+        "usable": "可用",
+        "USER_NOT_FOUND": "用户不存在",
+        "ORGANIZATION_NOT_FOUND": "组织不存在",
+        "MEMBERSHIP_NOT_FOUND": "用户已不在组织内",
+        "AGENT_NOT_FOUND": "Agent 不存在或不属于组织",
+        "AGENT_ACCESS_REVOKED": "用户已失去 Agent 访问权限",
+        "CREDENTIAL_UNUSABLE": "凭证已禁用或密文缺失",
+        "unusable": "不可用"
+      },
+      "pagination_total": "共 {{total}} 个 Key",
+      "pagination_page_size": "{{size}} 个/页"
     },
     "usagePage": {
       "querying": "查询中…",

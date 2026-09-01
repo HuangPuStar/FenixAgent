@@ -42,4 +42,49 @@ describe("model gateway configuration route", () => {
       defaultBudget: { maxBudgetUsd: 50, duration: "30d" },
     });
   });
+
+  // 验证系统管理员可读取实时 Key 可用性，但响应不会包含任何 Key 明文。
+  test("lists Fenix-managed keys with the current invalid reason", async () => {
+    process.env.RCS_SYSTEM_API_KEYS = "system-test-key";
+    setModelGatewayServices({
+      provider: { ensureProvider: async () => "provider-1" },
+      keyManagement: {
+        listKeys: async () => ({
+          items: [
+            {
+              id: "a0000000-0000-4000-8000-000000000001",
+              externalCredentialId: "key-id-only",
+              encryptedCredential: "encrypted-key",
+              organizationId: "org-1",
+              organizationName: "Organization One",
+              userId: "user-1",
+              userName: "User One",
+              agentConfigId: "a0000000-0000-4000-8000-000000000002",
+              agentName: "Agent One",
+              status: "active" as const,
+              createdAt: new Date("2026-01-01T00:00:00.000Z"),
+              updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+              usable: false,
+              invalidReason: "AGENT_ACCESS_REVOKED" as const,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+        }),
+      },
+    } as unknown as ModelGatewayServices);
+
+    const response = await modelGatewayRoutes.handle(
+      new Request("http://localhost/api/system/model-gateway/keys?page=1&pageSize=20", {
+        headers: { Authorization: "Bearer system-test-key" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(new Response(response.body).json()).resolves.toMatchObject({
+      items: [{ externalCredentialId: "key-id-only", invalidReason: "AGENT_ACCESS_REVOKED", usable: false }],
+      total: 1,
+    });
+  });
 });

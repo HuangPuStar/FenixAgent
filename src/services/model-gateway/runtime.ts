@@ -5,9 +5,11 @@ import { db } from "../../db";
 import { agentConfig, member, organization, user } from "../../db/schema";
 import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
 import {
-  clearModelGatewayCredential,
+  deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
+  findModelGatewayCredentialsByIds,
   listModelGatewayCredentialsAfter,
+  listModelGatewayCredentialsPage,
   updateModelGatewayCredentialStatus,
   upsertModelGatewayCredential,
 } from "../../repositories/model-gateway-credential";
@@ -18,8 +20,8 @@ import { createModelGatewayBudgetService } from "./budget-service";
 import { createModelGatewayCredentialCipher } from "./credential-cipher";
 import { createModelGatewayCredentialService } from "./credential-service";
 import { type ModelGatewayServices, setModelGatewayServices } from "./index";
+import { createModelGatewayKeyManagementService } from "./key-management-service";
 import { createSystemModelGatewayProviderService } from "./provider-service";
-import { createModelGatewayReconcileJob } from "./reconcile-job";
 import { createModelGatewayRuntimeCredentialResolver } from "./runtime-credential-resolver";
 import { createModelGatewaySubjectService } from "./subject-service";
 import { createModelGatewayUsageMappingLister } from "./usage-mapping-service";
@@ -113,62 +115,72 @@ export function createModelGatewayRuntime() {
     }));
   };
   const usage = createModelGatewayUsageService({ adapter, listCredentialMappings: listMappings });
-  const services = { provider: providerService, budget, subject, usage } as ModelGatewayServices;
+  const listManagedKeyMappings = async (input: { gatewayProviderId: string; page: number; pageSize: number }) => {
+    const result = await listModelGatewayCredentialsPage(input);
+    const [organizationNames, users, agentNames] = await Promise.all([
+      organizationRepo.listNamesByIds([...new Set(result.items.map((item) => item.organizationId))]),
+      findUsersBasicInfoByIds([...new Set(result.items.map((item) => item.userId))]),
+      findAgentConfigNamesByIds([...new Set(result.items.map((item) => item.agentConfigId))]),
+    ]);
+    const usersById = new Map(users.map((item) => [item.id, item]));
+    return {
+      ...result,
+      items: result.items.map((item) => ({
+        ...item,
+        organizationName: organizationNames.get(item.organizationId) ?? null,
+        userName: usersById.get(item.userId)?.name ?? null,
+        agentName: agentNames.get(item.agentConfigId) ?? null,
+      })),
+    };
+  };
+  const evaluateCredentialSubject = async (mapping: {
+    organizationId: string;
+    userId: string;
+    agentConfigId: string;
+  }) => {
+    const [userRow] = await db.select({ id: user.id }).from(user).where(sql`${user.id} = ${mapping.userId}`).limit(1);
+    if (!userRow) return { valid: false as const, reason: "USER_NOT_FOUND" as const };
+    const [orgRow] = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(sql`${organization.id} = ${mapping.organizationId}`)
+      .limit(1);
+    if (!orgRow) return { valid: false as const, reason: "ORGANIZATION_NOT_FOUND" as const };
+    const [memberRow] = await db
+      .select({ id: member.id })
+      .from(member)
+      .where(sql`${member.organizationId} = ${mapping.organizationId} AND ${member.userId} = ${mapping.userId}`)
+      .limit(1);
+    if (!memberRow) return { valid: false as const, reason: "MEMBERSHIP_NOT_FOUND" as const };
+    const [agentRow] = await db
+      .select({ id: agentConfig.id })
+      .from(agentConfig)
+      .where(
+        sql`${agentConfig.id} = ${mapping.agentConfigId} AND ${agentConfig.organizationId} = ${mapping.organizationId}`,
+      )
+      .limit(1);
+    if (!agentRow) return { valid: false as const, reason: "AGENT_NOT_FOUND" as const };
+    const readable = await canReadResource(
+      { organizationId: mapping.organizationId, userId: mapping.userId, role: "member" },
+      "agent_config",
+      mapping.agentConfigId,
+      mapping.organizationId,
+    );
+    return readable ? { valid: true as const } : { valid: false as const, reason: "AGENT_ACCESS_REVOKED" as const };
+  };
+  const keyManagement = createModelGatewayKeyManagementService({
+    listMappings: listManagedKeyMappings,
+    findMappingsByIds: findModelGatewayCredentialsByIds,
+    evaluateSubject: evaluateCredentialSubject,
+    blockCredential: (externalCredentialId) => adapter.blockCredential(externalCredentialId),
+    deleteMapping: deleteModelGatewayCredential,
+  });
+  const services = { provider: providerService, budget, subject, usage, keyManagement } as ModelGatewayServices;
   setModelGatewayServices(services);
   const resolveRuntimeCredential = createModelGatewayRuntimeCredentialResolver({
     getUserBudget: budget.getUserBudget,
     resolveCredential: credential.resolveCredential,
   });
 
-  const reconcile = createModelGatewayReconcileJob(
-    {
-      listMappings: listModelGatewayCredentialsAfter,
-      isSubjectValid: async (mapping) => {
-        const [userRow] = await db
-          .select({ id: user.id })
-          .from(user)
-          .where(sql`${user.id} = ${mapping.userId}`)
-          .limit(1);
-        const [orgRow] = await db
-          .select({ id: organization.id })
-          .from(organization)
-          .where(sql`${organization.id} = ${mapping.organizationId}`)
-          .limit(1);
-        const [memberRow] = await db
-          .select({ id: member.id })
-          .from(member)
-          .where(sql`${member.organizationId} = ${mapping.organizationId} AND ${member.userId} = ${mapping.userId}`)
-          .limit(1);
-        const [agentRow] = await db
-          .select({ id: agentConfig.id })
-          .from(agentConfig)
-          .where(
-            sql`${agentConfig.id} = ${mapping.agentConfigId} AND ${agentConfig.organizationId} = ${mapping.organizationId}`,
-          )
-          .limit(1);
-        if (!userRow || !orgRow || !memberRow || !agentRow) return false;
-        return canReadResource(
-          { organizationId: mapping.organizationId, userId: mapping.userId, role: "member" },
-          "agent_config",
-          mapping.agentConfigId,
-          mapping.organizationId,
-        );
-      },
-      blockCredential: (externalCredentialId) => adapter.blockCredential(externalCredentialId),
-      updateStatus: async (id, status) => {
-        await updateModelGatewayCredentialStatus(id, status);
-      },
-      clearCredential: clearModelGatewayCredential,
-      withLock: async (fn) =>
-        db.transaction(async (tx) => {
-          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('fenix:model-gateway:reconcile', 0))`);
-          return fn();
-        }),
-    },
-    {
-      cron: config.modelGatewayCredentialReconcileCron,
-      timezone: config.modelGatewayCredentialReconcileTimezone,
-    },
-  );
-  return { services, credential, reconcile, resolveRuntimeCredential };
+  return { services, credential, resolveRuntimeCredential };
 }

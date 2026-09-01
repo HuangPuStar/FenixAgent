@@ -64,8 +64,7 @@ export interface GatewayUserBudgetResetResult {
 /** 创建网关凭证的输入。 */
 export interface CreateGatewayCredentialInput {
   externalUserId: string;
-  /** 供网关管理后台展示和人工定位的稳定凭证别名。 */
-  keyAlias?: string;
+  /** Fenix 主体归属信息，供管理和审计使用。 */
   metadata?: Record<string, string>;
 }
 

@@ -8,11 +8,7 @@ export {
   type ResolveModelGatewayCredentialInput,
   stableInternalUserId,
 } from "./credential-service";
-export {
-  createModelGatewayReconcileJob,
-  type ModelGatewayReconcileJobDeps,
-  type ReconcileResult,
-} from "./reconcile-job";
+export { type CredentialInvalidReason, createModelGatewayKeyManagementService } from "./key-management-service";
 export {
   createModelGatewaySubjectService,
   type ModelGatewaySubjectAgent,
@@ -21,6 +17,7 @@ export {
 export { type AggregatedUsage, createModelGatewayUsageService, type UsageQueryInput } from "./usage-service";
 
 import type { createModelGatewayBudgetService } from "./budget-service";
+import type { createModelGatewayKeyManagementService } from "./key-management-service";
 import type { createSystemModelGatewayProviderService } from "./provider-service";
 import type { createModelGatewaySubjectService } from "./subject-service";
 import type { createModelGatewayUsageService } from "./usage-service";
@@ -30,6 +27,7 @@ export type ModelGatewayServices = {
   budget: ReturnType<typeof createModelGatewayBudgetService>;
   subject: ReturnType<typeof createModelGatewaySubjectService>;
   usage: ReturnType<typeof createModelGatewayUsageService>;
+  keyManagement: ReturnType<typeof createModelGatewayKeyManagementService>;
 };
 
 let services: ModelGatewayServices | null = null;

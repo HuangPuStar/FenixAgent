@@ -1,6 +1,6 @@
 # 模型网关一期设计
 
-> 状态：已评审、已实现；日期：2026-08-26；最后按实现校准：2026-08-29
+> 状态：已评审、已实现；日期：2026-08-26；最后按实现校准：2026-09-01
 
 ## 1. 目标与范围
 
@@ -13,9 +13,9 @@ Fenix 通过一个系统维护的 Gateway Provider 将 LiteLLM 模型提供给�
 - Agent 首次使用时懒创建并复用 Virtual Key；
 - 管理端按组织、用户、Agent、模型查看用量；
 - 用户从 Gateway Provider 进入“我的用量”；
-- 夜间禁用已失效主体对应的 Key。
+- 管理员在 Key 管理页人工核对并回收无用或需手动失效的 Key。
 
-一期不做：多 Gateway Provider 策略、Organization/Team 预算、模型 CRUD、用量明细导出、用量流水镜像、Key 自动重建和实时权限变更反向禁用。
+一期不做：多 Gateway Provider 策略、Organization/Team 预算、模型 CRUD、用量明细导出、用量流水镜像、定时 Key 对账和实时权限变更反向禁用。
 
 ## 2. 核心规则
 
@@ -34,12 +34,12 @@ Fenix 通过一个系统维护的 Gateway Provider 将 LiteLLM 模型提供给�
 | --- | --- | --- |
 | 用户 | Internal User | `fenix-<userId>`，不含 Organization 和 Provider |
 | 一次 Agent 调用主体 | Virtual Key | `gatewayProviderId + organizationId + userId + agentConfigId` |
-| Key 管理后台别名 | `key_alias` | `fenix:<organizationId>:<userId>:<agentConfigId>` |
+| Key 主体标识 | `metadata` | `fenix_gateway_provider_id`、`fenix_organization_id`、`fenix_user_id`、`fenix_agent_config_id` |
 | Key 用量标识 | `token_id` | `/key/generate` 返回的 `token`，也是 daily activity 的 Key 标识 |
 
 同一用户在多个组织中使用网关时，拥有同一个 LiteLLM Internal User 和多把按 Agent/组织隔离的 Virtual Key。
 
-Virtual Key 不设置模型 allowlist。模型选择由 Fenix 的 Gateway Provider Model 投影约束；同步模型或切换 Agent 模型不更新 Key allowlist。
+Virtual Key 不设置模型 allowlist 或 `key_alias`。模型选择由 Fenix 的 Gateway Provider Model 投影约束；同步模型或切换 Agent 模型不更新 Key allowlist。主体归属仅由 metadata 和本地 Mapping 保存，避免 LiteLLM 已 block 的同名 Key 阻止后续创建。
 
 Fenix 在 `model_gateway_credential` 中保存：
 
@@ -47,7 +47,7 @@ Fenix 在 `model_gateway_credential` 中保存：
 - 仅用于运行时注入的 `encryptedCredential`；
 - `active`、`blocked`、`error` 状态及无敏感 metadata。
 
-唯一约束为 `(gatewayProviderId, organizationId, userId, agentConfigId)`。主体删除后 Mapping 保留，以支持历史归因和夜间对账。密文在 Key 被禁用后清空；密钥明文、Master Key 和 metadata 不出现在 API、日志或前端。
+唯一约束为 `(gatewayProviderId, organizationId, userId, agentConfigId)`。主体失效不会自动删除 Mapping；管理员在 Key 管理页确认回收后，Fenix 先 block 远端 Key，再删除本地 Mapping，使后续恢复访问时可创建新 Key。密钥明文和 Master Key 不出现在 API、日志或前端；管理 API 仅返回 metadata 关联出的主体标识和名称。
 
 ## 3. 架构与职责
 
@@ -83,8 +83,6 @@ Agent LaunchSpec ← 解密当前主体的 Virtual Key
 | `RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY` | Virtual Key 本地加密密钥 |
 | `RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD` | 首次激活用户的默认预算金额 |
 | `RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION` | 默认周期；空值为一次性 |
-| `RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON` | 凭证对账 Cron，默认每天 03:00 |
-| `RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE` | 对账时区，默认 `Asia/Shanghai` |
 
 Base URL 与浏览器管理地址必须分开配置。检查、用量和“我的用量”读取已有 Provider，不得因页面访问覆盖 Provider 的展示名或公开地址。
 
@@ -98,6 +96,7 @@ Base URL 与浏览器管理地址必须分开配置。检查、用量和“我�
 | 模型 | 提示模型在 LiteLLM 配置；检查只读返回差异，手动同步更新投影 |
 | 配额管理 | 搜索/筛选用户与组织；单个或批量设置、重置预算；预算始终是用户全局预算 |
 | 消耗统计 | 按日期、组织、用户、Agent、模型筛选；返回汇总和各维度金额排序的用量条 |
+| Key 管理 | 只列出 Fenix 创建且存在本地 Mapping 的 Key，实时展示主体、Key ID、可用性和创建时间；管理员可勾选任意 Key 后确认回收 |
 
 组织选项显示“组织名（ID）”；用户显示“用户名（邮箱）”；Agent 显示“组织名 / Agent 名”。管理端可搜索用户、Agent，服务端按关键字查询并由前端防抖。
 
@@ -186,6 +185,8 @@ LiteLLM daily activity 是用量事实来源，Fenix 不复制消费流水。用
 GET  /api/system/model-gateway/config
 GET  /api/system/model-gateway/models/status
 POST /api/system/model-gateway/models/actions/sync
+GET  /api/system/model-gateway/keys
+POST /api/system/model-gateway/keys/actions/remove
 
 GET  /api/system/model-gateway/budgets
 PUT  /api/system/model-gateway/budgets/:userId
@@ -207,15 +208,23 @@ GET /web/model-gateway/:providerId/usage
 
 ## 10. 生命周期、失败与安全
 
-### 10.1 对账任务
+### 10.1 Key 管理与人工回收
 
-定时任务扫描有效 Mapping，验证 Provider、Organization、User、成员关系和 Agent 是否仍有效。失效时调用 LiteLLM `/key/block`：
+系统不运行定时 Key 对账任务。Key 管理页只读取 Fenix 创建且仍有本地 Mapping 的 Key，并在每次查询时依次检查：
 
-- 成功或远端 404：标记 `blocked`，清空本地密文，保留归因字段；
-- 远端临时失败：保留原 Mapping，下轮重试；
-- 使用 PostgreSQL advisory lock，未获得锁的实例跳过本轮。
+1. 本地 Mapping 为 `active` 且存在加密密文；
+2. 用户与组织存在，且用户仍属于该组织；
+3. Agent 存在且属于该组织；
+4. 用户仍拥有该 Agent 的读取权限。
 
-任务不删除 LiteLLM User 或 Key。远端 Key 被手工禁用、失效或解密/鉴权异常时，请求路径返回稳定错误，不自动重建；由管理员人工处理。
+任一条件不满足时，页面显示具体不可用原因。该可用性是 Fenix 侧的主体与本地凭证状态，不主动请求 LiteLLM 验证远端 Key 是否仍有效。
+
+管理员可以勾选任意 Key 回收，包括页面当前仍显示“可用”的 Key。回收按每个 Key 独立执行：
+
+- LiteLLM `/key/block` 成功或返回 404：删除本地 Mapping；
+- 其他远端错误：保留本地 Mapping，并在结果中标记删除失败。
+
+回收不删除 LiteLLM User；LiteLLM block 也不会删除远端 Key。删除本地 Mapping 后，后续 Agent 启动会新建 Key 并写入新的 Mapping。
 
 ### 10.2 安全与隔离
 

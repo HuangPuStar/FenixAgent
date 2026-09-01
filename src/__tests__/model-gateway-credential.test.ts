@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
-  clearModelGatewayCredential,
+  deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
   listModelGatewayCredentialsAfter,
-  updateModelGatewayCredentialStatus,
   upsertModelGatewayCredential,
 } from "../repositories/model-gateway-credential";
 import { createModelGatewayCredentialCipher } from "../services/model-gateway/credential-cipher";
@@ -77,8 +76,8 @@ describe("model gateway credential persistence", () => {
     }
   });
 
-  // 验证禁用会保留映射和外部 ID，但清空可复用的加密 Virtual Key。
-  test("updates status, clears the encrypted credential, and scans by cursor", async () => {
+  // 验证远端 Key 已回收后删除映射，恢复访问时不会复用已禁用的凭证。
+  test("deletes a credential mapping after remote key revocation", async () => {
     const id = randomUUID();
     const subject = {
       id,
@@ -95,15 +94,13 @@ describe("model gateway credential persistence", () => {
     stubDb(createCredentialDbStub(id));
     try {
       await upsertModelGatewayCredential(subject);
-      await updateModelGatewayCredentialStatus(id, "blocked");
-      await clearModelGatewayCredential(id);
+      await deleteModelGatewayCredential(id);
       const rows = await listModelGatewayCredentialsAfter({
         afterId: "00000000-0000-0000-0000-000000000000",
         limit: 10,
       });
       const row = rows.find((item) => item.id === id);
-      expect(row).toMatchObject({ id, externalCredentialId: subject.externalCredentialId, status: "blocked" });
-      expect(row?.encryptedCredential).toBeNull();
+      expect(row).toBeUndefined();
     } finally {
       resetDbStub();
     }
@@ -144,6 +141,11 @@ function createCredentialDbStub(initialId?: string) {
           return { returning: async () => (row ? [row] : []) };
         },
       }),
+    }),
+    delete: () => ({
+      where: async () => {
+        row = null;
+      },
     }),
   };
 }

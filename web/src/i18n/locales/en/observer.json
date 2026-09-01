@@ -15,7 +15,8 @@
       "overview": "Overview",
       "models": "Models",
       "budgets": "Budgets",
-      "usage": "Usage"
+      "usage": "Usage",
+      "keys": "Key Management"
     },
     "budgets": "Global user budgets",
     "query": "Query",
@@ -110,6 +111,45 @@
       "selectUser": "Select {{name}}",
       "pagination_total": "{{total}} users",
       "pagination_page_size": "{{size}} / page"
+    },
+    "keysPage": {
+      "title": "Key Management",
+      "description": "Shows only model gateway keys created by Fenix. Key secrets are never displayed and availability is evaluated from current access.",
+      "refresh": "Refresh",
+      "remove": "Delete selected keys",
+      "empty": "No Fenix-managed keys.",
+      "loadError": "Unable to load keys. Please try again.",
+      "removeTitle": "Delete keys",
+      "removeDescription": "Delete {{count}} keys? Fenix blocks each remote key first, then removes its local mapping when the key is blocked or already absent.",
+      "removeSuccess": "Deleted {{count}} keys.",
+      "removeSkipped": "{{count}} keys no longer have a local mapping.",
+      "removeFailed": "Failed to delete {{count}} keys. Please try again.",
+      "select": "Select key {{id}}",
+      "unknownSubject": "Unknown",
+      "subjectLabels": {
+        "organization": "Organization",
+        "user": "User",
+        "agent": "Agent"
+      },
+      "columns": {
+        "id": "ID",
+        "key": "Key ID",
+        "subject": "Subject",
+        "availability": "Availability",
+        "createdAt": "Created"
+      },
+      "reasons": {
+        "usable": "Usable",
+        "USER_NOT_FOUND": "User not found",
+        "ORGANIZATION_NOT_FOUND": "Organization not found",
+        "MEMBERSHIP_NOT_FOUND": "User is no longer a member",
+        "AGENT_NOT_FOUND": "Agent is missing or belongs to another organization",
+        "AGENT_ACCESS_REVOKED": "User no longer has Agent access",
+        "CREDENTIAL_UNUSABLE": "Credential is blocked or unavailable",
+        "unusable": "Unavailable"
+      },
+      "pagination_total": "{{total}} keys",
+      "pagination_page_size": "{{size}} keys/page"
     },
     "usagePage": {
       "querying": "Querying…",
