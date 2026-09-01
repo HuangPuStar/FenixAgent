@@ -235,6 +235,7 @@ describe("useSessionState hook 生命周期", () => {
               { label: "production", description: "Prod" },
               { label: "staging", description: null },
             ],
+            multiSelect: false,
           },
         ],
         description: "Please answer",

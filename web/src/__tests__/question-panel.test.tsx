@@ -248,7 +248,7 @@ describe("QuestionPanel", () => {
   test("多选问题可同时选中多个选项并完整回传", () => {
     const container = documentRef.createElement("div");
     const root: Root = createRoot(container as unknown as HTMLElement);
-    const responses: Array<{ questionId: string; answers: string[][] }> = [];
+    const responses: Array<{ questionId: string; answers: Array<string | string[]> }> = [];
     const question = pendingQuestion("iqa_multi", [
       { question: "Choose targets", options: ["web", "server", "worker"], multiSelect: true },
     ]);
