@@ -1,4 +1,3 @@
-/* biome-ignore-all lint/style/noDescendingSpecificity: 插件卡片和展开工具区按组件层级组织。 */
 .agent-mcp-page {
   --mcp-blue: #2463eb;
   --mcp-blue-soft: #edf3ff;
@@ -26,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 14px 0 22px;
+  margin: 14px 0 12px;
 }
 
 .mcp-search-field {
@@ -60,7 +59,8 @@
   box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
 }
 
-.mcp-scope-filter {
+.mcp-scope-filter,
+.mcp-category-filter {
   display: flex;
   height: 40px;
   align-items: center;
@@ -70,7 +70,8 @@
   background: #e9edf4;
 }
 
-.mcp-scope-filter button {
+.mcp-scope-filter button,
+.mcp-category-filter button {
   height: 32px;
   border: 0;
   border-radius: 6px;
@@ -78,9 +79,11 @@
   color: var(--mcp-muted);
   background: transparent;
   font-size: 12px;
+  white-space: nowrap;
 }
 
-.mcp-scope-filter button[aria-pressed="true"] {
+.mcp-scope-filter button[aria-pressed="true"],
+.mcp-category-filter button[aria-pressed="true"] {
   color: var(--mcp-blue);
   background: #fff;
   box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
@@ -93,33 +96,24 @@
   font-size: 10px;
 }
 
-.mcp-directory-heading {
+.mcp-secondary-filters {
   display: flex;
-  min-height: 58px;
   align-items: center;
-  justify-content: space-between;
-  box-shadow: inset 0 -1px var(--mcp-line);
-}
-
-.mcp-directory-heading h2 {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.mcp-directory-heading p {
-  margin-top: 3px;
-  color: var(--mcp-faint);
-  font-size: 11px;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
 }
 
 .mcp-installed-filter {
   display: flex;
-  height: 32px;
+  height: 40px;
+  flex: none;
   align-items: center;
   gap: 6px;
   border: 0;
-  border-radius: 7px;
-  padding: 0 10px;
+  border-radius: 8px;
+  padding: 0 12px;
   color: var(--mcp-muted);
   background: #e9edf4;
   font-size: 11px;
@@ -139,48 +133,143 @@
   font-size: 10px;
 }
 
-.mcp-tool-list {
-  display: grid;
-  max-height: 210px;
-  overflow: auto;
-  padding: 7px 15px 12px;
-  background: #fafbfd;
-  box-shadow: inset 0 1px var(--mcp-line);
+.mcp-master-detail {
+  min-height: 0;
+  flex: 1;
 }
 
-.mcp-tool-list > div {
-  display: grid;
-  grid-template-columns: minmax(110px, 0.4fr) minmax(0, 1fr);
-  gap: 12px;
-  padding: 7px 0;
-  box-shadow: inset 0 -1px #eef1f5;
+.mcp-directory {
+  padding: 19px 10px;
 }
 
-.mcp-tool-list strong {
+.mcp-directory > header {
+  padding: 0 8px 14px;
+}
+
+.mcp-directory > header > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mcp-directory > header span {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--mcp-muted);
+  background: #e9edf4;
+  font-size: 11px;
+}
+
+.mcp-directory > header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--mcp-faint);
+  font-size: 11px;
+}
+
+.mcp-directory nav {
+  display: grid;
+  gap: 3px;
+}
+
+.mcp-directory nav > button {
+  display: grid;
+  min-width: 0;
+  min-height: 57px;
+  grid-template-columns: 28px minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px;
+  color: var(--mcp-muted);
+  background: transparent;
+  text-align: left;
+}
+
+.mcp-directory nav > button:hover {
+  background: #fff;
+}
+
+.mcp-directory nav > button.is-selected {
+  color: var(--mcp-blue);
+  background: #e8f0ff;
+}
+
+.mcp-directory-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--mcp-blue);
+  background: #fff;
+}
+
+.mcp-directory-icon svg {
+  width: 16px;
+}
+
+.mcp-directory-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.mcp-directory-copy strong,
+.mcp-directory-copy small,
+.mcp-directory-meta > span {
   overflow: hidden;
-  color: var(--mcp-ink);
-  font-family: var(--font-mono);
-  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mcp-tool-list span,
-.mcp-tool-list p {
+.mcp-directory-copy strong {
+  color: var(--mcp-ink);
+  font-size: 12px;
+}
+
+.mcp-directory-copy small {
+  margin-top: 3px;
   color: var(--mcp-faint);
-  font-size: 10px;
+  font-size: 9px;
 }
 
-.mcp-tools-loading {
+.mcp-directory-meta {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 0;
+  min-width: 0;
+  max-width: 110px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  color: var(--mcp-muted);
+  font-size: 9px;
+  line-height: 1;
 }
 
-.mcp-tools-loading svg {
-  width: 13px;
-  animation: mcp-spin 0.9s linear infinite;
+.mcp-directory-meta b {
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 3px 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mcp-directory nav > button > svg {
+  width: 12px;
+  opacity: 0;
+}
+
+.mcp-directory nav > button.is-selected > svg {
+  opacity: 1;
 }
 
 .mcp-empty-state,
@@ -208,19 +297,21 @@
 
 .mcp-empty-state p,
 .mcp-load-error p {
-  max-width: 420px;
   font-size: 11px;
-}
-
-@keyframes mcp-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 900px) {
   .mcp-commandbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .mcp-scope-filter,
+  .mcp-category-filter {
+    overflow-x: auto;
+  }
+
+  .mcp-secondary-filters {
+    justify-content: flex-start;
   }
 }

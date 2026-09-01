@@ -21,7 +21,6 @@ export function AgentMcpPage() {
   const [category, setCategory] = useState<McpCatalogCategory>("all");
   const [editorTarget, setEditorTarget] = useState<McpEditorTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<McpServerInfo | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [inspectingKey, setInspectingKey] = useState<string | null>(null);
   const [toolsByServer, setToolsByServer] = useState<Record<string, McpToolInfo[]>>({});
 
@@ -65,7 +64,10 @@ export function AgentMcpPage() {
       const nextPublicReadable = !server.resourceAccess.publicReadable;
       const detail = await unwrap(mcpApi.get(getMcpLookupKey(server)));
       await unwrap(
-        mcpApi.update(server.name, { ...detail.config, publicReadable: nextPublicReadable } as McpServerConfig),
+        mcpApi.update(server.name, {
+          ...detail.config,
+          publicReadable: nextPublicReadable,
+        } as McpServerConfig),
       );
       return nextPublicReadable;
     },
@@ -96,7 +98,6 @@ export function AgentMcpPage() {
           }))
         : (await unwrap(mcpApi.listTools(server.name))).tools;
       setToolsByServer((current) => ({ ...current, [key]: tools }));
-      setExpandedKey(key);
       toast.success(t("toast.inspectSuccessSimple", { count: tools.length }));
       if (canWriteMcp(server)) catalog.refresh();
     } catch (error) {
@@ -106,19 +107,6 @@ export function AgentMcpPage() {
     } finally {
       setInspectingKey(null);
     }
-  };
-
-  const toggleTools = (server: McpServerInfo) => {
-    const key = getMcpKey(server);
-    if (expandedKey === key) {
-      setExpandedKey(null);
-      return;
-    }
-    if (toolsByServer[key]) {
-      setExpandedKey(key);
-      return;
-    }
-    void inspectServer(server);
   };
 
   return (
@@ -131,7 +119,6 @@ export function AgentMcpPage() {
         scope={scope}
         filter={filter}
         category={category}
-        expandedKey={expandedKey}
         inspectingKey={inspectingKey}
         sharing={toggleSharing.loading}
         toolsByServer={toolsByServer}
@@ -145,7 +132,6 @@ export function AgentMcpPage() {
         onToggleEnabled={toggleEnabled.run}
         onToggleSharing={toggleSharing.run}
         onDelete={setDeleteTarget}
-        onToggleTools={toggleTools}
         onRetry={catalog.refresh}
       />
       <AgentMcpDialog target={editorTarget} onClose={() => setEditorTarget(null)} onSaved={catalog.refresh} />
@@ -153,7 +139,9 @@ export function AgentMcpPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title={t("confirm.deleteTitle")}
-        description={t("confirm.deleteDescription", { name: deleteTarget?.name ?? "" })}
+        description={t("confirm.deleteDescription", {
+          name: deleteTarget?.name ?? "",
+        })}
         variant="destructive"
         loading={deleteServer.loading}
         onConfirm={() => deleteTarget && deleteServer.run(deleteTarget)}

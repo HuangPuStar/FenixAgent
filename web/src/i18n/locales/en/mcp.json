@@ -16,7 +16,7 @@
     "label": "Plugin resource scope",
     "all": "All",
     "organization": "Organization",
-    "shared": "Shared with me"
+    "shared": "Public"
   },
   "filter": {
     "installed": "Installed",
@@ -41,8 +41,13 @@
   "type": { "local": "Local process", "remote": "Remote service" },
   "status": { "enabled": "Enabled", "disabled": "Disabled" },
   "actions": { "more": "More plugin actions" },
-  "loadState": { "title": "Could not load the plugin directory", "retry": "Retry" },
-  "errors": { "sharingUnavailable": "This plugin's sharing state cannot be managed" },
+  "loadState": {
+    "title": "Could not load the plugin directory",
+    "retry": "Retry"
+  },
+  "errors": {
+    "sharingUnavailable": "This plugin's sharing state cannot be managed"
+  },
   "column": {
     "name": "Name",
     "type": "Type",
