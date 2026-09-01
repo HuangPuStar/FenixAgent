@@ -234,7 +234,6 @@ export const environment = pgTable(
     machineName: varchar("machine_name"),
     branch: varchar("branch"),
     gitRepoUrl: varchar("git_repo_url"),
-    maxSessions: integer("max_sessions").notNull().default(5),
     workerType: varchar("worker_type", { length: 50 }).notNull().default("acp"),
     capabilities: jsonb("capabilities"),
     secret: varchar("secret").notNull(),

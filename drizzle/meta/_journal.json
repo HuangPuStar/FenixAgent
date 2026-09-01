@@ -176,6 +176,13 @@
       "when": 1788231820300,
       "tag": "0024_environment-max-sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788235225986,
+      "tag": "0025_remove-environment-max-sessions",
+      "breakpoints": true
     }
   ]
 }

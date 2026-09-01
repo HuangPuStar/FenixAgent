@@ -149,8 +149,8 @@ export async function spawnInstanceViaController(
   options: SpawnInstanceViaControllerOptions = {},
 ): Promise<Instance> {
   // 平台级/用户级并发治理：与旧 spawnInstanceFromEnvironment 首行语义对齐，
-  // 保证 RCS_AGENT_MAX_CONCURRENCY / RCS_USER_AGENT_MAX_CONCURRENCY 在
-  // 编排域路径下仍然生效（controller 内部只检查环境级 maxConcurrency）。
+  // 并发配额统一由宿主 agent-concurrency reservation 管理；AgentController 禁止
+  // 按 Environment 内存实例数重复限流。
   // 检查与 in-flight 预留合并为同一同步段（beginSpawnReservation 内部无 await），
   // 消除 "检查 → registerSupplement 注册" 窗口内并发不可见导致的同用户超发
   // （A-P2.1）；finally 兜底释放保证失败路径不永久占用额度。

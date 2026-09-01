@@ -2,14 +2,15 @@
 // 编排域重构保留说明（I4：旧代码删除与精简）
 // ────────────────────────────────────────────
 // 实例生命周期（启动/停止）已统一收敛到编排域：启动走 orchestration-instance 的
-// spawnInstanceViaController（controller.spawnInstance 环境校验/并发治理/节点获取 →
-// core launchInstance → registerSupplement），停止走 stopInstanceViaController
+// spawnInstanceViaController（controller.spawnInstance 环境校验/节点获取 →
+// core launchInstance → registerSupplement），并发配额统一由宿主 agent-concurrency
+// reservation 在进入 controller 前治理；停止走 stopInstanceViaController
 // （活跃表移除 + 节点引用归还 → core 停止 → supplement 清理）。本文件不再承载
 // 启动/停止的完整实现，仅保留：
 //   1. RCS 业务查询层（listInstances / getInstance / findRunningInstanceByEnvironment
 //      等，读 core 运行时快照 + globalInstanceRegistry supplement）；
-//   2. ensureRunning / enterEnvironment 的会话语义（复用运行实例、autoStart /
-//      maxSessions 检查，spawn 分支委托编排域入口）；
+//   2. ensureRunning / enterEnvironment 的会话语义（复用运行实例、autoStart，
+//      spawn 分支委托编排域入口）；
 //   3. stopInstance / stopAllInstances 作为编排域停止入口的薄委托层，保留组织归属
 //      校验与"已停止幂等"语义，供 web DELETE / acp-idle-monitor / graceful shutdown 使用。
 // 旧 spawnInstanceFromEnvironment / findInstanceBySessionId / SpawnInstanceOptions

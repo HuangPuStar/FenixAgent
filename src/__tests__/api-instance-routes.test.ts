@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ConcurrencyExceededError } from "@fenix/orchestration";
+import { OrchestrationError } from "@fenix/orchestration";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";
@@ -108,40 +108,8 @@ describe("API Instance Routes", () => {
   });
 
   // D-P2.2：OrchestrationError（无 statusCode 字段）不再被 mapApiError 兜底降级
-  // 500，按编排域映射返回 409，且 message 脱敏（ConcurrencyExceededError 实际
+  // 500，按编排域映射返回 409，且 message 脱敏（OrchestrationError 实际
   // 抛出时拼接 envId，属内部资源标识）
-  test("ensureInstanceRuntime 抛 ConcurrencyExceededError 返回 409 且 message 脱敏", async () => {
-    setApiInstanceDeps({
-      getReadableAgentConfigById: async () =>
-        ({ id: "agc-demo", organizationId: "org-1", userId: "user-1", name: "Demo Agent" }) as never,
-      listEnvironmentsByOrganizationId: async () => [],
-      createWebEnvironment: async () =>
-        ({
-          id: "env-1",
-          name: "runtime-demo",
-          description: null,
-          agentConfigId: "agc-demo",
-          organizationId: "org-1",
-          userId: "user-1",
-          status: "active",
-        }) as never,
-      ensureInstanceRuntime: async () => {
-        throw new ConcurrencyExceededError("Environment 'env_x' reached max concurrency (1)");
-      },
-    });
-
-    const res = await request("/api/agents/agc-demo/instances/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const json = await res.json();
-
-    expect(res.status).toBe(409);
-    expect(json.error.code).toBe("CONCURRENCY_EXCEEDED");
-    expect(json.error.message).toBe("Concurrency limit exceeded");
-    expect(JSON.stringify(json)).not.toContain("env_x");
-  });
 
   // Sandbox Provider 未配置错误应返回 503 服务不可用，而不是内部错误。
   // 与 D-P2.2 的 OrchestrationError 映射不同：sandbox 错误属"服务暂不可用"

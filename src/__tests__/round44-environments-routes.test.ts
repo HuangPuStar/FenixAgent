@@ -421,7 +421,6 @@ describe("round44 Web 环境路由", () => {
 
   // provider 未配置时，进入环境必须脱敏映射为 503。
   test("进入环境映射 provider 未配置错误", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ autoStart: true, maxSessions: 1 }) });
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({
@@ -439,7 +438,6 @@ describe("round44 Web 环境路由", () => {
 
   // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
   test("进入环境映射 runtime 未就绪错误", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ autoStart: true, maxSessions: 1 }) });
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({

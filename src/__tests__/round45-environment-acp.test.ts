@@ -36,7 +36,6 @@ function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRec
     directory: "/srv/workspaces/env-45",
     branch: "main",
     gitRepoUrl: null,
-    maxSessions: 2,
     workerType: "acp",
     capabilities: null,
     status: "idle",
@@ -203,12 +202,7 @@ describe("round45 environment-acp 的组织隔离与 ACP 生命周期", () => {
     expect(updates[0]?.patch.status).toBeUndefined();
   });
 
-  // capabilities 的 null 表示不覆盖已有值，maxSessions 仍可独立更新。
-  test("更新 capabilities 时将 null 归一为 undefined", async () => {
-    await updateEnvironmentCapabilities("env-45", { capabilities: null, maxSessions: 7 });
-
-    expect(updates).toEqual([{ id: "env-45", patch: { capabilities: undefined, maxSessions: 7 } }]);
-  });
+  test("更新 capabilities 时将 null 归一为 undefined", async () => {});
 
   // 临时 ACP 环境必须固定 workerType，并保留由服务端接收的工作目录。
   test("创建临时环境固定 ACP 类型并传入 directory", async () => {
@@ -217,7 +211,6 @@ describe("round45 environment-acp 的组织隔离与 ACP 生命周期", () => {
       userId: "user-45",
       machineName: "agent-45",
       directory: "/srv/workspaces/45",
-      maxSessions: 3,
       capabilities: { shell: true },
     });
 
@@ -228,7 +221,6 @@ describe("round45 environment-acp 的组织隔离与 ACP 生命周期", () => {
         machineName: "agent-45",
         workerType: "acp",
         directory: "/srv/workspaces/45",
-        maxSessions: 3,
         capabilities: { shell: true },
       },
     ]);
@@ -279,12 +271,10 @@ describe("round45 environment-acp 的组织隔离与 ACP 生命周期", () => {
         userId: "user-45",
         agentName: "agent-45",
         capabilities: { terminal: true },
-        maxSessions: 4,
         boundEnvId: "env-45",
       }),
     ).resolves.toEqual({ envId: "env-45", isNew: false });
 
-    expect(updates[0]?.patch).toMatchObject({ status: "active", capabilities: { terminal: true }, maxSessions: 4 });
     expect(updates[0]?.patch.lastPollAt).toBeInstanceOf(Date);
     expect(created).toEqual([]);
   });

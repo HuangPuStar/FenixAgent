@@ -284,15 +284,14 @@ stateDiagram-v2
 
 ### 8.2 并发治理分层（A-P2.1 教训）
 
-三套闸门并存，职责不同：
+业务并发配额统一使用宿主 reservation 闸门；执行节点容量是独立维度，不得混用：
 
 | 层级 | 机制 | 状态 |
 |---|---|---|
-| 用户级 / 平台级 | `agent-concurrency.ts` `beginSpawnReservation`（检查与登记同一同步段，pending 计入计数，finally 释放） | ✅ 生效（RCS_USER_AGENT_MAX_CONCURRENCY 等） |
-| 环境级 | controller 活跃表 + spawn 二次检查 + 超发回滚 | ⚠️ `maxConcurrency` 暂写死 1000（D-P2.3，Web 控制台提供 maxSessions 配置入口后恢复 DB 读取） |
-| 会话级 | `maxSessions` 检查（旧 ensureRunning 路径） | ✅ 生效 |
+| 用户级 / 平台级 / 来源级 | `src/services/agent-concurrency.ts` 的 `beginSpawnReservation`（检查与登记同一同步段，pending 计入计数，finally 释放） | ✅ 生效（`RCS_USER_AGENT_MAX_CONCURRENCY` 等） |
+| Machine 容量 | `machine.maxSessions` 数据模型 | 仅保留容量元数据，当前未执行准入；未来实现时必须使用 Machine 专属 reservation / 错误码 |
 
-**TOCTOU 教训**："检查 → 注册"之间不得存在 await 窗口；用户级/平台级由 reservation 同步段消除，环境级目前因闸门虚设被掩盖，恢复 DB 读取时必须同步补环境级 reservation（否则并发超发 1+）。文档旧版"对同一 Environment 的并发 create 按幂等键合并"**未实现**，实际策略是"二次检查 + 超发回滚"。
+Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentController` 只维护实例生命周期，禁止按 Environment 对内存实例表重新计数限流；业务并发治理统一由宿主 reservation 管理，以避免重复闸门和 TOCTOU 语义分裂。
 
 ### 8.3 失败与补偿
 
@@ -310,7 +309,7 @@ stateDiagram-v2
 ### 8.4 错误映射与脱敏（A-P1.1 / D-P2.2 教训）
 
 - 路由本地 catch 一律移除，统一走全局 errorPlugin（`src/plugins/error-handler.ts`）按稳定错误码映射：`ORCHESTRATION_STATUS_MAP`（404 / 409 / 422 / 503）+ `ORCHESTRATION_MESSAGE_MAP` 通用模板。
-- 编排域错误 message 可能携带 envId / machineId（如 `ConcurrencyExceededError` 拼接环境 ID），对外必须脱敏，完整诊断留服务端日志；SSE 流中途错误的 chunk 只输出固定通用文案。
+- 编排域错误 message 可能携带 envId / machineId，对外必须脱敏，完整诊断留服务端日志；SSE 流中途错误的 chunk 只输出固定通用文案。
 - 新错误码漏登记时保守落 500 也不得泄漏内部标识。
 
 ## 9. 典型用户场景
@@ -374,7 +373,6 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 | T4 | sweep 路径缺 supplement reconcile | P2 | `triggerMachineCleanupByMachineId` 无 `globalInstanceRegistry.reconcile`（与 performMachineCleanup 不一致），孤儿 supplement 残留（量级小）。修复：收敛两路径 |
 | T5 | `WsAgentNodeSocket.send` 的 ws.send 异常被吞 | P2 | `agent-node-bridge.ts` catch 只记日志不 rethrow，停止帧可能静默丢失。修复：rethrow 或与 readyState 门禁同语义 |
 | T6 | meta-agent 吞错 | P2 | `meta-agent.ts` ensure 路径 `catch { return { environmentId, status } }` 吞掉 spawn 错误，success:true 无 instanceId（D-P2.1，审计后未修复）。修复：错误上抛或响应携带错误码 |
-| T7 | 环境级 maxConcurrency 写死 1000 | P2 | D-P2.3 有意保留；Web 控制台提供 maxSessions 配置入口后恢复 DB 读取，并同步补环境级 reservation（A-P2.1 教训） |
 | T8 | local stub 恒 connected | 已知限制 | `local-node-service.ts` 占位节点不触发节点级断连（N:1 共享节点语义）；无 relay 消费者且进程死亡的本地实例靠 idle 300s 兜底。移除条件：core 暴露进程退出事件 |
 | T9 | 测试缺口 | P2 | 以下修复无测试保护：D-P2.1（meta 堆积）、C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（重连分支"先清理再接受新连接"仅有单侧测试）、C-P2.5（配额桶归属） |
 

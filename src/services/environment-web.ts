@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { config, DEFAULT_ENVIRONMENT_MAX_SESSIONS } from "../config";
 import { db } from "../db";
 import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
@@ -54,7 +53,6 @@ function toEnvironmentRecord(row: typeof environment.$inferSelect): EnvironmentR
     directory: computedWorkspace,
     branch: row.branch,
     gitRepoUrl: row.gitRepoUrl,
-    maxSessions: row.maxSessions,
     workerType: row.workerType,
     capabilities: (row.capabilities as Record<string, unknown>) ?? null,
     status: row.status,
@@ -99,7 +97,6 @@ async function insertEnvironmentRecord(params: {
   machineName?: string;
 }): Promise<EnvironmentRecord> {
   const now = new Date();
-  const maxSessions = config.environmentMaxSessions ?? DEFAULT_ENVIRONMENT_MAX_SESSIONS;
   await db.insert(environment).values({
     id: params.id,
     name: params.name,
@@ -112,7 +109,6 @@ async function insertEnvironmentRecord(params: {
     organizationId: params.organizationId,
     autoStart: params.autoStart,
     machineName: params.machineName ?? null,
-    maxSessions,
     workerType: "acp",
     capabilities: null,
     branch: null,
@@ -130,7 +126,6 @@ async function insertEnvironmentRecord(params: {
     machineName: params.machineName ?? null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions,
     workerType: "acp",
     capabilities: null,
     secret: params.secret,

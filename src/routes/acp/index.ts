@@ -85,7 +85,6 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
     id: env.id,
     agent_name: env.machineName,
     status: (env.status === "active" ? "online" : "offline") as "online" | "offline",
-    max_sessions: env.maxSessions,
     last_seen_at: env.lastPollAt ? env.lastPollAt.getTime() / 1000 : null,
     created_at: env.createdAt.getTime() / 1000,
   };

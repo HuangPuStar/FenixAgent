@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { setConfig } from "../config";
 import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
 
 const { createWebEnvironment } = await import("../services/environment-web");
@@ -16,7 +15,6 @@ function makeEnvironmentRow(overrides: Partial<Record<string, unknown>> = {}) {
     machineName: null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "acp",
     capabilities: null,
     secret: "env_secret_existing",
@@ -43,37 +41,6 @@ function createSelectChain(selectResults: unknown[][]) {
 describe("createWebEnvironment", () => {
   beforeEach(() => {
     resetAllStubs();
-    setConfig({ environmentMaxSessions: 5 });
-  });
-
-  // 新建 Environment 必须使用服务端配置的默认实例并发，而不是历史硬编码 1。
-  test("uses configured max sessions for a new environment", async () => {
-    let inserted: Record<string, unknown> | undefined;
-    setConfig({ environmentMaxSessions: 7 });
-    stubConfigPg({
-      getReadableAgentConfigById: async () => ({
-        id: "127f5beb-c4a5-4b6e-8ce3-26fa4bac514b",
-        machineId: null,
-      }),
-    });
-    stubDb({
-      select: createSelectChain([[]]),
-      insert: () => ({
-        values: async (payload: Record<string, unknown>) => {
-          inserted = payload;
-        },
-      }),
-    });
-
-    const result = await createWebEnvironment({
-      name: "env-configured-limit",
-      agentConfigId: "127f5beb-c4a5-4b6e-8ce3-26fa4bac514b",
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-
-    expect(inserted?.maxSessions).toBe(7);
-    expect(result.maxSessions).toBe(7);
   });
 
   // 已有同 agent 的 environment 时应直接复用，避免重复插入。

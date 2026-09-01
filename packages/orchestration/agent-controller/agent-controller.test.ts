@@ -13,7 +13,6 @@ import { AgentNodeService } from "../src/agent-node/agent-node-service";
 import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
 import {
   AgentNodeUnavailableError,
-  ConcurrencyExceededError,
   EnvironmentNotFoundError,
   LaunchSpecBuildError,
   OrchestrationError,
@@ -166,7 +165,6 @@ function seedStandardData(
     organizationId: "org1",
     agentConfigId: "cfg1",
     machineId: "m1",
-    maxConcurrency: 1,
     autoStart: true,
   });
   configRepo.configs.set("cfg1", {
@@ -249,7 +247,7 @@ describe("AgentController.spawnInstance", () => {
   test("正常 spawn：完整流程返回 Instance，状态 running，快照字段正确", async () => {
     const { controller, socket } = setup();
 
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_1");
 
     expect(instance).toBeInstanceOf(Instance);
     expect(instance.instanceId).toMatch(/^inst_/);
@@ -264,33 +262,26 @@ describe("AgentController.spawnInstance", () => {
     expect(socket.closed).toBe(false);
   });
 
-  test("并发超限：maxConcurrency=1 时第二次 spawnInstance 抛 ConcurrencyExceededError", async () => {
-    const { controller } = setup();
-
-    await controller.spawnInstance("env1", "user1");
-    expect(controller.listInstances()).toHaveLength(1);
-
-    await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(ConcurrencyExceededError);
-  });
-
   test("Machine 不可用：ensureNode 无对应 AgentNode 时抛 AgentNodeUnavailableError", async () => {
     const { controller, nodeService } = setup();
     nodeService.nodes.delete("m1"); // 模拟机器未连接
 
-    await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(AgentNodeUnavailableError);
+    await expect(controller.spawnInstance("env1", "user1", "inst_test_2")).rejects.toThrow(AgentNodeUnavailableError);
   });
 
   test("envId 不存在：environmentRepo 返回 null 时抛 EnvironmentNotFoundError", async () => {
     const { controller } = setup();
 
-    await expect(controller.spawnInstance("ghost-env", "user1")).rejects.toThrow(EnvironmentNotFoundError);
+    await expect(controller.spawnInstance("ghost-env", "user1", "inst_ghost")).rejects.toThrow(
+      EnvironmentNotFoundError,
+    );
   });
 
   test("LaunchSpec 缺失字段：agentConfig 无 modelName 时抛 LaunchSpecBuildError", async () => {
     const { controller, configRepo } = setup();
     configRepo.configs.get("cfg1")!.modelName = "";
 
-    await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(LaunchSpecBuildError);
+    await expect(controller.spawnInstance("env1", "user1", "inst_test_3")).rejects.toThrow(LaunchSpecBuildError);
   });
 
   test("环境缺少 machineId 且宿主无默认机器：编排域以配置错误拒绝，抛 LaunchSpecBuildError", async () => {
@@ -300,7 +291,7 @@ describe("AgentController.spawnInstance", () => {
     const { controller, envRepo } = setup();
     envRepo.envs.get("env1")!.machineId = null; // 宿主 fallback 后仍无机器（本地执行被禁用）
 
-    await expect(controller.spawnInstance("env1", "user1")).rejects.toThrow(LaunchSpecBuildError);
+    await expect(controller.spawnInstance("env1", "user1", "inst_test_4")).rejects.toThrow(LaunchSpecBuildError);
   });
 
   test("环境缺少 machineId 但宿主提供默认机器：fallback 到默认机器正常 spawn", async () => {
@@ -311,7 +302,7 @@ describe("AgentController.spawnInstance", () => {
     envRepo.defaultMachineId = "m1"; // 宿主 RCS_DEFAULT_MACHINE_ID
     envRepo.envs.get("env1")!.machineId = null; // agent config 未绑定 machineId
 
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_5");
 
     expect(instance.machineId).toBe("m1");
     expect(instance.status()).toBe("running");
@@ -328,7 +319,6 @@ describe("AgentController.spawnInstance", () => {
       organizationId: "org1",
       agentConfigId: null, // ACP/Bridge 注册路径创建的环境无 agentConfigId
       machineId: "m1",
-      maxConcurrency: 1,
       autoStart: false,
     });
 
@@ -341,7 +331,7 @@ describe("Instance send / stop", () => {
   test("Instance send：数据经 AgentNode WS 信道原样发送", async () => {
     const { controller, socket } = setup();
 
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_6");
     instance.send({ type: "ping", seq: 1 });
 
     expect(socket.sent).toEqual([{ type: "ping", seq: 1 }]);
@@ -350,7 +340,7 @@ describe("Instance send / stop", () => {
   test("Instance stop：发送停止帧通知 Agent 进程并标记终止，不关闭共享连接，状态变为 stopped", async () => {
     const { controller, socket } = setup();
 
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_7");
     instance.stop();
 
     // 停止帧携带 instance_id（机器端协议字段），供同一连接上的 Agent 进程识别目标实例
@@ -362,7 +352,7 @@ describe("Instance send / stop", () => {
   test("Instance 断连映射：AgentNode 意外断连（WS error）时状态推导为 error", async () => {
     const { controller, socket } = setup();
 
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_8");
     socket.simulateError(); // 错误按断连处理 → disconnected
 
     expect(instance.status()).toBe("error");
@@ -372,12 +362,11 @@ describe("Instance send / stop", () => {
 describe("AgentController.stopInstance / listInstances", () => {
   test("listInstances：多次 spawn 后返回全部活跃实例，包含正确的实例信息", async () => {
     const { controller, envRepo } = setup();
-    envRepo.envs.get("env1")!.maxConcurrency = 3; // 放宽并发限制以便同时承载多个实例
 
     const spawned = [
-      await controller.spawnInstance("env1", "user1"),
-      await controller.spawnInstance("env1", "user1"),
-      await controller.spawnInstance("env1", "user1"),
+      await controller.spawnInstance("env1", "user1", "inst_test_9"),
+      await controller.spawnInstance("env1", "user1", "inst_test_10"),
+      await controller.spawnInstance("env1", "user1", "inst_test_11"),
     ];
     const listed = controller.listInstances();
 
@@ -388,10 +377,9 @@ describe("AgentController.stopInstance / listInstances", () => {
 
   test("stopInstance：停止实例后归还节点引用并从活跃列表移除；重复停止抛 OrchestrationError", async () => {
     const { controller, envRepo, nodeService } = setup();
-    envRepo.envs.get("env1")!.maxConcurrency = 2;
 
-    const a = await controller.spawnInstance("env1", "user1");
-    await controller.spawnInstance("env1", "user1");
+    const a = await controller.spawnInstance("env1", "user1", "inst_test_12");
+    await controller.spawnInstance("env1", "user1", "inst_test_13");
     expect(controller.listInstances()).toHaveLength(2);
 
     await controller.stopInstance(a.instanceId);
@@ -400,7 +388,7 @@ describe("AgentController.stopInstance / listInstances", () => {
     expect(nodeService.releasedCounts.get("m1")).toBe(1); // 引用已归还，等待空闲回收
 
     // 已停止的实例不再占用并发额度，可以再次 spawn
-    const c = await controller.spawnInstance("env1", "user1");
+    const c = await controller.spawnInstance("env1", "user1", "inst_test_14");
     expect(controller.listInstances()).toHaveLength(2);
     expect(c.instanceId).not.toBe(a.instanceId);
 
@@ -411,20 +399,18 @@ describe("AgentController.stopInstance / listInstances", () => {
 describe("AgentController.stopInstancesByMachineId", () => {
   test("清理目标机器全部实例并每实例归还一次节点引用", async () => {
     const { controller, envRepo, nodeService } = setup();
-    envRepo.envs.get("env1")!.maxConcurrency = 2; // 放宽并发限制以便同机器承载 2 个实例
     envRepo.envs.set("env2", {
       id: "env2",
       organizationId: "org1",
       agentConfigId: "cfg1",
       machineId: "m2",
-      maxConcurrency: 1,
       autoStart: true,
     });
     const { node: node2 } = createConnectedNode("m2");
     nodeService.nodes.set("m2", node2);
 
-    const m1a = await controller.spawnInstance("env1", "user1");
-    const m1b = await controller.spawnInstance("env1", "user1");
+    const m1a = await controller.spawnInstance("env1", "user1", "inst_test_15");
+    const m1b = await controller.spawnInstance("env1", "user1", "inst_test_16");
     const m2 = await controller.spawnInstance("env2", "user1");
     expect(controller.listInstances()).toHaveLength(3);
 
@@ -442,7 +428,7 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
   test("无匹配机器时返回 0 且不抛错", async () => {
     const { controller } = setup();
-    await controller.spawnInstance("env1", "user1");
+    await controller.spawnInstance("env1", "user1", "inst_test_17");
 
     // m2 机器无任何实例：批量清理无"目标不存在"概念，返回空数组且不抛错
     expect(controller.stopInstancesByMachineId("m2")).toEqual([]);
@@ -451,9 +437,8 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
   test("重复调用幂等：第二次调用返回 0 且不抛错", async () => {
     const { controller, envRepo, nodeService } = setup();
-    envRepo.envs.get("env1")!.maxConcurrency = 2;
-    await controller.spawnInstance("env1", "user1");
-    await controller.spawnInstance("env1", "user1");
+    await controller.spawnInstance("env1", "user1", "inst_test_18");
+    await controller.spawnInstance("env1", "user1", "inst_test_19");
 
     const first = controller.stopInstancesByMachineId("m1");
     expect(first).toHaveLength(2);
@@ -464,7 +449,7 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
   test("节点已断开时清理不发停止帧", async () => {
     const { controller, service, socket } = setupWithRealNodeService(new MockScheduler());
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_20");
 
     socket.close(); // 模拟机器断连（dispatchAgentNodeWsClose → disconnected）
     expect(instance.status()).toBe("error");
@@ -479,7 +464,7 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
   test("节点 connected 时清理发送停止帧（复用 stopInstance 语义）", async () => {
     const { controller, socket } = setupWithRealNodeService(new MockScheduler());
-    const instance = await controller.spawnInstance("env1", "user1");
+    const instance = await controller.spawnInstance("env1", "user1", "inst_test_21");
 
     controller.stopInstancesByMachineId("m1");
 
@@ -491,10 +476,9 @@ describe("AgentController.stopInstancesByMachineId", () => {
   test("引用归零后空闲回收触发并关闭节点（幽灵实例解毒）", async () => {
     const scheduler = new MockScheduler();
     const { controller, service, socket, envRepo } = setupWithRealNodeService(scheduler);
-    envRepo.envs.get("env1")!.maxConcurrency = 2;
 
-    await controller.spawnInstance("env1", "user1");
-    await controller.spawnInstance("env1", "user1");
+    await controller.spawnInstance("env1", "user1", "inst_test_22");
+    await controller.spawnInstance("env1", "user1", "inst_test_23");
     socket.close(); // 模拟机器断连
     controller.stopInstancesByMachineId("m1");
     expect(service.activeCount()).toBe(1); // 节点尚未被空闲回收

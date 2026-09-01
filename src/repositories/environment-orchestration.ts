@@ -65,7 +65,6 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         organizationId: environment.organizationId,
         agentConfigId: environment.agentConfigId,
         autoStart: environment.autoStart,
-        maxSessions: environment.maxSessions,
         configMachineId: agentConfig.machineId,
         agentNode: agentConfig.agentNode,
         envUserId: environment.userId,
@@ -113,7 +112,6 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。
         (config.disableLocalExecution ? null : "local-default"),
-      maxConcurrency: row.maxSessions,
       autoStart: row.autoStart ?? false,
     };
   }

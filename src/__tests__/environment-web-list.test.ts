@@ -15,7 +15,6 @@ function makeEnvRow(overrides: Partial<Record<string, unknown>> = {}) {
     machineName: null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "acp",
     capabilities: null,
     secret: "sec_1",

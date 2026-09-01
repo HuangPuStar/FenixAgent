@@ -27,7 +27,6 @@ export function makeEnv(overrides: Partial<EnvironmentRecord> = {}): Environment
     directory: null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "opencode",
     capabilities: null,
     status: "active",

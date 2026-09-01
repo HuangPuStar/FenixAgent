@@ -2,8 +2,6 @@ import { resolve } from "node:path";
 import type { Env } from "./env";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
 
-export const DEFAULT_ENVIRONMENT_MAX_SESSIONS = 5;
-
 function buildConfig(env: Env) {
   return {
     version: env.RCS_VERSION,
@@ -51,8 +49,6 @@ function buildConfig(env: Env) {
     userAgentMaxConcurrency: env.RCS_USER_AGENT_MAX_CONCURRENCY,
     /** 定时任务触发的活跃 Agent 实例并发上限。 */
     scheduledAgentMaxConcurrency: env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY,
-    /** 新建 Environment 默认允许同时运行的 Instance 数量。 */
-    environmentMaxSessions: env.RCS_ENVIRONMENT_MAX_SESSIONS,
     /** file-ws 僵尸判定阈值：lastClientActivity 距今超过该值（ms）视为僵尸连接。默认 90s（3×30s keep_alive 间隔）。 */
     fileWsIdleTimeoutMs: env.RCS_FILE_WS_IDLE_TIMEOUT_MS,
     /** file-ws 僵尸巡检间隔（ms）。默认 30s。 */

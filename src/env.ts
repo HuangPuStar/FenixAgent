@@ -1,5 +1,4 @@
 import { z } from "zod/v4";
-import { DEFAULT_ENVIRONMENT_MAX_SESSIONS } from "./config";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
 import { ENGINE_TYPES } from "./services/config/types";
 
@@ -54,7 +53,6 @@ const envSchema = z.object({
   RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
-  RCS_ENVIRONMENT_MAX_SESSIONS: z.coerce.number().int().positive().default(DEFAULT_ENVIRONMENT_MAX_SESSIONS),
   RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   RCS_SANDBOX_ENABLED: z
     .string()

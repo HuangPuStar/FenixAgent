@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
-import { config, DEFAULT_ENVIRONMENT_MAX_SESSIONS } from "../config";
 import { db } from "../db";
 import { environment, user } from "../db/schema";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
@@ -17,7 +16,6 @@ export interface EnvironmentRecord {
   directory: string | null;
   branch: string | null;
   gitRepoUrl: string | null;
-  maxSessions: number;
   workerType: string;
   capabilities: Record<string, unknown> | null;
   status: string;
@@ -44,7 +42,6 @@ export interface EnvironmentCreateParams {
   directory?: string;
   branch?: string;
   gitRepoUrl?: string;
-  maxSessions?: number;
   workerType?: string;
   username?: string;
   capabilities?: Record<string, unknown>;
@@ -58,7 +55,6 @@ export type EnvironmentUpdateParams = Partial<
     | "lastPollAt"
     | "capabilities"
     | "machineName"
-    | "maxSessions"
     | "name"
     | "description"
     | "workspacePath"
@@ -100,7 +96,6 @@ function rowToRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
     directory: computedWorkspace,
     branch: row.branch,
     gitRepoUrl: row.gitRepoUrl,
-    maxSessions: row.maxSessions,
     workerType: row.workerType,
     capabilities: (row.capabilities as Record<string, unknown>) ?? null,
     status: row.status,
@@ -123,7 +118,6 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     const status = params.status || "active";
     const secret = params.secret || `sec_${uuid().replace(/-/g, "")}`;
     const orgId = params.organizationId ?? params.userId;
-    const maxSessions = params.maxSessions ?? config.environmentMaxSessions ?? DEFAULT_ENVIRONMENT_MAX_SESSIONS;
     await db.insert(environment).values({
       id,
       name,
@@ -134,7 +128,6 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       machineName: params.machineName ?? null,
       branch: params.branch ?? null,
       gitRepoUrl: params.gitRepoUrl ?? null,
-      maxSessions,
       workerType: params.workerType ?? "acp",
       capabilities: params.capabilities ?? null,
       status,
@@ -154,7 +147,6 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       directory: params.directory ?? null,
       branch: params.branch ?? null,
       gitRepoUrl: params.gitRepoUrl ?? null,
-      maxSessions,
       workerType: params.workerType ?? "acp",
       capabilities: params.capabilities ?? null,
       status,
@@ -184,7 +176,6 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     if (patch.lastPollAt !== undefined) set.lastPollAt = patch.lastPollAt;
     if (patch.capabilities !== undefined) set.capabilities = patch.capabilities ?? null;
     if (patch.machineName !== undefined) set.machineName = patch.machineName;
-    if (patch.maxSessions !== undefined) set.maxSessions = patch.maxSessions;
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.description !== undefined) set.description = patch.description;
     if (patch.workspacePath !== undefined) set.workspacePath = patch.workspacePath;
