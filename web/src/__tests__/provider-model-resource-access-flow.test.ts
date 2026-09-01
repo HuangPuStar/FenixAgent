@@ -102,7 +102,7 @@ describe("provider model resource access flow", () => {
     expect(getProviderScope(externalProvider)).toBe("shared");
   });
 
-  // 本组织公开资源仍属于本组织；外部资源只能证明为共享给我，不能推断为全局公开。
+  // 本组织公开资源仍属于本组织；外部资源只能证明为公开，不能推断为全局公开。
   test("keeps ownership scope separate from public readability", () => {
     const publicInternalProvider: ProviderInfo = {
       ...internalProvider,

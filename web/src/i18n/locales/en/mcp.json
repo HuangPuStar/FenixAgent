@@ -2,7 +2,6 @@
   "title": "MCP Plugin Marketplace",
   "subtitle": "Browse curated MCP servers and connect files, browsers, repositories, and business systems through standard configuration.",
   "search": "Search plugins, transports, or use cases",
-  "searchInstalled": "Search installed plugins",
   "empty": "No plugins are available yet",
   "emptyHint": "Add an MCP JSON configuration to connect real tools for agents.",
   "emptySearch": "No matching plugins",
@@ -17,14 +16,6 @@
     "all": "All",
     "organization": "Organization",
     "shared": "Public"
-  },
-  "filter": {
-    "installed": "Installed",
-    "all": "All",
-    "development": "Developer tools",
-    "data": "Data",
-    "browser": "Browser",
-    "cloud": "Cloud"
   },
   "directory": {
     "title": "Plugin directory",

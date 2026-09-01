@@ -20,7 +20,7 @@ interface ArtifactsFilesWorkspaceProps {
 function readFileTreeWidth(): number {
   try {
     const width = Number(localStorage.getItem("fenix:file-tree-width"));
-    return Number.isFinite(width) && width >= 176 && width <= 220 ? width : 184;
+    return Number.isFinite(width) && width >= 176 ? width : 184;
   } catch {
     return 184;
   }
@@ -46,7 +46,7 @@ export function ArtifactsFilesWorkspace({
           <ResizablePanel
             defaultSize={fileTreeWidth}
             minSize={176}
-            maxSize={220}
+            maxSize="50%"
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
               if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;

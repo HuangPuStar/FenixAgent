@@ -59,8 +59,7 @@
   box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
 }
 
-.mcp-scope-filter,
-.mcp-category-filter {
+.mcp-scope-filter {
   display: flex;
   height: 40px;
   align-items: center;
@@ -70,8 +69,7 @@
   background: #e9edf4;
 }
 
-.mcp-scope-filter button,
-.mcp-category-filter button {
+.mcp-scope-filter button {
   height: 32px;
   border: 0;
   border-radius: 6px;
@@ -82,8 +80,7 @@
   white-space: nowrap;
 }
 
-.mcp-scope-filter button[aria-pressed="true"],
-.mcp-category-filter button[aria-pressed="true"] {
+.mcp-scope-filter button[aria-pressed="true"] {
   color: var(--mcp-blue);
   background: #fff;
   box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
@@ -92,43 +89,6 @@
 
 .mcp-scope-filter small {
   margin-left: 4px;
-  color: var(--mcp-faint);
-  font-size: 10px;
-}
-
-.mcp-secondary-filters {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 12px;
-  overflow-x: auto;
-}
-
-.mcp-installed-filter {
-  display: flex;
-  height: 40px;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--mcp-muted);
-  background: #e9edf4;
-  font-size: 11px;
-}
-
-.mcp-installed-filter.is-active {
-  color: var(--mcp-blue);
-  background: var(--mcp-blue-soft);
-}
-
-.mcp-installed-filter svg {
-  width: 13px;
-}
-
-.mcp-installed-filter span {
   color: var(--mcp-faint);
   font-size: 10px;
 }
@@ -223,7 +183,7 @@
 
 .mcp-directory-copy strong,
 .mcp-directory-copy small,
-.mcp-directory-meta > span {
+.mcp-directory-meta .mcp-directory-organization {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -306,12 +266,7 @@
     flex-direction: column;
   }
 
-  .mcp-scope-filter,
-  .mcp-category-filter {
+  .mcp-scope-filter {
     overflow-x: auto;
-  }
-
-  .mcp-secondary-filters {
-    justify-content: flex-start;
   }
 }

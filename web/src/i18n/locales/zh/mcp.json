@@ -2,7 +2,6 @@
   "title": "MCP 插件市场",
   "subtitle": "查找经过整理的 MCP Server，通过标准配置连接文件、浏览器、代码仓库与业务系统能力。",
   "search": "搜索插件、连接方式或用途",
-  "searchInstalled": "搜索已安装插件",
   "empty": "还没有可用插件",
   "emptyHint": "添加一个 MCP JSON 配置，连接 Agent 所需的真实工具。",
   "emptySearch": "没有匹配的插件",
@@ -17,14 +16,6 @@
     "all": "全部",
     "organization": "本组织",
     "shared": "公开"
-  },
-  "filter": {
-    "installed": "已安装",
-    "all": "全部",
-    "development": "开发工具",
-    "data": "数据",
-    "browser": "浏览器",
-    "cloud": "云服务"
   },
   "directory": {
     "title": "插件目录",

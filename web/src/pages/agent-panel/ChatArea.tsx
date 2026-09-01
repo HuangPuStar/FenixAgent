@@ -41,6 +41,7 @@ type ArtifactsLayoutMode = "floating" | "docked";
 
 const ARTIFACTS_MIN_WIDTH = 320;
 const ARTIFACTS_DEFAULT_WIDTH = 520;
+const ARTIFACTS_MAX_WIDTH_RATIO = 0.75;
 const COMPACT_LAYOUT_QUERY = "(max-width: 1050px)";
 
 function readArtifactsWidth(): number {
@@ -79,6 +80,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   const [artifactsLayout, setArtifactsLayout] = useState<ArtifactsLayoutMode>(readArtifactsLayout);
   const [artifactsWidth, setArtifactsWidth] = useState(readArtifactsWidth);
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia(COMPACT_LAYOUT_QUERY).matches);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{ pointerId: number; clientX: number; width: number } | null>(null);
 
   // 加载 environment.agentConfigId，供 ArtifactsPanel 站点绑定等功能使用。
@@ -216,8 +218,10 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
 
   const clampArtifactsWidth = useCallback(
     (width: number) => {
-      const viewportAllowance = effectiveLayout === "docked" ? window.innerWidth - 720 : window.innerWidth - 32;
-      return Math.max(ARTIFACTS_MIN_WIDTH, Math.min(width, Math.max(ARTIFACTS_MIN_WIDTH, viewportAllowance), 720));
+      const workspaceWidth = workspaceRef.current?.clientWidth ?? window.innerWidth;
+      const viewportAllowance = effectiveLayout === "docked" ? workspaceWidth - 720 : workspaceWidth - 32;
+      const maxWidth = Math.min(viewportAllowance, workspaceWidth * ARTIFACTS_MAX_WIDTH_RATIO);
+      return Math.max(ARTIFACTS_MIN_WIDTH, Math.min(width, Math.max(ARTIFACTS_MIN_WIDTH, maxWidth)));
     },
     [effectiveLayout],
   );
@@ -281,7 +285,12 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
           className="agent-panel-content agent-panel-content--chat"
           style={{ display: visible ? undefined : "none" }}
         >
-          <div className="agent-chat-workspace" data-artifacts-layout={effectiveLayout} style={workspaceStyle}>
+          <div
+            ref={workspaceRef}
+            className="agent-chat-workspace"
+            data-artifacts-layout={effectiveLayout}
+            style={workspaceStyle}
+          >
             <div className="agent-chat-area">{chatPanels}</div>
             {hasPanelModules && (
               <>
@@ -301,6 +310,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
                   data-layout={effectiveLayout}
                   style={{
                     width: artifactsWidth,
+                    maxWidth: `${ARTIFACTS_MAX_WIDTH_RATIO * 100}%`,
                     flexBasis: effectiveLayout === "docked" ? artifactsWidth : undefined,
                   }}
                   aria-label={t("showArtifacts")}

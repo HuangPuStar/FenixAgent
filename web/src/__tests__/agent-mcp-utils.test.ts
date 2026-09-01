@@ -3,7 +3,6 @@ import {
   buildMcpPayload,
   countMcpScopes,
   filterMcpServers,
-  getMcpCategory,
   parseMcpCommand,
 } from "../pages/agent-panel/pages/agent-mcp-utils";
 import type { McpServerInfo, ResourceAccess } from "../types/config";
@@ -75,27 +74,13 @@ describe("MCP editor conversion", () => {
 describe("plugin marketplace filters", () => {
   // 资源范围只按后端 ownership 切分，不制造个人、平台或市场幻影字段。
   test("filters proven organization and shared scopes", () => {
-    expect(filterMcpServers(servers, "", "organization", "all").map((server) => server.name)).toEqual(["filesystem"]);
-    expect(filterMcpServers(servers, "", "shared", "all").map((server) => server.name)).toEqual(["browser-control"]);
+    expect(filterMcpServers(servers, "", "organization").map((server) => server.name)).toEqual(["filesystem"]);
+    expect(filterMcpServers(servers, "", "shared").map((server) => server.name)).toEqual(["browser-control"]);
     expect(countMcpScopes(servers)).toEqual({ organization: 1, shared: 1 });
-  });
-
-  // 已安装过滤仅展示当前组织拥有的配置，共享只读资源不能伪装成本组织安装项。
-  test("uses internal ownership for installed filter", () => {
-    expect(filterMcpServers(servers, "", "all", "installed").map((server) => server.name)).toEqual(["filesystem"]);
   });
 
   // 搜索应覆盖名称、说明与传输类型。
   test("searches plugin names and summaries", () => {
-    expect(filterMcpServers(servers, "浏览器", "all", "all").map((server) => server.name)).toEqual(["browser-control"]);
-  });
-
-  // 市场分类只由真实名称、说明和传输类型推导，不向 MCP DTO 写入不存在的分类字段。
-  test("derives and filters marketplace categories", () => {
-    expect(getMcpCategory(servers[0])).toBe("development");
-    expect(getMcpCategory(servers[1])).toBe("browser");
-    expect(filterMcpServers(servers, "", "all", "all", "browser").map((server) => server.name)).toEqual([
-      "browser-control",
-    ]);
+    expect(filterMcpServers(servers, "浏览器", "all").map((server) => server.name)).toEqual(["browser-control"]);
   });
 });

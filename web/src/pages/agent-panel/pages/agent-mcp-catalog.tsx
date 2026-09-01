@@ -1,13 +1,9 @@
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
   ChevronRight,
   Cloud,
-  Code2,
-  Database,
   Eye,
-  Globe2,
   Pencil,
   Plus,
   RefreshCw,
@@ -27,14 +23,7 @@ import { NS } from "../../../i18n";
 import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import type { McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
-import {
-  countMcpScopes,
-  filterMcpServers,
-  getMcpCategory,
-  type McpCatalogCategory,
-  type McpCatalogFilter,
-  type McpCatalogScope,
-} from "./agent-mcp-utils";
+import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
 import "./agent-mcp-detail.css";
 
@@ -44,15 +33,11 @@ type Props = {
   error?: Error;
   query: string;
   scope: McpCatalogScope;
-  filter: McpCatalogFilter;
-  category: McpCatalogCategory;
   inspectingKey: string | null;
   sharing: boolean;
   toolsByServer: Record<string, McpToolInfo[]>;
   onQueryChange: (value: string) => void;
   onScopeChange: (value: McpCatalogScope) => void;
-  onFilterChange: (value: McpCatalogFilter) => void;
-  onCategoryChange: (value: McpCatalogCategory) => void;
   onCreate: () => void;
   onOpen: (server: McpServerInfo) => void;
   onInspect: (server: McpServerInfo) => void;
@@ -63,16 +48,12 @@ type Props = {
 };
 
 function getMcpIcon(server: McpServerInfo) {
-  const category = getMcpCategory(server);
-  if (category === "browser") return Globe2;
-  if (category === "data") return Database;
-  if (category === "development") return Code2;
   return server.type === "local" ? TerminalSquare : Cloud;
 }
 
 export function AgentMcpCatalog(props: Props) {
   const { t } = useTranslation(NS.MCP);
-  const filtered = filterMcpServers(props.servers, props.query, props.scope, props.filter, props.category);
+  const filtered = filterMcpServers(props.servers, props.query, props.scope);
   const counts = countMcpScopes(props.servers);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedServer = filtered.find((server) => getMcpKey(server) === selectedKey) ?? filtered[0] ?? null;
@@ -118,7 +99,7 @@ export function AgentMcpCatalog(props: Props) {
             aria-label={t("search")}
             value={props.query}
             onChange={(event) => props.onQueryChange(event.target.value)}
-            placeholder={props.filter === "installed" ? t("searchInstalled") : t("search")}
+            placeholder={t("search")}
           />
         </label>
         <div className="mcp-scope-filter" role="group" aria-label={t("scope.label")}>
@@ -137,31 +118,6 @@ export function AgentMcpCatalog(props: Props) {
             >
               {label}
               <small>{count}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="mcp-secondary-filters" aria-label={t("toolbar.label")}>
-        <button
-          type="button"
-          className={props.filter === "installed" ? "mcp-installed-filter is-active" : "mcp-installed-filter"}
-          aria-pressed={props.filter === "installed"}
-          onClick={() => props.onFilterChange(props.filter === "installed" ? "all" : "installed")}
-        >
-          <Check />
-          {t("filter.installed")}
-          <span>{counts.organization}</span>
-        </button>
-        <div className="mcp-category-filter" role="group" aria-label={t("toolbar.label")}>
-          {(["all", "development", "data", "browser", "cloud"] as const).map((category) => (
-            <button
-              key={category}
-              type="button"
-              aria-pressed={props.category === category}
-              onClick={() => props.onCategoryChange(category)}
-            >
-              {t(`filter.${category}`)}
             </button>
           ))}
         </div>
@@ -213,7 +169,10 @@ export function AgentMcpCatalog(props: Props) {
                         <small>{server.summary || t("directory.noDescription")}</small>
                       </span>
                       <span className="mcp-directory-meta">
-                        <span title={server.resourceAccess?.sourceOrganizationName}>
+                        <span
+                          className="mcp-directory-organization"
+                          title={server.resourceAccess?.sourceOrganizationName}
+                        >
                           {server.resourceAccess?.sourceOrganizationName ??
                             t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>

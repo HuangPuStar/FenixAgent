@@ -10,15 +10,13 @@ import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "..
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentMcpCatalog } from "./agent-mcp-catalog";
 import { AgentMcpDialog, type McpEditorTarget } from "./agent-mcp-dialog";
-import type { McpCatalogCategory, McpCatalogFilter, McpCatalogScope } from "./agent-mcp-utils";
+import type { McpCatalogScope } from "./agent-mcp-utils";
 
 export function AgentMcpPage() {
   const { t } = useTranslation(NS.MCP);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<McpCatalogScope>("all");
-  const [filter, setFilter] = useState<McpCatalogFilter>("all");
-  const [category, setCategory] = useState<McpCatalogCategory>("all");
   const [editorTarget, setEditorTarget] = useState<McpEditorTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<McpServerInfo | null>(null);
   const [inspectingKey, setInspectingKey] = useState<string | null>(null);
@@ -117,15 +115,11 @@ export function AgentMcpPage() {
         error={catalog.error}
         query={query}
         scope={scope}
-        filter={filter}
-        category={category}
         inspectingKey={inspectingKey}
         sharing={toggleSharing.loading}
         toolsByServer={toolsByServer}
         onQueryChange={setQuery}
         onScopeChange={setScope}
-        onFilterChange={setFilter}
-        onCategoryChange={setCategory}
         onCreate={() => setEditorTarget("create")}
         onOpen={setEditorTarget}
         onInspect={(server) => void inspectServer(server)}
