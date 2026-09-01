@@ -10,6 +10,7 @@ import {
   type RuntimeStopMode,
 } from "./agent-instance-runtime-coordinator";
 import { getCoreRuntime } from "./core-bootstrap";
+import { getOrchestrationController } from "./orchestration-bootstrap";
 import { spawnInstanceViaController, stopInstanceViaController } from "./orchestration-instance";
 
 export type AutomaticInstanceSelection = "chat" | "api" | "workflow";
@@ -32,6 +33,19 @@ const runtimeAdapter: RuntimeAdapter = {
       runtimeGeneration: generation,
       serverEpoch: SERVER_EPOCH,
     });
+  },
+  hasActiveRuntime(instanceUid) {
+    const coreInstance = getCoreRuntime().getInstance(instanceUid);
+    return (
+      (coreInstance !== null && coreInstance.status !== "stopped") ||
+      getOrchestrationController()
+        .listInstances()
+        .some((instance) => instance.instanceId === instanceUid)
+    );
+  },
+  async stopActiveRuntime(instanceUid, signal) {
+    signal.throwIfAborted();
+    await stopInstanceViaController(instanceUid, "strict");
   },
   async stop(instanceUid, generation, signal) {
     signal.throwIfAborted();

@@ -272,6 +272,37 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
   });
 
+  // coordinator 状态丢失但编排层仍有活跃 runtime 时，restart 必须先停止权威 runtime 再启动。
+  test("restart reconciles active runtime when local state is stopped", async () => {
+    let active = true;
+    let starts = 0;
+    let stops = 0;
+    const adapter: RuntimeAdapter = {
+      hasActiveRuntime() {
+        return active;
+      },
+      async start() {
+        if (active) throw new Error("INSTANCE_ALREADY_ACTIVE");
+        active = true;
+        starts += 1;
+      },
+      async stop() {
+        throw new Error("generation-fenced stop must not be used");
+      },
+      async stopActiveRuntime() {
+        active = false;
+        stops += 1;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+
+    await coordinator.restartRuntime(instance);
+
+    expect(stops).toBe(1);
+    expect(starts).toBe(1);
+    expect(coordinator.snapshot(instance.id).state).toBe("running");
+  });
+
   // disconnect 只接受当前 generation，并标记 unknown；迟到 death 不得覆盖该 fence 后状态。
   test("disconnect and death events respect generation fencing", async () => {
     const adapter: RuntimeAdapter = { async start() {}, async stop() {} };

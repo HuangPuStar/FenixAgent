@@ -16,6 +16,10 @@ export interface RuntimeSnapshot {
 export interface RuntimeAdapter {
   start(instance: AgentInstanceRecord, generation: number, signal: AbortSignal): Promise<void>;
   stop(instanceUid: string, generation: number, signal: AbortSignal): Promise<void>;
+  /** 返回编排层或 core 中是否仍存在该 uid 的权威 runtime。 */
+  hasActiveRuntime?(instanceUid: string): boolean;
+  /** 显式 restart 使用，不按 coordinator 的本地 generation 跳过权威 runtime。 */
+  stopActiveRuntime?(instanceUid: string, signal: AbortSignal): Promise<void>;
 }
 
 interface RuntimeEntry {
@@ -212,9 +216,13 @@ export class AgentInstanceRuntimeCoordinator {
   ): Promise<void> {
     const entry = this.#entry(instance.id);
     try {
-      if (operation === "restart" && entry.state !== "stopped") {
+      if (operation === "restart" && (entry.state !== "stopped" || this.adapter.hasActiveRuntime?.(instance.id))) {
         entry.state = "stopping";
-        await this.adapter.stop(instance.id, generation - 1, signal);
+        if (this.adapter.stopActiveRuntime) {
+          await this.adapter.stopActiveRuntime(instance.id, signal);
+        } else {
+          await this.adapter.stop(instance.id, generation - 1, signal);
+        }
       }
       if (operation === "stop" || operation === "delete") {
         entry.state = "stopping";

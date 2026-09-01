@@ -230,6 +230,12 @@ export async function refreshInstanceEnvironment(instanceId: string, envId: stri
  * 的 dispose 必须三者齐备，否则进程残留且实例列表出现脏数据。语义与旧
  * services/instance.ts 的 stopInstance 对齐；对重复 dispose / 已停止实例幂等。
  */
+function isInstanceNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error && "code" in error && (error as Error & { code?: unknown }).code === "INSTANCE_NOT_FOUND"
+  );
+}
+
 export async function stopInstanceViaController(
   instanceId: string,
   mode: "strict" | "best-effort" = "best-effort",
@@ -239,14 +245,14 @@ export async function stopInstanceViaController(
   try {
     await controller.stopInstance(instanceId);
   } catch (err) {
-    failures.push(err);
+    if (!isInstanceNotFoundError(err)) failures.push(err);
     logError(`[orchestration-instance] controller.stopInstance failed: instanceId=${instanceId}`, err);
   }
   const facade = getCoreRuntime();
   try {
     await facade.stopInstance(instanceId);
   } catch (err) {
-    failures.push(err);
+    if (!isInstanceNotFoundError(err)) failures.push(err);
     logError(`[orchestration-instance] core stopInstance failed: instanceId=${instanceId}`, err);
   }
   globalInstanceRegistry.unregister(instanceId);
