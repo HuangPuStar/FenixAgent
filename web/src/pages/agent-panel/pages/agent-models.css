@@ -194,14 +194,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.models-provider-scope {
+.models-provider-scope,
+.models-provider-public-badge {
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 3px 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
   font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.models-provider-scope.is-organization {
-  color: #55708f;
+.models-provider-public-badge {
+  display: inline-block;
 }
-.models-provider-scope.is-shared {
-  color: #6c52c8;
+.models-provider-organization {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .models-provider-arrow {
   width: 12px;

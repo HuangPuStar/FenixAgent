@@ -41,7 +41,7 @@ import {
 import type { SkillDetail as SkillDetailData } from "../../../types/config";
 import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "../shared/agent-master-detail-workspace";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
-import { countSkillsByScope, filterSkills, getSkillOrganizationBadgeStyle } from "./agent-skills-utils";
+import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
 import "./agent-skills.css";
 
 type AgentSkillsCatalogProps = {
@@ -72,11 +72,17 @@ function getSkillIcon(skill: SkillInfo): LucideIcon {
   return Sparkles;
 }
 
-function getSkillDisplayName(skill: SkillInfo): { name: string; namespace: string | null } {
+function getSkillDisplayName(skill: SkillInfo): {
+  name: string;
+  namespace: string | null;
+} {
   const label = getSkillOptionLabel(skill);
   const separator = label.lastIndexOf("/");
   if (separator < 0) return { name: label, namespace: null };
-  return { name: label.slice(separator + 1), namespace: label.slice(0, separator) };
+  return {
+    name: label.slice(separator + 1),
+    namespace: label.slice(0, separator),
+  };
 }
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
@@ -206,6 +212,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
       ) : (
         <AgentMasterDetailWorkspace
           detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}
+          detailFooter={selectedSkill ? <SkillDetailActions skill={selectedSkill} props={props} /> : null}
           index={
             <aside className="px-[10px] py-[19px]">
               <header className="px-2 pb-[14px]">
@@ -216,7 +223,10 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                   </span>
                 </div>
                 <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
-                  {t("directory.summary", { visible: filtered.length, total: props.skills.length })}
+                  {t("directory.summary", {
+                    visible: filtered.length,
+                    total: props.skills.length,
+                  })}
                 </small>
               </header>
               <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
@@ -226,7 +236,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                   const display = getSkillDisplayName(skill);
                   const active = getSkillKey(skill) === getSkillKey(selectedSkill);
                   const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-                  const organizationBadgeStyle = getSkillOrganizationBadgeStyle(skill);
+                  const publiclyReadable = external || skill.resourceAccess?.publicReadable === true;
                   return (
                     <button
                       type="button"
@@ -246,17 +256,20 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                           {skill.description || t("directory.noDescription")}
                         </small>
                       </span>
-                      <span className="flex flex-col items-end gap-1 text-[9px] leading-none">
+                      <span className="flex min-w-0 flex-col items-end gap-1 text-[9px] leading-none">
                         {display.namespace ? (
                           <span
-                            className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap rounded border px-1.5 py-1"
-                            style={organizationBadgeStyle}
+                            className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap text-[var(--skills-muted)]"
                             title={organizationName}
                           >
                             {display.namespace}
                           </span>
                         ) : null}
-                        <span>{external ? t("scope.shared") : t("scope.organization")}</span>
+                        {publiclyReadable ? (
+                          <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
+                            {t("scope.shared")}
+                          </span>
+                        ) : null}
                       </span>
                       <ChevronRight className={`w-3 ${active ? "opacity-100" : "opacity-0"}`} />
                     </button>
@@ -299,13 +312,11 @@ function SkillDetailView({
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const writable = canWriteSkill(skill);
-  const manageable = canManageSkillSharing(skill);
   const external = skill.resourceAccess?.ownership === "external";
-  const downloading = props.downloadingKey === getSkillKey(skill);
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
   const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-  const organizationBadgeStyle = getSkillOrganizationBadgeStyle(skill);
+  const publiclyReadable = external || skill.resourceAccess?.publicReadable === true;
   const header = (
     <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
@@ -313,20 +324,18 @@ function SkillDetailView({
           {external ? <Share2 /> : <SkillIcon />}
         </span>
         <div className="min-w-0">
-          <span className="text-[10px] font-bold tracking-[0.08em] text-[var(--skills-blue)] uppercase">
-            {external ? t("scope.shared") : t("scope.organization")}
-          </span>
           <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
             {display.name}
           </h2>
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
-            <span
-              className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium"
-              style={organizationBadgeStyle}
-              title={organizationName}
-            >
+          <div className="flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
+            <span className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap" title={organizationName}>
               {organizationName}
             </span>
+            {publiclyReadable ? (
+              <span className="shrink-0 rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#1d4ed8]">
+                {t("scope.shared")}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -376,10 +385,7 @@ function SkillDetailView({
             </MessageResponse>
           )}
         </section>
-        <div className="mt-7 flex flex-wrap items-center gap-2 border-b border-[var(--skills-line)] pb-7">
-          <span className="rounded-md bg-[#edf5ff] px-2.5 py-1.5 text-[10px] text-[#1e72c8]">
-            {external ? t("scope.shared") : t("scope.organization")}
-          </span>
+        <div className="mt-7 flex flex-wrap items-center gap-2">
           <span className="rounded-md bg-[#f3f5f8] px-2.5 py-1.5 text-[10px] text-[var(--skills-muted)]">
             {skill.resourceAccess?.publicReadable
               ? tComponents("resource.public")
@@ -388,26 +394,37 @@ function SkillDetailView({
                 : tComponents("resource.readOnly")}
           </span>
         </div>
-        <div className="mt-6 flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={downloading} onClick={() => props.onDownload(skill)}>
-            <Download /> {t("btn.download")}
-          </Button>
-          {manageable ? (
-            <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
-              {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
-              {skill.resourceAccess?.publicReadable
-                ? tComponents("resource.makePrivate")
-                : tComponents("resource.makePublic")}
-            </Button>
-          ) : null}
-          {writable ? (
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => props.onDelete(skill)}>
-              <Trash2 /> {t("btn.delete")}
-            </Button>
-          ) : null}
-        </div>
       </div>
     </article>
+  );
+}
+
+function SkillDetailActions({ skill, props }: { skill: SkillInfo; props: AgentSkillsCatalogProps }) {
+  const { t } = useTranslation(NS.SKILLS);
+  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  const writable = canWriteSkill(skill);
+  const manageable = canManageSkillSharing(skill);
+  const downloading = props.downloadingKey === getSkillKey(skill);
+
+  return (
+    <div className="flex items-center gap-2 border-t border-[var(--skills-line)] px-8 py-4">
+      <Button variant="outline" size="sm" disabled={downloading} onClick={() => props.onDownload(skill)}>
+        <Download /> {t("btn.download")}
+      </Button>
+      {manageable ? (
+        <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
+          {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
+          {skill.resourceAccess?.publicReadable
+            ? tComponents("resource.makePrivate")
+            : tComponents("resource.makePublic")}
+        </Button>
+      ) : null}
+      {writable ? (
+        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => props.onDelete(skill)}>
+          <Trash2 /> {t("btn.delete")}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

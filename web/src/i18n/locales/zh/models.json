@@ -10,7 +10,7 @@
     "label": "资源范围",
     "all": "全部",
     "organization": "本组织",
-    "shared": "共享给我"
+    "shared": "公开"
   },
   "providerIndex": {
     "title": "服务商",
@@ -68,7 +68,11 @@
   },
   "modelGatewayUsage": {
     "title": "模型网关用量",
-    "ranges": { "last30d": "最近 30 天", "last7d": "最近 7 天", "last90d": "最近 90 天" },
+    "ranges": {
+      "last30d": "最近 30 天",
+      "last7d": "最近 7 天",
+      "last90d": "最近 90 天"
+    },
     "query": "查询",
     "querying": "查询中…",
     "total": "最近 {{days}} 天总消耗",

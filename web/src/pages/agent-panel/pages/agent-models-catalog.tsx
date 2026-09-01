@@ -172,6 +172,9 @@ function ProviderIndex({
             const key = getProviderKey(provider);
             const iconModelId = getProviderIconModelId(provider, modelsByProvider[key] ?? []);
             const active = key === (selected ? getProviderKey(selected) : null);
+            const organizationName = provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
+            const publiclyReadable =
+              provider.resourceAccess?.ownership === "external" || provider.resourceAccess?.publicReadable === true;
             return (
               <button
                 type="button"
@@ -185,14 +188,11 @@ function ProviderIndex({
                 </span>
                 <span className="models-provider-copy">
                   <strong>{provider.name || provider.id}</strong>
-                  <small>
-                    {t(`protocolOptions.${provider.protocol}`)} ·{" "}
-                    {t("providerIndex.models", { count: provider.modelCount })}
+                  <small title={organizationName}>
+                    {organizationName} · {t("providerIndex.models", { count: provider.modelCount })}
                   </small>
                 </span>
-                <span className={`models-provider-scope is-${getProviderScope(provider)}`}>
-                  {t(`scope.${getProviderScope(provider)}`)}
-                </span>
+                {publiclyReadable ? <span className="models-provider-scope">{t("scope.shared")}</span> : null}
                 <ChevronRight className="models-provider-arrow" />
               </button>
             );
@@ -215,6 +215,8 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   const models = props.modelsByProvider[key] ?? [];
   const iconModelId = getProviderIconModelId(provider, models);
   const writable = canWriteProvider(provider);
+  const publiclyReadable =
+    provider.resourceAccess?.ownership === "external" || provider.resourceAccess?.publicReadable === true;
   const color = getProviderColor(provider.id);
   const header = (
     <div style={{ "--provider-color": color } as CSSProperties}>
@@ -230,10 +232,13 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
               <code>{provider.id}</code>
             </div>
             <h2>{provider.name || provider.id}</h2>
-            <small>
-              {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
-              {t("providerIndex.models", { count: models.length })}
-            </small>
+            <div className="models-provider-organization">
+              <small>
+                {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
+                {t("providerIndex.models", { count: models.length })}
+              </small>
+              {publiclyReadable ? <span className="models-provider-public-badge">{t("scope.shared")}</span> : null}
+            </div>
           </div>
         </div>
         <div className="models-provider-controls">

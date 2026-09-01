@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 type AgentMasterDetailWorkspaceProps = {
   index: ReactNode;
   detailHeader?: ReactNode;
+  detailFooter?: ReactNode;
   children: ReactNode;
   className?: string;
 };
@@ -12,6 +13,7 @@ type AgentMasterDetailWorkspaceProps = {
 export function AgentMasterDetailWorkspace({
   index,
   detailHeader,
+  detailFooter,
   children,
   className,
 }: AgentMasterDetailWorkspaceProps) {
@@ -23,6 +25,7 @@ export function AgentMasterDetailWorkspace({
       <div className="flex min-h-0 min-w-0 flex-col">
         {detailHeader ? <div className="shrink-0 bg-white">{detailHeader}</div> : null}
         <ScrollArea className="min-h-0 min-w-0 flex-1">{children}</ScrollArea>
+        {detailFooter ? <div className="shrink-0 bg-white">{detailFooter}</div> : null}
       </div>
     </section>
   );
