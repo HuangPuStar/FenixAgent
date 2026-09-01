@@ -1,4 +1,5 @@
-import { type RefObject, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { FileTabsBar } from "./FileTabsBar";
@@ -17,10 +18,13 @@ interface ArtifactsFilesWorkspaceProps {
   onReferenceFile: (path: string, name: string) => void;
 }
 
+const FILE_TREE_MIN_WIDTH = 176;
+const PREVIEW_MIN_WIDTH = 160;
+
 function readFileTreeWidth(): number {
   try {
     const width = Number(localStorage.getItem("fenix:file-tree-width"));
-    return Number.isFinite(width) && width >= 176 ? width : 184;
+    return Number.isFinite(width) && width >= FILE_TREE_MIN_WIDTH ? width : 184;
   } catch {
     return 184;
   }
@@ -39,20 +43,53 @@ export function ArtifactsFilesWorkspace({
   onReferenceFile,
 }: ArtifactsFilesWorkspaceProps) {
   const [fileTreeWidth, setFileTreeWidth] = useState(readFileTreeWidth);
+  const panelGroupRef = useRef<HTMLDivElement>(null);
+  const fileTreePanelRef = useRef<PanelImperativeHandle>(null);
+
+  // react-resizable-panels v4 在父 Group 缩放时会按比例重算 layout，且该路径不会重新应用
+  // panel 的 min/max 约束。外侧右栏变化后主动校正，确保文件树始终处于 176px..50%。
+  useEffect(() => {
+    const panelGroup = panelGroupRef.current;
+    if (!panelGroup) return;
+
+    let animationFrame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const panel = fileTreePanelRef.current;
+        if (!panel) return;
+
+        const groupWidth = panelGroup.clientWidth;
+        const currentWidth = panel.getSize().inPixels;
+        const maxWidth = groupWidth * 0.5;
+        const nextWidth = Math.max(FILE_TREE_MIN_WIDTH, Math.min(currentWidth, maxWidth));
+        if (Math.abs(currentWidth - nextWidth) >= 1) panel.resize(`${nextWidth}px`);
+      });
+    });
+    observer.observe(panelGroup);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
   return (
     <>
-      <div className="flex-1 min-h-0 min-w-0">
+      <div ref={panelGroupRef} className="flex-1 min-h-0 min-w-0">
         <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel
-            defaultSize={fileTreeWidth}
-            minSize={176}
+            panelRef={fileTreePanelRef}
+            defaultSize={`${fileTreeWidth}px`}
+            minSize={`${FILE_TREE_MIN_WIDTH}px`}
             maxSize="50%"
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
               if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;
-              setFileTreeWidth(size.inPixels);
+              const width = Math.max(FILE_TREE_MIN_WIDTH, size.inPixels);
+              setFileTreeWidth(width);
               try {
-                localStorage.setItem("fenix:file-tree-width", String(size.inPixels));
+                localStorage.setItem("fenix:file-tree-width", String(width));
               } catch {
                 // Width persistence is optional.
               }
@@ -68,7 +105,7 @@ export function ArtifactsFilesWorkspace({
             </div>
           </ResizablePanel>
           <ResizableHandle className="artifacts-workbench-divider" />
-          <ResizablePanel defaultSize={70} minSize={36}>
+          <ResizablePanel defaultSize="70%" minSize={`${PREVIEW_MIN_WIDTH}px`}>
             <div className="h-full min-h-0 min-w-0 flex flex-col">
               <PreviewTab envId={envId} filePath={activeFile} />
             </div>

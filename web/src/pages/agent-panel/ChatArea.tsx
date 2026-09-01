@@ -39,7 +39,7 @@ interface SessionSlot {
 
 type ArtifactsLayoutMode = "floating" | "docked";
 
-const ARTIFACTS_MIN_WIDTH = 320;
+const ARTIFACTS_MIN_WIDTH = 356;
 const ARTIFACTS_DEFAULT_WIDTH = 520;
 const ARTIFACTS_MAX_WIDTH_RATIO = 0.75;
 const COMPACT_LAYOUT_QUERY = "(max-width: 1050px)";
