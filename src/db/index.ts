@@ -12,6 +12,10 @@ export function buildDatabaseConnectionOptions(poolConfig: DatabaseConnectionPoo
   connect_timeout?: number;
   idle_timeout?: number;
   max_lifetime?: number;
+  connection: {
+    idle_in_transaction_session_timeout: number;
+    lock_timeout: number;
+  };
 } {
   return {
     ...(poolConfig.RCS_DB_POOL_MAX !== undefined ? { max: poolConfig.RCS_DB_POOL_MAX } : {}),
@@ -24,6 +28,10 @@ export function buildDatabaseConnectionOptions(poolConfig: DatabaseConnectionPoo
     ...(poolConfig.RCS_DB_MAX_LIFETIME_SECONDS !== undefined
       ? { max_lifetime: poolConfig.RCS_DB_MAX_LIFETIME_SECONDS }
       : {}),
+    connection: {
+      idle_in_transaction_session_timeout: poolConfig.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS,
+      lock_timeout: poolConfig.RCS_DB_LOCK_TIMEOUT_SECONDS,
+    },
   };
 }
 

@@ -7,6 +7,8 @@ const databaseConnectionPoolSchema = z.object({
   RCS_DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
   RCS_DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
   RCS_DB_MAX_LIFETIME_SECONDS: z.coerce.number().int().positive().optional(),
+  RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(150),
+  RCS_DB_LOCK_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(5),
 });
 
 /** PostgreSQL 连接池的运行时配置。 */

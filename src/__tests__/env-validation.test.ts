@@ -146,6 +146,8 @@ describe("env validation", () => {
     expect(env.RCS_DB_IDLE_TIMEOUT_SECONDS).toBeUndefined();
     expect(env.RCS_DB_CONNECT_TIMEOUT_SECONDS).toBeUndefined();
     expect(env.RCS_DB_MAX_LIFETIME_SECONDS).toBeUndefined();
+    expect(env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS).toBe(150);
+    expect(env.RCS_DB_LOCK_TIMEOUT_SECONDS).toBe(5);
   });
 
   // 显式连接池配置应被转换为数值并透传给运行时数据库客户端。
@@ -156,12 +158,16 @@ describe("env validation", () => {
     process.env.RCS_DB_IDLE_TIMEOUT_SECONDS = "60";
     process.env.RCS_DB_CONNECT_TIMEOUT_SECONDS = "15";
     process.env.RCS_DB_MAX_LIFETIME_SECONDS = "3600";
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "90";
+    process.env.RCS_DB_LOCK_TIMEOUT_SECONDS = "3";
 
     expect(validateEnv()).toMatchObject({
       RCS_DB_POOL_MAX: 20,
       RCS_DB_IDLE_TIMEOUT_SECONDS: 60,
       RCS_DB_CONNECT_TIMEOUT_SECONDS: 15,
       RCS_DB_MAX_LIFETIME_SECONDS: 3600,
+      RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS: 90,
+      RCS_DB_LOCK_TIMEOUT_SECONDS: 3,
     });
   });
 
@@ -183,6 +189,14 @@ describe("env validation", () => {
     delete process.env.RCS_DB_IDLE_TIMEOUT_SECONDS;
     process.env.RCS_DB_MAX_LIFETIME_SECONDS = "0";
     expect(() => validateEnv()).toThrow(/RCS_DB_MAX_LIFETIME_SECONDS/);
+
+    delete process.env.RCS_DB_MAX_LIFETIME_SECONDS;
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS/);
+
+    process.env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS = "150";
+    process.env.RCS_DB_LOCK_TIMEOUT_SECONDS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_DB_LOCK_TIMEOUT_SECONDS/);
   });
 
   // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
