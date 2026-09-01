@@ -39,6 +39,26 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     expect(coordinator.snapshot(instance.id).state).toBe("running");
   });
 
+  // coordinator 状态丢失但权威 runtime 仍活跃时，ensure 必须接管现有 runtime，不能重复 launch。
+  test("ensure adopts an existing authoritative runtime", async () => {
+    let starts = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {
+        starts += 1;
+      },
+      async stop() {},
+      hasActiveRuntime() {
+        return true;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+
+    await coordinator.ensureRuntime(instance);
+
+    expect(starts).toBe(0);
+    expect(coordinator.snapshot(instance.id).state).toBe("running");
+  });
+
   // waiter 自身取消不得取消共享启动，否则会影响同 uid 的其他调用者。
   test("waiter cancellation does not cancel shared ensure", async () => {
     let release: (() => void) | undefined;
@@ -163,6 +183,30 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     releaseStart?.();
     await Promise.allSettled([starting, shutdown]);
     expect(stopGenerations).toEqual([startGeneration]);
+    expect(coordinator.snapshot(instance.id).state).toBe("stopped");
+  });
+
+  // shutdown 必须停止 ensure 接管的权威 runtime，不能因本地 generation 与旧 runtime 不一致而跳过。
+  test("shutdown stops an adopted authoritative runtime", async () => {
+    let active = true;
+    let authoritativeStops = 0;
+    const adapter: RuntimeAdapter = {
+      async start() {},
+      async stop() {},
+      hasActiveRuntime() {
+        return active;
+      },
+      async stopActiveRuntime() {
+        authoritativeStops += 1;
+        active = false;
+      },
+    };
+    const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
+    await coordinator.ensureRuntime(instance);
+
+    await coordinator.shutdown();
+
+    expect(authoritativeStops).toBe(1);
     expect(coordinator.snapshot(instance.id).state).toBe("stopped");
   });
 

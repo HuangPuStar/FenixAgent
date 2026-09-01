@@ -124,7 +124,12 @@ export class AgentInstanceRuntimeCoordinator {
         if (operation) {
           await operation.catch(() => undefined);
         } else if (state === "running") {
-          await this.adapter.stop(instanceUid, generation, new AbortController().signal);
+          const signal = new AbortController().signal;
+          if (this.adapter.stopActiveRuntime && this.adapter.hasActiveRuntime?.(instanceUid)) {
+            await this.adapter.stopActiveRuntime(instanceUid, signal);
+          } else {
+            await this.adapter.stop(instanceUid, generation, signal);
+          }
         }
         entry.state = "stopped";
       })().catch((error) => {
@@ -226,8 +231,17 @@ export class AgentInstanceRuntimeCoordinator {
       }
       if (operation === "stop" || operation === "delete") {
         entry.state = "stopping";
-        await this.adapter.stop(instance.id, generation - 1, signal);
+        if (this.adapter.stopActiveRuntime && this.adapter.hasActiveRuntime?.(instance.id)) {
+          await this.adapter.stopActiveRuntime(instance.id, signal);
+        } else {
+          await this.adapter.stop(instance.id, generation - 1, signal);
+        }
         if (entry.generation === generation) entry.state = "stopped";
+        return;
+      }
+      if (operation === "ensure" && this.adapter.hasActiveRuntime?.(instance.id)) {
+        entry.state = "running";
+        entry.lastFailure = null;
         return;
       }
       entry.state = "starting";

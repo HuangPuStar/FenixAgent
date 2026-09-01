@@ -105,7 +105,12 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
      * 完整执行 prepare 和 start 两阶段，并把实例推进到 `running`。
      */
     async launch(request) {
-      if (store.get(request.instanceId)) {
+      const existing = store.get(request.instanceId);
+      if (existing?.status === "stopped") {
+        // 持久 Agent Instance 的 uid 跨 runtime 世代稳定；stop 保留终态快照供幂等读取，
+        // 下一次 launch 在创建新 runtime 前原子移除旧世代缓存。
+        store.delete(request.instanceId);
+      } else if (existing) {
         throw createCoreRuntimeError(
           "INSTANCE_ALREADY_EXISTS",
           `Runtime instance already exists: ${request.instanceId}`,

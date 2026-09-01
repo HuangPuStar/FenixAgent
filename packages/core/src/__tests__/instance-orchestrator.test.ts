@@ -120,6 +120,30 @@ describe("InstanceOrchestrator", () => {
     expect(plugin.runtimeState.calls).toEqual(["prepare", "start", "connectRelay", "stop"]);
   });
 
+  // stop 必须释放实例身份，使持久 Instance 可以使用同一 uid 重新启动。
+  test("allows relaunch with the same instance id after stop", async () => {
+    const { orchestrator, plugin } = createTestContext();
+    const request = {
+      instanceId: "inst_restart",
+      runtimeGeneration: 1,
+      serverEpoch: "epoch-restart",
+      engineType: "fake-engine",
+      nodeId: "local-default",
+      launchSpec: createLaunchSpec(),
+    };
+    await orchestrator.launch(request);
+    await orchestrator.stop(request.instanceId);
+
+    const relaunched = await orchestrator.launch({ ...request, runtimeGeneration: 2 });
+
+    expect(relaunched).toMatchObject({
+      instanceId: request.instanceId,
+      runtimeGeneration: 2,
+      status: "running",
+    });
+    expect(plugin.runtimeState.calls).toEqual(["prepare", "start", "stop", "prepare", "start"]);
+  });
+
   // 刷新失败时保留运行状态和上一次成功配置，避免破坏现有会话。
   test("keeps the running snapshot when an environment refresh fails", async () => {
     const { orchestrator, plugin, store } = createTestContext();

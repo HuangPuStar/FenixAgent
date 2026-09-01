@@ -272,8 +272,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
 
       setPendingInstanceId({ id: instance.instanceUid, type: "restart" });
 
-      await unwrap(instanceApi.delete({ id: instance.instanceUid }));
-      await unwrap(instanceApi.spawn({ environmentId: envId }));
+      await unwrap(instanceApi.restart({ id: instance.instanceUid }));
 
       // 通知 ChatPanel 重新连接
       window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId } }));
@@ -296,7 +295,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     async (instanceId: string) => {
       setPendingInstanceId({ id: instanceId, type: "stop" });
 
-      await unwrap(instanceApi.delete({ id: instanceId }));
+      await unwrap(instanceApi.stop({ id: instanceId }));
       await refresh();
       toast.success(t("stopSuccess"));
     },

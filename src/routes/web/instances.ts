@@ -12,6 +12,25 @@ import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-
 import { agentInstanceService } from "../../services/agent-instance-service";
 import { getOwnedEnvironment } from "../../services/environment";
 
+const _deps = {
+  getOwnedEnvironment,
+  getOwnedInstance: agentInstanceService.getOwnedInstance.bind(agentInstanceService),
+  stopInstanceRuntime: agentInstanceService.stopInstanceRuntime.bind(agentInstanceService),
+  restartInstanceRuntime: agentInstanceService.restartInstanceRuntime.bind(agentInstanceService),
+  deleteInstance: agentInstanceService.deleteInstance.bind(agentInstanceService),
+};
+const _defaultDeps = { ..._deps };
+
+/** 测试用：覆盖实例 action 依赖，避免加载真实数据库和 runtime。 */
+export function setWebInstanceRouteDeps(overrides: Partial<typeof _deps>): void {
+  Object.assign(_deps, overrides);
+}
+
+/** 测试用：恢复实例 action 默认依赖。 */
+export function resetWebInstanceRouteDeps(): void {
+  Object.assign(_deps, _defaultDeps);
+}
+
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "instance-activity-query": InstanceActivityQuerySchema,
   "instance-activity-list-response": InstanceActivityListResponseSchema,
@@ -103,6 +122,79 @@ app.post(
   },
 );
 
+/** 校验实例与 Environment 均属于当前用户和组织。 */
+async function getOwnedInstanceForAction(instanceUid: string, organizationId: string, userId: string) {
+  const instance = await _deps.getOwnedInstance(instanceUid, userId);
+  await _deps.getOwnedEnvironment(instance.environmentId, organizationId, userId);
+  return instance;
+}
+
+/** POST /web/instances/:id/stop — 停止 runtime，保留持久 Instance。 */
+app.post(
+  "/instances/:id/stop",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    const user = store.user!;
+    try {
+      const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
+      await _deps.stopInstanceRuntime(instance, "strict");
+      return { success: true as const, data: null };
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
+      if (code === "INSTANCE_NOT_FOUND" || code === "NOT_FOUND") {
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Agent Instance not found" } });
+      }
+      throw err;
+    }
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: WebOkSchema(z.null().describe("实例停止成功后固定返回 null。")).describe("停止实例响应。"),
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["Instances"],
+      summary: "停止实例",
+      description: "停止指定实例的 runtime，但保留持久 Instance，可再次进入或重启。",
+    },
+  },
+);
+
+/** POST /web/instances/:id/restart — 使用同一持久 Instance uid 重启 runtime。 */
+app.post(
+  "/instances/:id/restart",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+  async ({ store, params, error }: any) => {
+    const authCtx = store.authContext!;
+    const user = store.user!;
+    try {
+      const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
+      await _deps.restartInstanceRuntime(instance);
+      return { success: true as const, data: null };
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
+      if (code === "INSTANCE_NOT_FOUND" || code === "NOT_FOUND") {
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Agent Instance not found" } });
+      }
+      throw err;
+    }
+  },
+  {
+    sessionAuth: true,
+    response: {
+      200: WebOkSchema(z.null().describe("实例重启成功后固定返回 null。")).describe("重启实例响应。"),
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["Instances"],
+      summary: "重启实例",
+      description: "停止并使用同一持久 Instance uid 重新启动 runtime，Default 实例同样支持。",
+    },
+  },
+);
+
 /** DELETE /web/instances/:id — 停止并删除实例 */
 app.delete(
   "/instances/:id",
@@ -111,9 +203,8 @@ app.delete(
     const authCtx = store.authContext!;
     const user = store.user!;
     try {
-      const instance = await agentInstanceService.getOwnedInstance(params.id, user.id);
-      await getOwnedEnvironment(instance.environmentId, authCtx.organizationId, user.id);
-      await agentInstanceService.deleteInstance(instance);
+      const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
+      await _deps.deleteInstance(instance);
       return { success: true as const, data: null };
     } catch (err: unknown) {
       const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
