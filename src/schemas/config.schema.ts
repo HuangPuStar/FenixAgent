@@ -528,7 +528,7 @@ export const SkillSourceInfoSchema = z.object({
 
 export const McpServerInfoSchema = z.object({
   name: z.string(),
-  type: z.enum(["local", "remote", "disabled"]),
+  type: z.enum(["local", "remote", "streamable-http", "disabled"]),
   enabled: z.boolean(),
   summary: z.string(),
   timeout: z.number().optional(),

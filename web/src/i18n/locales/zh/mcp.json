@@ -61,7 +61,10 @@
     "editTitle": "编辑 MCP 服务器",
     "detailTitle": "MCP 服务器详情",
     "createTitle": "新建 MCP 服务器",
-    "nameImmutable": "名称创建后不可修改"
+    "nameImmutable": "名称创建后不可修改",
+    "manualTab": "手动配置",
+    "jsonTab": "mcp.json 导入",
+    "importAction": "导入"
   },
   "form": {
     "name": "名称",
@@ -86,7 +89,9 @@
     "timeoutHint": "毫秒，留空使用默认值",
     "optional": "可选",
     "parameters": "参数",
-    "noParameters": "无参数"
+    "noParameters": "无参数",
+    "jsonConfig": "mcp.json 内容",
+    "jsonConfigHint": "粘贴包含 mcpServers 的 JSON 配置，可一次导入多个服务器"
   },
   "tools": {
     "noTools": "暂无已发现的工具，点击\"检测\"按钮发现工具"
@@ -106,11 +111,17 @@
     "commandRequired": "命令不能为空",
     "commandInvalid": "命令格式不正确",
     "urlRequired": "URL 不能为空",
-    "urlInvalid": "URL 格式不正确"
+    "urlInvalid": "URL 格式不正确",
+    "importInvalidJson": "JSON 格式不正确",
+    "importInvalidRoot": "请输入包含 mcpServers 的 JSON 对象",
+    "importEmpty": "mcpServers 中没有可导入的服务器",
+    "importInvalidName": "服务器名称只能包含小写字母、数字和单个连字符，长度不能超过 64",
+    "importInvalidConfig": "MCP 配置无效：每项必须提供 command 或 url，并使用受支持的字段"
   },
   "toast": {
     "serverUpdated": "服务器已更新",
     "serverCreated": "服务器已创建",
+    "imported": "已导入 {{count}} 个 MCP 服务器",
     "serverDeleted": "服务器已删除",
     "saveFailed": "保存失败",
     "saveFailedWith": "保存失败: {{message}}",

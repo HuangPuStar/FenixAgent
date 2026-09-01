@@ -66,7 +66,10 @@
     "editTitle": "Edit MCP Server",
     "detailTitle": "MCP Server Details",
     "createTitle": "New MCP Server",
-    "nameImmutable": "Name cannot be changed after creation"
+    "nameImmutable": "Name cannot be changed after creation",
+    "manualTab": "Manual configuration",
+    "jsonTab": "Import mcp.json",
+    "importAction": "Import"
   },
   "form": {
     "name": "Name",
@@ -91,7 +94,9 @@
     "timeoutHint": "Milliseconds, leave empty for default",
     "optional": "Optional",
     "parameters": "Parameters",
-    "noParameters": "No parameters"
+    "noParameters": "No parameters",
+    "jsonConfig": "mcp.json content",
+    "jsonConfigHint": "Paste a JSON configuration containing mcpServers to import one or more servers"
   },
   "tools": {
     "noTools": "No tools discovered yet, click \"Inspect\" to discover tools"
@@ -111,11 +116,17 @@
     "commandRequired": "Command cannot be empty",
     "commandInvalid": "Invalid command format",
     "urlRequired": "URL cannot be empty",
-    "urlInvalid": "Invalid URL format"
+    "urlInvalid": "Invalid URL format",
+    "importInvalidJson": "Invalid JSON",
+    "importInvalidRoot": "Enter a JSON object containing mcpServers",
+    "importEmpty": "mcpServers contains no servers to import",
+    "importInvalidName": "Server names may only contain lowercase letters, numbers, and single hyphens, up to 64 characters",
+    "importInvalidConfig": "Invalid MCP configuration: each entry must provide command or url and use supported fields"
   },
   "toast": {
     "serverUpdated": "Server updated",
     "serverCreated": "Server created",
+    "imported": "Imported {{count}} MCP servers",
     "serverDeleted": "Server deleted",
     "saveFailed": "Save failed",
     "saveFailedWith": "Save failed: {{message}}",

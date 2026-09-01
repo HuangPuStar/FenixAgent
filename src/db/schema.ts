@@ -670,7 +670,7 @@ export const mcpServer = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     organizationId: text("organization_id").notNull(),
     name: varchar("name").notNull(),
-    type: varchar("type", { length: 10 }).notNull(),
+    type: varchar("type", { length: 32 }).notNull(),
     config: jsonb("config").notNull(),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
