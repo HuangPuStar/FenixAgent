@@ -2,7 +2,27 @@ import { z } from "zod/v4";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
 import { ENGINE_TYPES } from "./services/config/types";
 
-const envSchema = z.object({
+const databaseConnectionPoolSchema = z.object({
+  RCS_DB_POOL_MAX: z.coerce.number().int().positive().default(20),
+  RCS_DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
+  RCS_DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
+  RCS_DB_MAX_LIFETIME_SECONDS: z.coerce.number().int().positive().optional(),
+});
+
+/** PostgreSQL 连接池的运行时配置。 */
+export type DatabaseConnectionPoolConfig = z.infer<typeof databaseConnectionPoolSchema>;
+
+/**
+ * 解析数据库连接池配置。
+ *
+ * 数据库 client 会在应用入口执行完整环境校验前被 ESM 静态导入，因此需要独立解析
+ * 此配置子集；完整 `envSchema` 复用同一份 schema，避免两处默认值或校验规则漂移。
+ */
+export function parseDatabaseConnectionPoolConfig(input: unknown = process.env): DatabaseConnectionPoolConfig {
+  return databaseConnectionPoolSchema.parse(input);
+}
+
+const envSchema = databaseConnectionPoolSchema.extend({
   // ── 必填 ──
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   RCS_API_KEYS: z.string().min(1, "RCS_API_KEYS is required — used for skill download token HMAC signing"),
