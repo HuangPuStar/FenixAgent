@@ -131,8 +131,8 @@
     "clearSearch": "Clear file search",
     "noSearchResults": "No matching files",
     "workspace": "Workspace",
-    "user": "User",
-    "currentUser": "Current user",
+    "user": "My files",
+    "userEmptyState": "No files",
     "retry": "Retry",
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
@@ -155,7 +155,6 @@
     "hideTree": "Hide file tree",
     "closeTab": "Close tab",
     "moreTabs": "{{count}} more tabs",
-    "noTabsHint": "Pick a file from the tree to preview",
     "dialog": {
       "renameTitle": "Rename",
       "renameDescription": "Enter a new file or folder name",

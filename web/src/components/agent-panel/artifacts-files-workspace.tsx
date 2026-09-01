@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { ChangedFile } from "../../lib/extract-changed-files";
@@ -42,7 +42,7 @@ export function ArtifactsFilesWorkspace({
   onOpenFile,
   onReferenceFile,
 }: ArtifactsFilesWorkspaceProps) {
-  const [fileTreeWidth, setFileTreeWidth] = useState(readFileTreeWidth);
+  const initialFileTreeWidthRef = useRef(readFileTreeWidth());
   const panelGroupRef = useRef<HTMLDivElement>(null);
   const fileTreePanelRef = useRef<PanelImperativeHandle>(null);
 
@@ -80,14 +80,13 @@ export function ArtifactsFilesWorkspace({
         <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel
             panelRef={fileTreePanelRef}
-            defaultSize={`${fileTreeWidth}px`}
+            defaultSize={`${initialFileTreeWidthRef.current}px`}
             minSize={`${FILE_TREE_MIN_WIDTH}px`}
             maxSize="50%"
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
               if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;
               const width = Math.max(FILE_TREE_MIN_WIDTH, size.inPixels);
-              setFileTreeWidth(width);
               try {
                 localStorage.setItem("fenix:file-tree-width", String(width));
               } catch {
@@ -105,7 +104,7 @@ export function ArtifactsFilesWorkspace({
             </div>
           </ResizablePanel>
           <ResizableHandle className="artifacts-workbench-divider" />
-          <ResizablePanel defaultSize="70%" minSize={`${PREVIEW_MIN_WIDTH}px`}>
+          <ResizablePanel minSize={`${PREVIEW_MIN_WIDTH}px`}>
             <div className="h-full min-h-0 min-w-0 flex flex-col">
               <PreviewTab envId={envId} filePath={activeFile} />
             </div>

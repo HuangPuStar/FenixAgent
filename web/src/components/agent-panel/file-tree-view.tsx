@@ -298,7 +298,6 @@ function FileTreeSections({
           <div className="file-tree-user-heading">
             <UserRound aria-hidden />
             <span>{t("fileTree.user")}</span>
-            <small>{t("fileTree.currentUser")}</small>
           </div>
           <div className="file-tree-section-scroll">
             {props.showTree && props.userHasNodes ? (
@@ -308,7 +307,7 @@ function FileTreeSections({
                 {...commonTreeProps}
               />
             ) : (
-              <Feedback icon={<Folder />} text={t("fileTree.emptyState")} />
+              <Feedback icon={<Folder />} text={t("fileTree.userEmptyState")} />
             )}
           </div>
         </section>
