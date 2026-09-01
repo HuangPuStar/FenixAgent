@@ -47,6 +47,53 @@ export const ModelGatewayProviderQuerySchema = z.object({
   providerId: z.string().min(1).optional().describe("Gateway Provider ID；不传时使用系统 Gateway Provider。"),
 });
 
+export const ModelGatewayKeyListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export const ModelGatewayRemoveKeysBodySchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+
+const ModelGatewayManagedKeySchema = z.object({
+  id: z.string().uuid(),
+  externalCredentialId: z.string(),
+  organizationId: z.string(),
+  organizationName: z.string().nullable(),
+  userId: z.string(),
+  userName: z.string().nullable(),
+  agentConfigId: z.string().uuid(),
+  agentName: z.string().nullable(),
+  status: z.enum(["active", "blocked", "error"]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  usable: z.boolean(),
+  invalidReason: z
+    .enum([
+      "USER_NOT_FOUND",
+      "ORGANIZATION_NOT_FOUND",
+      "MEMBERSHIP_NOT_FOUND",
+      "AGENT_NOT_FOUND",
+      "AGENT_ACCESS_REVOKED",
+      "CREDENTIAL_UNUSABLE",
+    ])
+    .nullable(),
+});
+
+export const ModelGatewayKeyListResponseSchema = z.object({
+  items: ModelGatewayManagedKeySchema.array(),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
+
+export const ModelGatewayRemoveKeysResponseSchema = z.object({
+  deletedIds: z.array(z.string().uuid()),
+  skipped: z.object({ id: z.string().uuid(), reason: z.literal("MAPPING_NOT_FOUND") }).array(),
+  failed: z.object({ id: z.string().uuid() }).array(),
+});
+
 const ModelGatewayProviderSummarySchema = z.object({
   id: z.string(),
   name: z.string(),

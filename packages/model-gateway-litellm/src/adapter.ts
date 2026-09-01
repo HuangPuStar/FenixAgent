@@ -112,7 +112,6 @@ export function createLiteLlmAdapter(options: CreateLiteLlmAdapterOptions): Mode
       return mapLiteLlmCredential(
         await client.post<unknown>("/key/generate", {
           user_id: input.externalUserId,
-          ...(input.keyAlias ? { key_alias: input.keyAlias } : {}),
           ...(input.metadata ? { metadata: input.metadata } : {}),
           key_type: "llm_api",
         }),

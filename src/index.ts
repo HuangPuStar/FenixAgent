@@ -90,7 +90,6 @@ const modelGatewayRuntime = createModelGatewayRuntime();
 if (modelGatewayRuntime) {
   await modelGatewayRuntime.services.provider.ensureProvider();
   setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
-  modelGatewayRuntime.reconcile.start();
   startupLog.info("Model gateway runtime initialized");
 } else {
   // Provider 投影即使未配置管理凭证也需要存在，便于管理端显示待配置状态。
@@ -306,7 +305,6 @@ async function gracefulShutdown(signal: string) {
   closeAllFileWsConnections();
   await stopAllInstances();
   schedulerService.stop();
-  modelGatewayRuntime?.reconcile.stop();
   await closeCache();
   await pgClient.end();
   process.exit(0);

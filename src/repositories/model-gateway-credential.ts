@@ -71,12 +71,35 @@ export async function updateModelGatewayCredentialStatus(
   return updated ?? null;
 }
 
-/** 清空本地可复用密文，保留映射供历史用量和夜间任务使用。 */
-export async function clearModelGatewayCredential(id: string): Promise<void> {
-  await db
-    .update(modelGatewayCredential)
-    .set({ encryptedCredential: null, updatedAt: new Date() })
-    .where(eq(modelGatewayCredential.id, id));
+/** 删除已在远端回收的凭证映射，使恢复授权后的下一次解析可以创建新的 Key。 */
+export async function deleteModelGatewayCredential(id: string): Promise<void> {
+  await db.delete(modelGatewayCredential).where(eq(modelGatewayCredential.id, id));
+}
+
+/** 分页读取一个 Gateway Provider 创建的凭证映射，供系统管理员人工核查。 */
+export async function listModelGatewayCredentialsPage(input: {
+  gatewayProviderId: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ items: ModelGatewayCredential[]; total: number }> {
+  const condition = eq(modelGatewayCredential.gatewayProviderId, input.gatewayProviderId);
+  const [items, count] = await Promise.all([
+    db
+      .select()
+      .from(modelGatewayCredential)
+      .where(condition)
+      .orderBy(asc(modelGatewayCredential.id))
+      .limit(input.pageSize)
+      .offset((input.page - 1) * input.pageSize),
+    db.$count(modelGatewayCredential, condition),
+  ]);
+  return { items, total: count };
+}
+
+/** 按主键批量读取管理员明确选择的凭证映射。 */
+export async function findModelGatewayCredentialsByIds(ids: string[]): Promise<ModelGatewayCredential[]> {
+  if (ids.length === 0) return [];
+  return db.select().from(modelGatewayCredential).where(inArray(modelGatewayCredential.id, ids));
 }
 
 /** 按主键游标扫描凭证映射，默认返回所有状态供调用方决定业务过滤。 */

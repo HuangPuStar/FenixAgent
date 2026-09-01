@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 
 describe("LiteLLM virtual key adapter", () => {
-  // 验证凭证创建只返回一次密钥，并使用 LiteLLM 的全模型访问策略。
-  test("creates a virtual key without a model allowlist", async () => {
+  // 验证主体归属由 metadata 保存，避免已禁用的同名 Key 阻止后续重建。
+  test("creates a virtual key without sending a key alias", async () => {
     let request: Request | undefined;
     const adapter = createLiteLlmAdapter({
       baseUrl: "http://litellm.test",
@@ -19,14 +19,12 @@ describe("LiteLLM virtual key adapter", () => {
     await expect(
       adapter.createCredential({
         externalUserId: "gateway-user-1",
-        keyAlias: "fenix:org-1:user-1:agent-1",
         metadata: { organizationId: "org-1", agentConfigId: "agent-1" },
       }),
     ).resolves.toEqual({ externalId: "litellm-key-id", secret: "sk-generated-key" });
     expect(request?.url).toBe("http://litellm.test/key/generate");
     expect(await request?.json()).toEqual({
       user_id: "gateway-user-1",
-      key_alias: "fenix:org-1:user-1:agent-1",
       metadata: { organizationId: "org-1", agentConfigId: "agent-1" },
       key_type: "llm_api",
     });

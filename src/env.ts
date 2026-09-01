@@ -23,8 +23,6 @@ const envSchema = z.object({
       return !normalized || normalized === "permanent" || normalized === "once" ? undefined : value;
     })
     .optional(),
-  RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON: z.string().default("0 3 * * *"),
-  RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE: z.string().default("Asia/Shanghai"),
 
   // ── 可选：服务器 ──
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

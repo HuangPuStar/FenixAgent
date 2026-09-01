@@ -117,7 +117,11 @@ describe("model gateway credential service", () => {
 
     expect(first.internalUserId).toBe(second.internalUserId);
     expect(first.internalUserId).toBe("fenix-user-1");
-    expect(credentialInputs[0]?.keyAlias).toBe("fenix:org-1:user-1:agent-1");
+    expect(credentialInputs[0]?.metadata).toMatchObject({
+      fenix_organization_id: "org-1",
+      fenix_user_id: "user-1",
+      fenix_agent_config_id: "agent-1",
+    });
     expect(first.secret).toBe("secret-1");
   });
 

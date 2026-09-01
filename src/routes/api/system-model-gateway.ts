@@ -13,9 +13,13 @@ import {
   ModelGatewayBulkBudgetResetBodySchema,
   ModelGatewayBulkBudgetResponseSchema,
   ModelGatewayConfigurationSchema,
+  ModelGatewayKeyListQuerySchema,
+  ModelGatewayKeyListResponseSchema,
   ModelGatewayModelSyncResultSchema,
   ModelGatewayModelSyncStatusSchema,
   ModelGatewayProviderQuerySchema,
+  ModelGatewayRemoveKeysBodySchema,
+  ModelGatewayRemoveKeysResponseSchema,
   ModelGatewaySubjectQuerySchema,
   ModelGatewayUsageQuerySchema,
   ModelGatewayUsageResponseSchema,
@@ -57,6 +61,8 @@ const app = new Elysia({
     "model-gateway-user-list": ModelGatewayUserListResponseSchema,
     "model-gateway-agent-subject-list": ModelGatewayAgentSubjectSchema.array(),
     "model-gateway-usage": ModelGatewayUsageResponseSchema,
+    "model-gateway-key-list": ModelGatewayKeyListResponseSchema,
+    "model-gateway-remove-keys": ModelGatewayRemoveKeysResponseSchema,
   })
   .get(
     "/config",
@@ -89,6 +95,60 @@ const app = new Elysia({
         500: "model-gateway-api-error",
       },
       detail: { tags: ["System Model Gateway"], summary: "获取模型网关配置" },
+    },
+  )
+  .get(
+    "/keys",
+    async ({ query, status }) => {
+      try {
+        const services = getModelGatewayServices();
+        const providerId = await services.provider.ensureProvider();
+        const result = await services.keyManagement.listKeys({ gatewayProviderId: providerId, ...query });
+        return {
+          ...result,
+          items: result.items.map((item) => ({
+            id: item.id,
+            externalCredentialId: item.externalCredentialId,
+            organizationId: item.organizationId,
+            organizationName: item.organizationName ?? null,
+            userId: item.userId,
+            userName: item.userName ?? null,
+            agentConfigId: item.agentConfigId,
+            agentName: item.agentName ?? null,
+            status: item.status,
+            createdAt: item.createdAt.toISOString(),
+            updatedAt: item.updatedAt.toISOString(),
+            usable: item.usable,
+            invalidReason: item.invalidReason,
+          })),
+        };
+      } catch (err) {
+        logError("[Model-Gateway] list managed keys failed", err);
+        return status(500, { error: { code: "MODEL_GATEWAY_ERROR", message: "Unable to list model gateway keys" } });
+      }
+    },
+    {
+      systemApiKeyAuth: true,
+      query: ModelGatewayKeyListQuerySchema,
+      response: { 200: "model-gateway-key-list", 401: "model-gateway-api-error", 500: "model-gateway-api-error" },
+      detail: { tags: ["System Model Gateway"], summary: "查询 Fenix 管理的模型网关 Key" },
+    },
+  )
+  .post(
+    "/keys/actions/remove",
+    async ({ body, status }) => {
+      try {
+        return await getModelGatewayServices().keyManagement.removeKeys(body.ids);
+      } catch (err) {
+        logError("[Model-Gateway] remove unusable keys failed", err);
+        return status(500, { error: { code: "MODEL_GATEWAY_ERROR", message: "Unable to remove model gateway keys" } });
+      }
+    },
+    {
+      systemApiKeyAuth: true,
+      body: ModelGatewayRemoveKeysBodySchema,
+      response: { 200: "model-gateway-remove-keys", 401: "model-gateway-api-error", 500: "model-gateway-api-error" },
+      detail: { tags: ["System Model Gateway"], summary: "回收所选模型网关 Key" },
     },
   )
   .get(

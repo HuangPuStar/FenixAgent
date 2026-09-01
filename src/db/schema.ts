@@ -494,7 +494,7 @@ export const model = pgTable(
   }),
 );
 
-// 模型网关凭证映射：主体删除后仍保留，用于夜间对账和历史用量归属。
+// 模型网关凭证映射：远端 Key 回收后删除，使恢复授权时可安全换发新 Key。
 export const modelGatewayCredential = pgTable(
   "model_gateway_credential",
   {
