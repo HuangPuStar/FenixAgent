@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { config, setConfig } from "../config";
 import modelGatewayRoutes from "../routes/api/system-model-gateway";
 import { type ModelGatewayServices, setModelGatewayServices } from "../services/model-gateway";
@@ -14,6 +16,14 @@ afterEach(() => {
 });
 
 describe("model gateway configuration route", () => {
+  // 主应用必须挂载系统模型网关路由，否则管理页会收到未匹配路由的空响应。
+  test("mounts the system model gateway routes in the server entrypoint", async () => {
+    const source = await readFile(resolve(import.meta.dir, "../index.ts"), "utf8");
+
+    expect(source).toContain('import apiSystemModelGatewayRoutes from "./routes/api/system-model-gateway";');
+    expect(source).toContain(".use(apiSystemModelGatewayRoutes)");
+  });
+
   // 配置接口返回部署层默认预算和管理后台地址，避免状态检查混入配置数据。
   test("returns the configured LiteLLM management URL and default budget", async () => {
     process.env.RCS_SYSTEM_API_KEYS = "system-test-key";

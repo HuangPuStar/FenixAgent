@@ -30,6 +30,7 @@ import apiSandboxServerRoutes from "./routes/api/sandbox-server";
 import apiSkillsRoutes from "./routes/api/skills";
 import apiSystemRoutes from "./routes/api/system";
 import apiSystemLogsRoutes from "./routes/api/system-logs";
+import apiSystemModelGatewayRoutes from "./routes/api/system-model-gateway";
 import apiSystemObserverRoutes from "./routes/api/system-observer";
 import apiSystemPeopleTreeRoutes from "./routes/api/system-people-tree";
 import apiWorkflowRoutes from "./routes/api/workflows";
@@ -242,6 +243,7 @@ const app = new Elysia({
   .use(apiMcpRoutes)
   .use(apiSystemRoutes)
   .use(apiSystemLogsRoutes)
+  .use(apiSystemModelGatewayRoutes)
   .use(apiSystemObserverRoutes)
   .use(apiSystemPeopleTreeRoutes)
   .use(apiSandboxRoutes)
