@@ -462,6 +462,7 @@ export function createClaudeAcpConnection(
                   question: string;
                   header: string;
                   options: Array<{ label: string; description: string }>;
+                  multiSelect?: boolean;
                 }>;
                 const iqaId = `iqa_${Date.now()}`;
                 const answerPromise = new Promise<Record<string, unknown>>((resolve) => {

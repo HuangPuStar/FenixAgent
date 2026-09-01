@@ -23,7 +23,7 @@ export interface ChatInterfaceProps {
   onCancel: () => void;
   onCreateSession: () => Promise<void>;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
-  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
+  onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
   availableCommands: AvailableCommand[];
   availableModes: SessionMode[];
   currentModeId: string | null;

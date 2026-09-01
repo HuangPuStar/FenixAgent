@@ -13,7 +13,12 @@
 // 全部经依赖注入，保证包内可用 fake 依赖独立测试（Q12）。
 
 import { translateSimpleAction } from "../protocol/translator";
-import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS } from "../schema";
+import {
+  DEFAULT_PERMISSION_TIMEOUT_MS,
+  DEFAULT_QUESTION_TIMEOUT_MS,
+  normalizeQuestionAnswers,
+  type QuestionAnswer,
+} from "../schema";
 import { bumpProjectionVersion, getSessionInfo } from "../state/chat-writer";
 import type { DocManager } from "../state/doc-manager";
 import { applyPermissionExpiration, applyPermissionResolution } from "../state/permission";
@@ -448,14 +453,16 @@ export class SessionChannel {
     const sessionDoc = this.dependencies.docManager.getSessionYdoc(connection.rcsSessionId);
     if (!chatDoc || !sessionDoc) return false;
 
-    // 多问题合并答案（optionIds 数组，按问题顺序）；兼容单值 optionId 历史形态
-    const rawOptionIds = payload.optionIds;
-    const optionIds = Array.isArray(rawOptionIds)
-      ? (rawOptionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
-      : typeof payload.optionId === "string" && payload.optionId.length > 0
-        ? [payload.optionId]
-        : [];
-    const migrated = respondQuestion({ chat: chatDoc, session: sessionDoc }, questionId, optionIds);
+    // 按问题顺序保留答案结构：单选 string，多选 string[]；兼容历史 optionIds / optionId。
+    const rawAnswers = Array.isArray(payload.answers)
+      ? payload.answers
+      : Array.isArray(payload.optionIds)
+        ? payload.optionIds
+        : typeof payload.optionId === "string" && payload.optionId.length > 0
+          ? [payload.optionId]
+          : [];
+    const answers: QuestionAnswer[] = normalizeQuestionAnswers(rawAnswers);
+    const migrated = respondQuestion({ chat: chatDoc, session: sessionDoc }, questionId, answers);
     if (migrated) {
       bumpProjectionVersion(chatDoc.getMap("root"));
       bumpProjectionVersion(sessionDoc.getMap("root"));

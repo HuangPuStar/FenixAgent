@@ -2,8 +2,8 @@
 // QuestionPanel（AskUserQuestion 输入框上方交互面板）测试：
 // - 空列表 → 不渲染
 // - 多问题/多选项渲染：header + question + 选项按钮
-// - 交互：点击选项仅标记选中（不立即回传）；点击"提交"按钮才
-//   onRespond(questionId, optionId) 回传（optionId 即选项 label）；未选中时提交禁用
+// - 交互：单选题只保留一个选项，多选题可切换多个选项；点击"提交"后按
+//   问题顺序回传答案（单选 string，多选 string[]）
 
 import { describe, expect, test } from "bun:test";
 import type { QuestionProjection } from "@fenix/chat-channel";
@@ -89,7 +89,7 @@ const { QuestionPanel } = await import("../../components/chat/QuestionPanel");
 /** 构造一份待应答问题投影（expiresAt 未过，直接交给组件消费）；支持多问题项 */
 function pendingQuestion(
   questionId: string,
-  items: Array<{ question: string; options: string[] }>,
+  items: Array<{ question: string; options: string[]; multiSelect?: boolean }>,
 ): QuestionProjection {
   return {
     questionId,
@@ -98,6 +98,7 @@ function pendingQuestion(
       question: item.question,
       header: "Deploy",
       options: item.options.map((label) => ({ label, description: null })),
+      multiSelect: item.multiSelect ?? false,
     })),
     description: "Please answer the following questions",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -160,13 +161,13 @@ describe("QuestionPanel", () => {
   test("点击选项不立即回传，点提交按钮才回传选中选项", () => {
     const container = documentRef.createElement("div");
     const root: Root = createRoot(container as unknown as HTMLElement);
-    const responses: Array<{ questionId: string; optionIds: string[] }> = [];
+    const responses: Array<{ questionId: string; answers: Array<string | string[]> }> = [];
     const question = pendingQuestion("iqa_1", [{ question: "Deploy to prod?", options: ["production", "staging"] }]);
     act(() => {
       root.render(
         createElement(QuestionPanel, {
           questions: [question],
-          onRespond: (questionId, optionIds) => responses.push({ questionId, optionIds }),
+          onRespond: (questionId, answers) => responses.push({ questionId, answers }),
         }),
       );
     });
@@ -188,7 +189,7 @@ describe("QuestionPanel", () => {
     act(() => {
       submitButton!.click();
     });
-    expect(responses).toEqual([{ questionId: "iqa_1", optionIds: ["production"] }]);
+    expect(responses).toEqual([{ questionId: "iqa_1", answers: ["production"] }]);
     act(() => root.unmount());
   });
 
@@ -196,7 +197,7 @@ describe("QuestionPanel", () => {
   test("多问题独立选中，全部选中后提交合并回传", () => {
     const container = documentRef.createElement("div");
     const root: Root = createRoot(container as unknown as HTMLElement);
-    const responses: Array<{ questionId: string; optionIds: string[] }> = [];
+    const responses: Array<{ questionId: string; answers: Array<string | string[]> }> = [];
     const question = pendingQuestion("iqa_1", [
       { question: "Topic?", options: ["programming", "math"] },
       { question: "Difficulty?", options: ["easy", "hard"] },
@@ -205,7 +206,7 @@ describe("QuestionPanel", () => {
       root.render(
         createElement(QuestionPanel, {
           questions: [question],
-          onRespond: (questionId, optionIds) => responses.push({ questionId, optionIds }),
+          onRespond: (questionId, answers) => responses.push({ questionId, answers }),
         }),
       );
     });
@@ -239,7 +240,46 @@ describe("QuestionPanel", () => {
     act(() => {
       submitButton!.click();
     });
-    expect(responses).toEqual([{ questionId: "iqa_1", optionIds: ["programming", "easy"] }]);
+    expect(responses).toEqual([{ questionId: "iqa_1", answers: ["programming", "easy"] }]);
+    act(() => root.unmount());
+  });
+
+  // 多选问题允许同时选中多个选项，提交时保留该题的完整选择数组。
+  test("多选问题可同时选中多个选项并完整回传", () => {
+    const container = documentRef.createElement("div");
+    const root: Root = createRoot(container as unknown as HTMLElement);
+    const responses: Array<{ questionId: string; answers: string[][] }> = [];
+    const question = pendingQuestion("iqa_multi", [
+      { question: "Choose targets", options: ["web", "server", "worker"], multiSelect: true },
+    ]);
+    act(() => {
+      root.render(
+        createElement(QuestionPanel, {
+          questions: [question],
+          onRespond: (questionId, answers) => responses.push({ questionId, answers }),
+        }),
+      );
+    });
+
+    const buttons = Array.from(container.querySelectorAll("button"));
+    const webButton = buttons.find((button) => button.textContent?.includes("web"));
+    const serverButton = buttons.find((button) => button.textContent?.includes("server"));
+    const submitButton = buttons.find((button) => button.textContent?.includes("askUser.submit"));
+    expect(webButton).toBeDefined();
+    expect(serverButton).toBeDefined();
+    expect(submitButton).toBeDefined();
+
+    act(() => {
+      webButton!.click();
+      serverButton!.click();
+    });
+    expect(webButton!.getAttribute("aria-pressed")).toBe("true");
+    expect(serverButton!.getAttribute("aria-pressed")).toBe("true");
+
+    act(() => {
+      submitButton!.click();
+    });
+    expect(responses).toEqual([{ questionId: "iqa_multi", answers: [["web", "server"]] }]);
     act(() => root.unmount());
   });
 

@@ -353,11 +353,10 @@ export function ChatPanel({
       onRespondPermission: (requestId: string, optionId: string | null) => {
         sendAction({ action: "respond_permission", requestId, optionId });
       },
-      onRespondQuestion: (questionId: string, optionIds: string[]) => {
-        // AskUserQuestion 答案回传：多问题合并答案数组（按问题顺序），服务端 CAS
-        // 迁移（仅 pending → resolved 一次）后以 control_response 帧发给 acp-link，
-        // 组装 content[q_id]=label 注入 agent 继续执行
-        sendAction({ action: "respond_question", questionId, optionIds });
+      onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => {
+        // AskUserQuestion 答案按问题顺序回传；单选为 string，多选保留 string[]。
+        // 服务端 CAS 迁移后以 control_response 帧发给 acp-link，按 q_id 注入 agent。
+        sendAction({ action: "respond_question", questionId, answers });
       },
       onSetMode: (modeId: string) => {
         sendAction({ action: "set_session_mode", modeId });

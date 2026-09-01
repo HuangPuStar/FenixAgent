@@ -14,6 +14,7 @@
 // 是工具执行中的询问，agent 收到答案后自行继续；turn 状态机不进入等待态，
 // 见 aggregator.ts applyQuestionRequested 注释）。
 
+import type { QuestionAnswer } from "../schema";
 import { getPendingQuestions } from "./chat-writer";
 import type { DocPair } from "./permission";
 
@@ -21,12 +22,12 @@ export type { DocPair };
 
 /**
  * 应答问题（CAS）：仅 pending → resolved 迁移一次，成功返回 true。
- * optionIds 为用户选择的选项 label 数组（按问题顺序对应 requestedSchema
- * properties；空数组表示用户取消/跳过，acp-link 侧同样以空答案处理）。
+ * answers 按 requestedSchema properties 的问题顺序排列；单选为 string，多选为 string[]。
+ * 空数组表示用户取消/跳过，acp-link 侧同样以空答案处理。
  * answer 以 JSON 字符串落盘（Yjs Map 值不能是普通数组），仅作记录，前端不消费。
  * 重复应答（已 resolved/expired/不存在）返回 false，调用方不得发送 control_response。
  */
-export function respondQuestion(pair: DocPair, questionId: string, optionIds: string[]): boolean {
+export function respondQuestion(pair: DocPair, questionId: string, answers: QuestionAnswer[]): boolean {
   let migrated = false;
   pair.session.transact(() => {
     const question = getPendingQuestions(pair.session).get(questionId);
@@ -34,7 +35,7 @@ export function respondQuestion(pair: DocPair, questionId: string, optionIds: st
     // 双重条件：CAS 要求存在且仍为 pending（question 收窄供后续 set 使用）
     if (status !== "pending" || question === undefined) return;
     question.set("status", "resolved");
-    question.set("answer", JSON.stringify(optionIds));
+    question.set("answer", JSON.stringify(answers));
     migrated = true;
   });
   return migrated;

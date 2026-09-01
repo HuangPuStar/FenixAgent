@@ -41,8 +41,8 @@ interface ACPMainProps {
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onRespondPermission: (requestId: string, optionId: string | null) => void;
-  /** AskUserQuestion 选项回传（questionId + 选中选项 label 数组，按问题顺序） */
-  onRespondQuestion: (questionId: string, optionIds: string[]) => void;
+  /** AskUserQuestion 答案回传（按问题顺序；多选题答案为 string[]） */
+  onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
 
   // ── 状态 props（替代 client.state / client.xxx 读取）──
   supportsImages?: boolean;

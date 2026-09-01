@@ -4,8 +4,8 @@
 //
 // 数据流：后端聚合层把 interactive_question 帧投影到 Session Doc root.pendingQuestions
 // （60s expiresAt），前端 use-session-state 投影过滤后传入；用户选中选项后点击"提交"
-// 按钮 → onRespond 回传 questionId + optionIds（选项 label 数组，按问题顺序），服务端
-// CAS 迁移后以 control_response 帧回给 acp-link，组装 content[q_id] = label 注入 agent。
+// 按钮 → onRespond 回传 questionId + answers（按问题顺序；单选为 string，多选为
+// string[]），服务端 CAS 迁移后以 control_response 帧回给 acp-link。
 //
 // 交互语义：
 // - 一个问题投影（questionId）内可能含多个独立问题（requestedSchema.properties 多个），
@@ -24,8 +24,8 @@ import { Button } from "../ui/button";
 interface QuestionPanelProps {
   /** 待应答问题列表（已由 use-session-state 做 pending + 未过期过滤） */
   questions: QuestionProjection[];
-  /** 选项回传（questionId + 选中选项 label 数组，按问题顺序） */
-  onRespond?: (questionId: string, optionIds: string[]) => void;
+  /** 答案回传（按问题顺序；单选为 string，多选为 string[]） */
+  onRespond?: (questionId: string, answers: Array<string | string[]>) => void;
   className?: string;
 }
 
@@ -45,22 +45,22 @@ export function QuestionPanel({ questions, onRespond, className }: QuestionPanel
 
 // =============================================================================
 // 单个问题卡片 — 多个独立问题项（header + 问题文本 + 选项按钮）+ 提交按钮
-// 每个问题项独立选中（index → label），全部选中后提交按钮才可用，
-// 提交时按问题顺序合并回传
+// 每个问题项独立维护选中 label 数组；单选题替换当前选择，多选题切换选项。
+// 全部问题至少选择一项后才可提交。
 // =============================================================================
 
 interface QuestionCardProps {
   question: QuestionProjection;
-  onRespond?: (questionId: string, optionIds: string[]) => void;
+  onRespond?: (questionId: string, answers: Array<string | string[]>) => void;
 }
 
 function QuestionCard({ question, onRespond }: QuestionCardProps) {
   const { t } = useTranslation("components");
-  /** 每个问题项的选中 label（key = 问题项 index；缺省 = 未选择，提交按钮禁用） */
-  const [selected, setSelected] = useState<Record<number, string>>({});
+  /** 每个问题项的选中 label（key = 问题项 index；空数组 = 未选择） */
+  const [selected, setSelected] = useState<Record<number, string[]>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
-  const allAnswered = question.questions.every((_, i) => selected[i] !== undefined);
+  const allAnswered = question.questions.every((_, index) => (selected[index]?.length ?? 0) > 0);
   const item = question.questions[questionIndex];
 
   if (!item) return null;
@@ -84,14 +84,24 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
           </div>
           <div className="chat-question-options">
             {item.options.map((option, optionIndex) => {
-              const isSelected = selected[questionIndex] === option.label;
+              const isSelected = selected[questionIndex]?.includes(option.label) ?? false;
               return (
                 <button
                   key={option.label}
                   type="button"
                   className={isSelected ? "is-selected" : undefined}
                   aria-pressed={isSelected}
-                  onClick={() => setSelected((previous) => ({ ...previous, [questionIndex]: option.label }))}
+                  onClick={() =>
+                    setSelected((previous) => {
+                      const current = previous[questionIndex] ?? [];
+                      const next = item.multiSelect
+                        ? current.includes(option.label)
+                          ? current.filter((label) => label !== option.label)
+                          : [...current, option.label]
+                        : [option.label];
+                      return { ...previous, [questionIndex]: next };
+                    })
+                  }
                 >
                   <span>{isSelected ? <Check /> : String.fromCharCode(65 + optionIndex)}</span>
                   <div>
@@ -133,7 +143,10 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
                 if (!allAnswered) return;
                 onRespond?.(
                   question.questionId,
-                  question.questions.map((_, index) => selected[index] as string),
+                  question.questions.map((questionItem, index) => {
+                    const answers = selected[index] ?? [];
+                    return questionItem.multiSelect ? answers : (answers[0] ?? "");
+                  }),
                 );
               }}
             >

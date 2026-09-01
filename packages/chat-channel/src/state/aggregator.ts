@@ -15,9 +15,11 @@ import {
   DEFAULT_QUESTION_TIMEOUT_MS,
   type NormalizedEvent,
   type NormalizedPeriTaskEvent,
+  normalizeQuestionAnswers,
   type PeriTaskStatus,
   type PeriTaskViewProjection,
   type PublicError,
+  type QuestionAnswer,
   type QuestionItemProjection,
   TOOL_TERMINAL_STATUSES,
   type ToolCallStatus,
@@ -358,6 +360,7 @@ function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
       question: record.question,
       header: typeof record.header === "string" && record.header.length > 0 ? record.header : null,
       options,
+      multiSelect: record.multiSelect === true,
     });
   }
   return items;
@@ -411,15 +414,17 @@ function applyQuestionResolved(pair: DocPair, event: NormalizedEvent): ApplyResu
   const questionId = event.update.questionId as string | undefined;
   if (!questionId) return { applied: false, reason: "question_resolved missing questionId" };
 
-  // 多问题合并答案（optionIds 数组，按问题顺序）；兼容单值 optionId 历史形态
-  const rawOptionIds = event.update.optionIds;
-  const optionIds = Array.isArray(rawOptionIds)
-    ? (rawOptionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
-    : typeof event.update.optionId === "string" && event.update.optionId.length > 0
-      ? [event.update.optionId]
-      : [];
+  // 按问题顺序保留答案结构；兼容历史 optionIds / optionId 事件形态。
+  const rawAnswers = Array.isArray(event.update.answers)
+    ? event.update.answers
+    : Array.isArray(event.update.optionIds)
+      ? event.update.optionIds
+      : typeof event.update.optionId === "string" && event.update.optionId.length > 0
+        ? [event.update.optionId]
+        : [];
+  const answers: QuestionAnswer[] = normalizeQuestionAnswers(rawAnswers);
   // CAS 迁移在 state/question.ts 单一来源（控制面 respond_question 共用）
-  return respondQuestion(pair, questionId, optionIds)
+  return respondQuestion(pair, questionId, answers)
     ? { applied: true }
     : { applied: false, reason: "question not pending (duplicate resolve)" };
 }

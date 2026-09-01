@@ -77,6 +77,7 @@ test("question_requested projects pendingQuestions with 60s expiresAt", () => {
             { label: "yes", description: "Deploy now" },
             { label: "no", description: "Abort" },
           ],
+          multiSelect: true,
         },
       ],
       description: "Please answer",
@@ -100,6 +101,7 @@ test("question_requested projects pendingQuestions with 60s expiresAt", () => {
     { label: "yes", description: "Deploy now" },
     { label: "no", description: "Abort" },
   ]);
+  expect(items[0]?.multiSelect).toBe(true);
 });
 
 // 幂等：重放同一 question_requested 帧（同 questionId）不重复创建投影
