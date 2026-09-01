@@ -349,6 +349,19 @@ describe("round44 Web 环境路由", () => {
     expect(owned).toBeFalse();
   });
 
+  // 未指定实例时客户端允许省略请求体，路由必须进入默认实例选择流程。
+  test("进入环境允许省略请求体", async () => {
+    stubEnvironmentService({
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
+    });
+
+    const response = await request(`/environments/${environmentId}/enter`, { method: "POST" });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error?.code).toBe("NOT_FOUND");
+  });
+
   // enter 必须先验证环境归属，避免未授权用户触发实例连接。
   test("进入环境无归属返回 404", async () => {
     stubEnvironmentService({

@@ -80,7 +80,8 @@ export const EnterEnvironmentRequestSchema = z
   .object({
     instanceUid: z.string().optional().describe("可选的持久 Agent Instance UID；省略时使用默认实例。"),
   })
-  .describe("进入环境请求。");
+  .default({})
+  .describe("进入环境请求；未指定实例时允许省略请求体。");
 
 /** 进入环境响应 */
 export const EnterEnvironmentDataSchema = z
