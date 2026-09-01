@@ -20,8 +20,6 @@ function buildConfig(env: Env) {
     modelGatewayAdminUiUrl: env.RCS_MODEL_GATEWAY_ADMIN_UI_URL,
     modelGatewayDefaultUserBudgetUsd: env.RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD,
     modelGatewayDefaultBudgetDuration: env.RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION,
-    modelGatewayCredentialReconcileCron: env.RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON,
-    modelGatewayCredentialReconcileTimezone: env.RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE,
     pollTimeout: env.RCS_POLL_TIMEOUT,
     heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,
     /** Bun WebSocket idle timeout (seconds). Bun sends protocol-level pings after

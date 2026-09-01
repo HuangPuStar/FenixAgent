@@ -11,8 +11,6 @@ function makeEnv(skillDir: string): Env {
     RCS_MODEL_GATEWAY_BASE_URL: "http://localhost:4000",
     RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: undefined,
     RCS_MODEL_GATEWAY_ADMIN_UI_URL: "http://localhost:4000/ui/",
-    RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_CRON: "0 3 * * *",
-    RCS_MODEL_GATEWAY_CREDENTIAL_RECONCILE_TIMEZONE: "Asia/Shanghai",
     NODE_ENV: "test",
     RCS_HOST: "0.0.0.0",
     RCS_PORT: 3000,

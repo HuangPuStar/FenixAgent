@@ -89,7 +89,6 @@ const modelGatewayRuntime = createModelGatewayRuntime();
 if (modelGatewayRuntime) {
   await modelGatewayRuntime.services.provider.ensureProvider();
   setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
-  modelGatewayRuntime.reconcile.start();
   startupLog.info("Model gateway runtime initialized");
 } else {
   // Provider 投影即使未配置管理凭证也需要存在，便于管理端显示待配置状态。
@@ -316,12 +315,12 @@ function gracefulShutdown(signal: string): Promise<void> {
     startupLog.info(`Received ${signal}, shutting down...`);
     const runtimeDrain = agentInstanceService.shutdownRuntimes();
     schedulerService.stop();
-    modelGatewayRuntime?.reconcile.stop();
     const hermesClient = getHermesClient();
     await withShutdownDeadline(hermesClient?.stop() ?? Promise.resolve(), "hermes", deadline);
     stopAcpIdleMonitor();
     closeAllRelayConnections();
     closeAllAcpConnections();
+    // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
     stopFileWsSweep();
     closeAllFileWsConnections();
     await withShutdownDeadline(runtimeDrain, "runtimes", deadline);
