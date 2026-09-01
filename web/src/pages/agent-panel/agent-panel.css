@@ -195,8 +195,8 @@
 }
 
 .agent-sidebar-nav {
-  flex: 0 1 auto;
-  max-height: min(55dvh, 560px);
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0;
@@ -285,8 +285,7 @@
 .agent-sidebar-nav-wrap {
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .agent-sidebar-tree-resize-handle {

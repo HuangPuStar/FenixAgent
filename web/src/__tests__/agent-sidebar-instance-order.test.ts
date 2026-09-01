@@ -38,6 +38,18 @@ describe("Agent sidebar Instance 排序", () => {
   });
 });
 
+// 配置导航分区只允许内容容器滚动，避免与外层包装形成嵌套双滚动条。
+test("配置导航分区保持单一滚动容器", () => {
+  const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/agent-panel.css"), "utf8");
+  const navStyles = source.match(/\.agent-sidebar-nav \{([^}]*)\}/)?.[1];
+  const wrapperStyles = source.match(/\.agent-sidebar-nav-wrap \{([^}]*)\}/)?.[1];
+
+  expect(navStyles).toContain("height: 100%");
+  expect(navStyles).toContain("overflow-y: auto");
+  expect(wrapperStyles).toContain("overflow: hidden");
+  expect(wrapperStyles).not.toContain("overflow-y: auto");
+});
+
 // 智能体区域上边框必须装配为垂直可拖动分隔线。
 test("智能体区域使用可拖动上边框调整高度", () => {
   const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/AgentSidebar.tsx"), "utf8");
