@@ -51,6 +51,12 @@ export interface StopInstanceInput {
  */
 export interface ConnectRelayInput {
   instanceId: string;
+  /** 持久实例 uid（当前与 instanceId 相同，显式字段用于协议 fencing）。 */
+  instanceUid?: string;
+  /** coordinator 分配的 runtime 世代。 */
+  runtimeGeneration?: number;
+  /** 主服务进程 epoch。 */
+  serverEpoch?: string;
   sessionId?: string;
 }
 

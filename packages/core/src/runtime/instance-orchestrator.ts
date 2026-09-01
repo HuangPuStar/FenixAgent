@@ -258,6 +258,9 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
           const node = nodeRegistry.require(record.nodeId);
           await runtimeEntry.runtime.prepareEnvironment({
             instanceId: request.instanceId,
+            instanceUid: request.instanceId,
+            runtimeGeneration: record.runtimeGeneration,
+            serverEpoch: record.serverEpoch,
             launchSpec: request.launchSpec,
             engineType: node.mode === "remote" ? undefined : record.engineType,
           });
@@ -302,6 +305,9 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
 
         const relay = await runtimeEntry.runtime.connectRelay({
           instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: record.runtimeGeneration,
+          serverEpoch: record.serverEpoch,
           sessionId: request.sessionId,
         });
         store.setRelay(request.instanceId, relay);

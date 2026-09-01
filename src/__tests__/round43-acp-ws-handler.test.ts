@@ -257,12 +257,33 @@ describe("round43 acp ws handler", () => {
     expect(frame(ws)).toEqual({ type: "error", message: "Machine registration failed" });
   });
 
-  // 已注册机器的 heartbeat 必须只路由给该 machineId。
-  test("heartbeat 路由到已注册 machine", async () => {
+  // clean-slate 确认前的 heartbeat 不得把仅注册到 DB 的机器维持为 online。
+  test("heartbeat 在 clean-slate 确认前不更新 machine", async () => {
+    const ws = new FakeWs();
+    handleAcpWsOpen(ws, "heartbeat-pending-43", "user-a", null, true);
+    await handleAcpWsMessage(ws, "heartbeat-pending-43", {
+      type: "register",
+      protocol_version: 2,
+      machine_id: "machine-43",
+    });
+    await flushRegistration();
+
+    await handleAcpWsMessage(ws, "heartbeat-pending-43", { type: "heartbeat" });
+
+    expect(heartbeatMachines).toEqual([]);
+  });
+
+  // 完成 clean-slate 的机器 heartbeat 才能更新在线状态。
+  test("heartbeat 路由到已激活 machine", async () => {
     const ws = new FakeWs();
     handleAcpWsOpen(ws, "heartbeat-43", "user-a", null, true);
     await handleAcpWsMessage(ws, "heartbeat-43", { type: "register", protocol_version: 2, machine_id: "machine-43" });
     await flushRegistration();
+    await handleAcpWsMessage(ws, "heartbeat-43", {
+      type: "clean_slate_confirmed",
+      protocol_version: 2,
+      server_epoch: frame(ws).server_epoch,
+    });
 
     await handleAcpWsMessage(ws, "heartbeat-43", { type: "heartbeat" });
 

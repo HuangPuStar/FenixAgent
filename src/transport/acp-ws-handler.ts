@@ -45,6 +45,24 @@ export function sendToWs(ws: WsConnection, msg: object): void {
   }
 }
 
+function activateRemoteMachine(entry: AcpConnectionEntry): void {
+  if (!entry.machineId || entry.ws.readyState !== 1) {
+    throw new Error("Machine connection is not ready for activation");
+  }
+
+  if (!entry.remoteTransport) {
+    const engineTypes = Array.isArray(entry.capabilities?.engineTypes)
+      ? (entry.capabilities.engineTypes as string[])
+      : ["opencode"];
+    registerRemoteNode(entry.machineId, entry.ws, entry, engineTypes);
+  }
+
+  const agentNodeService = getAgentNodeService();
+  if (!agentNodeService.hasActiveConnection(entry.machineId)) {
+    agentNodeService.handleIncomingConnection(entry.machineId, wsToAgentNodeSocket(entry.ws));
+  }
+}
+
 /** Called from onOpen — initializes connection tracking */
 export function handleAcpWsOpen(
   ws: WsConnection,
@@ -305,10 +323,16 @@ export async function handleAcpWsMessage(
     }
 
     if (msg.type === "heartbeat") {
-      if (entry.isMachine && entry.machineId) {
-        handleHeartbeat(entry.machineId).catch((err) => {
-          logError("Heartbeat handling error:", err);
-        });
+      if (entry.isMachine && entry.machineId && entry.cleanSlateConfirmed) {
+        try {
+          // clean-slate 已确认但激活曾部分失败时，heartbeat 是同一在线连接的幂等自愈点。
+          activateRemoteMachine(entry);
+          handleHeartbeat(entry.machineId).catch((err) => {
+            logError("Heartbeat handling error:", err);
+          });
+        } catch (err) {
+          logError("Remote machine activation error:", err);
+        }
       }
       continue;
     }
@@ -329,12 +353,11 @@ export async function handleAcpWsMessage(
         continue;
       }
       entry.cleanSlateConfirmed = true;
-      const engineTypes = Array.isArray(entry.capabilities?.engineTypes)
-        ? (entry.capabilities.engineTypes as string[])
-        : ["opencode"];
-      registerRemoteNode(entry.machineId, entry.ws, entry, engineTypes);
-      if (entry.ws.readyState === 1) {
-        getAgentNodeService().handleIncomingConnection(entry.machineId, wsToAgentNodeSocket(entry.ws));
+      try {
+        activateRemoteMachine(entry);
+      } catch (err) {
+        // 协议确认与宿主激活是两个阶段；保留确认状态，让后续 heartbeat 幂等补齐半完成装配。
+        logError("Remote machine activation error:", err);
       }
       continue;
     }

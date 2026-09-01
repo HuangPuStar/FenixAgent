@@ -64,6 +64,31 @@ test("远程 lifecycle 请求端到端携带 fencing 字段", async () => {
   await pending;
 });
 
+// relay 数据帧同样必须携带 runtime fence，否则 Machine 协议 v2 会静默拒绝 action。
+test("远程 relay action 携带 fencing 字段", async () => {
+  const { transport, ws } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  const relay = await runtime.connectRelay({
+    instanceId: "inst-current",
+    instanceUid: "inst-current",
+    runtimeGeneration: 7,
+    serverEpoch: "epoch-current",
+    sessionId: "rcs-current",
+  });
+
+  relay.send({ type: "connect" });
+
+  expect(sentMessage(ws)).toMatchObject({
+    type: "relay",
+    instance_id: "inst-current",
+    instance_uid: "inst-current",
+    runtime_generation: 7,
+    server_epoch: "epoch-current",
+    session_id: "rcs-current",
+    payload: { type: "connect" },
+  });
+});
+
 // 旧 epoch 或 generation 的结果不能通过当前 fencing 校验。
 test("旧 generation 或 epoch 的结果被拒绝", () => {
   const expected = { instanceUid: "inst-current", runtimeGeneration: 8, serverEpoch: "epoch-current" };
@@ -80,6 +105,16 @@ test("远程 lifecycle 缺失 fencing 字段时 fail-closed", async () => {
   const { transport } = createContext();
   const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
   await expect(runtime.startInstance({ instanceId: "inst-current" })).rejects.toThrow("fence is required");
+});
+
+// relay 建连缺失 fencing 字段时必须 fail-closed，不能创建会被 Machine 静默拒绝的 handle。
+test("远程 relay 缺失 fencing 字段时 fail-closed", async () => {
+  const { transport } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+
+  await expect(runtime.connectRelay({ instanceId: "inst-current", sessionId: "rcs-current" })).rejects.toThrow(
+    "fence is required",
+  );
 });
 
 // 明确 request_id 必须原样用于请求匹配，避免同一连接上的并发响应串线。

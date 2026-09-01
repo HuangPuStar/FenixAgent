@@ -1,7 +1,9 @@
 import { createLogger } from "@fenix/logger";
+import { OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../errors";
+import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
 import { authGuardPlugin } from "../../plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
@@ -256,6 +258,13 @@ app.post(
           error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
         });
       }
+      if (err instanceof OrchestrationError) {
+        const mapped = mapOrchestrationErrorToHttp(err);
+        return error(mapped.status, {
+          success: false,
+          error: { code: err.code, message: mapped.message },
+        });
+      }
       return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
     }
   },
@@ -266,6 +275,7 @@ app.post(
       200: "enter-environment-response",
       404: WebErrSchema,
       500: WebErrSchema,
+      503: WebErrSchema,
     },
     detail: {
       tags: ["Environments"],

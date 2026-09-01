@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { agentInstanceService } from "../services/agent-instance-service";
@@ -395,6 +396,27 @@ describe("round44 Web 环境路由", () => {
       status: "running",
       createdAt: now.toISOString(),
     });
+  });
+
+  // 远程 Agent node 未连接时应返回可重试的 503，而不是误报配置写入失败。
+  test("进入远程环境映射 Agent node 不可用错误", async () => {
+    const instance = {
+      id: "instance-remote",
+      environmentId,
+      ownerUserId: "user-1",
+      name: "default",
+      createdAt: now,
+    } as never;
+    agentInstanceService.resolveInstanceForOperation = async () => instance;
+    agentInstanceService.ensureInstanceRuntime = async () => {
+      throw new AgentNodeUnavailableError();
+    };
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.error).toEqual({ code: "AGENT_NODE_UNAVAILABLE", message: "Agent node is unavailable" });
   });
 
   // provider 未配置时，进入环境必须脱敏映射为 503。

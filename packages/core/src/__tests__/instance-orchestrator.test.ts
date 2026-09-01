@@ -55,11 +55,13 @@ function createTestContext(options?: {
 }
 
 describe("InstanceOrchestrator", () => {
-  // 运行实例刷新环境时只重新 prepare，不重启进程，并保存最新 LaunchSpec。
+  // 运行实例刷新环境时只重新 prepare，并沿用启动时的 runtime fence。
   test("refreshes a running instance environment without restarting it", async () => {
     const { orchestrator, plugin, store } = createTestContext();
     await orchestrator.launch({
       instanceId: "inst_refresh",
+      runtimeGeneration: 7,
+      serverEpoch: "epoch-current",
       engineType: "fake-engine",
       nodeId: "local-default",
       launchSpec: createLaunchSpec(),
@@ -75,6 +77,11 @@ describe("InstanceOrchestrator", () => {
     });
 
     expect(plugin.runtimeState.calls).toEqual(["prepare", "start", "prepare"]);
+    expect(plugin.runtimeState.lastPrepareInput).toMatchObject({
+      instanceUid: "inst_refresh",
+      runtimeGeneration: 7,
+      serverEpoch: "epoch-current",
+    });
     expect(plugin.runtimeState.lastPrepareInput?.launchSpec.skills).toEqual(refreshedSpec.skills);
     expect(refreshed).toMatchObject({ status: "running", launchSpec: refreshedSpec });
     expect(store.get("inst_refresh")?.launchSpec.skills).toEqual(refreshedSpec.skills);
@@ -86,6 +93,8 @@ describe("InstanceOrchestrator", () => {
 
     const launched = await orchestrator.launch({
       instanceId: "inst_flow",
+      runtimeGeneration: 9,
+      serverEpoch: "epoch-flow",
       engineType: "fake-engine",
       nodeId: "local-default",
       launchSpec: createLaunchSpec(),
@@ -94,8 +103,15 @@ describe("InstanceOrchestrator", () => {
     expect(store.get("inst_flow")?.status).toBe("running");
     expect(store.get("inst_flow")?.relayConnected).toBe(false);
 
-    const relay = await orchestrator.connectRelay({ instanceId: "inst_flow" });
+    const relay = await orchestrator.connectRelay({ instanceId: "inst_flow", sessionId: "rcs-flow" });
     expect(relay).toBe(plugin.runtimeState.relay);
+    expect(plugin.runtimeState.lastConnectRelayInput).toEqual({
+      instanceId: "inst_flow",
+      instanceUid: "inst_flow",
+      runtimeGeneration: 9,
+      serverEpoch: "epoch-flow",
+      sessionId: "rcs-flow",
+    });
     expect(store.get("inst_flow")?.relayConnected).toBe(true);
 
     await orchestrator.stop("inst_flow");

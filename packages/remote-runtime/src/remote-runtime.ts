@@ -61,7 +61,7 @@ export function createRemoteRuntime(options: RemoteRuntimeOptions): EngineRuntim
   }
 
   async function connectRelay(input: ConnectRelayInput): Promise<EngineRelayHandle> {
-    return new RemoteRelayHandle(transport, input.instanceId, input.sessionId ?? input.instanceId);
+    return new RemoteRelayHandle(transport, input.instanceId, input.sessionId ?? input.instanceId, fence(input));
   }
 
   async function stopInstance(input: StopInstanceInput): Promise<void> {
