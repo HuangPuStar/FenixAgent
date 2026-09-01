@@ -10,7 +10,8 @@
     "label": "Resource scope",
     "all": "All",
     "organization": "Organization",
-    "shared": "Public"
+    "shared": "Shared with me",
+    "public": "Public"
   },
   "providerIndex": {
     "title": "Providers",

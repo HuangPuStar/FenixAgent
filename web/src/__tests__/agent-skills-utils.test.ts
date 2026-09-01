@@ -3,7 +3,6 @@ import {
   countSkillsByScope,
   filterSkills,
   getSkillFormValidationError,
-  getSkillOrganizationBadgeStyle,
 } from "../pages/agent-panel/pages/agent-skills-utils";
 import type { ResourceAccess } from "../types/config";
 
@@ -54,42 +53,34 @@ describe("getSkillFormValidationError", () => {
   });
 });
 
-describe("skill organization badge colors", () => {
-  // 同一组织的技能应始终得到同一配色，避免筛选或排序后视觉标识变化。
-  test("keeps colors stable for the same organization", () => {
-    const first = getSkillOrganizationBadgeStyle(skills[1]);
-    const second = getSkillOrganizationBadgeStyle({
-      ...skills[1],
-      name: "another-skill",
-    });
-    expect(first).toEqual(second);
-  });
-
-  // 不同组织应由组织 ID 映射到不同颜色，而不是复用统一的共享 badge 颜色。
-  test("uses different colors for different organizations", () => {
-    const first = getSkillOrganizationBadgeStyle(skills[1]);
-    const second = getSkillOrganizationBadgeStyle({
-      ...skills[1],
-      resourceAccess: {
-        ...skills[1].resourceAccess,
-        sourceOrganizationId: "org-b",
-      },
-    });
-    expect(first).not.toEqual(second);
-  });
-
-  // 缺少后端组织标识时不应臆造颜色键，交由组件默认样式兜底。
-  test("returns undefined without an organization id", () => {
-    expect(getSkillOrganizationBadgeStyle({ name: "legacy-skill" })).toBeUndefined();
-  });
-});
-
 describe("skill catalog filtering", () => {
   // 归属筛选只能依据后端明确返回的 internal/external，不推测个人或平台范围。
   test("filters organization and shared skills by proven ownership", () => {
     expect(filterSkills(skills, "", "organization").map((skill) => skill.name)).toEqual(["research"]);
     expect(filterSkills(skills, "", "shared").map((skill) => skill.name)).toEqual(["review"]);
     expect(countSkillsByScope(skills)).toEqual({ organization: 1, shared: 1 });
+  });
+
+  // 本组织公开资源仍属于本组织；外部资源只能证明为共享给我，不能推断为全局公开。
+  test("keeps ownership scope separate from public readability", () => {
+    const publicInternal = {
+      ...skills[0],
+      name: "public-research",
+      resourceAccess: {
+        ...skills[0].resourceAccess,
+        resourceUid: "skill-public-research",
+        resourceKey: "public-research",
+        publicReadable: true,
+      },
+    };
+    const catalog = [...skills, publicInternal];
+
+    expect(filterSkills(catalog, "", "organization").map((skill) => skill.name)).toEqual([
+      "research",
+      "public-research",
+    ]);
+    expect(filterSkills(catalog, "", "shared").map((skill) => skill.name)).toEqual(["review"]);
+    expect(countSkillsByScope(catalog)).toEqual({ organization: 2, shared: 1 });
   });
 
   // 搜索同时覆盖技能名、说明与来源组织展示名。

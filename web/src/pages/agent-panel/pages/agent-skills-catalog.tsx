@@ -236,7 +236,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                   const display = getSkillDisplayName(skill);
                   const active = getSkillKey(skill) === getSkillKey(selectedSkill);
                   const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-                  const publiclyReadable = external || skill.resourceAccess?.publicReadable === true;
+                  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
                   return (
                     <button
                       type="button"
@@ -265,9 +265,14 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                             {display.namespace}
                           </span>
                         ) : null}
-                        {publiclyReadable ? (
+                        {external ? (
                           <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
                             {t("scope.shared")}
+                          </span>
+                        ) : null}
+                        {publiclyReadable ? (
+                          <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
+                            {t("scope.public")}
                           </span>
                         ) : null}
                       </span>
@@ -316,7 +321,7 @@ function SkillDetailView({
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
   const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-  const publiclyReadable = external || skill.resourceAccess?.publicReadable === true;
+  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
   const header = (
     <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
@@ -331,9 +336,14 @@ function SkillDetailView({
             <span className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap" title={organizationName}>
               {organizationName}
             </span>
-            {publiclyReadable ? (
+            {external ? (
               <span className="shrink-0 rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#1d4ed8]">
                 {t("scope.shared")}
+              </span>
+            ) : null}
+            {publiclyReadable ? (
+              <span className="shrink-0 rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#1d4ed8]">
+                {t("scope.public")}
               </span>
             ) : null}
           </div>

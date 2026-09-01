@@ -13,7 +13,8 @@
     "label": "技能归属范围",
     "all": "全部",
     "organization": "本组织",
-    "shared": "公开"
+    "shared": "共享给我",
+    "public": "公开"
   },
   "directory": {
     "title": "技能目录",

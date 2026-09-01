@@ -102,6 +102,18 @@ describe("provider model resource access flow", () => {
     expect(getProviderScope(externalProvider)).toBe("shared");
   });
 
+  // 本组织公开资源仍属于本组织；外部资源只能证明为共享给我，不能推断为全局公开。
+  test("keeps ownership scope separate from public readability", () => {
+    const publicInternalProvider: ProviderInfo = {
+      ...internalProvider,
+      resourceAccess: { ...internalProvider.resourceAccess!, publicReadable: true },
+    };
+
+    expect(getProviderScope(publicInternalProvider)).toBe("organization");
+    expect(getProviderScope(externalProvider)).toBe("shared");
+    expect(externalProvider.resourceAccess?.publicReadable).toBeUndefined();
+  });
+
   // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。
   test("uses a configured model id for the provider brand icon", () => {
     expect(

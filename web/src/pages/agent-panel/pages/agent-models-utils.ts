@@ -39,7 +39,7 @@ export function getProviderIconModelId(provider: ProviderInfo, models: ProviderM
 
 /**
  * Provider 当前只具备组织级资源边界。内部资源归入本组织，外部资源只能证明为共享给我；
- * 在后端增加明确 scope 前，不把跨组织资源猜测成平台资源，也不伪造个人范围。
+ * 在后端增加明确 scope 前，不把跨组织资源猜测成平台公开资源。
  */
 export function getProviderScope(provider: ProviderInfo): Exclude<ProviderScope, "all"> {
   return provider.resourceAccess?.ownership === "external" ? "shared" : "organization";

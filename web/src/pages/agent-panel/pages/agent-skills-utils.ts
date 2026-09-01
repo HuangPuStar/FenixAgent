@@ -12,7 +12,7 @@ export function getSkillFormValidationError(name: string, content: string): Skil
   return null;
 }
 
-/** 按后端可证明的组织归属与搜索词筛选技能，不推测个人或平台范围。 */
+/** 按后端可证明的组织归属与搜索词筛选技能，不把外部定向共享猜测成全局公开。 */
 export function filterSkills(skills: SkillInfo[], query: string, scope: SkillCatalogScope): SkillInfo[] {
   const keyword = query.trim().toLowerCase();
   return skills.filter((skill) => {
@@ -24,7 +24,7 @@ export function filterSkills(skills: SkillInfo[], query: string, scope: SkillCat
   });
 }
 
-/** 返回技能目录中真实可判定的组织内与共享资源数量。 */
+/** 返回技能目录中真实可判定的本组织与共享资源数量。 */
 export function countSkillsByScope(skills: SkillInfo[]): {
   organization: number;
   shared: number;

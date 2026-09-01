@@ -173,8 +173,8 @@ function ProviderIndex({
             const iconModelId = getProviderIconModelId(provider, modelsByProvider[key] ?? []);
             const active = key === (selected ? getProviderKey(selected) : null);
             const organizationName = provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-            const publiclyReadable =
-              provider.resourceAccess?.ownership === "external" || provider.resourceAccess?.publicReadable === true;
+            const external = provider.resourceAccess?.ownership === "external";
+            const publiclyReadable = provider.resourceAccess?.publicReadable === true;
             return (
               <button
                 type="button"
@@ -192,7 +192,8 @@ function ProviderIndex({
                     {organizationName} · {t("providerIndex.models", { count: provider.modelCount })}
                   </small>
                 </span>
-                {publiclyReadable ? <span className="models-provider-scope">{t("scope.shared")}</span> : null}
+                {external ? <span className="models-provider-scope">{t("scope.shared")}</span> : null}
+                {publiclyReadable ? <span className="models-provider-scope">{t("scope.public")}</span> : null}
                 <ChevronRight className="models-provider-arrow" />
               </button>
             );
@@ -215,8 +216,8 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   const models = props.modelsByProvider[key] ?? [];
   const iconModelId = getProviderIconModelId(provider, models);
   const writable = canWriteProvider(provider);
-  const publiclyReadable =
-    provider.resourceAccess?.ownership === "external" || provider.resourceAccess?.publicReadable === true;
+  const external = provider.resourceAccess?.ownership === "external";
+  const publiclyReadable = provider.resourceAccess?.publicReadable === true;
   const color = getProviderColor(provider.id);
   const header = (
     <div style={{ "--provider-color": color } as CSSProperties}>
@@ -237,7 +238,8 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
                 {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
               </small>
-              {publiclyReadable ? <span className="models-provider-public-badge">{t("scope.shared")}</span> : null}
+              {external ? <span className="models-provider-public-badge">{t("scope.shared")}</span> : null}
+              {publiclyReadable ? <span className="models-provider-public-badge">{t("scope.public")}</span> : null}
             </div>
           </div>
         </div>
