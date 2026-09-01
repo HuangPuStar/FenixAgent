@@ -64,6 +64,17 @@ interface AgentTreeNode {
   instances: EnvironmentInstance[];
 }
 
+/** 运行中实例稳定置前；其余状态保持 API 原始顺序。 */
+export function orderInstancesByRunningStatus(instances: EnvironmentInstance[]): EnvironmentInstance[] {
+  const running: EnvironmentInstance[] = [];
+  const other: EnvironmentInstance[] = [];
+  for (const instance of instances) {
+    if (instance.status === "running") running.push(instance);
+    else other.push(instance);
+  }
+  return [...running, ...other];
+}
+
 interface AgentSidebarTreeProps {
   selectedInstanceId: string | null;
   selectedEnvironmentId?: string | null;
@@ -460,6 +471,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       )}
       {treeNodes.map((node) => {
         const { agent, instances } = node;
+        const orderedInstances = orderInstancesByRunningStatus(instances);
         const collapsed = !expandedAgents[agent.id];
         // 通过 entering + enteringTargetId 组合判断具体哪个 agent 正在进入
         const isEntering = entering && enteringTargetId === agent.id;
@@ -586,8 +598,8 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             {/* 展开的实例列表 */}
             {!collapsed && (
               <div className="mt-1 py-0.5">
-                {instances.length > 0
-                  ? instances.map((inst) => {
+                {orderedInstances.length > 0
+                  ? orderedInstances.map((inst) => {
                       // per-instance 操作状态：通过 pendingInstanceId 精确匹配实例 ID 和操作类型
                       const isInstRestarting =
                         pendingInstanceId?.id === inst.instanceUid && pendingInstanceId?.type === "restart";
