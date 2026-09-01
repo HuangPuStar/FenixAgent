@@ -169,6 +169,13 @@
       "when": 1788224592522,
       "tag": "0023_agent-instance",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788231820300,
+      "tag": "0024_environment-max-sessions",
+      "breakpoints": true
     }
   ]
 }

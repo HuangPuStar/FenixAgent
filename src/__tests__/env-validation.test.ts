@@ -132,6 +132,23 @@ describe("env validation", () => {
     expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
   });
 
+  // 未设置 Environment 实例上限时应使用默认值 5。
+  test("RCS_ENVIRONMENT_MAX_SESSIONS 未设置时使用默认值 5", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    delete process.env.RCS_ENVIRONMENT_MAX_SESSIONS;
+    const env = validateEnv();
+    expect(env.RCS_ENVIRONMENT_MAX_SESSIONS).toBe(5);
+  });
+
+  // Environment 实例上限必须是正整数。
+  test("RCS_ENVIRONMENT_MAX_SESSIONS 非法值时校验失败", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_ENVIRONMENT_MAX_SESSIONS = "0";
+    expect(() => validateEnv()).toThrow(/RCS_ENVIRONMENT_MAX_SESSIONS/);
+  });
+
   // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
   test("RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";

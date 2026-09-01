@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { config, DEFAULT_ENVIRONMENT_MAX_SESSIONS } from "../config";
 import { db } from "../db";
 import { environment, user } from "../db/schema";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
@@ -122,6 +123,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     const status = params.status || "active";
     const secret = params.secret || `sec_${uuid().replace(/-/g, "")}`;
     const orgId = params.organizationId ?? params.userId;
+    const maxSessions = params.maxSessions ?? config.environmentMaxSessions ?? DEFAULT_ENVIRONMENT_MAX_SESSIONS;
     await db.insert(environment).values({
       id,
       name,
@@ -132,7 +134,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       machineName: params.machineName ?? null,
       branch: params.branch ?? null,
       gitRepoUrl: params.gitRepoUrl ?? null,
-      maxSessions: params.maxSessions ?? 1,
+      maxSessions,
       workerType: params.workerType ?? "acp",
       capabilities: params.capabilities ?? null,
       status,
@@ -152,7 +154,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
       directory: params.directory ?? null,
       branch: params.branch ?? null,
       gitRepoUrl: params.gitRepoUrl ?? null,
-      maxSessions: params.maxSessions ?? 1,
+      maxSessions,
       workerType: params.workerType ?? "acp",
       capabilities: params.capabilities ?? null,
       status,
