@@ -2,7 +2,6 @@
 # Usage:
 #   docker compose -f docker/sandbox-peri/docker-compose.yml build
 #   docker compose -f docker/sandbox-peri/docker-compose.yml up -d
-#   docker compose -f docker/sandbox-peri/docker-compose.yml up -d --scale sandbox-peri=3
 
 services:
     sandbox-peri:
@@ -13,18 +12,9 @@ services:
         restart: unless-stopped
         environment:
             TZ: Asia/Shanghai
-            # 本地开发：RCS 主服务器通过 bun run dev 跑在宿主机上，
-            # 容器内使用 host.docker.internal 访问宿主机回环地址。
-            # 若 RCS 以容器方式部署在同一 Compose 网络中，改回 ws://rcs:3000。
-            RCS_URL: ws://host.docker.internal:3000
-            RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
-            RCS_MACHINE_ID: mach_d72e997e_8774_484b_b1f6_e2ccd241d60c
-            RCS_MACHINE_NAME: basebox
-            RCS_LABELS: sandbox,production
-            # 这里需要标记为 ccb
-            AGENT_TYPE: ccb
-            # 这个 id 设置为空，表示都可以使用
-            RCS_TENANT_ID:
+            RCS_URL: ${RCS_URL:?RCS_URL is required}
+            RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
+            RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
             # 下面的 command 要进行替换
             RCS_CCB_COMMAND: peri
             RCS_CCB_ARGS: acp

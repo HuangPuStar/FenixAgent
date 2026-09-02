@@ -78,6 +78,7 @@ packages/plugin-claude-code/plugin-claude-code
 .worktrees/
 packages/plugin-ccb/node_modules/
 superpowers/
+ragflow_*_data/
 
 tmp
 .bunenv/

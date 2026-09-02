@@ -60,7 +60,7 @@ cp .env.example .env
 本地开发通常先启动基础依赖：
 
 ```bash
-docker compose up -d
+docker compose up -d postgres
 ```
 
 ### 4. 初始化数据库

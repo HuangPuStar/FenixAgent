@@ -17,9 +17,9 @@ Docker 使用 mutable base tag，最终以 root 运行并装入 git/curl/Python/
 - `.dockerignore:1-9`：未 deny `.env`、`.agents`、通用 workspace/private assets。
 - `src/plugins/static.ts:10-17`：两处 dist 均缺失时回退 `web/`。
 - `web/vite.config.ts:27-30`：生产 sourcemap 全量公开。
-- `docker-compose.prod.yml:17,26`：暴露 3001，但 base URL 是 localhost:3000；另一 production compose 暴露 38879 仍默认 3000。
+- `docker-compose.yml` 的 `rcs` 服务：暴露 3001，但 base URL 是 localhost:3000；另一 production compose 暴露 38879 仍默认 3000。
 - `src/plugins/cors.ts:5-22`：`origin:"*"` + `credentials:true`，allowed headers 缺组织/opId/条件请求头。
-- `docker-compose.prod.yml:27` 默认 `RCS_API_KEYS` 为空，而 `src/env.ts:7-9` 要求非空；README clean-clone 未补齐。
+- `docker-compose.yml` 的 `rcs` 服务默认 `RCS_API_KEYS` 为空，而 `src/env.ts:7-9` 要求非空；README clean-clone 未补齐。
 
 ## 架构诊断
 

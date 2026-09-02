@@ -15,6 +15,10 @@ services:
         image: ghcr.io/huangpustar/fenixagent:sha-f00efc9
         container_name: fenix-ver
         restart: unless-stopped
+        # 传入主 .env 中未逐项列出的可选 RCS 配置，例如 RCS_MODEL_GATEWAY_*。
+        env_file:
+            - path: .env
+              required: false
         depends_on:
             postgres:
                 condition: service_healthy
@@ -104,27 +108,6 @@ services:
             interval: 5s
             timeout: 5s
             retries: 5
-
-    litellm:
-        image: ghcr.io/berriai/litellm:v1.93.0
-        restart: unless-stopped
-        depends_on:
-            postgres:
-                condition: service_healthy
-        networks:
-            - fenix-ver-net
-        ports:
-            - "34000:4000"
-        environment:
-            DATABASE_URL: postgresql://rcs:rcs@postgres:5432/litellm
-            LITELLM_MASTER_KEY: replace-with-a-random-secret
-            LITELLM_SALT_KEY: replace-with-a-random-secret
-            # 丢弃上游模型不支持的请求参数，例如当前模型不接受的 thinking。
-            LITELLM_DROP_PARAMS: "True"
-            STORE_MODEL_IN_DB: "True"
-            SERVER_ROOT_PATH: "/litellm"
-            UI_USERNAME: admin
-            UI_PASSWORD: replace-with-a-random-secret
 
 volumes:
     postgres-data:

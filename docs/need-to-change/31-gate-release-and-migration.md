@@ -16,7 +16,7 @@ Docker publish 在 main/tag push 上独立运行，不依赖 CI；PR CI 不构�
 - `.github/workflows/ci.yml:13-61`：仅 format/lint/typecheck、backend/package/frontend test；无 production web、Docker、docs、migration、e2e。
 - `.gitmodules:1-3`：e2e URL 是本机绝对路径 `/tmp/fenix-e2e`，CI 不可克隆且 workflow 未运行它。
 - `scripts/migrate.ts:10-21`：整个 `migrate()` 任意 `already exists` 异常被判成功。
-- `docker-compose.prod.yml:47-48`：每个 app 容器启动前运行 migration。
+- `docker-compose.yml` 的 `rcs` 服务：每个 app 容器启动前运行 migration。
 - `src/services/data-migrate.ts:37-47`、`src/index.ts:77-79`：每个进程先做副作用后插完成记录，无 running claim/owner。
 - `migrate-skill-storage-by-organization.ts:57-100`：数据迁移包含文件复制、归档、删除，重复并发不是纯 DB no-op。
 

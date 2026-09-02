@@ -705,9 +705,9 @@ erDiagram
 Machine 启动时的典型配置：
 
 ```bash
-# docker/machine/Dockerfile — 通用 machine 镜像
-ENV SUPPORTED_ENGINE_TYPES='[{"type":"opencode"},{"type":"ccb"},{"type":"claude-code"}]'
-CMD ["bun", "start-remote-runtime.js", "opencode", "acp"]
+# docker/sandbox/Dockerfile — OpenCode 专用沙箱
+ENV AGENT_TYPE=opencode
+CMD ["bun", "/usr/local/bin/acp-runtime.js", "opencode", "acp"]
 
 # docker/sandbox-peri/Dockerfile — peri 专用沙箱
 ENV AGENT_TYPE=ccb
@@ -764,10 +764,16 @@ CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
 根据目标引擎选择合适的 Dockerfile：
 
 ```bash
-# 方案 A: 通用 Machine 镜像（支持 opencode + ccb + claude-code）
-docker build -f docker/machine/Dockerfile -t fenix-machine .
+# OpenCode 专用沙箱
+docker build -f docker/sandbox/Dockerfile -t fenix-opencode-sandbox .
 
-# 方案 B: Peri 专用沙箱（推荐用于 peri 迁移）
+# CCB 专用沙箱
+docker build -f docker/sandbox-ccb/Dockerfile -t fenix-ccb-sandbox .
+
+# DSH 专用沙箱
+docker build -f docker/sandbox-dsh/Dockerfile -t fenix-dsh-sandbox .
+
+# Peri 专用沙箱
 docker build -f docker/sandbox-peri/Dockerfile -t fenix-peri-sandbox .
 ```
 

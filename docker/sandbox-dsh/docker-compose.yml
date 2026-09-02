@@ -2,9 +2,8 @@
 # Usage:
 #   docker compose -f docker/sandbox-dsh/docker-compose.yml build
 #   docker compose -f docker/sandbox-dsh/docker-compose.yml up -d
-#   docker compose -f docker/sandbox-dsh/docker-compose.yml up -d --scale sandbox-dsh=3
 #
-# 必改项：RCS_SECRET（与主服务器一致）、RCS_MACHINE_ID（唯一，mach_ 前缀）
+# 必填连接配置：RCS_URL、RCS_SECRET（与主服务器一致）、RCS_MACHINE_ID（页面预创建的唯一 ID）
 # 模型配置：主服务器上为 Agent 绑定模型后自动下发，容器内无需配置
 
 services:
@@ -16,15 +15,9 @@ services:
         restart: unless-stopped
         environment:
             TZ: Asia/Shanghai
-            RCS_URL: ws://rcs:3000
-            RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
-            RCS_MACHINE_ID: mach_dsh_sandbox_0001
-            RCS_MACHINE_NAME: dsh-sandbox
-            RCS_LABELS: sandbox,dsh
-            # 伪装为 ccb 槽位：主服务器按 ccb 管理生命周期，平台侧零感知
-            AGENT_TYPE: ccb
-            # 这个 id 设置为空，表示所有组织都可以使用
-            RCS_TENANT_ID:
+            RCS_URL: ${RCS_URL:?RCS_URL is required}
+            RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
+            RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
             # ccb handler 通过这两个变量覆盖引擎启动命令：
             #   node /usr/local/bin/dsh-acp-wrapper.js（wrapper 解析 ccb settings 生成 cordis.yml 并 exec dsh）
             RCS_CCB_COMMAND: node

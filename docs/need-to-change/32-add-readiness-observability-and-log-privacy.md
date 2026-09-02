@@ -13,7 +13,7 @@
 ## 已核验证据
 
 - `src/services/build-info.ts:38-44` 与 `src/index.ts:186-187`：health 只返回进程信息和固定 ok。
-- `Dockerfile:94-95`、`docker-compose.prod.yml:49-60`：健康检查只访问该端点。
+- `Dockerfile:94-95`、`docker-compose.yml` 的 `rcs` 服务：健康检查只访问该端点。
 - `src/index.ts:1-4` 与 `packages/logger/src/index.ts:334-353`：全局 console 进入 logger。
 - `packages/logger/src/index.ts:151-160`：每条日志同步 appendFile；无 redact/censor 配置。
 - `packages/acp-link/src/server.ts:1170,1246-1257,1450`：完整/截断 prompt、result、未知消息进入日志。

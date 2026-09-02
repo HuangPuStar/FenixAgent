@@ -1,0 +1,37 @@
+services:
+    litellm-postgres:
+        image: postgres:16-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: litellm
+            POSTGRES_PASSWORD: litellm
+            POSTGRES_DB: litellm
+        volumes:
+            - litellm-postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+
+    litellm:
+        image: ghcr.io/berriai/litellm:v1.93.0
+        restart: unless-stopped
+        depends_on:
+            litellm-postgres:
+                condition: service_healthy
+        ports:
+            - "${LITELLM_PORT:-4000}:4000"
+        environment:
+            DATABASE_URL: postgresql://litellm:litellm@litellm-postgres:5432/litellm
+            LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-litellm-master-key}
+            LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-litellm-salt-key}
+            # 丢弃上游模型不支持的请求参数，例如当前模型不接受的 thinking。
+            LITELLM_DROP_PARAMS: "True"
+            STORE_MODEL_IN_DB: "True"
+            SERVER_ROOT_PATH: "/litellm"
+            UI_USERNAME: admin
+            UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin}
+
+volumes:
+    litellm-postgres-data:
