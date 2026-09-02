@@ -19,7 +19,7 @@ interface ComposerToolbarProps {
   onFileSelect: () => void;
   commandPanelOpen: boolean;
   onCommandPanelOpenChange: (open: boolean) => void;
-  contextUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+  contextUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; contextWindow?: number } | null;
   availableModes?: SessionMode[];
   currentModeId?: string | null;
   onModeChange?: (modeId: string) => void;

@@ -230,6 +230,7 @@ export type NormalizedEventType =
   | "permission_expired"
   | "question_requested"
   | "question_resolved"
+  | "usage_updated"
   | "turn_completed"
   | "turn_failed"
   | "turn_cancel_requested"

@@ -48,8 +48,8 @@ interface ChatComposerProps {
   currentModeId?: string | null;
   /** 模式切换回调（Task 5 元信息条用到） */
   onModeChange?: (modeId: string) => void;
-  /** ACP prompt_complete 返回的真实上下文用量；协议未提供上限时不计算百分比。 */
-  contextUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+  /** ACP 报告的当前上下文用量与窗口容量。 */
+  contextUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; contextWindow?: number } | null;
   /** 新建会话回调（Task 5 元信息条用到） */
   onNewSession?: () => void;
   /** 是否显示新建会话按钮（Task 5 元信息条用到） */
@@ -305,7 +305,7 @@ export function ChatComposer({
       setImages((prev) => [...prev, ...newImages]);
     }
 
-    // 非图片：上传到 workspace 根目录并添加为附件引用。
+    // 非图片：上传到 workspace 的 user/ 目录并添加为附件引用。
     if (otherFiles.length > 0 && fileWorkspaceId) {
       try {
         const newAttachments = await uploadComposerFiles(fileWorkspaceId, otherFiles);

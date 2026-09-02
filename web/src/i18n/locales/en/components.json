@@ -416,6 +416,7 @@
     "attach": "Add image or file",
     "context": "Context",
     "contextUnknown": "Context usage is unavailable",
+    "contextUsed": "{{count}} / {{limit}} tokens used",
     "contextUsedUnknownLimit": "{{count}} tokens used; context limit unknown",
     "uploadingFiles": "Uploading {{count}} files…",
     "fileTooLarge": "A file cannot exceed 100 MB",

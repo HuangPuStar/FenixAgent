@@ -134,7 +134,7 @@ describe("spawnAcpAgent round48 内存 ACP 管道", () => {
         clientCapabilities: expect.objectContaining({
           fs: { readTextFile: true, writeTextFile: true },
           elicitation: { form: {} },
-          _meta: { "peri.agentEvent": true, "peri.unstableEvent": true },
+          _meta: { "peri.agentEvent": true, "peri.tokenStats": true, "peri.unstableEvent": true },
         }),
       }),
     );

@@ -54,7 +54,7 @@ export function computeTokenSnapshot(ydoc: Y.Doc): ChatTokenSnapshot {
     if (!entry) continue;
     if (entry.get("kind") !== "message" || entry.get("role") !== "assistant") continue;
     const usage = entry.get("tokenUsage") as
-      | { totalTokens?: number; inputTokens?: number; outputTokens?: number }
+      | { totalTokens?: number; inputTokens?: number; outputTokens?: number; contextWindow?: number }
       | undefined;
     if (usage && typeof usage === "object") return { tokenUsage: usage };
   }

@@ -40,6 +40,7 @@ import {
   setActiveTurn,
   setAgentStatus,
   setEntryStatus,
+  setEntryTokenUsage,
   setSessionAvailableCommands,
   setSessionInfo,
   setSessionModelState,
@@ -81,6 +82,34 @@ function extractPublicError(update: Record<string, unknown>): PublicError | null
 function canWriteToTurn(turnStatus: TurnStatus | null): boolean {
   if (!turnStatus || turnStatus === "cancelling") return false;
   return !TURN_TERMINAL_STATUSES.has(turnStatus);
+}
+
+/** Peri usage_update 是独立于 prompt 终态的当前上下文快照，需先写入当前 assistant entry。 */
+function applyUsageUpdate(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  if (event.sourceAgentId) return { applied: false, reason: "subagent usage is not main context usage" };
+  const active = readActiveTurn(pair.session);
+  if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
+    return { applied: false, reason: "usage without writable turn" };
+  }
+  const used = event.update.used;
+  const size = event.update.size;
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0) {
+    return { applied: false, reason: "usage missing valid used" };
+  }
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+    return { applied: false, reason: "usage missing valid size" };
+  }
+  const meta = event.update._meta;
+  const details = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+  const inputTokens = details.inputTokens;
+  const outputTokens = details.outputTokens;
+  setEntryTokenUsage(pair.chat, turnAssistantEntryId(active.turnId), {
+    totalTokens: used,
+    contextWindow: size,
+    ...(typeof inputTokens === "number" && Number.isFinite(inputTokens) && inputTokens >= 0 ? { inputTokens } : {}),
+    ...(typeof outputTokens === "number" && Number.isFinite(outputTokens) && outputTokens >= 0 ? { outputTokens } : {}),
+  });
+  return { applied: true };
 }
 
 /** 提取文本块文本（content 或 update 顶层，兼容原始与包裹格式） */
@@ -755,6 +784,9 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         case "question_resolved":
           result = applyQuestionResolved(pair, event);
+          break;
+        case "usage_updated":
+          result = applyUsageUpdate(pair, event);
           break;
         case "permission_expired": {
           // C5：超时迁移（pending → expired 一次）与收敛统一走 state/permission.ts，

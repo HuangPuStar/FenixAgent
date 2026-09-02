@@ -50,6 +50,35 @@ function runTurn(pairToUse: DocPair, turnId: string): void {
   applyNormalizedEvent(pairToUse, event("message_delta", { content: { type: "text", text: "hello" } }));
 }
 
+// Peri 的 usage 是独立 session/update 通知；必须在 prompt 终态前写入当前 assistant entry，
+// 且保留 context window 与 tokenStats 详情供输入框和 ContextPanel 展示。
+test("Peri usage_update projects current context usage", () => {
+  runTurn(pair, "turn_1");
+  const normalized = normalizeAcpMessage({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "ses_1",
+      update: {
+        sessionUpdate: "usage_update",
+        used: 310,
+        size: 200_000,
+        _meta: { inputTokens: 310, outputTokens: 50, cacheCreationTokens: 10, cacheReadTokens: 200 },
+      },
+    },
+  });
+
+  expect(normalized?.type).toBe("usage_updated");
+  expect(applyNormalizedEvent(pair, normalized!).applied).toBe(true);
+  applyNormalizedEvent(pair, event("turn_completed"));
+  expect(getEntry(pair.chat, "turn_1:assistant")?.get("tokenUsage")).toEqual({
+    totalTokens: 310,
+    contextWindow: 200_000,
+    inputTokens: 310,
+    outputTokens: 50,
+  });
+});
+
 // 重放同一 user_message 帧（同 turnId）不重复创建 Entry
 test("replayed user_message with same turnId does not duplicate entries", () => {
   runTurn(pair, "turn_1");

@@ -54,7 +54,7 @@ interface ACPMainProps {
   onSetMode?: (modeId: string) => void;
   supportsModeSelection?: boolean;
   modelName?: string;
-  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; contextWindow?: number } | null;
 
   // ── Peri Task 视图（切片 2，会话活动面板）──
   /** Session Doc tasks/taskOrder 派生任务视图（非终态在前排序，引用稳定） */

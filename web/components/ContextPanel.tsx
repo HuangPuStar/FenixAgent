@@ -16,7 +16,7 @@ interface ContextPanelProps {
   duration?: string;
   collapsed: boolean;
   onToggle: () => void;
-  /** ACP 真实 token 用量（prompt/complete 响应），存在时优先于客户端估算展示 */
+  /** ACP 报告的当前上下文用量与窗口容量，存在时优先于客户端估算展示 */
   acpUsage?: PromptUsage | null;
 }
 
@@ -39,6 +39,8 @@ export function ContextPanel({
   const displayTokens = hasAcpUsage ? (acpUsage!.totalTokens ?? 0) : stats.estimatedTokens;
   const displayInputTokens = hasAcpUsage ? (acpUsage!.inputTokens ?? 0) : stats.estimatedInputTokens;
   const displayOutputTokens = hasAcpUsage ? (acpUsage!.outputTokens ?? 0) : stats.estimatedOutputTokens;
+  const contextWindow = hasAcpUsage ? (acpUsage!.contextWindow ?? 200_000) : 200_000;
+  const contextPercent = contextWindow > 0 ? Math.min((displayTokens / contextWindow) * 100, 100) : 0;
 
   return (
     <div className="relative flex shrink-0">
@@ -126,17 +128,13 @@ export function ContextPanel({
           <div className="flex justify-between items-center mb-2">
             <span className="text-[11px] font-semibold text-text-secondary">{t("contextPanel.tokenUsage")}</span>
             <span className="text-[11px] font-mono text-text-primary font-semibold">
-              {formatTokenCount(displayTokens)} / 200k
+              {formatTokenCount(displayTokens)} / {formatTokenCount(contextWindow)}
             </span>
           </div>
-          <div className="h-1 rounded-sm bg-surface-3 overflow-hidden flex">
+          <div className="h-1 rounded-sm bg-surface-3 overflow-hidden">
             <div
               className="h-full bg-brand transition-[width] duration-500 ease"
-              style={{ width: `${Math.min(displayInputTokens / 2000, 50)}%` }}
-            />
-            <div
-              className="h-full bg-accent-green transition-[width] duration-500 ease"
-              style={{ width: `${Math.min(displayOutputTokens / 2000, 50)}%` }}
+              style={{ width: `${contextPercent}%` }}
             />
           </div>
           <div className="flex gap-3 mt-1.5">

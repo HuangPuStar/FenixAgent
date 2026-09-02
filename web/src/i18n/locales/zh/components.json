@@ -416,6 +416,7 @@
     "attach": "添加图片或文件",
     "context": "上下文",
     "contextUnknown": "上下文用量暂不可用",
+    "contextUsed": "已使用 {{count}} / {{limit}} Token",
     "contextUsedUnknownLimit": "已使用 {{count}} Token，上下文上限未知",
     "uploadingFiles": "正在上传 {{count}} 个文件…",
     "fileTooLarge": "单个文件不能超过 100 MB",

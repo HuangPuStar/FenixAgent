@@ -31,7 +31,7 @@ export interface ChatInterfaceProps {
   supportsModeSelection: boolean;
   supportsImages: boolean;
   modelName: string | undefined;
-  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+  tokenUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; contextWindow?: number } | null;
   periTasks?: readonly PeriTaskViewProjection[];
   periTasksLoaded?: boolean;
   connectionState?: string;
