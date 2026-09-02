@@ -8,6 +8,7 @@ import {
   FolderPlus,
   Loader2,
   Move,
+  RefreshCw,
   Search,
   Upload,
   UserRound,
@@ -152,11 +153,12 @@ export function FileTreeView(props: FileTreeViewProps) {
         <div className="file-tree-panel__actions">
           <button
             type="button"
-            onClick={() => createAtSelected("file")}
-            disabled={!props.envId}
-            title={t("fileTree.newFile")}
+            onClick={props.onRefresh}
+            disabled={props.loading || !props.envId}
+            title={t("fileTree.refresh")}
+            aria-label={t("fileTree.refresh")}
           >
-            <FilePlus2 aria-hidden />
+            <RefreshCw className={props.loading ? "animate-spin" : undefined} aria-hidden />
           </button>
           <button
             type="button"
