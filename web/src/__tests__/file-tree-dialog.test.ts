@@ -33,14 +33,27 @@ describe("file tree dialogs", () => {
     expect(toolbar).not.toContain('createAtSelected("file")');
   });
 
+  // 文件树必须由 React Arborist 虚拟化渲染，不得回退到通用异步 Tree。
+  test("renders file sections with react-arborist", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+
+    expect(source).toContain('from "react-arborist"');
+    expect(source).toContain("<ArboristTree");
+    expect(source).toContain("NodeRendererProps<ParsedFileNode>");
+    expect(source).not.toContain('from "@/components/ui/tree"');
+    expect(source).not.toContain("getWorkspaceChildren");
+    expect(source).not.toContain("getUserChildren");
+  });
+
   // 每个文件树节点右侧都必须提供刷新和经确认的删除入口，且不能在展示组件中直接调用文件 API。
   test("renders refresh and delete actions for each file tree node", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
     const source = fs.readFileSync(componentPath, "utf-8");
-    const actions = source.slice(source.indexOf("const renderActions"), source.indexOf("const renderLabel"));
+    const actions = source.slice(source.indexOf("function FileTreeNode"), source.indexOf("function Feedback"));
 
     expect(actions).toContain("props.onRefresh()");
-    expect(actions).toContain("props.onDeleteRequest(node.id, node.label)");
+    expect(actions).toContain("props.onDeleteRequest(data.path, data.name)");
     expect(actions).toContain("<RefreshCw aria-hidden />");
     expect(actions).toContain("<Trash2 aria-hidden />");
     expect(actions).not.toContain("<ExternalLink");
@@ -49,13 +62,12 @@ describe("file tree dialogs", () => {
 
   // 节点操作必须绝对定位覆盖在文件名右侧，不得作为 flex 子项压缩文件名宽度。
   test("floats file tree actions over the node label", () => {
-    const treePath = join(import.meta.dirname, "..", "..", "components", "ui", "tree.tsx");
     const stylesheetPath = join(import.meta.dirname, "..", "pages", "agent-panel", "artifacts-workspace.css");
-    const treeSource = fs.readFileSync(treePath, "utf-8");
     const styles = fs.readFileSync(stylesheetPath, "utf-8");
-    const actionStyles = styles.match(/\.file-tree-section \[data-slot="tree-item-actions"\] \{([^}]*)\}/)?.[1];
+    const actionStyles = styles.match(
+      /\.file-tree-section \[data-slot="tree-item-actions"\],\s*\.file-tree-arborist-actions \{([^}]*)\}/,
+    )?.[1];
 
-    expect(treeSource).toContain('data-slot="tree-item-actions"');
     expect(actionStyles).toContain("position: absolute");
     expect(actionStyles).toContain("right: 4px");
   });

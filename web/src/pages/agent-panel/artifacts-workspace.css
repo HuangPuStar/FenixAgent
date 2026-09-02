@@ -240,7 +240,8 @@
   gap: 1px;
 }
 
-.file-tree-section [data-slot="tree-item-actions"] {
+.file-tree-section [data-slot="tree-item-actions"],
+.file-tree-arborist-actions {
   position: absolute;
   z-index: 1;
   top: 50%;
@@ -369,8 +370,69 @@
   min-width: 0;
   min-height: 0;
   flex: 1;
-  overflow: auto;
-  scrollbar-gutter: stable;
+  overflow: hidden;
+}
+
+.file-tree-arborist {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.file-tree-arborist-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.file-tree-arborist-row:hover {
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
+}
+
+.file-tree-arborist-row.is-selected {
+  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
+  color: var(--color-brand);
+}
+
+.file-tree-arborist-toggle {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+}
+
+.file-tree-arborist-toggle > svg,
+.file-tree-arborist-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.file-tree-arborist-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-tree-arborist-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.file-tree-arborist-row:hover .file-tree-arborist-actions,
+.file-tree-arborist-row:focus-within .file-tree-arborist-actions {
+  opacity: 1;
 }
 
 .file-tree-workspace-label,

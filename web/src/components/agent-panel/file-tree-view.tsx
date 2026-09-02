@@ -15,14 +15,15 @@ import {
   X,
 } from "lucide-react";
 import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { NodeRendererProps } from "react-arborist";
+import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import type { NodeState, TreeNodeData, TreeProps } from "@/components/ui/tree";
-import { Tree } from "@/components/ui/tree";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
+import type { ParsedFileNode } from "./file-tree-model";
 
 interface ContextMenuState {
   x: number;
@@ -49,10 +50,10 @@ interface FileTreeViewProps {
   deleteConfirm: { path: string; name: string } | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
-  getWorkspaceChildren: TreeProps["getChildren"];
-  getUserChildren: TreeProps["getChildren"];
-  onSelect: NonNullable<TreeProps["onSelect"]>;
-  onToggle: NonNullable<TreeProps["onToggle"]>;
+  workspaceNodes: ParsedFileNode[];
+  userNodes: ParsedFileNode[];
+  onSelect: (node: ParsedFileNode) => void;
+  onToggle: (nodeId: string, expanded: boolean) => void;
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
   onUploadClick: () => void;
@@ -81,82 +82,6 @@ interface FileTreeViewProps {
 export function FileTreeView(props: FileTreeViewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
-
-  const renderActions = useCallback(
-    (node: TreeNodeData) => {
-      const isDirectory = props.isDirectory(node.id);
-      return (
-        <>
-          {isDirectory && (
-            <button
-              type="button"
-              className="file-tree-row-action"
-              aria-label={t("fileTree.newFileIn", { name: node.label })}
-              title={t("fileTree.newFile")}
-              onClick={(event) => {
-                event.stopPropagation();
-                props.onNewFile(node.id);
-              }}
-            >
-              <FilePlus2 aria-hidden />
-            </button>
-          )}
-          <button
-            type="button"
-            className="file-tree-row-action"
-            aria-label={t("fileTree.refreshItem", { name: node.label })}
-            title={t("fileTree.refresh")}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onRefresh();
-            }}
-          >
-            <RefreshCw aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="file-tree-row-action file-tree-row-action--delete"
-            aria-label={t("fileTree.deleteItem", { name: node.label })}
-            title={t("fileTree.contextMenu.delete")}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onDeleteRequest(node.id, node.label);
-            }}
-          >
-            <Trash2 aria-hidden />
-          </button>
-        </>
-      );
-    },
-    [props.isDirectory, props.onDeleteRequest, props.onNewFile, props.onRefresh, t],
-  );
-
-  const renderLabel = useCallback(
-    (node: TreeNodeData, state: NodeState) => {
-      if (props.isDirectory(node.id)) {
-        const Icon = state.expanded ? FolderOpen : Folder;
-        return (
-          <span className="file-tree-folder-label">
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            <span className="truncate" title={node.label}>
-              {node.label}
-            </span>
-          </span>
-        );
-      }
-      return (
-        <span className="file-tree-file-label">
-          <span className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center">
-            <FileTypeIcon filename={node.label ?? ""} />
-          </span>
-          <span className="truncate" title={node.label}>
-            {node.label}
-          </span>
-        </span>
-      );
-    },
-    [props.isDirectory],
-  );
 
   const createAtSelected = (kind: "file" | "folder") => {
     const parent = "user";
@@ -254,12 +179,12 @@ export function FileTreeView(props: FileTreeViewProps) {
           <Feedback icon={<Loader2 className="animate-spin" />} text={t("tree.loading")} />
         ) : props.normalizedSearch ? (
           props.hasSearchResults ? (
-            <FileTreeSections {...props} renderActions={renderActions} renderLabel={renderLabel} />
+            <FileTreeSections {...props} />
           ) : (
             <Feedback icon={<Search />} text={t("fileTree.noSearchResults")} />
           )
         ) : (
-          <FileTreeSections {...props} renderActions={renderActions} renderLabel={renderLabel} />
+          <FileTreeSections {...props} />
         )}
       </div>
 
@@ -280,22 +205,8 @@ export function FileTreeView(props: FileTreeViewProps) {
 const FILE_TREE_WORKSPACE_MIN_HEIGHT = "112px";
 const FILE_TREE_USER_MIN_HEIGHT = "68px";
 
-function FileTreeSections({
-  renderActions,
-  renderLabel,
-  ...props
-}: FileTreeViewProps & {
-  renderActions: (node: TreeNodeData) => ReactNode;
-  renderLabel: (node: TreeNodeData, state: NodeState) => ReactNode;
-}) {
+function FileTreeSections(props: FileTreeViewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  const commonTreeProps = {
-    defaultExpandedIds: props.expandedIds,
-    onSelect: props.onSelect,
-    onToggle: props.onToggle,
-    renderActions,
-    renderLabel,
-  };
 
   return (
     <ResizablePanelGroup orientation="vertical" className="file-tree-sections-resizable">
@@ -304,10 +215,10 @@ function FileTreeSections({
           <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
           <div className="file-tree-section-scroll">
             {props.showTree && props.workspaceHasNodes ? (
-              <Tree
+              <ArboristFileTree
                 key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
-                getChildren={props.getWorkspaceChildren}
-                {...commonTreeProps}
+                data={props.workspaceNodes}
+                {...props}
               />
             ) : (
               <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
@@ -324,10 +235,10 @@ function FileTreeSections({
           </div>
           <div className="file-tree-section-scroll">
             {props.showTree && props.userHasNodes ? (
-              <Tree
+              <ArboristFileTree
                 key={`user:${props.treeVersion}:${props.normalizedSearch}`}
-                getChildren={props.getUserChildren}
-                {...commonTreeProps}
+                data={props.userNodes}
+                {...props}
               />
             ) : (
               <Feedback icon={<Folder />} text={t("fileTree.userEmptyState")} />
@@ -336,6 +247,151 @@ function FileTreeSections({
         </section>
       </ResizablePanel>
     </ResizablePanelGroup>
+  );
+}
+
+function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileTreeViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  const initialOpenState = useMemo(
+    () => Object.fromEntries(props.expandedIds.map((id) => [id, true])),
+    [props.expandedIds],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const updateHeight = () => setHeight(container.clientHeight);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const Node = useCallback(
+    (rendererProps: NodeRendererProps<ParsedFileNode>) => <FileTreeNode {...rendererProps} viewProps={props} />,
+    [props],
+  );
+
+  return (
+    <div ref={containerRef} className="file-tree-arborist">
+      {height > 0 && (
+        <ArboristTree
+          data={data}
+          idAccessor="path"
+          childrenAccessor="children"
+          initialOpenState={initialOpenState}
+          openByDefault={false}
+          disableDrag
+          disableDrop
+          disableEdit
+          disableMultiSelection
+          rowHeight={32}
+          indent={12}
+          overscanCount={8}
+          width="100%"
+          height={height}
+          aria-label="File tree"
+        >
+          {Node}
+        </ArboristTree>
+      )}
+    </div>
+  );
+}
+
+function FileTreeNode({
+  node,
+  style,
+  dragHandle,
+  viewProps: props,
+}: NodeRendererProps<ParsedFileNode> & { viewProps: FileTreeViewProps }) {
+  const { t } = useTranslation(NS.COMPONENTS);
+  const data = node.data;
+  const handleSelect = () => {
+    node.select();
+    props.onSelect(data);
+    if (data.isDir) {
+      const expanded = !node.isOpen;
+      node.toggle();
+      props.onToggle(data.path, expanded);
+    }
+  };
+  const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const expanded = !node.isOpen;
+    node.toggle();
+    props.onToggle(data.path, expanded);
+  };
+
+  return (
+    <div
+      ref={dragHandle}
+      style={{ ...style, paddingLeft: node.level * 12 + 8 }}
+      className={`file-tree-arborist-row group${node.isSelected ? " is-selected" : ""}`}
+      data-tree-item
+      data-node-id={data.path}
+      onClick={handleSelect}
+    >
+      <button
+        type="button"
+        className="file-tree-arborist-toggle"
+        aria-label={data.name}
+        onClick={data.isDir ? handleToggle : undefined}
+      >
+        {data.isDir ? (
+          node.isOpen ? (
+            <FolderOpen aria-hidden />
+          ) : (
+            <Folder aria-hidden />
+          )
+        ) : (
+          <span className="file-tree-arborist-icon">
+            <FileTypeIcon filename={data.name} />
+          </span>
+        )}
+      </button>
+      <span className="file-tree-arborist-name" title={data.name}>
+        {data.name}
+      </span>
+      <span data-slot="tree-item-actions" className="file-tree-arborist-actions">
+        {data.isDir && (
+          <button
+            type="button"
+            className="file-tree-row-action"
+            title={t("fileTree.newFile")}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onNewFile(data.path);
+            }}
+          >
+            <FilePlus2 aria-hidden />
+          </button>
+        )}
+        <button
+          type="button"
+          className="file-tree-row-action"
+          title={t("fileTree.refresh")}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onRefresh();
+          }}
+        >
+          <RefreshCw aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="file-tree-row-action file-tree-row-action--delete"
+          title={t("fileTree.contextMenu.delete")}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onDeleteRequest(data.path, data.name);
+          }}
+        >
+          <Trash2 aria-hidden />
+        </button>
+      </span>
+    </div>
   );
 }
 
