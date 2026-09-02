@@ -8,6 +8,11 @@ import "./chat-navigation-aids.css";
 const PROMPT_JUMP_CLASS = "chat-prompt-jump-index";
 // 过多刻度会把导航误读成贯穿整屏的时间轴；保留首尾的均匀采样即可支持长会话定位。
 const MAX_VISIBLE_PROMPT_JUMPS = 14;
+const SYSTEM_REMINDER_PREFIX = "<system-reminder>";
+
+function isSystemReminderPrompt(entry: UserMessageEntry): boolean {
+  return entry.content.trimStart().startsWith(SYSTEM_REMINDER_PREFIX);
+}
 
 interface VisiblePromptJump {
   entry: UserMessageEntry;
@@ -41,8 +46,9 @@ interface PromptPreview {
 export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const railRef = useRef<HTMLElement>(null);
-  const visiblePrompts = useMemo(() => samplePromptJumps(entries), [entries]);
-  const [activeId, setActiveId] = useState(entries[0]?.id ?? "");
+  const promptEntries = useMemo(() => entries.filter((entry) => !isSystemReminderPrompt(entry)), [entries]);
+  const visiblePrompts = useMemo(() => samplePromptJumps(promptEntries), [promptEntries]);
+  const [activeId, setActiveId] = useState(promptEntries[0]?.id ?? "");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
 
   useEffect(() => {
@@ -102,7 +108,7 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
     };
   }, [visiblePrompts]);
 
-  if (entries.length < 2) return null;
+  if (promptEntries.length < 2) return null;
   return (
     <>
       <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("promptJump.title")}>
@@ -118,7 +124,7 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
                   className={`${PROMPT_JUMP_CLASS}__item${isActive ? " is-active" : ""}`}
                   aria-controls={`chat-entry-${entry.id}`}
                   aria-current={isActive ? "location" : undefined}
-                  aria-label={`${t("promptJump.title")} ${sourceIndex + 1}/${entries.length}: ${displaySummary}`}
+                  aria-label={`${t("promptJump.title")} ${sourceIndex + 1}/${promptEntries.length}: ${displaySummary}`}
                   onClick={() => {
                     document
                       .getElementById(`chat-entry-${entry.id}`)
@@ -151,7 +157,7 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
             aria-hidden="true"
           >
             <small>
-              {preview.sourceIndex + 1}/{entries.length}
+              {preview.sourceIndex + 1}/{promptEntries.length}
             </small>
             <span>{preview.entry.content.replace(/\s+/g, " ").trim() || t("promptJump.untitled")}</span>
           </span>,
