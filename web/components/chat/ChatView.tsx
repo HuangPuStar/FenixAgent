@@ -165,11 +165,11 @@ function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): strin
   const { entry } = item;
   // 用户消息前后大留白 — Claude.ai 式宽松间距
   if (entry?.type === "user_message") {
-    return "chat-entry chat-entry--user pt-10 pb-3";
+    return "chat-entry chat-entry--user py-3";
   }
   // 助手消息 — 工具调用紧贴，否则多留白
   if (entry?.type === "assistant_message") {
-    return "chat-entry chat-entry--assistant pt-3 pb-6";
+    return "chat-entry chat-entry--assistant py-3";
   }
   return "chat-entry py-2";
 }
