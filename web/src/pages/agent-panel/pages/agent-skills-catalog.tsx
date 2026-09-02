@@ -88,7 +88,7 @@ function getSkillDisplayName(skill: SkillInfo): {
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const { t } = useTranslation(NS.SKILLS);
   const filtered = filterSkills(props.skills, props.query, props.scope);
-  const { organization: organizationCount, shared: sharedCount } = countSkillsByScope(props.skills);
+  const { organization: organizationCount, public: publicCount } = countSkillsByScope(props.skills);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<SkillDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -187,7 +187,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
             [
               ["all", t("scope.all"), props.skills.length],
               ["organization", t("scope.organization"), organizationCount],
-              ["shared", t("scope.shared"), sharedCount],
+              ["public", t("scope.public"), publicCount],
             ] as const
           ).map(([value, label, count]) => (
             <button
@@ -265,7 +265,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                             {display.namespace}
                           </span>
                         ) : null}
-                        {external ? (
+                        {external && !publiclyReadable ? (
                           <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
                             {t("scope.shared")}
                           </span>

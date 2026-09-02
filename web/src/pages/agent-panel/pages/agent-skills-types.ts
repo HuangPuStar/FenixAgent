@@ -8,4 +8,4 @@ export type SkillInfo = {
 };
 
 export type SkillCreateMode = "text" | "upload";
-export type SkillCatalogScope = "all" | "organization" | "shared";
+export type SkillCatalogScope = "all" | "organization" | "public";

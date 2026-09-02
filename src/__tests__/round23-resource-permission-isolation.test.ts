@@ -107,11 +107,11 @@ describe("resource-permission 组织隔离与授权边界", () => {
     ).toBeUndefined();
   });
 
-  // 外部资源不泄露源组织的公开读取配置。
-  test("外部资源不暴露公开读取状态", () => {
+  // 已确认的外部公开授权状态可安全暴露，用于区分公开资源与组织定向共享资源。
+  test("外部资源保留已确认的公开读取状态", () => {
     expect(
       buildResourceAccess(ctx, "skill", { id: "skill-1", organizationId: "org-b" }, true).publicReadable,
-    ).toBeUndefined();
+    ).toBeTrue();
   });
 
   // 资源键必须保留源组织和资源标识。

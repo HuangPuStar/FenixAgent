@@ -9,7 +9,7 @@ import {
   getProviderIconModelId,
   getProviderKey,
   getProviderResourceBadgeKey,
-  getProviderScope,
+  providerMatchesScope,
   supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
@@ -96,22 +96,22 @@ describe("provider model resource access flow", () => {
     expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
   });
 
-  // Provider API 未提供个人/平台 scope 时，只显示可由 ownership 证明的本组织与共享范围。
-  test("derives only provable provider scopes", () => {
-    expect(getProviderScope(internalProvider)).toBe("organization");
-    expect(getProviderScope(externalProvider)).toBe("shared");
-  });
-
-  // 本组织公开资源仍属于本组织；外部资源只能证明为公开，不能推断为全局公开。
-  test("keeps ownership scope separate from public readability", () => {
+  // 本组织与公开是独立且可重叠的筛选维度。
+  test("matches provider organization and public scopes independently", () => {
     const publicInternalProvider: ProviderInfo = {
       ...internalProvider,
       resourceAccess: { ...internalProvider.resourceAccess!, publicReadable: true },
     };
+    const publicExternalProvider: ProviderInfo = {
+      ...externalProvider,
+      resourceAccess: { ...externalProvider.resourceAccess!, publicReadable: true },
+    };
 
-    expect(getProviderScope(publicInternalProvider)).toBe("organization");
-    expect(getProviderScope(externalProvider)).toBe("shared");
-    expect(externalProvider.resourceAccess?.publicReadable).toBeUndefined();
+    expect(providerMatchesScope(internalProvider, "organization")).toBe(true);
+    expect(providerMatchesScope(externalProvider, "organization")).toBe(false);
+    expect(providerMatchesScope(publicInternalProvider, "public")).toBe(true);
+    expect(providerMatchesScope(publicExternalProvider, "public")).toBe(true);
+    expect(providerMatchesScope(externalProvider, "public")).toBe(false);
   });
 
   // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。

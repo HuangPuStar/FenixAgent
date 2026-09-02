@@ -1,6 +1,6 @@
 import type { ProviderInfo, ProviderModel } from "../../../types/config";
 
-export type ProviderScope = "all" | "organization" | "shared";
+export type ProviderScope = "all" | "organization" | "public";
 
 /**
  * Provider 相关的纯工具函数。
@@ -37,12 +37,11 @@ export function getProviderIconModelId(provider: ProviderInfo, models: ProviderM
   return models[0]?.id ?? provider.id;
 }
 
-/**
- * Provider 当前只具备组织级资源边界。内部资源归入本组织，外部资源只能证明为公开；
- * 在后端增加明确 scope 前，不把跨组织资源猜测成平台公开资源。
- */
-export function getProviderScope(provider: ProviderInfo): Exclude<ProviderScope, "all"> {
-  return provider.resourceAccess?.ownership === "external" ? "shared" : "organization";
+/** 返回 Provider 是否属于指定目录范围；本组织与公开是可重叠维度。 */
+export function providerMatchesScope(provider: ProviderInfo, scope: ProviderScope): boolean {
+  if (scope === "all") return true;
+  if (scope === "organization") return provider.resourceAccess?.ownership !== "external";
+  return provider.resourceAccess?.publicReadable === true;
 }
 
 /** 模型的思考开关来自真实 options.thinking.enabled，不从模型名称推测。 */

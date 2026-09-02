@@ -30,11 +30,11 @@ import {
   getProviderColor,
   getProviderIconModelId,
   getProviderKey,
-  getProviderScope,
   type ProviderScope,
+  providerMatchesScope,
 } from "./agent-models-utils";
 
-const SCOPES: ProviderScope[] = ["all", "organization", "shared"];
+const SCOPES: ProviderScope[] = ["all", "organization", "public"];
 
 interface ModelsCatalogProps {
   providers: ProviderInfo[];
@@ -73,10 +73,10 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
       result[scope] =
         scope === "all"
           ? props.allProviders.length
-          : props.allProviders.filter((item) => getProviderScope(item) === scope).length;
+          : props.allProviders.filter((item) => providerMatchesScope(item, scope)).length;
       return result;
     },
-    { all: 0, organization: 0, shared: 0 },
+    { all: 0, organization: 0, public: 0 },
   );
   return (
     <AppPage className="agent-models-page">
@@ -192,7 +192,9 @@ function ProviderIndex({
                     {organizationName} · {t("providerIndex.models", { count: provider.modelCount })}
                   </small>
                 </span>
-                {external ? <span className="models-provider-scope">{t("scope.shared")}</span> : null}
+                {external && !publiclyReadable ? (
+                  <span className="models-provider-scope">{t("scope.shared")}</span>
+                ) : null}
                 {publiclyReadable ? <span className="models-provider-scope">{t("scope.public")}</span> : null}
                 <ChevronRight className="models-provider-arrow" />
               </button>
@@ -238,7 +240,9 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
                 {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
               </small>
-              {external ? <span className="models-provider-public-badge">{t("scope.shared")}</span> : null}
+              {external && !publiclyReadable ? (
+                <span className="models-provider-public-badge">{t("scope.shared")}</span>
+              ) : null}
               {publiclyReadable ? <span className="models-provider-public-badge">{t("scope.public")}</span> : null}
             </div>
           </div>

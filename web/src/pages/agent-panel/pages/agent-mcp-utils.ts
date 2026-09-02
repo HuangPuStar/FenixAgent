@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { getMcpDisplayName } from "../../../lib/mcp-resource-access";
 import type { McpServerConfig, McpServerInfo } from "../../../types/config";
 
-export type McpCatalogScope = "all" | "organization" | "shared";
+export type McpCatalogScope = "all" | "organization" | "public";
 export type KeyValueEntry = { key: string; value: string };
 export type McpImportEntry = { name: string; config: McpServerConfig };
 export type McpImportErrorKey =
@@ -181,13 +181,12 @@ export function buildMcpPayload(input: {
   };
 }
 
-/** 依据真实资源归属和查询条件筛选插件。 */
+/** 依据真实资源归属、公开授权状态和查询条件筛选插件。 */
 export function filterMcpServers(servers: McpServerInfo[], query: string, scope: McpCatalogScope): McpServerInfo[] {
   const keyword = query.trim().toLowerCase();
   return servers.filter((server) => {
-    const shared = server.resourceAccess?.ownership === "external";
-    if (scope === "organization" && shared) return false;
-    if (scope === "shared" && !shared) return false;
+    if (scope === "organization" && server.resourceAccess?.ownership === "external") return false;
+    if (scope === "public" && server.resourceAccess?.publicReadable !== true) return false;
     if (!keyword) return true;
     return [getMcpDisplayName(server), server.name, server.summary, server.type]
       .filter(Boolean)
@@ -197,10 +196,12 @@ export function filterMcpServers(servers: McpServerInfo[], query: string, scope:
   });
 }
 
-/** 返回插件目录的真实归属计数。 */
+/** 返回插件目录中本组织与明确公开资源的数量。 */
 export function countMcpScopes(servers: McpServerInfo[]) {
-  const shared = servers.filter((server) => server.resourceAccess?.ownership === "external").length;
-  return { organization: servers.length - shared, shared };
+  return {
+    organization: servers.filter((server) => server.resourceAccess?.ownership !== "external").length,
+    public: servers.filter((server) => server.resourceAccess?.publicReadable === true).length,
+  };
 }
 
 function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {

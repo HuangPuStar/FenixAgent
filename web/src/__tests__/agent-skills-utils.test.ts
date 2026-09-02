@@ -54,15 +54,8 @@ describe("getSkillFormValidationError", () => {
 });
 
 describe("skill catalog filtering", () => {
-  // 归属筛选只能依据后端明确返回的 internal/external，不推测个人或平台范围。
-  test("filters organization and shared skills by proven ownership", () => {
-    expect(filterSkills(skills, "", "organization").map((skill) => skill.name)).toEqual(["research"]);
-    expect(filterSkills(skills, "", "shared").map((skill) => skill.name)).toEqual(["review"]);
-    expect(countSkillsByScope(skills)).toEqual({ organization: 1, shared: 1 });
-  });
-
-  // 本组织公开资源仍属于本组织；外部资源只能证明为公开，不能推断为全局公开。
-  test("keeps ownership scope separate from public readability", () => {
+  // 本组织筛选依据归属；公开筛选仅包含后端明确标记 publicReadable 的资源。
+  test("filters organization and public skills by their distinct access fields", () => {
     const publicInternal = {
       ...skills[0],
       name: "public-research",
@@ -79,8 +72,14 @@ describe("skill catalog filtering", () => {
       "research",
       "public-research",
     ]);
-    expect(filterSkills(catalog, "", "shared").map((skill) => skill.name)).toEqual(["review"]);
-    expect(countSkillsByScope(catalog)).toEqual({ organization: 2, shared: 1 });
+    expect(filterSkills(catalog, "", "public").map((skill) => skill.name)).toEqual(["public-research"]);
+    expect(countSkillsByScope(catalog)).toEqual({ organization: 2, public: 1 });
+  });
+
+  // 外部可读资源不等于公开资源，缺少 publicReadable 标记时不能进入公开筛选。
+  test("does not treat every external skill as public", () => {
+    expect(filterSkills(skills, "", "public")).toEqual([]);
+    expect(countSkillsByScope(skills)).toEqual({ organization: 1, public: 0 });
   });
 
   // 搜索同时覆盖技能名、说明与来源组织展示名。

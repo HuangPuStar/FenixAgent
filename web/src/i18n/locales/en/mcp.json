@@ -15,7 +15,8 @@
     "label": "Plugin resource scope",
     "all": "All",
     "organization": "Organization",
-    "shared": "Public"
+    "shared": "Shared with me",
+    "public": "Public"
   },
   "directory": {
     "title": "Plugin directory",

@@ -9,7 +9,7 @@ import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
 import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog, ProviderEditorDialog } from "./agent-models-dialogs";
 import type { ModelDialogTarget, ProviderDialogTarget } from "./agent-models-types";
-import { getProviderKey, getProviderScope, type ProviderScope } from "./agent-models-utils";
+import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agent-models-utils";
 import "./agent-models.css";
 import "./agent-models-dialogs.css";
 import "./agent-models-states.css";
@@ -31,7 +31,7 @@ export function AgentModelsPage() {
   const filteredProviders = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return providers.filter((provider) => {
-      if (scope !== "all" && getProviderScope(provider) !== scope) return false;
+      if (!providerMatchesScope(provider, scope)) return false;
       if (!keyword) return true;
       const models = modelsByProvider[getProviderKey(provider)] ?? [];
       return [provider.id, provider.name, provider.protocol, ...models.flatMap((model) => [model.id, model.name])]

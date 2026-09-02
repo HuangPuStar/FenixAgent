@@ -128,11 +128,30 @@ describe("MCP editor conversion", () => {
 });
 
 describe("plugin marketplace filters", () => {
-  // 资源范围只按后端 ownership 切分，不制造个人、平台或市场幻影字段。
-  test("filters proven organization and shared scopes", () => {
-    expect(filterMcpServers(servers, "", "organization").map((server) => server.name)).toEqual(["filesystem"]);
-    expect(filterMcpServers(servers, "", "shared").map((server) => server.name)).toEqual(["browser-control"]);
-    expect(countMcpScopes(servers)).toEqual({ organization: 1, shared: 1 });
+  // 本组织与公开筛选分别依据 ownership 和 publicReadable。
+  test("filters organization and public scopes independently", () => {
+    const publicInternal = {
+      ...servers[0],
+      resourceAccess: { ...servers[0].resourceAccess!, publicReadable: true },
+    };
+    const publicExternal = {
+      ...servers[1],
+      resourceAccess: { ...servers[1].resourceAccess!, publicReadable: true },
+    };
+    const catalog = [publicInternal, publicExternal];
+
+    expect(filterMcpServers(catalog, "", "organization").map((server) => server.name)).toEqual(["filesystem"]);
+    expect(filterMcpServers(catalog, "", "public").map((server) => server.name)).toEqual([
+      "filesystem",
+      "browser-control",
+    ]);
+    expect(countMcpScopes(catalog)).toEqual({ organization: 1, public: 2 });
+  });
+
+  // 外部定向共享但未公开的 MCP 不应进入公开筛选。
+  test("does not treat every external MCP as public", () => {
+    expect(filterMcpServers(servers, "", "public")).toEqual([]);
+    expect(countMcpScopes(servers)).toEqual({ organization: 1, public: 0 });
   });
 
   // 搜索应覆盖名称、说明与传输类型。

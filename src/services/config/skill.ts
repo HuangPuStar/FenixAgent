@@ -5,6 +5,7 @@ import { skill } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import {
   assertInternalWritable,
+  buildExternalPublicReadMap,
   canReadResource,
   decorateResourceAccess,
   listReadableResourceRefs,
@@ -29,14 +30,20 @@ function parseResourceKey(resourceKey: string) {
   };
 }
 
-async function listExternalSkills(ctx: AuthContext): Promise<SkillConfigRow[]> {
+async function listExternalSkills(ctx: AuthContext): Promise<{
+  rows: SkillConfigRow[];
+  publicReadMap: Map<string, boolean>;
+}> {
   const refs = await listReadableResourceRefs(ctx, "skill");
   const ids = refs.map((ref) => ref.resourceId);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { rows: [], publicReadMap: new Map() };
 
   const rows = (await db.select().from(skill).where(inArray(skill.id, ids))) as SkillConfigRow[];
   const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
-  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+  return {
+    rows: rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`)),
+    publicReadMap: buildExternalPublicReadMap(refs),
+  };
 }
 
 export async function listSkills(ctx: AuthContext): Promise<SkillConfigRowWithAccess[]> {
@@ -46,7 +53,7 @@ export async function listSkills(ctx: AuthContext): Promise<SkillConfigRowWithAc
     .where(eq(skill.organizationId, ctx.organizationId))
     .orderBy(desc(skill.createdAt))) as SkillConfigRow[];
   const external = await listExternalSkills(ctx);
-  return decorateResourceAccess(ctx, "skill", [...internal, ...external]);
+  return decorateResourceAccess(ctx, "skill", [...internal, ...external.rows], external.publicReadMap);
 }
 
 export async function getSkill(ctx: AuthContext, name: string): Promise<SkillConfigRowWithAccess | null> {
@@ -61,11 +68,12 @@ export async function getSkill(ctx: AuthContext, name: string): Promise<SkillCon
     return decorated;
   }
 
-  const external = (await listExternalSkills(ctx)).find((row) => row.name === name);
-  if (!external) return null;
-  const canRead = await canReadResource(ctx, "skill", external.id, external.organizationId);
+  const external = await listExternalSkills(ctx);
+  const externalRow = external.rows.find((row) => row.name === name);
+  if (!externalRow) return null;
+  const canRead = await canReadResource(ctx, "skill", externalRow.id, externalRow.organizationId);
   if (!canRead) return null;
-  const [decorated] = await decorateResourceAccess(ctx, "skill", [external]);
+  const [decorated] = await decorateResourceAccess(ctx, "skill", [externalRow], external.publicReadMap);
   return decorated;
 }
 

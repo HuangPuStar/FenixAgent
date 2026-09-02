@@ -12,23 +12,24 @@ export function getSkillFormValidationError(name: string, content: string): Skil
   return null;
 }
 
-/** 按后端可证明的组织归属与搜索词筛选技能，不把外部定向共享猜测成全局公开。 */
+/** 按组织归属、公开读取权限与搜索词筛选技能。 */
 export function filterSkills(skills: SkillInfo[], query: string, scope: SkillCatalogScope): SkillInfo[] {
   const keyword = query.trim().toLowerCase();
   return skills.filter((skill) => {
-    const external = skill.resourceAccess?.ownership === "external";
-    if (scope === "organization" && external) return false;
-    if (scope === "shared" && !external) return false;
+    if (scope === "organization" && skill.resourceAccess?.ownership === "external") return false;
+    if (scope === "public" && skill.resourceAccess?.publicReadable !== true) return false;
     if (!keyword) return true;
     return [skill.name, skill.description, getSkillOptionLabel(skill)].join(" ").toLowerCase().includes(keyword);
   });
 }
 
-/** 返回技能目录中真实可判定的本组织与共享资源数量。 */
+/** 返回技能目录中本组织与明确公开资源的数量。 */
 export function countSkillsByScope(skills: SkillInfo[]): {
   organization: number;
-  shared: number;
+  public: number;
 } {
-  const organization = skills.filter((skill) => skill.resourceAccess?.ownership !== "external").length;
-  return { organization, shared: skills.length - organization };
+  return {
+    organization: skills.filter((skill) => skill.resourceAccess?.ownership !== "external").length,
+    public: skills.filter((skill) => skill.resourceAccess?.publicReadable === true).length,
+  };
 }

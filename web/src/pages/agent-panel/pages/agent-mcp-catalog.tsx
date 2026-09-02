@@ -107,7 +107,7 @@ export function AgentMcpCatalog(props: Props) {
             [
               ["all", t("scope.all"), props.servers.length],
               ["organization", t("scope.organization"), counts.organization],
-              ["shared", t("scope.shared"), counts.shared],
+              ["public", t("scope.public"), counts.public],
             ] as const
           ).map(([value, label, count]) => (
             <button
@@ -153,7 +153,7 @@ export function AgentMcpCatalog(props: Props) {
                   const key = getMcpKey(server);
                   const active = key === getMcpKey(selectedServer);
                   const external = server.resourceAccess?.ownership === "external";
-                  const publiclyReadable = external || server.resourceAccess?.publicReadable === true;
+                  const publiclyReadable = server.resourceAccess?.publicReadable === true;
                   const Icon = getMcpIcon(server);
                   return (
                     <button
@@ -176,7 +176,8 @@ export function AgentMcpCatalog(props: Props) {
                           {server.resourceAccess?.sourceOrganizationName ??
                             t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>
-                        {publiclyReadable ? <b>{t("scope.shared")}</b> : null}
+                        {publiclyReadable ? <b>{t("scope.public")}</b> : null}
+                        {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
                       </span>
                       <ChevronRight />
                     </button>
@@ -197,7 +198,7 @@ function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Prop
   const { t } = useTranslation(NS.MCP);
   const writable = canWriteMcp(server);
   const external = server.resourceAccess?.ownership === "external";
-  const publiclyReadable = external || server.resourceAccess?.publicReadable === true;
+  const publiclyReadable = server.resourceAccess?.publicReadable === true;
   const Icon = getMcpIcon(server);
   return (
     <AgentMasterDetailHeader className="mcp-detail-header">
@@ -207,7 +208,8 @@ function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Prop
           <h2>{getMcpDisplayName(server)}</h2>
           <div className="mcp-detail-meta">
             <span>{server.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</span>
-            {publiclyReadable ? <b>{t("scope.shared")}</b> : null}
+            {publiclyReadable ? <b>{t("scope.public")}</b> : null}
+            {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
           </div>
         </div>
       </div>
