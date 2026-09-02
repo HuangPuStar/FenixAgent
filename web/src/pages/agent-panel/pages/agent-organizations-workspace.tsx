@@ -33,6 +33,17 @@ function RoleBadge({ role }: { role: string }) {
   return <span className={`org-role-badge is-${role}`}>{t(`roles.${role}`, role)}</span>;
 }
 
+/** 完整展示组织 ID，并提供明确的复制操作名称。 */
+export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => void }) {
+  const { t } = useTranslation("orgs");
+  return (
+    <button type="button" onClick={onCopy} aria-label={t("copyId")} title={t("copyId")}>
+      <code>{id}</code>
+      <Copy className="size-3.5" />
+    </button>
+  );
+}
+
 function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }) {
   const { t } = useTranslation("orgs");
   return (
@@ -254,10 +265,7 @@ function OrganizationDetail({
           )}
           <div className="org-detail-meta">
             <span>{props.detail.slug}</span>
-            <button type="button" onClick={props.onCopyId}>
-              <code>{props.detail.id.slice(0, 12)}</code>
-              <Copy className="size-3.5" />
-            </button>
+            <OrganizationIdCopy id={props.detail.id} onCopy={props.onCopyId} />
             {props.copiedId ? <em>{t("copied")}</em> : null}
           </div>
         </div>

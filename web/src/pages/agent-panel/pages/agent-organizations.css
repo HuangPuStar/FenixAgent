@@ -161,21 +161,34 @@
   font-weight: 700;
   line-height: 1.25;
 }
+.org-detail-identity > div:last-child {
+  min-width: 0;
+}
 .org-detail-meta {
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   margin-top: 6px;
   color: #8a96aa;
   font-size: 12px;
 }
 .org-detail-meta button {
+  min-width: 0;
   gap: 5px;
   padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
+  text-align: left;
+}
+.org-detail-meta button:hover {
+  color: #2365cc;
 }
 .org-detail-meta code {
+  overflow-wrap: anywhere;
   font-size: 11px;
+}
+.org-detail-meta button svg {
+  flex: 0 0 auto;
 }
 .org-detail-meta em {
   color: #27916f;
