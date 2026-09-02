@@ -62,7 +62,7 @@ interface ChatComposerProps {
  *
  * 从 ChatInput 迁移全部输入逻辑（state/handlers/effects/图片处理/文件拖拽/slash 命令），
  * 重新设计为玻璃磨砂卡片 + 大 textarea 布局。底部元信息条包含：
- * SessionModeSelector / 模型名称 / token 统计 / 新会话 / 发送。
+ * 技能 / 附件 / token 统计 / 模型名称 / 会话模式 / 新会话 / 发送。
  */
 export function ChatComposer({
   onSubmit,

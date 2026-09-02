@@ -69,7 +69,7 @@ export function ComposerToolbar({
             disabled={disabled || isLoading}
             onClick={() => onCommandPanelOpenChange(!commandPanelOpen)}
           >
-            <Blocks /> {t("chatComposer.commandButton")} <small>{(commands?.length ?? 0) + mcpCount}</small>
+            <Blocks /> {t("chatComposer.skillButton")} <small>{(commands?.length ?? 0) + mcpCount}</small>
           </button>
         ) : null}
 
@@ -86,12 +86,14 @@ export function ComposerToolbar({
           <span>{t("chatComposer.fileButton")}</span>
         </button>
 
-        <ComposerContextMeter usage={contextUsage} />
         {modelName ? (
           <span className="chat-composer-model" title={modelName}>
             {modelName}
           </span>
         ) : null}
+        <ComposerContextMeter usage={contextUsage} />
+      </div>
+      <div className="chat-composer-meta-actions">
         {availableModes?.length ? (
           <SessionModeSelector
             modes={availableModes}
@@ -100,8 +102,6 @@ export function ComposerToolbar({
             readOnly
           />
         ) : null}
-      </div>
-      <div className="chat-composer-meta-actions">
         {showNewSession && onNewSession ? (
           <Button type="button" variant="ghost" size="sm" onClick={onNewSession} className="chat-composer-new-session">
             <Plus /> {t("chatComposer.newSession")}

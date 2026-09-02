@@ -54,11 +54,31 @@ describe("ChatComposer 服务端渲染", () => {
     expect(html).toContain('disabled=""');
   });
 
-  // 已选择模型应在输入框下方展示，帮助用户确认当前会话所用模型。
+  // 已选择模型应保留在输入框下方，帮助用户确认当前会话所用模型。
   test("渲染当前模型名称", () => {
     const html = renderComposer({ modelName: "Claude Test" });
 
     expect(html).toContain("Claude Test");
+    expect(html).toContain("chat-composer-model");
+  });
+
+  // 左侧信息依次展示模型与上下文，权限模式则位于右侧操作区。
+  test("上下文位于左侧信息末尾且权限模式位于右侧", () => {
+    const html = renderComposer({
+      modelName: "Claude Test",
+      contextUsage: { totalTokens: 12_300, contextWindow: 200_000 },
+      availableModes: [{ id: "bypass", name: "Bypass" }],
+      currentModeId: "bypass",
+    });
+    const modelIndex = html.indexOf("chat-composer-model");
+    const contextIndex = html.indexOf("chat-composer-context");
+    const actionsIndex = html.indexOf("chat-composer-meta-actions");
+
+    expect(modelIndex).toBeGreaterThan(-1);
+    expect(contextIndex).toBeGreaterThan(modelIndex);
+    expect(actionsIndex).toBeGreaterThan(contextIndex);
+    expect(html).toContain('<div class="chat-composer-meta-actions"><span class="chat-composer-security-policy"');
+    expect(html).toContain("Bypass");
   });
 
   // 可用 slash 命令和工作区存在时应提供真实能力与附件入口。
@@ -68,7 +88,7 @@ describe("ChatComposer 服务端渲染", () => {
       envId: "env-ssr",
     });
 
-    expect(html).toContain("chatComposer.commandButton");
+    expect(html).toContain("chatComposer.skillButton");
     expect(html).toContain("lucide-blocks");
     expect(html).toContain("lucide-paperclip");
   });

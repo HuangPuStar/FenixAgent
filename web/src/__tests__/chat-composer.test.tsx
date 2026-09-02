@@ -71,7 +71,7 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} commands={mockCommands} envId="env_test" />,
     );
-    expect(html).toContain("chatComposer.commandButton");
+    expect(html).toContain("chatComposer.skillButton");
     expect(html).toContain("chatComposer.attach");
   });
 
@@ -80,7 +80,7 @@ describe("ChatComposer", () => {
     const { ChatComposer } = await import("../../components/chat/ChatComposer");
     const mockCommands = [{ name: "review", description: "Code review" }];
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
-    expect(html).toContain("chatComposer.commandButton");
+    expect(html).toContain("chatComposer.skillButton");
     expect(html).toContain('aria-label="chatComposer.attach"');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="chatComposer\.attach"/);
   });
