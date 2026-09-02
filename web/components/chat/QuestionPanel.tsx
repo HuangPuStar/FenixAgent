@@ -135,23 +135,35 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
                 <ChevronRight />
               </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!allAnswered}
-              onClick={() => {
-                if (!allAnswered) return;
-                onRespond?.(
-                  question.questionId,
-                  question.questions.map((questionItem, index) => {
-                    const answers = selected[index] ?? [];
-                    return questionItem.multiSelect ? answers : (answers[0] ?? "");
-                  }),
-                );
-              }}
-            >
-              {t("askUser.submit")}
-            </Button>
+            <div className="flex items-center gap-2">
+              {(selected[questionIndex]?.length ?? 0) > 0 && questionIndex < question.questions.length - 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setQuestionIndex((index) => index + 1)}
+                >
+                  {t("askUser.next")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                disabled={!allAnswered}
+                onClick={() => {
+                  if (!allAnswered) return;
+                  onRespond?.(
+                    question.questionId,
+                    question.questions.map((questionItem, index) => {
+                      const answers = selected[index] ?? [];
+                      return questionItem.multiSelect ? answers : (answers[0] ?? "");
+                    }),
+                  );
+                }}
+              >
+                {t("askUser.submit")}
+              </Button>
+            </div>
           </footer>
         </div>
       )}

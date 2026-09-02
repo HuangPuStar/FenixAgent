@@ -193,6 +193,64 @@ describe("QuestionPanel", () => {
     act(() => root.unmount());
   });
 
+  // 选中当前题后显示文字“下一个”按钮；点击仅前进到下一题，不触发提交。
+  test("选中非末题后可通过下一个按钮前进且不提交", () => {
+    const container = documentRef.createElement("div");
+    const root: Root = createRoot(container as unknown as HTMLElement);
+    const responses: Array<{ questionId: string; answers: Array<string | string[]> }> = [];
+    const question = pendingQuestion("iqa_1", [
+      { question: "Topic?", options: ["programming", "math"] },
+      { question: "Difficulty?", options: ["easy", "hard"] },
+    ]);
+    act(() => {
+      root.render(
+        createElement(QuestionPanel, {
+          questions: [question],
+          onRespond: (questionId, answers) => responses.push({ questionId, answers }),
+        }),
+      );
+    });
+
+    expect(
+      Array.from(container.querySelectorAll("button")).filter((button) => button.textContent === "askUser.next"),
+    ).toHaveLength(0);
+    const programmingButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("programming"),
+    );
+    act(() => programmingButton!.click());
+
+    const nextButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "askUser.next",
+    );
+    expect(nextButton).toBeDefined();
+    act(() => nextButton!.click());
+    expect(container.textContent).toContain("Difficulty?");
+    expect(responses).toEqual([]);
+    act(() => root.unmount());
+  });
+
+  // 最后一题选中后不显示“下一个”，只保留“提交”作为完成整个问卷的动作。
+  test("最后一题不显示下一个按钮以避免与提交语义冲突", () => {
+    const container = documentRef.createElement("div");
+    const root: Root = createRoot(container as unknown as HTMLElement);
+    const question = pendingQuestion("iqa_1", [{ question: "Deploy?", options: ["yes", "no"] }]);
+    act(() => {
+      root.render(createElement(QuestionPanel, { questions: [question], onRespond: () => {} }));
+    });
+
+    const yesButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("yes"),
+    );
+    act(() => yesButton!.click());
+    expect(
+      Array.from(container.querySelectorAll("button")).filter((button) => button.textContent === "askUser.next"),
+    ).toHaveLength(0);
+    expect(
+      Array.from(container.querySelectorAll("button")).some((button) => button.textContent === "askUser.submit"),
+    ).toBe(true);
+    act(() => root.unmount());
+  });
+
   // 多问题独立选中：每个问题项各自选中互不干扰，全部选中后提交合并回传（按问题顺序）
   test("多问题独立选中，全部选中后提交合并回传", () => {
     const container = documentRef.createElement("div");
