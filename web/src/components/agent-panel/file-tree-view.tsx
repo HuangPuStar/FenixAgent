@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { NodeRendererProps } from "react-arborist";
+import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -56,14 +56,14 @@ interface FileTreeViewProps {
   onToggle: (nodeId: string, expanded: boolean) => void;
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
-  onUploadClick: () => void;
-  onFolderUploadClick: () => void;
+  onUploadClick: (targetDir?: string) => void;
+  onFolderUploadClick: (targetDir?: string) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>, targetDir?: string) => void;
   onFileInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onFolderInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDragEnter: (event: DragEvent<HTMLDivElement>) => void;
   onDragLeave: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
   isDirectory: (path: string) => boolean;
   onOpen: (path: string) => void;
@@ -112,7 +112,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
           <button
             type="button"
-            onClick={props.onUploadClick}
+            onClick={() => props.onUploadClick()}
             disabled={props.uploading || !props.envId}
             title={t("fileTree.upload")}
           >
@@ -120,7 +120,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
           <button
             type="button"
-            onClick={props.onFolderUploadClick}
+            onClick={() => props.onFolderUploadClick()}
             disabled={props.uploading || !props.envId}
             title={t("fileTree.uploadFolder")}
           >
@@ -161,7 +161,13 @@ export function FileTreeView(props: FileTreeViewProps) {
         onDragOver={props.onDragOver}
         onDragEnter={props.onDragEnter}
         onDragLeave={props.onDragLeave}
-        onDrop={props.onDrop}
+        onDrop={(event) => {
+          const node = (event.target as HTMLElement).closest<HTMLElement>("[data-node-id][data-is-dir='true']");
+          const target =
+            node?.dataset.nodeId ??
+            (event.target as HTMLElement).closest<HTMLElement>("[data-upload-target]")?.dataset.uploadTarget;
+          props.onDrop(event, target);
+        }}
         onContextMenu={props.onContextMenu}
       >
         {props.dragOver && <div className="file-tree-drop-overlay">{t("fileTree.dropToUpload")}</div>}
@@ -211,7 +217,7 @@ function FileTreeSections(props: FileTreeViewProps) {
   return (
     <ResizablePanelGroup orientation="vertical" className="file-tree-sections-resizable">
       <ResizablePanel defaultSize="60%" minSize={FILE_TREE_WORKSPACE_MIN_HEIGHT}>
-        <section className="file-tree-section file-tree-section--workspace">
+        <section data-upload-target="" className="file-tree-section file-tree-section--workspace">
           <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
           <div className="file-tree-section-scroll">
             {props.showTree && props.workspaceHasNodes ? (
@@ -228,10 +234,20 @@ function FileTreeSections(props: FileTreeViewProps) {
       </ResizablePanel>
       <ResizableHandle className="file-tree-sections-divider" />
       <ResizablePanel defaultSize="40%" minSize={FILE_TREE_USER_MIN_HEIGHT}>
-        <section className="file-tree-section file-tree-section--user">
+        <section data-upload-target="user" className="file-tree-section file-tree-section--user">
           <div className="file-tree-user-heading">
             <UserRound aria-hidden />
             <span>{t("fileTree.user")}</span>
+            <button
+              type="button"
+              className="file-tree-section-upload"
+              title={t("fileTree.upload")}
+              aria-label={t("fileTree.upload")}
+              onClick={() => props.onUploadClick("user")}
+              disabled={props.uploading || !props.envId}
+            >
+              <Upload aria-hidden />
+            </button>
           </div>
           <div className="file-tree-section-scroll">
             {props.showTree && props.userHasNodes ? (
@@ -252,11 +268,30 @@ function FileTreeSections(props: FileTreeViewProps) {
 
 function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileTreeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<TreeApi<ParsedFileNode> | undefined>(undefined);
   const [height, setHeight] = useState(0);
+  const [stickyFolder, setStickyFolder] = useState<ParsedFileNode | null>(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
   const initialOpenState = useMemo(
     () => Object.fromEntries(props.expandedIds.map((id) => [id, true])),
     [props.expandedIds],
   );
+
+  const updateStickyFolder = useCallback((scrollOffset = 0) => {
+    // scrollOffset 为 0 表示列表处于顶部，此时不应显示 sticky，也不能为 sticky 预留空白行。
+    if (scrollOffset <= 0) {
+      setStickyFolder(null);
+      return;
+    }
+    const visibleNodes = treeRef.current?.visibleNodes ?? [];
+    // Arborist 的 scrollOffset 与虚拟列表行索引直接对应，不再人为扣除 sticky 高度；sticky 是覆盖层，不占布局空间。
+    const firstVisibleIndex = Math.max(0, Math.floor(scrollOffset / 32));
+    const firstVisibleNode = visibleNodes.find((node) => (node.rowIndex ?? -1) >= firstVisibleIndex);
+    let folder = firstVisibleNode?.data.isDir ? firstVisibleNode : firstVisibleNode?.parent;
+    while (folder && !folder.data.isDir) folder = folder.parent;
+    setStickyFolder(folder?.data ?? null);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -268,16 +303,38 @@ function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileT
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (height > 0) updateStickyFolder();
+  }, [height, updateStickyFolder]);
+
+  const handleScroll = useCallback(
+    ({ scrollOffset }: { scrollOffset: number }) => {
+      requestAnimationFrame(() => updateStickyFolder(scrollOffset));
+    },
+    [updateStickyFolder],
+  );
+
+  // React Arborist 要求稳定的 renderer 引用；视图 props 变化时必须让节点读取最新操作回调。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: props 是每次渲染重建的视图契约，需按最新值更新 renderer。
   const Node = useCallback(
-    (rendererProps: NodeRendererProps<ParsedFileNode>) => <FileTreeNode {...rendererProps} viewProps={props} />,
-    [props],
+    (rendererProps: NodeRendererProps<ParsedFileNode>) => (
+      <FileTreeNode {...rendererProps} viewProps={propsRef.current} />
+    ),
+    [],
   );
 
   return (
     <div ref={containerRef} className="file-tree-arborist">
+      {stickyFolder && (
+        <div className="file-tree-arborist-sticky-folder" aria-hidden>
+          <FolderOpen />
+          <span>{stickyFolder.path}</span>
+        </div>
+      )}
       {height > 0 && (
         <ArboristTree
           data={data}
+          ref={treeRef}
           idAccessor="path"
           childrenAccessor="children"
           initialOpenState={initialOpenState}
@@ -291,6 +348,7 @@ function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileT
           overscanCount={8}
           width="100%"
           height={height}
+          onScroll={handleScroll}
           aria-label="File tree"
         >
           {Node}
@@ -331,6 +389,7 @@ function FileTreeNode({
       className={`file-tree-arborist-row group${node.isSelected ? " is-selected" : ""}`}
       data-tree-item
       data-node-id={data.path}
+      data-is-dir={data.isDir ? "true" : "false"}
       onClick={handleSelect}
     >
       <button
@@ -351,7 +410,7 @@ function FileTreeNode({
           </span>
         )}
       </button>
-      <span className="file-tree-arborist-name" title={data.name}>
+      <span className="file-tree-arborist-name" aria-label={data.name}>
         {data.name}
       </span>
       <span data-slot="tree-item-actions" className="file-tree-arborist-actions">

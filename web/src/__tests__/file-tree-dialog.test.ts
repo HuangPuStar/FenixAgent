@@ -4,7 +4,16 @@ import { join } from "node:path";
 import { isValidFileTreeBasename, isValidFileTreeMovePath } from "../components/agent-panel/FileTreeTab";
 
 describe("file tree dialogs", () => {
-  // 文件树重命名和新建操作只接受安全的单段名称。
+  // 无滚动内容时不展示 sticky，避免顶部目录栏占用文件树空间。
+  test("clears sticky folder at the top of the tree", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+
+    expect(source).toContain("if (scrollOffset <= 0)");
+    expect(source).toContain('data-upload-target=""');
+    expect(source).toContain('data-upload-target="user"');
+  });
+
   test("validates basename input after trimming", () => {
     expect(isValidFileTreeBasename(" report.txt ")).toBe(true);
     for (const value of ["", "   ", ".", "..", "a/b", "a\0b"]) {
@@ -46,7 +55,17 @@ describe("file tree dialogs", () => {
     expect(source).not.toContain("getUserChildren");
   });
 
-  // 每个文件树节点右侧都必须提供刷新和经确认的删除入口，且不能在展示组件中直接调用文件 API。
+  // 文件树滚动时固定当前层级目录，便于在长列表中确认所在路径。
+  test("renders a sticky folder indicator for arborist trees", () => {
+    const stylesheetPath = join(import.meta.dirname, "..", "pages", "agent-panel", "artifacts-workspace.css");
+    const source = fs.readFileSync(stylesheetPath, "utf-8");
+
+    expect(source).toContain("file-tree-arborist-sticky-folder");
+    expect(source).toContain("background: #f1f5f9;");
+    expect(source).toContain("margin-left: auto;");
+    expect(source).not.toContain("background: var(--color-surface-hover)");
+  });
+
   test("renders refresh and delete actions for each file tree node", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
     const source = fs.readFileSync(componentPath, "utf-8");

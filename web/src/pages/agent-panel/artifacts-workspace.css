@@ -374,9 +374,35 @@
 }
 
 .file-tree-arborist {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.file-tree-arborist-sticky-folder {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-1);
+  padding: 0 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  pointer-events: none;
+}
+
+.file-tree-arborist-sticky-folder svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
 }
 
 .file-tree-arborist-row {
@@ -437,42 +463,60 @@
 
 .file-tree-workspace-label,
 .file-tree-user-heading {
-  flex-shrink: 0;
-  padding: 1px 10px 5px;
-  color: var(--color-text-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.file-tree-user-heading {
   display: flex;
   min-width: 0;
-  height: 30px;
+  height: 32px;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
-  padding-block: 5px;
-  color: var(--color-text-primary);
+  padding: 0 20px;
+  color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: normal;
   text-transform: none;
 }
 
-.file-tree-user-heading svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+.file-tree-user-heading {
+  color: #475569;
+  padding-right: 10px;
+}
+
+.file-tree-user-heading > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.file-tree-section-upload {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  margin-left: auto;
+  place-items: center;
+  border-radius: 5px;
   color: var(--color-brand);
 }
 
-.file-tree-user-heading small {
-  margin-left: auto;
-  color: var(--color-text-dim);
-  font-size: 9px;
-  font-weight: 500;
+.file-tree-section-upload:hover,
+.file-tree-section-upload:focus-visible {
+  background: transparent;
+}
+
+.file-tree-section-upload:focus-visible {
+  outline: 2px solid #cbd5e1;
+  outline-offset: -2px;
+}
+
+.file-tree-section-upload:disabled {
+  opacity: 0.45;
+}
+
+.file-tree-section-upload svg {
+  width: 16px;
+  height: 16px;
 }
 
 .file-tree-panel [data-slot="tree"] {

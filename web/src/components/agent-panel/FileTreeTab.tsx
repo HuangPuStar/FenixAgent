@@ -82,10 +82,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   });
 
   const handleUploadError = useCallback((message: string) => toast.error(message), []);
+  const uploadTargetRef = useRef<string | undefined>(undefined);
   const { fileInputRef, folderInputRef, uploading, uploadFiles, handleFileInputChange, handleFolderInputChange } =
     useFileUploads({
       envId,
-      targetDir: selectedDir,
+      targetDir: undefined,
+      getTargetDir: () => uploadTargetRef.current,
       t,
       onUploaded: refreshTree,
       onError: handleUploadError,
@@ -275,19 +277,31 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   }, []);
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    (e: React.DragEvent, targetDir?: string) => {
       e.preventDefault();
       dragCounterRef.current = 0;
       setDragOver(false);
       if (!e.dataTransfer) return;
       const files = Array.from(e.dataTransfer.files);
-      void uploadFiles(files);
+      void uploadFiles(files, undefined, undefined, targetDir);
     },
     [uploadFiles],
   );
 
-  const handleUploadClick = useCallback(() => fileInputRef.current?.click(), [fileInputRef]);
-  const handleFolderUploadClick = useCallback(() => folderInputRef.current?.click(), [folderInputRef]);
+  const handleUploadClick = useCallback(
+    (targetDir?: string) => {
+      uploadTargetRef.current = targetDir;
+      fileInputRef.current?.click();
+    },
+    [fileInputRef],
+  );
+  const handleFolderUploadClick = useCallback(
+    (targetDir?: string) => {
+      uploadTargetRef.current = targetDir;
+      folderInputRef.current?.click();
+    },
+    [folderInputRef],
+  );
 
   // 下载：文件直接下载，目录打包为 zip
   // 使用 fetch + Blob 确保携带认证 cookie；<a download> 无法保证 credentials

@@ -6,6 +6,7 @@ import { MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
 interface UseFileUploadsOptions {
   envId: string | null;
   targetDir?: string;
+  getTargetDir?: () => string | undefined;
   t: TFunction<"components">;
   onUploaded: () => void;
   onError: (message: string) => void;
@@ -35,13 +36,18 @@ function validateFiles(files: File[], t: TFunction<"components">): string | null
  * 文件/文件夹上传的唯一前端入口。目标目录仍是 workspace 相对路径，服务端负责词法校验、
  * realpath 越界防护与权限判断；这里仅提供容量校验、进度和幂等 opId。
  */
-export function useFileUploads({ envId, targetDir, t, onUploaded, onError }: UseFileUploadsOptions) {
+export function useFileUploads({ envId, targetDir, getTargetDir, t, onUploaded, onError }: UseFileUploadsOptions) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
   const uploadFiles = useCallback(
-    async (files: File[], onProgress?: (percent: number) => void, relativePaths?: string[]) => {
+    async (
+      files: File[],
+      onProgress?: (percent: number) => void,
+      relativePaths?: string[],
+      targetDirOverride?: string,
+    ) => {
       if (!envId || files.length === 0) return;
       const validationError = validateFiles(files, t);
       if (validationError) {
@@ -51,7 +57,11 @@ export function useFileUploads({ envId, targetDir, t, onUploaded, onError }: Use
 
       setUploading(true);
       try {
-        await uploadWorkspaceFiles(envId, files, { targetDir, relativePaths, onProgress });
+        await uploadWorkspaceFiles(envId, files, {
+          targetDir: targetDirOverride ?? getTargetDir?.() ?? targetDir,
+          relativePaths,
+          onProgress,
+        });
         onUploaded();
       } catch (error) {
         onError(error instanceof Error ? error.message : t("fileTree.uploadFailed"));
@@ -59,14 +69,14 @@ export function useFileUploads({ envId, targetDir, t, onUploaded, onError }: Use
         setUploading(false);
       }
     },
-    [envId, onError, onUploaded, t, targetDir],
+    [envId, getTargetDir, onError, onUploaded, t, targetDir],
   );
 
   const handleFileInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files ?? []);
       event.target.value = "";
-      void uploadFiles(files);
+      void uploadFiles(files, undefined, undefined, undefined);
     },
     [uploadFiles],
   );
