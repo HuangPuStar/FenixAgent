@@ -230,15 +230,6 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
         )}
       </label>
-      {props.stale && (
-        <div role="status" className="file-tree-stale">
-          <Loader2 className="animate-spin" aria-hidden />
-          <span>{t("fileTree.staleBanner")}</span>
-          <button type="button" onClick={props.onRefresh}>
-            {t("fileTree.retry")}
-          </button>
-        </div>
-      )}
 
       <div
         className="file-tree-sections"
@@ -249,7 +240,17 @@ export function FileTreeView(props: FileTreeViewProps) {
         onContextMenu={props.onContextMenu}
       >
         {props.dragOver && <div className="file-tree-drop-overlay">{t("fileTree.dropToUpload")}</div>}
-        {props.loading ? (
+        {props.stale ? (
+          <Feedback
+            icon={<Loader2 className="animate-spin" />}
+            text={t("fileTree.staleBanner")}
+            action={
+              <button type="button" className="file-tree-feedback-action" onClick={props.onRefresh}>
+                {t("fileTree.retry")}
+              </button>
+            }
+          />
+        ) : props.loading ? (
           <Feedback icon={<Loader2 className="animate-spin" />} text={t("tree.loading")} />
         ) : props.normalizedSearch ? (
           props.hasSearchResults ? (
@@ -338,12 +339,23 @@ function FileTreeSections({
   );
 }
 
-function Feedback({ icon, text, detail }: { icon: ReactNode; text: string; detail?: string }) {
+function Feedback({
+  icon,
+  text,
+  detail,
+  action,
+}: {
+  icon: ReactNode;
+  text: string;
+  detail?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="file-tree-feedback">
+    <div className="file-tree-feedback" role="status">
       {icon}
       <p>{text}</p>
       {detail && <p>{detail}</p>}
+      {action}
     </div>
   );
 }

@@ -476,6 +476,22 @@
   opacity: 0.65;
 }
 
+.file-tree-feedback-action {
+  min-height: 28px;
+  padding-inline: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-surface-1);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.file-tree-feedback-action:hover,
+.file-tree-feedback-action:focus-visible {
+  border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-border-subtle));
+  color: var(--color-brand);
+}
+
 @media (max-width: 1050px) {
   .artifacts-shell[data-layout="floating"] {
     top: 6px;

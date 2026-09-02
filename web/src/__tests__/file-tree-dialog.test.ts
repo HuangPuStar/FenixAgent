@@ -60,6 +60,22 @@ describe("file tree dialogs", () => {
     expect(actionStyles).toContain("right: 4px");
   });
 
+  // 文件服务重连提示必须占据文件内容空状态，不能作为搜索框下的独立横幅与工作区标题重叠。
+  test("renders stale file service state inside the file content area", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+    const sectionsStart = source.indexOf('className="file-tree-sections"');
+    const staleBranch = source.indexOf("{props.stale ? (", sectionsStart);
+    const loadingBranch = source.indexOf(") : props.loading ? (", staleBranch);
+
+    expect(sectionsStart).toBeGreaterThan(-1);
+    expect(staleBranch).toBeGreaterThan(sectionsStart);
+    expect(loadingBranch).toBeGreaterThan(staleBranch);
+    expect(source.slice(0, sectionsStart)).not.toContain("file-tree-stale");
+    expect(source.slice(staleBranch, loadingBranch)).toContain("fileTree.staleBanner");
+    expect(source.slice(staleBranch, loadingBranch)).toContain("file-tree-feedback-action");
+  });
+
   // 垂直文件分区的默认值必须显式使用百分比、下限必须使用像素，避免 v4 将裸数字统一解释为像素后初始化坍缩。
   test("uses explicit units for file tree panel sizes", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
