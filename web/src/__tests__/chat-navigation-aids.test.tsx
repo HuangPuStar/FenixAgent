@@ -8,6 +8,7 @@ import type { UserMessageEntry } from "../lib/types";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const window = new Window();
+window.SyntaxError = SyntaxError;
 const globalKeys = [
   "document",
   "Element",
