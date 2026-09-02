@@ -2,7 +2,6 @@
 # Usage:
 #   docker compose -f docker/sandbox-ccb/docker-compose.yml build
 #   docker compose -f docker/sandbox-ccb/docker-compose.yml up -d
-#   docker compose -f docker/sandbox-ccb/docker-compose.yml up -d --scale sandbox-ccb=3
 
 services:
     sandbox-ccb:
@@ -12,12 +11,9 @@ services:
         container_name: rcs-sandbox-ccb
         restart: unless-stopped
         environment:
-            RCS_URL: ws://host.docker.internal:3000
-            # client 端的 secret, 用于鉴权
-            RCS_SECRET: 340b6908-031d-47de-9cfb-26f75818f969
-            # 用于远程注册机器的 id
-            RCS_TENANT_ID: sbFAPs2nyyL0ZNxTE8CSqXUu6AIPULfL
-            RCS_MACHINE_NAME: sandbox-ccb-01
+            RCS_URL: ${RCS_URL:?RCS_URL is required}
+            RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
+            RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
         volumes:
             - sandbox-ccb-workspaces:/app/workspaces
 
