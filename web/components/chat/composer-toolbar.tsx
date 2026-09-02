@@ -2,6 +2,7 @@ import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
 import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { simplifyModelDisplayName } from "../../src/lib/model-config-utils";
 import { Button } from "../ui/button";
 import { ComposerContextMeter } from "./composer-context-meter";
 import { SessionModeSelector } from "./SessionModeSelector";
@@ -88,7 +89,7 @@ export function ComposerToolbar({
 
         {modelName ? (
           <span className="chat-composer-model" title={modelName}>
-            {modelName}
+            {simplifyModelDisplayName(modelName)}
           </span>
         ) : null}
         <ComposerContextMeter usage={contextUsage} />

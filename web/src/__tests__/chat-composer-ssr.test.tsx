@@ -30,6 +30,13 @@ describe("ChatComposer 服务端渲染", () => {
     expect(html).toContain("chat-composer-textarea");
   });
 
+  // Agent 尚未报告上下文用量时不展示占位入口，避免用破折号制造无效信息。
+  test("无上下文信息时隐藏上下文入口", () => {
+    const html = renderComposer();
+
+    expect(html).not.toContain("chat-composer-context");
+  });
+
   // 外部禁用时输入和发送入口都必须禁用，避免将消息提交给不可用的会话。
   test("禁用状态锁定输入与发送操作", () => {
     const html = renderComposer({ disabled: true, placeholder: "会话已锁定" });
@@ -60,6 +67,15 @@ describe("ChatComposer 服务端渲染", () => {
 
     expect(html).toContain("Claude Test");
     expect(html).toContain("chat-composer-model");
+  });
+
+  // Peri 运行时模型名称只展示括号内别名，完整原始名称保留在 title 中。
+  test("简化 Peri 模型名称", () => {
+    const html = renderComposer({ modelName: "opus (peri-haiku)" });
+
+    expect(html).toContain('title="opus (peri-haiku)"');
+    expect(html).toContain(">peri-haiku</span>");
+    expect(html).not.toContain(">opus (peri-haiku)</span>");
   });
 
   // 左侧信息依次展示模型与上下文，权限模式则位于右侧操作区。

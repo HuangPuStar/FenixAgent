@@ -14,18 +14,20 @@ export function ComposerContextMeter({ usage }: { usage?: ContextUsage | null })
   const { t } = useTranslation("components");
   const total = usage?.totalTokens;
   const limit = usage?.contextWindow;
-  const known = typeof total === "number" && Number.isFinite(total);
+  const known = typeof total === "number" && Number.isFinite(total) && total >= 0;
   const knownLimit = typeof limit === "number" && Number.isFinite(limit) && limit > 0;
-  const title = known
-    ? knownLimit
-      ? t("chatComposer.contextUsed", { count: formatTokenCount(total), limit: formatTokenCount(limit) })
-      : t("chatComposer.contextUsedUnknownLimit", { count: formatTokenCount(total) })
-    : t("chatComposer.contextUnknown");
+
+  if (!known) return null;
+
+  const title = knownLimit
+    ? t("chatComposer.contextUsed", { count: formatTokenCount(total), limit: formatTokenCount(limit) })
+    : t("chatComposer.contextUsedUnknownLimit", { count: formatTokenCount(total) });
+
   return (
-    <span className="chat-composer-context" data-known={known || undefined} title={title}>
+    <span className="chat-composer-context" data-known title={title}>
       <CircleGauge />
       <span>{t("chatComposer.context")}</span>
-      <strong>{known ? `${formatTokenCount(total)}${knownLimit ? ` / ${formatTokenCount(limit)}` : ""}` : "—"}</strong>
+      <strong>{`${formatTokenCount(total)}${knownLimit ? ` / ${formatTokenCount(limit)}` : ""}`}</strong>
     </span>
   );
 }

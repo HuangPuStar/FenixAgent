@@ -2,6 +2,7 @@ import type { PromptUsage } from "@fenix/chat-channel";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { simplifyModelDisplayName } from "../src/lib/model-config-utils";
 import type { ThreadEntry, ToolCallEntry } from "../src/lib/types";
 import { cn } from "../src/lib/utils";
 
@@ -85,7 +86,7 @@ export function ContextPanel({
                 {displayAgentName}
               </div>
               <div className="text-[11px] text-text-muted mt-px font-mono">
-                {modelName || t("contextPanel.unknownModel")}
+                {modelName ? simplifyModelDisplayName(modelName) : t("contextPanel.unknownModel")}
               </div>
             </div>
           </div>
