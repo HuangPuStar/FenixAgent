@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatView } from "../../components/chat/ChatView";
+import type { ThreadEntry } from "../lib/types";
 
 describe("Chat 空状态", () => {
   // 首次进入会话时应渲染设计稿中的引导层级和三个可选起始任务，而不是旧工牌卡。
@@ -21,5 +22,19 @@ describe("Chat 空状态", () => {
     expect(markup).toContain("chatEmpty.suggestionPlan");
     expect(markup).toContain("chatEmpty.suggestionBuild");
     expect(markup).not.toContain("agent-badge");
+  });
+
+  // 可见正文后紧接工具调用时应标记专用紧凑边界，避免出现过大的垂直空白。
+  test("正文后的工具调用使用紧凑间距", () => {
+    const entries: ThreadEntry[] = [
+      { type: "assistant_message", id: "assistant-1", chunks: [{ type: "message", text: "开始读取文件" }] },
+      {
+        type: "tool_call",
+        toolCall: { id: "tool-1", title: "Read", kind: "read-file", status: "complete" },
+      },
+    ];
+    const markup = renderToStaticMarkup(<ChatView entries={entries} />);
+
+    expect(markup).toContain("chat-activity-chain chat-activity-chain--after-message");
   });
 });

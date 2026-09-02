@@ -95,8 +95,8 @@ describe("PromptJumpRail", () => {
     expect(host.textContent).not.toContain("system-reminder");
   });
 
-  // system-reminder 是系统注入消息；过滤后仅有一条真实输入时仍应保留导航入口。
-  test("keeps the prompt index for one real prompt plus system reminders", async () => {
+  // system-reminder 是系统注入消息；过滤后仅有一条真实输入时无需展示跳转导航。
+  test("hides the prompt index for one real prompt plus system reminders", async () => {
     const promptEntries: UserMessageEntry[] = [
       entries(1)[0]!,
       {
@@ -108,9 +108,7 @@ describe("PromptJumpRail", () => {
 
     await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
 
-    const buttons = host.querySelectorAll<HTMLButtonElement>(".chat-prompt-jump-index__item");
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.getAttribute("aria-label")).toContain("1/1");
+    expect(host.querySelector(".chat-prompt-jump-index")).toBeNull();
   });
 
   // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。

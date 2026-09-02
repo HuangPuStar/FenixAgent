@@ -40,6 +40,14 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(html).not.toContain("toolCallRow.openFile");
   });
 
+  // Read 的行号范围应紧跟文件名展示，不再被推到工具行中间的独立列。
+  test("读取工具将行号范围显示在文件名之后", () => {
+    const html = renderTool(tool({ rawInput: { file_path: "src/app.ts", offset: 68, limit: 140 } }));
+
+    expect(html).toContain("tool-call-row-copy is-file-preview");
+    expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta[\s\S]*common\.lineRange/);
+  });
+
   // 运行中的工具需要展示进行中状态，避免被误认为已成功结束。
   test("运行中工具展示活动状态", () => {
     const html = renderTool(tool({ title: "Bash", kind: "bash", status: "running", rawOutput: undefined }));

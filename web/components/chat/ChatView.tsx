@@ -66,8 +66,16 @@ export const ChatView = React.memo(
             <>
               {renderBlocks.map((block, blockIndex) => {
                 if (block.type === "activity_chain") {
+                  const previousBlock = renderBlocks[blockIndex - 1];
+                  const followsAssistantMessage =
+                    previousBlock?.type === "item" &&
+                    previousBlock.item.type === "entry" &&
+                    previousBlock.item.entry.type === "assistant_message";
                   return (
-                    <div key={`activity-${renderItemKey(block.items[0], blockIndex)}`} className="chat-activity-chain">
+                    <div
+                      key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
+                      className={`chat-activity-chain${followsAssistantMessage ? " chat-activity-chain--after-message" : ""}`}
+                    >
                       {block.items.map((item, itemIndex) => (
                         <ChatRenderItemView
                           key={renderItemKey(item, itemIndex)}

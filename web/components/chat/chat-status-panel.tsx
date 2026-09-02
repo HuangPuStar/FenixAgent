@@ -19,6 +19,11 @@ import { cn } from "../../src/lib/utils";
 
 type StatusTab = "todo" | "tasks" | "changes";
 
+export function fileNameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
+}
+
 interface ChatStatusPanelProps {
   todos: TodoItem[];
   tasks: readonly PeriTaskViewProjection[];
@@ -230,7 +235,7 @@ function ChangeRows({ files }: { files: ChangedFile[] }) {
           }
         >
           <FileDiff />
-          <span title={file.path}>{file.path}</span>
+          <span title={file.path}>{fileNameFromPath(file.path)}</span>
           <small className={cn(file.type === "write" && "is-added")}>
             {t(file.type === "write" ? "chatStatus.added" : "chatStatus.modified")}
           </small>

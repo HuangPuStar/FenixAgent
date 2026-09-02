@@ -97,7 +97,7 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
             {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
           </span>
 
-          <span className="tool-call-row-copy">
+          <span className={cn("tool-call-row-copy", canPreviewFile && envId && !isPending && "is-file-preview")}>
             <span className="tool-call-row-heading">
               {canPreviewFile && envId && !isPending ? (
                 <strong title={titleText}>
@@ -110,6 +110,7 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
                   >
                     {result.object}
                   </button>
+                  {result.subtitle ? <span className="tool-call-row-meta">{result.subtitle}</span> : null}
                 </strong>
               ) : (
                 <strong title={titleText}>{result.title}</strong>
@@ -120,9 +121,11 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
                 </span>
               )}
             </span>
-            <span className="tool-call-row-meta">
-              <span className="truncate">{result.subtitle}</span>
-            </span>
+            {(!canPreviewFile || !envId || isPending) && result.subtitle ? (
+              <span className="tool-call-row-meta">
+                <span className="truncate">{result.subtitle}</span>
+              </span>
+            ) : null}
           </span>
 
           <span className="tool-call-row-end">
