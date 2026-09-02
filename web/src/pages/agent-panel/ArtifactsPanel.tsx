@@ -8,6 +8,7 @@ import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
+import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
 import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
@@ -193,17 +194,17 @@ export function ArtifactsPanel({
   }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { path: string } | undefined;
-      if (!detail?.path) return;
+    const handler = (event: Event) => {
+      const detail = getArtifactsPreviewFileDetail(event, envId);
+      if (!detail) return;
       userPickedSiteRef.current = false;
       setPendingDiffCount(0);
       setTopMode("files");
       openFileRef.current?.(normalizeToUserPath(detail.path));
     };
-    window.addEventListener("artifacts:preview-file", handler);
-    return () => window.removeEventListener("artifacts:preview-file", handler);
-  }, []);
+    window.addEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
+    return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
+  }, [envId]);
 
   const handleTopChange = useCallback(
     (next: TopMode) => {

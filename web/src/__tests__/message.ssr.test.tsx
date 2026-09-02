@@ -59,9 +59,11 @@ describe("消息组件的服务端渲染", () => {
     const markup = renderToStaticMarkup(
       createElement(UserBubble, {
         entry: { type: "user_message", id: "file-reference", content: "请检查\n@./src/report.md" },
+        envId: "env-a",
       }),
     );
 
+    expect(markup).toContain('<button type="button"');
     expect(markup).toContain('data-file-attachment="src/report.md"');
     expect(markup).toContain("report.md");
     expect(markup).not.toContain("@./src/report.md");

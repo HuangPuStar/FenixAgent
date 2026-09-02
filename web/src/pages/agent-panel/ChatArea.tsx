@@ -18,6 +18,7 @@ import { unwrap } from "@/src/api/request";
 import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
 import { NS } from "@/src/i18n";
+import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import "./artifacts-workspace.css";
 import "./chat-layout.css";
 
@@ -191,15 +192,16 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
 
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
-    const handler = () => {
+    const handler = (event: Event) => {
+      if (!getArtifactsPreviewFileDetail(event, agentId)) return;
       if (artifactsCollapsedRef.current) {
         artifactsCollapsedRef.current = false;
         setArtifactsCollapsed(false);
       }
     };
-    window.addEventListener("artifacts:preview-file", handler);
-    return () => window.removeEventListener("artifacts:preview-file", handler);
-  }, []);
+    window.addEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
+    return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
+  }, [agentId]);
 
   // 小屏只允许浮动模式。模式选择被保留，回到大屏时恢复用户偏好。
   useEffect(() => {

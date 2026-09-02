@@ -8,9 +8,10 @@ import { ToolCallRow } from "./ToolCallRow";
 
 interface ToolCallGroupProps {
   entries: ToolCallEntry[];
+  envId?: string;
 }
 
-export function ToolCallGroup({ entries }: ToolCallGroupProps) {
+export function ToolCallGroup({ entries, envId }: ToolCallGroupProps) {
   // 将 hindsight 工具与普通工具分离，各自独立渲染
   const hindsightEntries = entries.filter((e) => isHindsightTool(e.toolCall.title));
   const toolEntries = entries.filter((e) => !isHindsightTool(e.toolCall.title));
@@ -22,7 +23,7 @@ export function ToolCallGroup({ entries }: ToolCallGroupProps) {
       {toolEntries.length > 0 && (
         <div className="tool-call-group-list">
           {toolEntries.map((entry, i) => (
-            <ToolCallRow key={entry.toolCall.id || i} tool={entry.toolCall} />
+            <ToolCallRow key={entry.toolCall.id || i} tool={entry.toolCall} envId={envId} />
           ))}
         </div>
       )}

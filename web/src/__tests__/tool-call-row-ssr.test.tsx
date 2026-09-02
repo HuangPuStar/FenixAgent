@@ -20,7 +20,9 @@ function tool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 function renderTool(value: ToolCallData): string {
-  return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ToolCallRow, { tool: value })));
+  return renderToStaticMarkup(
+    createElement(I18nextProvider, { i18n }, createElement(ToolCallRow, { tool: value, envId: "env-ssr" })),
+  );
 }
 
 describe("ToolCallRow 服务端渲染", () => {

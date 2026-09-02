@@ -186,7 +186,7 @@ function ChatRenderItemView({
   if (item.type === "tool_group") {
     return (
       <div className="chat-entry chat-entry--tool-group">
-        <ToolCallGroup entries={item.entries} />
+        <ToolCallGroup entries={item.entries} envId={envId} />
       </div>
     );
   }
@@ -218,11 +218,11 @@ const EntryRenderer = React.memo(
   }) {
     switch (entry.type) {
       case "user_message":
-        return <UserBubble entry={entry} />;
+        return <UserBubble entry={entry} envId={envId} />;
       case "assistant_message":
         return <AssistantBubble entry={entry} isStreaming={isLoading} sessionId={sessionId} envId={envId} />;
       case "tool_call":
-        return <ToolCallGroup entries={[entry as ToolCallEntry]} />;
+        return <ToolCallGroup entries={[entry as ToolCallEntry]} envId={envId} />;
       case "plan":
         return null;
       default:

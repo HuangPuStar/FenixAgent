@@ -75,50 +75,43 @@ export function ArtifactsFilesWorkspace({
   }, []);
 
   return (
-    <>
-      <div ref={panelGroupRef} className="flex-1 min-h-0 min-w-0">
-        <ResizablePanelGroup orientation="horizontal">
-          <ResizablePanel
-            panelRef={fileTreePanelRef}
-            defaultSize={`${initialFileTreeWidthRef.current}px`}
-            minSize={`${FILE_TREE_MIN_WIDTH}px`}
-            maxSize="50%"
-            groupResizeBehavior="preserve-pixel-size"
-            onResize={(size) => {
-              if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;
-              const width = Math.max(FILE_TREE_MIN_WIDTH, size.inPixels);
-              try {
-                localStorage.setItem("fenix:file-tree-width", String(width));
-              } catch {
-                // Width persistence is optional.
-              }
-            }}
-          >
-            <div className="artifacts-explorer h-full min-h-0 flex flex-col overflow-hidden">
-              <FileTreeTab
-                ref={fileTreeRef}
-                envId={envId}
-                onPreviewFile={onOpenFile}
-                onReferenceFile={onReferenceFile}
-              />
-            </div>
-          </ResizablePanel>
-          <ResizableHandle className="artifacts-workbench-divider" />
-          <ResizablePanel minSize={`${PREVIEW_MIN_WIDTH}px`}>
-            <div className="h-full min-h-0 min-w-0 flex flex-col">
-              <PreviewTab envId={envId} filePath={activeFile} />
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-      <FileTabsBar
-        openFiles={openFiles}
-        activeFile={activeFile}
-        changedFiles={changedFiles}
-        onSelectFile={onSelectFile}
-        onCloseFile={onCloseFile}
-        onPreviewChangedFile={onOpenFile}
-      />
-    </>
+    <div ref={panelGroupRef} className="flex-1 min-h-0 min-w-0">
+      <ResizablePanelGroup orientation="horizontal">
+        <ResizablePanel
+          panelRef={fileTreePanelRef}
+          defaultSize={`${initialFileTreeWidthRef.current}px`}
+          minSize={`${FILE_TREE_MIN_WIDTH}px`}
+          maxSize="50%"
+          groupResizeBehavior="preserve-pixel-size"
+          onResize={(size) => {
+            if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;
+            const width = Math.max(FILE_TREE_MIN_WIDTH, size.inPixels);
+            try {
+              localStorage.setItem("fenix:file-tree-width", String(width));
+            } catch {
+              // Width persistence is optional.
+            }
+          }}
+        >
+          <div className="artifacts-explorer h-full min-h-0 flex flex-col overflow-hidden">
+            <FileTreeTab ref={fileTreeRef} envId={envId} onPreviewFile={onOpenFile} onReferenceFile={onReferenceFile} />
+          </div>
+        </ResizablePanel>
+        <ResizableHandle className="artifacts-workbench-divider" />
+        <ResizablePanel minSize={`${PREVIEW_MIN_WIDTH}px`}>
+          <div className="h-full min-h-0 min-w-0 flex flex-col">
+            <FileTabsBar
+              openFiles={openFiles}
+              activeFile={activeFile}
+              changedFiles={changedFiles}
+              onSelectFile={onSelectFile}
+              onCloseFile={onCloseFile}
+              onPreviewChangedFile={onOpenFile}
+            />
+            <PreviewTab envId={envId} filePath={activeFile} />
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   );
 }

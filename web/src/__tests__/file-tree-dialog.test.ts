@@ -33,6 +33,15 @@ describe("file tree dialogs", () => {
     expect(toolbar).not.toContain('createAtSelected("file")');
   });
 
+  // 文件标签栏必须位于右侧预览内容上方，不能回落到整个工作区底部。
+  test("renders file tabs above the preview content", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "artifacts-files-workspace.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+    const previewPanel = source.slice(source.lastIndexOf("<ResizablePanel minSize="));
+    expect(previewPanel.indexOf("<FileTabsBar")).toBeGreaterThanOrEqual(0);
+    expect(previewPanel.indexOf("<FileTabsBar")).toBeLessThan(previewPanel.indexOf("<PreviewTab"));
+  });
+
   // 文件树交互必须通过项目 Dialog，不能回退到浏览器 prompt。
   test("does not use window.prompt in file tree components", () => {
     const componentDir = join(import.meta.dirname, "..", "components", "agent-panel");

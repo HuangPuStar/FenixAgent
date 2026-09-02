@@ -47,10 +47,10 @@ const fetchMock = {
   body: null as BodyInit | null | undefined,
 };
 
-// 上传成功响应：v2 fsApi 返回 workspace 相对路径（无 user/ 前缀）
+// 上传成功响应：Chat 拖拽上传固定写入 user/ 目录，并返回 workspace 相对路径
 const UPLOAD_RESPONSE = {
   success: true,
-  data: { files: [{ name: "report.txt", path: "report.txt", size: 7 }] },
+  data: { files: [{ name: "report.txt", path: "user/report.txt", size: 7 }] },
 };
 
 beforeEach(() => {
@@ -78,8 +78,9 @@ function dropEvent(files: File[]): DragEvent {
   } as unknown as DragEvent;
 }
 
-// 拖拽上传走 fsApi.upload：构造含 files 字段的 FormData，POST 到 workspace 根（/fs/，不带 targetDir）
-test("拖拽上传构造 FormData 并 POST 到 /web/environments/:id/fs/", async () => {
+// 拖拽上传走 fsApi.upload：构造含 files 字段的 FormData，POST 到 workspace 的 user/ 目录
+// Chat 用户上传与文件选择器保持一致，避免文件落入 Agent 工作区根目录。
+test("拖拽上传构造 FormData 并 POST 到 /web/environments/:id/fs/user", async () => {
   const onUploaded = mock(() => {});
   const { result, unmount } = renderHook(() => useDragUpload({ envId: "env_1", onUploaded, onError: mock(() => {}) }));
   const file = new File(["content"], "report.txt");
@@ -88,7 +89,7 @@ test("拖拽上传构造 FormData 并 POST 到 /web/environments/:id/fs/", async
     await result.current.handleDrop(dropEvent([file]));
   });
 
-  expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/");
+  expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user");
   expect(fetchMock.method).toBe("POST");
   expect(fetchMock.body).toBeInstanceOf(FormData);
   const fd = fetchMock.body as FormData;
@@ -97,8 +98,8 @@ test("拖拽上传构造 FormData 并 POST 到 /web/environments/:id/fs/", async
   unmount();
 });
 
-// 上传成功后回填 workspace 相对路径：v2 上传到根目录，path 不再强制加 user/ 前缀
-test("上传成功后 onUploaded 携带 workspace 相对路径（无 user/ 前缀）", async () => {
+// 上传成功后回填 user/ 下的 workspace 相对路径，供聊天引用和文件预览复用。
+test("上传成功后 onUploaded 携带 user/ 下的 workspace 相对路径", async () => {
   const onUploaded = mock((_file: FileInfo) => {});
   const { result, unmount } = renderHook(() => useDragUpload({ envId: "env_1", onUploaded, onError: mock(() => {}) }));
   const file = new File(["content"], "report.txt");
@@ -110,7 +111,7 @@ test("上传成功后 onUploaded 携带 workspace 相对路径（无 user/ 前�
   expect(onUploaded).toHaveBeenCalledTimes(1);
   const info = onUploaded.mock.calls[0][0];
   expect(info.name).toBe("report.txt");
-  expect(info.path).toBe("report.txt");
+  expect(info.path).toBe("user/report.txt");
   expect(info.type).toBe("file");
   unmount();
 });

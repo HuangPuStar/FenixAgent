@@ -2,6 +2,7 @@ import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
+import { dispatchArtifactsPreviewFile, isWorkspaceRelativeFilePath } from "../../src/lib/artifacts-preview-events";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock } from "../../src/lib/context-queue";
 import { splitSystemReminderBlocks } from "../../src/lib/strip-html-tags";
@@ -38,9 +39,10 @@ export function splitFileReferences(content: string): Array<{ type: "text" | "fi
 
 interface UserBubbleProps {
   entry: UserMessageEntry;
+  envId?: string;
 }
 
-export function UserBubble({ entry }: UserBubbleProps) {
+export function UserBubble({ entry, envId }: UserBubbleProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   // 切分注入的系统上下文段与用户文本段：system 段合并为原始块文本，渲染为
   // 系统消息标签默认隐藏注入内容；双击后以 Popover 展示。
@@ -96,15 +98,23 @@ export function UserBubble({ entry }: UserBubbleProps) {
               >
                 {visibleParts.map((part) =>
                   part.type === "file" ? (
-                    <span
+                    <button
+                      type="button"
                       key={`${part.type}-${part.offset}`}
-                      className="mx-0.5 inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-0.5 align-middle text-xs text-text-secondary"
+                      className="mx-0.5 inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-background/70 px-2 py-0.5 align-middle text-xs text-text-secondary hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-default disabled:opacity-70"
                       title={part.value}
+                      aria-label={t("fileTree.openFile", { name: part.value.split("/").at(-1) || part.value })}
                       data-file-attachment={part.value}
+                      disabled={!envId || !isWorkspaceRelativeFilePath(part.value)}
+                      onClick={() => {
+                        if (envId && isWorkspaceRelativeFilePath(part.value)) {
+                          dispatchArtifactsPreviewFile(envId, part.value);
+                        }
+                      }}
                     >
                       <File className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       <span className="truncate">{part.value.split("/").at(-1) || part.value}</span>
-                    </span>
+                    </button>
                   ) : (
                     part.value
                   ),
