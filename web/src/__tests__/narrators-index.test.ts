@@ -45,6 +45,13 @@ describe("narrate 中央入口", () => {
     expect(result.title).toContain("调用工具");
   });
 
+  // fallback 的路径型 detail 应压缩为末级名称，完整参数仍可在详情弹窗查看。
+  test("fallback 压缩路径型 detail", () => {
+    const tool = makeTool({ rawInput: { path: "/Users/konghayao/code/pazhou/remote-control-server" } });
+    const result = narrate(tool, "complete", undefined, t);
+    expect(result.subtitle).toBe("remote-control-server");
+  });
+
   // complete 状态 title 不应包含进行时前缀"正在"
   test("complete 状态 title 用过去时模板", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });

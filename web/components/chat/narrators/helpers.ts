@@ -91,6 +91,20 @@ export function truncate(s: string, max: number): string {
 }
 
 /**
+ * 压缩 detail 中的路径，只展示最后一个有效路径段。
+ * 原始路径仍保留在工具参数弹窗中，列表无需重复展示完整绝对路径。
+ */
+export function compactDetailValue(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized) return value;
+
+  const isPath = normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized) || normalized.includes("/");
+  if (!isPath) return truncate(value, 40);
+
+  return normalized.split("/").pop() || normalized;
+}
+
+/**
  * 从 rawInput 提取第一个字符串值。兜底 narrator 用作附加上下文。
  * 跳过空字符串（length > 0 守卫），因为空字符串不提供有效信息。
  */

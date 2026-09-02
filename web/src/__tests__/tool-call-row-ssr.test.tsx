@@ -48,6 +48,21 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta[\s\S]*common\.lineRange/);
   });
 
+  // 所有工具的补充详情都应紧跟工具名称，避免在宽屏下形成远离名称的独立列。
+  test("普通工具将详情显示在工具名称之后", () => {
+    const html = renderTool(
+      tool({
+        title: "Grep",
+        kind: "grep",
+        rawInput: { pattern: "answer", path: "src" },
+        rawOutput: { count: 1 },
+      }),
+    );
+
+    expect(html).toMatch(/tool-call-row-heading[\s\S]*<strong[\s\S]*<\/strong>[\s\S]*tool-call-row-meta/);
+    expect(html).not.toMatch(/<\/span><span class="tool-call-row-meta">/);
+  });
+
   // 运行中的工具需要展示进行中状态，避免被误认为已成功结束。
   test("运行中工具展示活动状态", () => {
     const html = renderTool(tool({ title: "Bash", kind: "bash", status: "running", rawOutput: undefined }));

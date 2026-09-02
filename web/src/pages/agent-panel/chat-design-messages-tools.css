@@ -367,9 +367,6 @@
 
 .tool-call-row-copy.is-file-preview .tool-call-row-meta {
   flex: 0 1 auto;
-  color: #657287;
-  font-size: 12.5px;
-  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -409,6 +406,12 @@
 
 .tool-call-row-heading {
   gap: 9px;
+}
+
+.tool-call-row-meta {
+  color: #aab3c0;
+  font-size: 11.5px;
+  font-weight: 400;
 }
 
 .tool-call-row-error {

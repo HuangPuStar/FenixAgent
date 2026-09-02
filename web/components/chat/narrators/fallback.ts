@@ -1,6 +1,6 @@
 import { Wrench } from "lucide-react";
 import { simplifyToolName } from "../tool-call-utils";
-import { findFirstStringValue, truncate } from "./helpers";
+import { compactDetailValue, findFirstStringValue } from "./helpers";
 import type { ToolNarrator } from "./types";
 
 /**
@@ -25,7 +25,7 @@ export const fallbackNarrator: ToolNarrator = {
     const name = simplifyToolName(ctx.tool.title);
     // 从 rawInput 找第一个字符串值作为 detail 补充信息
     const firstStr = findFirstStringValue(ctx.tool.rawInput);
-    const detail = firstStr ? truncate(firstStr, 40) : undefined;
+    const detail = firstStr ? compactDetailValue(firstStr) : undefined;
     return { object: name, detail };
   },
 };

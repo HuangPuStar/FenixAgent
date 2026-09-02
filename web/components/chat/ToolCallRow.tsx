@@ -110,22 +110,21 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
                   >
                     {result.object}
                   </button>
-                  {result.subtitle ? <span className="tool-call-row-meta">{result.subtitle}</span> : null}
                 </strong>
               ) : (
                 <strong title={titleText}>{result.title}</strong>
               )}
+              {result.subtitle ? (
+                <span className="tool-call-row-meta">
+                  <span className="truncate">{result.subtitle}</span>
+                </span>
+              ) : null}
               {result.errorDetail && (
                 <span className="tool-call-row-error" title={result.errorDetail}>
                   {result.errorDetail}
                 </span>
               )}
             </span>
-            {(!canPreviewFile || !envId || isPending) && result.subtitle ? (
-              <span className="tool-call-row-meta">
-                <span className="truncate">{result.subtitle}</span>
-              </span>
-            ) : null}
           </span>
 
           <span className="tool-call-row-end">
