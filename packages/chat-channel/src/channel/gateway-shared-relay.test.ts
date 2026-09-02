@@ -166,7 +166,7 @@ describe("Gateway shared relay", () => {
     const lifecycle = createGateway(registry, broadcaster, relayEvents, {
       ensureRunning: async () => {
         ensureCalls += 1;
-        return { instance: { id: "instance-1" } };
+        return "instance-1";
       },
       connectAgentRelay: async () => {
         connectCalls += 1;
@@ -314,18 +314,18 @@ describe("Gateway shared relay", () => {
       rcsSessionId: "rcs-user-b",
     });
 
-    const relayA = registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h");
-    const relayB = registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i");
+    const relayA = registry.getShared("instance-1", "user-a", "rcs-user-a");
+    const relayB = registry.getShared("instance-1", "user-b", "rcs-user-b");
     expect(relayA).toBeDefined();
     expect(relayB).toBeDefined();
 
     lifecycle.handleClose("ws-1");
-    expect(registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h")).toBeUndefined();
-    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeDefined();
+    expect(registry.getShared("instance-1", "user-a", "rcs-user-a")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs-user-b")).toBeDefined();
     expect(closeCalls).toBe(1);
 
     lifecycle.handleClose("ws-2");
-    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs-user-b")).toBeUndefined();
     expect(closeCalls).toBe(2);
   });
 

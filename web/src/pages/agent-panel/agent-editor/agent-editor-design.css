@@ -343,7 +343,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.agent-editor-summary-cards em {
+.agent-editor-root .agent-editor-summary-cards em {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 2px;
@@ -516,9 +516,9 @@
   background: #2764e7;
   box-shadow: 0 6px 16px rgb(39 100 231 / 22%);
 }
-.agent-editor-reset {
-  color: #7d8b9f !important;
-  background: transparent !important;
+.agent-editor-root .agent-editor-reset {
+  color: #7d8b9f;
+  background: transparent;
 }
 @keyframes agent-editor-section-enter {
   from {

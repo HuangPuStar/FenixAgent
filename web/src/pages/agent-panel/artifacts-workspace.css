@@ -391,12 +391,16 @@
   align-items: center;
   gap: 2px;
   border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-1);
+  background: #f1f5f9;
   padding: 0 10px;
   color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 400;
   pointer-events: none;
+}
+
+.file-tree-arborist-sticky-folder span {
+  margin-left: auto;
 }
 
 .file-tree-arborist-sticky-folder svg {

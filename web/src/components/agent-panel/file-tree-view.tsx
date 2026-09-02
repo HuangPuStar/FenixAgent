@@ -312,8 +312,6 @@ function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileT
     [updateStickyFolder],
   );
 
-  // React Arborist 要求稳定的 renderer 引用；视图 props 变化时必须让节点读取最新操作回调。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: props 是每次渲染重建的视图契约，需按最新值更新 renderer。
   const Node = useCallback(
     (rendererProps: NodeRendererProps<ParsedFileNode>) => (
       <FileTreeNode {...rendererProps} viewProps={propsRef.current} />
@@ -408,9 +406,7 @@ function FileTreeNode({
           </span>
         )}
       </button>
-      <span className="file-tree-arborist-name" aria-label={data.name}>
-        {data.name}
-      </span>
+      <span className="file-tree-arborist-name">{data.name}</span>
       <span data-slot="tree-item-actions" className="file-tree-arborist-actions">
         {data.isDir && (
           <button

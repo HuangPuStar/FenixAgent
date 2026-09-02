@@ -132,7 +132,7 @@
   .agent-editor-root .agent-editor-group-filter button {
     padding-inline: 6px;
   }
-  .agent-editor-root .agent-editor-summary-cards button em {
+  .agent-editor-root .agent-editor-root .agent-editor-summary-cards button em {
     display: none;
   }
   .agent-editor-root .agent-editor-summary-cards button strong {
@@ -191,7 +191,8 @@
   align-items: center;
   gap: 6px;
 }
-:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination button {
+.agent-editor-root .agent-editor-pagination button,
+.agent-editor-template-picker .agent-editor-pagination button {
   display: grid;
   width: 24px;
   height: 22px;
@@ -208,7 +209,8 @@
 :where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination svg {
   width: 11px;
 }
-:where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination strong {
+.agent-editor-root .agent-editor-pagination strong,
+.agent-editor-template-picker .agent-editor-pagination strong {
   min-width: 36px;
   color: #53647b;
   text-align: center;

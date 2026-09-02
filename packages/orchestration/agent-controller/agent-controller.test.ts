@@ -361,7 +361,7 @@ describe("Instance send / stop", () => {
 
 describe("AgentController.stopInstance / listInstances", () => {
   test("listInstances：多次 spawn 后返回全部活跃实例，包含正确的实例信息", async () => {
-    const { controller, envRepo } = setup();
+    const { controller } = setup();
 
     const spawned = [
       await controller.spawnInstance("env1", "user1", "inst_test_9"),
@@ -376,7 +376,7 @@ describe("AgentController.stopInstance / listInstances", () => {
   });
 
   test("stopInstance：停止实例后归还节点引用并从活跃列表移除；重复停止抛 OrchestrationError", async () => {
-    const { controller, envRepo, nodeService } = setup();
+    const { controller, nodeService } = setup();
 
     const a = await controller.spawnInstance("env1", "user1", "inst_test_12");
     await controller.spawnInstance("env1", "user1", "inst_test_13");
@@ -436,7 +436,7 @@ describe("AgentController.stopInstancesByMachineId", () => {
   });
 
   test("重复调用幂等：第二次调用返回 0 且不抛错", async () => {
-    const { controller, envRepo, nodeService } = setup();
+    const { controller, nodeService } = setup();
     await controller.spawnInstance("env1", "user1", "inst_test_18");
     await controller.spawnInstance("env1", "user1", "inst_test_19");
 
@@ -475,7 +475,7 @@ describe("AgentController.stopInstancesByMachineId", () => {
 
   test("引用归零后空闲回收触发并关闭节点（幽灵实例解毒）", async () => {
     const scheduler = new MockScheduler();
-    const { controller, service, socket, envRepo } = setupWithRealNodeService(scheduler);
+    const { controller, service, socket } = setupWithRealNodeService(scheduler);
 
     await controller.spawnInstance("env1", "user1", "inst_test_22");
     await controller.spawnInstance("env1", "user1", "inst_test_23");

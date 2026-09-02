@@ -335,8 +335,8 @@
   .agent-resource-picker__list > button {
     grid-template-columns: 21px minmax(0, 1fr);
   }
-  .agent-resource-picker__list em,
-  .agent-node-list em {
+  .agent-editor-dialog .agent-resource-picker__list em,
+  .agent-editor-dialog .agent-node-list em {
     display: none;
   }
   .agent-node-list > button {

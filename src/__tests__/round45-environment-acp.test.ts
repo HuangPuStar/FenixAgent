@@ -19,7 +19,6 @@ import {
   reconnectEnvironment,
   registerEnvironment,
   touchEnvironmentPoll,
-  updateEnvironmentCapabilities,
   updatePollTime,
 } from "../services/environment-acp";
 import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";

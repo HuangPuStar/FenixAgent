@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { OrchestrationError } from "@fenix/orchestration";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setApiInstanceDeps } from "../services/api-instance";
 import { setTestOrgContext } from "../services/org-context";

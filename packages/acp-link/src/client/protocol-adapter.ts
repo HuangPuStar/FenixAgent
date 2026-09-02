@@ -14,7 +14,7 @@ function readTokenCount(usage: Record<string, unknown>, key: string): number {
 
 /** 将 Claude Agent SDK 的 snake_case usage 转为 ACP prompt usage。缓存 token 属于实际输入上下文。 */
 export function normalizeClaudeSdkUsage(value: unknown): PromptUsage | undefined {
-  if (!value || typeof value !== "object") return undefined;
+  if (!value || typeof value !== "object") return;
   const usage = value as Record<string, unknown>;
   const inputTokens =
     readTokenCount(usage, "input_tokens") +

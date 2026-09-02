@@ -151,7 +151,7 @@
   gap: 8px;
   padding: 7px 8px;
 }
-.agent-composition-node > span {
+.agent-editor-dialog .agent-composition-node > span {
   width: 27px;
   height: 27px;
   flex-basis: 27px;

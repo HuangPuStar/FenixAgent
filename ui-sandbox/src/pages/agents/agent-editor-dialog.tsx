@@ -89,7 +89,7 @@ function SummaryItem({
 }
 
 export function AgentEditorDialog({ open, onClose, onBuildFromTemplate, onSaved }: AgentEditorDialogProps) {
-  const initial = useMemo(cloneInitialAgentDraft, [open]);
+  const initial = useMemo(cloneInitialAgentDraft, []);
   const [draft, setDraft] = useState<AgentEditorDraft>(initial);
   const [activeSection, setActiveSection] = useState<AgentEditorSectionId>("identity");
   const [confirmClose, setConfirmClose] = useState(false);

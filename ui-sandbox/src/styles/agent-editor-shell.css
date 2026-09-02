@@ -125,7 +125,7 @@
   align-items: flex-end;
   gap: 3px;
 }
-.agent-editor-header__status span {
+.agent-editor-dialog .agent-editor-header__status span {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -321,8 +321,8 @@
 .agent-editor-section__intro {
   margin-bottom: 26px;
 }
-.agent-editor-section__intro > span,
-.agent-composition header > span {
+.agent-editor-dialog .agent-editor-section__intro > span,
+.agent-editor-dialog .agent-composition header > span {
   color: #3470da;
   font:
     750 8px ui-monospace,
@@ -413,9 +413,9 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
 }
-.agent-prompt-editor {
+.agent-editor-dialog .agent-prompt-editor {
   min-height: 210px;
-  font-size: 11px !important;
+  font-size: 11px;
 }
 .agent-editor-guidance {
   display: flex;

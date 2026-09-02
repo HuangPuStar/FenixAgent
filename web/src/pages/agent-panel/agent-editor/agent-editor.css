@@ -237,8 +237,8 @@
 .agent-editor-section__intro {
   margin-bottom: 26px;
 }
-.agent-editor-section__intro > span,
-.agent-editor-summary-eyebrow {
+.agent-editor-root .agent-editor-section__intro > span,
+.agent-editor-root .agent-editor-summary-eyebrow {
   color: var(--color-primary);
   font-family: ui-monospace, monospace;
   font-size: 8px;
@@ -279,7 +279,7 @@
   display: flex;
   justify-content: space-between;
 }
-.agent-editor-prompt-label span {
+.agent-editor-root .agent-editor-prompt-label span {
   color: var(--color-text-muted);
   font-size: 8px;
 }

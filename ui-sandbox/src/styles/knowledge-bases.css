@@ -532,9 +532,9 @@
   width: min(100%, 260px);
   font-size: 10px;
 }
-.knowledge-overwrite,
-.retrieval-check {
-  display: flex !important;
+label.knowledge-overwrite,
+label.retrieval-check {
+  display: flex;
   align-items: center;
   gap: 7px;
   color: var(--muted);

@@ -107,7 +107,7 @@
 .agent-model-summary p {
   margin: 0;
 }
-.agent-model-summary > em {
+.agent-editor-dialog .agent-model-summary > em {
   border-radius: 999px;
   padding: 4px 7px;
   color: #9a641e;

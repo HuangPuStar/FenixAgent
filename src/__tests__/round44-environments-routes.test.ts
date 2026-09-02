@@ -5,13 +5,7 @@ import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { agentInstanceService } from "../services/agent-instance-service";
 import { setTestOrgContext } from "../services/org-context";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
-import {
-  resetAllStubs,
-  stubAuthApi,
-  stubCoreBootstrap,
-  stubEnvironmentRepo,
-  stubEnvironmentService,
-} from "../test-utils/helpers";
+import { resetAllStubs, stubAuthApi, stubCoreBootstrap, stubEnvironmentService } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/environments")).default;
 const environmentId = "env-1";

@@ -221,7 +221,7 @@
 .agent-template-includes {
   margin-top: 18px;
 }
-.agent-template-includes > div {
+.agent-template-dialog .agent-template-includes > div {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -267,7 +267,7 @@
   padding: 12px;
   background: #f5f7fa;
 }
-.agent-template-prompt-preview > div {
+.agent-template-dialog .agent-template-prompt-preview > div {
   display: flex;
   justify-content: space-between;
 }
@@ -329,7 +329,7 @@
   width: 12px;
   color: #218565;
 }
-.agent-template-dialog__footer > div {
+.agent-template-dialog .agent-template-dialog__footer > div {
   display: flex;
   gap: 7px;
 }
@@ -371,7 +371,7 @@
     border-right: 0;
     border-bottom: 1px solid #e5eaf1;
   }
-  .agent-template-includes > div {
+  .agent-template-dialog .agent-template-includes > div {
     grid-template-columns: 1fr;
   }
   .agent-template-dialog__footer > span {
@@ -421,7 +421,7 @@
   color: #8a96a8;
   font-size: 8px;
 }
-.agent-template-pagination > div {
+.agent-template-dialog .agent-template-pagination > div {
   display: flex;
   align-items: center;
   gap: 5px;

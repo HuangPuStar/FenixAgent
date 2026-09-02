@@ -150,15 +150,15 @@
 .agent-editor-root .agent-node-list > button.is-unavailable .agent-model-options__copy small {
   color: #93651f;
 }
-.agent-editor-root .agent-model-options > button > em,
-.agent-editor-root .agent-node-list > button > em {
+.agent-editor-root .agent-model-options > :where(button) > em,
+.agent-editor-root .agent-node-list > :where(button) > em {
   color: #6d7d94;
   font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
-.agent-editor-root .agent-model-options > button > i,
-.agent-editor-root .agent-node-list > button > i {
+.agent-editor-root .agent-model-options > :where(button) > i,
+.agent-editor-root .agent-node-list > :where(button) > i {
   display: flex;
   box-sizing: border-box;
   width: 16px;
