@@ -95,6 +95,24 @@ describe("PromptJumpRail", () => {
     expect(host.textContent).not.toContain("system-reminder");
   });
 
+  // system-reminder 是系统注入消息；过滤后仅有一条真实输入时仍应保留导航入口。
+  test("keeps the prompt index for one real prompt plus system reminders", async () => {
+    const promptEntries: UserMessageEntry[] = [
+      entries(1)[0]!,
+      {
+        type: "user_message",
+        id: "system-reminder",
+        content: "<system-reminder>\nMCP: 1 connected\n</system-reminder>",
+      },
+    ];
+
+    await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
+
+    const buttons = host.querySelectorAll<HTMLButtonElement>(".chat-prompt-jump-index__item");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.getAttribute("aria-label")).toContain("1/1");
+  });
+
   // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
   test("smoothly jumps to the selected user prompt", async () => {
     const promptEntries = entries(3);

@@ -108,7 +108,7 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
     };
   }, [visiblePrompts]);
 
-  if (promptEntries.length < 2) return null;
+  if (promptEntries.length === 0) return null;
   return (
     <>
       <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("promptJump.title")}>
