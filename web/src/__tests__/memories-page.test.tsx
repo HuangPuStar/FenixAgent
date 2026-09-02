@@ -2,11 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-const win = new Window();
-win.SyntaxError = SyntaxError;
+const win = initializeHappyDomWindow(new Window());
 const globals = globalThis as Record<string, unknown>;
 globals.window = win;
 globals.document = win.document;

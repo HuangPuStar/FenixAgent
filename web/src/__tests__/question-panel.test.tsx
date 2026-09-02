@@ -12,6 +12,7 @@ import type { QuestionProjection } from "@fenix/chat-channel";
 import { CSSStyleDeclaration, Element, Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 最小 DOM 环境（react-dom/client 与 radix 模块加载需要 document）。
 // 注意：bun test 运行时已预置一个普通 window 对象（无 getComputedStyle 等 DOM
@@ -22,25 +23,19 @@ import { createRoot, type Root } from "react-dom/client";
 // 类型校验全部失败。
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 const g = globalThis as Record<string, unknown>;
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 g.window = win;
 g.document = win.document;
 g.navigator = win.navigator;
 const documentRef = win.document;
 
 // ── happy-dom 20.10.1 + bun 环境的全局补齐（Radix Dialog 挂载链所需）──
-// 1. happy-dom Window 未暴露标准错误构造器，但内部实现多处
-//    new this[PropertySymbol.window].TypeError / .SyntaxError（querySelectorAll
-//    解析失败、dispatchEvent 参数校验），缺了抛 undefined constructor；
-// 2. radix 用全局 Event/CustomEvent 构造事件，happy-dom dispatchEvent 用
+// 1. radix 用全局 Event/CustomEvent 构造事件，happy-dom dispatchEvent 用
 //    instanceof 校验，类型必须一致 → 全局事件类替换为 happy-dom 实现；
-// 3. radix 依赖链（focus-scope/focus-guards/dismissable-layer）以全局形式引用
+// 2. radix 依赖链（focus-scope/focus-guards/dismissable-layer）以全局形式引用
 //    MutationObserver / NodeFilter / HTMLInputElement / requestAnimationFrame /
 //    matchMedia 等，happy-dom 只挂在 Window 实例上 → 把 bun 全局缺失的
 //    Window 构造器统一注入（!(key in g) 保护，不覆盖 setTimeout 等 bun 运行时对象）。
-for (const key of ["Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError"]) {
-  (win as unknown as Record<string, unknown>)[key] = globalThis[key as keyof typeof globalThis];
-}
 for (const key of [
   "Event",
   "CustomEvent",

@@ -3,12 +3,13 @@ import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/chat-channe
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 告知 React 当前为测试环境，消除 act() 警告。
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ACPMain 的刷新恢复依赖客户端 effect，提供最小 DOM 环境以验证实际交互路径。
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const globalRecord = globalThis as Record<string, unknown>;
 if (!globalRecord.window) globalRecord.window = win;
 if (!globalRecord.document) globalRecord.document = win.document;

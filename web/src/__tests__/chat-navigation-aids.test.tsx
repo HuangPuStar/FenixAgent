@@ -4,11 +4,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { PromptJumpRail } from "../../components/chat/chat-navigation-aids";
 import type { UserMessageEntry } from "../lib/types";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-const window = new Window();
-window.SyntaxError = SyntaxError;
+const window = initializeHappyDomWindow(new Window());
 const globalKeys = [
   "document",
   "Element",

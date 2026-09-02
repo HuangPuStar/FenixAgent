@@ -8,9 +8,10 @@ import { AgentResourcePicker } from "../pages/agent-panel/agent-editor/AgentReso
 import { EditorPagination, EditorStepperField } from "../pages/agent-panel/agent-editor/agent-editor-controls";
 import { createAgentEditorDefaults } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentEditorData } from "../pages/agent-panel/agent-editor/use-agent-editor";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const globals = globalThis as Record<string, unknown>;
 const originalGlobals = new Map(
   [

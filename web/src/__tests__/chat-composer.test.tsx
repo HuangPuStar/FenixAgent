@@ -148,6 +148,7 @@ import { expect as domExpect, test as domTest } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 /** ChatComposer 的 props 类型（类型空间 import，不产生运行时加载） */
 type ComposerProps = Parameters<typeof import("../../components/chat/ChatComposer")["ChatComposer"]>[0];
@@ -156,15 +157,11 @@ type ComposerProps = Parameters<typeof import("../../components/chat/ChatCompose
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // 设置最小 DOM 环境（react-dom/client 在 CI CJS 构建下模块加载时需要 window）
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
 if (!g.window) g.window = win;
 if (!g.document) g.document = win.document;
 if (!g.navigator) g.navigator = win.navigator;
-// happy-dom querySelectorAll 选择器解析需要 window.SyntaxError（workflow-runs-page.test.tsx 同款处理）
-if (!(win as unknown as Record<string, unknown>).SyntaxError) {
-  (win as unknown as Record<string, unknown>).SyntaxError = SyntaxError;
-}
 
 /** 客户端渲染 ChatComposer，返回容器与卸载函数 */
 async function renderComposer(props: ComposerProps): Promise<{

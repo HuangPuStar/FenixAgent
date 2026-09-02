@@ -3,9 +3,10 @@ import { Window } from "happy-dom";
 import { act, createElement, type DragEvent, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FileInfo } from "../types";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 设置最小 DOM 环境（React 19 需要 window + document）
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
 if (!g.window) g.window = win;
 if (!g.document) g.document = win.document;
