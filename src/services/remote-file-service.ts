@@ -225,7 +225,26 @@ export async function remoteUploadFiles(
     options,
   );
   if (result.status === "error") throw new Error(result.error as string);
-  return result.data as { files: Array<{ name: string; path: string; size: number }> };
+
+  const data = result.data as { files?: Array<{ name?: unknown; path?: unknown; size?: unknown }> } | undefined;
+  if (!data || !Array.isArray(data.files) || data.files.length !== files.length) {
+    throw new AppError("远程文件服务返回了无效的上传结果，请升级远程运行时后重试", "remote_response_invalid", 503);
+  }
+  const expectedPrefix = dir ? `${dir.replace(/\/+$/, "")}/` : "";
+  for (let index = 0; index < files.length; index++) {
+    const actual = data.files[index];
+    const expectedPath = `${expectedPrefix}${files[index].relativePath}`;
+    if (
+      !actual ||
+      typeof actual.name !== "string" ||
+      typeof actual.path !== "string" ||
+      typeof actual.size !== "number" ||
+      actual.path !== expectedPath
+    ) {
+      throw new AppError("远程文件服务返回了错误的上传路径，请升级远程运行时后重试", "remote_response_invalid", 503);
+    }
+  }
+  return { files: data.files as Array<{ name: string; path: string; size: number }> };
 }
 
 /** 删除远程文件（options.opId 幂等键透传，§7.2） */

@@ -79,7 +79,3 @@ export function findFileNode(nodes: ParsedFileNode[], path: string): ParsedFileN
   }
   return null;
 }
-
-export function appendUploadFileNames(formData: FormData, files: File[]): void {
-  formData.append("fileNames", JSON.stringify(files.map((file) => file.name)));
-}

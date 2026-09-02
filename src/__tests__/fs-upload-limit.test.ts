@@ -147,6 +147,24 @@ describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => 
     expect(sendMock.mock.calls.length).toBe(0);
   });
 
+  // 远程运行时若忽略 dir 并返回根级路径，主服务必须 fail closed，不能把错误引用交给 Chat。
+  test("远程上传响应路径与请求目录不一致时拒绝结果", async () => {
+    const sendMock = mock(async () => ({
+      status: "ok",
+      data: { files: [{ name: "a.txt", path: "a.txt", size: 1 }] },
+    }));
+    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+
+    await expect(
+      remoteUploadFiles(MACHINE_ID, ENV_ID, "user", [
+        { name: "a.txt", content: Buffer.from("a").toString("base64"), relativePath: "a.txt" },
+      ]),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: "remote_response_invalid",
+    });
+  });
+
   // 防线边界：恰好 20MB 原文件（含 padding 的 base64）必须放行并透传发送
   test("恰好 20MB 边界放行并透传发送", async () => {
     const sendMock = mock(async () => ({

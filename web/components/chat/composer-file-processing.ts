@@ -1,6 +1,5 @@
 import imageCompression from "browser-image-compression";
-import { fsApi } from "../../src/api/fs";
-import { unwrap } from "../../src/api/request";
+import { uploadChatFiles } from "../../src/api/fs";
 import type { FileAttachment, UserMessageImage } from "../../src/lib/types";
 
 const IMAGE_COMPRESSION_OPTIONS = {
@@ -11,7 +10,6 @@ const IMAGE_COMPRESSION_OPTIONS = {
 };
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
-export const CHAT_USER_UPLOAD_DIRECTORY = "user";
 
 /** 将图片压缩为 ACP 可直接发送的 base64 内容。 */
 export async function processImageFiles(files: File[]): Promise<UserMessageImage[]> {
@@ -54,8 +52,6 @@ export async function uploadComposerFiles(workspaceId: string, files: File[]): P
     throw new Error("chatComposer.filesTooLarge");
   }
 
-  const formData = new FormData();
-  for (const file of files) formData.append("files", file);
-  const uploaded = await unwrap(fsApi.upload(workspaceId, formData, CHAT_USER_UPLOAD_DIRECTORY));
+  const uploaded = await uploadChatFiles(workspaceId, files);
   return uploaded.files.map(({ name, path }) => ({ name, path }));
 }

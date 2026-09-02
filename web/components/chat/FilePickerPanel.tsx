@@ -2,7 +2,7 @@ import { useRequest } from "ahooks";
 import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fsApi } from "../../src/api/fs";
+import { fsApi, uploadChatFiles } from "../../src/api/fs";
 import { ApiError, unwrap } from "../../src/api/request";
 import { FileTypeIcon } from "../../src/components/file-icon-helper";
 import { cn } from "../../src/lib/utils";
@@ -30,10 +30,6 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
   const [searchFilter, setSearchFilter] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const currentDirRef = useRef(currentDir);
-  useEffect(() => {
-    currentDirRef.current = currentDir;
-  }, [currentDir]);
 
   // 目录列表加载
   const {
@@ -75,24 +71,25 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
     setCurrentDir(target);
   }, [dirStack, loadDir]);
 
-  // 文件上传
-  const { run: runUpload, loading: uploadLoading } = useRequest(
-    (formData: FormData) => unwrap(fsApi.upload(envId, formData, currentDirRef.current)),
-    {
-      manual: true,
-      onSuccess: () => {
-        setUploadError(null);
-        loadDir(currentDir);
-      },
-      onError: (err) => {
-        if (err instanceof ApiError && (err as ApiError & { status?: number }).status === 413) {
-          setUploadError(t("filePicker.uploadTooLarge"));
-        } else {
-          setUploadError(err.message || t("filePicker.uploadFailed"));
-        }
-      },
+  // Chat 上传固定进入用户文件区域；当前浏览目录仅用于选择已有文件。
+  const { run: runUpload, loading: uploadLoading } = useRequest((files: File[]) => uploadChatFiles(envId, files), {
+    manual: true,
+    onSuccess: (uploaded) => {
+      setUploadError(null);
+      const uploadedPath = uploaded.files[0]?.path ?? "";
+      const targetDir = uploadedPath.includes("/") ? uploadedPath.slice(0, uploadedPath.lastIndexOf("/")) : "";
+      setDirStack([]);
+      setCurrentDir(targetDir);
+      loadDir(targetDir);
     },
-  );
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "payload_too_large") {
+        setUploadError(t("filePicker.uploadTooLarge"));
+      } else {
+        setUploadError(err.message || t("filePicker.uploadFailed"));
+      }
+    },
+  });
 
   const handleUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,11 +121,7 @@ export function FilePickerPanel({ envId, onSelect, onClose, className }: FilePic
         return;
       }
 
-      const formData = new FormData();
-      for (const file of files) {
-        formData.append("files", file);
-      }
-      runUpload(formData);
+      runUpload(files);
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
     [runUpload, t],

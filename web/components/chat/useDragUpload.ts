@@ -1,7 +1,6 @@
 import { type DragEvent, useCallback, useEffect, useRef, useState } from "react";
-import { fsApi } from "../../src/api/fs";
+import { getChatUploadPath, uploadChatFiles } from "../../src/api/fs";
 import type { FileInfo } from "../../src/types";
-import { CHAT_USER_UPLOAD_DIRECTORY } from "./composer-file-processing";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -31,7 +30,7 @@ interface UseDragUploadReturn {
 
 /**
  * 处理操作系统文件拖入 → 上传 → 进度状态管理。
- * 上传行为与 Composer 文件选择一致：走 fsApi.upload → workspace 的 user/ 目录。
+ * 上传行为与 Composer 文件选择一致：走 uploadChatFiles → workspace 的 user/ 目录。
  */
 export function useDragUpload({
   envId,
@@ -105,24 +104,13 @@ export function useDragUpload({
 
         setUploadingCount((c) => c + 1);
 
-        const formData = new FormData();
-        formData.append("files", file);
-        const result = await fsApi.upload(envId, formData, CHAT_USER_UPLOAD_DIRECTORY);
-        console.log("[useDragUpload] 上传响应:", result);
-        if (!result.success) {
-          console.error(`[useDragUpload] 文件 ${file.name} 上传失败:`, result.error);
-          onError?.(result.error?.message ?? `文件 ${file.name} 上传失败`, file.name);
-        } else {
-          // 优先取后端返回的文件信息，兜底用本地文件名构造路径
-          const responseData = result.data as
-            | { files?: Array<{ name: string; path: string; size: number }> }
-            | undefined;
-          const uploadedFile = responseData?.files?.[0];
+        try {
+          const uploaded = await uploadChatFiles(envId, [file]);
+          const uploadedFile = uploaded.files[0];
           if (mountedRef.current) {
             // 服务端返回 workspace 相对路径（如 `user/foo.txt`），@./ 引用直接使用。
             const name = uploadedFile?.name ?? file.name;
-            const refPath = uploadedFile?.path ?? `${CHAT_USER_UPLOAD_DIRECTORY}/${name}`;
-            console.log(`[useDragUpload] ${file.name} 上传成功, 回填路径: @./${refPath}`);
+            const refPath = uploadedFile?.path ?? getChatUploadPath(name);
             onUploaded({
               name,
               path: refPath,
@@ -131,8 +119,12 @@ export function useDragUpload({
               modifiedAt: Date.now(),
             });
           }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : `文件 ${file.name} 上传失败`;
+          onError?.(message, file.name);
+        } finally {
+          setUploadingCount((c) => c - 1);
         }
-        setUploadingCount((c) => c - 1);
       }
     },
     [disabled, envId, onUploaded, onError],

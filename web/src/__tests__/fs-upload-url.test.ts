@@ -47,13 +47,21 @@ describe("buildUploadUrl", () => {
   });
 });
 
-describe("fsApi.upload", () => {
+describe("uploadChatFiles", () => {
+  // Chat 的拖拽、Paperclip 和文件面板共用此入口，目标必须固定为 user/，不得受浏览目录影响。
+  test("always uploads to the user file area", async () => {
+    const { uploadChatFiles } = await import("../api/fs");
+    await uploadChatFiles("env_1", [new File(["content"], "a.txt")]);
+    expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user");
+    expect(fetchMock.method).toBe("POST");
+  });
+});
+
+describe("uploadFiles", () => {
   // 回归：无 targetDir 时实际发出的请求 URL 以 /fs/ 结尾（修复根上传 404 的端到端断言）
   test("upload without targetDir sends POST to /fs/", async () => {
-    const { fsApi } = await import("../api/fs");
-    const fd = new FormData();
-    fd.append("files", new File(["content"], "a.txt"));
-    await fsApi.upload("env_1", fd);
+    const { uploadFiles } = await import("../api/fs");
+    await uploadFiles("env_1", [new File(["content"], "a.txt")]);
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/");
     expect(fetchMock.method).toBe("POST");
     expect(fetchMock.body).toBeInstanceOf(FormData);
@@ -61,10 +69,8 @@ describe("fsApi.upload", () => {
 
   // 指定目录时上传请求指向对应子目录，URL 行为与根上传一致收敛于 buildUploadUrl
   test("upload with targetDir sends POST to /fs/<dir>", async () => {
-    const { fsApi } = await import("../api/fs");
-    const fd = new FormData();
-    fd.append("files", new File(["content"], "a.txt"));
-    await fsApi.upload("env_1", fd, "docs");
+    const { uploadFiles } = await import("../api/fs");
+    await uploadFiles("env_1", [new File(["content"], "a.txt")], { targetDir: "docs" });
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/docs");
     expect(fetchMock.method).toBe("POST");
   });

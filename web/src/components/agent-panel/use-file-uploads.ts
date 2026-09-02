@@ -1,9 +1,7 @@
 import type { TFunction } from "i18next";
 import { type ChangeEvent, useCallback, useRef, useState } from "react";
-import { buildUploadUrl, MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
-import { UPLOAD_TIMEOUT_MS } from "@/src/api/request";
-import { randomUUID } from "@/src/lib/utils";
-import { appendUploadFileNames, MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
+import { MAX_UPLOAD_SIZE_BYTES, uploadFiles as uploadWorkspaceFiles } from "@/src/api/fs";
+import { MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
 
 interface UseFileUploadsOptions {
   envId: string | null;
@@ -51,28 +49,9 @@ export function useFileUploads({ envId, targetDir, t, onUploaded, onError }: Use
         return;
       }
 
-      const formData = new FormData();
-      for (const file of files) formData.append("files", file);
-      appendUploadFileNames(formData, files);
-      if (relativePaths) formData.append("relativePaths", JSON.stringify(relativePaths));
-
       setUploading(true);
       try {
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
-          };
-          xhr.onload = () =>
-            xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
-          xhr.onerror = () => reject(new Error("Upload network error"));
-          xhr.timeout = UPLOAD_TIMEOUT_MS;
-          xhr.ontimeout = () => reject(new Error("Upload timeout"));
-          xhr.open("POST", buildUploadUrl(envId, targetDir));
-          xhr.withCredentials = true;
-          xhr.setRequestHeader("x-file-op-id", randomUUID());
-          xhr.send(formData);
-        });
+        await uploadWorkspaceFiles(envId, files, { targetDir, relativePaths, onProgress });
         onUploaded();
       } catch (error) {
         onError(error instanceof Error ? error.message : t("fileTree.uploadFailed"));
