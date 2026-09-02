@@ -2,6 +2,7 @@ import { CircleX, CodeXml, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
+import { dispatchArtifactsPreviewFile } from "../../src/lib/artifacts-preview-events";
 import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -27,9 +28,10 @@ function extractPreviewPath(rawInput: Record<string, unknown> | undefined): stri
 
 interface ToolCallRowProps {
   tool: ToolCallData;
+  envId?: string;
 }
 
-export function ToolCallRow({ tool }: ToolCallRowProps) {
+export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
   const { t: tComponents } = useTranslation("components");
   const { t: tNarrator } = useTranslation(NS.TOOL_NARRATOR);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -80,9 +82,9 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
 
   // 点击预览按钮：发送事件通知 ArtifactsPanel 展开并打开文件预览
   const handlePreviewFile = useCallback(() => {
-    if (!previewPath) return;
-    window.dispatchEvent(new CustomEvent("artifacts:preview-file", { detail: { path: previewPath } }));
-  }, [previewPath]);
+    if (!envId || !previewPath) return;
+    dispatchArtifactsPreviewFile(envId, previewPath);
+  }, [envId, previewPath]);
 
   return (
     <div>
@@ -110,32 +112,34 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
             </span>
             <span className="tool-call-row-meta">
               <span className="truncate">{result.subtitle}</span>
-              {result.badge && (
-                <span
-                  className={cn(
-                    "text-[10px] shrink-0",
-                    result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
-                    result.badge.tone === "error" && "text-status-error",
-                    result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
-                    result.badge.tone === "info" && "text-text-dim",
-                  )}
-                >
-                  {result.badge.text}
-                </span>
-              )}
             </span>
           </span>
 
-          <span
-            className={cn(
-              "tool-call-row-status text-[10px] font-medium shrink-0",
-              isError && "text-status-error",
-              isPending && "text-brand",
-              isCanceled && "text-text-dim",
-              !isError && !isPending && !isCanceled && "text-text-dim",
+          <span className="tool-call-row-end">
+            {result.badge && (
+              <span
+                className={cn(
+                  "tool-call-row-duration text-[10px] shrink-0",
+                  result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
+                  result.badge.tone === "error" && "text-status-error",
+                  result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
+                  result.badge.tone === "info" && "text-text-dim",
+                )}
+              >
+                {result.badge.text}
+              </span>
             )}
-          >
-            {result.statusLabel}
+            <span
+              className={cn(
+                "tool-call-row-status text-[10px] font-medium shrink-0",
+                isError && "text-status-error",
+                isPending && "text-brand",
+                isCanceled && "text-text-dim",
+                !isError && !isPending && !isCanceled && "text-text-dim",
+              )}
+            >
+              {result.statusLabel}
+            </span>
           </span>
 
           {hasDetails && <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />}
@@ -150,7 +154,7 @@ export function ToolCallRow({ tool }: ToolCallRowProps) {
         )}
 
         {/* 文件预览是独立操作，不嵌套在整行 button 中。 */}
-        {canPreviewFile && !isPending && (
+        {canPreviewFile && envId && !isPending && (
           <button
             type="button"
             onClick={handlePreviewFile}

@@ -372,8 +372,20 @@
   }
 }
 
-.tool-call-row-status {
+.tool-call-row-end {
+  display: flex;
+  align-items: baseline;
   justify-self: end;
+  gap: 12px;
+}
+
+.tool-call-row-duration {
+  min-width: 42px;
+  text-align: right;
+}
+
+.tool-call-row-status {
+  min-width: 40px;
   color: #8a96a8;
   text-align: right;
 }
