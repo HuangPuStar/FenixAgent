@@ -69,9 +69,8 @@
 }
 
 .chat-prompt-jump-index__preview {
-  position: absolute;
-  top: 50%;
-  left: 27px;
+  position: fixed;
+  z-index: 30;
   display: grid;
   width: 226px;
   gap: 4px;
@@ -83,14 +82,8 @@
   background: rgb(255 255 255 / 97%);
   box-shadow: 0 10px 28px rgb(30 50 80 / 12%);
   backdrop-filter: blur(10px);
-  opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transform: translateY(-50%) translateX(-5px);
-  transition:
-    opacity 130ms ease,
-    visibility 130ms ease,
-    transform 130ms ease;
+  transform: translateY(-50%);
 }
 
 .chat-prompt-jump-index__preview small {
@@ -107,13 +100,6 @@
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-}
-
-.chat-prompt-jump-index__item:hover .chat-prompt-jump-index__preview,
-.chat-prompt-jump-index__item:focus-visible .chat-prompt-jump-index__preview {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(-50%) translateX(0);
 }
 
 @media (min-width: 1180px) and (min-height: 620px) {

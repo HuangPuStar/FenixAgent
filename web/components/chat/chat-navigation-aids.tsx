@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
 import type { UserMessageEntry } from "../../src/lib/types";
@@ -29,12 +30,20 @@ interface PromptJumpRailProps {
   entries: UserMessageEntry[];
 }
 
+interface PromptPreview {
+  entry: UserMessageEntry;
+  sourceIndex: number;
+  left: number;
+  top: number;
+}
+
 /** 宽屏会话提示词导航，不参与消息数据写入。 */
 export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   const { t } = useTranslation(NS.COMPONENTS);
   const railRef = useRef<HTMLElement>(null);
   const visiblePrompts = useMemo(() => samplePromptJumps(entries), [entries]);
   const [activeId, setActiveId] = useState(entries[0]?.id ?? "");
+  const [preview, setPreview] = useState<PromptPreview | null>(null);
 
   useEffect(() => {
     if (!visiblePrompts.some(({ entry }) => entry.id === activeId)) {
@@ -95,40 +104,60 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
 
   if (entries.length < 2) return null;
   return (
-    <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("promptJump.title")}>
-      <ol className={`${PROMPT_JUMP_CLASS}__list`}>
-        {visiblePrompts.map(({ entry, sourceIndex }) => {
-          const summary = entry.content.replace(/\s+/g, " ").trim();
-          const displaySummary = summary || t("promptJump.untitled");
-          const isActive = entry.id === activeId;
-          return (
-            <li key={entry.id}>
-              <button
-                type="button"
-                className={`${PROMPT_JUMP_CLASS}__item${isActive ? " is-active" : ""}`}
-                aria-controls={`chat-entry-${entry.id}`}
-                aria-current={isActive ? "location" : undefined}
-                aria-label={`${t("promptJump.title")} ${sourceIndex + 1}/${entries.length}: ${displaySummary}`}
-                onClick={() => {
-                  document
-                    .getElementById(`chat-entry-${entry.id}`)
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  setActiveId(entry.id);
-                }}
-              >
-                <span className={`${PROMPT_JUMP_CLASS}__tick`} aria-hidden="true" />
-                <span className={`${PROMPT_JUMP_CLASS}__preview`} aria-hidden="true">
-                  <small>
-                    {sourceIndex + 1}/{entries.length}
-                  </small>
-                  <span>{displaySummary}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+    <>
+      <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("promptJump.title")}>
+        <ol className={`${PROMPT_JUMP_CLASS}__list`}>
+          {visiblePrompts.map(({ entry, sourceIndex }) => {
+            const summary = entry.content.replace(/\s+/g, " ").trim();
+            const displaySummary = summary || t("promptJump.untitled");
+            const isActive = entry.id === activeId;
+            return (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  className={`${PROMPT_JUMP_CLASS}__item${isActive ? " is-active" : ""}`}
+                  aria-controls={`chat-entry-${entry.id}`}
+                  aria-current={isActive ? "location" : undefined}
+                  aria-label={`${t("promptJump.title")} ${sourceIndex + 1}/${entries.length}: ${displaySummary}`}
+                  onClick={() => {
+                    document
+                      .getElementById(`chat-entry-${entry.id}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    setActiveId(entry.id);
+                  }}
+                  onFocus={(event) => {
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    setPreview({ entry, sourceIndex, left: bounds.right + 1, top: bounds.top + bounds.height / 2 });
+                  }}
+                  onBlur={() => setPreview(null)}
+                  onMouseEnter={(event) => {
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    setPreview({ entry, sourceIndex, left: bounds.right + 1, top: bounds.top + bounds.height / 2 });
+                  }}
+                  onMouseLeave={() => setPreview(null)}
+                >
+                  <span className={`${PROMPT_JUMP_CLASS}__tick`} aria-hidden="true" />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+      {preview &&
+        createPortal(
+          <span
+            className={`${PROMPT_JUMP_CLASS}__preview`}
+            style={{ left: preview.left, top: preview.top }}
+            aria-hidden="true"
+          >
+            <small>
+              {preview.sourceIndex + 1}/{entries.length}
+            </small>
+            <span>{preview.entry.content.replace(/\s+/g, " ").trim() || t("promptJump.untitled")}</span>
+          </span>,
+          document.body,
+        )}
+    </>
   );
 }
 
