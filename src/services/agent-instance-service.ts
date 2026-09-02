@@ -151,15 +151,19 @@ export class AgentInstanceService {
     await this.coordinator.restartRuntime(instance);
   }
 
-  /** 重启指定 Environment 下的全部持久 Instance，已停止实例直接启动并保留其持久身份。 */
-  async restartInstancesForEnvironments(environmentIds: string[]): Promise<string[]> {
+  /** 重启指定 Environment 下当前运行中或启动中的持久 Instance，与实例列表 Restart 按钮的目标判定一致。 */
+  async restartActiveInstancesForEnvironments(environmentIds: string[]): Promise<string[]> {
     const instances = (
       await Promise.all(
         [...new Set(environmentIds)].map((environmentId) => this.repository.listByEnvironment(environmentId)),
       )
     ).flat();
-    await Promise.all(instances.map((instance) => this.coordinator.restartRuntime(instance)));
-    return instances.map((instance) => instance.id);
+    const activeInstances = instances.filter((instance) => {
+      const state = this.coordinator.snapshot(instance.id).state;
+      return state === "running" || state === "starting";
+    });
+    await Promise.all(activeInstances.map((instance) => this.restartInstanceRuntime(instance)));
+    return activeInstances.map((instance) => instance.id);
   }
 
   async deleteInstance(instance: AgentInstanceRecord): Promise<void> {

@@ -281,7 +281,7 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     const service = new AgentInstanceService(repository, coordinator);
     await service.ensureInstanceRuntime(instance);
 
-    const restarted = await service.restartInstancesForEnvironments([instance.environmentId]);
+    const restarted = await service.restartActiveInstancesForEnvironments([instance.environmentId]);
 
     expect(restarted).toEqual([instance.id]);
     expect(starts).toBe(2);
@@ -290,8 +290,8 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
   });
 
-  // Agent 配置确认后必须重启停止中的持久 Instance，restart 语义不能退化为“仅重启当前进程”。
-  test("restart stopped instances starts runtime and keeps persistent identity", async () => {
+  // Agent 配置保存后的重启必须与外部 Restart 按钮一致，不能启动已经停止的持久 Instance。
+  test("restart after config save skips stopped instances", async () => {
     let starts = 0;
     let stops = 0;
     const adapter: RuntimeAdapter = {
@@ -308,12 +308,12 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
     const service = new AgentInstanceService(repository, coordinator);
 
-    const restarted = await service.restartInstancesForEnvironments([instance.environmentId]);
+    const restarted = await service.restartActiveInstancesForEnvironments([instance.environmentId]);
 
-    expect(restarted).toEqual([instance.id]);
-    expect(starts).toBe(1);
+    expect(restarted).toEqual([]);
+    expect(starts).toBe(0);
     expect(stops).toBe(0);
-    expect(service.getRuntimeSnapshot(instance.id).state).toBe("running");
+    expect(service.getRuntimeSnapshot(instance.id).state).toBe("stopped");
   });
 
   // coordinator 状态丢失但编排层仍有活跃 runtime 时，restart 必须先停止权威 runtime 再启动。
