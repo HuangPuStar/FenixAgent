@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatView } from "../../components/chat/ChatView";
+import i18n from "../i18n";
 import type { ThreadEntry } from "../lib/types";
 
 describe("Chat 空状态", () => {
@@ -22,6 +23,14 @@ describe("Chat 空状态", () => {
     expect(markup).toContain("chatEmpty.suggestionPlan");
     expect(markup).toContain("chatEmpty.suggestionBuild");
     expect(markup).not.toContain("agent-badge");
+  });
+
+  // 推荐提示词应引导用户先讨论思路、风险和取舍，而不是要求 Agent 直接行动。
+  test("推荐讨论型起始话题", () => {
+    expect(i18n.getResource("zh", "components", "chatEmpty.eyebrow")).toBe("从一次充分讨论开始");
+    expect(i18n.getResource("zh", "components", "chatEmpty.suggestionReview")).toBe("讨论代码变更的思路与风险");
+    expect(i18n.getResource("zh", "components", "chatEmpty.suggestionPlan")).toBe("讨论技术方案的选择与取舍");
+    expect(i18n.getResource("zh", "components", "chatEmpty.suggestionBuild")).toBe("讨论构建失败的可能原因");
   });
 
   // 可见正文后紧接工具调用时应标记专用紧凑边界，避免出现过大的垂直空白。
