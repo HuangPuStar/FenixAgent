@@ -38,11 +38,11 @@ function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 describe("narrate 中央入口", () => {
-  // 未匹配任何专用 narrator 时走 fallback，title 句子里的动词应该是"使用"
-  test("未匹配工具走 fallback，verb 为'使用'", () => {
+  // 未匹配任何专用 narrator 时走 fallback，title 句子应明确表达工具调用。
+  test("未匹配工具走 fallback，verb 为'调用工具'", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });
     const result = narrate(tool, "complete", undefined, t);
-    expect(result.title).toContain("使用");
+    expect(result.title).toContain("调用工具");
   });
 
   // complete 状态 title 不应包含进行时前缀"正在"

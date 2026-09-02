@@ -41,9 +41,9 @@ describe("grepNarrator", () => {
     expect(grepNarrator.kinds).toContain("grep");
   });
 
-  // 中文动词必须是"搜索"
-  test("verb 是 '搜索'", () => {
-    expect(grepNarrator.verb).toBe("搜索");
+  // 中文动作必须明确表达本地内容搜索行为
+  test("verb 是 '搜索内容'", () => {
+    expect(grepNarrator.verb).toBe("搜索内容");
   });
 
   // object 是带双引号的 pattern（与 verb 拼 title 时为"搜索 \"useEffect\""）

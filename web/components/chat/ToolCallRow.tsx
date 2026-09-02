@@ -1,4 +1,4 @@
-import { CircleX, CodeXml, ExternalLink, Loader2 } from "lucide-react";
+import { CircleX, CodeXml, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
@@ -74,7 +74,10 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
   // 优先使用 display.path（引擎提供的真实文件路径），兜底走 rawInput。
   const previewPath = tool.display?.path ?? extractPreviewPath(tool.rawInput);
   // 仅允许文件读写工具打开文件，其他携带 path 的工具（如 Glob、Grep）不应触发文件预览。
-  const canPreviewFile = previewPath && supportsFilePreview(kind);
+  const canPreviewFile = Boolean(previewPath && supportsFilePreview(kind));
+  const fileAction = canPreviewFile
+    ? tNarrator(isRunning ? "common.subtitleRunning" : "common.subtitle", { verb: result.verb, object: "" }).trim()
+    : undefined;
 
   const openDialog = useCallback(() => {
     if (hasDetails) setDialogOpen(true);
@@ -89,21 +92,28 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
   return (
     <div>
       <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
-        {/* 整行只在确有详情时可交互；disabled 由 native button 语义统一暴露。 */}
-        <button
-          type="button"
-          className="chat-tool-call-row"
-          data-kind={kind}
-          disabled={!hasDetails}
-          onClick={openDialog}
-        >
+        <div className="chat-tool-call-row" data-kind={kind}>
           <span className="tool-call-row-icon" aria-hidden>
             {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
           </span>
 
           <span className="tool-call-row-copy">
             <span className="tool-call-row-heading">
-              <strong title={titleText}>{result.title}</strong>
+              {canPreviewFile && envId && !isPending ? (
+                <strong title={titleText}>
+                  <span>{fileAction} </span>
+                  <button
+                    type="button"
+                    className="tool-call-row-file-link"
+                    onClick={handlePreviewFile}
+                    title={tComponents("toolCallRow.previewFile", { path: previewPath })}
+                  >
+                    {result.object}
+                  </button>
+                </strong>
+              ) : (
+                <strong title={titleText}>{result.title}</strong>
+              )}
               {result.errorDetail && (
                 <span className="tool-call-row-error" title={result.errorDetail}>
                   {result.errorDetail}
@@ -142,8 +152,18 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
             </span>
           </span>
 
-          {hasDetails && <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />}
-        </button>
+          {hasDetails && (
+            <button
+              type="button"
+              className="chat-tool-call-row-details-button"
+              onClick={openDialog}
+              title={tComponents("toolCallRow.viewParams")}
+              aria-label={tComponents("toolCallRow.viewParams")}
+            >
+              <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />
+            </button>
+          )}
+        </div>
 
         {tool.publicError && (
           <div className="tool-call-row-public-error text-[10px] text-status-error/80" role="alert">
@@ -151,19 +171,6 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
             <p className="break-all">Type: {tool.publicError.type}</p>
             <p className="break-all">ID: {tool.publicError.id}</p>
           </div>
-        )}
-
-        {/* 文件预览是独立操作，不嵌套在整行 button 中。 */}
-        {canPreviewFile && envId && !isPending && (
-          <button
-            type="button"
-            onClick={handlePreviewFile}
-            className="h-6 px-2 gap-1 rounded-md flex items-center shrink-0 text-xs text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-            title={tComponents("toolCallRow.previewFile", { path: previewPath })}
-          >
-            <ExternalLink className="h-3 w-3" />
-            <span>{tComponents("toolCallRow.openFile", "打开文件")}</span>
-          </button>
         )}
       </div>
 

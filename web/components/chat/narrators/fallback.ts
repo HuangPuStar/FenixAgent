@@ -18,7 +18,7 @@ import type { ToolNarrator } from "./types";
  */
 export const fallbackNarrator: ToolNarrator = {
   kinds: ["unknown"],
-  verb: "使用",
+  verb: "调用工具",
   icon: Wrench,
   getDisplay(ctx) {
     // 复用 simplifyToolName（保留首字母大写等格式化逻辑）

@@ -14,7 +14,7 @@ import type { ToolNarrator } from "./types";
  */
 export const bashNarrator: ToolNarrator = {
   kinds: ["bash"],
-  verb: "执行",
+  verb: "执行命令",
   icon: Terminal,
   getDisplay(ctx) {
     const cmd = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.command ?? "");

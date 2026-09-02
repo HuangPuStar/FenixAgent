@@ -31,9 +31,9 @@ describe("bashNarrator", () => {
     expect(bashNarrator.kinds).toContain("bash");
   });
 
-  // 中文动词必须是"执行"
-  test("verb 是 '执行'", () => {
-    expect(bashNarrator.verb).toBe("执行");
+  // 中文动作必须明确表达命令执行行为
+  test("verb 是 '执行命令'", () => {
+    expect(bashNarrator.verb).toBe("执行命令");
   });
 
   // object 加 $ 前缀作为终端命令的视觉提示（与 verb 拼 title 时为"执行 $ npm install"）

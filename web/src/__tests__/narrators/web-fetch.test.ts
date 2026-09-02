@@ -31,9 +31,9 @@ describe("webFetchNarrator", () => {
     expect(webFetchNarrator.kinds).toContain("web-fetch");
   });
 
-  // 中文动词必须是"抓取"（区别于 WebSearch 的"搜索"）
-  test("verb 是 '抓取'", () => {
-    expect(webFetchNarrator.verb).toBe("抓取");
+  // 中文动作必须明确表达网页访问行为
+  test("verb 是 '访问网页'", () => {
+    expect(webFetchNarrator.verb).toBe("访问网页");
   });
 
   // URL 作为 object

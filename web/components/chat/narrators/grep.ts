@@ -16,7 +16,7 @@ import type { ToolNarrator } from "./types";
  */
 export const grepNarrator: ToolNarrator = {
   kinds: ["grep"],
-  verb: "搜索",
+  verb: "搜索内容",
   icon: Search,
   getDisplay(ctx) {
     const raw = ctx.tool.rawInput as Record<string, unknown> | undefined;

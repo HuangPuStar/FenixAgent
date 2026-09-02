@@ -12,7 +12,7 @@ import type { ToolNarrator } from "./types";
  */
 export const questionNarrator: ToolNarrator = {
   kinds: ["question"],
-  verb: "询问",
+  verb: "询问用户",
   icon: HelpCircle,
   getDisplay(ctx) {
     const rawInput = ctx.tool.rawInput;

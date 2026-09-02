@@ -51,6 +51,8 @@ export interface NarrationBadge {
  */
 export interface ToolDisplay {
   object: ReactNode;
+  /** 覆盖 narrator 默认动作，用于同一工具类型下区分文件与目录等语义。 */
+  verb?: string;
   detail?: ReactNode;
 }
 
@@ -60,6 +62,8 @@ export interface ToolDisplay {
 export interface NarrationResult {
   icon?: LucideIcon;
   title: ReactNode;
+  verb: string;
+  object: ReactNode;
   subtitle: ReactNode;
   statusLabel: string;
   badge?: NarrationBadge;

@@ -271,6 +271,26 @@
   outline-offset: 2px;
 }
 
+.chat-tool-call-row-details-button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 5px;
+  color: #8a96a8;
+}
+
+.chat-tool-call-row-details-button:hover {
+  background: #edf2f8;
+  color: #657287;
+}
+
+.chat-tool-call-row-details-button:focus-visible,
+.tool-call-row-file-link:focus-visible {
+  outline: 2px solid #8aa4c7;
+  outline-offset: 2px;
+}
+
 .chat-tool-call-row-details-icon {
   width: 13px;
   height: 13px;
@@ -337,6 +357,22 @@
   font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tool-call-row-file-link {
+  display: inline;
+  max-width: 100%;
+  overflow: hidden;
+  color: #2878d0;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.tool-call-row-file-link:hover {
+  color: #1764b7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .tool-call-row-heading,
 .tool-call-row-meta {
