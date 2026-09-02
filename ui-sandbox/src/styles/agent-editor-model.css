@@ -25,6 +25,10 @@
   background: #f3f7ff;
   box-shadow: inset 0 0 0 1px rgb(39 100 231 / 8%);
 }
+.agent-model-options__icon {
+  --ant-color-text-description: #3269ce;
+}
+
 .agent-model-options__icon,
 .agent-model-summary > span {
   display: grid;

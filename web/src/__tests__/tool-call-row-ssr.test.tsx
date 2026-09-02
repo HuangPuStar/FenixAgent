@@ -59,8 +59,10 @@ describe("ToolCallRow 服务端渲染", () => {
       }),
     );
 
-    expect(html).toMatch(/tool-call-row-heading[\s\S]*<strong[\s\S]*<\/strong>[\s\S]*tool-call-row-meta/);
-    expect(html).not.toMatch(/<\/span><span class="tool-call-row-meta">/);
+    expect(html).toMatch(
+      /tool-call-row-heading[\s\S]*<span class="tool-call-row-title"[\s\S]*<\/span>[\s\S]*tool-call-row-meta/,
+    );
+    expect(html).not.toContain("<strong");
   });
 
   // 运行中的工具需要展示进行中状态，避免被误认为已成功结束。

@@ -5,6 +5,7 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
 import { cn } from "../../src/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -548,43 +549,15 @@ export function TreeItemGroup({ children, className }: TreeItemGroupProps) {
 // ---------------------------------------------------------------------------
 
 function TreeLabelTip({ label, children }: { label: string; children: ReactNode }) {
-  const [visible, setVisible] = useState(false);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!visible) {
-        // 浮窗未出现：记录最新鼠标位置，延时 0.4s 弹出
-        clearTimeout(timerRef.current);
-        const { clientX, clientY } = e;
-        timerRef.current = setTimeout(() => {
-          setPos({ x: clientX, y: clientY });
-          setVisible(true);
-        }, 400);
-      }
-      // 浮窗已出现：位置固定，不再更新
-    },
-    [visible],
-  );
-
-  const handleMouseLeave = useCallback(() => {
-    clearTimeout(timerRef.current);
-    setVisible(false);
-  }, []);
-
   return (
-    <span className="flex-1 min-w-0" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-      {children}
-      {visible && (
-        <span
-          className="fixed z-50 max-w-xs rounded-md border border-border bg-surface-1 px-2.5 py-1 text-xs text-text-primary shadow-md pointer-events-none break-all"
-          style={{ left: pos.x + 12, top: pos.y + 18 }}
-        >
-          {label}
-        </span>
-      )}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex-1 min-w-0 truncate">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8} className="max-w-xs break-all">
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

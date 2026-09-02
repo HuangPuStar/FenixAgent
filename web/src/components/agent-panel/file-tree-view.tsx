@@ -11,7 +11,6 @@ import {
   Search,
   Trash2,
   Upload,
-  UserRound,
   X,
 } from "lucide-react";
 import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "react";
@@ -236,7 +235,6 @@ function FileTreeSections(props: FileTreeViewProps) {
       <ResizablePanel defaultSize="40%" minSize={FILE_TREE_USER_MIN_HEIGHT}>
         <section data-upload-target="user" className="file-tree-section file-tree-section--user">
           <div className="file-tree-user-heading">
-            <UserRound aria-hidden />
             <span>{t("fileTree.user")}</span>
             <button
               type="button"
@@ -405,7 +403,7 @@ function FileTreeNode({
             <Folder aria-hidden />
           )
         ) : (
-          <span className="file-tree-arborist-icon">
+          <span className="file-tree-arborist-icon file-real-file-icon">
             <FileTypeIcon filename={data.name} />
           </span>
         )}

@@ -100,7 +100,7 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
           <span className={cn("tool-call-row-copy", canPreviewFile && envId && !isPending && "is-file-preview")}>
             <span className="tool-call-row-heading">
               {canPreviewFile && envId && !isPending ? (
-                <strong title={titleText}>
+                <span className="tool-call-row-title" title={titleText}>
                   <span>{fileAction} </span>
                   <button
                     type="button"
@@ -110,9 +110,11 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
                   >
                     {result.object}
                   </button>
-                </strong>
+                </span>
               ) : (
-                <strong title={titleText}>{result.title}</strong>
+                <span className="tool-call-row-title" title={titleText}>
+                  {result.title}
+                </span>
               )}
               {result.subtitle ? (
                 <span className="tool-call-row-meta">
