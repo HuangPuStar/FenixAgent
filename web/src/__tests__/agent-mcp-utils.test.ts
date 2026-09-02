@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getMcpDisplayName } from "../lib/mcp-resource-access";
 import {
   buildMcpPayload,
   countMcpScopes,
@@ -128,6 +129,11 @@ describe("MCP editor conversion", () => {
 });
 
 describe("plugin marketplace filters", () => {
+  // 组织名称由目录元数据单独展示，不应拼入 MCP 自身名称。
+  test("keeps organization name out of MCP display name", () => {
+    expect(getMcpDisplayName(servers[1])).toBe("browser-control");
+  });
+
   // 本组织与公开筛选分别依据 ownership 和 publicReadable。
   test("filters organization and public scopes independently", () => {
     const publicInternal = {
