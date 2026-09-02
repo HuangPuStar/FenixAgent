@@ -118,6 +118,8 @@
   },
   "fileTree": {
     "refresh": "Refresh",
+    "refreshItem": "Refresh {{name}}",
+    "deleteItem": "Delete {{name}}",
     "emptyState": "No files in workspace",
     "emptyHint": "Use the toolbar or drag files here to upload",
     "upload": "Upload",

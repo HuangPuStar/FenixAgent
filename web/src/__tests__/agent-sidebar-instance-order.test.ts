@@ -58,6 +58,8 @@ test("智能体区域使用可拖动上边框调整高度", () => {
 
   expect(source).toContain('<ResizablePanelGroup orientation="vertical" className="agent-sidebar-sections">');
   expect(source.match(/<ResizablePanel /g)).toHaveLength(2);
+  expect(source).toContain('defaultSize="44%" minSize="120px"');
+  expect(source).toContain('defaultSize="56%" minSize="160px"');
   expect(handleIndex).toBeGreaterThan(0);
   expect(treeIndex).toBeGreaterThan(handleIndex);
   expect(source).toContain('aria-label={tSidebar("resizeAgentArea")}');

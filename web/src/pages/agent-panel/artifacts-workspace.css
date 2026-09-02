@@ -30,7 +30,6 @@
   position: absolute;
   inset-block: 0;
   right: 0;
-  filter: drop-shadow(0 18px 34px rgba(29, 48, 84, 0.16));
 }
 
 .artifacts-shell[data-layout="docked"] {
@@ -95,6 +94,10 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
   background: var(--color-surface-1);
+}
+
+.artifacts-shell[data-layout="floating"] .artifacts-workspace {
+  box-shadow: 0 18px 34px rgba(29, 48, 84, 0.16);
 }
 
 .artifacts-shell[data-layout="docked"] .artifacts-workspace {
@@ -237,6 +240,16 @@
   gap: 1px;
 }
 
+.file-tree-section [data-slot="tree-item-actions"] {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  padding-left: 18px;
+  background: linear-gradient(90deg, transparent, var(--color-surface-2) 18px);
+}
+
 .file-tree-panel__actions button,
 .file-tree-row-action {
   display: inline-grid;
@@ -253,6 +266,12 @@
 .file-tree-row-action:focus-visible {
   background: var(--color-surface-2);
   color: var(--color-text-primary);
+}
+
+.file-tree-row-action--delete:hover,
+.file-tree-row-action--delete:focus-visible {
+  background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+  color: var(--color-destructive);
 }
 
 .file-tree-panel__actions button:disabled {

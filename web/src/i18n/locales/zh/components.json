@@ -118,6 +118,8 @@
   },
   "fileTree": {
     "refresh": "刷新",
+    "refreshItem": "刷新 {{name}}",
+    "deleteItem": "删除 {{name}}",
     "emptyState": "工作区暂无文件",
     "emptyHint": "通过上方按钮或拖拽文件到此处上传",
     "upload": "上传",

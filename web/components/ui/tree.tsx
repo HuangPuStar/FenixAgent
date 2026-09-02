@@ -489,7 +489,10 @@ export function TreeItem({
 
         {/* Actions */}
         {renderActions && (
-          <span className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+          <span
+            data-slot="tree-item-actions"
+            className="flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center gap-0.5"
+          >
             {renderActions(data, state)}
           </span>
         )}

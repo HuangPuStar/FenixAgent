@@ -1,6 +1,5 @@
 import {
   Download,
-  ExternalLink,
   FilePlus2,
   Folder,
   FolderInput,
@@ -10,6 +9,7 @@ import {
   Move,
   RefreshCw,
   Search,
+  Trash2,
   Upload,
   UserRound,
   X,
@@ -83,35 +83,52 @@ export function FileTreeView(props: FileTreeViewProps) {
   const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
 
   const renderActions = useCallback(
-    (node: TreeNodeData) =>
-      props.isDirectory(node.id) ? (
-        <button
-          type="button"
-          className="file-tree-row-action"
-          aria-label={t("fileTree.newFileIn", { name: node.label })}
-          title={t("fileTree.newFile")}
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onNewFile(node.id);
-          }}
-        >
-          <FilePlus2 aria-hidden />
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="file-tree-row-action"
-          aria-label={t("fileTree.openFile", { name: node.label })}
-          title={t("fileTree.open")}
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onOpen(node.id);
-          }}
-        >
-          <ExternalLink aria-hidden />
-        </button>
-      ),
-    [props.isDirectory, props.onNewFile, props.onOpen, t],
+    (node: TreeNodeData) => {
+      const isDirectory = props.isDirectory(node.id);
+      return (
+        <>
+          {isDirectory && (
+            <button
+              type="button"
+              className="file-tree-row-action"
+              aria-label={t("fileTree.newFileIn", { name: node.label })}
+              title={t("fileTree.newFile")}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onNewFile(node.id);
+              }}
+            >
+              <FilePlus2 aria-hidden />
+            </button>
+          )}
+          <button
+            type="button"
+            className="file-tree-row-action"
+            aria-label={t("fileTree.refreshItem", { name: node.label })}
+            title={t("fileTree.refresh")}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onRefresh();
+            }}
+          >
+            <RefreshCw aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="file-tree-row-action file-tree-row-action--delete"
+            aria-label={t("fileTree.deleteItem", { name: node.label })}
+            title={t("fileTree.contextMenu.delete")}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onDeleteRequest(node.id, node.label);
+            }}
+          >
+            <Trash2 aria-hidden />
+          </button>
+        </>
+      );
+    },
+    [props.isDirectory, props.onDeleteRequest, props.onNewFile, props.onRefresh, t],
   );
 
   const renderLabel = useCallback(
@@ -259,6 +276,9 @@ export function FileTreeView(props: FileTreeViewProps) {
   );
 }
 
+const FILE_TREE_WORKSPACE_MIN_HEIGHT = "112px";
+const FILE_TREE_USER_MIN_HEIGHT = "68px";
+
 function FileTreeSections({
   renderActions,
   renderLabel,
@@ -278,7 +298,7 @@ function FileTreeSections({
 
   return (
     <ResizablePanelGroup orientation="vertical" className="file-tree-sections-resizable">
-      <ResizablePanel defaultSize={60} minSize={112}>
+      <ResizablePanel defaultSize="60%" minSize={FILE_TREE_WORKSPACE_MIN_HEIGHT}>
         <section className="file-tree-section file-tree-section--workspace">
           <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
           <div className="file-tree-section-scroll">
@@ -295,7 +315,7 @@ function FileTreeSections({
         </section>
       </ResizablePanel>
       <ResizableHandle className="file-tree-sections-divider" />
-      <ResizablePanel defaultSize={40} minSize={68}>
+      <ResizablePanel defaultSize="40%" minSize={FILE_TREE_USER_MIN_HEIGHT}>
         <section className="file-tree-section file-tree-section--user">
           <div className="file-tree-user-heading">
             <UserRound aria-hidden />
