@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const win = new Window();
+win.SyntaxError = SyntaxError;
 const globals = globalThis as Record<string, unknown>;
 globals.window = win;
 globals.document = win.document;
