@@ -214,6 +214,32 @@ describe("ProtocolAdapter Claude SDK 消息翻译", () => {
     ]);
   });
 
+  // result 必须把 SDK snake_case usage 转成 ACP camelCase usage；缓存命中同样占用上下文窗口。
+  test("result 转发完整 token 用量", () => {
+    const { adapter, sent } = createAdapter();
+
+    adapter.handleSdkOutput({
+      type: "result",
+      subtype: "success",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_creation_input_tokens: 30,
+        cache_read_input_tokens: 50,
+      },
+    });
+
+    expect(sent).toEqual([
+      {
+        type: "prompt_complete",
+        payload: {
+          stopReason: "success",
+          usage: { totalTokens: 200, inputTokens: 180, outputTokens: 20 },
+        },
+      },
+    ]);
+  });
+
   // init status 必须声明前端协商所需能力与 SDK 版本
   test("翻译 init 为带 capability 的连接状态", () => {
     const { adapter, sent } = createAdapter();

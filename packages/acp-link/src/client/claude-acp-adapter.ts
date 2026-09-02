@@ -3,7 +3,7 @@ import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import { getSessionMessages, type Query, query } from "@anthropic-ai/claude-agent-sdk";
-import { ProtocolAdapter } from "./protocol-adapter.js";
+import { normalizeClaudeSdkUsage, ProtocolAdapter } from "./protocol-adapter.js";
 import { ActiveQueryRegistry } from "./query-registry.js";
 
 /** 会话状态 */
@@ -439,9 +439,13 @@ export function createClaudeAcpConnection(
       });
       const outputBlocks: Array<Record<string, unknown>> = [];
       let cancelled = false;
+      let usage: ReturnType<typeof normalizeClaudeSdkUsage>;
       try {
         for await (const msg of q) {
           adapter.handleSdkOutput(msg);
+          if (msg.type === "result") {
+            usage = normalizeClaudeSdkUsage((msg as Record<string, unknown>).usage);
+          }
           if (msg.type === "system" && (msg as Record<string, unknown>).subtype === "init") {
             const ccSid = (msg as Record<string, unknown>).session_id as string | undefined;
             // ccSessionId 必须写回本次调用的目标会话，否则并发 run 会把 SDK 会话
@@ -518,7 +522,11 @@ export function createClaudeAcpConnection(
         // 异常路径不吞错：unregister 后异常继续向上传播，handlePrompt 回 error RPC。
         activeQueries.unregister(targetSessionId);
       }
-      return { stopReason: cancelled ? ("cancelled" as const) : ("end_turn" as const), content: outputBlocks };
+      return {
+        stopReason: cancelled ? ("cancelled" as const) : ("end_turn" as const),
+        content: outputBlocks,
+        usage,
+      };
     },
 
     async cancel(params: Record<string, unknown>) {
