@@ -452,7 +452,7 @@
 .chat-composer-asset.is-quote p {
   position: absolute;
   z-index: 4;
-  bottom: calc(100% + 5px);
+  top: calc(100% + 5px);
   left: 0;
   display: none;
   width: 220px;
