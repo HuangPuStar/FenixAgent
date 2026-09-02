@@ -129,7 +129,7 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
                 variant="ghost"
                 size="icon-sm"
                 disabled={questionIndex === question.questions.length - 1}
-                aria-label={t("askUser.next")}
+                aria-label={t("askUser.nextQuestion")}
                 onClick={() => setQuestionIndex((index) => Math.min(question.questions.length - 1, index + 1))}
               >
                 <ChevronRight />

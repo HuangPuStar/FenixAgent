@@ -272,7 +272,7 @@ describe("QuestionPanel", () => {
     const buttons = Array.from(container.querySelectorAll("button"));
     const submitButton = buttons.find((b) => b.textContent?.includes("askUser.submit"));
     const programmingButton = buttons.find((b) => b.textContent?.includes("programming"));
-    const nextButton = buttons.find((b) => b.getAttribute("aria-label") === "askUser.next");
+    const nextButton = buttons.find((b) => b.getAttribute("aria-label") === "askUser.nextQuestion");
     expect(submitButton).toBeDefined();
     expect(programmingButton).toBeDefined();
     expect(nextButton).toBeDefined();

@@ -106,9 +106,12 @@
   gap: 7px;
   margin-top: 11px;
 }
-.chat-question-body footer > div {
+.chat-question-body footer > div:first-child {
   display: flex;
   margin-right: auto;
+}
+.chat-question-body footer > div:last-child {
+  display: flex;
 }
 .chat-question-options {
   display: grid;

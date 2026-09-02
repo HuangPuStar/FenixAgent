@@ -537,7 +537,8 @@
     "description": "The agent needs your input to continue",
     "submit": "Submit",
     "previous": "Previous question",
-    "next": "Next question"
+    "next": "Next",
+    "nextQuestion": "Next question"
   },
   "chatStatus": {
     "title": "Status",
