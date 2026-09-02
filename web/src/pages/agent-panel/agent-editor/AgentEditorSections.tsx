@@ -115,7 +115,12 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
             requireGroup
             renderIcon={(item) => (
               <Suspense fallback={<Cpu />}>
-                <ModelIcon modelId={item.iconKey} size={20} />
+                <ModelIcon
+                  modelId={item.iconKey}
+                  size={20}
+                  variant="mono"
+                  className="agent-model-options__brand-icon"
+                />
               </Suspense>
             )}
             disabled={disabled}

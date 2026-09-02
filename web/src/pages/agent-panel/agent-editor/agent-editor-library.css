@@ -2,7 +2,7 @@
 .agent-editor-root .agent-editor-library-picker {
   display: grid;
   min-height: 250px;
-  grid-template-columns: 142px minmax(0, 1fr);
+  grid-template-columns: 168px minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid #dfe6f0;
   border-radius: 12px;
@@ -12,20 +12,20 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
   border-right: 1px solid #edf1f5;
-  padding: 6px;
+  padding: 8px;
   background: #f8fafc;
 }
 .agent-editor-root .agent-editor-group-filter button {
   display: grid;
-  min-height: 36px;
+  min-height: 40px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   border: 0;
-  border-radius: 7px;
-  padding: 6px 8px;
+  border-radius: 8px;
+  padding: 7px 10px;
   color: #617088;
   background: transparent;
   text-align: left;
@@ -37,18 +37,18 @@
 }
 .agent-editor-root .agent-editor-group-filter button span {
   overflow: hidden;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .agent-editor-root .agent-editor-group-filter button em {
-  min-width: 20px;
+  min-width: 24px;
   border-radius: 999px;
-  padding: 2px 5px;
+  padding: 2px 6px;
   color: #77869c;
   background: #fff;
-  font-size: 7px;
+  font-size: 11px;
   font-style: normal;
   text-align: center;
 }

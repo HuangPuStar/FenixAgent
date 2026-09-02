@@ -20,24 +20,26 @@
 }
 .agent-editor-root .agent-single-picker-toolbar > span {
   color: #8794a7;
-  font-size: 8px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .agent-editor-root .agent-single-picker-current {
   display: grid;
+  min-height: 36px;
   grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   margin-bottom: 7px;
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 6px 9px;
   color: #54709e;
   background: #f1f6ff;
-  font-size: 8px;
+  font-size: 11px;
 }
 .agent-editor-root .agent-single-picker-current strong {
   color: #285bb6;
-  font-size: 9px;
+  font-size: 12px;
+  font-weight: 680;
 }
 .agent-editor-root .agent-single-picker-current span {
   overflow: hidden;
@@ -69,7 +71,7 @@
   overflow-y: auto;
 }
 .agent-editor-root .agent-model-options > button {
-  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
 }
 .agent-editor-root .agent-node-list > button {
   grid-template-columns: 34px minmax(0, 1fr) 18px;
@@ -77,12 +79,12 @@
 .agent-editor-root .agent-model-options > button,
 .agent-editor-root .agent-node-list > button {
   display: grid;
-  min-height: 58px;
+  min-height: 52px;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   border: 1px solid #e0e6ef;
-  border-radius: 11px;
-  padding: 9px 10px;
+  border-radius: 10px;
+  padding: 8px 9px;
   color: #526179;
   background: #fff;
   text-align: left;
@@ -101,16 +103,25 @@
   background: #fffaf1;
 }
 .agent-editor-root .agent-model-options__icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 9px;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
   color: #3269ce;
   background: #eaf2ff;
 }
+.agent-editor-root .agent-model-options__icon > * {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
 .agent-editor-root .agent-model-options__icon svg {
-  width: 15px;
+  width: 18px;
+  height: 18px;
 }
 .agent-editor-root .agent-model-options__copy {
   display: flex;
@@ -122,7 +133,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: #31425d;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -131,7 +142,7 @@
 .agent-editor-root .agent-model-options__copy small {
   overflow: hidden;
   color: #8995a7;
-  font-size: 8px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -142,20 +153,25 @@
 .agent-editor-root .agent-model-options > button > em,
 .agent-editor-root .agent-node-list > button > em {
   color: #6d7d94;
-  font-size: 8px;
+  font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
 .agent-editor-root .agent-model-options > button > i,
 .agent-editor-root .agent-node-list > button > i {
-  display: grid;
-  width: 17px;
-  height: 17px;
-  place-items: center;
+  display: flex;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   border: 1px solid #d2dae5;
   border-radius: 50%;
   color: #fff;
   background: #fff;
+  line-height: 0;
 }
 .agent-editor-root .agent-model-options > button.is-selected > i,
 .agent-editor-root .agent-node-list > button.is-selected > i {
@@ -164,24 +180,28 @@
 }
 .agent-editor-root .agent-model-options > button > i svg,
 .agent-editor-root .agent-node-list > button > i svg {
+  display: block;
   width: 10px;
+  height: 10px;
+  flex: none;
+  stroke-width: 2.5;
 }
 .agent-editor-root .agent-model-summary {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 12px;
+  margin-top: 18px;
   border-radius: 11px;
-  padding: 11px;
+  padding: 14px;
   background: #f6f8fb;
 }
 .agent-editor-root .agent-model-summary > span {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 10px;
   color: #3269ce;
   background: #eaf2ff;
 }
@@ -195,16 +215,18 @@
 }
 .agent-editor-root .agent-model-summary small {
   color: #8b97a9;
-  font-size: 7px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-model-summary strong {
   color: #34455f;
-  font-size: 10px;
+  font-size: 14px;
+  font-weight: 680;
 }
 .agent-editor-root .agent-model-summary p {
   margin: 0;
   color: #8995a7;
-  font-size: 8px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .agent-editor-root .agent-editor-toggle-row {
   display: grid;
@@ -249,11 +271,11 @@
   align-items: center;
   gap: 7px;
   color: #33445c;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-editor-toggle-row__copy small {
   color: #8996a9;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .agent-editor-root .agent-editor-switch {
@@ -295,11 +317,11 @@
 }
 .agent-editor-root .agent-runtime-note strong {
   color: #315f53;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-runtime-note p {
   margin: 4px 0 0;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.55;
 }
 .agent-editor-root .agent-owner-card {
@@ -332,23 +354,23 @@
 }
 .agent-editor-root .agent-owner-card small {
   color: #98a3b3;
-  font-size: 7px;
+  font-size: 11px;
 }
 .agent-editor-root .agent-owner-card strong {
   color: #33435b;
-  font-size: 10px;
+  font-size: 14px;
 }
 .agent-editor-root .agent-owner-card p {
   margin: 0;
   color: #8491a4;
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-owner-card em {
   border-radius: 999px;
   padding: 4px 7px;
   color: #2762c8;
   background: #eaf2ff;
-  font-size: 8px;
+  font-size: 12px;
   font-style: normal;
 }
 .agent-editor-root .agent-access-preview {
@@ -359,7 +381,7 @@
 }
 .agent-editor-root .agent-access-preview > strong {
   color: #57677f;
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-access-preview > div {
   display: flex;
@@ -373,7 +395,7 @@
   color: #39516f;
   background: #fff;
   box-shadow: inset 0 0 0 1px #e0e6ee;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-access-preview > div i {
   width: 24px;

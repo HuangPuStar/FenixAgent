@@ -1,7 +1,7 @@
 /* 知识与记忆使用三个同级表面，避免标题、开关与边框重复嵌套。 */
 .agent-editor-root .agent-knowledge-layout {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 .agent-editor-root .agent-knowledge-block {
   overflow: hidden;
@@ -11,19 +11,19 @@
 }
 .agent-editor-root .agent-knowledge-block__heading {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border-bottom: 1px solid #edf1f5;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: #f9fbfe;
 }
 .agent-editor-root .agent-knowledge-block__heading > span {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 9px;
   color: #2d66c8;
   background: #eaf2ff;
 }
@@ -39,12 +39,13 @@
 }
 .agent-editor-root .agent-knowledge-block__heading strong {
   color: #31425b;
-  font-size: 10px;
+  font-size: 14px;
+  font-weight: 680;
 }
 .agent-editor-root .agent-knowledge-block__heading small {
   color: #8492a7;
-  font-size: 8px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .agent-editor-root .agent-knowledge-block__body {
   padding: 10px 12px;
@@ -59,13 +60,13 @@
 .agent-editor-root .agent-knowledge-switch {
   display: grid;
   width: 100%;
-  min-height: 48px;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   border: 0;
   border-radius: 9px;
-  padding: 8px 10px;
+  padding: 11px 12px;
   color: #42526a;
   background: #f8fafc;
   text-align: left;
@@ -83,22 +84,24 @@
 .agent-editor-root .agent-knowledge-switch strong {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: #33445c;
-  font-size: 9px;
+  font-size: 14px;
+  font-weight: 680;
 }
 .agent-editor-root .agent-knowledge-switch strong em {
   border-radius: 999px;
-  padding: 2px 6px;
+  padding: 2px 7px;
   color: #285fbf;
   background: #e4efff;
-  font-size: 7px;
+  font-size: 11px;
+  font-weight: 500;
   font-style: normal;
 }
 .agent-editor-root .agent-knowledge-switch small {
   color: #8996a9;
-  font-size: 8px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .agent-editor-root .agent-knowledge-switch > i {
   display: block;

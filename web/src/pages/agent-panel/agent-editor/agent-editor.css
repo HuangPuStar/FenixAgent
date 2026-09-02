@@ -13,7 +13,7 @@
 .agent-editor-panel {
   position: absolute;
   z-index: 40;
-  inset: 12px 12px 12px auto;
+  inset: 12px auto 12px 12px;
   width: min(1180px, calc(100% - 24px));
   height: auto;
   max-width: none;

@@ -19,15 +19,18 @@
     background 140ms ease;
 }
 .agent-editor-root .agent-editor-input {
-  height: 32px;
-  border-radius: 8px;
-  padding: 0 10px;
+  height: 40px;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 1.4;
 }
 .agent-editor-root .agent-editor-textarea {
-  min-height: 120px;
+  min-height: 144px;
   resize: vertical;
-  padding: 10px 11px;
-  line-height: 1.65;
+  padding: 14px 14px;
+  font-size: 14px;
+  line-height: 1.7;
 }
 .agent-editor-root .agent-editor-input:focus,
 .agent-editor-root .agent-editor-textarea:focus,
@@ -46,27 +49,28 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 5px;
+  gap: 9px;
 }
 .agent-editor-root .agent-editor-field__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   color: #35445c;
-  font-size: 9px;
+  font-size: 14px;
   font-weight: 680;
-  line-height: 1.2;
+  line-height: 1.35;
 }
 .agent-editor-root .agent-editor-field__label small {
   color: #9aa5b6;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 500;
 }
 .agent-editor-root .agent-editor-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 13px;
+  column-gap: 16px;
+  row-gap: 20px;
 }
 .agent-editor-root .agent-editor-form-grid > .agent-editor-field--description,
 .agent-editor-root .agent-editor-form-grid > .agent-editor-field--prompt {
@@ -80,18 +84,18 @@
   min-width: 0;
   flex: 1;
   font-family: ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-editor-agent-id-row button,
 .agent-editor-root .agent-editor-agent-id-row .agent-editor-button {
-  height: 32px;
-  border-radius: 8px;
+  height: 40px;
+  border-radius: 9px;
   flex: 0 0 auto;
   border: 1px solid #dde4ed;
-  padding: 0 10px;
+  padding: 0 13px;
   color: #53637a;
   background: #fff;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-editor-agent-id-row button:hover {
   border-color: #aac3ef;
@@ -110,7 +114,7 @@
   color: #53637a;
   background: #fff;
   font: inherit;
-  font-size: 9px;
+  font-size: 13px;
   cursor: pointer;
 }
 .agent-editor-root .agent-editor-button:hover:not(:disabled) {
@@ -182,21 +186,21 @@
   appearance: none;
 }
 .agent-editor-root .agent-editor-prompt-editor {
-  min-height: 132px;
+  min-height: 180px;
   font-family: inherit;
 }
 .agent-editor-root .agent-editor-guidance {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
-  margin: 10px 0 0;
+  gap: 8px;
+  margin: 14px 0 0;
   color: #6f7f96;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .agent-editor-root .agent-editor-guidance svg {
-  width: 12px;
-  flex: 0 0 12px;
+  width: 15px;
+  flex: 0 0 15px;
   color: #3e72cf;
 }
 .agent-editor-root .agent-capability-tabs {
@@ -242,7 +246,7 @@
   border-radius: 999px;
   color: #718097;
   background: #edf1f6;
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-resource-picker {
   overflow: hidden;
@@ -270,11 +274,11 @@
 }
 .agent-editor-root .agent-resource-picker__selected strong {
   color: #34445d;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-resource-picker__selected small {
   color: #98a3b4;
-  font-size: 7px;
+  font-size: 11px;
 }
 .agent-editor-root .agent-resource-picker__chips {
   flex-direction: row;
@@ -291,7 +295,7 @@
   padding: 0 8px;
   color: #265bbd;
   background: #eaf2ff;
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-resource-picker__chips button svg {
   width: 11px;
@@ -326,14 +330,14 @@
   border-radius: 0;
   box-shadow: none;
   background: transparent;
-  font-size: 9px;
+  font-size: 13px;
 }
 .agent-editor-root .agent-resource-picker__search kbd {
   border-radius: 5px;
   padding: 2px 5px;
   color: #9aa5b6;
   background: #f2f5f8;
-  font-size: 7px;
+  font-size: 11px;
 }
 .agent-editor-root .agent-resource-picker__list {
   display: grid;
@@ -388,13 +392,13 @@
   height: 12px;
 }
 .agent-editor-root .agent-resource-picker__list strong {
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 680;
 }
 .agent-editor-root .agent-resource-picker__list small {
   overflow: hidden;
   color: #8b98aa;
-  font-size: 8px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -403,7 +407,7 @@
   padding: 3px 6px;
   color: #728199;
   background: #f0f3f7;
-  font-size: 7px;
+  font-size: 11px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -411,7 +415,7 @@
   margin: 0;
   padding: 32px 10px;
   color: #909cae;
-  font-size: 9px;
+  font-size: 13px;
   text-align: center;
 }
 
