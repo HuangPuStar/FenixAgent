@@ -114,6 +114,7 @@
   background: #eaf2ff;
 }
 .agent-editor-root .agent-model-options__icon > * {
+  --ant-color-text-description: cornflowerblue;
   display: block;
   width: 18px;
   height: 18px;
