@@ -132,8 +132,8 @@ describe("env validation", () => {
     expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
   });
 
-  // 未配置连接池变量时必须保留 postgres.js 当前的默认连接策略。
-  test("数据库连接池变量未设置时使用默认值", () => {
+  // 未配置连接池变量时使用项目约定的连接池默认值。
+  test("数据库连接池变量未设置时使用项目默认值", () => {
     process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
     process.env.RCS_API_KEYS = "test-key";
     delete process.env.RCS_DB_POOL_MAX;
@@ -143,9 +143,9 @@ describe("env validation", () => {
 
     const env = validateEnv();
     expect(env.RCS_DB_POOL_MAX).toBe(20);
-    expect(env.RCS_DB_IDLE_TIMEOUT_SECONDS).toBeUndefined();
-    expect(env.RCS_DB_CONNECT_TIMEOUT_SECONDS).toBeUndefined();
-    expect(env.RCS_DB_MAX_LIFETIME_SECONDS).toBeUndefined();
+    expect(env.RCS_DB_IDLE_TIMEOUT_SECONDS).toBe(60);
+    expect(env.RCS_DB_CONNECT_TIMEOUT_SECONDS).toBe(30);
+    expect(env.RCS_DB_MAX_LIFETIME_SECONDS).toBe(3600);
     expect(env.RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS).toBe(150);
     expect(env.RCS_DB_LOCK_TIMEOUT_SECONDS).toBe(5);
   });
