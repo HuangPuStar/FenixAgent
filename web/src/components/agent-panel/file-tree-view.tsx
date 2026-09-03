@@ -406,7 +406,9 @@ function FileTreeNode({
           </span>
         )}
       </button>
-      <span className="file-tree-arborist-name">{data.name}</span>
+      <span className="file-tree-arborist-name" title={data.name}>
+        {data.name}
+      </span>
       <span data-slot="tree-item-actions" className="file-tree-arborist-actions">
         {data.isDir && (
           <button
