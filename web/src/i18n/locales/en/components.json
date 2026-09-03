@@ -558,11 +558,14 @@
     "image": "Image to send",
     "imageNumber": "Image {{count}}",
     "quoteNumber": "Quote {{count}}",
+    "sentQuotes": "Quotes for this turn",
     "removeImage": "Remove image",
     "removeFile": "Remove {{name}}",
     "removeQuote": "Remove quote",
     "prepareImageFailed": "The image could not be processed. Remove it and try again.",
-    "quoteContext": "Quoted conversation text:"
+    "quoteTruncated": "The quote was too long; {{count}} characters were omitted.",
+    "quoteTruncatedContext": "[Quote truncated; {{count}} trailing characters omitted]",
+    "quoteLimitReached": "The quote limit for this turn has been reached. Send or remove a quote first."
   },
   "promptJump": {
     "title": "Jump to user prompts",

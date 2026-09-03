@@ -4,7 +4,12 @@ import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useMem
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { FilePickerDialog } from "../../src/components/FilePickerDialog";
-import { pushContext, removeContext } from "../../src/lib/context-queue";
+import {
+  limitQuotedText,
+  MAX_QUOTE_COUNT,
+  MAX_TOTAL_QUOTED_TEXT_LENGTH,
+  serializeChatQuotes,
+} from "../../src/lib/context-queue";
 import type { ChatInputMessage, FileAttachment, UserMessageImage } from "../../src/lib/types";
 import type { FileInfo } from "../../src/types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
@@ -121,7 +126,22 @@ export function ChatComposer({
     return () => window.removeEventListener("chat:apply-suggested-prompt", applySuggestedPrompt);
   }, []);
   const [quotes, setQuotes] = useState<ComposerQuote[]>([]);
+  const quotesRef = useRef<ComposerQuote[]>([]);
+  const previousContextScopeRef = useRef(contextScope);
   const quoteSequenceRef = useRef(0);
+
+  const updateQuotes = useCallback((updater: (current: ComposerQuote[]) => ComposerQuote[]) => {
+    const next = updater(quotesRef.current);
+    quotesRef.current = next;
+    setQuotes(next);
+  }, []);
+
+  useEffect(() => {
+    if (previousContextScopeRef.current === contextScope) return;
+    previousContextScopeRef.current = contextScope;
+    quotesRef.current = [];
+    setQuotes([]);
+  }, [contextScope]);
 
   // ---------------------------------------------------------------------------
   // Refs — 从 ChatInput 原样迁移
@@ -162,16 +182,29 @@ export function ChatComposer({
       if (!contextScope || detail?.contextScope !== contextScope) return;
       const text = detail?.text;
       if (typeof text !== "string" || !text.trim()) return;
+      if (quotesRef.current.length >= MAX_QUOTE_COUNT) {
+        toast.info(t("composerAssets.quoteLimitReached"));
+        return;
+      }
+      const quotedCharacterCount = quotesRef.current.reduce((total, quote) => total + Array.from(quote.text).length, 0);
+      const remainingCharacterCount = MAX_TOTAL_QUOTED_TEXT_LENGTH - quotedCharacterCount;
+      if (remainingCharacterCount <= 0) {
+        toast.info(t("composerAssets.quoteLimitReached"));
+        return;
+      }
+      const { text: quotedText, omittedCharacterCount } = limitQuotedText(text, remainingCharacterCount);
+      if (!quotedText) return;
       quoteSequenceRef.current += 1;
       const id = `chat-quote-${Date.now()}-${quoteSequenceRef.current}`;
-      const normalized = text.replace(/\s+/g, " ").trim();
-      pushContext(id, `${t("composerAssets.quoteContext")}\n${normalized}`, contextScope);
-      setQuotes((current) => [...current, { id, text: normalized }]);
+      updateQuotes((current) => [...current, { id, text: quotedText, omittedCharacterCount }]);
+      if (omittedCharacterCount > 0) {
+        toast.info(t("composerAssets.quoteTruncated", { count: omittedCharacterCount }));
+      }
       textareaRef.current?.focus();
     };
     window.addEventListener("chat:quote", handleQuote);
     return () => window.removeEventListener("chat:quote", handleQuote);
-  }, [contextScope, t]);
+  }, [contextScope, t, updateQuotes]);
 
   // ---------------------------------------------------------------------------
   // Handlers — 从 ChatInput 原样迁移
@@ -181,17 +214,20 @@ export function ChatComposer({
     const trimmed = text.trim();
     if ((!trimmed && images.length === 0 && attachments.length === 0 && quotes.length === 0) || disabled) return;
 
+    const quoteContext = serializeChatQuotes(quotes);
+
     onSubmit({
       text: trimmed,
       images: images.length > 0 ? images : undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
+      quoteContext,
       mcps:
         selectedMcpIds.size > 0 ? mcps.filter((mcp) => selectedMcpIds.has(mcp.id)).map((mcp) => mcp.name) : undefined,
     });
     setText("");
     setImages([]);
     setAttachments([]);
-    setQuotes([]);
+    updateQuotes(() => []);
     setSelectedMcpIds(new Set());
     setCommandPanelOpen(false);
     setCommandPanelSearch(false);
@@ -200,7 +236,7 @@ export function ChatComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, images, attachments, quotes, selectedMcpIds, mcps, disabled, onSubmit]);
+  }, [text, images, attachments, quotes, selectedMcpIds, mcps, disabled, onSubmit, updateQuotes]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -334,10 +370,9 @@ export function ChatComposer({
 
   const removeQuote = useCallback(
     (id: string) => {
-      removeContext(id, contextScope);
-      setQuotes((current) => current.filter((quote) => quote.id !== id));
+      updateQuotes((current) => current.filter((quote) => quote.id !== id));
     },
-    [contextScope],
+    [updateQuotes],
   );
 
   const handleCommandSelect = useCallback(
@@ -402,14 +437,13 @@ export function ChatComposer({
   const canSend = (text.trim() || images.length > 0 || attachments.length > 0 || quotes.length > 0) && !disabled;
 
   const handleNewSession = useCallback(() => {
-    for (const quote of quotes) removeContext(quote.id, contextScope);
     setText("");
     setImages([]);
     setAttachments([]);
-    setQuotes([]);
+    updateQuotes(() => []);
     setSelectedMcpIds(new Set());
     onNewSession?.();
-  }, [contextScope, onNewSession, quotes]);
+  }, [onNewSession, updateQuotes]);
 
   // ---------------------------------------------------------------------------
   // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行

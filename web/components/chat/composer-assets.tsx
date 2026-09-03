@@ -1,10 +1,12 @@
 import { FileText, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { createQuotePreview } from "../../src/lib/context-queue";
 import type { FileAttachment, UserMessageImage } from "../../src/lib/types";
 
 export interface ComposerQuote {
   id: string;
   text: string;
+  omittedCharacterCount: number;
 }
 
 interface ComposerAssetsProps {
@@ -54,7 +56,13 @@ export function ComposerAssets({
             <Quote />
           </span>
           <strong>{t("composerAssets.quoteNumber", { count: index + 1 })}</strong>
-          <p>{quote.text}</p>
+          <span className="chat-composer-quote-preview" role="tooltip">
+            {createQuotePreview(quote.text)}
+            {quote.omittedCharacterCount > 0 && (
+              <small>{t("composerAssets.quoteTruncatedBadge", { count: quote.omittedCharacterCount })}</small>
+            )}
+          </span>
+          {quote.omittedCharacterCount > 0 && <small aria-hidden="true">…</small>}
           <RemoveButton label={t("composerAssets.removeQuote")} onClick={() => onRemoveQuote(quote.id)} />
         </article>
       ))}

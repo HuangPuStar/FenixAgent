@@ -558,11 +558,14 @@
     "image": "待发送图片",
     "imageNumber": "图片 {{count}}",
     "quoteNumber": "引用 {{count}}",
+    "sentQuotes": "本轮引用",
     "removeImage": "移除图片",
     "removeFile": "移除 {{name}}",
     "removeQuote": "移除引用",
     "prepareImageFailed": "图片处理失败，请移除后重试",
-    "quoteContext": "引用的会话文本："
+    "quoteTruncated": "引用过长，已省略 {{count}} 个字符",
+    "quoteTruncatedContext": "[引用过长，已省略后续 {{count}} 个字符]",
+    "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用"
   },
   "promptJump": {
     "title": "用户提示词快速跳转",

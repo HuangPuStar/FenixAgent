@@ -436,6 +436,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
       if (contentBlocks.length === 0) return;
 
+      // 引用属于本次提交，直接随 prompt 原子传递；仍使用 system-reminder 协议供 Agent 识别，
+      // 但 Chat 历史投影会隐藏这类内部上下文。
+      if (message.quoteContext) {
+        contentBlocks.unshift({ type: "text", text: `<system-reminder>\n${message.quoteContext}\n</system-reminder>` });
+      }
+
       // 注入场景提示词（仅第一条消息，隐藏不显示）
       if (scenePrompt && !scenePromptUsedRef.current) {
         contentBlocks.unshift({ type: "text", text: scenePrompt });

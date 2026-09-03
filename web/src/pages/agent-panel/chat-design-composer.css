@@ -398,9 +398,10 @@
 
 .chat-composer-assets {
   display: flex;
+  flex-wrap: wrap;
   gap: 9px;
   overflow: visible;
-  padding: 12px 14px 0;
+  padding: 12px 14px 4px;
 }
 .chat-composer-asset {
   position: relative;
@@ -435,47 +436,77 @@
   position: absolute;
   top: -6px;
   right: 4px;
-  display: none;
+  display: grid;
   width: 22px;
   height: 22px;
   place-items: center;
   border-radius: 50%;
   background: #3d485b;
   color: #fff;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
-.chat-composer-asset:hover .chat-composer-asset-remove {
-  display: grid;
+.chat-composer-asset:hover .chat-composer-asset-remove,
+.chat-composer-asset:focus-within .chat-composer-asset-remove,
+.chat-composer-asset-remove:focus-visible {
+  opacity: 1;
 }
 .chat-composer-asset-remove svg {
   width: 13px;
 }
-.chat-composer-asset.is-quote p {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 5px);
-  left: 0;
-  display: none;
-  width: 220px;
-  box-sizing: border-box;
-  min-height: 58px;
-  max-height: 72px;
-  overflow: hidden;
-  margin: 0;
-  padding: 8px;
-  border: 1px solid #e2e7ee;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 10px 25px rgb(30 50 80 / 12%);
-  color: #53627a;
-  font-size: 11px;
-  line-height: 1.45;
-  pointer-events: auto;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+.chat-composer-asset.is-quote {
+  width: 76px;
+  min-width: 76px;
+  flex-basis: 76px;
 }
-.chat-composer-asset.is-quote:hover p,
-.chat-composer-asset.is-quote p:hover {
-  display: -webkit-box;
+.chat-composer-asset.is-quote > small {
+  position: absolute;
+  top: 3px;
+  left: 48px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dbe8f8;
+  color: #4d72b2;
+  font-size: 11px;
+  font-weight: 700;
+}
+.chat-composer-quote-preview {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: none;
+  width: min(320px, calc(100vw - 48px));
+  max-height: 120px;
+  overflow: hidden;
+  padding: 9px 11px;
+  border: 1px solid #dfe5ed;
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgb(38 52 77 / 14%);
+  background: #fff;
+  color: #526178;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.chat-composer-quote-preview > small {
+  display: block;
+  margin-top: 4px;
+  color: #8a5b16;
+  font-size: 10px;
+}
+.chat-composer-asset.is-quote:hover .chat-composer-quote-preview,
+.chat-composer-asset.is-quote:focus-within .chat-composer-quote-preview {
+  display: block;
+}
+@media (hover: none) {
+  .chat-composer-asset-remove {
+    opacity: 1;
+  }
 }
 
 /* Command capability panel follows the ui-sandbox composer slot and density. */

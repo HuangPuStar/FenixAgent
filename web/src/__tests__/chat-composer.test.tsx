@@ -17,6 +17,26 @@ describe("Composer prompt capabilities", () => {
 });
 
 describe("ChatComposer", () => {
+  // 引用在输入区只显示紧凑方形卡片，正文仅放入受限的 hover/focus 预览。
+  test("renders a compact quote tile with bounded hover preview", async () => {
+    const { ComposerAssets } = await import("../../components/chat/composer-assets");
+    const html = ReactDOMServer.renderToString(
+      <ComposerAssets
+        images={[]}
+        files={[]}
+        quotes={[{ id: "quote-1", text: "不应展示的引用正文", omittedCharacterCount: 128 }]}
+        onRemoveImage={() => {}}
+        onRemoveFile={() => {}}
+        onRemoveQuote={() => {}}
+      />,
+    );
+
+    expect(html).toContain("chat-composer-asset is-quote");
+    expect(html).toContain("chat-composer-quote-preview");
+    expect(html).toContain("不应展示的引用正文");
+    expect(html).toContain("…");
+  });
+
   test("exports as function", async () => {
     const mod = await import("../../components/chat/ChatComposer");
     expect(typeof mod.ChatComposer).toBe("function");
@@ -166,15 +186,19 @@ if (!g.navigator) g.navigator = win.navigator;
 /** 客户端渲染 ChatComposer，返回容器与卸载函数 */
 async function renderComposer(props: ComposerProps): Promise<{
   container: HTMLElement;
+  rerender: (nextProps: ComposerProps) => void;
   unmount: () => void;
 }> {
   const { ChatComposer } = await import("../../components/chat/ChatComposer");
   const container = win.document.createElement("div");
   const root: Root = createRoot(container as unknown as HTMLElement);
-  act(() => {
-    root.render(createElement(ChatComposer, props));
-  });
-  return { container: container as unknown as HTMLElement, unmount: () => act(() => root.unmount()) };
+  const rerender = (nextProps: ComposerProps) => {
+    act(() => {
+      root.render(createElement(ChatComposer, nextProps));
+    });
+  };
+  rerender(props);
+  return { container: container as unknown as HTMLElement, rerender, unmount: () => act(() => root.unmount()) };
 }
 
 /** 找到发送/停止按钮（含 lucide 图标的 button） */
@@ -187,6 +211,58 @@ function findActionButton(container: HTMLElement): HTMLElement | null {
 }
 
 describe("ChatComposer interaction", () => {
+  // 连续引用应同步更新预算；发送时引用作为本轮原子字段提交，方形卡不暴露正文。
+  domTest("bounds synchronous quotes and submits hidden quote context", async () => {
+    let submitted: Parameters<NonNullable<ComposerProps["onSubmit"]>>[0] | undefined;
+    const props: ComposerProps = {
+      contextScope: "session-a",
+      onSubmit: (message) => {
+        submitted = message;
+      },
+    };
+    const { container, unmount } = await renderComposer(props);
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("chat:quote", { detail: { text: "甲".repeat(4_000), contextScope: "session-a" } }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("chat:quote", { detail: { text: "乙".repeat(4_000), contextScope: "session-a" } }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("chat:quote", { detail: { text: "丙".repeat(4_000), contextScope: "session-a" } }),
+        );
+      });
+
+      domExpect(container.querySelectorAll(".chat-composer-asset.is-quote")).toHaveLength(2);
+      domExpect(container.querySelectorAll(".chat-composer-quote-preview")).toHaveLength(2);
+      const button = findActionButton(container);
+      act(() => button?.click());
+      domExpect(submitted?.quoteContext).toContain("甲".repeat(100));
+      domExpect(submitted?.quoteContext).toContain("乙".repeat(100));
+      domExpect(submitted?.quoteContext).not.toContain("丙");
+    } finally {
+      unmount();
+    }
+  });
+
+  // 切换确定性会话 scope 时清空旧引用，避免旧会话上下文进入新会话。
+  domTest("clears quote tiles when context scope changes", async () => {
+    const props: ComposerProps = { contextScope: "session-a", onSubmit: () => {} };
+    const { container, rerender, unmount } = await renderComposer(props);
+    try {
+      act(() => {
+        window.dispatchEvent(new CustomEvent("chat:quote", { detail: { text: "旧会话", contextScope: "session-a" } }));
+      });
+      domExpect(container.querySelectorAll(".chat-composer-asset.is-quote")).toHaveLength(1);
+
+      rerender({ ...props, contextScope: "session-b" });
+      domExpect(container.querySelectorAll(".chat-composer-asset.is-quote")).toHaveLength(0);
+    } finally {
+      unmount();
+    }
+  });
+
   // canCancel（running 输出中）时点击按钮：只触发 onInterrupt，不触发 onSubmit——
   // 这是断点 1 的核心交互：输出期间点停止必须走取消链路而不是重发消息
   domTest("click calls onInterrupt when canCancel is true", async () => {

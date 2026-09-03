@@ -4,13 +4,14 @@ import { useTranslation } from "react-i18next";
 import { NS } from "../../src/i18n";
 import { dispatchArtifactsPreviewFile, isWorkspaceRelativeFilePath } from "../../src/lib/artifacts-preview-events";
 import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
-import { isVisibleContentBlock } from "../../src/lib/context-queue";
+import { isVisibleContentBlock, parseChatQuotes } from "../../src/lib/context-queue";
 import { splitSystemReminderBlocks } from "../../src/lib/strip-html-tags";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
+import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { SystemMessage } from "./SystemMessage";
 
 // 用户消息折叠最大高度（px）
@@ -44,16 +45,13 @@ interface UserBubbleProps {
 
 export function UserBubble({ entry, envId }: UserBubbleProps) {
   const { t } = useTranslation(NS.COMPONENTS);
-  // 切分注入的系统上下文段与用户文本段：system 段合并为原始块文本，渲染为
-  // 系统消息标签默认隐藏注入内容；双击后以 Popover 展示。
+  // 注入的 system-reminder 只供 Agent 消费，不属于用户可见的聊天历史。
   const segments = useMemo(() => splitSystemReminderBlocks(entry.content ?? ""), [entry.content]);
-  // 原始块文本（含标签），双击系统消息标签后以 Popover 展示完整注入上下文
-  const systemRawText = useMemo(
+  const systemSegments = useMemo(
     () =>
       segments
         .filter((segment) => segment.kind === "system")
-        .map((segment) => segment.text)
-        .join("\n"),
+        .map((segment) => ({ segment, quotes: parseChatQuotes(segment.text) })),
     [segments],
   );
   const visibleContent = segments
@@ -77,6 +75,17 @@ export function UserBubble({ entry, envId }: UserBubbleProps) {
 
   return (
     <div className="flex flex-col gap-2">
+      {systemSegments.map(({ segment, quotes: segmentQuotes }) =>
+        segmentQuotes.length > 0 ? (
+          <div key={segment.text} className="chat-quote-messages">
+            {segmentQuotes.map((quote, quoteIndex) => (
+              <ChatQuoteMessage key={`${quote.text}-${quote.omittedCharacterCount}`} quote={quote} index={quoteIndex} />
+            ))}
+          </div>
+        ) : (
+          <SystemMessage key={segment.text} rawText={segment.text} />
+        ),
+      )}
       {/* 用户文本与图片附件 — 右对齐气泡（正文） */}
       {visibleContent && (
         <div className="flex justify-end">
@@ -138,8 +147,6 @@ export function UserBubble({ entry, envId }: UserBubbleProps) {
           </div>
         </div>
       )}
-      {/* 注入的系统上下文 — 居中“系统消息”标签，双击后以 Popover 展示原始块 */}
-      {systemRawText && <SystemMessage rawText={systemRawText} />}
     </div>
   );
 }

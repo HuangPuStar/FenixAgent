@@ -135,6 +135,43 @@ describe("消息组件的服务端渲染", () => {
     );
   });
 
+  // Chat 引用从 reminder 投影为专用引用胶囊，正文保持用户消息且不误显示系统提醒胶囊。
+  test("用户消息将结构化引用显示为引用胶囊", () => {
+    const quotePayload = JSON.stringify([{ text: "需要单独展示的引用正文", omittedCharacterCount: 23 }]);
+    const markup = renderToStaticMarkup(
+      createElement(UserBubble, {
+        entry: {
+          type: "user_message",
+          id: "quoted-prompt",
+          content: `<system-reminder>\nChat quotes for this turn (JSON): ${quotePayload}\n</system-reminder>\n\n我引用了什么`,
+        },
+      }),
+    );
+
+    expect(markup).toContain("我引用了什么");
+    expect(markup).toContain("chat-quote-message");
+    expect(markup).toContain("需要单独展示的引用正文");
+    expect(markup).toContain("composerAssets.quoteTruncatedBadge");
+    expect(markup).not.toContain("chat-system-reminder");
+  });
+
+  // 非引用 system-reminder 恢复为系统提醒胶囊，但内部原始内容仍不暴露。
+  test("用户消息将非引用 system-reminder 显示为系统提醒胶囊", () => {
+    const markup = renderToStaticMarkup(
+      createElement(UserBubble, {
+        entry: {
+          type: "user_message",
+          id: "quoted-prompt",
+          content: "<system-reminder>引用正文</system-reminder>\n\n我引用了什么",
+        },
+      }),
+    );
+
+    expect(markup).toContain("我引用了什么");
+    expect(markup).not.toContain("引用正文");
+    expect(markup).toContain("chat-system-reminder");
+  });
+
   // 系统消息只展示标签，并与助手消息正文左边界对齐；原始注入内容不得暴露。
   test("系统消息左对齐且不暴露原始内容", () => {
     const markup = renderToStaticMarkup(

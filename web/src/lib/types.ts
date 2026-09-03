@@ -148,6 +148,8 @@ export interface ChatInputMessage {
   text: string;
   images?: UserMessageImage[];
   attachments?: FileAttachment[];
+  /** 本轮聊天引用生成的隐藏上下文，必须在 Chat 历史投影中隐藏。 */
+  quoteContext?: string;
   /** 本轮选择的 Agent 已绑定 MCP 名称，仅在发送边界注入 system-reminder。 */
   mcps?: string[];
 }
