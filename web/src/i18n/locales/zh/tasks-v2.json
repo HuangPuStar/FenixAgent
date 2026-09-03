@@ -5,7 +5,7 @@
     "all": "全部",
     "http": "HTTP",
     "agent": "Agent",
-    "searchPlaceholder": "搜索任务名称、目标或计划",
+    "searchPlaceholder": "搜索任务名称",
     "typeLabel": "任务类型"
   },
   "runtime": {

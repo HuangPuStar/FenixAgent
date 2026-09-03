@@ -160,6 +160,7 @@ export function AgentTasksPage() {
 
   const formConfig = useMemo(
     () => ({
+      mode: "onChange" as const,
       schema: taskFormSchema as z.ZodType<Record<string, unknown>>,
       defaultValues: formDefaultValues as unknown as Record<string, unknown>,
       onFormSubmit: (data: Record<string, unknown>) => saveTask(data as unknown as TaskFormValues),

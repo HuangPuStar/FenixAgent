@@ -9,6 +9,7 @@ export interface FormDialogFormConfig {
   schema: z.ZodType<Record<string, unknown>>;
   defaultValues: Record<string, unknown>;
   onFormSubmit: (data: Record<string, unknown>) => void;
+  mode?: "onSubmit" | "onChange" | "onBlur";
 }
 
 interface FormDialogProps {
@@ -47,6 +48,7 @@ export function FormDialog({
     // biome-ignore lint/suspicious/noExplicitAny: shadcn/react-hook-form zodResolver requires ZodTypeAny
     resolver: formConfig?.schema ? zodResolver(formConfig.schema as any) : undefined,
     defaultValues: formConfig?.defaultValues,
+    mode: formConfig?.mode ?? "onSubmit",
   });
 
   const handleFormSubmit = formConfig

@@ -5,7 +5,7 @@
     "all": "All",
     "http": "HTTP",
     "agent": "Agent",
-    "searchPlaceholder": "Search tasks, targets, or schedules",
+    "searchPlaceholder": "Search by task name",
     "typeLabel": "Task type"
   },
   "runtime": {

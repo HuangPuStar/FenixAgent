@@ -1,17 +1,28 @@
 import * as z from "zod/v4";
 import { PaginationParamsSchema, WebOkSchema } from "./common.schema";
 
+/** 校验 IANA 时区名称，空字符串由 service 层归一化为默认时区。 */
+const timezoneSchema = z.string().refine((timezone) => {
+  if (timezone.trim().length === 0) return true;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}, "必须是有效的 IANA 时区");
+
 // ── Definition 子 schema ──
 
 const HttpDefinitionSchema = z.object({
-  url: z.string().min(1),
-  method: z.string().optional(),
+  url: z.url().refine((url) => /^https?:\/\//i.test(url), "必须是 HTTP 或 HTTPS URL"),
+  method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional(),
   headers: z.record(z.string(), z.string()).optional(),
-  body: z.string().optional(),
+  body: z.string().max(100_000).optional(),
 });
 
 const AgentDefinitionSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().trim().min(1).max(100_000),
 });
 
 const DefinitionSchema = z.union([HttpDefinitionSchema, AgentDefinitionSchema]);
@@ -42,7 +53,7 @@ export const CreateTaskV2RequestSchema = z.object({
   name: z.string().min(1).max(128).describe("任务名称"),
   description: z.string().optional().describe("任务描述"),
   cron: z.string().min(1).describe("cron 表达式"),
-  timezone: z.string().nullable().optional().describe("可选时区"),
+  timezone: timezoneSchema.nullable().optional().describe("可选 IANA 时区"),
   timeoutSeconds: z.number().int().min(1).optional().describe("超时秒数，默认 300"),
   type: z.enum(["http", "agent"]).describe("任务类型"),
   agentId: z.string().nullable().optional().describe("Agent ID（仅 agent 类型）"),
@@ -53,7 +64,7 @@ export const UpdateTaskV2RequestSchema = z.object({
   name: z.string().min(1).max(128).optional().describe("任务名称"),
   description: z.string().nullable().optional().describe("任务描述"),
   cron: z.string().min(1).optional().describe("cron 表达式"),
-  timezone: z.string().nullable().optional().describe("可选时区"),
+  timezone: timezoneSchema.nullable().optional().describe("可选 IANA 时区"),
   timeoutSeconds: z.number().int().min(1).optional().describe("超时秒数"),
   type: z.enum(["http", "agent"]).optional().describe("任务类型（不可修改）"),
   agentId: z.string().nullable().optional().describe("Agent ID"),

@@ -3,30 +3,66 @@ import { z } from "zod/v4";
 import type { AgentDefinition, HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
 import type { TaskFormValues } from "../components/TaskForm";
 
+function isValidCronExpression(cron: string, timezone: string): boolean {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  try {
+    parseExpression(cron, timezone.trim() ? { tz: timezone.trim() } : undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidTimezone(timezone: string): boolean {
+  if (timezone.trim().length === 0) return true;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const taskFormSchema = z
   .object({
     type: z.enum(["http", "agent"]),
-    name: z.string().min(1, "名称不能为空"),
-    cron: z.string().min(1, "Cron 不能为空"),
-    timezone: z.string().optional().default(""),
-    timeoutSeconds: z.coerce.number().min(1).max(3600),
-    description: z.string().optional().default(""),
-    url: z.string().optional().default(""),
+    name: z.string().trim().min(1, "名称不能为空").max(128, "名称不能超过 128 个字符"),
+    cron: z.string().trim().min(1, "Cron 不能为空"),
+    timezone: z.string().trim().refine(isValidTimezone, "必须是有效的 IANA 时区").optional().default(""),
+    timeoutSeconds: z.coerce
+      .number()
+      .finite("超时必须是有效数字")
+      .int("超时必须是整数")
+      .min(1, "超时至少为 1 秒")
+      .max(3600, "超时不能超过 3600 秒"),
+    description: z.string().max(2000, "描述不能超过 2000 个字符").optional().default(""),
+    url: z.string().trim().optional().default(""),
     method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional().default("POST"),
-    headers: z.string().optional().default(""),
-    body: z.string().optional().default(""),
-    agentId: z.string().optional().default(""),
-    prompt: z.string().optional().default(""),
+    headers: z.string().max(10000, "Headers 不能超过 10000 个字符").optional().default(""),
+    body: z.string().max(100000, "请求体不能超过 100000 个字符").optional().default(""),
+    agentId: z.string().trim().optional().default(""),
+    prompt: z.string().max(100000, "Prompt 不能超过 100000 个字符").optional().default(""),
   })
   .superRefine((data, context) => {
+    if (!isValidCronExpression(data.cron, data.timezone)) {
+      context.addIssue({ code: "custom", path: ["cron"], message: "Cron 表达式无效，请检查字段取值范围" });
+    }
     if (data.type === "http") {
-      if (!data.url.trim()) context.addIssue({ code: "custom", path: ["url"], message: "请输入 URL" });
+      try {
+        const parsedUrl = new URL(data.url.trim());
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error();
+        if (!parsedUrl.hostname) throw new Error();
+      } catch {
+        context.addIssue({ code: "custom", path: ["url"], message: "请输入有效的 HTTP 或 HTTPS URL" });
+      }
       if (data.headers.trim()) {
         try {
           const parsed: unknown = JSON.parse(data.headers);
           if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+          if (Object.values(parsed).some((value) => typeof value !== "string")) throw new Error();
         } catch {
-          context.addIssue({ code: "custom", path: ["headers"], message: "Headers 不是有效的 JSON 对象" });
+          context.addIssue({ code: "custom", path: ["headers"], message: "Headers 必须是值为字符串的 JSON 对象" });
         }
       }
     }

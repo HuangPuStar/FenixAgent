@@ -4,6 +4,7 @@ import {
   buildTaskDefinition,
   projectCronOccurrences,
   projectTaskTime,
+  taskFormSchema,
   taskToFormValues,
 } from "../pages/agent-panel/pages/agent-tasks-utils";
 
@@ -26,7 +27,34 @@ const task: TaskV2Info = {
 };
 
 describe("task view model conversion", () => {
-  // 任务 DTO 转换为编辑器值时必须保留 Agent、Prompt 和计划配置。
+  // cron 字段越界时必须在前端阻止提交，不能生成看似合理的时间描述。
+  test("rejects cron expressions with out-of-range fields", () => {
+    expect(
+      taskFormSchema.safeParse({
+        type: "http",
+        name: "Webhook",
+        cron: "70 34 32 * *",
+        timezone: "Asia/Shanghai",
+        timeoutSeconds: 30,
+        url: "https://example.com/hook",
+      }).success,
+    ).toBe(false);
+  });
+
+  // 合法 cron 和时区组合应通过前端表单校验。
+  test("accepts a valid cron expression and timezone", () => {
+    expect(
+      taskFormSchema.safeParse({
+        type: "http",
+        name: "Webhook",
+        cron: "0 9 * * 1-5",
+        timezone: "Asia/Shanghai",
+        timeoutSeconds: 30,
+        url: "https://example.com/hook",
+      }).success,
+    ).toBe(true);
+  });
+
   test("maps task data into form values", () => {
     expect(taskToFormValues(task)).toMatchObject({
       type: "agent",
