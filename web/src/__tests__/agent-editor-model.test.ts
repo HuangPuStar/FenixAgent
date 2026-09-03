@@ -144,7 +144,14 @@ describe("Agent 编辑器表单模型", () => {
     ]);
   });
 
-  // 已绑定但不可见的共享资源必须补入选项并标记不可用，不能静默解绑。
+  // 渐进加载阶段尚无完整目录时，已绑定资源只能视为待校验，不能提前显示为不可用。
+  test("基础数据阶段合并已选资源但不标记不可用", () => {
+    expect(mergeSelectedOptions([], [{ id: "selected", label: "Selected" }], false)).toEqual([
+      { id: "selected", label: "Selected" },
+    ]);
+  });
+
+  // 完整资源目录加载后，已绑定但不可见的共享资源必须补入选项并标记不可用，不能静默解绑。
   test("合并已选不可见资源", () => {
     expect(
       mergeSelectedOptions([{ id: "visible", label: "Visible" }], [{ id: "hidden", label: "Source/Hidden" }]),

@@ -113,11 +113,12 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
         detail?.modelId && detail.relatedResources?.modelLabel
           ? [{ id: detail.modelId, label: detail.relatedResources.modelLabel }]
           : undefined,
+        false,
       ),
-      skills: mergeSelectedOptions([], detail?.relatedResources?.skills),
-      mcps: mergeSelectedOptions([], detail?.relatedResources?.mcps),
-      sites: mergeSelectedOptions([], detail?.relatedResources?.siteApps),
-      knowledgeBases: mergeSelectedOptions([], detail?.relatedResources?.knowledgeBases),
+      skills: mergeSelectedOptions([], detail?.relatedResources?.skills, false),
+      mcps: mergeSelectedOptions([], detail?.relatedResources?.mcps, false),
+      sites: mergeSelectedOptions([], detail?.relatedResources?.siteApps, false),
+      knowledgeBases: mergeSelectedOptions([], detail?.relatedResources?.knowledgeBases, false),
       nodes: [],
       templates: [],
       resourceErrors: [],

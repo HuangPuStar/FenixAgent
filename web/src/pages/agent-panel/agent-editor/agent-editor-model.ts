@@ -152,6 +152,11 @@ export function shouldShowAgentEditorLoading(loading: boolean, hasData: boolean,
   return !hasData && (loading || !hasError);
 }
 
+/** 已渲染表单只在提交保存或重启时锁定；后台资源加载不得阻塞草稿编辑。 */
+export function shouldDisableAgentEditor(saving: boolean, restarting: boolean): boolean {
+  return saving || restarting;
+}
+
 /** 选择器搜索后只保留真实匹配项，并在当前分组消失时安全回退到全部来源。 */
 export function filterAgentEditorOptions(
   options: AgentEditorOption[],
@@ -263,16 +268,19 @@ export function mapMcpOptions(
     }));
 }
 
-/** 合并当前不可见但已绑定的资源，防止打开编辑器时静默丢失关联。 */
+/** 合并当前不可见但已绑定的资源；仅在完整目录已加载时标记为不可用。 */
 export function mergeSelectedOptions(
   options: AgentEditorOption[],
   related: Array<{ id: string; label: string }> | undefined,
+  markUnavailable = true,
 ): AgentEditorOption[] {
   if (!related?.length) return options;
   const visible = new Set(options.map((option) => option.id));
   return [
     ...options,
-    ...related.filter((item) => !visible.has(item.id)).map((item) => ({ ...item, unavailable: true })),
+    ...related
+      .filter((item) => !visible.has(item.id))
+      .map((item) => ({ ...item, ...(markUnavailable ? { unavailable: true } : {}) })),
   ];
 }
 

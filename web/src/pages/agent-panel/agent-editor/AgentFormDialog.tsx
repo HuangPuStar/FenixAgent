@@ -30,6 +30,7 @@ import {
   agentEditorSchema,
   createAgentEditorDefaults,
   shouldConfirmAgentEditorClose,
+  shouldDisableAgentEditor,
   shouldShowAgentEditorLoading,
 } from "./agent-editor-model";
 import { useAgentEditor } from "./use-agent-editor";
@@ -121,17 +122,22 @@ function AgentEditorBody(
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [validationSummary, setValidationSummary] = useState("");
   const templateTriggerRef = useRef<HTMLButtonElement>(null);
+  const initializedEditorKeyRef = useRef<string | null>(null);
   const editor = useAgentEditor({ ...props, translate: t, translatePanel: tp });
   const form = useForm<AgentEditorValues>({
     resolver: zodResolver(agentEditorSchema),
     defaultValues: createAgentEditorDefaults(props.mode === "create" ? props.defaultName : props.agentName),
   });
 
+  const editorKey = `${props.mode}:${props.mode === "edit" ? props.agentName : (props.defaultName ?? "")}`;
   useEffect(() => {
-    if (editor.data) form.reset(editor.data.initialValues);
-  }, [editor.data, form]);
+    if (!editor.data || initializedEditorKeyRef.current === editorKey) return;
+    initializedEditorKeyRef.current = editorKey;
+    form.reset(editor.data.initialValues);
+  }, [editor.data, editorKey, form]);
   useEffect(() => {
     if (!props.open) {
+      initializedEditorKeyRef.current = null;
       setActiveSection("identity");
       setTemplateOpen(false);
     }
@@ -242,7 +248,7 @@ function AgentEditorBody(
         onSubmit={submit}
         aria-busy={editor.loading || editor.saving || editor.restarting}
       >
-        <fieldset disabled={editor.loading || editor.saving || editor.restarting} className="contents">
+        <fieldset disabled={shouldDisableAgentEditor(editor.saving, editor.restarting)} className="contents">
           {data.resourceErrors.length > 0 && (
             <div className="agent-editor-resource-error" role="alert">
               {t("editor.optionalResourcesFailed", { resources: data.resourceErrors.join(", ") })}

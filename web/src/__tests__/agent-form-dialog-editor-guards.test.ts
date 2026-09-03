@@ -3,6 +3,7 @@ import {
   type AgentEditorOption,
   paginateAgentEditorOptions,
   shouldConfirmAgentEditorClose,
+  shouldDisableAgentEditor,
   shouldShowAgentEditorLoading,
 } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
@@ -66,6 +67,13 @@ describe("Agent Editor 关闭保护与分页", () => {
   test("后台刷新保留已渲染编辑器", () => {
     expect(shouldShowAgentEditorLoading(true, true, false)).toBe(false);
     expect(shouldShowAgentEditorLoading(false, false, true)).toBe(false);
+  });
+
+  // 基础数据到达后的资源后台加载不能锁定表单，仅保存或重启提交期间需要防止并发修改。
+  test("后台资源加载期间保持编辑器可操作", () => {
+    expect(shouldDisableAgentEditor(false, false)).toBe(false);
+    expect(shouldDisableAgentEditor(true, false)).toBe(true);
+    expect(shouldDisableAgentEditor(false, true)).toBe(true);
   });
 
   // 大数据选择器每次只允许一页数据进入 DOM，并保留完整结果计数。
