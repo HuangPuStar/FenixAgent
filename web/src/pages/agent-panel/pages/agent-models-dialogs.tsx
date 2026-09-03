@@ -257,9 +257,7 @@ interface ModelEditorDialogProps {
 
 function modelDraft(model?: ProviderModel): ModelDraft {
   const limit = (model?.limit ?? {}) as Record<string, unknown>;
-  const cost = (model?.cost ?? {}) as Record<string, unknown>;
   const modalities = (model?.modalities ?? {}) as { input?: string[]; output?: string[] };
-  const thinking = (model?.options?.thinking ?? {}) as Record<string, unknown>;
   return {
     id: model?.id ?? "",
     name: model?.name ?? "",
@@ -267,10 +265,7 @@ function modelDraft(model?: ProviderModel): ModelDraft {
     output: formatOptionalNumber(limit.output),
     inputModalities: modalities.input ?? ["text"],
     outputModalities: modalities.output ?? ["text"],
-    thinkingEnabled: supportsThinking(model ?? {}),
-    thinkingBudget: formatOptionalNumber(thinking.budgetTokens),
-    inputCost: formatOptionalNumber(cost.input),
-    outputCost: formatOptionalNumber(cost.output),
+    thinkingEnabled: model ? supportsThinking(model) : true,
   };
 }
 
@@ -279,10 +274,8 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
   const original = target && "model" in target ? target.model : null;
   const readOnly = target?.mode === "view";
   const [draft, setDraft] = useState<ModelDraft>(() => modelDraft());
-  const [advanced, setAdvanced] = useState(false);
   useEffect(() => {
     setDraft(modelDraft(original ?? undefined));
-    setAdvanced(Boolean(original && (supportsThinking(original) || original.cost)));
   }, [original]);
   const update = <K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -349,48 +342,17 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
               disabled={readOnly}
               onToggle={(value) => toggle("outputModalities", value)}
             />
-            <div className="sm:col-span-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setAdvanced(!advanced)}>
-                {advanced ? t("modelSubrow.hideAdvanced") : t("modelSubrow.showAdvanced")}
-              </Button>
+            <div className="model-thinking-field sm:col-span-2">
+              <div>
+                <strong>{t("modelSubrow.thinkingEnabled")}</strong>
+                <small>{t("modelSubrow.thinkingDescription")}</small>
+              </div>
+              <Switch
+                checked={draft.thinkingEnabled}
+                disabled={readOnly}
+                onCheckedChange={(value) => update("thinkingEnabled", value)}
+              />
             </div>
-            {advanced && (
-              <>
-                <div className="model-thinking-field sm:col-span-2">
-                  <div>
-                    <strong>{t("modelSubrow.thinkingEnabled")}</strong>
-                    <small>{t("modelSubrow.thinkingDescription")}</small>
-                  </div>
-                  <Switch
-                    checked={draft.thinkingEnabled}
-                    disabled={readOnly}
-                    onCheckedChange={(value) => update("thinkingEnabled", value)}
-                  />
-                </div>
-                {draft.thinkingEnabled && (
-                  <NumberField
-                    label={t("modelSubrow.thinkingBudget")}
-                    value={draft.thinkingBudget}
-                    disabled={readOnly}
-                    onChange={(value) => update("thinkingBudget", value)}
-                  />
-                )}
-                <NumberField
-                  label={t("modelSubrow.inputCost")}
-                  value={draft.inputCost}
-                  disabled={readOnly}
-                  step="0.01"
-                  onChange={(value) => update("inputCost", value)}
-                />
-                <NumberField
-                  label={t("modelSubrow.outputCost")}
-                  value={draft.outputCost}
-                  disabled={readOnly}
-                  step="0.01"
-                  onChange={(value) => update("outputCost", value)}
-                />
-              </>
-            )}
           </div>
           <DialogFooter className="mt-4 border-t pt-4">
             <Button type="button" variant="outline" onClick={onClose}>

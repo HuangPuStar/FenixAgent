@@ -26,18 +26,14 @@ function errorMessage(error: unknown, fallback: string): string {
 function buildModelPayload(draft: ModelDraft): Record<string, unknown> {
   const context = parseOptionalNonNegativeNumber(draft.context);
   const output = parseOptionalNonNegativeNumber(draft.output);
-  const thinkingBudget = parseOptionalNonNegativeNumber(draft.thinkingBudget);
-  const inputCost = parseOptionalNonNegativeNumber(draft.inputCost);
-  const outputCost = parseOptionalNonNegativeNumber(draft.outputCost);
   const payload: Record<string, unknown> = {
     modelId: draft.id.trim(),
     name: draft.name.trim() || draft.id.trim(),
     modalities: { input: draft.inputModalities, output: draft.outputModalities },
   };
   payload.limit = context !== undefined || output !== undefined ? { context, output } : null;
-  payload.cost = inputCost !== undefined || outputCost !== undefined ? { input: inputCost, output: outputCost } : null;
   payload.options = {
-    thinking: draft.thinkingEnabled ? { enabled: true, budgetTokens: thinkingBudget } : { enabled: false },
+    thinking: { enabled: draft.thinkingEnabled },
   };
   return payload;
 }

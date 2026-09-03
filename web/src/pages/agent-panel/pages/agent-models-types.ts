@@ -23,9 +23,6 @@ export interface ModelDraft {
   inputModalities: string[];
   outputModalities: string[];
   thinkingEnabled: boolean;
-  thinkingBudget: string;
-  inputCost: string;
-  outputCost: string;
 }
 
 export type ProviderDialogTarget = { mode: "create" } | { mode: "edit" | "view"; provider: ProviderInfo };
