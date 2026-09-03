@@ -519,39 +519,50 @@
 }
 
 .chat-command-menu--panel .chat-command-menu-search {
-  height: 34px;
+  height: 38px;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 8px;
   border-bottom: 1px solid #eceef2;
   border-radius: 0;
   background: #fff;
 }
 
 .chat-command-menu--panel .chat-command-menu-search > svg {
-  width: 13px;
-  height: 13px;
-  flex-basis: 13px;
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
 }
 
 .chat-command-menu--panel .chat-command-menu-input {
-  height: 32px;
-  font-size: 11px;
+  height: 38px;
+  font-size: 14px;
 }
 
 .chat-command-menu--panel .chat-command-menu-scroll {
-  height: min(164px, 32vh);
+  height: min(210px, 34vh);
 }
 
 .chat-command-menu--panel .chat-command-menu-list {
-  padding: 5px 8px 7px;
+  padding: 2px;
 }
 
 .chat-command-menu--panel .chat-command-menu-item {
-  min-height: 31px;
-  grid-template-columns: minmax(112px, max-content) minmax(0, 1fr) auto;
+  min-height: 34px;
+  grid-template-columns: minmax(150px, max-content) minmax(0, 1fr) auto;
   gap: 6px;
   border-radius: 5px;
-  padding: 3px 6px;
+  padding: 2px 5px;
+}
+
+.chat-command-menu--panel .chat-command-menu-mcp {
+  grid-template-columns: 16px minmax(120px, 220px) minmax(0, 1fr) auto;
+}
+
+.chat-command-menu--panel .chat-command-menu-mcp .chat-command-menu-name,
+.chat-command-menu--panel .chat-command-menu-mcp .chat-command-menu-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-command-menu--panel .chat-command-menu-item:hover,
@@ -563,8 +574,8 @@
 
 .chat-command-menu--panel .chat-command-menu-name {
   color: #3d5f95;
-  font-size: 9px;
-  font-weight: 580;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .chat-command-menu--panel .chat-command-menu-item.is-active .chat-command-menu-name {
@@ -574,7 +585,7 @@
 
 .chat-command-menu--panel .chat-command-menu-description,
 .chat-command-menu--panel .chat-command-menu-hint {
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .chat-composer-plugin[data-open] {
@@ -582,33 +593,33 @@
 }
 
 .chat-command-menu-section + .chat-command-menu-section {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 3px;
+  padding-top: 3px;
   border-top: 1px solid #edf0f4;
 }
 
 .chat-command-menu-section-title {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  padding: 2px 8px 5px;
+  gap: 6px;
+  padding: 3px 5px 4px;
 }
 
 .chat-command-menu-section-title strong {
   color: #263247;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 650;
 }
 
 .chat-command-menu-section-title span {
   color: #8b94a5;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .chat-command-menu-check,
 .chat-command-menu-mcp-icon {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 
@@ -619,7 +630,7 @@
 .chat-command-menu-mcp-state {
   margin-left: auto;
   color: #25856e;
-  font-size: 8px;
+  font-size: 11px;
   font-style: normal;
 }
 
