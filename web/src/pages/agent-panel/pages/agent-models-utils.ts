@@ -1,4 +1,6 @@
-import type { ProviderInfo } from "../../../types/config";
+import type { ProviderInfo, ProviderModel } from "../../../types/config";
+
+export type ProviderScope = "all" | "organization" | "public";
 
 /**
  * Provider 相关的纯工具函数。
@@ -25,6 +27,39 @@ export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
 
 export function canWriteProvider(provider: ProviderInfo): boolean {
   return provider.resourceAccess?.writable !== false;
+}
+
+/**
+ * Provider 配置 ID 可能是邮箱或自定义别名，不能用于推断品牌。
+ * 已配置模型 ID 更接近真实厂商，因此优先用于品牌图标解析。
+ */
+export function getProviderIconModelId(provider: ProviderInfo, models: ProviderModel[]): string {
+  return models[0]?.id ?? provider.id;
+}
+
+/** 返回 Provider 是否属于指定目录范围；本组织与公开是可重叠维度。 */
+export function providerMatchesScope(provider: ProviderInfo, scope: ProviderScope): boolean {
+  if (scope === "all") return true;
+  if (scope === "organization") return provider.resourceAccess?.ownership !== "external";
+  return provider.resourceAccess?.publicReadable === true;
+}
+
+/** 模型的思考开关来自真实 options.thinking.enabled，不从模型名称推测。 */
+export function supportsThinking(model: { options?: Record<string, unknown> }): boolean {
+  const thinking = model.options?.thinking;
+  return typeof thinking === "object" && thinking !== null && (thinking as Record<string, unknown>).enabled === true;
+}
+
+/** 数字配置转换，保留合法的 0，并拒绝 NaN、负数和空输入。 */
+export function parseOptionalNonNegativeNumber(value: string): number | undefined {
+  if (!value.trim()) return;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+/** 表单展示数字时保留 0，避免 truthy 判断把合法配置变成空值。 */
+export function formatOptionalNumber(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
 export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {

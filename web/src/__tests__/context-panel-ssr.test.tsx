@@ -7,7 +7,7 @@ import { ContextPanel } from "../../components/ContextPanel";
 import i18n from "../i18n";
 import type { ThreadEntry } from "../lib/types";
 
-function renderPanel(entries: ThreadEntry[], collapsed = false) {
+function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "claude-test") {
   return renderToStaticMarkup(
     createElement(
       I18nextProvider,
@@ -15,7 +15,7 @@ function renderPanel(entries: ThreadEntry[], collapsed = false) {
       createElement(ContextPanel, {
         entries,
         agentName: "env_abcdefghijklmnopqrst",
-        modelName: "claude-test",
+        modelName,
         duration: "12s",
         collapsed,
         onToggle: () => {},
@@ -32,7 +32,15 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).toContain("claude-test");
     expect(html).toContain("12s");
     expect(html).toContain("contextPanel.noToolCalls");
-    expect(html).toContain("0 / 200k");
+    expect(html).toContain("0 / 200.0k");
+  });
+
+  // ContextPanel 与输入框共用模型显示规则，只展示 Peri 的模型别名。
+  test("简化 Peri 模型名称", () => {
+    const html = renderPanel([], false, "opus (peri-haiku)");
+
+    expect(html).toContain("peri-haiku");
+    expect(html).not.toContain("opus (peri-haiku)");
   });
 
   // 工具调用应按规范名称合并计数，并将待确认调用展示在权限队列中。
@@ -89,12 +97,12 @@ describe("ContextPanel 服务端渲染", () => {
           entries: [{ type: "user_message", id: "user-1", content: "短消息" }],
           collapsed: false,
           onToggle: () => {},
-          acpUsage: { totalTokens: 2500, inputTokens: 1500, outputTokens: 1000 },
+          acpUsage: { totalTokens: 2500, inputTokens: 1500, outputTokens: 1000, contextWindow: 128000 },
         }),
       ),
     );
 
-    expect(html).toContain("2.5k / 200k");
+    expect(html).toContain("2.5k / 128.0k");
     expect(html).toContain("1.5k");
     expect(html).toContain("1.0k");
   });

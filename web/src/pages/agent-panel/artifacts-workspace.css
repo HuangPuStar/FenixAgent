@@ -1,0 +1,626 @@
+/* Chat 右侧工作区。布局状态由 ChatArea 管理，内容组件不感知 workspace 根路径。 */
+.agent-chat-workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 10px;
+}
+
+.agent-chat-workspace > .agent-chat-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.artifacts-shell {
+  position: relative;
+  z-index: 30;
+  min-width: 320px;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+.artifacts-shell.is-collapsed {
+  display: none;
+}
+
+.artifacts-shell[data-layout="floating"] {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+}
+
+.artifacts-shell[data-layout="docked"] {
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.artifacts-shell__resizer {
+  position: absolute;
+  z-index: 40;
+  inset-block: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  outline: none;
+}
+
+.artifacts-shell__resizer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 4px;
+  width: 1px;
+  background: transparent;
+  transition: background-color 140ms ease;
+}
+
+.artifacts-shell__resizer:hover::after,
+.artifacts-shell__resizer:focus-visible::after {
+  background: var(--color-brand);
+}
+
+.artifacts-open-button {
+  position: absolute;
+  z-index: 25;
+  top: 50%;
+  right: 0;
+  display: grid;
+  width: 30px;
+  height: 48px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--color-border-subtle);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  background: var(--color-surface-1);
+  color: var(--color-text-muted);
+  box-shadow: 0 8px 20px rgba(29, 48, 84, 0.08);
+}
+
+.artifacts-open-button:hover,
+.artifacts-open-button:focus-visible {
+  color: var(--color-brand);
+}
+
+.artifacts-open-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.artifacts-workspace {
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-surface-1);
+}
+
+.artifacts-shell[data-layout="floating"] .artifacts-workspace {
+  box-shadow: 0 18px 34px rgba(29, 48, 84, 0.16);
+}
+
+.artifacts-shell[data-layout="docked"] .artifacts-workspace {
+  border-block: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+.artifacts-mode-bar {
+  display: flex;
+  min-height: 44px;
+  flex-shrink: 0;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-1);
+  padding-inline: 10px 8px;
+}
+
+.artifacts-mode-bar__tabs {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.artifacts-mode-bar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.artifacts-mode-tab {
+  position: relative;
+  display: inline-flex;
+  height: 44px;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 9px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.artifacts-mode-tab::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+}
+
+.artifacts-mode-tab:hover,
+.artifacts-mode-tab.is-active {
+  color: var(--color-text-primary);
+}
+
+.artifacts-mode-tab.is-active::after {
+  background: var(--color-brand);
+}
+
+.artifacts-mode-tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.artifacts-mode-bar__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.artifacts-layout-button,
+.artifacts-close-button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.artifacts-layout-button {
+  padding-inline: 7px;
+}
+
+.artifacts-close-button {
+  width: 30px;
+}
+
+.artifacts-layout-button:hover,
+.artifacts-close-button:hover,
+.artifacts-layout-button:focus-visible,
+.artifacts-close-button:focus-visible {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.artifacts-layout-button svg,
+.artifacts-close-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.artifacts-explorer {
+  background: #fbfcff;
+}
+
+.artifacts-workbench-divider {
+  background: var(--color-border-subtle);
+}
+
+.file-tree-panel {
+  min-height: 0;
+  color: var(--color-text-secondary);
+}
+
+.file-tree-panel__header {
+  display: flex;
+  min-height: 38px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 10px 6px;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.file-tree-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.file-tree-section [data-slot="tree-item-actions"],
+.file-tree-arborist-actions {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  padding-left: 18px;
+  background: linear-gradient(90deg, transparent, var(--color-surface-2) 18px);
+}
+
+.file-tree-panel__actions button,
+.file-tree-row-action {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--color-text-muted);
+}
+
+.file-tree-panel__actions button:hover,
+.file-tree-panel__actions button:focus-visible,
+.file-tree-row-action:hover,
+.file-tree-row-action:focus-visible {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.file-tree-row-action--delete:hover,
+.file-tree-row-action--delete:focus-visible {
+  background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+  color: var(--color-destructive);
+}
+
+.file-tree-panel__actions button:disabled {
+  opacity: 0.45;
+}
+
+.file-tree-panel__actions svg,
+.file-tree-row-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-tree-search {
+  display: flex;
+  height: 30px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 8px;
+  border-radius: 6px;
+  background: var(--color-surface-2);
+  padding-inline: 8px;
+  color: var(--color-text-muted);
+}
+
+.file-tree-search:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand) 32%, transparent);
+}
+
+.file-tree-search > svg,
+.file-tree-search button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.file-tree-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.file-tree-sections {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-tree-sections-resizable {
+  min-height: 0;
+  flex: 1;
+}
+
+.file-tree-section {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.file-tree-section--workspace {
+  min-height: 0;
+}
+
+.file-tree-sections-divider {
+  height: 7px;
+  flex: 0 0 7px;
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  cursor: row-resize;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.file-tree-sections-divider:hover,
+.file-tree-sections-divider:focus-visible,
+.file-tree-sections-divider[data-resize-handle-active] {
+  border-color: color-mix(in srgb, var(--color-brand) 35%, transparent);
+  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
+}
+
+.file-tree-section--user {
+  min-height: 0;
+}
+
+.file-tree-section-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.file-tree-arborist {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-tree-arborist-sticky-folder {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: #f1f5f9;
+  padding: 0 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  pointer-events: none;
+}
+
+.file-tree-arborist-sticky-folder span {
+  margin-left: auto;
+}
+
+.file-tree-arborist-sticky-folder svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+.file-tree-arborist-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  padding-right: 6px;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.file-tree-arborist-row:hover {
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
+}
+
+.file-tree-arborist-row.is-selected {
+  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
+  color: var(--color-brand);
+}
+
+.file-tree-arborist-toggle {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+}
+
+.file-tree-arborist-toggle > svg,
+.file-tree-arborist-icon {
+  width: 16px;
+  height: 16px;
+}
+.file-real-file-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.file-tree-arborist-name {
+  display: block;
+  min-width: 0;
+  width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-tree-arborist-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.file-tree-arborist-row:hover .file-tree-arborist-actions,
+.file-tree-arborist-row:focus-within .file-tree-arborist-actions {
+  opacity: 1;
+}
+
+.file-tree-workspace-label,
+.file-tree-user-heading {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.file-tree-user-heading {
+  color: #475569;
+  padding-right: 10px;
+}
+
+.file-tree-user-heading > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.file-tree-section-upload {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  margin-left: auto;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--color-brand);
+}
+
+.file-tree-section-upload:hover,
+.file-tree-section-upload:focus-visible {
+  background: transparent;
+}
+
+.file-tree-section-upload:focus-visible {
+  outline: 2px solid #cbd5e1;
+  outline-offset: -2px;
+}
+
+.file-tree-section-upload:disabled {
+  opacity: 0.45;
+}
+
+.file-tree-section-upload svg {
+  width: 16px;
+  height: 16px;
+}
+
+.file-tree-panel [data-slot="tree"] {
+  min-width: 0;
+  padding: 0 6px 10px;
+  font-size: 12px;
+}
+
+.file-tree-panel [data-slot="tree-item"] > div {
+  height: 28px;
+  border-left: 0;
+  border-radius: 6px;
+}
+
+.file-tree-panel [data-slot="tree-item"] > div.bg-primary\/10 {
+  margin-left: 0;
+  background: color-mix(in srgb, var(--color-brand) 9%, white);
+  color: var(--color-text-primary);
+}
+
+.file-tree-folder-label,
+.file-tree-file-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-tree-folder-label {
+  font-weight: 600;
+}
+
+.file-tree-file-label {
+  margin-left: 24px;
+}
+
+.file-tree-feedback {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.file-tree-section--user .file-tree-feedback {
+  min-height: 44px;
+  padding: 8px;
+}
+
+.file-tree-section--user .file-tree-feedback > svg,
+.file-tree-section--user .file-tree-feedback p + p {
+  display: none;
+}
+
+.file-tree-feedback > svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.65;
+}
+
+.file-tree-feedback-action {
+  min-height: 28px;
+  padding-inline: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-surface-1);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.file-tree-feedback-action:hover,
+.file-tree-feedback-action:focus-visible {
+  border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-border-subtle));
+  color: var(--color-brand);
+}
+
+@media (max-width: 1050px) {
+  .artifacts-shell[data-layout="floating"] {
+    top: 6px;
+    right: 6px;
+    bottom: 6px;
+    max-width: min(620px, calc(100% - 12px));
+    min-width: 0;
+  }
+}

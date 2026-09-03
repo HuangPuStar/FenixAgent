@@ -1,6 +1,29 @@
 // biome-ignore lint/suspicious/noExplicitAny: SDKMessage types vary by message kind
 type SDKMessage = Record<string, any>;
 
+interface PromptUsage {
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function readTokenCount(usage: Record<string, unknown>, key: string): number {
+  const value = usage[key];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/** 将 Claude Agent SDK 的 snake_case usage 转为 ACP prompt usage。缓存 token 属于实际输入上下文。 */
+export function normalizeClaudeSdkUsage(value: unknown): PromptUsage | undefined {
+  if (!value || typeof value !== "object") return;
+  const usage = value as Record<string, unknown>;
+  const inputTokens =
+    readTokenCount(usage, "input_tokens") +
+    readTokenCount(usage, "cache_creation_input_tokens") +
+    readTokenCount(usage, "cache_read_input_tokens");
+  const outputTokens = readTokenCount(usage, "output_tokens");
+  return { totalTokens: inputTokens + outputTokens, inputTokens, outputTokens };
+}
+
 /**
  * ACP ↔ stream-json 双向协议转换核心。
  * Claude Code CLI 使用 stream-json 协议（而非 ACP NDJSON），
@@ -108,7 +131,11 @@ export class ProtocolAdapter {
       }
     } else if (message.type === "result") {
       this.streamedTextThisTurn = false;
-      this.send("prompt_complete", { stopReason: message.subtype ?? message.stopReason ?? "end_turn" });
+      const usage = normalizeClaudeSdkUsage(message.usage);
+      this.send("prompt_complete", {
+        stopReason: message.subtype ?? message.stopReason ?? "end_turn",
+        ...(usage ? { usage } : {}),
+      });
     } else if (message.type === "system") {
       const subtype = message.subtype as string | undefined;
       if (subtype === "init") {

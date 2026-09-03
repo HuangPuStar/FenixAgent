@@ -65,11 +65,17 @@ export function resetOrchestrationInstanceDeps(): void {
  * spawnInstanceViaController 的可选参数。
  */
 export interface SpawnInstanceViaControllerOptions {
+  /** 持久 Agent Instance uid；生命周期入口必须显式提供。 */
+  instanceUid?: string;
   /**
    * 调用方环境变量覆盖，对齐旧路径 `{ ...platformEnv, ...extraEnv }` 的合并语义
    * （调用方显式传入的同名变量优先）。meta-agent 用它把共享 meta env 上的
    * USER_META_API_KEY / USER_META_USER_ID / USER_META_ORG_ID 覆盖为当前请求者上下文。
    */
+  /** coordinator 分配的 runtime generation；远程启动时必填。 */
+  runtimeGeneration?: number;
+  /** 主服务进程 epoch；远程启动时必填。 */
+  serverEpoch?: string;
   extraEnv?: Record<string, string>;
 }
 
@@ -96,6 +102,7 @@ export async function spawnInstanceViaCore(
   instanceId: string,
   machineId: string,
   extraEnv?: Record<string, string>,
+  runtimeFence?: { runtimeGeneration: number; serverEpoch: string },
 ): Promise<void> {
   const nodeId = machineId;
 
@@ -112,7 +119,13 @@ export async function spawnInstanceViaCore(
         launchSpec: agentLaunchSpec,
       });
     } else {
-      await facade.launchInstance({ instanceId, nodeId, launchSpec: agentLaunchSpec });
+      await facade.launchInstance({
+        instanceId,
+        nodeId,
+        launchSpec: agentLaunchSpec,
+        runtimeGeneration: runtimeFence?.runtimeGeneration,
+        serverEpoch: runtimeFence?.serverEpoch,
+      });
     }
   } catch (err) {
     logError(`[orchestration-instance] launchInstance failed: instanceId=${instanceId} nodeId=${nodeId}`, err);
@@ -136,15 +149,18 @@ export async function spawnInstanceViaController(
   options: SpawnInstanceViaControllerOptions = {},
 ): Promise<Instance> {
   // 平台级/用户级并发治理：与旧 spawnInstanceFromEnvironment 首行语义对齐，
-  // 保证 RCS_AGENT_MAX_CONCURRENCY / RCS_USER_AGENT_MAX_CONCURRENCY 在
-  // 编排域路径下仍然生效（controller 内部只检查环境级 maxConcurrency）。
+  // 并发配额统一由宿主 agent-concurrency reservation 管理；AgentController 禁止
+  // 按 Environment 内存实例数重复限流。
   // 检查与 in-flight 预留合并为同一同步段（beginSpawnReservation 内部无 await），
   // 消除 "检查 → registerSupplement 注册" 窗口内并发不可见导致的同用户超发
   // （A-P2.1）；finally 兜底释放保证失败路径不永久占用额度。
   const reservation = beginSpawnReservation(userId, source);
   try {
     const controller = _deps.getOrchestrationController();
-    const instance = await controller.spawnInstance(envId, userId);
+    if (!options.instanceUid) {
+      throw new Error("INSTANCE_UID_REQUIRED");
+    }
+    const instance = await controller.spawnInstance(envId, userId, options.instanceUid);
 
     try {
       // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
@@ -152,7 +168,15 @@ export async function spawnInstanceViaController(
       const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
       // instance.machineId 与 controller 内部 ensureNode 使用同一快照（同一次 env 读取的
       // 解析结果），保证 refCount 节点与 core nodeId 一致（A-P2.2）；禁止改回重读 env。
-      await spawnInstanceViaCore(launchSpec, instance.instanceId, instance.machineId, options.extraEnv);
+      await spawnInstanceViaCore(
+        launchSpec,
+        instance.instanceId,
+        instance.machineId,
+        options.extraEnv,
+        options.runtimeGeneration !== undefined && options.serverEpoch
+          ? { runtimeGeneration: options.runtimeGeneration, serverEpoch: options.serverEpoch }
+          : undefined,
+      );
       // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
       // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
       // getInstance 时 supplement 尚未注册，误判实例不可见（INSTANCE_NOT_VISIBLE）。
@@ -206,27 +230,32 @@ export async function refreshInstanceEnvironment(instanceId: string, envId: stri
  * 的 dispose 必须三者齐备，否则进程残留且实例列表出现脏数据。语义与旧
  * services/instance.ts 的 stopInstance 对齐；对重复 dispose / 已停止实例幂等。
  */
-export async function stopInstanceViaController(instanceId: string): Promise<void> {
-  const sup = globalInstanceRegistry.get(instanceId);
+function isInstanceNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error && "code" in error && (error as Error & { code?: unknown }).code === "INSTANCE_NOT_FOUND"
+  );
+}
+
+export async function stopInstanceViaController(
+  instanceId: string,
+  mode: "strict" | "best-effort" = "best-effort",
+): Promise<void> {
   const controller = _deps.getOrchestrationController();
+  const failures: unknown[] = [];
   try {
     await controller.stopInstance(instanceId);
   } catch (err) {
-    // 编排域实例可能已被停止或不在活跃表（重复 dispose / 外部回收），
-    // 不阻断 core 进程停止与 supplement 清理。
+    if (!isInstanceNotFoundError(err)) failures.push(err);
     logError(`[orchestration-instance] controller.stopInstance failed: instanceId=${instanceId}`, err);
   }
   const facade = getCoreRuntime();
   try {
     await facade.stopInstance(instanceId);
   } catch (err) {
-    // core 中实例可能已不存在（如 machine 断连时被清理），实例停止本身已由 controller 完成
+    if (!isInstanceNotFoundError(err)) failures.push(err);
     logError(`[orchestration-instance] core stopInstance failed: instanceId=${instanceId}`, err);
   }
-  if (sup) {
-    globalInstanceRegistry.unregister(instanceId);
-    globalInstanceRegistry.deleteCounter(sup.environmentId);
-  }
+  globalInstanceRegistry.unregister(instanceId);
   // SP-C2：停止成功后先关闭该 instance 的所有前端 YJS client，使 gateway close
   // 生命周期释放 shared relay/refCount/listener；随后才 reclaim Doc。关闭失败不得改变
   // 停止语义，但必须保留诊断信息，否则 Observer 会持续显示孤儿 chat-relay。
@@ -243,6 +272,9 @@ export async function stopInstanceViaController(instanceId: string): Promise<voi
     await _deps.reclaimYjsDocs(instanceId);
   } catch (err) {
     logError(`[orchestration-instance] yjs doc reclaim failed after stop: instanceId=${instanceId}`, err);
+  }
+  if (mode === "strict" && failures.length > 0) {
+    throw new AggregateError(failures, `Failed to fully stop Agent Instance '${instanceId}'`);
   }
 }
 
@@ -481,7 +513,6 @@ async function registerSupplement(
   const supplement: InstanceSupplement = {
     userId,
     environmentId: envId,
-    instanceNumber: globalInstanceRegistry.nextInstanceNumber(envId),
     organizationId: env?.organizationId ?? userId,
     spawnSource: source,
     lastActivityAt: Date.now(),

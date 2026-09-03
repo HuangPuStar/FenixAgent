@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { log as logInfo } from "@fenix/logger";
+import { parseExpression } from "cron-parser";
 import { taskExecutionLogRepo } from "../repositories/task";
 import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "../repositories/task-v2";
 import { scheduledTaskV2Repo } from "../repositories/task-v2";
@@ -69,6 +70,15 @@ function normalizeTimezone(timezone: string | null | undefined): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
+function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeTask(row: ScheduledTaskV2Row): TaskV2Response {
   return {
     id: row.id,
@@ -105,8 +115,55 @@ function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): 
     }
   }
 
-  // 跨字段约束：agent 类型必须绑定 agentId（Zod schema 中 agentId 为 optional/nullable）
-  if (!isUpdate && data.type === "agent" && !data.agentId) return "Agent 任务必须指定 agentId";
+  if (data.timezone !== undefined && data.timezone !== null) {
+    const timezone = data.timezone.trim();
+    if (timezone.length > 0 && !isValidTimezone(timezone)) return "必须是有效的 IANA 时区";
+  }
+
+  if (data.cron !== undefined) {
+    try {
+      const timezone = data.timezone?.trim();
+      parseExpression(data.cron.trim(), timezone ? { tz: timezone } : undefined);
+    } catch {
+      return "cron 表达式无效，请检查字段取值范围";
+    }
+  }
+
+  if (
+    data.timeoutSeconds !== undefined &&
+    (!Number.isInteger(data.timeoutSeconds) || data.timeoutSeconds < 1 || data.timeoutSeconds > 3600)
+  ) {
+    return "超时秒数必须是 1 到 3600 的整数";
+  }
+
+  if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
+
+  if (data.definition !== undefined) {
+    const definition = data.definition;
+    if (data.type === "http") {
+      const url = typeof definition.url === "string" ? definition.url.trim() : "";
+      try {
+        const parsedUrl = new URL(url);
+        if (!["http:", "https:"].includes(parsedUrl.protocol) || !parsedUrl.hostname) throw new Error();
+      } catch {
+        return "请输入有效的 HTTP 或 HTTPS URL";
+      }
+      if (
+        definition.headers !== undefined &&
+        (typeof definition.headers !== "object" ||
+          definition.headers === null ||
+          Array.isArray(definition.headers) ||
+          Object.values(definition.headers).some((value) => typeof value !== "string"))
+      ) {
+        return "Headers 必须是值为字符串的 JSON 对象";
+      }
+    }
+    if (data.type === "agent") {
+      if (typeof definition.prompt !== "string" || definition.prompt.trim().length === 0) return "Prompt 不能为空";
+    }
+  }
+
+  if (!isUpdate && data.type === "agent" && !data.agentId?.trim()) return "Agent 任务必须指定 agentId";
 
   return null;
 }
@@ -205,7 +262,10 @@ export async function updateTaskV2(
     return { success: false, error: { code: "VALIDATION_ERROR", message: "任务类型不可修改" } };
   }
 
-  const validationError = validateTaskInput({ ...data, type: existing.type as "http" | "agent" }, true);
+  const validationError = validateTaskInput(
+    { ...data, type: existing.type as "http" | "agent", timezone: data.timezone ?? existing.timezone },
+    true,
+  );
   if (validationError) return { success: false, error: { code: "VALIDATION_ERROR", message: validationError } };
 
   const updates: Partial<ScheduledTaskV2Insert> = { updatedAt: new Date() };

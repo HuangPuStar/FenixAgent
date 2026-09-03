@@ -11,15 +11,11 @@ beforeEach(() => {
         JSON.stringify({
           success: true,
           data: {
-            id: "ins_1",
-            group_id: "group_1",
-            environment_id: "env_1",
-            session_id: null,
-            instance_number: 2,
-            created_at: 123,
-            port: 3000,
+            instanceUid: "ins_1",
+            environmentId: "env_1",
+            name: "worker",
             status: "running",
-            error: null,
+            createdAt: "2026-08-31T00:00:00.000Z",
           },
         }),
         { headers: { "Content-Type": "application/json" } },
@@ -29,8 +25,8 @@ beforeEach(() => {
 });
 
 describe("instance API client", () => {
-  // spawn 响应应只转换顶层 snake_case 字段，供前端使用稳定的 camelCase InstanceInfo。
-  test("spawn maps top-level instance fields from snake_case to camelCase", async () => {
+  // spawn 响应应使用稳定 instanceUid 契约，不引入运行时编号。
+  test("spawn returns the stable instance view model", async () => {
     const { instanceApi } = await import("../api/instances");
 
     const result = await instanceApi.spawn({ environmentId: "env/a" });
@@ -38,15 +34,11 @@ describe("instance API client", () => {
     expect(result).toEqual({
       success: true,
       data: {
-        id: "ins_1",
-        groupId: "group_1",
+        instanceUid: "ins_1",
         environmentId: "env_1",
-        sessionId: null,
-        instanceNumber: 2,
-        createdAt: 123,
-        port: 3000,
+        name: "worker",
         status: "running",
-        error: null,
+        createdAt: "2026-08-31T00:00:00.000Z",
       },
     });
     expect(fetchCalls[0]?.[0]).toBe("/web/instances/from-environment");

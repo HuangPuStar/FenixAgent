@@ -17,7 +17,6 @@ function environmentRow(overrides: Record<string, unknown> = {}) {
     machineName: "machine-1",
     branch: "main",
     gitRepoUrl: "https://example.invalid/repo.git",
-    maxSessions: 2,
     workerType: "acp",
     capabilities: { terminal: true },
     status: "active",
@@ -82,7 +81,6 @@ describe("round69 environment repository 真实行为", () => {
         name: "生产环境",
         status: "active",
         workerType: "acp",
-        maxSessions: 1,
         autoStart: true,
         capabilities: { browser: true },
       }),
@@ -91,7 +89,6 @@ describe("round69 environment repository 真实行为", () => {
       id: "env-created",
       organizationId: "org-owner",
       workspacePath: "/tmp",
-      maxSessions: 10,
     });
   });
 

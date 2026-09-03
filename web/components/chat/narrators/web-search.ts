@@ -13,7 +13,7 @@ import type { ToolNarrator } from "./types";
  */
 export const webSearchNarrator: ToolNarrator = {
   kinds: ["web-search"],
-  verb: "搜索",
+  verb: "搜索网页",
   icon: Search,
   getDisplay(ctx) {
     const raw = ctx.tool.rawInput as Record<string, unknown> | undefined;

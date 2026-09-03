@@ -12,7 +12,7 @@ import type { ToolNarrator } from "./types";
  */
 export const todoWriteNarrator: ToolNarrator = {
   kinds: ["todo"],
-  verb: "更新",
+  verb: "更新待办",
   icon: ListTodo,
   getDisplay(ctx) {
     const changeCount = ctx.tool.todoChanges?.length;

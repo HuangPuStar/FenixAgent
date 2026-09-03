@@ -149,7 +149,7 @@ describe("round54 Provider 配置 Web 路由", () => {
     const body = await (await request("/config/providers")).json();
 
     expect(body.data.providers[0]).toMatchObject({
-      keyHint: "***9876",
+      keyHint: "top-***876",
       resourceAccess: { ownership: "external", writable: false },
       resourceKey: "org-1/provider-1",
     });
@@ -171,7 +171,7 @@ describe("round54 Provider 配置 Web 路由", () => {
     const body = await (await request("/config/providers?name=org-source%2Fprovider-1")).json();
 
     expect(receivedName).toBe("org-source/provider-1");
-    expect(body.data).toMatchObject({ keyHint: "***1234", resourceKey: "org-source/provider-1" });
+    expect(body.data).toMatchObject({ keyHint: "secr***234", resourceKey: "org-source/provider-1" });
   });
 
   // 不存在的 Provider 应映射为标准 404，而不是成功空对象。
@@ -203,9 +203,9 @@ describe("round54 Provider 配置 Web 路由", () => {
     let saved: unknown;
     stubConfigPg({
       getProvider: async () => provider({ protocol: "anthropic" }),
-      upsertProvider: async (_ctx, _name, data) => {
+      updateProviderById: async (_ctx, _providerId, data) => {
         saved = data;
-        return "provider-1";
+        return true;
       },
     });
 
@@ -236,6 +236,7 @@ describe("round54 Provider 配置 Web 路由", () => {
     const calls: string[] = [];
     stubConfigPg({
       getProvider: async () => provider(),
+      updateProviderById: async () => true,
       assertProviderInternalWritable: async () => provider(),
       updateModel: async (_ctx, _providerId, modelId, data) => {
         calls.push(`update:${modelId}:${JSON.stringify(data)}`);

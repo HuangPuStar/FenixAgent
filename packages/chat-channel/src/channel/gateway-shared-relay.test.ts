@@ -29,7 +29,10 @@ describe("Gateway shared relay", () => {
         }) as never,
     });
 
-    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", "rcs-1");
+    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
 
     expect(sent).toEqual([{ type: "connect" }]);
     lifecycle.handleClose("ws-1");
@@ -60,7 +63,10 @@ describe("Gateway shared relay", () => {
         }) as never,
     });
 
-    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", "rcs-1");
+    await lifecycle.handleOpen(createWs(), "ws-1", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
 
     expect(registry.hasStatusReceived("agent-1", "instance-1")).toBe(true);
     lifecycle.handleClose("ws-1");
@@ -125,9 +131,15 @@ describe("Gateway shared relay", () => {
     });
     const ws1 = createWs();
     const ws2 = createWs();
-    const open1 = lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
+    const open1 = lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
     await connectionStarted.promise;
-    const open2 = lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    const open2 = lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
     connection.resolve(handle as never);
     await Promise.all([open1, open2]);
 
@@ -154,7 +166,7 @@ describe("Gateway shared relay", () => {
     const lifecycle = createGateway(registry, broadcaster, relayEvents, {
       ensureRunning: async () => {
         ensureCalls += 1;
-        return { instance: { id: "instance-1" } };
+        return "instance-1";
       },
       connectAgentRelay: async () => {
         connectCalls += 1;
@@ -165,8 +177,8 @@ describe("Gateway shared relay", () => {
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
-    await lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
+    await lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
 
     expect(ensureCalls).toBe(1);
     expect(connectCalls).toBe(1);
@@ -217,7 +229,10 @@ describe("Gateway shared relay", () => {
       },
     );
     const ws = createWs();
-    const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
     await snapshotStarted.promise;
 
     await lifecycle.handleMessage(ws, "ws-1", JSON.stringify({ action: "cancel" }));
@@ -246,8 +261,14 @@ describe("Gateway shared relay", () => {
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await lifecycle.handleOpen(ws1, "ws-1", "user-a", "agent-1", null);
-    await lifecycle.handleOpen(ws2, "ws-2", "user-b", "agent-1", null);
+    await lifecycle.handleOpen(ws1, "ws-1", "user-a", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-user-a",
+    });
+    await lifecycle.handleOpen(ws2, "ws-2", "user-b", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-user-b",
+    });
 
     expect(connectCalls).toBe(2);
     expect(openedRcsSessionIds).toHaveLength(2);
@@ -284,21 +305,27 @@ describe("Gateway shared relay", () => {
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await lifecycle.handleOpen(ws1, "ws-1", "user-a", "agent-1", null);
-    await lifecycle.handleOpen(ws2, "ws-2", "user-b", "agent-1", null);
+    await lifecycle.handleOpen(ws1, "ws-1", "user-a", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-user-a",
+    });
+    await lifecycle.handleOpen(ws2, "ws-2", "user-b", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-user-b",
+    });
 
-    const relayA = registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h");
-    const relayB = registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i");
+    const relayA = registry.getShared("instance-1", "user-a", "rcs-user-a");
+    const relayB = registry.getShared("instance-1", "user-b", "rcs-user-b");
     expect(relayA).toBeDefined();
     expect(relayB).toBeDefined();
 
     lifecycle.handleClose("ws-1");
-    expect(registry.getShared("instance-1", "user-a", "rcs_YWdlbnQtMQ.dXNlci1h")).toBeUndefined();
-    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeDefined();
+    expect(registry.getShared("instance-1", "user-a", "rcs-user-a")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs-user-b")).toBeDefined();
     expect(closeCalls).toBe(1);
 
     lifecycle.handleClose("ws-2");
-    expect(registry.getShared("instance-1", "user-b", "rcs_YWdlbnQtMQ.dXNlci1i")).toBeUndefined();
+    expect(registry.getShared("instance-1", "user-b", "rcs-user-b")).toBeUndefined();
     expect(closeCalls).toBe(2);
   });
 
@@ -317,7 +344,7 @@ describe("Gateway shared relay", () => {
     const lifecycle = createGateway(registry, broadcaster, relayEvents);
     const ws = createWs();
 
-    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    await lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     lifecycle.handleClose("ws-1");
 
     expect(unregistered).toContain("chat:rcs-1");
@@ -353,7 +380,10 @@ describe("Gateway shared relay", () => {
       },
     );
     const ws = createWs();
-    const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", "rcs-1");
+    const opening = lifecycle.handleOpen(ws, "ws-1", "user-1", "agent-1", {
+      instanceUid: "instance-1",
+      rcsSessionId: "rcs-1",
+    });
     await sessionStarted.promise;
 
     lifecycle.handleClose("ws-1");
@@ -390,8 +420,8 @@ describe("Gateway shared relay", () => {
     const ws1 = createWs();
     const ws2 = createWs();
 
-    await lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", "rcs-1");
-    await lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", "rcs-1");
+    await lifecycle.handleOpen(ws1, "ws-1", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
+    await lifecycle.handleOpen(ws2, "ws-2", "user-1", "agent-1", { instanceUid: "instance-1", rcsSessionId: "rcs-1" });
     expect(registry.getShared("instance-1", "user-1", "rcs-1")?.refCount).toBe(2);
 
     lifecycle.handleClose("ws-1");

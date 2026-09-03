@@ -1,7 +1,9 @@
 import { createLogger, error as logError } from "@fenix/logger";
+import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { config } from "../config";
 import { touchInstanceActivity } from "../services/acp-idle-monitor";
+import { agentInstanceService } from "../services/agent-instance-service";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { touchEnvironmentPoll } from "../services/environment";
 import { disconnectMachine, registerMachine } from "../services/registry";
@@ -40,6 +42,24 @@ export function sendToWs(ws: WsConnection, msg: object): void {
     ws.send(`${JSON.stringify(msg)}\n`);
   } catch (err) {
     logError("send error:", err);
+  }
+}
+
+function activateRemoteMachine(entry: AcpConnectionEntry): void {
+  if (!entry.machineId || entry.ws.readyState !== 1) {
+    throw new Error("Machine connection is not ready for activation");
+  }
+
+  if (!entry.remoteTransport) {
+    const engineTypes = Array.isArray(entry.capabilities?.engineTypes)
+      ? (entry.capabilities.engineTypes as string[])
+      : ["opencode"];
+    registerRemoteNode(entry.machineId, entry.ws, entry, engineTypes);
+  }
+
+  const agentNodeService = getAgentNodeService();
+  if (!agentNodeService.hasActiveConnection(entry.machineId)) {
+    agentNodeService.handleIncomingConnection(entry.machineId, wsToAgentNodeSocket(entry.ws));
   }
 }
 
@@ -147,6 +167,17 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
 
   const agentName = (msg.agent_name as string) || "unknown";
   const tenantId = (msg.tenant_id as string) || null;
+  const protocolVersion = msg.protocol_version;
+  if (protocolVersion !== MACHINE_PROTOCOL_VERSION) {
+    sendToWs(entry.ws, {
+      type: "error",
+      code: "INCOMPATIBLE_PROTOCOL",
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      message: `Machine protocol ${MACHINE_PROTOCOL_VERSION} is required`,
+    });
+    entry.ws.close(4406, "incompatible machine protocol");
+    return;
+  }
   const supportedEngineTypes = Array.isArray(msg.supported_engine_types)
     ? (msg.supported_engine_types as { type: string; cliPath?: string }[])
     : [{ type: "opencode" }];
@@ -186,6 +217,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     });
 
     entry.machineId = result.id;
+    entry.cleanSlateConfirmed = false;
+    entry.capabilities = { engineTypes: supportedEngineTypes.map((engine) => engine.type) };
     logger.debug(`Machine registered: id=${result.id} agent=${agentName} isNew=${result.isNew}`);
 
     // registerRemoteNode 会删除该 machine 上的旧 core 实例；提前捕获，供 relay 层精确关闭旧前端连接。
@@ -198,23 +231,8 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
             .map((instance) => instance.instanceId)
         : [];
 
-    // 注册远程 node 到 core runtime（传入 entry 以便 transport 接收路由消息）
-    const engineTypes = supportedEngineTypes.map((e) => e.type);
-    registerRemoteNode(result.id, entry.ws, entry, engineTypes);
-
-    // 接入编排域 AgentNodeService：machine 注册成功后由新包管理节点生命周期。
-    // 编排域接入失败不阻断机器注册（relay / core 通道不依赖编排域节点），记录诊断即可。
-    // 竞态防护：registerMachine 的 await 期间 WS 可能已关闭（handleAcpWsClose 已删
-    // entry，且此时 entry.machineId 尚为 null 不会触发清理），用已关闭的 socket 建节点
-    // 会让节点以死信道进入 connected 且永远收不到 close 事件（事件已过），导致节点
-    // 永久 stuck；关闭中的连接不接入编排域，等待机器重连。
-    if (entry.ws.readyState === 1) {
-      try {
-        getAgentNodeService().handleIncomingConnection(result.id, wsToAgentNodeSocket(entry.ws));
-      } catch (err) {
-        logError("AgentNodeService handleIncomingConnection error:", err);
-      }
-    }
+    // remote runtime 与编排节点只能在 Machine 清空旧 epoch runtime 并确认后装配。
+    // 在确认前保持 fail-closed，避免主服务重启窗口把新命令发给旧进程集合。
 
     // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
     if (replacedInstanceIds.length > 0) {
@@ -227,6 +245,9 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       type: "registered",
       machine_id: result.id,
       is_new: result.isNew,
+      protocol_version: MACHINE_PROTOCOL_VERSION,
+      server_epoch: SERVER_EPOCH,
+      clean_slate_required: true,
     });
 
     // 启动心跳超时检测：远程服务直接关闭时 TCP 不会发 FIN，
@@ -302,10 +323,41 @@ export async function handleAcpWsMessage(
     }
 
     if (msg.type === "heartbeat") {
-      if (entry.isMachine && entry.machineId) {
-        handleHeartbeat(entry.machineId).catch((err) => {
-          logError("Heartbeat handling error:", err);
-        });
+      if (entry.isMachine && entry.machineId && entry.cleanSlateConfirmed) {
+        try {
+          // clean-slate 已确认但激活曾部分失败时，heartbeat 是同一在线连接的幂等自愈点。
+          activateRemoteMachine(entry);
+          handleHeartbeat(entry.machineId).catch((err) => {
+            logError("Heartbeat handling error:", err);
+          });
+        } catch (err) {
+          logError("Remote machine activation error:", err);
+        }
+      }
+      continue;
+    }
+
+    if (msg.type === "clean_slate_confirmed") {
+      if (
+        !entry.isMachine ||
+        !entry.machineId ||
+        msg.protocol_version !== MACHINE_PROTOCOL_VERSION ||
+        msg.server_epoch !== SERVER_EPOCH
+      ) {
+        entry.ws.close(4406, "invalid clean-slate confirmation");
+        continue;
+      }
+      if (entry.cleanSlateConfirmed) {
+        logger.warn("Rejected duplicate clean-slate confirmation", { machineId: entry.machineId });
+        entry.ws.close(4406, "duplicate clean-slate confirmation");
+        continue;
+      }
+      entry.cleanSlateConfirmed = true;
+      try {
+        activateRemoteMachine(entry);
+      } catch (err) {
+        // 协议确认与宿主激活是两个阶段；保留确认状态，让后续 heartbeat 幂等补齐半完成装配。
+        logError("Remote machine activation error:", err);
       }
       continue;
     }
@@ -314,7 +366,27 @@ export async function handleAcpWsMessage(
     if (entry.isMachine && entry.remoteTransport) {
       const REMOTE_PROTOCOL_TYPES = ["prepare_result", "start_result", "stop_result", "relay"];
       if (REMOTE_PROTOCOL_TYPES.includes(msg.type as string)) {
+        if (!entry.cleanSlateConfirmed) {
+          entry.ws.close(4406, "clean-slate not confirmed");
+          continue;
+        }
         const instanceId = (msg as Record<string, unknown>).instance_id;
+        const generation = (msg as Record<string, unknown>).runtime_generation;
+        if (
+          typeof instanceId !== "string" ||
+          typeof generation !== "number" ||
+          !hasRuntimeFence(msg, {
+            instanceUid: instanceId,
+            runtimeGeneration: generation,
+            serverEpoch: SERVER_EPOCH,
+          })
+        ) {
+          logger.warn("Rejected stale or invalid remote lifecycle message", {
+            type: msg.type,
+            machineId: entry.machineId,
+          });
+          continue;
+        }
         if (typeof instanceId === "string") {
           touchInstanceActivity(instanceId, msg);
         }
@@ -338,8 +410,25 @@ export async function handleAcpWsMessage(
       "session_resumed",
     ];
     if (entry.isMachine && SESSION_MSG_TYPES.includes(msg.type as string)) {
-      const sessionId = msg.session_id as string | undefined;
+      if (!entry.cleanSlateConfirmed) {
+        entry.ws.close(4406, "clean-slate not confirmed");
+        continue;
+      }
       const instanceId = (msg as Record<string, unknown>).instance_id;
+      const generation = (msg as Record<string, unknown>).runtime_generation;
+      if (
+        typeof instanceId !== "string" ||
+        typeof generation !== "number" ||
+        !hasRuntimeFence(msg, {
+          instanceUid: instanceId,
+          runtimeGeneration: generation,
+          serverEpoch: SERVER_EPOCH,
+        })
+      ) {
+        logger.warn("Rejected stale or invalid remote session message", { type: msg.type, machineId: entry.machineId });
+        continue;
+      }
+      const sessionId = msg.session_id as string | undefined;
       if (typeof instanceId === "string") {
         touchInstanceActivity(instanceId, msg);
       }
@@ -410,10 +499,15 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
 
   logger.info(`[MACHINE-CLEANUP] Starting full cleanup for machineId=${machineId} reason=${reason ?? "unknown"}`);
 
-  const instanceIds = getCoreRuntime()
+  const disconnectedInstances = getCoreRuntime()
     .listInstances()
-    .filter((instance) => instance.nodeId === machineId)
-    .map((instance) => instance.instanceId);
+    .filter((instance) => instance.nodeId === machineId);
+  const instanceIds = disconnectedInstances.map((instance) => instance.instanceId);
+  for (const instance of disconnectedInstances) {
+    if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
+      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration);
+    }
+  }
   handleMachineDisconnect(entry, reason).catch(() => {});
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
@@ -471,10 +565,15 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
     logError("Machine disconnect error:", err);
   });
 
-  const instanceIds = getCoreRuntime()
+  const disconnectedInstances = getCoreRuntime()
     .listInstances()
-    .filter((instance) => instance.nodeId === machineId)
-    .map((instance) => instance.instanceId);
+    .filter((instance) => instance.nodeId === machineId);
+  const instanceIds = disconnectedInstances.map((instance) => instance.instanceId);
+  for (const instance of disconnectedInstances) {
+    if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
+      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration);
+    }
+  }
 
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
@@ -501,6 +600,7 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
 
   // machine 连接断连处理
   if (entry.isMachine && entry.machineId) {
+    entry.remoteTransport?.close(reason ?? "Machine connection closed");
     logger.info(`[ACP-WS-CLOSE] calling performMachineCleanup for machineId=${entry.machineId}`);
     performMachineCleanup(entry, reason ?? undefined);
   }

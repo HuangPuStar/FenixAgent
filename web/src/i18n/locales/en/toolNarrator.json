@@ -8,7 +8,7 @@
       "canceled": "Canceled"
     },
     "subtitle": "{{verb}} {{object}}",
-    "subtitleRunning": "Reading {{object}}…",
+    "subtitleRunning": "{{verb}} {{object}}…",
     "lineRange": "lines {{range}}",
     "inPath": "in {{path}}"
   },

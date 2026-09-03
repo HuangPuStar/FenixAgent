@@ -55,14 +55,18 @@ describe("elicitation 第四十九轮真实协议分支", () => {
       parseElicitationSchema({
         properties: { choice: { description: "选哪个", oneOf: [{ const: "保留", description: "不变" }] } },
       }),
-    ).toEqual([{ question: "选哪个", header: null, options: [{ label: "保留", description: "不变" }] }]);
+    ).toEqual([
+      { question: "选哪个", header: null, options: [{ label: "保留", description: "不变" }], multiSelect: false },
+    ]);
   });
 
   // const 不可用时，title 可作为前端可展示且可回传的 label。
   test("以 title 回退为选项 label", () => {
     expect(
       parseElicitationSchema({ properties: { choice: { description: "选哪个", oneOf: [{ title: "回退" }] } } }),
-    ).toEqual([{ question: "选哪个", header: null, options: [{ label: "回退", description: null }] }]);
+    ).toEqual([
+      { question: "选哪个", header: null, options: [{ label: "回退", description: null }], multiSelect: false },
+    ]);
   });
 
   // items 数组是多选 schema 的另一种 ACP 表达。
@@ -79,6 +83,7 @@ describe("elicitation 第四十九轮真实协议分支", () => {
           { label: "一", description: null },
           { label: "二", description: null },
         ],
+        multiSelect: false,
       },
     ]);
   });
@@ -94,7 +99,7 @@ describe("elicitation 第四十九轮真实协议分支", () => {
       parseElicitationSchema({
         properties: { choice: { description: "选", oneOf: [{ const: "" }, { const: "有效" }] } },
       }),
-    ).toEqual([{ question: "选", header: null, options: [{ label: "有效", description: null }] }]);
+    ).toEqual([{ question: "选", header: null, options: [{ label: "有效", description: null }], multiSelect: false }]);
   });
 
   // 没有问题正文的属性不会生成不可理解的 interactive_question。

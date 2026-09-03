@@ -1,7 +1,7 @@
 /**
  * CI 全通过脚本 — 只输出有用的信息。
  *
- * 步骤：biome format → biome check (import 排序) → tsc → biome lint → bun test
+ * 步骤：biome format → biome check (import 排序) → architecture → tsc → biome lint → bun test
  * 格式/lint 自动修复，类型检查和测试只报告失败项。
  */
 
@@ -23,6 +23,11 @@ const STEPS = [
       if (out.includes("No fixes applied") || out.includes("Checked")) return null;
       return out;
     },
+  },
+  {
+    name: "architecture",
+    cmd: "bun run architecture:check",
+    filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
   },
   {
     name: "tsc (server)",
@@ -109,6 +114,11 @@ function runStep(step: (typeof STEPS)[number]): { ok: boolean; output: string | 
 }
 
 // --- main ---
+
+if (process.argv.includes("--list")) {
+  for (const step of STEPS) console.log(step.name);
+  process.exit(0);
+}
 
 const totalStart = Date.now();
 let allPassed = true;

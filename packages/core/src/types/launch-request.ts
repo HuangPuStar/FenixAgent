@@ -6,6 +6,10 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 export interface LaunchInstanceRequest {
   /** 目标实例 ID。 */
   instanceId: string;
+  /** coordinator runtime 世代；远程启动必填。 */
+  runtimeGeneration?: number;
+  /** 主服务进程 epoch；远程启动必填。 */
+  serverEpoch?: string;
   /** 需要调用的 engine 类型。local 执行时由上层传入，remote 时不传。 */
   engineType?: string;
   /** 需要调度到的 node ID。 */

@@ -41,7 +41,7 @@ export function isMachineOfflineError(err: unknown): boolean {
  * WS 打开阶段 spawn 失败的「永久性」判定。
  *
  * 返回诊断码（客户端 payload.code）当且仅当该失败是确定性永久失败：
- * 重连不会改变失败条件（autoStart 开关、maxSessions 上限、launch spec 构建条件均为配置态），
+ * 重连不会改变失败条件（autoStart 开关、launch spec 构建条件均为配置态），
  * 自动重连只会制造永不成功的循环；此时调用方应关闭为终态码并交由用户手动重试。
  * 返回 null 表示瞬时/未知失败，应保留 1011 自动重连（如并发竞态、内部注册窗口）。
  * 与 isMachineOfflineError 无交集（机器离线仍走 4500 专用终态）。
@@ -49,7 +49,6 @@ export function isMachineOfflineError(err: unknown): boolean {
 export function classifyPermanentSpawnFailure(err: unknown): string | null {
   if (err instanceof AppError) {
     if (err.code === "AUTO_START_DISABLED") return "auto_start_disabled";
-    if (err.code === "MAX_SESSIONS_REACHED") return "max_sessions_reached";
     return null;
   }
   if (err instanceof OrchestrationError) {

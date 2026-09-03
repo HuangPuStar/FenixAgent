@@ -140,6 +140,7 @@ describe("computeSessionSnapshot", () => {
                 { label: "production", description: "Prod" },
                 { label: "staging", description: null },
               ],
+              multiSelect: false,
             },
           ],
           description: "Please answer",

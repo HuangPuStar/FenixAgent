@@ -5,6 +5,7 @@ import { mcpServer, mcpTool } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import {
   assertInternalWritable,
+  buildExternalPublicReadMap,
   canReadResource,
   decorateResourceAccess,
   listReadableResourceRefs,
@@ -29,20 +30,26 @@ function parseResourceKey(resourceKey: string) {
   };
 }
 
-async function listExternalMcpServers(ctx: AuthContext): Promise<McpServerRow[]> {
+async function listExternalMcpServers(ctx: AuthContext): Promise<{
+  rows: McpServerRow[];
+  publicReadMap: Map<string, boolean>;
+}> {
   const refs = await listReadableResourceRefs(ctx, "mcp_server");
   const ids = refs.map((ref) => ref.resourceId);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { rows: [], publicReadMap: new Map() };
 
   const rows = await db.select().from(mcpServer).where(inArray(mcpServer.id, ids));
   const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
-  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+  return {
+    rows: rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`)),
+    publicReadMap: buildExternalPublicReadMap(refs),
+  };
 }
 
 export async function listMcpServers(ctx: AuthContext): Promise<McpServerRowWithAccess[]> {
   const internal = await db.select().from(mcpServer).where(eq(mcpServer.organizationId, ctx.organizationId));
   const external = await listExternalMcpServers(ctx);
-  return decorateResourceAccess(ctx, "mcp_server", [...internal, ...external]);
+  return decorateResourceAccess(ctx, "mcp_server", [...internal, ...external.rows], external.publicReadMap);
 }
 
 export async function getMcpServer(ctx: AuthContext, name: string): Promise<McpServerRowWithAccess | null> {
@@ -57,11 +64,12 @@ export async function getMcpServer(ctx: AuthContext, name: string): Promise<McpS
     return decorated;
   }
 
-  const external = (await listExternalMcpServers(ctx)).find((row) => row.name === name);
-  if (!external) return null;
-  const canRead = await canReadResource(ctx, "mcp_server", external.id, external.organizationId);
+  const external = await listExternalMcpServers(ctx);
+  const externalRow = external.rows.find((row) => row.name === name);
+  if (!externalRow) return null;
+  const canRead = await canReadResource(ctx, "mcp_server", externalRow.id, externalRow.organizationId);
   if (!canRead) return null;
-  const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [external]);
+  const [decorated] = await decorateResourceAccess(ctx, "mcp_server", [externalRow], external.publicReadMap);
   return decorated;
 }
 

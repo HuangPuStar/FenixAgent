@@ -9,9 +9,14 @@ import { createLogger } from "@fenix/logger";
 import { config } from "../config";
 import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
+import {
+  getInstance,
+  type InstanceActivityInfo,
+  stopInstance,
+  toInstanceActivityInfo,
+} from "./agent-instance-runtime-projection";
 import { getCoreRuntime } from "./core-bootstrap";
 import { docManager } from "./doc-manager-instance";
-import { getInstance, type InstanceActivityInfo, stopInstance, toInstanceActivityInfo } from "./instance";
 import { globalInstanceRegistry } from "./instance-registry";
 
 const logger = createLogger("acp-idle-monitor");
@@ -72,7 +77,6 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
     group_id: "",
     environment_id: null,
     session_id: null,
-    instance_number: 0,
     created_at: createdAtSeconds,
     user: null,
     spawn_source: null,

@@ -39,13 +39,6 @@ export class IllegalStateTransitionError extends OrchestrationError {
   }
 }
 
-/** 环境并发实例数已达上限，拒绝启动新实例。 */
-export class ConcurrencyExceededError extends OrchestrationError {
-  constructor(message = "Concurrency limit exceeded") {
-    super(message, "CONCURRENCY_EXCEEDED");
-  }
-}
-
 /** 目标机器已配置但处于离线状态，无法建立连接。 */
 export class MachineOfflineError extends OrchestrationError {
   constructor(message = "Target machine is offline") {

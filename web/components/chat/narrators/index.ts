@@ -64,8 +64,7 @@ export function narrate(
   const narrator = narrators.find((n) => n.kinds.includes(kind)) ?? fallbackNarrator;
 
   // 第 3 阶段：调用 narrator 的 getDisplay 拿到 object 和可选 detail
-  const { object, detail } = narrator.getDisplay(ctx);
-  const verb = narrator.verb;
+  const { object, verb = narrator.verb, detail } = narrator.getDisplay(ctx);
 
   // 第 4 阶段：拼接 title（verb + object 完整句子）。running 用进行时模板（"正在读取 X"），
   // 其他状态用过去时模板（"读取 X"）
@@ -90,6 +89,8 @@ export function narrate(
   return {
     icon: narrator.icon,
     title,
+    verb,
+    object,
     subtitle: detail,
     statusLabel,
     badge,

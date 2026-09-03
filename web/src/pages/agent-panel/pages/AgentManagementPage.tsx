@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import { agentApi } from "@/src/api/agents";
 import { type EnvironmentDetail, envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { AgentBadge } from "../../../../components/chat/AgentBadge";
 import { NS } from "../../../i18n";
-import { getAgentConfigLookupKey, getAgentDisplayName, isAgentWritable } from "../../../lib/agent-resource-access";
+import { getAgentConfigLookupKey, getAgentDisplayName } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { AgentInfo } from "../../../types/config";
-import { AgentFormDialog } from "../AgentFormDialog";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
 
 interface AgentManageNode {
   agent: AgentInfo;
@@ -60,6 +61,7 @@ export function AgentManagementPage() {
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editAgentName, setEditAgentName] = useState<string | null>(null);
+  const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
 
   // 列表查询：并行拉取 Agent 配置与环境列表，按 agentConfigId 关联
   const {
@@ -125,15 +127,15 @@ export function AgentManagementPage() {
         envId = newEnv?.id;
       }
       if (!envId) {
-        toast.error(t("envCreateFailed", { defaultValue: "创建运行环境失败" }));
+        toast.error(t("envCreateFailed"));
         return;
       }
       const enterResult = await unwrap(envApi.enter({ id: envId }, {}));
       const targetEnvId = enterResult.environmentId ?? envId;
-      if (enterResult.sessionId) {
+      if (enterResult.instanceUid) {
         void navigate({
           to: "/agent/chat/$agentId/$sessionId",
-          params: { agentId: targetEnvId, sessionId: enterResult.sessionId },
+          params: { agentId: targetEnvId, sessionId: enterResult.instanceUid },
         });
       } else {
         void navigate({ to: "/agent/chat/$agentId", params: { agentId: targetEnvId } });
@@ -150,104 +152,113 @@ export function AgentManagementPage() {
   );
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <AgentPageHeader
-        title="智能体管理"
-        subtitle="管理您的所有 AI 智能体，支持创建、编辑和对话"
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => navigate({ to: "/agent/home" })}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-[#d0d9e8] bg-white px-[22px] text-[13px] font-semibold text-[#4f607b] transition hover:border-[#b9cee8] hover:text-[#1677ff]"
-            >
-              <Sparkles className="h-4 w-4" />
-              对话创建
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#1677ff] px-[22px] text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(22,119,255,0.18)] transition hover:bg-[#0f67df]"
-            >
-              <Plus className="h-4 w-4" />
-              创建智能体
-            </button>
-          </>
-        }
-      />
+    <AppPage>
+      <div ref={setEditorHost} className="relative">
+        <AppHeader
+          title={t("management.title")}
+          subtitle={t("management.subtitle")}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/agent/home" })}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-[22px] text-[13px] font-semibold text-text-muted transition hover:border-primary/40 hover:text-primary"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t("management.createByChat")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-primary px-[22px] text-[13px] font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4" />
+                {t("management.createAgent")}
+              </button>
+            </>
+          }
+        />
 
-      {/* 搜索 + 筛选 */}
-      <div className="mb-7 flex flex-wrap items-center gap-2">
-        <div className="relative w-full max-w-md">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98a8bd]" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索智能体名称..."
-            className="h-10 w-full rounded-lg border border-[#dce5ef] bg-white pl-10 pr-4 text-[13px] text-[#1a2944] outline-none transition placeholder:text-[#99a8bc] focus:border-[#1677ff] focus:ring-4 focus:ring-[#1677ff]/10"
-          />
+        {/* 搜索 + 筛选 */}
+        <div className="mb-7 flex flex-wrap items-center gap-2" role="group" aria-label={t("management.filters")}>
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label={t("management.search")}
+              placeholder={t("management.searchPlaceholder")}
+              className="h-10 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-[13px] text-foreground outline-none transition placeholder:text-text-muted focus:border-primary focus:ring-4 focus:ring-primary/10"
+            />
+          </div>
+          {FILTER_IDS.map((filterId) => (
+            <button
+              key={filterId}
+              type="button"
+              aria-pressed={activeFilter === filterId}
+              onClick={() => setActiveFilter(filterId)}
+              className={[
+                "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition",
+                activeFilter === filterId
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "border border-border bg-background text-text-muted hover:border-primary/40 hover:text-primary",
+              ].join(" ")}
+            >
+              {filterLabels[filterId]}
+            </button>
+          ))}
         </div>
-        {FILTER_IDS.map((filterId) => (
-          <button
-            key={filterId}
-            type="button"
-            onClick={() => setActiveFilter(filterId)}
-            className={[
-              "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition",
-              activeFilter === filterId
-                ? "bg-[#1677ff] text-white shadow-[0_4px_10px_rgba(22,119,255,0.18)]"
-                : "border border-[#e0e7f0] bg-white text-[#6f7f95] hover:border-[#b9cee8] hover:text-[#1677ff]",
-            ].join(" ")}
-          >
-            {filterLabels[filterId]}
-          </button>
-        ))}
+
+        {loading ? (
+          <div className="flex h-72 items-center justify-center text-text-muted" role="status" aria-busy="true">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            {t("management.loading")}
+          </div>
+        ) : filteredNodes.length === 0 ? (
+          <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65 text-text-muted">
+            <Bot className="mb-3 h-10 w-10 opacity-50" />
+            <div className="text-[15px] font-semibold text-foreground">{t("management.emptyTitle")}</div>
+            <div className="mt-1 text-[13px]">{t("management.emptyDescription")}</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,224px)] gap-5 justify-center">
+            {filteredNodes.map((node) => {
+              const { agent } = node;
+              const isBusy = enteringId === agent.id;
+
+              return (
+                <AgentBadge
+                  key={agent.id}
+                  name={agent.name}
+                  description={agent.description || undefined}
+                  skills={agent.skillLabels ?? []}
+                  sourceOrg={agent.resourceAccess?.sourceOrganizationName}
+                  onEnter={() => runEnter(node)}
+                  onEdit={() => setEditAgentName(getAgentConfigLookupKey(agent))}
+                  isBusy={isBusy}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        <AgentFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          mode="create"
+          portalContainer={editorHost}
+          onSuccess={refresh}
+        />
+        <AgentFormDialog
+          open={editAgentName !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditAgentName(null);
+          }}
+          mode="edit"
+          agentName={editAgentName ?? ""}
+          portalContainer={editorHost}
+        />
       </div>
-
-      {loading ? (
-        <div className="flex h-72 items-center justify-center text-[#7f8da4]">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          加载智能体...
-        </div>
-      ) : filteredNodes.length === 0 ? (
-        <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-[#d8e2ef] bg-white/65 text-[#8a9ab0]">
-          <Bot className="mb-3 h-10 w-10 opacity-50" />
-          <div className="text-[15px] font-semibold text-[#56667d]">暂无智能体</div>
-          <div className="mt-1 text-[13px]">点击右上角创建第一个智能体</div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,224px)] gap-5 justify-center">
-          {filteredNodes.map((node) => {
-            const { agent } = node;
-            const writable = isAgentWritable(agent);
-            const isBusy = enteringId === agent.id;
-
-            return (
-              <AgentBadge
-                key={agent.id}
-                name={agent.name}
-                description={agent.description || undefined}
-                skills={agent.skillLabels ?? []}
-                sourceOrg={agent.resourceAccess?.sourceOrganizationName}
-                onEnter={() => runEnter(node)}
-                onEdit={writable ? () => setEditAgentName(getAgentConfigLookupKey(agent)) : undefined}
-                isBusy={isBusy}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      <AgentFormDialog open={createOpen} onOpenChange={setCreateOpen} mode="create" onSuccess={refresh} />
-      <AgentFormDialog
-        open={editAgentName !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditAgentName(null);
-        }}
-        mode="edit"
-        agentName={editAgentName ?? undefined}
-        onSuccess={refresh}
-      />
-    </div>
+    </AppPage>
   );
 }

@@ -14,6 +14,7 @@ import {
   CreateAgentResponseSchema,
   DeleteAgentResponseSchema,
   GetAgentResponseSchema,
+  RestartAgentResponseSchema,
   SetDefaultAgentRequestSchema,
   SetDefaultAgentResponseSchema,
   UpdateAgentRequestSchema,
@@ -418,6 +419,21 @@ async function handleCreate(ctx: AuthContext, name: string, data: Record<string,
   return configSuccess({ name, id: createdAgent?.id, resourceAccess: createdAgent?.resourceAccess });
 }
 
+/** 重启该 Agent 绑定 Environment 下的持久 Instance runtime，Instance 记录保持不变。 */
+async function handleRestart(ctx: AuthContext, name: string) {
+  let result: Awaited<ReturnType<typeof configPg.restartAgentConfigInstances>>;
+  try {
+    result = await configPg.restartAgentConfigInstances(ctx, name);
+  } catch (error_) {
+    if (error_ instanceof AppError && error_.code === "FORBIDDEN") {
+      return configError("FORBIDDEN", error_.message);
+    }
+    throw error_;
+  }
+  if (!result) return configNotFound(`Agent '${name}' not found`);
+  return configSuccess(result);
+}
+
 /** 删除 agent，内置 agent 永远不可删除。 */
 async function handleDelete(ctx: AuthContext, name: string) {
   if (isBuiltInAgent(name)) {
@@ -459,6 +475,7 @@ const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model
   "agent-get-response": GetAgentResponseSchema,
   "agent-create-response": CreateAgentResponseSchema,
   "agent-update-response": UpdateAgentResponseSchema,
+  "agent-restart-response": RestartAgentResponseSchema,
   "agent-delete-response": DeleteAgentResponseSchema,
   "agent-set-default-response": SetDefaultAgentResponseSchema,
 });
@@ -680,6 +697,47 @@ app.put(
           in: "query",
           required: true,
           description: "待更新的 Agent 名称或共享资源键。",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  },
+);
+
+app.post(
+  "/config/agents/restart",
+  async ({ store, query, status }) => {
+    const authCtx = store.authContext!;
+    const name = typeof query?.name === "string" ? query.name : undefined;
+    if (!name) {
+      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+    }
+    const result = await handleRestart(authCtx, name);
+    const err = resolveConfigRouteError<403 | 404>(result);
+    if (err) return status(err.code, err.body);
+    return result;
+  },
+  {
+    sessionAuth: true,
+    query: z.object({ name: AgentNameQuerySchema.shape.name }),
+    response: {
+      200: "agent-restart-response",
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["AgentConfig"],
+      summary: "重启 Agent 运行实例",
+      description:
+        "重启当前组织内指定 Agent 绑定 Environment 下的活跃 runtime；保留持久 Agent Instance 身份，并使用最新 Agent 配置重新启动。",
+      parameters: [
+        {
+          name: "name",
+          in: "query",
+          required: true,
+          description: "待重启运行实例的 Agent 名称。",
           schema: { type: "string" },
         },
       ],

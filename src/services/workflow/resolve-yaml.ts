@@ -28,34 +28,21 @@ export async function resolveYaml(
   organizationId: string,
   deps: ResolveYamlDeps,
 ): Promise<string | null> {
-  // 优先使用直接传入的 yaml
-  const yaml = payload.yaml as string | undefined;
-  if (yaml) return yaml;
-
   const workflowId = payload.workflowId as string | undefined;
-  if (!workflowId) return null;
+  const yaml = payload.yaml as string | undefined;
+
+  // workflowId 同时也是 SSE 事件隔离键；即使直接传 YAML，也必须先校验其属于当前组织。
+  const workflow = workflowId ? await deps.getWorkflowDef(workflowId, organizationId) : null;
+  if (workflowId && !workflow) {
+    logger.warn(`resolveYaml: workflow not found for workflowId=${workflowId}`);
+    return null;
+  }
+  if (yaml) return yaml;
+  if (!workflowId || !workflow) return null;
 
   // 确定目标版本：显式指定 > latestVersion 回退 > 0（草稿）
-  let targetVersion: number;
-  let storagePath: string | null | undefined;
-  if (payload.version !== undefined) {
-    targetVersion = payload.version as number;
-    // 显式 version 时仍需校验 workflow 归属当前 organization
-    const wf = await deps.getWorkflowDef(workflowId, organizationId);
-    if (!wf) {
-      logger.warn(`resolveYaml: workflow not found for workflowId=${workflowId}`);
-      return null;
-    }
-    storagePath = wf.storagePath;
-  } else {
-    const wf = await deps.getWorkflowDef(workflowId, organizationId);
-    if (!wf) {
-      logger.warn(`resolveYaml: workflow not found for workflowId=${workflowId}`);
-      return null;
-    }
-    targetVersion = wf.latestVersion ?? 0;
-    storagePath = wf.storagePath;
-  }
+  const targetVersion = payload.version !== undefined ? (payload.version as number) : (workflow.latestVersion ?? 0);
+  const storagePath = workflow.storagePath;
 
   const resolved = await deps.getVersionYaml(workflowId, targetVersion, { organizationId, storagePath });
   if (!resolved) {

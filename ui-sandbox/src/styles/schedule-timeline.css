@@ -1,0 +1,254 @@
+.runtime-board {
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.runtime-board__header {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 16px;
+}
+
+.runtime-board__header > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.runtime-board__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--blue-600);
+  background: var(--blue-050);
+}
+
+.runtime-board__icon svg {
+  width: 16px;
+}
+
+.runtime-board__header h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.runtime-board__header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.runtime-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.runtime-legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.runtime-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #c8d0dc;
+}
+
+.runtime-legend .is-success,
+.runtime-run.is-success {
+  background: #4caf88;
+}
+
+.runtime-legend .is-running,
+.runtime-run.is-running {
+  background: #3677e8;
+}
+
+.runtime-legend .is-failed,
+.runtime-run.is-failed {
+  background: #e06060;
+}
+
+.runtime-legend .is-queued,
+.runtime-run.is-queued {
+  background: #c8d0dc;
+}
+
+.runtime-legend .is-paused,
+.runtime-run.is-paused {
+  background: #d9a44f;
+}
+
+.runtime-board__body {
+  padding: 8px 16px 13px;
+}
+
+.runtime-axis,
+.runtime-row {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr);
+}
+
+.runtime-axis {
+  height: 28px;
+}
+
+.runtime-axis > div {
+  position: relative;
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.runtime-axis time {
+  position: absolute;
+  bottom: 7px;
+  color: var(--faint);
+  font-size: 7px;
+  transform: translateX(-50%);
+}
+
+.runtime-axis time:first-child {
+  transform: none;
+}
+
+.runtime-axis time:last-child {
+  transform: translateX(-100%);
+}
+
+.runtime-row {
+  min-height: 45px;
+  align-items: stretch;
+}
+
+.runtime-row__label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border-bottom: 1px solid #f1f3f7;
+  padding-right: 16px;
+}
+
+.runtime-row__label strong {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-row__label span {
+  color: var(--faint);
+  font-size: 7px;
+}
+
+.runtime-track {
+  position: relative;
+  border-bottom: 1px solid #f1f3f7;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(12.5% - 1px), #f0f3f7 calc(12.5% - 1px) 12.5%);
+}
+
+.runtime-run {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: var(--run-start);
+  width: var(--run-width);
+  min-width: 7px;
+  height: 13px;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  box-shadow: 0 1px 3px rgb(41 58 85 / 14%);
+  transform: translateY(-50%);
+}
+
+.runtime-run:hover,
+.runtime-run:focus-visible {
+  z-index: 4;
+  outline: 2px solid #fff;
+  box-shadow: 0 0 0 3px rgb(39 100 231 / 24%);
+  transform: translateY(-50%) scaleY(1.2);
+}
+
+.runtime-run.is-running {
+  background-image: repeating-linear-gradient(-45deg, rgb(255 255 255 / 22%) 0 3px, transparent 3px 6px);
+}
+
+.runtime-run.is-queued,
+.runtime-run.is-paused {
+  opacity: 0.72;
+}
+
+.runtime-now {
+  position: absolute;
+  z-index: 3;
+  top: -1px;
+  bottom: -1px;
+  left: 42.8%;
+  width: 1px;
+  background: #202c41;
+  pointer-events: none;
+}
+
+.runtime-now::before {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #202c41;
+  content: "";
+}
+
+.runtime-empty {
+  padding: 28px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.task-registry {
+  overflow: hidden;
+}
+
+.task-registry .panel__header > span {
+  color: var(--faint);
+  font-size: 8px;
+}
+
+@media (max-width: 900px) {
+  .runtime-board__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .runtime-legend {
+    justify-content: flex-start;
+  }
+
+  .runtime-axis,
+  .runtime-row {
+    grid-template-columns: 112px minmax(520px, 1fr);
+  }
+
+  .runtime-board__body {
+    overflow-x: auto;
+  }
+}

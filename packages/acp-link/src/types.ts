@@ -150,6 +150,7 @@ export interface PromptUsage {
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
+  contextWindow?: number;
 }
 
 export interface ProxyPromptCompleteMessage {

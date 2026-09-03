@@ -6,11 +6,11 @@ import { agentConfig, environment, machine } from "../db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../errors";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
+import { agentInstanceService } from "./agent-instance-service";
 import { resolveAgentNode } from "./config/agent-config";
 import * as configPg from "./config/index";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "./environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "./environment-core";
-import { groupActiveInstancesByEnvironment } from "./instance";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
@@ -53,7 +53,6 @@ function toEnvironmentRecord(row: typeof environment.$inferSelect): EnvironmentR
     directory: computedWorkspace,
     branch: row.branch,
     gitRepoUrl: row.gitRepoUrl,
-    maxSessions: row.maxSessions,
     workerType: row.workerType,
     capabilities: (row.capabilities as Record<string, unknown>) ?? null,
     status: row.status,
@@ -110,7 +109,6 @@ async function insertEnvironmentRecord(params: {
     organizationId: params.organizationId,
     autoStart: params.autoStart,
     machineName: params.machineName ?? null,
-    maxSessions: 1,
     workerType: "acp",
     capabilities: null,
     branch: null,
@@ -128,7 +126,6 @@ async function insertEnvironmentRecord(params: {
     machineName: params.machineName ?? null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "acp",
     capabilities: null,
     secret: params.secret,
@@ -272,8 +269,6 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
     .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
     .where(and(eq(environment.organizationId, organizationId), isNotNull(environment.agentConfigId)));
 
-  // 单次遍历按 environmentId 分组实例，避免 N 次 listInstances 调用
-  const instanceMap = groupActiveInstancesByEnvironment();
   const results = [];
   for (const { env, agentName } of rows) {
     // agent 绑定的 runtime environment 是按用户隔离的；列表页只暴露当前用户自己的 runtime，
@@ -281,8 +276,8 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
     if (viewerUserId && env.agentConfigId && env.userId !== viewerUserId) {
       continue;
     }
-    const activeInstances = instanceMap.get(env.id) ?? [];
-    const firstInstance = activeInstances[0];
+    const instances = env.userId ? await agentInstanceService.listInstances(env.userId, env.id) : [];
+    const defaultInstance = instances.find((instance) => instance.isDefault) ?? null;
     results.push({
       id: env.id,
       name: env.name,
@@ -297,30 +292,15 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
       last_poll_at: env.lastPollAt ? Math.floor(env.lastPollAt.getTime() / 1000) : null,
       created_at: Math.floor(env.createdAt.getTime() / 1000),
       updated_at: Math.floor(env.updatedAt.getTime() / 1000),
-      session_id: firstInstance?.sessionId ?? null,
-      instance_status: firstInstance ? firstInstance.status : null,
-      instance_id: firstInstance ? firstInstance.id : null,
-      instances: activeInstances.map((inst) => ({
-        id: inst.id,
-        instance_number: inst.instanceNumber,
-        status: inst.status,
-        session_id: inst.sessionId ?? null,
-        port: inst.port,
-        created_at: Math.floor(inst.createdAt.getTime() / 1000),
+      instance_uid: defaultInstance?.id ?? null,
+      instances: instances.map((instance) => ({
+        instanceUid: instance.id,
+        name: instance.name,
+        status: instance.runtime.state,
+        createdAt: instance.createdAt.toISOString(),
       })),
-      instances_count: activeInstances.length,
+      instances_count: instances.length,
     });
   }
   return results;
-}
-
-/** Phase 2: enterEnvironment 不再 spawn 本地实例，直接返回 environment 信息（relay 连接负责启动远端 agent） */
-export async function enterEnvironment(_userId: string, envId: string, _instanceNumber?: number) {
-  const env = await environmentRepo.getById(envId);
-  if (!env) throw new NotFoundError("环境不存在");
-  return {
-    environment_id: envId,
-    instance_id: envId, // 复用 envId 作为 instance_id，兼容前端
-    session_id: null,
-  };
 }

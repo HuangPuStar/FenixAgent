@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { parseExpression } from "cron-parser";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,13 +85,32 @@ export function describeCron(cron: string, t: (key: string) => string): string |
 
 export interface CronEditorProps {
   value: string;
+  timezone?: string;
   onChange: (cron: string) => void;
   error?: string;
 }
 
-export function CronEditor({ value, onChange, error }: CronEditorProps) {
+function validateCron(value: string, timezone: string): string | undefined {
+  const parts = value.trim().split(/\s+/);
+  if (!value.trim()) return "Cron 不能为空";
+  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
+  try {
+    parseExpression(value, timezone.trim() ? { tz: timezone.trim() } : undefined);
+    return undefined;
+  } catch {
+    return "Cron 表达式无效，请检查字段取值范围";
+  }
+}
+
+export function CronEditor({ value, timezone = "", onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
+  const [debouncedError, setDebouncedError] = useState<string>();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedError(validateCron(value, timezone)), 400);
+    return () => clearTimeout(timer);
+  }, [value, timezone]);
 
   // IME 安全：composing 期间使用独立 value 避免受控值覆盖 IME 中间文字
   const [isComposing, setIsComposing] = useState(false);
@@ -114,6 +134,8 @@ export function CronEditor({ value, onChange, error }: CronEditorProps) {
       onChange("");
     }
   };
+
+  const displayError = error ?? debouncedError;
 
   return (
     <div className="space-y-3">
@@ -189,11 +211,11 @@ export function CronEditor({ value, onChange, error }: CronEditorProps) {
                 }
               }}
               placeholder="0 * * * *"
-              className={`h-7 flex-1 font-mono text-xs ${error ? "border-destructive" : ""}`}
+              className={`h-7 flex-1 font-mono text-xs ${displayError ? "border-destructive" : ""}`}
             />
           </div>
         </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {displayError && <p className="text-xs text-destructive">{displayError}</p>}
       </div>
     </div>
   );

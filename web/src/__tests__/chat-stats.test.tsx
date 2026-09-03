@@ -13,13 +13,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { useChangedFilesFromStats } from "../hooks/use-changed-files-stats";
 import { ChatStatsDispatcher, type ChatStatsSummary } from "../lib/chat-stats";
 import type { ChangedFile } from "../lib/extract-changed-files";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ── DOM 环境（react-dom/client 加载需要 document）──
 // window 使用原生 EventTarget：hook 生产代码监听 window 的 chat:stats/agent:reconnect，
 // 测试用原生 CustomEvent 派发，原生 EventTarget 的 addEventListener/dispatchEvent 语义与之匹配
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
 if (!g.window) g.window = new EventTarget();
 if (!g.document) g.document = win.document;

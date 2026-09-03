@@ -104,9 +104,11 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
         if (rawText.trim().length > 0) {
           try {
             payload = JSON.parse(rawText);
-          } catch (err) {
-            console.error(err);
-            throw new Error(`RagFlow returned non-JSON response: HTTP ${response.status}`);
+          } catch {
+            const contentType = response.headers.get("Content-Type")?.split(";", 1)[0]?.trim() || "unknown";
+            throw new Error(
+              `RagFlow returned non-JSON response (status=${response.status}, content-type=${contentType})`,
+            );
           }
         }
       } else {

@@ -107,7 +107,6 @@ function makeSupplement(overrides: Partial<InstanceSupplement> = {}): InstanceSu
   return {
     userId: "user-1",
     environmentId: "env-1",
-    instanceNumber: 1,
     organizationId: "org-1",
     spawnSource: "system",
     lastActivityAt: Date.now(),

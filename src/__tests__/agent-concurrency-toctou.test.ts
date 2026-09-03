@@ -225,10 +225,12 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     setConfig({ userAgentMaxConcurrency: 1 });
     launchGate = deferred<void>();
 
-    const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive");
+    const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" });
     await waitUntil(() => launchCalls === 1);
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toMatchObject({
       code: "USER_AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });
@@ -239,7 +241,9 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     expect(globalInstanceRegistry.get(INSTANCE_ID)).toBeDefined();
 
     // 统计已从预留无缝切换为正式实例（supplement + core 快照），额度仍被占用
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toMatchObject({
       code: "USER_AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });
@@ -251,10 +255,12 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     setConfig({ agentMaxConcurrency: 1 });
     launchGate = deferred<void>();
 
-    const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive");
+    const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" });
     await waitUntil(() => launchCalls === 1);
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toMatchObject({
       code: "AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });
@@ -262,7 +268,9 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     launchGate.resolve();
     await expect(p1).resolves.toMatchObject({ instanceId: INSTANCE_ID });
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toMatchObject({
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toMatchObject({
       code: "AGENT_CONCURRENCY_LIMIT_REACHED",
       statusCode: 429,
     });
@@ -274,11 +282,15 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     setConfig({ userAgentMaxConcurrency: 1 });
     launchShouldFail = true;
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toThrow("launch failed");
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toThrow("launch failed");
     expect(getPendingSpawnReservations().size).toBe(0);
 
     launchShouldFail = false;
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).resolves.toMatchObject({
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).resolves.toMatchObject({
       instanceId: INSTANCE_ID,
     });
   });
@@ -289,7 +301,9 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     setConfig({ userAgentMaxConcurrency: 1 });
     controllerShouldFail = true;
 
-    await expect(spawnInstanceViaController(ENV_ID, USER_ID, "interactive")).rejects.toThrow("controller spawn failed");
+    await expect(
+      spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" }),
+    ).rejects.toThrow("controller spawn failed");
     expect(getPendingSpawnReservations().size).toBe(0);
     expect(launchCalls).toBe(0);
   });

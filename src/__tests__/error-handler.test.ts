@@ -2,12 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { createCoreRuntimeError } from "@fenix/core";
-import {
-  AgentNodeUnavailableError,
-  ConcurrencyExceededError,
-  MachineOfflineError,
-  OrchestrationError,
-} from "@fenix/orchestration";
+import { AgentNodeUnavailableError, MachineOfflineError, OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import { errorPlugin } from "../plugins/error-handler";
 
@@ -25,11 +20,6 @@ describe("errorPlugin 编排域错误映射", () => {
     })
     .get("/core-node-offline", () => {
       throw createCoreRuntimeError("NODE_OFFLINE", "Core node is offline: mach_sec", { nodeId: "mach_sec" });
-    })
-    .get("/concurrency-exceeded", () => {
-      // agent-controller 实际抛出时 message 拼接 envId（见 packages/orchestration/src/
-      // agent-controller/index.ts），验证 errorPlugin 必须用通用模板替换
-      throw new ConcurrencyExceededError("Environment 'env_sec' reached max concurrency (1)");
     })
     .get("/unknown-error", () => {
       // CoreRuntimeError 500 等未知错误的泄漏口：message 携带 machineId，
@@ -78,18 +68,9 @@ describe("errorPlugin 编排域错误映射", () => {
     expect(body.error.message).not.toContain("mach_sec");
   });
 
-  // A-P1.1：编排域错误 message 可能携带 envId（ConcurrencyExceededError 在
+  // A-P1.1：编排域错误 message 可能携带 envId（OrchestrationError 在
   // agent-controller 抛出时拼接环境 ID），errorPlugin 必须用通用模板替换，
   // 不得把内部资源标识写进响应体
-  test("ConcurrencyExceededError 映射 409 且 message 脱敏", async () => {
-    const response = await app.handle(new Request("http://localhost/concurrency-exceeded"));
-
-    expect(response.status).toBe(409);
-    const body = await response.json();
-    expect(body.error.type).toBe("CONCURRENCY_EXCEEDED");
-    expect(body.error.message).toBe("Concurrency limit exceeded");
-    expect(JSON.stringify(body)).not.toContain("env_sec");
-  });
 
   // A-P1.1：未知错误兜底（CoreRuntimeError 500 等）message 固定通用文案，
   // 不得泄漏 nodeId/machineId（"Core node is offline: machine-42" 只入服务端日志）

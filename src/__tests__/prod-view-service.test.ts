@@ -58,7 +58,6 @@ describe("loadProdView", () => {
           workspacePath: "",
           branch: null,
           gitRepoUrl: null,
-          maxSessions: 1,
           workerType: "acp",
           capabilities: null,
           status: "idle",

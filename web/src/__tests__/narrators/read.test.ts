@@ -66,9 +66,9 @@ describe("readNarrator", () => {
     expect(readNarrator.kinds).toContain("read-directory");
   });
 
-  // 中文动词必须是"读取"
-  test("verb 是 '读取'", () => {
-    expect(readNarrator.verb).toBe("读取");
+  // 中文动作必须明确表达文件打开行为
+  test("verb 是 '打开文件'", () => {
+    expect(readNarrator.verb).toBe("打开文件");
   });
 
   // 基本场景：从 file_path 提取文件名作为 object

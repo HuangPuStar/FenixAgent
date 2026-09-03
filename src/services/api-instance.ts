@@ -1,28 +1,25 @@
 import { AppError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
+import { agentInstanceService } from "./agent-instance-service";
 import { getReadableAgentConfigById } from "./config";
 import { createWebEnvironment } from "./environment-web";
-import { getRunningInstancesByEnvironment, groupActiveInstancesByEnvironment } from "./instance";
-import { spawnInstanceViaController } from "./orchestration-instance";
 
 type InstanceDeps = {
   createWebEnvironment: typeof createWebEnvironment;
   getReadableAgentConfigById: typeof getReadableAgentConfigById;
-  getRunningInstancesByEnvironment: typeof getRunningInstancesByEnvironment;
-  groupActiveInstancesByEnvironment: typeof groupActiveInstancesByEnvironment;
+  resolveInstance: typeof agentInstanceService.resolveInstanceForOperation;
+  ensureInstanceRuntime: typeof agentInstanceService.ensureInstanceRuntime;
   listEnvironmentsByOrganizationId: typeof environmentRepo.listByOrganizationId;
-  spawnInstanceViaController: typeof spawnInstanceViaController;
 };
 
 const defaultDeps: InstanceDeps = {
   createWebEnvironment,
   getReadableAgentConfigById,
-  getRunningInstancesByEnvironment,
-  groupActiveInstancesByEnvironment,
+  resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
+  ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
   listEnvironmentsByOrganizationId: async (organizationId: string) =>
     environmentRepo.listByOrganizationId(organizationId),
-  spawnInstanceViaController,
 };
 
 let deps: InstanceDeps = defaultDeps;
@@ -31,11 +28,15 @@ let deps: InstanceDeps = defaultDeps;
  * 测试覆盖 instance service 依赖，避免路由测试触达真实 DB 和 runtime。
  */
 export function setApiInstanceDeps(overrides: Partial<InstanceDeps> | null): void {
-  deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
+  if (!overrides) {
+    deps = defaultDeps;
+    return;
+  }
+  deps = { ...deps, ...overrides };
 }
 
 export interface AgentInstanceConnectOptions {
-  preferNewInstance?: boolean;
+  instanceUid?: string;
 }
 
 export interface AgentInstanceConnectResult {
@@ -70,16 +71,8 @@ function ensureReadableAgent(agent: AgentConfigRecord | null | undefined): Agent
   return agent;
 }
 
-function pickEnvironment(
-  environments: EnvironmentRecord[],
-  activeMap: Map<string, Array<{ status: string }>>,
-): EnvironmentRecord | null {
-  if (environments.length === 0) return null;
-  const running = environments.find((env) => {
-    const instances = activeMap.get(env.id) ?? [];
-    return instances.some((instance) => instance.status === "running" || instance.status === "starting");
-  });
-  return running ?? environments[0] ?? null;
+function pickEnvironment(environments: EnvironmentRecord[]): EnvironmentRecord | null {
+  return environments[0] ?? null;
 }
 
 /**
@@ -94,11 +87,10 @@ export async function connectAgentInstance(
     (await deps.getReadableAgentConfigById(ctx, agentConfigId)) as AgentConfigRecord | null,
   );
 
-  const activeMap = deps.groupActiveInstancesByEnvironment();
   const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(
     (env) => env.agentConfigId === agent.id && env.userId === ctx.userId,
   );
-  let environment = pickEnvironment(existingEnvironments, activeMap);
+  let environment = pickEnvironment(existingEnvironments);
 
   if (!environment) {
     const base = toKebabSegment(agent.name) || "agent";
@@ -112,13 +104,14 @@ export async function connectAgentInstance(
     });
   }
 
-  const runningInstances = deps.getRunningInstancesByEnvironment(environment.id);
-  const runningInstance = !options.preferNewInstance ? runningInstances[0] : undefined;
-  const instance = runningInstance
-    ? runningInstance
-    : await deps.spawnInstanceViaController(environment.id, ctx.userId, "interactive");
-  // runningInstance 为旧 SpawnedInstance（.id），spawn 分支为编排域 Instance（.instanceId）
-  const instanceId = "id" in instance ? instance.id : instance.instanceId;
+  const instance = await deps.resolveInstance({
+    environmentId: environment.id,
+    ownerUserId: ctx.userId,
+    requestedInstanceUid: options.instanceUid,
+    automaticSelection: "api",
+  });
+  await deps.ensureInstanceRuntime(instance);
+  const instanceId = instance.id;
 
   return {
     agentConfigId: agent.id,

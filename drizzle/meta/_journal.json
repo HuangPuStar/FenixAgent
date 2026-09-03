@@ -162,6 +162,34 @@
       "when": 1787751025518,
       "tag": "0022_model_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788224592522,
+      "tag": "0023_agent-instance",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788231820300,
+      "tag": "0024_environment-max-sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788235225986,
+      "tag": "0025_remove-environment-max-sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788256594377,
+      "tag": "0026_expand-mcp-server-type",
+      "breakpoints": true
     }
   ]
 }

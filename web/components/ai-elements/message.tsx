@@ -1,7 +1,7 @@
 "use client";
 
-import type { FileUIPart, UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon, Maximize2, Minimize2, PaperclipIcon, XIcon } from "lucide-react";
+import type { UIMessage } from "ai";
+import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement } from "react";
 import {
   Component,
@@ -17,12 +17,21 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { Components } from "streamdown";
+import { NS } from "../../src/i18n";
 import { getRegisteredAllowedTags, getRegisteredComponents } from "../../src/lib/card-renderer";
 import { cn } from "../../src/lib/utils";
 import { Button } from "../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../ui/button-group";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import "./chat-message-content.css";
+import { IframePreview } from "./iframe-preview";
+
+export {
+  MessageAttachment,
+  type MessageAttachmentProps,
+  MessageAttachments,
+  type MessageAttachmentsProps,
+} from "./message-attachments";
 
 class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallback?: string }, { hasError: boolean }> {
   state = { hasError: false };
@@ -34,99 +43,13 @@ class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallba
   }
   render() {
     if (this.state.hasError) {
-      return <div className="whitespace-pre-wrap break-words">{this.props.fallback}</div>;
+      return <div className="chat-markdown-response whitespace-pre-wrap break-words">{this.props.fallback}</div>;
     }
     return this.props.children;
   }
 }
 
 const LazyStreamdown = lazy(() => import("streamdown").then((m) => ({ default: m.Streamdown })));
-
-const PREVIEW_SIZES = [
-  { key: "sm", label: "小", w: "60vw", maxW: 800, h: "60vh", maxH: 600 },
-  { key: "md", label: "中", w: "80vw", maxW: 1100, h: "75vh", maxH: 800 },
-  { key: "lg", label: "大", w: "92vw", maxW: 1500, h: "88vh", maxH: 960 },
-  { key: "full", label: "全屏", w: "98vw", maxW: 9999, h: "95vh", maxH: 9999 },
-] as const;
-
-function IframePreview({ src, width, height, title, ...rest }: Record<string, unknown>) {
-  const { t } = useTranslation("components");
-  const [expanded, setExpanded] = useState(false);
-  const [sizeIdx, setSizeIdx] = useState(2); // 默认"大"
-  const size = PREVIEW_SIZES[sizeIdx];
-  return (
-    <>
-      <div className="relative group/iframe">
-        <iframe
-          src={src as string}
-          width={(width as string) || "100%"}
-          height={(height as string) || "400"}
-          title={title as string}
-          sandbox="allow-scripts allow-same-origin allow-popups"
-          loading="lazy"
-          style={{ border: "1px solid #e5e7eb", borderRadius: 8 }}
-          {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-        />
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="absolute top-2 right-2 p-1.5 rounded-md bg-white/80 dark:bg-gray-800/80 opacity-0 group-hover/iframe:opacity-100 transition-opacity hover:bg-white dark:hover:bg-gray-700 shadow-sm"
-          title={t("message.expand")}
-        >
-          <Maximize2 className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-        </button>
-      </div>
-      <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent
-          showCloseButton={false}
-          className="flex flex-col p-0 gap-0 overflow-hidden"
-          style={{ width: size.w, maxWidth: size.maxW, height: size.h, maxHeight: size.maxH }}
-        >
-          <DialogHeader className="flex-row items-center justify-between px-3 py-2 border-b shrink-0 gap-2">
-            <DialogTitle className="text-sm font-medium truncate">{(title as string) || "预览"}</DialogTitle>
-            <div className="flex items-center gap-1 shrink-0">
-              <div className="flex items-center rounded-md border border-border/60 overflow-hidden">
-                {PREVIEW_SIZES.map((s, i) => (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => setSizeIdx(i)}
-                    className={cn(
-                      "px-2 py-0.5 text-xs transition-colors",
-                      i === sizeIdx
-                        ? "bg-brand text-white"
-                        : "hover:bg-gray-100 dark:hover:bg-gray-700 text-text-secondary",
-                    )}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              <DialogClose asChild>
-                <button
-                  type="button"
-                  className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ml-1"
-                  title={t("message.collapse")}
-                >
-                  <Minimize2 className="h-4 w-4" />
-                </button>
-              </DialogClose>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 min-h-0">
-            <iframe
-              src={src as string}
-              title={title as string}
-              sandbox="allow-scripts allow-same-origin allow-popups"
-              className="w-full h-full border-0"
-              {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -148,12 +71,11 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit max-w-full flex-col gap-2 overflow-hidden text-sm break-words",
+      "chat-message-content is-user:dark flex w-fit max-w-full flex-col gap-2 overflow-hidden text-sm break-words",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className,
     )}
-    style={{ overflowWrap: "anywhere" }}
     {...props}
   >
     {children}
@@ -313,7 +235,7 @@ export const MessageBranchSelector = ({ className, from, ...props }: MessageBran
 export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
 
 export const MessageBranchPrevious = ({ children, ...props }: MessageBranchPreviousProps) => {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   const { goToPrevious, totalBranches } = useMessageBranch();
 
   return (
@@ -334,7 +256,7 @@ export const MessageBranchPrevious = ({ children, ...props }: MessageBranchPrevi
 export type MessageBranchNextProps = ComponentProps<typeof Button>;
 
 export const MessageBranchNext = ({ children, className, ...props }: MessageBranchNextProps) => {
-  const { t } = useTranslation("components");
+  const { t } = useTranslation(NS.COMPONENTS);
   const { goToNext, totalBranches } = useMessageBranch();
 
   return (
@@ -461,13 +383,17 @@ export const MessageResponse = memo(
 
     return (
       <StreamdownErrorBoundary fallback={children}>
-        <Suspense fallback={<div className={cn("whitespace-pre-wrap break-words", className)}>{children}</div>}>
+        <Suspense
+          fallback={
+            <div className={cn("chat-markdown-response whitespace-pre-wrap break-words", className)}>{children}</div>
+          }
+        >
           <LazyStreamdown
             allowedTags={allowedTags}
             components={components}
             urlTransform={urlTransform}
             className={cn(
-              "size-full break-words [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+              "chat-markdown-response chat-markdown-response--rendered size-full break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
               className,
             )}
             {...props}
@@ -482,93 +408,6 @@ export const MessageResponse = memo(
 );
 
 MessageResponse.displayName = "MessageResponse";
-
-export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
-  data: FileUIPart;
-  className?: string;
-  onRemove?: () => void;
-};
-
-export function MessageAttachment({ data, className, onRemove, ...props }: MessageAttachmentProps) {
-  const { t } = useTranslation("components");
-  const filename = data.filename || "";
-  const mediaType = data.mediaType?.startsWith("image/") && data.url ? "image" : "file";
-  const isImage = mediaType === "image";
-  const attachmentLabel = filename || (isImage ? t("message.image") : t("message.attachment"));
-
-  return (
-    <div className={cn("group relative size-24 overflow-hidden rounded-lg", className)} {...props}>
-      {isImage ? (
-        <>
-          <img
-            alt={filename || t("message.attachment")}
-            className="size-full object-cover"
-            height={100}
-            src={data.url}
-            width={100}
-          />
-          {onRemove && (
-            <Button
-              aria-label={t("message.removeAttachment")}
-              className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              type="button"
-              variant="ghost"
-            >
-              <XIcon />
-              <span className="sr-only">{t("message.remove")}</span>
-            </Button>
-          )}
-        </>
-      ) : (
-        <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex size-full shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <PaperclipIcon className="size-4" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{attachmentLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          {onRemove && (
-            <Button
-              aria-label={t("message.removeAttachment")}
-              className="size-6 shrink-0 rounded-full p-0 opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 [&>svg]:size-3"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              type="button"
-              variant="ghost"
-            >
-              <XIcon />
-              <span className="sr-only">{t("message.remove")}</span>
-            </Button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-export type MessageAttachmentsProps = ComponentProps<"div">;
-
-export function MessageAttachments({ children, className, ...props }: MessageAttachmentsProps) {
-  if (!children) {
-    return null;
-  }
-
-  return (
-    <div className={cn("ml-auto flex w-fit flex-wrap items-start gap-2", className)} {...props}>
-      {children}
-    </div>
-  );
-}
 
 export type MessageToolbarProps = ComponentProps<"div">;
 

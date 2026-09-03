@@ -105,7 +105,12 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
      * 完整执行 prepare 和 start 两阶段，并把实例推进到 `running`。
      */
     async launch(request) {
-      if (store.get(request.instanceId)) {
+      const existing = store.get(request.instanceId);
+      if (existing?.status === "stopped") {
+        // 持久 Agent Instance 的 uid 跨 runtime 世代稳定；stop 保留终态快照供幂等读取，
+        // 下一次 launch 在创建新 runtime 前原子移除旧世代缓存。
+        store.delete(request.instanceId);
+      } else if (existing) {
         throw createCoreRuntimeError(
           "INSTANCE_ALREADY_EXISTS",
           `Runtime instance already exists: ${request.instanceId}`,
@@ -178,6 +183,8 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
 
       store.create({
         instanceId: request.instanceId,
+        runtimeGeneration: request.runtimeGeneration,
+        serverEpoch: request.serverEpoch,
         engineType: effectiveEngineType,
         nodeId: request.nodeId,
         launchSpec: request.launchSpec,
@@ -192,13 +199,21 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         store.update(request.instanceId, { status: "preparing" });
         await runtime.prepareEnvironment({
           instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: request.runtimeGeneration,
+          serverEpoch: request.serverEpoch,
           launchSpec: request.launchSpec,
           // remote 时不传 engineType，由 machine 端自行决定
           engineType: node.mode === "remote" ? undefined : effectiveEngineType,
         });
         store.update(request.instanceId, { status: "prepared" });
         store.update(request.instanceId, { status: "starting" });
-        await runtime.startInstance({ instanceId: request.instanceId });
+        await runtime.startInstance({
+          instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: request.runtimeGeneration,
+          serverEpoch: request.serverEpoch,
+        });
         store.update(request.instanceId, {
           status: "running",
           relayConnected: false,
@@ -248,6 +263,9 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
           const node = nodeRegistry.require(record.nodeId);
           await runtimeEntry.runtime.prepareEnvironment({
             instanceId: request.instanceId,
+            instanceUid: request.instanceId,
+            runtimeGeneration: record.runtimeGeneration,
+            serverEpoch: record.serverEpoch,
             launchSpec: request.launchSpec,
             engineType: node.mode === "remote" ? undefined : record.engineType,
           });
@@ -292,6 +310,9 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
 
         const relay = await runtimeEntry.runtime.connectRelay({
           instanceId: request.instanceId,
+          instanceUid: request.instanceId,
+          runtimeGeneration: record.runtimeGeneration,
+          serverEpoch: record.serverEpoch,
           sessionId: request.sessionId,
         });
         store.setRelay(request.instanceId, relay);
@@ -321,7 +342,12 @@ export function createInstanceOrchestrator(options: CreateInstanceOrchestratorOp
         if (runtimeEntry.relay?.state === "open") {
           await runtimeEntry.relay.close();
         }
-        await runtimeEntry.runtime.stopInstance({ instanceId });
+        await runtimeEntry.runtime.stopInstance({
+          instanceId,
+          instanceUid: instanceId,
+          runtimeGeneration: record.runtimeGeneration,
+          serverEpoch: record.serverEpoch,
+        });
         store.clearRelay(instanceId);
         store.update(instanceId, {
           status: "stopped",

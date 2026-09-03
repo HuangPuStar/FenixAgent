@@ -7,6 +7,9 @@ function makeEnv(skillDir: string): Env {
   return {
     DATABASE_URL: "postgres://u:p@h:5432/db",
     RCS_API_KEYS: "test-key",
+    RCS_DB_POOL_MAX: 20,
+    RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS: 150,
+    RCS_DB_LOCK_TIMEOUT_SECONDS: 5,
     RCS_MODEL_GATEWAY_TYPE: "litellm",
     RCS_MODEL_GATEWAY_BASE_URL: "http://localhost:4000",
     RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: undefined,

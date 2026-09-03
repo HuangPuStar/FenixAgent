@@ -21,21 +21,17 @@ export const EnvironmentInfoSchema = z
 /** 环境下的实例摘要 */
 export const InstanceSummarySchema = z
   .object({
-    id: z.string().describe("实例 ID。"),
-    instance_number: z.number().describe("环境内的实例序号。"),
-    status: z.string().describe("当前实例状态。"),
-    session_id: z.string().nullable().describe("当前绑定的会话 ID；未绑定时为 null。"),
-    port: z.number().describe("实例暴露的本地端口。"),
-    created_at: z.number().describe("实例创建时间，单位为秒级时间戳。"),
+    instanceUid: z.string().describe("持久 Agent Instance UID。"),
+    name: z.string().describe("实例名称。"),
+    status: z.enum(["stopped", "starting", "running", "stopping", "unknown"]).describe("实例 runtime 状态。"),
+    createdAt: z.string().datetime().describe("实例创建时间。"),
   })
   .describe("环境实例摘要。");
 
 /** 环境列表项 */
 export const EnvironmentListResponseSchema = EnvironmentInfoSchema.extend({
   agent_name: z.string().nullable().describe("绑定的 Agent 配置名称；未绑定时为 null。"),
-  session_id: z.string().nullable().describe("当前活跃实例绑定的会话 ID；不存在时为 null。"),
-  instance_status: z.string().nullable().describe("当前活跃实例状态；不存在时为 null。"),
-  instance_id: z.string().nullable().describe("当前活跃实例 ID；不存在时为 null。"),
+  instance_uid: z.string().nullable().describe("默认持久 Agent Instance UID；不存在时为 null。"),
   instances: InstanceSummarySchema.array().describe("当前环境下的活跃实例列表。"),
   instances_count: z.number().describe("当前环境下的活跃实例数量。"),
 }).describe("环境列表项。");
@@ -82,18 +78,19 @@ export const UpdateEnvironmentRequestSchema = z
 /** 进入环境请求 */
 export const EnterEnvironmentRequestSchema = z
   .object({
-    instance_number: z.number().int().positive().optional().describe("可选的实例序号；传入后直接进入指定实例。"),
+    instanceUid: z.string().optional().describe("可选的持久 Agent Instance UID；省略时使用默认实例。"),
   })
-  .describe("进入环境请求。");
+  .default({})
+  .describe("进入环境请求；未指定实例时允许省略请求体。");
 
 /** 进入环境响应 */
 export const EnterEnvironmentDataSchema = z
   .object({
-    session_id: z.string().nullable().describe("创建或复用的会话 ID；当前未创建时为 null。"),
-    instance_id: z.string().describe("进入的实例 ID。"),
-    instance_number: z.number().describe("进入的实例序号。"),
-    instance_status: z.string().describe("进入后的实例状态。"),
-    environment_id: z.string().describe("所属环境 ID。"),
+    instanceUid: z.string().describe("进入的持久 Agent Instance UID。"),
+    environmentId: z.string().describe("所属环境 ID。"),
+    name: z.string().describe("实例名称。"),
+    status: z.enum(["stopped", "starting", "running", "stopping", "unknown"]).describe("实例 runtime 状态。"),
+    createdAt: z.string().datetime().describe("实例创建时间。"),
   })
   .describe("进入环境响应数据。");
 
