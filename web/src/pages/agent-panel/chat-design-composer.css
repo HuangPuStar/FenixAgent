@@ -399,7 +399,7 @@
 .chat-composer-assets {
   display: flex;
   gap: 9px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 12px 14px 0;
 }
 .chat-composer-asset {
@@ -451,13 +451,16 @@
 }
 .chat-composer-asset.is-quote p {
   position: absolute;
-  z-index: 4;
+  z-index: 20;
   top: calc(100% + 5px);
   left: 0;
   display: none;
   width: 220px;
-  max-height: 58px;
+  box-sizing: border-box;
+  min-height: 58px;
+  max-height: 72px;
   overflow: hidden;
+  margin: 0;
   padding: 8px;
   border: 1px solid #e2e7ee;
   border-radius: 8px;
@@ -466,11 +469,13 @@
   color: #53627a;
   font-size: 11px;
   line-height: 1.45;
-}
-.chat-composer-asset.is-quote:hover p {
-  display: -webkit-box;
+  pointer-events: auto;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
+}
+.chat-composer-asset.is-quote:hover p,
+.chat-composer-asset.is-quote p:hover {
+  display: -webkit-box;
 }
 
 /* Command capability panel follows the ui-sandbox composer slot and density. */
