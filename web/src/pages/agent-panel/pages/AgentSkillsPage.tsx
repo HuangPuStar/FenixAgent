@@ -2,10 +2,8 @@ import { useRequest } from "ahooks";
 import { type ChangeEvent, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { MetaAgentPanel } from "@/components/MetaAgentPanel";
 import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
-import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import {
@@ -152,8 +150,6 @@ export function AgentSkillsPage() {
     },
   });
 
-  const { metaAgentId, chatOpen, setChatOpen } = useMetaAgent({ storageKey: "skills:chat-open" });
-
   const openCreate = (mode: SkillCreateMode) => {
     setEditingSkill(null);
     setCreateMode(mode);
@@ -263,7 +259,6 @@ export function AgentSkillsPage() {
         onQueryChange={setQuery}
         onScopeChange={setScope}
         onCreate={openCreate}
-        onConversationCreate={() => setChatOpen(true)}
         onDownload={(skill) => void download(skill)}
         onOpen={(skill) => void openSkill(skill)}
         onDelete={(skill) => setDeleteTarget(skill.name)}
@@ -307,14 +302,6 @@ export function AgentSkillsPage() {
         }}
         onOverwriteOpenChange={setOverwriteConfirmOpen}
         onOverwriteConfirm={() => upload("overwrite")}
-      />
-      <MetaAgentPanel
-        chatOpen={chatOpen}
-        setChatOpen={setChatOpen}
-        metaAgentId={metaAgentId}
-        scenePrompt={undefined}
-        onPromptComplete={catalog.refreshAsync}
-        togglePosition="left"
       />
     </div>
   );

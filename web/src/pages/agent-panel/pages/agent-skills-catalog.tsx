@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  ChevronDown,
   ChevronRight,
   Code2,
   Download,
@@ -22,12 +21,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
@@ -54,7 +47,6 @@ type AgentSkillsCatalogProps = {
   onQueryChange: (value: string) => void;
   onScopeChange: (value: SkillCatalogScope) => void;
   onCreate: (mode: SkillCreateMode) => void;
-  onConversationCreate: () => void;
   onDownload: (skill: SkillInfo) => void;
   onOpen: (skill: SkillInfo) => void;
   onDelete: (skill: SkillInfo) => void;
@@ -149,25 +141,10 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
               <Upload />
               {t("btn.uploadSkill")}
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm">
-                  <Plus />
-                  {t("btn.createSkill")}
-                  <ChevronDown className="skills-create-chevron" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => props.onCreate("text")}>
-                  <FileText />
-                  {t("btn.manualCreate")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={props.onConversationCreate}>
-                  <Sparkles />
-                  {t("btn.conversationCreate")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button size="sm" onClick={() => props.onCreate("text")}>
+              <Plus />
+              {t("btn.createSkill")}
+            </Button>
           </>
         }
       />

@@ -43,7 +43,6 @@
     "delete": "Delete",
     "createSkill": "Add Skill",
     "manualCreate": "Create Manually",
-    "conversationCreate": "Create via Chat",
     "uploadSkill": "Import",
     "batchDelete": "Batch Delete",
     "reselect": "Reselect",

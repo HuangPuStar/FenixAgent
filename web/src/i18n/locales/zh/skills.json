@@ -43,7 +43,6 @@
     "delete": "删除",
     "createSkill": "添加 Skill",
     "manualCreate": "手动创建",
-    "conversationCreate": "对话创建",
     "uploadSkill": "导入",
     "batchDelete": "批量删除",
     "reselect": "重新选择",
