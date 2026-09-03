@@ -4,9 +4,9 @@ import { ENGINE_TYPES } from "./services/config/types";
 
 const databaseConnectionPoolSchema = z.object({
   RCS_DB_POOL_MAX: z.coerce.number().int().positive().default(20),
-  RCS_DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
-  RCS_DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
-  RCS_DB_MAX_LIFETIME_SECONDS: z.coerce.number().int().positive().optional(),
+  RCS_DB_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
+  RCS_DB_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(30),
+  RCS_DB_MAX_LIFETIME_SECONDS: z.coerce.number().int().positive().default(3600),
   RCS_DB_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(150),
   RCS_DB_LOCK_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(5),
 });

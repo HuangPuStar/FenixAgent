@@ -96,6 +96,8 @@ describe("round54 Web 通道路由", () => {
     resetAllStubs();
     restoreRepo();
     authenticate();
+    // 其他测试可能初始化全局 Hermes 单例；本套路由测试默认覆盖未初始化场景。
+    setHermesClientGetter(() => null);
     stubEnvironmentRepo({
       getById: async (id: string) => (id === "env-1" ? environment() : undefined),
       listByOrganizationId: async () => [environment()],
