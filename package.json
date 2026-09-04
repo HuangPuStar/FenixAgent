@@ -17,6 +17,7 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "dev:web": "cd web && bunx vite",
+    "example:app-builder": "bun run src/application/examples/run-minimal-custom-application.ts",
     "start": "bun run src/index.ts",
     "db:push": "bunx drizzle-kit push",
     "db:generate": "bunx drizzle-kit generate",

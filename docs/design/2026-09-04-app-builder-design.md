@@ -284,11 +284,41 @@ await runtime.stop();
 
 每次 `.use(module)` 返回携带新 Elysia route tree 与 Module 顺序的新 builder 描述，但不立即构造 Elysia 实例；`build()` 才执行纯 routes factories，并按 Profile 顺序逐个 `.use(instance)`。类型层不会在每一步重新展开完整 Elysia 状态，而是保留具体 app 并惰性累积 Module 的 Eden `~Routes`；非空 base prefix 使用 Elysia 导出的 `CreateEden` 映射到最终 route tree。
 
-### 可执行组合示例
+### 源码示例
 
-`packages/server-runtime/src/examples/profile-composition.ts` 使用同一个 base app 和同一组小型 Module 构造 `public-example` 与 `internal-example` 两个不同应用。前者只包含 messages routes，后者额外包含 admin routes；示例同时记录所选 Module 的启动和逆序释放事件。
+示例分为通用 Runtime 和 Fenix 宿主两个层次。二者都是随测试编译的采用契约，不从稳定入口导出，也不代替生产 Profile。
 
-该文件是源码级沟通入口，可通过 `bun run --cwd packages/server-runtime example` 直接执行，并由测试导入验证路由集合、静态类型和生命周期，避免文档片段随 API 演进失效。它不读取 Fenix 配置或外部资源，不作为第二个社区服务入口，也不从 package 根入口导出。
+#### 通用 Runtime 组合示例
+
+`packages/server-runtime/src/examples/profile-composition.ts` 使用同一个 base app 和同一组小型 Module 定义显式的 `public-example` 与 `internal-example` ApplicationProfile。前者只包含 messages routes，后者额外包含 admin routes；示例同时记录所选 Module 的启动和逆序释放事件。
+
+该文件可通过 `bun run --cwd packages/server-runtime example` 直接执行，并由 package 测试导入验证路由集合、静态类型和生命周期。它不读取 Fenix 配置或外部资源，也不从 package 根入口导出。
+
+#### Fenix 最小自定义应用示例
+
+`src/application/examples/minimal-custom-application.ts` 展示 Fenix 宿主中的完整定义链和试用入口：
+
+```text
+minimal-example ServerModule
+  → community-minimal-example ApplicationProfile
+  → createCommunityMinimalExampleApplication(options)
+  → ApplicationRuntime
+      └─ 被 import：只构造，不 start/listen
+run-minimal-custom-application.ts
+  └─ import.meta.main：监听 loopback 并提供示例页面
+```
+
+该示例复用 `createCommunityBaseApp(options)`，因此保留 Community 固定横切层；Profile 只 `.use(minimalExampleModule)`，不会挂载 `legacy-community` 的业务 route tree 或启动资源。`CommunityBaseAppOptions` 只要求 base app 实际使用的版本、WebSocket 上限和启动时间，所以试用不需要数据库连接串、API key 或其他生产环境配置。
+
+通过以下命令直接试用：
+
+```bash
+bun run example:app-builder
+```
+
+`src/application/examples/run-minimal-custom-application.ts` 是独立 demo runner：只绑定 `127.0.0.1` 的系统分配端口，并在终端输出实际 `http://127.0.0.1:<port>/example`。浏览器页面展示当前 Profile、Module 与可验证 routes；Ctrl+C/SIGTERM 通过共享 shutdown Promise 调用 `ApplicationRuntime.stop()`。页面由示例 Module 自包含提供，不加载生产 React 控制台，因为后者依赖这个最小 Profile 明确省略的完整 `/web` 业务 API。
+
+这两个文件共同构成可复制、可执行的教学源码，不是可部署的最小 edition 或第二个正式社区进程入口。直接 import 应用定义仍无监听和 signal 副作用，两个文件均不进入生产稳定导出面。测试证明页面可经真实 listener 访问、`/example/ping` 存在、已知 legacy route 缺失，并与 `community-default` 的完整 route 集合对照。
 
 ### Module factory，而非依赖容器
 
@@ -468,6 +498,18 @@ const communityDefaultProfile = {
 ```
 
 `legacyCommunityModule` 是现有社区应用的过渡性适配边界，而不是新发现的领域或平台边界。它完整拥有当前业务 routes 聚合和既有启动/释放链；命名中的 `legacy` 明确表示该粒度用于无行为变化地接入 Runtime，不能被解释为长期公共 API、企业扩展点或高度内聚的业务模块。
+
+完整等价启动的权威命名和调用链为：
+
+| 层次 | 名称 | 职责 |
+| --- | --- | --- |
+| Profile | `community-default` / `createCommunityDefaultProfile(options)` | 选择完整 Community Module |
+| 过渡 Module | `legacy-community` / `createLegacyCommunityModule(options)` | 承接改造前全部业务 routes 与启动资源 |
+| Application factory | `createDefaultApplication(options)` | 组合 Community base app 与默认 Profile |
+| 进程入口 | `src/index.ts` | 应用环境配置、start/listen、signal 与退出策略 |
+| 启动命令 | `bun run dev` / `bun run start` | 启动同一完整默认应用 |
+
+`community-default` 是生产兼容基线，不是教学示例。`src/application/examples/minimal-custom-application.ts` 中的 `community-minimal-example` 才用于展示如何选择另一组 Module，不能替代默认 Profile 或被生产入口隐式加载。
 
 `src/routes/web/index.ts` 继续聚合 Channels、Agent Sites 及其他现有 Web routes。这个聚合不会阻止 App Builder 工作：`createRoutes()` 可以直接返回包含它的完整 Elysia route tree。它只意味着默认 Profile 暂时不能单独省略其中某个能力，这是当前业务尚未完成模块边界分析的真实状态。
 
@@ -752,8 +794,8 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 1. **问题证据**：当前入口同时拥有配置、初始化、routes、listen、signal 和 shutdown，且已经存在 machine sweep 启停不对称。
 2. **默认兼容**：默认 Profile 仍包含全部社区能力，HTTP/WS/OpenAPI/鉴权、route precedence 和启动顺序保持。
 3. **最小抽象**：ApplicationBuilder 只负责有序组合与生命周期；没有热插拔、能力注册表、DI 容器或 route override。
-4. **机制证据**：可执行源码示例用多个小型 Module 组合两种 Profile，测试验证省略、类型累积以及 route 与 disposer 的共同所有权，不为演示而拆生产模块。
-5. **边界诚实**：默认 Profile 暂时只有一个过渡性社区 Module；真实业务模块化作为独立持续改进方向，不冒充本期成果。
+4. **机制证据**：通用可执行示例用多个小型 Module 组合两种显式 Profile；Fenix 最小示例证明如何复用 Community base app 并省略完整业务树。测试验证省略、类型累积以及 route 与 disposer 的共同所有权，不为演示而拆生产模块。
+5. **边界诚实**：`community-default` 是完整兼容基线且暂时只有一个过渡性社区 Module；`community-minimal-example` 仅是教学源码，真实业务模块化作为独立持续改进方向，不冒充本期成果。
 6. **故障语义**：首错即停；失败 Module 不进入 disposer 栈；此前成功 Module 逆序释放；原始错误保持优先并由入口非零退出。
 7. **正常停止**：先停止 Elysia 接入，再逆序释放成功 Module；同一 disposer 只执行一次。
 
@@ -761,8 +803,9 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 
 | 场景 | 操作 | 必须观察到的结果 |
 | --- | --- | --- |
-| 社区默认装配 | 使用 `communityDefaultProfile` 启动 | 全部既有 routes 可用，OpenAPI、route precedence 和启动顺序不变 |
-| 测试 Profile 组合 | 按顺序装配测试 Module A/B，并另建省略 B 的 Profile | route 类型和注册顺序精确累积；省略 B 时 B 的 routes 与启动资源都不存在 |
+| 社区默认装配 | 使用 `community-default` 启动 | 全部既有 routes 可用，OpenAPI、route precedence 和启动顺序不变 |
+| 通用 Profile 组合 | 执行 `public-example` 与 `internal-example` | route 类型和注册顺序精确累积；省略 admin 时其 routes 与启动资源都不存在 |
+| Fenix 最小自定义装配 | 执行 `bun run example:app-builder` 并打开终端输出的 URL | 页面展示所选 Profile/Module；示例 route 可用，legacy 业务 route 不存在，不连接 DB，Ctrl+C 正常停止 listener |
 | 启动失败 | Module A 成功、Module B 抛错、Module C 排在后面 | C 不启动，A disposer 执行一次，B 原始错误是主错误 |
 | listen 失败 | 所有 Module 成功后端口绑定失败 | 已成功 Module 逆序释放，不遗留监听端口 |
 | SIGTERM | 默认应用正常运行后发送 signal | 先停止接入，再按 Module 逆序释放，进程按入口策略退出 |
@@ -772,7 +815,8 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 | 载体 | 内容 |
 | --- | --- |
 | 本设计文档 | 长期有效的目标、边界、时序、兼容矩阵、演示场景和验收标准 |
-| 可执行源码示例 | 展示两个不同 Profile 的完整 Builder 用法、路由差异和生命周期顺序 |
+| 通用可执行源码示例 | 展示两个显式 Profile 的完整 Builder 用法、路由差异和生命周期顺序 |
+| Fenix 宿主源码示例 | 展示从最小 Module、Profile 到 Application factory 的可复制结构，并与完整默认装配对照 |
 | 自动化测试 | 可重复证明默认兼容、示例 Module 组合/省略、类型、fail-fast、unwind 和 stop 幂等 |
 | ADR | 提议中或已接受的长期架构决策、理由与后果，不承载实现计划 |
 | 当前态架构文档 | 实现完成后代码实际采用的目录、依赖和运行路径 |
@@ -801,8 +845,10 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 
 ### 社区应用
 
-- 构造默认应用不执行 DB probe、timer、listen 或 signal 注册；
-- 默认 Profile 通过一个过渡性 Module 包含全部社区能力；
+- 构造默认应用，或 import/构造 Fenix 最小示例，不执行 DB probe、timer、listen 或 signal 注册；
+- `community-minimal-example` 只包含示例 Module，并在类型与运行时均省略已知 legacy 业务 route；
+- 最小示例通过真实 loopback listener 返回自包含 HTML 页面、安全响应头和 ping 响应，stop 后端口关闭；
+- `community-default` 通过一个过渡性 Module 包含全部社区能力；
 - `src/routes/web/index.ts` 的聚合成员和顺序不因接入 Builder 改变；
 - 默认 `/health`、根跳转、request ID 和 error mapping 不变；
 - 默认 OpenAPI path/schema/tag 集合不变；
@@ -813,15 +859,18 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 ### 验证命令
 
 ```bash
-bun run --cwd packages/server-runtime example
+bun run --cwd packages/server-runtime typecheck
 bun run --cwd packages/server-runtime test
-bun test src/__tests__/default-application.test.ts
+bun run --cwd packages/server-runtime example
+bun test src/__tests__/default-application.test.ts src/__tests__/server-runtime-boundary.test.ts
 bun test src/__tests__/round54-channels-routes.test.ts src/__tests__/agent-sites-routes.test.ts src/__tests__/registry-routes.test.ts
 bun run docs:build
 bun run precheck
 ```
 
-依赖服务可用时补充人工 smoke：
+最小示例无需依赖服务即可人工 smoke：运行 `bun run example:app-builder`，打开终端输出的 `/example` URL，验证 health/ping 链接，再按 Ctrl+C 确认进程正常退出。
+
+依赖服务可用时补充默认应用 smoke：
 
 1. 默认 Profile 启动成功；
 2. `/health`、控制台、一个 `/web` 和一个 `/api` 请求成功；

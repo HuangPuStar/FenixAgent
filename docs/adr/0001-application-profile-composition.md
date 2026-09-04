@@ -23,9 +23,10 @@ FenixAgent 的服务入口原本同时拥有配置、初始化、全部 Elysia r
 - 正常停止先调用 Elysia `app.stop()`，再逆序调用成功 Module 的 disposer。
 - edition-specific 依赖通过 Module factory 的类型化参数和闭包注入，不提供能力 token registry、通用 DI 容器或 Service Locator。
 - App Builder 只组合已经确定的边界，不负责发现、评价或强制业务模块边界。
-- 首期默认社区 Profile 通过一个明确的过渡性 Module 接入现有完整 route 聚合和启动链，不为证明 Builder 而拆分 Channels、Agent Sites 或其他生产能力。
-- 组合、省略、类型累积和生命周期所有权由 package 内的可执行源码示例及其测试验证；生产模块化按真实领域职责、依赖和消费者需求独立推进。
-- 默认社区 Profile 始终包含全部社区能力，不增加环境变量模块开关。
+- 生产 `community-default` Profile 通过 `legacy-community` 过渡 Module 接入现有完整 route 聚合和启动链；它是改造前社区应用的兼容基线，不为证明 Builder 而拆分 Channels、Agent Sites 或其他生产能力。
+- 源码示例是采用机制的一部分：Runtime package 示例证明通用组合与生命周期，Fenix 宿主示例必须提供明确启动命令和浏览器可见结果，并由测试持续校验。
+- 示例可以在直接执行时使用独立 demo runner 监听 loopback，但不得要求生产密钥、成为第二个正式进程入口、进入生产稳定导出面或被解释为已确认的生产领域边界；作为模块导入时仍必须无 listen 和 process signal 副作用。
+- 默认社区 Profile 始终包含全部社区能力，不增加环境变量模块开关，也不按名称隐式覆盖 Module。
 
 ## 为什么使用 fluent `.use(module)`
 

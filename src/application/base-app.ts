@@ -1,4 +1,5 @@
 import Elysia from "elysia";
+import type { AppConfig } from "../config";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "../openapi";
 import { authPlugin } from "../plugins/auth";
 import { corsPlugin } from "../plugins/cors";
@@ -6,10 +7,15 @@ import { errorPlugin } from "../plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "../plugins/logger";
 import { ctrlStaticPlugin } from "../plugins/static";
 import { buildHealthInfo } from "../services/build-info";
-import type { DefaultApplicationOptions } from "./default-app-options";
+
+/** Community base app 纯构造所需的最小宿主参数。 */
+export interface CommunityBaseAppOptions {
+  readonly config: Pick<AppConfig, "version" | "wsMaxPayloadMb">;
+  readonly startedAt: string;
+}
 
 /** 构造社区版固定横切能力，不启动任何外部资源。 */
-export function createCommunityBaseApp(options: Pick<DefaultApplicationOptions, "config" | "startedAt">) {
+export function createCommunityBaseApp(options: CommunityBaseAppOptions) {
   return (
     new Elysia({
       websocket: {

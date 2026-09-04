@@ -334,6 +334,33 @@ flowchart LR
 - 不要让业务逻辑到处 `if provider === "xxx"` 分支。
 - 不要把页面、路由、服务、数据结构全部绑死在一个具体外部实现上。
 
+## 自定义应用装配
+
+代码级 `ApplicationProfile` 用于按源码选择已经定义好的 `ServerModule`，不接受请求、租户配置或环境变量中的模块列表。创建自定义应用时按以下边界组织：
+
+1. 为一个职责明确、可以整体增减的能力定义 `ServerModule`；`createRoutes()` 只构造 Elysia routes，不连接 DB、创建 timer/socket/子进程或读取进程配置。
+2. 外部依赖通过 Module factory 参数和闭包显式注入。`start()` 按需分配进程级易失资源，成功后返回覆盖这些资源的 disposer；不要把 disposer 当作数据迁移等持久化事实的回滚。
+3. 定义带唯一名称的 `ApplicationProfile`，在 `configure(builder)` 中按依赖顺序 fluent `.use(module)`。替换 Module 的方式是新 Profile 省略原 Module 并加入替代者，不按名称或 route 隐式覆盖。
+4. Application factory 选择安全的 base app，创建 `ApplicationBuilder`，再执行 `profile.configure(builder).build()`。构造与 `start/listen`、process signal 分离，正式入口负责后者。
+5. 用类型断言和运行时测试同时验证应包含及应省略的 routes，并覆盖启动失败、逆序释放和租户/权限边界。
+
+仓库中的采用入口：
+
+| 源码 | 用途 |
+| --- | --- |
+| `packages/server-runtime/src/examples/profile-composition.ts` | 可直接执行的通用示例，展示两个显式 Profile、route 省略与生命周期 |
+| `src/application/examples/minimal-custom-application.ts` | Fenix 宿主最小示例，展示 Module → Profile → Application factory，并提供浏览器页面 |
+| `src/application/examples/run-minimal-custom-application.ts` | 仅供直接执行的 loopback demo runner，负责 listen、输出 URL 和 signal shutdown |
+| `src/application/default-profile.ts`、`src/application/create-default-application.ts` | `community-default` 完整生产装配，是改造前服务的兼容基线 |
+
+通用生命周期示例使用 `bun run --cwd packages/server-runtime example` 执行。Fenix 宿主示例使用：
+
+```bash
+bun run example:app-builder
+```
+
+命令无需生产数据库连接串或 API key，只绑定 `127.0.0.1`，并输出实际 `/example` 页面 URL；在浏览器验证 health/ping 后按 Ctrl+C 正常停止。该 demo runner 仅在文件被直接执行时启用，import 示例仍是纯构造。需要定制时复制其结构到自己的宿主装配，不要把 example 文件加入生产稳定导出面或当作第二个正式入口。
+
 ## 6. 注释说明
 
 注释目标是帮助后来者理解设计原因和边界，不是重复代码表面行为。

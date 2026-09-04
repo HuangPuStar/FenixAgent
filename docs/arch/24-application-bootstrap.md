@@ -15,6 +15,7 @@ src/application/
   → 社区 base app
   → community default Profile
   → community ServerModules
+  → 非生产源码示例
 
 @fenix/server-runtime
   → ApplicationBuilder
@@ -91,7 +92,15 @@ Builder 保留具体 Elysia app，并在每次 `.use(module)` 后惰性累积 Mo
 
 `legacy-community` 使用一个有序 route tuple 同时定义运行时注册顺序和静态 route tree。运行时循环该 tuple 并逐个调用 `.use(instance)`，不调用 Elysia 的 `.use(tuple)` overload；静态类型从同一 tuple 的 `~Routes` 推导并规范化，以避免 TypeScript 再次递归展开完整社区路由树。
 
-`packages/server-runtime/src/examples/profile-composition.ts` 以 `public-example` 和 `internal-example` 展示两个不同 Profile，并由 package 测试验证不同 route 类型与生命周期。它是可执行源码示例，不是第二个社区进程入口。
+## 源码示例
+
+`packages/server-runtime/src/examples/profile-composition.ts` 以显式的 `public-example` 和 `internal-example` Profile 展示通用组合，并由 package 测试验证不同 route 类型与生命周期。它可以直接执行，但不依赖 Fenix 宿主。
+
+`src/application/examples/minimal-custom-application.ts` 则展示宿主侧 `minimal-example` Module、`community-minimal-example` Profile 和 Application factory 的完整定义。它复用社区 base app，但不挂载 `legacy-community`；直接 import/构造时不启动 DB、listener 或 process signal。
+
+执行 `bun run example:app-builder` 时，`src/application/examples/run-minimal-custom-application.ts` 的 `import.meta.main` demo runner 使用无需生产密钥的窄 base app options，在 `127.0.0.1` 系统分配端口启动，并输出 `/example` 页面地址。页面自包含展示当前 Profile、Module、health 和 ping 链接；Ctrl+C/SIGTERM 经 `ApplicationRuntime.stop()` 关闭 listener。
+
+两层示例都不进入稳定导出面，demo runner 也不是正式进程入口。生产入口仍只调用 `createDefaultApplication()`；其 `community-default → legacy-community` 链路是改造前完整应用的权威等价装配。
 
 ## 安全边界
 

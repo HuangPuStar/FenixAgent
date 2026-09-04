@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createLogger } from "@fenix/logger";
 import { createDefaultApplication } from "../application/create-default-application";
 import type { DefaultApplicationOptions } from "../application/default-app-options";
+import { createCommunityMinimalExampleApplication } from "../application/examples/minimal-custom-application";
 import { type AppConfig, applyEnv, config, setConfig } from "../config";
 import { validateEnv } from "../env";
 
@@ -113,6 +114,69 @@ describe("community default application", () => {
     expect(spec.paths?.["/web/channels/providers"]).toBeDefined();
     expect(spec.paths?.["/web/agent-sites/apps"]).toBeDefined();
     await runtime.stop();
+  });
+});
+
+describe("application profile examples", () => {
+  // 最小示例必须复用 Community base app，同时省略完整默认 Profile 的业务路由与启动资源。
+  test("contrasts minimal custom and complete default profiles", async () => {
+    const sigintListeners = process.listenerCount("SIGINT");
+    const sigtermListeners = process.listenerCount("SIGTERM");
+    const minimalRuntime = createCommunityMinimalExampleApplication(options);
+    const defaultRuntime = createDefaultApplication(options);
+    const minimalHasExample: Assert<HasRoute<typeof minimalRuntime.app, "example">> = true;
+    const minimalLacksWeb: Assert<LacksRoute<typeof minimalRuntime.app, "web">> = true;
+    const defaultHasWeb: Assert<HasRoute<typeof defaultRuntime.app, "web">> = true;
+
+    expect([minimalHasExample, minimalLacksWeb, defaultHasWeb]).toEqual([true, true, true]);
+    expect(minimalRuntime.state).toBe("created");
+    expect(minimalRuntime.app.server).toBeNull();
+    expect(process.listenerCount("SIGINT")).toBe(sigintListeners);
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermListeners);
+
+    const pingResponse = await minimalRuntime.app.handle(new Request("http://localhost/example/ping"));
+    const omittedResponse = await minimalRuntime.app.handle(new Request("http://localhost/web/channels/providers"));
+
+    const pingBody = (await pingResponse.json()) as { ok: boolean };
+
+    expect(pingResponse.status).toBe(200);
+    expect(pingBody).toEqual({ ok: true });
+    expect(omittedResponse.status).toBe(404);
+    expect(minimalRuntime.app.routes.map((route) => route.path)).not.toContain("/web/channels/providers");
+    expect(defaultRuntime.app.routes.map((route) => route.path)).toContain("/web/channels/providers");
+
+    await minimalRuntime.stop();
+    await defaultRuntime.stop();
+  });
+
+  // 可执行示例必须通过真实 listener 提供可识别且具备安全响应头的浏览器页面。
+  test("serves the example page through a real listener", async () => {
+    const runtime = createCommunityMinimalExampleApplication(options);
+
+    await runtime.start({ hostname: "127.0.0.1", port: 0 });
+    try {
+      const baseUrl = `http://127.0.0.1:${runtime.app.server!.port}`;
+      const pageResponse = await fetch(`${baseUrl}/example`);
+      const pageHtml = await pageResponse.text();
+      const pingResponse = await fetch(`${baseUrl}/example/ping`);
+      const pingBody = (await pingResponse.json()) as { ok: boolean };
+
+      expect(pageResponse.status).toBe(200);
+      expect(pageResponse.headers.get("content-type")).toContain("text/html; charset=utf-8");
+      expect(pageResponse.headers.get("content-security-policy")).toContain("default-src 'none'");
+      expect(pageResponse.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(pageHtml).toContain("community-minimal-example");
+      expect(pageHtml).toContain("minimal-example");
+      expect(pageHtml).toContain("legacy-community");
+      expect(pageHtml).toContain("/health");
+      expect(pageHtml).toContain("/example/ping");
+      expect(pingResponse.status).toBe(200);
+      expect(pingBody).toEqual({ ok: true });
+    } finally {
+      await runtime.stop();
+    }
+
+    expect(runtime.state).toBe("stopped");
   });
 });
 

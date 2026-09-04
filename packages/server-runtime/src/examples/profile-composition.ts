@@ -1,5 +1,11 @@
-import { ApplicationBuilder, type ModuleStartContext } from "@fenix/server-runtime";
+import { ApplicationBuilder, type ApplicationProfile, type ModuleStartContext } from "@fenix/server-runtime";
 import Elysia from "elysia";
+
+function createExampleBaseApp() {
+  return new Elysia().get("/health", () => "ok");
+}
+
+type ExampleBaseApp = ReturnType<typeof createExampleBaseApp>;
 
 function createMessagesModule(events: string[]) {
   return {
@@ -32,14 +38,27 @@ export function createProfileCompositionExample() {
   const events: string[] = [];
   const messagesModule = createMessagesModule(events);
   const adminModule = createAdminModule(events);
+  const publicConfigure = (builder: ApplicationBuilder<ExampleBaseApp>) => builder.use(messagesModule);
+  const publicProfile = {
+    name: "public-example",
+    configure: publicConfigure,
+  } satisfies ApplicationProfile<ExampleBaseApp, ReturnType<typeof publicConfigure>>;
+
+  const internalConfigure = (builder: ApplicationBuilder<ExampleBaseApp>) =>
+    builder.use(messagesModule).use(adminModule);
+  const internalProfile = {
+    name: "internal-example",
+    configure: internalConfigure,
+  } satisfies ApplicationProfile<ExampleBaseApp, ReturnType<typeof internalConfigure>>;
+
   const createBuilder = (profileName: string) =>
     ApplicationBuilder.create({
       profileName,
-      createBaseApp: () => new Elysia().get("/health", () => "ok"),
+      createBaseApp: createExampleBaseApp,
     });
 
-  const publicRuntime = createBuilder("public-example").use(messagesModule).build();
-  const internalRuntime = createBuilder("internal-example").use(messagesModule).use(adminModule).build();
+  const publicRuntime = publicProfile.configure(createBuilder(publicProfile.name)).build();
+  const internalRuntime = internalProfile.configure(createBuilder(internalProfile.name)).build();
 
   return { events, publicRuntime, internalRuntime };
 }
