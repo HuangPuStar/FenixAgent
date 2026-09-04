@@ -32,9 +32,9 @@ describe("skillNarrator", () => {
     expect(skillNarrator.kinds).toContain("skill");
   });
 
-  // 中文动词"加载"——传达"加载技能"语义
-  test("verb 是 '加载'", () => {
-    expect(skillNarrator.verb).toBe("加载");
+  // 中文动作必须明确表达技能加载行为
+  test("verb 是 '加载技能'", () => {
+    expect(skillNarrator.verb).toBe("加载技能");
   });
 
   // 有 description 时优先使用 description 作为 object（比 title 中的 skill 名更可读）

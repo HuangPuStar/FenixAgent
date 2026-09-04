@@ -45,12 +45,14 @@ describe("sandbox API error mapping", () => {
     expect(JSON.stringify(mapped)).not.toContain("sbi_secret_sandbox_1");
   });
 
-  // Provider 的远程服务错误应保留为网关/服务不可用错误。
-  test("maps provider unavailable errors to HTTP 503", () => {
-    const error = new SandboxProviderError("cluster unavailable", "UNAVAILABLE", true);
-    expect(mapSandboxApiError(error)).toEqual({
+  // Provider 的远程服务错误必须分类映射并脱敏，不能泄漏集群诊断内容。
+  test("maps provider unavailable errors to a sanitized HTTP 503", () => {
+    const error = new SandboxProviderError("cluster unavailable at https://internal.example", "UNAVAILABLE", true);
+    const mapped = mapSandboxApiError(error);
+    expect(mapped).toEqual({
       status: 503,
-      body: { error: { code: "SERVICE_UNAVAILABLE", message: "cluster unavailable" } },
+      body: { error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" } },
     });
+    expect(JSON.stringify(mapped)).not.toContain("internal.example");
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AgentNodeUnavailableError, ConcurrencyExceededError } from "@fenix/orchestration";
+import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import { AppError, NotFoundError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
@@ -153,23 +153,9 @@ describe("OpenAI Chat Routes — 错误映射（errorPlugin 装配）", () => {
     expect(JSON.stringify(body)).not.toContain("machineId");
   });
 
-  // 并发超限语义修正：ConcurrencyExceededError 由本地 catch 的 500 修正为 409，
+  // 并发超限语义修正：OrchestrationError 由本地 catch 的 500 修正为 409，
   // 且 message 必须脱敏 —— agent-controller 实际抛出时拼接 envId（A-P1.1 泄漏点），
   // 响应体不得出现内部资源标识
-  test("openAgentSession 抛 ConcurrencyExceededError 返回 409 且不泄漏 envId", async () => {
-    setOpenAIChatRouteDeps({
-      openAgentSession: async () => {
-        throw new ConcurrencyExceededError("Environment 'env_x' reached max concurrency (1)");
-      },
-    });
-
-    const res = await post({ messages: [{ role: "user", content: "hello" }] });
-    expect(res.status).toBe(409);
-    const body = await res.json();
-    expect(body.error.type).toBe("CONCURRENCY_EXCEEDED");
-    expect(body.error.message).toBe("Concurrency limit exceeded");
-    expect(JSON.stringify(body)).not.toContain("env_x");
-  });
 
   // A-P1.1 收敛后本地嗅探已移除：非 UUID agentConfigId 由 agent-chat-service 抛
   // NotFoundError（稳定 code NOT_FOUND），经 errorPlugin 映射 404，与旧嗅探语义一致

@@ -74,7 +74,6 @@ function registerRunningInstance(instanceId: string, environmentId: string, orga
   globalInstanceRegistry.register(instanceId, {
     userId: "user-1",
     environmentId,
-    instanceNumber: 1,
     organizationId,
     spawnSource: "interactive",
     lastActivityAt: Date.now(),

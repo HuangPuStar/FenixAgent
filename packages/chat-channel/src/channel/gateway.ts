@@ -4,7 +4,6 @@ import { translateSimpleAction } from "../protocol/translator";
 import { decodeYjsSyncFrame } from "../protocol/update-frame";
 import { createPublicError, type PublicError, type PublicErrorType, serializePublicErrorLog } from "../public-error";
 import type { DocManager } from "../state";
-import { createDeterministicRcsSessionId } from "../util/id";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
@@ -30,15 +29,10 @@ export interface GatewayDependencies {
   relayEvents: RelayEventHandler;
   sessionChannel: SessionChannel;
   getEnvironment: (agentId: string) => Promise<GatewayEnvironment | undefined>;
-  /** 纵深防御授权：组织环境由 route 的 authContext 决定访问权，个人环境校验 owner */
+  /** 纵深防御授权：仅 Environment owner 可进入其 Chat runtime。 */
   authorizeEnvironment: (userId: string, environment: GatewayEnvironment) => boolean;
   resolveWorkspacePath: (orgId: string, userId: string, agentId: string) => string;
-  ensureRunning: (
-    userId: string,
-    agentId: string,
-    mode: "interactive",
-    instanceNumber?: number,
-  ) => Promise<{ instance: { id: string } }>;
+  ensureRunning: (ownerUserId: string, agentId: string, requestedInstanceUid?: string) => Promise<string>;
   connectAgentRelay: (instanceId: string, rcsSessionId: string) => Promise<ClientConnection["relayHandle"]>;
   docManager: DocManager;
   markRelayAttached: (instanceId: string) => void;
@@ -46,13 +40,17 @@ export interface GatewayDependencies {
   reportLog: (message: string) => void;
   reportError: (message: string, error: unknown) => void;
   maxClients: () => number;
-  /** 从会话标识解析 instance 编号（多实例场景精准连接）；无法解析返回 null，按默认实例降级 */
-  resolveInstanceNumberFromSession: (sessionId: string) => Promise<number | null>;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连，展示手动重试 UI） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连分支 */
   classifyPermanentSpawnFailure: (err: unknown) => string | null;
 }
+export interface ChatConnectionLocator {
+  instanceUid: string;
+  rcsSessionId: string;
+  acpSessionId?: string;
+}
+
 /** 管理 YJS 前端 WebSocket 的 open/message/close 生命周期。 */
 export class Gateway {
   private readonly pendingInitialSync = new Map<string, PendingInitialSync>();
@@ -62,8 +60,7 @@ export class Gateway {
     wsId: string,
     userId: string,
     agentId: string,
-    rcsSessionId: string | null,
-    sessionId?: string,
+    locator: ChatConnectionLocator,
   ): Promise<void> {
     const { registry, broadcaster } = this.dependencies;
     const maxClients = this.dependencies.maxClients();
@@ -87,19 +84,16 @@ export class Gateway {
       this.rejectOpen(ws, wsId, 4003, "unauthorized", "ACTION.FORBIDDEN");
       return;
     }
-    const orgId = environment.organizationId ?? userId;
-    const workspacePath = this.dependencies.resolveWorkspacePath(orgId, userId, agentId);
-    const resolvedInstanceNumber = sessionId
-      ? await this.dependencies.resolveInstanceNumberFromSession(sessionId).catch((err) => {
-          this.reportError("[YJS-FE] Failed to resolve session instance:", err);
-          return null;
-        })
-      : null;
+    const ownerUserId = environment.userId;
+    if (!ownerUserId) {
+      this.rejectOpen(ws, wsId, 4003, "unauthorized", "CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE");
+      return;
+    }
+    const orgId = environment.organizationId ?? ownerUserId;
+    const workspacePath = this.dependencies.resolveWorkspacePath(orgId, ownerUserId, agentId);
     let instanceId: string;
     try {
-      instanceId = (
-        await this.dependencies.ensureRunning(userId, agentId, "interactive", resolvedInstanceNumber ?? undefined)
-      ).instance.id;
+      instanceId = await this.dependencies.ensureRunning(ownerUserId, agentId, locator.instanceUid);
     } catch (err) {
       registry.discardPending(wsId);
       this.dependencies.reportError("[YJS-FE] Failed to start agent instance", typeof err);
@@ -122,7 +116,7 @@ export class Gateway {
       registry.discardPending(wsId);
       return;
     }
-    const resolvedRcsSessionId = rcsSessionId ?? createDeterministicRcsSessionId(agentId, userId);
+    const resolvedRcsSessionId = locator.rcsSessionId;
     let acquired: { shared: SharedRelay; created: boolean };
     try {
       acquired = await registry.acquireRelay(instanceId, userId, resolvedRcsSessionId, async () => {
@@ -232,7 +226,7 @@ export class Gateway {
       keepalive,
       instanceId,
       rcsSessionId: shared.rcsSessionId,
-      acpSessionId: null,
+      acpSessionId: locator.acpSessionId ?? null,
       sessionLoaded: false,
       workspacePath: shared.workspacePath,
       openTime: openedAt,

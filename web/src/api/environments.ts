@@ -29,7 +29,6 @@ export interface EnvironmentDetail {
   instancesCount?: number;
   instances?: EnvironmentInstanceInfo[];
   lastPollAt?: number | null;
-  [key: string]: unknown;
 }
 
 /** 环境列表项 */
@@ -41,7 +40,6 @@ export interface CreateEnvironmentRequest {
   description?: string;
   agentConfigId: string;
   autoStart?: boolean;
-  [key: string]: unknown;
 }
 
 /** 更新环境请求体 */
@@ -50,28 +48,23 @@ export interface UpdateEnvironmentRequest {
   description?: string;
   agentConfigId?: string;
   autoStart?: boolean;
-  [key: string]: unknown;
 }
 
 /** 进入环境响应（camelCase 转换后） */
 export interface EnterEnvironmentResponse {
+  instanceUid: string;
   environmentId: string;
-  instanceId: string;
-  instanceNumber: number;
-  instanceStatus: string;
-  sessionId: string | null;
-  [key: string]: unknown;
+  name: string;
+  status: string;
+  createdAt: string;
 }
 
 /** 实例列表项（来自 GET /web/environments/:id/instances） */
 export interface EnvironmentInstanceInfo {
-  id: string;
-  instanceNumber: number;
+  instanceUid: string;
+  name: string;
   status: string;
-  sessionId?: string | null;
-  port?: number;
-  createdAt?: number;
-  [key: string]: unknown;
+  createdAt: string;
 }
 
 /** 实例列表响应（camelCase 转换后） */
@@ -139,12 +132,8 @@ export const envApi = {
   /** 删除指定环境 */
   del: (params: { id: string }) => camelResponse(request<void>("/web/environments/:id", { method: "DELETE", params })),
 
-  /**
-   * 进入指定环境，自动 spawn 或复用实例。
-   * @param params.id - 环境 ID
-   * @param body.instance_number - 可选，指定实例编号
-   */
-  enter: (params: { id: string }, body?: { instance_number?: number }) =>
+  /** 进入指定环境，自动 spawn 或复用实例。 */
+  enter: (params: { id: string }, body?: { instanceUid?: string }) =>
     camelResponse(request<EnterEnvironmentResponse>("/web/environments/:id/enter", { method: "POST", params, body })),
 
   /** 获取指定环境下的实例列表 */

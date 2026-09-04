@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { NS } from "@/src/i18n";
 import { ChangePasswordDialog } from "../../../components/ChangePasswordDialog";
 import { signOut, useSession } from "../../../src/lib/auth-client";
@@ -85,19 +86,27 @@ export const AgentSidebar = memo(function AgentSidebar({
         {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
       </button>
 
-      {/* 快捷导航：模型、技能、MCP、组织管理 */}
-      <AgentSidebarQuickNav onNavigate={onNavigate} activeNav={activeNav} />
-
-      {/* 智能体树 */}
-      <div className="agent-sidebar-tree-wrap border-t border-border-subtle flex-1 min-h-0 overflow-hidden">
-        <AgentSidebarTree
-          selectedInstanceId={selectedInstanceId}
-          selectedEnvironmentId={selectedEnvironmentId}
-          onSelectInstance={onSelectInstance}
-          onCreateAgent={onCreateAgent}
-          onEditAgent={onEditAgent}
-        />
-      </div>
+      <ResizablePanelGroup orientation="vertical" className="agent-sidebar-sections">
+        <ResizablePanel defaultSize="44%" minSize="120px">
+          {/* 快捷导航：模型、技能、MCP、组织管理 */}
+          <div className="agent-sidebar-nav-wrap">
+            <AgentSidebarQuickNav onNavigate={onNavigate} activeNav={activeNav} />
+          </div>
+        </ResizablePanel>
+        <ResizableHandle className="agent-sidebar-tree-resize-handle" aria-label={tSidebar("resizeAgentArea")} />
+        <ResizablePanel defaultSize="56%" minSize="160px">
+          {/* 智能体树 */}
+          <div className="agent-sidebar-tree-wrap h-full min-h-0 overflow-hidden">
+            <AgentSidebarTree
+              selectedInstanceId={selectedInstanceId}
+              selectedEnvironmentId={selectedEnvironmentId}
+              onSelectInstance={onSelectInstance}
+              onCreateAgent={onCreateAgent}
+              onEditAgent={onEditAgent}
+            />
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       {/* 底部：用户 + 组织 */}
       <div className="agent-sidebar-footer border-t border-border-subtle">

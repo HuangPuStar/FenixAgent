@@ -149,9 +149,11 @@ describe("structuredToThreadEntries 扩展纯逻辑", () => {
     ]);
   });
 
-  // 子时间线中的 plan 是状态快照，不能泄漏到工具卡片的消息列表。
-  test("递归时忽略子计划快照", () => {
-    expect(onlyTool(tool({ subMessages: [{ type: "plan", id: "plan-1", entries: [] }] })).subEntries).toEqual([]);
+  // 子时间线中的 plan 也应保留，保证子 Agent 的执行计划可见。
+  test("递归时保留子计划快照", () => {
+    expect(onlyTool(tool({ subMessages: [{ type: "plan", id: "plan-1", entries: [] }] })).subEntries).toEqual([
+      { type: "plan", id: "plan-1", entries: [] },
+    ]);
   });
 
   // 子消息数组为空时应保持空数组，区分于上游未提供子消息。
@@ -235,14 +237,14 @@ describe("structuredToThreadEntries 扩展纯逻辑", () => {
     expect(entries.map((entry) => entry.type)).toEqual(["user_message", "tool_call", "assistant_message"]);
   });
 
-  // plan 快照夹在普通消息中也必须只跳过自身，不能影响相邻消息。
-  test("跳过 plan 时保留相邻消息", () => {
+  // plan 快照夹在普通消息中必须保留原始时间线顺序。
+  test("保留 plan 及相邻消息顺序", () => {
     const entries = structuredToThreadEntries([
       { type: "user_message", id: "u-1", content: "问题", seq: 1, ts: 1 },
       { type: "plan", id: "p-1", entries: [] },
       { type: "assistant_message", id: "a-1", chunks: [], seq: 2, ts: 2 },
     ]);
-    expect(entries.map((entry) => entry.type)).toEqual(["user_message", "assistant_message"]);
+    expect(entries.map((entry) => entry.type)).toEqual(["user_message", "plan", "assistant_message"]);
   });
 
   // 每次转换应返回新的顶层数组，调用方不能共享上一次结果容器。
@@ -277,14 +279,17 @@ describe("structuredToThreadEntries 扩展纯逻辑", () => {
     expect(message.content).toBe("原问题");
   });
 
-  // 多条 plan 快照都属于状态面板数据，混入时间线时必须全部忽略。
-  test("忽略连续 plan 快照", () => {
+  // 多条 plan 快照均是独立时间线输入，转换层必须完整保留。
+  test("保留连续 plan 快照", () => {
     expect(
       structuredToThreadEntries([
         { type: "plan", id: "p-1", entries: [] },
         { type: "plan", id: "p-2", turnId: "turn-1", entries: [] },
       ]),
-    ).toEqual([]);
+    ).toEqual([
+      { type: "plan", id: "p-1", entries: [] },
+      { type: "plan", id: "p-2", turnId: "turn-1", entries: [] },
+    ]);
   });
 
   // TodoWrite 首次快照应生成新增差分，供历史卡片解释计划变化。

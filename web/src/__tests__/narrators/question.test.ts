@@ -6,8 +6,8 @@ import type { ToolCallData } from "@/src/lib/types";
 /**
  * questionNarrator 单测。
  *
- * 覆盖：match 规则（question/ask）、verb、description/rawInput.question 优先级、
- * 长问题截断（带双引号包裹后的总长度）。
+ * 覆盖：match 规则（question/ask）、verb、description/AskUserQuestion questions
+ * 与兼容 question 字段优先级、长问题截断（带双引号包裹后的总长度）。
  */
 
 const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
@@ -33,9 +33,9 @@ describe("questionNarrator", () => {
     expect(questionNarrator.kinds).toContain("question");
   });
 
-  // 中文动词"询问"——传达"向用户提问"语义
-  test("verb 是 '询问'", () => {
-    expect(questionNarrator.verb).toBe("询问");
+  // 中文动作必须明确表达向用户提问的行为
+  test("verb 是 '询问用户'", () => {
+    expect(questionNarrator.verb).toBe("询问用户");
   });
 
   // 优先用 description（Agent 提供的完整问题）作为 object
@@ -44,7 +44,15 @@ describe("questionNarrator", () => {
     expect(object).toBe('"要不要继续？"');
   });
 
-  // 无 description 时从 rawInput.question 取
+  // AskUserQuestion 的问题文本位于 rawInput.questions 数组首项的 question 字段。
+  test("从 AskUserQuestion 的 rawInput.questions 提取", () => {
+    const { object } = questionNarrator.getDisplay(
+      makeCtx({ questions: [{ question: "你希望先修复哪一个问题？", header: "修复范围", options: [] }] }),
+    );
+    expect(object).toBe('"你希望先修复哪一个问题？"');
+  });
+
+  // 单问题工具仍可使用 rawInput.question，避免影响既有协议兼容性。
   test("从 rawInput.question 提取", () => {
     const { object } = questionNarrator.getDisplay(makeCtx({ question: "用什么方案？" }));
     expect(object).toBe('"用什么方案？"');

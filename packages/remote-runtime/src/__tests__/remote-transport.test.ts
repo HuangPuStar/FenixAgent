@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION } from "../machine-protocol";
+import { createRemoteRuntime } from "../remote-runtime";
 import { createWsRemoteTransport, type TransportMessage, type WsConnectionLike } from "../remote-transport";
 
 class FakeWsConnection implements WsConnectionLike {
@@ -37,6 +39,83 @@ function sentMessage(ws: FakeWsConnection, index = 0): TransportMessage {
   if (!data) throw new Error("未找到已发送的传输消息");
   return JSON.parse(data) as TransportMessage;
 }
+
+// Machine 协议 v2 以 instanceUid + generation + serverEpoch 构成完整 fencing token。
+test("远程 lifecycle 请求端到端携带 fencing 字段", async () => {
+  expect(MACHINE_PROTOCOL_VERSION).toBe(2);
+  const { transport, ws } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  const pending = runtime.startInstance({
+    instanceId: "inst-current",
+    instanceUid: "inst-current",
+    runtimeGeneration: 7,
+    serverEpoch: "epoch-current",
+  });
+  const request = sentMessage(ws);
+
+  expect(request).toMatchObject({
+    type: "start",
+    instance_id: "inst-current",
+    instance_uid: "inst-current",
+    runtime_generation: 7,
+    server_epoch: "epoch-current",
+  });
+  transport.injectMessage({ ...request, type: "start_result", status: "ok" });
+  await pending;
+});
+
+// relay 数据帧同样必须携带 runtime fence，否则 Machine 协议 v2 会静默拒绝 action。
+test("远程 relay action 携带 fencing 字段", async () => {
+  const { transport, ws } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  const relay = await runtime.connectRelay({
+    instanceId: "inst-current",
+    instanceUid: "inst-current",
+    runtimeGeneration: 7,
+    serverEpoch: "epoch-current",
+    sessionId: "rcs-current",
+  });
+
+  relay.send({ type: "connect" });
+
+  expect(sentMessage(ws)).toMatchObject({
+    type: "relay",
+    instance_id: "inst-current",
+    instance_uid: "inst-current",
+    runtime_generation: 7,
+    server_epoch: "epoch-current",
+    session_id: "rcs-current",
+    payload: { type: "connect" },
+  });
+});
+
+// 旧 epoch 或 generation 的结果不能通过当前 fencing 校验。
+test("旧 generation 或 epoch 的结果被拒绝", () => {
+  const expected = { instanceUid: "inst-current", runtimeGeneration: 8, serverEpoch: "epoch-current" };
+  expect(
+    hasRuntimeFence({ instance_uid: "inst-current", runtime_generation: 7, server_epoch: "epoch-current" }, expected),
+  ).toBeFalse();
+  expect(
+    hasRuntimeFence({ instance_uid: "inst-current", runtime_generation: 8, server_epoch: "epoch-old" }, expected),
+  ).toBeFalse();
+});
+
+// 缺失 generation/epoch 的旧调用必须 fail-closed，不能静默降级到无 fencing 协议。
+test("远程 lifecycle 缺失 fencing 字段时 fail-closed", async () => {
+  const { transport } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+  await expect(runtime.startInstance({ instanceId: "inst-current" })).rejects.toThrow("fence is required");
+});
+
+// relay 建连缺失 fencing 字段时必须 fail-closed，不能创建会被 Machine 静默拒绝的 handle。
+test("远程 relay 缺失 fencing 字段时 fail-closed", async () => {
+  const { transport } = createContext();
+  const runtime = createRemoteRuntime({ transport, serverEpoch: "epoch-current" });
+
+  await expect(runtime.connectRelay({ instanceId: "inst-current", sessionId: "rcs-current" })).rejects.toThrow(
+    "fence is required",
+  );
+});
 
 // 明确 request_id 必须原样用于请求匹配，避免同一连接上的并发响应串线。
 test.each([

@@ -5,7 +5,23 @@
     "all": "All",
     "http": "HTTP",
     "agent": "Agent",
-    "searchPlaceholder": "Search tasks..."
+    "searchPlaceholder": "Search by task name",
+    "typeLabel": "Task type"
+  },
+  "runtime": {
+    "title": "Next {{hours}} hours",
+    "description": "An approximate timeline based on actual last runs, next runs, and timeout limits.",
+    "windowLabel": "Runtime window",
+    "windowHours": "{{hours}}h",
+    "legendLabel": "Run status legend",
+    "scheduled": "Scheduled",
+    "paused": "Paused",
+    "outsideWindow": "No runs in the current window"
+  },
+  "registry": {
+    "title": "Task management",
+    "summary": "Showing {{count}} tasks",
+    "paginationLabel": "Task pagination"
   },
   "status": {
     "success": "Success",

@@ -237,8 +237,8 @@ describe("round62 机器连接等待器真实边界", () => {
     ).rejects.toBe(cancellation);
   });
 
-  // 超时只在等待前检查；若等待期间机器上线，即使时钟到期也应放行。
-  test("截止时刻后的在线读取仍放行", async () => {
+  // 总截止时间覆盖状态读取；预算耗尽后不得再发起一次可能无限阻塞的查询。
+  test("截止时刻不再发起在线读取", async () => {
     await withClock(async (advance) => {
       let reads = 0;
 
@@ -251,9 +251,9 @@ describe("round62 机器连接等待器真实边界", () => {
             advance(delay);
           },
         ),
-      ).resolves.toBeUndefined();
+      ).rejects.toThrow("connection timed out");
 
-      expect(reads).toBe(2);
+      expect(reads).toBe(1);
     });
   });
 

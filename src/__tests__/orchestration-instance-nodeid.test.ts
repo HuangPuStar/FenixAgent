@@ -111,7 +111,7 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
   // 旧行为在两次读取间 machineId 变更时会把实例启到新节点（与 refCount 旧节点错位），
   // 本用例锁定"只认 controller 快照"语义——controller 返回 mach_A 则必须启动在 mach_A
   test("nodeId equals the Instance.machineId snapshot from controller", async () => {
-    await spawnInstanceViaController(ENV_ID, USER_ID, "interactive");
+    await spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_nodeid" });
 
     expect(launchCalls).toHaveLength(1);
     expect(launchCalls[0].instanceId).toBe(INSTANCE_ID);

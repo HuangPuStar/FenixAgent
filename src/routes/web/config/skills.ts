@@ -455,10 +455,12 @@ app.put(
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
     const name = params.name as string;
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return (await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, result) =>
+    const result = await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, result) =>
       error(status, result),
-    )) as any;
+    );
+    // Elysia 无法从包含 error(status, body) 的联合返回值推断此 handler 的 response map。
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia handler response inference limitation
+    return result as any;
   },
   {
     sessionAuth: true,

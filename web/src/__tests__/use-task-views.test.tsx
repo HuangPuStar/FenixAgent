@@ -21,13 +21,14 @@ import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
 import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "../yjs/doc-hub";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // 设置最小 DOM 环境（react-dom/client 模块加载时需要 window；与
 // use-chat-state-hook.test.tsx 同款处理，仅在本文件作用域内生效）
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
 if (!g.window) g.window = win;
 if (!g.document) g.document = win.document;

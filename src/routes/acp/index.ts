@@ -85,7 +85,6 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
     id: env.id,
     agent_name: env.machineName,
     status: (env.status === "active" ? "online" : "offline") as "online" | "offline",
-    max_sessions: env.maxSessions,
     last_seen_at: env.lastPollAt ? env.lastPollAt.getTime() / 1000 : null,
     created_at: env.createdAt.getTime() / 1000,
   };
@@ -270,30 +269,35 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
       const userId = authResult.user.id;
       const agentId = ws.data.params.agentId;
-      // 从 query 参数读取 sessionId（DB 会话标识），
-      // 用于在多实例场景下隔离不同实例的 YJS doc。
       const url = new URL(ws.data.request.url);
-      const sessionId = url.searchParams.get("sessionId") || undefined;
-      const rcsSessionId = createDeterministicRcsSessionId(agentId, userId, sessionId);
-
-      const env = await environmentRepo.getById(agentId);
-      const authCtx = authResult.authContext;
-      if (!env || !authCtx || (env.organizationId !== authCtx.organizationId && env.userId !== userId)) {
+      const instanceUid = url.searchParams.get("instanceUid");
+      const rcsSessionId = url.searchParams.get("rcsSessionId");
+      const acpSessionId = url.searchParams.get("acpSessionId") ?? undefined;
+      if (!instanceUid || !rcsSessionId) {
+        adaptWs(ws).close(4000, "invalid chat locator");
+        return;
+      }
+      const expectedRcsSessionId = createDeterministicRcsSessionId(agentId, userId, instanceUid);
+      if (rcsSessionId !== expectedRcsSessionId) {
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }
 
-      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} sessionId=${sessionId ?? "none"}`);
+      const env = await environmentRepo.getById(agentId);
+      const authCtx = authResult.authContext;
+      if (!env || !authCtx || env.organizationId !== authCtx.organizationId || env.userId !== userId) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} instanceUid=${instanceUid}`);
 
       try {
-        await getChatChannelController().gateway.handleOpen(
-          adaptWs(ws),
-          yjsWsId,
-          userId,
-          agentId,
-          rcsSessionId,
-          sessionId,
-        );
+        await getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
+          instanceUid,
+          rcsSessionId: expectedRcsSessionId,
+          acpSessionId,
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logError(`[YJS-WS] Open failed: ${message}`, err);

@@ -7,6 +7,7 @@ import {
   createRemoteRuntime,
   createWsRemoteTransport,
   type RemoteTransport,
+  SERVER_EPOCH,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
 import { eq } from "drizzle-orm";
@@ -80,7 +81,7 @@ function defaultCreateFacade(): CoreRuntimeFacade {
       if (node.mode === "remote") {
         const cached = remoteTransports.get(node.id);
         if (cached) {
-          return createRemoteRuntime({ transport: cached });
+          return createRemoteRuntime({ transport: cached, serverEpoch: SERVER_EPOCH });
         }
       }
       return null;

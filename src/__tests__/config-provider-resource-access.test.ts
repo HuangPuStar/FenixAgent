@@ -154,7 +154,11 @@ describe("config provider resource access", () => {
     ]);
     expect(rows.map((row) => row.modelCount)).toEqual([1, 2]);
     expect(rows[0].resourceAccess).toMatchObject({ ownership: "internal", writable: true, publicReadable: true });
-    expect(rows[1].resourceAccess).toMatchObject({ ownership: "external", writable: false });
+    expect(rows[1].resourceAccess).toMatchObject({
+      ownership: "external",
+      writable: false,
+      publicReadable: true,
+    });
   });
 
   // getProviderByResourceKey 可读取外部授权 provider，并让 model 继承 provider 只读状态

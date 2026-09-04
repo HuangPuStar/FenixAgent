@@ -13,6 +13,7 @@ export {
   normalizeAgentNode,
   normalizeKnowledgeConfig,
   resolveAgentNode,
+  restartAgentConfigInstances,
   updateAgentConfig,
   validateAgentData,
 } from "./agent-config";

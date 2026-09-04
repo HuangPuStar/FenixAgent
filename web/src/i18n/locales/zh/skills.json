@@ -1,8 +1,37 @@
 {
-  "title": "技能管理",
-  "subtitle": "管理 AI Agent 可用的全局技能模板",
-  "search": "搜索技能...",
-  "empty": "暂无技能",
+  "title": "技能库",
+  "subtitle": "以可读指令封装 Agent 的工作方法，让同一种能力在不同智能体中被一致复用。",
+  "search": "搜索 Skill",
+  "empty": "技能库还是空的",
+  "emptyHint": "创建或上传第一个技能，让 Agent 获得可复用的工作方式。",
+  "emptySearch": "没有匹配的技能",
+  "emptySearchHint": "调整搜索词或归属范围后再试。",
+  "toolbar": {
+    "label": "搜索与归属筛选"
+  },
+  "scope": {
+    "label": "技能归属范围",
+    "all": "全部",
+    "organization": "本组织",
+    "shared": "组织共享",
+    "public": "公开"
+  },
+  "directory": {
+    "title": "技能目录",
+    "summary": "显示 {{visible}} 项，共 {{total}} 项",
+    "noDescription": "暂无用途说明",
+    "private": "未公开"
+  },
+  "loadState": {
+    "title": "技能库加载失败",
+    "retry": "重新加载"
+  },
+  "detail": {
+    "contentTitle": "技能指令",
+    "contentHint": "Agent 实际读取并执行的 SKILL.md 内容",
+    "loadError": "技能正文加载失败，可打开详情重试",
+    "emptyContent": "暂无技能指令内容"
+  },
   "column": {
     "name": "技能名称",
     "description": "描述"
@@ -12,12 +41,12 @@
     "edit": "编辑",
     "view": "查看",
     "delete": "删除",
-    "createSkill": "新建技能",
+    "createSkill": "添加 Skill",
     "manualCreate": "手动创建",
-    "conversationCreate": "对话创建",
-    "uploadSkill": "上传技能",
+    "uploadSkill": "导入",
     "batchDelete": "批量删除",
-    "reselect": "重新选择"
+    "reselect": "重新选择",
+    "more": "更多操作"
   },
   "dialog": {
     "editTitle": "编辑技能",

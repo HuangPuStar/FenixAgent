@@ -32,11 +32,12 @@ describe("FilePickerDialog", () => {
     expect(typeof dialogMod.DialogTitle).toBe("function");
   });
 
-  test("exports fsApi from api/fs", async () => {
+  test("exports workspace file API from api/fs", async () => {
     const fsMod = await import("../api/fs");
     expect(fsMod.fsApi).toBeDefined();
     expect(typeof fsMod.fsApi.listDir).toBe("function");
-    expect(typeof fsMod.fsApi.upload).toBe("function");
+    expect(typeof fsMod.uploadFiles).toBe("function");
+    expect(typeof fsMod.uploadChatFiles).toBe("function");
   });
 
   test("FileInfo type is exported from types", async () => {

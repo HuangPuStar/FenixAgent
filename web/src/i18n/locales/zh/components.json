@@ -31,6 +31,7 @@
     "addCustomRule": "+ 添加自定义规则"
   },
   "panelMode": {
+    "panelTabs": "右侧工作区",
     "files": "文件",
     "sites": "站点",
     "sitesTabAriaLabel": "站点选择栏",
@@ -94,7 +95,12 @@
     "viewsChatModules": "Chat 模块",
     "viewsPanelModules": "附加面板",
     "viewsEnabled": "已启用",
-    "viewsDisabled": "已禁用"
+    "viewsDisabled": "已禁用",
+    "floating": "浮动",
+    "docked": "固定",
+    "dock": "固定右侧工作区",
+    "float": "浮动右侧工作区",
+    "close": "关闭右侧工作区"
   },
   "siteFrame": {
     "share": "分享",
@@ -112,17 +118,30 @@
   },
   "fileTree": {
     "refresh": "刷新",
+    "refreshItem": "刷新 {{name}}",
+    "deleteItem": "删除 {{name}}",
     "emptyState": "工作区暂无文件",
     "emptyHint": "通过上方按钮或拖拽文件到此处上传",
     "upload": "上传",
     "download": "下载",
     "newFile": "新建文件",
+    "newFileIn": "在 {{name}} 中新建文件",
     "newFileName": "新文件名",
+    "open": "打开",
+    "openFile": "打开 {{name}}",
+    "searchPlaceholder": "搜索文件",
+    "clearSearch": "清除文件搜索",
+    "noSearchResults": "没有匹配的文件",
+    "workspace": "工作区",
+    "user": "我的文件",
+    "userEmptyState": "暂无文件",
+    "retry": "重试",
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
     "staleBanner": "文件服务暂时不可用，正在自动重连",
     "renameFailed": "重命名失败",
+    "moveFailed": "移动失败",
     "mkdirFailed": "创建文件夹失败",
     "newFileFailed": "创建文件失败",
     "dropToUpload": "释放文件以上传",
@@ -138,10 +157,24 @@
     "hideTree": "收起文件树",
     "closeTab": "关闭标签",
     "moreTabs": "还有 {{count}} 个标签",
-    "noTabsHint": "从左侧文件树选择文件预览",
+    "dialog": {
+      "renameTitle": "重命名",
+      "renameDescription": "输入新的文件或文件夹名称",
+      "moveTitle": "移动",
+      "moveDescription": "输入目标完整路径",
+      "newFileTitle": "新建文件",
+      "newFileDescription": "输入新文件名称",
+      "newFolderTitle": "新建文件夹",
+      "newFolderDescription": "输入新文件夹名称",
+      "invalidName": "名称不能为空，且不能包含 /、NUL，也不能是 . 或 ..",
+      "invalidPath": "目标路径不能为空且不能包含 NUL",
+      "confirm": "确认"
+    },
     "contextMenu": {
       "reference": "引用到聊天",
       "rename": "重命名",
+      "move": "移动",
+      "movePrompt": "输入目标完整路径",
       "delete": "删除",
       "newFolder": "新建文件夹",
       "newFolderName": "新文件夹名称"
@@ -192,7 +225,7 @@
   "conversation": {
     "noMessages": "暂无消息",
     "startConversation": "开始对话以查看消息",
-    "scrollToBottom": "滚动到底部",
+    "scrollToBottom": "回到最新消息",
     "scrollToLastUserMessage": "滚动到最后一条用户消息"
   },
   "message": {
@@ -220,8 +253,19 @@
     "thinking": "思考中"
   },
   "commandMenu": {
+    "title": "命令",
+    "count": "{{count}} 项可用",
     "noMatch": "没有匹配的命令",
-    "searchPlaceholder": "搜索技能..."
+    "searchPlaceholder": "搜索命令名称或说明",
+    "navigate": "切换",
+    "select": "选择",
+    "close": "关闭",
+    "skills": "Skills",
+    "skillsCaption": "当前对话的工作方式",
+    "mcps": "MCP 插件",
+    "mcpsCaption": "Agent 已绑定的连接",
+    "connected": "已连接",
+    "selectedCapabilities": "本轮已选择能力"
   },
   "errorArea": {
     "agent_runtime": "Agent Runtime Error",
@@ -233,8 +277,13 @@
   "messageBubble": {
     "expand": "展开",
     "uploadedImage": "已上传图片",
-    "systemMessage": "系统消息",
-    "turnError": "执行出错"
+    "imagePreview": "图片预览",
+    "systemMessage": "系统提醒",
+    "turnError": "执行出错",
+    "actions": "消息操作",
+    "copy": "复制",
+    "quote": "引用",
+    "addToConversation": "添加到对话"
   },
   "planView": {
     "high": "高",
@@ -245,6 +294,11 @@
   "toolCallGroup": {
     "running": "运行中",
     "failed": "{{count}} 失败",
+    "count": "{{count}} 次工具调用",
+    "completedCount": "{{count}} 成功",
+    "runningCount": "{{count}} 执行中",
+    "expand": "展开",
+    "collapse": "收起",
     "input": "输入",
     "output": "输出"
   },
@@ -276,7 +330,9 @@
     "deleteSessionTitle": "删除会话",
     "deleteConfirm": "确定要删除会话 \"{{title}}\" 吗？此操作不可撤销。",
     "cancel": "取消",
-    "chatBusy": "请等待当前对话完成后再切换会话"
+    "chatBusy": "请等待当前对话完成后再切换会话",
+    "renameFailed": "重命名失败：{{message}}",
+    "deleteFailed": "删除失败：{{message}}"
   },
   "chatInterface": {
     "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
@@ -319,6 +375,9 @@
     "retry": "重试",
     "empty": "暂无内容"
   },
+  "planPanel": {
+    "title": "执行计划"
+  },
   "todoPanel": {
     "collapse": "收起",
     "completed": "已完成",
@@ -354,12 +413,26 @@
     "newSession": "新会话",
     "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
     "skillButton": "技能",
+    "commandButton": "命令",
     "fileButton": "文件",
-    "uploadingFiles": "正在上传 {{count}} 个文件…"
+    "attach": "添加图片或文件",
+    "context": "上下文",
+    "contextUnknown": "上下文用量暂不可用",
+    "contextUsed": "已使用 {{count}} / {{limit}} Token",
+    "contextUsedUnknownLimit": "已使用 {{count}} Token，上下文上限未知",
+    "uploadingFiles": "正在上传 {{count}} 个文件…",
+    "fileTooLarge": "单个文件不能超过 100 MB",
+    "filesTooLarge": "一次上传的文件总量不能超过 100 MB",
+    "uploadFailed": "文件上传失败"
   },
   "chatEmpty": {
     "startConversation": "开始对话",
-    "startConversationDesc": "输入消息开始与 ACP agent 聊天",
+    "startConversationDesc": "描述想法、贴入上下文，或从一个话题开始讨论。",
+    "eyebrow": "从一次充分讨论开始",
+    "readyWithAgent": "{{agentName}} 已准备就绪",
+    "suggestionReview": "讨论代码变更的思路与风险",
+    "suggestionPlan": "讨论技术方案的选择与取舍",
+    "suggestionBuild": "讨论构建失败的可能原因",
     "skills": "已加载 Skills",
     "skillsHint": "输入 / 打开 Skill 弹窗",
     "noSkills": "暂无绑定 Skills"
@@ -412,13 +485,18 @@
     "viewParams": "查看参数",
     "previewFile": "预览 {{path}}",
     "openFile": "打开文件",
-    "toolName": "工具"
+    "toolName": "工具",
+    "running": "工具正在执行中…"
   },
   "subAgentPanel": {
     "title": "子 Agent 执行轨迹",
     "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤"
   },
   "permissionPanel": {
+    "title": "权限确认",
+    "waiting": "Agent 正在等待",
+    "aboutToRun": "即将执行",
+    "audit": "本次选择将记录在会话审计中",
     "allow": "允许",
     "allowSession": "允许本次会话",
     "deny": "拒绝"
@@ -460,6 +538,37 @@
   "askUser": {
     "title": "需要你回答",
     "description": "Agent 需要你提供一些信息以继续执行",
-    "submit": "提交"
+    "submit": "提交",
+    "previous": "上一个问题",
+    "next": "下一个",
+    "nextQuestion": "下一个问题"
+  },
+  "chatStatus": {
+    "title": "状态显示",
+    "todo": "Todo",
+    "subtasks": "子任务",
+    "changes": "Changes",
+    "toggle": "展开或收起状态",
+    "added": "新增",
+    "modified": "已修改",
+    "todoStatus": { "pending": "排队中", "in_progress": "正在执行", "completed": "已完成" }
+  },
+  "composerAssets": {
+    "title": "待发送 Assets",
+    "image": "待发送图片",
+    "imageNumber": "图片 {{count}}",
+    "quoteNumber": "引用 {{count}}",
+    "sentQuotes": "本轮引用",
+    "removeImage": "移除图片",
+    "removeFile": "移除 {{name}}",
+    "removeQuote": "移除引用",
+    "prepareImageFailed": "图片处理失败，请移除后重试",
+    "quoteTruncated": "引用过长，已省略 {{count}} 个字符",
+    "quoteTruncatedContext": "[引用过长，已省略后续 {{count}} 个字符]",
+    "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用"
+  },
+  "promptJump": {
+    "title": "用户提示词快速跳转",
+    "untitled": "未命名提示词"
   }
 }

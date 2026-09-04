@@ -13,7 +13,6 @@
  * {@link AgentNodeUnavailableError}；close() 在终态幂等。
  */
 
-import { randomUUID } from "node:crypto";
 import { AgentNodeUnavailableError } from "../errors";
 import { Instance } from "../instance/instance";
 import type { LaunchSpec } from "../launch-spec/types";
@@ -157,9 +156,9 @@ export class AgentNode {
    * 启动运行实例的工厂入口（I3 实现）：在承载本节点的 WS 信道上创建 Instance。
    * 一个 AgentNode 可承载多个 Instance（N:1），Instance 的生命周期状态懒查询自本节点。
    */
-  _spawnInstance(launchSpec: LaunchSpec): Instance {
+  _spawnInstance(launchSpec: LaunchSpec, instanceUid: string): Instance {
     return new Instance({
-      instanceId: `inst_${randomUUID()}`,
+      instanceId: instanceUid,
       environmentId: launchSpec.environmentId,
       agentConfigId: launchSpec.agentConfig.id,
       agentNode: this,

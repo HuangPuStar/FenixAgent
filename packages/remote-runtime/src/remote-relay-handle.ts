@@ -13,6 +13,11 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     private transport: RemoteTransport,
     private instanceId: string,
     private sessionId: string,
+    private runtimeFence: {
+      instance_uid: string;
+      runtime_generation: number;
+      server_epoch: string;
+    },
   ) {
     this.unsubSession = transport.onSessionMessage((instId, _sessId, msg) => {
       if (instId !== instanceId) return;
@@ -64,6 +69,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     this.transport.send({
       type: "relay",
       instance_id: this.instanceId,
+      ...this.runtimeFence,
       session_id: this.sessionId,
       payload: message,
     });
@@ -79,6 +85,7 @@ export class RemoteRelayHandle implements EngineRelayHandle {
     this.transport.send({
       type: "relay_close",
       instance_id: this.instanceId,
+      ...this.runtimeFence,
       session_id: this.sessionId,
     });
   }

@@ -112,15 +112,18 @@ export interface ChatStateSnapshot {
    * 否则有历史会话时制造"假空"会话）；true = 列表已确认，空列表可安全触发自动创建。
    */
   sessionListLoaded: boolean;
-  /** ACP prompt_complete 返回的真实 token 用量 */
+  /** ACP usage_update 或 prompt_complete 返回的当前上下文用量 */
   tokenUsage: TokenUsage | null;
 }
 
-/** prompt_complete 返回的 Token 用量 */
+/** ACP 报告的当前上下文用量与窗口容量 */
 export interface TokenUsage {
+  /** 最近一次模型请求时的上下文占用。 */
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** 当前模型上下文窗口容量（ACP usage_update.size）。 */
+  contextWindow?: number;
 }
 
 export interface SessionStateSnapshot {

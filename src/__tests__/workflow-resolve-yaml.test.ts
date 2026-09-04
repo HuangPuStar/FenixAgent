@@ -27,13 +27,20 @@ function makeDeps(opts: {
 }
 
 describe("resolveYaml", () => {
-  // 直接传入 yaml 时无视 workflowId 和 version
-  test("payload 包含 yaml 时直接返回 yaml，忽略 workflowId", async () => {
-    const deps = makeDeps({});
+  // 直接传入 yaml 且携带 workflowId 时仍必须校验组织归属，防止伪造跨组织 SSE 事件键。
+  test("payload 包含 yaml 和 workflowId 时先校验 workflow 归属", async () => {
+    const deps = makeDeps({ workflow: { latestVersion: 5, storagePath: "/wf" } });
     const result = await resolveYaml({ yaml: "name: test", workflowId: "wf1", version: 5 }, "org1", deps);
     expect(result).toBe("name: test");
-    expect(deps.getWorkflowDef).toHaveBeenCalledTimes(0);
+    expect(deps.getWorkflowDef).toHaveBeenCalledTimes(1);
     expect(deps.getVersionYaml).toHaveBeenCalledTimes(0);
+  });
+
+  // 其他组织的 workflowId 即使附带 YAML 也必须 fail-closed，不能用于发布状态事件。
+  test("payload 包含 yaml 和无归属 workflowId 时拒绝", async () => {
+    const deps = makeDeps({ workflow: null });
+    const result = await resolveYaml({ yaml: "name: forged", workflowId: "wf_other" }, "org1", deps);
+    expect(result).toBeNull();
   });
 
   // 无 yaml 且无 workflowId → null

@@ -2,7 +2,7 @@
 
 import type { ElementDatum, IElementEvent } from "@antv/g6";
 import { Graph } from "@antv/g6";
-import { ChevronUp, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -17,14 +17,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { kbApi } from "@/src/api/knowledge-bases";
+import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
+import { isKnowledgeGraphNotFound } from "@/src/pages/agent-panel/components/knowledge-graph-state";
 import type { KnowledgeGraphData, KnowledgeGraphProgress } from "@/src/types/knowledge";
 
 interface KnowledgeGraphPanelProps {
   knowledgeBaseId: string;
   canManage?: boolean;
-  /** 收起面板的回调 */
-  onCollapse?: () => void;
 }
 
 const POLL_INTERVAL_MS = 3000;
@@ -35,7 +35,7 @@ const TooltipColorMap: Record<string, string> = {
   edge: "text-[#6366f1]",
 };
 
-export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onCollapse }: KnowledgeGraphPanelProps) {
+export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: KnowledgeGraphPanelProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
   const tooltipId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,26 +43,44 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
 
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<KnowledgeGraphProgress | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const graphRequestRef = useRef(0);
 
   const fetchGraph = useCallback(async () => {
+    const requestId = ++graphRequestRef.current;
+    setGraphLoading(true);
+    setGraphError(null);
+    setGraphData(null);
     try {
-      setGraphLoading(true);
-      const resp = await kbApi.getGraph({ id: knowledgeBaseId });
-      setGraphData(resp.data ?? null);
-    } catch {
-      // 图谱不存在时不显示错误
+      const data = await unwrap(kbApi.getGraph({ id: knowledgeBaseId }));
+      if (requestId !== graphRequestRef.current) return;
+      setGraphData(data ?? null);
+    } catch (error) {
+      if (requestId !== graphRequestRef.current) return;
+      if (isKnowledgeGraphNotFound(error)) {
+        setGraphData(null);
+      } else {
+        console.error("[KnowledgeGraphPanel] load failed", error);
+        setGraphError(error instanceof Error ? error.message : t("graph.loadFailed"));
+      }
     } finally {
-      setGraphLoading(false);
+      if (requestId === graphRequestRef.current) setGraphLoading(false);
     }
-  }, [knowledgeBaseId]);
+  }, [knowledgeBaseId, t]);
 
   useEffect(() => {
-    fetchGraph();
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setGenerating(false);
+    setProgress(null);
+    void fetchGraph();
   }, [fetchGraph]);
 
   useEffect(() => {
@@ -137,7 +155,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
                   ...(et
                     ? [
                         '<div style="display:flex;align-items:center;gap:0.5ch">',
-                        "<dt><b>Entity type: </b></dt>",
+                        `<dt><b>${t("graph.entityType")}: </b></dt>`,
                         `<dd>${et}</dd>`,
                         "</div>",
                       ]
@@ -145,7 +163,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
                   ...(w != null
                     ? [
                         '<div style="display:flex;align-items:center;gap:0.5ch">',
-                        "<dt><b>Weight: </b></dt>",
+                        `<dt><b>${t("graph.weight")}: </b></dt>`,
                         `<dd>${w}</dd>`,
                         "</div>",
                       ]
@@ -240,7 +258,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
     // 兜底：如果 afterlayout 未触发（极小图），延迟再 fit 一次
     const fallbackTimer = setTimeout(fitOnce, 2500);
     graphOnceCleanupRef.current = () => clearTimeout(fallbackTimer);
-  }, [graphData, tooltipId]);
+  }, [graphData, t, tooltipId]);
 
   // 存储 fitOnce 兜底定时器的清理函数
   const graphOnceCleanupRef = useRef<(() => void) | null>(null);
@@ -265,24 +283,27 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
     try {
       setGenerating(true);
       setProgress({ progress: 0 });
-      await kbApi.generateGraph({ id: knowledgeBaseId });
+      await unwrap(kbApi.generateGraph({ id: knowledgeBaseId }));
 
       pollRef.current = setInterval(async () => {
         try {
-          const resp = await kbApi.getGraphProgress({ id: knowledgeBaseId });
-          if (resp.success && resp.data) {
-            setProgress(resp.data);
-            if (resp.data.progress >= 1) {
-              if (pollRef.current) clearInterval(pollRef.current);
-              pollRef.current = null;
-              setGenerating(false);
-              setProgress(null);
-              await fetchGraph();
-              toast.success(t("graph.generateSuccess"));
-            }
+          const progressData = await unwrap(kbApi.getGraphProgress({ id: knowledgeBaseId }));
+          setProgress(progressData);
+          if (progressData.progress >= 1) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setGenerating(false);
+            setProgress(null);
+            await fetchGraph();
+            toast.success(t("graph.generateSuccess"));
           }
-        } catch {
-          // 轮询失败静默处理
+        } catch (error) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setGenerating(false);
+          setProgress(null);
+          console.error("[KnowledgeGraphPanel] progress polling failed", error);
+          toast.error(t("graph.progressFailed"));
         }
       }, POLL_INTERVAL_MS);
     } catch (err) {
@@ -295,7 +316,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
 
   const handleDelete = useCallback(async () => {
     try {
-      await kbApi.deleteGraph({ id: knowledgeBaseId });
+      await unwrap(kbApi.deleteGraph({ id: knowledgeBaseId }));
       setGraphData(null);
       setDeleteConfirmOpen(false);
       toast.success(t("graph.deleteSuccess"));
@@ -337,17 +358,6 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
           )}
           {generating ? t("graph.generating") : t("graph.generate")}
         </Button>
-        {onCollapse && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-[12px] h-8 rounded-lg border-[#e2e8f0] hover:border-[#6366f1] hover:text-[#6366f1] hover:bg-[#f0f4ff] transition-all duration-150"
-            onClick={onCollapse}
-          >
-            <ChevronUp className="h-3.5 w-3.5 mr-1.5" />
-            收起知识图谱
-          </Button>
-        )}
       </div>
 
       {/* 进度条 */}
@@ -372,13 +382,27 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false, onColl
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex flex-col items-center gap-3">
             <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin" />
-            <p className="text-[13px] text-[#94a3b8]">Loading graph...</p>
+            <p className="text-[13px] text-[#94a3b8]">{t("graph.loading")}</p>
           </div>
         </div>
       )}
 
+      {graphError && !graphLoading && (
+        <div
+          className="flex min-h-[400px] flex-col items-center justify-center gap-4 rounded-xl border border-red-100 bg-red-50/50 p-6 text-center"
+          role="alert"
+        >
+          <AlertTriangle className="h-9 w-9 text-red-500" />
+          <p className="text-[13px] font-medium text-red-700">{graphError}</p>
+          <Button variant="outline" size="sm" onClick={() => void fetchGraph()}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            {t("graph.retry")}
+          </Button>
+        </div>
+      )}
+
       {/* 空态 */}
-      {!graphLoading && !graphData && !generating && (
+      {!graphLoading && !graphError && !graphData && !generating && (
         <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 rounded-xl bg-[#f8fafc] border border-[#eef2f6]">
           <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
             <Network className="h-9 w-9 text-[#94a3b8]" />

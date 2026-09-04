@@ -153,11 +153,35 @@ export interface QuestionOptionProjection {
   description: string | null;
 }
 
+/** AskUserQuestion 单个问题的答案；多选题保留数组，避免丢失选择。 */
+export type QuestionAnswer = string | string[];
+
+/**
+ * 规范化不可信的 AskUserQuestion 答案，同时保留问题索引。
+ * 非法项转为空字符串而非删除，避免后续答案错配到其他 schema property。
+ */
+export function normalizeQuestionAnswers(raw: unknown): QuestionAnswer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((answer) => {
+    if (typeof answer === "string") return answer;
+    if (Array.isArray(answer)) {
+      return answer.filter((option): option is string => typeof option === "string" && option.length > 0);
+    }
+    return "";
+  });
+}
+
+/** 判断答案集合是否至少包含一个有效选项。 */
+export function hasQuestionAnswer(answers: QuestionAnswer[]): boolean {
+  return answers.some((answer) => (typeof answer === "string" ? answer.length > 0 : answer.length > 0));
+}
+
 /** AskUserQuestion 单个问题投影（来自 acp-link interactive_question 帧的 questions[] 元素） */
 export interface QuestionItemProjection {
   question: string;
   header: string | null;
   options: QuestionOptionProjection[];
+  multiSelect: boolean;
 }
 
 /**
@@ -172,8 +196,8 @@ export interface QuestionProjection {
   description: string | null;
   expiresAt: string;
   /**
-   * 决议结果：CAS 迁移成功后写入用户选择的选项 label（translator 以 outcome.optionId
-   * 回传，acp-link 直接作为答案注入）；upsert 创建时为 null；expired 不写（保持 null）。
+   * 决议结果：CAS 迁移成功后写入按问题顺序排列的答案（单选 string，多选 string[]）
+   * 的 JSON 序列化；upsert 创建时为 null，expired 不写（保持 null）。
    */
   answer: string | null;
 }
@@ -206,6 +230,7 @@ export type NormalizedEventType =
   | "permission_expired"
   | "question_requested"
   | "question_resolved"
+  | "usage_updated"
   | "turn_completed"
   | "turn_failed"
   | "turn_cancel_requested"

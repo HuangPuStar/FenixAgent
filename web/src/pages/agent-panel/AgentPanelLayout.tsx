@@ -1,12 +1,36 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import { envApi } from "@/src/api/environments";
+import { type EnterEnvironmentResponse, type EnvironmentDetail, envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
-import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
+import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
+
+interface CreatedAgentEnvironmentGateway {
+  list: () => Promise<EnvironmentDetail[]>;
+  create: (body: { name: string; agentConfigId: string; autoStart: boolean }) => Promise<EnvironmentDetail>;
+  enter: (environmentId: string) => Promise<EnterEnvironmentResponse>;
+}
+
+/** 新建 Agent 后确保关联到真实 Instance，再生成聊天路由目标。 */
+export async function resolveCreatedAgentChatTarget(
+  agentConfigId: string,
+  gateway: CreatedAgentEnvironmentGateway,
+): Promise<{ environmentId: string; instanceUid: string }> {
+  const environments = await gateway.list();
+  const existingEnvironment = environments.find((environment) => environment.agentConfigId === agentConfigId);
+  const environment =
+    existingEnvironment ??
+    (await gateway.create({
+      name: `env-${agentConfigId.slice(0, 8)}`,
+      agentConfigId,
+      autoStart: true,
+    }));
+  const entered = await gateway.enter(environment.id);
+  return { environmentId: entered.environmentId ?? environment.id, instanceUid: entered.instanceUid };
+}
 
 export function AgentPanelLayout() {
   const navigate = useNavigate();
@@ -18,6 +42,7 @@ export function AgentPanelLayout() {
     .split("/")
     .filter(Boolean);
 
+  const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
     open: false,
@@ -56,32 +81,24 @@ export function AgentPanelLayout() {
     [navigate],
   );
 
-  // 新建智能体成功后，自动查找/创建环境并导航到聊天页
+  // 新建智能体成功后，确保进入真实实例并导航到聊天页
   const handleCreateSuccess = useCallback(
     async (agentConfigId?: string) => {
       if (!agentConfigId) return;
       try {
-        // 查找是否已有绑定该 agentConfigId 的 environment
-        const envList = await unwrap(envApi.list());
-        const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agentConfigId === agentConfigId);
-        if (existingEnv) {
-          void navigate({ to: "/agent/chat/$agentId", params: { agentId: existingEnv.id } });
-          dispatchConfigChange("agents");
-          return;
-        }
-        // 没有则创建新 environment（autoStart 自动启动实例）
-        const newEnv = await unwrap(
-          envApi.create({
-            name: `env-${agentConfigId.slice(0, 8)}`,
-            agentConfigId,
-            autoStart: true,
-          }),
-        );
-        const envId = newEnv?.id;
-        if (envId) {
-          void navigate({ to: "/agent/chat/$agentId", params: { agentId: envId } });
-          dispatchConfigChange("agents");
-        }
+        const target = await resolveCreatedAgentChatTarget(agentConfigId, {
+          list: async () => {
+            const environments = await unwrap(envApi.list());
+            return Array.isArray(environments) ? environments : [];
+          },
+          create: async (body) => unwrap(envApi.create(body)),
+          enter: async (environmentId) => unwrap(envApi.enter({ id: environmentId })),
+        });
+        void navigate({
+          to: "/agent/chat/$agentId/$sessionId",
+          params: { agentId: target.environmentId, sessionId: target.instanceUid },
+        });
+        dispatchConfigChange("agents");
       } catch (e) {
         console.error("创建智能体后导航失败:", e);
       }
@@ -113,7 +130,7 @@ export function AgentPanelLayout() {
         onCreateAgent={() => setCreateDialogOpen(true)}
         onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
       />
-      <div className="agent-panel-body">
+      <div className="agent-panel-body" ref={setPanelHost}>
         <Outlet />
         <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
       </div>
@@ -121,6 +138,7 @@ export function AgentPanelLayout() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         mode="create"
+        portalContainer={panelHost}
         onSuccess={handleCreateSuccess}
       />
       <AgentFormDialog
@@ -128,6 +146,7 @@ export function AgentPanelLayout() {
         onOpenChange={(open) => setConfigDialog((prev) => ({ ...prev, open }))}
         mode="edit"
         agentName={configDialog.agentName}
+        portalContainer={panelHost}
       />
     </div>
   );

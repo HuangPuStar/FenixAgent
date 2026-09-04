@@ -38,11 +38,18 @@ function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 describe("narrate 中央入口", () => {
-  // 未匹配任何专用 narrator 时走 fallback，title 句子里的动词应该是"使用"
-  test("未匹配工具走 fallback，verb 为'使用'", () => {
+  // 未匹配任何专用 narrator 时走 fallback，title 句子应明确表达工具调用。
+  test("未匹配工具走 fallback，verb 为'调用工具'", () => {
     const tool = makeTool({ title: "SomeUnknownTool" });
     const result = narrate(tool, "complete", undefined, t);
-    expect(result.title).toContain("使用");
+    expect(result.title).toContain("调用工具");
+  });
+
+  // fallback 的路径型 detail 应压缩为末级名称，完整参数仍可在详情弹窗查看。
+  test("fallback 压缩路径型 detail", () => {
+    const tool = makeTool({ rawInput: { path: "/Users/konghayao/code/pazhou/remote-control-server" } });
+    const result = narrate(tool, "complete", undefined, t);
+    expect(result.subtitle).toBe("remote-control-server");
   });
 
   // complete 状态 title 不应包含进行时前缀"正在"

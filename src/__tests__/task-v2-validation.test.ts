@@ -75,6 +75,41 @@ describe("createTaskV2 cron 校验", () => {
     if (!result.success) expect(result.error.code).toBe("VALIDATION_ERROR");
     expect(createSpy).not.toHaveBeenCalled();
   });
+
+  // cron 各字段越界必须在 service 层拒绝，不能把明显不合理的时间写入数据库
+  test("拒绝字段取值越界的 cron 表达式", async () => {
+    const createSpy = mock(() => Promise.resolve([]));
+    stubDb({ insert: () => ({ values: () => ({ returning: createSpy }) }) });
+
+    const result = await createTaskV2(USER_ID, ORG_ID, {
+      name: "t",
+      cron: "70 34 32 * *",
+      type: "http",
+      definition: { url: "https://example.com/hook" },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("VALIDATION_ERROR");
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  // 无效时区必须在 service 层拒绝，避免 node-schedule 接收非法 tz
+  test("拒绝无效时区", async () => {
+    const createSpy = mock(() => Promise.resolve([]));
+    stubDb({ insert: () => ({ values: () => ({ returning: createSpy }) }) });
+
+    const result = await createTaskV2(USER_ID, ORG_ID, {
+      name: "t",
+      cron: "0 9 * * *",
+      timezone: "Not/A/Timezone",
+      type: "http",
+      definition: { url: "https://example.com/hook" },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("VALIDATION_ERROR");
+    expect(createSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateTaskV2 cron 校验", () => {

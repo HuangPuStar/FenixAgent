@@ -10,13 +10,15 @@ import { cn } from "../../src/lib/utils";
 
 interface TodoPanelProps {
   todos: TodoItem[];
+  embedded?: boolean;
+  title?: string;
 }
 
 // =============================================================================
 // Todo 面板 — 显示在 ChatInput 上方，紧凑迷你列表
 // =============================================================================
 
-export function TodoPanel({ todos }: TodoPanelProps) {
+export function TodoPanel({ todos, embedded = false, title }: TodoPanelProps) {
   const { t } = useTranslation("components");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -32,8 +34,9 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   const inProgress = todos.filter((t) => t.status === "in_progress").length;
 
   return (
-    <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
+    <section className={embedded ? "w-full" : "mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1"} aria-label={title}>
       <div className="rounded-lg border border-border bg-surface-2/50 overflow-hidden">
+        {title && <h3 className="px-3 pt-2 text-xs font-medium text-text-primary">{title}</h3>}
         {/* 头部 — 摘要 + 折叠按钮 */}
         <button
           type="button"
@@ -98,6 +101,6 @@ export function TodoPanel({ todos }: TodoPanelProps) {
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

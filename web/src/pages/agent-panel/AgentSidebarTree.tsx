@@ -64,6 +64,17 @@ interface AgentTreeNode {
   instances: EnvironmentInstance[];
 }
 
+/** 运行中实例稳定置前；其余状态保持 API 原始顺序。 */
+export function orderInstancesByRunningStatus(instances: EnvironmentInstance[]): EnvironmentInstance[] {
+  const running: EnvironmentInstance[] = [];
+  const other: EnvironmentInstance[] = [];
+  for (const instance of instances) {
+    if (instance.status === "running") running.push(instance);
+    else other.push(instance);
+  }
+  return [...running, ...other];
+}
+
 interface AgentSidebarTreeProps {
   selectedInstanceId: string | null;
   selectedEnvironmentId?: string | null;
@@ -191,7 +202,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   const getInstanceStatus = (instance: EnvironmentInstance) => {
     if (instance.status === "running") return "running";
     if (instance.status === "starting") return "starting";
-    if (instance.status === "error") return "error";
+    if (instance.status === "unknown") return "error";
     return "stopped";
   };
 
@@ -201,9 +212,9 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
 
   // ---- 进入智能体（manual useRequest）----
   const { run: runEnter, loading: entering } = useRequest(
-    async (node: AgentTreeNode, opts?: { instanceNumber?: number; spawnNew?: boolean }) => {
+    async (node: AgentTreeNode, opts?: { instanceUid?: string; spawnNew?: boolean }) => {
       const { agent, environment } = node;
-      const { instanceNumber, spawnNew } = opts ?? {};
+      const { instanceUid, spawnNew } = opts ?? {};
       setEnteringTargetId(agent.id);
 
       let envId = environment?.id;
@@ -225,24 +236,16 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
         await refresh();
       }
 
-      let enterResult: { instanceId?: string; environmentId?: string; sessionId?: string | null };
+      let enterResult: { instanceUid: string; environmentId: string };
 
       if (spawnNew) {
-        // 新建实例：先 spawn，再 enter 指定 instance_number
         const spawned = await unwrap(instanceApi.spawn({ environmentId: envId }));
-        const newInstanceNumber = spawned.instanceNumber;
-        if (newInstanceNumber !== undefined) {
-          enterResult = await unwrap(envApi.enter({ id: envId }, { instance_number: newInstanceNumber }));
-        } else {
-          throw new Error("Failed to get instance number after spawn");
-        }
+        enterResult = await unwrap(envApi.enter({ id: envId }, { instanceUid: spawned.instanceUid }));
       } else {
-        // 进入已有实例
-        const body = instanceNumber !== undefined ? { instance_number: instanceNumber } : {};
-        enterResult = await unwrap(envApi.enter({ id: envId }, body));
+        enterResult = await unwrap(envApi.enter({ id: envId }, instanceUid ? { instanceUid } : undefined));
       }
 
-      onSelectInstance(enterResult.instanceId ?? "", enterResult.environmentId ?? envId, enterResult.sessionId ?? null);
+      onSelectInstance(enterResult.instanceUid, enterResult.environmentId ?? envId, enterResult.instanceUid);
 
       // 刷新列表以展示新实例
       refresh();
@@ -267,10 +270,9 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       const envId = node.environment?.id;
       if (!envId) throw new Error("No environment found for restart");
 
-      setPendingInstanceId({ id: instance.id, type: "restart" });
+      setPendingInstanceId({ id: instance.instanceUid, type: "restart" });
 
-      await unwrap(instanceApi.delete({ id: instance.id }));
-      await unwrap(instanceApi.spawn({ environmentId: envId }));
+      await unwrap(instanceApi.restart({ id: instance.instanceUid }));
 
       // 通知 ChatPanel 重新连接
       window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId } }));
@@ -293,7 +295,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     async (instanceId: string) => {
       setPendingInstanceId({ id: instanceId, type: "stop" });
 
-      await unwrap(instanceApi.delete({ id: instanceId }));
+      await unwrap(instanceApi.stop({ id: instanceId }));
       await refresh();
       toast.success(t("stopSuccess"));
     },
@@ -364,14 +366,14 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       return;
     }
     setRestartTargetNode(node);
-    setSelectedRestartInstances(new Set(running.map((i) => i.id)));
+    setSelectedRestartInstances(new Set(running.map((i) => i.instanceUid)));
     setRestartDialogOpen(true);
   };
 
   const handleRestartConfirm = async () => {
     if (!restartTargetNode) return;
     const running = getRunningInstances(restartTargetNode);
-    const targets = running.filter((inst) => selectedRestartInstances.has(inst.id));
+    const targets = running.filter((inst) => selectedRestartInstances.has(inst.instanceUid));
     setRestartDialogOpen(false);
     // 逐个重启选中实例；onError 已处理 toast 通知
     for (const inst of targets) {
@@ -468,17 +470,19 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       )}
       {treeNodes.map((node) => {
         const { agent, instances } = node;
+        const orderedInstances = orderInstancesByRunningStatus(instances);
         const collapsed = !expandedAgents[agent.id];
         // 通过 entering + enteringTargetId 组合判断具体哪个 agent 正在进入
         const isEntering = entering && enteringTargetId === agent.id;
         const runningInstances = getRunningInstances(node);
         const isAgentSelected =
-          node.environment?.id === selectedEnvironmentId || instances.some((inst) => inst.id === selectedInstanceId);
+          node.environment?.id === selectedEnvironmentId ||
+          instances.some((inst) => inst.instanceUid === selectedInstanceId);
         // agent 级别的重启中状态：该 agent 下有实例正在重启
         const isRestarting =
           restarting &&
           pendingInstanceId?.type === "restart" &&
-          runningInstances.some((inst) => inst.id === pendingInstanceId?.id);
+          runningInstances.some((inst) => inst.instanceUid === pendingInstanceId?.id);
         const writable = isAgentWritable(agent);
         const displayName = getAgentDisplayName(agent);
         // 拆分 key/名称 格式：前半为标识键，后半为显示名
@@ -593,25 +597,26 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             {/* 展开的实例列表 */}
             {!collapsed && (
               <div className="mt-1 py-0.5">
-                {instances.length > 0
-                  ? instances.map((inst) => {
+                {orderedInstances.length > 0
+                  ? orderedInstances.map((inst) => {
                       // per-instance 操作状态：通过 pendingInstanceId 精确匹配实例 ID 和操作类型
                       const isInstRestarting =
-                        pendingInstanceId?.id === inst.id && pendingInstanceId?.type === "restart";
-                      const isInstStopping = pendingInstanceId?.id === inst.id && pendingInstanceId?.type === "stop";
+                        pendingInstanceId?.id === inst.instanceUid && pendingInstanceId?.type === "restart";
+                      const isInstStopping =
+                        pendingInstanceId?.id === inst.instanceUid && pendingInstanceId?.type === "stop";
                       return (
                         <div
-                          key={inst.id}
+                          key={inst.instanceUid}
                           className={[
                             "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
-                            selectedInstanceId === inst.id
+                            selectedInstanceId === inst.instanceUid
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
                           ].join(" ")}
-                          onClick={() => runEnter(node, { instanceNumber: inst.instanceNumber })}
+                          onClick={() => runEnter(node, { instanceUid: inst.instanceUid })}
                         >
                           <span className={`status-dot ${getInstanceStatus(inst)}`} />
-                          <span className="truncate">{t("instanceN", { number: inst.instanceNumber })}</span>
+                          <span className="truncate">{inst.name}</span>
                           <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
@@ -631,7 +636,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                               disabled={isInstStopping}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                runStop(inst.id);
+                                runStop(inst.instanceUid);
                               }}
                               title={t("stop")}
                             >
@@ -671,11 +676,15 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 <Checkbox
                   checked={
                     getRunningInstances(restartTargetNode).length > 0 &&
-                    getRunningInstances(restartTargetNode).every((inst) => selectedRestartInstances.has(inst.id))
+                    getRunningInstances(restartTargetNode).every((inst) =>
+                      selectedRestartInstances.has(inst.instanceUid),
+                    )
                   }
                   onCheckedChange={(checked) => {
                     if (checked) {
-                      setSelectedRestartInstances(new Set(getRunningInstances(restartTargetNode).map((i) => i.id)));
+                      setSelectedRestartInstances(
+                        new Set(getRunningInstances(restartTargetNode).map((i) => i.instanceUid)),
+                      );
                     } else {
                       setSelectedRestartInstances(new Set());
                     }
@@ -684,19 +693,19 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 {t("selectAll")}
               </label>
               {getRunningInstances(restartTargetNode).map((inst) => (
-                <label key={inst.id} className="flex items-center gap-2 px-2 py-1 text-sm">
+                <label key={inst.instanceUid} className="flex items-center gap-2 px-2 py-1 text-sm">
                   <Checkbox
-                    checked={selectedRestartInstances.has(inst.id)}
+                    checked={selectedRestartInstances.has(inst.instanceUid)}
                     onCheckedChange={(checked) => {
                       setSelectedRestartInstances((prev) => {
                         const next = new Set(prev);
-                        if (checked) next.add(inst.id);
-                        else next.delete(inst.id);
+                        if (checked) next.add(inst.instanceUid);
+                        else next.delete(inst.instanceUid);
                         return next;
                       });
                     }}
                   />
-                  {t("instanceN", { number: inst.instanceNumber })}
+                  {inst.name}
                 </label>
               ))}
             </div>

@@ -438,6 +438,13 @@ export const UpdateAgentResponseSchema = WebOkSchema(
     .describe("更新后的 Agent 返回数据。"),
 ).describe("更新 Agent 响应。");
 
+export const RestartAgentResponseSchema = WebOkSchema(
+  z.object({
+    environmentIds: z.array(z.string()).describe("绑定该 Agent 的 Environment ID。"),
+    restartedInstanceIds: z.array(z.string()).describe("已完成 runtime 重启的持久 Agent Instance ID。"),
+  }),
+).describe("重启 Agent 运行实例响应。");
+
 export const DeleteAgentResponseSchema = z
   .object({
     success: z.literal(true).describe("接口调用成功。"),
@@ -521,7 +528,7 @@ export const SkillSourceInfoSchema = z.object({
 
 export const McpServerInfoSchema = z.object({
   name: z.string(),
-  type: z.enum(["local", "remote", "disabled"]),
+  type: z.enum(["local", "remote", "streamable-http", "disabled"]),
   enabled: z.boolean(),
   summary: z.string(),
   timeout: z.number().optional(),

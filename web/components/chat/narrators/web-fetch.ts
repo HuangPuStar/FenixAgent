@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const webFetchNarrator: ToolNarrator = {
   kinds: ["web-fetch"],
-  verb: "抓取",
+  verb: "访问网页",
   icon: Globe,
   getDisplay(ctx) {
     const url = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.url ?? "");

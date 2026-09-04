@@ -40,9 +40,9 @@ describe("globNarrator", () => {
     expect(globNarrator.kinds).toContain("glob");
   });
 
-  // 中文动词必须是"查找"（区别于 Grep 的"搜索"）
-  test("verb 是 '查找'", () => {
-    expect(globNarrator.verb).toBe("查找");
+  // 中文动作必须明确表达文件查找行为
+  test("verb 是 '查找文件'", () => {
+    expect(globNarrator.verb).toBe("查找文件");
   });
 
   // pattern 作为 object（与 verb 拼 title 时为"查找 {pattern}"）

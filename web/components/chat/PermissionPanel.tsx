@@ -1,4 +1,5 @@
-import { Check, ShieldAlert, X } from "lucide-react";
+import { ChevronDown, KeyRound, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "../../src/lib/types";
 import { cn } from "../../src/lib/utils";
@@ -10,7 +11,7 @@ import { Button } from "../ui/button";
 
 interface PermissionPanelProps {
   requests: PendingPermission[];
-  onRespond?: (requestId: string, approved: boolean) => void;
+  onRespond?: (requestId: string, optionId: string | null) => void;
   className?: string;
 }
 
@@ -18,7 +19,7 @@ export function PermissionPanel({ requests, onRespond, className }: PermissionPa
   if (requests.length === 0) return null;
 
   return (
-    <div className={cn("w-full max-w-3xl mx-auto px-4", className)}>
+    <div className={cn("chat-interaction-stack", className)}>
       <div className="space-y-2">
         {requests.map((req) => (
           <PermissionCard key={req.requestId} request={req} onRespond={onRespond} />
@@ -34,39 +35,54 @@ export function PermissionPanel({ requests, onRespond, className }: PermissionPa
 
 interface PermissionCardProps {
   request: PendingPermission;
-  onRespond?: (requestId: string, approved: boolean) => void;
+  onRespond?: (requestId: string, optionId: string | null) => void;
 }
 
 function PermissionCard({ request, onRespond }: PermissionCardProps) {
   const { t } = useTranslation("components");
+  const [collapsed, setCollapsed] = useState(false);
+  const inputSummary = Object.keys(request.toolInput).length > 0 ? JSON.stringify(request.toolInput) : null;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-warning-border/30 bg-warning-bg/50 px-4 py-3">
-      <ShieldAlert className="h-5 w-5 text-warning-text flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-warning-text">{request.toolName}</div>
-        {request.description && (
-          <div className="text-xs text-warning-text/80 mt-0.5 truncate">{request.description}</div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <Button
-          size="sm"
-          onClick={() => onRespond?.(request.requestId, true)}
-          className="h-8 px-3 bg-brand text-white text-xs font-medium hover:bg-brand-light gap-1.5"
-        >
-          <Check className="h-3.5 w-3.5" />
-          {t("permissionPanel.allow")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onRespond?.(request.requestId, false)}
-          className="h-8 px-3 border-warning-border/30 text-warning-text text-xs font-medium hover:bg-warning-bg gap-1.5"
-        >
-          <X className="h-3.5 w-3.5" />
-          {t("permissionPanel.deny")}
-        </Button>
-      </div>
-    </div>
+    <section className="chat-interaction-region" aria-label={t("permissionPanel.title")}>
+      <header>
+        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>
+          <span className="chat-interaction-icon">
+            <KeyRound />
+          </span>
+          <strong>{t("permissionPanel.title")}</strong>
+          <small>{t("permissionPanel.waiting")}</small>
+          <ChevronDown className={collapsed ? "is-collapsed" : undefined} />
+        </button>
+      </header>
+      {!collapsed && (
+        <div className="chat-permission-body">
+          <div className="chat-permission-copy">
+            <span>{t("permissionPanel.aboutToRun")}</span>
+            <strong>{request.toolName}</strong>
+            {request.description && <p>{request.description}</p>}
+          </div>
+          {inputSummary && <code>{inputSummary}</code>}
+          <p className="chat-permission-audit">
+            <ShieldCheck />
+            {t("permissionPanel.audit")}
+          </p>
+          <footer>
+            {(request.options ?? []).map((option) => (
+              <Button
+                key={option.optionId}
+                type="button"
+                variant={
+                  option.kind.startsWith("reject") ? "ghost" : option.kind === "allow_once" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() => onRespond?.(request.requestId, option.optionId)}
+              >
+                {option.name}
+              </Button>
+            ))}
+          </footer>
+        </div>
+      )}
+    </section>
   );
 }

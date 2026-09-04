@@ -158,9 +158,9 @@ describe("round16 isolated protocol and boundary coverage", () => {
     expect(resolveApiKey(null)).toBeNull();
   });
 
-  // Key hint 仅暴露末四位，短密钥统一掩码。
+  // Key hint 仅暴露前四位和后三位，短密钥统一掩码。
   test("API Key 提示掩码不泄露完整密钥", () => {
-    expect(toKeyHint("abcdefgh")).toBe("***efgh");
+    expect(toKeyHint("abcdefgh")).toBe("abcd***fgh");
     expect(toKeyHint("abc")).toBe("*******");
     expect(toKeyHint(null)).toBe("*******");
   });
@@ -305,10 +305,9 @@ describe("round16 isolated protocol and boundary coverage", () => {
     expect(isMachineOfflineError(new Error("网络波动"))).toBe(false);
   });
 
-  // 两种配置性永久失败应返回稳定的客户端诊断码。
+  // 配置性永久失败应返回稳定的客户端诊断码。
   test("永久 spawn 失败映射为稳定诊断码", () => {
     expect(classifyPermanentSpawnFailure(new AppError("禁用", "AUTO_START_DISABLED"))).toBe("auto_start_disabled");
-    expect(classifyPermanentSpawnFailure(new AppError("已满", "MAX_SESSIONS_REACHED"))).toBe("max_sessions_reached");
   });
 
   // MCP 分页参数应把字符串查询安全转换为受限整数。

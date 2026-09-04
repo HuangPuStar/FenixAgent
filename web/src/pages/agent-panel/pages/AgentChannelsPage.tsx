@@ -13,8 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { channelApi } from "@/src/api/channels";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { AgentCardList } from "../shared/AgentCardList";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 type ChannelBinding = {
   id: string;
@@ -99,7 +100,7 @@ export function AgentChannelsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <AppPage>
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
             <Skeleton className="h-[22px] w-28 rounded-md" />
@@ -114,13 +115,13 @@ export function AgentChannelsPage() {
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <AgentPageHeader
+    <AppPage>
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={<Button onClick={handleCreate}>{t("btn.create")}</Button>}
@@ -205,6 +206,6 @@ export function AgentChannelsPage() {
         variant="destructive"
         onConfirm={() => runDelete(deleteTarget!)}
       />
-    </div>
+    </AppPage>
   );
 }
