@@ -14,6 +14,7 @@
         "@fenix/model-gateway-litellm": "workspace:*",
         "@fenix/model-gateway-sdk": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
+        "@fenix/server-runtime": "workspace:*",
         "@hookform/resolvers": "^5.4.0",
         "@keyv/redis": "^5.1.6",
         "@lobehub/icons": "^5.10.0",
@@ -256,6 +257,13 @@
       "name": "@fenix/sandbox-provider",
       "version": "0.1.0",
     },
+    "packages/server-runtime": {
+      "name": "@fenix/server-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "elysia": "^1.4.28",
+      },
+    },
     "packages/workflow-engine": {
       "name": "@fenix/workflow-engine",
       "version": "0.1.0",
@@ -267,7 +275,7 @@
   "overrides": {
     "@better-auth/core": "1.6.11",
     "@better-auth/utils": "0.4.0",
-    "dompurify": ">=3.4.9",
+    "dompurify": "^3.4.11",
     "hono": ">=4.12.25",
     "kysely": "0.28.17",
   },
@@ -621,6 +629,8 @@
     "@fenix/remote-runtime": ["@fenix/remote-runtime@workspace:packages/remote-runtime"],
 
     "@fenix/sandbox-provider": ["@fenix/sandbox-provider@workspace:packages/sandbox-provider"],
+
+    "@fenix/server-runtime": ["@fenix/server-runtime@workspace:packages/server-runtime"],
 
     "@fenix/workflow-engine": ["@fenix/workflow-engine@workspace:packages/workflow-engine"],
 
