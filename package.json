@@ -12,11 +12,12 @@
     "@better-auth/core": "1.6.11",
     "@better-auth/utils": "0.4.0",
     "hono": ">=4.12.25",
-    "dompurify": ">=3.4.9"
+    "dompurify": "^3.4.11"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
     "dev:web": "cd web && bunx vite",
+    "example:app-builder": "bun run src/application/examples/run-minimal-custom-application.ts",
     "start": "bun run src/index.ts",
     "db:push": "bunx drizzle-kit push",
     "db:generate": "bunx drizzle-kit generate",
@@ -45,6 +46,7 @@
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",
     "@fenix/sandbox-provider": "workspace:*",
+    "@fenix/server-runtime": "workspace:*",
     "@hookform/resolvers": "^5.4.0",
     "@keyv/redis": "^5.1.6",
     "@lobehub/icons": "^5.10.0",

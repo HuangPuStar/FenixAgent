@@ -455,10 +455,11 @@ app.put(
   async ({ store, params, body, error }: any) => {
     const authCtx = store.authContext!;
     const name = params.name as string;
+    const result = await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, response) =>
+      error(status, response),
+    );
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return (await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, result) =>
-      error(status, result),
-    )) as any;
+    return result as any;
   },
   {
     sessionAuth: true,
