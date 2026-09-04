@@ -138,6 +138,10 @@ function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): 
 
   if (data.name !== undefined && data.name.trim().length === 0) return "任务名称不能为空";
 
+  // 创建 Agent 任务时，归属 Agent 是基础跨字段约束。先于 definition
+  // 校验返回，使调用方能先补齐决定执行身份的必填字段。
+  if (!isUpdate && data.type === "agent" && !data.agentId?.trim()) return "Agent 任务必须指定 agentId";
+
   if (data.definition !== undefined) {
     const definition = data.definition;
     if (data.type === "http") {
@@ -162,8 +166,6 @@ function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): 
       if (typeof definition.prompt !== "string" || definition.prompt.trim().length === 0) return "Prompt 不能为空";
     }
   }
-
-  if (!isUpdate && data.type === "agent" && !data.agentId?.trim()) return "Agent 任务必须指定 agentId";
 
   return null;
 }

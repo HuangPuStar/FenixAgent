@@ -129,9 +129,9 @@ describe("MCP editor conversion", () => {
 });
 
 describe("plugin marketplace filters", () => {
-  // 目录名称保持 MCP 自身名称，来源组织由独立元信息展示，避免重复前缀。
-  test("keeps shared MCP display name free of organization prefix", () => {
-    expect(getMcpDisplayName(servers[1])).toBe("browser-control");
+  // 共享目录必须显示来源组织，避免不同组织的同名 MCP 无法区分。
+  test("includes the source organization in a shared MCP display name", () => {
+    expect(getMcpDisplayName(servers[1])).toBe("共享团队/browser-control");
   });
 
   // 本组织与公开筛选分别依据 ownership 和 publicReadable。

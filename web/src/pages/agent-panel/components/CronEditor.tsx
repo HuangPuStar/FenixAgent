@@ -96,7 +96,7 @@ function validateCron(value: string, timezone: string): string | undefined {
   if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
   try {
     parseExpression(value, timezone.trim() ? { tz: timezone.trim() } : undefined);
-    return undefined;
+    return;
   } catch {
     return "Cron 表达式无效，请检查字段取值范围";
   }
