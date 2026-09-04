@@ -8,8 +8,9 @@
 
 ### 1.1 `src/` 后端主服务源码
 
-- `src/index.ts`：服务启动入口，负责装配插件、路由、启动阶段任务，例如数据迁移。
-- `src/openapi.ts`：统一维护 OpenAPI / Scalar 文档插件与全局 tag 定义，供入口按 `/api` 和 `/web` 两套文档分别挂载。
+- `src/index.ts`：社区进程入口，只负责环境配置、创建默认应用、listen 和 signal/退出策略。
+- `src/application/`：社区 base app、代码级 ApplicationProfile 与 ServerModule 装配；拥有启动顺序和进程级资源释放。
+- `src/openapi.ts`：统一维护 OpenAPI / Scalar 文档配置与全局 tag 定义，供 base app 挂载 `/api` 和 `/web` 两套文档。
 - `src/routes/`：HTTP / WebSocket 路由定义。
 - `src/routes/web/`：控制台前端使用的内部业务 API。
 - `src/routes/api/`：对外开放的稳定 API。
@@ -34,8 +35,9 @@
 ### 1.2 `packages/` 可插拔能力包
 
 - `packages/*` 放独立 workspace 包。
-- 适合放运行时插件、协议适配器、SDK、可替换执行引擎、独立封装的服务接入层。
-- 原则上主服务只依赖抽象和包导出的稳定接口，不直接耦合包内部实现细节。
+- `packages/server-runtime/` 提供与业务无关的 ApplicationBuilder、ApplicationRuntime 和 ServerModule 生命周期契约。
+- 适合放运行时适配器、协议适配器、SDK、可替换执行引擎、独立封装的服务接入层。
+- 原则上主服务只依赖抽象和包导出的稳定接口，不直接耦合包内部实现细节；packages 不得反向 import 根 `src/**`。
 
 ### 1.3 `drizzle/` 数据库迁移目录
 

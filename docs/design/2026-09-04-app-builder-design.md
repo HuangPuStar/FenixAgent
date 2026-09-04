@@ -1,8 +1,14 @@
 # App Builder 设计
 
-> 状态：草案，待评审；日期：2026-09-04；实施阶段：Phase A（仅设计，尚未编码）
+> 状态：草案，基础原型正在按设计评审修订，待维护者评审与 Linux CI 验证；日期：2026-09-04；最后校准：2026-09-04
 >
 > 本文同时描述本期 App Builder 的实现契约，以及它与未来企业版、定制版和 Git submodule 路线的关系。带“长期目标”标记的内容不属于本期交付。
+
+## 文档职责
+
+本文是可随评审和实现证据修订的详细设计，负责说明问题、范围、接口、时序、兼容要求、验证方式和后续演进边界。`docs/adr/0001-application-profile-composition.md` 是对应的架构决策记录，只保留需要长期遵守的决策、理由与后果；它在本文通过评审和实现验证前保持“提议中”，不复制本文的实现步骤和未来模块清单。
+
+实现完成后的真实目录和调用关系记录在当前态架构文档中。三类文档分别回答“准备怎样设计”“为何作出这项长期决策”和“代码现在实际怎样运行”，不能用 ADR 代替尚未完成的设计评审，也不能让设计文档声称尚未落地的结构已经存在。
 
 ## 背景
 
@@ -112,8 +118,9 @@ App Builder 负责建立统一 disposer seam，但本期不冒充已经解决 `d
 6. 构造应用不连接外部系统、不启动 timer、不 listen、不注册 signal。
 7. 保持默认 Profile 的 HTTP、WebSocket、OpenAPI、鉴权和前端行为。
 8. 保持默认 `App` 的完整 Elysia/Eden 类型。
-9. 用 Channels 和 Agent Sites 验证一个带后台生命周期的 Module 和一个带最终 fallback 的纯路由 Module。
-10. 将通用 Builder/Runtime 放入独立 package，且不依赖 Fenix 业务实现。
+9. 用 package 内的可执行源码示例和单元测试，以小型测试 Module 验证增减、顺序、路由类型和生命周期，不为证明机制而人为拆分生产模块。
+10. 默认社区装配先以一个过渡性 Module 接入现有完整业务聚合，保持原有 route 和启动顺序。
+11. 将通用 Builder/Runtime 放入独立 package，且不依赖 Fenix 业务实现。
 
 ### 本期非目标
 
@@ -124,6 +131,8 @@ App Builder 负责建立统一 disposer seam，但本期不冒充已经解决 `d
 - 通用 DI 容器或 Service Locator；
 - 同名 Module、service 或 route 覆盖；
 - 公共 auth/permission/resource contract；
+- 为演示 App Builder 而拆分现有生产路由或启动链；
+- 确定 Channels、Agent Sites、Workflow、Knowledge 等业务能力的长期 Module 边界；
 - 领域代码迁入 packages；
 - 多个真实 Fenix app 在同一进程并行运行；
 - 数据库 schema/迁移拆分；
@@ -139,12 +148,12 @@ App Builder 负责建立统一 disposer seam，但本期不冒充已经解决 `d
 | ApplicationBuilder | 校验 Profile、构造 base app、按顺序合并 ServerModule routes | 业务依赖解析、认证、配置发现 |
 | Application Runtime | 协调 Module start、listen、fail-fast unwind 和 stop | `process.exit()`、signal 策略、持久化回滚、领域业务 |
 | ServerModule | 一个 edition 中可整体增减的路由与生命周期装配单元 | 自动成为 CE/EE 共享业务包 |
-| ApplicationProfile | 有名称、有固定顺序的 `ServerModule` const tuple | 运行期变更、隐式覆盖 |
+| ApplicationProfile | 有名称、通过 fluent `.use(module)` 声明固定顺序的代码级配置 | 运行期变更、隐式覆盖 |
 | Base App | edition 自己提供的 Elysia 横切内核 | 业务 routes 与后台能力 |
 | Module factory | 通过类型化参数把 edition 依赖注入 Module 闭包 | 从全局容器按 token 查找依赖 |
 | Domain Application Module | 承载命令、事务、授权和补偿的领域边界 | 进程级 Elysia 装配 |
 
-`ServerModule` 和领域 Application Module 不是同一抽象。一个 Module 可以暂时聚合多个尚未拆分的 CE 领域；一个成熟领域也可能由多个协议 adapter 使用。App Builder 不改变 `routes → services → repositories → db` 的依赖方向。
+`ServerModule` 和领域 Application Module 不是同一抽象。一个 ServerModule 可以暂时聚合多个尚未拆分的 CE 领域；一个成熟领域也可能由多个协议 adapter 使用。App Builder 只规定已有边界如何装配，不负责发现或证明业务边界，也不改变 `routes → services → repositories → db` 的依赖方向。生产 Profile 的 Module 粒度可以暂时很粗；在没有领域依据时，粗而真实的边界优于为了展示 `.use(module)` 而形成的任意半拆分。
 
 ## 总体架构
 
@@ -158,12 +167,8 @@ flowchart TB
     subgraph CE["src/application — CE composition"]
         Base["createCommunityBaseApp"]
         Profile["communityDefaultProfile"]
-        Platform["communityPlatformModule"]
-        Channels["channelsModule"]
-        Sites["agentSitesModule"]
-        Profile --> Platform
-        Profile --> Channels
-        Profile --> Sites
+        Legacy["legacyCommunityModule<br/>过渡性完整业务聚合"]
+        Profile --> Legacy
     end
 
     subgraph RuntimePkg["@fenix/server-runtime"]
@@ -222,27 +227,26 @@ export interface ServerModule<TRoutes extends AnyElysia = AnyElysia> {
   readonly name: string;
   createRoutes(): TRoutes;
   start?(context: ModuleStartContext):
-    | void
+    | undefined
     | ModuleDisposer
-    | Promise<void | ModuleDisposer>;
+    | Promise<undefined | ModuleDisposer>;
 }
 ```
 
 设计理由：
 
 - Runtime 只传取消信号，不传 host context、cleanup registrar 或 service map。
-- Module factory 以闭包接收窄依赖，例如：
+- 未来提取出有领域依据的 Module 后，其 factory 以闭包接收窄依赖，例如：
 
 ```ts
-createChannelsModule({
+createDomainModule({
   createRoutes,
-  hermesUrl,
-  startHermes,
+  applicationService,
 });
 ```
 
 - Module 只有在完整启动成功后才返回 disposer；Runtime 将它与 Module 名一起记录。
-- `start()` 若成功后留下 timer、socket、连接池、订阅、子进程等进程级易失资源，就必须返回覆盖全部这些资源的 disposer；返回 `void` 等价于声明没有需要 Runtime 管理的资源。
+- `start()` 若成功后留下 timer、socket、连接池、订阅、子进程等进程级易失资源，就必须返回覆盖全部这些资源的 disposer；返回 `undefined` 等价于声明没有需要 Runtime 管理的资源。
 - 一个 Module 拥有多个易失资源时，由它返回的单一 disposer 按领域正确顺序释放；Runtime 不管理 Module 内部步骤。
 - 当前 Module 启动到一半失败时，其局部状态不进入 Runtime disposer 栈；Module 可以在安全且简单时自行清理，但这不是通用 Runtime 的事务式保证。
 - `signal` 允许 stop 与 startup 并发时请求合作式取消；当前不支持 signal 的旧初始化函数可以在步骤之间检查取消，后续再逐项下传。
@@ -250,57 +254,59 @@ createChannelsModule({
 
 ### ApplicationProfile
 
+Profile 是静态 TypeScript 配置函数，通过 fluent builder 逐项声明 Module：
+
 ```ts
-export interface ApplicationProfile<
-  TModules extends readonly ServerModule[] = readonly ServerModule[],
-> {
-  readonly name: string;
-  readonly modules: TModules;
-}
+const communityDefaultProfile = {
+  name: "community-default",
+  configure(builder: ApplicationBuilder<CommunityBaseApp>) {
+    return builder.use(legacyCommunityModule);
+  },
+};
 ```
 
-Profile 是源码配置，不是用户输入。ApplicationBuilder 在调用任何 routes factory 或 `start()` 前完成：
-
-1. Profile 名称非空；
-2. Module 名称非空；
-3. Module 名称唯一。
-
-Builder 不解析依赖 token，不自动排序。依赖通过工厂参数在 TypeScript 中显式满足；生命周期顺序由 Profile 作者审查。
+它不是运行期数组，也不是用户输入。每次 `.use(module)` 都在调用 routes factory 前检查 Module 名称非空且不重复；Builder 不解析依赖 token、不自动排序。依赖通过 Module factory 参数在 TypeScript 中显式满足，生命周期顺序由 Profile 中可见的调用顺序决定。
 
 ### ApplicationBuilder
 
 概念接口：
 
 ```ts
-const runtime = new ApplicationBuilder({
+const builder = ApplicationBuilder.create({
+  profileName: profile.name,
   createBaseApp,
-  profile,
-}).build();
+});
+const runtime = profile.configure(builder).build();
 
 await runtime.start(listenOptions);
 await runtime.stop();
 ```
 
-`createBaseApp()` 与 ServerModule routes tuple 都保留具体 Elysia 类型。ApplicationBuilder 的实现允许一个最小、局部的 tuple 类型转换，因为 JavaScript `map()` 会丢失 tuple 形状；禁止使用 `as any`，并用编译期测试证明结果 route tree。
+每次 `.use(module)` 返回携带新 Elysia route tree 与 Module 顺序的新 builder 描述，但不立即构造 Elysia 实例；`build()` 才执行纯 routes factories，并按 Profile 顺序逐个 `.use(instance)`。类型层不会在每一步重新展开完整 Elysia 状态，而是保留具体 app 并惰性累积 Module 的 Eden `~Routes`；非空 base prefix 使用 Elysia 导出的 `CreateEden` 映射到最终 route tree。
+
+### 可执行组合示例
+
+`packages/server-runtime/src/examples/profile-composition.ts` 使用同一个 base app 和同一组小型 Module 构造 `public-example` 与 `internal-example` 两个不同应用。前者只包含 messages routes，后者额外包含 admin routes；示例同时记录所选 Module 的启动和逆序释放事件。
+
+该文件是源码级沟通入口，可通过 `bun run --cwd packages/server-runtime example` 直接执行，并由测试导入验证路由集合、静态类型和生命周期，避免文档片段随 API 演进失效。它不读取 Fenix 配置或外部资源，不作为第二个社区服务入口，也不从 package 根入口导出。
 
 ### Module factory，而非依赖容器
 
 ```ts
-const channelsModule = createChannelsModule({
-  createRoutes: createCommunityChannelsRoutes,
-  hermesUrl: config.hermesUrl,
-  initHermesClient,
+const domainModule = createDomainModule({
+  createRoutes: createDomainRoutes,
+  applicationService,
 });
 ```
 
-Module factory 的 options 是该 Module 的公开依赖边界。不得传入以下对象：
+该示例描述未来已经确认边界的 Module，并不表示本期要创建通用 `DomainModule` 抽象。Module factory 的 options 是该 Module 的公开依赖边界。不得传入以下对象：
 
 - 全部 services/repositories 的 map；
 - 可按字符串 token 任意读取对象的 container；
 - 整个请求认证上下文；
 - 允许 Module 绕过所属领域接口的 DB/service locator。
 
-若 options 逐渐膨胀，应重新检查 Module 是否过粗或领域 service 是否缺少深接口，而不是把参数收回全局容器。
+未来真实业务 Module 的 options 若逐渐膨胀，应重新检查边界是否过粗或领域 service 是否缺少深接口，而不是把参数收回全局容器。`legacyCommunityModule` 为迁移现有入口而聚合 CE 装配参数，是明确的过渡例外；它保持仓库内部可见且不定义可复用的稳定 factory 契约，退出条件是相关能力按上述领域标准逐步提取。
 
 ## 生命周期语义
 
@@ -342,7 +348,7 @@ sequenceDiagram
 
     Entry->>Builder: build(base factory, profile)
     Builder->>Builder: validate profile
-    Builder->>App: create base + routes tuple
+    Builder->>App: create base + sequential module routes
     Builder-->>Entry: runtime(app)
     Entry->>Runtime: start(listenOptions)
     Runtime->>F1: start(signal)
@@ -397,9 +403,9 @@ unwind 的目的只是避免测试、嵌入式宿主和 listen 失败遗留已�
 ```text
 app.stop()：停止新接入并等待框架 stop 语义
 → abort lifecycle signal
-→ Channels disposer：Hermes
-→ community platform disposer（Module 内部顺序）：
-   monitors/timers
+→ legacy community disposer（Module 内部顺序）：
+   Hermes
+   → monitors/timers
    → Scheduler future jobs
    → relay/ACP/file-ws connections
    → Agent instances
@@ -420,7 +426,7 @@ app.stop()：停止新接入并等待框架 stop 语义
 
 `@fenix/server-runtime` 不注册 signal。社区入口：
 
-1. 为 SIGINT/SIGTERM 注册一次 handler；
+1. 为 SIGINT/SIGTERM 注册持久 handler；
 2. 首次 signal 调用 `runtime.stop()`；
 3. 记录停止成功或失败；
 4. 由入口决定退出码；
@@ -455,48 +461,35 @@ better-auth 属于 CE base app，不属于通用 Runtime。未来其他 edition 
 ```ts
 const communityDefaultProfile = {
   name: "community-default",
-  modules: [
-    communityPlatformModule,
-    channelsModule,
-    agentSitesModule,
-  ] as const,
+  configure(builder: ApplicationBuilder<CommunityBaseApp>) {
+    return builder.use(legacyCommunityModule);
+  },
 };
 ```
 
-| Module | 本期定位 | Routes | 生命周期 |
-| --- | --- | --- | --- |
-| `community-platform` | CE 主体组合，非跨 edition 公共业务内核 | 除 Channels/Agent Sites 外的 Web、skill、API、Workflow proxy、Knowledge MCP、ACP | 当前主要 bootstrap、monitors 和 core cleanup |
-| `channels` | CE 可选 Module | `/web/channels/*` | Hermes start/stop |
-| `agent-sites` | CE 可选且必须最后 | `/web/agent-sites/*`、`/web/site/deploy/*`、`/app-*` fallback | 无 |
+`legacyCommunityModule` 是现有社区应用的过渡性适配边界，而不是新发现的领域或平台边界。它完整拥有当前业务 routes 聚合和既有启动/释放链；命名中的 `legacy` 明确表示该粒度用于无行为变化地接入 Runtime，不能被解释为长期公共 API、企业扩展点或高度内聚的业务模块。
 
-默认 Profile 全量包含三者，不新增环境变量开关。自定义代码级 Profile 可以省略后两者；本期不承诺省略 `community-platform` 后得到可运行产品。
+`src/routes/web/index.ts` 继续聚合 Channels、Agent Sites 及其他现有 Web routes。这个聚合不会阻止 App Builder 工作：`createRoutes()` 可以直接返回包含它的完整 Elysia route tree。它只意味着默认 Profile 暂时不能单独省略其中某个能力，这是当前业务尚未完成模块边界分析的真实状态。
 
-### 路由顺序变化
+### 为什么本期不拆生产 Module
 
-当前 Channels/Agent Sites 位于 `webApp` 内部。抽取后，community platform routes 先注册，Channels routes 后注册，Agent Sites 最后注册。该变化可接受的前提：
+曾考虑把 Channels 和 Agent Sites 作为首批真实 Module，以演示一个带 Hermes 生命周期的能力和一个带最终 fallback 的纯路由能力。这个选择只能证明技术上可以拆，不能证明它们是正确的领域边界；抽取后剩余内容会成为按排除法形成的 `communityPlatformModule`，其成员没有共同领域语义，却会在 Profile 中被误读为已经确认的平台内核。
 
-- Channels 使用独立 `/web/channels/*`；
-- Agent Sites 管理路由使用独立 `/web/agent-sites/*`；
-- deploy proxy 使用独立 `/web/site/deploy/*`；
-- 唯一 catch-all 是 `/app-*` compat，仍然保持全局最后；
-- 回归测试验证无同 method/path 冲突，OpenAPI 路径集合不变。
+因此本期采用以下边界：
 
-OpenAPI 文档中的 path 输出顺序可能变化，但 path、schema、tag 和响应协议不能变化。
+- 生产默认 Profile 只有一个过渡性社区 Module，不声称已经完成业务模块化；
+- Channels 和 Agent Sites 保持原 route 聚合、启动位置和相对顺序；
+- Module 增减、route 类型累积、fail-fast 和 disposer 顺序由源码示例中的小型 Module 及其测试完整证明；
+- 应用级测试证明真实社区应用能够通过 Builder 构造和 Runtime 启停，并保持现有协议与行为；
+- 不以演示 App Builder 为理由改变生产模块所有权。
 
-### 启动顺序变化
+粗粒度降低了首期可裁剪能力，但避免把测试需要伪装成生产架构。App Builder 的成立不以默认 Profile 至少包含多个 Module 为条件。
 
-Module 所有权要求 Hermes 由 Channels 自己启动。目标顺序会变成：
+### 路由与启动顺序
 
-```text
-community-platform 全部启动
-→ Channels/Hermes
-→ Agent Sites（无副作用）
-→ listen
-```
+本期不从 `src/routes/web/index.ts` 移出 Channels 或 Agent Sites，也不调整 Hermes 相对 RagFlow、monitors 等启动步骤的位置。现有 route precedence、OpenAPI path 输出和启动顺序原样进入 `legacyCommunityModule`；唯一独立调整仍是环境校验早于显式外部启动副作用。
 
-因此 RagFlow probe 和 monitors 可能早于 Hermes，而当前顺序是 Hermes 早于 RagFlow/monitors。它们之间不存在已知依赖；保留 shutdown 中 Hermes 先于 platform cleanup。该调整必须在设计评审中显式接受，并通过 Hermes、RagFlow 和 monitor 回归测试验证，不能称为完全零顺序变化。
-
-若验证发现真实依赖，不增加通用 lifecycle phase 或优先级系统；应先按真实依赖重新划分 Module 边界。
+正常停止统一进入 Module disposer，并补齐 `app.stop()` 和 machine sweep 释放，但这不改变各业务能力的模块归属。未来提取真实 Module 时，route 与启动顺序变化必须在对应 PR 中基于依赖证据单独评估。
 
 ## 失败、并发与可观测性
 
@@ -549,13 +542,18 @@ App Builder 不参与请求级认证授权，但必须守住装配边界：
 
 ### 类型保持
 
-Elysia 1.4.28 提供 `.use<const Instances extends AnyElysia[]>(instances)` 的 tuple overload。实现使用 const Profile，并把 `createRoutes()` 的结果映射为可变 Elysia instance tuple。需要局部类型收窄时：
+Builder 的运行时装配按 Profile 顺序逐个调用 Elysia 官方 `.use(instance)`，但类型层不会在每一步重新展开已经很大的完整 Elysia 状态。空 base prefix 保留具体 app 类型，并惰性相交 Module route factory 返回类型的 `~Routes`；非空 base prefix 使用 Elysia 导出的 `CreateEden` 将 Module route tree 映射到该前缀下。这样既保留 Eden route inference，也避免默认社区应用触发 TypeScript 递归展开深度上限。
 
-- 只允许封装在 `@fenix/server-runtime` 内；
-- 不使用 `as any`；
-- 运行时顺序和 tuple 索引一一对应；
-- 用类型测试证明默认 `App` 包含完整 route tree；
-- 自定义 Profile 的类型只包含实际装配 routes。
+`legacy-community` 的 route tree 已足够大，因此该过渡 Module 使用一个有序 `as const` route tuple 作为唯一来源：运行时循环该 tuple 并逐个执行 `.use(instance)`，静态类型从同一 tuple 的 `~Routes` 推导交集，再规范化为仅携带该 route tree 的 Elysia 类型。该 tuple 不传给 Elysia 的 `.use(tuple)` overload。局部 `unknown` 类型断言只跨越由同一顺序来源证明的编译器深度边界，不使用 `as any`，也不把 custom Profile 强制转换为默认应用类型。
+
+类型门禁验证：
+
+- Base route 与每个已挂载 Module route 都存在；
+- 未挂载 Module route 在 Eden route tree 中不存在；
+- 非空 base prefix 同时反映在运行时路径和静态 route tree；
+- 默认 `App` 包含完整社区 route tree，并排除未注册 route；
+- Profile 调用顺序与运行时 Module 顺序一致；
+- routes factories 延迟到 `build()` 执行，fluent 配置本身不创建 Elysia 实例。
 
 ### 兼容矩阵
 
@@ -566,10 +564,32 @@ Elysia 1.4.28 提供 `.use<const Instances extends AnyElysia[]>(instances)` 的 
 | ACP/MCP/skills/proxy | path 和协议不变 |
 | OpenAPI | path/schema/tag 集合不变，顺序可变 |
 | WebSocket limits | Elysia constructor 与 listen 的 payload 配置不变 |
-| 环境变量 | 不新增、删除或改义；`HERMES_URL` 只从既有 Env 映射到 AppConfig |
+| 环境变量 | 不新增、删除、改义或为 Module 拆分而重新映射 |
 | 数据库 | 无 schema/migration 变更 |
 | 前端 | 默认全量能力不变；自定义 Profile 的 UI 协同不属于本期 |
 | Eden `App` | 默认全量类型保持，custom Profile 精确缩窄 |
+
+## 业务模块化的持续演进
+
+> 本节描述独立于本期 App Builder 验收的后续改进方向。
+
+App Builder 与业务模块化相关，但不存在强绑定关系：
+
+- App Builder 回答“已经确定的装配单元如何组合、启动和释放”；
+- 业务模块化回答“哪些 routes、用例、数据和资源应当共同演进”；
+- App Builder 为未来模块提供显式挂载点，但不会自动产生内聚边界，也不能证明某个拆分合理；
+- 业务模块化即使没有 App Builder 也需要继续推进，不能把 `.use(module)` 当成拆分完成的标准。
+
+后续应以 `docs/need-to-change/22-deepen-backend-application-modules.md` 为主线持续分析和提取真实边界。每个候选 Module 至少满足：
+
+1. 有可命名的领域职责或独立运行能力，而不是“移走其他模块后的剩余内容”；
+2. routes、应用服务、后台资源和 disposer 的所有权能够一致解释；
+3. 跨边界依赖可以通过已有稳定接口或因真实第二用例形成的窄 port 表达，不依赖 Service Locator；
+4. 省略或替换存在真实 edition、部署或产品需求，不只是为了演示 Builder；
+5. 认证、授权、多租户、事务和数据边界已经明确，不因拆分产生旁路；
+6. route precedence、OpenAPI、启动顺序、故障语义和停止顺序能够独立验证。
+
+演进方式采用小型垂直切片：先记录候选能力的 routes、启动资源、数据访问和调用依赖，再一次提取一个完整边界，并在对应 PR 中说明收益与兼容证据。不得先挑选容易移动的文件，再把余下内容命名为 `platform`、`core` 等看似稳定的模块。随着真实边界形成，默认 Profile 可以逐步从单一 `legacyCommunityModule` 演进为多个内聚 ServerModule；这不是 App Builder 首期实现的一部分，也不阻塞其合并。
 
 ## Edition architecture（长期目标）
 
@@ -638,7 +658,7 @@ shared packages ✕ CE src
 shared packages ✕ edition auth/resource models
 ```
 
-当前 `communityPlatformModule`、Channels 和 Agent Sites 都是 CE composition seam，不因实现 ServerModule 就自动成为企业扩展 API。
+当前 `legacyCommunityModule` 只是 CE 现有应用接入 Runtime 的过渡 seam，不是企业扩展 API。未来从中提取的业务 Module 也不会仅因实现 `ServerModule` 就自动成为跨 edition 公共接口。
 
 ## fork → submodule 路线（长期目标）
 
@@ -730,18 +750,19 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 向维护者展示时按以下顺序组织，而不是从抽象接口开始：
 
 1. **问题证据**：当前入口同时拥有配置、初始化、routes、listen、signal 和 shutdown，且已经存在 machine sweep 启停不对称。
-2. **默认兼容**：默认 Profile 仍包含全部社区 Module，HTTP/WS/OpenAPI/鉴权和前端行为保持。
+2. **默认兼容**：默认 Profile 仍包含全部社区能力，HTTP/WS/OpenAPI/鉴权、route precedence 和启动顺序保持。
 3. **最小抽象**：ApplicationBuilder 只负责有序组合与生命周期；没有热插拔、能力注册表、DI 容器或 route override。
-4. **真实裁剪**：省略 Channels/Agent Sites 后，对应 routes 与后台资源一起消失，而不是只隐藏 UI。
-5. **故障语义**：首错即停；失败 Module 不进入 disposer 栈；此前成功 Module 逆序释放；原始错误保持优先并由入口非零退出。
-6. **正常停止**：先停止 Elysia 接入，再逆序释放成功 Module；同一 disposer 只执行一次。
+4. **机制证据**：可执行源码示例用多个小型 Module 组合两种 Profile，测试验证省略、类型累积以及 route 与 disposer 的共同所有权，不为演示而拆生产模块。
+5. **边界诚实**：默认 Profile 暂时只有一个过渡性社区 Module；真实业务模块化作为独立持续改进方向，不冒充本期成果。
+6. **故障语义**：首错即停；失败 Module 不进入 disposer 栈；此前成功 Module 逆序释放；原始错误保持优先并由入口非零退出。
+7. **正常停止**：先停止 Elysia 接入，再逆序释放成功 Module；同一 disposer 只执行一次。
 
 ### 必须演示的场景
 
 | 场景 | 操作 | 必须观察到的结果 |
 | --- | --- | --- |
-| 社区默认装配 | 使用 `communityDefaultProfile` 启动 | 全部既有 routes 可用，OpenAPI 集合不变 |
-| 最小测试 Profile | 仅包含 `communityPlatformModule` | Channels 与 Agent Sites routes 为 404，Hermes 不启动，其他平台 routes 正常 |
+| 社区默认装配 | 使用 `communityDefaultProfile` 启动 | 全部既有 routes 可用，OpenAPI、route precedence 和启动顺序不变 |
+| 测试 Profile 组合 | 按顺序装配测试 Module A/B，并另建省略 B 的 Profile | route 类型和注册顺序精确累积；省略 B 时 B 的 routes 与启动资源都不存在 |
 | 启动失败 | Module A 成功、Module B 抛错、Module C 排在后面 | C 不启动，A disposer 执行一次，B 原始错误是主错误 |
 | listen 失败 | 所有 Module 成功后端口绑定失败 | 已成功 Module 逆序释放，不遗留监听端口 |
 | SIGTERM | 默认应用正常运行后发送 signal | 先停止接入，再按 Module 逆序释放，进程按入口策略退出 |
@@ -751,8 +772,10 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 | 载体 | 内容 |
 | --- | --- |
 | 本设计文档 | 长期有效的目标、边界、时序、兼容矩阵、演示场景和验收标准 |
-| 自动化测试 | 可重复证明默认兼容、裁剪、类型、fail-fast、unwind 和 stop 幂等 |
-| ADR / 当前态架构文档 | 已接受的关键决策，以及实现完成后的真实架构 |
+| 可执行源码示例 | 展示两个不同 Profile 的完整 Builder 用法、路由差异和生命周期顺序 |
+| 自动化测试 | 可重复证明默认兼容、示例 Module 组合/省略、类型、fail-fast、unwind 和 stop 幂等 |
+| ADR | 提议中或已接受的长期架构决策、理由与后果，不承载实现计划 |
+| 当前态架构文档 | 实现完成后代码实际采用的目录、依赖和运行路径 |
 | PR 描述 | 本次实际测试结果、OpenAPI/route 对比、受控顺序变化、已知限制和回退方式 |
 
 企业版或定制版只作为“为何需要第二种组合方式”的背景，不作为要求维护者接受私有路线的理由。上游价值必须独立成立：入口更易测试、资源所有权更清晰、Module 可整体增减且默认行为稳定。
@@ -761,8 +784,8 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 
 ### `@fenix/server-runtime`
 
-- Profile/Module 重名在 routes/start 前失败；
-- base app 和 Module routes 严格按 tuple 顺序装配；
+- Profile/Module 重名在对应 routes factory/start 前失败；
+- base app 和 Module routes 严格按 fluent `.use()` 顺序装配；
 - routes factory 每次 build 返回独立 Elysia wrapper；
 - Module 顺序启动，成功 Module 的 disposer 逆序执行；
 - Module 失败后不启动后续 Module，失败 Module 不进入 Runtime disposer 栈；
@@ -771,26 +794,27 @@ Agent/ACP、Chat/YJS、Workflow/Scheduler、Files/Workspace 的具体顺序尚�
 - stop during start 发出 abort，不启动后续 Module；
 - 重复/并发 stop 只执行一次；
 - 重复 start 被拒绝；
-- const tuple 保留 route 类型。
+- fluent builder 保留完整 route 类型；
+- 源码示例的两个 Profile 产生不同 routes，并只启动和释放实际选择的 Module。
 
 每个 `test(...)` 上方写一行中文行为注释。
 
 ### 社区应用
 
 - 构造默认应用不执行 DB probe、timer、listen 或 signal 注册；
-- 默认 Profile 包含三项 Module；
-- 省略 Channels 后 `/web/channels/*` 为 404 且 Hermes 不启动；
-- 省略 Agent Sites 后三组 routes 均为 404；
+- 默认 Profile 通过一个过渡性 Module 包含全部社区能力；
+- `src/routes/web/index.ts` 的聚合成员和顺序不因接入 Builder 改变；
 - 默认 `/health`、根跳转、request ID 和 error mapping 不变；
-- Agent Sites fallback 保持全局最后；
 - 默认 OpenAPI path/schema/tag 集合不变；
 - 默认 `App` route 类型保持完整；
+- 真实社区启动链的 fatal/degraded 语义和相对顺序保持；
 - package boundary 测试拒绝 `packages/**` import 根 `src/**`。
 
 ### 验证命令
 
 ```bash
-bun test packages/server-runtime/src/__tests__/application-builder.test.ts
+bun run --cwd packages/server-runtime example
+bun run --cwd packages/server-runtime test
 bun test src/__tests__/default-application.test.ts
 bun test src/__tests__/round54-channels-routes.test.ts src/__tests__/agent-sites-routes.test.ts src/__tests__/registry-routes.test.ts
 bun run docs:build
@@ -809,15 +833,16 @@ bun run precheck
 
 | 风险 | 控制 |
 | --- | --- |
-| Elysia tuple 类型在封装后退化 | 先做最小类型 spike；类型测试和 `tsc` 作为门禁 |
-| 路由抽取改变 precedence | 使用独立前缀、Agent Sites 最后注册、检查 route/OpenAPI 集合 |
-| Hermes 相对 RagFlow/monitor 启动顺序变化 | 明确为受控变化并运行三类回归；发现依赖则重新划分 Module |
+| fluent `.use(module)` 封装后类型退化 | 已用真实默认 route tree 排除 tuple 方案；继续以类型测试和 `tsc` 作为门禁 |
+| 包装现有聚合时意外改变 route/start 顺序 | 不移动 `src/routes/web/index.ts` 成员或业务启动步骤，并对默认 route/OpenAPI 和启动链做回归 |
+| 过渡性 Module 被误认为长期领域边界 | 使用明确的 `legacy` 命名并记录退出条件；真实拆分走独立领域分析和 PR |
+| 为展示 Builder 而制造任意生产模块 | 组合和省略能力由测试 Module 验证；生产拆分必须有真实职责、依赖和消费者证据 |
 | best-effort unwind 被误认为事务回滚 | 明确只释放成功 Module disposer；持久化事实不逆转，启动失败后默认入口退出进程 |
 | disposer 调整引发关闭竞态 | app 先 stop、Module 逆序、相关 lifecycle 测试；完整 drain 独立推进 |
-| Module factory 退化为大 options/service bag | code review 检查窄 ports；必要时重划 Module/领域接口 |
+| 未来 Module factory 退化为大 options/service bag | 提取真实 Module 时检查窄 ports；过渡性聚合不得作为公共 factory 契约 |
 | 为企业版过早抽象 | 企业路线只做审查背景；本期不添加 edition API、auth ports 或 capability registry |
 
-本期无 API、schema 或迁移变化。若 Channels/Agent Sites 抽取出现不可接受回归，可以保留 `@fenix/server-runtime` 和入口生命周期重构，将默认 Profile 暂时收敛回一个 `community-platform` Module；不得通过兼容 route 双注册回滚。
+本期无 API、schema、迁移或生产业务模块归属变化。若默认应用接入 Runtime 出现不可接受回归，可以保留独立的 `@fenix/server-runtime` package，并将社区入口恢复到原启动路径；不得通过双注册 routes 或并行启动两套资源实现兼容。
 
 ## 实施门禁
 
