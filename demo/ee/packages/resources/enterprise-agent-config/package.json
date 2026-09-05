@@ -1,0 +1,16 @@
+{
+  "name": "@fenix-ee/agent-config",
+  "description": "AgentConfig 商业发布扩展",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./web": "./web/index.ts",
+    "./db/schema": "./db/schema.ts",
+    "./module": "./fenix.module.ts"
+  },
+  "dependencies": {
+    "@fenix-ce/agent-config": "workspace:*",
+    "@fenix-ce/platform-sdk": "workspace:*"
+  }
+}

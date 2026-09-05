@@ -1,0 +1,13 @@
+{
+  "name": "@fenix-ce/agent-runtime",
+  "description": "Agent 引擎运行时契约",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./module": "./fenix.module.ts"
+  },
+  "dependencies": {
+    "@fenix-ce/platform-sdk": "workspace:*"
+  }
+}
