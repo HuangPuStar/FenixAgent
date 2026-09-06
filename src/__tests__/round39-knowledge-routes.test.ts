@@ -12,6 +12,7 @@ import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -168,25 +169,9 @@ class KnowledgeRouteProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  createBase: knowledgeBaseRepo.create,
-  updateBase: knowledgeBaseRepo.update,
-  deleteBase: knowledgeBaseRepo.delete,
-  listBases: knowledgeBaseRepo.listByOrganizationId,
-  findBySlug: knowledgeBaseRepo.findByOrgAndSlug,
-  countBindings: knowledgeBaseRepo.countBindings,
-  getResource: knowledgeResourceRepo.getById,
-  listResources: knowledgeResourceRepo.listByKnowledgeBase,
-  countResources: knowledgeResourceRepo.countByKnowledgeBase,
-  createResource: knowledgeResourceRepo.create,
-  updateResource: knowledgeResourceRepo.update,
-  deleteResource: knowledgeResourceRepo.delete,
-  deleteBindings: agentKnowledgeBindingRepo.deleteByKnowledgeBaseId,
-};
-
 describe("知识库 Web 路由 round39 业务覆盖", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     authenticate();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
@@ -194,20 +179,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeBaseRepo.create = originals.createBase;
-    knowledgeBaseRepo.update = originals.updateBase;
-    knowledgeBaseRepo.delete = originals.deleteBase;
-    knowledgeBaseRepo.listByOrganizationId = originals.listBases;
-    knowledgeBaseRepo.findByOrgAndSlug = originals.findBySlug;
-    knowledgeBaseRepo.countBindings = originals.countBindings;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
-    knowledgeResourceRepo.countByKnowledgeBase = originals.countResources;
-    knowledgeResourceRepo.create = originals.createResource;
-    knowledgeResourceRepo.update = originals.updateResource;
-    knowledgeResourceRepo.delete = originals.deleteResource;
-    agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = originals.deleteBindings;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
     resetTestAuth();

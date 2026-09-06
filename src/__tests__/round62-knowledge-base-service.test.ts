@@ -25,6 +25,7 @@ import {
   verifyEmbeddingProvider,
 } from "../services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -83,39 +84,14 @@ class Provider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  baseCreate: knowledgeBaseRepo.create,
-  baseDelete: knowledgeBaseRepo.delete,
-  baseFindSlug: knowledgeBaseRepo.findByOrgAndSlug,
-  baseGet: knowledgeBaseRepo.getById,
-  baseList: knowledgeBaseRepo.listByOrganizationId,
-  baseGlobal: knowledgeBaseRepo.listGlobal,
-  baseUpdate: knowledgeBaseRepo.update,
-  baseCountBindings: knowledgeBaseRepo.countBindings,
-  resourceCount: knowledgeResourceRepo.countByKnowledgeBase,
-  resourceList: knowledgeResourceRepo.listByKnowledgeBase,
-  resourceSummary: knowledgeResourceRepo.getStatusSummary,
-  bindingsDelete: agentKnowledgeBindingRepo.deleteByKnowledgeBaseId,
-};
-
 describe("round62 知识库 service 补充覆盖", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     setConfig({ ragflowApiKey: "round62-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.create = originals.baseCreate;
-    knowledgeBaseRepo.delete = originals.baseDelete;
-    knowledgeBaseRepo.findByOrgAndSlug = originals.baseFindSlug;
-    knowledgeBaseRepo.getById = originals.baseGet;
-    knowledgeBaseRepo.listByOrganizationId = originals.baseList;
-    knowledgeBaseRepo.listGlobal = originals.baseGlobal;
-    knowledgeBaseRepo.update = originals.baseUpdate;
-    knowledgeBaseRepo.countBindings = originals.baseCountBindings;
-    knowledgeResourceRepo.countByKnowledgeBase = originals.resourceCount;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.resourceList;
-    knowledgeResourceRepo.getStatusSummary = originals.resourceSummary;
-    agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = originals.bindingsDelete;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
   });

@@ -15,6 +15,7 @@ import {
 } from "../services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -64,29 +65,16 @@ function setAuthenticatedOrg(organizationId = "org-1") {
   });
 }
 
-const originals = {
-  create: knowledgeBaseRepo.create,
-  delete: knowledgeBaseRepo.delete,
-  findByOrgAndSlug: knowledgeBaseRepo.findByOrgAndSlug,
-  getById: knowledgeBaseRepo.getById,
-  update: knowledgeBaseRepo.update,
-  deleteBindings: agentKnowledgeBindingRepo.deleteByKnowledgeBaseId,
-};
-
 describe("知识库 service 隔离分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setAuthenticatedOrg();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.create = originals.create;
-    knowledgeBaseRepo.delete = originals.delete;
-    knowledgeBaseRepo.findByOrgAndSlug = originals.findByOrgAndSlug;
-    knowledgeBaseRepo.getById = originals.getById;
-    knowledgeBaseRepo.update = originals.update;
-    agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = originals.deleteBindings;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
     resetTestAuth();

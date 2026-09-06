@@ -12,6 +12,7 @@ import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
 import { setKnowledgeRuntimeProviderForTesting } from "../services/knowledge-runtime";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -123,18 +124,9 @@ class RuntimeProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  createBase: knowledgeBaseRepo.create,
-  updateBase: knowledgeBaseRepo.update,
-  listBases: knowledgeBaseRepo.listByOrganizationId,
-  getResource: knowledgeResourceRepo.getById,
-  createResource: knowledgeResourceRepo.create,
-  updateResource: knowledgeResourceRepo.update,
-};
-
 describe("知识库 Web 路由 round65 未覆盖分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     setConfig({ ragflowApiKey: "test-ragflow-key" });
@@ -145,13 +137,7 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeBaseRepo.create = originals.createBase;
-    knowledgeBaseRepo.update = originals.updateBase;
-    knowledgeBaseRepo.listByOrganizationId = originals.listBases;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.create = originals.createResource;
-    knowledgeResourceRepo.update = originals.updateResource;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     setKnowledgeRuntimeProviderForTesting(null);
     resetConfig();
