@@ -31,11 +31,13 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
 - 根目录 `package.json` 是前后端统一依赖清单；`web/` 没有独立 `package.json`。
-- `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
+- `packages/` 是 Bun workspace，当前包含 17 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
 ### 后端地图
 
-- `src/index.ts`：服务入口和装配层。
+- `src/index.ts`：社区进程入口，负责环境配置、默认应用启动、listen 和 signal/退出策略。
+- `src/application/`：社区 base app、ApplicationProfile 与 ServerModule 装配层。
+- `packages/server-runtime/`：与业务无关的 ApplicationBuilder、ApplicationRuntime 和 ServerModule 生命周期契约。
 - `src/routes/web/`：控制台内部 API。
 - `src/routes/api/`：对外稳定 API / OpenAPI。
 - `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
@@ -94,8 +96,9 @@ bun run db:migrate                  # 执行迁移
 
 ### 后端分层
 
-默认依赖方向：`routes -> services -> repositories -> db`，`services -> packages/*`，`routes -> schemas`。
+默认依赖方向：`src/index.ts -> src/application -> routes/services`，`src/application -> @fenix/server-runtime`，`routes -> services -> repositories -> db`，`services -> packages/*`，`routes -> schemas`。
 
+- `@fenix/server-runtime` 不得依赖根 `src/**`、进程环境或 Fenix 业务包；ApplicationProfile 使用 fluent `.use(module)` 保持 Elysia 类型，ServerModule 的 `createRoutes()` 必须无启动副作用，成功 `start()` 后有易失资源时必须返回 disposer。
 - route 只负责协议接入、鉴权、参数校验和响应映射，不得直接访问 `db`。
 - service 负责领域规则、业务编排、事务边界、跨表操作和外部调用。
 - repository 只负责持久化和查询条件封装，不承载业务规则。

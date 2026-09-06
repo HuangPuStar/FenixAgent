@@ -11,7 +11,8 @@
       "@fenix/remote-runtime": ["./packages/remote-runtime/src/index.ts"],
       "@fenix/logger": ["./packages/logger/src/index.ts"],
       "@fenix/chat-channel": ["./packages/chat-channel/src/index.ts"],
-      "@fenix/chat-channel/server": ["./packages/chat-channel/src/server.ts"]
+      "@fenix/chat-channel/server": ["./packages/chat-channel/src/server.ts"],
+      "@fenix/server-runtime": ["./packages/server-runtime/src/index.ts"]
     },
     "target": "ES2022",
     "module": "ES2022",

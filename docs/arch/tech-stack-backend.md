@@ -21,9 +21,11 @@ Bun 是项目唯一运行时环境。生产部署、开发调试、脚本执行�
 
 Elysia 是后端 HTTP 框架，同时承载 REST API、WebSocket Upgrade、静态文件服务。
 
-**插件系统**：Elysia 的插件模型是核心架构的组织方式。启动时按以下功能域顺序注册插件和中间件：
+**应用装配**：`@fenix/server-runtime` 的 ApplicationBuilder 通过代码级 Profile 逐次挂载 ServerModule；每个 Module 的 `createRoutes()` 返回独立 Elysia 实例，`start()` 在成功后返回资源 disposer。社区默认 Profile 当前通过单一 `legacy-community` Module 保持完整既有 route 与启动聚合，真实业务模块边界后续独立演进。进程入口只负责配置、start/listen、signal 和退出策略。
 
-- **CORS 插件**：跨域配置
+社区 base app 与默认 Module 共同提供以下 Elysia 横切能力和 routes：
+
+- **CORS**：跨域配置
 - **双 OpenAPI 实例**：对外 API（`/api/*`，OpenAPI 3.1）+ 内部控制台 API（`/web/*`），均通过 Scalar UI 提供交互式文档
 - **结构化请求日志**：通过 `.onBeforeHandle()` / `.onAfterHandle()` 生命周期钩子挂载日志中间件
 - **统一错误格式**：所有错误返回 `{ error: { code, message } }` 结构

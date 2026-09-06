@@ -49,7 +49,7 @@ const MAX_UPSTREAM_ERROR_LOG_LENGTH = 1_000;
  * 该文本不得进入 PublicError 或浏览器响应。
  */
 function sanitizeUpstreamErrorMessage(raw: unknown): string | undefined {
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") return;
   const sanitized = raw
     .replace(/\b(?:https?|wss?):\/\/[^\s<>'"`]+/giu, "[REDACTED_URL]")
     .replace(
@@ -63,7 +63,7 @@ function sanitizeUpstreamErrorMessage(raw: unknown): string | undefined {
     )
     .replace(/\s+/g, " ")
     .trim();
-  if (!sanitized) return undefined;
+  if (!sanitized) return;
   return Array.from(sanitized).slice(0, MAX_UPSTREAM_ERROR_LOG_LENGTH).join("");
 }
 
