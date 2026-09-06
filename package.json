@@ -12,7 +12,7 @@
     "@better-auth/core": "1.6.11",
     "@better-auth/utils": "0.4.0",
     "hono": ">=4.12.25",
-    "dompurify": "^3.4.11"
+    "dompurify": ">=3.4.9"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
