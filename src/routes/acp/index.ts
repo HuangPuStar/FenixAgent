@@ -165,7 +165,9 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__acpWsId as string | undefined;
       if (wsId) {
-        handleAcpWsClose(adaptWs(ws), wsId, code, reason);
+        void handleAcpWsClose(adaptWs(ws), wsId, code, reason).catch((error) => {
+          logError("ACP WebSocket close cleanup failed:", error);
+        });
       }
     },
   })

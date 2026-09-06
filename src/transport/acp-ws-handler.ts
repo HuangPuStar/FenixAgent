@@ -216,11 +216,14 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
       }
     }
 
-    // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport
+    // 重连场景：关闭旧 relay 连接，让前端自动重连并使用新 transport。
+    // relay barrel 与本模块互相引用，因此保留动态 import，但必须等待完成，避免清理逃逸。
     if (replacedInstanceIds.length > 0) {
-      import("./relay").then(({ closeClientsForMachineInstances }) => {
-        closeClientsForMachineInstances(replacedInstanceIds, "machine reconnected");
-      });
+      try {
+        await closeMachineFrontendClients(replacedInstanceIds, "machine reconnected");
+      } catch (error) {
+        logError("Failed to close replaced machine frontend clients:", error);
+      }
     }
 
     sendToWs(entry.ws, {
@@ -385,11 +388,18 @@ export async function handleAcpWsMessage(
   }
 }
 
+async function closeMachineFrontendClients(instanceIds: readonly string[], reason: string): Promise<void> {
+  if (instanceIds.length === 0) return;
+  // relay barrel 回引本模块；动态 import 是打破求值环的边界，而不是 fire-and-forget 入口。
+  const { closeClientsForMachineInstances } = await import("./relay");
+  closeClientsForMachineInstances(instanceIds, reason);
+}
+
 /**
  * 机器断连的完整清理流程。
  * 同时被 handleAcpWsClose（WS 正常关闭）、triggerMachineDisconnect（心跳超时/sweep 检测）复用。
  */
-function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void {
+async function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): Promise<void> {
   const machineId = entry.machineId;
   if (!machineId) return;
 
@@ -414,18 +424,18 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     .listInstances()
     .filter((instance) => instance.nodeId === machineId)
     .map((instance) => instance.instanceId);
-  handleMachineDisconnect(entry, reason).catch(() => {});
+  const disconnectTask = handleMachineDisconnect(entry, reason).catch((error) => {
+    logError("Machine disconnect cleanup failed:", error);
+  });
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
-  // 清理 RCS registry 中对应 machineId 的孤儿 supplement
-  import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
+
+  const reconcileTask = import("../services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();
     globalInstanceRegistry.reconcile(() => facade.listInstances());
   });
-  import("./relay").then(({ closeClientsForMachineInstances }) => {
-    logger.info(`[MACHINE-CLEANUP] Closing frontend clients for machineId=${machineId}`);
-    closeClientsForMachineInstances(instanceIds, "machine unavailable");
-  });
+  logger.info(`[MACHINE-CLEANUP] Closing frontend clients for machineId=${machineId}`);
+  await Promise.all([disconnectTask, reconcileTask, closeMachineFrontendClients(instanceIds, "machine unavailable")]);
 }
 
 /**
@@ -451,7 +461,9 @@ function triggerMachineDisconnect(wsId: string, machineId: string, reason: strin
     }
   }
   connections.delete(wsId);
-  performMachineCleanup(entry, reason);
+  void performMachineCleanup(entry, reason).catch((error) => {
+    logError("Machine cleanup after forced disconnect failed:", error);
+  });
 }
 
 /** 仅凭 machineId 做清理（entry 已不存在时由 sweep 使用）。导出供 registry-heartbeat sweep 调用。 */
@@ -478,13 +490,13 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
 
   unregisterRemoteNode(machineId);
   stopHeartbeat(machineId);
-  import("./relay").then(({ closeClientsForMachineInstances }) => {
-    closeClientsForMachineInstances(instanceIds, "machine unavailable");
+  void closeMachineFrontendClients(instanceIds, "machine unavailable").catch((error) => {
+    logError("Machine frontend cleanup after sweep failed:", error);
   });
 }
 
-/** Called from onClose — marks agent offline and cleans up */
-export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number, reason?: string): void {
+/** Called from onClose — marks agent offline and waits for the complete cleanup path. */
+export async function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number, reason?: string): Promise<void> {
   const entry = connections.get(wsId);
   if (!entry) return;
 
@@ -502,7 +514,7 @@ export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number,
   // machine 连接断连处理
   if (entry.isMachine && entry.machineId) {
     logger.info(`[ACP-WS-CLOSE] calling performMachineCleanup for machineId=${entry.machineId}`);
-    performMachineCleanup(entry, reason ?? undefined);
+    await performMachineCleanup(entry, reason ?? undefined);
   }
 }
 

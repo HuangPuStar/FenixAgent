@@ -4,6 +4,7 @@ import type { ChannelBindingRow } from "../repositories/channel-binding";
 import { channelBindingRepo } from "../repositories/channel-binding";
 import type { EnvironmentRecord } from "../repositories/environment";
 import { setHermesClientGetter } from "../services/channel-provider";
+import { stopHermesClient } from "../services/hermes-client";
 import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/channels")).default;
@@ -92,12 +93,13 @@ function restoreRepo() {
 }
 
 describe("round54 Web 通道路由", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetAllStubs();
     restoreRepo();
     authenticate();
-    // 其他测试可能初始化全局 Hermes 单例；本套路由测试默认覆盖未初始化场景。
+    // provider 列表使用可替换 getter；status 路由直接读取 singleton，两条边界都显式归零。
     setHermesClientGetter(() => null);
+    await stopHermesClient();
     stubEnvironmentRepo({
       getById: async (id: string) => (id === "env-1" ? environment() : undefined),
       listByOrganizationId: async () => [environment()],
@@ -108,9 +110,10 @@ describe("round54 Web 通道路由", () => {
     channelBindingRepo.list = mock(async () => [binding()]);
     channelBindingRepo.update = mock(async () => {});
   });
-  afterEach(() => {
+  afterEach(async () => {
     resetTestAuth();
     setHermesClientGetter(null);
+    await stopHermesClient();
     restoreRepo();
     resetAllStubs();
   });
