@@ -11,6 +11,7 @@ import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -85,20 +86,9 @@ class ImportProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  createBase: knowledgeBaseRepo.create,
-  getBase: knowledgeBaseRepo.getById,
-  listBases: knowledgeBaseRepo.listByOrganizationId,
-  updateBase: knowledgeBaseRepo.update,
-  countBindings: knowledgeBaseRepo.countBindings,
-  createResource: knowledgeResourceRepo.create,
-  getStatusSummary: knowledgeResourceRepo.getStatusSummary,
-  listResources: knowledgeResourceRepo.listByKnowledgeBase,
-  countResources: knowledgeResourceRepo.countByKnowledgeBase,
-};
-
 describe("知识库导入远端同步分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
     setTestAuth({
@@ -109,15 +99,7 @@ describe("知识库导入远端同步分支", () => {
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.create = originals.createBase;
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeBaseRepo.listByOrganizationId = originals.listBases;
-    knowledgeBaseRepo.update = originals.updateBase;
-    knowledgeBaseRepo.countBindings = originals.countBindings;
-    knowledgeResourceRepo.create = originals.createResource;
-    knowledgeResourceRepo.getStatusSummary = originals.getStatusSummary;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
-    knowledgeResourceRepo.countByKnowledgeBase = originals.countResources;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
     resetTestAuth();

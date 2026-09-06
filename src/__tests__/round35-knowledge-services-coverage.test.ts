@@ -26,6 +26,7 @@ import {
   setKnowledgeUploadProviderForTesting,
 } from "../services/knowledge-upload";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -131,21 +132,6 @@ class ServiceProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  updateBase: knowledgeBaseRepo.update,
-  getResource: knowledgeResourceRepo.getById,
-  getBySourceName: knowledgeResourceRepo.getBySourceName,
-  createResource: knowledgeResourceRepo.create,
-  updateResource: knowledgeResourceRepo.update,
-  deleteResource: knowledgeResourceRepo.delete,
-  listResources: knowledgeResourceRepo.listByKnowledgeBase,
-  getSummary: knowledgeResourceRepo.getStatusSummary,
-  findResources: knowledgeResourceRepo.findByRemoteIds,
-  getResourceWithKb: agentKnowledgeBindingRepo.getResourceWithKnowledgeBase,
-  joinedBindings: agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId,
-};
-
 function installResourceStore(rows: KnowledgeResourceRow[]) {
   knowledgeBaseRepo.update = mock(async () => undefined);
   knowledgeResourceRepo.getById = mock(
@@ -203,23 +189,13 @@ function boundRow(id = "kb-1", remoteId = "remote-kb-1") {
 
 describe("第35轮知识服务真实业务边界", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeBaseRepo.update = originals.updateBase;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.getBySourceName = originals.getBySourceName;
-    knowledgeResourceRepo.create = originals.createResource;
-    knowledgeResourceRepo.update = originals.updateResource;
-    knowledgeResourceRepo.delete = originals.deleteResource;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
-    knowledgeResourceRepo.getStatusSummary = originals.getSummary;
-    knowledgeResourceRepo.findByRemoteIds = originals.findResources;
-    agentKnowledgeBindingRepo.getResourceWithKnowledgeBase = originals.getResourceWithKb;
-    agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId = originals.joinedBindings;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeUploadProviderForTesting(null);
     setKnowledgeRuntimeProviderForTesting(null);
     resetConfig();

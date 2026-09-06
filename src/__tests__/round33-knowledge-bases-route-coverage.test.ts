@@ -13,6 +13,7 @@ import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/r
 import { setKnowledgeRuntimeProviderForTesting } from "../services/knowledge-runtime";
 import { setKnowledgeUploadProviderForTesting } from "../services/knowledge-upload";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -136,25 +137,16 @@ class FailingRuntimeProvider extends RuntimeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  getResource: knowledgeResourceRepo.getById,
-  listResources: knowledgeResourceRepo.listByKnowledgeBase,
-  updateResource: knowledgeResourceRepo.update,
-};
-
 describe("知识库 Web 路由 round33 覆盖", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     authenticate();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
-    knowledgeResourceRepo.update = originals.updateResource;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     setKnowledgeRuntimeProviderForTesting(null);
     setKnowledgeUploadProviderForTesting(null);

@@ -11,6 +11,7 @@ import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -86,23 +87,16 @@ class RouteProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  getResource: knowledgeResourceRepo.getById,
-  updateResource: knowledgeResourceRepo.update,
-};
-
 describe("知识库 Web 路由资源分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     authenticate();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.update = originals.updateResource;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
     resetTestAuth();

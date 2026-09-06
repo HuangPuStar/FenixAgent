@@ -352,7 +352,7 @@ describe("round43 acp ws handler", () => {
     await handleAcpWsMessage(ws, "close-43", { type: "register", machine_id: "machine-43" });
     await flushRegistration();
 
-    handleAcpWsClose(ws, "close-43", 1006, "network lost");
+    await handleAcpWsClose(ws, "close-43", 1006, "network lost");
 
     expect(disconnectedMachines).toEqual([["machine-43", "network lost"]]);
     expect(unregisteredMachines).toEqual(["machine-43"]);
@@ -377,6 +377,6 @@ describe("round43 acp ws handler", () => {
     await handleAcpWsMessage(ws, "local-43", { type: "keep_alive" });
 
     expect(environmentPolls).toEqual(["environment-a"]);
-    handleAcpWsClose(ws, "local-43");
+    await handleAcpWsClose(ws, "local-43");
   });
 });

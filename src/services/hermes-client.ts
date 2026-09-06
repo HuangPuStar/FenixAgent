@@ -371,11 +371,23 @@ export function getHermesClient(): HermesClient | null {
 
 export function initHermesClient(url: string): HermesClient {
   if (hermesClientInstance) {
-    hermesClientInstance.stop();
+    void stopHermesClient(hermesClientInstance).catch((err) => {
+      logError("[Hermes] Previous client stop failed:", err);
+    });
   }
   hermesClientInstance = new HermesClient(url);
   hermesClientInstance.start().catch((err) => {
     logError("[Hermes] Client start failed:", err);
   });
   return hermesClientInstance;
+}
+
+/**
+ * 停止指定 Hermes client；仅当目标仍为当前 singleton 时解除全局引用。
+ * 未传目标时释放当前 singleton，重复调用保持幂等。
+ */
+export async function stopHermesClient(client: HermesClient | null = hermesClientInstance): Promise<void> {
+  if (!client) return;
+  if (hermesClientInstance === client) hermesClientInstance = null;
+  await client.stop();
 }

@@ -12,6 +12,7 @@ import {
   setKnowledgeRuntimeProviderForTesting,
 } from "../services/knowledge-runtime";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -82,22 +83,15 @@ class RuntimeProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  joinedBindings: agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId,
-  findResources: knowledgeResourceRepo.findByRemoteIds,
-};
-
 describe("知识运行时服务分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId = originals.joinedBindings;
-    knowledgeResourceRepo.findByRemoteIds = originals.findResources;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeRuntimeProviderForTesting(null);
     resetConfig();
     resetAllStubs();

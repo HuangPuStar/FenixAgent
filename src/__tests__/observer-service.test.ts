@@ -476,8 +476,8 @@ describe("observer-service", () => {
       expect("keepalive" in snap).toBe(false);
     }
     // 清理连接（清除 keepalive interval 与 entries），避免测试进程悬挂
-    handleAcpWsClose(machineWs, "ws_m1");
-    handleAcpWsClose(localWs, "ws_l1");
+    await handleAcpWsClose(machineWs, "ws_m1");
+    await handleAcpWsClose(localWs, "ws_l1");
 
     // external-relay：stub deps 走真实 open → 快照含 agentId/authContext/openTime
     setExternalRelayDeps({

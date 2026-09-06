@@ -6,6 +6,7 @@ import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../services/knowledge-provider/registry";
 import { readJson, resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -59,10 +60,9 @@ class KnowledgeRouteProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originalListByOrganizationId = knowledgeBaseRepo.listByOrganizationId;
-
 describe("知识库最大缺口路由的隔离分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
     setTestAuth({
@@ -73,7 +73,7 @@ describe("知识库最大缺口路由的隔离分支", () => {
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.listByOrganizationId = originalListByOrganizationId;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeProviderForTesting(null);
     resetConfig();
     resetTestAuth();

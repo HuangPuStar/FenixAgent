@@ -8,6 +8,7 @@ import {
   knowledgeResourceRepo,
 } from "../repositories/knowledge-base";
 import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -58,7 +59,10 @@ function expectLoose(value: unknown) {
   return expect(value);
 }
 
-beforeEach(resetAllStubs);
+beforeEach(() => {
+  resetKnowledgeRepositoryMethodOverrides();
+  resetAllStubs();
+});
 
 describe("round46 知识库仓储真实行为", () => {
   // 按 ID 查询应返回数据库首行。

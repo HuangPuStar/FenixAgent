@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getHermesClient, HermesClient, initHermesClient } from "../services/hermes-client";
+import { getHermesClient, HermesClient, initHermesClient, stopHermesClient } from "../services/hermes-client";
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -64,7 +64,14 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await Promise.all(clients.splice(0).map((client) => client.stop()));
+  const singleton = getHermesClient();
+  await stopHermesClient(singleton);
+  await Promise.all(
+    clients
+      .splice(0)
+      .filter((client) => client !== singleton)
+      .map((client) => client.stop()),
+  );
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: originalWebSocket });
   if (originalPlatforms === undefined) delete process.env.HERMES_PLATFORMS;
   else process.env.HERMES_PLATFORMS = originalPlatforms;
@@ -459,5 +466,26 @@ describe("HermesClient 隔离状态、错误与资源释放", () => {
     const second = initHermesClient("ws://second.invalid/ws");
     clients.push(first, second);
     expect(getHermesClient()?.getStatus().url).toBe("ws://second.invalid/ws");
+  });
+
+  // 意图：正式停止入口必须同时释放资源与全局引用，后续读取不能得到已停止实例。
+  test("停止单例后解除全局引用", async () => {
+    const client = initHermesClient("ws://singleton.invalid/ws");
+    clients.push(client);
+
+    await stopHermesClient();
+
+    expect(getHermesClient()).toBeNull();
+  });
+
+  // 意图：旧 Runtime 的延迟释放不能清除后来替换的新 singleton。
+  test("停止旧实例不清除当前单例", async () => {
+    const first = initHermesClient("ws://first.invalid/ws");
+    const second = initHermesClient("ws://second.invalid/ws");
+    clients.push(first, second);
+
+    await stopHermesClient(first);
+
+    expect(getHermesClient()).toBe(second);
   });
 });

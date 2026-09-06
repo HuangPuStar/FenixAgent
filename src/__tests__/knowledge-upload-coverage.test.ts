@@ -13,6 +13,7 @@ import {
   setKnowledgeUploadProviderForTesting,
 } from "../services/knowledge-upload";
 import { resetAllStubs } from "../test-utils/helpers";
+import { resetKnowledgeRepositoryMethodOverrides } from "../test-utils/knowledge-repository-state";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -59,24 +60,15 @@ class UploadProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originals = {
-  getBase: knowledgeBaseRepo.getById,
-  getResource: knowledgeResourceRepo.getById,
-  deleteResource: knowledgeResourceRepo.delete,
-  listResources: knowledgeResourceRepo.listByKnowledgeBase,
-};
-
 describe("知识资源上传服务分支", () => {
   beforeEach(() => {
+    resetKnowledgeRepositoryMethodOverrides();
     resetAllStubs();
     setConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.getById = originals.getBase;
-    knowledgeResourceRepo.getById = originals.getResource;
-    knowledgeResourceRepo.delete = originals.deleteResource;
-    knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
+    resetKnowledgeRepositoryMethodOverrides();
     setKnowledgeUploadProviderForTesting(null);
     resetConfig();
     resetAllStubs();
