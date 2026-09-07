@@ -6,7 +6,9 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  MessageSquareQuote,
   Move,
+  Pencil,
   RefreshCw,
   Search,
   Trash2,
@@ -489,6 +491,7 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
       style={{ left: position.left, top: position.top }}
     >
       <button type="button" onClick={props.onReference}>
+        <MessageSquareQuote aria-hidden />
         {t("fileTree.contextMenu.reference")}
       </button>
       <button
@@ -510,6 +513,7 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
             : t("fileTree.download")}
       </button>
       <button type="button" onClick={() => props.onRenameRequest(state.path, name)}>
+        <Pencil aria-hidden />
         {t("fileTree.contextMenu.rename")}
       </button>
       <button type="button" onClick={() => props.onMoveRequest(state.path)}>
@@ -517,15 +521,18 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
         {t("fileTree.contextMenu.move")}
       </button>
       <button type="button" className="is-danger" onClick={() => props.onDeleteRequest(state.path, name)}>
+        <Trash2 aria-hidden />
         {t("fileTree.contextMenu.delete")}
       </button>
       {state.isDir && (
         <button type="button" onClick={() => props.onNewFolder(state.path)}>
+          <FolderPlus aria-hidden />
           {t("fileTree.contextMenu.newFolder")}
         </button>
       )}
       {state.isDir && (
         <button type="button" onClick={() => props.onNewFile(state.path)}>
+          <FilePlus2 aria-hidden />
           {t("fileTree.newFile")}
         </button>
       )}

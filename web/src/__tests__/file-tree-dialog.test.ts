@@ -103,6 +103,11 @@ describe("file tree dialogs", () => {
     const styles = fs.readFileSync(stylesheetPath, "utf-8");
 
     expect(source).toContain("createPortal(");
+    expect(source).toContain("<MessageSquareQuote aria-hidden />");
+    expect(source).toContain("<Pencil aria-hidden />");
+    expect(source).toContain("<Trash2 aria-hidden />");
+    expect(source).toContain("<FolderPlus aria-hidden />");
+    expect(source).toContain("<FilePlus2 aria-hidden />");
     expect(source).toContain("window.innerWidth - menu.offsetWidth");
     expect(source).toContain("window.innerHeight - menu.offsetHeight");
     expect(source).toContain("document.body");

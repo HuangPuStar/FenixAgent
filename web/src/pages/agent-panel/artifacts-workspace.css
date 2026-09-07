@@ -605,7 +605,7 @@
 .file-tree-context-menu svg {
   width: 15px;
   height: 15px;
-  flex: none;
+  flex: 0 0 15px;
 }
 
 .file-tree-feedback {
