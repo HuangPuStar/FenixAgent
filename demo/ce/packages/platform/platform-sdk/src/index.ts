@@ -60,6 +60,18 @@ export interface ResourceModule {
   readonly capabilities: readonly string[];
 }
 
+/** 模块声明的部署级环境变量；由 app 在启动时一次性读取和校验。 */
+export interface EnvDefinition {
+  readonly moduleId: string;
+  readonly key: string;
+  readonly secret?: boolean;
+}
+
+/** bootstrap 校验后传入模块工厂的最小上下文。 */
+export interface ModuleFactoryContext {
+  readonly env: Readonly<Record<string, string>>;
+}
+
 /** 构建期发现的模块类别；不是运行时插件协议。 */
 export type ModuleKind = "access-control" | "runtime" | "resource";
 
@@ -71,8 +83,10 @@ export interface ModuleManifest {
   readonly id: string;
   readonly kind: ModuleKind;
   readonly dependsOn: readonly string[];
+  /** 模块仅声明所需配置，不自行读取 process.env。 */
+  readonly envDefinitions?: readonly EnvDefinition[];
   /** 授权与 runtime 等基础模块通过工厂交给 app 创建。 */
-  readonly create?: () => unknown;
+  readonly create?: (context: ModuleFactoryContext) => unknown;
   /** 资源模块的后端交付物；只有 kind=resource 时可提供。 */
   readonly resourceModule?: ResourceModule;
   /** 浏览器 contribution 使用独立 ID，避免 package 名称成为前端装配契约。 */
@@ -114,11 +128,16 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]) {
 
   return {
     requireModule,
+    /** 返回启用模块，供 bootstrap 汇总 env、迁移与生命周期钩子。 */
+    resolveEnabled(ids: readonly string[]): readonly ModuleManifest[] {
+      this.assertDependencies(ids);
+      return ids.map((id) => requireModule(id));
+    },
     /** 为基础模块创建实例；调用方显式指定预期类型，避免 SDK 依赖具体实现。 */
-    create<T>(id: string, kind: ModuleKind): T {
+    create<T>(id: string, kind: ModuleKind, context: ModuleFactoryContext): T {
       const manifest = requireModule(id, kind);
       if (!manifest.create) throw new Error(`模块 ${id} 未提供创建工厂`);
-      return manifest.create() as T;
+      return manifest.create(context) as T;
     },
     /** 资源 module 仍保持完整交付物，不在 app 内维护 ID → resource 映射。 */
     requireResource(id: string): ResourceModule {

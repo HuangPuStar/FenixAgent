@@ -1,13 +1,12 @@
-/** 模块声明的最小 env 定义；真实项目以 Zod 合并并在启动时一次性校验。 */
-export interface EnvDefinition {
-  readonly moduleId: string;
-  readonly key: string;
-  readonly secret?: boolean;
-}
+import type { EnvDefinition } from "../index";
 
-export const postgresEnv: readonly EnvDefinition[] = [{ moduleId: "postgres", key: "DATABASE_URL", secret: true }];
+/** 只有 server 进程本身需要的配置；不包含数据库或 Provider 等模块配置。 */
+export const serverHostEnv: readonly EnvDefinition[] = [{ moduleId: "server-host", key: "PORT" }];
 
-/** app 汇总静态装配模块；模块内部不直接读取 process.env。 */
+/**
+ * bootstrap 汇总已启用模块的 env 声明后唯一调用此函数。
+ * demo 以占位值代替真实 Zod/process.env 读取，重点展示一次校验、一次注入的边界。
+ */
 export function loadServerEnv(definitions: readonly EnvDefinition[]): Readonly<Record<string, string>> {
   const duplicate = definitions.find(
     (definition, index) => definitions.findIndex((item) => item.key === definition.key) !== index,
