@@ -123,6 +123,97 @@ packages/resources/<resource>/
 
 每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。EE 通过 `vendor/fenix-ce` submodule 加入同一个 package-manager workspace，并从 `@fenix-ce/*` 公开入口导入；不得因为物理目录相邻而导入 `vendor/fenix-ce/packages/**/src/**`。`apps` 同样遵守该规则。
 
+### 2.2.2 资源模块之间的依赖规则
+
+资源模块默认独立；是否建立依赖由领域关系决定，而不是由目录相邻或实现便利决定。依赖必须保持单向：例如 `agent-config` 可以引用 `skill`、`mcp`、`model`，这些被引用资源不得反向依赖 `agent-config`。出现循环依赖时，应将共同概念抽到 `platform-sdk` 的稳定契约，或把协调流程移到应用层，不能通过相互 import 解决。
+
+```text
+skill ────────┐
+mcp ──────────┼──→ agent-config ──→ 已授权的启动参数
+model ────────┘                         │
+                                      AgentInstanceStarter port
+                                             │
+apps/server 注入 AgentInstanceManager ──────┘
+```
+
+资源关系分为三类，必须选择最轻的一种：
+
+| 场景 | 允许的实现 | 示例 | 禁止的实现 |
+| --- | --- | --- | --- |
+| 仅保存关联 | A 保存 B 的稳定 `resourceId`，必要时维护自己的引用索引或快照 | `agent-config.skillIds` | 以 name 作为关联；导入 B 的表或 repository |
+| 写入、发布或运行前校验 B | A 直接依赖 B **包根入口公开导出的 service**；该 service 的公开方法就是稳定调用契约。只有需要替换实现、多实现或防止循环时，才在根入口导出最小公开接口 | AgentConfig 调用 `SkillService.getUsableByIds()` | A 导入 B 的 `src/services`、repository 或自行复制 B 的状态判断 |
+| 跨资源协调 | 由拥有该动作的资源 service 编排多个公开 port；若流程无明确资源归属或涉及删除、批量同步、跨资源事务，则由 `apps/server` 的 use case/orchestration 组合 | 删除 Skill 前检查引用；批量发布关联资源 | 任一资源 route 调用另一资源 route；在 repository 中调用 service |
+
+资源关系紧密且长期稳定时，不为形式统一而额外创建接口。AgentConfig 可直接依赖 Skill、MCP、模型或知识库包根入口公开的 service：
+
+```ts
+import { McpService } from "@fenix-ce/mcp";
+import { SkillService } from "@fenix-ce/skill";
+
+export class AgentConfigService {
+  constructor(
+    private readonly skillService: SkillService,
+    private readonly mcpService: McpService,
+  ) {}
+
+  async validateReferences(input: { actorId: string; skillIds: string[]; mcpIds: string[] }) {
+    await this.skillService.getUsableByIds({ actorId: input.actorId, ids: input.skillIds });
+    await this.mcpService.getUsableByIds({ actorId: input.actorId, ids: input.mcpIds });
+  }
+}
+```
+
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix-ce/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。每个资源仍自行通过 `AccessControlModule` 进行授权，资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
+
+前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性；EE 替换资源时，静态依赖对应 EE 资源的 `web` 入口，不做运行时前端模块覆盖或发现。
+
+只有出现以下任一条件时，才在包根入口导出最小公开接口：需要在 CE/EE/甲方版替换实现、同一能力存在多个实现、调用方只需一个极小能力且不希望稳定整个 service API、或直接依赖会产生循环。该接口只暴露调用方完成自身规则所需的数据和动作，例如：
+
+```ts
+// @fenix-ce/skill（包根入口公开导出）
+export interface SkillReferenceResolver {
+  resolveUsableSkills(input: {
+    actorId: string;
+    skillIds: readonly string[];
+  }): Promise<readonly ResolvedSkill>;
+}
+```
+
+调用方资源只依赖此接口；具体 `SkillFacade` 在 `apps/server` 装配时作为实现注入。
+
+`agent-config` 与 Agent 运行时是特殊但常见的例子：AgentConfig 的 `use` 授权、发布状态校验和启动参数生成属于资源层；`agent-instance` 不理解 actor、权限或资源生命周期。资源层只定义 `AgentInstanceStarter` 端口，`apps/server` 注入无权限的 `AgentInstanceManager`。因此 `resources/agent-config` 不依赖 `agent-instance` 或 `agent-runtime` 的内部实现，`packages/agent` 也不反向依赖任何资源包。
+
+### 2.2.3 包类别依赖矩阵
+
+包之间的编译依赖必须从上层组合、具体实现流向稳定契约；`apps` 是唯一允许同时依赖各业务包的 composition root。下表中的“公开入口”均指 package `exports`，不允许穿透到另一个包的 `src/**`。
+
+| 包类别 | 可以依赖 | 禁止依赖 | 说明 |
+| --- | --- | --- | --- |
+| `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent`、`resources`、`apps`、任何 EE 包 | 最底层契约：资源范围、授权端口、装配 profile、模块 manifest 等 |
+| `packages/platform/*` 具体实现 | `platform-sdk`、无业务语义基础依赖 | `agent`、`resources`、`apps`；CE 包禁止 EE 包 | 例如 CE/EE AccessControl、observability；实现 SDK 的端口，但不承载资源规则 |
+| `packages/agent/agent-runtime` | `platform-sdk`（仅 manifest/通用契约需要时）、无业务语义基础依赖 | `resources`、具体 AccessControl、`apps` | 只负责引擎适配与执行能力，不理解资源、actor 或权限 |
+| `packages/agent/agent-instance` | `agent-runtime` 的公开入口、无业务语义基础依赖 | `resources`、`platform` 的具体授权实现、`apps` | 只管理实例生命周期；不得把资源授权塞入 InstanceManager |
+| `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
+| `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle |
+| `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
+| `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
+| EE package / app | CE submodule 的公开 `@fenix-ce/*` 入口、EE 自身公开入口 | CE 内部路径；CE 反向依赖 | 依赖方向只能是 `EE → CE`，以便 CE 独立构建与发布 |
+
+推荐的总体方向如下：
+
+```text
+                         apps/server · apps/web
+                                  ↓
+            platform 具体实现 · resources · agent
+                     ↓              ↓        ↓
+                         platform-sdk
+
+EE packages/apps ─────────────────────────→ CE public packages
+CE packages/apps ─────────────────────────╳ EE packages/apps
+```
+
+`fenix.module.ts` 的 `dependsOn` 是**装配依赖**，表示一个 manifest 被 profile 启用时需要同时启用哪些模块；它不能取代 TypeScript 的 `package.json` dependency，也不能放宽上述编译依赖规则。反过来，两个包存在 TypeScript 依赖也不必然意味着它们必须在每个 assembly profile 中同时启用：是否需要共同启用取决于其公开能力是否在该 profile 中被实际装配。
+
 ### 2.3 配置驱动的静态装配
 
 配置文件用于在**已编译进当前镜像/bundle**的模块中选择组合，例如 `deploy/assembly/ee.json`：
@@ -251,35 +342,40 @@ assembly.web      → generated module registry → resources/*/web contribution
 绝大多数资源模块不需要 env。例如 AgentConfig 的名称、模型、Skill、发布状态是数据库业务配置，不是环境变量。只有数据库连接、对象存储、模型网关、Sandbox 地址、第三方密钥等“部署时确定、重启后才变化”的配置才声明 env。
 
 ```ts
-// packages/agent/model-gateway/src/env.ts
-export const modelGatewayEnv = defineEnv({
-  id: "model-gateway",
-  schema: z.object({
-    RCS_MODEL_GATEWAY_BASE_URL: z.string().url(),
-    RCS_MODEL_GATEWAY_ADMIN_KEY: z.string().min(1).meta({ secret: true }),
-  }),
-});
-
-// packages/agent/model-gateway/src/module.ts
-export function createModelGateway(config: ModelGatewayEnv): ModelGateway {
-  // 此处只使用已校验、已注入的 config；不读取 process.env
-}
+// packages/agent/agent-runtime/fenix.module.ts
+// 下例仅说明模块如何声明并消费环境变量；当前 demo 没有额外 adapter 模块。
+export const moduleManifest = {
+  id: "agent-runtime",
+  kind: "runtime",
+  envDefinitions: [
+    { moduleId: "agent-runtime", key: "RCS_AGENT_RUNTIME_ENDPOINT" },
+    { moduleId: "agent-runtime", key: "RCS_AGENT_RUNTIME_TOKEN", secret: true },
+  ],
+  create(context) {
+    // 只消费 bootstrap 已校验并注入的 config；绝不读取 process.env。
+    return createAgentRuntime({
+      endpoint: context.env.RCS_AGENT_RUNTIME_ENDPOINT,
+      token: context.env.RCS_AGENT_RUNTIME_TOKEN,
+    });
+  },
+};
 
 // apps/server/src/bootstrap.ts
+const installedModules = resolveEnabledModules(assemblyProfile, generatedModuleRegistry);
 const env = loadServerEnv([
-  platformEnv,
-  postgresEnv,
-  modelGatewayEnv,
-  ...installedModules.flatMap((module) => module.envDefinitions),
+  ...serverHostEnv, // 仅 PORT、日志级别、关闭超时等进程级配置
+  ...installedModules.flatMap((module) => module.envDefinitions ?? []),
 ]);
-const modelGateway = createModelGateway(env.for(modelGatewayEnv));
+const application = assembleApplication({ installedModules, env });
 ```
+
+`bootstrap.ts` 不直接 import 或调用具体模块工厂，例如 Agent runtime、PostgreSQL client 或对象存储 client。它只解析 assembly、取得已启用 manifest、统一读取/校验 env，并将按模块切分后的配置交给装配器/模块工厂。当前最小 demo 仅展示 schema 与 migration 的组织方式，不模拟数据库连接或 PostgreSQL 模块；真实工程接入数据库时，由负责存储的模块声明连接配置并接收注入，repository 只接收已构造的 db client，不读取连接串。
 
 `envDefinition` 至少声明字段名、Zod schema、默认值、是否 secret、是否 restart-required、所属模块和用途说明。加载器合并所有静态装配模块的声明；同名字段的 schema、默认值或 secret 属性不一致时启动失败，EE 只能追加自己的定义，不能静默改变 CE 同名变量语义。
 
 ```text
-CE server env = platform env + CE installed-module env
-EE server env = CE server env + EE access-control/resource/runtime extension env
+CE server env = server host env + CE profile 启用模块的 env
+EE server env = server host env + EE profile 启用的 CE/EE 模块 env
 ```
 
 前端 `apps/web` 不读取 server env，也永远拿不到 secret。它的少量公开构建配置（例如公开服务地址、构建版本、品牌默认值）由独立的 `webEnv` 声明并在构建时注入；更适合运行时变化的品牌、导航和功能开关则从受控的 `/app` 配置接口读取。

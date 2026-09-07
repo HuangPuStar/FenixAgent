@@ -6,5 +6,6 @@ export const moduleManifest = {
   id: "enterprise",
   kind: "access-control",
   dependsOn: [],
+  envDefinitions: [{ moduleId: "enterprise-access-control", key: "CUSTOMER_SSO_ISSUER" }],
   create: () => new EnterpriseAccessControl(),
 } satisfies ModuleManifest;
