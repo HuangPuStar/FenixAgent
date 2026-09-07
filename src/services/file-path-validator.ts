@@ -4,7 +4,7 @@
 // （主服务校验是防线而非依赖）。本模块只做字符串校验，不访问文件系统或 DB，
 // 可直接单测。
 
-import { isAbsolute } from "node:path";
+import { isAbsolute, win32 } from "node:path";
 import { ValidationError } from "../errors";
 
 /** 路径是否含控制字符：C0（NUL–0x1F）、DEL（0x7F）与 C1（0x80–0x9F）。
@@ -26,7 +26,7 @@ export function hasPathControlCharacter(value: string): boolean {
 export function assertSafePath(path: string): void {
   const trimmed = path.trim();
   if (!trimmed) return;
-  if (isAbsolute(trimmed)) throw new ValidationError("路径不合法：不允许绝对路径");
+  if (isAbsolute(trimmed) || win32.isAbsolute(trimmed)) throw new ValidationError("路径不合法：不允许绝对路径");
   if (hasPathControlCharacter(trimmed)) throw new ValidationError("路径不合法：不允许控制字符");
   for (const segment of trimmed.split(/[\\/]+/)) {
     if (segment === "..") throw new ValidationError("路径不合法：不允许 `..` 段");
@@ -45,7 +45,7 @@ export function normalizeUploadRelativePath(relPath: unknown): string | null {
   const trimmed = relPath.trim();
   if (!trimmed) return "";
   if (trimmed === ".") return null;
-  if (isAbsolute(trimmed)) return null;
+  if (isAbsolute(trimmed) || win32.isAbsolute(trimmed)) return null;
   if (hasPathControlCharacter(trimmed)) return null;
   for (const segment of trimmed.split(/[\\/]+/)) {
     if (segment === "..") return null;

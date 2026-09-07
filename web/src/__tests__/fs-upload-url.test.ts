@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { buildUploadUrl } from "../api/fs";
+import { buildUploadUrl, encodeWorkspaceUrlPath, fsApi } from "../api/fs";
 
 const fetchMock = {
   lastUrl: "",
@@ -44,6 +44,24 @@ describe("buildUploadUrl", () => {
   // 环境 ID 需 URL 编码，与 request() 路径参数替换行为保持一致
   test("environment id is URL-encoded", () => {
     expect(buildUploadUrl("a b")).toBe("/web/environments/a%20b/fs/");
+  });
+  test("workspace path segments are URL-encoded", () => {
+    expect(buildUploadUrl("env_1", "docs/a#b c")).toBe("/web/environments/env_1/fs/docs/a%23b%20c");
+  });
+});
+
+describe("workspace path URL encoding", () => {
+  test("preserves separators and encodes URL fragment characters", () => {
+    expect(encodeWorkspaceUrlPath("user/abcd#1234.txt")).toBe("user/abcd%231234.txt");
+  });
+
+  test("read and write requests send the complete encoded file name", async () => {
+    await fsApi.readFile("env_1", "user/abcd#1234.txt");
+    expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user/abcd%231234.txt");
+
+    await fsApi.writeFile("env_1", "user/abcd#1234.txt", "content");
+    expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user/abcd%231234.txt");
+    expect(fetchMock.method).toBe("PUT");
   });
 });
 

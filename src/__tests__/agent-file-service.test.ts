@@ -68,6 +68,15 @@ describe("本地 LocalBackend（真实 tmp 目录）", () => {
     expect(result).toMatchObject({ type: "text", content: "你好 fenix", encoding: "utf-8" });
   });
 
+  test("write 和 rename 保留 # 等合法文件名字符", async () => {
+    const fs = gate(ENV_ID, authCtx);
+    await fs.write("user/abcd#1234.txt", "hash");
+    expect(await readFile(join(workspaceRoot, ORG_ID, USER_ID, ENV_ID, "user/abcd#1234.txt"), "utf8")).toBe("hash");
+
+    await fs.rename("user/abcd#1234.txt", "user/renamed#5678.txt");
+    expect((await fs.read("user/renamed#5678.txt", "text")).type).toBe("text");
+  });
+
   test("list 返回目录条目且过滤隐藏文件", async () => {
     // 列目录：写入文件后应出现在条目中；.git 黑名单目录不应出现
     const fs = gate(ENV_ID, authCtx);

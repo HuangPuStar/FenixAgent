@@ -134,6 +134,35 @@ export async function uploadFiles(
   });
 }
 
+/** 目录 ZIP 下载可能包含较多文件，超时与远程 file_op 上限对齐。 */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** 下载文件或目录 ZIP；调用方持有 signal 以在组件卸载或切换环境时释放连接。 */
+export async function downloadWorkspacePath(
+  environmentId: string,
+  path: string,
+  directory: boolean,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const url = directory
+    ? `/web/environments/${encodeURIComponent(environmentId)}/fs/download-zip?${new URLSearchParams({ path })}`
+    : `/web/environments/${encodeURIComponent(environmentId)}/fs/${encodeWorkspaceUrlPath(path)}?raw=1`;
+  const timeoutSignal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
+  const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const response = await fetch(url, { credentials: "include", signal: requestSignal });
+  if (!response.ok) {
+    let message: string | undefined;
+    try {
+      const payload = (await response.json()) as { error?: string | { message?: string } };
+      message = typeof payload.error === "string" ? payload.error : payload.error?.message;
+    } catch {
+      // 非 JSON 响应使用本地化的调用方兜底文案。
+    }
+    throw new ApiError(message ?? "", response.status >= 500 ? "SERVER_ERROR" : "UNKNOWN");
+  }
+  return response.blob();
+}
+
 /** 将文件名转换为 Chat 用户文件区域中的 workspace 相对路径。 */
 export function getChatUploadPath(fileName: string): string {
   return `${CHAT_UPLOAD_DIRECTORY}/${fileName}`;
@@ -150,17 +179,22 @@ interface BatchDeleteResponse {
   failed: Array<{ path: string; error: string }>;
 }
 
+/** 将 workspace 相对路径编码为 URL path，同时保留目录分隔符。 */
+export function encodeWorkspaceUrlPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 /**
  * 拼接文件上传 URL（/web/environments/:id/fs 子路径）。
  *
  * Elysia splat 路由不匹配空段：targetDir 为空（上传到 workspace 根）时必须保留尾斜杠
- * （以 /fs/ 结尾而非 /fs），否则后端返回 404；非空 targetDir 去除前导斜杠后拼接，
- * 避免 "/docs" 这类输入产生双斜杠。统一上传 helper 复用本函数，保证 fetch 与进度上传的 URL 拼装行为一致。
+ * （以 /fs/ 结尾而非 /fs），否则后端返回 404。非空路径逐段编码，避免 `#` 等合法
+ * 文件名字符被浏览器解释为 URL fragment；路径是否合法仍由服务端统一校验。
  * @param id - 环境 ID
  * @param targetDir - 目标目录（相对于 workspace 根），缺省或空串表示 workspace 根
  */
 export function buildUploadUrl(id: string, targetDir?: string): string {
-  const dir = targetDir ? targetDir.replace(/^\/+/, "") : "";
+  const dir = targetDir ? encodeWorkspaceUrlPath(targetDir.replace(/^\/+/, "")) : "";
   return `/web/environments/${encodeURIComponent(id)}/fs/${dir}`;
 }
 
@@ -188,7 +222,7 @@ export const fsApi = {
    * @param subpath - 文件路径（相对于 workspace 根）
    */
   readFile: (id: string, subpath: string) =>
-    request<FileContent | undefined>(`/web/environments/:id/fs/${subpath}`, {
+    request<FileContent | undefined>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
       params: { id },
     }),
 
@@ -200,7 +234,7 @@ export const fsApi = {
    * @param content - 要写入的文本内容
    */
   writeFile: (id: string, subpath: string, content: string) =>
-    request<FileWriteResult>(`/web/environments/:id/fs/${subpath}`, {
+    request<FileWriteResult>(`/web/environments/:id/fs/${encodeWorkspaceUrlPath(subpath)}`, {
       method: "PUT",
       params: { id },
       body: { content },
