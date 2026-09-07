@@ -152,6 +152,8 @@
     "uploadingFile": "正在上传 {{name}}...",
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "下载 ZIP",
+    "downloading": "正在下载...",
+    "retryDownload": "重试下载",
     "downloadFailed": "下载失败",
     "showTree": "展开文件树",
     "hideTree": "收起文件树",

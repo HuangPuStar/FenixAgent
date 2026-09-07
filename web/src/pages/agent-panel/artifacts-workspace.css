@@ -327,9 +327,12 @@
   overflow: hidden;
 }
 
-.file-tree-sections-resizable {
+.file-tree-sections-layout {
+  display: grid;
   min-height: 0;
   flex: 1;
+  grid-template-rows: minmax(112px, 3fr) minmax(68px, 2fr);
+  overflow: hidden;
 }
 
 .file-tree-section {
@@ -343,27 +346,9 @@
   min-height: 0;
 }
 
-.file-tree-sections-divider {
-  height: 7px;
-  flex: 0 0 7px;
-  border-top: 1px solid var(--color-border-subtle);
-  border-bottom: 1px solid transparent;
-  background: transparent;
-  cursor: row-resize;
-  transition:
-    border-color 120ms ease,
-    background-color 120ms ease;
-}
-
-.file-tree-sections-divider:hover,
-.file-tree-sections-divider:focus-visible,
-.file-tree-sections-divider[data-resize-handle-active] {
-  border-color: color-mix(in srgb, var(--color-brand) 35%, transparent);
-  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
-}
-
 .file-tree-section--user {
   min-height: 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .file-tree-section-scroll {

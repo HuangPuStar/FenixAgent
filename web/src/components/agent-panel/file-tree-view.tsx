@@ -19,7 +19,6 @@ import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "../../i18n";
 import type { ParsedFileNode } from "./file-tree-model";
@@ -47,6 +46,7 @@ interface FileTreeViewProps {
   expandedIds: string[];
   contextMenu: ContextMenuState | null;
   deleteConfirm: { path: string; name: string } | null;
+  download: { path: string; isDir: boolean; error: boolean } | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
   workspaceNodes: ParsedFileNode[];
@@ -207,60 +207,42 @@ export function FileTreeView(props: FileTreeViewProps) {
   );
 }
 
-const FILE_TREE_WORKSPACE_MIN_HEIGHT = "112px";
-const FILE_TREE_USER_MIN_HEIGHT = "68px";
-
 function FileTreeSections(props: FileTreeViewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
 
   return (
-    <ResizablePanelGroup orientation="vertical" className="file-tree-sections-resizable">
-      <ResizablePanel defaultSize="60%" minSize={FILE_TREE_WORKSPACE_MIN_HEIGHT}>
-        <section data-upload-target="" className="file-tree-section file-tree-section--workspace">
-          <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
-          <div className="file-tree-section-scroll">
-            {props.showTree && props.workspaceHasNodes ? (
-              <ArboristFileTree
-                key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
-                data={props.workspaceNodes}
-                {...props}
-              />
-            ) : (
-              <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
-            )}
-          </div>
-        </section>
-      </ResizablePanel>
-      <ResizableHandle className="file-tree-sections-divider" />
-      <ResizablePanel defaultSize="40%" minSize={FILE_TREE_USER_MIN_HEIGHT}>
-        <section data-upload-target="user" className="file-tree-section file-tree-section--user">
-          <div className="file-tree-user-heading">
-            <span>{t("fileTree.user")}</span>
-            <button
-              type="button"
-              className="file-tree-section-upload"
-              title={t("fileTree.upload")}
-              aria-label={t("fileTree.upload")}
-              onClick={() => props.onUploadClick("user")}
-              disabled={props.uploading || !props.envId}
-            >
-              <Upload aria-hidden />
-            </button>
-          </div>
-          <div className="file-tree-section-scroll">
-            {props.showTree && props.userHasNodes ? (
-              <ArboristFileTree
-                key={`user:${props.treeVersion}:${props.normalizedSearch}`}
-                data={props.userNodes}
-                {...props}
-              />
-            ) : (
-              <Feedback icon={<Folder />} text={t("fileTree.userEmptyState")} />
-            )}
-          </div>
-        </section>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <div className="file-tree-sections-layout">
+      <section data-upload-target="" className="file-tree-section file-tree-section--workspace">
+        <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
+        <div className="file-tree-section-scroll">
+          {props.showTree && props.workspaceHasNodes ? (
+            <ArboristFileTree
+              key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
+              data={props.workspaceNodes}
+              {...props}
+            />
+          ) : (
+            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
+          )}
+        </div>
+      </section>
+      <section data-upload-target="user" className="file-tree-section file-tree-section--user">
+        <div className="file-tree-user-heading">
+          <span>{t("fileTree.user")}</span>
+        </div>
+        <div className="file-tree-section-scroll">
+          {props.showTree && props.userHasNodes ? (
+            <ArboristFileTree
+              key={`user:${props.treeVersion}:${props.normalizedSearch}`}
+              data={props.userNodes}
+              {...props}
+            />
+          ) : (
+            <Feedback icon={<Folder />} text={t("fileTree.userEmptyState")} />
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -479,9 +461,23 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
       <button type="button" onClick={props.onReference}>
         {t("fileTree.contextMenu.reference")}
       </button>
-      <button type="button" onClick={() => props.onDownload(state.path, state.isDir)}>
-        <Download aria-hidden />
-        {state.isDir ? t("fileTree.downloadZip") : t("fileTree.download")}
+      <button
+        type="button"
+        disabled={props.download?.path === state.path && !props.download.error}
+        onClick={() => props.onDownload(state.path, state.isDir)}
+      >
+        {props.download?.path === state.path && !props.download.error ? (
+          <Loader2 className="animate-spin" aria-hidden />
+        ) : (
+          <Download aria-hidden />
+        )}
+        {props.download?.path === state.path
+          ? props.download.error
+            ? t("fileTree.retryDownload")
+            : t("fileTree.downloading")
+          : state.isDir
+            ? t("fileTree.downloadZip")
+            : t("fileTree.download")}
       </button>
       <button type="button" onClick={() => props.onRenameRequest(state.path, name)}>
         {t("fileTree.contextMenu.rename")}

@@ -2,7 +2,7 @@ import { useRequest } from "ahooks";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { fsApi } from "@/src/api/fs";
+import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
 import { unwrap } from "@/src/api/request";
 import { NS } from "../../i18n";
 import { FileTreeInputDialog } from "./file-tree-input-dialog";
@@ -15,7 +15,6 @@ import {
   splitFileTreeSections,
 } from "./file-tree-model";
 import { FileTreeView } from "./file-tree-view";
-import { buildPreviewUrl, encodePathSegment } from "./preview/utils";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
 
@@ -58,6 +57,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   } | null>(null);
   // 加载失败时保留旧树并展示过期横幅（文件服务不可用 ≠ 空目录，docs/arch/12-files.md §7.3）
   const [stale, setStale] = useState(false);
+  const [download, setDownload] = useState<{ path: string; isDir: boolean; error: boolean } | null>(null);
+  const downloadControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
   // 用最新树数据替换当前树：加载/重校验共用，成功后同时清除过期横幅
   const applyTree = useCallback((paths: string[], mtimes?: Record<string, number>) => {
@@ -303,59 +306,36 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     [folderInputRef],
   );
 
-  // 下载：文件直接下载，目录打包为 zip
-  // 使用 fetch + Blob 确保携带认证 cookie；<a download> 无法保证 credentials
+  // 下载由 API 层统一构造 URL 和解析错误；新请求会取消旧请求，卸载时也会释放连接。
   const handleDownload = useCallback(
     async (nodePath: string, isDir: boolean) => {
       if (!envId) return;
+      downloadControllerRef.current?.abort();
+      const controller = new AbortController();
+      downloadControllerRef.current = controller;
+      setDownload({ path: nodePath, isDir, error: false });
       try {
-        let url: string;
-        let fileName: string;
-
-        if (isDir) {
-          const dirName = nodePath.split("/").filter(Boolean).pop() || "download";
-          url = `/web/environments/${envId}/fs/download-zip?path=${encodePathSegment(nodePath)}`;
-          fileName = `${dirName}.zip`;
-        } else {
-          url = buildPreviewUrl(envId, nodePath);
-          fileName = nodePath.split("/").pop() || "file";
-        }
-
-        const res = await fetch(url, { credentials: "include" });
-        if (!res.ok) {
-          let errorMessage: string | undefined;
-          try {
-            const payload: unknown = await res.clone().json();
-            if (typeof payload === "object" && payload !== null && "error" in payload) {
-              const error = payload.error;
-              if (typeof error === "string") {
-                errorMessage = error;
-              } else if (
-                typeof error === "object" &&
-                error !== null &&
-                "message" in error &&
-                typeof error.message === "string"
-              ) {
-                errorMessage = error.message;
-              }
-            }
-          } catch {
-            // 非 JSON 响应没有结构化错误信息，继续使用状态码提示。
-          }
-
-          throw new Error(errorMessage || `Download failed: ${res.status}`);
-        }
-        const blob = await res.blob();
+        const blob = await downloadWorkspacePath(envId, nodePath, isDir, controller.signal);
         const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
+        const anchor = document.createElement("a");
+        try {
+          anchor.href = blobUrl;
+          anchor.download = isDir
+            ? `${nodePath.split("/").filter(Boolean).pop() || "download"}.zip`
+            : nodePath.split("/").pop() || "file";
+          document.body.appendChild(anchor);
+          anchor.click();
+        } finally {
+          anchor.remove();
+          URL.revokeObjectURL(blobUrl);
+        }
+        setDownload(null);
       } catch (error) {
+        if (controller.signal.aborted) return;
+        setDownload({ path: nodePath, isDir, error: true });
         toast.error(error instanceof Error && error.message ? error.message : t("fileTree.downloadFailed"));
+      } finally {
+        if (downloadControllerRef.current === controller) downloadControllerRef.current = null;
       }
     },
     [envId, t],
@@ -415,6 +395,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         userNodes={visibleSections.user}
         contextMenu={contextMenu}
         deleteConfirm={deleteConfirm}
+        download={download}
         fileInputRef={fileInputRef}
         folderInputRef={folderInputRef}
         onSelect={handleSelect}

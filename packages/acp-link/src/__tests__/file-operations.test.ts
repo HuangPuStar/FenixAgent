@@ -85,6 +85,20 @@ describe("handleFileOp", () => {
     expect(traversal).toMatchObject({ status: "error", error: "Invalid path: path traversal detected" });
   });
 
+  test("打包 workspace 目录并拒绝越界路径", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "docs"));
+    await writeFile(join(workspace, "docs", "note.txt"), "hello", "utf-8");
+
+    const result = await handleFileOp(createMessage(environmentId, "zip", { path: "docs" }));
+    expect(result.status).toBe("ok");
+    const archive = Buffer.from(result.data as string, "base64");
+    expect(archive.subarray(0, 2).toString()).toBe("PK");
+
+    const traversal = await handleFileOp(createMessage(environmentId, "zip", { path: "../outside" }));
+    expect(traversal).toMatchObject({ status: "error", error: "Invalid path: path traversal detected" });
+  });
+
   // 写入、上传、重命名、建目录和删除必须只影响 workspace 内的目标路径
   test("执行受限的写入型文件操作", async () => {
     const { workspace, environmentId } = await createWorkspace();

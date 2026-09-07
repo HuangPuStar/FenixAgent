@@ -107,15 +107,15 @@ describe("file tree dialogs", () => {
     expect(source.slice(staleBranch, loadingBranch)).toContain("file-tree-feedback-action");
   });
 
-  // 垂直文件分区的默认值必须显式使用百分比、下限必须使用像素，避免 v4 将裸数字统一解释为像素后初始化坍缩。
-  test("uses explicit units for file tree panel sizes", () => {
+  // 文件区使用稳定的自然布局，不再展示底部独立操作区；上传仍由顶部工具栏提供。
+  test("uses stable file sections without the bottom action area", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
     const source = fs.readFileSync(componentPath, "utf-8");
 
-    expect(source).toContain('const FILE_TREE_WORKSPACE_MIN_HEIGHT = "112px"');
-    expect(source).toContain('const FILE_TREE_USER_MIN_HEIGHT = "68px"');
-    expect(source).toContain('defaultSize="60%" minSize={FILE_TREE_WORKSPACE_MIN_HEIGHT}');
-    expect(source).toContain('defaultSize="40%" minSize={FILE_TREE_USER_MIN_HEIGHT}');
+    expect(source).toContain('className="file-tree-sections-layout"');
+    expect(source).not.toContain('ResizablePanelGroup orientation="vertical"');
+    expect(source).not.toContain("file-tree-section-upload");
+    expect(source).toContain("onClick={() => props.onUploadClick()}");
   });
 
   // 浮动工作区的阴影必须落在稳定容器上，避免 filter 合成整棵动态文件树时残留旧帧。
@@ -129,6 +129,16 @@ describe("file tree dialogs", () => {
 
     expect(shellStyles).not.toContain("filter:");
     expect(workspaceStyles).toContain("box-shadow:");
+  });
+
+  test("keeps download state, retry, and cleanup in the file panel", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "FileTreeTab.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+
+    expect(source).toContain("downloadWorkspacePath(envId, nodePath, isDir, controller.signal)");
+    expect(source).toContain("downloadControllerRef.current?.abort()");
+    expect(source).toContain("URL.revokeObjectURL(blobUrl)");
+    expect(source).toContain("error: true");
   });
 
   // 文件标签栏必须位于右侧预览内容上方，不能回落到整个工作区底部。

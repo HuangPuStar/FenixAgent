@@ -152,6 +152,8 @@
     "uploadingFile": "Uploading {{name}}...",
     "uploadingProgress": "{{percent}}%",
     "downloadZip": "Download ZIP",
+    "downloading": "Downloading...",
+    "retryDownload": "Retry download",
     "downloadFailed": "Download failed",
     "showTree": "Show file tree",
     "hideTree": "Hide file tree",

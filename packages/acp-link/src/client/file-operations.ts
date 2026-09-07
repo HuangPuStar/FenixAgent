@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 
@@ -406,6 +407,42 @@ async function opTree(
   return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
 }
 
+const MAX_ZIP_BYTES = 20 * 1024 * 1024;
+
+async function opZip(workspace: string, params: Record<string, unknown>): Promise<string> {
+  const directory = resolveAndValidate(workspace, params.path as string);
+  if (!directory) throw new Error("Invalid path: path traversal detected");
+  if (!(await stat(directory)).isDirectory()) throw new Error("Target path is not a directory");
+
+  const child = spawn("zip", ["-r", "-q", "-", "."], {
+    cwd: directory,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const chunks: Buffer[] = [];
+  const errors: Buffer[] = [];
+  let outputBytes = 0;
+  child.stdout.on("data", (chunk: Buffer) => {
+    outputBytes += chunk.length;
+    if (outputBytes > MAX_ZIP_BYTES) {
+      child.kill();
+      return;
+    }
+    chunks.push(chunk);
+  });
+  child.stderr.on("data", (chunk: Buffer) => errors.push(chunk));
+
+  const childEvents = child as unknown as NodeJS.EventEmitter;
+  await new Promise<void>((resolveProcess, reject) => {
+    childEvents.once("error", reject);
+    childEvents.once("close", (code: number | null) => {
+      if (outputBytes > MAX_ZIP_BYTES) reject(new Error("ZIP archive exceeds 20MB; select a smaller directory"));
+      else if (code === 0) resolveProcess();
+      else reject(new Error(Buffer.concat(errors).toString("utf-8").trim() || `zip exited with code ${code}`));
+    });
+  });
+  return Buffer.concat(chunks).toString("base64");
+}
+
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -461,6 +498,9 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
         break;
       case "tree":
         data = await opTree(workspace, params);
+        break;
+      case "zip":
+        data = await opZip(workspace, params);
         break;
       default:
         return {
