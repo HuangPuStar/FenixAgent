@@ -14,11 +14,15 @@ describe("file tree dialogs", () => {
     expect(source).toContain('data-upload-target="user"');
   });
 
-  test("validates basename input after trimming", () => {
+  test("validates basename without changing legal surrounding spaces", () => {
     expect(isValidFileTreeBasename(" report.txt ")).toBe(true);
     for (const value of ["", "   ", ".", "..", "a/b", "a\0b"]) {
       expect(isValidFileTreeBasename(value)).toBe(false);
     }
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "FileTreeTab.tsx");
+    const source = fs.readFileSync(componentPath, "utf-8");
+    expect(source).toContain("const value = inputDialog.value;");
+    expect(source).not.toContain("const value = inputDialog.value.trim();");
   });
 
   // 文件树移动操作允许完整路径，但拒绝空路径和 NUL。

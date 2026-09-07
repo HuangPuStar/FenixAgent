@@ -117,6 +117,7 @@
     "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
   },
   "fileTree": {
+    "accessibleName": "文件树",
     "refresh": "刷新",
     "refreshItem": "刷新 {{name}}",
     "deleteItem": "删除 {{name}}",
@@ -139,6 +140,7 @@
     "uploadFolder": "上传文件夹",
     "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
+    "uploadPartialIndeterminate": "{{message}} 部分文件可能已经上传，确切数量未知；文件列表已刷新。",
     "staleBanner": "文件服务暂时不可用，正在自动重连",
     "renameFailed": "重命名失败",
     "moveFailed": "移动失败",

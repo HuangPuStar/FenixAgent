@@ -32,6 +32,8 @@
   "agentRequired": "Please select an agent first",
   "createdAt": "Created At",
   "retry": "Retry",
+  "loading": "Loading published view",
+  "instanceNotFound": "The environment instance for this view was not found.",
   "modules": {
     "chatHeader": "Header",
     "sessionSidebar": "Session History",

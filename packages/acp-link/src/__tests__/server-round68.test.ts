@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { handleFileOp, setZipBeforeSpawnHookForTest } from "../client/file-operations.js";
+import { initRegistry, registerWorkspace } from "../client/workspace-registry.js";
 import { createAcpClient, type ServerConfig } from "../server.js";
 
 class InMemoryWebSocket {
@@ -69,6 +74,7 @@ let timeoutCallbacks = new Map<number, () => void>();
 let intervalCallbacks = new Map<number, () => void>();
 let nextTimerId = 0;
 let handles: Array<{ close(): void }> = [];
+const temporaryDirectories: string[] = [];
 
 function restoreGlobal(name: string, descriptor: PropertyDescriptor | undefined): void {
   if (descriptor) {
@@ -124,8 +130,10 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const handle of handles) handle.close();
+    setZipBeforeSpawnHookForTest();
+    await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
     restoreGlobal("WebSocket", webSocketDescriptor);
     restoreGlobal("setTimeout", setTimeoutDescriptor);
     restoreGlobal("clearTimeout", clearTimeoutDescriptor);
@@ -222,6 +230,91 @@ describe("createAcpClient round 68 离线生命周期分支", () => {
     expect(fileSocket.closeCalls).toBe(1);
     expect(InMemoryWebSocket.instances).toHaveLength(3);
     expect(InMemoryWebSocket.instances[2]?.url).toContain("/acp/file-ws");
+  });
+
+  test("主动 close 会取消在途 ZIP", async () => {
+    const registryRoot = await mkdtemp(join(tmpdir(), "acp-link-server-registry-"));
+    const workspace = await mkdtemp(join(tmpdir(), "acp-link-server-workspace-"));
+    temporaryDirectories.push(registryRoot, workspace);
+    await initRegistry(registryRoot);
+    await mkdir(join(workspace, "docs"));
+    await writeFile(join(workspace, "docs", "note.txt"), "safe");
+    const environmentId = `env-${crypto.randomUUID()}`;
+    await registerWorkspace(environmentId, workspace);
+
+    let enterHook!: () => void;
+    let releaseHook!: () => void;
+    const entered = new Promise<void>((resolve) => (enterHook = resolve));
+    const release = new Promise<void>((resolve) => (releaseHook = resolve));
+    setZipBeforeSpawnHookForTest(async () => {
+      enterHook();
+      await release;
+    });
+
+    const handle = createAcpClient(config);
+    handles.push(handle);
+    await waitForSockets(1);
+    const mainSocket = InMemoryWebSocket.instances[0];
+    if (!mainSocket) throw new Error("main socket was not created");
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
+    const operation = handleFileOp({
+      type: "file_op",
+      request_id: "zip-close",
+      operation: "zip",
+      params: { path: "docs", environmentId },
+    });
+    await entered;
+
+    handle.close();
+    releaseHook();
+
+    await expect(operation).resolves.toMatchObject({ status: "error", error: "ZIP operation cancelled" });
+  });
+
+  test("强制重连 file-ws 会取消在途 ZIP", async () => {
+    const registryRoot = await mkdtemp(join(tmpdir(), "acp-link-reconnect-registry-"));
+    const workspace = await mkdtemp(join(tmpdir(), "acp-link-reconnect-workspace-"));
+    temporaryDirectories.push(registryRoot, workspace);
+    await initRegistry(registryRoot);
+    await mkdir(join(workspace, "docs"));
+    await writeFile(join(workspace, "docs", "note.txt"), "safe");
+    const environmentId = `env-${crypto.randomUUID()}`;
+    await registerWorkspace(environmentId, workspace);
+
+    let enterHook!: () => void;
+    let releaseHook!: () => void;
+    const entered = new Promise<void>((resolve) => (enterHook = resolve));
+    const release = new Promise<void>((resolve) => (releaseHook = resolve));
+    setZipBeforeSpawnHookForTest(async () => {
+      enterHook();
+      await release;
+    });
+
+    handles.push(createAcpClient(config));
+    await waitForSockets(1);
+    const mainSocket = InMemoryWebSocket.instances[0];
+    if (!mainSocket) throw new Error("main socket was not created");
+    mainSocket.message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
+    const operation = handleFileOp({
+      type: "file_op",
+      request_id: "zip-reconnect",
+      operation: "zip",
+      params: { path: "docs", environmentId },
+    });
+    await entered;
+
+    mainSocket.message(
+      '{"type":"relay","instance_id":"inst-1","instance_uid":"inst-1","runtime_generation":1,"server_epoch":"epoch-test","session_id":"ses-1","payload":{"type":"connect"}}',
+    );
+    releaseHook();
+
+    await expect(operation).resolves.toMatchObject({ status: "error", error: "ZIP operation cancelled" });
   });
 
   // 文件通道构造异常时也必须进入退避重连，避免 sandbox 重启窗口永久失联。

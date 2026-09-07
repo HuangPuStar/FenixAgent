@@ -32,6 +32,8 @@
   "agentRequired": "请先选择 Agent",
   "createdAt": "创建时间",
   "retry": "重试",
+  "loading": "正在加载发布视图",
+  "instanceNotFound": "未找到该视图对应的环境实例。",
   "modules": {
     "chatHeader": "顶部标题栏",
     "sessionSidebar": "会话历史",

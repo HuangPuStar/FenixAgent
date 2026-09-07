@@ -73,10 +73,10 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
     expect(normalizeUploadRelativePath(".")).toBeNull();
   });
 
-  test("合法相对路径 trim 后返回，反斜杠视为分隔符", () => {
-    // 正/反斜杠均视为分隔符（防御 Windows 客户端路径），trim 前后等价
-    expect(normalizeUploadRelativePath("  nested/b.txt ")).toBe("nested/b.txt");
+  test("合法相对路径保留原值，反斜杠视为分隔符", () => {
+    expect(normalizeUploadRelativePath(" nested/b.txt ")).toBe(" nested/b.txt ");
     expect(normalizeUploadRelativePath("nested\\b.txt")).toBe("nested\\b.txt");
+    expect(normalizeUploadRelativePath("   ")).toBeNull();
   });
 
   test("空字符串 → 空串（回退 file.name）", () => {

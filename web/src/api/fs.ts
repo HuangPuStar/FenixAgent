@@ -69,11 +69,15 @@ interface MkdirResponse {
 /** Chat 用户文件固定写入的 workspace 相对目录。 */
 const CHAT_UPLOAD_DIRECTORY = "user";
 
+/** 目录上传按批发送，避免多文件 multipart / 远程 base64 WS 帧无界增长。 */
+export const MAX_UPLOAD_BATCH_SIZE_BYTES = 20 * 1024 * 1024;
+
 /** 文件上传请求参数。 */
 export interface UploadFilesOptions {
   targetDir?: string;
   relativePaths?: string[];
   onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 /** 构造统一上传表单，文件夹层级仅通过 relativePaths 表达。 */
@@ -101,12 +105,26 @@ export async function uploadFiles(
         body: formData,
         timeout: UPLOAD_TIMEOUT_MS,
         opId: randomUUID(),
+        signal: options.signal,
       }),
     );
   }
 
   return new Promise<FileUploadResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let settled = false;
+    const cleanup = () => options.signal?.removeEventListener("abort", abort);
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const abort = () => {
+      xhr.abort();
+      settle(() => reject(new DOMException("Upload cancelled", "AbortError")));
+    };
+
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) options.onProgress?.(Math.round((event.loaded / event.total) * 100));
     };
@@ -115,21 +133,29 @@ export async function uploadFiles(
       try {
         payload = JSON.parse(xhr.responseText) as typeof payload;
       } catch {
-        reject(new ApiError(`请求失败 (${xhr.status})`, xhr.status >= 500 ? "SERVER_ERROR" : "UNKNOWN"));
+        settle(() => reject(new ApiError(`请求失败 (${xhr.status})`, xhr.status >= 500 ? "SERVER_ERROR" : "UNKNOWN")));
         return;
       }
       if (xhr.status >= 200 && xhr.status < 300 && payload.success && payload.data) {
-        resolve(payload.data);
+        settle(() => resolve(payload.data!));
         return;
       }
-      reject(new ApiError(payload.error?.message ?? `请求失败 (${xhr.status})`, payload.error?.code ?? "UNKNOWN"));
+      settle(() =>
+        reject(new ApiError(payload.error?.message ?? `请求失败 (${xhr.status})`, payload.error?.code ?? "UNKNOWN")),
+      );
     };
-    xhr.onerror = () => reject(new ApiError("网络异常，请检查连接", "NETWORK_ERROR"));
+    xhr.onerror = () => settle(() => reject(new ApiError("网络异常，请检查连接", "NETWORK_ERROR")));
+    xhr.onabort = () => settle(() => reject(new DOMException("Upload cancelled", "AbortError")));
     xhr.timeout = UPLOAD_TIMEOUT_MS;
-    xhr.ontimeout = () => reject(new ApiError("请求超时", "NETWORK_ERROR"));
+    xhr.ontimeout = () => settle(() => reject(new ApiError("请求超时", "NETWORK_ERROR")));
     xhr.open("POST", buildUploadUrl(environmentId, options.targetDir));
     xhr.withCredentials = true;
     xhr.setRequestHeader("x-file-op-id", randomUUID());
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
     xhr.send(formData);
   });
 }

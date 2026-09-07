@@ -354,9 +354,10 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
   const handleInputSubmit = useCallback(() => {
     if (!inputDialog) return;
-    const value = inputDialog.value.trim();
+    const value = inputDialog.value;
     const isBasename = inputDialog.kind !== "move";
-    const invalid = isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value);
+    const invalid =
+      value.trim().length === 0 || (isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value));
     if (invalid) {
       setInputDialog((current) =>
         current ? { ...current, error: t(`fileTree.dialog.${isBasename ? "invalidName" : "invalidPath"}`) } : null,

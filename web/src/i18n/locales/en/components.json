@@ -117,6 +117,7 @@
     "notCreatorTooltip": "This site was created by another agent. You can operate data but cannot modify site files. Click Trace to switch to the creator agent."
   },
   "fileTree": {
+    "accessibleName": "File tree",
     "refresh": "Refresh",
     "refreshItem": "Refresh {{name}}",
     "deleteItem": "Delete {{name}}",
@@ -139,6 +140,7 @@
     "uploadFolder": "Upload Folder",
     "uploadSuccess": "Uploaded {{count}} file(s)",
     "uploadFailed": "Upload failed",
+    "uploadPartialIndeterminate": "{{message}} Some files may already have been uploaded; the exact number is unknown. The file list has been refreshed.",
     "staleBanner": "File service temporarily unavailable, reconnecting...",
     "renameFailed": "Rename failed",
     "moveFailed": "Move failed",

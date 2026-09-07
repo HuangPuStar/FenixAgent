@@ -334,7 +334,15 @@ export async function remoteTree(
 export async function remoteZip(machineId: string, envId: string, path: string): Promise<string> {
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(machineId, "zip", { path, environmentId: envId }, REMOTE_ZIP_TIMEOUT_MS);
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "payload_too_large" && result.statusCode === 413) {
+      throw new AppError(REMOTE_ZIP_LIMIT_MESSAGE, "payload_too_large", 413);
+    }
+    if (result.errorCode === "busy" && result.statusCode === 429) {
+      throw new AppError("远程 ZIP 服务繁忙，请稍后重试", "busy", 429);
+    }
+    throw new Error(result.error as string);
+  }
   const data = result.data as string;
   // 从 base64 精确反推原始字节数（含 padding，与 remoteUploadFiles 同法）：
   // >20MB 明确拒绝，不得截断回传部分 zip（不完整包对消费者比失败更糟）

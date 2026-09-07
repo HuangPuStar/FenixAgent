@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
-import { type ChangeEvent, useCallback, useRef, useState } from "react";
-import { MAX_UPLOAD_SIZE_BYTES, uploadFiles as uploadWorkspaceFiles } from "@/src/api/fs";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { MAX_UPLOAD_BATCH_SIZE_BYTES, MAX_UPLOAD_SIZE_BYTES, uploadFiles as uploadWorkspaceFiles } from "@/src/api/fs";
 import { MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
 
 interface UseFileUploadsOptions {
@@ -12,24 +12,43 @@ interface UseFileUploadsOptions {
   onError: (message: string) => void;
 }
 
-function formatUploadSize(size: number): string {
-  return size > 1024 * 1024 * 1024
-    ? `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`
-    : `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function validateFiles(files: File[], t: TFunction<"components">): string | null {
   const oversized = files.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES);
   if (oversized) {
     return t("filePicker.fileTooLarge", { name: oversized.name, max: MAX_FILE_UPLOAD_SIZE_LABEL });
   }
-  const total = files.reduce((sum, file) => sum + file.size, 0);
-  return total > MAX_UPLOAD_SIZE_BYTES
-    ? t("filePicker.totalTooLarge", {
-        total: formatUploadSize(total),
-        max: MAX_FILE_UPLOAD_SIZE_LABEL,
-      })
-    : null;
+  return null;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+interface UploadBatch {
+  files: File[];
+  relativePaths?: string[];
+  size: number;
+}
+
+/** 按总字节数切分，保留 files 与 relativePaths 的索引对应关系。 */
+export function createUploadBatches(files: File[], relativePaths?: string[]): UploadBatch[] {
+  const batches: UploadBatch[] = [];
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    const last = batches.at(-1);
+    if (!last || (last.size > 0 && last.size + file.size > MAX_UPLOAD_BATCH_SIZE_BYTES)) {
+      batches.push({
+        files: [file],
+        relativePaths: relativePaths ? [relativePaths[index] ?? file.name] : undefined,
+        size: file.size,
+      });
+      continue;
+    }
+    last.files.push(file);
+    last.relativePaths?.push(relativePaths?.[index] ?? file.name);
+    last.size += file.size;
+  }
+  return batches;
 }
 
 /**
@@ -40,6 +59,14 @@ export function useFileUploads({ envId, targetDir, getTargetDir, t, onUploaded, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const uploadControllerRef = useRef<AbortController | null>(null);
+  const envIdRef = useRef(envId);
+
+  useEffect(() => {
+    if (envIdRef.current !== envId) uploadControllerRef.current?.abort();
+    envIdRef.current = envId;
+  }, [envId]);
+  useEffect(() => () => uploadControllerRef.current?.abort(), []);
 
   const uploadFiles = useCallback(
     async (
@@ -55,18 +82,39 @@ export function useFileUploads({ envId, targetDir, getTargetDir, t, onUploaded, 
         return;
       }
 
+      const controller = new AbortController();
+      uploadControllerRef.current?.abort();
+      uploadControllerRef.current = controller;
       setUploading(true);
       try {
-        await uploadWorkspaceFiles(envId, files, {
-          targetDir: targetDirOverride ?? getTargetDir?.() ?? targetDir,
-          relativePaths,
-          onProgress,
-        });
-        onUploaded();
+        const batches = createUploadBatches(files, relativePaths);
+        const totalSize = Math.max(
+          1,
+          files.reduce((sum, file) => sum + file.size, 0),
+        );
+        let uploadedSize = 0;
+        for (const batch of batches) {
+          await uploadWorkspaceFiles(envId, batch.files, {
+            targetDir: targetDirOverride ?? getTargetDir?.() ?? targetDir,
+            relativePaths: batch.relativePaths,
+            signal: controller.signal,
+            onProgress: onProgress
+              ? (percent) => onProgress(Math.round(((uploadedSize + (batch.size * percent) / 100) / totalSize) * 100))
+              : undefined,
+          });
+          uploadedSize += batch.size;
+        }
+        if (envIdRef.current === envId) onUploaded();
       } catch (error) {
-        onError(error instanceof Error ? error.message : t("fileTree.uploadFailed"));
+        if (controller.signal.aborted || isAbortError(error)) return;
+        const message = error instanceof Error ? error.message : t("fileTree.uploadFailed");
+        onError(t("fileTree.uploadPartialIndeterminate", { message }));
+        if (envIdRef.current === envId) onUploaded();
       } finally {
-        setUploading(false);
+        if (uploadControllerRef.current === controller) {
+          uploadControllerRef.current = null;
+          setUploading(false);
+        }
       }
     },
     [envId, getTargetDir, onError, onUploaded, t, targetDir],

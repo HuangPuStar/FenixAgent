@@ -22,6 +22,8 @@ const DEFAULT_FILE_OP_TIMEOUT_MS = 60_000;
 // ── P0-2 背压上限（§7.6）：单连接 pending ≤ 64、全局 pending ≤ 1024 ──
 const MAX_PENDING_PER_CONNECTION = 64;
 const MAX_PENDING_GLOBAL = 1024;
+const MAX_ZIP_PENDING_PER_CONNECTION = 1;
+const MAX_ZIP_PENDING_GLOBAL = 4;
 
 /**
  * 背压拒绝错误（P0-2）。code 恒为 "busy"。
@@ -54,11 +56,12 @@ export const machineFileWsIndex = new Map<string, FileWsConnectionEntry>();
 // ────────────────────────────────────────────
 
 interface PendingRequest {
-  resolve: (result: { status: string; data?: unknown; error?: string }) => void;
+  resolve: (result: FileOpResult) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
   /** Track which wsId this request was sent on, for cleanup on disconnect */
   wsId: string;
+  operation: string;
 }
 
 /** requestId → PendingRequest（handler 的 file_op_result 分支只读查找，配合 removePending） */
@@ -102,6 +105,10 @@ export function rejectPendingForWsId(wsId: string, err: Error): void {
   for (const [requestId, pending] of pendingRequests) {
     if (pending.wsId !== wsId) continue;
     removePending(requestId);
+    if (pending.operation === "zip") {
+      const entry = connections.get(wsId);
+      if (entry) sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
+    }
     pending.reject(err);
   }
 }
@@ -155,6 +162,8 @@ export interface FileOpResult {
   status: string;
   data?: unknown;
   error?: string;
+  errorCode?: string;
+  statusCode?: number;
 }
 
 /** sendFileOpAndWait 可选参数（§7.2 / P2-18）：幂等键 + 审计字段，全部可选（向后兼容） */
@@ -206,12 +215,25 @@ function sendFileOpOnce(
   if (pendingRequests.size >= MAX_PENDING_GLOBAL) {
     return Promise.reject(new BusyError(`file-op busy: global pending limit (${MAX_PENDING_GLOBAL}) reached`));
   }
+  if (operation === "zip") {
+    let perConnectionZip = 0;
+    let globalZip = 0;
+    for (const pending of pendingRequests.values()) {
+      if (pending.operation !== "zip") continue;
+      globalZip++;
+      if (pending.wsId === entry.wsId) perConnectionZip++;
+    }
+    if (perConnectionZip >= MAX_ZIP_PENDING_PER_CONNECTION || globalZip >= MAX_ZIP_PENDING_GLOBAL) {
+      return Promise.reject(new BusyError("file-op busy: ZIP concurrency limit reached"));
+    }
+  }
 
   const requestId = nextRequestId();
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       removePending(requestId);
+      if (operation === "zip") sendToWs(entry.ws, { type: "file_op_cancel", request_id: requestId });
       reject(new Error(`file_op timeout: operation=${operation} requestId=${requestId}`));
     }, timeoutMs);
 
@@ -220,6 +242,7 @@ function sendFileOpOnce(
       reject,
       timer,
       wsId: entry.wsId,
+      operation,
     };
 
     pendingRequests.set(requestId, pending);

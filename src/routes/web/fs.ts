@@ -47,6 +47,20 @@ const app = new Elysia({ name: "web-fs", prefix: "/environments" }).use(authGuar
   "batch-delete-response": BatchDeleteResponseSchema,
 });
 
+/** 构造兼容旧客户端的 ASCII fallback 与 RFC 5987 UTF-8 下载文件名。 */
+export function contentDispositionAttachment(fileName: string): string {
+  const fallback = fileName
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\;]/g, "_")
+    .replace(/[\r\n]/g, "_");
+  const encoded = encodeURIComponent(fileName).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback || "download.zip"}"; filename*=UTF-8''${encoded}`;
+}
+
 // ── 公共辅助 ────────────────────────────────────────────────────
 
 /** 由已认证上下文构造门面认证上下文：actorId=userId、source=user
@@ -585,7 +599,7 @@ app.get(
       const stream = await gate(params.id, fileAuthContext(authCtx, user)).downloadZip(path);
       const dirName = path.split("/").filter(Boolean).pop() || "download";
       set.headers["Content-Type"] = "application/zip";
-      set.headers["Content-Disposition"] = `attachment; filename="${dirName}.zip"`;
+      set.headers["Content-Disposition"] = contentDispositionAttachment(`${dirName}.zip`);
       // biome-ignore lint/suspicious/noExplicitAny: NodeJS.ReadableStream 与 Response body 类型不匹配（历史惯例）
       return new Response(stream as any);
     } catch (e) {

@@ -169,6 +169,8 @@ export function handleFileWsMessage(_ws: WsConnection, wsId: string, data: strin
         status: (msg.status as string) ?? "ok",
         data: msg.data,
         error: msg.error as string | undefined,
+        errorCode: msg.error_code as string | undefined,
+        statusCode: msg.status_code as number | undefined,
       });
       continue;
     }

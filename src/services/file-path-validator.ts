@@ -42,13 +42,13 @@ export function assertSafePath(path: string): void {
 export function normalizeUploadRelativePath(relPath: unknown): string | null {
   if (relPath === undefined) return "";
   if (typeof relPath !== "string") return null;
-  const trimmed = relPath.trim();
-  if (!trimmed) return "";
-  if (trimmed === ".") return null;
-  if (isAbsolute(trimmed) || win32.isAbsolute(trimmed)) return null;
-  if (hasPathControlCharacter(trimmed)) return null;
-  for (const segment of trimmed.split(/[\\/]+/)) {
+  if (relPath === "") return "";
+  if (!relPath.trim()) return null;
+  if (relPath === ".") return null;
+  if (isAbsolute(relPath) || win32.isAbsolute(relPath)) return null;
+  if (hasPathControlCharacter(relPath)) return null;
+  for (const segment of relPath.split(/[\\/]+/)) {
     if (segment === "..") return null;
   }
-  return trimmed;
+  return relPath;
 }

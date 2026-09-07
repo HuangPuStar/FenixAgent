@@ -67,7 +67,6 @@ export async function loadProdView(ctx: AuthContext, id: string) {
     organizationId: ctx.organizationId,
   });
   const instance = await agentInstanceService.findOrCreateDefaultInstance(viewerEnv.id, ctx.userId);
-  await agentInstanceService.ensureInstanceRuntime(instance);
 
   return {
     success: true as const,

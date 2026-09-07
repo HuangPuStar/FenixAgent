@@ -6,7 +6,7 @@ import { createCcbHandler } from "@fenix/ccb";
 import { createClaudeCodeHandler } from "@fenix/claude-code";
 import { createOpencodeHandler } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { handleFileOp } from "./client/file-operations.js";
+import { cancelAllFileOps, cancelFileOp, handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
@@ -354,6 +354,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
             // Establish file-ws connection
             // Close existing file-ws before creating a new one (prevents leak on re-register)
+            cancelAllFileOps();
             if (fileWs) {
               // Detach onclose to prevent stale handler from scheduling reconnect
               fileWs.onclose = null;
@@ -423,6 +424,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                     if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
                       nextFileWs.send(JSON.stringify(result));
                     }
+                  } else if (fmsg.type === "file_op_cancel" && typeof fmsg.request_id === "string") {
+                    cancelFileOp(fmsg.request_id);
                   }
                 } catch {
                   // ignore
@@ -430,6 +433,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               };
               nextFileWs.onclose = () => {
                 if (fileWs !== nextFileWs) return;
+                cancelAllFileOps();
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
@@ -439,6 +443,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               };
               nextFileWs.onerror = () => {
                 if (fileWs !== nextFileWs) return;
+                cancelAllFileOps();
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
@@ -460,6 +465,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 clearInterval(fileWsHeartbeat);
                 fileWsHeartbeat = null;
               }
+              cancelAllFileOps();
               if (fileWs) {
                 fileWs.onclose = null;
                 fileWs.onerror = null;
@@ -778,6 +784,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         clearInterval(fileWsHeartbeat);
         fileWsHeartbeat = null;
       }
+      cancelAllFileOps();
       if (fileWs) {
         fileWs.onclose = null;
         fileWs.onerror = null;
@@ -844,6 +851,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
+      cancelAllFileOps();
       if (fileWs) {
         fileWs.onclose = null;
         fileWs.onerror = null;

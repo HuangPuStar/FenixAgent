@@ -257,6 +257,7 @@ function FileTreeSections(props: FileTreeViewProps) {
 }
 
 function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileTreeViewProps) {
+  const { t } = useTranslation(NS.COMPONENTS);
   const containerRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<TreeApi<ParsedFileNode> | undefined>(undefined);
   const [height, setHeight] = useState(0);
@@ -337,7 +338,7 @@ function ArboristFileTree({ data, ...props }: { data: ParsedFileNode[] } & FileT
           width="100%"
           height={height}
           onScroll={handleScroll}
-          aria-label="File tree"
+          aria-label={t("fileTree.accessibleName")}
         >
           {Node}
         </ArboristTree>

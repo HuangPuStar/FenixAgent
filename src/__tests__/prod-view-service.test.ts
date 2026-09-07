@@ -6,10 +6,9 @@ const findOrCreateDefaultInstance = mock(async () => ({
   environmentId: "env_viewer",
   ownerUserId: "viewer-user",
 }));
-const ensureInstanceRuntime = mock(async () => {});
 
 mock.module("../services/agent-instance-service", () => ({
-  agentInstanceService: { findOrCreateDefaultInstance, ensureInstanceRuntime },
+  agentInstanceService: { findOrCreateDefaultInstance },
 }));
 
 function createSelectChain(selectResults: unknown[][]) {
@@ -27,7 +26,6 @@ describe("loadProdView", () => {
   beforeEach(() => {
     resetAllStubs();
     findOrCreateDefaultInstance.mockClear();
-    ensureInstanceRuntime.mockClear();
   });
 
   // 同组织成员访问发布视图时，应解析到自己的 runtime environment，而不是创建者的私有环境。
@@ -99,6 +97,5 @@ describe("loadProdView", () => {
     expect(result.data.environmentId).toBe("env_viewer");
     expect(result.data.instanceUid).toBe("inst_viewer");
     expect(findOrCreateDefaultInstance).toHaveBeenCalledWith("env_viewer", "viewer-user");
-    expect(ensureInstanceRuntime).toHaveBeenCalledTimes(1);
   });
 });
