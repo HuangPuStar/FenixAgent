@@ -229,6 +229,16 @@ function FileTreeSections(props: FileTreeViewProps) {
       <section data-upload-target="user" className="file-tree-section file-tree-section--user">
         <div className="file-tree-user-heading">
           <span>{t("fileTree.user")}</span>
+          <button
+            type="button"
+            className="file-tree-section-upload"
+            title={t("fileTree.upload")}
+            aria-label={t("fileTree.upload")}
+            onClick={() => props.onUploadClick("user")}
+            disabled={props.uploading || !props.envId}
+          >
+            <Upload aria-hidden />
+          </button>
         </div>
         <div className="file-tree-section-scroll">
           {props.showTree && props.userHasNodes ? (

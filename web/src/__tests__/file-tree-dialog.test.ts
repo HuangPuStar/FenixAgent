@@ -107,15 +107,15 @@ describe("file tree dialogs", () => {
     expect(source.slice(staleBranch, loadingBranch)).toContain("file-tree-feedback-action");
   });
 
-  // 文件区使用稳定的自然布局，不再展示底部独立操作区；上传仍由顶部工具栏提供。
-  test("uses stable file sections without the bottom action area", () => {
+  // 文件区使用稳定的自然布局，删除底部整块操作区，但保留“我的文件”标题右侧上传入口。
+  test("uses stable file sections and keeps the user upload action", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
     const source = fs.readFileSync(componentPath, "utf-8");
 
     expect(source).toContain('className="file-tree-sections-layout"');
     expect(source).not.toContain('ResizablePanelGroup orientation="vertical"');
-    expect(source).not.toContain("file-tree-section-upload");
-    expect(source).toContain("onClick={() => props.onUploadClick()}");
+    expect(source).toContain('className="file-tree-section-upload"');
+    expect(source).toContain('onClick={() => props.onUploadClick("user")}');
   });
 
   // 浮动工作区的阴影必须落在稳定容器上，避免 filter 合成整棵动态文件树时残留旧帧。
