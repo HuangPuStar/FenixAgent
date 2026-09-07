@@ -1,6 +1,7 @@
 import type { AuthContext } from "../plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
+import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment";
 
 /** 创建 ProdView 记录 */
@@ -57,25 +58,23 @@ export async function loadProdView(ctx: AuthContext, id: string) {
   if (!row) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
   if (!row.enabled) return { success: false as const, error: { code: "DISABLED", message: "ProdView is disabled" } };
 
-  // 解析 agentConfigId → environmentId（relay 连接需要 env_xxx 格式）
-  let environmentId: string | null = null;
-  if (row.agentId) {
-    const viewerEnv = await createWebEnvironment({
-      name: `env-${row.agentId.slice(0, 8)}`,
-      description: row.description ?? undefined,
-      agentConfigId: row.agentId,
-      autoStart: true,
-      userId: ctx.userId,
-      organizationId: ctx.organizationId,
-    });
-    environmentId = viewerEnv.id;
-  }
+  const viewerEnv = await createWebEnvironment({
+    name: `env-${row.agentId.slice(0, 8)}`,
+    description: row.description ?? undefined,
+    agentConfigId: row.agentId,
+    autoStart: true,
+    userId: ctx.userId,
+    organizationId: ctx.organizationId,
+  });
+  const instance = await agentInstanceService.findOrCreateDefaultInstance(viewerEnv.id, ctx.userId);
+  await agentInstanceService.ensureInstanceRuntime(instance);
 
   return {
     success: true as const,
     data: {
       agentConfigId: row.agentId,
-      environmentId,
+      environmentId: viewerEnv.id,
+      instanceUid: instance.id,
       name: row.name,
       modulesConfig: row.modulesConfig as Record<string, unknown>,
     },

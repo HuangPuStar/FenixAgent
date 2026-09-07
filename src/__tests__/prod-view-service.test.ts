@@ -1,5 +1,16 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb, stubEnvironmentRepo, stubEnvironmentService } from "../test-utils/helpers";
+
+const findOrCreateDefaultInstance = mock(async () => ({
+  id: "inst_viewer",
+  environmentId: "env_viewer",
+  ownerUserId: "viewer-user",
+}));
+const ensureInstanceRuntime = mock(async () => {});
+
+mock.module("../services/agent-instance-service", () => ({
+  agentInstanceService: { findOrCreateDefaultInstance, ensureInstanceRuntime },
+}));
 
 function createSelectChain(selectResults: unknown[][]) {
   let callIndex = 0;
@@ -15,6 +26,8 @@ function createSelectChain(selectResults: unknown[][]) {
 describe("loadProdView", () => {
   beforeEach(() => {
     resetAllStubs();
+    findOrCreateDefaultInstance.mockClear();
+    ensureInstanceRuntime.mockClear();
   });
 
   // 同组织成员访问发布视图时，应解析到自己的 runtime environment，而不是创建者的私有环境。
@@ -84,5 +97,8 @@ describe("loadProdView", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.environmentId).toBe("env_viewer");
+    expect(result.data.instanceUid).toBe("inst_viewer");
+    expect(findOrCreateDefaultInstance).toHaveBeenCalledWith("env_viewer", "viewer-user");
+    expect(ensureInstanceRuntime).toHaveBeenCalledTimes(1);
   });
 });

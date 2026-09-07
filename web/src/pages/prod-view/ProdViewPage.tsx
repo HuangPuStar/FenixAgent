@@ -14,7 +14,12 @@ export function ProdViewPage() {
   const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId: string };
   const { t } = useTranslation(NS.PROD_VIEWS);
 
-  const { data: viewConfig, loading, error: loadError } = useRequest(async () => unwrap(prodViewApi.load(prodViewId)));
+  const {
+    data: viewConfig,
+    loading,
+    error: loadError,
+    refresh,
+  } = useRequest(async () => unwrap(prodViewApi.load(prodViewId)));
 
   return (
     <div className="agent-panel-layout !flex-col">
@@ -32,14 +37,14 @@ export function ProdViewPage() {
         ) : loadError ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <p className="text-sm text-text-muted">{(loadError as Error)?.message ?? t("loadError")}</p>
-            <Button variant="outline" onClick={() => window.location.reload()}>
+            <Button variant="outline" onClick={refresh} disabled={loading}>
               {t("retry")}
             </Button>
           </div>
         ) : !viewConfig?.environmentId ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <p className="text-sm text-text-muted">{t("loadError", { message: "未找到对应的环境实例" })}</p>
-            <Button variant="outline" onClick={() => window.location.reload()}>
+            <Button variant="outline" onClick={refresh} disabled={loading}>
               {t("retry")}
             </Button>
           </div>
@@ -53,6 +58,7 @@ export function ProdViewPage() {
           >
             <ChatArea
               agentId={viewConfig.environmentId}
+              sessionId={viewConfig.instanceUid}
               visible={true}
               modulesConfig={viewConfig.modulesConfig ?? {}}
             />
