@@ -88,10 +88,17 @@ describe("provider model resource access flow", () => {
     expect(getProviderDisplayName(externalProvider)).toBe("Source Team/openai");
   });
 
-  // 外部 provider 的写入口判断为只读，页面据此隐藏 edit/delete/test/add model
-  test("marks external provider as read-only", () => {
+  // 外部 provider 与系统管理的 Gateway Provider 均不暴露 edit/delete/test/add model 写入口。
+  test("marks external and gateway providers as read-only", () => {
+    const gatewayProvider: ProviderInfo = {
+      ...internalProvider,
+      kind: "gateway",
+      gatewayType: "litellm",
+    };
+
     expect(canWriteProvider(internalProvider)).toBe(true);
     expect(canWriteProvider(externalProvider)).toBe(false);
+    expect(canWriteProvider(gatewayProvider)).toBe(false);
     expect(getProviderResourceBadgeKey(internalProvider)).toBe("resource.internal");
     expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
   });

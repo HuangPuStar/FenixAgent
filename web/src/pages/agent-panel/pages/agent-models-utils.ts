@@ -26,7 +26,7 @@ export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
 }
 
 export function canWriteProvider(provider: ProviderInfo): boolean {
-  return provider.resourceAccess?.writable !== false;
+  return provider.kind !== "gateway" && provider.resourceAccess?.writable !== false;
 }
 
 /**
