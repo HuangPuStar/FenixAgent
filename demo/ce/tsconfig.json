@@ -7,6 +7,7 @@
     "paths": {
       "@fenix-ce/platform-sdk": ["packages/platform/platform-sdk/src/index.ts"],
       "@fenix-ce/platform-sdk/assembly": ["packages/platform/platform-sdk/src/assembly/profile.ts"],
+      "@fenix-ce/platform-sdk/server-env": ["packages/platform/platform-sdk/src/config/server-env.ts"],
       "@fenix-ce/platform-sdk/module": ["packages/platform/platform-sdk/fenix.module.ts"],
       "@fenix-ce/community-access-control": ["packages/platform/community-access-control/src/index.ts"],
       "@fenix-ce/community-access-control/module": ["packages/platform/community-access-control/fenix.module.ts"],

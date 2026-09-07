@@ -77,7 +77,7 @@ EE 还展示了前端静态替换：`apps/web` 选择 CE 或 EE 资源模块的 
 
 ## 配置驱动的静态装配
 
-`ce/deploy/assembly/ce.json` 与 `ee/deploy/assembly/ee.json` 是装配 profile。它们选择当前镜像已经内置的授权实现、runtime、资源模块与 web contribution；server 和 web 都读取对应 profile，但分别只使用自己所需区段。
+`ce/deploy/assembly/ce.json` 与 `ee/deploy/assembly/ee.json` 是装配 profile。它们选择当前镜像已经内置的授权实现、runtime、资源模块与 web contribution；server 和 web 都读取对应 profile，但分别只使用自己所需区段。当前 demo 不装配存储实现；未来出现第二个真实存储实现时，再根据当时的需求设计选择槽位。
 
 ```text
 assembly JSON/YAML 的模块 ID
@@ -105,7 +105,7 @@ assembly JSON/YAML 的模块 ID
 
 ## env、日志、迁移与部署
 
-- `apps/server/src/env.ts`：app 一次性汇总模块 env 声明；业务模块不读 `process.env`。
+- `platform-sdk/server-env`：bootstrap 一次性汇总 profile 启用模块的 env 声明；业务模块不读 `process.env`。
 - `platform/observability`：模块依赖日志/审计端口，app 注入 stdout 或生产实现。
 - 表定义与数据迁移归 `resources/<module>/db/`；每个仓库的 DDL migration 统一放 `db/migrations/`。
 - EE 发布顺序：校验 assembly profile → CE migration journal → EE migration journal → 模块数据迁移 → server/web readiness。

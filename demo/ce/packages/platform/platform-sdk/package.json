@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./assembly": "./src/assembly/profile.ts",
+    "./server-env": "./src/config/server-env.ts",
     "./module": "./fenix.module.ts"
   }
 }
