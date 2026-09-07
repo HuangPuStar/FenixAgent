@@ -14,9 +14,10 @@ import {
   X,
 } from "lucide-react";
 import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
@@ -466,9 +467,27 @@ function Feedback({
 
 function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTreeViewProps) {
   const { t } = useTranslation(NS.COMPONENTS);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: state.x, top: state.y });
   const name = state.path.split("/").pop() ?? state.path;
-  return (
-    <div className="file-tree-context-menu" style={{ left: state.x, top: state.y }}>
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const viewportPadding = 8;
+    setPosition({
+      left: Math.max(viewportPadding, Math.min(state.x, window.innerWidth - menu.offsetWidth - viewportPadding)),
+      top: Math.max(viewportPadding, Math.min(state.y, window.innerHeight - menu.offsetHeight - viewportPadding)),
+    });
+  }, [state.x, state.y]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="file-tree-context-menu"
+      role="menu"
+      style={{ left: position.left, top: position.top }}
+    >
       <button type="button" onClick={props.onReference}>
         {t("fileTree.contextMenu.reference")}
       </button>
@@ -510,6 +529,7 @@ function ContextMenu({ state, ...props }: { state: ContextMenuState } & FileTree
           {t("fileTree.newFile")}
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

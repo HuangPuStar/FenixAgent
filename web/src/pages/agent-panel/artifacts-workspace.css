@@ -555,6 +555,59 @@
   margin-left: 24px;
 }
 
+.file-tree-context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  min-width: 152px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-surface-1);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
+}
+
+.file-tree-context-menu button {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 5px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.file-tree-context-menu button:hover,
+.file-tree-context-menu button:focus-visible {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.file-tree-context-menu button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-brand) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.file-tree-context-menu button:disabled {
+  opacity: 0.55;
+}
+
+.file-tree-context-menu button.is-danger {
+  color: var(--color-danger, #dc2626);
+}
+
+.file-tree-context-menu svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
 .file-tree-feedback {
   display: flex;
   height: 100%;

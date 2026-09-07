@@ -95,6 +95,22 @@ describe("file tree dialogs", () => {
     expect(actionStyles).toContain("right: 4px");
   });
 
+  // 右键菜单必须脱离文件树布局，并在视口边缘按实际尺寸避让。
+  test("renders the context menu in a fixed portal with viewport collision handling", () => {
+    const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
+    const stylesheetPath = join(import.meta.dirname, "..", "pages", "agent-panel", "artifacts-workspace.css");
+    const source = fs.readFileSync(componentPath, "utf-8");
+    const styles = fs.readFileSync(stylesheetPath, "utf-8");
+
+    expect(source).toContain("createPortal(");
+    expect(source).toContain("window.innerWidth - menu.offsetWidth");
+    expect(source).toContain("window.innerHeight - menu.offsetHeight");
+    expect(source).toContain("document.body");
+    expect(styles).toContain(".file-tree-context-menu {");
+    expect(styles).toContain("position: fixed");
+    expect(styles).toContain("flex-direction: column");
+  });
+
   // 文件服务重连提示必须占据文件内容空状态，不能作为搜索框下的独立横幅与工作区标题重叠。
   test("renders stale file service state inside the file content area", () => {
     const componentPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-view.tsx");
