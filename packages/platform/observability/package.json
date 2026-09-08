@@ -1,0 +1,6 @@
+{
+  "name": "@fenix/observability",
+  "description": "结构化日志与审计端口",
+  "private": true,
+  "type": "module"
+}
