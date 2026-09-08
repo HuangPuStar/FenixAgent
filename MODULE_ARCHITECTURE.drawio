@@ -1,0 +1,120 @@
+<mxfile host="65bd71144e">
+    <diagram id="module-overview" name="全局模块关系">
+        <mxGraphModel dx="1532" dy="1017" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="FenixAgent 模块关系（面向 AppBuilder）" style="text;html=1;align=center;verticalAlign=middle;fontSize=26;fontStyle=1;fontColor=#172554;" parent="1" vertex="1">
+                    <mxGeometry x="430" y="20" width="740" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="实线：关键领域依赖　　泳道：跨切面约束　　控制台、API、WebSocket 与内部服务均归属各自领域模块" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#475569;" parent="1" vertex="1">
+                    <mxGeometry x="260" y="62" width="1080" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow-app-core" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#334155;" parent="1" source="app" target="core" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow-core-chat" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2563eb;" parent="1" source="core" target="delivery" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow-auto-core" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#7c3aed;" parent="1" source="automation" target="core" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow-resources-core" value="资源引用" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#16a34a;fontSize=13;fontColor=#166534;labelBackgroundColor=#f0fdf4;" parent="1" source="resources" target="core" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow-runtime-core" value="执行位置与工作区" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#0f766e;fontSize=13;fontColor=#115e59;labelBackgroundColor=#f0fdfa;" parent="1" source="runtime" target="resources" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="app" value="AppBuilder&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;模块注册、生命周期、路由与控制台导航贡献&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#172554;strokeColor=#172554;fontColor=#ffffff;fontSize=20;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="580" y="115" width="440" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="core" value="核心运行模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Agent Runtime · 实例编排 · 引擎插件 · ACP Relay&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#172554;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="285" width="480" height="86" as="geometry"/>
+                </mxCell>
+                <mxCell id="resources" value="资源配置模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Agent 配置 · Skill · MCP · 模型/Provider · 网关 · 知识库 · 记忆 · 环境 · 沙盒 · 通道&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="475" width="480" height="104" as="geometry"/>
+                </mxCell>
+                <mxCell id="runtime" value="运行资源与连接模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Machine/Agent Node · 工作区与文件 · 远程 Runtime · 沙盒集群 · 外部连接器&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ccfbf1;strokeColor=#0f766e;fontColor=#134e4a;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="615" width="480" height="82" as="geometry"/>
+                </mxCell>
+                <mxCell id="automation" value="自动化与编排模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;工作流定义/版本 · 工作流运行/恢复 · 节点/自定义工具 · 定时任务 · Webhook 触发器&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontColor=#4c1d95;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="275.5" width="480" height="105" as="geometry"/>
+                </mxCell>
+                <mxCell id="delivery" value="会话协作模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Chat / YJS · 会话状态 · 流式投影 · 断线恢复&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#db2777;fontColor=#831843;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="277" width="480" height="102" as="geometry"/>
+                </mxCell>
+                <mxCell id="publishing" value="站点、视图与发布模块&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Agent Site · 产品视图 · 构建部署 · 公开交付&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="1100" y="475" width="480" height="104" as="geometry"/>
+                </mxCell>
+                <mxCell id="identity" value="身份、组织与授权（跨切面）&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;身份/Session · 组织/成员/邀请 · API Key · 资源共享 · 工具权限策略。所有模块入口均在此边界完成认证、组织解析与授权。&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffedd5;strokeColor=#ea580c;fontColor=#7c2d12;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="735" width="1490" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="govern" value="平台运维与治理（跨切面）&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;启动装配 · Plugin Runtime · 数据/迁移/缓存 · 实时传输 · 日志/错误 · 观测 · 系统管理 · OpenAPI。为所有模块提供共同运行底座。&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e8f0;strokeColor=#475569;fontColor=#0f172a;fontSize=18;fontStyle=1;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="855" width="1490" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-plugin" value="虚线含义：模块内部存在可替换实现，例如引擎、模型 Provider、RAG、沙盒、IM、工作流节点和观测 Provider。" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#64748b;fontColor=#334155;fontSize=14;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="125" width="450" height="70" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="agent-runtime-flow" name="Agent 运行主链路">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0" defaultFontFamily="Helvetica">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title2" value="Agent 运行主链路：配置 → 编排 → 引擎 → 协议 → 交互" style="text;html=1;align=center;verticalAlign=middle;fontSize=26;fontStyle=1;fontColor=#172554;" vertex="1" parent="1">
+                    <mxGeometry x="340" y="20" width="900" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="note2" value="此图说明拆包后的权威边界：工作流与 Chat 都复用实例编排和 ACP Relay，不能各自复制会话协议。" style="text;html=1;align=center;verticalAlign=middle;fontSize=15;fontColor=#475569;" vertex="1" parent="1">
+                    <mxGeometry x="290" y="65" width="1020" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2563eb;" edge="1" parent="1" source="cfg" target="orchestration">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" value="LaunchSpec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2563eb;fontColor=#1d4ed8;labelBackgroundColor=#eff6ff;" edge="1" parent="1" source="orchestration" target="engine">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" value="启动／停止／连接" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2563eb;fontColor=#1d4ed8;labelBackgroundColor=#eff6ff;" edge="1" parent="1" source="engine" target="acp">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" value="结构化更新与控制指令" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#db2777;fontColor=#9d174d;labelBackgroundColor=#fdf2f8;" edge="1" parent="1" source="acp" target="chat">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" value="复用 PromptTurn" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#7c3aed;fontColor=#5b21b6;labelBackgroundColor=#f5f3ff;" edge="1" parent="1" source="workflow" target="orchestration">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="cfg" value="Agent 配置与模板" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=19;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="130" y="280" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="orchestration" value="实例编排&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;生命周期、并发、回收&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#172554;fontSize=19;fontStyle=1;spacing=6;" vertex="1" parent="1">
+                    <mxGeometry x="465" y="270" width="230" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="engine" value="Agent 引擎插件&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Claude Code · OpenCode · CCB&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#172554;fontSize=19;fontStyle=1;spacing=6;" vertex="1" parent="1">
+                    <mxGeometry x="825" y="270" width="250" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="acp" value="ACP Bridge / Relay&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;协议、连接、会话、控制&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#172554;fontSize=19;fontStyle=1;spacing=6;" vertex="1" parent="1">
+                    <mxGeometry x="1185" y="270" width="250" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="chat" value="会话协作（Chat / YJS）&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;状态投影、断线恢复、多标签页&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#db2777;fontColor=#831843;fontSize=19;fontStyle=1;spacing=6;" vertex="1" parent="1">
+                    <mxGeometry x="1185" y="550" width="250" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="workflow" value="工作流运行时&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;DAG、任务、触发器&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontColor=#4c1d95;fontSize=19;fontStyle=1;spacing=6;" vertex="1" parent="1">
+                    <mxGeometry x="465" y="540" width="230" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="auth2" value="跨切面约束：身份/组织/授权在所有入口校验；环境、Machine、沙盒与工作区在编排时解析；资源配置在启动时解析。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffedd5;strokeColor=#ea580c;fontColor=#7c2d12;fontSize=17;fontStyle=1;spacing=8;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="680" width="1355" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="resources2" value="" style="opacity=0;" vertex="1" parent="1">
+                    <mxGeometry x="0" y="0" width="1" height="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="runtime2" value="" style="opacity=0;" vertex="1" parent="1">
+                    <mxGeometry x="0" y="0" width="1" height="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="govern2" value="所有路径共同依赖：持久化/迁移/缓存 · 事件与实时传输 · 日志/错误/观测 · OpenAPI 契约" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e8f0;strokeColor=#475569;fontColor=#0f172a;fontSize=17;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="310" y="815" width="950" height="55" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

@@ -1,0 +1,13 @@
+{
+  "name": "@fenix-ce/server-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fenix-ce/agent-config": "workspace:*",
+    "@fenix-ce/agent-instance": "workspace:*",
+    "@fenix-ce/agent-runtime": "workspace:*",
+    "@fenix-ce/community-access-control": "workspace:*",
+    "@fenix-ce/observability": "workspace:*",
+    "@fenix-ce/platform-sdk": "workspace:*"
+  }
+}

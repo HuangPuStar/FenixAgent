@@ -1,0 +1,16 @@
+{
+  "name": "@fenix-ce/agent-config",
+  "description": "AgentConfig 基础资源领域能力",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./web": "./web/index.ts",
+    "./db/schema": "./db/schema.ts",
+    "./data-migrations": "./db/data-migrations/backfill-resource-base.ts",
+    "./module": "./fenix.module.ts"
+  },
+  "dependencies": {
+    "@fenix-ce/platform-sdk": "workspace:*"
+  }
+}
