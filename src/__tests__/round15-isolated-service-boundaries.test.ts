@@ -76,14 +76,16 @@ describe("round15 isolated service boundaries", () => {
     const delays: number[] = [];
     let reads = 0;
 
-    await waitForMachineConnection(
-      "machine-1",
-      1_000,
-      async () => ++reads === 2,
-      async (delayMs) => {
-        delays.push(delayMs);
-      },
-    );
+    await withFrozenClock(async () => {
+      await waitForMachineConnection(
+        "machine-1",
+        1_000,
+        async () => ++reads === 2,
+        async (delayMs) => {
+          delays.push(delayMs);
+        },
+      );
+    });
 
     expect(delays).toEqual([1_000]);
   });
