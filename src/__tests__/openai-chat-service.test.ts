@@ -259,11 +259,15 @@ describe("openAgentSession 失败回滚", () => {
     expect(closed).toBe(true);
   });
 
-  // 正常完成时不调用 stopInstanceViaController，防止过度回滚
-  test("正常路径不触发回滚", async () => {
+  // 正常返回后由调用方 dispose 关闭 relay，并停止本次独立创建的准确实例
+  test("正常路径的 dispose 释放 relay 与已 spawn 实例", async () => {
     const result = await openAgentSession(openInput);
     expect(result.instanceId).toBe("inst-1");
-    expect(result.turn).toBeDefined();
     expect(stopCalls).toEqual([]);
+
+    await result.turn.dispose();
+
+    expect(closed).toBe(true);
+    expect(stopCalls).toEqual(["inst-1"]);
   });
 });

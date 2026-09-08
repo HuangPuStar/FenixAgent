@@ -137,10 +137,10 @@ flowchart TD
 **前置：** 无；与 ARC-01、ARC-02 并行  
 **主要文件：** `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts`、`src/services/environment-*.ts`、`src/transport/agent-relay.ts`、`packages/orchestration/`、`packages/plugin-sdk/` 及现有运行测试。
 
-- [ ] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
-- [ ] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
-- [ ] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
-- [ ] 向 ARC-02 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选签名；由 ARC-02 冻结后再开始代码提取。
+- [x] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
+- [x] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
+- [x] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
+- [x] 向 ARC-02 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选签名；由 ARC-02 冻结后再开始代码提取。
 
 **验收：** 负责人不修改共享 workspace、SDK 或 migration 文件，也能完成真实调用图和可保护现有行为的测试；`AGT-01` 不需要再次探索运行链路。
 
@@ -479,7 +479,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | Task | 状态（初始） | 前置已完成条件 | 共享文件锁 / 交付物 |
 | --- | --- | --- | --- |
 | ARC-01 重构清单与回归基线 | ⬜ 可领取 | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
-| AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
+| AGT-00 运行链路盘点与特征测试 | 🟨 进行中（liu xue yan） | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | ARC-02 冻结首批公共契约 | 🔒 等待 ARC-01 | ARC-01 | `platform-sdk` 契约设计；需 EE-C 确认授权替换需求 |
 | FND-01 workspace 与包落地骨架 | 🔒 等待 ARC-02 | ARC-02 | 根 `package.json`、`tsconfig`、目标 package/app 空目录；独占 workspace 配置 |
 | FND-02 包依赖边界 CI | 🔒 等待 FND-01 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
