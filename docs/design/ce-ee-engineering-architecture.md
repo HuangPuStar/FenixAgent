@@ -141,7 +141,7 @@ apps/server 注入 AgentInstanceManager ──────┘
 | 场景 | 允许的实现 | 示例 | 禁止的实现 |
 | --- | --- | --- | --- |
 | 仅保存关联 | A 保存 B 的稳定 `resourceId`，必要时维护自己的引用索引或快照 | `agent-config.skillIds` | 以 name 作为关联；导入 B 的表或 repository |
-| 写入、发布或运行前校验 B | A 直接依赖 B **包根入口公开导出的 service**；该 service 的公开方法就是稳定调用契约。只有需要替换实现、多实现或防止循环时，才在根入口导出最小公开接口 | AgentConfig 调用 `SkillService.getUsableByIds()` | A 导入 B 的 `src/services`、repository 或自行复制 B 的状态判断 |
+| 写入、发布或运行前校验 B | A 直接依赖 B **包根入口公开导出的 Domain Service**；该 service 的公开方法就是稳定调用契约。只有需要替换实现、多实现或防止循环时，才在根入口导出最小公开接口 | AgentConfig 调用 `SkillService.getByIds()` | A 导入 B 的 `src/services`、repository 或自行复制 B 的状态判断 |
 | 跨资源协调 | 由拥有该动作的资源 service 编排多个公开 port；若流程无明确资源归属或涉及删除、批量同步、跨资源事务，则由 `apps/server` 的 use case/orchestration 组合 | 删除 Skill 前检查引用；批量发布关联资源 | 任一资源 route 调用另一资源 route；在 repository 中调用 service |
 
 资源关系紧密且长期稳定时，不为形式统一而额外创建接口。AgentConfig 可直接依赖 Skill、MCP、模型或知识库包根入口公开的 service：
@@ -156,14 +156,16 @@ export class AgentConfigService {
     private readonly mcpService: McpService,
   ) {}
 
-  async validateReferences(input: { actorId: string; skillIds: string[]; mcpIds: string[] }) {
-    await this.skillService.getUsableByIds({ actorId: input.actorId, ids: input.skillIds });
-    await this.mcpService.getUsableByIds({ actorId: input.actorId, ids: input.mcpIds });
+  async resolveReferences(input: { skillIds: string[]; mcpIds: string[] }) {
+    // 当前 Facade 已完成 AgentConfig 自身的授权；这里复用领域服务，
+    // 只检查引用资源存在、启用和版本等领域状态。
+    await this.skillService.getByIds(input.skillIds);
+    await this.mcpService.getByIds(input.mcpIds);
   }
 }
 ```
 
-这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix-ce/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。每个资源仍自行通过 `AccessControlModule` 进行授权，资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix-ce/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
 
 前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性；EE 替换资源时，静态依赖对应 EE 资源的 `web` 入口，不做运行时前端模块覆盖或发现。
 
@@ -179,7 +181,7 @@ export interface SkillReferenceResolver {
 }
 ```
 
-调用方资源只依赖此接口；具体 `SkillFacade` 在 `apps/server` 装配时作为实现注入。
+调用方资源只依赖此接口；具体 `SkillService` 在 `apps/server` 装配时作为实现注入。
 
 `agent-config` 与 Agent 运行时是特殊但常见的例子：AgentConfig 的 `use` 授权、发布状态校验和启动参数生成属于资源层；`agent-instance` 不理解 actor、权限或资源生命周期。资源层只定义 `AgentInstanceStarter` 端口，`apps/server` 注入无权限的 `AgentInstanceManager`。因此 `resources/agent-config` 不依赖 `agent-instance` 或 `agent-runtime` 的内部实现，`packages/agent` 也不反向依赖任何资源包。
 
@@ -265,26 +267,23 @@ apps/server/src/
 
 ### 3.2 服务与 repository
 
-默认依赖方向：`routes → services → domain / repositories / adapters`。repositories 只封装存储查询和事务原语；services 负责授权、业务状态机、跨表事务、幂等性与外部调用编排。adapters 只处理外部协议或 Provider 差异，不能承载领域规则。
+默认依赖方向：`routes → Resource Facade → Domain Service / repositories / adapters`。Facade 是外部资源操作入口，负责 actor 授权、状态校验、跨资源编排、事务、幂等性和外部调用；Domain Service 只处理资源自身领域规则与数据访问，不接受 actor，也不做用户权限校验；repositories 只封装存储查询和事务原语；adapters 只处理外部协议或 Provider 差异，不能承载领域规则。
 
-资源列表必须将 `AccessControlModule` 产生的声明式查询约束交给 repository 转换为存储查询。禁止 service 先读全量数据再按组织、角色或版本过滤。
+资源之间可直接引用对方包根入口公开的无权限 Domain Service；授权由发起动作的 Resource Facade 统一完成，不在同一次编排中重复校验被依赖资源的用户权限。
+
+全局系统管理员仍是带真实 `userId` 的用户 actor，由 `AccessControlModule` 根据系统管理员身份放行系统级动作，以保留审计主体。迁移、运维和模块内部调用不构造 actor，直接使用受信任的 Domain Service；当前不定义 `system` actor。
+
+普通用户的资源列表必须通过 `AccessControlModule` 及统一授权查询能力，将声明式查询约束下推为数据库条件；系统管理 Facade 在完成系统管理员校验后、以及受信任模块内部调用可复用无权限 Domain Service 的列表查询。禁止 service 先读全量数据再按组织、角色或版本过滤；Repository 不得自行读取 member/role、归属字段、scope 或 grant 表并复制授权 SQL。
 
 ### 3.3 授权范围与资源查询约束
 
-`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”，但不负责生成 SQL，也不自己查询数据库。它输出存储无关的 `ResourceQueryConstraint`，例如：
+CE 的归属存储尚未在 `access_scope`、固定归属字段加 grant 表、统一 `resources` 基表三种方案间定稿。无论最终选择哪种，资源领域、route、前端和普通 Repository 都不得理解 CE 的组织、用户、角色、归属、scope 或 grant 存储细节；EE 也不使用或兼容 CE 的物理权限表，只实现相同的上层访问接口。
 
-```ts
-{
-  allowedOwnershipScopes: [
-    { kind: "workspace", id: "finance" },
-    { kind: "workspace", id: "shared" },
-  ],
-}
-```
+`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”。平台的统一授权查询能力负责将其编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、主键列与业务条件，例如 `authorizedQuery.list({ resourceType, resourceIdColumn, businessWhere, access })`，不编写 member/role 判断或授权 SQL。
 
-资源 repository 消费该约束：PostgreSQL/Drizzle 将它编译为 `WHERE ownership_scope IN (...)`，MySQL adapter 编译为等价 MySQL 查询，内存测试 repository 才可使用 `matches()` 谓词。禁止把 SQL fragment 交给授权模块，否则授权实现会绑定 PostgreSQL；也禁止生产 service 先读取全量资源再调用内存 predicate 过滤，否则会产生越权风险和性能问题。
+授权关联数据需要参与查询时，优先由统一实现生成相关子查询 `EXISTS`，而不是让资源查询直接 join grant 表。例如“默认归属/公开条件 OR 存在匹配 read grant”。`EXISTS` 不会因多条 grant 重复资源行，PostgreSQL 通常可将它优化为 semijoin；授权表按主体、动作、资源 ID 的实际查询方向建组合索引，并用 `EXPLAIN ANALYZE` 验证。业务模块不拼接这段 SQL。
 
-因此，该约束属于 **授权与资源查询的契约**；数据库章节只规定各存储 adapter 必须正确编译、测试它。
+完整的稳定接口、候选存储方案与迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。因此授权约束属于 **授权与资源查询的契约**；数据库章节只规定各存储实现必须正确编译、测试它。
 
 ## 4. 前端与控制台组织
 
@@ -476,7 +475,7 @@ packages/resources/agent-config/db/data-migrations/
 | 文件、Skill 包、附件、日志归档、向量库等领域存储替换 | 在对应资源/Provider 端口新增 adapter；关系型元数据保持不变；静态装配选择 adapter |
 | 关系型主库从 PostgreSQL 改到其他 DB | 这是基础设施替换，不是替换 Drizzle driver；为所有 repository port 提供新 adapter、事务实现、索引/约束方案和迁移工具 |
 
-新 DB 必须正确编译第 3.3 节的 `ResourceQueryConstraint`，并通过同一 repository contract test suite；同时提供全量迁移、双环境校验、备份和回滚方案后才能切换。
+新 DB 必须正确编译第 3.3 节的授权查询约束，并通过同一 repository contract test suite；同时提供全量迁移、双环境校验、备份和回滚方案后才能切换。
 
 不允许为了“支持多 DB”在 domain/services 中加入 `if (databaseType)`；也不在没有第二种实际实现前提前抽象所有 Drizzle 细节。
 
@@ -565,7 +564,7 @@ export interface AgentConfigApprovalPolicy {
   authorizePublish(input: {
     actorId: string;
     agentConfigId: string;
-    ownershipScope: ResourceScope;
+    scope: unknown;
   }): Promise<void>;
 }
 
@@ -656,7 +655,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 | --- | --- | --- |
 | 0. 基线冻结 | 基于 `FUNCTIONAL_MODULE_INVENTORY.md` 为所有现有模块标明目标归属、调用方、表、route、web 页面、外部依赖和迁移风险；补齐关键链路回归测试与观测基线 | 可比较重构前后行为、性能和错误率 |
 | 1. 工程骨架 | 创建 `apps/server`、`apps/web`、platform/agent/resources 目录、workspace 与边界检查；将当前 server/web 入口一次性移入 apps，修正构建、测试、Docker 入口 | 不改业务行为，原测试与部署可运行 |
-| 2. 平台基础 | 抽取 `platform-sdk`、CE `community-access-control`、observability、统一 env loader、DB client/transaction adapter；定义 `ResourceScope`、`ResourceQueryConstraint` 与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
+| 2. 平台基础 | 抽取 `platform-sdk`、CE `community-access-control`、observability、统一 env loader、DB client/transaction adapter；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
 | 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面、`AgentInstanceManager`、Agent runtime；用此闭环验证授权、发布扩展和实例边界 | demo 的设计在真实 CE 最小能力上成立 |
 | 4. 资源目录 | 依赖从低到高迁移 Skill、MCP、模型/Provider、知识库、记忆、环境等；每个资源独立完成 schema、授权、route、web 和删除旧代码 | 资源不再散落在 `src/services/config` 与 `web/src/pages` |
 | 5. 执行与连接 | 迁移 Machine、workspace/file、Sandbox、引擎插件、ACP relay、实例编排；保持 runtime 不读取资源权限 | 运行、文件和节点能力通过公开端口连接 |
@@ -672,7 +671,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 1. **盘点与定界**：列出当前 service、repository、schema、route、页面、后台任务、外部 API、引用该资源的其他模块；确定资源归属、读/写/use 动作、数据隔离和删除条件。
 2. **创建模块骨架**：创建 `packages/resources/<resource>/{src,db,web}` 和 README；先定义公开 DTO、repository port、模块 capability 与 route/web contribution，不复制旧 service。
 3. **迁移 schema 所有权**：将该资源表定义移动到模块 `db/schema.ts`，更新根 `drizzle.config.ts` 路径列表。仅移动源码而未改变表结构时，必须生成并审查“无 DDL 差异”结果；不得创建重复表。
-4. **迁移数据隔离**：如现有表只有 `organizationId`，通过 expand → backfill → switch → contract 加入 `ownershipScope`；回填现有组织归属，切换 repository 查询为 `ResourceQueryConstraint`，验证后删除旧授权查询路径和废弃字段。
+4. **迁移数据隔离**：按最终确定的权限存储方案执行 expand → backfill → switch → contract；回填现有组织归属、owner、公开与分享数据，切换为 `AccessControlModule` 统一授权查询，验证后删除旧授权查询路径和废弃字段。
 5. **迁移领域与 services**：将字段校验、状态机按需放入 domain；将授权、事务、动作编排放入 service/facade。所有调用方在同一切片改为新公开入口，随后删除旧 service/repository。
 6. **迁移资源动作**：资源的 `run`/`publish` 等动作在 services 的 facade 完成授权与状态检查，再调用 runtime port；runtime 只接收通用已解析参数。
 7. **迁移 HTTP 与 web**：新增该资源的 `/app` route contribution，以及模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。调用方切换后删除旧 `/web`、`/api` 和旧页面，不保留长期 alias。
@@ -736,7 +735,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
       update({ name }) / delete({ name })
 ```
 
-名称若需要在某个范围内唯一，应由资源属性表的 `(ownership scope, normalized_name)` 唯一索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在**明确 scope 和冲突策略**的前提下按名称查找，但业务 CRUD 不得如此实现。
+名称若需要在某个范围内唯一，应由资源主表的 scope 查询键与 `normalized_name` 建立相应唯一约束或表达式索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在**明确 scope 和冲突策略**的前提下按名称查找，但业务 CRUD 不得如此实现。
 
 对历史“按 name CRUD”的资源，执行顺序：
 
@@ -747,39 +746,92 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 5. 添加 ID 外键与名称唯一/slug 约束，执行重复名称数据修复。
 6. 删除 name CRUD route、旧 service 方法和旧调用方；不存在长期 name→id 兼容转发。
 
-#### B. 资源基表、资源属性表、资源权限表必须分离
+#### B. 权限存储由 AccessControl 托管，领域逻辑不得理解权限
 
-目标不是把所有资源字段塞进一张万能表，而是分离三种不同生命周期的数据：
+CE 最终可选择 `access_scope`、固定归属字段加授权关系表，或统一 `resources` 基表；此阶段不提前指定。无论物理模型如何，资源领域只保存或关联稳定资源 ID，且不读取、解释、写入组织、用户、角色、公开或分享的权限存储细节。
 
 ```text
-resources                              # 平台资源基表：资源身份和归属
-├── id                                 # 全局稳定资源 ID
-├── type                               # agent-config / skill / mcp / ...
-├── ownership_scope_kind / _id         # 创建归属，供授权范围查询
-├── created_at / created_by
-└── updated_at
+资源 Service / Facade
+├── 创建：AccessControl.initializeResourceAccess(...)
+├── 详情、更新、删除、运行：AccessControl.authorize(...)
+└── 列表：createListConstraint(...) → AuthorizedResourceQuery
 
-resource_access_grants                 # 可选的显式共享/授权记录
-├── resource_id
-├── grantee_subject_or_scope
-├── action
-└── policy metadata / expiry
-
-agent_config_properties                # AgentConfig 专属属性，一对一关联 resources
-├── resource_id (PK/FK → resources.id)
-├── name / normalized_name / engine
-└── config-specific fields
+授权实现（可替换）
+├── access_scope：编译 JSON 条件
+├── 固定归属 + grant：归属 WHERE + EXISTS grant
+└── resources + grant：资源根记录条件 + EXISTS grant
 ```
 
-`resources` 只保存所有资源共同需要的身份、类型、归属和创建审计；它不放 AgentConfig 的模型、Skill 文件路径或 MCP 命令。`*_properties` 只放领域属性，不放 `organizationId`、角色、成员或权限字段。显式资源共享才写 `resource_access_grants`；组织成员关系、工作空间 ABAC 等全局策略仍属于 `AccessControlModule`，不需要复制成每个资源一行授权记录。
+资源 Repository 只传入资源类型、资源 ID 列和业务筛选条件，不能手写 member/role、scope 或 grant 查询。额外授权参与列表查询时，统一授权查询实现优先生成 `EXISTS` 子查询，避免直接 join grant 表导致多条授权重复资源行；PostgreSQL 可将其优化为 semijoin。
 
-对现有“属性、组织归属、权限混在同一表”的资源，执行顺序：
+对现有“属性、组织归属、权限混在一张表”的资源，执行顺序：
 
-1. 为该资源定义字段归类表：哪些进入 `resources`、哪些进入属性表、哪些是显式 grant、哪些应删除或由 `AccessControlModule` 推导。
-2. 新建资源基表、属性表和必要索引；保留旧表/旧列仅作为短期回填来源。
-3. 在事务中为每条旧资源创建 `resources` 记录，优先沿用原资源 ID；回填属性表的 `resource_id`，再迁移真实的显式共享记录。
-4. 对资源数、ID 集合、归属范围、显式授权、关键属性做校验；补齐外键、唯一约束和查询索引。
-5. 切换 repository：`create` 事务性写入基表 + 属性表，`get/list` 先以 `ResourceQueryConstraint` 过滤基表再 join 属性表，`update` 只更新属性表，授权/分享单独写 grant 表。
-6. 切换全部调用方后删除旧表中的归属/权限/属性重复列与旧查询；不得长期双写新旧表。
+1. 盘点现有组织、owner、公开和分享数据，按最终选定的物理模型制定回填规则。
+2. 先切入稳定的 `AccessControlModule` 与 `AuthorizedResourceQuery` 调用接口，删除资源模块中直接读取 member/role 或拼授权 SQL 的逻辑。
+3. 新增目标权限存储并回填数据；创建、更新、删除与授权侧写入/清理必须在同一事务中完成。
+4. 校验记录数、ID 集合、归属、公开状态和关键列表结果；列表、详情与资源动作均使用统一授权入口。
+5. 切换所有调用方后删除旧权限路径和废弃字段；不得长期双写。
 
-这项拆分的收益是：CE/EE 的归属和权限模型可替换，而 Skill、MCP、AgentConfig 等领域属性不被污染；EE 需要发布、审批等扩展时只增加自己的扩展表，以 `resource_id` 关联，不修改 CE 资源属性表。
+该边界使 CE 业务领域不理解权限存储细节，EE 又可完全采用自己的资源表与连表授权查询。未来改变归属存储时，替换授权实现和回填数据即可，Route、Service、Web 与资源领域调用接口不变。
+
+### 13.9 历史测试治理：隔离并发状态，删除测试专用注入
+
+现有测试中若共享模块级变量、全局 auth/org context、`process.env`、数据库记录、文件目录、Redis/YJS key 或外部 mock，测试文件并行执行时会互相覆盖状态；改动无关逻辑也可能因执行顺序不同而失败。另一类历史问题是以 `setXxxForTest()`、可重置方法或模块级回调替换依赖，导致业务代码为测试暴露额外入口、可读性下降。
+
+迁移目标是：**业务代码没有测试专用入口；每个测试拥有自己的状态和依赖实例；默认并行测试不共享可变外部状态。** 不以全局串行执行掩盖隔离问题。
+
+#### A. 业务依赖在装配时固定，不在运行时被测试改写
+
+禁止新增以下模式：
+
+```ts
+let credentialResolver: CredentialResolver | null = null;
+
+// 禁止：仅为了测试而暴露可变的全局 setter。
+export function setCredentialResolverForTest(resolver: CredentialResolver | null) {
+  credentialResolver = resolver;
+}
+```
+
+有真实外部依赖的能力，在创建时通过构造函数或工厂的依赖对象传入；纯领域逻辑不为了测试而增加依赖参数。例如：
+
+```ts
+export function createLaunchSpecBuilder(deps: {
+  modelService: ModelService;
+  skillService: SkillService;
+  mcpService: McpService;
+  credentialService: CredentialService;
+}) {
+  return {
+    async build(input: BuildLaunchSpecInput): Promise<AgentLaunchSpec> {
+      // 只使用创建时固定的 deps；不读取可变模块状态。
+    },
+  };
+}
+```
+
+`apps/server` 用真实 Service 创建该对象；测试在自己的 fixture 中创建同一对象并传入 fake 或 test repository。fake、fixture、test clock 等只位于测试目录，不能作为业务 package 的 `set*ForTest()` 导出。资源间直接使用公开 Service 的规则不变；依赖创建方式不要求为每个方法额外增加测试参数。
+
+#### B. 按测试类型隔离状态
+
+| 测试类型 | 必须隔离的状态 | 标准做法 |
+| --- | --- | --- |
+| 纯领域单测 | 对象、clock、ID 生成器 | 每个 test 创建独立实例；不访问 DB、env、文件或全局单例 |
+| repository 集成测试 | PostgreSQL 数据与事务 | 每个 test worker 使用独立 database/schema；或在所有访问均经注入 transaction 时使用每测试 rollback transaction |
+| app/route 集成测试 | app、认证上下文、依赖图 | 每个 test 通过 `createTestApp()` 创建独立 app 和依赖；测试结束关闭连接/handle |
+| Skill/文件测试 | 目录、归档、临时文件 | 每个 test 使用 `mktemp` 的独立目录；禁止写默认 `data/skills` |
+| Redis、YJS、队列 | key、stream、consumer group | 每个 test/worker 使用唯一 namespace prefix，并在结束时只删除自己的 prefix |
+| 外部 HTTP、ACP、MCP | fake server、请求记录、端口 | 每个 test 创建独立 fake client/server；显式关闭，不使用全局 mock |
+
+`afterEach` 清理共享数据库、共享目录或共享 Redis key 不是并发隔离方案：测试 A 的清理可能删除测试 B 正在使用的数据。必须先通过 database/schema、目录或 key prefix 进行命名空间隔离，再做本 namespace 的清理。
+
+#### C. 渐进迁移顺序与强制规则
+
+1. 每个资源切片迁移前，盘点其测试使用的全局单例、`set*ForTest()`、`mock.module()`、共享 env/目录/数据库记录和未关闭 handle。
+2. 先在 `src/test-utils/` 建立该切片的 `create<Module>Fixture()` 或 `createTestApp()`；fixture 创建独立依赖图、唯一外部 namespace 和 cleanup，不改业务公开 API。
+3. 将该切片的测试迁至 fixture；移除对应业务代码中的 test setter、模块级可变 resolver 和全局回调。现有 `setTestAuth()`、`setTestOrgContext()` 等历史 helper 不得用于新测试，迁移到的切片必须删除对它们的依赖。
+4. 对包含 DB、文件、Redis/YJS 的测试，在 CI 开启文件级并行运行；同一测试只有在明确验证并发语义时才使用并发执行 API。
+5. 为测试基础设施增加守护检查：禁止新增 `set*ForTest` 导出、禁止业务测试使用 `mock.module()`、禁止测试写入默认生产目录、检测未关闭 server/connection。
+6. 每个迁移完成的资源在重复并行运行后必须稳定通过；不稳定时修复共享状态，不得通过扩大 timeout、增加 retry 或把整组测试标为串行来规避。
+
+AgentConfig 能力簇是首个试点：其 runtime credential resolver、LaunchSpec builder、授权上下文、数据库绑定、Skill 文件目录和 Environment 实例应按本节完成隔离。后续资源复用这套 fixture 与 namespace 约定，而不是再次创造全局测试开关。
