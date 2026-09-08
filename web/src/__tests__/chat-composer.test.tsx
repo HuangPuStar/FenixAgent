@@ -176,12 +176,12 @@ type ComposerProps = Parameters<typeof import("../../components/chat/ChatCompose
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-// 设置最小 DOM 环境（react-dom/client 在 CI CJS 构建下模块加载时需要 window）
+// 为交互测试安装独立 window；事件、document 与 dispatchEvent 必须来自同一 realm。
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 /** 客户端渲染 ChatComposer，返回容器与卸载函数 */
 async function renderComposer(props: ComposerProps): Promise<{
@@ -223,14 +223,14 @@ describe("ChatComposer interaction", () => {
     const { container, unmount } = await renderComposer(props);
     try {
       act(() => {
-        window.dispatchEvent(
-          new CustomEvent("chat:quote", { detail: { text: "甲".repeat(4_000), contextScope: "session-a" } }),
+        win.dispatchEvent(
+          new win.CustomEvent("chat:quote", { detail: { text: "甲".repeat(4_000), contextScope: "session-a" } }),
         );
-        window.dispatchEvent(
-          new CustomEvent("chat:quote", { detail: { text: "乙".repeat(4_000), contextScope: "session-a" } }),
+        win.dispatchEvent(
+          new win.CustomEvent("chat:quote", { detail: { text: "乙".repeat(4_000), contextScope: "session-a" } }),
         );
-        window.dispatchEvent(
-          new CustomEvent("chat:quote", { detail: { text: "丙".repeat(4_000), contextScope: "session-a" } }),
+        win.dispatchEvent(
+          new win.CustomEvent("chat:quote", { detail: { text: "丙".repeat(4_000), contextScope: "session-a" } }),
         );
       });
 
@@ -252,7 +252,7 @@ describe("ChatComposer interaction", () => {
     const { container, rerender, unmount } = await renderComposer(props);
     try {
       act(() => {
-        window.dispatchEvent(new CustomEvent("chat:quote", { detail: { text: "旧会话", contextScope: "session-a" } }));
+        win.dispatchEvent(new win.CustomEvent("chat:quote", { detail: { text: "旧会话", contextScope: "session-a" } }));
       });
       domExpect(container.querySelectorAll(".chat-composer-asset.is-quote")).toHaveLength(1);
 
