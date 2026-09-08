@@ -4,6 +4,16 @@ import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-v
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment";
 
+const defaultDeps = {
+  findOrCreateDefaultInstance: agentInstanceService.findOrCreateDefaultInstance.bind(agentInstanceService),
+};
+const deps = { ...defaultDeps };
+
+/** 测试用：覆盖 ProdView 实例依赖，避免全局 mock.module 污染其他测试。 */
+export function setProdViewDeps(overrides: Partial<typeof deps> | null): void {
+  Object.assign(deps, overrides ?? defaultDeps);
+}
+
 /** 创建 ProdView 记录 */
 export async function createProdView(ctx: AuthContext, input: CreateProdViewInput) {
   const row = await prodViewRepo.create({
@@ -66,7 +76,7 @@ export async function loadProdView(ctx: AuthContext, id: string) {
     userId: ctx.userId,
     organizationId: ctx.organizationId,
   });
-  const instance = await agentInstanceService.findOrCreateDefaultInstance(viewerEnv.id, ctx.userId);
+  const instance = await deps.findOrCreateDefaultInstance(viewerEnv.id, ctx.userId);
 
   return {
     success: true as const,

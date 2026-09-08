@@ -1,14 +1,17 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { loadProdView, setProdViewDeps } from "../services/prod-view";
 import { resetAllStubs, stubDb, stubEnvironmentRepo, stubEnvironmentService } from "../test-utils/helpers";
 
 const findOrCreateDefaultInstance = mock(async () => ({
   id: "inst_viewer",
   environmentId: "env_viewer",
   ownerUserId: "viewer-user",
-}));
-
-mock.module("../services/agent-instance-service", () => ({
-  agentInstanceService: { findOrCreateDefaultInstance },
+  creationSource: "user" as const,
+  name: "default",
+  isDefault: true,
+  createdByUserId: "viewer-user",
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
 }));
 
 function createSelectChain(selectResults: unknown[][]) {
@@ -26,6 +29,12 @@ describe("loadProdView", () => {
   beforeEach(() => {
     resetAllStubs();
     findOrCreateDefaultInstance.mockClear();
+    setProdViewDeps({ findOrCreateDefaultInstance });
+  });
+
+  afterEach(() => {
+    setProdViewDeps(null);
+    resetAllStubs();
   });
 
   // 同组织成员访问发布视图时，应解析到自己的 runtime environment，而不是创建者的私有环境。
@@ -82,7 +91,6 @@ describe("loadProdView", () => {
         }) as never,
     });
 
-    const { loadProdView } = await import("../services/prod-view");
     const result = await loadProdView(
       {
         organizationId: "org-1",
