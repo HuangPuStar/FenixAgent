@@ -16,6 +16,10 @@ const ERROR_CONSTRUCTORS = [
  * so each test-owned Window must receive the host constructors explicitly.
  */
 export function initializeHappyDomWindow<T extends Window>(window: T): T {
+  if (window.location.origin === "null") {
+    window.location.href = "http://localhost/";
+  }
+
   const record = window as unknown as Record<string, unknown>;
   for (const key of ERROR_CONSTRUCTORS) {
     record[key] = globalThis[key];
