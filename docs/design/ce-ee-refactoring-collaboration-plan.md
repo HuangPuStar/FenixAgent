@@ -37,6 +37,7 @@ flowchart TD
   m2["M2：EE 初版可用"]
 
   subgraph ce["CE 共享任务池：A / B 按前置条件领取"]
+    fnd0["FND-00 workspace 物理骨架"]
     fnd1["FND-01 工程骨架"]
     fnd2["FND-02 边界 CI"]
     fnd3["FND-03 静态装配"]
@@ -61,6 +62,7 @@ flowchart TD
     ee3["EE-03 接入 CE 完整用户链路"]
   end
 
+  fnd0 --> fnd1
   m0 --> fnd1
   m0 --> agt00
   fnd1 --> fnd2
@@ -146,15 +148,28 @@ flowchart TD
 
 ## 4. 第一波：工程骨架与可执行治理
 
-### FND-01：建立 CE workspace 与目标目录骨架
+### FND-00：建立可并行的 CE workspace 物理骨架
 
 **负责人：** CE 任务池  
-**前置：** ARC-02  
+**前置：** 无；可与 ARC-01、ARC-02 并行
+**主要文件：** 根 `package.json`、`bun.lock`、`apps/`、`packages/platform/`、`packages/resources/`。
+
+- [ ] 将 workspace 规则扩展为覆盖 `apps/*` 与两级 `packages/*/*`，同时保留当前已有 `packages/*` 的构建入口。
+- [ ] 创建 `apps/server`、`apps/web`、`platform-sdk`、`access-control`、`observability`、`agent-config` 的最小 `package.json` 和 README；README 仅说明目标职责和预计承载的实现。
+- [ ] 每个 manifest 只声明 package 名称、描述、私有属性和 ESM 类型；不声明 exports、跨包依赖、module ID、入口文件或 TypeScript path/project reference。
+- [ ] 不移动现有 `src/index.ts` 或 `web/src/main.tsx`，不创建运行时/实例 package，也不改变根入口的运行方式。
+- [ ] 通过 `bun install` 更新 workspace lockfile，并验证 `bun install --frozen-lockfile`、`bun run dev`、`bun run build:web`、`bun run precheck` 不被骨架改动破坏。
+
+**验收：** Bun 可识别新 package；当前根入口仍是唯一运行入口；ARC-02 可在既有目录中冻结正式 package 契约，而无需重新安排 workspace 或目录结构。
+
+### FND-01：冻结后完善 CE package 契约与应用入口骨架
+
+**负责人：** CE 任务池
+**前置：** FND-00、ARC-02
 **主要文件：** 根 `package.json`、`tsconfig.json`、`apps/server/`、`apps/web/`、`packages/platform/`、`packages/agent/`、`packages/resources/`。
 
-- [ ] 将 workspace 规则扩展为覆盖 `apps/*` 与两级 `packages/*/*`，同时保留当前已有 `packages/*` 的构建入口直到对应模块迁移完成。
-- [ ] 创建以下空包及 README：`platform-sdk`、`community-access-control`、`observability`、`agent-runtime`、`agent-instance`、`agent-config`。
-- [ ] 为每个包建立仅包含公开入口的 `package.json#exports`；配置 TypeScript path/project reference，使跨包只能通过包名导入。
+- [ ] 按 ARC-02 冻结的 package ID、公开入口和依赖关系，补齐已有 manifest 的 `package.json#exports` 与 workspace dependency；如 ARC-02 改变 FND-00 的临时 package 名称，在此 task 统一调整。
+- [ ] 配置 TypeScript path/project reference，使跨包只能通过包名导入；本 task 不迁移任何领域实现。
 - [ ] 只创建 `apps/server`、`apps/web` 的空装配入口和构建配置，不在本 task 移动现有 `src/index.ts` 或 `web/src/main.tsx`；入口切换留给 INT-01，避免阻塞后续 package 落地。
 - [ ] 在 CI 验证当前 `bun run dev`、`bun run build:web`、`bun run precheck` 未被骨架改动破坏。
 
@@ -206,9 +221,9 @@ flowchart TD
 
 **负责人：** CE 任务池  
 **前置：** ARC-02、FND-01  
-**主要文件：** `packages/platform/platform-sdk/`、`packages/platform/community-access-control/`、现有认证/组织上下文代码。
+**主要文件：** `packages/platform/platform-sdk/`、`packages/platform/access-control/`、现有认证/组织上下文代码。
 
-- [ ] 保留当前 session、API Key、组织上下文的认证入口语义，但将 member/role 查询封装在 `CommunityAccessControl` 内。
+- [ ] 保留当前 session、API Key、组织上下文的认证入口语义，但将 member/role 查询封装在 `AccessControl` 内。
 - [ ] 实现 `createResourceContext()`、`buildResourceQueryConstraint()`、`authorize()`；资源 service 不再直接读取 member/role 表。
 - [ ] 为不同主体、无组织成员、跨组织访问、写入归属、列表范围约束建立单测与集成测试。
 - [ ] 提供供 repository 使用的声明式范围条件；禁止授权模块返回 SQL fragment。
@@ -411,11 +426,11 @@ EE 初版的差异只限于用户体系、认证和授权。它复用 CE 的 Age
 
 **负责人：** EE-C  
 **前置：** M0.5 CE 平台基线  
-**主要文件：** EE 根 workspace、`vendor/fenix-ce`、EE `deploy/assembly/`、EE CI/release scripts。
+**主要文件：** EE 根 workspace、`upstream/fenix`、EE `deploy/assembly/`、EE CI/release scripts。
 
-- [ ] 创建 EE 仓库，按固定 CE tag/commit 加入 `vendor/fenix-ce` submodule；EE workspace 从 CE 的公开 package export 导入。
+- [ ] 创建 EE 仓库，按固定 CE tag/commit 加入 `upstream/fenix` submodule；EE workspace 从 CE 的公开 package export 导入。
 - [ ] 实现 CE submodule 更新检查：CI 确认指针变化、重新生成 EE registry、运行 EE typecheck/边界检查/migration preflight。
-- [ ] 创建 EE assembly profile，选择 enterprise access-control 与 CE 的全部资源/runtime/Web contribution；初版不选择 EE 资源扩展模块。
+- [ ] 创建 EE assembly profile，选择 EE access-control 与 CE 的全部资源/runtime/Web contribution；初版不选择 EE 资源扩展模块。
 - [ ] 固化升级顺序：更新 CE 指针 → 审查 CE breaking changes/migrations → EE migration → data migration → server/web 发布 → smoke test。
 
 **验收：** EE 不复制 CE 源码、不导入 CE `src/**`；给定 CE 指针可在干净环境构建并启动。
@@ -424,7 +439,7 @@ EE 初版的差异只限于用户体系、认证和授权。它复用 CE 的 Age
 
 **负责人：** EE-C；当前 `platform-sdk` task 负责人负责契约评审  
 **前置：** EE-01、ARC-02  
-**主要文件：** `packages/platform/enterprise-access-control/`、EE env/assembly、企业身份集成代码。
+**主要文件：** `packages/platform/access-control/`、EE env/assembly、企业身份集成代码。
 
 - [ ] 实现 `AccessControlModule` 的企业身份、主体、scope、查询约束和动作授权，不复用 CE role 模型或 CE role 表。
 - [ ] 通过 manifest 声明企业 SSO/身份服务所需 env，并由 EE bootstrap 统一校验、注入配置对象。
@@ -439,7 +454,7 @@ EE 初版的差异只限于用户体系、认证和授权。它复用 CE 的 Age
 **前置：** M1、EE-02  
 **主要文件：** EE `apps/server/`、EE `apps/web/`、企业登录/主体映射代码、EE assembly 与集成测试。
 
-- [ ] 在 EE server 以 enterprise access-control 装配 CE resource services，验证无需 `edition` 条件分支即可替换 CE 授权实现。
+- [ ] 在 EE server 以 EE access-control 装配 CE resource services，验证无需 `edition` 条件分支即可替换 CE 授权实现。
 - [ ] 接入企业登录/SSO 后的主体映射、会话或服务账号认证；Web 只新增身份初始化、登录跳转和必要的企业导航/品牌，不复制 CE AgentConfig 页面。
 - [ ] 使用 CE 资源 Web contribution 和业务页面，验证模型/Skill/MCP/知识库/节点的可见范围，以及 AgentConfig create/list/update/delete/run 的企业权限语义。
 - [ ] 覆盖未认证、跨 workspace、服务账号、列表范围、写入归属、资源动作拒绝和审计事件。
@@ -481,7 +496,8 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | ARC-01 重构清单与回归基线 | ⬜ 可领取 | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | ARC-02 冻结首批公共契约 | 🔒 等待 ARC-01 | ARC-01 | `platform-sdk` 契约设计；需 EE-C 确认授权替换需求 |
-| FND-01 workspace 与包落地骨架 | 🔒 等待 ARC-02 | ARC-02 | 根 `package.json`、`tsconfig`、目标 package/app 空目录；独占 workspace 配置 |
+| FND-00 workspace 物理骨架 | ⬜ 可领取 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
+| FND-01 package 契约与应用入口骨架 | 🔒 等待 ARC-02 与 FND-00 | ARC-02、FND-00 | `exports`、workspace dependency、`tsconfig`、app 空装配入口；独占 package manifest 与 TypeScript 配置 |
 | FND-02 包依赖边界 CI | 🔒 等待 FND-01 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-01 | FND-01 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | FND-04 env、日志、部署 preflight | 🔒 等待 FND-03 | FND-03 | env loader、observability、`deploy/`；可与 EE-01 并行 |
