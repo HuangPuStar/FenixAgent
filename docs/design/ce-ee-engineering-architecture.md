@@ -13,6 +13,7 @@
 3. 资源基础 CRUD 尽量复用；发布、审批、客户字段和流程由 EE/甲方模块扩展。
 4. Agent 引擎、RAG、MCP、Sandbox、部署目标等天然多实现能力使用静态插件点；当前不把资源、权限和控制台整体做成动态插件。
 5. **当前阶段**每个模块以 manifest 自描述；构建期扫描可信 workspace（EE 还扫描固定 CE submodule）并生成静态 registry。应用在启动/部署时读取 assembly 配置，选择 registry 中已注册的模块组合，不实现运行时扫描、下载或热加载业务模块。未来若成本、隔离、签名校验、生命周期管理和运维能力成熟，可另行评审并引入动态插件；该决定不应被本文永久锁死。
+6. **版本命名**：基础实现使用中性目录和 `@fenix/*` package scope，不以 CE 或 Community 标识自身；EE 的替换或扩展实现使用 `@fenix-ee/*`。CE/EE 仅用于仓库、发布物和装配关系的产品线描述，不进入基础源码、包名或领域命名。
 
 ### 1.1 不采用纯插件架构
 
@@ -34,18 +35,17 @@ Resource 不直接了解具体引擎进程、实例租约或 relay 实现。
 
 ## 2. 仓库与目录规范
 
-两个仓库采用相同骨架。EE 的 `vendor/fenix-ce` 是 submodule，不是第三个共享仓库，也禁止在其中提交补丁。
+两个仓库采用相同骨架。EE 的 `upstream/fenix` 是固定基础产品 revision 的 submodule，不是第三个共享仓库，也禁止在其中提交补丁。
 
 ```text
-fenix-ce/ 或 fenix-ee/
+fenix/ 或 fenix-ee/
 ├── apps/
 │   ├── server/                         # HTTP、WebSocket、启动装配、进程生命周期
 │   └── web/                            # 控制台壳、TanStack Router 最终装配
 ├── packages/
 │   ├── platform/                       # 无业务领域依赖的平台契约与基础实现
 │   │   ├── platform-sdk/               # scope、授权端口、资源端口、模块描述符
-│   │   ├── community-access-control/   # CE 默认身份/组织/角色实现（仅 CE）
-│   │   ├── enterprise-access-control/  # EE 整体替换实现（仅 EE）
+│   │   ├── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
 │   │   └── observability/              # Logger、Audit、Metric、Trace 的稳定端口
 │   ├── agent/                          # Agent 核心：运行、实例、聊天、会话与静态插件 SDK
 │   │   ├── agent-runtime/
@@ -53,8 +53,7 @@ fenix-ce/ 或 fenix-ee/
 │   │   ├── agent-chat/
 │   │   └── agent-engine-sdk/
 │   ├── resources/                      # 完整资源领域模块（后端、DB、web contribution）
-│   │   ├── agent-config/               # CE AgentConfig：src/、db/、web/
-│   │   ├── enterprise-agent-config/    # EE 发布/审批：src/、db/、web/（仅 EE）
+│   │   ├── agent-config/               # 默认实现；EE 仓库以同路径扩展发布/审批
 │   │   └── <resource>/
 ├── db/
 │   ├── migrations/                      # 当前仓库拥有的 Drizzle 生成物及 meta
@@ -72,7 +71,7 @@ fenix-ce/ 或 fenix-ee/
 │   ├── developer/                       # 开发、测试、模块创建规范
 │   ├── operations/                      # 部署、升级、迁移、备份、排障
 │   └── design/                          # 待评审设计，不是真相来源
-└── vendor/fenix-ce/                     # 仅 EE：Git submodule
+└── upstream/fenix/                      # 仅 EE：Git submodule
 ```
 
 ### 2.1 目录责任
@@ -94,7 +93,7 @@ ResourceModule = domain + services + repositories/adapters + schemas
                + web contribution + capability declaration + tests + README
 ```
 
-资源模块内部推荐固定结构。`web/` 与 `src/` 物理就近，但通过 package subpath export 和依赖规则隔离：根入口只导出后端能力，`@fenix-ce/agent-config/web` 才导出浏览器能力。
+资源模块内部推荐固定结构。`web/` 与 `src/` 物理就近，但通过 package subpath export 和依赖规则隔离：根入口只导出后端能力，`@fenix/agent-config/web` 才导出浏览器能力。
 
 ```text
 packages/resources/<resource>/
@@ -119,9 +118,9 @@ packages/resources/<resource>/
 
 ### 2.2.1 跨包引用与公开 API
 
-跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix-ce/agent-instance`、`@fenix-ce/agent-config/web`、`@fenix-ee/agent-config`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
+跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix/agent-instance`、`@fenix/agent-config/web`、`@fenix-ee/agent-config`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
 
-每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。EE 通过 `vendor/fenix-ce` submodule 加入同一个 package-manager workspace，并从 `@fenix-ce/*` 公开入口导入；不得因为物理目录相邻而导入 `vendor/fenix-ce/packages/**/src/**`。`apps` 同样遵守该规则。
+每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。EE 通过 `upstream/fenix` submodule 加入同一个 package-manager workspace，并从 `@fenix/*` 公开入口导入；不得因为物理目录相邻而导入 `upstream/fenix/packages/**/src/**`。`apps` 同样遵守该规则。
 
 ### 2.2.2 资源模块之间的依赖规则
 
@@ -147,8 +146,8 @@ apps/server 注入 AgentInstanceManager ──────┘
 资源关系紧密且长期稳定时，不为形式统一而额外创建接口。AgentConfig 可直接依赖 Skill、MCP、模型或知识库包根入口公开的 service：
 
 ```ts
-import { McpService } from "@fenix-ce/mcp";
-import { SkillService } from "@fenix-ce/skill";
+import { McpService } from "@fenix/mcp";
+import { SkillService } from "@fenix/skill";
 
 export class AgentConfigService {
   constructor(
@@ -165,14 +164,14 @@ export class AgentConfigService {
 }
 ```
 
-这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix-ce/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
 
 前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性；EE 替换资源时，静态依赖对应 EE 资源的 `web` 入口，不做运行时前端模块覆盖或发现。
 
 只有出现以下任一条件时，才在包根入口导出最小公开接口：需要在 CE/EE/甲方版替换实现、同一能力存在多个实现、调用方只需一个极小能力且不希望稳定整个 service API、或直接依赖会产生循环。该接口只暴露调用方完成自身规则所需的数据和动作，例如：
 
 ```ts
-// @fenix-ce/skill（包根入口公开导出）
+// @fenix/skill（包根入口公开导出）
 export interface SkillReferenceResolver {
   resolveUsableSkills(input: {
     actorId: string;
@@ -199,7 +198,7 @@ export interface SkillReferenceResolver {
 | `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
 | `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
-| EE package / app | CE submodule 的公开 `@fenix-ce/*` 入口、EE 自身公开入口 | CE 内部路径；CE 反向依赖 | 依赖方向只能是 `EE → CE`，以便 CE 独立构建与发布 |
+| EE package / app | CE submodule 的公开 `@fenix/*` 入口、EE 自身公开入口 | CE 内部路径；CE 反向依赖 | 依赖方向只能是 `EE → CE`，以便 CE 独立构建与发布 |
 
 推荐的总体方向如下：
 
@@ -222,16 +221,16 @@ CE packages/apps ─────────────────────
 
 ```json
 {
-  "accessControl": "enterprise",
+  "accessControl": "ee",
   "runtime": "shared-agent-runtime",
   "resources": ["agent-config", "agent-config-publication"],
-  "web": ["enterprise-agent-config"]
+  "web": ["agent-config"]
 }
 ```
 
 CE 的 `platform-sdk/assembly` 提供唯一的 `AssemblyProfile` 与 `parseAssemblyProfile()`：它只校验授权、runtime、Shell、资源和 Web 模块 ID 列表的通用结构，不知道 CE/EE 的具体 ID。CE、EE 各自只加载自己的 profile JSON/YAML；随后由对应 app 对生成 registry 做 ID、类别和依赖校验，不复制 parser，也不将 EE 字段加入基础契约。
 
-每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts`；EE 同时扫描固定 submodule 的 `vendor/fenix-ce/packages/**/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
+每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts`；EE 同时扫描固定 submodule 的 `upstream/fenix/packages/**/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
 
 启动流程依次执行：读取 JSON/YAML → 校验结构和重复 ID → 从**生成 registry**确认 ID 和类别 → 校验 manifest 依赖、capability 冲突、所需 env 与 migration preflight → 创建依赖并挂载 route/web contribution。profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；其位置由发布脚本固定，不能由 profile 自己指定。配置中禁止出现任意文件路径、URL、npm 包名、表达式或代码片段；它不能 import、下载或执行新代码。
 
@@ -309,12 +308,12 @@ packages/resources/<module>/web/
 
 TanStack Router 仍保持文件路由：应用的 `routes/` 是薄文件，静态导入选定资源模块 `web/` 子路径的页面。不要尝试运行时注入路由；EE 添加页面时在 EE web app 建立 route adapter，或由 EE 资源模块的 `web/` 提供页面，再由 app 显式注册。
 
-`WebShell` 是版本级产品组合，不是资源模块，也不放入 `packages`。CE 在 `ce/apps/web/src/shell/CommunityAppShell.tsx` 持有 CE 首页、布局、社区导航和全局 Provider；EE 若有整体差异，则在 `ee/apps/web/src/shell/EnterpriseAppShell.tsx` 持有企业首页、SSO 初始化、企业导航和布局。EE Shell 不继承、也不通过覆盖 CE Shell 的局部 hook 实现差异。
+`WebShell` 是版本级产品组合，不是资源模块，也不放入 `packages`。基础实现的 `apps/web/src/shell/DefaultAppShell.tsx` 持有首页、布局、导航和全局 Provider；EE 若有整体差异，则在自己的 `apps/web/src/shell/EeAppShell.tsx` 持有企业首页、SSO 初始化、企业导航和布局。EE Shell 不继承、也不通过覆盖基础 Shell 的局部 hook 实现差异。
 
 assembly 的 `webShell` 显式选择当前 app 自己提供的唯一最终壳，`web` 列表则选择构建期生成 registry 中的资源页面 contribution：
 
 ```text
-assembly.webShell → apps/web 的 CommunityAppShell 或 EnterpriseAppShell
+assembly.webShell → apps/web 的 DefaultAppShell 或 EeAppShell
 assembly.web      → generated module registry → resources/*/web contribution
 ```
 
@@ -325,7 +324,7 @@ assembly.web      → generated module registry → resources/*/web contribution
 “复用领域服务，EE 扩展流程”在前端同样成立，但前后端扩展独立：
 
 1. **无 UI 差异**：EE 复用 CE `resources/agent-config/web` 页面和 API client。
-2. **局部差异**：EE 复用 CE API client、DTO、通用表格/表单组件，在 `resources/enterprise-agent-config/web` 追加发布按钮、状态展示或审批页；不复制整个 CE 页面。
+2. **局部差异**：EE 复用 CE API client、DTO、通用表格/表单组件，在 `resources/agent-config/web` 追加发布按钮、状态展示或审批页；不复制整个 CE 页面。
 3. **页面流程整体不同**：EE 在自己的资源模块 `web/` 提供替代页面，并在 EE app 的静态 route adapter 中选择它；后端仍可复用 CE domain/repository。
 4. **甲方品牌与导航差异**：由 `apps/web` Shell 的静态品牌/导航配置处理，不侵入资源模块。
 5. **首页、布局或全局交互模型整体不同**：在 EE/甲方自己的 `apps/web/src/shell` 实现完整 Shell，并以 assembly 的 `webShell` 选择；资源模块的 API client、DTO 和页面仍可按实际差异复用。
@@ -417,12 +416,12 @@ EE 的 `drizzle.config.ts` 只列出 **EE 自己拥有的** schema 文件。EE s
 以 EE 为 AgentConfig 新增发布状态为例：
 
 ```text
-1. EE：packages/resources/enterprise-agent-config/db/schema.ts
+1. EE：packages/resources/agent-config/db/schema.ts
    定义 agent_config_publications 表。
    可引用 CE 的 agent_configs 表作为外键目标。
 
 2. EE：drizzle.config.ts
-   schema 只列出 enterprise-agent-config 等 EE 模块的 db/schema.ts。
+   schema 只列出 agent-config 等 EE 模块的 db/schema.ts。
    out 指向 EE/db/migrations。
 
 3. 在 EE 根目录执行：
@@ -431,7 +430,7 @@ EE 的 `drizzle.config.ts` 只列出 **EE 自己拥有的** schema 文件。EE s
 4. 审查新生成的 EE/db/migrations/<timestamp>_agent-config-publication.sql
    它只应创建/修改 agent_config_publications 等 EE 表。
 
-5. 发布时：先运行 vendor/fenix-ce 的 migration runner，
+5. 发布时：先运行 upstream/fenix 的 migration runner，
    再运行 EE 的 migration runner，最后执行 EE 模块的数据迁移。
 ```
 
@@ -508,7 +507,7 @@ Tracer       # 跨 HTTP、任务、ACP、Provider 调用的 trace/span
 | --- | --- |
 | `check-module-boundaries` | 检查禁止依赖、公开入口与 submodule 未修改 |
 | `build-release` | 构建 server/console、生成版本与 SBOM 信息 |
-| `migrate-ce` / `migrate-ee` | 分别运行带独立 journal 的 DDL 迁移 |
+| `migrate-fenix` / `migrate-ee` | 分别运行带独立 journal 的 DDL 迁移 |
 | `run-data-migrations` | 执行已登记且幂等的数据迁移 |
 | `deploy-preflight` | 校验 env、DB 连通性、迁移状态、镜像版本和依赖服务 |
 | `release` | 串联 preflight、迁移、部署、readiness、回滚判断 |
@@ -519,18 +518,18 @@ Tracer       # 跨 HTTP、任务、ACP、Provider 调用的 trace/span
 
 ## 9. Git submodule 升级流程
 
-EE 根 `package.json` 将 `vendor/fenix-ce/packages/*/*` 纳入 workspace，EE 代码仅从 CE 包公开入口导入。CE 的公开包遵循语义化兼容承诺，并在每个 release tag 产出：变更日志、兼容性说明、migration manifest、环境变量变化和废弃项。
+EE 根 `package.json` 将 `upstream/fenix/packages/*/*` 纳入 workspace，EE 代码仅从 CE 包公开入口导入。CE 的公开包遵循语义化兼容承诺，并在每个 release tag 产出：变更日志、兼容性说明、migration manifest、环境变量变化和废弃项。
 
 升级步骤：
 
-1. CE 发布不可变 tag；EE 创建独立的 `chore/upgrade-ce-<tag>` 分支。
-2. 在 `vendor/fenix-ce` 显式 checkout 该 tag/commit，更新 submodule 指针与锁文件；禁止 `--remote` 无审查更新。
+1. CE 发布不可变 tag；EE 创建独立的 `chore/upgrade-fenix-<tag>` 分支。
+2. 在 `upstream/fenix` 显式 checkout 该 tag/commit，更新 submodule 指针与锁文件；禁止 `--remote` 无审查更新。
 3. 读取 CE release compatibility manifest，审查破坏性 API、DB、env、部署变化。
 4. 执行 EE 的类型检查、模块边界检查、CE/EE migration upgrade test、最小启动链路和关键端到端测试。
 5. 若 EE 需要适配，在 EE 自己的模块中完成；不得修改 submodule。不能兼容则停止升级或先在 CE 提供正式扩展点。
 6. 审查完成后合并；发布镜像记录 CE commit、EE commit、migration 版本。
 
-CI 必须验证 `git diff --exit-code -- vendor/fenix-ce`，确保 submodule 只有合法指针变更。紧急回退优先回到上一个已验证的 CE 指针和 EE 镜像；数据库按 expand/contract 规则判断可否回退。
+CI 必须验证 `git diff --exit-code -- upstream/fenix`，确保 submodule 只有合法指针变更。紧急回退优先回到上一个已验证的 CE 指针和 EE 镜像；数据库按 expand/contract 规则判断可否回退。
 
 ## 10. 扩展方案决策表
 
@@ -559,7 +558,7 @@ CI 必须验证 `git diff --exit-code -- vendor/fenix-ce`，确保 submodule 只
 “谁可读取/修改/使用 AgentConfig”仍是基础 `AccessControlModule` 的职责；“谁可以将它发布到生产环境”只属于 AgentConfig 的发布领域，因此不应给所有资源的基础接口增加 `canPublish()`：
 
 ```ts
-// packages/resources/enterprise-agent-config/src/services/approval-policy.ts
+// packages/resources/agent-config/src/services/approval-policy.ts
 export interface AgentConfigApprovalPolicy {
   authorizePublish(input: {
     actorId: string;
@@ -639,7 +638,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 5. 修改 env、部署或可观测性时同步 `deploy/env` 模板、operations 文档和 preflight。
 6. 运行模块单测、契约测试、类型检查、lint/format；涉及 CE/EE 边界时运行 submodule 集成和升级 migration 测试。
 
-第一阶段重构只实现最小闭环：`platform-sdk + CE access-control + agent-config + agent-instance + agent-runtime + /app route + web page + PostgreSQL/Drizzle + observability + deploy preflight`。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
+第一阶段重构只实现最小闭环：`platform-sdk + access-control + agent-config + agent-instance + agent-runtime + /app route + web page + PostgreSQL/Drizzle + observability + deploy preflight`。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
 
 ## 13. 从当前 CE 工程迁移到目标架构
 
@@ -655,7 +654,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 | --- | --- | --- |
 | 0. 基线冻结 | 基于 `FUNCTIONAL_MODULE_INVENTORY.md` 为所有现有模块标明目标归属、调用方、表、route、web 页面、外部依赖和迁移风险；补齐关键链路回归测试与观测基线 | 可比较重构前后行为、性能和错误率 |
 | 1. 工程骨架 | 创建 `apps/server`、`apps/web`、platform/agent/resources 目录、workspace 与边界检查；将当前 server/web 入口一次性移入 apps，修正构建、测试、Docker 入口 | 不改业务行为，原测试与部署可运行 |
-| 2. 平台基础 | 抽取 `platform-sdk`、CE `community-access-control`、observability、统一 env loader、DB client/transaction adapter；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
+| 2. 平台基础 | 抽取 `platform-sdk`、`access-control`、observability、统一 env loader、DB client/transaction adapter；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
 | 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面、`AgentInstanceManager`、Agent runtime；用此闭环验证授权、发布扩展和实例边界 | demo 的设计在真实 CE 最小能力上成立 |
 | 4. 资源目录 | 依赖从低到高迁移 Skill、MCP、模型/Provider、知识库、记忆、环境等；每个资源独立完成 schema、授权、route、web 和删除旧代码 | 资源不再散落在 `src/services/config` 与 `web/src/pages` |
 | 5. 执行与连接 | 迁移 Machine、workspace/file、Sandbox、引擎插件、ACP relay、实例编排；保持 runtime 不读取资源权限 | 运行、文件和节点能力通过公开端口连接 |
