@@ -12,11 +12,12 @@ import { createWebEnvironment } from "./environment-web";
 // 编排域依赖注入点（对齐 openai-chat.ts 的 setOpenAIChatRouteDeps 模式）：
 // openAgentSession 的「spawn → relay → turn」编排依赖集中在此，测试可注入 fake
 // 覆盖失败回滚路径，避免 mock.module。
-const deps = {
+const defaultDeps = {
   resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
   ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
   connectAgentRelay,
 };
+const deps = { ...defaultDeps };
 
 /** 测试用：覆盖 agent-chat-service 的编排域依赖，避免 mock.module。 */
 export function setAgentChatServiceDeps(overrides: Partial<typeof deps> | null): void {
@@ -24,9 +25,7 @@ export function setAgentChatServiceDeps(overrides: Partial<typeof deps> | null):
     Object.assign(deps, overrides);
     return;
   }
-  deps.resolveInstance = agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService);
-  deps.ensureInstanceRuntime = agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService);
-  deps.connectAgentRelay = connectAgentRelay;
+  Object.assign(deps, defaultDeps);
 }
 
 // ── JSON-RPC 请求 id 生成器 ──
