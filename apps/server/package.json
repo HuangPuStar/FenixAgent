@@ -1,0 +1,6 @@
+{
+  "name": "@fenix/server-app",
+  "description": "服务端装配应用",
+  "private": true,
+  "type": "module"
+}

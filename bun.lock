@@ -122,6 +122,12 @@
         "vitepress": "^1.6.4",
       },
     },
+    "apps/server": {
+      "name": "@fenix/server-app",
+    },
+    "apps/web": {
+      "name": "@fenix/web-app",
+    },
     "packages/acp-link": {
       "name": "acp-link",
       "version": "2.0.0",
@@ -211,6 +217,15 @@
       "name": "@fenix/orchestration",
       "version": "0.1.0",
     },
+    "packages/platform/access-control": {
+      "name": "@fenix/access-control",
+    },
+    "packages/platform/observability": {
+      "name": "@fenix/observability",
+    },
+    "packages/platform/platform-sdk": {
+      "name": "@fenix/platform-sdk",
+    },
     "packages/plugin-ccb": {
       "name": "@fenix/ccb",
       "version": "0.1.0",
@@ -251,6 +266,9 @@
         "@fenix/logger": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
       },
+    },
+    "packages/resources/agent-config": {
+      "name": "@fenix/agent-config",
     },
     "packages/sandbox-provider": {
       "name": "@fenix/sandbox-provider",
@@ -596,6 +614,10 @@
 
     "@fenix-agent/acp-runtime-cli": ["@fenix-agent/acp-runtime-cli@workspace:packages/acp-runtime-cli"],
 
+    "@fenix/access-control": ["@fenix/access-control@workspace:packages/platform/access-control"],
+
+    "@fenix/agent-config": ["@fenix/agent-config@workspace:packages/resources/agent-config"],
+
     "@fenix/ccb": ["@fenix/ccb@workspace:packages/plugin-ccb"],
 
     "@fenix/chat-channel": ["@fenix/chat-channel@workspace:packages/chat-channel"],
@@ -610,17 +632,25 @@
 
     "@fenix/model-gateway-sdk": ["@fenix/model-gateway-sdk@workspace:packages/model-gateway-sdk"],
 
+    "@fenix/observability": ["@fenix/observability@workspace:packages/platform/observability"],
+
     "@fenix/opencode": ["@fenix/opencode@workspace:packages/plugin-opencode"],
 
     "@fenix/opensandbox-cluster": ["@fenix/opensandbox-cluster@workspace:packages/opensandbox-cluster"],
 
     "@fenix/orchestration": ["@fenix/orchestration@workspace:packages/orchestration"],
 
+    "@fenix/platform-sdk": ["@fenix/platform-sdk@workspace:packages/platform/platform-sdk"],
+
     "@fenix/plugin-sdk": ["@fenix/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@fenix/remote-runtime": ["@fenix/remote-runtime@workspace:packages/remote-runtime"],
 
     "@fenix/sandbox-provider": ["@fenix/sandbox-provider@workspace:packages/sandbox-provider"],
+
+    "@fenix/server-app": ["@fenix/server-app@workspace:apps/server"],
+
+    "@fenix/web-app": ["@fenix/web-app@workspace:apps/web"],
 
     "@fenix/workflow-engine": ["@fenix/workflow-engine@workspace:packages/workflow-engine"],
 

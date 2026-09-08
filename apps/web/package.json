@@ -1,0 +1,6 @@
+{
+  "name": "@fenix/web-app",
+  "description": "控制台装配应用",
+  "private": true,
+  "type": "module"
+}

@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/*/*",
+    "apps/*"
   ],
   "overrides": {
     "kysely": "0.28.17",
