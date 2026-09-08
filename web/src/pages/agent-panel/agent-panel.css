@@ -1,3 +1,5 @@
+@import "./chat-design.css";
+
 /* ============================================================
    Unified Agent Panel — 三栏布局专用样式
    ============================================================ */
@@ -193,8 +195,8 @@
 }
 
 .agent-sidebar-nav {
-  flex: 0 1 auto;
-  max-height: min(55dvh, 560px);
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0;
@@ -273,6 +275,36 @@
   border-radius: 0 2px 2px 0;
   background: linear-gradient(180deg, var(--agent-sidebar-cyan), #0f6bff);
   transform: translateY(-50%);
+}
+
+.agent-sidebar-sections {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.agent-sidebar-nav-wrap {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-sidebar-tree-resize-handle {
+  z-index: 2;
+  height: 1px;
+  flex-shrink: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: row-resize;
+  transition: background 150ms ease;
+}
+
+.agent-sidebar-tree-resize-handle::after {
+  height: 8px;
+}
+
+.agent-sidebar-tree-resize-handle:hover,
+.agent-sidebar-tree-resize-handle[data-resize-handle-active] {
+  background: var(--agent-sidebar-cyan);
 }
 
 .agent-sidebar-tree-wrap,
@@ -583,6 +615,11 @@
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.agent-sidebar.collapsed .agent-sidebar-tree-resize-handle {
   visibility: hidden;
   pointer-events: none;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@fenix/logger";
+import { sanitizeErrorForLog } from "../plugins/logger";
 
 // 结构化日志：输出格式包含 level、module、message 字段
 describe("structured logger", () => {
@@ -29,5 +30,22 @@ describe("structured logger", () => {
     const entry = logger.formatEntry("info", "test");
     expect(entry.timestamp).toBeDefined();
     expect(typeof entry.timestamp).toBe("string");
+  });
+
+  // HTTP 错误日志必须移除数据库 query/params 及嵌套 cause，避免配置密钥进入日志。
+  test("HTTP 错误日志会脱敏数据库错误详情", () => {
+    const error = Object.assign(new Error("Failed query: insert into mcp_server params: secret-token"), {
+      name: "DrizzleQueryError",
+      query: "insert into mcp_server values ($1)",
+      params: ["secret-token"],
+      cause: new Error("Authorization: Bearer secret-token"),
+    });
+
+    const sanitized = sanitizeErrorForLog(error);
+    expect(sanitized.name).toBe("DrizzleQueryError");
+    expect(sanitized.message).toBe("Database operation failed");
+    expect("query" in sanitized).toBe(false);
+    expect("params" in sanitized).toBe(false);
+    expect("cause" in sanitized).toBe(false);
   });
 });

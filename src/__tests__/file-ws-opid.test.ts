@@ -159,6 +159,24 @@ describe("§7.2 读重试矩阵", () => {
     expect(parseFileOpFrames(ws)).toHaveLength(1);
   });
 
+  test("ZIP timeout 不自动重试，避免旧 client 并行留下两个昂贵任务", async () => {
+    const handler = await import("../transport/file-ws-handler");
+    const ws = openRegisteredWs(handler, "ws_opid_zip", "mach_opid_zip");
+
+    const pending = fileOpRequests.sendFileOpAndWait(
+      "mach_opid_zip",
+      "zip",
+      { path: "docs", environmentId: "env-opid-zip" },
+      30,
+    );
+    await expect(pending).rejects.toThrow("file_op timeout");
+
+    const operationFrames = parseFileOpFrames(ws);
+    expect(operationFrames).toHaveLength(1);
+    const frames = ws._messages.map((line) => JSON.parse(line) as { type?: string; request_id?: string });
+    expect(frames).toContainEqual({ type: "file_op_cancel", request_id: operationFrames[0].request_id });
+  });
+
   test("busy 不重试：背压拒绝直接返回 BusyError，且不发帧", async () => {
     // busy 是瞬时容量问题（429 语义）：重试必然再次 busy，直接抛 BusyError 供上层退避
     const handler = await import("../transport/file-ws-handler");

@@ -40,9 +40,9 @@ describe("webSearchNarrator", () => {
     expect(webSearchNarrator.kinds).toContain("web-search");
   });
 
-  // 中文动词必须是"搜索"（与 Grep 同词，但 Grep 是本地代码搜索）
-  test("verb 是 '搜索'", () => {
-    expect(webSearchNarrator.verb).toBe("搜索");
+  // 中文动作必须明确表达网页搜索行为
+  test("verb 是 '搜索网页'", () => {
+    expect(webSearchNarrator.verb).toBe("搜索网页");
   });
 
   // query 字段加双引号作为 object（强调搜索词文本）

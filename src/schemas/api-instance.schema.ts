@@ -8,7 +8,11 @@ export const ApiInstanceAgentConfigParamsSchema = z
 
 export const ApiInstanceConnectBodySchema = z
   .object({
-    preferNewInstance: z.boolean().optional().describe("是否优先启动新实例；默认 false。"),
+    instanceUid: z
+      .string()
+      .startsWith("inst_")
+      .optional()
+      .describe("可选的持久 Agent Instance ID；省略时使用 api/primary。"),
   })
   .describe("连接 Agent Instance 请求体。");
 

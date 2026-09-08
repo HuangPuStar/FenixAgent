@@ -91,6 +91,20 @@ export function truncate(s: string, max: number): string {
 }
 
 /**
+ * 压缩 detail 中的路径，只展示最后一个有效路径段。
+ * 原始路径仍保留在工具参数弹窗中，列表无需重复展示完整绝对路径。
+ */
+export function compactDetailValue(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized) return value;
+
+  const isPath = normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized) || normalized.includes("/");
+  if (!isPath) return truncate(value, 40);
+
+  return normalized.split("/").pop() || normalized;
+}
+
+/**
  * 从 rawInput 提取第一个字符串值。兜底 narrator 用作附加上下文。
  * 跳过空字符串（length > 0 守卫），因为空字符串不提供有效信息。
  */
@@ -274,6 +288,7 @@ export function extractDisplayMeta(
 // ToolCardKind 解析 — 将 display 元数据 + rawInput 结构映射为统一 kind
 // =============================================================================
 
+import { classifyToolSemantic, semanticToToolCardKind } from "@/src/lib/tool-semantic";
 import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
 
 /** display.type → ToolCardKind 的精确映射 */
@@ -294,17 +309,15 @@ const DISPLAY_TYPE_MAP: Record<string, ToolCardKind> = {
  * 注意：完全不依赖 title 字段。
  */
 export function resolveToolCardKind(
-  tool: Pick<ToolCallData, "display" | "rawInput" | "rawOutput">,
+  tool: Pick<ToolCallData, "display" | "rawInput" | "rawOutput"> & Partial<Pick<ToolCallData, "title" | "semantic">>,
   meta?: Record<string, unknown> | null,
 ): ToolCardKind {
-  // 第 1 级：display.type 精确匹配
+  const semantic =
+    tool.semantic ?? classifyToolSemantic({ name: tool.title, rawInput: tool.rawInput, display: tool.display });
   const display = tool.display ?? extractDisplayMeta(tool.rawOutput, meta);
   if (display?.type) {
-    // 直接映射（directory / diff）
     const direct = DISPLAY_TYPE_MAP[display.type];
     if (direct) return direct;
-
-    // file 需二次推断：write / edit / read-file
     if (display.type === "file") {
       const r = tool.rawInput as Record<string, unknown> | undefined;
       if (typeof r?.newText === "string" || typeof r?.content === "string") return "write";
@@ -312,6 +325,10 @@ export function resolveToolCardKind(
       return "read-file";
     }
   }
+  const semanticKind = semanticToToolCardKind(semantic);
+  if (semanticKind) return semanticKind;
+
+  // 名称未知时，继续使用 rawInput 识别扩展工具类型。
 
   const r = tool.rawInput as Record<string, unknown> | undefined;
   if (!r) return "unknown";

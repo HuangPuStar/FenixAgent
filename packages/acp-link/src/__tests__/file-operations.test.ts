@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleFileOp } from "../client/file-operations";
+import { handleFileOp, setUploadBeforeWriteHookForTest, setZipBeforeSpawnHookForTest } from "../client/file-operations";
 import { initRegistry, registerWorkspace } from "../client/workspace-registry";
 
 interface FileOpData {
@@ -34,6 +34,8 @@ async function createWorkspace(): Promise<{ workspace: string; environmentId: st
 }
 
 afterEach(async () => {
+  setUploadBeforeWriteHookForTest();
+  setZipBeforeSpawnHookForTest();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
@@ -83,6 +85,98 @@ describe("handleFileOp", () => {
 
     const traversal = await handleFileOp(createMessage(environmentId, "read", { path: "../outside.txt" }));
     expect(traversal).toMatchObject({ status: "error", error: "Invalid path: path traversal detected" });
+  });
+
+  test("打包 workspace 目录并拒绝越界路径", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "docs"));
+    await writeFile(join(workspace, "docs", "note.txt"), "hello", "utf-8");
+
+    const result = await handleFileOp(createMessage(environmentId, "zip", { path: "docs" }));
+    expect(result.status).toBe("ok");
+    const archive = Buffer.from(result.data as string, "base64");
+    expect(archive.subarray(0, 2).toString()).toBe("PK");
+
+    const traversal = await handleFileOp(createMessage(environmentId, "zip", { path: "../outside" }));
+    expect(traversal).toMatchObject({ status: "error", error: "Invalid path: path traversal detected" });
+  });
+
+  test("上传保留尾随空格并拒绝 symlink 落点及 mkdir/write 竞态", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const outside = await mkdtemp(join(tmpdir(), "acp-link-upload-outside-"));
+    temporaryDirectories.push(outside);
+
+    const spaced = await handleFileOp(
+      createMessage(environmentId, "upload", {
+        dir: "uploads",
+        files: [
+          { name: "a.txt", content: Buffer.from("plain").toString("base64") },
+          { name: "a.txt ", content: Buffer.from("spaced").toString("base64") },
+        ],
+      }),
+    );
+    expect(spaced.status).toBe("ok");
+    expect(await readFile(join(workspace, "uploads", "a.txt"), "utf8")).toBe("plain");
+    expect(await readFile(join(workspace, "uploads", "a.txt "), "utf8")).toBe("spaced");
+
+    await symlink(outside, join(workspace, "linked"));
+    const linked = await handleFileOp(
+      createMessage(environmentId, "upload", {
+        dir: "linked",
+        files: [{ name: "secret.txt", content: Buffer.from("secret").toString("base64") }],
+      }),
+    );
+    expect(linked).toMatchObject({ status: "error", error_code: "unsafe_symlink" });
+    expect(await Bun.file(join(outside, "secret.txt")).exists()).toBe(false);
+
+    await mkdir(join(workspace, "race"));
+    setUploadBeforeWriteHookForTest(async () => {
+      await rename(join(workspace, "race"), join(workspace, "validated-race"));
+      await symlink(outside, join(workspace, "race"));
+    });
+    const raced = await handleFileOp(
+      createMessage(environmentId, "upload", {
+        dir: "race",
+        files: [{ name: "raced.txt", content: Buffer.from("raced").toString("base64") }],
+      }),
+    );
+    expect(raced).toMatchObject({ status: "error", error_code: "unsafe_symlink" });
+    expect(await Bun.file(join(outside, "raced.txt")).exists()).toBe(false);
+  });
+
+  // ZIP 必须拒绝顶层及归档树内 symlink，避免 zip 跟随链接读取其他租户或宿主目录。
+  test("拒绝 ZIP 顶层和归档树内 symbolic link", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const outside = await mkdtemp(join(tmpdir(), "acp-link-file-outside-"));
+    temporaryDirectories.push(outside);
+    await writeFile(join(outside, "secret.txt"), "secret", "utf-8");
+    await symlink(outside, join(workspace, "outside-link"));
+
+    const topLevel = await handleFileOp(createMessage(environmentId, "zip", { path: "outside-link" }));
+    expect(topLevel).toMatchObject({ status: "error", error_code: "unsafe_symlink", status_code: 503 });
+
+    await mkdir(join(workspace, "docs"));
+    await symlink(join(outside, "secret.txt"), join(workspace, "docs", "secret-link"));
+    const nested = await handleFileOp(createMessage(environmentId, "zip", { path: "docs" }));
+    expect(nested).toMatchObject({ status: "error", error_code: "unsafe_symlink", status_code: 503 });
+  });
+
+  // 校验后的路径层级可能被并发替换；ZIP 不得按原 archivePath 跟随新 symlink。
+  test("拒绝校验后被替换为外部 symlink 的中间目录", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const outside = await mkdtemp(join(tmpdir(), "acp-link-file-race-outside-"));
+    temporaryDirectories.push(outside);
+    await mkdir(join(workspace, "parent", "docs"), { recursive: true });
+    await writeFile(join(workspace, "parent", "docs", "safe.txt"), "safe", "utf-8");
+    await writeFile(join(outside, "secret.txt"), "secret", "utf-8");
+
+    setZipBeforeSpawnHookForTest(async () => {
+      await rename(join(workspace, "parent"), join(workspace, "validated-parent"));
+      await symlink(outside, join(workspace, "parent"));
+    });
+
+    const result = await handleFileOp(createMessage(environmentId, "zip", { path: "parent/docs" }));
+    expect(result).toMatchObject({ status: "error", error_code: "unsafe_symlink", status_code: 503 });
   });
 
   // 写入、上传、重命名、建目录和删除必须只影响 workspace 内的目标路径
@@ -137,7 +231,7 @@ describe("handleFileOp", () => {
     );
     expect(escapedUpload).toMatchObject({
       status: "error",
-      error: "Invalid file path: ../../escape.txt escapes target directory",
+      error: "Invalid upload path: expected a non-blank relative path without '..' or control characters",
     });
   });
 

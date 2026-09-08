@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { truncate } from "./helpers";
+import { compactDetailValue, truncate } from "./helpers";
 import type { ToolNarrator } from "./types";
 
 /**
@@ -16,7 +16,7 @@ import type { ToolNarrator } from "./types";
  */
 export const grepNarrator: ToolNarrator = {
   kinds: ["grep"],
-  verb: "搜索",
+  verb: "搜索内容",
   icon: Search,
   getDisplay(ctx) {
     const raw = ctx.tool.rawInput as Record<string, unknown> | undefined;
@@ -28,7 +28,7 @@ export const grepNarrator: ToolNarrator = {
     // detail 拼接：路径（如果有）+ 命中数（complete 状态可提取）
     const parts: string[] = [];
     if (path) {
-      parts.push(ctx.t("common.inPath", { path: truncate(path, 30) }));
+      parts.push(ctx.t("common.inPath", { path: compactDetailValue(path) }));
     }
     if (ctx.status === "complete") {
       const count = extractGrepResultCount(ctx.tool.rawOutput);

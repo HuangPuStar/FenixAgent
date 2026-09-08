@@ -13,6 +13,7 @@
 import { config } from "../../config";
 import { type EnvironmentRecord, environmentRepo, findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
 import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
+import { agentInstanceRepo } from "../../repositories/agent-instance";
 import { findMachineNamesByIds } from "../../repositories/machine-repository";
 import { listAcpConnections } from "../../transport/acp-ws-handler";
 import {
@@ -21,7 +22,6 @@ import {
 } from "../../transport/relay/external-relay";
 import type { AcpConnectionSnapshot } from "../../types/store";
 import { getAgentConfigById as getAgentConfigByIdFromConfig } from "../config/index";
-import { globalInstanceRegistry } from "../instance-registry";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";
 import type {
@@ -50,8 +50,8 @@ export interface ObserverServiceDeps {
   getAgentConfigById: (id: string) => Promise<{ machineId: string | null } | null | undefined>;
   getDefaultMachineId: () => string | null;
   // ── name(id) 展示名称解析（文档 §4 names；只读、即用即弃，不缓存）──
-  /** instanceId → 实例补充信息（environmentId + 序号），未运行/未知返回 undefined */
-  getInstanceSupplement: (instanceId: string) => { environmentId: string; instanceNumber: number } | undefined;
+  /** instanceUid → 持久实例名称；未知实例返回 undefined。 */
+  getInstanceName: (instanceUid: string) => Promise<string | undefined>;
   listOrganizationNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
   listUserNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
   listAgentConfigNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
@@ -83,7 +83,7 @@ const defaultDeps: ObserverServiceDeps = {
   getEnvironment: (id) => environmentRepo.getById(id),
   getAgentConfigById: (id) => getAgentConfigByIdFromConfig(id),
   getDefaultMachineId: () => config.defaultMachineId ?? null,
-  getInstanceSupplement: (instanceId) => globalInstanceRegistry.get(instanceId),
+  getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
   listOrganizationNamesByIds: (ids) => organizationRepo.listNamesByIds(ids),
   listUserNamesByIds: async (ids) => {
     const rows = await findUsersBasicInfoByIds(ids);
@@ -140,8 +140,7 @@ export class ObserverService {
   /**
    * 现场收集各角色 id → 可读名称字典（name(id) 展示用，文档 §4 names）。
    * 名称只用于展示，缺失 id 不进字典（前端回退显示原始 id）；查询结果即用即弃、不缓存（§0.3）。
-   * instance 名 = environment 名 + 实例序号：instanceId 经 instance registry 只读回查
-   * environmentId，再经 environment 权威表取名称。
+   * instance 名来自持久 Agent Instance，不依赖 runtime registry 或环境内序号。
    */
   private async resolveNames(observations: Observation[]): Promise<ObservationNames> {
     const byRole = new Map<string, Set<string>>();
@@ -166,12 +165,12 @@ export class ObserverService {
     ]);
 
     const instanceNames = new Map<string, string>();
-    for (const instanceId of idsFor("instanceId")) {
-      const supplement = deps.getInstanceSupplement(instanceId);
-      if (!supplement) continue;
-      const env = await deps.getEnvironment(supplement.environmentId);
-      if (env?.name) instanceNames.set(instanceId, `${env.name} #${supplement.instanceNumber}`);
-    }
+    await Promise.all(
+      idsFor("instanceId").map(async (instanceUid) => {
+        const name = await deps.getInstanceName(instanceUid);
+        if (name) instanceNames.set(instanceUid, name);
+      }),
+    );
 
     return {
       organizationId: Object.fromEntries(orgNames),

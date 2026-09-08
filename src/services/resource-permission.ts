@@ -45,8 +45,13 @@ export function buildResourceAccess(
     // require the resource to belong to the current organization.
     manageable: internal,
     writable: internal,
-    publicReadable: internal ? publicReadable : undefined,
+    publicReadable,
   };
+}
+
+/** 将可读资源引用转换为按来源组织和资源 ID 索引的公开状态。 */
+export function buildExternalPublicReadMap(refs: ResourcePermissionAccessibleRow[]): Map<string, boolean> {
+  return new Map(refs.map((ref) => [`${ref.organizationId}/${ref.resourceId}`, ref.hasPublicRead]));
 }
 
 export async function listReadableResourceRefs(ctx: AuthContext, resourceType: ResourcePermissionType) {
@@ -64,6 +69,7 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
   ctx: AuthContext,
   resourceType: ResourcePermissionType,
   rows: T[],
+  externalPublicReadMap: ReadonlyMap<string, boolean> = new Map(),
 ): Promise<(T & { resourceAccess: ResourceAccess })[]> {
   const internalIds = rows.filter((row) => row.organizationId === ctx.organizationId).map((row) => row.id);
   const publicReadMap = await getPublicReadMap(ctx, resourceType, internalIds);
@@ -76,7 +82,9 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
       ctx,
       resourceType,
       row,
-      publicReadMap.get(row.id) ?? false,
+      row.organizationId === ctx.organizationId
+        ? (publicReadMap.get(row.id) ?? false)
+        : externalPublicReadMap.get(`${row.organizationId}/${row.id}`),
       organizationNameMap.get(row.organizationId),
     ),
   }));

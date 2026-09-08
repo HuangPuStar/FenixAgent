@@ -16,6 +16,7 @@
   "organizations": "组织",
   "collapse": "收起侧边栏",
   "expand": "展开侧边栏",
+  "resizeAgentArea": "拖动调整智能体区域高度",
   "changePassword": "修改密码",
   "logout": "退出登录",
   "searchDev": "全局搜索功能开发中",

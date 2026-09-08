@@ -1,0 +1,107 @@
+.agent-template-block {
+  margin-bottom: 21px;
+  border-radius: 12px;
+  padding: 13px;
+  background: #f6f9fe;
+}
+.agent-template-block__heading,
+.agent-policy-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+}
+.agent-template-block__heading > span,
+.agent-policy-card__heading > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: #2764e7;
+  background: #fff;
+}
+.agent-template-block__heading svg,
+.agent-policy-card__heading svg {
+  width: 13px;
+}
+.agent-template-block__heading > div,
+.agent-policy-card__heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-template-block__heading strong,
+.agent-policy-card__heading strong {
+  color: #31415a;
+  font-size: 10px;
+}
+.agent-template-block__heading small,
+.agent-policy-card__heading small {
+  color: #8996a9;
+  font-size: 8px;
+}
+.agent-template-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.agent-template-list button {
+  display: grid;
+  min-height: 88px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  align-items: center;
+  gap: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 9px;
+  color: #53647e;
+  background: #fff;
+  text-align: left;
+}
+.agent-template-list button:hover,
+.agent-template-list button.is-selected {
+  border-color: #a9c3f5;
+  color: #1f55b7;
+  background: #f9fbff;
+}
+.agent-template-list button > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  grid-row: 1 / 3;
+  place-items: center;
+  align-self: start;
+  border-radius: 6px;
+  color: #6781ad;
+  background: #edf2fa;
+}
+.agent-template-list button.is-selected > span {
+  color: #fff;
+  background: #2764e7;
+}
+.agent-template-list svg {
+  width: 10px;
+}
+.agent-template-list strong {
+  font-size: 9px;
+}
+.agent-template-list small {
+  color: #8a97aa;
+  font-size: 8px;
+  line-height: 1.45;
+}
+@keyframes agent-editor-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.988);
+  }
+}
+@keyframes agent-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}

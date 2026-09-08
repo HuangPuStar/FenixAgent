@@ -5,7 +5,7 @@ import { machine } from "../db/schema";
 import { AppError } from "../errors";
 import { environmentRepo } from "../repositories";
 import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
-import { findSandboxPoolById } from "../repositories/sandbox-pool-repository";
+import { findReadableSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected } from "../transport/file-ws-handler";
 import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";
 import { getAgentConfigById, resolveAgentNode } from "./config/agent-config";
@@ -70,7 +70,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
 
   let sandboxMachineId: string | null = null;
   if (sandboxPoolId && env.userId) {
-    const pool = await findSandboxPoolById(sandboxPoolId);
+    const pool = await findReadableSandboxPoolById(sandboxPoolId, env.organizationId ?? env.userId);
     if (pool) {
       const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, env.userId);
       sandboxMachineId = instance?.machineId ?? null;
@@ -225,7 +225,26 @@ export async function remoteUploadFiles(
     options,
   );
   if (result.status === "error") throw new Error(result.error as string);
-  return result.data as { files: Array<{ name: string; path: string; size: number }> };
+
+  const data = result.data as { files?: Array<{ name?: unknown; path?: unknown; size?: unknown }> } | undefined;
+  if (!data || !Array.isArray(data.files) || data.files.length !== files.length) {
+    throw new AppError("远程文件服务返回了无效的上传结果，请升级远程运行时后重试", "remote_response_invalid", 503);
+  }
+  const expectedPrefix = dir ? `${dir.replace(/\/+$/, "")}/` : "";
+  for (let index = 0; index < files.length; index++) {
+    const actual = data.files[index];
+    const expectedPath = `${expectedPrefix}${files[index].relativePath}`;
+    if (
+      !actual ||
+      typeof actual.name !== "string" ||
+      typeof actual.path !== "string" ||
+      typeof actual.size !== "number" ||
+      actual.path !== expectedPath
+    ) {
+      throw new AppError("远程文件服务返回了错误的上传路径，请升级远程运行时后重试", "remote_response_invalid", 503);
+    }
+  }
+  return { files: data.files as Array<{ name: string; path: string; size: number }> };
 }
 
 /** 删除远程文件（options.opId 幂等键透传，§7.2） */
@@ -315,7 +334,15 @@ export async function remoteTree(
 export async function remoteZip(machineId: string, envId: string, path: string): Promise<string> {
   assertFileWsAvailable(machineId);
   const result = await sendFileOpAndWait(machineId, "zip", { path, environmentId: envId }, REMOTE_ZIP_TIMEOUT_MS);
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "payload_too_large" && result.statusCode === 413) {
+      throw new AppError(REMOTE_ZIP_LIMIT_MESSAGE, "payload_too_large", 413);
+    }
+    if (result.errorCode === "busy" && result.statusCode === 429) {
+      throw new AppError("远程 ZIP 服务繁忙，请稍后重试", "busy", 429);
+    }
+    throw new Error(result.error as string);
+  }
   const data = result.data as string;
   // 从 base64 精确反推原始字节数（含 padding，与 remoteUploadFiles 同法）：
   // >20MB 明确拒绝，不得截断回传部分 zip（不完整包对消费者比失败更糟）

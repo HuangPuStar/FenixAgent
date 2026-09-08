@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eventService } from "../services/event-service";
 import { HermesClient } from "../services/hermes-client";
 
@@ -38,14 +38,66 @@ class MemoryWebSocket {
   }
 }
 
+type TimerTask = {
+  callback: () => void;
+  dueAt: number;
+  intervalMs: number | null;
+};
+
+/**
+ * Bun 1.3 的 bun:test 没有 Vitest 的 advanceTimersByTime。这个局部时钟只实现
+ * Hermes 心跳测试需要的定时器语义，避免测试依赖其他测试框架的幻影 API。
+ */
+class ManualTimerClock {
+  private now = 0;
+  private nextId = 1;
+  private readonly tasks = new Map<number, TimerTask>();
+
+  schedule(callback: () => void, delayMs: number, intervalMs: number | null): number {
+    const id = this.nextId++;
+    this.tasks.set(id, {
+      callback,
+      dueAt: this.now + Math.max(0, delayMs),
+      intervalMs,
+    });
+    return id;
+  }
+
+  clear(id: number): void {
+    this.tasks.delete(id);
+  }
+
+  advanceBy(durationMs: number): void {
+    const target = this.now + durationMs;
+    while (true) {
+      const next = [...this.tasks.entries()]
+        .filter(([, task]) => task.dueAt <= target)
+        .sort(([firstId, first], [secondId, second]) => first.dueAt - second.dueAt || firstId - secondId)[0];
+      if (!next) break;
+
+      const [id, task] = next;
+      this.now = task.dueAt;
+      if (task.intervalMs === null) this.tasks.delete(id);
+      else task.dueAt += task.intervalMs;
+      task.callback();
+    }
+    this.now = target;
+  }
+}
+
 type HermesClientInternals = {
   ensureOutboundRouting(platform: string, chatId: string, agentId: string, replyTo?: string): void;
 };
 
 const originalWebSocket = globalThis.WebSocket;
+const originalSetTimeout = globalThis.setTimeout;
+const originalClearTimeout = globalThis.clearTimeout;
+const originalSetInterval = globalThis.setInterval;
+const originalClearInterval = globalThis.clearInterval;
 const clients: HermesClient[] = [];
 const agentIds: string[] = [];
 let nextAgent = 0;
+let timerClock: ManualTimerClock;
 
 function connectClient(): { client: HermesClient; socket: MemoryWebSocket } {
   const client = new HermesClient("ws://hermes.invalid/messaging");
@@ -74,14 +126,32 @@ function sent(socket: MemoryWebSocket): Record<string, unknown>[] {
 
 beforeEach(() => {
   MemoryWebSocket.instances = [];
+  timerClock = new ManualTimerClock();
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: MemoryWebSocket });
+  Object.defineProperties(globalThis, {
+    setTimeout: {
+      configurable: true,
+      value: (callback: () => void, delayMs = 0) => timerClock.schedule(callback, delayMs, null),
+    },
+    clearTimeout: { configurable: true, value: (id: number) => timerClock.clear(id) },
+    setInterval: {
+      configurable: true,
+      value: (callback: () => void, delayMs = 0) => timerClock.schedule(callback, delayMs, delayMs),
+    },
+    clearInterval: { configurable: true, value: (id: number) => timerClock.clear(id) },
+  });
 });
 
 afterEach(async () => {
-  vi.useRealTimers();
   await Promise.all(clients.splice(0).map((client) => client.stop()));
   for (const agentId of agentIds.splice(0)) eventService.removeAcpBus(agentId);
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: originalWebSocket });
+  Object.defineProperties(globalThis, {
+    setTimeout: { configurable: true, value: originalSetTimeout },
+    clearTimeout: { configurable: true, value: originalClearTimeout },
+    setInterval: { configurable: true, value: originalSetInterval },
+    clearInterval: { configurable: true, value: originalClearInterval },
+  });
 });
 
 describe("HermesClient 入站回复路由与连接边界", () => {
@@ -239,36 +309,32 @@ describe("HermesClient 入站回复路由与连接边界", () => {
 
   // 意图：心跳触发时发送 ping 帧以维持连接。
   test("心跳周期发送 ping", () => {
-    vi.useFakeTimers();
     const { socket } = connectClient();
-    vi.advanceTimersByTime(30_000);
+    timerClock.advanceBy(30_000);
     expect(sent(socket)).toContainEqual({ type: "ping" });
   });
 
   // 意图：未收到 pong 的心跳超时必须关闭失效连接。
   test("pong 超时关闭连接", () => {
-    vi.useFakeTimers();
     const { socket } = connectClient();
-    vi.advanceTimersByTime(90_000);
+    timerClock.advanceBy(90_000);
     expect(socket.readyState).toBe(3);
   });
 
   // 意图：收到 pong 应取消当前超时，避免健康连接被错误关闭。
   test("pong 取消当前关闭超时", () => {
-    vi.useFakeTimers();
     const { socket } = connectClient();
-    vi.advanceTimersByTime(30_000);
+    timerClock.advanceBy(30_000);
     socket.receive('{"type":"pong"}');
-    vi.advanceTimersByTime(60_000);
+    timerClock.advanceBy(60_000);
     expect(socket.readyState).toBe(1);
   });
 
   // 意图：stop 清理心跳计时器，停止后不再发送 ping。
   test("停止后不再发送心跳", async () => {
-    vi.useFakeTimers();
     const { client, socket } = connectClient();
     await client.stop();
-    vi.advanceTimersByTime(30_000);
+    timerClock.advanceBy(30_000);
     expect(sent(socket).filter((message) => message.type === "ping")).toHaveLength(0);
   });
 
@@ -295,10 +361,9 @@ describe("HermesClient 入站回复路由与连接边界", () => {
 
   // 意图：连接关闭后取消心跳，避免已断开 socket 被定时器再次写入。
   test("连接关闭后停止心跳", () => {
-    vi.useFakeTimers();
     const { socket } = connectClient();
     socket.disconnect();
-    vi.advanceTimersByTime(30_000);
+    timerClock.advanceBy(30_000);
     expect(sent(socket).filter((message) => message.type === "ping")).toHaveLength(0);
   });
 });

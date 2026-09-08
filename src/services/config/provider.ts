@@ -4,6 +4,7 @@ import { model, provider } from "../../db/schema";
 import type { AuthContext } from "../../plugins/auth";
 import {
   assertInternalWritable,
+  buildExternalPublicReadMap,
   canReadResource,
   decorateResourceAccess,
   listReadableResourceRefs,
@@ -38,20 +39,26 @@ function parseResourceKey(resourceKey: string) {
   };
 }
 
-async function listExternalProviders(ctx: AuthContext): Promise<ProviderRow[]> {
+async function listExternalProviders(ctx: AuthContext): Promise<{
+  rows: ProviderRow[];
+  publicReadMap: Map<string, boolean>;
+}> {
   const refs = await listReadableResourceRefs(ctx, "provider");
   const ids = refs.map((ref) => ref.resourceId);
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { rows: [], publicReadMap: new Map() };
 
   const rows = await db.select().from(provider).where(inArray(provider.id, ids));
   const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
-  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
+  return {
+    rows: rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`)),
+    publicReadMap: buildExternalPublicReadMap(refs),
+  };
 }
 
 export async function listReadableProviders(ctx: AuthContext): Promise<ProviderRowWithAccess[]> {
   const rows = await db.select().from(provider).where(eq(provider.organizationId, ctx.organizationId));
   const external = await listExternalProviders(ctx);
-  return decorateResourceAccess(ctx, "provider", [...rows, ...external]);
+  return decorateResourceAccess(ctx, "provider", [...rows, ...external.rows], external.publicReadMap);
 }
 
 export async function listProviders(ctx: AuthContext) {
@@ -132,12 +139,13 @@ export async function getProvider(ctx: AuthContext, name: string): Promise<Provi
     return { ...decorated, models };
   }
 
-  const external = (await listExternalProviders(ctx)).find((row) => row.name === name);
-  if (!external) return null;
-  const readable = await canReadResource(ctx, "provider", external.id, external.organizationId);
+  const external = await listExternalProviders(ctx);
+  const externalRow = external.rows.find((row) => row.name === name);
+  if (!externalRow) return null;
+  const readable = await canReadResource(ctx, "provider", externalRow.id, externalRow.organizationId);
   if (!readable) return null;
 
-  const [decorated] = await decorateResourceAccess(ctx, "provider", [external]);
+  const [decorated] = await decorateResourceAccess(ctx, "provider", [externalRow], external.publicReadMap);
   const models = await listModelsWithProviderAccess(decorated);
   return { ...decorated, models };
 }

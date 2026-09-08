@@ -34,6 +34,8 @@ export interface AcpConnectionEntry {
   sessionMessageListeners?: Map<string, (sessionId: string, type: string, payload: unknown) => void>;
   /** relay 层设置的回调，machine 连接收到 session 消息时调用 */
   onSessionMessage?: (sessionId: string, type: string, payload: unknown) => void;
+  /** Machine 完成当前 server epoch clean-slate 后才允许 lifecycle 流量。 */
+  cleanSlateConfirmed?: boolean;
   /** 远程 transport 实例（由 registerRemoteNode 设置），用于将消息路由到 core remote-runtime */
   remoteTransport?: RemoteTransport;
 }
@@ -79,7 +81,6 @@ export type InstanceSpawnSource = "interactive" | "scheduled" | "system";
 export interface InstanceSupplement {
   userId: string;
   environmentId: string;
-  instanceNumber: number;
   organizationId: string;
   /** 实例创建来源，用于并发分类与审计。 */
   spawnSource: InstanceSpawnSource;

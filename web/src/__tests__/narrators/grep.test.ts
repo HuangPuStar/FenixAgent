@@ -41,9 +41,9 @@ describe("grepNarrator", () => {
     expect(grepNarrator.kinds).toContain("grep");
   });
 
-  // 中文动词必须是"搜索"
-  test("verb 是 '搜索'", () => {
-    expect(grepNarrator.verb).toBe("搜索");
+  // 中文动作必须明确表达本地内容搜索行为
+  test("verb 是 '搜索内容'", () => {
+    expect(grepNarrator.verb).toBe("搜索内容");
   });
 
   // object 是带双引号的 pattern（与 verb 拼 title 时为"搜索 \"useEffect\""）
@@ -58,16 +58,18 @@ describe("grepNarrator", () => {
     expect(detail).toBeUndefined();
   });
 
-  // 有 path 时 detail 包含路径
-  test("有 path 时 detail 含路径", () => {
-    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "useEffect", path: "/src" }));
-    expect(detail).toBe("在 /src");
+  // 有 path 时 detail 只保留末级目录，避免列表展示完整绝对路径。
+  test("有 path 时 detail 使用精简路径", () => {
+    const { detail } = grepNarrator.getDisplay(
+      makeCtx({ pattern: "useEffect", path: "/Users/konghayao/code/pazhou/remote-control-server/src" }),
+    );
+    expect(detail).toBe("在 src");
   });
 
-  // complete 状态从 count 字段提取结果数，detail 拼接路径和结果数
-  test("complete 状态 detail 含路径和结果数", () => {
-    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "x", path: "/src" }, { count: 5 }));
-    expect(detail).toBe("在 /src · 找到 5 个");
+  // complete 状态从 count 字段提取结果数，detail 拼接精简路径和结果数
+  test("complete 状态 detail 含精简路径和结果数", () => {
+    const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "x", path: "/workspace/src" }, { count: 5 }));
+    expect(detail).toBe("在 src · 找到 5 个");
   });
 
   // 从 content 文本正则提取结果数（兼容不同 Agent 输出风格）
@@ -81,6 +83,6 @@ describe("grepNarrator", () => {
   // running 状态下 detail 不含结果数（结果还没出来），但仍可有路径
   test("running 状态 detail 只有路径无结果数", () => {
     const { detail } = grepNarrator.getDisplay(makeCtx({ pattern: "x", path: "/src" }, { count: 5 }, "running"));
-    expect(detail).toBe("在 /src");
+    expect(detail).toBe("在 src");
   });
 });

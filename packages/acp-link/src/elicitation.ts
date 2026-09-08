@@ -47,6 +47,7 @@ export function parseElicitationSchema(schema: unknown): InteractiveQuestionPayl
         question: typeof p.description === "string" ? p.description : "",
         header: typeof p.title === "string" && p.title.length > 0 ? p.title : null,
         options,
+        multiSelect: p.type === "array",
       };
     })
     .filter((q) => q.question.length > 0);
@@ -135,20 +136,25 @@ export function extractPropertyKeys(schema: unknown): string[] {
   return Object.keys(properties as Record<string, unknown>);
 }
 
-/** 从 control_response 帧的 extra 解析用户答案，组装为 elicitation content（q_id → label） */
+/** 从 control_response 帧解析用户答案，组装为 elicitation content（q_id → string | string[]） */
 export function buildElicitationContent(
   extra: Record<string, unknown> | undefined,
   propertyKeys: string[],
 ): Record<string, unknown> {
   const answers = extra?.answers;
   if (Array.isArray(answers)) {
-    // 多问题合并答案：answers[i] = 第 i 个问题的选中 label，按 propertyKeys（q_id）顺序
-    // 组装（与 parseElicitationSchema / extractPropertyKeys 同源顺序）；未选的 q_id 不填
+    // 多问题合并答案：answers[i] 按 propertyKeys（q_id）顺序对应；单选为 string，
+    // 多选为 string[]。未选的 q_id 不填。
     const content: Record<string, unknown> = {};
     for (let i = 0; i < propertyKeys.length; i++) {
-      const label = answers[i];
-      if (typeof label === "string" && label.length > 0) {
-        content[propertyKeys[i] as string] = label;
+      const answer = answers[i];
+      if (typeof answer === "string" && answer.length > 0) {
+        content[propertyKeys[i] as string] = answer;
+        continue;
+      }
+      if (Array.isArray(answer)) {
+        const selected = answer.filter((option): option is string => typeof option === "string" && option.length > 0);
+        if (selected.length > 0) content[propertyKeys[i] as string] = selected;
       }
     }
     return content;

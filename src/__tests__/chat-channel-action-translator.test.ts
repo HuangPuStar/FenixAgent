@@ -116,6 +116,19 @@ describe("translateSimpleAction", () => {
       approved: true,
       extra: { answers: ["production", "all"] },
     });
+
+    // 单题多选答案保持嵌套数组，acp-link 据此还原 JSON Schema array 值。
+    const multiSelect = translateSimpleAction(
+      { action: "respond_question", questionId: "iqa_1", answers: [["web", "server"]] },
+      workspacePath,
+      1,
+    );
+    expect(multiSelect).toEqual({
+      type: "control_response",
+      request_id: "iqa_1",
+      approved: true,
+      extra: { answers: [["web", "server"]] },
+    });
   });
 
   // respond_question 选项为空（用户取消/跳过）→ approved=false 且 extra 无有效答案：

@@ -140,6 +140,9 @@ function mapSessionUpdateType(sessionUpdate: string): NormalizedEventType | null
       // 命令列表为会话级元数据（与 modelState/modeState 同级），随 session_updated
       // 投影到 Session Doc session map，前端 slash 命令菜单的数据源（YJS 重构恢复）
       return "session_updated";
+    case "usage_update":
+      // Peri 在独立 session/update 通知中发送当前上下文占用；prompt response 不带 usage。
+      return "usage_updated";
     default:
       return null;
   }

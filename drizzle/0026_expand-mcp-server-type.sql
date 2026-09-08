@@ -1,0 +1,1 @@
+ALTER TABLE "mcp_server" ALTER COLUMN "type" SET DATA TYPE varchar(32);

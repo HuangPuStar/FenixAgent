@@ -23,7 +23,6 @@ function makeSupplement(overrides: Partial<InstanceSupplement> = {}): InstanceSu
   return {
     userId: "user-1",
     environmentId: "env-1",
-    instanceNumber: 1,
     organizationId: "org-1",
     spawnSource: "interactive",
     lastActivityAt: Date.now(),
@@ -74,7 +73,6 @@ describe("agent concurrency", () => {
       "inst_interactive",
       makeSupplement({
         environmentId: "env-2",
-        instanceNumber: 2,
         spawnSource: "interactive",
       }),
     );
@@ -113,7 +111,6 @@ describe("agent concurrency", () => {
       makeSupplement({
         userId: "user-2",
         environmentId: "env-2",
-        instanceNumber: 2,
       }),
     );
 

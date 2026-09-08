@@ -8,7 +8,7 @@ import type {
   SandboxTemplate,
 } from "@fenix/sandbox-provider";
 import type { SandboxInstance, SandboxPool } from "../../db/schema";
-import { isMachineOnline } from "../../repositories/machine-repository";
+import { findMachineOrganizationId, isMachineOnline } from "../../repositories/machine-repository";
 import type { SandboxInstanceLockScope } from "../../repositories/sandbox-instance-repository";
 import {
   createSandboxInstance,
@@ -74,6 +74,7 @@ export type SandboxManagerDependencies = {
   providers: SandboxProviderRegistry;
   now?: () => Date;
   isMachineOnline?: (machineId: string) => Promise<boolean>;
+  findMachineOrganizationId?: (machineId: string) => Promise<string | null>;
 };
 
 export type SandboxManagerCreateInput = {
@@ -136,6 +137,7 @@ export class SandboxManager {
   private readonly instances: SandboxInstanceRepository;
   private readonly now: () => Date;
   private readonly isMachineOnline: (machineId: string) => Promise<boolean>;
+  private readonly findMachineOrganizationId: (machineId: string) => Promise<string | null>;
 
   constructor(private readonly dependencies: SandboxManagerDependencies) {
     this.pools = dependencies.pools ?? {
@@ -154,6 +156,7 @@ export class SandboxManager {
     };
     this.now = dependencies.now ?? (() => new Date());
     this.isMachineOnline = dependencies.isMachineOnline ?? isMachineOnline;
+    this.findMachineOrganizationId = dependencies.findMachineOrganizationId ?? findMachineOrganizationId;
   }
 
   async createOrReuse(input: SandboxManagerCreateInput): Promise<SandboxInstance> {
@@ -167,7 +170,17 @@ export class SandboxManager {
     }
 
     const existing = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-    if (existing) return this.reconcileWithLock(existing);
+    if (existing) {
+      // schema 唯一键当前仍是 user + pool；在不修改迁移决策的前提下，复用必须按 Machine
+      // 持久租户归属 fail-closed，禁止同一用户把首个组织的执行身份带入其他组织。
+      if (input.organizationId) {
+        const machineOrganizationId = await this.findMachineOrganizationId(existing.machineId);
+        if (machineOrganizationId !== input.organizationId) {
+          throw new SandboxInstanceConflictError("sandbox instance belongs to another organization");
+        }
+      }
+      return this.reconcileWithLock(existing);
+    }
 
     const createdAt = this.now();
     const machineId = sandboxMachineId(input.sandboxId);
@@ -203,7 +216,15 @@ export class SandboxManager {
       if (isUniqueConstraintError(error)) {
         // 并发创建冲突：复用抢占成功的一方；machine 和 provider 资源均由持有记录的一方创建。
         const concurrent = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-        if (concurrent) return this.reconcileWithLock(concurrent);
+        if (concurrent) {
+          if (input.organizationId) {
+            const machineOrganizationId = await this.findMachineOrganizationId(concurrent.machineId);
+            if (machineOrganizationId !== input.organizationId) {
+              throw new SandboxInstanceConflictError("sandbox instance belongs to another organization");
+            }
+          }
+          return this.reconcileWithLock(concurrent);
+        }
         // 冲突但查不到并发实例（极端竞态）：按冲突上报
         throw new SandboxInstanceConflictError(
           error instanceof Error ? error.message : "sandbox instance create conflicted",
@@ -307,12 +328,40 @@ export class SandboxManager {
 
   /** 主动销毁 Provider 资源、移除 Machine 连接路由并删除 Instance 记录。 */
   async deleteForUser(id: string, userId: string): Promise<void> {
+    const deleteLocked = async (scope: SandboxInstanceLockScope): Promise<void> => {
+      const instance = await scope.findById(id);
+      if (!instance || instance.userId !== userId) return;
+
+      await scope.update(id, "deleting", { providerPayload: { reason: "sandbox_delete_requested" } });
+      try {
+        await this.destroyProviderResource(instance);
+        await scope.delete(id);
+      } catch (error) {
+        await scope.update(id, "error", {
+          providerPayload: {
+            reason: "sandbox_delete_failed",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
+    };
+
+    if (this.instances.withLock) {
+      try {
+        await this.instances.withLock(id, deleteLocked);
+      } catch (error) {
+        if (error instanceof Error && error.message === `sandbox instance '${id}' not found`) return;
+        throw error;
+      }
+      return;
+    }
+
     const instance = await this.instances.findByIdForUser(id, userId);
     if (!instance) return;
-
+    if (!this.instances.delete) throw new SandboxStateError("sandbox instance delete is not configured");
     try {
       await this.destroyProviderResource(instance);
-      if (!this.instances.delete) throw new SandboxStateError("sandbox instance delete is not configured");
       await this.instances.delete(id);
     } catch (error) {
       await this.instances.update(id, "error", {

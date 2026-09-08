@@ -15,9 +15,11 @@ import {
   DEFAULT_QUESTION_TIMEOUT_MS,
   type NormalizedEvent,
   type NormalizedPeriTaskEvent,
+  normalizeQuestionAnswers,
   type PeriTaskStatus,
   type PeriTaskViewProjection,
   type PublicError,
+  type QuestionAnswer,
   type QuestionItemProjection,
   TOOL_TERMINAL_STATUSES,
   type ToolCallStatus,
@@ -38,6 +40,7 @@ import {
   setActiveTurn,
   setAgentStatus,
   setEntryStatus,
+  setEntryTokenUsage,
   setSessionAvailableCommands,
   setSessionInfo,
   setSessionModelState,
@@ -79,6 +82,34 @@ function extractPublicError(update: Record<string, unknown>): PublicError | null
 function canWriteToTurn(turnStatus: TurnStatus | null): boolean {
   if (!turnStatus || turnStatus === "cancelling") return false;
   return !TURN_TERMINAL_STATUSES.has(turnStatus);
+}
+
+/** Peri usage_update 是独立于 prompt 终态的当前上下文快照，需先写入当前 assistant entry。 */
+function applyUsageUpdate(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  if (event.sourceAgentId) return { applied: false, reason: "subagent usage is not main context usage" };
+  const active = readActiveTurn(pair.session);
+  if (!active.turnId || !canWriteToTurn(active.turnStatus)) {
+    return { applied: false, reason: "usage without writable turn" };
+  }
+  const used = event.update.used;
+  const size = event.update.size;
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0) {
+    return { applied: false, reason: "usage missing valid used" };
+  }
+  if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) {
+    return { applied: false, reason: "usage missing valid size" };
+  }
+  const meta = event.update._meta;
+  const details = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+  const inputTokens = details.inputTokens;
+  const outputTokens = details.outputTokens;
+  setEntryTokenUsage(pair.chat, turnAssistantEntryId(active.turnId), {
+    totalTokens: used,
+    contextWindow: size,
+    ...(typeof inputTokens === "number" && Number.isFinite(inputTokens) && inputTokens >= 0 ? { inputTokens } : {}),
+    ...(typeof outputTokens === "number" && Number.isFinite(outputTokens) && outputTokens >= 0 ? { outputTokens } : {}),
+  });
+  return { applied: true };
 }
 
 /** 提取文本块文本（content 或 update 顶层，兼容原始与包裹格式） */
@@ -358,6 +389,7 @@ function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
       question: record.question,
       header: typeof record.header === "string" && record.header.length > 0 ? record.header : null,
       options,
+      multiSelect: record.multiSelect === true,
     });
   }
   return items;
@@ -411,15 +443,17 @@ function applyQuestionResolved(pair: DocPair, event: NormalizedEvent): ApplyResu
   const questionId = event.update.questionId as string | undefined;
   if (!questionId) return { applied: false, reason: "question_resolved missing questionId" };
 
-  // 多问题合并答案（optionIds 数组，按问题顺序）；兼容单值 optionId 历史形态
-  const rawOptionIds = event.update.optionIds;
-  const optionIds = Array.isArray(rawOptionIds)
-    ? (rawOptionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
-    : typeof event.update.optionId === "string" && event.update.optionId.length > 0
-      ? [event.update.optionId]
-      : [];
+  // 按问题顺序保留答案结构；兼容历史 optionIds / optionId 事件形态。
+  const rawAnswers = Array.isArray(event.update.answers)
+    ? event.update.answers
+    : Array.isArray(event.update.optionIds)
+      ? event.update.optionIds
+      : typeof event.update.optionId === "string" && event.update.optionId.length > 0
+        ? [event.update.optionId]
+        : [];
+  const answers: QuestionAnswer[] = normalizeQuestionAnswers(rawAnswers);
   // CAS 迁移在 state/question.ts 单一来源（控制面 respond_question 共用）
-  return respondQuestion(pair, questionId, optionIds)
+  return respondQuestion(pair, questionId, answers)
     ? { applied: true }
     : { applied: false, reason: "question not pending (duplicate resolve)" };
 }
@@ -750,6 +784,9 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           break;
         case "question_resolved":
           result = applyQuestionResolved(pair, event);
+          break;
+        case "usage_updated":
+          result = applyUsageUpdate(pair, event);
           break;
         case "permission_expired": {
           // C5：超时迁移（pending → expired 一次）与收敛统一走 state/permission.ts，

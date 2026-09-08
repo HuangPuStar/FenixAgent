@@ -25,9 +25,8 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
     }
 
     // 编排域错误：按稳定错误码映射 HTTP 状态（未映射的 code 保守落 500）。
-    // message 必须脱敏 —— 编排域错误可能携带 envId/machineId（如 agent-controller
-    // 的 ConcurrencyExceededError 拼接环境 ID），原样返回会泄漏内部资源标识；
-    // 映射规则与 /api/instances 共用 src/errors/orchestration-http.ts 单一真相来源。
+    // message 必须脱敏 —— 编排域错误可能携带 envId/machineId，原样返回会泄漏
+    // 内部资源标识；映射规则与 /api/instances 共用 src/errors/orchestration-http.ts 单一真相来源。
     if (error instanceof OrchestrationError) {
       const { status, message } = mapOrchestrationErrorToHttp(error);
       set.status = status;

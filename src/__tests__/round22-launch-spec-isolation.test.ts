@@ -302,10 +302,10 @@ describe("round22 隔离启动规格与输入边界", () => {
     expect(spec.mcpServers).toEqual([]);
   });
 
-  // 密钥提示只能暴露末四位，避免配置页泄露完整凭据。
+  // 密钥提示只能暴露前四位和后三位，避免配置页泄露完整凭据。
   test.each([
     ["缺失", undefined, "*******"],
     ["短密钥", "abc", "*******"],
-    ["长密钥", "secret-7890", "***7890"],
+    ["长密钥", "secret-7890", "secr***890"],
   ])("密钥提示%s", (_label, key, expected) => expect(toKeyHint(key)).toBe(expected));
 });

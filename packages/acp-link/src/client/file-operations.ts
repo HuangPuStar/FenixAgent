@@ -1,5 +1,6 @@
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 
 // ============================================================================
 // Types
@@ -26,6 +27,19 @@ interface FileOpResult {
   status: "ok" | "error";
   data?: unknown;
   error?: string;
+  error_code?: "payload_too_large" | "operation_timeout" | "unsafe_symlink" | "busy";
+  status_code?: 413 | 429 | 503;
+}
+
+class FileOpError extends Error {
+  constructor(
+    message: string,
+    readonly errorCode: NonNullable<FileOpResult["error_code"]>,
+    readonly statusCode: NonNullable<FileOpResult["status_code"]>,
+  ) {
+    super(message);
+    this.name = "FileOpError";
+  }
 }
 
 // ============================================================================
@@ -294,6 +308,55 @@ async function opWrite(
   return { name, path: relPath, size: Buffer.byteLength(content, "utf-8") };
 }
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function normalizeUploadRelativePath(value: unknown): string | null {
+  if (value === undefined || value === "") return "";
+  if (typeof value !== "string" || !value.trim() || value === ".") return null;
+  if (isAbsolute(value) || win32.isAbsolute(value)) return null;
+  for (const segment of value.split(/[\\/]+/)) {
+    if (segment === "..") return null;
+    for (const char of segment) {
+      const code = char.charCodeAt(0);
+      if (code <= 0x1f || code === 0x7f || (code >= 0x80 && code <= 0x9f)) return null;
+    }
+  }
+  return value;
+}
+
+async function assertUploadDestination(workspace: string, destination: string): Promise<void> {
+  const workspaceRealPath = await realpath(workspace);
+  if (!isWithinRoot(workspace, destination)) throw new Error("Invalid file path: target escapes workspace");
+
+  const rel = relative(workspace, destination);
+  let current = workspace;
+  for (const segment of rel.split(sep).slice(0, -1)) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new FileOpError("Upload target contains a symbolic link", "unsafe_symlink", 503);
+      }
+    } catch (error) {
+      if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
+      break;
+    }
+  }
+
+  const parentRealPath = await realpath(resolve(destination, ".."));
+  if (!isWithinRoot(workspaceRealPath, parentRealPath)) {
+    throw new FileOpError("Upload target resolves outside workspace", "unsafe_symlink", 503);
+  }
+  try {
+    if ((await lstat(destination)).isSymbolicLink()) {
+      throw new FileOpError("Upload target is a symbolic link", "unsafe_symlink", 503);
+    }
+  } catch (error) {
+    if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
+  }
+}
+
 async function opUpload(
   workspace: string,
   params: Record<string, unknown>,
@@ -302,18 +365,25 @@ async function opUpload(
   if (!dirPath) throw new Error("Invalid dir: path traversal detected");
 
   const files = params.files as Array<{ name: string; content: string; relativePath?: string }>;
+  const normalizedFiles = files.map((file) => {
+    const normalizedRelativePath = normalizeUploadRelativePath(file.relativePath);
+    const normalizedName = normalizeUploadRelativePath(file.name);
+    if (normalizedRelativePath === null || normalizedName === null) {
+      throw new Error("Invalid upload path: expected a non-blank relative path without '..' or control characters");
+    }
+    return { file, relPath: normalizedRelativePath || normalizedName };
+  });
   const results: Array<{ name: string; path: string; size: number }> = [];
 
-  for (const file of files) {
-    const relPath = file.relativePath ?? file.name;
-    const targetDir = resolve(dirPath, relPath, "..");
-    await mkdir(targetDir, { recursive: true });
-
+  for (const { file, relPath } of normalizedFiles) {
     const targetPath = resolve(dirPath, relPath);
-    // Validate target stays within workspace
-    if (!targetPath.startsWith(`${dirPath}/`) && targetPath !== dirPath) {
+    if (!isWithinRoot(dirPath, targetPath)) {
       throw new Error(`Invalid file path: ${relPath} escapes target directory`);
     }
+
+    await mkdir(resolve(targetPath, ".."), { recursive: true });
+    await uploadBeforeWriteHook?.(targetPath);
+    await assertUploadDestination(workspace, targetPath);
 
     const buffer = Buffer.from(file.content, "base64");
     await writeFile(targetPath, buffer);
@@ -406,6 +476,142 @@ async function opTree(
   return { paths, mtimes, errors: errors.length > 0 ? errors : undefined };
 }
 
+const MAX_ZIP_BYTES = 20 * 1024 * 1024;
+const ZIP_TIMEOUT_MS = 65_000;
+const MAX_CONCURRENT_ZIPS = 1;
+const activeFileOps = new Map<string, { controller: AbortController; operation: string }>();
+let uploadBeforeWriteHook: ((targetPath: string) => Promise<void>) | undefined;
+let zipBeforeSpawnHook: (() => Promise<void>) | undefined;
+
+const ZIP_FROM_CWD_SCRIPT = `
+workspace=$1
+cwd=$(pwd -P) || exit 73
+case "$cwd/" in
+  "$workspace/"*) ;;
+  *) printf '%s' 'ZIP target resolves outside workspace' >&2; exit 73 ;;
+esac
+if find -P . -type l -print -quit | grep -q .; then
+  printf '%s' 'ZIP archive cannot contain symbolic links' >&2
+  exit 74
+fi
+exec zip -r -y -q - .
+`;
+
+function isWithinRoot(root: string, target: string): boolean {
+  const rel = relative(root, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+async function assertZipTreeHasNoSymlinks(directory: string): Promise<void> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = join(directory, entry.name);
+    if (entry.isSymbolicLink() || (await lstat(entryPath)).isSymbolicLink()) {
+      throw new FileOpError("ZIP archive cannot contain symbolic links", "unsafe_symlink", 503);
+    }
+    if (entry.isDirectory()) await assertZipTreeHasNoSymlinks(entryPath);
+  }
+}
+
+/** 仅供上传竞态回归测试在 mkdir 和落点复检之间稳定替换路径。 */
+export function setUploadBeforeWriteHookForTest(hook?: (targetPath: string) => Promise<void>): void {
+  uploadBeforeWriteHook = hook;
+}
+
+/** 仅供竞态回归测试在校验和 spawn 之间稳定替换路径。 */
+export function setZipBeforeSpawnHookForTest(hook?: () => Promise<void>): void {
+  zipBeforeSpawnHook = hook;
+}
+
+export function cancelFileOp(requestId: string): void {
+  activeFileOps.get(requestId)?.controller.abort();
+}
+
+export function cancelAllFileOps(): void {
+  for (const { controller } of activeFileOps.values()) controller.abort();
+}
+
+async function opZip(workspace: string, params: Record<string, unknown>, signal: AbortSignal): Promise<string> {
+  const directory = resolveAndValidate(workspace, params.path as string);
+  if (!directory) throw new Error("Invalid path: path traversal detected");
+  const [workspaceRealPath, directoryInfo] = await Promise.all([realpath(workspace), lstat(directory)]);
+  if (directoryInfo.isSymbolicLink()) {
+    throw new FileOpError("ZIP target cannot be a symbolic link", "unsafe_symlink", 503);
+  }
+  if (!directoryInfo.isDirectory()) throw new Error("Target path is not a directory");
+  const directoryRealPath = await realpath(directory);
+  if (!isWithinRoot(workspaceRealPath, directoryRealPath)) {
+    throw new FileOpError("ZIP target resolves outside workspace", "unsafe_symlink", 503);
+  }
+  await assertZipTreeHasNoSymlinks(directoryRealPath);
+  if (signal.aborted) throw new FileOpError("ZIP operation cancelled", "operation_timeout", 503);
+  await zipBeforeSpawnHook?.();
+  if (signal.aborted) throw new FileOpError("ZIP operation cancelled", "operation_timeout", 503);
+
+  // spawn 可能在校验后才解析 cwd。子进程先从内核已打开的 cwd 获取物理路径并校验，
+  // 随后始终归档 "."；即使路径层级被并发替换，也不会再按不可信 archivePath 查找目标。
+  // cwd 在进程创建后由内核引用，后续 rename 不会将它切换到攻击者替换的新目录。
+  const child = spawn("/bin/sh", ["-c", ZIP_FROM_CWD_SCRIPT, "zip-from-cwd", workspaceRealPath], {
+    cwd: directoryRealPath,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const chunks: Buffer[] = [];
+  const errors: Buffer[] = [];
+  let outputBytes = 0;
+  let timedOut = false;
+  const killChild = () => child.kill("SIGKILL");
+  signal.addEventListener("abort", killChild, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    killChild();
+  }, ZIP_TIMEOUT_MS);
+
+  try {
+    child.stdout.on("data", (chunk: Buffer) => {
+      outputBytes += chunk.length;
+      if (outputBytes > MAX_ZIP_BYTES) {
+        killChild();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => errors.push(chunk));
+
+    const childEvents = child as unknown as NodeJS.EventEmitter;
+    await new Promise<void>((resolveProcess, reject) => {
+      childEvents.once("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "ENOENT" || err.code === "ENOTDIR" || err.code === "ELOOP") {
+          reject(new FileOpError("ZIP path changed during archive creation", "unsafe_symlink", 503));
+          return;
+        }
+        reject(err);
+      });
+      childEvents.once("close", (code: number | null) => {
+        if (outputBytes > MAX_ZIP_BYTES) {
+          reject(new FileOpError("ZIP archive exceeds 20MB; select a smaller directory", "payload_too_large", 413));
+        } else if (timedOut) {
+          reject(new FileOpError("ZIP operation timed out", "operation_timeout", 503));
+        } else if (signal.aborted) {
+          reject(new FileOpError("ZIP operation cancelled", "operation_timeout", 503));
+        } else if (code === 73 || code === 74) {
+          reject(
+            new FileOpError(
+              Buffer.concat(errors).toString("utf-8").trim() || "ZIP path changed during archive creation",
+              "unsafe_symlink",
+              503,
+            ),
+          );
+        } else if (code === 0) resolveProcess();
+        else reject(new Error(Buffer.concat(errors).toString("utf-8").trim() || `zip exited with code ${code}`));
+      });
+    });
+    return Buffer.concat(chunks, outputBytes).toString("base64");
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener("abort", killChild);
+  }
+}
+
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -417,6 +623,7 @@ async function opTree(
 export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
   const { request_id, operation, params } = msg;
   const environmentId = params.environmentId as string;
+  const controller = new AbortController();
 
   const workspace = getWorkspaceSync(environmentId);
   if (!workspace) {
@@ -428,6 +635,20 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
     };
   }
 
+  if (
+    operation === "zip" &&
+    [...activeFileOps.values()].filter((active) => active.operation === "zip").length >= MAX_CONCURRENT_ZIPS
+  ) {
+    return {
+      type: "file_op_result",
+      request_id,
+      status: "error",
+      error: "Another ZIP operation is already running",
+      error_code: "busy",
+      status_code: 429,
+    };
+  }
+  activeFileOps.set(request_id, { controller, operation });
   try {
     let data: unknown;
 
@@ -462,6 +683,9 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
       case "tree":
         data = await opTree(workspace, params);
         break;
+      case "zip":
+        data = await opZip(workspace, params, controller.signal);
+        break;
       default:
         return {
           type: "file_op_result",
@@ -478,6 +702,9 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
       request_id,
       status: "error",
       error: (err as Error).message,
+      ...(err instanceof FileOpError ? { error_code: err.errorCode, status_code: err.statusCode } : {}),
     };
+  } finally {
+    activeFileOps.delete(request_id);
   }
 }

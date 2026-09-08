@@ -1,8 +1,54 @@
 {
   "title": "模型库",
-  "subtitle": "管理 AI 服务商及可用模型，为大模型应用提供接入与调度能力",
+  "subtitle": "连接服务商，配置模型能力，并为 Agent 提供可靠的模型引用",
   "createButton": "新建服务商",
-  "searchPlaceholder": "搜索服务商名称...",
+  "searchLabel": "搜索模型库",
+  "searchPlaceholder": "搜索服务商、模型或协议",
+  "selectionAnnouncement": "已选择 {{provider}}，共 {{count}} 个模型",
+  "partialLoadError": "{{count}} 个服务商详情暂时无法加载，可重试恢复。",
+  "scope": {
+    "label": "资源范围",
+    "all": "全部",
+    "organization": "本组织",
+    "shared": "组织共享",
+    "public": "公开"
+  },
+  "providerIndex": {
+    "title": "服务商",
+    "description": "连接与凭证",
+    "models": "{{count}} 个模型",
+    "empty": "没有匹配的服务商"
+  },
+  "connection": {
+    "endpoint": "Endpoint",
+    "credential": "密钥引用",
+    "defaultEndpoint": "使用协议默认地址",
+    "managedCredential": "由平台安全托管",
+    "shared": "组织共享",
+    "sharedDescription": "允许其他组织读取"
+  },
+  "modelsSection": {
+    "title": "已配置模型",
+    "description": "{{count}} 个模型，只展示运行时关键能力"
+  },
+  "modelTraits": {
+    "thinking": "支持思考",
+    "noThinking": "无思考"
+  },
+  "testStatus": {
+    "running": "测试中",
+    "success": "已通过",
+    "error": "失败"
+  },
+  "empty": {
+    "title": "暂无服务商",
+    "description": "新建服务商后即可配置模型。",
+    "filteredTitle": "没有匹配结果",
+    "filteredDescription": "调整搜索词或资源范围后重试。"
+  },
+  "loadState": {
+    "title": "模型库加载失败"
+  },
   "emptyMessage": "暂无服务商，点击「新建服务商」添加",
   "loadError": "加载数据失败: {{message}}",
   "loadProvidersError": "加载服务商列表失败: {{message}}",
@@ -23,7 +69,11 @@
   },
   "modelGatewayUsage": {
     "title": "模型网关用量",
-    "ranges": { "last30d": "最近 30 天", "last7d": "最近 7 天", "last90d": "最近 90 天" },
+    "ranges": {
+      "last30d": "最近 30 天",
+      "last7d": "最近 7 天",
+      "last90d": "最近 90 天"
+    },
     "query": "查询",
     "querying": "查询中…",
     "total": "最近 {{days}} 天总消耗",
@@ -79,7 +129,10 @@
     "edit": "编辑",
     "delete": "删除",
     "add": "添加",
-    "close": "关闭"
+    "close": "关闭",
+    "save": "保存",
+    "saving": "保存中...",
+    "retry": "重试"
   },
   "batchDelete": "批量删除",
   "batchDeleteConfirmTitle": "批量删除确认",
@@ -102,6 +155,8 @@
     "editTitle": "编辑服务商",
     "detailTitle": "服务商详情",
     "createTitle": "新建服务商",
+    "description": "配置真实连接，并按需从服务商发现模型。",
+    "readOnlyDescription": "该服务商来自共享资源，当前仅可查看。",
     "id": "ID（标识符）",
     "idPlaceholder": "bailian-token-plan",
     "idImmutable": "ID 创建后不可修改",
@@ -114,6 +169,9 @@
     "baseUrl": "Base URL",
     "baseUrlPlaceholder": "可选，默认使用服务商 URL",
     "modelsSection": "可用模型列表",
+    "modelsSectionHint": "发现结果不会自动添加，请选择后保存。",
+    "fetchModelsError": "获取模型列表失败",
+    "addModelsPartialError": "服务商已保存，但有 {{count}} 个模型添加失败，请重试。",
     "fetchModels": "获取模型列表",
     "fetching": "获取中...",
     "selectAll": "全选 / 取消全选",
@@ -149,7 +207,10 @@
   },
   "modelSubrow": {
     "emptyMessage": "暂无模型，点击下方按钮添加",
+    "emptyTitle": "尚未配置模型",
+    "emptyReadOnly": "该共享服务商暂未提供模型。",
     "addButton": "+ 添加模型",
+    "addButtonLabel": "添加模型",
     "createTitle": "新增模型",
     "detailTitle": "模型详情 — {{id}}",
     "editTitle": "编辑模型 — {{id}}",
@@ -164,15 +225,8 @@
     "outputHint": "tokens，单次回复最大长度",
     "inputModality": "输入模态",
     "outputModality": "输出模态",
-    "showAdvanced": "展开高级参数",
-    "hideAdvanced": "收起高级参数",
     "thinkingEnabled": "启用思考模式",
-    "thinkingBudget": "思考预算 (tokens)",
-    "thinkingBudgetPlaceholder": "例如 10000",
-    "inputCost": "输入费用 ($/百万 tokens)",
-    "inputCostPlaceholder": "例如 2.5",
-    "outputCost": "输出费用 ($/百万 tokens)",
-    "outputCostPlaceholder": "例如 10",
+    "thinkingDescription": "列表只显示模型是否支持思考模式。",
     "modalityBadgeInput": "入",
     "modalityBadgeOutput": "出",
     "contextLabel": "上下文",

@@ -36,9 +36,9 @@ describe("todoWriteNarrator", () => {
     expect(todoWriteNarrator.kinds).toContain("todo");
   });
 
-  // 中文动词"更新"—传达"更新待办列表"语义
-  test("verb 是 '更新'", () => {
-    expect(todoWriteNarrator.verb).toBe("更新");
+  // 中文动作必须明确表达待办更新行为
+  test("verb 是 '更新待办'", () => {
+    expect(todoWriteNarrator.verb).toBe("更新待办");
   });
 
   // 无历史差分时回退使用快照数组长度，兼容旧会话投影

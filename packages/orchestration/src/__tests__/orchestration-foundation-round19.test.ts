@@ -4,7 +4,6 @@ import { AgentNodeFsm } from "../agent-node/agent-node-fsm";
 import type { AgentNodeSocket } from "../agent-node/types";
 import {
   AgentNodeUnavailableError,
-  ConcurrencyExceededError,
   EnvironmentNotFoundError,
   IllegalStateTransitionError,
   LaunchSpecBuildError,
@@ -63,7 +62,6 @@ const environment: EnvironmentData = {
   organizationId: "org-1",
   agentConfigId: "config-1",
   machineId: "machine-1",
-  maxConcurrency: 2,
   autoStart: false,
 };
 
@@ -431,9 +429,6 @@ describe("编排基础模块隔离测试", () => {
   });
 
   // 并发错误使用稳定错误码供调用者处理限流。
-  test("并发错误具有稳定错误码", () => {
-    expect(new ConcurrencyExceededError().code).toBe("CONCURRENCY_EXCEEDED");
-  });
 
   // 环境不存在错误使用稳定错误码避免依赖文案。
   test("环境不存在错误具有稳定错误码", () => {

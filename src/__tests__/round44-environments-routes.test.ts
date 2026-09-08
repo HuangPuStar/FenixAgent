@@ -1,16 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { globalInstanceRegistry } from "../services/instance-registry";
+import { agentInstanceService } from "../services/agent-instance-service";
 import { setTestOrgContext } from "../services/org-context";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
-import {
-  resetAllStubs,
-  stubAuthApi,
-  stubCoreBootstrap,
-  stubEnvironmentRepo,
-  stubEnvironmentService,
-} from "../test-utils/helpers";
+import { resetAllStubs, stubAuthApi, stubCoreBootstrap, stubEnvironmentService } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/environments")).default;
 const environmentId = "env-1";
@@ -87,16 +82,24 @@ function configureEnvironmentStubs() {
 }
 
 describe("round44 Web 环境路由", () => {
+  const originalResolveInstanceForOperation = agentInstanceService.resolveInstanceForOperation;
+  const originalEnsureInstanceRuntime = agentInstanceService.ensureInstanceRuntime;
+  const originalGetRuntimeSnapshot = agentInstanceService.getRuntimeSnapshot;
+  const originalListInstances = agentInstanceService.listInstances;
+
   beforeEach(() => {
     resetAllStubs();
-    globalInstanceRegistry.clear();
+    agentInstanceService.listInstances = async () => [];
     authenticate();
     configureEnvironmentStubs();
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
   });
 
   afterEach(() => {
-    globalInstanceRegistry.clear();
+    agentInstanceService.resolveInstanceForOperation = originalResolveInstanceForOperation;
+    agentInstanceService.ensureInstanceRuntime = originalEnsureInstanceRuntime;
+    agentInstanceService.getRuntimeSnapshot = originalGetRuntimeSnapshot;
+    agentInstanceService.listInstances = originalListInstances;
     resetTestAuth();
     setTestOrgContext(null);
     resetAllStubs();
@@ -132,17 +135,13 @@ describe("round44 Web 环境路由", () => {
         {
           ...responseEnvironment(),
           agent_name: "Demo Agent",
-          session_id: "session-1",
-          instance_status: "running",
-          instance_id: "instance-1",
+          instance_uid: "instance-1",
           instances: [
             {
-              id: "instance-1",
-              instance_number: 1,
+              instanceUid: "instance-1",
+              name: "default",
               status: "running",
-              session_id: "session-1",
-              port: 3100,
-              created_at: 1_755_561_600,
+              createdAt: now.toISOString(),
             },
           ],
           instances_count: 1,
@@ -152,7 +151,7 @@ describe("round44 Web 环境路由", () => {
 
     const body = await (await request("/environments")).json();
 
-    expect(body.data[0]).toMatchObject({ id: environmentId, instance_id: "instance-1", instances_count: 1 });
+    expect(body.data[0]).toMatchObject({ id: environmentId, instance_uid: "instance-1", instances_count: 1 });
   });
 
   // 创建必须把认证归属而非客户端输入写入服务层参数。
@@ -336,13 +335,26 @@ describe("round44 Web 环境路由", () => {
     expect((await json(`/environments/${environmentId}`, "PUT", { agentConfigId: "agent-2" })).status).toBe(400);
   });
 
-  // enter 的实例编号必须为正整数，非法输入不能越过 schema。
-  test("进入环境拒绝非正实例编号", async () => {
+  // enter 的 instanceUid 必须为字符串，非法输入不能越过 schema。
+  test("进入环境拒绝非法实例 UID", async () => {
     let owned = false;
     stubEnvironmentService({ getOwnedEnvironment: async () => (owned = true) });
 
-    expect((await json(`/environments/${environmentId}/enter`, "POST", { instance_number: 0 })).status).toBe(422);
+    expect((await json(`/environments/${environmentId}/enter`, "POST", { instanceUid: 0 })).status).toBe(422);
     expect(owned).toBeFalse();
+  });
+
+  // 未指定实例时客户端允许省略请求体，路由必须进入默认实例选择流程。
+  test("进入环境允许省略请求体", async () => {
+    stubEnvironmentService({
+      getOwnedEnvironment: async () => Promise.reject(new NotFoundError(environmentId)),
+    });
+
+    const response = await request(`/environments/${environmentId}/enter`, { method: "POST" });
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error?.code).toBe("NOT_FOUND");
   });
 
   // enter 必须先验证环境归属，避免未授权用户触发实例连接。
@@ -354,34 +366,55 @@ describe("round44 Web 环境路由", () => {
     expect((await json(`/environments/${environmentId}/enter`, "POST")).status).toBe(404);
   });
 
-  // 已运行实例可被进入，并返回实例状态和确定性会话信息。
+  // 已运行的持久实例可被进入，并返回当前 runtime 状态。
   test("进入已运行实例返回连接状态", async () => {
-    globalInstanceRegistry.register("instance-1", {
-      userId: "user-1",
-      organizationId: "org-1",
+    const instance = {
+      id: "instance-1",
       environmentId,
-      instanceNumber: 2,
-      spawnSource: "interactive",
-      lastActivityAt: Date.now(),
-      relayCount: 0,
-      lastRelayDetachedAt: null,
-    });
-    stubCoreBootstrap({
-      getCoreRuntime: () => ({
-        listInstances: () => [{ instanceId: "instance-1", status: "running", createdAt: now, port: 3100 }],
-      }),
-    });
+      ownerUserId: "user-1",
+      name: "default",
+      createdAt: now,
+    } as never;
+    agentInstanceService.resolveInstanceForOperation = async () => instance;
+    agentInstanceService.ensureInstanceRuntime = async () => undefined;
+    agentInstanceService.getRuntimeSnapshot = () => ({ state: "running" }) as never;
 
-    const response = await json(`/environments/${environmentId}/enter`, "POST", { instance_number: 2 });
+    const response = await json(`/environments/${environmentId}/enter`, "POST", { instanceUid: "instance-1" });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data).toMatchObject({ instance_id: "instance-1", instance_number: 2, instance_status: "running" });
+    expect(body.data).toMatchObject({
+      instanceUid: "instance-1",
+      environmentId,
+      name: "default",
+      status: "running",
+      createdAt: now.toISOString(),
+    });
+  });
+
+  // 远程 Agent node 未连接时应返回可重试的 503，而不是误报配置写入失败。
+  test("进入远程环境映射 Agent node 不可用错误", async () => {
+    const instance = {
+      id: "instance-remote",
+      environmentId,
+      ownerUserId: "user-1",
+      name: "default",
+      createdAt: now,
+    } as never;
+    agentInstanceService.resolveInstanceForOperation = async () => instance;
+    agentInstanceService.ensureInstanceRuntime = async () => {
+      throw new AgentNodeUnavailableError();
+    };
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.error).toEqual({ code: "AGENT_NODE_UNAVAILABLE", message: "Agent node is unavailable" });
   });
 
   // provider 未配置时，进入环境必须脱敏映射为 503。
   test("进入环境映射 provider 未配置错误", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ autoStart: true, maxSessions: 1 }) });
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({
@@ -393,13 +426,12 @@ describe("round44 Web 环境路由", () => {
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("internal-provider");
   });
 
   // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
   test("进入环境映射 runtime 未就绪错误", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ autoStart: true, maxSessions: 1 }) });
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
     const { setOrchestrationInstanceDeps } = await import("../services/orchestration-instance");
     setOrchestrationInstanceDeps({
@@ -411,7 +443,7 @@ describe("round44 Web 环境路由", () => {
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("sbi_private");
   });
 

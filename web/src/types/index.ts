@@ -23,12 +23,10 @@ export interface Environment {
 }
 
 export interface EnvironmentInstance {
-  id: string;
-  instanceNumber: number;
-  status: "starting" | "running" | "stopped" | "error";
-  sessionId: string | null;
-  port: number;
-  createdAt: number;
+  instanceUid: string;
+  name: string;
+  status: "stopped" | "starting" | "running" | "stopping" | "unknown";
+  createdAt: string;
 }
 
 export interface EnvironmentDetail extends Environment {

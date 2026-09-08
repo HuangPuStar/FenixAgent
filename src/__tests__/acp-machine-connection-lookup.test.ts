@@ -169,6 +169,7 @@ describe("handleRegister 走 machine 路径", () => {
     await handleAcpWsMessage(ws, "ws_reg", {
       type: "register",
       agent_name: "test-agent",
+      protocol_version: 2,
       machine_id: "mach_test_001",
     });
 
@@ -192,6 +193,7 @@ describe("handleRegister 走 machine 路径", () => {
     await handleAcpWsMessage(firstWs, "ws_duplicate_first", {
       type: "register",
       agent_name: "test-agent",
+      protocol_version: 2,
       machine_id: "mach_duplicate_001",
     });
 
@@ -200,6 +202,7 @@ describe("handleRegister 走 machine 路径", () => {
     await handleAcpWsMessage(secondWs, "ws_duplicate_second", {
       type: "register",
       agent_name: "test-agent",
+      protocol_version: 2,
       machine_id: "mach_duplicate_001",
     });
 
@@ -227,6 +230,7 @@ describe("handleRegister 走 machine 路径", () => {
     handleAcpWsOpen(firstWs, "ws_pending_first", "user_reg", null, true);
     const firstRegistration = handleAcpWsMessage(firstWs, "ws_pending_first", {
       type: "register",
+      protocol_version: 2,
       machine_id: "mach_pending_001",
     });
     await Promise.resolve();
@@ -235,6 +239,7 @@ describe("handleRegister 走 machine 路径", () => {
     handleAcpWsOpen(secondWs, "ws_pending_second", "user_reg", null, true);
     await handleAcpWsMessage(secondWs, "ws_pending_second", {
       type: "register",
+      protocol_version: 2,
       machine_id: "mach_pending_001",
     });
 
@@ -252,6 +257,7 @@ describe("handleRegister 走 machine 路径", () => {
 
     await handleAcpWsMessage(ws, "ws_missing_machine", {
       type: "register",
+      protocol_version: 2,
       agent_name: "test-agent",
     });
 

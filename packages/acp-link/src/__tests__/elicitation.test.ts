@@ -52,6 +52,7 @@ describe("parseElicitationSchema", () => {
         { label: "数学", description: "学习数学概念、公式推导或应用数学" },
         { label: "科学", description: null },
       ],
+      multiSelect: false,
     });
   });
 
@@ -59,10 +60,15 @@ describe("parseElicitationSchema", () => {
   test("parses multi-select form schema options", () => {
     const questions = parseElicitationSchema(multiSelectSchema);
     expect(questions).toHaveLength(1);
-    expect(questions[0]?.options).toEqual([
-      { label: "前端", description: "React/Vue 等" },
-      { label: "后端", description: "服务端架构" },
-    ]);
+    expect(questions[0]).toEqual({
+      question: "选择感兴趣的方向",
+      header: "兴趣方向",
+      options: [
+        { label: "前端", description: "React/Vue 等" },
+        { label: "后端", description: "服务端架构" },
+      ],
+      multiSelect: true,
+    });
   });
 
   // 空/非法 schema：返回空数组，不抛错
@@ -121,6 +127,13 @@ describe("buildElicitationContent", () => {
       "ask_user_question_1",
     ]);
     expect(content).toEqual({ ask_user_question_0: "编程相关", ask_user_question_1: "数学" });
+  });
+
+  // 多选答案保持数组值，按对应 property key 组装为 elicitation content。
+  test("preserves multi-select arrays in answers", () => {
+    expect(buildElicitationContent({ answers: [["前端", "后端"]] }, ["ask_user_question_1"])).toEqual({
+      ask_user_question_1: ["前端", "后端"],
+    });
   });
 
   // answers 数组缺项/空串：对应 q_id 不填（不产生空 label 答案）

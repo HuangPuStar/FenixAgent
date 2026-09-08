@@ -5,7 +5,23 @@
     "all": "全部",
     "http": "HTTP",
     "agent": "Agent",
-    "searchPlaceholder": "搜索任务名称..."
+    "searchPlaceholder": "搜索任务名称",
+    "typeLabel": "任务类型"
+  },
+  "runtime": {
+    "title": "未来 {{hours}} 小时运行排布",
+    "description": "依据真实的最近运行、下次运行和超时上限，展示大致时间段。",
+    "windowLabel": "运行时间窗口",
+    "windowHours": "{{hours}} 小时",
+    "legendLabel": "运行状态图例",
+    "scheduled": "待运行",
+    "paused": "已暂停",
+    "outsideWindow": "当前时间窗口内暂无运行"
+  },
+  "registry": {
+    "title": "任务管理",
+    "summary": "当前显示 {{count}} 个任务",
+    "paginationLabel": "任务分页"
   },
   "status": {
     "success": "成功",

@@ -60,7 +60,6 @@ function supplement(): InstanceSupplement {
     userId: "user-round68",
     organizationId: "org-round68",
     environmentId: "env-round68",
-    instanceNumber: 68,
     spawnSource: "system",
     lastActivityAt: Date.now(),
     relayCount: 0,
@@ -86,7 +85,7 @@ describe("AgentChatSessionAdapter 未覆盖消息与清理边界", () => {
       prompt: "x",
     });
 
-    expect(response).toMatchObject({ exit_code: 1, stdout: "[Error] Agent error" });
+    expect(response).toMatchObject({ exit_code: 1, stdout: "[Error] Agent execution failed" });
   });
 
   // result 内嵌 error 缺少 message 时同样要保留此前输出并附加默认错误。
@@ -96,17 +95,17 @@ describe("AgentChatSessionAdapter 未覆盖消息与清理边界", () => {
       result({ error: {} }),
     ]).execute({ prompt: "x" });
 
-    expect(response).toMatchObject({ exit_code: 1, stdout: "部分输出\n\n[Error] Agent error" });
+    expect(response).toMatchObject({ exit_code: 1, stdout: "部分输出\n\n[Error] Agent execution failed" });
   });
 
-  // relay error 未携带 message 时不伪造错误文本，已收集的 agent 输出仍须可供诊断。
-  test("传输 error 缺少 message 时仅返回已有输出", async () => {
+  // relay error 未携带 message 时仍返回固定脱敏错误，已收集输出可供业务诊断。
+  test("传输 error 缺少 message 时返回脱敏错误", async () => {
     const response = await adapter([
       sessionUpdate({ sessionUpdate: "agent_message_chunk", content: { text: "可恢复结果" } }),
       { type: "error", payload: {} } as unknown as EngineRelayMessage,
     ]).execute({ prompt: "x" });
 
-    expect(response).toMatchObject({ exit_code: 1, stdout: "可恢复结果" });
+    expect(response).toMatchObject({ exit_code: 1, stdout: "可恢复结果\n\n[Error] Agent execution failed" });
   });
 
   // 空文本和无标题工具更新是协议噪声，不得产生空消息；缺省工具状态则使用 unknown。

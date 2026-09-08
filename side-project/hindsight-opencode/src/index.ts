@@ -13,17 +13,35 @@
  * See https://github.com/vectorize-io/hindsight
  */
 
+import type { Plugin } from "@opencode-ai/plugin";
 import hindsight from "@vectorize-io/opencode-hindsight";
+
+type PluginModule = {
+  default?: Plugin;
+  HindsightPlugin?: Plugin;
+};
+
+function getPlugin(module: unknown): Plugin | undefined {
+  if (typeof module === "function") return module as Plugin;
+  if (!module || typeof module !== "object") return;
+
+  const { default: defaultPlugin, HindsightPlugin } = module as PluginModule;
+  return defaultPlugin ?? HindsightPlugin;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // The opencode CLI uses namespace import for npm packages.
 // This wrapper ensures the plugin function is always the default export.
-const wrappedPlugin = async (input: any, options?: Record<string, unknown>) => {
+const wrappedPlugin: Plugin = async (input, options) => {
   try {
-    const plugin =
-      typeof hindsight === "function" ? hindsight : ((hindsight as any).default ?? (hindsight as any).HindsightPlugin);
-    return await plugin(input, options ?? {});
-  } catch (e: any) {
-    console.error("[Hindsight] Failed to initialize:", e?.message ?? String(e));
+    const plugin = getPlugin(hindsight);
+    if (!plugin) throw new TypeError("Hindsight plugin module has no callable export");
+    return await plugin(input, options);
+  } catch (error: unknown) {
+    console.error("[Hindsight] Failed to initialize:", getErrorMessage(error));
     return {};
   }
 };

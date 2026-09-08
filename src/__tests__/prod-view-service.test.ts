@@ -1,5 +1,18 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { loadProdView, setProdViewDeps } from "../services/prod-view";
 import { resetAllStubs, stubDb, stubEnvironmentRepo, stubEnvironmentService } from "../test-utils/helpers";
+
+const findOrCreateDefaultInstance = mock(async () => ({
+  id: "inst_viewer",
+  environmentId: "env_viewer",
+  ownerUserId: "viewer-user",
+  creationSource: "user" as const,
+  name: "default",
+  isDefault: true,
+  createdByUserId: "viewer-user",
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+}));
 
 function createSelectChain(selectResults: unknown[][]) {
   let callIndex = 0;
@@ -14,6 +27,13 @@ function createSelectChain(selectResults: unknown[][]) {
 
 describe("loadProdView", () => {
   beforeEach(() => {
+    resetAllStubs();
+    findOrCreateDefaultInstance.mockClear();
+    setProdViewDeps({ findOrCreateDefaultInstance });
+  });
+
+  afterEach(() => {
+    setProdViewDeps(null);
     resetAllStubs();
   });
 
@@ -58,7 +78,6 @@ describe("loadProdView", () => {
           workspacePath: "",
           branch: null,
           gitRepoUrl: null,
-          maxSessions: 1,
           workerType: "acp",
           capabilities: null,
           status: "idle",
@@ -72,7 +91,6 @@ describe("loadProdView", () => {
         }) as never,
     });
 
-    const { loadProdView } = await import("../services/prod-view");
     const result = await loadProdView(
       {
         organizationId: "org-1",
@@ -85,5 +103,7 @@ describe("loadProdView", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.environmentId).toBe("env_viewer");
+    expect(result.data.instanceUid).toBe("inst_viewer");
+    expect(findOrCreateDefaultInstance).toHaveBeenCalledWith("env_viewer", "viewer-user");
   });
 });

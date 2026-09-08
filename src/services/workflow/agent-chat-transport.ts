@@ -24,7 +24,7 @@ import {
   type PromptTurn,
   startPromptTurn,
 } from "../agent-chat-service";
-import { ensureRunning } from "../instance";
+import { agentInstanceService } from "../agent-instance-service";
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../orchestration-instance";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
@@ -167,10 +167,9 @@ export class AgentChatSessionAdapter implements AgentSession {
 
       // 先检测传输层 error（与 JSON-RPC 无关）
       if (asAny.type === "error") {
-        const errorMsg = (asAny.payload as Record<string, unknown> | undefined)?.message as string | undefined;
         const existing = chunks.join("");
         return {
-          stdout: errorMsg ? (existing ? `${existing}\n\n[Error] ${errorMsg}` : `[Error] ${errorMsg}`) : existing,
+          stdout: existing ? `${existing}\n\n[Error] Agent execution failed` : "[Error] Agent execution failed",
           exit_code: 1,
           latency_ms: Date.now() - startTime,
           messages: collectedMessages,
@@ -209,10 +208,9 @@ export class AgentChatSessionAdapter implements AgentSession {
       // 无 result 字段，若不单独处理会被静默跳过，run 将挂到执行超时才失败
       const rpcError = rpc.error as { message?: string } | null | undefined;
       if (rpcError && typeof rpcError === "object") {
-        const errorMsg = rpcError.message ?? "Agent error";
         const existing = chunks.join("");
         return {
-          stdout: existing ? `${existing}\n\n[Error] ${errorMsg}` : `[Error] ${errorMsg}`,
+          stdout: existing ? `${existing}\n\n[Error] Agent execution failed` : "[Error] Agent execution failed",
           exit_code: 1,
           latency_ms: Date.now() - startTime,
           messages: collectedMessages,
@@ -224,11 +222,9 @@ export class AgentChatSessionAdapter implements AgentSession {
       if (result !== undefined && result !== null) {
         // JSON-RPC error
         if ("error" in result) {
-          const errObj = result.error as Record<string, unknown>;
-          const errorMsg = (errObj.message as string) ?? "Agent error";
           const existing = chunks.join("");
           return {
-            stdout: existing ? `${existing}\n\n[Error] ${errorMsg}` : `[Error] ${errorMsg}`,
+            stdout: existing ? `${existing}\n\n[Error] Agent execution failed` : "[Error] Agent execution failed",
             exit_code: 1,
             latency_ms: Date.now() - startTime,
             messages: collectedMessages,
@@ -350,34 +346,21 @@ class AgentChatTransport implements Transport {
 
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
 
-    // 2. 确保实例运行
-    // I4 调用方迁移说明：Workflow 编排保留 ensureRunning 的会话语义（复用运行实例，
-    // autoStart / maxSessions 检查），而非迁移到 controller.spawnInstance——后者无
-    // 复用语义且受 maxConcurrency 限制（总是创建新实例），替换会改变 Transport 接口
-    // 行为（每次 connect 新建实例）。ensureRunning 内部的 spawn 分支已收敛到编排域
-    // 入口 spawnInstanceViaController（instance.ts 的私有 helper）；配套的
-    // cleanupSpawnedInstances（workflow/index.ts）按 instanceId 精确停止本次 run 实际
-    // spawn 的实例（见下方 spawnedInstanceIds 记录），reused 实例不归本 run 所有、
-    // 不清理，语义与实现一致。C-P1.1-R 补充：reused 实例同样占一份租约
-    // （acquireInstanceLease），cleanup 按租约守卫跳过有使用者的实例，最后使用者
-    // 释放后由 acp-idle-monitor 空闲回收兜底。
-    // C-P2.5：实例按触发者 userId 计入用户级并发配额桶（agent-concurrency 按 userId
-    // 聚合），不再统一挂 "system" 跨租户共享配额；无触发者（webhook 匿名触发、
-    // 快照恢复无 userId）时回退到环境属主（envRow.userId，NOT NULL + FK 保证存在）：
-    // ① sandbox 实例按 userId 归属（复用键 + FK user.id），"system" 非真实用户会
-    // FK 失败且每次重试残留 machine 记录；② 文件服务按 env.userId 查 sandbox 实例，
-    // 与 spawn 归属一致才能避免"实例在远程沙箱、文件落本地"的分裂。
-    // source 保持 "system"：仅影响 scheduled 桶判断（RCS_SCHEDULED_AGENT_MAX_CONCURRENCY），
-    // 与用户桶无关。
-    const { instance, status } = await ensureRunning(options?.userId ?? envRow.userId, envRow.id, "system");
-    // 无论 spawned / reused 先占租约：实例被选中即视为在使用，消除"创建者先结束
-    // 连坐使用者"的竞态窗口（B 已选中 X 但尚未 attach 时 A 的 cleanup 误停 X）。
-    acquireInstanceLease(instance.id);
-    if (status === "spawned") {
-      // 记录实例 ID 而非环境 ID：cleanup 按 instanceId 停止，避免按 envId 停止时
-      // 误杀同环境内其他 run 或用户交互启动的实例（C-P1.1）
-      options?.spawnedInstanceIds?.add(instance.id);
+    // Workflow owner 由既有执行上下文传递；缺失时 fail-closed，不回退 Environment owner。
+    const ownerUserId = options?.userId;
+    if (!ownerUserId) {
+      throw new Error("INSTANCE_OWNER_REQUIRED");
     }
+    if (envRow.userId !== ownerUserId) {
+      throw new Error("INSTANCE_NOT_FOUND");
+    }
+    const { instance, created } = await agentInstanceService.findOrCreateWorkflowInstanceWithStatus(
+      envRow.id,
+      ownerUserId,
+    );
+    if (created) options?.spawnedInstanceIds?.add(instance.id);
+    await agentInstanceService.ensureInstanceRuntime(instance);
+    acquireInstanceLease(instance.id);
 
     // 3. 连接 relay
     let handle: EngineRelayHandle;
@@ -410,7 +393,7 @@ class AgentChatTransport implements Transport {
     try {
       ({ turn } = await startPromptTurn({
         session: chatSession,
-        prepareNewSession: () => refreshInstanceEnvironment(instance.id, envRow.id, options?.userId ?? envRow.userId),
+        prepareNewSession: () => refreshInstanceEnvironment(instance.id, envRow.id, ownerUserId),
       }));
     } catch (err) {
       markInstanceRelayDetached(instance.id);

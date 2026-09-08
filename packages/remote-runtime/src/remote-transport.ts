@@ -9,6 +9,11 @@ export interface TransportMessage {
   type: string;
   request_id?: string;
   instance_id?: string;
+  instance_uid?: string;
+  runtime_generation?: number;
+  server_epoch?: string;
+  protocol_version?: number;
+  clean_slate?: boolean;
   session_id?: string;
   launch_spec?: AgentLaunchSpec;
   engine_type?: string;
@@ -33,6 +38,8 @@ export interface RemoteTransport {
   onSessionMessage(listener: (instanceId: string, sessionId: string, message: TransportMessage) => void): () => void;
   /** 单向发送，不等待回复 */
   send(message: TransportMessage): void;
+  /** 连接断开时立即拒绝全部 pending lifecycle 请求。 */
+  close(reason?: string): void;
   /** 外部路由注入收到的消息（由 RCS acp-ws-handler 调用，替代 onmessage 劫持） */
   injectMessage(message: TransportMessage): void;
 }
@@ -61,6 +68,7 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
       resolve: (msg: TransportMessage) => void;
       reject: (err: Error) => void;
       timer: ReturnType<typeof setTimeout>;
+      fence?: { instanceUid: string; runtimeGeneration: number; serverEpoch: string };
     }
   >();
   const sessionListeners = new Set<(instanceId: string, sessionId: string, message: TransportMessage) => void>();
@@ -69,6 +77,15 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
     if (msg.request_id) {
       const pending = pendingRequests.get(msg.request_id);
       if (pending) {
+        if (
+          pending.fence &&
+          (msg.instance_uid !== pending.fence.instanceUid ||
+            msg.runtime_generation !== pending.fence.runtimeGeneration ||
+            msg.server_epoch !== pending.fence.serverEpoch)
+        ) {
+          logger.warn("Rejected stale remote result", { type: msg.type, requestId: msg.request_id });
+          return;
+        }
         clearTimeout(pending.timer);
         pendingRequests.delete(msg.request_id);
         pending.resolve(msg);
@@ -116,7 +133,17 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
           reject(new Error(`Transport request timed out: type=${message.type} request_id=${requestId}`));
         }, timeout);
 
-        pendingRequests.set(requestId, { resolve, reject, timer });
+        const fence =
+          typeof message.instance_uid === "string" &&
+          typeof message.runtime_generation === "number" &&
+          typeof message.server_epoch === "string"
+            ? {
+                instanceUid: message.instance_uid,
+                runtimeGeneration: message.runtime_generation,
+                serverEpoch: message.server_epoch,
+              }
+            : undefined;
+        pendingRequests.set(requestId, { resolve, reject, timer, fence });
 
         const outgoing: TransportMessage = { ...message, request_id: requestId };
         logger.info("→ remote sendAndWait", { type: outgoing.type, requestId, instanceId: outgoing.instance_id });
@@ -134,6 +161,15 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
     send(message) {
       logger.info("→ remote send", { type: message.type, instanceId: message.instance_id });
       ws.send(JSON.stringify(message));
+    },
+
+    close(reason = "Remote transport closed") {
+      for (const [requestId, pending] of pendingRequests) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error(reason));
+        pendingRequests.delete(requestId);
+      }
+      sessionListeners.clear();
     },
 
     injectMessage(message) {

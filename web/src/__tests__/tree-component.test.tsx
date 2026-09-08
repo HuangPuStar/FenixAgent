@@ -101,6 +101,22 @@ describe("TreeItem rendering", () => {
     expect(html).toContain("Action-a");
   });
 
+  // 节点全名提示使用统一 Tooltip，避免每个节点创建 fixed 浮层造成滚动重影。
+  test("TreeItem uses the shared tooltip instead of a fixed hover layer", async () => {
+    const { Tree, TreeItem } = await import("../../components/ui/tree");
+
+    const html = renderToStaticMarkup(
+      <Tree getChildren={async () => []}>
+        <TreeItem
+          nodeId="tooltip-node"
+          nodeData={{ id: "tooltip-node", label: "Long file name", hasChildren: false }}
+        />
+      </Tree>,
+    );
+
+    expect(html).toContain("tooltip-trigger");
+    expect(html).not.toContain("position:fixed");
+  });
   test("TreeItem renders icon when provided", async () => {
     const { Tree, TreeItem } = await import("../../components/ui/tree");
 

@@ -25,7 +25,10 @@ import {
   markInstanceRelayDetached,
   touchInstanceActivity,
 } from "../../services/acp-idle-monitor";
-import { getRunningInstancesByEnvironment, type SpawnedInstance } from "../../services/instance";
+import {
+  getRunningInstancesByEnvironment,
+  type SpawnedInstance,
+} from "../../services/agent-instance-runtime-projection";
 import { connectAgentRelay, type FullRelayHandle } from "../agent-relay";
 import type { WsConnection } from "../ws-types";
 
@@ -119,8 +122,8 @@ function sendToRelayWs(ws: WsConnection, message: Record<string, unknown>): void
  * 此处完成归属校验、实例解析与 relay 连接。
  *
  * @param requestedInstanceId query 携带的 instanceId（connect API 返回的 wsUrl 已附带），
- *   用于多实例环境（maxSessions>1）精确连接，避免「第一个 running 实例」歧义；
- *   未提供时回退第一个 running 实例（兼容直连裸 wsUrl 的旧用法）。
+ *   用于多实例环境精确连接，避免“第一个 running 实例”歧义；未提供时回退第一个
+ *   running 实例（兼容直连裸 wsUrl 的旧用法）。
  */
 export async function handleExternalRelayOpen(
   ws: WsConnection,

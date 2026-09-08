@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AppHeader } from "@/src/components/layout/app-header";
 import { NS } from "@/src/i18n";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 import { AlgorithmDetailDialog } from "./AlgorithmDetailDialog";
 
 interface Algorithm {
@@ -359,7 +359,7 @@ export function AlgorithmsPage() {
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <AgentPageHeader title={t("algorithms")} subtitle={t("algorithmsSubtitle")} />
+        <AppHeader title={t("algorithms")} subtitle={t("algorithmsSubtitle")} />
       </div>
 
       <div className="flex items-center gap-1.5 px-8 pt-5 pb-2">

@@ -4,13 +4,27 @@
   "btn": {
     "create": "创建密钥",
     "copy": "复制",
-    "revoke": "吊销"
+    "revoke": "吊销",
+    "retry": "重试"
   },
   "searchPlaceholder": "搜索密钥...",
   "emptyMessage": "暂无 API 密钥，点击上方按钮创建。",
+  "summary": "个密钥",
+  "security": {
+    "title": "密钥安全",
+    "description": "平台只保存名称与前缀。密钥泄露后请立即吊销并重新创建，原始值无法找回。"
+  },
   "column": {
+    "name": "名称",
+    "prefix": "密钥前缀",
     "created": "创建时间",
+    "lastUsed": "最后使用",
     "expires": "过期时间"
+  },
+  "date": {
+    "never": "—",
+    "neverUsed": "从未使用",
+    "neverExpires": "永不过期"
   },
   "dialog": {
     "createTitle": "创建 API 密钥",

@@ -7,9 +7,9 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
-import { AgentFormDialog } from "./AgentFormDialog";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
+import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatPanel } from "./ChatPanel";
 import "./agent-panel.css";
 
@@ -25,6 +25,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(agentId);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId ?? null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
 
   // ArtifactsPanel 对应的 ResizablePanel imperative handle，由 toggle 按钮调用 collapse/expand
   const artifactsPanelRef = usePanelRef();
@@ -129,7 +130,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}
       />
-      <div className="agent-panel-body">
+      <div className="agent-panel-body" ref={setPanelHost}>
         <div className="agent-panel-content">
           <ResizablePanelGroup orientation="horizontal" className="agent-panel-resizable">
             <ResizablePanel defaultSize="60%" minSize="30%">
@@ -171,6 +172,7 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         mode="create"
+        portalContainer={panelHost}
         onSuccess={handleCreateSuccess}
       />
     </div>

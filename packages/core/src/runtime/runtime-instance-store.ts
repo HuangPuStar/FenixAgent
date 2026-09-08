@@ -25,6 +25,10 @@ export interface RuntimeInstanceRuntimeEntry {
 export interface CreateRuntimeInstanceRecordInput {
   /** Core 侧生成的实例唯一标识。 */
   instanceId: string;
+  /** coordinator runtime 世代。 */
+  runtimeGeneration?: number;
+  /** 主服务进程 epoch。 */
+  serverEpoch?: string;
   /** 目标 engine 类型，对应 plugin `meta.id`。 */
   engineType: string;
   /** 本次实例要调度到的 node 标识。 */
@@ -148,6 +152,8 @@ export function createRuntimeInstanceStore(options?: { now?: RuntimeClock }): Ru
       const timestamp = now();
       const record: RuntimeInstanceRecord = {
         instanceId: input.instanceId,
+        runtimeGeneration: input.runtimeGeneration,
+        serverEpoch: input.serverEpoch,
         engineType: input.engineType,
         nodeId: input.nodeId,
         status: "created",

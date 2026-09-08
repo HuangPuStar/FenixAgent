@@ -806,7 +806,7 @@ t("toast.saved", { name: item.name })  // 插值
 
 ### 11.1 提交前自检
 
-- [ ] **`bun run precheck` 通过**（biome format → biome check import-sort → tsc → biome check）
+- [ ] **`bun run precheck` 通过**（format → import-sort → architecture → server/web tsc → lint → 后端测试）
 - [ ] 用户可见字符串全部走 `t()` i18n
 - [ ] 导航使用 `useNavigate()` / `<Link>`，未使用 `window.location` 写操作
 - [ ] 新增页面在 `web/src/routes/agent/_panel/` 下，已懒加载
@@ -822,7 +822,16 @@ t("toast.saved", { name: item.name })  // 插值
 
 ### 11.2 自动化检测
 
-目前工具链 (Biome + tsc) 能自动覆盖约 30% 的规则。以下关键规则建议尽快配置 ESLint / pre-commit hook 实现自动化拦截：
+`bun run precheck` 的 `architecture` 阶段会扫描 TypeScript 静态 import/export/dynamic import 和前端 URL
+字面量，当前自动阻断以下高置信规则：
+
+- 浏览器生产代码不得导入 `node:*`、`@server/*` 或 `@fenix/chat-channel/server`；测试代码可使用服务端测试工具。
+- `@lobehub/icons` 只能由 `web/components/model-icon/` 封装。
+- 跨 workspace 包不得绕过公开导出访问 `@fenix/*/src/*`。
+- Zod 必须从 `zod/v4` 导入。
+- 前端生产代码通过 `request()` 调用 RCS API 时，不得重新引入 `/v1`、`/v2` 历史前缀。
+
+工具链仍不能覆盖所有交互和语义规则。以下关键规则建议继续通过现有工具能力或专用静态检查逐步自动化：
 
 | 规则 | 检测方式 | 优先级 |
 |------|----------|--------|

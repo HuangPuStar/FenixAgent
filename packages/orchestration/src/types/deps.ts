@@ -39,7 +39,6 @@ export interface EnvironmentData {
   agentConfigId: string | null;
   /** 目标机器；宿主 Repo 实现负责默认值 fallback，编排域不读取环境变量。 */
   machineId: string | null;
-  maxConcurrency: number;
   autoStart: boolean;
 }
 

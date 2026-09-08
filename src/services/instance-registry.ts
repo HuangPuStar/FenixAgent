@@ -18,7 +18,6 @@ export class InstanceRegistry {
   static readonly IDLE_RECLAIM_CLOSE_CODE = 4001;
 
   private supplements = new Map<string, InstanceSupplement>();
-  private envCounters = new Map<string, number>();
   private byEnvironment = new Map<string, Set<string>>();
 
   /** 注册实例补充信息 */
@@ -44,18 +43,9 @@ export class InstanceRegistry {
     }
   }
 
-  /**
-   * 注销实例补充信息，并在该 environment 已无实例时释放其单调计数器。
-   *
-   * 用于 machine 断连等绕过 stopInstanceViaController 的强制卸载路径，保证
-   * supplement / byEnvironment / envCounters 同步收敛。
-   */
+  /** 注销实例补充信息。 */
   unregisterAndDeleteCounter(instanceId: string): void {
-    const supplement = this.supplements.get(instanceId);
     this.unregister(instanceId);
-    if (supplement) {
-      this.deleteCounter(supplement.environmentId);
-    }
   }
 
   /** 获取实例补充信息 */
@@ -104,35 +94,9 @@ export class InstanceRegistry {
     return [...ids].map((id) => [id, this.supplements.get(id)!] as [string, InstanceSupplement]).filter(([, s]) => s);
   }
 
-  /**
-   * 获取下一个实例编号（单调递增）。
-   * 双保险：取 max(counter, 现有实例最大编号) + 1，
-   * 防止 counter 与实际实例不一致时出现重复编号。
-   */
-  nextInstanceNumber(environmentId: string): number {
-    const counter = this.envCounters.get(environmentId) ?? 0;
-    const instances = this.getByEnvironment(environmentId);
-    const maxFromInstances = instances.length > 0 ? Math.max(...instances.map(([, s]) => s.instanceNumber)) : 0;
-    const next = Math.max(counter, maxFromInstances) + 1;
-    this.envCounters.set(environmentId, next);
-    return next;
-  }
-
-  /**
-   * 删除环境计数器（仅在无残留实例时）。
-   * 用于 stopInstance 后清理不再需要的环境计数器。
-   */
-  deleteCounter(environmentId: string): void {
-    const instances = this.getByEnvironment(environmentId);
-    if (instances.length === 0) {
-      this.envCounters.delete(environmentId);
-    }
-  }
-
-  /** 清空所有注册信息、计数器和索引 */
+  /** 清空所有注册信息和索引 */
   clear(): void {
     this.supplements.clear();
-    this.envCounters.clear();
     this.byEnvironment.clear();
   }
 

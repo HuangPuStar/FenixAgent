@@ -1,35 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 检查 .env 文件是否为空或不存在
-if [ ! -s .env ]; then
-  echo "⚠️  .env 文件为空或不存在！请先填写配置后再启动。"
-  echo "   参考 .env.example 创建 .env 文件。"
-  exit 1
-fi
+cd "$(dirname "$0")"
 
-# 留档旧日志。使用 rename 而非截断，避免仍被 tee 持有的文件描述符在归档文件中留下 NUL 空洞。
-LOG_FILE="workspaces/server-dev.log"
-if [ -f "$LOG_FILE" ]; then
-  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-  ARCHIVE="workspaces/server-dev-${TIMESTAMP}.log"
-  mv "$LOG_FILE" "$ARCHIVE"
-  : > "$LOG_FILE"
-  echo "📋 日志已留档: $ARCHIVE"
-fi
+PORT=$(bun -e 'process.stdout.write(process.env.RCS_PORT ?? "3000")')
+PIDS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 
-for port in 3000 $(seq 8888 8900); do
-  pids=$(lsof -ti :"$port" 2>/dev/null || true)
-  if [ -n "$pids" ]; then
-    echo "Killing port $port (PIDs: $pids)"
-    echo "$pids" | xargs kill -9 2>/dev/null || true
-  else
-    echo "Port $port is free"
-  fi
-done
+if [ -n "$PIDS" ]; then
+  echo "Stopping server on port $PORT..."
+  while IFS= read -r pid; do
+    kill "$pid"
+  done <<< "$PIDS"
+fi
 
 bun run build:web
-
-echo ""
-echo "Starting server..."
-bun run dev
+exec bun run dev

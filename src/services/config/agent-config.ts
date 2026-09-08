@@ -212,6 +212,27 @@ export async function updateAgentConfig(
   return result.length > 0;
 }
 
+export async function restartAgentConfigInstances(
+  ctx: AuthContext,
+  nameOrResourceKey: string,
+): Promise<{ environmentIds: string[]; restartedInstanceIds: string[] } | null> {
+  const row = await getAgentConfig(ctx, nameOrResourceKey);
+  if (!row) return null;
+
+  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
+  const boundEnvs = await db
+    .select({ id: environment.id })
+    .from(environment)
+    .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
+  const environmentIds = boundEnvs.map((env) => env.id);
+  if (environmentIds.length === 0) return { environmentIds, restartedInstanceIds: [] };
+
+  // 惰性导入避免 agent-config → agent-instance-service → orchestration-instance → config 的循环依赖。
+  const { agentInstanceService } = await import("../agent-instance-service");
+  const restartedInstanceIds = await agentInstanceService.restartActiveInstancesForEnvironments(environmentIds);
+  return { environmentIds, restartedInstanceIds };
+}
+
 export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise<boolean> {
   const row = await getAgentConfig(ctx, name);
   if (!row) return false;

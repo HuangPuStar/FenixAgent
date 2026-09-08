@@ -7,7 +7,7 @@ import {
   setAcpIdleMonitorDeps,
   shouldCountInstanceActivity,
 } from "../services/acp-idle-monitor";
-import type { SpawnedInstance } from "../services/instance";
+import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
 import { globalInstanceRegistry } from "../services/instance-registry";
 
 function makeInstance(id: string, environmentId: string): SpawnedInstance {
@@ -23,7 +23,6 @@ function makeInstance(id: string, environmentId: string): SpawnedInstance {
     createdAt: new Date("2026-06-24T00:00:00Z"),
     environmentId,
     sessionId: undefined,
-    instanceNumber: 1,
   };
 }
 
@@ -60,7 +59,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(idleInstance.id, {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "scheduled",
       lastActivityAt: 1000,
@@ -70,7 +68,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(busyInstance.id, {
       userId: "user-1",
       environmentId: "env-2",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
       lastActivityAt: 1000,
@@ -108,7 +105,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(trackedInstance.id, {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
       lastActivityAt: 1000,
@@ -146,7 +142,6 @@ describe("acp idle monitor", () => {
     expect(globalSnapshots.map((item) => item.id)).toContain("inst_runtime_only");
     expect(globalSnapshots.find((item) => item.id === "inst_runtime_only")).toMatchObject({
       environment_id: null,
-      instance_number: 0,
       port: 9527,
       user: null,
     });
@@ -168,7 +163,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(idleInstance.id, {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "scheduled",
       lastActivityAt: 1000,
@@ -178,7 +172,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(activeInstance.id, {
       userId: "user-1",
       environmentId: "env-2",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
       lastActivityAt: 1000,
@@ -215,7 +208,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(staleInstance.id, {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
       lastActivityAt: 1000,
@@ -248,7 +240,6 @@ describe("acp idle monitor", () => {
     globalInstanceRegistry.register(activeInstance.id, {
       userId: "user-1",
       environmentId: "env-1",
-      instanceNumber: 1,
       organizationId: "org-1",
       spawnSource: "interactive",
       lastActivityAt: 1000,

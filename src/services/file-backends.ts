@@ -13,8 +13,8 @@
 
 import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
-import { stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
 import { NotFoundError, ValidationError } from "../errors";
 import type { FileOpOptions } from "../transport/file-ws-requests";
@@ -66,6 +66,51 @@ import {
   shouldHidePath,
   writeFileContent,
 } from "./workspace-fs";
+
+let uploadBeforeWriteHook: ((destination: string) => Promise<void>) | undefined;
+
+/** 仅供上传竞态行为测试在 mkdir 与真实落点复检之间替换目录。 */
+export function setLocalUploadBeforeWriteHookForTest(hook?: (destination: string) => Promise<void>): void {
+  uploadBeforeWriteHook = hook;
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function isWithinRoot(root: string, target: string): boolean {
+  const rel = relative(root, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/**
+ * 上传落盘前逐段拒绝 symlink，并在 mkdir 后重新校验父目录真实落点。
+ * 第二次检查刻意紧邻 writeFile，避免只在批次开始时检查造成明显 TOCTOU 窗口。
+ */
+async function assertUploadDestination(workspaceDir: string, destination: string): Promise<void> {
+  const workspaceRealPath = await realpath(workspaceDir);
+  const rel = relative(workspaceDir, destination);
+  if (!isWithinRoot(workspaceDir, destination)) throw new ValidationError("上传目标路径越出 workspace");
+
+  let current = workspaceDir;
+  for (const segment of rel.split(sep).slice(0, -1)) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) throw new ValidationError("上传目标路径包含 symbolic link");
+    } catch (error) {
+      if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
+      break;
+    }
+  }
+
+  const parentRealPath = await realpath(dirname(destination));
+  if (!isWithinRoot(workspaceRealPath, parentRealPath)) throw new ValidationError("上传目标路径越出 workspace");
+  try {
+    if ((await lstat(destination)).isSymbolicLink()) throw new ValidationError("上传目标文件是 symbolic link");
+  } catch (error) {
+    if (!isErrnoException(error) || error.code !== "ENOENT") throw error;
+  }
+}
 
 // ── If-Match 条件写（W12b，§4.4 并发写）────────────────────────
 
@@ -239,7 +284,7 @@ class LocalBackend implements BackEnd {
     files: UploadFileInput[],
     options?: FileWriteOptions,
   ): Promise<UploadResult> {
-    const { resolved } = await this.resolve(envId, dir);
+    const { resolved, workspaceDir } = await this.resolve(envId, dir);
     // 目标目录条件写比对：目录被删/被改（mtime 变）→ 409；新建目录不应带 If-Match
     await this.assertLocalIfMatch(resolved, dir, options?.ifMatch);
     await mkdirp(resolved);
@@ -249,6 +294,8 @@ class LocalBackend implements BackEnd {
       const relPath = normalizeUploadRelativePath(file.relativePath) || file.name;
       const destPath = join(resolved, relPath);
       await mkdirp(dirname(destPath));
+      await uploadBeforeWriteHook?.(destPath);
+      await assertUploadDestination(workspaceDir, destPath);
       await writeFile(destPath, file.content);
       const displayPath = dir ? `${dir}/${relPath}` : relPath;
       uploaded.push({ name: file.name, path: displayPath, size: file.content.byteLength });

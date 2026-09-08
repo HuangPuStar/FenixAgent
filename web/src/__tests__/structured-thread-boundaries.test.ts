@@ -106,12 +106,14 @@ describe("structuredToThreadEntries 边界转换", () => {
     expect(entries).toEqual([{ type: "user_message", id: "user-empty", content: "" }]);
   });
 
-  // 计划快照属于状态面板数据，不得混入聊天时间线。
-  test("忽略单个计划快照", () => {
+  // 计划快照必须进入聊天时间线，供 ChatView 渲染真实执行计划。
+  test("保留单个计划快照", () => {
     const entries = structuredToThreadEntries([
       { type: "plan", id: "plan-1", entries: [{ content: "检查", priority: "low", status: "pending" }] },
     ]);
-    expect(entries).toEqual([]);
+    expect(entries).toEqual([
+      { type: "plan", id: "plan-1", entries: [{ content: "检查", priority: "low", status: "pending" }] },
+    ]);
   });
 
   // 工具内容块必须原样传给卡片渲染器，避免 diff 或终端结果丢失。

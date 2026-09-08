@@ -1,0 +1,107 @@
+.resource-scope-filter button span {
+  color: currentColor;
+  font-size: 8px;
+  opacity: 0.65;
+}
+
+.models-commandbar {
+  gap: 12px;
+}
+
+.provider-index__scope,
+.model-row__scope {
+  border-radius: 5px;
+  padding: 3px 6px;
+  color: #66738a;
+  background: #e9edf4;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.provider-index__scope.is-personal,
+.model-row__scope.is-personal {
+  color: #9a6a1d;
+  background: #fff3dc;
+}
+
+.provider-index__scope.is-org,
+.model-row__scope.is-org {
+  color: #245fcf;
+  background: #e5edff;
+}
+
+.provider-index__scope.is-platform,
+.model-row__scope.is-platform {
+  color: #267c64;
+  background: #e8f6f1;
+}
+
+.provider-scope-select {
+  height: 31px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 24px 0 9px;
+  color: var(--model-blue);
+  background: var(--model-blue-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.model-row {
+  grid-template-columns: minmax(170px, 1fr) minmax(96px, 0.45fr) 58px auto;
+}
+
+.model-row__scope {
+  justify-self: start;
+}
+
+.mcp-plugin-card__badges .mcp-plugin-card__scope.is-personal {
+  color: #956519;
+  background: #fff4df;
+}
+
+.mcp-plugin-card__badges .mcp-plugin-card__scope.is-org {
+  color: #245fcf;
+  background: #e8efff;
+}
+
+.mcp-plugin-card__badges .mcp-plugin-card__scope.is-platform {
+  color: #267c64;
+  background: #e8f6f1;
+}
+
+.mcp-plugin-card__badges .mcp-plugin-card__scope.is-market {
+  color: #1f57c8;
+  background: #e7efff;
+}
+
+@media (max-width: 1180px) {
+  .model-row {
+    grid-template-columns: minmax(150px, 1fr) minmax(90px, 0.4fr) 54px auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .resource-scope-filter {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .model-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .model-row__scope {
+    grid-column: 1;
+    margin-left: 37px;
+  }
+
+  .model-row__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+.models-commandbar .resource-scope-filter {
+  flex: 0 0 auto;
+}

@@ -47,7 +47,6 @@ export async function registerEnvironment(
     directory: req.directory,
     branch: req.branch,
     gitRepoUrl: req.git_repo_url,
-    maxSessions: req.max_sessions,
     workerType,
     username: req.username,
     capabilities: req.capabilities,
@@ -113,14 +112,13 @@ export async function touchEnvironmentPoll(envId: string): Promise<void> {
   await environmentRepo.update(envId, { lastPollAt: new Date() });
 }
 
-/** 更新 Environment capabilities 和 maxSessions */
+/** 更新 Environment capabilities */
 export async function updateEnvironmentCapabilities(
   envId: string,
-  patch: { capabilities?: Record<string, unknown> | null; maxSessions?: number },
+  patch: { capabilities?: Record<string, unknown> | null },
 ): Promise<void> {
   await environmentRepo.update(envId, {
     capabilities: patch.capabilities ?? undefined,
-    maxSessions: patch.maxSessions,
   });
 }
 
@@ -130,7 +128,6 @@ export async function createTemporaryEnvironment(params: {
   userId: string;
   machineName: string;
   directory?: string;
-  maxSessions?: number;
   capabilities?: Record<string, unknown>;
 }): Promise<EnvironmentRecord> {
   return environmentRepo.create({
@@ -139,7 +136,6 @@ export async function createTemporaryEnvironment(params: {
     machineName: params.machineName,
     workerType: "acp",
     directory: params.directory,
-    maxSessions: params.maxSessions,
     capabilities: params.capabilities,
   });
 }
@@ -183,7 +179,6 @@ export async function handleAcpRegister(params: {
   userId: string;
   agentName: string;
   capabilities?: Record<string, unknown>;
-  maxSessions?: number;
   directory?: string;
   boundEnvId: string | null;
 }): Promise<{ envId: string; isNew: boolean }> {
@@ -193,7 +188,6 @@ export async function handleAcpRegister(params: {
       status: "active",
       lastPollAt: new Date(),
       capabilities: params.capabilities ?? undefined,
-      maxSessions: params.maxSessions,
     });
     return { envId: params.boundEnvId, isNew: false };
   }
@@ -203,7 +197,6 @@ export async function handleAcpRegister(params: {
     userId: params.userId,
     machineName: params.agentName,
     directory: params.directory,
-    maxSessions: params.maxSessions,
     capabilities: params.capabilities,
   });
 

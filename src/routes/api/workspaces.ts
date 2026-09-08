@@ -18,11 +18,12 @@ function mapApiError(error: unknown): { status: number; body: { error: { code: s
   if (error instanceof Error && "statusCode" in error && "code" in error) {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;
     const code = typeof error.code === "string" ? error.code : "INTERNAL_ERROR";
-    return { status: statusCode, body: { error: { code, message: error.message } } };
+    if (statusCode < 500) return { status: statusCode, body: { error: { code, message: error.message } } };
   }
+  console.error("[api-workspaces] upload error:", error);
   return {
     status: 500,
-    body: { error: { code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "Unknown error" } },
+    body: { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
   };
 }
 

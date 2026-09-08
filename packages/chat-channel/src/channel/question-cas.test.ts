@@ -55,7 +55,7 @@ interface ControlResponseRecord {
   type: "control_response";
   request_id: string;
   approved: boolean;
-  extra: { outcome: { optionId: string } };
+  extra: { answers: Array<string | string[]> };
 }
 
 function createConnection(overrides: Partial<SessionConnection> = {}): {
@@ -176,6 +176,28 @@ describe("question CAS (AskUserQuestion)", () => {
     // question 不收敛 turn 状态机（与权限不同：AskUserQuestion 是工具执行中询问，
     // agent 收到答案后的下一条输出增量会自然推进 accepting → running）
     expect(getSessionInfo(sessionDoc!).get("activeTurnStatus")).toBe("accepting");
+  });
+
+  // 多选答案保持每题嵌套数组，经 SessionChannel 原样发送给 acp-link。
+  test("respond_question preserves multi-select answer arrays", async () => {
+    const { connection, relayMessages } = createConnection();
+    await setupTurnWithPendingQuestion(harness, "iqa_multi", new Date(Date.now() + 60_000).toISOString());
+
+    await harness.channel.handleAction(
+      connection,
+      {
+        action: "respond_question",
+        commandId: "cmd-multi",
+        questionId: "iqa_multi",
+        answers: [["production", "staging"]],
+      },
+      createSinks(harness),
+    );
+
+    expect(relayMessages).toHaveLength(1);
+    expect(relayMessages[0]?.extra.answers).toEqual([["production", "staging"]]);
+    const sessionDoc = harness.docManager.getSessionYdoc("rcs-1");
+    expect(getPendingQuestions(sessionDoc!).get("iqa_multi")?.get("answer")).toBe('[["production","staging"]]');
   });
 
   // 未知 questionId（不存在于 pendingQuestions）时 CAS 失败：不发帧、幂等成功

@@ -1,7 +1,18 @@
 import type { AuthContext } from "../plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
+import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment";
+
+const defaultDeps = {
+  findOrCreateDefaultInstance: agentInstanceService.findOrCreateDefaultInstance.bind(agentInstanceService),
+};
+const deps = { ...defaultDeps };
+
+/** 测试用：覆盖 ProdView 实例依赖，避免全局 mock.module 污染其他测试。 */
+export function setProdViewDeps(overrides: Partial<typeof deps> | null): void {
+  Object.assign(deps, overrides ?? defaultDeps);
+}
 
 /** 创建 ProdView 记录 */
 export async function createProdView(ctx: AuthContext, input: CreateProdViewInput) {
@@ -57,25 +68,22 @@ export async function loadProdView(ctx: AuthContext, id: string) {
   if (!row) return { success: false as const, error: { code: "NOT_FOUND", message: "ProdView not found" } };
   if (!row.enabled) return { success: false as const, error: { code: "DISABLED", message: "ProdView is disabled" } };
 
-  // 解析 agentConfigId → environmentId（relay 连接需要 env_xxx 格式）
-  let environmentId: string | null = null;
-  if (row.agentId) {
-    const viewerEnv = await createWebEnvironment({
-      name: `env-${row.agentId.slice(0, 8)}`,
-      description: row.description ?? undefined,
-      agentConfigId: row.agentId,
-      autoStart: true,
-      userId: ctx.userId,
-      organizationId: ctx.organizationId,
-    });
-    environmentId = viewerEnv.id;
-  }
+  const viewerEnv = await createWebEnvironment({
+    name: `env-${row.agentId.slice(0, 8)}`,
+    description: row.description ?? undefined,
+    agentConfigId: row.agentId,
+    autoStart: true,
+    userId: ctx.userId,
+    organizationId: ctx.organizationId,
+  });
+  const instance = await deps.findOrCreateDefaultInstance(viewerEnv.id, ctx.userId);
 
   return {
     success: true as const,
     data: {
       agentConfigId: row.agentId,
-      environmentId,
+      environmentId: viewerEnv.id,
+      instanceUid: instance.id,
       name: row.name,
       modulesConfig: row.modulesConfig as Record<string, unknown>,
     },

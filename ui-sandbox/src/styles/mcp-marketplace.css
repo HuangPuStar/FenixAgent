@@ -1,0 +1,140 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: marketplace blocks use isolated component namespaces. */
+.mcp-marketplace {
+  --market-ink: #17233a;
+  --market-muted: #6d788c;
+  --market-faint: #9ca6b7;
+  --market-blue: #2764e7;
+  --market-soft: #f5f7fb;
+  --market-line: #e8ecf2;
+}
+
+.mcp-json-detail button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--market-muted);
+  background: var(--market-soft);
+}
+
+.mcp-json-detail pre {
+  overflow: auto;
+  margin: 13px 0;
+  border-radius: 8px;
+  padding: 12px;
+  color: #485772;
+  background: #f5f7fa;
+  font:
+    10px / 1.65 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.mcp-marketplace__catalog > header {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto 32px;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.mcp-marketplace__catalog > header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.mcp-marketplace__catalog h3 {
+  margin: 0;
+  color: var(--market-ink);
+  font-size: 17px;
+}
+
+.mcp-marketplace__catalog > header span {
+  color: var(--market-faint);
+  font-size: 10px;
+}
+
+.mcp-marketplace__catalog nav {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #eef1f6;
+}
+
+.mcp-marketplace__catalog nav button,
+.mcp-marketplace__catalog > header > button {
+  border: 0;
+  border-radius: 6px;
+  color: var(--market-muted);
+  background: transparent;
+}
+
+.mcp-marketplace__catalog nav button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.mcp-marketplace__catalog nav button.is-active {
+  color: var(--market-ink);
+  background: #fff;
+  box-shadow: 0 2px 7px rgb(36 56 89 / 9%);
+}
+
+.mcp-marketplace__catalog nav button.is-installed-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 3px;
+  color: #245fcf;
+  background: #e3ebff;
+}
+
+.mcp-marketplace__catalog nav button.is-installed-filter.is-active {
+  color: #fff;
+  background: var(--market-blue);
+  box-shadow: none;
+}
+
+.mcp-marketplace__catalog nav button.is-installed-filter svg {
+  width: 10px;
+}
+
+.mcp-marketplace__catalog nav button.is-installed-filter span {
+  color: currentColor;
+  font-size: 8px;
+  opacity: 0.72;
+}
+
+.mcp-marketplace__catalog > header > button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+}
+
+.mcp-marketplace__catalog > header > button:hover {
+  color: var(--market-blue);
+  background: #fff;
+}
+
+.mcp-marketplace__catalog > header > button svg {
+  width: 14px;
+}
+
+@media (max-width: 1100px) {
+  .mcp-marketplace__catalog > header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .mcp-marketplace__catalog nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow-x: auto;
+  }
+}

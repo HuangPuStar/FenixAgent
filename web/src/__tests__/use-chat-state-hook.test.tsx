@@ -20,17 +20,18 @@ import * as Y from "yjs";
 import { useChatState } from "../hooks/use-chat-state";
 import { useSessionState } from "../hooks/use-session-state";
 import { createSessionDocBinding } from "../yjs/doc-hub";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // 设置最小 DOM 环境（react-dom/client 模块加载时需要 window；与
 // chat-composer.test.tsx 同款处理，仅在本文件作用域内生效）
-const win = new Window();
+const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 /** 渲染包裹 StrictMode 的探针组件，返回最新 hook 快照与重渲染/卸载控制 */
 function createHarness<T>(useHook: (rcsSessionId: string) => { state: T }) {
@@ -235,6 +236,7 @@ describe("useSessionState hook 生命周期", () => {
               { label: "production", description: "Prod" },
               { label: "staging", description: null },
             ],
+            multiSelect: false,
           },
         ],
         description: "Please answer",

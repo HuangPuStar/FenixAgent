@@ -133,7 +133,11 @@ describe("config skill resource access", () => {
       "org_source/skill_external",
     ]);
     expect(rows[0].resourceAccess).toMatchObject({ ownership: "internal", writable: true, publicReadable: true });
-    expect(rows[1].resourceAccess).toMatchObject({ ownership: "external", writable: false });
+    expect(rows[1].resourceAccess).toMatchObject({
+      ownership: "external",
+      writable: false,
+      publicReadable: true,
+    });
   });
 
   // 无内部同名时，getSkill(name) 可读取外部授权 skill 且不可写

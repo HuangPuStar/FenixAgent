@@ -6,7 +6,6 @@ export const AcpAgentSchema = z
     id: z.string().describe("ACP Agent 对应的环境 ID。"),
     agent_name: z.string().nullable().describe("Agent 名称；未上报时为 null。"),
     status: z.enum(["online", "offline"]).describe("当前 Agent 在线状态。"),
-    max_sessions: z.number().describe("该 Agent 允许的最大会话数。"),
     last_seen_at: z.number().nullable().describe("最近心跳时间，单位为秒级时间戳；未知时为 null。"),
     created_at: z.number().describe("环境创建时间，单位为秒级时间戳。"),
   })

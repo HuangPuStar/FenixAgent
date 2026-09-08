@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * 创建名称字段的 zod schema（用于 Agent/Skill/Provider 的 ID/名称校验）

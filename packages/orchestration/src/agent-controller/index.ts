@@ -2,7 +2,7 @@
  * AgentController：编排域的统一入口。
  *
  * 职责：
- *   - `spawnInstance` 串联全部子域（环境校验 → 并发检查 → LaunchSpec 构建 →
+ *   - `spawnInstance` 串联全部子域（环境校验 → LaunchSpec 构建 →
  *     AgentNode 获取 → Instance 工厂），为外部提供统一的实例创建入口
  *   - `stopInstance` / `listInstances` 管理内存中的活跃实例表（纯运行时，无 DB 持久化）
  *
@@ -10,23 +10,17 @@
  *   | 场景                      | 异常                        |
  *   |---------------------------|-----------------------------|
  *   | envId 不存在              | EnvironmentNotFoundError    |
- *   | 并发超限                  | ConcurrencyExceededError    |
  *   | Machine 未连接            | AgentNodeUnavailableError   |
  *   | LaunchSpec 缺失字段       | LaunchSpecBuildError        |
  *   | 环境未配置 machineId      | LaunchSpecBuildError        |
  *   | stopInstance 目标不存在   | OrchestrationError          |
  *
- * 并发检查基于内存实例表，不依赖 DB；多实例并发 spawn 的竞态由宿主侧的
- * 幂等/重试策略兜底（编排域保持单一职责，不引入分布式锁）。
+ * 并发配额统一由宿主 `src/services/agent-concurrency.ts` 的 reservation 管理；
+ * 禁止在 AgentController 基于 Environment 或内存实例表重新计数限流。
  */
 
 import type { AgentNodeServicePort } from "../agent-node/types";
-import {
-  ConcurrencyExceededError,
-  EnvironmentNotFoundError,
-  LaunchSpecBuildError,
-  OrchestrationError,
-} from "../errors";
+import { EnvironmentNotFoundError, LaunchSpecBuildError, OrchestrationError } from "../errors";
 import type { Instance } from "../instance/instance";
 import type { LaunchSpecBuilder } from "../launch-spec/launch-spec-builder";
 import type { EnvironmentRepo } from "../types/deps";
@@ -53,7 +47,7 @@ export class AgentController {
   }
 
   /** 创建 Agent 运行实例（完整 6 步流程，见类注释错误映射）。 */
-  async spawnInstance(envId: string, userId: string): Promise<Instance> {
+  async spawnInstance(envId: string, userId: string, instanceUid: string): Promise<Instance> {
     // 1. 环境校验（透传 userId：宿主 Repo 解析 machineId 时可能按用户归属
     //    准备执行节点，如 sandbox 实例按 pool + userId 复用）
     const environment = await this.#environmentRepo.getEnvironment(envId, userId);
@@ -61,17 +55,7 @@ export class AgentController {
       throw new EnvironmentNotFoundError(`Environment '${envId}' not found`);
     }
 
-    // 2. 并发检查：当前环境中活跃实例数 vs maxConcurrency
-    const activeCount = [...this.#instances.values()].filter(
-      (instance) => instance.environmentId === envId && instance.status() !== "stopped",
-    ).length;
-    if (activeCount >= environment.maxConcurrency) {
-      throw new ConcurrencyExceededError(
-        `Environment '${envId}' reached max concurrency (${environment.maxConcurrency})`,
-      );
-    }
-
-    // 3. 构建 LaunchSpec（缺失字段抛 LaunchSpecBuildError）
+    // 2. 构建 LaunchSpec（缺失字段抛 LaunchSpecBuildError）
     const launchSpec = await this.#launchSpecBuilder.build(envId, userId);
 
     // 4. 获取 AgentNode；环境须解析出有效 machineId（宿主 Repo 负责默认值 fallback，
@@ -83,27 +67,14 @@ export class AgentController {
     }
     const agentNode = this.#agentNodeService.ensureNode(machineId);
 
-    // 5. 创建 Instance（AgentNode 工厂）
-    const instance = agentNode._spawnInstance(launchSpec);
-
-    // 6. 注册前二次并发校验（同步段，无 await 间隙）：步骤 2 的检查在
-    //    launchSpecBuilder.build 的 await 之后可能已过期（并发 spawn 在此期间完成
-    //    注册），超限时回滚（归还节点引用、不注册），避免超发实例。
-    const activeCountNow = [...this.#instances.values()].filter(
-      (i) => i.environmentId === envId && i.status() !== "stopped",
-    ).length;
-    if (activeCountNow >= environment.maxConcurrency) {
-      try {
-        this.#agentNodeService.releaseNode(machineId);
-      } catch {
-        // 节点可能已被外部关闭（重试耗尽回收），引用归还失败可忽略
-      }
-      throw new ConcurrencyExceededError(
-        `Environment '${envId}' reached max concurrency (${environment.maxConcurrency})`,
-      );
+    if (this.#instances.has(instanceUid)) {
+      throw new OrchestrationError(`Instance '${instanceUid}' is already active`, "INSTANCE_ALREADY_ACTIVE");
     }
 
-    // 7. 注册并返回引用
+    // 5. 使用宿主持久化 uid 创建 Instance（AgentNode 不再生成第二套身份）
+    const instance = agentNode._spawnInstance(launchSpec, instanceUid);
+
+    // 5. 注册并返回引用
     this.#instances.set(instance.instanceId, instance);
     return instance;
   }
@@ -122,8 +93,7 @@ export class AgentController {
    *
    * 背景：机器断连/重连路径（core-bootstrap.unregisterRemoteNode /
    * registerRemoteNode 重连分支）只删除 core 实例与 supplement，若不同步清理
-   * 本活跃表，幽灵实例会永久计入环境并发额度（maxConcurrency=1 时环境永久
-   * 无法再 spawn），且节点引用计数残留导致空闲回收不触发（E-P0.1）。
+   * 本活跃表，会造成实例查询和节点引用计数残留，导致空闲回收不触发（E-P0.1）。
    *
    * 与 stopInstance 的语义差异：批量场景无"目标不存在"概念，不抛
    * INSTANCE_NOT_FOUND；重复调用幂等（表内无匹配实例时直接返回空数组）。

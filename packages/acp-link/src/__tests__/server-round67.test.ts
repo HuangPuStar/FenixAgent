@@ -172,7 +172,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("注册确认后创建文件连接", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(FakeWebSocket.instances[1]?.url).toBe("ws://registry.invalid/base/acp/file-ws?secret=round%2067%2Fsecret");
   });
@@ -181,7 +184,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("文件连接打开时发送文件注册帧", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = FakeWebSocket.instances[1];
     fileSocket?.open();
     expect(JSON.parse(fileSocket?.sent[0] ?? "")).toEqual({ type: "register" });
@@ -191,9 +197,15 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("重复注册关闭旧文件连接", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const firstFileSocket = FakeWebSocket.instances[1];
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     expect(firstFileSocket?.closeCalls).toBe(1);
     expect(FakeWebSocket.instances).toHaveLength(3);
   });
@@ -203,7 +215,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
     createClient();
     await waitForSockets(1);
     FakeWebSocket.throwOnNextConstruction = true;
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
@@ -211,7 +226,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("忽略未知文件帧", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = FakeWebSocket.instances[1];
     fileSocket?.message('{"type":"unknown"}');
     await Promise.resolve();
@@ -222,7 +240,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("忽略损坏的文件帧", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = FakeWebSocket.instances[1];
     fileSocket?.message("{");
     await Promise.resolve();
@@ -233,7 +254,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("文件连接断开后安排重连", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     FakeWebSocket.instances[1]?.closed();
     expect(timeoutCallbacks.size).toBe(1);
     runTimeouts();
@@ -298,7 +322,10 @@ describe("createAcpClient round 67 内存传输分支", () => {
   test("手动关闭清理连接且不重连", async () => {
     createClient();
     await waitForSockets(1);
-    mainSocket().message('{"type":"registered"}');
+    mainSocket().message(
+      '{"type":"registered","protocol_version":2,"server_epoch":"epoch-test","clean_slate_required":true}',
+    );
+    await Bun.sleep(0);
     const fileSocket = FakeWebSocket.instances[1];
     handles[0]?.close();
     fileSocket?.closed();

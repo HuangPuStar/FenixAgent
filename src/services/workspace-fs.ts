@@ -216,7 +216,7 @@ export async function resolveWorkspacePath(
   const userDir = join(workspaceDir, "user");
   await mkdir(userDir, { recursive: true });
 
-  const normalizedInput = relativePath.trim();
+  const normalizedInput = relativePath;
   const userScoped = isUserPath(normalizedInput);
   const baseDir = userScoped ? userDir : workspaceDir;
 

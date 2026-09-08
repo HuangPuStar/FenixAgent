@@ -13,7 +13,7 @@ import type { ToolNarrator } from "./types";
  */
 export const editNarrator: ToolNarrator = {
   kinds: ["edit"],
-  verb: "修改",
+  verb: "修改文件",
   icon: FilePen,
   getDisplay(ctx) {
     const display = ctx.tool.display;

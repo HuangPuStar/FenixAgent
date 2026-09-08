@@ -1037,7 +1037,7 @@ export const PromptInputSpeechButton = ({
           const newValue = currentValue + (currentValue ? " " : "") + finalTranscript;
 
           textarea.value = newValue;
-          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          textarea.dispatchEvent(new textarea.ownerDocument.defaultView!.Event("input", { bubbles: true }));
           onTranscriptionChange?.(newValue);
         }
       };

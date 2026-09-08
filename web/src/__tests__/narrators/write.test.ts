@@ -31,9 +31,9 @@ describe("writeNarrator", () => {
     expect(writeNarrator.kinds).toContain("write");
   });
 
-  // 中文动词必须是"写入"
-  test("verb 是 '写入'", () => {
-    expect(writeNarrator.verb).toBe("写入");
+  // 中文动作必须明确表达文件写入行为
+  test("verb 是 '写入文件'", () => {
+    expect(writeNarrator.verb).toBe("写入文件");
   });
 
   // 从 file_path 提取文件名作为 object

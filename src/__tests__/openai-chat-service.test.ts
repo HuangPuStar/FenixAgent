@@ -149,17 +149,25 @@ describe("startPromptTurn", () => {
 });
 
 describe("openAgentSession 失败回滚", () => {
-  let stopCalls: string[] = [];
   let closed = false;
   let handler: (msg: unknown) => void = () => {};
 
-  // 默认 fake 依赖：spawn 返回 inst-1，session/new 触发正常 result；用例可局部覆盖
+  // 默认 fake 依赖：解析并确保持久 inst-1，session/new 触发正常 result；用例可局部覆盖
   function defaultDeps() {
     return {
-      spawnInstanceViaController: async () => ({ instanceId: "inst-1" }) as never,
-      stopInstanceViaController: async (instanceId: string) => {
-        stopCalls.push(instanceId);
-      },
+      resolveInstance: async () =>
+        ({
+          id: "inst-1",
+          environmentId: "env-1",
+          ownerUserId: "user-1",
+          creationSource: "api",
+          name: "primary",
+          isDefault: false,
+          createdByUserId: "user-1",
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        }) as never,
+      ensureInstanceRuntime: async () => {},
       connectAgentRelay: async () => {
         const handle = makeMockRelayHandle({
           close: async () => {
@@ -193,7 +201,6 @@ describe("openAgentSession 失败回滚", () => {
   };
 
   beforeEach(() => {
-    stopCalls = [];
     closed = false;
     handler = () => {};
     // environment 查询返回已存在环境，走 openAgentSession 的 existing 分支，
@@ -215,8 +222,8 @@ describe("openAgentSession 失败回滚", () => {
     resetAllStubs();
   });
 
-  // connectAgentRelay 失败（如 relay ready reject）时必须回滚已 spawn 实例，否则泄漏至 idle 回收
-  test("connectAgentRelay 抛错时停止已 spawn 实例", async () => {
+  // relay 连接失败只释放本次调用资源，持久 runtime 继续供后续请求复用。
+  test("connectAgentRelay 抛错时保留持久 runtime", async () => {
     setAgentChatServiceDeps({
       connectAgentRelay: async () => {
         throw new Error("relay connect failed");
@@ -224,11 +231,10 @@ describe("openAgentSession 失败回滚", () => {
     });
 
     await expect(openAgentSession(openInput)).rejects.toThrow("relay connect failed");
-    expect(stopCalls).toEqual(["inst-1"]);
   });
 
-  // startPromptTurn 的 session/new 返回 rpc error 时必须先关闭 relay 再停止实例，防止会话中途失败泄漏
-  test("session/new rpc error 时关闭 relay 并停止实例", async () => {
+  // session/new 失败必须关闭本次 relay，但不能停止供其他请求共享的持久 runtime。
+  test("session/new rpc error 时只关闭 relay", async () => {
     setAgentChatServiceDeps({
       connectAgentRelay: async () => {
         const handle = makeMockRelayHandle({
@@ -255,15 +261,13 @@ describe("openAgentSession 失败回滚", () => {
     });
 
     await expect(openAgentSession(openInput)).rejects.toThrow("session create failed");
-    expect(stopCalls).toEqual(["inst-1"]);
     expect(closed).toBe(true);
   });
 
-  // 正常完成时不调用 stopInstanceViaController，防止过度回滚
-  test("正常路径不触发回滚", async () => {
+  // 正常完成返回持久 Instance uid 和可用 turn。
+  test("正常路径返回持久 Instance", async () => {
     const result = await openAgentSession(openInput);
     expect(result.instanceId).toBe("inst-1");
     expect(result.turn).toBeDefined();
-    expect(stopCalls).toEqual([]);
   });
 });

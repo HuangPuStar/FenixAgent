@@ -205,6 +205,17 @@ export function Graph2D({
     });
   }, [graphData.nodes, graphData.links, showLabels, isDarkMode, maxNodes]);
 
+  // 容器尺寸变化时只通知 Cytoscape 重算 viewport，不重置用户缩放与平移。
+  useEffect(() => {
+    if (!containerDiv) return;
+    const observer = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      if (cy && !cy.destroyed()) cy.resize();
+    });
+    observer.observe(containerDiv);
+    return () => observer.disconnect();
+  }, [containerDiv]);
+
   // Initialize Cytoscape
   useEffect(() => {
     let isCancelled = false;

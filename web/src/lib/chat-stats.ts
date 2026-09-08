@@ -72,7 +72,8 @@ export class ChatStatsDispatcher {
   }
 
   private emit(summary: ChatStatsSummary): void {
-    const sink = this.options.emit ?? ((s) => window.dispatchEvent(new CustomEvent("chat:stats", { detail: s })));
+    const sink =
+      this.options.emit ?? ((s) => window.dispatchEvent(new window.CustomEvent("chat:stats", { detail: s })));
     sink(summary);
   }
 }

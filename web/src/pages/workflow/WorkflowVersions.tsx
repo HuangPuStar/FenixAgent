@@ -8,8 +8,8 @@ import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
 import { workflowDefApi } from "../../api/workflow-defs";
-import { AgentPageHeader } from "../agent-panel/shared/AgentPageHeader";
 
 interface WorkflowVersionsProps {
   workflowId: string;
@@ -108,7 +108,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
   return (
     <div>
-      <AgentPageHeader
+      <AppHeader
         title={wf?.name ?? t("versions.title", { name: "" })}
         subtitle={wf?.description ?? undefined}
         actions={

@@ -40,12 +40,12 @@ import skillDownloadRoutes from "./routes/skills";
 import webApp from "./routes/web";
 import { workflowStaticApp } from "./routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "./services/acp-idle-monitor";
+import { agentInstanceService } from "./services/agent-instance-service";
 import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
 import { initCoreRuntime } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { getHermesClient, initHermesClient } from "./services/hermes-client";
-import { stopAllInstances } from "./services/instance";
 import { checkRagFlowHealth } from "./services/knowledge-provider/ragflow";
 import { setRuntimeCredentialResolver } from "./services/launch-spec-builder";
 import { createSystemModelGatewayProviderService } from "./services/model-gateway/provider-service";
@@ -172,7 +172,7 @@ const app = new Elysia({
   .use(createWebOpenApiPlugin(config.version))
   .derive(deriveRequestId)
   .onBeforeHandle(logRequest)
-  .onAfterResponse(logResponse)
+  .onAfterHandle(logResponse)
   .onAfterHandle(injectRequestId)
   // ctrlStaticPlugin 必须在 errorPlugin 之前 use：其 onError（/ctrl/* SPA fallback）
   // 在链中先执行，命中时返回 index.html 终止链；errorPlugin 对所有错误返回 JSON
@@ -293,21 +293,44 @@ app.listen({
 export default app;
 
 // Graceful shutdown
-async function gracefulShutdown(signal: string) {
-  startupLog.info(`Received ${signal}, shutting down...`);
-  const hermesClient = getHermesClient();
-  await hermesClient?.stop();
-  stopAcpIdleMonitor();
-  closeAllRelayConnections();
-  closeAllAcpConnections();
-  // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
-  stopFileWsSweep();
-  closeAllFileWsConnections();
-  await stopAllInstances();
-  schedulerService.stop();
-  await closeCache();
-  await pgClient.end();
-  process.exit(0);
+let gracefulShutdownPromise: Promise<void> | null = null;
+
+const SHUTDOWN_DEADLINE_MS = 10_000;
+
+function withShutdownDeadline<T>(promise: Promise<T>, phase: string, deadline: number): Promise<T | undefined> {
+  const remaining = Math.max(0, deadline - Date.now());
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => {
+        startupLog.error(`Shutdown phase timed out: ${phase}`);
+        resolve(undefined);
+      }, remaining).unref?.();
+    }),
+  ]);
+}
+
+function gracefulShutdown(signal: string): Promise<void> {
+  if (gracefulShutdownPromise) return gracefulShutdownPromise;
+  gracefulShutdownPromise = (async () => {
+    const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
+    startupLog.info(`Received ${signal}, shutting down...`);
+    const runtimeDrain = agentInstanceService.shutdownRuntimes();
+    schedulerService.stop();
+    const hermesClient = getHermesClient();
+    await withShutdownDeadline(hermesClient?.stop() ?? Promise.resolve(), "hermes", deadline);
+    stopAcpIdleMonitor();
+    closeAllRelayConnections();
+    closeAllAcpConnections();
+    // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
+    stopFileWsSweep();
+    closeAllFileWsConnections();
+    await withShutdownDeadline(runtimeDrain, "runtimes", deadline);
+    await withShutdownDeadline(closeCache(), "cache", deadline);
+    await withShutdownDeadline(pgClient.end(), "database", deadline);
+    process.exit(0);
+  })();
+  return gracefulShutdownPromise;
 }
 
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));

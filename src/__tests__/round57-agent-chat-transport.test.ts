@@ -68,7 +68,6 @@ function supplement(): InstanceSupplement {
     userId: "user-round57",
     organizationId: "org-round57",
     environmentId: "env-round57",
-    instanceNumber: 1,
     spawnSource: "system",
     lastActivityAt: Date.now() - 1_000,
     relayCount: 0,
@@ -195,7 +194,10 @@ describe("round57 AgentChatTransport 内存链路", () => {
   test("顶层 JSON-RPC error 转换为失败响应", async () => {
     const { session } = adapter([{ jsonrpc: "2.0", error: { message: "权限拒绝" } } as unknown as EngineRelayMessage]);
 
-    await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({ exit_code: 1, stdout: "[Error] 权限拒绝" });
+    await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({
+      exit_code: 1,
+      stdout: "[Error] Agent execution failed",
+    });
   });
 
   // result 内嵌 error 同样是 Agent 失败，且前序输出必须保留。
@@ -207,7 +209,7 @@ describe("round57 AgentChatTransport 内存链路", () => {
 
     await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({
       exit_code: 1,
-      stdout: "部分结果\n\n[Error] 工具失败",
+      stdout: "部分结果\n\n[Error] Agent execution failed",
     });
   });
 
@@ -230,7 +232,7 @@ describe("round57 AgentChatTransport 内存链路", () => {
 
     await expect(session.execute({ prompt: "x" })).resolves.toMatchObject({
       exit_code: 1,
-      stdout: "已输出\n\n[Error] relay 故障",
+      stdout: "已输出\n\n[Error] Agent execution failed",
     });
   });
 

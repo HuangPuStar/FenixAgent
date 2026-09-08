@@ -10,16 +10,11 @@ import { request } from "./request";
 
 /** 单个 Instance 信息（camelCase 转换后） */
 export interface InstanceInfo {
-  id: string;
-  port: number;
+  instanceUid: string;
+  environmentId: string;
+  name: string;
   status: string;
-  error: string | null;
-  groupId: string;
-  environmentId: string | null;
-  sessionId: string | null;
-  instanceNumber: number;
-  createdAt: number;
-  [key: string]: unknown;
+  createdAt: string;
 }
 
 // ── snake_case → camelCase 键名映射 ──
@@ -45,6 +40,14 @@ export const instanceApi = {
   /** 从环境启动新实例（POST /web/instances/from-environment） */
   spawn: (body: { environmentId: string }) =>
     camelResponse(request<InstanceInfo>("/web/instances/from-environment", { method: "POST", body })),
+
+  /** 停止 runtime，保留持久 Instance（POST /web/instances/:id/stop） */
+  stop: (params: { id: string }) =>
+    request<void>("/web/instances/:id/stop", { method: "POST", params: { id: params.id } }),
+
+  /** 使用同一持久 Instance uid 重启 runtime（POST /web/instances/:id/restart） */
+  restart: (params: { id: string }) =>
+    request<void>("/web/instances/:id/restart", { method: "POST", params: { id: params.id } }),
 
   /** 停止并删除指定实例（DELETE /web/instances/:id） */
   del: (params: { id: string }) => request<void>("/web/instances/:id", { method: "DELETE", params: { id: params.id } }),

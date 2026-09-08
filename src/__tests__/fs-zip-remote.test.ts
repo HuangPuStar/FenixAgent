@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setConfig } from "../config";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { contentDispositionAttachment } from "../routes/web/fs";
 import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
 import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "../test-utils/helpers";
 
@@ -54,6 +55,16 @@ function zipRequest(path: string): Request {
   return new Request(`http://localhost/environments/${ENV_ID}/fs/download-zip?path=${encodeURIComponent(path)}`);
 }
 
+describe("Content-Disposition", () => {
+  test("提供安全 ASCII fallback 和 RFC 5987 UTF-8 文件名", () => {
+    const header = contentDispositionAttachment('报告";\\.zip');
+    expect(header).toContain('filename="_____.zip"');
+    expect(header).toContain("filename*=UTF-8''%E6%8A%A5%E5%91%8A%22%3B%5C.zip");
+    expect(header).not.toContain("\r");
+    expect(header).not.toContain("\n");
+  });
+});
+
 describe("远程环境（stub file-ws 在线）", () => {
   beforeEach(() => {
     // 远程路由决策前置：machine 存在（W6 三分语义，machine 表存在性校验先于连接检查）
@@ -94,6 +105,26 @@ describe("远程环境（stub file-ws 在线）", () => {
     stubFileWsHandler({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "ok", data: oversized }),
+    });
+
+    const response = await fsRoutes.default.handle(zipRequest("user"));
+
+    expect(response.status).toBe(413);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "payload_too_large", message: REMOTE_ZIP_LIMIT_MESSAGE },
+    });
+  });
+
+  test("机器端结构化超限错误 → HTTP 413", async () => {
+    // 机器端在生成过程中发现超限时不再退化成 503；稳定 errorCode/statusCode 跨协议映射。
+    stubFileWsHandler({
+      isFileWsConnected: () => true,
+      sendFileOpAndWait: async () => ({
+        status: "error",
+        error: "ZIP archive exceeds 20MB; select a smaller directory",
+        errorCode: "payload_too_large",
+        statusCode: 413,
+      }),
     });
 
     const response = await fsRoutes.default.handle(zipRequest("user"));

@@ -166,18 +166,18 @@ async function handleSet(ctx: AuthContext, name: string, data: Record<string, un
     }
   }
 
-  await configPg.upsertProvider(
-    ctx,
-    name,
-    {
-      displayName,
-      protocol,
-      baseUrl,
-      apiKey,
-      extraOptions: Object.keys(extraOptions).length > 0 ? extraOptions : undefined,
-    },
-    { publicReadable },
-  );
+  const providerData = {
+    displayName,
+    protocol,
+    baseUrl,
+    apiKey,
+    extraOptions: Object.keys(extraOptions).length > 0 ? extraOptions : undefined,
+  };
+  if (existing) {
+    await configPg.updateProviderById(ctx, existing.id, providerData, { publicReadable });
+  } else {
+    await configPg.upsertProvider(ctx, name, providerData, { publicReadable });
+  }
 
   // 处理 models（如果有）
   if (data.models && typeof data.models === "object") {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getHermesClient, HermesClient, initHermesClient } from "../services/hermes-client";
+import { getHermesClient, HermesClient, initHermesClient, resetHermesClient } from "../services/hermes-client";
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -64,6 +64,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  await resetHermesClient();
   await Promise.all(clients.splice(0).map((client) => client.stop()));
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: originalWebSocket });
   if (originalPlatforms === undefined) delete process.env.HERMES_PLATFORMS;

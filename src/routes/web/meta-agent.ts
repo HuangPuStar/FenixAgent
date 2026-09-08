@@ -31,8 +31,10 @@ app.post(
       return { success: true, data: result };
     } catch (err: unknown) {
       logger.error("ensure failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      return error(500, { success: false, error: { code: "INTERNAL_ERROR", message } });
+      return error(500, {
+        success: false,
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+      });
     }
   },
   {

@@ -2,11 +2,11 @@ import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
-import { environmentRepo } from "../../repositories";
+import { type AgentInstanceRecord, environmentRepo } from "../../repositories";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
+import { agentInstanceService } from "../../services/agent-instance-service";
 import { eventService } from "../../services/event-service";
-import { parseInstanceSessionId } from "../../services/instance-session";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
 
@@ -38,11 +38,12 @@ async function checkOwnership(
       response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
     };
   }
-  // 验证 session 所属环境属于当前组织。
-  // agent_session 表已废弃，环境归属从确定性会话 ID（ses_inst_{environmentId}_{instanceNumber}）解析；
-  // 无法解析（历史 session_* 格式或任意 ID）时保守拒绝，防止跨组织/伪造会话标识访问。
-  const parsed = parseInstanceSessionId(resolvedSessionId);
-  if (!parsed) {
+  // control 的资源标识是持久 instanceUid。先按当前用户查询实例，再通过环境回查组织归属；
+  // 任一边界不匹配均保守拒绝，避免依赖可伪造的 session ID 编码推导身份。
+  let instance: AgentInstanceRecord;
+  try {
+    instance = await agentInstanceService.getOwnedInstance(resolvedSessionId, userId);
+  } catch {
     return {
       error: true,
       response: errorFn(403, {
@@ -51,7 +52,7 @@ async function checkOwnership(
       }),
     };
   }
-  const env = await environmentRepo.getById(parsed.environmentId);
+  const env = await environmentRepo.getById(instance.environmentId);
   if (!env) {
     return {
       error: true,

@@ -1,0 +1,254 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: dialog selectors target separate component blocks and do not overlap. */
+.model-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+.model-form-grid > label,
+.model-form-grid fieldset {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.model-form-grid input,
+.model-form-grid select {
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 10px;
+  outline: 0;
+  color: var(--ink);
+  background: #f3f6fa;
+  font-size: 13px;
+}
+.model-form-grid input:focus,
+.model-form-grid select:focus {
+  box-shadow: inset 0 0 0 1px var(--blue-500);
+}
+.model-form-grid input:disabled {
+  color: var(--muted);
+  background: #eef1f5;
+}
+.model-form-grid .is-wide {
+  grid-column: 1 / -1;
+}
+.model-form-grid > p {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #61718b;
+  background: var(--model-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.model-form-grid > p svg {
+  width: 11px;
+  flex: 0 0 11px;
+}
+.provider-probe {
+  border-radius: 8px;
+  padding: 10px;
+  background: #f7f9fc;
+}
+.provider-probe > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.provider-probe > header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.provider-probe strong {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.provider-probe header span {
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 12px;
+}
+.provider-probe header button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--blue-700);
+  background: var(--blue-100);
+  font-size: 12px;
+}
+.provider-probe > div {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+}
+.provider-probe > div > button {
+  display: grid;
+  min-height: 29px;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 7px;
+  color: var(--muted);
+  background: #fff;
+  text-align: left;
+}
+.provider-probe > div > button.is-selected {
+  color: var(--blue-700);
+  background: var(--blue-050);
+}
+.provider-probe > div span {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 4px;
+  background: #eef2f7;
+}
+.provider-probe > div svg {
+  width: 9px;
+}
+.provider-probe > div code {
+  font-size: 12px;
+}
+.provider-probe > p {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--red);
+  background: var(--red-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.provider-probe > p svg {
+  width: 12px;
+  flex: 0 0 12px;
+}
+.model-form-grid .thinking-toggle {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 9px;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f7f9fc;
+}
+.thinking-toggle > button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.thinking-toggle span {
+  display: flex;
+  flex-direction: column;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.thinking-toggle small {
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+.discover-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.discovered-models {
+  display: grid;
+  gap: 4px;
+}
+.discovered-models > button {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: #f7f9fc;
+  text-align: left;
+}
+.discovered-models > button.is-selected {
+  color: var(--blue-700);
+  background: var(--blue-050);
+}
+.discovered-models svg {
+  width: 12px;
+}
+.discovered-models code {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.discovered-models > button > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 6px;
+  background: #fff;
+}
+.resource-confirm {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  border-radius: 8px;
+  padding: 13px;
+  color: var(--blue-600);
+  background: var(--blue-050);
+}
+.resource-confirm.is-danger {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.resource-confirm > svg {
+  width: 22px;
+}
+.resource-confirm strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+.resource-confirm p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+@keyframes model-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 760px) {
+  .model-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .model-form-grid .is-wide {
+    grid-column: auto;
+  }
+}

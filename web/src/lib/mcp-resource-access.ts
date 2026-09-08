@@ -32,6 +32,7 @@ export function getMcpResourceBadgeKey(server: McpResourceLike) {
 }
 
 export function getMcpDisplayName(server: McpResourceLike) {
-  const source = server.resourceAccess?.sourceOrganizationName;
-  return source ? `${source}/${server.name}` : server.name;
+  const sourceOrganizationName = server.resourceAccess?.sourceOrganizationName;
+  if (sourceOrganizationName) return `${sourceOrganizationName}/${server.name}`;
+  return server.name;
 }

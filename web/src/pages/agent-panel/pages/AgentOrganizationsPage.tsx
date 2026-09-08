@@ -1,121 +1,72 @@
 import { useRequest } from "ahooks";
-import { Check, Copy, Monitor, Plus, RefreshCw, Shield, ShieldCheck, Trash2, User, UserPlus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
+import { type OrgMember, type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
 import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { useSession } from "@/src/lib/auth-client";
 import { useOrg } from "../../../contexts/OrgContext";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
+import { OrganizationsDialogs } from "./agent-organizations-dialogs";
+import "./agent-organizations.css";
+import type { MachineCreateResult, MachineFormState, OrganizationListItem } from "./agent-organizations-types";
+import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
+import { OrganizationsWorkspace } from "./agent-organizations-workspace";
 
-interface OrgMember {
-  id: string;
-  userId: string;
-  role: string;
-  user: { id: string; name: string; email: string; phoneNumber?: string | null; image?: string };
-}
-
-function RoleBadge({ role }: { role: string }) {
-  const { t } = useTranslation("orgs");
-  const variant = role === "owner" ? "default" : role === "admin" ? "secondary" : "outline";
-  return <Badge variant={variant}>{t(`roles.${role}`, role)}</Badge>;
-}
-
-function RoleIcon({ role }: { role: string }) {
-  if (role === "owner") return <Shield className="w-3.5 h-3.5 text-yellow-500" />;
-  if (role === "admin") return <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />;
-  return <User className="w-3.5 h-3.5 text-text-dim" />;
-}
-
-function nameToSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 50);
-}
+const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "opencode" };
 
 export function AgentOrganizationsPage() {
   const { t } = useTranslation("orgs");
   const { org: currentOrg, refreshOrgs } = useOrg();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id ?? null;
-
-  // 默认引擎设置
-  const [defaultMachineId, setDefaultMachineId] = useState<string>("local");
-  const [engineDirty, setEngineDirty] = useState(false);
-  const [savingEngine, setSavingEngine] = useState(false);
-
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [formName, setFormName] = useState("");
   const [formSlug, setFormSlug] = useState("");
-  const [formDesc, setFormDesc] = useState("");
-
-  const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [addMemberKeyword, setAddMemberKeyword] = useState("");
-  const [debouncedAddMemberKeyword, setDebouncedAddMemberKeyword] = useState("");
-  const [selectedCandidates, setSelectedCandidates] = useState<OrgMemberCandidate[]>([]);
-  const [addMemberRole, setAddMemberRole] = useState("member");
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  // 待移除的成员：非空即打开二次确认弹窗，避免误删
-  const [removeMemberTarget, setRemoveMemberTarget] = useState<OrgMember | null>(null);
-
-  const [copiedId, setCopiedId] = useState(false);
-
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState("");
-
-  // 新增机器弹窗
+  const [copiedId, setCopiedId] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteKeyword, setInviteKeyword] = useState("");
+  const [debouncedInviteKeyword, setDebouncedInviteKeyword] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<OrgMemberCandidate[]>([]);
+  const [inviteRole, setInviteRole] = useState("member");
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<OrgMember | null>(null);
+  const [defaultMachineId, setDefaultMachineId] = useState("local");
+  const [engineDirty, setEngineDirty] = useState(false);
+  const [savingEngine, setSavingEngine] = useState(false);
   const [machineCreateOpen, setMachineCreateOpen] = useState(false);
   const [machineEditOpen, setMachineEditOpen] = useState(false);
   const [machineDeleteTarget, setMachineDeleteTarget] = useState<MachineRecord | null>(null);
   const [machineEditTarget, setMachineEditTarget] = useState<MachineRecord | null>(null);
-  const [machineFormName, setMachineFormName] = useState("");
-  const [machineFormLabels, setMachineFormLabels] = useState("");
-  const [machineFormAgentName, setMachineFormAgentName] = useState("opencode");
-  const [machineCreateResult, setMachineCreateResult] = useState<{
-    id: string;
-    name: string;
-    initCommand: string;
-  } | null>(null);
+  const [machineForm, setMachineForm] = useState<MachineFormState>(EMPTY_MACHINE_FORM);
+  const [machineCreateResult, setMachineCreateResult] = useState<MachineCreateResult | null>(null);
 
-  // 组织列表
-  const { data: myOrgsRaw = [], refresh: reloadOrgs } = useRequest(() => unwrap(orgApi.list()), {
-    onError: (err) => {
-      console.error(err);
+  const { data: organizationsRaw = [], refresh: reloadOrganizations } = useRequest(() => unwrap(orgApi.list()), {
+    onError: (error) => {
+      console.error("Failed to load organizations", error);
+      toast.error(t("toast.loadDetailFailed"));
     },
   });
-  const myOrgs = myOrgsRaw as unknown as { id: string; name: string; slug: string; role: string }[];
-
-  // 组织详情（跟随选中变化）
+  const organizations = organizationsRaw as OrganizationListItem[];
   const {
     data: detail,
     loading: detailLoading,
     refresh: refreshDetail,
-  } = useRequest(() => unwrap(orgApi.get(selectedOrgId!)), { ready: !!selectedOrgId, refreshDeps: [selectedOrgId] });
-
-  // 机器列表（跟随选中组织变化）
+  } = useRequest(() => unwrap(orgApi.get(selectedOrgId!)), {
+    ready: !!selectedOrgId,
+    refreshDeps: [selectedOrgId],
+    onError: (error) => {
+      console.error("Failed to load organization detail", error);
+      toast.error(t("toast.loadDetailFailed"));
+    },
+  });
   const {
     data: machinesResponse,
     loading: machinesLoading,
@@ -125,44 +76,178 @@ export function AgentOrganizationsPage() {
     refreshDeps: [selectedOrgId],
   });
   const machines = machinesResponse?.items ?? [];
+  const members = detail?.members ?? [];
+  const selectedRole = organizations.find((organization) => organization.id === selectedOrgId)?.role;
+  const canManage = selectedRole === "owner" || selectedRole === "admin";
+  const isOwner = selectedRole === "owner";
 
-  // 新增机器
-  const { run: runCreateMachine, loading: createMachineLoading } = useRequest(
-    (name: string, labels: string[], agentName: string) => unwrap(registryApi.create({ name, labels, agentName })),
+  useEffect(() => {
+    if (selectedOrgId) return;
+    setSelectedOrgId(currentOrg?.id ?? organizations[0]?.id ?? null);
+  }, [currentOrg, organizations, selectedOrgId]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedInviteKeyword(inviteKeyword.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [inviteKeyword]);
+  useEffect(() => {
+    if (!detail) return;
+    setDefaultMachineId(readDefaultMachineId(detail.metadata));
+    setEngineDirty(false);
+  }, [detail]);
+
+  const resetCreateOrganization = useCallback(() => {
+    setFormName("");
+    setFormSlug("");
+  }, []);
+  const resetInvite = useCallback(() => {
+    setInviteKeyword("");
+    setDebouncedInviteKeyword("");
+    setSelectedCandidates([]);
+    setInviteRole("member");
+  }, []);
+  const resetMachine = useCallback(() => {
+    setMachineForm(EMPTY_MACHINE_FORM);
+    setMachineEditTarget(null);
+    setMachineCreateResult(null);
+  }, []);
+
+  const { run: runCreate, loading: createLoading } = useRequest(
+    (name: string, slug: string) => unwrap(orgApi.create({ name: name.trim(), slug: slug || nameToSlug(name) })),
     {
       manual: true,
-      onSuccess: (data) => {
-        setMachineCreateResult({ id: data.id, name: data.name, initCommand: data.initCommand });
+      onSuccess: (organization) => {
+        toast.success(t("toast.createSuccess"));
+        setCreateOpen(false);
+        resetCreateOrganization();
+        reloadOrganizations();
+        refreshOrgs();
+        setSelectedOrgId(organization.id);
+      },
+      onError: (error) => {
+        console.error("Failed to create organization", error);
+        toast.error(t("toast.createFailed"));
+      },
+    },
+  );
+  const { run: runUpdateName, loading: updateNameLoading } = useRequest(
+    (name: string) => unwrap(orgApi.update(selectedOrgId!, { name: name.trim() })),
+    {
+      manual: true,
+      onSuccess: () => {
+        setEditingName(false);
+        refreshDetail();
+        reloadOrganizations();
+        refreshOrgs();
+      },
+      onError: (error) => {
+        console.error("Failed to update organization", error);
+        toast.error(t("toast.updateFailed"));
+      },
+    },
+  );
+  const { data: memberCandidates = [], loading: memberCandidatesLoading } = useRequest(
+    () => unwrap(orgApi.searchMemberCandidates(selectedOrgId!, debouncedInviteKeyword)),
+    {
+      ready: inviteOpen && !!selectedOrgId && debouncedInviteKeyword.length >= 3,
+      refreshDeps: [inviteOpen, selectedOrgId, debouncedInviteKeyword],
+    },
+  );
+  const { run: runAddMember, loading: inviteLoading } = useRequest(
+    (candidates: OrgMemberCandidate[], role: string) =>
+      unwrap(orgApi.addMember(selectedOrgId!, { userIds: candidates.map((candidate) => candidate.id), role })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.inviteSent"));
+        setInviteOpen(false);
+        resetInvite();
+        refreshDetail();
+      },
+      onError: (error) => {
+        console.error("Failed to add organization members", error);
+        toast.error(error instanceof Error ? error.message : t("toast.inviteFailed"));
+      },
+    },
+  );
+  const { run: runRemoveMember, loading: removeMemberLoading } = useRequest(
+    (memberId: string) => unwrap(orgApi.removeMember(selectedOrgId!, memberId)),
+    {
+      manual: true,
+      onSuccess: () => {
+        setRemoveMemberTarget(null);
+        refreshDetail();
+      },
+      onError: (error) => {
+        console.error("Failed to remove member", error);
+        toast.error(t("toast.removeFailed"));
+      },
+    },
+  );
+  const { run: runUpdateRole } = useRequest(
+    (memberId: string, role: string) => unwrap(orgApi.updateRole(selectedOrgId!, memberId, role)),
+    {
+      manual: true,
+      onSuccess: refreshDetail,
+      onError: (error) => {
+        console.error("Failed to update member role", error);
+        toast.error(t("toast.roleUpdateFailed"));
+      },
+    },
+  );
+  const { run: runDelete, loading: deleteLoading } = useRequest(() => unwrap(orgApi.del(selectedOrgId!)), {
+    manual: true,
+    onSuccess: () => {
+      setDeleteOpen(false);
+      setSelectedOrgId(null);
+      reloadOrganizations();
+      refreshOrgs();
+    },
+    onError: (error) => {
+      console.error("Failed to delete organization", error);
+      toast.error(t("toast.deleteFailed"));
+    },
+  });
+
+  const { run: runCreateMachine, loading: createMachineLoading } = useRequest(
+    (form: MachineFormState) =>
+      unwrap(
+        registryApi.create({ name: form.name.trim(), labels: parseLabels(form.labels), agentName: form.agentName }),
+      ),
+    {
+      manual: true,
+      onSuccess: (result) => {
+        setMachineCreateResult(result);
         refreshMachines();
       },
-      onError: (err) => {
-        console.error(err);
+      onError: (error) => {
+        console.error("Failed to create machine", error);
         toast.error(t("toast.machineCreateFailed"));
       },
     },
   );
-
   const { run: runUpdateMachine, loading: updateMachineLoading } = useRequest(
-    (machineId: string, name: string, labels: string[], agentName: string) =>
-      unwrap(registryApi.update(machineId, { name, labels, agentName })),
+    (machineId: string, form: MachineFormState) =>
+      unwrap(
+        registryApi.update(machineId, {
+          name: form.name.trim(),
+          labels: parseLabels(form.labels),
+          agentName: form.agentName,
+        }),
+      ),
     {
       manual: true,
       onSuccess: () => {
         toast.success(t("toast.machineUpdateSuccess"));
         setMachineEditOpen(false);
-        setMachineEditTarget(null);
-        setMachineFormName("");
-        setMachineFormLabels("");
-        setMachineFormAgentName("opencode");
+        resetMachine();
         refreshMachines();
       },
-      onError: (err) => {
-        console.error(err);
-        toast.error(err instanceof Error ? err.message : t("toast.machineUpdateFailed"));
+      onError: (error) => {
+        console.error("Failed to update machine", error);
+        toast.error(error instanceof Error ? error.message : t("toast.machineUpdateFailed"));
       },
     },
   );
-
   const { run: runDeleteMachine, loading: deleteMachineLoading } = useRequest(
     (machineId: string) => unwrap(registryApi.remove(machineId)),
     {
@@ -172,1034 +257,183 @@ export function AgentOrganizationsPage() {
         setMachineDeleteTarget(null);
         refreshMachines();
       },
-      onError: (err) => {
-        console.error(err);
-        toast.error(err instanceof Error ? err.message : t("toast.machineDeleteFailed"));
+      onError: (error) => {
+        console.error("Failed to delete machine", error);
+        toast.error(error instanceof Error ? error.message : t("toast.machineDeleteFailed"));
       },
     },
   );
-
-  // 首次加载时自动选中当前活跃组织
-  useEffect(() => {
-    if (!selectedOrgId && currentOrg?.id) {
-      setSelectedOrgId(currentOrg.id);
-    }
-  }, [selectedOrgId, currentOrg]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedAddMemberKeyword(addMemberKeyword.trim());
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [addMemberKeyword]);
-
-  const selectedOrgRole = myOrgs.find((o) => o.id === selectedOrgId)?.role;
-  const canManage = selectedOrgRole === "owner" || selectedOrgRole === "admin";
-  const isOwner = selectedOrgRole === "owner";
-
-  useEffect(() => {
-    if (!detail) return;
-    const metadata = (detail as unknown as Record<string, unknown>).metadata as
-      | { defaultEngine?: { machineId?: string } }
-      | null
-      | undefined;
-    const def = metadata?.defaultEngine;
-    setDefaultMachineId(def?.machineId || "local");
-    setEngineDirty(false);
-  }, [detail]);
-
-  const handleCopyId = useCallback(() => {
-    if (!selectedOrgId) return;
-    navigator.clipboard.writeText(selectedOrgId);
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 2000);
-  }, [selectedOrgId]);
-
-  // 创建组织
-  const { run: runCreate, loading: createLoading } = useRequest(
-    async (name: string, slug: string) => unwrap(orgApi.create({ name: name.trim(), slug: slug || nameToSlug(name) })),
-    {
-      manual: true,
-      onSuccess: (data) => {
-        toast.success(t("toast.createSuccess"));
-        setCreateOpen(false);
-        setFormName("");
-        setFormSlug("");
-        setFormDesc("");
-        reloadOrgs();
-        refreshOrgs();
-        setSelectedOrgId(data.id);
-      },
-      onError: (err) => {
-        console.error(err);
-        toast.error(t("toast.createFailed"));
-      },
-    },
-  );
-
-  // 更新组织名称（静默操作）
-  const { run: runUpdateName, loading: updateNameLoading } = useRequest(
-    (name: string) => unwrap(orgApi.update(selectedOrgId!, { name: name.trim() })),
-    {
-      manual: true,
-      onSuccess: () => {
-        setEditingName(false);
-        refreshDetail();
-        reloadOrgs();
-        refreshOrgs();
-      },
-      onError: (err) => {
-        console.error(err);
-        toast.error(t("toast.updateFailed"));
-      },
-    },
-  );
-
-  // 添加成员
-  const { data: memberCandidates = [], loading: memberCandidatesLoading } = useRequest(
-    () => unwrap(orgApi.searchMemberCandidates(selectedOrgId!, debouncedAddMemberKeyword)),
-    {
-      ready: addMemberOpen && !!selectedOrgId && debouncedAddMemberKeyword.length >= 3,
-      refreshDeps: [addMemberOpen, selectedOrgId, debouncedAddMemberKeyword],
-    },
-  );
-
-  const { run: runAddMember, loading: addMemberLoading } = useRequest(
-    (candidates: OrgMemberCandidate[], role: string) =>
-      unwrap(orgApi.addMember(selectedOrgId!, { userIds: candidates.map((candidate) => candidate.id), role })),
-    {
-      manual: true,
-      onSuccess: () => {
-        toast.success(t("toast.inviteSent"));
-        setAddMemberOpen(false);
-        setAddMemberKeyword("");
-        setDebouncedAddMemberKeyword("");
-        setSelectedCandidates([]);
-        refreshDetail();
-      },
-      onError: (err) => {
-        console.error(err);
-        toast.error(err.message || t("toast.inviteFailed"));
-      },
-    },
-  );
-
-  // 移除成员（经二次确认后执行）
-  const { run: runRemoveMember, loading: removeMemberLoading } = useRequest(
-    (userId: string) => unwrap(orgApi.removeMember(selectedOrgId!, userId)),
-    {
-      manual: true,
-      onSuccess: () => {
-        setRemoveMemberTarget(null);
-        refreshDetail();
-      },
-      onError: (err) => {
-        console.error(err);
-        toast.error(t("toast.removeFailed"));
-      },
-    },
-  );
-
-  // 更新角色（静默操作）
-  const { run: runUpdateRole } = useRequest(
-    (userId: string, newRole: string) => unwrap(orgApi.updateRole(selectedOrgId!, userId, newRole)),
-    {
-      manual: true,
-      onSuccess: () => {
-        refreshDetail();
-      },
-      onError: (err) => {
-        console.error(err);
-        toast.error(t("toast.roleUpdateFailed"));
-      },
-    },
-  );
-
-  // 删除组织（静默操作）
-  const { run: runDelete, loading: deleteLoading } = useRequest(() => unwrap(orgApi.del(selectedOrgId!)), {
-    manual: true,
-    onSuccess: () => {
-      setDeleteOpen(false);
-      reloadOrgs();
-      setSelectedOrgId(null);
-      refreshOrgs();
-    },
-    onError: (err) => {
-      console.error(err);
-      toast.error(t("toast.deleteFailed"));
-    },
-  });
 
   const saveDefaultEngine = useCallback(async () => {
     if (!selectedOrgId || !detail) return;
     setSavingEngine(true);
     try {
-      const metadata = {
-        ...(((detail as unknown as Record<string, unknown>).metadata as Record<string, unknown>) || {}),
-        defaultEngine: {
-          machineId: defaultMachineId === "local" ? "" : defaultMachineId,
-        },
-      };
       await unwrap(
         orgApi.updateMetadata(selectedOrgId, {
           name: detail.name,
           slug: detail.slug,
-          metadata,
+          metadata: {
+            ...(detail.metadata ?? {}),
+            defaultEngine: { machineId: defaultMachineId === "local" ? "" : defaultMachineId },
+          },
         }),
       );
       toast.success(t("toast.updateSuccess"));
       setEngineDirty(false);
       refreshDetail();
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error("Failed to update default engine", error);
       toast.error(t("toast.updateFailed"));
     } finally {
       setSavingEngine(false);
     }
-  }, [selectedOrgId, detail, defaultMachineId, refreshDetail, t]);
+  }, [defaultMachineId, detail, refreshDetail, selectedOrgId, t]);
 
-  const members = (detail?.members ?? []) as unknown as OrgMember[];
-  const showCandidateResults = debouncedAddMemberKeyword.length >= 3;
-
-  function canOperateMachine(machineRecord: MachineRecord): boolean {
-    if (!canManage || !selectedOrgId || !currentUserId) return false;
-    if (machineRecord.organizationId !== selectedOrgId) return false;
-    return machineRecord.userId === null || machineRecord.userId === currentUserId;
-  }
-
-  function resetMachineForm() {
-    setMachineFormName("");
-    setMachineFormLabels("");
-    setMachineFormAgentName("opencode");
-  }
-
-  function openCreateMachineDialog() {
-    setMachineCreateResult(null);
-    resetMachineForm();
-    setMachineCreateOpen(true);
-  }
-
-  function openEditMachineDialog(machineRecord: MachineRecord) {
-    if (!canOperateMachine(machineRecord)) return;
-    setMachineEditTarget(machineRecord);
-    setMachineFormName(machineRecord.name ?? "");
-    setMachineFormLabels((machineRecord.labels ?? []).filter(Boolean).join(", "));
-    setMachineFormAgentName(machineRecord.agentName);
-    setMachineEditOpen(true);
-  }
+  const handleCopyId = useCallback(() => {
+    if (!selectedOrgId) return;
+    navigator.clipboard.writeText(selectedOrgId);
+    setCopiedId(true);
+    window.setTimeout(() => setCopiedId(false), 2000);
+  }, [selectedOrgId]);
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <AgentPageHeader
+    <AppPage className="agent-organizations-page">
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-1.5" />
+            <Plus className="size-4" />
             {t("createDialog.title")}
           </Button>
         }
       />
-      <div className="flex flex-1 min-h-0">
-        {/* Left: org list */}
-        <div className="w-[260px] border-r border-border-subtle flex flex-col">
-          <div className="flex-1 overflow-y-auto py-2">
-            {myOrgs.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => setSelectedOrgId(o.id)}
-                className={[
-                  "flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm transition-colors duration-100",
-                  o.id === selectedOrgId
-                    ? "bg-brand-subtle text-brand-light font-medium border-l-2 border-brand"
-                    : "text-text-secondary hover:bg-surface-hover",
-                ].join(" ")}
-              >
-                <RoleIcon role={o.role} />
-                <span className="truncate">{o.name}</span>
-                <span className="ml-auto text-[11px] text-text-dim">
-                  {t(`roles.${o.role ?? "member"}`, o.role ?? "member")}
-                </span>
-              </button>
-            ))}
-            {myOrgs.length === 0 && <p className="px-4 py-6 text-sm text-text-dim text-center">{t("noOrgs")}</p>}
-          </div>
-        </div>
-
-        {/* Right: org detail */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {detailLoading && (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-                <Skeleton key={i} className="h-16 w-full rounded-lg" />
-              ))}
-            </div>
-          )}
-
-          {!detailLoading && !detail && (
-            <div className="flex flex-col items-center justify-center h-64 text-text-dim">
-              <p className="text-sm">{t("selectOrg")}</p>
-            </div>
-          )}
-
-          {!detailLoading && detail && (
-            <div className="max-w-[720px] mx-auto space-y-6">
-              {/* Org info */}
-              <div className="space-y-3">
-                {editingName ? (
-                  <div className="space-y-3">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder={t("editName.placeholder")}
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          if (editName.trim()) runUpdateName(editName);
-                        }}
-                        disabled={updateNameLoading}
-                      >
-                        {updateNameLoading ? t("saving") : t("save")}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditingName(false)}>
-                        {t("cancel")}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold text-text-bright">{detail.name}</h2>
-                      <p className="text-sm text-text-dim mt-0.5">{detail.slug}</p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-xs text-text-dim">{t("orgId")}:</span>
-                        <code className="text-xs text-text-secondary bg-surface-hover px-1.5 py-0.5 rounded font-mono">
-                          {detail.id}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={handleCopyId}
-                          className="text-text-dim hover:text-text-secondary transition-colors"
-                          title={t("copyId")}
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
-                        {copiedId && <span className="text-xs text-green-500">{t("copied")}</span>}
-                      </div>
-                    </div>
-                    {canManage && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditName(detail.name);
-                          setEditingName(true);
-                        }}
-                      >
-                        {t("edit")}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Members */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-text-primary">{t("members", { count: members.length })}</h3>
-                  {canManage && (
-                    <Button size="sm" variant="outline" onClick={() => setAddMemberOpen(true)}>
-                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                      {t("inviteMember")}
-                    </Button>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  {members.map((m) => (
-                    <div
-                      key={m.id}
-                      className="group flex items-center gap-3 rounded-lg border border-border-light bg-surface-1 px-4 py-2.5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text-bright">{m.user?.name || m.userId}</span>
-                          <RoleBadge role={m.role} />
-                        </div>
-                        <p className="text-xs text-text-dim mt-0.5">{m.user?.email || "-"}</p>
-                        <p className="text-xs text-text-dim mt-0.5">{m.user?.phoneNumber || "-"}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {isOwner && m.role !== "owner" && (
-                          <select
-                            value={m.role}
-                            onChange={(e) => runUpdateRole(m.id, e.target.value)}
-                            className="text-xs border border-border-subtle rounded px-1.5 py-0.5 bg-transparent text-text-secondary"
-                          >
-                            <option value="admin">{t("roles.admin")}</option>
-                            <option value="member">{t("roles.member")}</option>
-                          </select>
-                        )}
-                        {canManage && m.role !== "owner" && (
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            className="text-text-dim hover:text-destructive"
-                            onClick={() => setRemoveMemberTarget(m)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {members.length === 0 && <p className="text-sm text-text-dim text-center py-4">{t("noMembers")}</p>}
-                </div>
-              </div>
-
-              {/* 默认引擎设置 — 仅 owner 可见 */}
-              {isOwner && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-text-primary">{t("defaultEngine", "默认引擎")}</h3>
-                  <div className="rounded-lg border border-border-light bg-surface-1 px-4 py-3 space-y-3">
-                    <div className="flex items-center gap-4">
-                      <label className="text-xs text-text-secondary w-20 shrink-0">
-                        {t("form.machine", "执行节点")}
-                      </label>
-                      <select
-                        className="flex-1 rounded-md border border-border-light bg-surface-2 px-3 py-1.5 text-sm text-text-primary"
-                        value={defaultMachineId}
-                        onChange={(e) => {
-                          setDefaultMachineId(e.target.value);
-                          setEngineDirty(true);
-                        }}
-                      >
-                        <option value="local">{t("form.machineLocal", "本地")}</option>
-                        {machines.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name || (m.machineInfo as { hostname?: string } | null)?.hostname || m.agentName} (
-                            {m.id.slice(0, 8)}){" "}
-                            {m.status === "online"
-                              ? t("machineStatus.online", "在线")
-                              : t("machineStatus.offline", "离线")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {engineDirty && (
-                      <div className="flex gap-2 pt-1">
-                        <Button size="sm" onClick={saveDefaultEngine} disabled={savingEngine}>
-                          {savingEngine ? t("saving") : t("save")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const metadata = (detail as unknown as Record<string, unknown>).metadata as
-                              | { defaultEngine?: { machineId?: string } }
-                              | null
-                              | undefined;
-                            const def = metadata?.defaultEngine;
-                            setDefaultMachineId(def?.machineId || "local");
-                            setEngineDirty(false);
-                          }}
-                        >
-                          {t("cancel")}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Machines */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    {t("machines", { count: machines.length })}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    {canManage && (
-                      <Button size="sm" variant="outline" onClick={openCreateMachineDialog}>
-                        <Plus className="w-3.5 h-3.5 mr-1.5" />
-                        {t("addMachine")}
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={refreshMachines} disabled={machinesLoading}>
-                      <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${machinesLoading ? "animate-spin" : ""}`} />
-                      {machinesLoading ? t("machineRefreshing") : t("machineRefresh")}
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  {machines.map((m: MachineRecord) => {
-                    const isOnline = m.status === "online";
-                    const hostname = (m.machineInfo?.hostname as string | undefined) ?? m.agentName;
-                    const canOperateCurrentMachine = canOperateMachine(m);
-                    return (
-                      <div
-                        key={m.id}
-                        className="group flex items-center gap-3 rounded-lg border border-border-light bg-surface-1 px-4 py-2.5"
-                      >
-                        <Monitor className="w-4 h-4 text-text-dim shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-text-bright truncate">{m.name ?? hostname}</span>
-                            <Badge variant={isOnline ? "default" : "outline"}>
-                              {t(`machineStatus.${isOnline ? "online" : "offline"}`)}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5 text-xs text-text-dim">
-                            <span>
-                              {t("machineAgent")}: <code className="font-mono">{m.agentName}</code>
-                            </span>
-                            {hostname && (
-                              <span>
-                                {t("machineHost")}: {hostname}
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 text-xs text-text-dim">
-                            {t("machineId")}: <code className="font-mono">{m.id}</code>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="text-text-dim hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                          onClick={() => {
-                            navigator.clipboard.writeText(m.id);
-                            toast.success(t("copied"));
-                          }}
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </Button>
-                        {canOperateCurrentMachine && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              className="text-text-dim hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                              onClick={() => openEditMachineDialog(m)}
-                            >
-                              {t("edit")}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              className="text-text-dim hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                              onClick={() => {
-                                if (!canOperateCurrentMachine) return;
-                                setMachineDeleteTarget(m);
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </>
-                        )}
-                        {m.labels && m.labels.length > 0 && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            {m.labels
-                              .filter((l) => l !== "remote-runtime")
-                              .map((l) => (
-                                <Badge key={l} variant="secondary" className="text-[10px]">
-                                  {l}
-                                </Badge>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {machines.length === 0 && !machinesLoading && (
-                    <p className="text-sm text-text-dim text-center py-4">{t("noMachines")}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Danger zone */}
-              {isOwner && (
-                <div className="pt-4 border-t border-border-subtle">
-                  <h3 className="text-sm font-semibold text-destructive mb-2">{t("dangerZone.title")}</h3>
-                  <p className="text-sm text-text-dim mb-3">{t("dangerZone.description")}</p>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setDeleteOpen(true)}
-                    disabled={myOrgs.length <= 1}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                    {t("dangerZone.deleteOrg")}
-                  </Button>
-                  {myOrgs.length <= 1 && (
-                    <p className="text-xs text-text-dim mt-2">{t("dangerZone.cannotDeleteLast")}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Create org dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("createDialog.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("createDialog.name")}</label>
-              <Input
-                className="mt-1"
-                value={formName}
-                onChange={(e) => {
-                  setFormName(e.target.value);
-                  if (!formSlug || formSlug === nameToSlug(formName)) {
-                    setFormSlug(nameToSlug(e.target.value));
-                  }
-                }}
-                placeholder={t("createDialog.namePlaceholder")}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("createDialog.slug")}</label>
-              <Input
-                className="mt-1"
-                value={formSlug}
-                onChange={(e) => setFormSlug(e.target.value)}
-                placeholder="url-identifier"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("createDialog.description")}</label>
-              <Input
-                className="mt-1"
-                value={formDesc}
-                onChange={(e) => setFormDesc(e.target.value)}
-                placeholder={t("createDialog.descriptionPlaceholder")}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (formName.trim()) runCreate(formName, formSlug);
-              }}
-              disabled={createLoading || !formName.trim()}
-            >
-              {createLoading ? t("creating") : t("create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add member dialog */}
-      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("inviteDialog.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("inviteDialog.searchLabel")}</label>
-              <div className="mt-1 overflow-hidden rounded-md border border-input">
-                <Command shouldFilter={false}>
-                  {selectedCandidates.length > 0 ? (
-                    <div className="border-b border-border-light px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        {selectedCandidates.map((candidate) => (
-                          <div
-                            key={candidate.id}
-                            className="inline-flex max-w-full items-center gap-2 rounded-full border border-border-light bg-surface-1 px-3 py-1 text-sm text-text-primary"
-                          >
-                            <span className="truncate font-medium">{candidate.name}</span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedCandidates((prev) => prev.filter((item) => item.id !== candidate.id))
-                              }
-                              className="shrink-0 rounded-full p-0.5 text-text-dim transition-colors hover:bg-surface-hover hover:text-text-primary"
-                              aria-label={t("inviteDialog.removeSelected")}
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <CommandInput
-                    value={addMemberKeyword}
-                    onValueChange={setAddMemberKeyword}
-                    placeholder={
-                      selectedCandidates.length > 0
-                        ? t("inviteDialog.searchMorePlaceholder")
-                        : t("inviteDialog.searchPlaceholder")
-                    }
-                  />
-                  <CommandList className="max-h-56">
-                    {debouncedAddMemberKeyword.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-text-dim">{t("inviteDialog.searchHint")}</div>
-                    ) : null}
-                    {debouncedAddMemberKeyword.length > 0 && debouncedAddMemberKeyword.length < 3 ? (
-                      <div className="px-3 py-4 text-sm text-text-dim">{t("inviteDialog.searchMinChars")}</div>
-                    ) : null}
-                    {showCandidateResults ? (
-                      <CommandEmpty>
-                        {memberCandidatesLoading ? t("inviteDialog.searching") : t("inviteDialog.empty")}
-                      </CommandEmpty>
-                    ) : null}
-                    {memberCandidates.length > 0 ? (
-                      <CommandGroup>
-                        {memberCandidates.map((candidate) => {
-                          const alreadySelected = selectedCandidates.some((item) => item.id === candidate.id);
-                          const disabled = candidate.isMember || alreadySelected;
-
-                          return (
-                            <CommandItem
-                              key={candidate.id}
-                              value={candidate.id}
-                              disabled={disabled}
-                              onSelect={() => {
-                                if (disabled) return;
-                                setSelectedCandidates((prev) => [...prev, candidate]);
-                                setAddMemberKeyword("");
-                                setDebouncedAddMemberKeyword("");
-                              }}
-                              className="items-start gap-3 py-2"
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-medium text-text-primary">
-                                    {candidate.name}
-                                  </span>
-                                  {candidate.isMember ? (
-                                    <Badge variant="outline">{t("inviteDialog.alreadyMember")}</Badge>
-                                  ) : null}
-                                  {alreadySelected ? (
-                                    <Badge variant="outline">{t("inviteDialog.alreadySelected")}</Badge>
-                                  ) : null}
-                                </div>
-                                <p className="truncate text-xs text-text-dim mt-0.5">{candidate.email}</p>
-                                <p className="truncate text-xs text-text-dim mt-0.5">{candidate.phoneNumber || "-"}</p>
-                              </div>
-                              {alreadySelected ? <Check className="mt-0.5 w-4 h-4 text-brand" /> : null}
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    ) : null}
-                  </CommandList>
-                </Command>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("inviteDialog.role")}</label>
-              <select
-                value={addMemberRole}
-                onChange={(e) => setAddMemberRole(e.target.value)}
-                className="mt-1 w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-              >
-                <option value="admin">{t("roles.admin")}</option>
-                <option value="member">{t("roles.member")}</option>
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddMemberOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (selectedCandidates.length > 0) runAddMember(selectedCandidates, addMemberRole);
-              }}
-              disabled={addMemberLoading || selectedCandidates.length === 0}
-            >
-              {addMemberLoading ? t("inviteDialog.inviting") : t("inviteDialog.invite")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete org confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("deleteDialog.description", { name: detail?.name })}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runDelete()}
-              disabled={deleteLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {deleteLoading ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Remove member confirmation */}
-      <AlertDialog
-        open={!!removeMemberTarget}
-        onOpenChange={(open) => {
-          if (!open) setRemoveMemberTarget(null);
+      <OrganizationsWorkspace
+        organizations={organizations}
+        selectedOrgId={selectedOrgId}
+        onSelectOrg={setSelectedOrgId}
+        detail={detail}
+        detailLoading={detailLoading}
+        members={members}
+        machines={machines}
+        machinesLoading={machinesLoading}
+        canManage={canManage}
+        isOwner={isOwner}
+        currentUserId={currentUserId}
+        editingName={editingName}
+        editName={editName}
+        updateNameLoading={updateNameLoading}
+        copiedId={copiedId}
+        defaultMachineId={defaultMachineId}
+        engineDirty={engineDirty}
+        savingEngine={savingEngine}
+        onEditNameChange={setEditName}
+        onStartEditName={() => {
+          setEditName(detail?.name ?? "");
+          setEditingName(true);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("removeMemberDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("removeMemberDialog.description", {
-                name: removeMemberTarget?.user?.name || removeMemberTarget?.userId,
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => removeMemberTarget && runRemoveMember(removeMemberTarget.id)}
-              disabled={removeMemberLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {removeMemberLoading ? t("removeMemberDialog.removing") : t("removeMemberDialog.confirmRemove")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Create machine dialog */}
-      <Dialog
-        open={machineCreateOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setMachineCreateOpen(false);
-            setMachineCreateResult(null);
-            resetMachineForm();
-          }
+        onCancelEditName={() => setEditingName(false)}
+        onSaveName={() => editName.trim() && runUpdateName(editName)}
+        onCopyId={handleCopyId}
+        onOpenInvite={() => setInviteOpen(true)}
+        onUpdateRole={runUpdateRole}
+        onRemoveMember={setRemoveMemberTarget}
+        onDefaultMachineChange={(machineId) => {
+          setDefaultMachineId(machineId);
+          setEngineDirty(true);
         }}
-      >
-        <DialogContent>
-          {machineCreateResult ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>{t("createMachineDialog.resultTitle")}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <p className="text-sm text-text-secondary">{t("createMachineDialog.resultDesc")}</p>
-                <div>
-                  <label className="text-xs font-medium text-text-dim">{t("machineId")}</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="flex-1 text-sm bg-surface-hover px-3 py-2 rounded font-mono break-all">
-                      {machineCreateResult.id}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(machineCreateResult.id);
-                        toast.success(t("copied"));
-                      }}
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-text-dim">{t("createMachineDialog.initCommand")}</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="flex-1 text-xs bg-surface-hover px-3 py-2 rounded font-mono break-all">
-                      {machineCreateResult.initCommand}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(machineCreateResult.initCommand);
-                        toast.success(t("copied"));
-                      }}
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={() => {
-                    setMachineCreateOpen(false);
-                    setMachineCreateResult(null);
-                    resetMachineForm();
-                  }}
-                >
-                  {t("done")}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>{t("createMachineDialog.title")}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <div>
-                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.name")}</label>
-                  <Input
-                    className="mt-1"
-                    value={machineFormName}
-                    onChange={(e) => setMachineFormName(e.target.value)}
-                    placeholder={t("createMachineDialog.namePlaceholder")}
-                    maxLength={64}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.labels")}</label>
-                  <Input
-                    className="mt-1"
-                    value={machineFormLabels}
-                    onChange={(e) => setMachineFormLabels(e.target.value)}
-                    placeholder={t("createMachineDialog.labelsPlaceholder")}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-text-primary">{t("createMachineDialog.agentName")}</label>
-                  <select
-                    value={machineFormAgentName}
-                    onChange={(e) => setMachineFormAgentName(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                  >
-                    <option value="opencode">OpenCode</option>
-                    <option value="ccb">CCB</option>
-                    <option value="claude-code">Claude Code</option>
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setMachineCreateOpen(false)}>
-                  {t("cancel")}
-                </Button>
-                <Button
-                  onClick={() => {
-                    const name = machineFormName.trim();
-                    if (!name) return;
-                    const labels = machineFormLabels
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    runCreateMachine(name, labels, machineFormAgentName);
-                  }}
-                  disabled={createMachineLoading || !machineFormName.trim()}
-                >
-                  {createMachineLoading ? t("creating") : t("create")}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={machineEditOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setMachineEditOpen(false);
-            setMachineEditTarget(null);
-            resetMachineForm();
-          }
+        onSaveDefaultEngine={saveDefaultEngine}
+        onCancelDefaultEngine={() => {
+          setDefaultMachineId(readDefaultMachineId(detail?.metadata));
+          setEngineDirty(false);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("editMachineDialog.title")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.name")}</label>
-              <Input
-                className="mt-1"
-                value={machineFormName}
-                onChange={(e) => setMachineFormName(e.target.value)}
-                placeholder={t("editMachineDialog.namePlaceholder")}
-                maxLength={64}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.labels")}</label>
-              <Input
-                className="mt-1"
-                value={machineFormLabels}
-                onChange={(e) => setMachineFormLabels(e.target.value)}
-                placeholder={t("editMachineDialog.labelsPlaceholder")}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-primary">{t("editMachineDialog.agentName")}</label>
-              <select
-                value={machineFormAgentName}
-                onChange={(e) => setMachineFormAgentName(e.target.value)}
-                className="mt-1 w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-              >
-                <option value="opencode">OpenCode</option>
-                <option value="ccb">CCB</option>
-                <option value="claude-code">Claude Code</option>
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMachineEditOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (!machineEditTarget) return;
-                const name = machineFormName.trim();
-                if (!name) return;
-                const labels = machineFormLabels
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                runUpdateMachine(machineEditTarget.id, name, labels, machineFormAgentName);
-              }}
-              disabled={updateMachineLoading || !machineFormName.trim()}
-            >
-              {updateMachineLoading ? t("saving") : t("save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!machineDeleteTarget} onOpenChange={(open) => !open && setMachineDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteMachineDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deleteMachineDialog.description", {
-                name: machineDeleteTarget?.name || machineDeleteTarget?.id,
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => machineDeleteTarget && runDeleteMachine(machineDeleteTarget.id)}
-              disabled={deleteMachineLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {deleteMachineLoading ? t("deleteMachineDialog.deleting") : t("deleteMachineDialog.confirmDelete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        onOpenCreateMachine={() => {
+          resetMachine();
+          setMachineCreateOpen(true);
+        }}
+        onRefreshMachines={refreshMachines}
+        onEditMachine={(machine) => {
+          setMachineEditTarget(machine);
+          setMachineForm({
+            name: machine.name ?? "",
+            labels: (machine.labels ?? []).filter(Boolean).join(", "),
+            agentName: machine.agentName,
+          });
+          setMachineEditOpen(true);
+        }}
+        onDeleteMachine={setMachineDeleteTarget}
+        onDeleteOrganization={() => setDeleteOpen(true)}
+      />
+      <OrganizationsDialogs
+        createOpen={createOpen}
+        formName={formName}
+        formSlug={formSlug}
+        createLoading={createLoading}
+        onCreateOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) resetCreateOrganization();
+        }}
+        onFormNameChange={(name) => {
+          const previousSlug = nameToSlug(formName);
+          setFormName(name);
+          if (!formSlug || formSlug === previousSlug) setFormSlug(nameToSlug(name));
+        }}
+        onFormSlugChange={setFormSlug}
+        onCreate={() => runCreate(formName, formSlug)}
+        inviteOpen={inviteOpen}
+        inviteKeyword={inviteKeyword}
+        debouncedInviteKeyword={debouncedInviteKeyword}
+        selectedCandidates={selectedCandidates}
+        memberCandidates={memberCandidates}
+        memberCandidatesLoading={memberCandidatesLoading}
+        inviteRole={inviteRole}
+        inviteLoading={inviteLoading}
+        onInviteOpenChange={(open) => {
+          setInviteOpen(open);
+          if (!open) resetInvite();
+        }}
+        onInviteKeywordChange={setInviteKeyword}
+        onCandidateAdd={(candidate) => {
+          setSelectedCandidates((current) => [...current, candidate]);
+          setInviteKeyword("");
+          setDebouncedInviteKeyword("");
+        }}
+        onCandidateRemove={(candidateId) =>
+          setSelectedCandidates((current) => current.filter((candidate) => candidate.id !== candidateId))
+        }
+        onInviteRoleChange={setInviteRole}
+        onInvite={() => runAddMember(selectedCandidates, inviteRole)}
+        deleteOpen={deleteOpen}
+        organizationName={detail?.name}
+        deleteLoading={deleteLoading}
+        onDeleteOpenChange={setDeleteOpen}
+        onDelete={runDelete}
+        removeMemberTarget={removeMemberTarget}
+        removeMemberLoading={removeMemberLoading}
+        onRemoveMemberTargetChange={setRemoveMemberTarget}
+        onConfirmRemoveMember={() => removeMemberTarget && runRemoveMember(removeMemberTarget.id)}
+        machineCreateOpen={machineCreateOpen}
+        machineEditOpen={machineEditOpen}
+        machineDeleteTarget={machineDeleteTarget}
+        machineCreateResult={machineCreateResult}
+        machineForm={machineForm}
+        createMachineLoading={createMachineLoading}
+        updateMachineLoading={updateMachineLoading}
+        deleteMachineLoading={deleteMachineLoading}
+        onMachineCreateOpenChange={(open) => {
+          setMachineCreateOpen(open);
+          if (!open) resetMachine();
+        }}
+        onMachineEditOpenChange={(open) => {
+          setMachineEditOpen(open);
+          if (!open) resetMachine();
+        }}
+        onMachineDeleteTargetChange={setMachineDeleteTarget}
+        onMachineFormChange={setMachineForm}
+        onCreateMachine={() => runCreateMachine(machineForm)}
+        onUpdateMachine={() => machineEditTarget && runUpdateMachine(machineEditTarget.id, machineForm)}
+        onDeleteMachine={() => machineDeleteTarget && runDeleteMachine(machineDeleteTarget.id)}
+      />
+    </AppPage>
   );
 }

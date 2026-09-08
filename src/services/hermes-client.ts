@@ -1,8 +1,8 @@
 import { log, error as logError } from "@fenix/logger";
 import { eventService } from "../services/event-service";
 import { sendToAgentWs, sendToInstanceRelay } from "../transport/relay";
+import { findRunningInstanceByEnvironment } from "./agent-instance-runtime-projection";
 import { findBindingForMessage } from "./channel-binding";
-import { findRunningInstanceByEnvironment } from "./instance";
 
 // --- Types ---
 
@@ -367,6 +367,13 @@ let hermesClientInstance: HermesClient | null = null;
 
 export function getHermesClient(): HermesClient | null {
   return hermesClientInstance;
+}
+
+/** 测试用：停止并清空 Hermes 单例，避免跨测试文件泄漏初始化状态。 */
+export async function resetHermesClient(): Promise<void> {
+  const client = hermesClientInstance;
+  hermesClientInstance = null;
+  await client?.stop();
 }
 
 export function initHermesClient(url: string): HermesClient {

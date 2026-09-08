@@ -115,7 +115,7 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
       cron: " 0 9 * * * ",
       timezone: "   ",
       type: "http",
-      definition: {},
+      definition: { url: "https://example.test/hook" },
     });
     expect(result).toMatchObject({ success: true, data: { name: "sync", description: "description", timezone: null } });
     expect(received).toMatchObject({ name: "sync", cron: "0 9 * * *", timezone: null, timeoutSeconds: 300 });
@@ -127,7 +127,12 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
     scheduledTaskV2Repo.create = mock(async () => row);
     const schedule = mock(() => true);
     schedulerService.schedule = schedule;
-    await createTaskV2(USER_ID, ORG_ID, { name: "sync", cron: "0 9 * * *", type: "http", definition: {} });
+    await createTaskV2(USER_ID, ORG_ID, {
+      name: "sync",
+      cron: "0 9 * * *",
+      type: "http",
+      definition: { url: "https://example.test/hook" },
+    });
     expect(schedule).toHaveBeenCalledWith(row);
   });
 
@@ -136,7 +141,12 @@ describe("Task v2 服务的隔离、调度与资源释放", () => {
     scheduledTaskV2Repo.create = mock(async () => task());
     schedulerService.schedule = mock(() => false);
     await expect(
-      createTaskV2(USER_ID, ORG_ID, { name: "sync", cron: "0 9 * * *", type: "http", definition: {} }),
+      createTaskV2(USER_ID, ORG_ID, {
+        name: "sync",
+        cron: "0 9 * * *",
+        type: "http",
+        definition: { url: "https://example.test/hook" },
+      }),
     ).resolves.toMatchObject({
       success: true,
       data: { id: "task-1" },

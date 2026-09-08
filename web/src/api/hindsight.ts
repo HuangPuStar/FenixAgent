@@ -1,8 +1,10 @@
 import type {
+  BankStats,
   DocumentChunk,
   DocumentsResponse,
   EntityGraphResponse,
   EntityItem,
+  GraphApiData,
   HindsightStatus,
   MemoriesResponse,
   MemoryDetail,
@@ -89,11 +91,11 @@ export const hindsightApi = {
     if (params.tags) qs.set("tags", params.tags.join(","));
     if (params.document_id) qs.set("document_id", params.document_id);
     if (params.chunk_id) qs.set("chunk_id", params.chunk_id);
-    return apiFetch<Record<string, unknown>>(`/graph?${qs.toString()}`);
+    return apiFetch<GraphApiData>(`/graph?${qs.toString()}`);
   },
 
   /** 获取 Bank 统计信息（整合状态等） */
-  getBankStats: () => apiFetch<Record<string, unknown>>("/bank-stats"),
+  getBankStats: () => apiFetch<BankStats>("/bank-stats"),
 
   /** 列出文档 */
   listDocuments: (params?: { q?: string; limit?: number; offset?: number }) => {

@@ -82,6 +82,7 @@ function installRouteDefaults() {
     createAgentConfig: async () => "agent-created",
     assertAgentConfigInternalWritable: async () => null,
     updateAgentConfig: async () => undefined,
+    restartAgentConfigInstances: async () => ({ environmentIds: [], restartedInstanceIds: [] }),
     deleteAgentConfig: async () => false,
     setUserConfig: async () => undefined,
     syncAgentSkills: async () => undefined,
@@ -329,6 +330,29 @@ describe("round44 Agent 配置 Web 路由", () => {
       ).status,
     ).toBe(200);
     expect(skillIds).toEqual(["11111111-1111-4111-8111-111111111111"]);
+  });
+
+  // 重启 action 必须使用认证组织上下文，保留持久 Instance，仅重启其 runtime。
+  test("确认 Agent 配置后重启绑定环境的运行实例", async () => {
+    let receivedContext: unknown;
+    let receivedName = "";
+    stubConfigPg({
+      restartAgentConfigInstances: async (ctx, name) => {
+        receivedContext = ctx;
+        receivedName = name;
+        return { environmentIds: ["env-1"], restartedInstanceIds: ["inst-1"] };
+      },
+    });
+
+    const response = await json("/config/agents/restart?name=researcher", "POST");
+
+    expect(response.status).toBe(200);
+    expect(receivedContext).toMatchObject({ organizationId: "org-1", userId: "user-1" });
+    expect(receivedName).toBe("researcher");
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: { environmentIds: ["env-1"], restartedInstanceIds: ["inst-1"] },
+    });
   });
 
   // 删除内置 Agent 必须在权限或删除服务调用前拒绝。

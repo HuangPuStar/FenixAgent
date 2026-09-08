@@ -51,7 +51,7 @@ app.post(
 
     // 读取 X-Session-Id header（会话恢复）
     const sessionId = (request.headers as Headers).get("x-session-id") ?? undefined;
-    log(`[openai] Request: agentConfigId=${agentConfigId} stream=${isStream} sessionId=${sessionId ?? "none"}`);
+    log(`[openai] Request: agentConfigId=${agentConfigId} stream=${isStream} hasSessionId=${sessionId !== undefined}`);
 
     // 连接 Agent，创建 PromptTurn。
     // 错误统一交由全局 errorPlugin 按稳定错误码映射（404/409/422/503/429），本地

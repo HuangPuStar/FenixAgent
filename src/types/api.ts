@@ -19,7 +19,6 @@ export interface RegisterEnvironmentRequest {
   directory?: string;
   branch?: string;
   git_repo_url?: string;
-  max_sessions?: number;
   worker_type?: string;
   bridge_id?: string;
   capabilities?: Record<string, unknown>;

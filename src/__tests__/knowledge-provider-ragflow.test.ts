@@ -1,5 +1,5 @@
 // src/__tests__/knowledge-provider-ragflow.test.ts
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { resetConfig, setConfig } from "../config";
 import { checkRagFlowHealth, RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 
@@ -126,6 +126,25 @@ describe("RagFlowKnowledgeProvider", () => {
         remoteUserId: "user1",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  // HTML 错误页应转换为脱敏诊断，且不得重复记录底层 JSON.parse 异常。
+  test("listDatasets 遇到 HTML 错误响应时不打印解析异常", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response("<html><body>Bad Gateway</body></html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        }),
+    ) as unknown as typeof fetch;
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined);
+
+    const provider = new RagFlowKnowledgeProvider();
+    await expect(provider.listDatasets({})).rejects.toThrow(
+      "RagFlow returned non-JSON response (status=502, content-type=text/html)",
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   test("deleteKnowledgeBase API 返回非 0 code 时抛出异常", async () => {

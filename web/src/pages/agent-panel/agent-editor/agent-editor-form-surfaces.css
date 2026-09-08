@@ -1,0 +1,421 @@
+/* Agent Editor picker and section surfaces; scoped to the editor root. */
+.agent-editor-root .agent-single-picker-toolbar {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  border: 1px solid #e0e6ef;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #fff;
+}
+.agent-editor-root .agent-single-picker-toolbar label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  color: #8b98aa;
+}
+.agent-editor-root .agent-single-picker-toolbar > span {
+  color: #8794a7;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.agent-editor-root .agent-single-picker-current {
+  display: grid;
+  min-height: 36px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  border-radius: 8px;
+  padding: 6px 9px;
+  color: #54709e;
+  background: #f1f6ff;
+  font-size: 11px;
+}
+.agent-editor-root .agent-single-picker-current strong {
+  color: #285bb6;
+  font-size: 12px;
+  font-weight: 680;
+}
+.agent-editor-root .agent-single-picker-current span {
+  overflow: hidden;
+  color: #8090a7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-editor-root .agent-single-picker-current.is-unavailable {
+  color: #8a5a16;
+  background: #fff7e8;
+  box-shadow: inset 0 0 0 1px #ead2aa;
+}
+.agent-editor-root .agent-single-picker-current.is-unavailable strong,
+.agent-editor-root .agent-single-picker-current.is-unavailable span {
+  color: #805615;
+}
+.agent-editor-root .agent-model-options {
+  display: grid;
+  max-height: 310px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+}
+.agent-editor-root .agent-node-list {
+  display: grid;
+  max-height: 310px;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  overflow-y: auto;
+}
+.agent-editor-root .agent-model-options > button {
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+}
+.agent-editor-root .agent-node-list > button {
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+}
+.agent-editor-root .agent-model-options > button,
+.agent-editor-root .agent-node-list > button {
+  display: grid;
+  min-height: 52px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e0e6ef;
+  border-radius: 10px;
+  padding: 8px 9px;
+  color: #526179;
+  background: #fff;
+  text-align: left;
+}
+.agent-editor-root .agent-model-options > button:hover,
+.agent-editor-root .agent-node-list > button:hover,
+.agent-editor-root .agent-model-options > button.is-selected,
+.agent-editor-root .agent-node-list > button.is-selected {
+  border-color: #8fb2ee;
+  background: #f3f7ff;
+}
+.agent-editor-root .agent-model-options > button.is-unavailable,
+.agent-editor-root .agent-node-list > button.is-unavailable {
+  border-color: #ead9bc;
+  color: #755d3b;
+  background: #fffaf1;
+}
+.agent-editor-root .agent-model-options__icon {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  color: #3269ce;
+  background: #eaf2ff;
+}
+.agent-editor-root .agent-model-options__icon > * {
+  --ant-color-text-description: cornflowerblue;
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.agent-editor-root .agent-model-options__icon svg {
+  width: 18px;
+  height: 18px;
+}
+.agent-editor-root .agent-model-options__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-editor-root .agent-model-options__copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #31425d;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.agent-editor-root .agent-model-options__copy small {
+  overflow: hidden;
+  color: #8995a7;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-editor-root .agent-model-options > button.is-unavailable .agent-model-options__copy small,
+.agent-editor-root .agent-node-list > button.is-unavailable .agent-model-options__copy small {
+  color: #93651f;
+}
+.agent-editor-root .agent-model-options > :where(button) > em,
+.agent-editor-root .agent-node-list > :where(button) > em {
+  color: #6d7d94;
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.agent-editor-root .agent-model-options > :where(button) > i,
+.agent-editor-root .agent-node-list > :where(button) > i {
+  display: flex;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #d2dae5;
+  border-radius: 50%;
+  color: #fff;
+  background: #fff;
+  line-height: 0;
+}
+.agent-editor-root .agent-model-options > button.is-selected > i,
+.agent-editor-root .agent-node-list > button.is-selected > i {
+  border-color: #2764e7;
+  background: #2764e7;
+}
+.agent-editor-root .agent-model-options > button > i svg,
+.agent-editor-root .agent-node-list > button > i svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  stroke-width: 2.5;
+}
+.agent-editor-root .agent-model-summary {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  border-radius: 11px;
+  padding: 14px;
+  background: #f6f8fb;
+}
+.agent-editor-root .agent-model-summary > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 10px;
+  color: #3269ce;
+  background: #eaf2ff;
+}
+.agent-editor-root .agent-model-summary > span svg {
+  width: 15px;
+}
+.agent-editor-root .agent-model-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-editor-root .agent-model-summary small {
+  color: #8b97a9;
+  font-size: 12px;
+}
+.agent-editor-root .agent-model-summary strong {
+  color: #34455f;
+  font-size: 14px;
+  font-weight: 680;
+}
+.agent-editor-root .agent-model-summary p {
+  margin: 0;
+  color: #8995a7;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.agent-editor-root .agent-editor-toggle-row {
+  display: grid;
+  width: 100%;
+  min-height: 65px;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  padding: 9px 11px;
+  color: #46566e;
+  background: #fff;
+  text-align: left;
+}
+.agent-editor-root .agent-editor-toggle-row:hover,
+.agent-editor-root .agent-editor-toggle-row.is-on {
+  border-color: #c9daf7;
+  background: #f8fbff;
+}
+.agent-editor-root .agent-editor-toggle-row__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  color: #6d7e96;
+  background: #f0f3f7;
+}
+.agent-editor-root .agent-editor-toggle-row__icon svg {
+  width: 15px;
+}
+.agent-editor-root .agent-editor-toggle-row__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.agent-editor-root .agent-editor-toggle-row__copy strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #33445c;
+  font-size: 13px;
+}
+.agent-editor-root .agent-editor-toggle-row__copy small {
+  color: #8996a9;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.agent-editor-root .agent-editor-switch {
+  display: block;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 2px;
+  background: #cfd7e3;
+}
+.agent-editor-root .agent-editor-switch i {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(25 43 75 / 20%);
+}
+.agent-editor-root .agent-editor-toggle-row.is-on .agent-editor-switch {
+  background: #2764e7;
+}
+.agent-editor-root .agent-editor-toggle-row.is-on .agent-editor-switch i {
+  transform: translateX(14px);
+}
+.agent-editor-root .agent-runtime-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 9px;
+  border: 1px solid #dbece6;
+  border-radius: 9px;
+  padding: 9px 10px;
+  color: #4e6b63;
+  background: #edf7f4;
+}
+.agent-editor-root .agent-runtime-note svg {
+  width: 15px;
+  flex: 0 0 15px;
+}
+.agent-editor-root .agent-runtime-note strong {
+  color: #315f53;
+  font-size: 13px;
+}
+.agent-editor-root .agent-runtime-note p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.agent-editor-root .agent-owner-card {
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e0e6ee;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+.agent-editor-root .agent-owner-card > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(145deg, #3c78e4, #274eaa);
+  font-size: 13px;
+  font-weight: 720;
+}
+.agent-editor-root .agent-owner-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.agent-editor-root .agent-owner-card small {
+  color: #98a3b3;
+  font-size: 11px;
+}
+.agent-editor-root .agent-owner-card strong {
+  color: #33435b;
+  font-size: 14px;
+}
+.agent-editor-root .agent-owner-card p {
+  margin: 0;
+  color: #8491a4;
+  font-size: 12px;
+}
+.agent-editor-root .agent-owner-card em {
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #2762c8;
+  background: #eaf2ff;
+  font-size: 12px;
+  font-style: normal;
+}
+.agent-editor-root .agent-access-preview {
+  margin-top: 14px;
+  border-radius: 11px;
+  padding: 13px;
+  background: #f6f8fb;
+}
+.agent-editor-root .agent-access-preview > strong {
+  color: #57677f;
+  font-size: 12px;
+}
+.agent-editor-root .agent-access-preview > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 8px;
+}
+.agent-editor-root .agent-access-preview > div span {
+  border-radius: 7px;
+  padding: 6px 9px;
+  color: #39516f;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #e0e6ee;
+  font-size: 13px;
+}
+.agent-editor-root .agent-access-preview > div i {
+  width: 24px;
+  height: 1px;
+  background: #c9d2df;
+}
+@media (max-width: 759px) {
+  .agent-editor-root .agent-editor-form-grid,
+  .agent-editor-root .agent-model-options,
+  .agent-editor-root .agent-node-list {
+    grid-template-columns: 1fr;
+  }
+  .agent-editor-root .agent-editor-form-grid > .agent-editor-field:nth-child(n + 3) {
+    grid-column: auto;
+  }
+  .agent-editor-root .agent-single-picker-current {
+    grid-template-columns: auto 1fr;
+  }
+  .agent-editor-root .agent-single-picker-current span {
+    grid-column: 1 / -1;
+  }
+}

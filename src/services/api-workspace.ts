@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, mkdir, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import { AppError } from "../errors";
 import type { AuthContext } from "../plugins/auth";
 import { getOwnedEnvironment } from "./environment-core";
@@ -25,6 +25,43 @@ const defaultDeps: WorkspaceDeps = {
 };
 
 let deps: WorkspaceDeps = defaultDeps;
+
+/** 上传文件名必须是 workspace 目录内的规范相对路径。 */
+function normalizeUploadRelativePath(value: string): string {
+  if (!value || isAbsolute(value) || value.includes("\0") || value.includes("\\")) {
+    throw new AppError("Invalid upload path", "VALIDATION_ERROR", 400);
+  }
+  const normalized = normalize(value).replace(/^\.\//, "");
+  if (normalized === "." || normalized === ".." || normalized.startsWith(`..${sep}`)) {
+    throw new AppError("Invalid upload path", "VALIDATION_ERROR", 400);
+  }
+  return normalized;
+}
+
+async function ensureSafeUploadParent(root: string, destination: string): Promise<void> {
+  const parentRelative = relative(root, dirname(destination));
+  let current = root;
+  for (const segment of parentRelative.split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new AppError("Upload path crosses a symbolic link", "VALIDATION_ERROR", 400);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await mkdir(current);
+    }
+  }
+
+  try {
+    if ((await lstat(destination)).isSymbolicLink()) {
+      throw new AppError("Upload destination is a symbolic link", "VALIDATION_ERROR", 400);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
 
 /**
  * 测试覆盖 workspace service 依赖，避免路由测试触达真实文件系统和远程节点。
@@ -78,6 +115,8 @@ export async function uploadWorkspaceFiles(
     }
   }
 
+  const uploadPaths = files.map((file, index) => normalizeUploadRelativePath(relativePaths[index] ?? file.name));
+
   const machineId = await deps.getRemoteMachineId(environmentId);
   if (machineId) {
     const remoteFiles = await Promise.all(
@@ -89,7 +128,7 @@ export async function uploadWorkspaceFiles(
         return {
           name: file.name,
           content: buffer.toString("base64"),
-          relativePath: relativePaths[index] || file.name,
+          relativePath: uploadPaths[index]!,
         };
       }),
     );
@@ -111,6 +150,9 @@ export async function uploadWorkspaceFiles(
   }
 
   await mkdir(resolved.resolved, { recursive: true });
+  if ((await lstat(resolved.resolved)).isSymbolicLink()) {
+    throw new AppError("Workspace path is a symbolic link", "VALIDATION_ERROR", 400);
+  }
   const uploaded: WorkspaceFileUploadResult["files"] = [];
   const displayBase = dirPath.replace(/\/+$/, "");
 
@@ -121,10 +163,14 @@ export async function uploadWorkspaceFiles(
       throw new AppError(`File ${file.name} exceeds 50MB limit`, "PAYLOAD_TOO_LARGE", 413);
     }
 
-    const relPath = relativePaths[index] || file.name;
+    const relPath = uploadPaths[index]!;
     const destination = join(resolved.resolved, relPath);
-    await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, buffer);
+    const destinationRelative = relative(resolved.resolved, destination);
+    if (destinationRelative.startsWith(`..${sep}`) || isAbsolute(destinationRelative)) {
+      throw new AppError("Invalid upload path", "VALIDATION_ERROR", 400);
+    }
+    await ensureSafeUploadParent(resolved.resolved, destination);
+    await writeFile(destination, buffer, { flag: "w" });
 
     uploaded.push({
       name: file.name,

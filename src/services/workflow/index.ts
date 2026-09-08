@@ -14,7 +14,7 @@
 import { createLogger } from "@fenix/logger";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
-import { stopInstance } from "../instance";
+import { stopInstance } from "../agent-instance-runtime-projection";
 import { createAgentChatTransport } from "./agent-chat-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
 import { hasActiveInstanceLease } from "./instance-lease";
@@ -33,8 +33,8 @@ const teamRuntimes = new Map<string, TeamRuntime>();
 /**
  * workflow 结束后停止本次 run 实际创建（spawned）的实例。
  *
- * 入参是 Transport 层记录的 instanceId 集合（agent-chat-transport 在 ensureRunning
- * 返回 status === "spawned" 时写入），而非 envId——按 envId 查询会误杀同环境内
+ * 入参是 Transport 层记录的 instanceId 集合（agent-chat-transport 在持久实例由
+ * 当前 run 首次创建时写入），而非 envId——按 envId 查询会误杀同环境内
  * 其他 run / 用户交互启动的实例（C-P1.1）。复用的实例不归本 run 所有，交给创建者
  * 清理或 acp-idle-monitor 空闲回收。
  *

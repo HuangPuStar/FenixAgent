@@ -6,7 +6,7 @@ import { createCcbHandler } from "@fenix/ccb";
 import { createClaudeCodeHandler } from "@fenix/claude-code";
 import { createOpencodeHandler } from "@fenix/opencode";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { handleFileOp } from "./client/file-operations.js";
+import { cancelAllFileOps, cancelFileOp, handleFileOp } from "./client/file-operations.js";
 import { type AgentType, type EngineHandler, InstanceManager } from "./client/instance-manager.js";
 import { SessionManager } from "./client/session-manager.js";
 import { initRegistry } from "./client/workspace-registry.js";
@@ -28,6 +28,8 @@ import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
+
+const MACHINE_PROTOCOL_VERSION = 2;
 
 // ── WebSocket 抽象接口 ──────────────────────────────
 // 同时满足 Bun AcpWs 和 Node.js ws.WebSocket 的最小接口
@@ -168,6 +170,7 @@ export function buildRegisterMessage(config: ServerConfig): object {
 
   const msg: Record<string, unknown> = {
     type: "register",
+    protocol_version: MACHINE_PROTOCOL_VERSION,
     agent_name: config.command,
     name: config.name ?? null,
     max_sessions: 5,
@@ -232,6 +235,20 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   const MAX_RECONNECT_MS = 30_000;
   const MAX_FILE_WS_RECONNECT_MS = 30_000;
   let manualClose = false;
+  let serverEpoch: string | null = null;
+  const lifecycleFence = (msg: Record<string, unknown>) => ({
+    instance_uid: msg.instance_uid,
+    runtime_generation: msg.runtime_generation,
+    server_epoch: msg.server_epoch,
+  });
+  const acceptsLifecycle = (msg: Record<string, unknown>): boolean =>
+    serverEpoch !== null &&
+    msg.server_epoch === serverEpoch &&
+    typeof msg.instance_uid === "string" &&
+    msg.instance_uid === msg.instance_id &&
+    typeof msg.runtime_generation === "number" &&
+    Number.isSafeInteger(msg.runtime_generation) &&
+    msg.runtime_generation > 0;
   // 实例 start 完成前到达的 connect 帧缓存（instId → payload）。
   // relay 的 connect 帧只在实例 dispatcher 就绪后才会被消费；若在前端建连
   // （spawn + connection.initialize 耗时秒级）期间到达，会被静默丢弃，
@@ -303,6 +320,23 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         const msg = JSON.parse(event.data as string);
         switch (msg.type) {
           case "registered": {
+            if (
+              msg.protocol_version !== MACHINE_PROTOCOL_VERSION ||
+              typeof msg.server_epoch !== "string" ||
+              msg.clean_slate_required !== true
+            ) {
+              ws?.close(4406, "incompatible machine protocol");
+              break;
+            }
+            serverEpoch = msg.server_epoch;
+            await instanceMgr.cleanSlate();
+            ws!.send(
+              JSON.stringify({
+                type: "clean_slate_confirmed",
+                protocol_version: MACHINE_PROTOCOL_VERSION,
+                server_epoch: serverEpoch,
+              }),
+            );
             registered = true;
             console.log("[acp-client] registered successfully, machineId:", msg.machine_id);
             heartbeatTimer = setInterval(() => {
@@ -320,6 +354,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
             // Establish file-ws connection
             // Close existing file-ws before creating a new one (prevents leak on re-register)
+            cancelAllFileOps();
             if (fileWs) {
               // Detach onclose to prevent stale handler from scheduling reconnect
               fileWs.onclose = null;
@@ -389,6 +424,8 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                     if (fileWs === nextFileWs && nextFileWs.readyState === 1) {
                       nextFileWs.send(JSON.stringify(result));
                     }
+                  } else if (fmsg.type === "file_op_cancel" && typeof fmsg.request_id === "string") {
+                    cancelFileOp(fmsg.request_id);
                   }
                 } catch {
                   // ignore
@@ -396,6 +433,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               };
               nextFileWs.onclose = () => {
                 if (fileWs !== nextFileWs) return;
+                cancelAllFileOps();
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
@@ -405,6 +443,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
               };
               nextFileWs.onerror = () => {
                 if (fileWs !== nextFileWs) return;
+                cancelAllFileOps();
                 if (fileWsHeartbeat) {
                   clearInterval(fileWsHeartbeat);
                   fileWsHeartbeat = null;
@@ -426,6 +465,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                 clearInterval(fileWsHeartbeat);
                 fileWsHeartbeat = null;
               }
+              cancelAllFileOps();
               if (fileWs) {
                 fileWs.onclose = null;
                 fileWs.onerror = null;
@@ -543,18 +583,26 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
             break;
           }
           case "prepare": {
+            if (!acceptsLifecycle(msg)) break;
             const instId = msg.instance_id as string;
             const launchSpec = msg.launch_spec as AgentLaunchSpec;
             const engineType = msg.engine_type as string | undefined;
             try {
               // InstanceManager 支持多引擎，传入 engine_type 即可切换引擎
-              await instanceMgr.prepare(instId, launchSpec, engineType);
+              await instanceMgr.prepare(
+                instId,
+                launchSpec,
+                engineType,
+                msg.runtime_generation as number,
+                msg.server_epoch as string,
+              );
               ws!.send(
                 JSON.stringify({
                   type: "prepare_result",
                   request_id: msg.request_id,
                   instance_id: instId,
                   status: "ok",
+                  ...lifecycleFence(msg),
                 }),
               );
             } catch (err) {
@@ -565,22 +613,29 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   instance_id: instId,
                   status: "error",
                   message: (err as Error).message,
+                  ...lifecycleFence(msg),
                 }),
               );
             }
             break;
           }
           case "start": {
+            if (!acceptsLifecycle(msg)) break;
             const instId = msg.instance_id as string;
             try {
               // start 统一走 InstanceManager（稳定路径）
               const relaySend = (msgObj: unknown) => {
                 if (ws && ws.readyState === 1) {
                   const sessId = instanceMgr.getSessionId(instId) ?? instId;
+                  const fence = instanceMgr.getRuntimeFence(instId);
+                  if (!fence) return;
                   ws.send(
                     JSON.stringify({
                       type: "relay",
                       instance_id: instId,
+                      instance_uid: instId,
+                      runtime_generation: fence.runtimeGeneration,
+                      server_epoch: fence.serverEpoch,
                       session_id: sessId,
                       payload: msgObj,
                     }),
@@ -595,6 +650,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   instance_id: instId,
                   status: "ok",
                   capabilities: result.capabilities,
+                  ...lifecycleFence(msg),
                 }),
               );
               // 补发 start 完成前缓存的 connect 帧：dispatcher 此刻已就绪，
@@ -629,21 +685,24 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   instance_id: instId,
                   status: "error",
                   message: (err as Error).message,
+                  ...lifecycleFence(msg),
                 }),
               );
             }
             break;
           }
           case "stop": {
+            if (!acceptsLifecycle(msg)) break;
             const instId = msg.instance_id as string;
             try {
-              await instanceMgr.stop(instId);
+              await instanceMgr.stop(instId, msg.runtime_generation as number, msg.server_epoch as string);
               ws!.send(
                 JSON.stringify({
                   type: "stop_result",
                   request_id: msg.request_id,
                   instance_id: instId,
                   status: "ok",
+                  ...lifecycleFence(msg),
                 }),
               );
             } catch (err) {
@@ -654,12 +713,14 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
                   instance_id: instId,
                   status: "error",
                   message: (err as Error).message,
+                  ...lifecycleFence(msg),
                 }),
               );
             }
             break;
           }
           case "relay": {
+            if (!acceptsLifecycle(msg)) break;
             const instId = msg.instance_id as string;
             const sessId = msg.session_id as string;
             const relayPayload = msg.payload;
@@ -723,6 +784,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
         clearInterval(fileWsHeartbeat);
         fileWsHeartbeat = null;
       }
+      cancelAllFileOps();
       if (fileWs) {
         fileWs.onclose = null;
         fileWs.onerror = null;
@@ -789,6 +851,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       }
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (fileWsHeartbeat) clearInterval(fileWsHeartbeat);
+      cancelAllFileOps();
       if (fileWs) {
         fileWs.onclose = null;
         fileWs.onerror = null;

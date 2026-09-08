@@ -40,6 +40,11 @@ interface AgentTemplate {
 
 type PagePhase = "idle" | "generating" | "form";
 
+/** 判断输入是否包含可用于生成 Agent 的有效描述。 */
+export function hasAgentGenerationPrompt(value: string): boolean {
+  return value.trim().length > 0;
+}
+
 /** Agent 首页：AI 智能生成 + 模板一键创建 */
 export function AgentHomePage() {
   const { t } = useTranslation(NS.AGENT_HOME);
@@ -193,6 +198,7 @@ export function AgentHomePage() {
   };
 
   const titleText = t(titleKey);
+  const canGenerate = hasAgentGenerationPrompt(inputValue);
 
   return (
     <div className="agent-home-page relative flex flex-1 flex-col items-center overflow-auto">
@@ -240,6 +246,7 @@ export function AgentHomePage() {
                 />
                 <button
                   type="button"
+                  disabled={!canGenerate}
                   onClick={() => {
                     const prompt = inputValue.trim();
                     if (!prompt) return;
@@ -458,9 +465,16 @@ export function AgentHomePage() {
           transition: transform 0.2s, box-shadow 0.2s;
           white-space: nowrap;
         }
-        .agent-home-polish-btn:hover {
+        .agent-home-polish-btn:hover:not(:disabled) {
           box-shadow: 0 4px 14px rgba(15,107,255,0.3);
           transform: translateY(-1px);
+        }
+        .agent-home-polish-btn:disabled {
+          background: #c8d0df;
+          box-shadow: none;
+          color: #fff;
+          cursor: not-allowed;
+          transform: none;
         }
         .agent-home-submitted {
           display: flex;

@@ -3,8 +3,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { AppHeader } from "@/src/components/layout/app-header";
 import { NS } from "@/src/i18n";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 interface VerticalModel {
   id: string;
@@ -113,7 +113,7 @@ export function VerticalModelsPage() {
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <AgentPageHeader title={t("verticalModels")} subtitle={t("verticalModelsSubtitle")} />
+        <AppHeader title={t("verticalModels")} subtitle={t("verticalModelsSubtitle")} />
       </div>
 
       {/* 搜索栏 */}

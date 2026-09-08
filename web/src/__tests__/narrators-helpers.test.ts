@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  compactDetailValue,
   extractErrorMessage,
   extractFileName,
   extractLineRange,
@@ -15,6 +16,24 @@ import {
  * 不使用 mock（纯函数），遵循前端测试规范（参考 config-helpers.test.ts）。
  */
 describe("narrators/helpers", () => {
+  describe("compactDetailValue", () => {
+    // detail 中的绝对路径只展示末级名称，避免工具列表重复输出冗长工作区路径。
+    test("绝对路径压缩为末级名称", () => {
+      expect(compactDetailValue("/Users/konghayao/code/pazhou/remote-control-server")).toBe("remote-control-server");
+    });
+
+    // Windows 路径和末尾分隔符也应按同一规则压缩。
+    test("兼容 Windows 路径和末尾分隔符", () => {
+      expect(compactDetailValue("C:\\workspace\\fenix\\src\\")).toBe("src");
+    });
+
+    // 非路径详情保留原语义，仅限制长度以避免挤压状态栏。
+    test("普通详情保留内容并限制长度", () => {
+      expect(compactDetailValue("简短详情")).toBe("简短详情");
+      expect(compactDetailValue("a".repeat(41))).toBe(`${"a".repeat(40)}…`);
+    });
+  });
+
   describe("extractFileName", () => {
     // 从 file_path 字段提取文件名（带目录前缀只取最后一段）
     test("从 file_path 提取末段文件名", () => {

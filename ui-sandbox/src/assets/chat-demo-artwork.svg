@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">蓝色系 Chat 工作台概念图</title>
+  <desc id="description">包含产品菜单、会话列表、消息区域和输入器的 Chat 界面示意。</desc>
+  <rect width="640" height="360" rx="28" fill="#edf4ff"/>
+  <rect x="24" y="24" width="132" height="312" rx="18" fill="#2f68d2"/>
+  <circle cx="52" cy="54" r="14" fill="#81b6ff"/>
+  <rect x="76" y="45" width="58" height="8" rx="4" fill="#fff" opacity=".92"/>
+  <rect x="42" y="92" width="92" height="9" rx="4" fill="#d8e8ff" opacity=".72"/>
+  <rect x="42" y="120" width="76" height="9" rx="4" fill="#d8e8ff" opacity=".58"/>
+  <rect x="42" y="148" width="86" height="9" rx="4" fill="#d8e8ff" opacity=".58"/>
+  <rect x="178" y="24" width="438" height="44" rx="14" fill="#fff"/>
+  <rect x="178" y="82" width="108" height="254" rx="18" fill="#fff"/>
+  <rect x="302" y="82" width="314" height="254" rx="18" fill="#fff"/>
+  <rect x="326" y="108" width="170" height="42" rx="16" fill="#f8fafc" stroke="#dfe7f2"/>
+  <rect x="326" y="172" width="248" height="8" rx="4" fill="#33435e" opacity=".72"/>
+  <rect x="326" y="194" width="220" height="8" rx="4" fill="#71809a" opacity=".48"/>
+  <rect x="326" y="216" width="232" height="8" rx="4" fill="#71809a" opacity=".48"/>
+  <rect x="322" y="256" width="270" height="58" rx="16" fill="#fff" stroke="#cfd9e8"/>
+  <rect x="340" y="274" width="120" height="7" rx="4" fill="#a7b3c5"/>
+  <circle cx="566" cy="285" r="15" fill="#3774e8"/>
+  <path d="m560 285 9-5-4 10-2-4-3-1Z" fill="#fff"/>
+  <circle cx="232" cy="112" r="22" fill="#e8f0ff"/>
+  <path d="M222 113h20m-10-10v20" fill="none" stroke="#3b70d2" stroke-linecap="round" stroke-width="3"/>
+  <rect x="204" y="154" width="56" height="7" rx="4" fill="#75839b" opacity=".68"/>
+  <rect x="198" y="180" width="68" height="7" rx="4" fill="#75839b" opacity=".42"/>
+  <rect x="198" y="202" width="58" height="7" rx="4" fill="#75839b" opacity=".42"/>
+  <path d="m588 38 2.2 6.3 6.3 2.2-6.3 2.2-2.2 6.3-2.2-6.3-6.3-2.2 6.3-2.2Z" fill="#4779d3"/>
+</svg>

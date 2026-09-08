@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { z } from "zod";
+import type { z } from "zod/v4";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 
@@ -9,6 +9,7 @@ export interface FormDialogFormConfig {
   schema: z.ZodType<Record<string, unknown>>;
   defaultValues: Record<string, unknown>;
   onFormSubmit: (data: Record<string, unknown>) => void;
+  mode?: "onSubmit" | "onChange" | "onBlur";
 }
 
 interface FormDialogProps {
@@ -47,6 +48,7 @@ export function FormDialog({
     // biome-ignore lint/suspicious/noExplicitAny: shadcn/react-hook-form zodResolver requires ZodTypeAny
     resolver: formConfig?.schema ? zodResolver(formConfig.schema as any) : undefined,
     defaultValues: formConfig?.defaultValues,
+    mode: formConfig?.mode ?? "onSubmit",
   });
 
   const handleFormSubmit = formConfig

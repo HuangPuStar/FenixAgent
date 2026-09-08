@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { CardEventEmitter } from "../lib/card-renderer/emitter";
-import { buildProviderInlineTestPayload, getProviderColor } from "../pages/agent-panel/pages/agent-models-utils";
+import {
+  buildProviderInlineTestPayload,
+  formatOptionalNumber,
+  getProviderColor,
+  parseOptionalNonNegativeNumber,
+} from "../pages/agent-panel/pages/agent-models-utils";
 
 describe("CardEventEmitter", () => {
   // 同一事件的多个订阅者应按订阅关系接收原始载荷。
@@ -74,5 +79,15 @@ describe("Provider 纯转换工具", () => {
       baseURL: " https://proxy.example.com ",
       protocol: "openai",
     });
+  });
+
+  // 数值表单转换保留合法的零，并拒绝负数与非数字，避免写入损坏配置。
+  test("安全转换模型数值配置", () => {
+    expect(parseOptionalNonNegativeNumber("0")).toBe(0);
+    expect(parseOptionalNonNegativeNumber("2.5")).toBe(2.5);
+    expect(parseOptionalNonNegativeNumber("-1")).toBeUndefined();
+    expect(parseOptionalNonNegativeNumber("invalid")).toBeUndefined();
+    expect(formatOptionalNumber(0)).toBe("0");
+    expect(formatOptionalNumber(undefined)).toBe("");
   });
 });

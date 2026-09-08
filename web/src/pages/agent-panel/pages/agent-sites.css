@@ -1,0 +1,144 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: 应用卡片按预览、正文、页脚层级组织。 */
+.agent-sites-page {
+  --site-blue: #2463eb;
+  --site-ink: #17233a;
+  --site-muted: #65728a;
+  --site-faint: #96a2b5;
+  --site-line: #e7ecf3;
+  color: var(--site-ink);
+}
+
+.site-create-button {
+  height: 40px;
+  gap: 7px;
+  border-radius: 8px;
+  padding-inline: 15px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.site-create-button svg {
+  width: 15px;
+}
+
+.site-commandbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+.site-search-field {
+  position: relative;
+  display: block;
+  width: min(560px, 100%);
+}
+.site-search-field > svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 16px;
+  color: #8d9bb0;
+  transform: translateY(-50%);
+}
+.site-search-field input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  outline: 0;
+  padding: 0 14px 0 41px;
+  color: var(--site-ink);
+  background: #fff;
+  font-size: 13px;
+}
+.site-search-field input:focus-visible {
+  box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
+}
+
+.site-visibility-filter {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  padding: 4px;
+  background: #e9edf4;
+}
+.site-visibility-filter button {
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 11px;
+  color: var(--site-muted);
+  background: transparent;
+  font-size: 11px;
+}
+.site-visibility-filter button[aria-pressed="true"] {
+  color: var(--site-blue);
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
+  font-weight: 650;
+}
+
+.site-directory-heading {
+  min-height: 54px;
+  box-shadow: inset 0 -1px var(--site-line);
+}
+.site-directory-heading h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+.site-directory-heading p {
+  margin-top: 3px;
+  color: var(--site-faint);
+  font-size: 10px;
+}
+
+.site-empty-state {
+  display: grid;
+  min-height: 380px;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--site-faint);
+  text-align: center;
+}
+.site-empty-state > svg {
+  width: 28px;
+  color: #7d91ae;
+}
+.site-empty-state strong {
+  color: var(--site-ink);
+  font-size: 14px;
+}
+.site-empty-state p {
+  max-width: 420px;
+  font-size: 10px;
+}
+.site-empty-state button {
+  margin-top: 8px;
+}
+.site-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding-top: 16px;
+  color: var(--site-muted);
+  font-size: 10px;
+}
+.site-pagination button {
+  height: 28px;
+  font-size: 10px;
+}
+
+@media (max-width: 950px) {
+  .site-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .site-visibility-filter {
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 function createModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
@@ -107,24 +107,34 @@ describe("AgentFormDialog 纯选项映射 round54", () => {
     expect(mapModelOptions([])).toEqual([]);
   });
 
-  // 本组织模型标签按 provider 与模型展示名组成。
+  // 本组织模型使用短标签，并以 provider 作为组织分组。
   test("本组织模型拼接提供商与模型名称", () => {
     expect(mapModelOptions([createModel({ id: "gpt", providerDisplayName: "OpenAI", displayName: "GPT-5" })])).toEqual([
-      { value: "gpt", label: "OpenAI/GPT-5" },
+      {
+        value: "gpt",
+        label: "GPT-5",
+        modelId: "model-name",
+        group: { id: "organization:provider-name", label: "OpenAI", scope: "organization" },
+      },
     ]);
   });
 
-  // 共享模型标签加入来源组织以消除跨组织同名提供商歧义。
+  // 共享模型用短标签展示，并由 group.scope 标识共享来源。
   test("共享模型标签包含来源组织", () => {
     const providerResourceAccess = createExternalAccess({ sourceOrganizationName: "研究组" });
 
-    expect(mapModelOptions([createModel({ providerResourceAccess })])[0].label).toBe("研究组/提供商名称/模型名称");
+    expect(mapModelOptions([createModel({ providerResourceAccess })])[0]).toEqual({
+      value: "model-id",
+      label: "模型名称",
+      modelId: "model-name",
+      group: { id: "source-org:provider-name", label: "提供商名称", scope: "shared" },
+    });
   });
 
-  // providerResourceAccess 存在但缺少组织名时不得生成多余分隔符。
+  // providerResourceAccess 缺少组织名时仍按 provider 分组，不拼接长标签。
   test("共享模型缺少来源名称时不添加空前缀", () => {
     expect(mapModelOptions([createModel({ providerResourceAccess: createExternalAccess() })])[0].label).toBe(
-      "提供商名称/模型名称",
+      "模型名称",
     );
   });
 

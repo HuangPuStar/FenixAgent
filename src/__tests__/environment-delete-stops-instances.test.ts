@@ -60,7 +60,6 @@ function registerRunningInstance(instanceId: string): void {
   globalInstanceRegistry.register(instanceId, {
     userId: "user-1",
     environmentId: ENV_ID,
-    instanceNumber: 1,
     organizationId: ORG_1,
     spawnSource: "interactive",
     lastActivityAt: Date.now(),

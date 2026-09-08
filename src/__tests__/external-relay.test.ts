@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AuthContext } from "../plugins/auth";
-import type { SpawnedInstance } from "../services/instance";
+import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
 import {
   type ExternalRelayEnvironment,
   handleExternalRelayClose,
@@ -81,7 +81,6 @@ function makeInstance(id: string): SpawnedInstance {
     apiKey: "",
     createdAt: new Date(),
     environmentId: "env-1",
-    instanceNumber: 1,
   };
 }
 

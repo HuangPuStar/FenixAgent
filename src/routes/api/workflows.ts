@@ -43,13 +43,14 @@ app.post(
           return status(404, { error: { code: "NOT_FOUND", message: "Workflow 不存在" } });
         }
         if (code === "VALIDATION_ERROR") {
-          return status(422, { error: { code: "INVALID_INPUTS", message: err.message } });
+          return status(422, { error: { code: "INVALID_INPUTS", message: "Workflow inputs are invalid" } });
         }
-        return status(500, { error: { code: "INTERNAL_ERROR", message: err.message } });
+        console.error("[api-workflows] workflow execution error:", err);
+        return status(500, { error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
       }
       console.error("[api-workflows] execute error:", err);
       return status(500, {
-        error: { code: "INTERNAL_ERROR", message: (err as Error).message || "Unknown error" },
+        error: { code: "INTERNAL_ERROR", message: "Internal server error" },
       });
     }
   },

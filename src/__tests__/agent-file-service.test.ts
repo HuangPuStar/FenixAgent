@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setConfig } from "../config";
 import { gate } from "../services/agent-file-service";
+import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import {
   type FileAuthContext,
   type FileServiceError,
@@ -54,6 +55,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setLocalUploadBeforeWriteHookForTest();
   delete process.env.WORKSPACE_ROOT;
   await rm(workspaceRoot, { recursive: true, force: true });
   setConfig({ defaultMachineId: undefined });
@@ -66,6 +68,15 @@ describe("本地 LocalBackend（真实 tmp 目录）", () => {
     await fs.write("user/hello.txt", "你好 fenix");
     const result = await fs.read("user/hello.txt", "text");
     expect(result).toMatchObject({ type: "text", content: "你好 fenix", encoding: "utf-8" });
+  });
+
+  test("write 和 rename 保留 # 等合法文件名字符", async () => {
+    const fs = gate(ENV_ID, authCtx);
+    await fs.write("user/abcd#1234.txt", "hash");
+    expect(await readFile(join(workspaceRoot, ORG_ID, USER_ID, ENV_ID, "user/abcd#1234.txt"), "utf8")).toBe("hash");
+
+    await fs.rename("user/abcd#1234.txt", "user/renamed#5678.txt");
+    expect((await fs.read("user/renamed#5678.txt", "text")).type).toBe("text");
   });
 
   test("list 返回目录条目且过滤隐藏文件", async () => {
@@ -156,6 +167,39 @@ describe("本地 LocalBackend（真实 tmp 目录）", () => {
       "utf-8",
     );
     expect(content).toBe("hello");
+  });
+
+  test("upload 保留尾随空格，且不同文件名不互相覆盖", async () => {
+    const fs = gate(ENV_ID, authCtx);
+    await fs.upload("user", [uploadFile("a.txt", "plain"), uploadFile("a.txt ", "spaced")]);
+    const userDir = join(workspaceRoot, ORG_ID, USER_ID, ENV_ID, "user");
+    expect(await readFile(join(userDir, "a.txt"), "utf8")).toBe("plain");
+    expect(await readFile(join(userDir, "a.txt "), "utf8")).toBe("spaced");
+  });
+
+  test("upload 拒绝现有中间 symlink 和 mkdir/write 间替换竞态", async () => {
+    const fs = gate(ENV_ID, authCtx);
+    const workspace = join(workspaceRoot, ORG_ID, USER_ID, ENV_ID);
+    const outside = await mkdtemp(join(tmpdir(), "agent-file-upload-outside-"));
+    try {
+      await fs.mkdir("user");
+      await symlink(outside, join(workspace, "user", "linked"));
+      await expect(fs.upload("user", [uploadFile("x.txt", "x", "linked/x.txt")])).rejects.toMatchObject({
+        type: "validation_error",
+      });
+      expect(await Bun.file(join(outside, "x.txt")).exists()).toBe(false);
+
+      setLocalUploadBeforeWriteHookForTest(async () => {
+        await rename(join(workspace, "user", "race"), join(workspace, "user", "validated-race"));
+        await symlink(outside, join(workspace, "user", "race"));
+      });
+      await expect(fs.upload("user", [uploadFile("race.txt", "race", "race/race.txt")])).rejects.toMatchObject({
+        type: "validation_error",
+      });
+      expect(await Bun.file(join(outside, "race.txt")).exists()).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   test("upload 拒绝 ../ 逃逸路径且不落盘（W2 修复随迁）", async () => {

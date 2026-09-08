@@ -86,6 +86,11 @@ export function ChatPanel({
   // Session Doc — 按 RCS session ID 命名（与 chatHook 同一 hub entry，共享 doc 副本）
   const { state: sessionState } = useSessionState(docHubKey);
 
+  // ACP session 是连接建立后的可变会话元数据，不属于 YJS transport identity。
+  // 仅在真正重建连接时读取最新值用于刷新恢复；后续 session/load 更新不得触发断连。
+  const acpSessionIdRef = useRef(sessionState.acpSessionId);
+  acpSessionIdRef.current = sessionState.acpSessionId;
+
   // Peri Task 视图 — 只订阅 Session Doc 的 tasks/taskOrder 子树（DocHub 共享实例，
   // 与上面两个 hook 同一份 doc；Chat Doc token 流不触发本 selector 重算）
   const { state: periTaskState } = useTaskViews(docHubKey);
@@ -198,7 +203,12 @@ export function ChatPanel({
     // authState === "ready" 时 userId 必有值，此处仅作防御
     if (!rcsSessionKey) return;
 
-    const relayUrl = buildYjsUrl(agentId, sessionId ?? undefined);
+    if (!sessionId) return;
+    const relayUrl = buildYjsUrl(agentId, {
+      instanceUid: sessionId,
+      rcsSessionId: rcsSessionKey,
+      acpSessionId: acpSessionIdRef.current || undefined,
+    });
 
     const yjsWs = createYjsWs({
       url: relayUrl,
@@ -343,11 +353,10 @@ export function ChatPanel({
       onRespondPermission: (requestId: string, optionId: string | null) => {
         sendAction({ action: "respond_permission", requestId, optionId });
       },
-      onRespondQuestion: (questionId: string, optionIds: string[]) => {
-        // AskUserQuestion 答案回传：多问题合并答案数组（按问题顺序），服务端 CAS
-        // 迁移（仅 pending → resolved 一次）后以 control_response 帧发给 acp-link，
-        // 组装 content[q_id]=label 注入 agent 继续执行
-        sendAction({ action: "respond_question", questionId, optionIds });
+      onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => {
+        // AskUserQuestion 答案按问题顺序回传；单选为 string，多选保留 string[]。
+        // 服务端 CAS 迁移后以 control_response 帧发给 acp-link，按 q_id 注入 agent。
+        sendAction({ action: "respond_question", questionId, answers });
       },
       onSetMode: (modeId: string) => {
         sendAction({ action: "set_session_mode", modeId });
@@ -419,7 +428,6 @@ export function ChatPanel({
           initialCwd={initialCwd}
           hideSidebar={hideSidebar}
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
-          // URL sessionId 是实例会话标识（ses_inst_*），仅用于 WS 建连参数
           rcsSessionId={rcsSessionKey ?? undefined}
           detailSessionId={sessionId ?? undefined}
           scenePrompt={scenePrompt}

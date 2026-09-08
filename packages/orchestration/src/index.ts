@@ -28,7 +28,6 @@ export type {
 export {
   AgentNodeConnectionConflictError,
   AgentNodeUnavailableError,
-  ConcurrencyExceededError,
   EnvironmentNotFoundError,
   IllegalStateTransitionError,
   LaunchSpecBuildError,

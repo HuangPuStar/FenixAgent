@@ -1,0 +1,99 @@
+.chat-demo__prompt-jumps {
+  position: absolute;
+  z-index: 2;
+  top: 104px;
+  left: max(12px, calc((100% - 760px) / 2 - 44px));
+  display: none;
+  width: 30px;
+  height: auto;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+.chat-demo__prompt-jumps button {
+  position: relative;
+  display: flex;
+  width: 28px;
+  height: 12px;
+  flex: 0 0 12px;
+  align-items: center;
+  border: 0;
+  padding: 0;
+  color: #687386;
+  background: #fff;
+  cursor: pointer;
+}
+.chat-demo__prompt-jump-tick {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ccd1d8;
+  transition:
+    width 150ms ease,
+    background 150ms ease;
+}
+.chat-demo__prompt-jumps button:hover .chat-demo__prompt-jump-tick,
+.chat-demo__prompt-jumps button:focus-visible .chat-demo__prompt-jump-tick {
+  width: 13px;
+  background: #717985;
+}
+.chat-demo__prompt-jumps button.is-active .chat-demo__prompt-jump-tick {
+  width: 17px;
+  background: #202631;
+}
+.chat-demo__prompt-jump-preview {
+  position: absolute;
+  top: 50%;
+  left: 28px;
+  display: grid;
+  width: 280px;
+  gap: 6px;
+  border: 1px solid #dfe3ea;
+  border-radius: 13px;
+  padding: 13px 15px;
+  color: #323946;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 14px 34px rgba(34, 45, 64, 0.12);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-6px);
+  transition:
+    opacity 130ms ease,
+    transform 130ms ease;
+}
+.chat-demo__prompt-jump-preview strong {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-demo__prompt-jump-preview small {
+  color: #8b929e;
+  font-size: 9px;
+}
+.chat-demo__prompt-jump-preview > span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #747d8a;
+  font-size: 10px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.chat-demo__prompt-jumps button:hover .chat-demo__prompt-jump-preview,
+.chat-demo__prompt-jumps button:focus-visible .chat-demo__prompt-jump-preview {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+@container chat-canvas (min-width: 830px) {
+  .chat-demo__prompt-jumps {
+    display: flex;
+  }
+}

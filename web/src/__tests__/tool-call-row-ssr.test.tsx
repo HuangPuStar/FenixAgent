@@ -20,17 +20,49 @@ function tool(overrides: Partial<ToolCallData> = {}): ToolCallData {
 }
 
 function renderTool(value: ToolCallData): string {
-  return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ToolCallRow, { tool: value })));
+  return renderToStaticMarkup(
+    createElement(I18nextProvider, { i18n }, createElement(ToolCallRow, { tool: value, envId: "env-ssr" })),
+  );
 }
 
 describe("ToolCallRow 服务端渲染", () => {
-  // 已完成文件读取应展示工具名称、摘要和参数入口，方便用户查看执行结果。
-  test("完成的读取工具展示摘要与详情入口", () => {
+  // 已完成文件读取应将文件名直接渲染为预览入口，并保留独立参数入口。
+  test("完成的读取工具展示可点击文件名与详情入口", () => {
     const html = renderTool(tool());
 
     expect(html).toContain("common.subtitle");
     expect(html).toContain("common.status.complete");
-    expect(html).toContain("toolCallRow.viewParams");
+    expect(html).toContain('class="chat-tool-call-row"');
+    expect(html).toContain('data-kind="read-file"');
+    expect(html).toContain('class="tool-call-row-file-link"');
+    expect(html).toContain("app.ts");
+    expect(html).toContain('class="chat-tool-call-row-details-button"');
+    expect(html).not.toContain("toolCallRow.openFile");
+  });
+
+  // Read 的行号范围应紧跟文件名展示，不再被推到工具行中间的独立列。
+  test("读取工具将行号范围显示在文件名之后", () => {
+    const html = renderTool(tool({ rawInput: { file_path: "src/app.ts", offset: 68, limit: 140 } }));
+
+    expect(html).toContain("tool-call-row-copy is-file-preview");
+    expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta[\s\S]*common\.lineRange/);
+  });
+
+  // 所有工具的补充详情都应紧跟工具名称，避免在宽屏下形成远离名称的独立列。
+  test("普通工具将详情显示在工具名称之后", () => {
+    const html = renderTool(
+      tool({
+        title: "Grep",
+        kind: "grep",
+        rawInput: { pattern: "answer", path: "src" },
+        rawOutput: { count: 1 },
+      }),
+    );
+
+    expect(html).toMatch(
+      /tool-call-row-heading[\s\S]*<span class="tool-call-row-title"[\s\S]*<\/span>[\s\S]*tool-call-row-meta/,
+    );
+    expect(html).not.toContain("<strong");
   });
 
   // 运行中的工具需要展示进行中状态，避免被误认为已成功结束。
@@ -51,20 +83,52 @@ describe("ToolCallRow 服务端渲染", () => {
         publicError: {
           type: "ACTION.FAILED",
           id: "err_00000000000000000000000000000001",
-          message: "The action failed.",
+          message: "操作未能完成。",
         },
       }),
     );
 
+    expect(html).toContain("操作未能完成。");
     expect(html).toContain("Type: ACTION.FAILED");
     expect(html).toContain("ID: err_00000000000000000000000000000001");
-    expect(html).not.toContain("没有写入权限");
+    expect(html).toContain("tool-call-row-heading");
+    expect(html).toContain('class="tool-call-row-error"');
     expect(html).toContain("common.status.error");
     expect(html).toContain("toolCallRow.previewFile");
   });
 
-  // 等待确认的工具不得开放详情弹窗，而应渲染权限决策入口。
-  test("等待确认工具展示权限操作", () => {
+  // 无参数和结果的行不应渲染详情按钮，避免伪装成可交互元素。
+  test("无详情工具行不展示详情入口", () => {
+    const html = renderTool(
+      tool({
+        title: "Bash",
+        kind: "bash",
+        status: "running",
+        rawInput: undefined,
+        rawOutput: undefined,
+        content: undefined,
+      }),
+    );
+
+    expect(html).toContain('class="chat-tool-call-row" data-kind="bash"');
+    expect(html).not.toContain('class="chat-tool-call-row-details-button"');
+  });
+
+  // data-kind 只描述工具语义；同一 kind 是否展示详情入口取决于是否存在参数或结果。
+  test("同一 kind 的详情入口由内容决定", () => {
+    const enabled = renderTool(tool({ kind: "unknown", rawInput: { value: 1 } }));
+    const disabled = renderTool(
+      tool({ kind: "unknown", status: "running", rawInput: undefined, rawOutput: undefined, content: undefined }),
+    );
+
+    expect(enabled).toContain('data-kind="unknown"');
+    expect(enabled).toContain('class="chat-tool-call-row-details-button"');
+    expect(disabled).toContain('data-kind="unknown"');
+    expect(disabled).not.toContain('class="chat-tool-call-row-details-button"');
+  });
+
+  // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。
+  test("等待确认工具不重复渲染权限操作", () => {
     const html = renderTool(
       tool({
         title: "Delete",
@@ -81,7 +145,7 @@ describe("ToolCallRow 服务端渲染", () => {
     );
 
     expect(html).toContain("common.status.waiting_for_confirmation");
-    expect(html).toContain("允许");
-    expect(html).toContain("拒绝");
+    expect(html).not.toContain("允许");
+    expect(html).not.toContain("拒绝");
   });
 });

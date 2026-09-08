@@ -2,6 +2,8 @@
 // 前端 action → ACP JSON-RPC 翻译。
 // 纯函数，不依赖任何 I/O 或框架。
 
+import { hasQuestionAnswer, normalizeQuestionAnswers } from "../schema";
+
 /**
  * 将前端的简化操作转换为 ACP JSON-RPC 请求。
  *
@@ -79,23 +81,25 @@ export function translateSimpleAction(
     case "respond_question": // AskUserQuestion 答案必须以 control_response 传输帧回传（非 JSON-RPC！）：
       // acp-link dispatcher 的 handleTransportMessage 只消费 { type: "control_response",
       // request_id, approved, extra } 形态（acp-dispatcher.ts:194）。
-      // 多问题（requestedSchema.properties 多个）合并回传 extra.answers 数组
-      // （answers[i] = 第 i 个问题的选中 label，按 propertyKeys 顺序对应）；
-      // 单问题兼容 extra.outcome.optionId（历史形态，新前端统一走 answers）。
+      // 多问题按 schema property 顺序合并回传 extra.answers；单选答案为 string，
+      // 多选答案为 string[]。单值 optionId 仅保留历史兼容。
       {
-        const optionIds = Array.isArray(parsed.optionIds)
-          ? (parsed.optionIds as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0)
-          : typeof parsed.optionId === "string" && parsed.optionId.length > 0
-            ? [parsed.optionId]
-            : [];
+        const rawAnswers = Array.isArray(parsed.answers)
+          ? parsed.answers
+          : Array.isArray(parsed.optionIds)
+            ? parsed.optionIds
+            : typeof parsed.optionId === "string" && parsed.optionId.length > 0
+              ? [parsed.optionId]
+              : [];
+        const answers = normalizeQuestionAnswers(rawAnswers);
+        const approved = hasQuestionAnswer(answers);
         return {
           type: "control_response",
           request_id: typeof parsed.questionId === "string" ? parsed.questionId : "",
-          approved: optionIds.length > 0,
-          extra:
-            optionIds.length > 0
-              ? { answers: optionIds }
-              : { outcome: { optionId: typeof parsed.optionId === "string" ? parsed.optionId : "" } },
+          approved,
+          extra: approved
+            ? { answers }
+            : { outcome: { optionId: typeof parsed.optionId === "string" ? parsed.optionId : "" } },
         };
       }
     case "set_session_mode":

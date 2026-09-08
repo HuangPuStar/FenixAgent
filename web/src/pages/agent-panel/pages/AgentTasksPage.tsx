@@ -1,167 +1,28 @@
 import { useRequest } from "ahooks";
-import {
-  Calendar,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  FileText,
-  Loader2,
-  MinusCircle,
-  MoreHorizontal,
-  Pencil,
-  Play,
-  Plus,
-  Search,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { z } from "zod/v4";
+import type { z } from "zod/v4";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { EmptyState } from "@/components/config/EmptyState";
 import { FormDialog } from "@/components/config/FormDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { agentApi } from "@/src/api/agents";
 import type { PaginatedResponse } from "@/src/api/request";
 import { unwrap } from "@/src/api/request";
-import type {
-  AgentDefinition,
-  HttpDefinition,
-  TaskV2CreateBody,
-  TaskV2Info,
-  TaskV2UpdateBody,
-} from "@/src/api/tasks-v2";
+import type { TaskV2CreateBody, TaskV2Info, TaskV2UpdateBody } from "@/src/api/tasks-v2";
 import { taskV2Api } from "@/src/api/tasks-v2";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import type { AgentInfo } from "@/src/types/config";
-import { describeCron } from "../components/CronEditor";
 import { TaskForm, type TaskFormValues } from "../components/TaskForm";
 import { TaskLogDialog } from "../components/TaskLogDialog";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
-
-// ── Zod Schema ──
-
-const formSchema = z
-  .object({
-    type: z.enum(["http", "agent"]),
-    name: z.string().min(1, "名称不能为空"),
-    cron: z.string().min(1, "Cron 不能为空"),
-    timezone: z.string().optional().default(""),
-    timeoutSeconds: z.coerce.number().min(1).max(3600),
-    description: z.string().optional().default(""),
-    url: z.string().optional().default(""),
-    method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional().default("POST"),
-    headers: z.string().optional().default(""),
-    body: z.string().optional().default(""),
-    agentId: z.string().optional().default(""),
-    prompt: z.string().optional().default(""),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === "http") {
-      if (!data.url.trim()) {
-        ctx.addIssue({ code: "custom", path: ["url"], message: "请输入 URL" });
-      }
-      if (data.headers.trim()) {
-        try {
-          const parsed = JSON.parse(data.headers);
-          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            ctx.addIssue({ code: "custom", path: ["headers"], message: "Headers 必须是 JSON 对象" });
-          }
-        } catch {
-          ctx.addIssue({ code: "custom", path: ["headers"], message: "Headers 不是有效的 JSON 格式" });
-        }
-      }
-    }
-    if (data.type === "agent") {
-      if (!data.agentId.trim()) {
-        ctx.addIssue({ code: "custom", path: ["agentId"], message: "请选择 Agent" });
-      }
-      if (!data.prompt.trim()) {
-        ctx.addIssue({ code: "custom", path: ["prompt"], message: "Prompt 不能为空" });
-      }
-    }
-  });
-
-// ── 辅助函数 ──
-
-function buildDefinition(values: TaskFormValues): HttpDefinition | AgentDefinition {
-  if (values.type === "http") {
-    return {
-      url: values.url,
-      method: values.method,
-      headers: values.headers.trim() ? JSON.parse(values.headers) : undefined,
-      body: values.body.trim() || undefined,
-    };
-  }
-  return { prompt: values.prompt };
-}
-
-/** 相对时间格式化：Unix 秒级时间戳 -> 人类可读 */
-function formatRelativeTime(
-  ts: number | null | undefined,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (ts == null) return "—";
-  const now = Date.now();
-  const diff = now - ts * 1000;
-  if (diff < 60_000) return t("relativeTime.justNow");
-  if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
-  if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
-  const d = new Date(ts * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// ── 默认表单值 / 转换 ──
-
-const INITIAL_FORM_VALUES: TaskFormValues = {
-  type: "http",
-  name: "",
-  cron: "*/5 * * * *",
-  timezone: "",
-  timeoutSeconds: 300,
-  description: "",
-  url: "",
-  method: "POST",
-  headers: "",
-  body: "",
-  agentId: "",
-  prompt: "",
-};
-
-function taskToFormValues(task: TaskV2Info): TaskFormValues {
-  const def = task.definition as unknown as Record<string, unknown> | null;
-  return {
-    type: task.type,
-    name: task.name,
-    cron: task.cron,
-    timezone: task.timezone ?? "",
-    timeoutSeconds: task.timeoutSeconds,
-    description: task.description ?? "",
-    url: (def?.url as string) ?? "",
-    method: ((def?.method as string) ?? "POST") as "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
-    headers: def?.headers ? JSON.stringify(def.headers) : "",
-    body: (def?.body as string) ?? "",
-    agentId: task.agentId ?? "",
-    prompt: (def?.prompt as string) ?? "",
-  };
-}
+import { AgentTaskRuntimeBoard } from "./agent-task-runtime-board";
+import { AgentTasksRegistry, AgentTasksToolbar } from "./agent-tasks-registry";
+import { buildTaskDefinition, INITIAL_TASK_FORM_VALUES, taskFormSchema, taskToFormValues } from "./agent-tasks-utils";
+import "./agent-tasks.css";
 
 // ── 组件 ──
 
@@ -258,7 +119,7 @@ export function AgentTasksPage() {
         timeoutSeconds,
         agentId: values.type === "agent" ? values.agentId : undefined,
       };
-      const definition = buildDefinition(values);
+      const definition = buildTaskDefinition(values);
 
       if (task) {
         await unwrap(
@@ -293,13 +154,14 @@ export function AgentTasksPage() {
 
   // ── 表单配置 ──
   const formDefaultValues = useMemo<TaskFormValues>(
-    () => (editingTask ? taskToFormValues(editingTask) : { ...INITIAL_FORM_VALUES }),
+    () => (editingTask ? taskToFormValues(editingTask) : { ...INITIAL_TASK_FORM_VALUES }),
     [editingTask],
   );
 
   const formConfig = useMemo(
     () => ({
-      schema: formSchema as z.ZodType<Record<string, unknown>>,
+      mode: "onChange" as const,
+      schema: taskFormSchema as z.ZodType<Record<string, unknown>>,
       defaultValues: formDefaultValues as unknown as Record<string, unknown>,
       onFormSubmit: (data: Record<string, unknown>) => saveTask(data as unknown as TaskFormValues),
     }),
@@ -418,7 +280,7 @@ export function AgentTasksPage() {
   if (!initialLoadDone.current && loading) {
     return (
       <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-        <AgentPageHeader title={t("title")} subtitle={t("subtitle")} />
+        <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
@@ -434,9 +296,9 @@ export function AgentTasksPage() {
   }
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+    <AppPage className="agent-tasks-page">
       {/* ── 标题栏 ── */}
-      <AgentPageHeader
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -447,119 +309,31 @@ export function AgentTasksPage() {
         }
       />
 
-      {/* ── 搜索 + 类型筛选 ── */}
-      <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-text-muted" />
-          <TaskSearchInput
-            placeholder={t("filter.searchPlaceholder")}
-            value={searchKeyword}
-            onChange={setSearchKeyword}
-          />
-        </div>
-        <Tabs value={typeFilter} onValueChange={(v) => setTypeFilter(v as "all" | "http" | "agent")}>
-          <TabsList>
-            <TabsTrigger
-              value="all"
-              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
-            >
-              {t("filter.all")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="http"
-              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
-            >
-              {t("type.http")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="agent"
-              className="text-xs h-7 data-[state=active]:text-text-bright data-[state=inactive]:text-text-muted"
-            >
-              {t("type.agent")}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      {/* ── 任务表格 ── */}
-      {tasks.length === 0 ? (
-        searchKeyword.trim() ? (
-          <div className="py-12 text-center text-sm text-text-muted">{t("emptySearchResult")}</div>
-        ) : (
-          <EmptyState
-            icon={<Calendar className="w-10 h-10" />}
-            title={t("empty")}
-            description={t("subtitle")}
-            action={{ label: t("action.create"), onClick: handleOpenCreate }}
-          />
-        )
-      ) : (
-        <>
-          <div className="rounded-lg border border-border/40 bg-white overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-8" />
-                  <TableHead className="text-xs">{t("table.name")}</TableHead>
-                  <TableHead className="text-xs w-[80px]">{t("table.type")}</TableHead>
-                  <TableHead className="text-xs">{t("table.target")}</TableHead>
-                  <TableHead className="text-xs">{t("table.schedule")}</TableHead>
-                  <TableHead className="text-xs w-[160px]">{t("table.lastRun")}</TableHead>
-                  <TableHead className="text-xs w-[140px] text-right">{t("table.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => (
-                  <TaskTableRow
-                    key={task.id}
-                    task={task}
-                    agents={agents}
-                    t={t}
-                    isTriggering={triggeredTasks.has(task.id)}
-                    onToggle={() => runToggle(task.id)}
-                    onTrigger={() => {
-                      setTriggeredTasks((prev) => new Set(prev).add(task.id));
-                      runTrigger(task.id);
-                    }}
-                    onEdit={() => handleOpenEdit(task)}
-                    onDelete={() => handleDeleteClick(task)}
-                    onViewLogs={() => handleViewLogs(task)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* ── 分页控件 ── */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                <ChevronLeft className="mr-1 size-3" />
-                {t("log.prev")}
-              </Button>
-              <span className="text-xs text-text-muted">
-                {page} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                {t("log.next")}
-                <ChevronRight className="ml-1 size-3" />
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+      <AgentTasksToolbar
+        query={searchKeyword}
+        typeFilter={typeFilter}
+        onQueryChange={setSearchKeyword}
+        onTypeFilterChange={setTypeFilter}
+      />
+      <AgentTaskRuntimeBoard tasks={tasks} loading={loading} />
+      <AgentTasksRegistry
+        tasks={tasks}
+        agents={agents}
+        query={searchKeyword}
+        page={page}
+        totalPages={totalPages}
+        triggeringIds={triggeredTasks}
+        onPageChange={setPage}
+        onCreate={handleOpenCreate}
+        onToggle={(task) => runToggle(task.id)}
+        onTrigger={(task) => {
+          setTriggeredTasks((current) => new Set(current).add(task.id));
+          runTrigger(task.id);
+        }}
+        onEdit={handleOpenEdit}
+        onDelete={handleDeleteClick}
+        onLogs={handleViewLogs}
+      />
 
       {/* ── 创建/编辑表单 ── */}
       <FormDialog
@@ -605,231 +379,6 @@ export function AgentTasksPage() {
         loading={clearingLogs}
         onConfirm={() => logTask && runClearLogs(logTask.id)}
       />
-    </div>
-  );
-}
-
-// ── 搜索输入（IME 安全）：composing 期间使用独立 value 避免 React 受控值覆盖 IME 中间文字 ──
-
-function TaskSearchInput({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-}) {
-  const [isComposing, setIsComposing] = useState(false);
-  const [composingValue, setComposingValue] = useState("");
-
-  return (
-    <Input
-      placeholder={placeholder}
-      value={isComposing ? composingValue : value}
-      className="h-8 pl-8 text-xs"
-      onCompositionStart={() => {
-        setIsComposing(true);
-        setComposingValue(value);
-      }}
-      onCompositionUpdate={(e) => {
-        setComposingValue((e.target as HTMLInputElement).value);
-      }}
-      onCompositionEnd={(e) => {
-        setIsComposing(false);
-        setComposingValue("");
-        onChange((e.target as HTMLInputElement).value);
-      }}
-      onChange={(e) => {
-        if (isComposing) {
-          setComposingValue(e.target.value);
-        } else {
-          onChange(e.target.value);
-        }
-      }}
-    />
-  );
-}
-
-// ── 表格行子组件 ──
-
-interface TaskTableRowProps {
-  task: TaskV2Info;
-  agents: AgentInfo[];
-  t: (key: string, options?: Record<string, unknown>) => string;
-  isTriggering: boolean;
-  onToggle: () => void;
-  onTrigger: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onViewLogs: () => void;
-}
-
-/** 上次执行状态图标 */
-function LastRunStatus({
-  status,
-  t,
-}: {
-  status: string | null;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-}) {
-  if (!status) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-text-muted">
-        <MinusCircle className="size-3.5" />
-        <span>{t("status.pending")}</span>
-      </div>
-    );
-  }
-  if (status === "success") {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-emerald-600">
-        <CheckCircle2 className="size-3.5" />
-      </div>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-red-500">
-        <XCircle className="size-3.5" />
-      </div>
-    );
-  }
-  if (status === "timeout") {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-amber-500">
-        <Clock className="size-3.5" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5 text-xs text-text-muted">
-      <MinusCircle className="size-3.5" />
-    </div>
-  );
-}
-
-function TaskTableRow({
-  task,
-  agents,
-  t,
-  isTriggering,
-  onToggle,
-  onTrigger,
-  onEdit,
-  onDelete,
-  onViewLogs,
-}: TaskTableRowProps) {
-  const cronDesc = describeCron(task.cron, t);
-
-  // 目标列：Agent 显示名称，HTTP 显示 URL
-  const targetLabel = (() => {
-    if (task.type === "agent") {
-      const agent = agents.find((a) => a.id === task.agentId);
-      return agent?.name ?? task.agentId ?? "—";
-    }
-    const def = task.definition as HttpDefinition | null;
-    return def?.url ?? "—";
-  })();
-
-  return (
-    <TableRow className={!task.enabled ? "opacity-50" : ""}>
-      {/* 状态圆点 */}
-      <TableCell className="w-8 pr-0">
-        <span
-          className={`inline-block size-2 rounded-full ${task.enabled ? "bg-emerald-500" : "bg-slate-400"}`}
-          title={task.enabled ? t("card.enabled") : t("card.disabled")}
-        />
-      </TableCell>
-
-      {/* 名称 + 描述 */}
-      <TableCell>
-        <button type="button" className="text-left cursor-pointer hover:underline" onClick={onEdit}>
-          <span className="text-sm font-medium text-text-bright">{task.name}</span>
-        </button>
-        {task.description && <p className="text-xs text-text-muted truncate max-w-[240px]">{task.description}</p>}
-      </TableCell>
-
-      {/* 类型 */}
-      <TableCell>
-        <Badge variant={task.type === "agent" ? "default" : "outline"} className="text-[11px] h-5">
-          {t(`type.${task.type}`)}
-        </Badge>
-      </TableCell>
-
-      {/* 目标（Agent 名称 / HTTP URL） */}
-      <TableCell>
-        <span className="text-xs text-text-secondary truncate max-w-[200px] block" title={targetLabel}>
-          {targetLabel}
-        </span>
-      </TableCell>
-
-      {/* 执行计划 */}
-      <TableCell>
-        <div className="text-xs">
-          {cronDesc && <span className="text-text-primary">{cronDesc}</span>}
-          <code className="ml-1.5 rounded bg-surface-1 px-1 py-0.5 text-[10px] text-text-muted font-mono">
-            {task.cron}
-          </code>
-        </div>
-      </TableCell>
-
-      {/* 上次执行 */}
-      <TableCell>
-        <div className="flex items-center gap-1.5">
-          <LastRunStatus status={task.lastStatus} t={t} />
-          <span className="text-xs text-text-muted">{formatRelativeTime(task.lastRunAt, t)}</span>
-        </div>
-      </TableCell>
-
-      {/* 操作 */}
-      <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          {/* 手动执行 */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-7 p-0"
-            disabled={isTriggering}
-            onClick={onTrigger}
-            title={t("action.execute")}
-          >
-            {isTriggering ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-          </Button>
-
-          {/* 更多菜单 */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="size-7 p-0">
-                <MoreHorizontal className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="size-3.5" />
-                {t("action.edit")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onViewLogs}>
-                <FileText className="size-3.5" />
-                {t("action.logs")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="size-3.5" />
-                {t("action.delete")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* 启停 Switch */}
-          <Switch
-            checked={task.enabled}
-            onCheckedChange={onToggle}
-            size="sm"
-            aria-label={task.enabled ? t("card.disabled") : t("card.enabled")}
-          />
-        </div>
-      </TableCell>
-    </TableRow>
+    </AppPage>
   );
 }

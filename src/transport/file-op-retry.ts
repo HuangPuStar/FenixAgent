@@ -25,8 +25,8 @@ const CIRCUIT_FAILURE_THRESHOLD = 3;
 /** 熔断持续时间：30s 内快速失败（上层兜底映射 503），到期自动关闭允许下一次请求试探 */
 const CIRCUIT_OPEN_MS = 30_000;
 
-/** 写操作集合（§7.2）：机器端按 op_id 缓存结果；这些操作超时/断连不做自动重试 */
-const WRITE_OPERATIONS = new Set(["write", "mkdir", "delete", "rename", "upload"]);
+/** 不可自动重试操作：写操作，以及可能长时间占用 CPU/I/O 的 ZIP 快照。 */
+const NON_RETRYABLE_OPERATIONS = new Set(["write", "mkdir", "delete", "rename", "upload", "zip"]);
 
 /**
  * 熔断打开期间的快速失败错误。code 恒为 "circuit_open"。
@@ -78,9 +78,9 @@ export function resetFileOpCircuitStates(): void {
   circuitStates.clear();
 }
 
-/** 判定操作是否为写操作（§7.2 重试矩阵分界：写操作不自动重试） */
-export function isWriteOperation(operation: string): boolean {
-  return WRITE_OPERATIONS.has(operation);
+/** 判定操作是否禁止自动重试：写操作及昂贵的 ZIP 快照均直接返回失败。 */
+export function isNonRetryableOperation(operation: string): boolean {
+  return NON_RETRYABLE_OPERATIONS.has(operation);
 }
 
 /**
@@ -161,7 +161,7 @@ export function runFileOpWithRetry(opts: {
     .catch((err) => {
       // 写操作不自动重试（§7.3：调用方带 op_id 重发幂等去重）；busy / 熔断 / 退役 /
       // 停机 / 无活跃连接为终态
-      if (isWriteOperation(opts.operation) || !isRetryableFileOpFailure(err)) throw err;
+      if (isNonRetryableOperation(opts.operation) || !isRetryableFileOpFailure(err)) throw err;
       return opts.attempt();
     })
     .then(

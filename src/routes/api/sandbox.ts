@@ -45,15 +45,20 @@ export function mapSandboxApiError(error: unknown): {
   }
   if (error instanceof SandboxProviderError) {
     if (error.code === "NOT_FOUND") {
-      return { status: 404, body: { error: { code: "NOT_FOUND", message } } };
+      return { status: 404, body: { error: { code: "NOT_FOUND", message: "Sandbox resource was not found" } } };
     }
     if (error.code === "INVALID_REQUEST") {
-      return { status: 400, body: { error: { code: "BAD_REQUEST", message } } };
+      return { status: 400, body: { error: { code: "BAD_REQUEST", message: "Sandbox request is invalid" } } };
     }
     const unavailable = error.code === "UNAVAILABLE" || error.status === 503;
     return {
       status: unavailable ? 503 : 502,
-      body: { error: { code: unavailable ? "SERVICE_UNAVAILABLE" : "BAD_GATEWAY", message } },
+      body: {
+        error: {
+          code: unavailable ? "SERVICE_UNAVAILABLE" : "BAD_GATEWAY",
+          message: unavailable ? "Sandbox service is unavailable" : "Sandbox provider request failed",
+        },
+      },
     };
   }
   if (message.includes("not found")) return { status: 404, body: { error: { code: "NOT_FOUND", message } } };

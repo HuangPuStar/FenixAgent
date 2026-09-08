@@ -14,11 +14,12 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { type ProdViewInfo, prodViewApi } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
+import { AppHeader } from "@/src/components/layout/app-header";
+import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
 import type { AgentInfo } from "@/src/types/config";
 import { AgentCardList } from "../shared/AgentCardList";
-import { AgentPageHeader } from "../shared/AgentPageHeader";
 
 /** 模块配置开关区域 */
 function ModuleConfigSection({
@@ -175,7 +176,7 @@ export function AgentProdViewsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <AppPage>
         <Skeleton className="h-[22px] w-28 rounded-md" />
         <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
         <div className="mt-6 space-y-3">
@@ -184,13 +185,13 @@ export function AgentProdViewsPage() {
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-      </div>
+      </AppPage>
     );
   }
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
-      <AgentPageHeader
+    <AppPage>
+      <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
@@ -349,6 +350,6 @@ export function AgentProdViewsPage() {
           setDeleteTarget(null);
         }}
       />
-    </div>
+    </AppPage>
   );
 }

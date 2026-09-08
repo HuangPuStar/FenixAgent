@@ -103,7 +103,6 @@ interface EnvironmentData {
   id: string;
   agentConfigId: string;
   machineId: string | null;  // null = 本地
-  maxConcurrency: number;
   autoStart: boolean;
 }
 ```
@@ -130,7 +129,7 @@ interface AgentEngineData {
 
 ```
 controller.spawnInstance(envId, userId)
-  ├─ 1. 环境校验（EnvironmentRepo → 存在性 + 并发限制）
+  ├─ 1. 环境校验（EnvironmentRepo → 存在性）
   ├─ 2. 构建 LaunchSpec（AgentConfigRepo + AgentEngineRepo 聚合）
   ├─ 3. 获取 AgentNode（AgentNodeService.ensureNode — 被动等待 Machine 连接）
   ├─ 4. 创建 Instance（agentNode.spawnInstance，异步）
@@ -142,7 +141,6 @@ controller.spawnInstance(envId, userId)
 分层异常，调用方按需 catch：
 
 - `AgentNodeUnavailableError` — Machine 未连接
-- `ConcurrencyExceededError` — 环境并发超限
 - `MachineOfflineError` — Machine 连接断开
 - `LaunchSpecBuildError` — LaunchSpec 构建失败
 

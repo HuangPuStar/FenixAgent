@@ -45,9 +45,11 @@ describe("toolNarrator i18n 完整性", () => {
     expect(en.common.subtitle).toContain("{{object}}");
   });
 
-  // 进行时副标题模板必须包含 object 占位符
-  test("subtitleRunning 模板包含 {{object}} 占位符", () => {
+  // 进行时副标题模板必须包含 verb 和 object，避免英文描述被写死为单一动作。
+  test("subtitleRunning 模板包含 {{verb}} 和 {{object}} 占位符", () => {
+    expect(zh.common.subtitleRunning).toContain("{{verb}}");
     expect(zh.common.subtitleRunning).toContain("{{object}}");
+    expect(en.common.subtitleRunning).toContain("{{verb}}");
     expect(en.common.subtitleRunning).toContain("{{object}}");
   });
 

@@ -114,8 +114,6 @@ export function FileTabsBar({
 
       {/* 3. 文件 tab 列表 + 折叠 */}
       <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
-        {visible.length === 0 && <span className="text-xs text-text-muted px-2">{t("fileTree.noTabsHint")}</span>}
-
         {visible.map((path) => {
           const fileName = path.split("/").pop() ?? path;
           const isActive = path === activeFile;

@@ -1,0 +1,470 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: access page selectors are isolated by component namespace. */
+.org-workspace {
+  display: grid;
+  min-height: 520px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.org-directory {
+  align-self: stretch;
+  padding: 8px;
+}
+
+.org-directory > header {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.org-directory > header strong {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--blue-700);
+  background: var(--blue-050);
+}
+
+.org-directory > button {
+  display: grid;
+  width: 100%;
+  min-height: 54px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  color: var(--ink-2);
+  background: transparent;
+  text-align: left;
+}
+
+.org-directory > button:hover,
+.org-directory > button.is-active {
+  background: var(--blue-050);
+}
+
+.org-directory__mark {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--blue-600);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.org-directory > button > span:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.org-directory > button strong {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-directory > button small {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-detail {
+  overflow: hidden;
+}
+
+.org-detail__header {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 13px 16px;
+}
+
+.org-detail__identity,
+.org-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.org-detail__identity > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--blue-600);
+  background: var(--blue-050);
+}
+
+.org-detail__identity svg,
+.org-detail__actions svg {
+  width: 15px;
+}
+
+.org-detail__identity h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.org-detail__identity p {
+  margin: 4px 0 0;
+  color: var(--faint);
+  font:
+    8px ui-monospace,
+    monospace;
+}
+
+.org-engine {
+  display: grid;
+  min-height: 64px;
+  grid-template-columns: 30px minmax(170px, 1fr) minmax(170px, 220px) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px 0;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #f6f8fb;
+}
+
+.org-engine__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--blue-600);
+  background: #fff;
+}
+
+.org-engine svg {
+  width: 13px;
+}
+
+.org-engine > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.org-engine strong {
+  font-size: 9px;
+}
+
+.org-engine small {
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.org-engine select {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 8px;
+  color: var(--ink-2);
+  background: #fff;
+  font-size: 8px;
+}
+
+.org-section-nav {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: end;
+  gap: 3px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+}
+
+.org-section-nav > button {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 9px;
+}
+
+.org-section-nav > button.is-active {
+  border-bottom-color: var(--blue-600);
+  color: var(--blue-700);
+  font-weight: 650;
+}
+
+.org-section-nav > button svg {
+  width: 13px;
+}
+
+.org-section-nav > button span {
+  color: var(--faint);
+  font-size: 7px;
+}
+
+.org-section-nav .org-section-nav__add {
+  height: 29px;
+  align-self: center;
+  border-bottom: 0;
+  border-radius: 7px;
+  color: var(--blue-600);
+  background: var(--blue-050);
+}
+
+.org-member-list,
+.org-machine-list {
+  padding: 2px 16px 12px;
+}
+
+.org-member-list article,
+.org-machine-list article {
+  display: grid;
+  min-height: 58px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #f0f3f7;
+}
+
+.org-member-list article {
+  grid-template-columns: 30px minmax(160px, 1fr) auto 25px;
+}
+
+.org-machine-list article {
+  grid-template-columns: 31px minmax(190px, 1fr) auto 64px 25px;
+}
+
+.org-member-list article > div,
+.org-machine-list article > div:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.org-member-list strong,
+.org-machine-list strong {
+  font-size: 9px;
+}
+
+.org-member-list small,
+.org-machine-list small {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-avatar,
+.machine-state {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--blue-700);
+  background: var(--blue-050);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.machine-state {
+  color: var(--faint);
+  background: #f1f3f6;
+}
+
+.machine-state.is-online {
+  color: #268166;
+  background: #e8f6f1;
+}
+
+.machine-state svg {
+  width: 13px;
+}
+
+.org-role {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.org-role svg {
+  width: 11px;
+}
+
+.org-role.is-owner {
+  color: #bb7a1c;
+}
+
+.org-role.is-admin {
+  color: var(--blue-600);
+}
+
+.org-member-list article > button,
+.org-machine-list article > button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--faint);
+  background: transparent;
+  opacity: 0;
+}
+
+.org-member-list article:hover > button,
+.org-machine-list article:hover > button {
+  opacity: 1;
+}
+
+.org-member-list article > button svg,
+.org-machine-list article > button svg {
+  width: 12px;
+}
+
+.org-machine-list article > .machine-labels {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+}
+
+.api-security-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 12px;
+  border-radius: 9px;
+  padding: 11px 14px;
+  color: #65511e;
+  background: #fff8e7;
+}
+
+.api-security-note > svg {
+  width: 17px;
+  color: #b68228;
+}
+
+.api-security-note strong {
+  font-size: 9px;
+}
+
+.api-security-note p {
+  margin: 3px 0 0;
+  font-size: 8px;
+}
+
+.api-key-list {
+  overflow: hidden;
+}
+
+.api-key-list > header,
+.api-key-list > article {
+  display: grid;
+  grid-template-columns: 34px minmax(150px, 1.3fr) minmax(150px, 1fr) 100px 100px 45px;
+  align-items: center;
+  gap: 10px;
+}
+
+.api-key-list > header {
+  min-height: 34px;
+  padding: 0 14px;
+  color: var(--faint);
+  background: #f8fafc;
+  font-size: 7px;
+  font-weight: 650;
+}
+
+.api-key-list > article {
+  min-height: 58px;
+  border-top: 1px solid var(--line);
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.api-key-list > article strong {
+  color: var(--ink-2);
+  font-size: 9px;
+}
+
+.api-key-list > article code {
+  color: #53647e;
+  font:
+    8px ui-monospace,
+    monospace;
+}
+
+.api-key-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: #a7731c;
+  background: #fff5de;
+}
+
+.api-key-icon svg {
+  width: 13px;
+}
+
+.api-key-list > article > button {
+  border: 0;
+  color: #c04a4a;
+  background: transparent;
+  font-size: 8px;
+}
+
+.api-key-empty {
+  padding: 42px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+@media (max-width: 940px) {
+  .org-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .org-engine {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+
+  .org-engine select {
+    grid-column: 2 / -1;
+  }
+
+  .api-key-list {
+    overflow-x: auto;
+  }
+
+  .api-key-list > header,
+  .api-key-list > article {
+    min-width: 720px;
+  }
+}

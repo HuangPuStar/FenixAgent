@@ -76,14 +76,16 @@ describe("round15 isolated service boundaries", () => {
     const delays: number[] = [];
     let reads = 0;
 
-    await waitForMachineConnection(
-      "machine-1",
-      1_000,
-      async () => ++reads === 2,
-      async (delayMs) => {
-        delays.push(delayMs);
-      },
-    );
+    await withFrozenClock(async () => {
+      await waitForMachineConnection(
+        "machine-1",
+        1_000,
+        async () => ++reads === 2,
+        async (delayMs) => {
+          delays.push(delayMs);
+        },
+      );
+    });
 
     expect(delays).toEqual([1_000]);
   });
@@ -173,11 +175,6 @@ describe("round15 isolated service boundaries", () => {
   // 禁用自动启动属于确定性配置失败，应停止自动重连。
   test("classifies disabled auto-start as a permanent spawn failure", () => {
     expect(classifyPermanentSpawnFailure(new AppError("disabled", "AUTO_START_DISABLED"))).toBe("auto_start_disabled");
-  });
-
-  // 会话配额耗尽属于确定性失败，应把稳定诊断码返回给客户端。
-  test("classifies exhausted sessions as a permanent spawn failure", () => {
-    expect(classifyPermanentSpawnFailure(new AppError("full", "MAX_SESSIONS_REACHED"))).toBe("max_sessions_reached");
   });
 
   // 权限拒绝不是 spawn 配置失败，客户端仍应遵循其既有错误处理路径。

@@ -148,6 +148,23 @@ export function injectRequestId({ request, set }: any) {
   set.headers["X-Request-Id"] = requestId;
 }
 
+function isDatabaseError(error: Error): boolean {
+  if (error.name === "DrizzleQueryError") return true;
+  const record = error as Error & { query?: unknown; params?: unknown };
+  return typeof record.query === "string" || Array.isArray(record.params);
+}
+
+/**
+ * 数据库驱动错误会附带 query、params 与 cause；params 可能包含 token、Header 或完整配置。
+ * HTTP 边界仅保留稳定错误类别，不把原始数据库错误交给 pino 序列化。
+ */
+export function sanitizeErrorForLog(error: Error): Error {
+  if (!isDatabaseError(error)) return error;
+  const sanitized = new Error("Database operation failed");
+  sanitized.name = error.name;
+  return sanitized;
+}
+
 /** 请求错误日志。挂到主 app 的 onError 上。 */
 export function logError({
   request,
@@ -191,7 +208,7 @@ export function logError({
 
   logger.error(
     `${request.method} ${url.pathname} ${status} ${ms.toFixed(2)}ms [${id ?? "n/a"}]`,
-    err instanceof Error ? err : new Error(String(err)),
+    err instanceof Error ? sanitizeErrorForLog(err) : new Error(String(err)),
   );
 }
 

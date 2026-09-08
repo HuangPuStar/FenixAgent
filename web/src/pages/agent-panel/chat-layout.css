@@ -1,0 +1,41 @@
+/*
+ * Chat 的唯一高度链。消息时间线仍由 Conversation/use-stick-to-bottom 管理；
+ * 这里仅约束外层 flex 容器，避免页面留白侵占可滚动区域或产生第二个滚动容器。
+ */
+.agent-panel-body,
+.agent-panel-content,
+.agent-chat-workspace,
+.agent-chat-area,
+.acp-main-root,
+.chat-main-column,
+.chat-interface-root,
+.chat-interface-column {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Chat 采用全幅画布；右侧工作区自己负责浮动阴影或 docked 分隔线。 */
+.agent-panel-content--chat {
+  padding: 0;
+  background: #fff;
+}
+
+.agent-chat-workspace {
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.agent-chat-workspace > .agent-chat-area {
+  height: auto;
+  overflow: hidden;
+}
+
+.acp-main-root,
+.chat-main-column,
+.chat-interface-root,
+.chat-interface-column {
+  overflow: hidden;
+}

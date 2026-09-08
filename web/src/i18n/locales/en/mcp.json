@@ -1,11 +1,44 @@
 {
-  "title": "MCP Servers",
-  "subtitle": "Manage Model Context Protocol server connections",
-  "search": "Search MCP servers...",
-  "empty": "No MCP servers yet. Click \"New Server\" to add one",
+  "title": "MCP Plugin Marketplace",
+  "subtitle": "Browse curated MCP servers and connect files, browsers, repositories, and business systems through standard configuration.",
+  "search": "Search plugins, transports, or use cases",
+  "empty": "No plugins are available yet",
+  "emptyHint": "Add an MCP JSON configuration to connect real tools for agents.",
+  "emptySearch": "No matching plugins",
+  "emptySearchHint": "Try another name, transport, or resource scope.",
   "disabled": "Disabled",
   "resource": {
     "trustedNotice": "Public MCP servers expose their full configuration to trusted internal teams with read access."
+  },
+  "toolbar": { "label": "Plugin search and scope filters" },
+  "scope": {
+    "label": "Plugin resource scope",
+    "all": "All",
+    "organization": "Organization",
+    "shared": "Shared with me",
+    "public": "Public"
+  },
+  "directory": {
+    "title": "Plugin directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No description",
+    "toolCount": "{{count}} tools",
+    "details": "Details",
+    "collapse": "Collapse",
+    "resultCount": "{{count}} results",
+    "totalTools": "{{count}} tools",
+    "installedCount": "{{count}} installed",
+    "manage": "Manage"
+  },
+  "type": { "local": "Local process", "remote": "Remote service" },
+  "status": { "enabled": "Enabled", "disabled": "Disabled" },
+  "actions": { "more": "More plugin actions" },
+  "loadState": {
+    "title": "Could not load the plugin directory",
+    "retry": "Retry"
+  },
+  "errors": {
+    "sharingUnavailable": "This plugin's sharing state cannot be managed"
   },
   "column": {
     "name": "Name",
@@ -15,7 +48,7 @@
     "tools": "Tools"
   },
   "btn": {
-    "newServer": "New Server",
+    "newServer": "Add plugin",
     "view": "View",
     "inspect": "Inspect",
     "inspecting": "Inspecting...",
@@ -34,7 +67,10 @@
     "editTitle": "Edit MCP Server",
     "detailTitle": "MCP Server Details",
     "createTitle": "New MCP Server",
-    "nameImmutable": "Name cannot be changed after creation"
+    "nameImmutable": "Name cannot be changed after creation",
+    "manualTab": "Manual configuration",
+    "jsonTab": "Import mcp.json",
+    "importAction": "Import"
   },
   "form": {
     "name": "Name",
@@ -59,7 +95,9 @@
     "timeoutHint": "Milliseconds, leave empty for default",
     "optional": "Optional",
     "parameters": "Parameters",
-    "noParameters": "No parameters"
+    "noParameters": "No parameters",
+    "jsonConfig": "mcp.json content",
+    "jsonConfigHint": "Paste a JSON configuration containing mcpServers to import one or more servers"
   },
   "tools": {
     "noTools": "No tools discovered yet, click \"Inspect\" to discover tools"
@@ -79,11 +117,17 @@
     "commandRequired": "Command cannot be empty",
     "commandInvalid": "Invalid command format",
     "urlRequired": "URL cannot be empty",
-    "urlInvalid": "Invalid URL format"
+    "urlInvalid": "Invalid URL format",
+    "importInvalidJson": "Invalid JSON",
+    "importInvalidRoot": "Enter a JSON object containing mcpServers",
+    "importEmpty": "mcpServers contains no servers to import",
+    "importInvalidName": "Server names may only contain lowercase letters, numbers, and single hyphens, up to 64 characters",
+    "importInvalidConfig": "Invalid MCP configuration: each entry must provide command or url and use supported fields"
   },
   "toast": {
     "serverUpdated": "Server updated",
     "serverCreated": "Server created",
+    "imported": "Imported {{count}} MCP servers",
     "serverDeleted": "Server deleted",
     "saveFailed": "Save failed",
     "saveFailedWith": "Save failed: {{message}}",
@@ -99,9 +143,11 @@
     "loadListFailedWith": "Failed to load MCP server list: {{message}}",
     "loadDetailFailed": "Failed to load server details",
     "inspectSuccess": "{{name}} connected successfully: {{serverInfo}} v{{version}}, discovered {{toolCount}} tools",
+    "inspectSuccessSimple": "Inspection complete: {{count}} tools found",
     "inspectFailed": "Inspect failed",
     "inspectFailedWith": "Inspect failed: {{message}}",
     "testSuccess": "Connected successfully: {{serverName}} v{{serverVersion}}{{toolsInfo}}",
+    "testSuccessSimple": "Connection test passed",
     "testReachable": "Reachable but not MCP protocol: {{message}}",
     "testFailed": "Connection failed: {{message}}",
     "testFailedWith": "Test failed: {{message}}",

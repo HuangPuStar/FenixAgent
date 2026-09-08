@@ -5,6 +5,10 @@ describe("assertSafePath 基础安全校验（D5）", () => {
   test("绝对路径被拒绝（400 validation_error）", () => {
     // 绝对路径可逃逸环境目录，主服务必须在发送 file_op / 落盘前拒绝
     expect(() => assertSafePath("/etc/passwd")).toThrowError(expect.objectContaining({ statusCode: 400 }));
+    expect(() => assertSafePath("C:\\Windows\\system32")).toThrowError(expect.objectContaining({ statusCode: 400 }));
+    expect(() => assertSafePath("\\\\server\\share\\file.txt")).toThrowError(
+      expect.objectContaining({ statusCode: 400 }),
+    );
   });
 
   test("`..` 段被拒绝（含 user/ 前缀混入的逃逸）", () => {
@@ -25,6 +29,11 @@ describe("assertSafePath 基础安全校验（D5）", () => {
     // 空路径由调用方决定语义（如 tree 根目录），校验层不拦截
     expect(() => assertSafePath("")).not.toThrow();
     expect(() => assertSafePath("   ")).not.toThrow();
+  });
+
+  test("合法文件名字符被放行", () => {
+    expect(() => assertSafePath("user/abcd#1234.txt")).not.toThrow();
+    expect(() => assertSafePath("user/a?b%20+c.txt")).not.toThrow();
   });
 
   test("workspace 根内相对路径全部放行（不再强制 user/ 前缀）", () => {
@@ -51,6 +60,8 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
   test("绝对路径 / `..` 段 / 控制字符 → null", () => {
     // 逃逸路径（D16）与注入字符全部拒绝，不得进入 join 落盘
     expect(normalizeUploadRelativePath("/etc/passwd")).toBeNull();
+    expect(normalizeUploadRelativePath("C:\\Windows\\system32")).toBeNull();
+    expect(normalizeUploadRelativePath("\\\\server\\share\\file.txt")).toBeNull();
     expect(normalizeUploadRelativePath("../../evil.txt")).toBeNull();
     expect(normalizeUploadRelativePath("a\\..\\b.txt")).toBeNull();
     expect(normalizeUploadRelativePath("a\u0000b.txt")).toBeNull();
@@ -62,10 +73,10 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
     expect(normalizeUploadRelativePath(".")).toBeNull();
   });
 
-  test("合法相对路径 trim 后返回，反斜杠视为分隔符", () => {
-    // 正/反斜杠均视为分隔符（防御 Windows 客户端路径），trim 前后等价
-    expect(normalizeUploadRelativePath("  nested/b.txt ")).toBe("nested/b.txt");
+  test("合法相对路径保留原值，反斜杠视为分隔符", () => {
+    expect(normalizeUploadRelativePath(" nested/b.txt ")).toBe(" nested/b.txt ");
     expect(normalizeUploadRelativePath("nested\\b.txt")).toBe("nested\\b.txt");
+    expect(normalizeUploadRelativePath("   ")).toBeNull();
   });
 
   test("空字符串 → 空串（回退 file.name）", () => {

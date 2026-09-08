@@ -10,7 +10,7 @@ import type { ToolNarrator } from "./types";
  */
 export const writeNarrator: ToolNarrator = {
   kinds: ["write"],
-  verb: "写入",
+  verb: "写入文件",
   icon: FilePlus,
   getDisplay(ctx) {
     const display = ctx.tool.display;

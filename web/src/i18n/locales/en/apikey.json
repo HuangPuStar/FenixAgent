@@ -4,13 +4,27 @@
   "btn": {
     "create": "Create Key",
     "copy": "Copy",
-    "revoke": "Revoke"
+    "revoke": "Revoke",
+    "retry": "Retry"
   },
   "searchPlaceholder": "Search keys...",
   "emptyMessage": "No API keys yet. Create one to get started.",
+  "summary": "keys",
+  "security": {
+    "title": "Key security",
+    "description": "Only names and prefixes are stored. Revoke and recreate a leaked key immediately; its original value cannot be recovered."
+  },
   "column": {
+    "name": "Name",
+    "prefix": "Key prefix",
     "created": "Created",
+    "lastUsed": "Last used",
     "expires": "Expires"
+  },
+  "date": {
+    "never": "—",
+    "neverUsed": "Never used",
+    "neverExpires": "Never expires"
   },
   "dialog": {
     "createTitle": "Create API Key",

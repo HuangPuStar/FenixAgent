@@ -1,0 +1,32 @@
+/* Empty and operation state rules are isolated from the core workbench layout. */
+.models-model-test svg {
+  width: 12px;
+}
+.models-model-test.is-running {
+  color: var(--model-blue);
+}
+.models-model-test.is-success {
+  color: #168b68;
+}
+.models-model-test.is-error {
+  color: #d84a4a;
+}
+.models-model-empty {
+  display: grid;
+  min-height: 270px;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--model-faint);
+  text-align: center;
+}
+.models-model-empty svg {
+  width: 24px;
+}
+.models-model-empty strong {
+  color: var(--model-ink);
+  font-size: 13px;
+}
+.models-model-empty span {
+  font-size: 10px;
+}

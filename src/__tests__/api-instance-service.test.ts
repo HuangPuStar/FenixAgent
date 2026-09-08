@@ -10,10 +10,11 @@ describe("api instance service", () => {
       getReadableAgentConfigById: async () => {
         throw new Error("not stubbed");
       },
-      getRunningInstancesByEnvironment: () => [],
-      groupActiveInstancesByEnvironment: () => new Map(),
       listEnvironmentsByOrganizationId: async () => [],
-      spawnInstanceViaController: async () => {
+      resolveInstance: async () => {
+        throw new Error("not stubbed");
+      },
+      ensureInstanceRuntime: async () => {
         throw new Error("not stubbed");
       },
     });
@@ -23,12 +24,10 @@ describe("api instance service", () => {
     setApiInstanceDeps(null);
   });
 
-  // connectAgentInstance 启新实例时应显式标记为 interactive
-  test("connectAgentInstance forwards interactive source when spawning", async () => {
+  // connectAgentInstance 必须先解析持久实例，再由 AgentInstanceService 启动 runtime。
+  test("connectAgentInstance uses persistent instance service", async () => {
     const spawnCalls: unknown[] = [];
     setApiInstanceDeps({
-      getRunningInstancesByEnvironment: () => [],
-      groupActiveInstancesByEnvironment: () => new Map(),
       listEnvironmentsByOrganizationId: async () => [],
       getReadableAgentConfigById: async () =>
         ({
@@ -43,11 +42,19 @@ describe("api instance service", () => {
           organizationId: "org-1",
           agentConfigId: "agc-1",
         }) as never,
-      spawnInstanceViaController: async (...args) => {
-        spawnCalls.push(args);
-        return {
-          instanceId: "inst-created",
-        } as never;
+      resolveInstance: async (input) => ({
+        id: "inst-created",
+        environmentId: input.environmentId,
+        ownerUserId: input.ownerUserId,
+        creationSource: "api",
+        name: "primary",
+        isDefault: false,
+        createdByUserId: input.ownerUserId,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      }),
+      ensureInstanceRuntime: async (instance) => {
+        spawnCalls.push(instance.id);
       },
     });
 
@@ -55,6 +62,6 @@ describe("api instance service", () => {
 
     expect(result.instanceId).toBe("inst-created");
     expect(spawnCalls).toHaveLength(1);
-    expect(spawnCalls[0]).toMatchObject(["env-created", "user-1", "interactive"]);
+    expect(spawnCalls[0]).toBe("inst-created");
   });
 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubCoreBootstrap, stubDb } from "../test-utils/helpers";
+import { agentInstanceService } from "../services/agent-instance-service";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 
@@ -14,7 +15,6 @@ function makeEnvRow(overrides: Partial<Record<string, unknown>> = {}) {
     machineName: null,
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "acp",
     capabilities: null,
     secret: "sec_1",
@@ -29,17 +29,15 @@ function makeEnvRow(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe("listEnvironmentsWithInstances", () => {
+  const originalListInstances = agentInstanceService.listInstances;
+
   beforeEach(() => {
     resetAllStubs();
-    stubCoreBootstrap({
-      getCoreRuntime: () =>
-        ({
-          listInstances: () => [],
-        }) as never,
-    });
+    agentInstanceService.listInstances = async () => [];
   });
 
   afterEach(() => {
+    agentInstanceService.listInstances = originalListInstances;
     resetAllStubs();
   });
 

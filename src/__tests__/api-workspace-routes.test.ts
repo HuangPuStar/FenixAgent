@@ -74,4 +74,29 @@ describe("API Workspace Routes", () => {
 
     await rm(workspaceDir, { recursive: true, force: true });
   });
+
+  // workspace 上传必须在调用本地或远程写入前拒绝目录穿越路径。
+  test("POST /api/environments/:environmentId/workspace/files rejects traversal paths", async () => {
+    let remoteCalled = false;
+    setApiWorkspaceDeps({
+      getOwnedEnvironment: async () => ({ id: "env-1", organizationId: "org-1" }) as never,
+      getRemoteMachineId: async () => "machine-1",
+      remoteUploadFiles: async () => {
+        remoteCalled = true;
+        return { files: [] };
+      },
+    });
+
+    const formData = new FormData();
+    formData.append("files", new File(["secret"], "demo.txt", { type: "text/plain" }));
+    formData.append("relativePaths", JSON.stringify(["../../escape.txt"]));
+
+    const res = await request("/api/environments/env-1/workspace/files", {
+      method: "POST",
+      body: formData,
+    });
+
+    expect(res.status).toBe(400);
+    expect(remoteCalled).toBe(false);
+  });
 });

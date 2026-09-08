@@ -22,9 +22,15 @@ function createLaunchSpec(): AgentLaunchSpec {
   };
 }
 
+const lifecycleFence = {
+  instanceUid: "inst_uid_1",
+  runtimeGeneration: 1,
+  serverEpoch: "epoch-test",
+};
+
 function createContext(): { runtime: ReturnType<typeof createRemoteRuntime>; transport: MockTransport } {
   const transport = createMockTransport();
-  const runtime = createRemoteRuntime({ transport });
+  const runtime = createRemoteRuntime({ transport, serverEpoch: lifecycleFence.serverEpoch });
   return { runtime, transport };
 }
 
@@ -33,7 +39,7 @@ test("RemoteRuntime: prepareEnvironment sends prepare and succeeds on ok", async
   const { runtime, transport } = createContext();
   const spec = createLaunchSpec();
 
-  const preparePromise = runtime.prepareEnvironment({ instanceId: "inst_1", launchSpec: spec });
+  const preparePromise = runtime.prepareEnvironment({ instanceId: "inst_1", ...lifecycleFence, launchSpec: spec });
 
   await new Promise((r) => setTimeout(r, 0));
   const sent = transport.sentMessages.find((m) => m.type === "prepare");
@@ -52,6 +58,7 @@ test("RemoteRuntime: prepareEnvironment throws on error status", async () => {
 
   const preparePromise = runtime.prepareEnvironment({
     instanceId: "inst_1",
+    ...lifecycleFence,
     launchSpec: createLaunchSpec(),
   });
 
@@ -70,7 +77,7 @@ test("RemoteRuntime: prepareEnvironment throws on error status", async () => {
 test("RemoteRuntime: startInstance sends start and succeeds on ok", async () => {
   const { runtime, transport } = createContext();
 
-  const startPromise = runtime.startInstance({ instanceId: "inst_1" });
+  const startPromise = runtime.startInstance({ instanceId: "inst_1", ...lifecycleFence });
 
   await new Promise((r) => setTimeout(r, 0));
   const sent = transport.sentMessages.find((m) => m.type === "start");
@@ -86,7 +93,7 @@ test("RemoteRuntime: startInstance sends start and succeeds on ok", async () => 
 test("RemoteRuntime: startInstance throws on error status", async () => {
   const { runtime, transport } = createContext();
 
-  const startPromise = runtime.startInstance({ instanceId: "inst_1" });
+  const startPromise = runtime.startInstance({ instanceId: "inst_1", ...lifecycleFence });
 
   await new Promise((r) => setTimeout(r, 0));
   const sent = transport.sentMessages.find((m) => m.type === "start");
@@ -102,7 +109,7 @@ test("RemoteRuntime: startInstance throws on error status", async () => {
 // connectRelay 返回 open 状态的 RemoteRelayHandle
 test("RemoteRuntime: connectRelay returns a relay handle", async () => {
   const { runtime } = createContext();
-  const handle = await runtime.connectRelay({ instanceId: "inst_1", sessionId: "sess_1" });
+  const handle = await runtime.connectRelay({ instanceId: "inst_1", ...lifecycleFence, sessionId: "sess_1" });
   expect(handle.state).toBe("open");
   handle.close();
   expect(handle.state).toBe("closed");
@@ -112,7 +119,7 @@ test("RemoteRuntime: connectRelay returns a relay handle", async () => {
 test("RemoteRuntime: stopInstance sends stop and tolerates timeout", async () => {
   const { runtime, transport } = createContext();
 
-  const stopPromise = runtime.stopInstance({ instanceId: "inst_1" });
+  const stopPromise = runtime.stopInstance({ instanceId: "inst_1", ...lifecycleFence });
 
   await new Promise((r) => setTimeout(r, 0));
   const sent = transport.sentMessages.find((m) => m.type === "stop");

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 const addTokenSchema = z.object({
   token: z.string().min(1, "Token is required"),

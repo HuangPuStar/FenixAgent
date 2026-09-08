@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { buildModelOptions } from "@/components/config/ModelConfigDialog";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/AgentFormDialog";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
   canWriteProvider,
   getProviderDisplayName,
+  getProviderIconModelId,
   getProviderKey,
   getProviderResourceBadgeKey,
+  providerMatchesScope,
+  supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "../types/config";
 
@@ -85,12 +88,54 @@ describe("provider model resource access flow", () => {
     expect(getProviderDisplayName(externalProvider)).toBe("Source Team/openai");
   });
 
-  // 外部 provider 的写入口判断为只读，页面据此隐藏 edit/delete/test/add model
-  test("marks external provider as read-only", () => {
+  // 外部 provider 与系统管理的 Gateway Provider 均不暴露 edit/delete/test/add model 写入口。
+  test("marks external and gateway providers as read-only", () => {
+    const gatewayProvider: ProviderInfo = {
+      ...internalProvider,
+      kind: "gateway",
+      gatewayType: "litellm",
+    };
+
     expect(canWriteProvider(internalProvider)).toBe(true);
     expect(canWriteProvider(externalProvider)).toBe(false);
+    expect(canWriteProvider(gatewayProvider)).toBe(false);
     expect(getProviderResourceBadgeKey(internalProvider)).toBe("resource.internal");
     expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
+  });
+
+  // 本组织与公开是独立且可重叠的筛选维度。
+  test("matches provider organization and public scopes independently", () => {
+    const publicInternalProvider: ProviderInfo = {
+      ...internalProvider,
+      resourceAccess: { ...internalProvider.resourceAccess!, publicReadable: true },
+    };
+    const publicExternalProvider: ProviderInfo = {
+      ...externalProvider,
+      resourceAccess: { ...externalProvider.resourceAccess!, publicReadable: true },
+    };
+
+    expect(providerMatchesScope(internalProvider, "organization")).toBe(true);
+    expect(providerMatchesScope(externalProvider, "organization")).toBe(false);
+    expect(providerMatchesScope(publicInternalProvider, "public")).toBe(true);
+    expect(providerMatchesScope(publicExternalProvider, "public")).toBe(true);
+    expect(providerMatchesScope(externalProvider, "public")).toBe(false);
+  });
+
+  // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。
+  test("uses a configured model id for the provider brand icon", () => {
+    expect(
+      getProviderIconModelId({ ...internalProvider, id: "admin@example.com" }, [
+        { id: "gpt-5.2", name: "GPT-5.2", modalities: null, limit: null, cost: null },
+      ]),
+    ).toBe("gpt-5.2");
+    expect(getProviderIconModelId({ ...internalProvider, id: "custom-provider" }, [])).toBe("custom-provider");
+  });
+
+  // 思考能力必须读取真实 options.thinking.enabled，不能根据模型名称推测。
+  test("reads thinking capability from model options", () => {
+    expect(supportsThinking({ options: { thinking: { enabled: true } } })).toBe(true);
+    expect(supportsThinking({ options: { thinking: { enabled: false } } })).toBe(false);
+    expect(supportsThinking({})).toBe(false);
   });
 
   // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
@@ -134,10 +179,19 @@ describe("provider model resource access flow", () => {
     ]);
   });
 
-  // AgentFormDialog 保存模型 UUID，并展示由前端拼接的 provider/source 文案
+  // Agent Editor 保存模型 UUID，并以 Provider 分组展示短模型名称和品牌标识。
   test("agent form model options use modelId and display name", () => {
     expect(mapModelOptions([externalModel])).toEqual([
-      { value: "model-uuid-shared", label: "Source Team/OpenAI Shared/Shared Model" },
+      {
+        value: "model-uuid-shared",
+        label: "Shared Model",
+        modelId: "shared-model",
+        group: {
+          id: "org-source:org-source/provider-external",
+          label: "OpenAI Shared",
+          scope: "shared",
+        },
+      },
     ]);
   });
 

@@ -65,7 +65,6 @@ function registerRunningInstance(instanceId: string, environmentId: string, orga
   globalInstanceRegistry.register(instanceId, {
     userId: "user-1",
     environmentId,
-    instanceNumber: 1,
     organizationId,
     spawnSource: "system",
     lastActivityAt: Date.now(),
@@ -110,11 +109,14 @@ describe("DELETE /web/instances/:id", () => {
     const mod = await import("../routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_1", { method: "DELETE" }));
 
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
-    expect(globalInstanceRegistry.get("inst_1")).toBeUndefined();
-    expect(stopCalls).toEqual(["inst_1"]);
-    expect(deleteCalls).toEqual(["inst_1"]);
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Agent Instance not found" },
+    });
+    expect(globalInstanceRegistry.get("inst_1")).toBeDefined();
+    expect(stopCalls).toEqual([]);
+    expect(deleteCalls).toEqual([]);
   });
 
   // 验收点 18：连续两次 DELETE 均返回 200——第二次三侧状态全无，走
@@ -128,12 +130,14 @@ describe("DELETE /web/instances/:id", () => {
     const first = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
     const second = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect((await second.json()) as unknown).toEqual({ success: true, data: null });
-    expect(globalInstanceRegistry.get("inst_2")).toBeUndefined();
-    // 第二次走 "Already stopped" 分支，不再调用 deleteInstance（三侧全无，调用必然 no-op）
-    expect(deleteCalls).toEqual(["inst_2"]);
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect((await second.json()) as unknown).toEqual({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Agent Instance not found" },
+    });
+    expect(globalInstanceRegistry.get("inst_2")).toBeDefined();
+    expect(deleteCalls).toEqual([]);
   });
 
   // 从未存在/已无痕的实例：无 supplement、活跃表空、core 空 → 幂等终态 200，
@@ -144,8 +148,11 @@ describe("DELETE /web/instances/:id", () => {
       new Request("http://localhost/instances/inst_ghost", { method: "DELETE" }),
     );
 
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Agent Instance not found" },
+    });
     expect(stopCalls).toEqual([]);
     expect(deleteCalls).toEqual([]);
   });
@@ -162,10 +169,10 @@ describe("DELETE /web/instances/:id", () => {
     const mod = await import("../routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_4", { method: "DELETE" }));
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     const body = (await response.json()) as { success: false; error: { code: string; message: string } };
     expect(body.success).toBe(false);
-    expect(body.error.code).toBe("FORBIDDEN");
+    expect(body.error.code).toBe("NOT_FOUND");
     expect(globalInstanceRegistry.get("inst_4")).toBeDefined();
     expect(stopCalls).toEqual([]);
   });
@@ -179,9 +186,12 @@ describe("DELETE /web/instances/:id", () => {
     const mod = await import("../routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_5", { method: "DELETE" }));
 
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toEqual({ success: true, data: null });
-    expect(globalInstanceRegistry.get("inst_5")).toBeUndefined();
-    expect(stopCalls).toEqual(["inst_5"]);
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Agent Instance not found" },
+    });
+    expect(globalInstanceRegistry.get("inst_5")).toBeDefined();
+    expect(stopCalls).toEqual([]);
   });
 });

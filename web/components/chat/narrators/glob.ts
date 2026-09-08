@@ -14,7 +14,7 @@ import type { ToolNarrator } from "./types";
  */
 export const globNarrator: ToolNarrator = {
   kinds: ["glob"],
-  verb: "查找",
+  verb: "查找文件",
   icon: FolderSearch,
   getDisplay(ctx) {
     const pattern = String((ctx.tool.rawInput as Record<string, unknown> | undefined)?.pattern ?? "");

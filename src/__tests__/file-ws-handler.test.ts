@@ -52,6 +52,25 @@ afterAll(async () => {
   handler.closeAllFileWsConnections();
 });
 
+describe("ZIP 专用背压与取消", () => {
+  test("同一机器只允许一个 ZIP pending，断连前发送取消帧", async () => {
+    // ZIP 单帧会同时占用 base64 字符串和解码缓冲区，因此使用独立的低并发预算。
+    const handler = await import("../transport/file-ws-handler");
+    const ws = openRegisteredWs(handler, "ws_zip", "mach_zip");
+    const first = fileOpRequests.sendFileOpAndWait("mach_zip", "zip", { path: "docs" }).catch((error) => error);
+
+    await expect(fileOpRequests.sendFileOpAndWait("mach_zip", "zip", { path: "other" })).rejects.toThrow(
+      "ZIP concurrency limit",
+    );
+    handler.handleFileWsClose(ws, "ws_zip");
+
+    expect(await first).toBeInstanceOf(Error);
+    const frames = ws._messages.map((line) => JSON.parse(line) as { type?: string; request_id?: string });
+    const requestId = frames.find((frame) => frame.type === "file_op")?.request_id;
+    expect(frames).toContainEqual({ type: "file_op_cancel", request_id: requestId });
+  });
+});
+
 describe("P0-1 心跳巡检", () => {
   test("lastClientActivity 超时后 sweep 清理索引、reject pending 并 close 连接", async () => {
     // 僵尸连接（活跃时间拨老超过 90s 阈值）应被巡检回收：pending 立即失败、索引清理、连接关闭

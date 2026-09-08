@@ -4,6 +4,15 @@
   "myOrgs": "我的组织",
   "noOrgs": "暂无组织",
   "selectOrg": "选择一个组织查看详情",
+  "defaultEngine": "默认执行节点",
+  "form": {
+    "machineLocal": "本地运行"
+  },
+  "workspace": {
+    "people": "团队访问",
+    "runtime": "运行资源",
+    "engineDescription": "新会话默认使用的执行节点"
+  },
   "roles": {
     "owner": "拥有者",
     "admin": "管理员",

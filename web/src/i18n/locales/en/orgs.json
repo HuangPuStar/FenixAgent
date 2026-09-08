@@ -4,6 +4,15 @@
   "myOrgs": "My Organizations",
   "noOrgs": "No organizations yet",
   "selectOrg": "Select an organization to view details",
+  "defaultEngine": "Default runtime",
+  "form": {
+    "machineLocal": "Run locally"
+  },
+  "workspace": {
+    "people": "Team access",
+    "runtime": "Runtime resources",
+    "engineDescription": "Default execution node for new sessions"
+  },
   "roles": {
     "owner": "Owner",
     "admin": "Admin",

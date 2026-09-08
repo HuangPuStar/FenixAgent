@@ -408,14 +408,14 @@ describe("observer-service", () => {
     expect(view.integrity.mismatchedItems).toEqual([{ kind: "acp-link", id: "acp-ws:b" }]);
   });
 
-  // names 字典：各角色 id 经权威表批量解析名称，instance 名 = environment 名 + 序号
+  // names 字典：各角色 id 经权威表批量解析名称，instance 名来自持久 Agent Instance
   test("names 字典：各角色名称解析", async () => {
     setObserverServiceDeps(
       makeFakeDeps({
         listExternalRelayEntries: () => [makeRelay()],
         listChatClients: () => [makeChat()],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
-        getInstanceSupplement: () => ({ environmentId: "env-1", instanceNumber: 2 }),
+        getInstanceName: async () => "primary",
         listOrganizationNamesByIds: async () => new Map([["org-1", "Acme 组织"]]),
         listUserNamesByIds: async () => new Map([["user-1", "张三"]]),
         listAgentConfigNamesByIds: async () => new Map([["acfg-1", "客服助手"]]),
@@ -429,8 +429,8 @@ describe("observer-service", () => {
     expect(view.names.userId["user-1"]).toBe("张三");
     expect(view.names.agentConfigId["acfg-1"]).toBe("客服助手");
     expect(view.names.machineId.mach_1).toBe("边缘节点-01");
-    // instance 名由 instance registry 回查 environmentId → environment 名 + 序号派生
-    expect(view.names.instanceId["inst-1"]).toBe("生产环境 #2");
+    // instance 名直接来自持久 Agent Instance。
+    expect(view.names.instanceId["inst-1"]).toBe("primary");
   });
 
   // names 缺失不占位：权威表未命中的 id 不出现在字典，前端回退显示原始 id
@@ -439,7 +439,7 @@ describe("observer-service", () => {
       makeFakeDeps({
         listExternalRelayEntries: () => [makeRelay()],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
-        getInstanceSupplement: () => ({ environmentId: "env-missing", instanceNumber: 1 }),
+        getInstanceName: async () => undefined,
       }),
     );
     stubEnvironmentRepo({ getById: async () => undefined });

@@ -1,0 +1,73 @@
+:root {
+  color-scheme: light;
+  font-family: "Avenir Next", Avenir, Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  --blue-700: #1748ad;
+  --blue-600: #2764e7;
+  --blue-500: #3f75e8;
+  --blue-100: #eaf1ff;
+  --blue-050: #f5f8ff;
+  --ink: #17233d;
+  --ink-2: #33415c;
+  --muted: #6f7f99;
+  --faint: #9da8ba;
+  --line: #e6ebf2;
+  --canvas: #f4f7fb;
+  --paper: #ffffff;
+  --green: #16866f;
+  --green-soft: #e9f7f3;
+  --amber: #bd741f;
+  --amber-soft: #fff4e5;
+  --red: #cd4b4b;
+  --red-soft: #fff0ef;
+  --sidebar-width: 224px;
+  --shadow-float: 0 18px 48px rgb(29 64 126 / 12%);
+  --control-height: 38px;
+  --control-radius: 9px;
+  --control-surface: #fff;
+  --control-track: #eef1f6;
+  --control-line: #dfe5ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+body {
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--canvas);
+}
+button,
+input,
+textarea,
+select {
+  color: inherit;
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgb(39 100 231 / 42%);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    animation: none;
+    transition: none;
+  }
+}

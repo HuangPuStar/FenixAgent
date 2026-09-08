@@ -1,0 +1,16 @@
+@media (max-width: 720px) {
+  .chat-interaction-stack,
+  .chat-status-panel {
+    width: calc(100% - 20px);
+  }
+  .chat-composer-wrapper {
+    padding-inline: 10px;
+  }
+  .chat-composer-context strong,
+  .chat-composer-context > span {
+    display: none;
+  }
+  .chat-status-tabs button span {
+    display: none;
+  }
+}

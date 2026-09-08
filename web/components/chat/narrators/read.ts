@@ -17,7 +17,7 @@ import type { ToolNarrator } from "./types";
  */
 export const readNarrator: ToolNarrator = {
   kinds: ["read-file", "read-directory"],
-  verb: "读取",
+  verb: "打开文件",
   icon: FileText,
   getDisplay(ctx) {
     // 优先使用 display 元数据获取文件名和路径信息
@@ -28,7 +28,7 @@ export const readNarrator: ToolNarrator = {
     if (ctx.kind === "read-directory" || isOpencodeDirectoryOutput(ctx.tool.rawOutput)) {
       const count = extractDirectoryEntryCount(ctx.tool.rawOutput);
       const detail = count ? ctx.t("read.entries", { count }) : undefined;
-      return { object: file, detail };
+      return { object: file, verb: "查看目录", detail };
     }
 
     // 文件场景：行号区间作为 subtitle 的 detail，与耗时徽章并列显示

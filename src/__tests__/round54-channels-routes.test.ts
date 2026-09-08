@@ -21,7 +21,6 @@ function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRec
     directory: "/workspace/env-1",
     branch: null,
     gitRepoUrl: null,
-    maxSessions: 1,
     workerType: "local",
     capabilities: null,
     status: "idle",

@@ -43,7 +43,8 @@ export interface ProdViewInfo {
 
 export interface ProdViewLoadData {
   agentConfigId: string;
-  environmentId: string | null;
+  environmentId: string;
+  instanceUid: string;
   name: string;
   modulesConfig: ProdViewModulesConfig;
 }

@@ -3,18 +3,19 @@ import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/chat-channe
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 告知 React 当前为测试环境，消除 act() 警告。
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-// ACPMain 的刷新恢复依赖客户端 effect，提供最小 DOM 环境以验证实际交互路径。
-const win = new Window();
+// ACPMain 的刷新恢复依赖客户端 effect，安装同一 realm 的 DOM 全局对象。
+const win = initializeHappyDomWindow(new Window());
 const globalRecord = globalThis as Record<string, unknown>;
-if (!globalRecord.window) globalRecord.window = win;
-if (!globalRecord.document) globalRecord.document = win.document;
-if (!globalRecord.navigator) globalRecord.navigator = win.navigator;
-if (!globalRecord.ResizeObserver) globalRecord.ResizeObserver = win.ResizeObserver;
-if (!globalRecord.getComputedStyle) globalRecord.getComputedStyle = win.getComputedStyle.bind(win);
+globalRecord.window = win;
+globalRecord.document = win.document;
+globalRecord.navigator = win.navigator;
+globalRecord.ResizeObserver = win.ResizeObserver;
+globalRecord.getComputedStyle = win.getComputedStyle.bind(win);
 
 describe("ACPMain 会话恢复", () => {
   // 刷新时当前对话仍在进行，应恢复同一会话而非被用户切换保护拦截。

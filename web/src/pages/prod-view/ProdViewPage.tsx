@@ -1,6 +1,6 @@
 import { useParams } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { prodViewApi } from "@/src/api/prod-views";
@@ -13,8 +13,22 @@ const ChatArea = lazy(() => import("@/src/pages/agent-panel/ChatArea").then((m) 
 export function ProdViewPage() {
   const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId: string };
   const { t } = useTranslation(NS.PROD_VIEWS);
+  const requestGeneration = useRef(0);
 
-  const { data: viewConfig, loading, error: loadError } = useRequest(async () => unwrap(prodViewApi.load(prodViewId)));
+  const {
+    data: viewConfig,
+    loading,
+    error: loadError,
+    refresh,
+  } = useRequest(
+    async () => {
+      const generation = ++requestGeneration.current;
+      const data = await unwrap(prodViewApi.load(prodViewId));
+      if (generation !== requestGeneration.current) throw new DOMException("Stale ProdView request", "AbortError");
+      return data;
+    },
+    { refreshDeps: [prodViewId] },
+  );
 
   return (
     <div className="agent-panel-layout !flex-col">
@@ -26,33 +40,40 @@ export function ProdViewPage() {
 
       <div className="agent-panel-body">
         {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+          <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
+            <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" aria-hidden />
+            <span className="sr-only">{t("loading")}</span>
           </div>
         ) : loadError ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <p className="text-sm text-text-muted">{(loadError as Error)?.message ?? t("loadError")}</p>
-            <Button variant="outline" onClick={() => window.location.reload()}>
+            <Button variant="outline" onClick={refresh} disabled={loading}>
               {t("retry")}
             </Button>
           </div>
         ) : !viewConfig?.environmentId ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
-            <p className="text-sm text-text-muted">{t("loadError", { message: "未找到对应的环境实例" })}</p>
-            <Button variant="outline" onClick={() => window.location.reload()}>
+            <p className="text-sm text-text-muted">{t("instanceNotFound")}</p>
+            <Button variant="outline" onClick={refresh} disabled={loading}>
               {t("retry")}
             </Button>
           </div>
         ) : (
           <Suspense
             fallback={
-              <div className="flex h-full items-center justify-center">
-                <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+              <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
+                <div
+                  className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin"
+                  aria-hidden
+                />
+                <span className="sr-only">{t("loading")}</span>
               </div>
             }
           >
             <ChatArea
+              key={`${prodViewId}:${viewConfig.environmentId}:${viewConfig.instanceUid}`}
               agentId={viewConfig.environmentId}
+              sessionId={viewConfig.instanceUid}
               visible={true}
               modulesConfig={viewConfig.modulesConfig ?? {}}
             />

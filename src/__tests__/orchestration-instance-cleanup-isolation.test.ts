@@ -36,7 +36,6 @@ function makeSupplement(environmentId: string, organizationId: string): Instance
   return {
     userId: "user-1",
     environmentId,
-    instanceNumber: 1,
     organizationId,
     spawnSource: "interactive",
     lastActivityAt: Date.now(),

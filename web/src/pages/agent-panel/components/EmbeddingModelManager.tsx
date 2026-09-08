@@ -87,7 +87,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   };
 
   return (
-    <div className="space-y-4">
+    <div className={inDialog ? "embedding-model-manager embedding-model-manager--dialog" : "embedding-model-manager"}>
       {/* 顶部工具栏（弹窗内渲染时不显示，标题由 Dialog 提供） */}
       {!inDialog && (
         <div className="flex items-center justify-between">
@@ -109,16 +109,15 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
           )}
         </div>
       )}
-      {inDialog && canManage && (
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={() => setAddOpen(true)}
-            className="h-8 gap-1.5 text-[12px] rounded-lg bg-[#6366f1] hover:bg-[#5558e6]"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            添加供应商
-          </Button>
+      {inDialog && (
+        <div className="embedding-model-toolbar">
+          <p>{providerCount > 0 ? `${providerCount} 个供应商 · ${instanceCount} 个实例` : "尚未配置供应商"}</p>
+          {canManage ? (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus />
+              添加供应商
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -140,7 +139,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden">
+        <div className="embedding-model-tree">
           <div className="divide-y divide-[#f0f3f8]">
             {treeSafe.map((p) => (
               <ProviderRow

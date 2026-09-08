@@ -1,3 +1,4 @@
+import { classifyToolSemantic } from "./tool-semantic";
 import type { TodoChange, TodoChangeKind, TodoItem, TodoStatus } from "./types";
 
 /** 从 TodoWrite 原始入参解析待办列表；不存在待办字段时返回 null。 */
@@ -21,8 +22,7 @@ export function parseTodosFromRawInput(rawInput: Record<string, unknown>): TodoI
 
 /** 判断工具调用是否为包含 TodoWrite 入参的调用。 */
 export function isTodoWriteToolCall(title: string, rawInput?: Record<string, unknown>): boolean {
-  const lower = title.toLowerCase();
-  return (lower.includes("todowrite") || lower.includes("todo_write")) && !!rawInput;
+  return !!rawInput && classifyToolSemantic({ name: title, rawInput }) === "todo";
 }
 
 /**

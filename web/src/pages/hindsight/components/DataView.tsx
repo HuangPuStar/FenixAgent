@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Calendar,
   CheckCircle,
   ChevronLeft,
@@ -18,17 +19,16 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hindsightApi } from "@/src/api/hindsight";
 import { NS } from "@/src/i18n";
-// 空状态插图
-import emptyMemoriesImg from "/images/memories-empty.webp";
-import type { BankStats, GraphApiData, MemoryTableRow } from "../types";
+import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
 import { MemoryDetailModal } from "./MemoryDetailModal";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
+import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
+import { MemoryVisualizationShell } from "./MemoryVisualizationShell";
 
 type FactType = "world" | "experience" | "observation";
 type ViewMode = "graph" | "table" | "timeline" | "constellation";
@@ -37,17 +37,26 @@ interface DataViewProps {
   factType: FactType;
   documentId?: string;
   chunkId?: string;
+  initialQuery?: string;
   compact?: boolean;
   onExpandToggle?: () => void;
 }
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: 组件命名为视图概念 DataView
-export function DataView({ factType, documentId, chunkId, compact = false, onExpandToggle }: DataViewProps) {
+export function DataView({
+  factType,
+  documentId,
+  chunkId,
+  initialQuery,
+  compact = false,
+  onExpandToggle,
+}: DataViewProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
   const [compactMode, setCompactMode] = useState(compact);
   const [data, setData] = useState<GraphApiData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedGraphNode, setSelectedGraphNode] = useState<MemoryTableRow | null>(null);
   const [modalMemoryId, setModalMemoryId] = useState<string | null>(null);
@@ -72,7 +81,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   } | null>(null);
 
   // 图谱控制状态
-  const [showLabels, setShowLabels] = useState(true);
+  const [showLabels] = useState(true);
   const [maxNodes, setMaxNodes] = useState<number | undefined>(undefined);
   const [showControlPanel, setShowControlPanel] = useState(true);
   const [visibleLinkTypes, setVisibleLinkTypes] = useState<Set<string>>(
@@ -102,30 +111,36 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedGraphNode]);
 
-  const loadData = async (limit?: number, q?: string, tags?: string[]) => {
+  const loadData = async (limit?: number, q: string | undefined = initialQuery, tags?: string[]) => {
     setLoading(true);
+    setError(null);
     try {
-      const graphData = (await hindsightApi.getGraph({
+      const graphData = await hindsightApi.getGraph({
         type: factType,
         limit: limit ?? fetchLimit,
-        q,
+        q: q || undefined,
         tags,
         document_id: documentId,
         chunk_id: chunkId,
-      })) as GraphApiData;
+      });
       setData(graphData);
 
-      // 观察类型：获取整合状态
+      // 观察类型的整合状态是辅助信息，失败时不应遮盖已经成功加载的图数据。
       if (factType === "observation") {
-        const stats = (await hindsightApi.getBankStats()) as BankStats;
-        setConsolidationStatus({
-          pending_consolidation: stats.pending_consolidation || 0,
-          last_consolidated_at: stats.last_consolidated_at || null,
-        });
+        try {
+          const stats = await hindsightApi.getBankStats();
+          setConsolidationStatus({
+            pending_consolidation: stats.pending_consolidation ?? 0,
+            last_consolidated_at: stats.last_consolidated_at ?? null,
+          });
+        } catch (statsError) {
+          console.error("[DataView] getBankStats failed:", statsError);
+          setConsolidationStatus(null);
+        }
       }
-    } catch (error) {
-      // 调试：打印 loadData 错误以便排查数据加载失败
-      console.error("[DataView] loadData failed:", error);
+    } catch (loadError) {
+      console.error("[DataView] loadData failed:", loadError);
+      setError(loadError instanceof Error ? loadError.message : t("dataView.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -192,7 +207,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   );
 
   // 颜色和尺寸回调
-  const nodeColorFn = useCallback((node: GraphNode) => node.color || "#0074d9", []);
+  const nodeColorFn = useCallback((node: GraphNode) => node.color || "var(--color-primary)", []);
 
   // 观察类型：按 proof_count 调整节点尺寸
   const observationSizeLookup = useMemo(() => {
@@ -254,12 +269,12 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   );
 
   const linkColorFn = useCallback((link: { type?: string }) => {
-    if (link.type === "temporal") return "#009296";
-    if (link.type === "entity") return "#f59e0b";
+    if (link.type === "temporal") return "var(--color-cyan)";
+    if (link.type === "entity") return "var(--color-status-warning)";
     if (link.type === "causes" || link.type === "caused_by" || link.type === "enables" || link.type === "prevents") {
-      return "#8b5cf6";
+      return "var(--color-accent-pink)";
     }
-    return "#0074d9";
+    return "var(--color-primary)";
   }, []);
 
   // 组件挂载或 factType 变化时自动加载数据
@@ -280,11 +295,23 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
   }, [data, graph2DData.nodes.length, maxNodes]);
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {loading && !data ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12" role="status">
           <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
           <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
+          <AlertCircle className="size-8 text-destructive" />
+          <div>
+            <p className="text-sm font-medium">{t("dataView.loadFailed")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            {t("dataView.retry")}
+          </Button>
         </div>
       ) : !data ? (
         <div className="flex items-center justify-center py-20">
@@ -295,14 +322,14 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
       ) : data.table_rows?.length === 0 ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-[15px] font-semibold text-[#56667d]">{t("dataView.emptyTitle")}</p>
-          <p className="mt-1 text-[13px] text-[#8a9ab0]">{t("dataView.emptyHint")}</p>
+          <p className="text-[15px] font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{t("dataView.emptyHint")}</p>
           <img
-            src={emptyMemoriesImg}
+            src="/images/memories-empty.webp"
             alt={t("dataView.emptyTitle")}
             className="w-[70%] max-w-full mt-6 mb-4 opacity-80"
           />
-          <p className="text-[13px] text-[#8a9ab0]">{t("dataView.emptyFooter")}</p>
+          <p className="text-[13px] text-muted-foreground">{t("dataView.emptyFooter")}</p>
         </div>
       ) : (
         <>
@@ -327,7 +354,7 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
               </Button>
             </div>
           ) : (
-            <div className="flex items-center justify-between mb-6">
+            <div className="mb-4 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
                 {compact && (
                   <Button
@@ -379,273 +406,44 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
               </div>
 
               {/* 视图模式切换 */}
-              <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
-                <button
-                  onClick={() => setViewMode("constellation")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                    viewMode === "constellation"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <ScatterChart className="w-4 h-4" />
-                  {t("dataView.constellation")}
-                </button>
-                <button
-                  onClick={() => setViewMode("graph")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                    viewMode === "graph"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Network className="w-4 h-4" />
-                  {t("dataView.graph")}
-                </button>
-                <button
-                  onClick={() => setViewMode("table")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                    viewMode === "table"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <List className="w-4 h-4" />
-                  {t("dataView.table")}
-                </button>
-                <button
-                  onClick={() => setViewMode("timeline")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-                    viewMode === "timeline"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  {t("dataView.timeline")}
-                </button>
-              </div>
+              <MemoryViewSwitcher
+                value={viewMode}
+                onValueChange={setViewMode}
+                ariaLabel={t("dataView.viewSwitcher")}
+                options={[
+                  { value: "constellation", icon: ScatterChart, label: t("dataView.constellation") },
+                  { value: "graph", icon: Network, label: t("dataView.graph") },
+                  { value: "table", icon: List, label: t("dataView.table") },
+                  { value: "timeline", icon: Calendar, label: t("dataView.timeline") },
+                ]}
+              />
             </div>
           )}
 
-          {/* ── Graph 视图 ── */}
-          {!compactMode && viewMode === "graph" && (
-            <div className="flex gap-0">
-              <div className="flex-1 min-w-0">
-                <Graph2D
-                  data={graph2DData}
-                  height={700}
-                  showLabels={showLabels}
-                  onNodeClick={handleGraphNodeClick}
-                  maxNodes={maxNodes}
-                  nodeColorFn={nodeColorFn}
-                  linkColorFn={linkColorFn}
-                />
-              </div>
-
-              <button
-                onClick={() => setShowControlPanel(!showControlPanel)}
-                className="flex-shrink-0 w-5 h-[700px] bg-transparent hover:bg-muted/50 flex items-center justify-center transition-colors"
-                title={showControlPanel ? t("dataView.hidePanel") : t("dataView.showPanel")}
-              >
-                {showControlPanel ? (
-                  <ChevronRight className="w-3 h-3 text-muted-foreground/60" />
-                ) : (
-                  <ChevronLeft className="w-3 h-3 text-muted-foreground/60" />
-                )}
-              </button>
-
-              <div
-                className={`${showControlPanel ? "w-80" : "w-0"} transition-all duration-300 overflow-hidden flex-shrink-0`}
-              >
-                <div className="w-80 h-[700px] bg-card border-l border-border overflow-y-auto">
-                  {selectedGraphNode ? (
+          {/* ── Graph / Constellation 共享可视化容器 ── */}
+          {!compactMode && (viewMode === "graph" || viewMode === "constellation") && (
+            <div className="min-h-0 flex-1">
+              <MemoryVisualizationShell
+                panelOpen={showControlPanel}
+                onPanelOpenChange={setShowControlPanel}
+                toggleLabel={showControlPanel ? t("dataView.hidePanel") : t("dataView.showPanel")}
+                sidebar={
+                  selectedGraphNode ? (
                     <MemoryDetailPanel memory={selectedGraphNode} onClose={() => setSelectedGraphNode(null)} inPanel />
                   ) : (
-                    <div className="p-4 space-y-5">
-                      {/* 图例和统计 */}
-                      <div>
-                        <h3 className="text-sm font-semibold mb-3 text-foreground">{t("dataView.graphTitle")}</h3>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#0074d9" }} />
-                              <span className="text-foreground">{t("dataView.nodes")}</span>
-                            </div>
-                            <span className="font-mono text-foreground">
-                              {Math.min(maxNodes ?? graph2DData.nodes.length, graph2DData.nodes.length)}/
-                              {graph2DData.nodes.length}
-                            </span>
-                          </div>
-
-                          {/* 链接类型过滤 */}
-                          <div className="text-xs font-medium text-muted-foreground mt-2 mb-1">
-                            {t("dataView.linksWithCount", { count: linkStats.total })}{" "}
-                            <span className="text-muted-foreground/60">{t("dataView.clickToFilter")}</span>
-                          </div>
-                          {(["semantic", "temporal", "entity", "causal"] as const).map((type) => {
-                            const colors: Record<string, string> = {
-                              semantic: "#0074d9",
-                              temporal: "#009296",
-                              entity: "#f59e0b",
-                              causal: "#8b5cf6",
-                            };
-                            return (
-                              <button
-                                key={type}
-                                onClick={() => toggleLinkType(type)}
-                                className={`w-full flex items-center justify-between text-sm px-2 py-1 rounded transition-all ${
-                                  visibleLinkTypes.has(type) ? "hover:bg-muted" : "opacity-40 hover:opacity-60"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-4 h-0.5" style={{ backgroundColor: colors[type] }} />
-                                  <span className="text-foreground">{t(`dataView.${type}`)}</span>
-                                </div>
-                                <span className="font-mono text-foreground">
-                                  {linkStats[type as keyof typeof linkStats] as number}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="border-t border-border" />
-
-                      {/* 显示控制 */}
-                      <div>
-                        <h3 className="text-sm font-semibold mb-3 text-foreground">{t("dataView.displayTitle")}</h3>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="show-labels" className="text-sm text-foreground">
-                              {t("dataView.showLabels")}
-                            </Label>
-                            <Switch id="show-labels" checked={showLabels} onCheckedChange={setShowLabels} />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-border" />
-
-                      {/* 性能控制 */}
-                      <div>
-                        <h3 className="text-sm font-semibold mb-3 text-foreground">{t("dataView.performanceTitle")}</h3>
-                        <div className="space-y-4">
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <Label className="text-sm text-foreground">{t("dataView.maxNodes")}</Label>
-                              <span className="text-xs text-muted-foreground">
-                                {graph2DData.nodes.length > 50
-                                  ? `${maxNodes ?? 50} / ${graph2DData.nodes.length}`
-                                  : `${maxNodes ?? t("dataView.all")} / ${graph2DData.nodes.length}`}
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              value={
-                                graph2DData.nodes.length > 50
-                                  ? maxNodes || 20
-                                  : maxNodes || Math.min(graph2DData.nodes.length, 20)
-                              }
-                              min={10}
-                              max={Math.min(Math.max(graph2DData.nodes.length, 10), 50)}
-                              step={10}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                const effectiveMax = Math.min(graph2DData.nodes.length, 50);
-                                if (graph2DData.nodes.length > 50) {
-                                  setMaxNodes(v);
-                                } else {
-                                  setMaxNodes(v >= effectiveMax ? undefined : v);
-                                }
-                              }}
-                              className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {t("dataView.allLinksVisible")}
-                            {graph2DData.nodes.length > 50 && (
-                              <span className="block text-amber-600 dark:text-amber-400 mt-1">
-                                {t("dataView.limitedTo50Nodes", { count: graph2DData.nodes.length })}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-border" />
-                      <div className="text-xs text-muted-foreground/60 text-center pt-2">
-                        {t("dataView.clickNodeForDetails")}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Constellation 视图 ── */}
-          {(compactMode || viewMode === "constellation") && (
-            <div className="flex gap-0">
-              <div className="flex-1 min-w-0 border border-border rounded-lg overflow-hidden">
-                <Constellation
-                  key={compactMode ? "compact" : "full"}
-                  data={graph2DData}
-                  height={compactMode ? 300 : 700}
-                  onNodeClick={handleGraphNodeClick}
-                  nodeColorFn={nodeColorFn}
-                  linkColorFn={linkColorFn}
-                  nodeSizeFn={factType === "observation" ? observationNodeSizeFn : undefined}
-                  sizeLegendLabel={factType === "observation" ? t("dataView.sourceFactsLabel") : undefined}
-                  nodeHeatFn={recencyLookup ? recencyHeatFn : undefined}
-                  heatLegendLabel={
-                    recencyLookup ? t("dataView.recencyLabel", { basis: RECENCY_BASIS_LABEL[recencyBasis] }) : undefined
-                  }
-                  heatLegendEndpoints={
-                    recencyLookup
-                      ? [
-                          new Date(recencyLookup.minT).toISOString().slice(0, 10),
-                          new Date(recencyLookup.maxT).toISOString().slice(0, 10),
-                        ]
-                      : undefined
-                  }
-                />
-              </div>
-
-              {/* 右侧面板（非紧凑模式） */}
-              {!compactMode && (
-                <>
-                  <button
-                    onClick={() => setShowControlPanel(!showControlPanel)}
-                    className="flex-shrink-0 w-5 h-[700px] bg-transparent hover:bg-muted/50 flex items-center justify-center transition-colors"
-                    title={showControlPanel ? t("dataView.hidePanel") : t("dataView.showPanel")}
-                  >
-                    {showControlPanel ? (
-                      <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                    ) : (
-                      <ChevronLeft className="w-3 h-3 text-muted-foreground" />
-                    )}
-                  </button>
-
-                  {showControlPanel && (
-                    <div className="w-72 flex-shrink-0 border border-border rounded-lg bg-muted/20 overflow-y-auto h-[700px]">
-                      {selectedGraphNode ? (
-                        <MemoryDetailPanel
-                          memory={selectedGraphNode}
-                          onClose={() => setSelectedGraphNode(null)}
-                          inPanel
-                        />
-                      ) : (
-                        <div className="p-4 space-y-4">
-                          <h3 className="text-sm font-semibold text-foreground">
-                            {t("dataView.constellationViewTitle")}
-                          </h3>
+                    <div className="space-y-4 p-4">
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {viewMode === "graph" ? t("dataView.graphTitle") : t("dataView.constellationViewTitle")}
+                      </h3>
+                      {viewMode === "constellation" && (
+                        <>
                           <p className="text-xs text-muted-foreground">{t("dataView.constellationViewDescription")}</p>
-                          {/* 近期颜色基准选择 */}
-                          <div className="space-y-2 pt-2">
-                            <h4 className="text-xs font-medium text-muted-foreground">{t("dataView.colorBy")}</h4>
-                            <Select value={recencyBasis} onValueChange={(v) => setRecencyBasis(v as RecencyBasis)}>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">{t("dataView.colorBy")}</Label>
+                            <Select
+                              value={recencyBasis}
+                              onValueChange={(value) => setRecencyBasis(value as RecencyBasis)}
+                            >
                               <SelectTrigger className="h-8 w-full text-xs">
                                 <SelectValue />
                               </SelectTrigger>
@@ -656,56 +454,89 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                               </SelectContent>
                             </Select>
                           </div>
-                          {/* 链接类型 */}
-                          <div className="space-y-2 pt-2">
-                            <h4 className="text-xs font-medium text-muted-foreground">{t("dataView.linkTypes")}</h4>
-                            {Object.entries({
-                              semantic: "#0074d9",
-                              temporal: "#009296",
-                              entity: "#f59e0b",
-                              causal: "#8b5cf6",
-                            }).map(([type, color]) => (
-                              <div
-                                key={type}
-                                className="flex items-center gap-2 cursor-pointer"
-                                onClick={() => toggleLinkType(type)}
-                              >
-                                <div
-                                  className="w-3 h-3 rounded-full"
-                                  style={{
-                                    backgroundColor: color,
-                                    opacity: visibleLinkTypes.has(type) ? 1 : 0.2,
-                                  }}
-                                />
-                                <span
-                                  className={`text-xs capitalize ${visibleLinkTypes.has(type) ? "text-foreground" : "text-muted-foreground line-through"}`}
-                                >
-                                  {t(`dataView.${type}`)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="text-xs text-muted-foreground space-y-1 pt-2">
-                            <div>
-                              {t("dataView.nodes")}: <span className="text-foreground">{graph2DData.nodes.length}</span>
-                            </div>
-                            <div>
-                              {t("dataView.links")}: <span className="text-foreground">{graph2DData.links.length}</span>
-                            </div>
-                          </div>
-                        </div>
+                        </>
                       )}
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">{t("dataView.linkTypes")}</p>
+                        {(["semantic", "temporal", "entity", "causal"] as const).map((type) => (
+                          <Button
+                            key={type}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleLinkType(type)}
+                            className="w-full justify-between"
+                          >
+                            {t(`dataView.${type}`)}
+                            <span className="font-mono">{linkStats[type]}</span>
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {t("dataView.nodes")}: {graph2DData.nodes.length} · {t("dataView.links")}:{" "}
+                        {graph2DData.links.length}
+                      </div>
                     </div>
-                  )}
-                </>
-              )}
+                  )
+                }
+              >
+                {(height) =>
+                  viewMode === "graph" ? (
+                    <Graph2D
+                      data={graph2DData}
+                      height={height}
+                      showLabels={showLabels}
+                      onNodeClick={handleGraphNodeClick}
+                      maxNodes={maxNodes}
+                      nodeColorFn={nodeColorFn}
+                      linkColorFn={linkColorFn}
+                    />
+                  ) : (
+                    <Constellation
+                      data={graph2DData}
+                      height={height}
+                      onNodeClick={handleGraphNodeClick}
+                      nodeColorFn={nodeColorFn}
+                      linkColorFn={linkColorFn}
+                      nodeSizeFn={factType === "observation" ? observationNodeSizeFn : undefined}
+                      sizeLegendLabel={factType === "observation" ? t("dataView.sourceFactsLabel") : undefined}
+                      nodeHeatFn={recencyLookup ? recencyHeatFn : undefined}
+                      heatLegendLabel={
+                        recencyLookup
+                          ? t("dataView.recencyLabel", { basis: RECENCY_BASIS_LABEL[recencyBasis] })
+                          : undefined
+                      }
+                      heatLegendEndpoints={
+                        recencyLookup
+                          ? [
+                              new Date(recencyLookup.minT).toISOString().slice(0, 10),
+                              new Date(recencyLookup.maxT).toISOString().slice(0, 10),
+                            ]
+                          : undefined
+                      }
+                    />
+                  )
+                }
+              </MemoryVisualizationShell>
+            </div>
+          )}
+
+          {/* 紧凑模式保持独立固定高度，不参与完整视图 shell。 */}
+          {compactMode && (
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border">
+              <Constellation
+                data={graph2DData}
+                height={300}
+                onNodeClick={handleGraphNodeClick}
+                nodeColorFn={nodeColorFn}
+                linkColorFn={linkColorFn}
+              />
             </div>
           )}
 
           {/* ── Table 视图 ── */}
           {!compactMode && viewMode === "table" && (
-            <div>
-              <div className="w-full">
+            <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+              <div className="min-w-[64rem]">
                 <div className="pb-4">
                   {filteredTableRows.length > 0 ? (
                     (() => {
@@ -753,44 +584,39 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                       year: "numeric",
                                     })
                                   : null;
+                                const entities = row.entities
+                                  ? typeof row.entities === "string"
+                                    ? row.entities
+                                        .split(",")
+                                        .map((entity) => entity.trim())
+                                        .filter(Boolean)
+                                    : row.entities
+                                  : [];
+                                const tags = row.tags ?? [];
 
                                 return (
                                   <TableRow
                                     key={row.id || idx}
                                     onClick={() => setModalMemoryId(row.id)}
-                                    className="cursor-pointer hover:bg-muted/50"
+                                    className="h-[60px] cursor-pointer hover:bg-muted/50"
                                   >
-                                    <TableCell className="py-2">
-                                      <div className="line-clamp-2 text-sm leading-snug text-foreground">
+                                    <TableCell className="py-2 align-middle">
+                                      <div className="line-clamp-2 break-words text-sm leading-snug text-foreground">
                                         {row.text}
                                       </div>
-                                      {row.context && factType !== "observation" && (
-                                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                                          {row.context}
-                                        </div>
-                                      )}
                                     </TableCell>
-                                    <TableCell className="py-2">
-                                      {row.entities ? (
-                                        <div className="flex gap-1 flex-wrap">
-                                          {(typeof row.entities === "string" ? row.entities.split(", ") : row.entities)
-                                            .slice(0, 2)
-                                            .map((entity: string, _i: number) => (
-                                              <span
-                                                key={entity}
-                                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
-                                              >
-                                                {entity}
-                                              </span>
-                                            ))}
-                                          {(typeof row.entities === "string" ? row.entities.split(", ") : row.entities)
-                                            .length > 2 && (
-                                            <span className="text-[10px] text-muted-foreground">
-                                              +
-                                              {(typeof row.entities === "string"
-                                                ? row.entities.split(", ")
-                                                : row.entities
-                                              ).length - 2}
+                                    <TableCell className="py-2 align-middle">
+                                      {entities.length > 0 ? (
+                                        <div className="flex min-w-0 items-center overflow-hidden">
+                                          <span
+                                            title={entities[0]}
+                                            className="block min-w-0 max-w-full truncate rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                                          >
+                                            {entities[0]}
+                                          </span>
+                                          {entities.length > 1 && (
+                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                              +{entities.length - 1}
                                             </span>
                                           )}
                                         </div>
@@ -798,20 +624,18 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
                                         <span className="text-xs text-muted-foreground">-</span>
                                       )}
                                     </TableCell>
-                                    <TableCell className="py-2">
-                                      {row.tags && row.tags.length > 0 ? (
-                                        <div className="flex gap-1 flex-wrap">
-                                          {(row.tags as string[]).slice(0, 2).map((tag: string, _i: number) => (
-                                            <span
-                                              key={tag}
-                                              className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 border border-amber-500/20 font-medium font-mono"
-                                            >
-                                              #{tag}
-                                            </span>
-                                          ))}
-                                          {row.tags.length > 2 && (
-                                            <span className="text-[10px] text-muted-foreground">
-                                              +{row.tags.length - 2}
+                                    <TableCell className="py-2 align-middle">
+                                      {tags.length > 0 ? (
+                                        <div className="flex min-w-0 items-center overflow-hidden">
+                                          <span
+                                            title={tags[0]}
+                                            className="block min-w-0 max-w-full truncate rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700"
+                                          >
+                                            #{tags[0]}
+                                          </span>
+                                          {tags.length > 1 && (
+                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                              +{tags.length - 1}
                                             </span>
                                           )}
                                         </div>
@@ -903,7 +727,13 @@ export function DataView({ factType, documentId, chunkId, compact = false, onExp
 
           {/* ── Timeline 视图 ── */}
           {!compactMode && viewMode === "timeline" && (
-            <TimelineView _data={data} filteredRows={filteredTableRows} onMemoryClick={(id) => setModalMemoryId(id)} />
+            <div className="min-h-0 flex-1 overflow-auto">
+              <TimelineView
+                _data={data}
+                filteredRows={filteredTableRows}
+                onMemoryClick={(id) => setModalMemoryId(id)}
+              />
+            </div>
           )}
         </>
       )}
