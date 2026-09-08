@@ -1,0 +1,6 @@
+{
+  "name": "@fenix/agent-config",
+  "description": "AgentConfig 基础资源领域能力",
+  "private": true,
+  "type": "module"
+}
