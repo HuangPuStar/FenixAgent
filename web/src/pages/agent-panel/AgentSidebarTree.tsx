@@ -275,7 +275,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       await unwrap(instanceApi.restart({ id: instance.instanceUid }));
 
       // 通知 ChatPanel 重新连接
-      window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId } }));
+      window.dispatchEvent(new window.CustomEvent("agent:reconnect", { detail: { envId } }));
 
       await refresh();
       toast.success(t("restartSuccess"));

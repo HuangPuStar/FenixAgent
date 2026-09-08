@@ -231,7 +231,7 @@ function ChangeRows({ files }: { files: ChangedFile[] }) {
           key={file.path}
           type="button"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent("artifacts:preview-file", { detail: { path: file.path } }))
+            window.dispatchEvent(new window.CustomEvent("artifacts:preview-file", { detail: { path: file.path } }))
           }
         >
           <FileDiff />

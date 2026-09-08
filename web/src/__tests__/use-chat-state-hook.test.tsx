@@ -29,9 +29,9 @@ import { initializeHappyDomWindow } from "./happy-dom-window";
 // chat-composer.test.tsx 同款处理，仅在本文件作用域内生效）
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 /** 渲染包裹 StrictMode 的探针组件，返回最新 hook 快照与重渲染/卸载控制 */
 function createHarness<T>(useHook: (rcsSessionId: string) => { state: T }) {

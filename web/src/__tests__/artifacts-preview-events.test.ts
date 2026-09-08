@@ -29,7 +29,7 @@ test("scopes file preview events to the current environment", () => {
 test("dispatches the minimal file preview payload", () => {
   const previousWindow = globalThis.window;
   const dispatchEvent = mock((_event: Event) => true);
-  globalThis.window = { dispatchEvent } as unknown as Window & typeof globalThis;
+  globalThis.window = { CustomEvent, dispatchEvent } as unknown as Window & typeof globalThis;
   try {
     dispatchArtifactsPreviewFile("env-a", "SKILL.md");
     expect(dispatchEvent).toHaveBeenCalledTimes(1);

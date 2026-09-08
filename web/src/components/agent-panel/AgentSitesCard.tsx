@@ -58,7 +58,7 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
   }, []);
 
   const handleClick = useCallback(() => {
-    window.dispatchEvent(new CustomEvent("artifacts:select-site", { detail: { siteId: agentSiteId } }));
+    window.dispatchEvent(new window.CustomEvent("artifacts:select-site", { detail: { siteId: agentSiteId } }));
   }, [agentSiteId]);
 
   // ── Loading ──

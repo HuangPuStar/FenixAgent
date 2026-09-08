@@ -257,7 +257,7 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
               aria-label={t("messageBubble.quote")}
               onClick={() =>
                 window.dispatchEvent(
-                  new CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
+                  new window.CustomEvent("chat:quote", { detail: { text: visibleText, contextScope: sessionId } }),
                 )
               }
             >

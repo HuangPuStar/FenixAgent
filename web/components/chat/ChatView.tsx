@@ -144,7 +144,9 @@ function ChatEmptyState({ title, description, agentName }: { title: string; desc
             key={suggestion}
             type="button"
             onClick={() =>
-              window.dispatchEvent(new CustomEvent("chat:apply-suggested-prompt", { detail: { prompt: suggestion } }))
+              window.dispatchEvent(
+                new window.CustomEvent("chat:apply-suggested-prompt", { detail: { prompt: suggestion } }),
+              )
             }
           >
             <span>{suggestion}</span>

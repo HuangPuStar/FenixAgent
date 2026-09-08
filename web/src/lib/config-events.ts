@@ -13,7 +13,7 @@ export type ConfigModule = "agents" | "models" | "skills" | "mcp" | "providers";
  * 在配置页面保存/删除/切换操作成功后调用
  */
 export function dispatchConfigChange(module: ConfigModule) {
-  window.dispatchEvent(new CustomEvent(CONFIG_CHANGE_EVENT, { detail: { module, timestamp: Date.now() } }));
+  window.dispatchEvent(new window.CustomEvent(CONFIG_CHANGE_EVENT, { detail: { module, timestamp: Date.now() } }));
 }
 
 /**

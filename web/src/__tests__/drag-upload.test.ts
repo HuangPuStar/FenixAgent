@@ -8,9 +8,9 @@ import { initializeHappyDomWindow } from "./happy-dom-window";
 // 设置最小 DOM 环境（React 19 需要 window + document）
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 // 简易 renderHook（项目无 @testing-library/react，用 react-dom/client 手写）
 function renderHook<T>(hookFn: () => T): {

@@ -217,7 +217,9 @@ export function ChatSelectionAction({ contextScope }: { contextScope?: string })
       <button
         type="button"
         onClick={() => {
-          window.dispatchEvent(new CustomEvent("chat:quote", { detail: { text: selectionAction.text, contextScope } }));
+          window.dispatchEvent(
+            new window.CustomEvent("chat:quote", { detail: { text: selectionAction.text, contextScope } }),
+          );
           window.getSelection()?.removeAllRanges();
           setSelectionAction(null);
         }}

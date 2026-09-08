@@ -311,7 +311,7 @@ export function ArtifactsPanel({
   const handleReferenceFile = useCallback(
     (path: string, name: string) => {
       window.dispatchEvent(
-        new CustomEvent("file-tree:reference", {
+        new window.CustomEvent("file-tree:reference", {
           detail: { path, name, envId },
         }),
       );

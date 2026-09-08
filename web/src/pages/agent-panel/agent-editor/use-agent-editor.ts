@@ -67,10 +67,19 @@ export type UseAgentEditorOptions =
       translatePanel: (key: string, options?: Record<string, unknown>) => string;
     };
 
+/** 可在自身 realm 创建并派发 CustomEvent 的事件目标。 */
+interface AgentReconnectEventTarget {
+  CustomEvent: typeof CustomEvent;
+  dispatchEvent(event: Event): boolean;
+}
+
 /** 每个重启成功的 environment 都按现有事件契约单独通知。 */
-export function dispatchAgentReconnect(environmentIds: string[], target: Pick<Window, "dispatchEvent"> = window): void {
+export function dispatchAgentReconnect(
+  environmentIds: string[],
+  target: AgentReconnectEventTarget = window as unknown as AgentReconnectEventTarget,
+): void {
   for (const envId of new Set(environmentIds)) {
-    target.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId } }));
+    target.dispatchEvent(new target.CustomEvent("agent:reconnect", { detail: { envId } }));
   }
 }
 

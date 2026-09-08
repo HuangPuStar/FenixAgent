@@ -27,6 +27,7 @@ describe("Agent Editor 关闭保护与分页", () => {
   test("逐个派发 reconnect environment ID", () => {
     const details: unknown[] = [];
     const target = {
+      CustomEvent,
       dispatchEvent(event: Event) {
         details.push((event as CustomEvent).detail);
         return true;

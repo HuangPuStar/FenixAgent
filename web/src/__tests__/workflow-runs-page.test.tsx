@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,9 +10,9 @@ import { initializeHappyDomWindow } from "./happy-dom-window";
 // 设置最小 DOM 环境（react-dom/client 在 CI CJS 构建下模块加载时需要 window）
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 // ── 本地翻译表 ──
 const MOCK_TRANSLATIONS: Record<string, string> = {
@@ -136,13 +136,6 @@ function setupFetchMock() {
     globalThis.fetch = originalFetch;
   };
 }
-
-// 清理 happy-dom 全局污染，避免影响后续测试文件
-afterAll(() => {
-  if (g.window === win) delete g.window;
-  if (g.document === win.document) delete g.document;
-  if (g.navigator === (win as unknown as Record<string, unknown>).navigator) delete g.navigator;
-});
 
 beforeEach(() => {
   fetchCalls = [];

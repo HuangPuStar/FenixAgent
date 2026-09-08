@@ -89,7 +89,7 @@ export function AgentBadge({
                     key={s.id}
                     className="skill-tag"
                     onClick={() =>
-                      window.dispatchEvent(new CustomEvent("chat:inject-skill", { detail: { name: s.label } }))
+                      window.dispatchEvent(new window.CustomEvent("chat:inject-skill", { detail: { name: s.label } }))
                     }
                   >
                     {s.label}

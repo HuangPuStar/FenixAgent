@@ -23,7 +23,7 @@ export function isWorkspaceRelativeFilePath(path: string): boolean {
 /** 派发带 environment 隔离信息的文件预览请求。 */
 export function dispatchArtifactsPreviewFile(envId: string, path: string): void {
   window.dispatchEvent(
-    new CustomEvent<ArtifactsPreviewFileDetail>(ARTIFACTS_PREVIEW_FILE_EVENT, { detail: { envId, path } }),
+    new window.CustomEvent<ArtifactsPreviewFileDetail>(ARTIFACTS_PREVIEW_FILE_EVENT, { detail: { envId, path } }),
   );
 }
 

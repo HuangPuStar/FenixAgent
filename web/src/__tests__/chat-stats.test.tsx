@@ -17,14 +17,12 @@ import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-// ── DOM 环境（react-dom/client 加载需要 document）──
-// window 使用原生 EventTarget：hook 生产代码监听 window 的 chat:stats/agent:reconnect，
-// 测试用原生 CustomEvent 派发，原生 EventTarget 的 addEventListener/dispatchEvent 语义与之匹配
+// 使用同一个 Happy DOM window 承载 React、事件监听和事件派发，避免跨 realm Event。
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = new EventTarget();
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 const f = (path: string, type: ChangedFile["type"] = "edit"): ChangedFile => ({ path, type });
 
@@ -148,7 +146,7 @@ describe("useChangedFilesFromStats", () => {
     };
   }
 
-  const dispatch = (detail: unknown) => window.dispatchEvent(new CustomEvent("chat:stats", { detail }));
+  const dispatch = (detail: object) => win.dispatchEvent(new win.CustomEvent("chat:stats", { detail }));
 
   // 摘要事件中的 changedFiles 正确进入消费方状态（新协议，非 entries）
   test("consumes changedFiles from summary event", async () => {
@@ -191,7 +189,7 @@ describe("useChangedFilesFromStats", () => {
     });
     expect(h.latest.value).toHaveLength(1);
     await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent:reconnect", { detail: { envId: "agent-a" } }));
+      win.dispatchEvent(new win.CustomEvent("agent:reconnect", { detail: { envId: "agent-a" } }));
     });
     expect(h.latest.value).toEqual([]);
   });

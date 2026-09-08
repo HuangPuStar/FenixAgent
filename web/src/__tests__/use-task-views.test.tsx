@@ -30,9 +30,9 @@ import { initializeHappyDomWindow } from "./happy-dom-window";
 // use-chat-state-hook.test.tsx 同款处理，仅在本文件作用域内生效）
 const win = initializeHappyDomWindow(new Window());
 const g = globalThis as Record<string, unknown>;
-if (!g.window) g.window = win;
-if (!g.document) g.document = win.document;
-if (!g.navigator) g.navigator = win.navigator;
+g.window = win;
+g.document = win.document;
+g.navigator = win.navigator;
 
 /** 构造完整 PeriTaskViewProjection（缺省字段给安全默认，overrides 覆盖） */
 function makeTask(overrides: Partial<PeriTaskViewProjection> & { taskId: string }): PeriTaskViewProjection {
