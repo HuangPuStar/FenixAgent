@@ -20,9 +20,98 @@ AGT-00 盘点实例创建、复用、停止、ACP relay、LaunchSpec、Environme
 
 本文刻意区分“当前事实”和“候选边界”。尤其不能由本文推导出以下错误结论：relay 关闭等于 Agent 进程停止、所有取消都会发送 ACP `session/cancel`、所有超时都会停止实例、`packages/orchestration` 会启动引擎，或编排域 `LaunchSpec.cwd` 会传给插件。
 
+### 1.1 职责边界总览
+
+下图用于快速定位当前链路中的职责，不表示这些物理模块就是目标拆包结果。资源解析发生在 Runtime 之外；编排层管理实例与节点记账；Core/Engine 才执行实际启动。
+
+```mermaid
+flowchart LR
+  subgraph Entry["调用入口"]
+    OneShot["OpenAI / Scheduler<br/>单轮独占实例"]
+    Shared["Workflow / Chat<br/>复用运行实例"]
+  end
+  subgraph Resource["资源与应用层"]
+    Auth["认证与组织上下文"]
+    Resolve["Environment / AgentConfig<br/>Model · Skill · MCP · Knowledge · Memory"]
+  end
+  subgraph Orchestration["实例编排与记账"]
+    Ensure["ensureRunning<br/>复用与启动合并"]
+    Spawn["spawnInstanceViaController<br/>配额 · 补偿"]
+    Controller["AgentController<br/>Instance · AgentNode 引用"]
+    Registry["globalInstanceRegistry<br/>来源 · 活动 · relayCount"]
+  end
+  subgraph Runtime["Core Runtime"]
+    Core["InstanceOrchestrator<br/>launch · connectRelay · stop"]
+    Store["RuntimeInstanceStore<br/>快照 · EngineRuntime · relay"]
+  end
+  subgraph Execution["执行面"]
+    Engine["EngineRuntime<br/>prepare · start · stop"]
+    Local["本地 Agent 进程"]
+    Remote["远程 Machine Runtime"]
+  end
+  OneShot --> Auth
+  Shared --> Auth
+  Auth --> Resolve
+  OneShot --> Spawn
+  Shared --> Ensure
+  Ensure -->|"无可复用实例"| Spawn
+  Ensure -.->|"已有实例"| Registry
+  Resolve --> Spawn
+  Spawn --> Controller
+  Controller --> Core
+  Spawn --> Registry
+  Core <--> Store
+  Core --> Engine
+  Engine --> Local
+  Engine --> Remote
+  Store -.->|"ACP relay"| OneShot
+  Store -.->|"共享 relay"| Shared
+```
 ## 2. 启动调用图
 
-### 2.1 规范创建路径
+### 2.1 启动与失败补偿时序
+
+该时序突出“谁真正启动进程”和“失败后谁负责收敛”。`releaseSpawnReservation` 位于最外层 `finally`，成功与失败都会执行。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 调用方
+  participant Host as spawnInstanceViaController
+  participant Quota as Spawn Reservation
+  participant Controller as AgentController
+  participant Resources as Environment / LaunchSpec 解析
+  participant Core as Core Runtime
+  participant Engine as EngineRuntime
+  participant Registry as Supplement Registry
+  Caller->>Host: spawn(environmentId, userId, source)
+  Host->>Quota: beginSpawnReservation
+  Host->>Controller: spawnInstance
+  Controller->>Resources: 读取 Environment / 构建编排 LaunchSpec
+  Resources-->>Controller: machineId + LaunchSpec
+  Controller->>Controller: 创建 Instance / 持有 AgentNode 引用
+  Controller-->>Host: Instance(inst_*)
+  Host->>Resources: 再构建完整 AgentLaunchSpec
+  Resources-->>Host: Model / Skill / MCP / Knowledge / Credential
+  Host->>Core: launchInstance(instanceId, nodeId, spec)
+  Core->>Engine: prepareEnvironment
+  Core->>Engine: startInstance
+  alt 启动及补充注册成功
+    Engine-->>Core: running
+    Core-->>Host: RuntimeInstanceSnapshot
+    Host->>Registry: registerSupplement
+    Registry-->>Host: registered
+    Host-->>Caller: 返回运行实例
+  else Controller 之后任一步失败
+    Host->>Controller: stop / 移除 Instance / 归还 Node 引用
+    Host->>Core: 关闭 relay / runtime stop
+    Host->>Registry: unregister / 清理计数
+    Host-->>Caller: 传播原始错误
+  end
+  Host->>Quota: releaseSpawnReservation（finally）
+```
+
+### 2.2 规范创建路径
 
 当前新建运行实例的宿主入口是 `src/services/orchestration-instance.ts#spawnInstanceViaController`：
 
@@ -75,7 +164,7 @@ finally
 
 `AgentController` 只创建编排内存对象并维护 Node 引用；真正的 `prepareEnvironment`、`startInstance` 和进程/远程命令由 Core 选择的 `EngineRuntime` 执行。
 
-### 2.2 单轮会话路径
+### 2.3 单轮会话路径
 
 `src/services/agent-chat-service.ts#openAgentSession` 先按 `organizationId + agentConfigId + userId` 查找或创建 Environment，然后**总是**调用 `spawnInstanceViaController` 创建独立实例，再执行：
 
@@ -169,6 +258,38 @@ Sandbox 准备会创建、复用、重启或恢复基础设施并等待 Machine 
 
 ## 8. 调用场景与所有权
 
+### 8.1 三类调用生命周期对比
+
+三类入口复用同一底层 Runtime，但实例和 relay 的释放责任不同。下图中的终点表示当前入口完成后的资源状态，而不是统一的目标生命周期。
+
+```mermaid
+flowchart LR
+  subgraph OneShot["OpenAI / Scheduler：单轮独占"]
+    O1["openAgentSession"] --> O2["spawn 新实例"]
+    O2 --> O3["PromptTurn"]
+    O3 -->|"完成 / 失败 / 超时 / 客户端取消"| O4["turn.dispose"]
+    O4 --> O5["关闭 relay<br/>停止实例"]
+  end
+  subgraph Workflow["Workflow：共享实例 + lease"]
+    W1["ensureRunning"] --> W2["复用或创建实例"]
+    W2 --> W3["acquire lease<br/>创建 turn listener"]
+    W3 -->|"完成 / abort / timeout"| W4["释放 listener<br/>relay 活动计数与 lease"]
+    W4 --> W5["复用实例继续运行"]
+    W4 -.->|"仅本 run 创建且无 lease"| W6["run 结束时停止"]
+  end
+  subgraph Chat["Chat：实例复用 + 多标签页 relay"]
+    C1["ensureRunning"] --> C2["三元键共享 relay<br/>instance + user + rcsSession"]
+    C2 --> C3["tab 引用计数 +1"]
+    C3 -->|"普通 tab 关闭"| C4["引用计数 -1"]
+    C4 -->|"最后一个 tab"| C5["释放 channel / listener / relay<br/>实例仍运行"]
+    C3 -->|"用户 cancel"| C6["发送 session/cancel<br/>收敛当前 turn"]
+    C6 --> C7["实例仍运行"]
+    C2 -.->|"实例停止 / relay death / Machine 清理"| C8["关闭客户端并回收实时资源"]
+  end
+```
+
+### 8.2 所有权矩阵
+
 | 场景 | 实例/relay 获取 | turn/relay 释放 | 是否停止实例 |
 | --- | --- | --- | --- |
 | OpenAI 单轮 | `openAgentSession` 独立 spawn，连接 Core relay | route 的成功、失败、超时或 Response cancel 最终调用 `turn.dispose()` | 是，由单轮 `AgentSession` 所有 |
@@ -176,7 +297,7 @@ Sandbox 准备会创建、复用、重启或恢复基础设施并等待 Machine 
 | Workflow | `ensureRunning` + lease；Core relay 可复用；每次 `startPromptTurn` 有独立 listener | execute settle 释放 relay 活动计数和 lease；engine 调用 adapter `dispose()` 只执行 `turn.release()` | 通常否；run 结束只尝试清理该 run 实际 spawn 的实例，lease 存在时跳过 |
 | Chat | `ensureRunning`；`ConnectionRegistry` 合并相同三元键的 relay 创建并引用计数 | 最后 tab 释放 SessionChannel 状态、计时器、YJS listener、relay listener 和 handle | 否；实例由显式停止、死亡/机器清理或适用的回收路径处理 |
 
-### 8.1 Chat relay 三元键与陈旧文档清单
+### 8.3 Chat relay 三元键与陈旧文档清单
 
 当前权威实现 `packages/chat-channel/src/channel/connection-registry.ts#makeRelayKey` 的精确键是：
 
