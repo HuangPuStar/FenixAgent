@@ -369,6 +369,13 @@ export function getHermesClient(): HermesClient | null {
   return hermesClientInstance;
 }
 
+/** 测试用：停止并清空 Hermes 单例，避免跨测试文件泄漏初始化状态。 */
+export async function resetHermesClient(): Promise<void> {
+  const client = hermesClientInstance;
+  hermesClientInstance = null;
+  await client?.stop();
+}
+
 export function initHermesClient(url: string): HermesClient {
   if (hermesClientInstance) {
     hermesClientInstance.stop();
