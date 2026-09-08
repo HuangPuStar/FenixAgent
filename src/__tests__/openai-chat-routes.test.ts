@@ -82,6 +82,66 @@ describe("OpenAI Chat Routes", () => {
     expect(text).toContain("data: [DONE]");
   });
 
+  // 客户端取消公开 Response 后必须启动单轮清理并释放事件迭代器，不冻结重复 dispose 次数
+  test("stream cancellation initiates one-shot cleanup", async () => {
+    let signalStarted: () => void = () => {};
+    let releaseIterator: () => void = () => {};
+    let signalCompleted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseIterator = resolve;
+    });
+    const completed = new Promise<void>((resolve) => {
+      signalCompleted = resolve;
+    });
+    let disposeCalls = 0;
+    let iteratorCompleted = false;
+
+    setOpenAIChatRouteDeps({
+      openAgentSession: async () => ({
+        instanceId: "inst-cancel",
+        turn: {
+          prompt: () => {},
+          events: async function* () {
+            try {
+              signalStarted();
+              await release;
+              yield { jsonrpc: "2.0", result: { stopReason: "end_turn" } };
+            } finally {
+              iteratorCompleted = true;
+              signalCompleted();
+            }
+          },
+          dispose: async () => {
+            disposeCalls++;
+            releaseIterator();
+          },
+        } as never,
+      }),
+    });
+
+    const res = await request("/api/agents/123e4567-e89b-12d3-a456-426614174000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    await started;
+
+    expect(res.body).not.toBeNull();
+    await res.body?.cancel();
+    await completed;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(disposeCalls).toBeGreaterThanOrEqual(1);
+    expect(iteratorCompleted).toBe(true);
+  });
+
   // OpenAI 兼容入口启动实例时应显式标记为 interactive
   test("转发 interactive startSource 到 openAgentSession", async () => {
     const calls: unknown[] = [];
