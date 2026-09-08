@@ -1,6 +1,8 @@
 # CE AgentConfig 重构现状清单
 
-> 基线：`ba8ab4d1737634b62042290c1735be8744d947bb`（2026-09-08）。本文只记录该提交的生产源码与既有测试所呈现的当前事实，不是 ARC-02 设计。
+> 基线：`4205a60955c41f017d19f169695d41311c1f6c62`（2026-09-08）。本文只记录该提交的生产源码与既有测试所呈现的当前事实，不是 ARC-02 设计。
+>
+> 该基线相对初始盘点提交 `ba8ab4d1737634b62042290c1735be8744d947bb` 只新增或调整设计文档、workspace manifest 与空包 README，`src/`、`web/` 无差异；逻辑 owner 和任务依赖按合并后的最新设计重核。
 
 ## 1. 范围、证据与术语
 
@@ -188,14 +190,14 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 
 ## 10. 既有回归一次运行基线
 
-- Base SHA：`ba8ab4d1737634b62042290c1735be8744d947bb`；Bun 1.4.2。
+- Base SHA：`4205a60955c41f017d19f169695d41311c1f6c62`；Bun 1.4.2。
 - 固定集合：11 个既有文件，覆盖 Web/API list/CRUD、共享读取、delete 清理、connect、OpenAI-compatible run、session 边界与 orchestration rollback。
 - 命令：`LC_ALL=C /usr/bin/time -f 'elapsed_seconds=%e' bun test <上述 11 个既有测试文件>`；完整文件列表见第 8 节对应 L2-L4 条目。
-- 恢复固定基线测试后的单次结果：63 pass / 0 fail / 175 assertions；GNU wall-clock `0.91s`。
+- 合并最新基线后的单次结果：63 pass / 0 fail / 175 assertions；GNU wall-clock `0.83s`。
 
 ### 10.1 已知全量门禁问题
 
-- `bun run precheck` 连续两次均完成 format、import-sort、server/web TypeScript 和 lint，随后在全量测试阶段得到 8205 pass / 3 fail。
+- `bun run precheck` 在初始分支执行两次、合并 `4205a609` 后复验一次：format、import-sort、server/web TypeScript 均通过；lint 步骤退出成功但报告 4 个既有 warning；全量测试每次均为 8205 pass / 3 fail。
 - 失败项分别位于 `src/__tests__/round46-knowledge-base-repository.test.ts`、`src/__tests__/round54-channels-routes.test.ts` 和 `web/src/__tests__/agent-form-dialog-ssr.test.tsx`；三个文件在本 worktree 中隔离运行分别为 34/24/3 pass、0 fail。
 - 用户于 2026-09-08 确认这是全量测试共享状态或顺序污染的已知基线问题，与 ARC-01 文档清单无直接关系。本任务只保留验证证据，不修改生产代码或测试，也不将其并入 ARC-01 修复范围。
 
@@ -206,7 +208,8 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | ARC-01 | CE task pool（本分支：liu xue yan） | 无 | 当前边界、调用方、风险、测试入口与删除条件 |
 | AGT-00 | CE task pool | 无；可与 ARC-01 并行 | runtime 真实调用图与生命周期特征，不由本清单重复展开 |
 | ARC-02 | CE task pool + EE-C 确认 | ARC-01 | 冻结 identity/order、tenant、read/write/use、query constraint、ID/DTO/error 与外部契约 |
-| FND-01 | CE task pool | ARC-02 | workspace、目标 package/app 空骨架，不切运行入口 |
+| FND-00 | CE task pool | 无；可与 ARC-01、ARC-02 并行 | workspace 规则、最小 package manifest 与 README 物理骨架，不冻结公开契约 |
+| FND-01 | CE task pool | FND-00、ARC-02 | 补齐 package exports/dependency、TypeScript 配置和 app 空装配入口，不切运行入口 |
 | FND-02 | CE task pool | FND-01 | 包依赖边界 CI |
 | FND-03 | CE task pool | FND-01、ARC-02 | manifest、registry、assembly 与 bootstrap |
 | FND-04 | CE task pool | FND-03 | env、observability 与 deploy preflight |
