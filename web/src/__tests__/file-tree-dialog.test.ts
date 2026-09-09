@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { join } from "node:path";
-import { isValidFileTreeBasename, isValidFileTreeMovePath } from "../components/agent-panel/FileTreeTab";
+import {
+  getFileTreeNameByteLength,
+  isValidFileTreeBasename,
+  isValidFileTreeMovePath,
+} from "../components/agent-panel/FileTreeTab";
 
 describe("file tree dialogs", () => {
   // 无滚动内容时不展示 sticky，避免顶部目录栏占用文件树空间。
@@ -23,6 +27,19 @@ describe("file tree dialogs", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
     expect(source).toContain("const value = inputDialog.value;");
     expect(source).not.toContain("const value = inputDialog.value.trim();");
+  });
+
+  // 浏览器必须按 UTF-8 字节数阻止超过 NAME_MAX 的名称，不能只按 JavaScript 字符数判断。
+  test("rejects basenames longer than 255 UTF-8 bytes", () => {
+    expect(getFileTreeNameByteLength("中")).toBe(3);
+    expect(isValidFileTreeBasename("a".repeat(255))).toBe(true);
+    expect(isValidFileTreeBasename("a".repeat(256))).toBe(false);
+    expect(isValidFileTreeBasename("中".repeat(85))).toBe(true);
+    expect(isValidFileTreeBasename("中".repeat(86))).toBe(false);
+
+    const dialogPath = join(import.meta.dirname, "..", "components", "agent-panel", "file-tree-input-dialog.tsx");
+    const dialogSource = fs.readFileSync(dialogPath, "utf-8");
+    expect(dialogSource).toContain("maxLength={255}");
   });
 
   // 文件树移动操作允许完整路径，但拒绝空路径和 NUL。

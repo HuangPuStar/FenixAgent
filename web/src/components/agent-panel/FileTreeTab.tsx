@@ -18,9 +18,23 @@ import { FileTreeView } from "./file-tree-view";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
 
+const MAX_FILE_NAME_BYTES = 255;
+
+/** 浏览器侧按 UTF-8 字节校验 basename，与服务端文件系统 NAME_MAX 契约一致。 */
+export function getFileTreeNameByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 export function isValidFileTreeBasename(value: string) {
   const trimmed = value.trim();
-  return !!trimmed && !trimmed.includes("\0") && !trimmed.includes("/") && trimmed !== "." && trimmed !== "..";
+  return (
+    !!trimmed &&
+    !trimmed.includes("\0") &&
+    !trimmed.includes("/") &&
+    trimmed !== "." &&
+    trimmed !== ".." &&
+    getFileTreeNameByteLength(value) <= MAX_FILE_NAME_BYTES
+  );
 }
 
 export function isValidFileTreeMovePath(value: string) {
@@ -370,9 +384,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     const invalid =
       value.trim().length === 0 || (isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value));
     if (invalid) {
-      setInputDialog((current) =>
-        current ? { ...current, error: t(`fileTree.dialog.${isBasename ? "invalidName" : "invalidPath"}`) } : null,
-      );
+      const errorKey =
+        isBasename && getFileTreeNameByteLength(value) > MAX_FILE_NAME_BYTES
+          ? "nameTooLong"
+          : isBasename
+            ? "invalidName"
+            : "invalidPath";
+      setInputDialog((current) => (current ? { ...current, error: t(`fileTree.dialog.${errorKey}`) } : null));
       return;
     }
 

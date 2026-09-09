@@ -54,6 +54,7 @@ export function FileTreeInputDialog({
           <div className="py-4">
             <Input
               value={value}
+              maxLength={255}
               onChange={(event) => onValueChange(event.target.value)}
               aria-invalid={!!error}
               aria-describedby={error ? "file-tree-input-error" : undefined}

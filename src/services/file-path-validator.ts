@@ -7,6 +7,14 @@
 import { isAbsolute, win32 } from "node:path";
 import { ValidationError } from "../errors";
 
+/** 常见文件系统单个路径段的 NAME_MAX；按 UTF-8 字节校验，避免多字节名称绕过字符数限制。 */
+export const MAX_FILE_NAME_BYTES = 255;
+
+/** 返回单个路径段的 UTF-8 字节数。 */
+export function getFileNameByteLength(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
 /** 路径是否含控制字符：C0（NUL–0x1F）、DEL（0x7F）与 C1（0x80–0x9F）。
  * 控制字符在文件系统中不可见且可被用于注入/伪装，浏览器不会产生合法文件名。
  * 用码点遍历而非正则字面量，规避 lint 的 noControlCharactersInRegex 规则。 */
@@ -30,6 +38,9 @@ export function assertSafePath(path: string): void {
   if (hasPathControlCharacter(trimmed)) throw new ValidationError("路径不合法：不允许控制字符");
   for (const segment of trimmed.split(/[\\/]+/)) {
     if (segment === "..") throw new ValidationError("路径不合法：不允许 `..` 段");
+    if (getFileNameByteLength(segment) > MAX_FILE_NAME_BYTES) {
+      throw new ValidationError(`名称过长（最多 ${MAX_FILE_NAME_BYTES} 字节）`);
+    }
   }
 }
 
@@ -48,7 +59,7 @@ export function normalizeUploadRelativePath(relPath: unknown): string | null {
   if (isAbsolute(relPath) || win32.isAbsolute(relPath)) return null;
   if (hasPathControlCharacter(relPath)) return null;
   for (const segment of relPath.split(/[\\/]+/)) {
-    if (segment === "..") return null;
+    if (segment === ".." || getFileNameByteLength(segment) > MAX_FILE_NAME_BYTES) return null;
   }
   return relPath;
 }
