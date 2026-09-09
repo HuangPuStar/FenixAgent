@@ -168,11 +168,11 @@ flowchart TD
 **前置：** 无  
 **产出：** `docs/arch/ce-refactoring-inventory.md`、每个首批 task 的 owner 和依赖关系。
 
-- [ ] 从 `FUNCTIONAL_MODULE_INVENTORY.md`、`src/`、`web/`、`src/db/schema.ts` 汇总首批 AgentConfig 闭环涉及的表、route、service、页面、外部依赖和调用方。
-- [ ] 为每一项标注目标归属：`platform`、`agent`、`resources/agent-config`、`apps/server` 或 `apps/web`。
-- [ ] 明确保留的公开行为：资源 ID、现有数据可读性、AgentConfig 创建/查询/更新/删除/run、认证失败和越权失败语义。
-- [ ] 明确删除清单：切换完成后必须删除的旧 route/service/page；禁止新增长期兼容转发。
-- [ ] 为 AgentConfig 的 list、CRUD、run 和权限拒绝补齐或确认现有回归测试；记录当前耗时、错误日志字段和关键 API 返回样例。
+- [x] 从 `FUNCTIONAL_MODULE_INVENTORY.md`、`src/`、`web/`、`src/db/schema.ts` 汇总首批 AgentConfig 闭环涉及的表、route、service、页面、外部依赖和调用方。
+- [x] 为每一项标注目标归属：`platform`、`agent`、`resources/agent-config`、`apps/server` 或 `apps/web`。
+- [x] 明确保留的公开行为：资源 ID、现有数据可读性、AgentConfig 创建/查询/更新/删除/run、认证失败和越权失败语义。
+- [x] 明确删除清单：切换完成后必须删除的旧 route/service/page；禁止新增长期兼容转发。
+- [x] 为 AgentConfig 的 list、CRUD、run 和权限拒绝补齐或确认现有回归测试；记录当前耗时、错误日志字段和关键 API 返回样例。
 
 **验收：** 任意开发者能根据清单定位一个旧实现、它的目标包、迁移风险、测试入口和删除条件。
 
@@ -678,7 +678,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 
 | 阶段 | Task | 状态（初始） | 前置已完成条件 | 共享文件锁 / 交付物 |
 | --- | --- | --- | --- | --- |
-| 0 | ARC-01 重构清单与回归基线 | ⬜ 可领取 | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
+| 0 | ARC-01 重构清单与回归基线 | ✅ 已完成（liu xue yan） | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
 | 0 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
