@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { buildUploadUrl, encodeWorkspaceUrlPath, fsApi } from "../api/fs";
+import { buildUploadUrl, downloadWorkspacePath, encodeWorkspaceUrlPath, fsApi } from "../api/fs";
 
 const fetchMock = {
   lastUrl: "",
@@ -62,6 +62,49 @@ describe("workspace path URL encoding", () => {
     await fsApi.writeFile("env_1", "user/abcd#1234.txt", "content");
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user/abcd%231234.txt");
     expect(fetchMock.method).toBe("PUT");
+  });
+});
+
+describe("workspace download", () => {
+  // 下载文本文件也必须显式请求 binary 模式，避免把统一 JSON 响应作为字符串文件落盘。
+  test("requests original file bytes with explicit binary mode", async () => {
+    const bytes = new Uint8Array([0, 1, 2, 255]);
+    globalThis.fetch = mock(async (input: RequestInfo | URL): Promise<Response> => {
+      fetchMock.lastUrl = String(input);
+      return new Response(bytes, { status: 200, headers: { "X-File-Type": "binary" } });
+    }) as unknown as typeof fetch;
+
+    const blob = await downloadWorkspacePath("env 1", "user/a#b.txt", false);
+
+    expect(fetchMock.lastUrl).toBe("/web/environments/env%201/fs/user/a%23b.txt?mode=binary");
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
+  });
+
+  // 防御性校验响应协议，避免服务端契约回退时静默下载 JSON 错误内容。
+  test("rejects a successful non-binary file response", async () => {
+    globalThis.fetch = mock(
+      async (): Promise<Response> =>
+        new Response(JSON.stringify({ success: true, data: { content: "hello" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(downloadWorkspacePath("env_1", "user/a.txt", false)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
+  });
+
+  // 目录下载使用独立 ZIP 端点，不要求文件流的 X-File-Type 标记。
+  test("keeps directory downloads on the ZIP endpoint", async () => {
+    globalThis.fetch = mock(async (input: RequestInfo | URL): Promise<Response> => {
+      fetchMock.lastUrl = String(input);
+      return new Response(new Uint8Array([80, 75]), { status: 200, headers: { "Content-Type": "application/zip" } });
+    }) as unknown as typeof fetch;
+
+    await downloadWorkspacePath("env_1", "user/my folder", true);
+
+    expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/download-zip?path=user%2Fmy+folder");
   });
 });
 

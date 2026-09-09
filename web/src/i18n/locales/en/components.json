@@ -171,6 +171,7 @@
       "newFolderTitle": "New Folder",
       "newFolderDescription": "Enter the new folder name",
       "invalidName": "The name is required and cannot contain / or NUL, or be . or ..",
+      "nameTooLong": "Name is too long (maximum 255 bytes)",
       "invalidPath": "The destination path is required and cannot contain NUL",
       "confirm": "Confirm"
     },

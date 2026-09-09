@@ -105,6 +105,20 @@ async function expectCommonErrorContract(): Promise<void> {
 }
 
 describe("本地环境（无 machine 配置）", () => {
+  // 超长名称必须在门面前置校验中稳定返回 400，不能落入底层 ENAMETOOLONG 的 503 兜底。
+  test("创建超过 255 UTF-8 字节的目录返回明确校验错误", async () => {
+    const response = await handle("/fs/mkdir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: `user/${"中".repeat(86)}` }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({
+      error: { type: "validation_error", message: "名称过长（最多 255 字节）" },
+    });
+  });
+
   test("九个端点本地跑通：写读往返 + 树/列目录 + 上传 + 移动 + 删除 + 打包", async () => {
     // 本地全链路：write→read→list→tree→upload→mkdir→rename→batch→delete→download-zip 均成功
     const writeRes = await handle("/fs/user/hello.txt", {

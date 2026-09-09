@@ -172,7 +172,7 @@ export async function downloadWorkspacePath(
 ): Promise<Blob> {
   const url = directory
     ? `/web/environments/${encodeURIComponent(environmentId)}/fs/download-zip?${new URLSearchParams({ path })}`
-    : `/web/environments/${encodeURIComponent(environmentId)}/fs/${encodeWorkspaceUrlPath(path)}?raw=1`;
+    : `/web/environments/${encodeURIComponent(environmentId)}/fs/${encodeWorkspaceUrlPath(path)}?mode=binary`;
   const timeoutSignal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   const response = await fetch(url, { credentials: "include", signal: requestSignal });
@@ -185,6 +185,9 @@ export async function downloadWorkspacePath(
       // 非 JSON 响应使用本地化的调用方兜底文案。
     }
     throw new ApiError(message ?? "", response.status >= 500 ? "SERVER_ERROR" : "UNKNOWN");
+  }
+  if (!directory && response.headers.get("x-file-type") !== "binary") {
+    throw new ApiError("", "INVALID_RESPONSE");
   }
   return response.blob();
 }

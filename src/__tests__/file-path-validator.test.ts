@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { assertSafePath, hasPathControlCharacter, normalizeUploadRelativePath } from "../services/file-path-validator";
+import {
+  assertSafePath,
+  getFileNameByteLength,
+  hasPathControlCharacter,
+  MAX_FILE_NAME_BYTES,
+  normalizeUploadRelativePath,
+} from "../services/file-path-validator";
 
 describe("assertSafePath 基础安全校验（D5）", () => {
   test("绝对路径被拒绝（400 validation_error）", () => {
@@ -36,6 +42,23 @@ describe("assertSafePath 基础安全校验（D5）", () => {
     expect(() => assertSafePath("user/a?b%20+c.txt")).not.toThrow();
   });
 
+  // 文件系统按 UTF-8 字节限制单个路径段，超长输入应在访问本地或远程后端前返回 400。
+  test("单个路径段超过 255 UTF-8 字节时被拒绝", () => {
+    const asciiName = "a".repeat(MAX_FILE_NAME_BYTES);
+    const multibyteName = "中".repeat(85);
+
+    expect(getFileNameByteLength(asciiName)).toBe(255);
+    expect(getFileNameByteLength(multibyteName)).toBe(255);
+    expect(() => assertSafePath(`user/${asciiName}`)).not.toThrow();
+    expect(() => assertSafePath(`user/${multibyteName}`)).not.toThrow();
+    expect(() => assertSafePath(`user/${asciiName}a`)).toThrowError(
+      expect.objectContaining({ message: "名称过长（最多 255 字节）", statusCode: 400 }),
+    );
+    expect(() => assertSafePath(`user/${multibyteName}中`)).toThrowError(
+      expect.objectContaining({ message: "名称过长（最多 255 字节）", statusCode: 400 }),
+    );
+  });
+
   test("workspace 根内相对路径全部放行（不再强制 user/ 前缀）", () => {
     // F1 删除全局作用域强制：docs/、user/、根级文件均合法，越界防护由真实路径
     // 检查（realpath）承担，词法校验仅保留绝对路径 / `..` / 控制字符拦截
@@ -65,6 +88,13 @@ describe("normalizeUploadRelativePath（D16 逃逸修复）", () => {
     expect(normalizeUploadRelativePath("../../evil.txt")).toBeNull();
     expect(normalizeUploadRelativePath("a\\..\\b.txt")).toBeNull();
     expect(normalizeUploadRelativePath("a\u0000b.txt")).toBeNull();
+  });
+
+  // 上传路径复用相同 NAME_MAX 契约，避免上传入口继续把 ENAMETOOLONG 误映射为 503。
+  test("超过 255 UTF-8 字节的上传路径段返回 null", () => {
+    expect(normalizeUploadRelativePath(`${"a".repeat(256)}.txt`)).toBeNull();
+    expect(normalizeUploadRelativePath(`nested/${"中".repeat(86)}.txt`)).toBeNull();
+    expect(normalizeUploadRelativePath(`nested/${"中".repeat(85)}`)).not.toBeNull();
   });
 
   test('"." → null（文件 relativePath 为目录本身触发 EISDIR）', () => {

@@ -49,6 +49,7 @@ interface FileTreeViewProps {
   expandedIds: string[];
   contextMenu: ContextMenuState | null;
   deleteConfirm: { path: string; name: string } | null;
+  deleting: boolean;
   download: { path: string; isDir: boolean; error: boolean } | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
@@ -205,6 +206,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         variant="destructive"
         onConfirm={props.onConfirmDelete}
         confirmLabel={t("fileTree.contextMenu.delete")}
+        loading={props.deleting}
       />
     </div>
   );

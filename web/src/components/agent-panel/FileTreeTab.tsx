@@ -18,9 +18,23 @@ import { FileTreeView } from "./file-tree-view";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
 
+const MAX_FILE_NAME_BYTES = 255;
+
+/** 浏览器侧按 UTF-8 字节校验 basename，与服务端文件系统 NAME_MAX 契约一致。 */
+export function getFileTreeNameByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 export function isValidFileTreeBasename(value: string) {
   const trimmed = value.trim();
-  return !!trimmed && !trimmed.includes("\0") && !trimmed.includes("/") && trimmed !== "." && trimmed !== "..";
+  return (
+    !!trimmed &&
+    !trimmed.includes("\0") &&
+    !trimmed.includes("/") &&
+    trimmed !== "." &&
+    trimmed !== ".." &&
+    getFileTreeNameByteLength(value) <= MAX_FILE_NAME_BYTES
+  );
 }
 
 export function isValidFileTreeMovePath(value: string) {
@@ -59,6 +73,14 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const [stale, setStale] = useState(false);
   const [download, setDownload] = useState<{ path: string; isDir: boolean; error: boolean } | null>(null);
   const downloadControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    // 环境变化时取消旧连接；读取 envId 保证 effect 与当前环境生命周期绑定。
+    if (envId === null && downloadControllerRef.current === null) return;
+    downloadControllerRef.current?.abort();
+    downloadControllerRef.current = null;
+    setDownload(null);
+  }, [envId]);
 
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
@@ -135,22 +157,25 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   );
 
   // ── 删除 ──
-  const { run: runDelete } = useRequest((path: string) => unwrap(fsApi.batchDelete(envId!, [path])), {
-    manual: true,
-    onSuccess: (data) => {
-      const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
-      if (failed && failed.length > 0) {
-        toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
-        return;
-      }
-      setDeleteConfirm(null);
-      refreshTree();
+  const { run: runDelete, loading: deleting } = useRequest(
+    (path: string) => unwrap(fsApi.batchDelete(envId!, [path])),
+    {
+      manual: true,
+      onSuccess: (data) => {
+        const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
+        if (failed && failed.length > 0) {
+          toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
+          return;
+        }
+        setDeleteConfirm(null);
+        refreshTree();
+      },
+      onError: (err) => {
+        console.error("Delete failed:", err);
+        toast.error(t("fileTree.contextMenu.delete"));
+      },
     },
-    onError: (err) => {
-      console.error("Delete failed:", err);
-      toast.error(t("fileTree.contextMenu.delete"));
-    },
-  });
+  );
 
   // ── 创建目录 ──
   const { run: runMkdir, loading: makingDirectory } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
@@ -359,9 +384,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     const invalid =
       value.trim().length === 0 || (isBasename ? !isValidFileTreeBasename(value) : !isValidFileTreeMovePath(value));
     if (invalid) {
-      setInputDialog((current) =>
-        current ? { ...current, error: t(`fileTree.dialog.${isBasename ? "invalidName" : "invalidPath"}`) } : null,
-      );
+      const errorKey =
+        isBasename && getFileTreeNameByteLength(value) > MAX_FILE_NAME_BYTES
+          ? "nameTooLong"
+          : isBasename
+            ? "invalidName"
+            : "invalidPath";
+      setInputDialog((current) => (current ? { ...current, error: t(`fileTree.dialog.${errorKey}`) } : null));
       return;
     }
 
@@ -396,6 +425,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         userNodes={visibleSections.user}
         contextMenu={contextMenu}
         deleteConfirm={deleteConfirm}
+        deleting={deleting}
         download={download}
         fileInputRef={fileInputRef}
         folderInputRef={folderInputRef}
