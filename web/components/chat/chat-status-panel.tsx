@@ -163,7 +163,10 @@ function StatusTabButton({
 function TodoRows({ todos }: { todos: TodoItem[] }) {
   const { t } = useTranslation("components");
   return (
-    <div className="chat-status-list" role="tabpanel">
+    <div
+      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+      role="tabpanel"
+    >
       {todos.map((todo) => {
         const Icon = todo.status === "completed" ? CheckCircle2 : todo.status === "in_progress" ? Clock3 : Circle;
         return (
@@ -192,7 +195,10 @@ function TaskRows({
   const { t } = useTranslation("components");
   if (!loaded) return <p className="chat-status-note">{t("periTask.loading")}</p>;
   return (
-    <div className="chat-status-list" role="tabpanel">
+    <div
+      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+      role="tabpanel"
+    >
       {reconnecting && <p className="chat-status-note">{t("periTask.reconnecting")}</p>}
       {tasks.map((task) => {
         const Icon =
@@ -225,7 +231,10 @@ function TaskRows({
 function ChangeRows({ files }: { files: ChangedFile[] }) {
   const { t } = useTranslation("components");
   return (
-    <div className="chat-status-list" role="tabpanel">
+    <div
+      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+      role="tabpanel"
+    >
       {files.map((file) => (
         <button
           key={file.path}

@@ -55,7 +55,7 @@ export function TodoChanges({ changes }: TodoChangesProps) {
   if (changes.length === 0) return null;
 
   return (
-    <div className="mx-3 mb-2.5 mt-1 pt-1.5">
+    <div className="mx-3 mb-2.5 mt-1 max-h-64 overflow-y-auto overscroll-contain pt-1.5">
       {changes.map((change) => {
         const { Icon, iconClassName, labelClassName, itemClassName } = CHANGE_STYLES[change.kind];
         const text =

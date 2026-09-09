@@ -109,7 +109,7 @@ export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPa
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t border-border/70 bg-surface-1/30 px-3 py-3">
+        <div className="max-h-64 overflow-y-auto overscroll-contain border-t border-border/70 bg-surface-1/30 px-3 py-3">
           <SubAgentTimeline entries={entries} />
         </div>
       </CollapsibleContent>

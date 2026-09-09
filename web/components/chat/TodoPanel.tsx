@@ -76,7 +76,7 @@ export function TodoPanel({ todos, embedded = false, title }: TodoPanelProps) {
 
         {/* Todo 列表 */}
         {!collapsed && (
-          <div className="border-t border-border/50 px-3 py-1 divide-y divide-border/30">
+          <div className="max-h-64 overflow-y-auto overscroll-contain border-t border-border/50 px-3 py-1 divide-y divide-border/30">
             {todos.map((todo) => (
               <div key={todo.content} className="flex items-start gap-2 py-1">
                 {todo.status === "completed" ? (

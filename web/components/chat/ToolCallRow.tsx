@@ -183,7 +183,7 @@ export function ToolCallRow({ tool, envId }: ToolCallRowProps) {
 
       {/* 子 agent 嵌套面板（保留） */}
       {hasSubEntries && (
-        <div className="max-h-64 overflow-y-auto mx-1 mt-1 mb-1 rounded-md border border-border/40 bg-surface-0/50">
+        <div className="mx-1 mt-1 mb-1 rounded-md border border-border/40 bg-surface-0/50">
           <div className="px-2 py-2">
             <SubAgentPanel entries={tool.subEntries!} />
           </div>

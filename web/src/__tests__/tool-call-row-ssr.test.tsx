@@ -127,6 +127,26 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(disabled).not.toContain('class="chat-tool-call-row-details-button"');
   });
 
+  // TodoWrite 的变更记录必须在工具卡片内部限高滚动，避免长变更列表撑满会话。
+  test("TodoWrite 变更列表限制高度并内部滚动", () => {
+    const html = renderTool(
+      tool({
+        title: "TodoWrite",
+        kind: "unknown",
+        todoChanges: [
+          {
+            id: "todo-change-1",
+            kind: "added",
+            todo: { content: "检查长列表布局", status: "pending" },
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain("max-h-64 overflow-y-auto overscroll-contain");
+    expect(html).toContain("检查长列表布局");
+  });
+
   // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。
   test("等待确认工具不重复渲染权限操作", () => {
     const html = renderTool(
