@@ -204,9 +204,9 @@ describe("chat-channel 根入口浏览器可达面", () => {
   });
 
   test("web vite alias 仍指向根入口（守护对象未漂移）", () => {
-    const viteConfig = readFileSync(resolve(import.meta.dir, "../../web/vite.config.ts"), "utf8");
+    const viteConfig = readFileSync(resolve(import.meta.dir, "../../apps/web/vite.config.ts"), "utf8");
     expect(viteConfig).toContain(
-      '"@fenix/chat-channel": path.resolve(__dirname, "../packages/chat-channel/src/index.ts")',
+      '"@fenix/chat-channel": path.resolve(__dirname, "../../packages/chat-channel/src/index.ts")',
     );
   });
 

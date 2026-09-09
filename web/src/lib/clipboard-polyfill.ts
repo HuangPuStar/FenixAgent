@@ -10,7 +10,7 @@
  * - 表格复制       → navigator.clipboard.write([ClipboardItem])
  * 本 polyfill 同时覆盖这两种路径。
  *
- * 挂载时机：在 bootstrap.ts 中最先执行，早于 React 渲染。
+ * 挂载时机：在 apps/web/src/main.tsx 中最先执行，早于 React 渲染。
  */
 
 function execCopy(text: string): Promise<void> {

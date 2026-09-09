@@ -37,7 +37,7 @@ module.exports = {
       name: "no-circular",
       comment: "workspace 模块依赖必须有向无环。",
       severity: "error",
-      from: {},
+      from: { path: "(?:^|/)(?:apps|packages)/" },
       to: { circular: true },
     },
     ...workspacePackageRoots.map((targetRoot) => ({
@@ -76,6 +76,7 @@ module.exports = {
     },
   ],
   options: {
+    exclude: "(^|/)dist/",
     doNotFollow: { path: "node_modules" },
     enhancedResolveOptions: {
       extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],

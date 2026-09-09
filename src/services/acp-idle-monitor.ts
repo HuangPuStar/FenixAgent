@@ -2,7 +2,7 @@
 // 编排域重构保留说明（I4：旧代码删除与精简）
 // ────────────────────────────────────────────
 // 此文件保留：非交互式实例的空闲回收机制仍依赖它（routes/web/instances 的监控视图、
-// src/index.ts 的定时器启停）。Chat 交互实例不再因 idle/activity 自动停止，但
+// apps/server/src/main.ts 的定时器启停）。Chat 交互实例不再因 idle/activity 自动停止，但
 // scheduled / system 实例仍需要回收出口，避免后台任务长期泄漏。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";

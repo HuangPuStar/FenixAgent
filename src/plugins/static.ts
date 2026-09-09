@@ -7,8 +7,8 @@ import Elysia from "elysia";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cwd = process.cwd();
-const distDir = resolve(cwd, "web/dist");
-const srcDir = resolve(__dirname, "../../web/dist");
+const distDir = resolve(cwd, "apps/web/dist");
+const srcDir = resolve(__dirname, "../../apps/web/dist");
 const webDir = existsSync(resolve(distDir, "index.html"))
   ? distDir
   : existsSync(resolve(srcDir, "index.html"))
