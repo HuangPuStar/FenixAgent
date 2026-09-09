@@ -37,6 +37,12 @@
 - 适合放运行时插件、协议适配器、SDK、可替换执行引擎、独立封装的服务接入层。
 - 原则上主服务只依赖抽象和包导出的稳定接口，不直接耦合包内部实现细节。
 
+#### Workspace 包依赖边界
+
+- 跨 package 只能使用包名及其 `package.json` 声明的 export，禁止通过相对路径导入 `packages/**/src/**`。
+- `platform` 不依赖 `agent`、`resources` 或 `apps`；`agent` 不依赖 `resources`；CE 代码不依赖 `@fenix-ee/*`。
+- `bun run check:dependencies` 使用 dependency-cruiser 检查循环依赖和上述方向；它已纳入 `bun run precheck`。违反时输出源文件、目标文件和规则名。
+
 ### 1.3 `drizzle/` 数据库迁移目录
 
 - `drizzle/*.sql`：Drizzle 生成的 DDL 迁移文件。

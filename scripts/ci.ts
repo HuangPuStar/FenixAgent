@@ -54,6 +54,11 @@ const STEPS = [
     },
   },
   {
+    name: "dependency-boundaries",
+    cmd: "bun run check:dependencies",
+    filter: (out: string) => (out.includes("no dependency violations") ? null : out),
+  },
+  {
     name: "lint",
     cmd: "biome check src/ web/src/ web/components/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
@@ -65,7 +70,7 @@ const STEPS = [
   },
   {
     name: "test",
-    cmd: "bun test src/__tests__/ 2>&1",
+    cmd: "bun test src/__tests__/ scripts/__tests__/ 2>&1",
     filter: (out: string) => {
       const lines = out.split("\n");
 
