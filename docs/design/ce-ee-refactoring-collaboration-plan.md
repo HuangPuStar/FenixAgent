@@ -251,10 +251,10 @@ flowchart TD
 **前置：** FND-01  
 **主要文件：** `dependency-cruiser` 配置、Biome/ESLint import 限制、`scripts/ci.ts`、开发规范文档。
 
-- [ ] 引入并配置 `dependency-cruiser`，检查循环依赖及 `platform → agent/resources/apps`、`agent → resources`、CE → EE 等禁止方向。
-- [ ] 增加规则：禁止跨包导入 `packages/**/src/**`；只能导入 package export。
-- [ ] 将检查加到 `precheck`，输出违反依赖的源文件、目标文件和规则名称。
-- [ ] 为一条合法公开导入、一条非法内部导入、一条循环依赖分别建立 fixture 或 CI 校验用例。
+- [x] 引入并配置 `dependency-cruiser`，检查循环依赖及 `platform → agent/resources/apps`、`agent → resources`、CE → EE 等禁止方向。
+- [x] 增加规则：禁止跨包导入 `packages/**/src/**`；只能导入 package export。
+- [x] 将检查加到 `precheck`，输出违反依赖的源文件、目标文件和规则名称。
+- [x] 为一条合法公开导入、一条非法内部导入、一条循环依赖分别建立 fixture 或 CI 校验用例。
 
 **验收：** 人为添加一次非法 `src/**` 跨包导入时 CI 明确失败；合法包导入通过。
 
@@ -682,8 +682,8 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 0 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
-| 1 | FND-02 包依赖边界 CI | ⬜ 可领取 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
-| 1 | FND-05 应用入口迁移 | 🔒 等待 FND-02 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
+| 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
+| 1 | FND-05 应用入口迁移 | ⬜ 可领取 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
 | 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
