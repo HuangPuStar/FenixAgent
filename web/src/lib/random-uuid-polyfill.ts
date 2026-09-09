@@ -15,7 +15,7 @@
  * crypto.getRandomValues 的 RFC 4122 v4 实现：getRandomValues 在非 secure context
  * 同样可用（Web Crypto 仅 subtle / randomUUID 受限），且不存在自引用。
  *
- * 挂载时机：在 bootstrap.ts 中最先执行，早于 React 渲染与任何业务模块加载。
+ * 挂载时机：在 apps/web/src/main.tsx 中最先执行，早于 React 渲染与任何业务模块加载。
  */
 
 /**

@@ -48,9 +48,14 @@ export class AgentSitesError extends Error {
   }
 }
 
+interface AgentSitesErrorResponse {
+  error?: { message?: string };
+  message?: string;
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const body = (await res.json().catch(() => ({}))) as AgentSitesErrorResponse;
     const message = body?.error?.message ?? body?.message ?? res.statusText;
     throw new AgentSitesError(res.status, message);
   }

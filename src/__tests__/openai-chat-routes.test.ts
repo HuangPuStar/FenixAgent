@@ -15,7 +15,7 @@ function request(path: string, init?: RequestInit) {
   return openaiChatRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-// 挂载 errorPlugin 的完整 app：模拟生产装配（src/index.ts 中 errorPlugin 先于
+// 挂载 errorPlugin 的完整 app：模拟生产装配（apps/server/src/main.ts 中 errorPlugin 先于
 // openaiChatRoutes）。rethrow 的 AppError / OrchestrationError 只有经过 errorPlugin
 // 才能映射出 503/409/429 等稳定状态码（本地 handle 无 onError，错误会落成 500）。
 const appWithErrorPlugin = new Elysia().use(errorPlugin).use(openaiChatRoute);

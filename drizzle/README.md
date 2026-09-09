@@ -144,7 +144,7 @@ export const _deps = {
 
 ### 执行机制
 
-- 服务启动时（`src/index.ts`）自动调用 `runDataMigrations()`。
+- 服务启动时（`apps/server/src/main.ts`）自动调用 `runDataMigrations()`。
 - 每个迁移执行前会查询 `data_migrate_record` 表，**已执行过的迁移会自动跳过**。
 - 迁移成功后将 `name` 写入 `data_migrate_record` 表作为执行记录。
 - 迁移按 `_deps.migrates` 数组中的顺序依次执行，不可变更已有迁移的顺序。

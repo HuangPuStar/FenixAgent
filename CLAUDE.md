@@ -30,12 +30,12 @@
 FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
-- 根目录 `package.json` 是前后端统一依赖清单；`web/` 没有独立 `package.json`。
+- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口与 Vite 配置，`web/` 没有独立 `package.json` 并保留前端业务实现。
 - `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
 ### 后端地图
 
-- `src/index.ts`：服务入口和装配层。
+- `apps/server/src/main.ts`：服务入口和装配层。
 - `src/routes/web/`：控制台内部 API。
 - `src/routes/api/`：对外稳定 API / OpenAPI。
 - `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
@@ -85,7 +85,7 @@ bun run db:migrate                  # 执行迁移
 ### 按变更类型验证
 
 - 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
-- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `web/dist/` 挂载静态资源。
+- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
 - `precheck` 必须全绿才能提交；它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建。

@@ -37,7 +37,7 @@ export function estimateWsMessageBytes(data: unknown): number {
  * 若先由 Elysia 自动 `JSON.parse`（`createWSMessageParser` 对 `{` 开头字符串先 parse）
  * 再检查，超大 JSON 帧已全量进内存，10MB 上限形同虚设（§7.6）。
  * 注意：单行 JSON 帧会被 Elysia 默认 parser 提前 parse 成 object，到不了本函数，
- * 由 uWS 层 `maxPayloadLength`（src/index.ts 全局 32MB）兜底；本函数覆盖
+ * 由 uWS 层 `maxPayloadLength`（apps/server/src/main.ts 全局 32MB）兜底；本函数覆盖
  * NDJSON 多行帧（默认 parse 失败保持字符串）与二进制帧。
  *
  * @param message 原始 WS 消息（文本帧为 string；二进制帧为 Uint8Array，按 byteLength 计）

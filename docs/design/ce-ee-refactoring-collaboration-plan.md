@@ -289,12 +289,22 @@ flowchart TD
 **前置：** FND-02
 **主要文件：** `apps/server/`、`apps/web/`、根 `package.json`、`scripts/ci.ts`、Bun/Vite/测试配置与入口文档。
 
-- [ ] 将现有 `src/index.ts` 与 `web/src/main.tsx` 分别迁入 `apps/server`、`apps/web`；保留现有服务和前端模块，只改变应用入口与装配位置，不迁移资源领域代码。
-- [ ] 修正根 `package.json` 的 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行；不得新增指向旧入口的兼容 script。
-- [ ] 更新根 `scripts/ci.ts` 的 format、lint、typecheck 与 test 路径：纳入 `apps/*`，并删除仅为已迁移 app 入口保留的根路径。尚未迁移的领域代码仍位于根 `src/`、`web/` 时，保留其检查路径并在 task 清单中标记后续归属，不得为了路径整洁提前排除检查。
-- [ ] 删除已迁移的根入口，并逐项记录仍引用根 `src/`、`web/` 的构建、测试、Vite、Docker、Compose、脚本和文档路径及其所属后续 task；运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
+- [x] 将现有 `src/index.ts` 与 `web/src/main.tsx` 分别迁入 `apps/server`、`apps/web`；保留现有服务和前端模块，只改变应用入口与装配位置，不迁移资源领域代码。
+- [x] 修正根 `package.json` 的 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行；不得新增指向旧入口的兼容 script。
+- [x] 更新根 `scripts/ci.ts` 的 format、lint、typecheck 与 test 路径：纳入 `apps/*`，并删除仅为已迁移 app 入口保留的根路径。尚未迁移的领域代码仍位于根 `src/`、`web/` 时，保留其检查路径并在 task 清单中标记后续归属，不得为了路径整洁提前排除检查。
+- [x] 删除已迁移的根入口，并逐项记录仍引用根 `src/`、`web/` 的构建、测试、Vite、Docker、Compose、脚本和文档路径及其所属后续 task；运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
 
 **验收：** `apps/server`、`apps/web` 是唯一应用入口；现有功能行为不变，开发、测试与生产构建均可运行；根 `scripts/` 只保留全仓薄命令，不承载复制出的 app 或领域逻辑。镜像与 Compose 切换由阶段 7 的 DEL-02 完成。
+
+#### FND-05 遗留路径处置映射
+
+| 路径或引用 | 当前处理 | 后续唯一归属 |
+| --- | --- | --- |
+| 根 `src/`、`web/` 的领域实现与其测试 | 保留；应用入口已移除，不为目录整洁提前迁移业务实现或排除 CI 检查 | 阶段 3 的 ARC-03、AGT-01、REF-xx、ENV-01、WEB-xx 及阶段 4 的 RSC-xx，最终由 DEL-04 人工确认目录处置 |
+| `Dockerfile` 的 `src/index.ts` 构建、`web/dist` 复制路径 | 保留旧交付路径；本 task 不修改 Docker 以避免与交付阶段并发冲突 | DEL-02 |
+| `docker-compose.yml` 与 `docker/prod/` Compose | 本轮不变；逐项确认镜像启动与卷挂载是否依赖旧产物 | DEL-02 |
+| `build-image.sh`、`restart-server.sh` | 继续调用根 `package.json` 薄命令，已随新 script 自动进入 apps 入口；不得在脚本中新增旧入口路径 | DEL-03 复核发布脚本 |
+| `CONTRIBUTING.md`、`CLAUDE.md`、`drizzle/README.md` 与源码内启动路径说明 | 已更新活动入口说明；历史盘点、设计和 issue 文档中的旧路径不按文本批量改写 | DEL-04 人工确认文档归属 |
 
 ## 5. 第二阶段：平台基础与后续领域任务
 
@@ -683,7 +693,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
-| 1 | FND-05 应用入口迁移 | ⬜ 可领取 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
+| 1 | FND-05 应用入口迁移 | ✅ 已完成 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
 | 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
