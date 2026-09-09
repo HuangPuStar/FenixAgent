@@ -100,8 +100,11 @@ class PgProdViewRepository implements IProdViewRepository {
   }
 
   async delete(orgId: string, id: string) {
-    const result = await db.delete(prodView).where(and(eq(prodView.organizationId, orgId), eq(prodView.id, id)));
-    return (result as unknown as { count: number }).count > 0;
+    const [deleted] = await db
+      .delete(prodView)
+      .where(and(eq(prodView.organizationId, orgId), eq(prodView.id, id)))
+      .returning({ id: prodView.id });
+    return deleted !== undefined;
   }
 }
 

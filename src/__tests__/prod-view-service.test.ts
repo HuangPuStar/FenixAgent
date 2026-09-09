@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { loadProdView, setProdViewDeps } from "../services/prod-view";
+import { deleteProdView, loadProdView, setProdViewDeps } from "../services/prod-view";
 import { resetAllStubs, stubDb, stubEnvironmentRepo, stubEnvironmentService } from "../test-utils/helpers";
 
 const findOrCreateDefaultInstance = mock(async () => ({
@@ -24,6 +24,28 @@ function createSelectChain(selectResults: unknown[][]) {
     }),
   });
 }
+
+describe("deleteProdView", () => {
+  afterEach(() => {
+    resetAllStubs();
+  });
+
+  // PostgreSQL 删除返回被删除行时，应向调用方报告成功而不是误报 DELETE_FAILED。
+  test("returns success when repository deletes the prod view", async () => {
+    stubDb({
+      select: createSelectChain([[{ id: "view-1" }]]),
+      delete: () => ({
+        where: () => ({
+          returning: async () => [{ id: "view-1" }],
+        }),
+      }),
+    });
+
+    const result = await deleteProdView({ organizationId: "org-1", userId: "user-1", role: "member" }, "view-1");
+
+    expect(result).toEqual({ success: true, data: { ok: true } });
+  });
+});
 
 describe("loadProdView", () => {
   beforeEach(() => {
