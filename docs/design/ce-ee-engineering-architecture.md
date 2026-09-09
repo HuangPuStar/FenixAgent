@@ -45,8 +45,7 @@ fenix/ 或 fenix-ee/
 ├── packages/
 │   ├── platform/                       # 无业务领域依赖的平台契约与基础实现
 │   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符
-│   │   ├── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
-│   │   └── observability/              # Logger、Audit、Metric、Trace 的稳定端口
+│   │   └── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
 │   ├── agent/                          # Agent 核心：运行、实例、聊天、会话与静态插件 SDK
 │   │   ├── agent-runtime/
 │   │   ├── agent-instance/
@@ -191,7 +190,7 @@ export interface SkillReferenceResolver {
 | 包类别 | 可以依赖 | 禁止依赖 | 说明 |
 | --- | --- | --- | --- |
 | `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent`、`resources`、`apps`、任何 EE 包 | 最底层契约：资源范围、授权端口、装配 profile、模块 manifest 等 |
-| `packages/platform/*` 具体实现 | `platform-sdk`、无业务语义基础依赖 | `agent`、`resources`、`apps`；CE 包禁止 EE 包 | 例如 CE/EE AccessControl、observability；实现 SDK 的端口，但不承载资源规则 |
+| `packages/platform/*` 具体实现 | `platform-sdk`、无业务语义基础依赖 | `agent`、`resources`、`apps`；CE 包禁止 EE 包 | 例如 CE/EE AccessControl；实现 SDK 的端口，但不承载资源规则 |
 | `packages/agent/agent-runtime` | `platform-sdk`（仅 manifest/通用契约需要时）、无业务语义基础依赖 | `resources`、具体 AccessControl、`apps` | 只负责引擎适配与执行能力，不理解资源、actor 或权限 |
 | `packages/agent/agent-instance` | `agent-runtime` 的公开入口、无业务语义基础依赖 | `resources`、`platform` 的具体授权实现、`apps` | 只管理实例生命周期；不得把资源授权塞入 InstanceManager |
 | `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
@@ -476,26 +475,13 @@ packages/resources/agent-config/db/data-migrations/
 
 不允许为了“支持多 DB”在 domain/services 中加入 `if (databaseType)`；也不在没有第二种实际实现前提前抽象所有 Drizzle 细节。
 
-## 7. 日志、审计、指标与追踪
+## 7. 结构化日志与请求关联
 
-`platform/observability` 定义稳定端口，应用注入具体实现：
+当前诊断仅复用 `@fenix/logger`：它输出结构化日志，并通过 `requestAls` 自动注入 `requestId`、用户和组织上下文。HTTP 请求由 `src/plugins/logger.ts` 在入口生成 `requestId`，写入 ALS，并通过 `X-Request-Id` 返回给调用方；不新增 `platform/observability`、`Logger`、`AuditRecorder`、`Metrics` 或 `Tracer` 抽象。
 
-```text
-Logger       # 结构化运行日志：debug/info/warn/error
-AuditRecorder# 不可抵赖的业务审计：谁在何时对什么资源做了什么动作
-Metrics      # 计数、耗时、并发、队列、资源用量
-Tracer       # 跨 HTTP、任务、ACP、Provider 调用的 trace/span
-```
+异步任务、实例、队列和 relay 若由 HTTP 请求触发，必须在其显式输入与诊断日志中保留触发方的 `requestId`；独立调度或启动流程在自身入口建立新的关联 ID。services 记录关键状态转换，adapters 记录重试、超时和外部依赖失败，且不在每层重复记录同一错误。控制台系统日志页只读取经过权限过滤的日志投影，不得直接暴露底层日志文件。
 
-运行日志不是审计日志，二者分别保存、保留和授权。每条日志尽可能携带 `requestId`、`traceId`、`module`、`operation`、`actorId`（可脱敏）、`scopeKind/scopeId`、`resourceId`、`instanceId` 和错误原因；禁止记录 token、Cookie、密码、连接串、完整 prompt/文件内容和未脱敏外部响应。
-
-规则：
-
-- route 在入口建立 request/trace context；异步任务、实例、队列、relay 必须显式传播。
-- services 记录关键状态转换；adapters 记录重试、超时和外部依赖失败；不在每层重复记录同一错误。
-- `run`、`publish`、授权拒绝、身份/权限配置变更、部署与迁移必须写 audit event。
-- 控制台系统日志页只读取经过权限过滤的日志投影；不得直接暴露底层日志文件。
-- JSON stdout 是容器默认输出；文件归档、日志平台、指标/trace exporter 都是部署期静态 adapter。
+日志不得记录 token、Cookie、密码、连接串、完整 prompt/文件内容和未脱敏外部响应。审计、指标和分布式 tracing 不是当前平台能力；出现真实产品或运维需求时，另立设计与任务，不预设跨版本端口。
 
 ## 8. 部署、构建和运行脚本
 
@@ -621,7 +607,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 | 工作流、任务、Webhook、调度 | 独立 resources/runtime 模块；节点、执行器、触发器为静态插件 |
 | 控制台壳、导航、业务页面、品牌 | apps/web 壳 + resources 模块内的 `web/`；静态 contribution |
 | 应用 HTTP、MCP/ACP/Webhook/SSE/WS | 模块 server route contribution + app 协议聚合 |
-| DB、数据迁移、日志、指标、部署、系统管理 | 仓库级 `db/`、`deploy/` 与 platform observability；模块显式贡献 |
+| DB、数据迁移、日志、部署、系统管理 | 仓库级 `db/`、`deploy/`、`@fenix/logger` 与应用日志入口；模块显式贡献 |
 
 因此，当前已知切面均有归属：领域差异走 resources/console，身份差异走 platform，执行差异走 runtime/provider，交付与治理走 apps/db/deploy/docs。尚未覆盖的是每个功能的详细数据模型、迁移顺序和 API 兼容清单，它们应在逐模块重构计划中补齐。
 
@@ -636,7 +622,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 5. 修改 env、部署或可观测性时同步 `deploy/env` 模板、operations 文档和 preflight。
 6. 运行模块单测、契约测试、类型检查、lint/format；涉及 CE/EE 边界时运行 submodule 集成和升级 migration 测试。
 
-第一阶段重构只实现最小闭环：`platform-sdk + access-control + agent-config + agent-instance + agent-runtime + /app route + web page + PostgreSQL/Drizzle + observability + deploy preflight`。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
+第一阶段重构只实现最小闭环：`platform-sdk + access-control + agent-config + agent-instance + agent-runtime + /app route + web page + PostgreSQL/Drizzle + @fenix/logger/requestId + deploy preflight`。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
 
 ## 13. 从当前 CE 工程迁移到目标架构
 
@@ -652,7 +638,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 | --- | --- | --- |
 | 0. 基线冻结 | 基于 `FUNCTIONAL_MODULE_INVENTORY.md` 为所有现有模块标明目标归属、调用方、表、route、web 页面、外部依赖和迁移风险；补齐关键链路回归测试与观测基线 | 可比较重构前后行为、性能和错误率 |
 | 1. 工程骨架 | 创建 `apps/server`、`apps/web`、platform/agent/resources 目录、workspace 与边界检查；将当前 server/web 入口一次性移入 apps，修正构建、测试、Docker 入口 | 不改业务行为，原测试与部署可运行 |
-| 2. 平台基础 | 抽取 `platform-sdk`、`access-control`、observability、统一 env loader、DB client/transaction adapter；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
+| 2. 平台基础 | 抽取 `platform-sdk`、`access-control`、统一 env loader、DB client/transaction adapter；复用 `@fenix/logger` 与 `requestId`；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
 | 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面、`AgentInstanceManager`、Agent runtime；用此闭环验证授权、发布扩展和实例边界 | demo 的设计在真实 CE 最小能力上成立 |
 | 4. 资源目录 | 依赖从低到高迁移 Skill、MCP、模型/Provider、知识库、记忆、环境等；每个资源独立完成 schema、授权、route、web 和删除旧代码 | 资源不再散落在 `src/services/config` 与 `web/src/pages` |
 | 5. 执行与连接 | 迁移 Machine、workspace/file、Sandbox、引擎插件、ACP relay、实例编排；保持 runtime 不读取资源权限 | 运行、文件和节点能力通过公开端口连接 |
@@ -672,7 +658,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 5. **迁移领域与 services**：将字段校验、状态机按需放入 domain；将授权、事务、动作编排放入 service/facade。所有调用方在同一切片改为新公开入口，随后删除旧 service/repository。
 6. **迁移资源动作**：资源的 `run`/`publish` 等动作在 services 的 facade 完成授权与状态检查，再调用 runtime port；runtime 只接收通用已解析参数。
 7. **迁移 HTTP 与 web**：新增该资源的 `/app` route contribution，以及模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。调用方切换后删除旧 `/web`、`/api` 和旧页面，不保留长期 alias。
-8. **补齐迁移与观测**：有存量数据时在模块 `db/data-migrations/` 新增幂等迁移；补充结构化日志、审计事件、指标、错误码和权限拒绝测试。
+8. **补齐迁移与诊断**：有存量数据时在模块 `db/data-migrations/` 新增幂等迁移；补充结构化日志、`requestId` 关联、错误码和权限拒绝测试。
 9. **验收与删除**：运行模块、契约、route、web、迁移升级测试和 `precheck`；确认无旧入口引用后删除旧文件、旧 route、旧 i18n key 与旧文档。
 
 ### 13.4 AgentConfig 首切片的具体落位
@@ -706,7 +692,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 
 ### 13.7 当前模块迁移优先级
 
-1. platform：认证/组织上下文、资源授权、env、observability、DB transaction。
+1. platform：认证/组织上下文、资源授权、env、DB transaction；诊断复用 `@fenix/logger` 与 `requestId`。
 2. AgentConfig + Agent runtime + InstanceManager：形成首个商业可用闭环。
 3. Skill、MCP、模型/Provider、知识库、环境：AgentConfig 最常引用的资源。
 4. Machine、workspace/file、Sandbox、ACP/relay：执行与连接底座。

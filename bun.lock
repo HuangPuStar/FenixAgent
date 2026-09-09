@@ -224,9 +224,6 @@
     "packages/platform/access-control": {
       "name": "@fenix/access-control",
     },
-    "packages/platform/observability": {
-      "name": "@fenix/observability",
-    },
     "packages/platform/platform-sdk": {
       "name": "@fenix/platform-sdk",
     },
@@ -635,8 +632,6 @@
     "@fenix/model-gateway-litellm": ["@fenix/model-gateway-litellm@workspace:packages/model-gateway-litellm"],
 
     "@fenix/model-gateway-sdk": ["@fenix/model-gateway-sdk@workspace:packages/model-gateway-sdk"],
-
-    "@fenix/observability": ["@fenix/observability@workspace:packages/platform/observability"],
 
     "@fenix/opencode": ["@fenix/opencode@workspace:packages/plugin-opencode"],
 
