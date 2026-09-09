@@ -1,16 +1,16 @@
 # CE AgentConfig 重构现状清单
 
-> 基线：`4205a60955c41f017d19f169695d41311c1f6c62`（2026-09-08）。本文只记录该提交的生产源码与既有测试所呈现的当前事实，不是 ARC-02 设计。
+> 事实基线：`7ed74cac8684bac6466cbfc17bb6746839f3f497`。本文只记录该 revision 的生产源码与既有测试所呈现的当前事实，不是 ARC-02/ARC-03 设计。
 >
-> 该基线相对初始盘点提交 `ba8ab4d1737634b62042290c1735be8744d947bb` 只新增或调整设计文档、workspace manifest 与空包 README，`src/`、`web/` 无差异；逻辑 owner 和任务依赖按合并后的最新设计重核。
+> 相对初始盘点提交 `ba8ab4d1737634b62042290c1735be8744d947bb`，该基线没有改变 `src/`、`web/` 中的 AgentConfig 生产行为；期间完成的 FND-00/FND-01 仅新增或调整设计文档、workspace manifest、app 空入口、TypeScript 配置与 CI 覆盖。逻辑 owner 和直接交接边界按该 revision 的最新设计重核。
 
 ## 1. 范围、证据与术语
 
 证据优先级：可执行测试与生产源码 > `src/db/schema.ts` > 当前架构清单 `FUNCTIONAL_MODULE_INVENTORY.md` > 目标设计 `docs/design/ce-ee-refactoring-collaboration-plan.md`、`docs/design/ce-ee-engineering-architecture.md`。设计文档仅用于标注后续 task 和逻辑 owner，不能反向解释当前行为。
 
-本文中的 `platform`、`agent`、`resources/agent-config`、`apps/server`、`apps/web` 是批准的**逻辑 owner 标签**，不是当前仓库路径。其签名、目录和目标错误语义留给 ARC-02；本文引用的其余反引号路径均在本基线存在。
+本文中的 `platform`、`agent`、`resources/agent-config`、`apps/server`、`apps/web` 是批准的**逻辑 owner 标签**，不是当前仓库路径。基础平台签名与拒绝语义留给 ARC-02，AgentConfig、Agent runtime/instance 和强依赖资源的公开接口与目标路径留给 ARC-03；本文引用的其余反引号路径均在本基线存在。
 
-非目标：不修改生产行为、schema/migration、workspace/package、前端；不决定角色写权限、403/404、统一 envelope、目标 ID/DTO、`/app` 契约；不展开实例/session/relay/cancel/timeout 生命周期；不读取或引用 AGT-00-only 文件。
+非目标：不修改生产行为、schema/migration、workspace/package、前端；不决定角色写权限与平台拒绝语义，不冻结 403/404、统一 envelope、目标 ID/DTO、`/app` 或外部 `/api` 契约；不展开实例/session/relay/cancel/timeout 生命周期；不读取或引用 AGT-00-only 文件。
 
 | 术语/标识 | 当前含义 | 证据与迁移注意 |
 | --- | --- | --- |
@@ -27,28 +27,28 @@
 | 表/字段 | 关系、删除语义与数据 | 当前读写方 | 逻辑 owner / 后续 task | 风险 |
 | --- | --- | --- | --- | --- |
 | `agent_config` | UUID PK；`user_id` FK cascade；`organization_id`；组织内 name 唯一；`model_id` FK set-null；`machine_id` FK set-null；`agent_node`/`extra` JSON；`model` 已标废弃 | `src/services/config/agent-config.ts`、`src/repositories/agent-config.ts`、`src/services/launch-spec-builder.ts` | `resources/agent-config`; DAT-01/RES-01 | 属性、归属和授权仍耦合；name CRUD；JSON 引用缺少 FK |
-| `agent_config_skill` | `(agent_config_id,skill_id)` 唯一；两端 FK cascade | `src/services/config/agent-config-skill.ts` | AgentConfig 绑定 + REF-02/DAT-01 | 全量替换为先删后插，非事务、并发丢更新 |
-| `agent_config_mcp` | `(agent_config_id,mcp_server_id)` 唯一；两端 FK cascade | `src/services/config/agent-config-mcp.ts` | AgentConfig 绑定 + REF-03/DAT-01 | 同上 |
-| `agent_config_site_app` | `(agent_config_id,site_app_id)` 唯一；两端 FK cascade；也有幂等单项增删 | `src/services/config/agent-config-site-app.ts` | AgentConfig 绑定 + ENV-01/DAT-01 | route 做组织校验，底层原子操作不鉴权 |
-| `agent_knowledge_binding` | 配置与知识库双 FK cascade；唯一对；priority/enabled/config | `src/services/agent-knowledge.ts`、`src/repositories/knowledge-base.ts` | REF-04/DAT-01 | 与主写、其他 bindings 无聚合事务 |
-| `agent_memory_config` | 配置 FK cascade，一对一，enabled | `src/repositories/agent-memory-config.ts`、`src/services/agent-memory.ts` | REF-04/DAT-01 | 创建/更新中的独立写可留下部分状态 |
+| `agent_config_skill` | `(agent_config_id,skill_id)` 唯一；两端 FK cascade | `src/services/config/agent-config-skill.ts` | `resources/agent-config`（绑定边界）；REF-02/DAT-01 | 全量替换为先删后插，非事务、并发丢更新 |
+| `agent_config_mcp` | `(agent_config_id,mcp_server_id)` 唯一；两端 FK cascade | `src/services/config/agent-config-mcp.ts` | `resources/agent-config`（绑定边界）；REF-03/DAT-01 | 同上 |
+| `agent_config_site_app` | `(agent_config_id,site_app_id)` 唯一；两端 FK cascade；也有幂等单项增删 | `src/services/config/agent-config-site-app.ts` | `resources/agent-config`（绑定边界）；ENV-01/DAT-01 | route 做组织校验，底层原子操作不鉴权 |
+| `agent_knowledge_binding` | 配置与知识库双 FK cascade；唯一对；priority/enabled/config | `src/services/agent-knowledge.ts`、`src/repositories/knowledge-base.ts` | `resources/agent-config`（绑定边界）；REF-04/DAT-01 | 与主写、其他 bindings 无聚合事务 |
+| `agent_memory_config` | 配置 FK cascade，一对一，enabled | `src/repositories/agent-memory-config.ts`、`src/services/agent-memory.ts` | `resources/agent-config`（配置边界）；REF-04/DAT-01 | 创建/更新中的独立写可留下部分状态 |
 | `resource_permission` | 多态 `(resource_type,resource_id)` 文本引用；当前 action 只有 read；all/org principal | `src/services/resource-permission.ts`、`src/repositories/resource-permission.ts` | `platform`; PLT-01/DAT-01 | 无 AgentConfig FK，删除可遗留 grant |
 
 ### 2.2 入站引用与隐式引用
 
-| 来源 | 当前引用语义 | FK/删除 | 调用方与处置 task |
+| 来源 | 当前引用语义 | FK/删除 | 逻辑 owner / 调用方与处置 task |
 | --- | --- | --- | --- |
-| `environment.agent_config_id` | 配置 ID；同组织/用户/配置仅一个非空 Environment | FK set-null；AgentConfig service 实际先删关联 Environment | `src/services/environment-web.ts`、`src/services/api-instance.ts`; ENV-01 |
-| `scheduled_task_v2.agent_id` | 名称虽为 agentId，实际是 AgentConfig UUID | FK set-null | `src/services/task-v2.ts`、`src/services/scheduler/agent-executor.ts`; 调度调用方在 RES-01 后重接 |
-| `model_gateway_credential.agent_config_id` | 组织+用户+配置的运行凭证映射 | **无 FK** | `src/services/model-gateway/credential-service.ts`、`src/services/model-gateway/runtime.ts`; REF-01 |
-| `agent_site_app.created_by_agent_config_id` | 创建者配置 ID | FK set-null | `src/routes/web/agent-sites.ts`; ENV-01 |
-| `prod_view.agent_id` | AgentConfig UUID | FK cascade | `src/services/prod-view.ts`、`src/repositories/prod-view.ts`; ENV-01/WEB-REF-01 |
-| `user_config.default_agent` | AgentConfig **name** | 无 FK | `src/services/config/user-config.ts`; DAT-01 回填 ID，WEB-02 切调用方 |
-| `resource_permission.resource_id` | AgentConfig UUID 的文本多态引用 | 无 FK | PLT-01/DAT-01 迁移 grant 与 orphan 校验 |
-| `agent_config.agent_node` | machine 或 sandboxPool ID 的 JSON 判别联合；另有历史 `machine_id` FK | JSON 无 FK | `src/services/config/agent-config.ts`、`src/services/environment-web.ts`; ENV-01 |
-| Machine 注册匹配 | `machine.agent_name` 驱动配置 machine 绑定，形成 name 耦合 | 无 AgentConfig FK | `src/services/registry.ts`; ENV-01/DAT-01 |
-| Legacy channel | `channel_binding.agent_id` 实际承载 Environment ID，不是配置 ID | varchar，无 FK | `src/services/channel-binding.ts`、`src/repositories/channel-binding.ts`; 保留协议并重接 |
-| Workflow 定义/transport | transport 参数名 `agentId`，宿主实现按 Environment name 查找和复用实例 | JSON/接口，无配置 FK | `src/services/workflow/agent-chat-transport.ts`、`packages/workflow-engine/src/transport/transport.ts`; 保留并重接 |
+| `environment.agent_config_id` | 配置 ID；同组织/用户/配置仅一个非空 Environment | FK set-null；AgentConfig service 实际先删关联 Environment | `agent`（Environment/Instance）+ `resources/agent-config`（删除编排）；`src/services/environment-web.ts`、`src/services/api-instance.ts`; ENV-01 |
+| `scheduled_task_v2.agent_id` | 名称虽为 agentId，实际是 AgentConfig UUID | FK set-null | `apps/server`（自动化调用方）；`src/services/task-v2.ts`、`src/services/scheduler/agent-executor.ts`; RES-01 后重接 |
+| `model_gateway_credential.agent_config_id` | 组织+用户+配置的运行凭证映射 | **无 FK** | `resources/agent-config`（引用契约）；`src/services/model-gateway/credential-service.ts`、`src/services/model-gateway/runtime.ts`; REF-01 |
+| `agent_site_app.created_by_agent_config_id` | 创建者配置 ID | FK set-null | `apps/server`（Site 调用方）+ `resources/agent-config`（引用契约）；`src/routes/web/agent-sites.ts`; ENV-01 |
+| `prod_view.agent_id` | AgentConfig UUID | FK cascade | `apps/server`（ProdView 调用方）；`src/services/prod-view.ts`、`src/repositories/prod-view.ts`; ENV-01/WEB-REF-01 |
+| `user_config.default_agent` | AgentConfig **name** | 无 FK | `resources/agent-config`（默认配置引用）+ `apps/web`（调用方）；`src/services/config/user-config.ts`; DAT-01 回填 ID，WEB-02 切调用方 |
+| `resource_permission.resource_id` | AgentConfig UUID 的文本多态引用 | 无 FK | `platform`; PLT-01/DAT-01 迁移 grant 与 orphan 校验 |
+| `agent_config.agent_node` | machine 或 sandboxPool ID 的 JSON 判别联合；另有历史 `machine_id` FK | JSON 无 FK | `resources/agent-config`（持久化引用）+ `agent`（运行解析）；`src/services/config/agent-config.ts`、`src/services/environment-web.ts`; ENV-01 |
+| Machine 注册匹配 | `machine.agent_name` 驱动配置 machine 绑定，形成 name 耦合 | 无 AgentConfig FK | `agent`; `src/services/registry.ts`; ENV-01/DAT-01 |
+| Legacy channel | `channel_binding.agent_id` 实际承载 Environment ID，不是配置 ID | varchar，无 FK | `apps/server`（协议调用方）；`src/services/channel-binding.ts`、`src/repositories/channel-binding.ts`; 保留协议并重接 |
+| Workflow 定义/transport | transport 参数名 `agentId`，宿主实现按 Environment name 查找和复用实例 | JSON/接口，无配置 FK | `apps/server`（自动化调用方）+ `agent`（实例端口）；`src/services/workflow/agent-chat-transport.ts`、`packages/workflow-engine/src/transport/transport.ts`; 保留并重接 |
 
 固定基线扫描未发现另一张直接 FK 到 AgentConfig 的现行表。动态 JSON、导入数据和外部消费者无法靠 FK 枚举；DAT-01 contract 前必须对历史数据和 payload 做一次可审计扫描。
 
@@ -82,18 +82,18 @@ LaunchSpec 当前直接解析：model/provider 与网关凭证、Skill 源目录
 
 ### 3.2 完整后端调用方分组
 
-| 调用方组 | 当前文件 | ID/行为 | 处置 |
+| 调用方组 | 当前文件 | ID/行为 | 逻辑 owner / 处置 |
 | --- | --- | --- | --- |
-| CRUD/模板/默认 | `src/routes/web/config/agents.ts`、`src/routes/api/agents.ts`、`src/services/meta-agent.ts` | Web/name、API/ID->name、Meta/name upsert | RES-01；旧资源路径 must-delete，Meta 重接 ID facade |
-| Environment/Instance | `src/routes/web/environments.ts`、`src/services/environment-web.ts`、`src/routes/api/instances.ts`、`src/services/api-instance.ts` | 配置 ID -> 用户 Environment -> Instance | ENV-01/RES-01；保留并重接 |
-| HTTP 单轮/调度 | `src/routes/api/openai-chat.ts`、`src/services/agent-chat-service.ts`、`src/services/scheduler/agent-executor.ts`、`src/routes/web/tasks-v2.ts` | 配置 ID -> 独立 session | 外部契约待决定；调度保留并重接 |
-| Workflow/Chat | `src/services/workflow/agent-chat-transport.ts`、`src/services/chat-channel-bootstrap.ts`、`packages/chat-channel/src/channel/gateway.ts` | 经 Environment 复用实例；Chat 的 agentId 是 Environment ID | 保留并重接；不得复制协议栈 |
-| Runtime/build | `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts`、`src/repositories/agent-config.ts` | 配置/绑定/依赖 -> LaunchSpec | AGT-01/02 + REF/ENV；旧 builder/repo 最终删除或重接 |
-| Site/ProdView | `src/routes/web/agent-sites.ts`、`src/services/agent-sites.ts`、`src/services/prod-view.ts`、`src/routes/web/config/prod-views.ts` | 配置 ID 做绑定、创建者和展示入口 | ENV-01/WEB-REF-01；保留领域并重接 |
-| Model gateway | `src/services/model-gateway/credential-service.ts`、`src/services/model-gateway/runtime.ts`、`src/routes/api/system-model-gateway.ts` | 配置 ID 是凭证 subject/展示维度 | REF-01；保留并重接，清 orphan |
-| File/ACP/Machine | `src/services/remote-file-service.ts`、`src/transport/acp-ws-handler.ts`、`src/services/registry.ts` | Environment -> 配置 node；machine 注册按 name 绑定 | ENV-01/AGT-02；协议保留并重接 |
-| Observer | `src/services/observer/observer-service.ts`、`src/repositories/agent-config.ts` | 配置 ID -> 展示名/host machine | FND-04/INT-01；保留观测并重接 |
-| Knowledge/MCP/memory | `src/services/agent-knowledge.ts`、`src/services/knowledge-runtime.ts`、`src/routes/mcp/knowledge.ts`、`src/services/agent-memory.ts` | 配置绑定和运行解析 | REF-03/04；资源归各自 owner，AgentConfig 只用公开 service |
+| CRUD/模板/默认 | `src/routes/web/config/agents.ts`、`src/routes/api/agents.ts`、`src/services/meta-agent.ts` | Web/name、API/ID->name、Meta/name upsert | `resources/agent-config`; RES-01；旧资源路径 must-delete，Meta 重接 ID facade |
+| Environment/Instance | `src/routes/web/environments.ts`、`src/services/environment-web.ts`、`src/routes/api/instances.ts`、`src/services/api-instance.ts` | 配置 ID -> 用户 Environment -> Instance | `agent` + `resources/agent-config`; ENV-01/RES-01；保留并重接 |
+| HTTP 单轮/调度 | `src/routes/api/openai-chat.ts`、`src/services/agent-chat-service.ts`、`src/services/scheduler/agent-executor.ts`、`src/routes/web/tasks-v2.ts` | 配置 ID -> 独立 session | `apps/server`（协议/调度）+ `agent`（执行）；外部契约待决定，调度保留并重接 |
+| Workflow/Chat | `src/services/workflow/agent-chat-transport.ts`、`src/services/chat-channel-bootstrap.ts`、`packages/chat-channel/src/channel/gateway.ts` | 经 Environment 复用实例；Chat 的 agentId 是 Environment ID | `apps/server`（装配）+ `agent`（实例端口）；保留并重接，不得复制协议栈 |
+| Runtime/build | `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts`、`src/repositories/agent-config.ts` | 配置/绑定/依赖 -> LaunchSpec | `agent`（runtime）+ `resources/agent-config`（已授权配置）；AGT-01/02 + REF/ENV；旧 builder/repo 最终删除或重接 |
+| Site/ProdView | `src/routes/web/agent-sites.ts`、`src/services/agent-sites.ts`、`src/services/prod-view.ts`、`src/routes/web/config/prod-views.ts` | 配置 ID 做绑定、创建者和展示入口 | `apps/server`（调用方）+ `resources/agent-config`（引用契约）；ENV-01/WEB-REF-01；保留领域并重接 |
+| Model gateway | `src/services/model-gateway/credential-service.ts`、`src/services/model-gateway/runtime.ts`、`src/routes/api/system-model-gateway.ts` | 配置 ID 是凭证 subject/展示维度 | `apps/server`（运行适配）+ `resources/agent-config`（引用契约）；REF-01；保留并重接，清 orphan |
+| File/ACP/Machine | `src/services/remote-file-service.ts`、`src/transport/acp-ws-handler.ts`、`src/services/registry.ts` | Environment -> 配置 node；machine 注册按 name 绑定 | `agent`; ENV-01/AGT-02；协议保留并重接 |
+| Observer | `src/services/observer/observer-service.ts`、`src/repositories/agent-config.ts` | 配置 ID -> 展示名/host machine | `platform`（观测端口）+ `apps/server`（装配）；PLT-03/INT-01；保留观测并重接 |
+| Knowledge/MCP/memory | `src/services/agent-knowledge.ts`、`src/services/knowledge-runtime.ts`、`src/routes/mcp/knowledge.ts`、`src/services/agent-memory.ts` | 配置绑定和运行解析 | `resources/agent-config`（绑定/调用边界）；REF-03/04；资源归各自 owner，AgentConfig 只用公开 service |
 
 ## 4. 认证、授权与租户边界
 
@@ -108,7 +108,7 @@ LaunchSpec 当前直接解析：model/provider 与网关凭证、Skill 源目录
 | run | connect 在 Environment/runtime 副作用前检查；orchestration 在 Core launch 前二次检查 | 当前以 read 充当 use；TOCTOU 仅靠二次检查缓解，目标由 ARC-02/RES-01 冻结 |
 | 越权隐藏 | unreadable get/run 通常 404；Web external update/delete 403；`/api` update/delete 因组织 scoped lookup 为 404 | 是否统一 403/404 是契约决定，不在 ARC-01 修复 |
 
-**EE-C 边界确认（2026-09-08）：** 身份认证、主体/租户上下文与授权实现属于可整体替换的 `platform`；资源模块仅通过冻结契约获取 context/query constraint/authorize，并保留业务状态与 `use` 编排；runtime 只接收已授权启动参数，不读取 actor、role、organization 或资源表。上表的认证次序、active-org fallback、read grant、组织相等写权限及 read 代替 use 均是遗留事实，目标语义由 ARC-02 冻结。现有 `/api/*` 只登记为待决外部契约或保留并重接，不在 ARC-01 承诺删除。
+**EE-C 边界确认（2026-09-08）：** 身份认证、主体/租户上下文与授权实现属于可整体替换的 `platform`；资源模块仅通过冻结契约获取 context/query constraint/authorize，并保留业务状态与 `use` 编排；runtime 只接收已授权启动参数，不读取 actor、role、organization 或资源表。上表的认证次序、active-org fallback 和平台拒绝语义由 ARC-02 冻结；AgentConfig 的 read/write/use、403/404、DTO 与 route 契约由 ARC-03 冻结。现有 `/api/*` 只登记为待决外部契约或保留并重接，不在 ARC-01 承诺删除。
 
 ## 5. 当前公开行为与错误形状
 
@@ -139,19 +139,19 @@ LaunchSpec 当前直接解析：model/provider 与网关凭证、Skill 源目录
 
 ## 6. 前端调用方与体验
 
-| 分组 | 当前文件 | 行为/边界 | 处置 |
+| 分组 | 当前文件 | 行为/边界 | 逻辑 owner / 处置 |
 | --- | --- | --- | --- |
-| API client | `web/src/api/agents.ts` | 全走 `/web/config/agents`；get/set/delete 用 name；存在 `del`/`delete` 双别名 | WEB-02 must-delete，不留 shim |
-| 路由与管理页 | `web/src/routes/agent/_panel/agents.tsx`、`web/src/pages/agent-panel/pages/AgentManagementPage.tsx` | list + Environment join；创建/编辑/进入；部分可见文本硬编码 | WEB-02 迁移页面；`apps/web` 逻辑 owner 只留薄 route |
-| 聚合表单 | `web/src/pages/agent-panel/AgentFormDialog.tsx` | 同时加载/写 model、KB、Skill、MCP、memory、Machine、Sandbox、Site、Environment/Instance | WEB-02 + WEB-REF-01；拆资源 client，保留完整异步状态 |
-| 首页创建 | `web/src/pages/agent-panel/pages/AgentHomePage.tsx` | templates -> create；缺 ID 时按 name reload；再建 Environment | WEB-02 改稳定 ID 流程 |
-| Shell/树/布局 | `web/src/pages/agent-panel/AgentPanelLayout.tsx`、`web/src/pages/agent-panel/AgentSidebarTree.tsx`、`web/src/pages/agent-panel/AgentSidebarConfig.tsx` | 活动布局组合导航与 Chat；SidebarTree 以 15s 周期读取 AgentConfig/Environment，并执行进入、重启、停止和 name 删除 | Shell 保留并改 contribution；AgentConfig 业务代码由 WEB-02 迁移 |
-| 未挂载旧壳 | `web/src/pages/agent-panel/AgentAppShell.tsx`、`web/src/pages/agent-panel/AgentPanelPage.tsx`、`web/src/App.tsx` | 当前生产入口未导入；仍被部分测试或源文件保留，不能当作活动调用链证据 | 在新 Shell 验收后以 import/build/search 证明无调用，再删除旧壳及对应过时测试 |
-| Task | `web/src/pages/agent-panel/pages/AgentTasksPage.tsx`、`web/src/pages/agent-panel/components/TaskForm.tsx`、`web/src/api/tasks-v2.ts` | list 作为 AgentConfig ID selector | 调度 UI 保留并重接新 DTO |
-| ProdView | `web/src/pages/agent-panel/pages/AgentProdViewsPage.tsx`、`web/src/pages/agent-panel/ProdViewsPanel.tsx`、`web/src/api/prod-views.ts` | ID selector/display lookup | ProdView 保留并重接 |
-| Site/Artifacts | `web/src/pages/agent-panel/ArtifactsPanel.tsx`、`web/src/components/agent-panel/AgentSitesCard.tsx`、`web/src/api/sites.ts` | 配置 ID 绑定 Site；全局 select-site 事件 | Site 保留并重接 |
-| Chat | `web/src/routes/agent/_panel/chat.$agentId.tsx`、`web/src/pages/agent-panel/ChatArea.tsx` | URL `agentId` 是 Environment ID；消费 reconnect/site 事件 | Chat/YJS 保留并重接，禁止 ID 机械替换 |
-| 事件/i18n | `web/src/lib/config-events.ts`、`web/src/i18n/locales/en/agents.json`、`web/src/i18n/locales/zh/agents.json`、`web/src/i18n/locales/en/agentPanel.json`、`web/src/i18n/locales/zh/agentPanel.json`、`web/src/i18n/locales/en/components.json`、`web/src/i18n/locales/zh/components.json` | `rcs:config-change`、`agent:reconnect`、`artifacts:select-site`；key 跨 namespace | 只删 AgentConfig-owned key；共享 namespace/事件调用方先重接 |
+| API client | `web/src/api/agents.ts` | 全走 `/web/config/agents`；get/set/delete 用 name；存在 `del`/`delete` 双别名 | `resources/agent-config`（Web client）；WEB-02 must-delete，不留 shim |
+| 路由与管理页 | `web/src/routes/agent/_panel/agents.tsx`、`web/src/pages/agent-panel/pages/AgentManagementPage.tsx` | list + Environment join；创建/编辑/进入；部分可见文本硬编码 | `resources/agent-config`（页面）+ `apps/web`（薄 route）；WEB-02 迁移 |
+| 聚合表单 | `web/src/pages/agent-panel/AgentFormDialog.tsx` | 同时加载/写 model、KB、Skill、MCP、memory、Machine、Sandbox、Site、Environment/Instance | `resources/agent-config`; WEB-02 + WEB-REF-01；拆资源 client，保留完整异步状态 |
+| 首页创建 | `web/src/pages/agent-panel/pages/AgentHomePage.tsx` | templates -> create；缺 ID 时按 name reload；再建 Environment | `resources/agent-config`; WEB-02 改稳定 ID 流程 |
+| Shell/树/布局 | `web/src/pages/agent-panel/AgentPanelLayout.tsx`、`web/src/pages/agent-panel/AgentSidebarTree.tsx`、`web/src/pages/agent-panel/AgentSidebarConfig.tsx` | 活动布局组合导航与 Chat；SidebarTree 以 15s 周期读取 AgentConfig/Environment，并执行进入、重启、停止和 name 删除 | `apps/web`（Shell）+ `resources/agent-config`（业务片段）；Shell 保留并改 contribution，AgentConfig 业务代码由 WEB-02 迁移 |
+| 未挂载旧壳 | `web/src/pages/agent-panel/AgentAppShell.tsx`、`web/src/pages/agent-panel/AgentPanelPage.tsx`、`web/src/App.tsx` | 当前生产入口未导入；仍被部分测试或源文件保留，不能当作活动调用链证据 | `apps/web`; 新 Shell 验收后以 import/build/search 证明无调用，再删除旧壳及对应过时测试 |
+| Task | `web/src/pages/agent-panel/pages/AgentTasksPage.tsx`、`web/src/pages/agent-panel/components/TaskForm.tsx`、`web/src/api/tasks-v2.ts` | list 作为 AgentConfig ID selector | `apps/web`（调用方）；调度 UI 保留并重接新 DTO |
+| ProdView | `web/src/pages/agent-panel/pages/AgentProdViewsPage.tsx`、`web/src/pages/agent-panel/ProdViewsPanel.tsx`、`web/src/api/prod-views.ts` | ID selector/display lookup | `apps/web`（调用方）；ProdView 保留并重接 |
+| Site/Artifacts | `web/src/pages/agent-panel/ArtifactsPanel.tsx`、`web/src/components/agent-panel/AgentSitesCard.tsx`、`web/src/api/sites.ts` | 配置 ID 绑定 Site；全局 select-site 事件 | `apps/web`（调用方）；Site 保留并重接 |
+| Chat | `web/src/routes/agent/_panel/chat.$agentId.tsx`、`web/src/pages/agent-panel/ChatArea.tsx` | URL `agentId` 是 Environment ID；消费 reconnect/site 事件 | `apps/web`（调用方）；Chat/YJS 保留并重接，禁止 ID 机械替换 |
+| 事件/i18n | `web/src/lib/config-events.ts`、`web/src/i18n/locales/en/agents.json`、`web/src/i18n/locales/zh/agents.json`、`web/src/i18n/locales/en/agentPanel.json`、`web/src/i18n/locales/zh/agentPanel.json`、`web/src/i18n/locales/en/components.json`、`web/src/i18n/locales/zh/components.json` | `rcs:config-change`、`agent:reconnect`、`artifacts:select-site`；key 跨 namespace | `apps/web`（共享）+ `resources/agent-config`（专属 key）；只删 AgentConfig-owned key，共享 namespace/事件调用方先重接 |
 
 现有页面覆盖 loading/empty/toast 的部分路径，但依赖失败语义不一致（整体失败与静默空数组并存），无完整 create/edit/delete/run/unauthorized/retry 浏览器流程测试；这是 WEB-02/INT-01 验收缺口。
 
@@ -178,7 +178,7 @@ LaunchSpec 当前直接解析：model/provider 与网关凭证、Skill 源目录
 | 前端逻辑/SSR | `web/src/__tests__/agent-resource-access-flow.test.ts`、`web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx`、`web/src/__tests__/agent-form-dialog-ssr.test.tsx` | helper、选项边界、初始渲染 | 浏览器 E2E 和完整异步状态 |
 | L5 缺失 | 无 | 无 | 真实 PostgreSQL/迁移、真实 Engine/relay、浏览器 CRUD+run、并发写、升级/回滚 |
 
-ARC-01 不新增或修改测试。明确缺口：Web 和外部 AgentConfig route 的未认证短路矩阵、不可读 connect 在 Environment/runtime 前零副作用、运行时撤权复检、role/write/use 矩阵、真实多租户 PostgreSQL 查询约束，以及浏览器 create/edit/delete/run/retry 流程；分别由 ARC-02、PLT-01、RES-01、AGT-02、WEB-02、INT-01 定义或补齐。
+ARC-01 不新增或修改测试。明确缺口：Web 和外部 AgentConfig route 的未认证短路矩阵、不可读 connect 在 Environment/runtime 前零副作用、运行时撤权复检、role/write/use 矩阵、真实多租户 PostgreSQL 查询约束，以及浏览器 create/edit/delete/run/retry 流程。ARC-02/PLT-01 负责平台主体、scope 与授权契约，ARC-03 冻结 AgentConfig 协议及运行边界；实现与验证分别由 RES-01、AGT-02、WEB-02、INT-01 承接。
 
 ## 9. 可观测性与安全
 
@@ -190,10 +190,10 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 
 ## 10. 既有回归一次运行基线
 
-- Base SHA：`4205a60955c41f017d19f169695d41311c1f6c62`；Bun 1.4.2。
+- 行为采样 SHA：`4205a60955c41f017d19f169695d41311c1f6c62`；当前治理 revision：`7ed74cac8684bac6466cbfc17bb6746839f3f497`；Bun 1.4.2。
 - 固定集合：11 个既有文件，覆盖 Web/API list/CRUD、共享读取、delete 清理、connect、OpenAI-compatible run、session 边界与 orchestration rollback。
 - 命令：`LC_ALL=C /usr/bin/time -f 'elapsed_seconds=%e' bun test <上述 11 个既有测试文件>`；完整文件列表见第 8 节对应 L2-L4 条目。
-- 合并最新基线后的单次结果：63 pass / 0 fail / 175 assertions；GNU wall-clock `0.83s`。
+- `4205a609` 行为采样结果：63 pass / 0 fail / 175 assertions；GNU wall-clock `0.83s`。此后 FND-01 未修改上述生产源码与测试，本记录用于重构前行为比较，不声明为当前 HEAD 的质量门结果。
 
 ### 10.1 已知全量门禁问题
 
@@ -206,30 +206,31 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | Task | owner | 直接前置 | 本清单中的责任 |
 | --- | --- | --- | --- |
 | ARC-01 | CE task pool（本分支：liu xue yan） | 无 | 当前边界、调用方、风险、测试入口与删除条件 |
-| AGT-00 | CE task pool | 无；可与 ARC-01 并行 | runtime 真实调用图与生命周期特征，不由本清单重复展开 |
-| ARC-02 | CE task pool + EE-C 确认 | ARC-01 | 冻结 identity/order、tenant、read/write/use、query constraint、ID/DTO/error 与外部契约 |
-| FND-00 | CE task pool | 无；可与 ARC-01、ARC-02 并行 | workspace 规则、最小 package manifest 与 README 物理骨架，不冻结公开契约 |
-| FND-01 | CE task pool | FND-00、ARC-02 | 补齐 package exports/dependency、TypeScript 配置和 app 空装配入口，不切运行入口 |
+| AGT-00 | CE task pool | 无；可与 ARC-01、ARC-02 并行 | runtime 真实调用图与生命周期特征，不由本清单重复展开 |
+| FND-00 | CE task pool | 无；已完成 | workspace 规则、最小 package manifest 与 README 物理骨架，不冻结公开契约 |
+| FND-01 | CE task pool | FND-00；已完成 | workspace metadata、TypeScript 边界和 app 空入口，不迁移业务实现 |
 | FND-02 | CE task pool | FND-01 | 包依赖边界 CI |
-| FND-03 | CE task pool | FND-01、ARC-02 | manifest、registry、assembly 与 bootstrap |
-| FND-04 | CE task pool | FND-03 | env、observability 与 deploy preflight |
-| PLT-01 | CE task pool | FND-03、ARC-02 | `platform` AccessControl 与 scope，不让资源读取 member/role |
-| DAT-01 | CE task pool，独占 migration journal | PLT-01 | ID/ownership/grant/binding/reference 的 expand-backfill-switch-contract |
-| AGT-01 | CE task pool | AGT-00、FND-01、ARC-02 | 无权限 Agent runtime 与 InstanceManager |
-| WEB-01 | CE task pool | FND-03 | CE Shell、薄 route 和资源 Web contribution 骨架 |
-| REF-01 | CE task pool，独占 DB 锁 | DAT-01 | model/provider/credential 公开能力 |
-| REF-02 | CE task pool，独占 DB 锁 | DAT-01 | Skill 与 archive 公开能力 |
-| REF-03 | CE task pool，独占 DB 锁 | DAT-01 | MCP 与 launch config 公开能力 |
-| REF-04 | CE task pool，独占 DB 锁 | DAT-01 | knowledge/memory 公开能力 |
-| ENV-01 | CE task pool，独占 DB 锁 | DAT-01、AGT-01 | Environment/node/Site、删除清理与引用迁移 |
+| FND-05 | CE task pool | FND-02 | 迁移 app 与构建/测试入口，不迁移资源领域代码 |
+| ARC-02 | CE task pool + EE-C 确认 | 无；可与 ARC-01、AGT-00 并行 | 冻结 AccessControl、DB/transaction、observability 与平台/应用基础契约 |
+| FND-03 | CE task pool | FND-02、ARC-02 | manifest、registry、assembly 与 bootstrap |
+| PLT-02 | CE task pool | FND-03 | DB/transaction port、Drizzle host adapter 与 migration runner 边界 |
+| PLT-01 | CE task pool | ARC-02、FND-03、PLT-02 | `platform` AccessControl 与 scope，不让资源读取 member/role |
+| PLT-03 | CE task pool | FND-03 | observability 端口、默认实现与 request/trace context |
+| PLT-04 | CE task pool | FND-03 | server env loader 与模块 env 注入 |
+| ARC-03 | CE task pool + AgentConfig/依赖资源负责人确认 | ARC-01、ARC-02、AGT-00 | 冻结 AgentConfig、Agent、依赖资源的接口、路由与迁移范围 |
+| DAT-01 | CE task pool，独占 migration journal | PLT-01、ARC-03 | ID/ownership/grant/binding/reference 的 expand-backfill-switch-contract |
+| AGT-01 | CE task pool | AGT-00、FND-01、ARC-03 | 无权限 Agent runtime 与 InstanceManager |
+| WEB-01 | CE task pool | FND-03、FND-05 | CE Shell、薄 route 和 Web contribution 装配，不创建资源页面 |
+| REF-01 | CE task pool，独占 DB 锁 | PLT-01、DAT-01 | model/provider/credential 公开能力 |
+| REF-02 | CE task pool，独占 DB 锁 | PLT-01、DAT-01 | Skill 与 archive 公开能力 |
+| REF-03 | CE task pool，独占 DB 锁 | PLT-01、DAT-01 | MCP 与 launch config 公开能力 |
+| REF-04 | CE task pool，独占 DB 锁 | PLT-01、DAT-01 | knowledge/memory 公开能力 |
+| ENV-01 | CE task pool，独占 DB 锁 | PLT-01、DAT-01、AGT-01 | Environment/node/Site、删除清理与引用迁移 |
 | AGT-02 | CE task pool | AGT-01、REF-01、REF-02、REF-03、REF-04、ENV-01 | 从公开资源结果组装完整 LaunchSpec |
 | WEB-REF-01 | CE task pool | WEB-01、REF-01、REF-02、REF-03、REF-04、ENV-01 | 资源管理页、selector、route 与导航整合 |
-| RES-01 | CE task pool，独占 DB 锁 | PLT-01、DAT-01、AGT-02、REF-01、REF-02、REF-03、REF-04、ENV-01 | AgentConfig facade/repository/`/app` route/run，唯一后端写路径 |
+| RES-01 | CE task pool，独占 DB 锁 | PLT-01、DAT-01、AGT-01、AGT-02、REF-01、REF-02、REF-03、REF-04、ENV-01 | AgentConfig facade/repository/`/app` route/run，唯一后端写路径 |
 | WEB-02 | CE task pool | RES-01、WEB-01、WEB-REF-01 | AgentConfig 页面/client/caller 切换和旧 Web 删除 |
-| INT-01 | CE task pool + EE-C | FND-04、REF-01、REF-02、REF-03、REF-04、ENV-01、AGT-02、RES-01、WEB-02 | 空库/升级库、权限、CRUD/run、UI、观测、补偿/回滚 E2E |
-| EE-01 | EE-C | FND-03（M0.5） | EE repo/submodule/assembly/release 基线 |
-| EE-02 | EE-C + SDK 负责人评审 | EE-01、ARC-02 | 企业身份与授权整体替换实现 |
-| EE-03 | EE-C + AgentConfig 负责人联调 | INT-01（M1）、EE-02 | 企业身份接入 CE 完整用户链路 |
+| INT-01 | CE task pool + EE-C | FND-05、PLT-01、PLT-02、PLT-03、PLT-04、REF-01、REF-02、REF-03、REF-04、ENV-01、AGT-02、RES-01、WEB-02 | 空库/升级库、权限、CRUD/run、UI、观测、补偿/回滚 E2E |
 
 | 风险 | 严重度 | 证据 | 必须满足的控制 |
 | --- | --- | --- | --- |
@@ -238,8 +239,8 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | name 与混合 ID 语义 | 高 | Web CRUD/default/Meta、Chat Environment ID | DAT-01 回填与调用方逐项切换，禁止 alias |
 | grant/credential orphan | 高 | 无 FK 文本/UUID 引用 | 数据校验、清理/约束方案、删除测试 |
 | runtime 仍查资源与权限 | 高 | `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts` | RES-01 `resolveForRun`; AGT-02 仅收已授权快照 |
-| 外部 `/api` 合同未知 | 高 | 当前可用 CRUD/connect/OpenAI 入口 | ARC-02/独立 ADR 决定退役窗口，不擅删/长期转发 |
-| 日志敏感数据与无审计/指标 | 中高 | LaunchSpec 日志、generic HTTP logger | FND-04/INT-01 脱敏、audit/metrics、观测窗口 |
+| 外部 `/api` 合同未知 | 高 | 当前可用 CRUD/connect/OpenAI 入口 | ARC-03/独立 ADR 决定退役窗口，不擅删/长期转发 |
+| 日志敏感数据与无审计/指标 | 中高 | LaunchSpec 日志、generic HTTP logger | PLT-03/INT-01 脱敏、audit/metrics、观测窗口 |
 | 真实 DB/runtime/browser 证据缺失 | 中高 | 测试等级表 | DAT/AGT/WEB/INT tasks 补 E2E 与升级演练 |
 
 ## 12. 删除台账
@@ -248,37 +249,39 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 
 | 旧资产 | owner/task | 删除前置与证据 | 回滚边界 |
 | --- | --- | --- | --- |
-| `src/routes/web/config/agents.ts` | RES-01 | `/app` CRUD/run 已验收；`web/src/api/agents.ts` 与所有调用方切走；route search 为零；合同/权限测试绿；观测窗口无流量 | 切换前可回滚新 app；删旧写入口后不双写 |
-| `src/services/config/agent-config.ts`、`src/services/config/agent-config-skill.ts`、`src/services/config/agent-config-mcp.ts`、`src/services/config/agent-config-site-app.ts` | RES-01 + REF/ENV | 所有 route/runtime/Meta/Site callers 改公开 service；事务/权限/删除测试等价 | 以新 facade 版本回滚，不加 shim |
-| `src/repositories/agent-config.ts` | RES-01/AGT-02/Observer owner | runtime 和 Observer 改公开 DTO/port；无内部 import；LaunchSpec/Observer tests 绿 | 保留新公开 adapter，不保留双 repo |
-| `web/src/api/agents.ts` | WEB-02 | 页面、Sidebar、Task、ProdView、Home 全切 `/app` stable ID client；request tests/build 绿 | Web/server 同发布窗口回滚 |
-| `web/src/routes/agent/_panel/agents.tsx` 中旧 adapter 与 `web/src/pages/agent-panel/pages/AgentManagementPage.tsx`、`web/src/pages/agent-panel/AgentFormDialog.tsx`、`web/src/pages/agent-panel/pages/AgentHomePage.tsx` 的 AgentConfig-owned 实现 | WEB-02 | 新 contribution 覆盖 loading/empty/error/retry/unauthorized/success；浏览器关键流绿；Shell 不再导入 | 静态 contribution 版本回滚，不并存两页面 |
-| `web/src/pages/agent-panel/AgentSidebarTree.tsx` 中 AgentConfig 业务片段及 AgentConfig-owned locale keys | WEB-02 | Shell contribution 已重接；事件和 namespace 引用 search；仅删专属 key | 保留共享 Shell/namespace，不整文件盲删 |
-| `src/db/schema.ts` 中旧定义位置 | DAT-01 | 模块 schema 成为唯一真相；Drizzle diff 无意外 DDL；空库/升级库、ID/grant/binding 校验通过 | expand/contract 前可回滚兼容 app；已 contract 后走补偿 migration |
+| `src/routes/web/config/agents.ts` | `resources/agent-config`; RES-01 | `/app` CRUD/run 已验收；`web/src/api/agents.ts` 与所有调用方切走；route search 为零；合同/权限测试绿；观测窗口无流量 | 切换前可回滚新 app；删旧写入口后不双写 |
+| `src/services/config/agent-config.ts`、`src/services/config/agent-config-skill.ts`、`src/services/config/agent-config-mcp.ts`、`src/services/config/agent-config-site-app.ts` | `resources/agent-config`; RES-01 + REF/ENV | 所有 route/runtime/Meta/Site callers 改公开 service；事务/权限/删除测试等价 | 以新 facade 版本回滚，不加 shim |
+| `src/repositories/agent-config.ts` | `resources/agent-config`; RES-01/AGT-02/Observer owner | runtime 和 Observer 改公开 DTO/port；无内部 import；LaunchSpec/Observer tests 绿 | 保留新公开 adapter，不保留双 repo |
+| `web/src/api/agents.ts` | `resources/agent-config`（Web client）；WEB-02 | 页面、Sidebar、Task、ProdView、Home 全切 `/app` stable ID client；request tests/build 绿 | Web/server 同发布窗口回滚 |
+| `web/src/routes/agent/_panel/agents.tsx` 中旧 adapter 与 `web/src/pages/agent-panel/pages/AgentManagementPage.tsx`、`web/src/pages/agent-panel/AgentFormDialog.tsx`、`web/src/pages/agent-panel/pages/AgentHomePage.tsx` 的 AgentConfig-owned 实现 | `apps/web`（薄 route）+ `resources/agent-config`（页面）；WEB-02 | 新 contribution 覆盖 loading/empty/error/retry/unauthorized/success；浏览器关键流绿；Shell 不再导入 | 静态 contribution 版本回滚，不并存两页面 |
+| `web/src/pages/agent-panel/AgentSidebarTree.tsx` 中 AgentConfig 业务片段及 AgentConfig-owned locale keys | `apps/web`（Shell）+ `resources/agent-config`（业务片段）；WEB-02 | Shell contribution 已重接；事件和 namespace 引用 search；仅删专属 key | 保留共享 Shell/namespace，不整文件盲删 |
+| `src/db/schema.ts` 中旧定义位置 | `resources/agent-config`; DAT-01 | 模块 schema 成为唯一真相；Drizzle diff 无意外 DDL；空库/升级库、ID/grant/binding 校验通过 | expand/contract 前可回滚兼容 app；已 contract 后走补偿 migration |
 
 ### 12.2 Retain-and-rewire（保留领域/协议，只替换依赖）
 
 | 资产 | 原因 | 重接条件/owner |
 | --- | --- | --- |
-| Environment/Instance/ACP/Core：`src/services/environment-web.ts`、`src/services/api-instance.ts`、`src/services/orchestration-instance.ts`、`src/transport/acp-ws-handler.ts` | 独立 runtime/协议职责 | ENV-01/AGT-01/02 接 stable ID、已授权 LaunchSpec；不复制 relay |
-| Chat/YJS：`src/services/chat-channel-bootstrap.ts`、`packages/chat-channel/src/channel/gateway.ts` | 会话与协作域 | 改 Environment/Instance/配置展示 DTO；保持 ID 隔离 |
-| Workflow/Scheduler：`src/services/workflow/agent-chat-transport.ts`、`src/services/scheduler/agent-executor.ts` | 自动化调用方 | 迁移 payload/ref，复用同一 run facade/runtime port |
-| Site/ProdView/Channel/File/Observer/Model gateway | 各自独立领域 | 对应 REF/ENV/RSC owner 改公开 AgentConfig service/DTO；完整 caller search/test |
-| Shared Shell/events/i18n namespace | 多领域共享 | 删除专属 contribution/key 前确认无调用；保留 reconnect/select-site 等非配置语义 |
+| Environment/Instance/ACP/Core：`src/services/environment-web.ts`、`src/services/api-instance.ts`、`src/services/orchestration-instance.ts`、`src/transport/acp-ws-handler.ts` | 独立 runtime/协议职责 | `agent`; ENV-01/AGT-01/02 接 stable ID、已授权 LaunchSpec；不复制 relay |
+| Chat/YJS：`src/services/chat-channel-bootstrap.ts`、`packages/chat-channel/src/channel/gateway.ts` | 会话与协作域 | `apps/server`（装配）+ `agent`（实例端口）；改 Environment/Instance/配置展示 DTO，保持 ID 隔离 |
+| Workflow/Scheduler：`src/services/workflow/agent-chat-transport.ts`、`src/services/scheduler/agent-executor.ts` | 自动化调用方 | `apps/server`（编排）+ `agent`（执行端口）；迁移 payload/ref，复用同一 run facade/runtime port |
+| Site/ProdView/Channel/Model gateway | 独立资源或协议调用方 | `apps/server`（装配/调用方）+ `resources/agent-config`（公开引用契约）；对应 REF/ENV owner 完整 caller search/test |
+| File 与远程 workspace | 独立执行与连接能力 | `agent`; 经 Environment/Instance 公开端口重接，不并入 AgentConfig repository |
+| Observer | 独立观测职责 | `platform`（观测端口）+ `apps/server`（装配）；改用公开 AgentConfig DTO/port |
+| Shared Shell/events/i18n namespace | 多领域共享 | `apps/web`（共享）+ `resources/agent-config`（专属 contribution/key）；删除专属项前确认无调用，保留 reconnect/select-site 等非配置语义 |
 
-### 12.3 Contract-decision-required（ARC-02/单独 ADR 后处置）
+### 12.3 Contract-decision-required（ARC-02、ARC-03 或单独 ADR 后处置）
 
 | 资产/冲突 | 必须决定 | 未决定前规则 |
 | --- | --- | --- |
-| `src/routes/api/agents.ts` | 稳定外部 CRUD 是否退役、窗口、版本/限流/兼容义务 | 不擅删，不新增永久转发或第二写路径 |
-| `src/routes/api/instances.ts` | connect 是否并入 `/app/:id/run`，复用/响应 DTO | 保持现行为可比较基线 |
-| `src/routes/api/openai-chat.ts` | OpenAI-compatible 合同与外部消费者 | 保持 endpoint/流错误行为，资源授权仍需收敛 |
-| auth/error | session/env secret/API key 次序、active-org fallback、401 body、403/404、role 与 `use` | ARC-01 只记录；EE-C 签字确认后冻结 |
-| ID/schema | name/resourceKey、defaultAgent、Environment route `agentId`、workflow/channel payload | 逐字段迁移，不做字符串批量替换 |
+| `src/routes/api/agents.ts` | ARC-03/ADR：稳定外部 CRUD 是否退役、窗口、版本/限流/兼容义务 | 不擅删，不新增永久转发或第二写路径 |
+| `src/routes/api/instances.ts` | ARC-03/ADR：connect 是否并入 `/app/:id/run`，复用/响应 DTO | 保持现行为可比较基线 |
+| `src/routes/api/openai-chat.ts` | ARC-03/ADR：OpenAI-compatible 合同与外部消费者 | 保持 endpoint/流错误行为，资源授权仍需收敛 |
+| auth/error | ARC-02：session/env secret/API key 次序、active-org fallback 和平台拒绝语义；ARC-03：AgentConfig 403/404、role 与 `use` | ARC-01 只记录；对应契约确认后冻结 |
+| ID/schema | ARC-03：name/resourceKey、defaultAgent、Environment route `agentId`、workflow/channel payload | 逐字段迁移，不做字符串批量替换 |
 
 ## 13. 开始/停止与删除判定
 
-后续 task 开始前：固定本清单 revision；ARC-02 完成 EE-C 边界确认；为每个引用建立 owner、数据回填、caller search、contract test、观测和回滚步骤；schema task 取得 migration journal 锁。
+首个资源闭环实现开始前：固定本清单 revision；ARC-02 完成平台边界与 EE-C 替换需求确认，ARC-03 基于本清单和 AGT-00 冻结资源/Agent 契约；为每个引用建立 owner、数据回填、caller search、contract test、观测和回滚步骤；schema task 取得 migration journal 锁。
 
 立即停止并升级：需要生产行为修复但 task 未授权；身份/租户/use 或外部合同仍冲突；发现未分类调用方/数据引用；需要 live 凭证/客户数据；迁移无法幂等补偿；新旧写路径将并存；真实测试暴露与冻结基线不同；日志样例可能含敏感值。
 
