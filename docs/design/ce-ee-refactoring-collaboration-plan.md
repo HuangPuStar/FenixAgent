@@ -684,7 +684,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
 | 1 | FND-02 包依赖边界 CI | ⬜ 可领取 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | 1 | FND-05 应用入口迁移 | 🔒 等待 FND-02 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
-| 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
+| 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
