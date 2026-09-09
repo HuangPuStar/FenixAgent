@@ -87,7 +87,7 @@ export const PeriTaskList = memo(function PeriTaskList({
         )}
 
         {!collapsed && (
-          <div id={BODY_ID} className="max-h-64 overflow-y-auto border-t border-border/50">
+          <div id={BODY_ID} className="max-h-64 overflow-y-auto overscroll-contain border-t border-border/50">
             {!loaded ? (
               // 加载态：Session Doc 快照尚未同步，任务列表不可用
               <div className="px-3 py-2 text-[11px] text-text-muted" role="status">
