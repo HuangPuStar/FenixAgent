@@ -6,13 +6,12 @@
 demo/
 ├── ce/
 │   ├── apps/
-│   │   ├── server/                       # env、observability、按配置装配 /app route
+│   │   ├── server/                       # env、按配置装配 /app route
 │   │   └── web/                          # 前端壳；按配置装配已编译的 web contribution
 │   ├── packages/
 │   │   ├── platform/
 │   │   │   ├── platform-sdk/             # ResourceScope、授权/资源/repository 契约
-│   │   │   ├── community-access-control/ # CE 身份与授权实现
-│   │   │   └── observability/            # Logger、AuditRecorder 端口
+│   │   │   └── community-access-control/ # CE 身份与授权实现
 │   │   ├── agent/
 │   │   │   ├── agent-runtime/            # 引擎静态实现
 │   │   │   └── agent-instance/           # 无授权的实例运行管理
@@ -106,7 +105,7 @@ assembly JSON/YAML 的模块 ID
 ## env、日志、迁移与部署
 
 - `platform-sdk/server-env`：bootstrap 一次性汇总 profile 启用模块的 env 声明；业务模块不读 `process.env`。
-- `platform/observability`：模块依赖日志/审计端口，app 注入 stdout 或生产实现。
+- 运行诊断复用实际应用的 `@fenix/logger` 与 `requestId`；demo 不定义独立观测端口。
 - 表定义与数据迁移归 `resources/<module>/db/`；每个仓库的 DDL migration 统一放 `db/migrations/`。
 - EE 发布顺序：校验 assembly profile → CE migration journal → EE migration journal → 模块数据迁移 → server/web readiness。
 - `ee/docs/operations/submodule-upgrade.md` 展示 CE 固定提交升级步骤。

@@ -92,7 +92,7 @@ LaunchSpec 当前直接解析：model/provider 与网关凭证、Skill 源目录
 | Site/ProdView | `src/routes/web/agent-sites.ts`、`src/services/agent-sites.ts`、`src/services/prod-view.ts`、`src/routes/web/config/prod-views.ts` | 配置 ID 做绑定、创建者和展示入口 | `apps/server`（调用方）+ `resources/agent-config`（引用契约）；ENV-01/WEB-REF-01；保留领域并重接 |
 | Model gateway | `src/services/model-gateway/credential-service.ts`、`src/services/model-gateway/runtime.ts`、`src/routes/api/system-model-gateway.ts` | 配置 ID 是凭证 subject/展示维度 | `apps/server`（运行适配）+ `resources/agent-config`（引用契约）；REF-01；保留并重接，清 orphan |
 | File/ACP/Machine | `src/services/remote-file-service.ts`、`src/transport/acp-ws-handler.ts`、`src/services/registry.ts` | Environment -> 配置 node；machine 注册按 name 绑定 | `agent`; ENV-01/AGT-02；协议保留并重接 |
-| Observer | `src/services/observer/observer-service.ts`、`src/repositories/agent-config.ts` | 配置 ID -> 展示名/host machine | `platform`（观测端口）+ `apps/server`（装配）；PLT-03/INT-01；保留观测并重接 |
+| Observer | `src/services/observer/observer-service.ts`、`src/repositories/agent-config.ts` | 配置 ID -> 展示名/host machine | `apps/server`（装配）+ 独立 Observer 服务；INT-01；保留观测并重接 |
 | Knowledge/MCP/memory | `src/services/agent-knowledge.ts`、`src/services/knowledge-runtime.ts`、`src/routes/mcp/knowledge.ts`、`src/services/agent-memory.ts` | 配置绑定和运行解析 | `resources/agent-config`（绑定/调用边界）；REF-03/04；资源归各自 owner，AgentConfig 只用公开 service |
 
 ## 4. 认证、授权与租户边界
@@ -184,9 +184,9 @@ ARC-01 不新增或修改测试。明确缺口：Web 和外部 AgentConfig route
 
 `packages/logger/src/index.ts` 和 `src/plugins/logger.ts` 提供 Pino、ALS requestId/user/org、HTTP method/path/status/duration、慢请求分级和 `X-Request-Id`；`/web/config/agents` 轮询降为 debug。runtime/LaunchSpec 有 instance/config/resource 诊断日志。
 
-缺口：没有 AgentConfig 专属 audit recorder、CRUD/run/deny counter、latency histogram 或事务/补偿指标；route CRUD 缺少统一 domain operation/resourceId 字段。`src/services/launch-spec-builder.ts` 的诊断可能包含资源 ID、Skill 路径、MCP command/URL/header/raw config；原始 Error 也可能带内部上下文。迁移时不得复制敏感值到响应、审计或样例。
+当前范围不新增 AgentConfig 专属 audit recorder、CRUD/run/deny counter、latency histogram 或事务/补偿指标；出现明确的产品或运维需求时另立设计与任务。route CRUD 仍缺少统一 domain operation/resourceId 字段。`src/services/launch-spec-builder.ts` 的诊断可能包含资源 ID、Skill 路径、MCP command/URL/header/raw config；原始 Error 也可能带内部上下文。迁移时不得复制敏感值到响应、日志或样例。
 
-INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor/scope/resource ID 审计、run->instance 关联、binding/迁移校验差异、orphan 数、rollback/stop 失败数；任何 token、Cookie、Environment secret、Provider/MCP secret、完整 prompt/file 内容必须脱敏。
+INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通过 `X-Request-Id` 返回；run->instance、binding/迁移校验差异、rollback/stop 失败等诊断日志保留关联 ID；任何 token、Cookie、Environment secret、Provider/MCP secret、完整 prompt/file 内容必须脱敏。
 
 ## 10. 既有回归一次运行基线
 
@@ -211,11 +211,10 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | FND-01 | CE task pool | FND-00；已完成 | workspace metadata、TypeScript 边界和 app 空入口，不迁移业务实现 |
 | FND-02 | CE task pool | FND-01 | 包依赖边界 CI |
 | FND-05 | CE task pool | FND-02 | 迁移 app 与构建/测试入口，不迁移资源领域代码 |
-| ARC-02 | CE task pool + EE-C 确认 | 无；可与 ARC-01、AGT-00 并行 | 冻结 AccessControl、DB/transaction、observability 与平台/应用基础契约 |
+| ARC-02 | CE task pool + EE-C 确认 | 无；可与 ARC-01、AGT-00 并行 | 冻结 AccessControl、DB/transaction 与平台/应用基础契约 |
 | FND-03 | CE task pool | FND-02、ARC-02 | manifest、registry、assembly 与 bootstrap |
 | PLT-02 | CE task pool | FND-03 | DB/transaction port、Drizzle host adapter 与 migration runner 边界 |
 | PLT-01 | CE task pool | ARC-02、FND-03、PLT-02 | `platform` AccessControl 与 scope，不让资源读取 member/role |
-| PLT-03 | CE task pool | FND-03 | observability 端口、默认实现与 request/trace context |
 | PLT-04 | CE task pool | FND-03 | server env loader 与模块 env 注入 |
 | ARC-03 | CE task pool + AgentConfig/依赖资源负责人确认 | ARC-01、ARC-02、AGT-00 | 冻结 AgentConfig、Agent、依赖资源的接口、路由与迁移范围 |
 | DAT-01 | CE task pool，独占 migration journal | PLT-01、ARC-03 | ID/ownership/grant/binding/reference 的 expand-backfill-switch-contract |
@@ -230,7 +229,7 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | WEB-REF-01 | CE task pool | WEB-01、REF-01、REF-02、REF-03、REF-04、ENV-01 | 资源管理页、selector、route 与导航整合 |
 | RES-01 | CE task pool，独占 DB 锁 | PLT-01、DAT-01、AGT-01、AGT-02、REF-01、REF-02、REF-03、REF-04、ENV-01 | AgentConfig facade/repository/`/app` route/run，唯一后端写路径 |
 | WEB-02 | CE task pool | RES-01、WEB-01、WEB-REF-01 | AgentConfig 页面/client/caller 切换和旧 Web 删除 |
-| INT-01 | CE task pool + EE-C | FND-05、PLT-01、PLT-02、PLT-03、PLT-04、REF-01、REF-02、REF-03、REF-04、ENV-01、AGT-02、RES-01、WEB-02 | 空库/升级库、权限、CRUD/run、UI、观测、补偿/回滚 E2E |
+| INT-01 | CE task pool + EE-C | FND-05、PLT-01、PLT-02、PLT-04、REF-01、REF-02、REF-03、REF-04、ENV-01、AGT-02、RES-01、WEB-02 | 空库/升级库、权限、CRUD/run、UI、日志/requestId 关联、补偿/回滚 E2E |
 
 | 风险 | 严重度 | 证据 | 必须满足的控制 |
 | --- | --- | --- | --- |
@@ -240,7 +239,7 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | grant/credential orphan | 高 | 无 FK 文本/UUID 引用 | 数据校验、清理/约束方案、删除测试 |
 | runtime 仍查资源与权限 | 高 | `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts` | RES-01 `resolveForRun`; AGT-02 仅收已授权快照 |
 | 外部 `/api` 合同未知 | 高 | 当前可用 CRUD/connect/OpenAI 入口 | ARC-03/独立 ADR 决定退役窗口，不擅删/长期转发 |
-| 日志敏感数据与无审计/指标 | 中高 | LaunchSpec 日志、generic HTTP logger | PLT-03/INT-01 脱敏、audit/metrics、观测窗口 |
+| 日志敏感数据与关联不足 | 中高 | LaunchSpec 日志、generic HTTP logger | 复用 `@fenix/logger` 与 `requestId`；INT-01 验证脱敏和诊断关联 |
 | 真实 DB/runtime/browser 证据缺失 | 中高 | 测试等级表 | DAT/AGT/WEB/INT tasks 补 E2E 与升级演练 |
 
 ## 12. 删除台账
@@ -266,7 +265,7 @@ INT-01 至少观测：按 operation/result/code 的请求计数与耗时、actor
 | Workflow/Scheduler：`src/services/workflow/agent-chat-transport.ts`、`src/services/scheduler/agent-executor.ts` | 自动化调用方 | `apps/server`（编排）+ `agent`（执行端口）；迁移 payload/ref，复用同一 run facade/runtime port |
 | Site/ProdView/Channel/Model gateway | 独立资源或协议调用方 | `apps/server`（装配/调用方）+ `resources/agent-config`（公开引用契约）；对应 REF/ENV owner 完整 caller search/test |
 | File 与远程 workspace | 独立执行与连接能力 | `agent`; 经 Environment/Instance 公开端口重接，不并入 AgentConfig repository |
-| Observer | 独立观测职责 | `platform`（观测端口）+ `apps/server`（装配）；改用公开 AgentConfig DTO/port |
+| Observer | 独立观测职责 | `apps/server`（装配）+ Observer 服务；改用公开 AgentConfig DTO/port |
 | Shared Shell/events/i18n namespace | 多领域共享 | `apps/web`（共享）+ `resources/agent-config`（专属 contribution/key）；删除专属项前确认无调用，保留 reconnect/select-site 等非配置语义 |
 
 ### 12.3 Contract-decision-required（ARC-02、ARC-03 或单独 ADR 后处置）
