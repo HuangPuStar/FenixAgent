@@ -6,7 +6,7 @@
 
 ## 1. 范围、证据与术语
 
-证据优先级：可执行测试与生产源码 > `src/db/schema.ts` > 当前架构清单 `FUNCTIONAL_MODULE_INVENTORY.md` > 目标设计 `docs/design/ce-ee-refactoring-collaboration-plan.md`、`docs/design/ce-ee-engineering-architecture.md`。设计文档仅用于标注后续 task 和逻辑 owner，不能反向解释当前行为。
+证据优先级：可执行测试与生产源码 > `src/db/schema.ts` > 当前架构清单 `FUNCTIONAL_MODULE_INVENTORY.md` > 目标设计 `docs/design/ce-ee-refactoring/ce-ee-refactoring-collaboration-plan.md`、`docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md`。设计文档仅用于标注后续 task 和逻辑 owner，不能反向解释当前行为。
 
 本文中的 `platform`、`agent`、`resources/agent-config`、`apps/server`、`apps/web` 是批准的**逻辑 owner 标签**，不是当前仓库路径。基础平台签名与拒绝语义留给 ARC-02，AgentConfig、Agent runtime/instance 和强依赖资源的公开接口与目标路径留给 ARC-03；本文引用的其余反引号路径均在本基线存在。
 

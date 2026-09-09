@@ -178,7 +178,7 @@ flowchart TD
 
 **负责人：** CE 任务池；EE-C 对 `AccessControlModule` 的企业替换需求签字确认  
 **前置：** 无；可与 ARC-01、AGT-00 并行
-**产出：** 更新 `docs/design/ce-ee-engineering-architecture.md`；必要时创建 `docs/adr/` 下的 ADR。
+**产出：** 更新 `docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md`；必要时创建 `docs/adr/` 下的 ADR。
 
 - [ ] 确认 `ResourceScope`、`ResourceContext`、`ResourceQueryConstraint`、`AccessControlModule` 的 TypeScript 签名和拒绝语义。
 - [ ] 确认平台与应用的 package ID、公开入口、module kind、assembly profile 与 env 声明形态；资源和 Agent 的具体 package export 留给 ARC-03。
