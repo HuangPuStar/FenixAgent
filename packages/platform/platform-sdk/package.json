@@ -1,0 +1,6 @@
+{
+  "name": "@fenix/platform-sdk",
+  "description": "跨领域平台契约",
+  "private": true,
+  "type": "module"
+}

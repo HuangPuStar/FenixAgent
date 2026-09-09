@@ -44,7 +44,7 @@ fenix/ 或 fenix-ee/
 │   └── web/                            # 控制台壳、TanStack Router 最终装配
 ├── packages/
 │   ├── platform/                       # 无业务领域依赖的平台契约与基础实现
-│   │   ├── platform-sdk/               # scope、授权端口、资源端口、模块描述符
+│   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符
 │   │   ├── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
 │   │   └── observability/              # Logger、Audit、Metric、Trace 的稳定端口
 │   ├── agent/                          # Agent 核心：运行、实例、聊天、会话与静态插件 SDK
@@ -164,7 +164,7 @@ export class AgentConfigService {
 }
 ```
 
-这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、scope 规则或具体授权实现。
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、`resource_context` 规则或具体授权实现。
 
 前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性；EE 替换资源时，静态依赖对应 EE 资源的 `web` 入口，不做运行时前端模块覆盖或发现。
 
@@ -272,17 +272,15 @@ apps/server/src/
 
 全局系统管理员仍是带真实 `userId` 的用户 actor，由 `AccessControlModule` 根据系统管理员身份放行系统级动作，以保留审计主体。迁移、运维和模块内部调用不构造 actor，直接使用受信任的 Domain Service；当前不定义 `system` actor。
 
-普通用户的资源列表必须通过 `AccessControlModule` 及统一授权查询能力，将声明式查询约束下推为数据库条件；系统管理 Facade 在完成系统管理员校验后、以及受信任模块内部调用可复用无权限 Domain Service 的列表查询。禁止 service 先读全量数据再按组织、角色或版本过滤；Repository 不得自行读取 member/role、归属字段、scope 或 grant 表并复制授权 SQL。
+普通用户的资源列表必须通过 `AccessControlModule` 及统一授权查询能力，将声明式查询约束下推为数据库条件；系统管理 Facade 在完成系统管理员校验后、以及受信任模块内部调用可复用无权限 Domain Service 的列表查询。禁止 service 先读全量数据再按组织、角色或版本过滤；Repository 不得自行读取 member/role、`resource_context` 或复制授权 SQL。
 
 ### 3.3 授权范围与资源查询约束
 
-CE 的归属存储尚未在 `access_scope`、固定归属字段加 grant 表、统一 `resources` 基表三种方案间定稿。无论最终选择哪种，资源领域、route、前端和普通 Repository 都不得理解 CE 的组织、用户、角色、归属、scope 或 grant 存储细节；EE 也不使用或兼容 CE 的物理权限表，只实现相同的上层访问接口。
+基础版本的可授权资源主表保存授权层托管的 `resource_context JSONB`。当前 Context 仅记录归属和公开可见性；JSON 采用一层 KV（标量或字符串数组），不允许嵌套对象或对象数组。它是资源元数据，但 JSON 的创建、解析、校验、更新和 SQL 编译均由平台实现独占。资源领域、route、前端和普通 Repository 不得理解组织、用户、角色或 Context 内部结构；EE 使用自己的 Context schema 与实现。
 
-`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”。平台的统一授权查询能力负责将其编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、主键列与业务条件，例如 `authorizedQuery.list({ resourceType, resourceIdColumn, businessWhere, access })`，不编写 member/role 判断或授权 SQL。
+`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceContextStore` 负责批量读取、校验、写入和删除 Context；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、主键列与业务条件，例如 `authorizedQuery.list({ resourceType, resourceIdColumn, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, TContext>`，CE 的 Context 可包含 `organizationId`、`ownerUserId`，EE 则返回自己的归属元数据。
 
-授权关联数据需要参与查询时，优先由统一实现生成相关子查询 `EXISTS`，而不是让资源查询直接 join grant 表。例如“默认归属/公开条件 OR 存在匹配 read grant”。`EXISTS` 不会因多条 grant 重复资源行，PostgreSQL 通常可将它优化为 semijoin；授权表按主体、动作、资源 ID 的实际查询方向建组合索引，并用 `EXPLAIN ANALYZE` 验证。业务模块不拼接这段 SQL。
-
-完整的稳定接口、候选存储方案与迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。因此授权约束属于 **授权与资源查询的契约**；数据库章节只规定各存储实现必须正确编译、测试它。
+当前授权查询编译资源主表的 `resource_context` JSONB 条件，不需要关联中央资源表。当前不设计定向分享或 grant 表；未来出现真实需求时，再评审并由统一实现采用 `EXISTS` 查询。未来若需要集中治理，可迁移 Context 到扩展表并替换 Store/查询实现，业务模块调用接口不变。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
 
 ## 4. 前端与控制台组织
 
@@ -670,7 +668,7 @@ CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均�
 1. **盘点与定界**：列出当前 service、repository、schema、route、页面、后台任务、外部 API、引用该资源的其他模块；确定资源归属、读/写/use 动作、数据隔离和删除条件。
 2. **创建模块骨架**：创建 `packages/resources/<resource>/{src,db,web}` 和 README；先定义公开 DTO、repository port、模块 capability 与 route/web contribution，不复制旧 service。
 3. **迁移 schema 所有权**：将该资源表定义移动到模块 `db/schema.ts`，更新根 `drizzle.config.ts` 路径列表。仅移动源码而未改变表结构时，必须生成并审查“无 DDL 差异”结果；不得创建重复表。
-4. **迁移数据隔离**：按最终确定的权限存储方案执行 expand → backfill → switch → contract；回填现有组织归属、owner、公开与分享数据，切换为 `AccessControlModule` 统一授权查询，验证后删除旧授权查询路径和废弃字段。
+4. **迁移数据隔离**：按 `resource_context` 方案执行 expand → backfill → switch → contract；回填现有组织归属、owner 与公开数据，切换为 `AccessControlModule` 统一授权查询，验证后删除旧授权查询路径和废弃字段。
 5. **迁移领域与 services**：将字段校验、状态机按需放入 domain；将授权、事务、动作编排放入 service/facade。所有调用方在同一切片改为新公开入口，随后删除旧 service/repository。
 6. **迁移资源动作**：资源的 `run`/`publish` 等动作在 services 的 facade 完成授权与状态检查，再调用 runtime port；runtime 只接收通用已解析参数。
 7. **迁移 HTTP 与 web**：新增该资源的 `/app` route contribution，以及模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。调用方切换后删除旧 `/web`、`/api` 和旧页面，不保留长期 alias。
@@ -734,7 +732,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
       update({ name }) / delete({ name })
 ```
 
-名称若需要在某个范围内唯一，应由资源主表的 scope 查询键与 `normalized_name` 建立相应唯一约束或表达式索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在**明确 scope 和冲突策略**的前提下按名称查找，但业务 CRUD 不得如此实现。
+名称若需要在某个范围内唯一，应由 `resource_context` 中实际可索引的归属键与 `normalized_name` 建立相应唯一约束或表达式索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在明确 Context 和冲突策略的前提下按名称查找，但业务 CRUD 不得如此实现。
 
 对历史“按 name CRUD”的资源，执行顺序：
 
@@ -747,7 +745,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 
 #### B. 权限存储由 AccessControl 托管，领域逻辑不得理解权限
 
-CE 最终可选择 `access_scope`、固定归属字段加授权关系表，或统一 `resources` 基表；此阶段不提前指定。无论物理模型如何，资源领域只保存或关联稳定资源 ID，且不读取、解释、写入组织、用户、角色、公开或分享的权限存储细节。
+基础版本的可授权资源主表采用授权层托管的 `resource_context JSONB`。当前 Context 是资源的多态归属与公开可见性元数据；资源领域返回已解析的类型化 Context，但不读取、解释、写入原始 JSON 或组织、用户、角色、公开规则。
 
 ```text
 资源 Service / Facade
@@ -755,23 +753,23 @@ CE 最终可选择 `access_scope`、固定归属字段加授权关系表，或�
 ├── 详情、更新、删除、运行：AccessControl.authorize(...)
 └── 列表：createListConstraint(...) → AuthorizedResourceQuery
 
-授权实现（可替换）
-├── access_scope：编译 JSON 条件
-├── 固定归属 + grant：归属 WHERE + EXISTS grant
-└── resources + grant：资源根记录条件 + EXISTS grant
+平台实现（可替换）
+├── InlineResourceContextStore：资源主表 JSONB
+├── AuthorizedResourceQuery：编译 Context JSON 条件
+└── ExtensionTableResourceContextStore：未来集中扩展表实现
 ```
 
-资源 Repository 只传入资源类型、资源 ID 列和业务筛选条件，不能手写 member/role、scope 或 grant 查询。额外授权参与列表查询时，统一授权查询实现优先生成 `EXISTS` 子查询，避免直接 join grant 表导致多条授权重复资源行；PostgreSQL 可将其优化为 semijoin。
+资源 Repository 只传入资源类型、资源 ID 列和业务筛选条件，不能手写 member/role、`resource_context` 或授权查询。
 
 对现有“属性、组织归属、权限混在一张表”的资源，执行顺序：
 
-1. 盘点现有组织、owner、公开和分享数据，按最终选定的物理模型制定回填规则。
-2. 先切入稳定的 `AccessControlModule` 与 `AuthorizedResourceQuery` 调用接口，删除资源模块中直接读取 member/role 或拼授权 SQL 的逻辑。
-3. 新增目标权限存储并回填数据；创建、更新、删除与授权侧写入/清理必须在同一事务中完成。
+1. 盘点现有组织、owner 和公开数据，制定到 `resource_context` 的回填规则。
+2. 先切入稳定的 `AccessControlModule`、`ResourceContextStore` 与 `AuthorizedResourceQuery` 调用接口，删除资源模块中直接读取 member/role 或拼授权 SQL 的逻辑。
+3. 在资源主表新增 Context 列与 GIN 索引并回填数据；创建、更新、删除与授权侧写入/清理必须在同一事务中完成。
 4. 校验记录数、ID 集合、归属、公开状态和关键列表结果；列表、详情与资源动作均使用统一授权入口。
 5. 切换所有调用方后删除旧权限路径和废弃字段；不得长期双写。
 
-该边界使 CE 业务领域不理解权限存储细节，EE 又可完全采用自己的资源表与连表授权查询。未来改变归属存储时，替换授权实现和回填数据即可，Route、Service、Web 与资源领域调用接口不变。
+该边界使 CE 业务领域不理解权限存储细节，EE 又可采用自己的 Context schema 与授权查询实现。未来改用 Context 扩展表时，替换平台实现和回填数据即可，Route、Service、Web 与资源领域调用接口不变。
 
 ### 13.9 历史测试治理：隔离并发状态，删除测试专用注入
 

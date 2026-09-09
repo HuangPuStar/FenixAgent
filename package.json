@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/*/*",
+    "apps/*"
   ],
   "overrides": {
     "kysely": "0.28.17",
@@ -25,10 +27,11 @@
     "preview:web": "cd web && bunx vite preview",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "cd web && tsc --noEmit",
-    "lint": "biome check src/ web/src/ web/components/ packages/",
-    "lint:fix": "biome check --write src/ web/src/ web/components/ packages/",
-    "format": "biome format --write src/ web/src/ web/components/ packages/",
-    "format:check": "biome format src/ web/src/ web/components/ packages/",
+    "check:dependencies": "depcruise --config .dependency-cruiser.cjs --output-type err-long apps packages",
+    "lint": "biome check src/ web/src/ web/components/ apps/ packages/",
+    "lint:fix": "biome check --write src/ web/src/ web/components/ apps/ packages/",
+    "format": "biome format --write src/ web/src/ web/components/ apps/ packages/",
+    "format:check": "biome format src/ web/src/ web/components/ apps/ packages/",
     "architecture:check": "bun run scripts/check-architecture.ts",
     "precheck": "bun run scripts/ci.ts",
     "docs:dev": "vitepress dev docs",
@@ -144,6 +147,7 @@
     "@types/uuid": "^10.0.0",
     "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^6.0.2",
+    "dependency-cruiser": "^18.2.0",
     "drizzle-kit": "^0.31.10",
     "happy-dom": "^20.9.0",
     "husky": "^9.1.7",
@@ -153,6 +157,7 @@
     "tw-animate-css": "^1.4.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
-    "vitepress": "^1.6.4"
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.13"
   }
 }
