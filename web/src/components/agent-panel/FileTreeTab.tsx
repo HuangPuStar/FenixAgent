@@ -60,6 +60,14 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const [download, setDownload] = useState<{ path: string; isDir: boolean; error: boolean } | null>(null);
   const downloadControllerRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    // 环境变化时取消旧连接；读取 envId 保证 effect 与当前环境生命周期绑定。
+    if (envId === null && downloadControllerRef.current === null) return;
+    downloadControllerRef.current?.abort();
+    downloadControllerRef.current = null;
+    setDownload(null);
+  }, [envId]);
+
   useEffect(() => () => downloadControllerRef.current?.abort(), []);
 
   // 用最新树数据替换当前树：加载/重校验共用，成功后同时清除过期横幅
@@ -135,22 +143,25 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   );
 
   // ── 删除 ──
-  const { run: runDelete } = useRequest((path: string) => unwrap(fsApi.batchDelete(envId!, [path])), {
-    manual: true,
-    onSuccess: (data) => {
-      const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
-      if (failed && failed.length > 0) {
-        toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
-        return;
-      }
-      setDeleteConfirm(null);
-      refreshTree();
+  const { run: runDelete, loading: deleting } = useRequest(
+    (path: string) => unwrap(fsApi.batchDelete(envId!, [path])),
+    {
+      manual: true,
+      onSuccess: (data) => {
+        const failed = (data as { failed?: Array<{ path: string; error: string }> } | undefined)?.failed;
+        if (failed && failed.length > 0) {
+          toast.error(failed[0].error || t("fileTree.contextMenu.delete"));
+          return;
+        }
+        setDeleteConfirm(null);
+        refreshTree();
+      },
+      onError: (err) => {
+        console.error("Delete failed:", err);
+        toast.error(t("fileTree.contextMenu.delete"));
+      },
     },
-    onError: (err) => {
-      console.error("Delete failed:", err);
-      toast.error(t("fileTree.contextMenu.delete"));
-    },
-  });
+  );
 
   // ── 创建目录 ──
   const { run: runMkdir, loading: makingDirectory } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
@@ -396,6 +407,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         userNodes={visibleSections.user}
         contextMenu={contextMenu}
         deleteConfirm={deleteConfirm}
+        deleting={deleting}
         download={download}
         fileInputRef={fileInputRef}
         folderInputRef={folderInputRef}
