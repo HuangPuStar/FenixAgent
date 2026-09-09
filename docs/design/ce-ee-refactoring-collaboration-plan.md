@@ -63,7 +63,7 @@
 | 4. 资源目录 | RSC-xx-01 至 RSC-xx-06 | 首个闭环外的资源按单资源完整迁移；每一资源另建一组 task |
 | 5. 执行与连接 | EXE-01 | AgentConfig 闭环外的 Machine、workspace/file、Sandbox、ACP relay 与引擎能力迁移 |
 | 6. 自动化与协作 | ORC-01 | Chat/YJS、Workflow、Scheduler、Webhook、Channel 的任务拆分与迁移 |
-| 7. 交付与治理 | DEL-01、DEL-02、DEL-03 | release/preflight、镜像/Compose、operations 与旧根目录/文档治理 |
+| 7. 交付与治理 | DEL-01、DEL-02、DEL-03、DEL-04 | release/preflight、镜像/Compose、operations、历史入口退役与遗留目录归属确认 |
 
 EE-01 至 EE-03 是基于 CE 阶段 2/3 产物的产品线工作，不计入 CE 迁移阶段；其前置条件在第 9 节单独维护。
 
@@ -235,12 +235,13 @@ flowchart TD
 
 **负责人：** CE 任务池
 **前置：** FND-00
+**状态：** ✅ 已完成
 **主要文件：** 根 `package.json`、`tsconfig.json`、`apps/server/`、`apps/web/`、`packages/platform/`、`packages/agent/`、`packages/resources/`。
 
-- [ ] 为 `apps/*` 和既有一级 `packages/*` 建立 workspace package 的基础 metadata、构建配置与 TypeScript 项目边界；两级领域 package 在 ARC-02/ARC-03 后由其所属阶段任务声明公开 export。
-- [ ] 配置 TypeScript path/project reference，使跨包只能通过包名导入；本 task 不迁移任何领域实现。
-- [ ] 只创建 `apps/server`、`apps/web` 的空装配入口和构建配置，不在本 task 移动现有 `src/index.ts` 或 `web/src/main.tsx`；入口迁移由 FND-05 独立完成，避免与 package 契约冻结互相阻塞。
-- [ ] 在 CI 验证当前 `bun run dev`、`bun run build:web`、`bun run precheck` 未被骨架改动破坏。
+- [x] 为 `apps/*` 和既有一级 `packages/*` 建立 workspace package 的基础 metadata、构建配置与 TypeScript 项目边界；两级领域 package 在 ARC-02/ARC-03 后由其所属阶段任务声明公开 export。
+- [x] 配置 TypeScript path/project reference，使跨包只能通过包名导入；本 task 不迁移任何领域实现。
+- [x] 只创建 `apps/server`、`apps/web` 的空装配入口和构建配置，不在本 task 移动现有 `src/index.ts` 或 `web/src/main.tsx`；入口迁移由 FND-05 独立完成，避免与 package 契约冻结互相阻塞。
+- [x] 在 CI 验证当前 `bun run dev`、`bun run build:web`、`bun run precheck` 未被骨架改动破坏。
 
 **验收：** 后续负责人可在新 package 目录独立开发；当前根入口仍是唯一运行入口且全量检查通过。
 
@@ -286,13 +287,14 @@ flowchart TD
 
 **负责人：** CE 任务池
 **前置：** FND-02
-**主要文件：** `apps/server/`、`apps/web/`、根 `package.json`、Bun/Vite 配置、现有测试入口。
+**主要文件：** `apps/server/`、`apps/web/`、根 `package.json`、`scripts/ci.ts`、Bun/Vite/测试配置与入口文档。
 
 - [ ] 将现有 `src/index.ts` 与 `web/src/main.tsx` 分别迁入 `apps/server`、`apps/web`；保留现有服务和前端模块，只改变应用入口与装配位置，不迁移资源领域代码。
-- [ ] 修正 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行。
-- [ ] 删除已迁移的根入口，运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
+- [ ] 修正根 `package.json` 的 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行；不得新增指向旧入口的兼容 script。
+- [ ] 更新根 `scripts/ci.ts` 的 format、lint、typecheck 与 test 路径：纳入 `apps/*`，并删除仅为已迁移 app 入口保留的根路径。尚未迁移的领域代码仍位于根 `src/`、`web/` 时，保留其检查路径并在 task 清单中标记后续归属，不得为了路径整洁提前排除检查。
+- [ ] 删除已迁移的根入口，并逐项记录仍引用根 `src/`、`web/` 的构建、测试、Vite、Docker、Compose、脚本和文档路径及其所属后续 task；运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
 
-**验收：** `apps/server`、`apps/web` 是唯一应用入口；现有功能行为不变，开发、测试与生产构建均可运行。镜像与 Compose 切换由阶段 7 的 DEL-02 完成。
+**验收：** `apps/server`、`apps/web` 是唯一应用入口；现有功能行为不变，开发、测试与生产构建均可运行；根 `scripts/` 只保留全仓薄命令，不承载复制出的 app 或领域逻辑。镜像与 Compose 切换由阶段 7 的 DEL-02 完成。
 
 ## 5. 第二阶段：平台基础与后续领域任务
 
@@ -583,9 +585,23 @@ flowchart TD
 
 - [ ] 为 Site/Product View、系统管理和其余交付能力创建按领域拆分的迁移 task，明确数据、route、Web、权限、运维和删除条件。
 - [ ] 将模块边界检查、release manifest、升级演练和 operations 文档纳入 CI/release 流程。
-- [ ] 在全部替代入口验证后删除旧根目录结构、过时部署脚本和失真的架构文档；不保留兼容 shim。
+- [ ] 在全部替代入口验证后，完成已明确归属的旧入口、过时部署脚本和失真架构文档退役；更新根 `package.json`、`scripts/ci.ts`、测试/Vite 配置、Docker/Compose 与文档中所有已删除根 `src/`、`web/` 路径，并用 `rg` 验证无残留引用；尚未确认归属的目录不得在本 task 中猜测删除，转交 DEL-04。
 
 **验收：** 新目录、CI、部署和 operations 文档是唯一权威入口；历史入口已删除且发布治理可审计。
+
+### DEL-04：人工确认遗留目录归属并完成清理
+
+**所属阶段：** 7. 交付与治理
+**前置：** DEL-03
+**主要文件：** `docs/operations/legacy-directory-disposition.md`、相关迁移目标、根 `package.json`、`scripts/`、CI/release 配置与文档。
+
+- [ ] 建立遗留目录处置清单。逐项列出根 `src/`、`web/`、`drizzle/`、`docker/`、`scripts/`，以及 `packages/` 的旧一级包、`docs/` 的旧权威内容、`tools/`、`spec/`、`demo/`、`side-project/`、`workflow-examples/` 中每个候选子目录或文件；不得将 `packages/`、`docs/` 或 `scripts/` 整个目录作为删除目标。
+- [ ] 每一项由人工确认且只选择一种处置：`保留`（记录长期职责、owner 与下次复核条件）、`迁移`（记录唯一目标路径、执行 task/PR、验证命令与源文件删除条件）或 `删除`（记录无替代保留理由、删除范围与回归验证）。未确认项保持在清单中，禁止凭目录名推断删除。
+- [ ] 对已选择迁移的项，先在目标位置完成验证并切换全部调用方、构建/测试/交付脚本与文档引用，再删除源项；禁止复制后长期双存或新增兼容 shim。
+- [ ] 对已选择删除的项，在删除后以 `rg` 检查仓库配置、CI/release、Docker/Compose、测试与文档不存在旧路径引用；按受影响范围运行 `precheck`、Web build、docs build、镜像/Compose smoke test 或对应专项验证。
+- [ ] 清单中没有未确认项、没有缺少 owner/验证记录的保留项，且所有迁移/删除项均已在对应 PR/commit 或 task 中完成后，才可将本 task 标记完成。
+
+**验收：** 每个遗留候选都有经人工确认的唯一处置与可追溯证据；仓库不保留未说明的旧/新同职责逻辑、入口或文档；没有因批量删除目录而误删仍在使用的示例、规格或运行能力。
 
 ## 9. EE 初版：仅替换用户体系与权限
 
@@ -665,8 +681,8 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 0 | ARC-01 重构清单与回归基线 | ⬜ 可领取 | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
 | 0 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
-| 1 | FND-01 workspace package 与应用入口骨架 | ⬜ 可领取 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
-| 1 | FND-02 包依赖边界 CI | 🔒 等待 FND-01 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
+| 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
+| 1 | FND-02 包依赖边界 CI | ⬜ 可领取 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | 1 | FND-05 应用入口迁移 | 🔒 等待 FND-02 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
 | 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
@@ -691,5 +707,6 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 7 | DEL-01 发布 preflight 与 release 编排 | 🔒 等待 M1 | M1、PLT-04 | env 模板、preflight、release、operations 文档 |
 | 7 | DEL-02 镜像与 Compose 交付入口 | 🔒 等待 DEL-01 | FND-05、DEL-01 | Dockerfile、Compose、镜像/启动 smoke test |
 | 7 | DEL-03 交付治理与历史入口退役 | 🔒 等待阶段 6、DEL-02 | ORC-01、DEL-02 | Site/Product View、系统管理 task 拆分、CI/release、旧入口/文档退役 |
+| 7 | DEL-04 遗留目录归属确认与清理 | 🔒 等待 DEL-03 | DEL-03 | 人工确认的遗留目录处置清单、迁移/删除证据；独占最终目录退役 |
 
 EE-C 的 `EE-01` 在 M0.5 平台基线（FND-05、PLT-01 至 PLT-04 均完成）后开始，`EE-02` 依赖 EE-01 与 ARC-02，`EE-03` 依赖 CE M1 和 EE-02；详见第 9 节。这样 A、B 可以先完成阶段 1、2 的非业务任务，再与资源迁移任务并行领取后续工作，而 C 不与 CE 资源迁移争抢文件。
