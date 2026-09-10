@@ -210,6 +210,7 @@
     "machineValidationError": "机器为必选项",
     "model": "模型",
     "modelPlaceholder": "选择模型",
+    "modelValidationError": "模型为必选项",
     "mode": "模式",
     "steps": "步数 (1-1000)",
     "stepsHint": "Agent 最大思考步骤数。建议：简单任务 10-30，复杂任务 50-100",

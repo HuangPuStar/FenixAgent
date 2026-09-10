@@ -87,6 +87,7 @@ const FIELD_SECTIONS: Partial<Record<keyof AgentEditorValues, AgentEditorSection
 
 const FIELD_IDS: Partial<Record<keyof AgentEditorValues, string>> = {
   name: "agent-editor-name",
+  modelId: "agent-editor-model-options",
   defaultNamespaces: "agent-editor-default-namespaces",
   maxResults: "agent-editor-max-results",
 };

@@ -243,6 +243,8 @@ export function SinglePicker({
   label,
   icon: Icon,
   disabled,
+  invalid = false,
+  errorMessage,
   requireGroup = false,
   renderIcon,
 }: {
@@ -252,6 +254,8 @@ export function SinglePicker({
   label: string;
   icon: typeof Cpu;
   disabled: boolean;
+  invalid?: boolean;
+  errorMessage?: string;
   requireGroup?: boolean;
   renderIcon?: (item: AgentEditorOption) => ReactNode;
 }) {
@@ -312,7 +316,15 @@ export function SinglePicker({
           />
         )}
         <div className="agent-editor-library-picker__results">
-          <div className={listClass} role="radiogroup" aria-label={label}>
+          <div
+            id={Icon === Cpu ? "agent-editor-model-options" : undefined}
+            className={listClass}
+            role="radiogroup"
+            tabIndex={-1}
+            aria-label={label}
+            aria-invalid={invalid}
+            aria-describedby={invalid && errorMessage ? "agent-editor-model-error" : undefined}
+          >
             {paged.items.map((item) => (
               <button
                 className={`${item.id === value ? "is-selected " : ""}${item.unavailable ? "is-unavailable" : ""}`}
@@ -349,6 +361,11 @@ export function SinglePicker({
               </button>
             ))}
           </div>
+          {invalid && errorMessage && (
+            <p id="agent-editor-model-error" className="agent-editor-field-error" role="alert">
+              {errorMessage}
+            </p>
+          )}
           <EditorPagination page={page} total={visible.length} pageSize={size} onPageChange={setPage} />
         </div>
       </div>
