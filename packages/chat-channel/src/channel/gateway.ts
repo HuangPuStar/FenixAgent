@@ -7,7 +7,7 @@ import type { DocManager } from "../state";
 import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { type ClientConnection, PROMPT_TIMEOUT_MS, type SharedRelay, type WsConnection } from "./connection-types";
+import type { ClientConnection, SharedRelay, WsConnection } from "./connection-types";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
@@ -386,14 +386,9 @@ export class Gateway {
     }
     // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
     shared.pendingSessionSyncIds?.clear();
-    // 在途 prompt 登记与超时定时器一并清空：relay 释放后不再需要收敛，
-    // 残留定时器到点会 dispatch 到已销毁的 doc（且引用泄漏）
+    // 在途 prompt 登记随 relay 释放一并清空
     shared.pendingPromptIds?.clear();
     shared.pendingPromptTurns?.clear();
-    if (shared.pendingPromptTimeouts) {
-      for (const timer of shared.pendingPromptTimeouts.values()) clearTimeout(timer);
-      shared.pendingPromptTimeouts.clear();
-    }
     // 回放窗口定时器一并清理（同泄漏语义），窗口判定缓存随之重置
     if (shared.replayWindowTimer) {
       clearTimeout(shared.replayWindowTimer);
@@ -469,20 +464,6 @@ export class Gateway {
           if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
           shared.pendingPromptTurns.set(rpcId, turnId);
         }
-        if (!shared.pendingPromptTimeouts) shared.pendingPromptTimeouts = new Map();
-        const schedule = () => {
-          const timer = setTimeout(() => {
-            if (!shared.pendingPromptIds?.has(rpcId)) return;
-            const lastInboundAt = shared.lastInboundAt ?? 0;
-            if (Date.now() - lastInboundAt < PROMPT_TIMEOUT_MS) {
-              schedule();
-              return;
-            }
-            this.dependencies.relayEvents.convergeStuckPrompt(shared, rpcId);
-          }, PROMPT_TIMEOUT_MS);
-          shared.pendingPromptTimeouts?.set(rpcId, timer);
-        };
-        schedule();
       },
     };
   }

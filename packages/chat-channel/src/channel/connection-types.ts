@@ -18,14 +18,6 @@ export type RelayMessage = EngineRelayMessage;
  */
 export const REPLAY_WINDOW_MS = 10_000;
 
-/**
- * prompt 静默超时阈值（ms）。send_prompt 登记后若 agent 全程无任何业务帧
- * （流式输出/事件/JSON-RPC 响应均刷新 lastInboundAt，保活帧除外）持续超过该阈值，
- * 判定 prompt 已卡死（如被路由到错误 session 后 agent 无响应），收敛 turn_failed，
- * 防止前端 loading 永久卡死。期间有任何业务帧则超时判定顺延，不误杀长输出。
- */
-export const PROMPT_TIMEOUT_MS = 5 * 60_000;
-
 /** 最小 WebSocket 连接抽象：与传输框架解耦（Elysia WS / Hono WSContext 适配为同一形状） */
 export interface WsConnection {
   /**
@@ -107,14 +99,6 @@ export interface SharedRelay {
    * 聚合层能区分终态归属，stale turn 的迟到终态不再误伤新 turn。
    */
   pendingPromptTurns?: Map<number | string, string>;
-  /**
-   * 在途 prompt 的超时定时器（rpcId → timer）。registerPendingPrompt 登记时启动，
-   * 到点时若 agent 全程静默（lastInboundAt 距今 ≥ PROMPT_TIMEOUT_MS）收敛 turn_failed，
-   * 有业务帧则重排等待；JSON-RPC result/error 消费登记时清除（见 clearPendingPromptTimeout）。
-   */
-  pendingPromptTimeouts?: Map<number | string, ReturnType<typeof setTimeout>>;
-  /** 最近一次收到 Agent 业务入站消息的时间戳（ms），流式输出期间持续刷新；保活帧不更新 */
-  lastInboundAt?: number;
   /** session/list 轮询因 status 门禁未置位而连续跳过的次数（连续 3 次告警，成功后清零） */
   sessionListSkipCount?: number;
   /**
@@ -143,17 +127,4 @@ export interface SharedRelay {
   replaySkipSynthesis?: boolean;
   /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
   callbackAssistantEntryId?: string | null;
-}
-
-/**
- * 清除指定 rpcId 的 prompt 超时定时器。
- * 在 JSON-RPC result（成功）/error（拒绝）消费登记时调用，防止定时器到点后
- * 对已正常完成的 prompt 误收敛；超时收敛路径自身也会消费登记并清除定时器。
- */
-export function clearPendingPromptTimeout(shared: SharedRelay, rpcId: number | string): void {
-  const timer = shared.pendingPromptTimeouts?.get(rpcId);
-  if (timer) {
-    clearTimeout(timer);
-    shared.pendingPromptTimeouts?.delete(rpcId);
-  }
 }
