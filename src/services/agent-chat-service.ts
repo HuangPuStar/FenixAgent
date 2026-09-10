@@ -81,7 +81,7 @@ export interface PromptTurn {
 
 /**
  * 基于已有的 EngineRelayHandle 创建 AgentSession。
- * 调用方负责实例创建（ensureRunning / spawnInstanceViaController）。
+ * 调用方负责解析持久 Instance 并通过 Coordinator 确保 runtime。
  */
 export function createAgentSession(config: {
   relayHandle: EngineRelayHandle;
@@ -362,12 +362,13 @@ export interface OpenAgentSessionResult {
 }
 
 /**
- * 一站式打开 Agent 会话：启动独立实例 → 连接 relay → 创建 AgentSession → startPromptTurn。
+ * 一站式打开 Agent 会话：解析持久 api/primary Instance → 确保 runtime → 连接 relay →
+ * 创建 AgentSession → startPromptTurn。
  *
- * 每次调用创建全新实例（不复用），dispose 时自动销毁。
- * WS relay 路径走 ensureRunning 复用实例，两者策略独立。
+ * 每次调用创建独立 relay/ACP session/turn，但复用当前环境与用户的持久 Instance；
+ * dispose 只释放请求资源，runtime 生命周期由 Coordinator 管理。
  *
- * @param input.agentConfigId — agent_config.id（非 environment.id），需解析为对应的 environment 后再 spawn
+ * @param input.agentConfigId — agent_config.id（非 environment.id），用于解析 Environment 与持久 Instance
  */
 export async function openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult> {
   // 1. 解析 agentConfigId (agent_config.id) → environmentId
