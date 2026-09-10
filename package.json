@@ -26,7 +26,7 @@
     "build:web": "bunx vite build --config apps/web/vite.config.ts",
     "preview:web": "bunx vite preview --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:web": "cd web && tsc --noEmit",
+    "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",
     "check:dependencies": "depcruise --config .dependency-cruiser.cjs --output-type err-long apps packages",
     "lint": "biome check src/ web/src/ web/components/ apps/ packages/",
     "lint:fix": "biome check --write src/ web/src/ web/components/ apps/ packages/",
