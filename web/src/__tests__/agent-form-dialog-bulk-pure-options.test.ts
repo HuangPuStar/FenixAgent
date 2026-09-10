@@ -156,7 +156,7 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
     expect(mapModelOptions([entry])).toEqual([
       {
         value: entry.id,
-        label: displayName,
+        label: displayName === "(group)" ? "group" : displayName,
         modelId: "model-name",
         group: { id: "organization:provider-name", label: "Open AI", scope: "organization" },
       },

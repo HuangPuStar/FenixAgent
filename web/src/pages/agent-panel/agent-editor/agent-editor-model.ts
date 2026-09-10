@@ -235,14 +235,20 @@ export function buildAgentEditorPayload(values: AgentEditorValues, mode: "create
   return payload;
 }
 
-/** 模型选项始终使用数据库 UUID，展示标签保留 provider 来源组织。 */
+/** 模型名称存在括号时仅展示括号内文本；无括号时保留原名称。 */
+export function getModelDisplayLabel(displayName: string): string {
+  const parenthesizedName = displayName.match(/[（(]([^()（）]+)[）)]\s*$/)?.[1]?.trim();
+  return parenthesizedName || displayName;
+}
+
+/** 模型选项始终使用数据库 UUID，并将展示名称与 provider 分组在视图边界处收敛。 */
 export function mapModelOptions(models: ModelEntry[]): AgentModelOption[] {
   return models.map((model) => {
     const access = model.providerResourceAccess;
     const provider = model.providerDisplayName;
     return {
       value: model.id,
-      label: model.displayName,
+      label: getModelDisplayLabel(model.displayName),
       modelId: model.modelId,
       group: {
         id: `${access?.sourceOrganizationId ?? "organization"}:${model.providerResourceKey ?? model.provider}`,

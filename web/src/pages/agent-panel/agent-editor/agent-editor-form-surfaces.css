@@ -38,7 +38,7 @@
 }
 .agent-editor-root .agent-single-picker-current strong {
   color: #285bb6;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 680;
 }
 .agent-editor-root .agent-single-picker-current span {
@@ -134,7 +134,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: #31425d;
-  font-size: 13px;
+  font-size: 17px;
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -220,7 +220,7 @@
 }
 .agent-editor-root .agent-model-summary strong {
   color: #34455f;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 680;
 }
 .agent-editor-root .agent-model-summary p {
