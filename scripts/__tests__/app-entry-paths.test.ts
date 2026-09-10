@@ -34,6 +34,15 @@ test("开发、构建和静态托管使用 apps 入口", () => {
   expect(staticPlugin).toContain('"apps/web/dist"');
 });
 
+// 前端类型检查必须包含 apps 入口，否则 Router 的全局类型注册会在迁移后丢失。
+test("前端类型检查使用 apps web 配置", () => {
+  const packageJson = JSON.parse(readRepoFile("package.json")) as { scripts: Record<string, string> };
+  const webTsconfig = readRepoFile("apps/web/tsconfig.json");
+
+  expect(packageJson.scripts["typecheck:web"]).toContain("apps/web/tsconfig.json");
+  expect(webTsconfig).toContain('"../../web/src/**/*.tsx"');
+});
+
 // 前端入口迁入 apps 后，Tailwind 仍须扫描保留在 web 下的页面与组件源码。
 test("Tailwind 扫描 web 领域源码以生成页面 utility 样式", () => {
   const styles = readRepoFile("web/src/index.css");

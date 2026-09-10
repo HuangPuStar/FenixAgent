@@ -8,5 +8,12 @@
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "../../web/src/**/*.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../../web/src/**/*.ts",
+    "../../web/src/**/*.tsx",
+    "../../web/components/**/*.ts",
+    "../../web/components/**/*.tsx"
+  ]
 }
