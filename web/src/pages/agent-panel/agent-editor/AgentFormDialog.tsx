@@ -121,7 +121,6 @@ function AgentEditorBody(
   const [activeSection, setActiveSection] = useState<AgentEditorSection>("identity");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [validationSummary, setValidationSummary] = useState("");
   const templateTriggerRef = useRef<HTMLButtonElement>(null);
   const initializedEditorKeyRef = useRef<string | null>(null);
   const editor = useAgentEditor({ ...props, translate: t, translatePanel: tp });
@@ -167,17 +166,16 @@ function AgentEditorBody(
       if (props.mode === "create" && !isValidAgentNameInput(next.name.trim())) {
         form.setError("name", { message: "invalid" });
         setActiveSection("identity");
-        setValidationSummary(t("editor.validationSummary"));
+        toast.warning(t("editor.validationSummary"));
         requestAnimationFrame(() => document.getElementById("agent-editor-name")?.focus());
         return;
       }
       await editor.save(next);
       if (props.mode === "edit") form.reset(next);
-      setValidationSummary("");
     },
     (errors) => {
       const field = firstInvalidField(errors);
-      setValidationSummary(t("editor.validationSummary"));
+      toast.warning(t("editor.validationSummary"));
       if (!field) return;
       setActiveSection(FIELD_SECTIONS[field] ?? "identity");
       requestAnimationFrame(() => {
@@ -255,11 +253,6 @@ function AgentEditorBody(
               {t("editor.optionalResourcesFailed", { resources: data.resourceErrors.join(", ") })}
             </div>
           )}
-          {validationSummary && (
-            <div className="agent-editor-validation-summary" role="alert" aria-live="assertive">
-              {validationSummary}
-            </div>
-          )}
           <AgentEditorHeader
             title={title}
             name={values.name}
@@ -297,19 +290,6 @@ function AgentEditorBody(
                   </TabsTrigger>
                 ))}
               </TabsList>
-              <div className="agent-editor-readiness">
-                <div>
-                  <span>{t("editor.publishCheck")}</span>
-                  <strong>6 / 6</strong>
-                </div>
-                <i>
-                  <span />
-                </i>
-                <p>
-                  <Check />
-                  {t("editor.configurationReady")}
-                </p>
-              </div>
             </nav>
             <main className="agent-editor-content">
               {SECTIONS.map(({ id }) => (
