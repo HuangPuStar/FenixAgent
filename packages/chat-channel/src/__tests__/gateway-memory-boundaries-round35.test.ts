@@ -88,7 +88,6 @@ function createHarness(overrides: Partial<GatewayDependencies> = {}): Harness {
     createMessageHandler: () => () => undefined,
     bindInstanceSession: () => undefined,
     openReplayWindow: () => undefined,
-    convergeStuckPrompt: () => undefined,
   } as unknown as RelayEventHandler;
   const dependencies: GatewayDependencies = {
     registry,

@@ -29,7 +29,7 @@ import {
 import type { DocManager } from "../state";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
-import { clearPendingPromptTimeout, REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
 
 /** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
 function agentRuntimeError(
@@ -102,11 +102,6 @@ const REPLAY_NEEDS_TURN: ReadonlySet<NormalizedEventType> = new Set([
 /** 生成回放 turnId（turn_replay_ 前缀与实时 turn 区分，便于日志排查） */
 function createReplayTurnId(): string {
   return `turn_replay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-/** 保活类消息类型（与 acp-idle-monitor 的 isIgnoredActivityMessageType 规则一致），不计入业务帧 */
-function isKeepaliveMsgType(type: string | undefined): boolean {
-  return type === "keep_alive" || type === "heartbeat" || type === "ping" || type === "pong";
 }
 
 /** 读取聚合层活动 turn（Session Doc root.session.activeTurnId/Status 为权威，与 chat-writer 一致） */
@@ -191,18 +186,6 @@ export class RelayEventHandler {
     // 每次从 Agent 收到消息时更新活跃时间，防止实例在活跃对话中被空闲回收
     // touchInstanceActivity 内部已过滤 keep_alive/ heartbeat/ping/pong 等保活消息
     this.dependencies.touchInstanceActivity(shared.instanceId, raw);
-
-    // 刷新"最后业务入站帧"时间戳：prompt 超时收敛（gateway 定时器）依赖它判断
-    // agent 是否仍在活跃输出。**仅 agent 输出/事件类帧刷新**：session/update 通知
-    // 与私有帧（流式输出/工具/权限）代表 agent 活跃；JSON-RPC 响应帧（result/error）
-    // 不刷新——否则 10s 一次的 list_sessions 轮询响应会持续刷新时间戳，卡死的
-    // prompt（agent 全程静默）永远等不到超时收敛（判定被无限重排，loading 永久）。
-    // prompt 自身的 result/error 由 pendingPromptIds 消费分支收敛，不依赖此时间戳。
-    const isRpcResponse =
-      rpcCheck != null && rpcCheck.id !== undefined && ("result" in rpcCheck || "error" in rpcCheck);
-    if (!isKeepaliveMsgType(msgType) && !isRpcResponse) {
-      shared.lastInboundAt = Date.now();
-    }
 
     // binding 校验：session-bound ACP 通知（session/update、peri/agent_event、
     // peri/unstable_event）携带的 sessionId 必须与当前实例绑定的 ACP session 一致，
@@ -548,7 +531,6 @@ export class RelayEventHandler {
       const rpcError = rpcCheck.error as Record<string, unknown> | undefined;
       if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
         shared.pendingPromptIds?.delete(rpcId);
-        clearPendingPromptTimeout(shared, rpcId);
         // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
         const turnId = shared.pendingPromptTurns?.get(rpcId);
         shared.pendingPromptTurns?.delete(rpcId);
@@ -606,7 +588,6 @@ export class RelayEventHandler {
       if (rpcId !== undefined && rpcId !== null && shared.pendingPromptIds?.has(rpcId) === true) {
         shared.pendingPromptIds.delete(rpcId);
         shared.pendingPromptTurns?.delete(rpcId);
-        clearPendingPromptTimeout(shared, rpcId);
       }
       const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
       if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
@@ -772,35 +753,6 @@ export class RelayEventHandler {
     } catch (err) {
       this.dependencies.reportError("[YJS-FE] processNormalizedEvent failed, event skipped:", err);
     }
-  }
-
-  /**
-   * 收敛卡死的在途 prompt（gateway 超时定时器到点且 agent 全程静默时调用）。
-   * 消费登记并清除定时器后收敛 turn_failed——与 error 拒绝路径相同的终态语义，
-   * 使前端 loading 不会永久卡死。错误内容脱敏（通用文案），只记录实例上下文。
-   */
-  convergeStuckPrompt(shared: SharedRelay, rpcId: number | string): void {
-    if (!shared.pendingPromptIds?.has(rpcId)) return;
-    shared.pendingPromptIds.delete(rpcId);
-    clearPendingPromptTimeout(shared, rpcId);
-    // 回传 turnId：聚合层按归属终结对应 turn（stale turn 的迟到终态不误伤新 turn）
-    const turnId = shared.pendingPromptTurns?.get(rpcId);
-    shared.pendingPromptTurns?.delete(rpcId);
-    this.dependencies.reportError("[YJS-FE] prompt timed out (no agent response)", {
-      instanceId: shared.instanceId,
-    });
-    const publicError = agentRuntimeError(
-      "AGENT_RUNTIME.PROMPT_TIMEOUT",
-      "relay.prompt_timeout",
-      this.dependencies.log,
-    );
-    // Prompt 超时同样是 turn 终态，只进入会话时间线，不生成顶部连接错误。
-    this.dispatch(shared, {
-      type: "turn_failed",
-      update: { publicError },
-      content: null,
-      turnId,
-    });
   }
 
   private sendSafeErrorToRcsSession(shared: SharedRelay, error: PublicError): void {

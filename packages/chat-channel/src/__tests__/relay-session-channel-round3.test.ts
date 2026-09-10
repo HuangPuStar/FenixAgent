@@ -187,21 +187,18 @@ describe("relay 与会话频道的内存边界", () => {
     expect(sent[0]?.method).toBe("session/list");
   });
 
-  // 无效 sessionUpdate 与无 id 的 result 不得生成投影；保活帧不改变业务入站时间，但未知事件仍会留下活跃信号。
-  test("ignores unknown events and idless results without treating keepalive as activity", async () => {
+  // 无效 sessionUpdate、无 id 的 result 与保活帧均不得生成投影。
+  test("ignores unknown events, idless results, and keepalive frames", async () => {
     const { manager, handler } = await setupRelay();
     const shared = relay("rcs-1");
-    shared.lastInboundAt = 42;
     const consume = handler.createMessageHandler(shared);
 
     await consume(message({ type: "ping" }));
-    expect(shared.lastInboundAt).toBe(42);
     await consume(message({ jsonrpc: "2.0", result: { stopReason: "end_turn" } }));
     await consume(
       message({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "not_supported" } } }),
     );
 
-    expect(shared.lastInboundAt).toBeGreaterThan(42);
     expect(getEntriesMap(manager.getChatYdoc("rcs-1")!).size).toBe(0);
   });
 
