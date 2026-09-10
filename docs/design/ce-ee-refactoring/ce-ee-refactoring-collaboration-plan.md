@@ -202,12 +202,13 @@ flowchart TD
 
 **负责人：** CE 任务池  
 **前置：** 无；与 ARC-01、ARC-02 并行  
+**状态：** ✅ 已完成
 **主要文件：** `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts`、`src/services/environment-*.ts`、`src/transport/agent-relay.ts`、`packages/orchestration/`、`packages/plugin-sdk/` 及现有运行测试。
 
-- [ ] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
-- [ ] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
-- [ ] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
-- [ ] 向 ARC-03 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选签名；由 ARC-03 冻结后再开始代码提取。
+- [x] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
+- [x] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
+- [x] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
+- [x] 向 ARC-03 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选边界；具体公开签名由 ARC-03 冻结后再开始代码提取。
 
 **验收：** 负责人不修改共享 workspace、SDK 或 migration 文件，也能完成真实调用图和可保护现有行为的测试；`AGT-01` 不需要再次探索运行链路。
 
@@ -674,7 +675,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 阶段 | Task | 状态（初始） | 前置已完成条件 | 共享文件锁 / 交付物 |
 | --- | --- | --- | --- | --- |
 | 0 | ARC-01 重构清单与回归基线 | ✅ 已完成（liu xue yan） | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
-| 0 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
+| 0 | AGT-00 运行链路盘点与特征测试 | ✅ 已完成 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
@@ -684,9 +685,9 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
 | 2 | PLT-04 统一 server env loader | 🔒 等待 FND-03 | FND-03 | env loader、模块 env 声明与 bootstrap 注入；不改 deploy |
-| 3 | ARC-03 冻结首个资源闭环契约 | 🔒 等待 ARC-01、ARC-02、AGT-00 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
+| 3 | ARC-03 冻结首个资源闭环契约 | 🔒 等待 ARC-02 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
 | 3 | DAT-01 AgentConfig 能力簇数据治理 | 🔒 等待 PLT-01 与 ARC-03 | PLT-01、ARC-03 | 资源 ID、ownership、绑定表治理；独占 Drizzle migration journal |
-| 3 | AGT-01 runtime 与 InstanceManager | 🔒 等待 AGT-00、FND-01、ARC-03 | AGT-00、FND-01、ARC-03 | `agent-runtime`、`agent-instance`；不改资源 schema |
+| 3 | AGT-01 runtime 与 InstanceManager | 🔒 等待 ARC-03 | AGT-00、FND-01、ARC-03 | `agent-runtime`、`agent-instance`；不改资源 schema |
 | 3 | WEB-01 CE Web Shell 与装配骨架 | 🔒 等待 FND-03、FND-05 | FND-03、FND-05 | `apps/web` Shell、路由装配；不创建资源页面 |
 | 3 | REF-01 至 REF-04 资源运行能力 | 🔒 等待 DAT-01 | DAT-01、DB 锁空闲 | 模型/Provider、Skill、MCP、知识库/记忆的首期 service/route/web/运行解析；独占 DB 锁 |
 | 3 | ENV-01 Environment、节点、Site App | 🔒 等待 DAT-01、AGT-01 | DAT-01、AGT-01、DB 锁空闲 | 首期节点/Environment/Site App service/route/web、删除清理；独占 DB 锁 |

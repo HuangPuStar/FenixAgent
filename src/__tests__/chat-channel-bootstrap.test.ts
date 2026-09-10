@@ -83,6 +83,33 @@ describe("chat channel bootstrap", () => {
     controller.gateway.handleClose("yjs_1");
   });
 
+  // 浏览器 locator 指定的持久 Instance 必须原样交给宿主 ensureRunning；宿主会按 owner
+  // 重新查询并校验归属，不能退化为仅按 Environment 自动选择 chat/default。
+  test("forwards the requested instance uid to the runtime ownership boundary", async () => {
+    const ensureRunningCalls: Array<[string, string, string | undefined]> = [];
+    setChatChannelBootstrapDeps({
+      environmentRepo: {
+        getById: async () => ({ id: "env-1", organizationId: "org-1", machineName: "Agent", userId: "user-1" }),
+      } as never,
+      ensureRunning: (async (ownerUserId: string, environmentId: string, requestedInstanceUid?: string) => {
+        ensureRunningCalls.push([ownerUserId, environmentId, requestedInstanceUid]);
+        return requestedInstanceUid ?? "instance-default";
+      }) as never,
+      connectAgentRelay: (async () => fakeRelayHandle()) as never,
+    });
+
+    const controller = getChatChannelController();
+    const ws = createWs();
+    await controller.gateway.handleOpen(ws, "yjs_1", "user-1", "env-1", {
+      instanceUid: "inst-owned",
+      rcsSessionId: "rcs-1",
+    });
+
+    expect(ws.closed).toHaveLength(0);
+    expect(ensureRunningCalls).toEqual([["user-1", "env-1", "inst-owned"]]);
+    controller.gateway.handleClose("yjs_1");
+  });
+
   // 场景 K：同一 agent 的第二个会话打开时先复用运行实例，不再次 spawn；
   // 配额检查只发生在新建分支（由宿主 ensureRunning 承担，桥接层不得绕过）
   test("reuses a running instance via ensureRunning before spawning a new one", async () => {
