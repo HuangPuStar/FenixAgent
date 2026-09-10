@@ -452,3 +452,13 @@
   background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-1));
   color: var(--color-warning);
 }
+.agent-editor-field-error {
+  margin: 8px 0 0;
+  color: var(--color-destructive, #dc2626);
+  font-size: 12px;
+}
+.agent-model-options[aria-invalid="true"] {
+  border-radius: 12px;
+  outline: 2px solid color-mix(in srgb, var(--color-destructive, #dc2626) 45%, transparent);
+  outline-offset: 3px;
+}

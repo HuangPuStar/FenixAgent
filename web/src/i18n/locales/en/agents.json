@@ -210,6 +210,7 @@
     "machineValidationError": "Machine is required",
     "model": "Model",
     "modelPlaceholder": "Select model",
+    "modelValidationError": "Model is required",
     "mode": "Mode",
     "steps": "Steps (1-1000)",
     "stepsHint": "Max thinking steps for the agent. Suggested: 10-30 for simple tasks, 50-100 for complex tasks",

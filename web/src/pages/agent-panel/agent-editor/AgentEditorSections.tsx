@@ -105,13 +105,15 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
       <Controller
         name="modelId"
         control={form.control}
-        render={({ field }) => (
+        render={({ field, fieldState }) => (
           <SinglePicker
             options={data.models}
             value={field.value}
             onChange={field.onChange}
             label={t("form.model")}
             icon={Cpu}
+            invalid={!!fieldState.error}
+            errorMessage={t("form.modelValidationError")}
             requireGroup
             renderIcon={(item) => (
               <Suspense fallback={<Cpu />}>

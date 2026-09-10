@@ -160,8 +160,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // 缓存用户首次发送的 prompt，等 activeSessionId 就绪后自动发送
   const pendingSendRef = useRef<ContentBlock[] | null>(null);
   const pendingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interfaceColumnRef = useRef<HTMLDivElement>(null);
-  const inputDockRef = useRef<HTMLDivElement>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   // ACP 返回的真实 token 用量（prompt/complete 响应），用于 ContextPanel 优先展示
   const [promptUsage, setPromptUsage] = useState<PromptUsage | null>(null);
@@ -171,18 +169,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Reset scene prompt flag when session changes
   useEffect(() => {
     scenePromptUsedRef.current = false;
-  }, []);
-
-  useEffect(() => {
-    const column = interfaceColumnRef.current;
-    const dock = inputDockRef.current;
-    if (!column || !dock) return;
-    const updateClearance = () =>
-      column.style.setProperty("--chat-input-clearance", `${Math.ceil(dock.offsetHeight + 8)}px`);
-    updateClearance();
-    const observer = new ResizeObserver(updateClearance);
-    observer.observe(dock);
-    return () => observer.disconnect();
   }, []);
 
   // Persist active session id to localStorage when it changes via YJS
@@ -494,7 +480,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
-      <div ref={interfaceColumnRef} className="chat-interface-column flex flex-col flex-1 min-w-0">
+      <div className="chat-interface-column flex flex-col flex-1 min-w-0">
         {agentId && detailSessionId ? (
           <PeriTaskDetailSheet
             environmentId={agentId}
@@ -514,7 +500,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           envId={agentId}
         />
 
-        <div ref={inputDockRef} className="chat-input-dock">
+        <div className="chat-input-dock">
           {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
           {pendingPermissions.length > 0 ? (
             <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />

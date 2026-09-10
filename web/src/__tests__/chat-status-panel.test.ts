@@ -38,8 +38,49 @@ describe("ChatStatusPanel 文件名称", () => {
     expect(fileNameFromPath("/opt/app/project/")).toBe("project");
   });
 
-  // Todo、Subtasks 与 Changes 共用同一限高滚动容器，长列表不得继续抬高输入区。
-  test("三个状态列表都限制高度并启用内部滚动", () => {
+  // 文件变更首次成为唯一状态时只展示 Changes 摘要，不主动挤占消息区。
+  test("Changes 首次出现时保持折叠", () => {
+    const markup = renderPanel({ changedFiles: [{ path: "/workspace/src/app.ts", type: "edit" }] });
+
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('role="tabpanel"');
+  });
+
+  // Todo 首次出现时仍直接展示内容，便于跟踪当前执行计划。
+  test("Todo 首次出现时自动展开", () => {
+    const markup = renderPanel({ todos: [{ content: "检查待办", status: "pending" }] });
+
+    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).toContain('role="tabpanel"');
+  });
+
+  // Background Tasks 对应 tasks 状态页，首次出现时仍直接展示运行状态。
+  test("Background Tasks 首次出现时自动展开", () => {
+    const markup = renderPanel({
+      tasks: [
+        {
+          taskId: "task-1",
+          title: "后台检查",
+          kind: "subagent",
+          taskSubtype: null,
+          summary: null,
+          status: "running",
+          turnId: null,
+          isBackground: true,
+          startedAt: "2026-09-09T00:00:00.000Z",
+          completedAt: null,
+          updatedAt: "2026-09-09T00:00:00.000Z",
+          detailAvailability: "unavailable",
+        },
+      ],
+    });
+
+    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).toContain('role="tabpanel"');
+  });
+
+  // Todo 与 Background Tasks 共用同一限高滚动容器，长列表不得继续抬高输入区。
+  test("自动展开的状态列表限制高度并启用内部滚动", () => {
     const todoMarkup = renderPanel({ todos: [{ content: "检查待办", status: "pending" }] });
     const taskMarkup = renderPanel({
       tasks: [
@@ -59,9 +100,7 @@ describe("ChatStatusPanel 文件名称", () => {
         },
       ],
     });
-    const changesMarkup = renderPanel({ changedFiles: [{ path: "/workspace/src/app.ts", type: "edit" }] });
-
-    for (const markup of [todoMarkup, taskMarkup, changesMarkup]) {
+    for (const markup of [todoMarkup, taskMarkup]) {
       expect(markup).toContain("max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]");
     }
   });

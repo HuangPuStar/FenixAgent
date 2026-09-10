@@ -50,12 +50,17 @@ export function ChatStatusPanel({
     if (changedFiles.length > 0) result.push("changes");
     return result;
   }, [todos.length, tasks.length, changedFiles.length]);
-  const [activeTab, setActiveTab] = useState<StatusTab>("todo");
-  const [collapsed, setCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<StatusTab>(() => availableTabs[0] ?? "todo");
+  const [collapsed, setCollapsed] = useState(() => availableTabs[0] === "changes");
   const todoSnapshotRef = useRef<string | null>(null);
+  const taskSnapshotRef = useRef<string | null>(null);
   const todoSnapshot = useMemo(
     () => JSON.stringify(todos.map(({ content, status, activeForm }) => [content, status, activeForm ?? null])),
     [todos],
+  );
+  const taskSnapshot = useMemo(
+    () => JSON.stringify(tasks.map(({ taskId, title, status }) => [taskId, title, status])),
+    [tasks],
   );
 
   useEffect(() => {
@@ -73,7 +78,24 @@ export function ChatStatusPanel({
   }, [todoSnapshot, todos.length]);
 
   useEffect(() => {
-    if (!availableTabs.includes(activeTab) && availableTabs[0]) setActiveTab(availableTabs[0]);
+    if (taskSnapshotRef.current === null) {
+      taskSnapshotRef.current = taskSnapshot;
+      return;
+    }
+    if (taskSnapshotRef.current === taskSnapshot) return;
+
+    taskSnapshotRef.current = taskSnapshot;
+    if (tasks.length > 0) {
+      setActiveTab("tasks");
+      setCollapsed(false);
+    }
+  }, [taskSnapshot, tasks.length]);
+
+  useEffect(() => {
+    if (availableTabs.includes(activeTab) || !availableTabs[0]) return;
+    const nextTab = availableTabs[0];
+    setActiveTab(nextTab);
+    if (nextTab === "changes") setCollapsed(true);
   }, [activeTab, availableTabs]);
 
   if (availableTabs.length === 0) return null;

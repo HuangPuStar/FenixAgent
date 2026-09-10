@@ -94,9 +94,18 @@ describe("Agent 编辑器表单模型", () => {
     expect("extra" in payload).toBe(false);
   });
 
+  // 名称和模型是可提交 Agent 配置的必填项，创建与编辑都不得保存空值或纯空白。
+  test("拒绝缺少名称或模型的配置", () => {
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
+    expect(agentEditorSchema.safeParse(base).success).toBe(true);
+    expect(agentEditorSchema.safeParse({ ...base, name: "   " }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, modelId: "" }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, modelId: "   " }).success).toBe(false);
+  });
+
   // maxResults 必须是 1–20 的十进制整数，不能接受小数或科学计数法。
   test("拒绝非整数知识库检索条数", () => {
-    const base = createAgentEditorDefaults();
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
     expect(agentEditorSchema.safeParse({ ...base, maxResults: "1.5" }).success).toBe(false);
     expect(agentEditorSchema.safeParse({ ...base, maxResults: "1e2" }).success).toBe(false);
     expect(agentEditorSchema.safeParse({ ...base, maxResults: "20" }).success).toBe(true);
@@ -104,7 +113,7 @@ describe("Agent 编辑器表单模型", () => {
 
   // extra 只接受 JSON object，数组和标量不得越过前端校验后再由后端拒绝。
   test("扩展配置仅接受 JSON object", () => {
-    const base = createAgentEditorDefaults();
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
     expect(agentEditorSchema.safeParse({ ...base, extra: "[]" }).success).toBe(false);
     expect(agentEditorSchema.safeParse({ ...base, extra: '"text"' }).success).toBe(false);
     expect(agentEditorSchema.safeParse({ ...base, extra: '{"ok":true}' }).success).toBe(true);

@@ -82,8 +82,8 @@ function isJsonObject(value: string): boolean {
 
 /** Agent 编辑器的字段校验；错误文案在视图边界转换为 i18n 文案。 */
 export const agentEditorSchema = z.object({
-  name: z.string(),
-  modelId: z.string(),
+  name: z.string().trim().min(1),
+  modelId: z.string().trim().min(1),
   prompt: z.string(),
   description: z.string(),
   skillIds: z.array(z.string()),
