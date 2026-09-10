@@ -160,6 +160,21 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     );
   });
 
+  // 模型名称带英文括号时只展示括号内名称，避免重复展示外部别名。
+  test("模型名称提取英文括号内容", () => {
+    expect(mapModelOptions([model({ displayName: "Claude 4.1 (claude-opus-4-1)" })])[0].label).toBe("claude-opus-4-1");
+  });
+
+  // 模型名称带中文括号时遵循相同规则，并去除括号内首尾空白。
+  test("模型名称提取中文括号内容", () => {
+    expect(mapModelOptions([model({ displayName: "通义千问（ qwen-max ）" })])[0].label).toBe("qwen-max");
+  });
+
+  // 没有括号的模型名称必须直接显示原值。
+  test("无括号模型名称保持原值", () => {
+    expect(mapModelOptions([model({ displayName: "Model One" })])[0].label).toBe("Model One");
+  });
+
   // 本组织模型使用短模型名，并将 Provider 作为独立分组信息。
   test("本组织模型拆分 Provider 与模型标签", () => {
     expect(mapModelOptions([model()])[0]).toMatchObject({
