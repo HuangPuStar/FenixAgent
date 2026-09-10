@@ -144,6 +144,29 @@ export function getPreviewMimeType(filePath: string): string | undefined {
 }
 
 /**
+ * URL 形式的文本源会让 @open-file-viewer 在元数据缺失时退化为 `text.length`，
+ * 把字符数误显示为字节数。HTML 需要保留 URL 供 sandbox iframe 渲染，因此不在此转换。
+ */
+export function shouldLoadPreviewAsBlob(filePath: string): boolean {
+  const category = classifyFile(filePath);
+  return category === "code" || category === "markdown";
+}
+
+/**
+ * 将文本预览响应保留为 Blob，使预览器使用原始响应字节数并自行按 BOM 解码。
+ * 非成功响应必须在进入预览器前显式失败，避免把错误页当作文件内容展示。
+ */
+export async function loadByteAccuratePreviewSource(
+  previewUrl: string,
+  fetchPreview: (url: string, init?: RequestInit) => Promise<Response> = fetch,
+  init?: RequestInit,
+): Promise<Blob> {
+  const response = await fetchPreview(previewUrl, init);
+  if (!response.ok) throw new Error(`文件预览加载失败 (${response.status})`);
+  return response.blob();
+}
+
+/**
  * 构建文件预览 URL。
  * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
  * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。

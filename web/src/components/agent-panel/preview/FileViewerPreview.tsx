@@ -2,12 +2,12 @@ import type { PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
 import type { ErrorInfo, ReactNode } from "react";
-import { Component, useMemo } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
-import { buildPreviewUrl, getPreviewMimeType } from "./utils";
+import { buildPreviewUrl, getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./utils";
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
@@ -73,6 +73,29 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
   const previewUrl = useMemo(() => buildPreviewUrl(envId, filePath), [envId, filePath]);
   const fileName = useMemo(() => filePath.split("/").pop() ?? filePath, [filePath]);
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
+  const loadAsBlob = useMemo(() => shouldLoadPreviewAsBlob(filePath), [filePath]);
+  const [previewSource, setPreviewSource] = useState<string | Blob | null>(() => (loadAsBlob ? null : previewUrl));
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!loadAsBlob) {
+      setPreviewSource(previewUrl);
+      setLoadError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setPreviewSource(null);
+    setLoadError(null);
+    const requestUrl = reloadKey === 0 ? previewUrl : `${previewUrl}&retry=${reloadKey}`;
+    void loadByteAccuratePreviewSource(requestUrl, fetch, { signal: controller.signal })
+      .then(setPreviewSource)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : String(error));
+      });
+    return () => controller.abort();
+  }, [loadAsBlob, previewUrl, reloadKey]);
 
   const toolbar = useMemo(
     () => ({
@@ -94,10 +117,33 @@ export function FileViewerPreview({ envId, filePath }: FileViewerPreviewProps) {
     [],
   );
 
+  if (loadError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3" role="alert">
+        <span className="text-xs font-medium text-red-500">{loadError}</span>
+        <button
+          type="button"
+          className="text-xs text-primary hover:underline"
+          onClick={() => setReloadKey((key) => key + 1)}
+        >
+          {t("fileTree.preview.retry", "重试")}
+        </button>
+      </div>
+    );
+  }
+
+  if (previewSource === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-4" role="status">
+        <span className="text-xs text-text-muted">{t("fileTree.preview.loading", "加载中...")}</span>
+      </div>
+    );
+  }
+
   return (
     <FileViewerErrorBoundary filePath={filePath}>
       <FileViewer
-        file={previewUrl}
+        file={previewSource}
         fileName={fileName}
         mimeType={mimeType}
         plugins={plugins}
