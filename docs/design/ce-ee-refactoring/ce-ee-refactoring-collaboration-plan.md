@@ -333,13 +333,13 @@ flowchart TD
 **前置：** FND-03
 **主要文件：** `packages/platform/platform-sdk/`、`apps/server/` 的数据库装配、`db/` 的迁移执行入口及数据库测试基础设施。
 
-- [ ] 定义供 repository 与 data migration runner 使用的最小数据库访问与事务执行端口；端口只表达查询执行、事务边界和取消/失败语义，不泄漏资源领域模型。
-- [ ] 提供 PostgreSQL + Drizzle 的 CE host adapter，并由 server bootstrap 注入；保持 `drizzle.config.ts` 与模块 schema 所有权规则不变。
-- [ ] 让 migration runner 使用受限的数据库访问入口；迁移逻辑仍归模块所有，应用进程启动时不得自动执行 data migration。
-- [ ] 建立连接初始化失败、事务提交、事务回滚与 migration runner 无业务 service 依赖的测试。
-- [ ] 不为尚未存在的第二种数据库实现引入 `databaseType` 分支或通用 ORM 抽象，也不迁移任何资源 schema、repository 或业务 service。
+- [x] 明确 repository 与 data migration runner 直接使用 PostgreSQL + Drizzle；事务边界由现有 Drizzle transaction 保证，不提前引入通用数据库端口。
+- [x] 保持 PostgreSQL + Drizzle 的 CE host 连接由 server 统一创建和关闭；repository 直接接收已创建的 Drizzle db，保持 `drizzle.config.ts` 与模块 schema 所有权规则不变。
+- [x] 让 migration runner 直接使用专用的 Drizzle migration client/连接；迁移逻辑仍归模块所有，应用进程启动时不得自动执行 data migration。
+- [x] 建立连接初始化失败、事务提交、事务回滚与 migration runner 无业务 service 依赖的测试；测试直接针对 Drizzle host 与 migration runner 边界。
+- [x] 不为尚未存在的第二种数据库实现引入 `databaseType` 分支或通用 ORM 抽象，也不迁移任何资源 schema、repository 或业务 service。
 
-**验收：** server、repository 和 data migration runner 通过明确的数据库/事务边界协作；测试证明失败不会提交半完成事务，资源领域仍不依赖具体连接创建过程。
+**验收：** server、repository 和 data migration runner 通过明确的 PostgreSQL/Drizzle 数据库与事务边界协作；测试证明失败不会提交半完成事务，资源领域不自行创建连接。未来出现第二种数据库实现或独立迁移连接时，再按真实用例设计窄接口。
 
 ### DAT-01：治理 AgentConfig 能力簇的资源数据模型和迁移
 
@@ -693,7 +693,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | ✅ 已完成 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
-| 2 | PLT-02 数据库连接与事务边界 | ⬜ 可领取 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
+| 2 | PLT-02 数据库连接与事务边界 | ✅ 已完成（commit） | FND-03 | PostgreSQL/Drizzle host 连接、事务与 migration runner 边界；不改资源 schema |
 | 2 | PLT-04 统一 server env loader | ⬜ 可领取 | FND-03 | env loader、模块 env 声明与 bootstrap 注入；不改 deploy |
 | 3 | ARC-03 冻结首个资源闭环契约 | ⬜ 可领取 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent Runtime/强依赖资源的公开接口、路由与迁移范围 |
 | 3 | DAT-01 AgentConfig 能力簇数据治理 | 🔒 等待 PLT-01 与 ARC-03 | PLT-01、ARC-03 | 资源 ID、ownership、绑定表治理；独占 Drizzle migration journal |

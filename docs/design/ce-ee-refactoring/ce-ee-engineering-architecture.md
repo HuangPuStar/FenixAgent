@@ -461,6 +461,8 @@ packages/resources/agent-config/db/data-migrations/
 
 ### 6.5 更换存储 DB 的方案
 
+当前 CE 只使用 PostgreSQL + Drizzle。Repository 直接使用由 server 创建的 Drizzle db，migration runner 使用专用的 Drizzle migration client；本阶段不预先定义通用数据库抽象或 `databaseType` 分支。只有在第二种关系型数据库、独立迁移连接或明确的跨数据库运行需求出现后，才针对真实用例设计窄的 repository/transaction/migration port。
+
 先区分两种情况：
 
 | 场景 | 推荐方案 |

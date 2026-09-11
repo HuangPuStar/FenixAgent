@@ -213,7 +213,7 @@ INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通�
 | FND-05 | CE task pool | FND-02 | 迁移 app 与构建/测试入口，不迁移资源领域代码 |
 | ARC-02 | CE task pool + EE-C 确认 | 无；可与 ARC-01、AGT-00 并行 | 冻结 AccessControl、DB/transaction 与平台/应用基础契约 |
 | FND-03 | CE task pool | FND-02、ARC-02 | manifest、registry、assembly 与 bootstrap |
-| PLT-02 | CE task pool | FND-03 | DB/transaction port、Drizzle host adapter 与 migration runner 边界 |
+| PLT-02 | CE task pool | FND-03 | PostgreSQL/Drizzle host 连接、事务与 migration runner 边界；暂不引入通用数据库抽象 |
 | PLT-01 | CE task pool | ARC-02、FND-03、PLT-02 | `platform` AccessControl 与 scope，不让资源读取 member/role |
 | PLT-04 | CE task pool | FND-03 | server env loader 与模块 env 注入 |
 | ARC-03 | CE task pool + AgentConfig/依赖资源负责人确认 | ARC-01、ARC-02、AGT-00 | 冻结 AgentConfig、Agent、依赖资源的接口、路由与迁移范围 |
