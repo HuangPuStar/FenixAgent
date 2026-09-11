@@ -205,6 +205,11 @@ const envSchema = databaseConnectionPoolSchema.extend({
 export type Env = z.infer<typeof envSchema>;
 
 /** 校验 process.env，成功返回类型安全的环境变量对象，失败则抛异常（测试）或退出进程（生产） */
+export function parseEnv(input: unknown = process.env): Env {
+  return envSchema.parse(input);
+}
+
+/** 校验环境变量并保留现有生产进程退出语义。 */
 export function validateEnv(): Env {
   const result = envSchema.safeParse(process.env);
   if (!result.success) {

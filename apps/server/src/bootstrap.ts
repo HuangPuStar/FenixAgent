@@ -6,13 +6,15 @@ import {
 } from "@fenix/platform-sdk";
 import { generatedModuleManifests } from "../../generated/module-registry";
 import { loadAssemblyProfile } from "./assembly-config";
+import { loadServerEnv } from "./env-loader";
 
 /** server 装配宿主必须提供的 env、preflight 与贡献挂载边界。 */
 export interface ServerAssemblyBootstrapOptions
-  extends Pick<BootstrapModulesOptions, "loadEnv" | "mountContribution" | "preflight"> {
+  extends Pick<BootstrapModulesOptions, "mountContribution" | "preflight"> {
   readonly profile?: unknown;
   readonly profilePath?: string;
   readonly manifests?: readonly ModuleManifest[];
+  readonly loadEnv?: BootstrapModulesOptions["loadEnv"];
 }
 
 /**
@@ -26,7 +28,7 @@ export async function bootstrapServerAssembly(options: ServerAssemblyBootstrapOp
   return bootstrapModules({
     profile,
     manifests: options.manifests ?? generatedModuleManifests,
-    loadEnv: options.loadEnv,
+    loadEnv: options.loadEnv ?? loadServerEnv,
     preflight: options.preflight,
     mountContribution: options.mountContribution,
   });
