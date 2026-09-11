@@ -163,7 +163,7 @@ export class AgentConfigService {
 }
 ```
 
-这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、`resource_context` 规则或具体授权实现。
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、归属或可见性规则，也不能依赖其具体授权实现。
 
 前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性；EE 替换资源时，静态依赖对应 EE 资源的 `web` 入口，不做运行时前端模块覆盖或发现。
 
@@ -271,15 +271,15 @@ apps/server/src/
 
 全局系统管理员仍是带真实 `userId` 的用户 actor，由 `AccessControlModule` 根据系统管理员身份放行系统级动作，以保留审计主体。迁移、运维和模块内部调用不构造 actor，直接使用受信任的 Domain Service；当前不定义 `system` actor。
 
-普通用户的资源列表必须通过 `AccessControlModule` 及统一授权查询能力，将声明式查询约束下推为数据库条件；系统管理 Facade 在完成系统管理员校验后、以及受信任模块内部调用可复用无权限 Domain Service 的列表查询。禁止 service 先读全量数据再按组织、角色或版本过滤；Repository 不得自行读取 member/role、`resource_context` 或复制授权 SQL。
+普通用户的资源列表必须通过 `AccessControlModule` 及统一授权查询能力，将声明式查询约束下推为数据库条件；系统管理 Facade 在完成系统管理员校验后、以及受信任模块内部调用可复用无权限 Domain Service 的列表查询。禁止 service 先读全量数据再按组织、角色或版本过滤；Repository 不得自行读取 member/role、资源归属列或 `visibility`，更不得复制授权 SQL。
 
 ### 3.3 授权范围与资源查询约束
 
-基础版本的可授权资源主表保存授权层托管的 `resource_context JSONB`。当前 Context 仅记录归属和公开可见性；JSON 采用一层 KV（标量或字符串数组），不允许嵌套对象或对象数组。它是资源元数据，但 JSON 的创建、解析、校验、更新和 SQL 编译均由平台实现独占。资源领域、route、前端和普通 Repository 不得理解组织、用户、角色或 Context 内部结构；EE 使用自己的 Context schema 与实现。
+基础版本的可授权资源主表复用现有 `organization_id`、`user_id` 和 `visibility` 作为 `ResourceScope` 的真相来源，由 `ResourceScopeStore` 映射主表列。通用资源可选 `private` 或 `public`；`private` 沿用归属和成员角色规则，`public` 面向任意已认证用户。匿名访问由 Site 等资源专属发布字段或发布实体表达。资源领域、route、前端和普通 Repository 不得自行解释组织、用户、角色或 `visibility`；EE 可以扩展自己的 scope 与授权存储实现。
 
-`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceContextStore` 负责批量读取、校验、写入和删除 Context；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、主键列与业务条件，例如 `authorizedQuery.list({ resourceType, resourceIdColumn, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, TContext>`，CE 的 Context 可包含 `organizationId`、`ownerUserId`，EE 则返回自己的归属元数据。
+`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceScopeStore` 负责 organization、owner、`visibility` 的批量读取、校验与生命周期维护；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、ID、组织、owner 与 `visibility` 列及业务条件，例如 `authorizedQuery.list({ resourceType, columns, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, TScope>`，CE 返回 `ResourceScope`，EE 则返回其扩展的 scope；不得泄漏具体查询条件。
 
-当前授权查询编译资源主表的 `resource_context` JSONB 条件，不需要关联中央资源表。当前不设计定向分享或 grant 表；未来出现真实需求时，再评审并由统一实现采用 `EXISTS` 查询。未来若需要集中治理，可迁移 Context 到扩展表并替换 Store/查询实现，业务模块调用接口不变。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
+当前授权查询以资源主表为驱动，使用归属列、`visibility` 与成员角色策略过滤资源；不得先查询全量资源再在应用层过滤。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
 
 ## 4. 前端与控制台组织
 
@@ -662,7 +662,7 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 1. **盘点与定界**：列出当前 service、repository、schema、route、页面、后台任务、外部 API、引用该资源的其他模块；确定资源归属、读/写/use 动作、数据隔离和删除条件。
 2. **创建模块骨架**：创建 `packages/resources/<resource>/{src,db,web}` 和 README；先定义公开 DTO、repository port、模块 capability 与 route/web contribution，不复制旧 service。
 3. **迁移 schema 所有权**：将该资源表定义移动到模块 `db/schema.ts`，更新根 `drizzle.config.ts` 路径列表。仅移动源码而未改变表结构时，必须生成并审查“无 DDL 差异”结果；不得创建重复表。
-4. **迁移数据隔离**：按 `resource_context` 方案执行 expand → backfill → switch → contract；回填现有组织归属、owner 与公开数据，切换为 `AccessControlModule` 统一授权查询，验证后删除旧授权查询路径和废弃字段。
+4. **迁移数据隔离**：复用资源主表现有组织归属与 owner 字段，增加或迁移固定 `visibility` 列；切换为 `AccessControlModule` 统一授权查询，验证后删除旧权限查询路径。
 5. **迁移领域与 services**：将字段校验、状态机按需放入 domain；将授权、事务、动作编排放入 service/facade。所有调用方在同一切片改为新公开入口，随后删除旧 service/repository。
 6. **迁移资源动作**：资源的 `run`/`publish` 等动作在 services 的 facade 完成授权与状态检查，再调用 runtime port；runtime 只接收通用已解析参数。
 7. **迁移 HTTP 与 web**：新增该资源的 `/app` route contribution，以及模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。调用方切换后删除旧 `/web`、`/api` 和旧页面，不保留长期 alias。
@@ -726,7 +726,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
       update({ name }) / delete({ name })
 ```
 
-名称若需要在某个范围内唯一，应由 `resource_context` 中实际可索引的归属键与 `normalized_name` 建立相应唯一约束或表达式索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在明确 Context 和冲突策略的前提下按名称查找，但业务 CRUD 不得如此实现。
+名称若需要在某个范围内唯一，应由资源主表实际归属列与 `normalized_name` 建立相应唯一约束或表达式索引保证；若必须作为人类可读地址，应新增不可变或受控变更的 `slug`，仍不能用展示名替代 ID。导入/迁移程序可以在明确归属和冲突策略的前提下按名称查找，但业务 CRUD 不得如此实现。
 
 对历史“按 name CRUD”的资源，执行顺序：
 
@@ -739,7 +739,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 
 #### B. 权限存储由 AccessControl 托管，领域逻辑不得理解权限
 
-基础版本的可授权资源主表采用授权层托管的 `resource_context JSONB`。当前 Context 是资源的多态归属与公开可见性元数据；资源领域返回已解析的类型化 Context，但不读取、解释、写入原始 JSON 或组织、用户、角色、公开规则。
+基础版本的可授权资源主表复用现有 `organization_id` 与 `user_id` 表达归属；主表 `visibility` 保存资源默认受众。资源领域不读取、解释或写入可见性规则，不自行判断组织、用户、角色或公开范围。
 
 ```text
 资源 Service / Facade
@@ -748,22 +748,21 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 └── 列表：createListConstraint(...) → AuthorizedResourceQuery
 
 平台实现（可替换）
-├── InlineResourceContextStore：资源主表 JSONB
-├── AuthorizedResourceQuery：编译 Context JSON 条件
-└── ExtensionTableResourceContextStore：未来集中扩展表实现
+├── AccessControlModule：解释归属、visibility 与成员角色策略
+└── AuthorizedResourceQuery：编译主表归属和 visibility 条件
 ```
 
-资源 Repository 只传入资源类型、资源 ID 列和业务筛选条件，不能手写 member/role、`resource_context` 或授权查询。
+资源 Repository 只传入资源类型、资源 ID、组织、owner、visibility 列和业务筛选条件，不能手写 member/role 或授权查询。
 
 对现有“属性、组织归属、权限混在一张表”的资源，执行顺序：
 
-1. 盘点现有组织、owner 和公开数据，制定到 `resource_context` 的回填规则。
-2. 先切入稳定的 `AccessControlModule`、`ResourceContextStore` 与 `AuthorizedResourceQuery` 调用接口，删除资源模块中直接读取 member/role 或拼授权 SQL 的逻辑。
-3. 在资源主表新增 Context 列与 GIN 索引并回填数据；创建、更新、删除与授权侧写入/清理必须在同一事务中完成。
+1. 盘点现有组织、owner 和公开数据，确认资源主表现有归属字段与 `visibility` 迁移结果一致。
+2. 先切入稳定的 `AccessControlModule` 与 `AuthorizedResourceQuery` 调用接口，删除资源模块中直接读取 member/role 或拼授权 SQL 的逻辑。
+3. 为资源主表增加或迁移 `visibility`，为归属与可见性查询建立复合索引；创建和更新必须在同一事务中维护归属与可见性。
 4. 校验记录数、ID 集合、归属、公开状态和关键列表结果；列表、详情与资源动作均使用统一授权入口。
 5. 切换所有调用方后删除旧权限路径和废弃字段；不得长期双写。
 
-该边界使 CE 业务领域不理解权限存储细节，EE 又可采用自己的 Context schema 与授权查询实现。未来改用 Context 扩展表时，替换平台实现和回填数据即可，Route、Service、Web 与资源领域调用接口不变。
+该边界使 CE 业务领域不理解权限存储细节；未来若 EE 有真实的定向分享需求，应单独确定其模型，不反向改变 CE 的默认受众语义。
 
 ### 13.9 历史测试治理：隔离并发状态，删除测试专用注入
 

@@ -685,11 +685,11 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | 1 | FND-05 应用入口迁移 | ✅ 已完成 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
 | 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
-| 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
+| 2 | FND-03 静态 registry 与 assembly | ⬜ 可领取 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
 | 2 | PLT-04 统一 server env loader | 🔒 等待 FND-03 | FND-03 | env loader、模块 env 声明与 bootstrap 注入；不改 deploy |
-| 3 | ARC-03 冻结首个资源闭环契约 | 🔒 等待 ARC-02 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
+| 3 | ARC-03 冻结首个资源闭环契约 | ⬜ 可领取 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
 | 3 | DAT-01 AgentConfig 能力簇数据治理 | 🔒 等待 PLT-01 与 ARC-03 | PLT-01、ARC-03 | 资源 ID、ownership、绑定表治理；独占 Drizzle migration journal |
 | 3 | AGT-01 runtime 与 InstanceManager | 🔒 等待 ARC-03 | AGT-00、FND-01、ARC-03 | `agent-runtime`、`agent-instance`；不改资源 schema |
 | 3 | WEB-01 CE Web Shell 与装配骨架 | 🔒 等待 FND-03、FND-05 | FND-03、FND-05 | `apps/web` Shell、路由装配；不创建资源页面 |
