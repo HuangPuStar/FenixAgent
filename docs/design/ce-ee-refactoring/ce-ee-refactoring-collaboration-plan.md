@@ -267,13 +267,15 @@ flowchart TD
 **前置：** FND-02、ARC-02
 **主要文件：** `packages/platform/platform-sdk/`、`scripts/generate-module-registry.ts`、`apps/generated/module-registry.ts`、`deploy/assembly/ce.json`、`apps/server/src/bootstrap.ts`。
 
-- [ ] 定义 `ModuleManifest`、`AssemblyProfile`、module kind、依赖校验和 Web contribution 类型；SDK 不依赖 CE 的具体授权或资源包。
-- [ ] 每个基础平台可装配包提供 `fenix.module.ts`，声明稳定 ID、类别、装配依赖、env 声明及贡献；资源与 Agent manifest 在 ARC-03 后随各自 task 添加。
-- [ ] 编写构建期扫描脚本，生成仅含静态 import 的 registry；生成文件加入 `.gitignore` 或 CI 再生成校验，二选一并写清规则。
-- [ ] 实现 assembly JSON/YAML 的 Zod 校验：禁止 import 路径、URL、代码片段；校验重复模块、类别不匹配和未满足依赖。
-- [ ] 在 bootstrap 中完成“读取 profile → registry 校验 → 汇总 env → 创建模块 → 挂载贡献”的顺序，不引入运行时下载或热加载。
+- [x] 定义 `ModuleManifest`、`AssemblyProfile`、module kind、依赖校验和 Web contribution 类型；SDK 不依赖 CE 的具体授权或资源包。
+- [x] 每个基础平台可装配包提供 `fenix.module.ts`，声明稳定 ID、类别、装配依赖、env 声明及贡献；资源与 Agent manifest 在 ARC-03 后随各自 task 添加。
+- [x] 编写构建期扫描脚本，生成仅含静态 import 的 registry；生成文件加入 `.gitignore` 或 CI 再生成校验，二选一并写清规则。
+- [x] 实现 assembly JSON/YAML 的 Zod 校验：禁止 import 路径、URL、代码片段；校验重复模块、类别不匹配和未满足依赖。
+- [x] 在 bootstrap 中完成“读取 profile → registry 校验 → 汇总 env → 创建模块 → 挂载贡献”的顺序，不引入运行时下载或热加载。
 
 **验收：** 修改 profile 可替换已内置模块组合；引用未知 ID、漏依赖或类型错误时启动失败；新增 manifest 后只需生成 registry，无需手改 app 注册表。
+
+**阶段说明：** FND-03 使用注入式 manifest 验证上述通用装配行为；`deploy/assembly/ce.json` 先固定目标模块 ID，不以占位实现伪造当前可启动组合。PLT-01 补齐真实 access-control 工厂，AGT-01 补齐 runtime manifest，并在两者均进入 registry 的集成基线上增加不注入 manifest 的默认 bootstrap smoke test。
 
 ### PLT-04：统一 server env loader
 
@@ -321,6 +323,7 @@ flowchart TD
 - [ ] 实现 `createResourceContext()`、`buildResourceQueryConstraint()`、`authorize()`；资源 service 不再直接读取 member/role 表。
 - [ ] 为不同主体、无组织成员、跨组织访问、写入归属、列表范围约束建立单测与集成测试。
 - [ ] 提供供 repository 使用的声明式范围条件；禁止授权模块返回 SQL fragment。
+- [ ] 在 `access-control` manifest 中装配真实工厂并登记资源 cleanup；禁止保留缺失工厂或占位实现。
 
 **验收：** CE 默认实现通过 `AccessControlModule` 契约测试；平台代码不向未来资源调用方暴露 member/role 查询，且授权查询约束可由 repository 端口消费。
 
@@ -362,6 +365,7 @@ flowchart TD
 - [ ] 将实例创建、复用、状态记录、停止和资源释放迁入 `AgentInstanceManager`；它不得接收 actor、role、organization 或 AgentConfig service。
 - [ ] 将引擎选择与执行实现置于 `agent-runtime` 的静态适配点；不改变已支持引擎的协议行为。
 - [ ] 建立实例创建、重复启动、失败释放、超时/取消和不含授权依赖的测试。
+- [ ] 提供 `agent-runtime` manifest；在 PLT-01 工厂已进入 registry 的集成基线上，增加默认 CE profile 不注入 manifest 的 bootstrap smoke test。
 
 **验收：** 可仅凭通用 launch spec 启动/停止实例；在 package 中搜索不到成员、角色、组织或资源权限查询。
 
@@ -685,7 +689,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | 1 | FND-05 应用入口迁移 | ✅ 已完成 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
 | 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
-| 2 | FND-03 静态 registry 与 assembly | ⬜ 可领取 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
+| 2 | FND-03 静态 registry 与 assembly | ✅ 已完成 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
 | 2 | PLT-04 统一 server env loader | 🔒 等待 FND-03 | FND-03 | env loader、模块 env 声明与 bootstrap 注入；不改 deploy |

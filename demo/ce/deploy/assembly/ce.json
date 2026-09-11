@@ -1,6 +1,6 @@
 {
   "accessControl": "community",
-  "runtime": "shared-agent-runtime",
+  "runtime": "agent-runtime",
   "webShell": "community",
   "resources": ["agent-config"],
   "web": ["agent-config"]

@@ -25,6 +25,11 @@ const STEPS = [
     },
   },
   {
+    name: "module-registry",
+    cmd: "bun run generate:module-registry --check",
+    filter: (out: string) => (out.includes("已验证") ? null : out),
+  },
+  {
     name: "architecture",
     cmd: "bun run architecture:check",
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
@@ -70,7 +75,7 @@ const STEPS = [
   },
   {
     name: "test",
-    cmd: "bun test src/__tests__/ scripts/__tests__/ 2>&1",
+    cmd: "bun test src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ apps/server/src/__tests__/ 2>&1",
     filter: (out: string) => {
       const lines = out.split("\n");
 

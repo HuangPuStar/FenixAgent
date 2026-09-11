@@ -1,6 +1,6 @@
 {
   "accessControl": "enterprise",
-  "runtime": "shared-agent-runtime",
+  "runtime": "agent-runtime",
   "webShell": "enterprise",
   "resources": ["agent-config", "agent-config-publication"],
   "web": ["enterprise-agent-config"]

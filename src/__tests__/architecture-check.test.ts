@@ -208,6 +208,7 @@ describe("architecture check CLI", () => {
     expect(result.stdout.trim().split("\n")).toEqual([
       "format",
       "import-sort",
+      "module-registry",
       "architecture",
       "tsc (server)",
       "tsc (web)",

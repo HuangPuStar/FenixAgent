@@ -221,7 +221,7 @@ CE packages/apps ─────────────────────
 ```json
 {
   "accessControl": "ee",
-  "runtime": "shared-agent-runtime",
+  "runtime": "agent-runtime",
   "resources": ["agent-config", "agent-config-publication"],
   "web": ["agent-config"]
 }
@@ -696,7 +696,7 @@ AgentConfig 关联的 Skill/MCP/知识库/环境在第一切片中只保留已�
 - **结构变更先扩后缩**：新增字段/表、回填数据、切换读写、观察后再删除旧字段；每一步都有可观测信号和补偿方案。
 - **一个资源一次只迁一个权威写路径**：旧 route/service 在切换完成后删除，不允许两个实现同时写同一资源。
 - **发布顺序**：DDL migration → 模块 data migration → 部署新 server/web → readiness 与关键链路验证。数据库处于不兼容状态时不得直接回滚旧应用。
-- **EE 开始时机**：CE 的 platform-sdk、community access-control、AgentConfig 和 runtime 最小闭环稳定后，即可创建 EE submodule；未迁移的 CE 历史模块暂不作为 EE 扩展点。
+- **EE 开始时机**：CE 的 platform-sdk、access-control 基础实现、AgentConfig 和 runtime 最小闭环稳定后，即可创建 EE submodule；未迁移的 CE 历史模块暂不作为 EE 扩展点。
 
 ### 13.7 当前模块迁移优先级
 

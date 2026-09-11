@@ -2,5 +2,12 @@
   "name": "@fenix/platform-sdk",
   "description": "跨领域平台契约",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./assembly": "./src/assembly/profile.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
 }

@@ -10,9 +10,11 @@
         "@elysiajs/cors": "^1.4.2",
         "@elysiajs/openapi": "^1.4.15",
         "@elysiajs/static": "^1.4.10",
+        "@fenix/access-control": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
         "@fenix/model-gateway-sdk": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
         "@hookform/resolvers": "^5.4.0",
         "@keyv/redis": "^5.1.6",
@@ -128,6 +130,10 @@
     },
     "apps/server": {
       "name": "@fenix/server-app",
+      "dependencies": {
+        "@fenix/access-control": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+      },
     },
     "apps/web": {
       "name": "@fenix/web-app",
@@ -223,9 +229,15 @@
     },
     "packages/platform/access-control": {
       "name": "@fenix/access-control",
+      "dependencies": {
+        "@fenix/platform-sdk": "workspace:*",
+      },
     },
     "packages/platform/platform-sdk": {
       "name": "@fenix/platform-sdk",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
     },
     "packages/plugin-ccb": {
       "name": "@fenix/ccb",
