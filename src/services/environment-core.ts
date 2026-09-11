@@ -114,6 +114,8 @@ export async function getOwnedEnvironment(
  * 已校验归属）均在此前完成权限校验，环境内实例必然同属该环境。
  */
 export async function deleteEnvironment(envId: string): Promise<boolean> {
+  const { closeAcpConnectionsForEnvironments } = await import("../transport/acp-ws-handler");
+  closeAcpConnectionsForEnvironments([envId]);
   await stopInstancesForEnvironments([envId]);
   return environmentRepo.delete(envId);
 }

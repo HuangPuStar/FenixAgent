@@ -10,6 +10,7 @@ import {
   stubRegistryHeartbeat,
 } from "../test-utils/helpers";
 import {
+  closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
   findMachineConnectionByAgentId,
   findMachineConnectionById,
@@ -152,6 +153,32 @@ describe("round43 acp ws handler", () => {
     expect(listAcpConnections().find((item) => item.wsId === "unknown-43")).toBeUndefined();
   });
 
+  // 删除 Environment 必须关闭本地绑定连接，防止客户端继续用失效环境重连/发请求。
+  test("关闭已删除 Environment 的 ACP 连接并清理缓存", () => {
+    const ws = new FakeWs();
+    handleAcpWsOpen(ws, "deleted-env-ws", "user-a", "env-deleted", false);
+    setAgentMachineCache("env-deleted", "machine-deleted");
+
+    closeAcpConnectionsForEnvironments(["env-deleted"]);
+
+    expect(ws.closed).toEqual([[1000, "environment deleted"]]);
+    expect(listAcpConnections().find((item) => item.wsId === "deleted-env-ws")).toBeUndefined();
+    expect(getAgentMachineCache().has("env-deleted")).toBe(false);
+  });
+
+  // 删除一个 Environment 不得影响其他环境或 machine 连接。
+  test("关闭 Environment 连接时保留其他连接", () => {
+    const deletedWs = new FakeWs();
+    const retainedWs = new FakeWs();
+    handleAcpWsOpen(deletedWs, "deleted-env-ws-2", "user-a", "env-deleted-2", false);
+    handleAcpWsOpen(retainedWs, "retained-env-ws", "user-a", "env-retained", false);
+
+    closeAcpConnectionsForEnvironments(["env-deleted-2"]);
+
+    expect(deletedWs.closed).toHaveLength(1);
+    expect(retainedWs.closed).toEqual([]);
+    expect(listAcpConnections().map((item) => item.wsId)).toEqual(["retained-env-ws"]);
+  });
   // machine 连接只保存调用者身份，不会复用其他连接的用户标识。
   test("machine 快照按连接保留各自用户身份", () => {
     handleAcpWsOpen(new FakeWs(), "machine-user-a", "user-a", null, true);
