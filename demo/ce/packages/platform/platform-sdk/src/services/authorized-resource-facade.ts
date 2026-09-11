@@ -43,13 +43,13 @@ export class AuthorizedResourceFacade<TResource extends ScopedResource, TListQue
 
   protected async deleteAuthorized(actorId: string, resourceId: string): Promise<void> {
     const resource = await this.getAuthorizedResource(actorId, resourceId, "write");
-    this.repository.delete(resource.id);
+    await this.repository.delete(resource.id);
   }
 
   /** 供 EE Facade 等应用层扩展复用，始终保持资源查询约束与授权检查。 */
   protected async getAuthorizedResource(actorId: string, resourceId: string, action: string): Promise<TResource> {
     const context = await this.accessControl.createResourceContext({ actorId });
-    const resource = this.findInAccessibleScope(resourceId, context);
+    const resource = await this.findInAccessibleScope(resourceId, context);
     await this.authorize(actorId, action, resource.ownershipScope);
     return resource;
   }
@@ -62,8 +62,11 @@ export class AuthorizedResourceFacade<TResource extends ScopedResource, TListQue
     });
   }
 
-  private findInAccessibleScope(resourceId: string, context: ResourceContext): TResource {
-    const resource = this.repository.findById(resourceId, this.accessControl.buildResourceQueryConstraint(context));
+  private async findInAccessibleScope(resourceId: string, context: ResourceContext): Promise<TResource> {
+    const resource = await this.repository.findById(
+      resourceId,
+      this.accessControl.buildResourceQueryConstraint(context),
+    );
     if (!resource) {
       throw new Error("未找到当前资源范围内的资源");
     }

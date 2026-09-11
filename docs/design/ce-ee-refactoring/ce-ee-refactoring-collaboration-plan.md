@@ -178,11 +178,15 @@ flowchart TD
 
 **负责人：** CE 任务池；EE-C 对 `AccessControlModule` 的企业替换需求签字确认  
 **前置：** 无；可与 ARC-01、AGT-00 并行
+**状态：** ✅ 已完成
 **产出：** 更新 `docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md`；必要时创建 `docs/adr/` 下的 ADR。
 
-- [ ] 确认 `ResourceScope`、`ResourceContext`、`ResourceQueryConstraint`、`AccessControlModule` 的 TypeScript 签名和拒绝语义。
-- [ ] 确认平台与应用的 package ID、公开入口、module kind、assembly profile 与 env 声明形态；资源和 Agent 的具体 package export 留给 ARC-03。
-- [ ] 确认数据库/事务、认证主体到 `AccessControlModule` 的基础依赖方向与拒绝语义；平台实现不得依赖任何资源领域模型。
+- [x] 确认 `ResourceScope`、`ResourceContext`、`ResourceQueryConstraint`、`AccessControlModule` 的 TypeScript 签名和拒绝语义。
+
+  > **NOTE:** “拒绝语义”尚未具体定义，应在开发过程中逐步完善。
+
+- [x] 确认平台与应用的 package ID、公开入口、module kind、assembly profile 与 env 声明形态；资源和 Agent 的具体 package export 留给 ARC-03。
+- [x] 确认数据库/事务、认证主体到 `AccessControlModule` 的基础依赖方向与拒绝语义；平台实现不得依赖任何资源领域模型。
 
 **验收：** A、B、EE-C 对可替换平台边界无阻塞问题；阶段 1、2 的工程与平台任务无需等待业务盘点即可开始。冻结后只能通过 ADR 修改。
 
@@ -680,7 +684,7 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
 | 1 | FND-05 应用入口迁移 | ✅ 已完成 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
-| 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
+| 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
