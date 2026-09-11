@@ -1,36 +1,13 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import { type EnterEnvironmentResponse, type EnvironmentDetail, envApi } from "@/src/api/environments";
+import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
+import { resolveCreatedAgentChatTarget } from "./agent-create-navigation";
 import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
-
-interface CreatedAgentEnvironmentGateway {
-  list: () => Promise<EnvironmentDetail[]>;
-  create: (body: { name: string; agentConfigId: string; autoStart: boolean }) => Promise<EnvironmentDetail>;
-  enter: (environmentId: string) => Promise<EnterEnvironmentResponse>;
-}
-
-/** 新建 Agent 后确保关联到真实 Instance，再生成聊天路由目标。 */
-export async function resolveCreatedAgentChatTarget(
-  agentConfigId: string,
-  gateway: CreatedAgentEnvironmentGateway,
-): Promise<{ environmentId: string; instanceUid: string }> {
-  const environments = await gateway.list();
-  const existingEnvironment = environments.find((environment) => environment.agentConfigId === agentConfigId);
-  const environment =
-    existingEnvironment ??
-    (await gateway.create({
-      name: `env-${agentConfigId.slice(0, 8)}`,
-      agentConfigId,
-      autoStart: true,
-    }));
-  const entered = await gateway.enter(environment.id);
-  return { environmentId: entered.environmentId ?? environment.id, instanceUid: entered.instanceUid };
-}
 
 export function AgentPanelLayout() {
   const navigate = useNavigate();
