@@ -1,7 +1,0 @@
-{
-  "accessControl": "community",
-  "runtime": "agent-runtime",
-  "webShell": "community",
-  "resources": ["agent-config"],
-  "web": ["agent-config"]
-}

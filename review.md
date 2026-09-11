@@ -2,7 +2,7 @@
 
 ## 变更概述
 
-- 审查范围: 当前 worktree 中 FND-03 的全部未提交改动，最终复核生产装配 ID 从 `community-access-control` 改为 `access-control`、基础 Web Shell ID 从 `community` 改为 `default` 后的中性命名与引用一致性；明确排除约定保留的 `demo/ce` 历史演示目录。
+- 审查范围: FND-03 的全部改动，最终复核生产装配 ID 从 `community-access-control` 改为 `access-control`、基础 Web Shell ID 从 `community` 改为 `default` 后的中性命名与引用一致性；历史架构演示伪代码未纳入生产装配审查，现已随权威设计落地而删除。
 - 检查结果: 已重新运行 3 组专项测试（23 pass / 0 fail）、registry `--check`、生产范围旧 ID 残留扫描及 `git diff --check`，均通过；同时复核完整 `precheck` 结果为 8393 pass / 0 fail。
 
 ## 发现的问题

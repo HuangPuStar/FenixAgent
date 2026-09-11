@@ -1,7 +1,0 @@
-{
-  "accessControl": "enterprise",
-  "runtime": "agent-runtime",
-  "webShell": "enterprise",
-  "resources": ["agent-config", "agent-config-publication"],
-  "web": ["enterprise-agent-config"]
-}

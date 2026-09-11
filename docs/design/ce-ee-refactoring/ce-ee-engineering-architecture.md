@@ -338,7 +338,7 @@ assembly.web      → generated module registry → resources/*/web contribution
 
 ```ts
 // packages/agent/agent-runtime/fenix.module.ts
-// 下例仅说明模块如何声明并消费环境变量；当前 demo 没有额外 adapter 模块。
+// 下例仅说明模块如何声明并消费环境变量，不要求额外 adapter 模块。
 export const moduleManifest = {
   id: "agent-runtime",
   kind: "runtime",
@@ -364,7 +364,7 @@ const env = loadServerEnv([
 const application = assembleApplication({ installedModules, env });
 ```
 
-`bootstrap.ts` 不直接 import 或调用具体模块工厂，例如 Agent runtime、PostgreSQL client 或对象存储 client。它只解析 assembly、取得已启用 manifest、统一读取/校验 env，并将按模块切分后的配置交给装配器/模块工厂。当前最小 demo 仅展示 schema 与 migration 的组织方式，不模拟数据库连接或 PostgreSQL 模块；真实工程接入数据库时，由负责存储的模块声明连接配置并接收注入，repository 只接收已构造的 db client，不读取连接串。
+`bootstrap.ts` 不直接 import 或调用具体模块工厂，例如 Agent runtime、PostgreSQL client 或对象存储 client。它只解析 assembly、取得已启用 manifest、统一读取/校验 env，并将按模块切分后的配置交给装配器/模块工厂。本节最小示例只说明 schema 与 migration 的组织方式，不模拟数据库连接或 PostgreSQL 模块；真实工程接入数据库时，由负责存储的模块声明连接配置并接收注入，repository 只接收已构造的 db client，不读取连接串。
 
 `envDefinition` 至少声明字段名、Zod schema、默认值、是否 secret、是否 restart-required、所属模块和用途说明。加载器合并所有静态装配模块的声明；同名字段的 schema、默认值或 secret 属性不一致时启动失败，EE 只能追加自己的定义，不能静默改变 CE 同名变量语义。
 
@@ -647,7 +647,7 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 | 0. 基线冻结 | 基于 `FUNCTIONAL_MODULE_INVENTORY.md` 为所有现有模块标明目标归属、调用方、表、route、web 页面、外部依赖和迁移风险；补齐关键链路回归测试与观测基线 | 可比较重构前后行为、性能和错误率 |
 | 1. 工程骨架 | 创建 `apps/server`、`apps/web`、platform/agent/resources 目录、workspace 与边界检查；将当前 server/web 入口一次性移入 apps，修正构建、测试、Docker 入口 | 不改业务行为，原测试与部署可运行 |
 | 2. 平台基础 | 抽取 `platform-sdk`、`access-control`、统一 env loader、DB client/transaction adapter；复用 `@fenix/logger` 与 `requestId`；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
-| 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面、`AgentInstanceManager`、Agent runtime；用此闭环验证授权、发布扩展和实例边界 | demo 的设计在真实 CE 最小能力上成立 |
+| 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面、`AgentInstanceManager`、Agent runtime；用此闭环验证授权、发布扩展和实例边界 | 真实 CE 最小能力及其集成测试证明闭环成立 |
 | 4. 资源目录 | 依赖从低到高迁移 Skill、MCP、模型/Provider、知识库、记忆、环境等；每个资源独立完成 schema、授权、route、web 和删除旧代码 | 资源不再散落在 `src/services/config` 与 `web/src/pages` |
 | 5. 执行与连接 | 迁移 Machine、workspace/file、Sandbox、引擎插件、ACP relay、实例编排；保持 runtime 不读取资源权限 | 运行、文件和节点能力通过公开端口连接 |
 | 6. 自动化与协作 | 迁移 Chat/YJS、Workflow、Scheduler、Webhook、Channel；节点/执行器/Provider 采用静态插件点 | 长连接、恢复、调度等关键边界有专项测试 |

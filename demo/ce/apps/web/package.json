@@ -1,9 +1,0 @@
-{
-  "name": "@fenix-ce/web-app",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@fenix-ce/agent-config": "workspace:*",
-    "@fenix-ce/platform-sdk": "workspace:*"
-  }
-}
