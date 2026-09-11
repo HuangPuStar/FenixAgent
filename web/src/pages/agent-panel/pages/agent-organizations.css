@@ -392,7 +392,45 @@
   font-weight: 600;
 }
 .org-member-command {
+  overflow: hidden;
   border: 1px solid #dfe6f0;
+  border-radius: 6px;
+}
+.org-member-search {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  color: #8e9aab;
+}
+.org-member-search-input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.org-member-results {
+  max-height: 224px;
+  overflow-y: auto;
+  border-top: 1px solid #edf1f6;
+}
+.org-member-candidate {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.org-member-candidate:hover:not(:disabled),
+.org-member-candidate:focus-visible {
+  background: #f3f6fb;
+}
+.org-member-candidate:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 .org-selected-members {
   display: flex;

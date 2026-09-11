@@ -1,4 +1,4 @@
-import { Check, Copy, X } from "lucide-react";
+import { Check, Copy, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import type { OrgMemberCandidate } from "@/src/api/organizations";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -64,6 +64,29 @@ function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps 
   );
 }
 
+export function MemberCandidateButton({
+  candidate,
+  selected,
+  onAdd,
+}: {
+  candidate: OrgMemberCandidate;
+  selected: boolean;
+  onAdd: (candidate: OrgMemberCandidate) => void;
+}) {
+  const { t } = useTranslation("orgs");
+  const disabled = candidate.isMember || selected;
+  return (
+    <button type="button" className="org-member-candidate" disabled={disabled} onClick={() => onAdd(candidate)}>
+      <div className="org-candidate-copy">
+        <strong>{candidate.name}</strong>
+        <span>{candidate.email}</span>
+      </div>
+      {candidate.isMember ? <Badge variant="outline">{t("inviteDialog.alreadyMember")}</Badge> : null}
+      {selected ? <Check className="size-4 text-brand" /> : null}
+    </button>
+  );
+}
+
 function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
   const { t } = useTranslation("orgs");
   const showResults = props.debouncedInviteKeyword.length >= 3;
@@ -74,8 +97,9 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
           <DialogTitle>{t("inviteDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="org-dialog-fields">
-          <Field label={t("inviteDialog.searchLabel")}>
-            <Command shouldFilter={false} className="org-member-command">
+          <div className="org-dialog-field">
+            <span>{t("inviteDialog.searchLabel")}</span>
+            <div className="org-member-command">
               {props.selectedCandidates.length > 0 ? (
                 <div className="org-selected-members">
                   {props.selectedCandidates.map((candidate) => (
@@ -92,55 +116,46 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
                   ))}
                 </div>
               ) : null}
-              <CommandInput
-                value={props.inviteKeyword}
-                onValueChange={props.onInviteKeywordChange}
-                placeholder={
-                  props.selectedCandidates.length > 0
-                    ? t("inviteDialog.searchMorePlaceholder")
-                    : t("inviteDialog.searchPlaceholder")
-                }
-              />
-              <CommandList className="max-h-56">
+              <div className="org-member-search">
+                <Search className="size-4" aria-hidden="true" />
+                <Input
+                  value={props.inviteKeyword}
+                  onChange={(event) => props.onInviteKeywordChange(event.target.value)}
+                  placeholder={
+                    props.selectedCandidates.length > 0
+                      ? t("inviteDialog.searchMorePlaceholder")
+                      : t("inviteDialog.searchPlaceholder")
+                  }
+                  className="org-member-search-input"
+                />
+              </div>
+              <div className="org-member-results">
                 {props.debouncedInviteKeyword.length === 0 ? (
                   <div className="org-command-hint">{t("inviteDialog.searchHint")}</div>
                 ) : null}
                 {props.debouncedInviteKeyword.length > 0 && props.debouncedInviteKeyword.length < 3 ? (
                   <div className="org-command-hint">{t("inviteDialog.searchMinChars")}</div>
                 ) : null}
-                {showResults ? (
-                  <CommandEmpty>
-                    {props.memberCandidatesLoading ? t("inviteDialog.searching") : t("inviteDialog.empty")}
-                  </CommandEmpty>
+                {showResults && props.memberCandidatesLoading ? (
+                  <div className="org-command-hint">{t("inviteDialog.searching")}</div>
                 ) : null}
-                {props.memberCandidates.length > 0 ? (
-                  <CommandGroup>
-                    {props.memberCandidates.map((candidate) => {
-                      const selected = props.selectedCandidates.some((item) => item.id === candidate.id);
-                      const disabled = candidate.isMember || selected;
-                      return (
-                        <CommandItem
-                          key={candidate.id}
-                          value={candidate.id}
-                          disabled={disabled}
-                          onSelect={() => !disabled && props.onCandidateAdd(candidate)}
-                        >
-                          <div className="org-candidate-copy">
-                            <strong>{candidate.name}</strong>
-                            <span>{candidate.email}</span>
-                          </div>
-                          {candidate.isMember ? (
-                            <Badge variant="outline">{t("inviteDialog.alreadyMember")}</Badge>
-                          ) : null}
-                          {selected ? <Check className="size-4 text-brand" /> : null}
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
+                {showResults && !props.memberCandidatesLoading && props.memberCandidates.length === 0 ? (
+                  <div className="org-command-hint">{t("inviteDialog.empty")}</div>
                 ) : null}
-              </CommandList>
-            </Command>
-          </Field>
+                {props.memberCandidates.map((candidate) => {
+                  const selected = props.selectedCandidates.some((item) => item.id === candidate.id);
+                  return (
+                    <MemberCandidateButton
+                      key={candidate.id}
+                      candidate={candidate}
+                      selected={selected}
+                      onAdd={props.onCandidateAdd}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
           <Field label={t("inviteDialog.role")}>
             <select value={props.inviteRole} onChange={(event) => props.onInviteRoleChange(event.target.value)}>
               <option value="admin">{t("roles.admin")}</option>
