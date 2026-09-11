@@ -140,7 +140,7 @@ web/
 
 ## 10. 构建与启动
 
-- **启动流程**：`bootstrap.ts` → `loadAppBrand()` 加载品牌配置 → `main.tsx` → `createRouter()` + `RouterProvider`
+- **启动流程**：`apps/web/src/main.tsx` → `loadAppBrand()` 加载品牌配置 → `createRouter()` + `RouterProvider`
 - **build**：`bun run build:web`，产物写入 `web/dist/`，后端通过 `@elysiajs/static` 以 `base: "/ctrl/"` 前缀托管
 - **Vite 代理**：dev 模式下 `/web`、`/api`、`/acp` 代理到后端
 - **vendor chunk 拆分**：8 个独立 chunk（shiki / mermaid / motion / vendor / ai-sdk / radix-ui / tanstack / hookform），控制包体积

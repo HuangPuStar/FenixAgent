@@ -111,7 +111,7 @@ bash restart-server.sh
 bun run build:web
 ```
 
-原因：后端会直接托管 `web/dist/`。
+原因：后端会直接托管 `apps/web/dist/`。
 
 ## 常用命令
 
@@ -120,7 +120,7 @@ bun run dev
 bun run dev:web
 bun run build:web
 bun run precheck
-bun run check:deps
+bun run check:dependencies
 bun run docs:dev
 bun run docs:build
 ```
@@ -138,8 +138,10 @@ bun test web/src/__tests__/config-mcp-page.test.ts
 
 ### 主要目录
 
-- `src/`：后端源码
-- `web/`：前端源码
+- `apps/server/`：后端应用入口
+- `apps/web/`：前端应用入口、Vite 配置和构建产物
+- `src/`：后端业务实现
+- `web/`：前端页面、路由和组件实现
 - `packages/`：内部 workspace 包
 - `scripts/`：脚本和辅助工具
 - `docs/`：文档站点

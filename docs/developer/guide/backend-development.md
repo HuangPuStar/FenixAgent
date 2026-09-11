@@ -8,7 +8,7 @@
 
 ### 1.1 `src/` 后端主服务源码
 
-- `src/index.ts`：服务启动入口，负责装配插件、路由、启动阶段任务，例如数据迁移。
+- `apps/server/src/main.ts`：服务启动入口，负责装配插件、路由、启动阶段任务，例如数据迁移。
 - `src/openapi.ts`：统一维护 OpenAPI / Scalar 文档插件与全局 tag 定义，供入口按 `/api` 和 `/web` 两套文档分别挂载。
 - `src/routes/`：HTTP / WebSocket 路由定义。
 - `src/routes/web/`：控制台前端使用的内部业务 API。
@@ -230,7 +230,7 @@ DDL 迁移和数据迁移必须分离：
 
 ### 4.2.2 OpenAPI 文档组织
 
-- OpenAPI / Scalar 的统一装配入口放在 `src/openapi.ts`，不要把全局 tags、文档路径和插件配置散落到各 route 文件或 `src/index.ts` 中。
+- OpenAPI / Scalar 的统一装配入口放在 `src/openapi.ts`，不要把全局 tags、文档路径和插件配置散落到各 route 文件或 `apps/server/src/main.ts` 中。
 - 当前维护两套文档：
   - 对外 API 文档：面向 `/api/*`
   - 控制台 Web API 文档：面向 `/web/*` 和平台内部接口

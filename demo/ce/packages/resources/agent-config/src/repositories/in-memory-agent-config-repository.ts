@@ -17,19 +17,22 @@ export class InMemoryAgentConfigRepository implements ScopedResourceRepository<A
   private readonly properties = new Map<string, AgentConfigProperties>();
   private nextId = 1;
 
-  create(record: Omit<AgentConfig, "id">): AgentConfig {
+  async create(record: Omit<AgentConfig, "id">): Promise<AgentConfig> {
     const id = `resource-agent-config-${this.nextId++}`;
     this.resources.set(id, { id, type: "agent-config", ownershipScope: record.ownershipScope });
     this.properties.set(id, { resourceId: id, name: record.name, engine: record.engine });
     return this.toAgentConfig(id);
   }
 
-  findById(id: string, queryConstraint: ResourceQueryConstraint): AgentConfig | undefined {
+  async findById(id: string, queryConstraint: ResourceQueryConstraint): Promise<AgentConfig | undefined> {
     const resource = this.resources.get(id);
     return resource && queryConstraint.matches(resource.ownershipScope) ? this.toAgentConfig(id) : undefined;
   }
 
-  list(input: { queryConstraint: ResourceQueryConstraint; query: AgentConfigListQuery }): AgentConfigPage {
+  async list(input: {
+    queryConstraint: ResourceQueryConstraint;
+    query: AgentConfigListQuery;
+  }): Promise<AgentConfigPage> {
     const keyword = input.query.keyword?.trim().toLowerCase();
     return {
       items: [...this.resources.values()]
@@ -40,12 +43,12 @@ export class InMemoryAgentConfigRepository implements ScopedResourceRepository<A
     };
   }
 
-  replace(config: AgentConfig): AgentConfig {
+  async replace(config: AgentConfig): Promise<AgentConfig> {
     this.properties.set(config.id, { resourceId: config.id, name: config.name, engine: config.engine });
     return this.toAgentConfig(config.id);
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     this.properties.delete(id);
     this.resources.delete(id);
   }

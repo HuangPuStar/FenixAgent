@@ -148,7 +148,7 @@ describe("startPromptTurn", () => {
   });
 });
 
-describe("openAgentSession 失败回滚", () => {
+describe("openAgentSession 持久实例与请求资源边界", () => {
   let closed = false;
   let handler: (msg: unknown) => void = () => {};
 
@@ -269,5 +269,64 @@ describe("openAgentSession 失败回滚", () => {
     const result = await openAgentSession(openInput);
     expect(result.instanceId).toBe("inst-1");
     expect(result.turn).toBeDefined();
+  });
+
+  // 连续 HTTP 调用复用同一个 api/primary 持久实例；每次调用只拥有自己的 relay，
+  // turn.dispose 不得停止共享 runtime，否则会中断同实例上的其他请求。
+  test("连续 HTTP 调用复用持久实例且分别释放请求 relay", async () => {
+    let resolveCalls = 0;
+    let ensureCalls = 0;
+    let relayCloseCalls = 0;
+    setAgentChatServiceDeps({
+      resolveInstance: async () => {
+        resolveCalls += 1;
+        return {
+          id: "inst-shared-api",
+          environmentId: "env-1",
+          ownerUserId: "user-1",
+          creationSource: "api",
+          name: "primary",
+          isDefault: false,
+          createdByUserId: "user-1",
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        } as never;
+      },
+      ensureInstanceRuntime: async () => {
+        ensureCalls += 1;
+      },
+      connectAgentRelay: async () => {
+        let relayListener: (msg: unknown) => void = () => {};
+        return makeMockRelayHandle({
+          close: () => {
+            relayCloseCalls += 1;
+          },
+          send: (message: unknown) => {
+            const rpc = message as { id?: number; method?: string };
+            if (rpc.method === "session/new") {
+              queueMicrotask(() =>
+                relayListener({ jsonrpc: "2.0", id: rpc.id, result: { sessionId: `ses-${resolveCalls}` } }),
+              );
+            }
+          },
+          onMessage: (nextListener: unknown) => {
+            relayListener = nextListener as (msg: unknown) => void;
+            return () => {};
+          },
+        }) as never;
+      },
+    });
+
+    const first = await openAgentSession(openInput);
+    const second = await openAgentSession(openInput);
+
+    expect(first.instanceId).toBe("inst-shared-api");
+    expect(second.instanceId).toBe("inst-shared-api");
+    expect(resolveCalls).toBe(2);
+    expect(ensureCalls).toBe(2);
+
+    await first.turn.dispose();
+    await second.turn.dispose();
+    expect(relayCloseCalls).toBe(2);
   });
 });

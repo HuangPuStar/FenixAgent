@@ -30,12 +30,12 @@
 FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
-- 根目录 `package.json` 是前后端统一依赖清单；`web/` 没有独立 `package.json`。
+- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口与 Vite 配置，`web/` 没有独立 `package.json` 并保留前端业务实现。
 - `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
 ### 后端地图
 
-- `src/index.ts`：服务入口和装配层。
+- `apps/server/src/main.ts`：服务入口和装配层。
 - `src/routes/web/`：控制台内部 API。
 - `src/routes/api/`：对外稳定 API / OpenAPI。
 - `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
@@ -85,7 +85,7 @@ bun run db:migrate                  # 执行迁移
 ### 按变更类型验证
 
 - 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
-- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `web/dist/` 挂载静态资源。
+- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
 - `precheck` 必须全绿才能提交；它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建。
@@ -130,13 +130,13 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 | 场景 | 权威实现 | 生命周期 |
 |------|----------|----------|
-| HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | route 调用 `openAgentSession`；service 执行 `createAgentSession` → `startPromptTurn`，每次创建独立实例并在 dispose 时销毁 |
-| Workflow | `src/services/workflow/agent-chat-transport.ts` | 通过 `ensureRunning`、`connectAgentRelay` 复用实例，再适配 `agent-chat-service` 的 `PromptTurn` |
+| HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
+| Workflow | `src/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
 | 前端交互式 Chat | `packages/chat-channel/src/channel/`（宿主装配 `src/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
 - `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
-- 实例策略不可混用：Workflow / 交互式路径通过 `ensureRunning(...)` 复用实例；`openAgentSession` 通过 `spawnInstanceViaController(...)`（`src/services/orchestration-instance.ts`）创建独立实例并负责销毁。
+- 实例策略不可混用：HTTP 自动选择 `api/primary`，Workflow 自动选择 `workflow/primary`；交互式 Chat 通常连接前端显式携带且重新校验归属的持久 Instance，未指定时才自动选择 `chat/default`。三者均通过 `AgentInstanceRuntimeCoordinator` 确保 runtime，但请求/session 不拥有共享 runtime 生命周期。
 - 不得恢复已删除的独立 `acp-transport.ts` 或在新入口中复制 session/new、session/load、session/prompt 的完整协议流程。
 
 ## 领域不变量与高风险约束

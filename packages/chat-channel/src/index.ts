@@ -1,5 +1,5 @@
 // packages/chat-channel/src/index.ts
-// 浏览器安全入口：web 侧 vite alias（web/vite.config.ts）与 tsconfig paths
+// 浏览器安全入口：web 侧 vite alias（apps/web/vite.config.ts）与 tsconfig paths
 // 直连本文件，因此这里 re-export 的模块图会整体进入浏览器 bundle。
 //
 // 约束：只允许导出无 node 运行时依赖的共享面——类型、schema、chat-writer

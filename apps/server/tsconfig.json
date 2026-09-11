@@ -3,6 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2022"],
     "types": ["bun"],
+    "declaration": false,
+    "declarationMap": false,
     "noEmit": true
   },
   "include": ["src/**/*.ts"]

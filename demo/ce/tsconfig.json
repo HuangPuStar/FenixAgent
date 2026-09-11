@@ -11,7 +11,6 @@
       "@fenix-ce/platform-sdk/module": ["packages/platform/platform-sdk/fenix.module.ts"],
       "@fenix-ce/community-access-control": ["packages/platform/community-access-control/src/index.ts"],
       "@fenix-ce/community-access-control/module": ["packages/platform/community-access-control/fenix.module.ts"],
-      "@fenix-ce/observability": ["packages/platform/observability/src/index.ts"],
       "@fenix-ce/agent-runtime": ["packages/agent/agent-runtime/src/index.ts"],
       "@fenix-ce/agent-runtime/module": ["packages/agent/agent-runtime/fenix.module.ts"],
       "@fenix-ce/agent-instance": ["packages/agent/agent-instance/src/index.ts"],

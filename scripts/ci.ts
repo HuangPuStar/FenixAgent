@@ -39,7 +39,7 @@ const STEPS = [
   },
   {
     name: "tsc (web)",
-    cmd: "cd web && tsc --noEmit",
+    cmd: "tsc -p apps/web/tsconfig.json --noEmit",
     filter: (out: string) => {
       const errors = out.split("\n").filter((l) => l.includes("error TS"));
       return errors.length > 0 ? errors.join("\n") : null;

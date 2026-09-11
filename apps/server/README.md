@@ -1,3 +1,3 @@
 # Server App
 
-此应用将承载 HTTP、WebSocket、模块装配和进程生命周期。当前服务端仍由根目录 `src/index.ts` 启动，尚未迁移。
+此应用承载 HTTP、WebSocket、模块装配和进程生命周期；唯一启动入口为 `src/main.ts`。根 `src/` 仍保留业务实现，后续按资源任务迁移。

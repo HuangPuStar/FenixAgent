@@ -5,10 +5,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  root: __dirname,
+  publicDir: path.resolve(__dirname, "../../web/public"),
   plugins: [
     TanStackRouterVite({
-      routesDirectory: "./src/routes",
-      generatedRouteTree: "./src/routeTree.gen.ts",
+      routesDirectory: path.resolve(__dirname, "../../web/src/routes"),
+      generatedRouteTree: path.resolve(__dirname, "../../web/src/routeTree.gen.ts"),
       quoteStyle: "double",
     }),
     react(),
@@ -17,14 +19,14 @@ export default defineConfig({
   base: "/ctrl/",
   resolve: {
     alias: {
-      "@/src": path.resolve(__dirname, "src"),
-      "@/components": path.resolve(__dirname, "components"),
-      "@server": path.resolve(__dirname, "../src"),
-      "@fenix/chat-channel": path.resolve(__dirname, "../packages/chat-channel/src/index.ts"),
+      "@/src": path.resolve(__dirname, "../../web/src"),
+      "@/components": path.resolve(__dirname, "../../web/components"),
+      "@server": path.resolve(__dirname, "../../src"),
+      "@fenix/chat-channel": path.resolve(__dirname, "../../packages/chat-channel/src/index.ts"),
     },
   },
   build: {
-    outDir: "dist",
+    outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
     sourcemap: true,
     chunkSizeWarningLimit: 10000,
@@ -69,6 +71,9 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: [path.resolve(__dirname, "../..")],
+    },
     proxy: {
       "/web": {
         target: "http://localhost:3000",

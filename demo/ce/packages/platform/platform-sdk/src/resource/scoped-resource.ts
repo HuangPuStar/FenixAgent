@@ -13,9 +13,9 @@ export interface ResourcePage<TResource> {
 
 /** 资源持久化端口只负责数据库/存储操作，生产实现必须把查询约束转为 SQL WHERE。 */
 export interface ScopedResourceRepository<TResource extends ScopedResource, TListQuery> {
-  create(record: Omit<TResource, "id">): TResource;
-  findById(id: string, queryConstraint: ResourceQueryConstraint): TResource | undefined;
-  list(input: { queryConstraint: ResourceQueryConstraint; query: TListQuery }): ResourcePage<TResource>;
-  replace(resource: TResource): TResource;
-  delete(id: string): void;
+  create(record: Omit<TResource, "id">): Promise<TResource>;
+  findById(id: string, queryConstraint: ResourceQueryConstraint): Promise<TResource | undefined>;
+  list(input: { queryConstraint: ResourceQueryConstraint; query: TListQuery }): Promise<ResourcePage<TResource>>;
+  replace(resource: TResource): Promise<TResource>;
+  delete(id: string): Promise<void>;
 }

@@ -188,7 +188,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // 解析出 0 条消息，超大帧不会进入业务处理。
       // 已知框架限制（记录在案）：单行 JSON 对象帧会被默认 parser 提前 parse 成
       // object，到不了本函数的字符串检查——该路径由 uWS 全局 maxPayloadLength
-      // （src/index.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
+      // （apps/server/src/main.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
       // file-ws 32MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
       if (typeof message === "string" && checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
         logError(`[File-WS] Message too large: ${Buffer.byteLength(message)} bytes`);

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentInstanceRecord, IAgentInstanceRepo } from "../repositories";
+import type {
+  AgentInstanceRecord,
+  CreateAgentInstanceInput,
+  IAgentInstanceRepo,
+  InstanceCreationSource,
+} from "../repositories";
 import { AgentInstanceRuntimeCoordinator, type RuntimeAdapter } from "../services/agent-instance-runtime-coordinator";
 import { AgentInstanceService } from "../services/agent-instance-service";
 
@@ -14,6 +19,80 @@ const instance: AgentInstanceRecord = {
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
+
+/** 创建仅实现自动实例选择所需方法的内存仓储。 */
+function createSelectionRepository(): IAgentInstanceRepo {
+  const rows = new Map<string, AgentInstanceRecord>();
+  const keyOf = (environmentId: string, ownerUserId: string, source: InstanceCreationSource, name: string) =>
+    `${environmentId}:${ownerUserId}:${source}:${name}`;
+  const findByCreationKey = async (
+    environmentId: string,
+    ownerUserId: string,
+    source: InstanceCreationSource,
+    name: string,
+  ): Promise<AgentInstanceRecord | undefined> => rows.get(keyOf(environmentId, ownerUserId, source, name));
+
+  return {
+    findByCreationKey,
+    async findOrCreateByCreationKey(input: CreateAgentInstanceInput) {
+      const key = keyOf(input.environmentId, input.ownerUserId, input.creationSource, input.name);
+      const existing = rows.get(key);
+      if (existing) return existing;
+      const created: AgentInstanceRecord = {
+        ...input,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      };
+      rows.set(key, created);
+      return created;
+    },
+  } as unknown as IAgentInstanceRepo;
+}
+
+describe("AgentInstanceService 自动实例选择", () => {
+  // HTTP、Workflow 与 WebSocket Chat 各自复用稳定记录，且 creationSource/name 必须隔离，
+  // 避免三个入口错误共享生命周期所有权。
+  test("API、Workflow 与 Chat 使用相互隔离的稳定自动实例", async () => {
+    const repository = createSelectionRepository();
+    const coordinator = new AgentInstanceRuntimeCoordinator({ async start() {}, async stop() {} });
+    const service = new AgentInstanceService(repository, coordinator);
+
+    const firstApi = await service.resolveInstanceForOperation({
+      environmentId: "env-1",
+      ownerUserId: "user-1",
+      automaticSelection: "api",
+    });
+    const secondApi = await service.resolveInstanceForOperation({
+      environmentId: "env-1",
+      ownerUserId: "user-1",
+      automaticSelection: "api",
+    });
+    const firstWorkflow = await service.findOrCreateWorkflowInstanceWithStatus("env-1", "user-1");
+    const secondWorkflow = await service.findOrCreateWorkflowInstanceWithStatus("env-1", "user-1");
+    const firstChat = await service.resolveInstanceForOperation({
+      environmentId: "env-1",
+      ownerUserId: "user-1",
+      automaticSelection: "chat",
+    });
+    const secondChat = await service.resolveInstanceForOperation({
+      environmentId: "env-1",
+      ownerUserId: "user-1",
+      automaticSelection: "chat",
+    });
+
+    expect(secondApi.id).toBe(firstApi.id);
+    expect(firstApi).toMatchObject({ creationSource: "api", name: "primary", isDefault: false });
+    expect(secondWorkflow.instance.id).toBe(firstWorkflow.instance.id);
+    expect(firstWorkflow.instance).toMatchObject({ creationSource: "workflow", name: "primary", isDefault: false });
+    expect(firstWorkflow.created).toBe(true);
+    expect(secondWorkflow.created).toBe(false);
+    expect(firstWorkflow.instance.id).not.toBe(firstApi.id);
+    expect(secondChat.id).toBe(firstChat.id);
+    expect(firstChat).toMatchObject({ creationSource: "user", name: "default", isDefault: true });
+    expect(firstChat.id).not.toBe(firstApi.id);
+    expect(firstChat.id).not.toBe(firstWorkflow.instance.id);
+  });
+});
 
 describe("AgentInstanceRuntimeCoordinator", () => {
   // 并发 ensure 必须共享同一启动操作，避免同一持久 Instance 产生两个 runtime。

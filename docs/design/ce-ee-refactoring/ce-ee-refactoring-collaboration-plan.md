@@ -58,7 +58,7 @@
 | --- | --- | --- |
 | 0. 基线冻结 | ARC-01、AGT-00 | 盘点、回归特征测试与迁移风险；不改目标架构实现 |
 | 1. 工程骨架 | FND-00、FND-01、FND-02、FND-05 | workspace、公开包边界、应用入口和构建/测试入口；不抽取平台实现或业务代码 |
-| 2. 平台基础 | ARC-02、FND-03、PLT-01、PLT-02、PLT-03、PLT-04 | 可替换的 platform 契约/实现、静态装配、env、DB/事务与观测；不迁移资源领域 |
+| 2. 平台基础 | ARC-02、FND-03、PLT-01、PLT-02、PLT-04 | 可替换的 platform 契约/实现、静态装配、env 与 DB/事务；不迁移资源领域 |
 | 3. 最小闭环 | ARC-03、DAT-01、AGT-01、REF-01 至 REF-04、ENV-01、AGT-02、WEB-01、WEB-REF-01、RES-01、WEB-02、INT-01 | AgentConfig 及其当前运行必需资源能力的唯一闭环；不迁移其余历史资源能力 |
 | 4. 资源目录 | RSC-xx-01 至 RSC-xx-06 | 首个闭环外的资源按单资源完整迁移；每一资源另建一组 task |
 | 5. 执行与连接 | EXE-01 | AgentConfig 闭环外的 Machine、workspace/file、Sandbox、ACP relay 与引擎能力迁移 |
@@ -87,7 +87,6 @@ flowchart TD
     agt00["AGT-00 运行盘点与特征测试"]
     plt["PLT-01 CE AccessControl"]
     plt2["PLT-02 DB / transaction boundary"]
-    plt3["PLT-03 observability platform"]
     dat["DAT-01 数据治理"]
     agt1["AGT-01 runtime / InstanceManager"]
     refs["REF-01~04\n模型、Skill、MCP、知识库/记忆"]
@@ -117,7 +116,6 @@ flowchart TD
   fnd2 --> fnd5
   fnd3 --> plt4
   fnd3 --> plt2
-  fnd3 --> plt3
   plt2 --> plt
   fnd3 --> plt
   fnd5 --> m05
@@ -158,7 +156,7 @@ flowchart TD
   ee3 --> m2
 ```
 
-`M0.5` 是已可独立构建、部署并替换平台模块的 CE 平台基线：它要求工程入口、env/deploy、数据库事务、可观测性和 CE `AccessControlModule` 均已就位。达到该基线后，EE-C 才可基于固定 CE tag 并行实现自己的身份模块。`M1` 才是 EE-C 将企业授权实现接入完整 AgentConfig 用户链路、执行端到端验证的准入门槛。
+`M0.5` 是已可独立构建、部署并替换平台模块的 CE 平台基线：它要求工程入口、env/deploy、数据库事务和 CE `AccessControlModule` 均已就位；现有 `@fenix/logger` 与 `requestId` 提供诊断关联，不引入新的观测平台。达到该基线后，EE-C 才可基于固定 CE tag 并行实现自己的身份模块。`M1` 才是 EE-C 将企业授权实现接入完整 AgentConfig 用户链路、执行端到端验证的准入门槛。
 
 ## 3. 准备阶段：架构冻结与可回归基线
 
@@ -180,11 +178,15 @@ flowchart TD
 
 **负责人：** CE 任务池；EE-C 对 `AccessControlModule` 的企业替换需求签字确认  
 **前置：** 无；可与 ARC-01、AGT-00 并行
-**产出：** 更新 `docs/design/ce-ee-engineering-architecture.md`；必要时创建 `docs/adr/` 下的 ADR。
+**状态：** ✅ 已完成
+**产出：** 更新 `docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md`；必要时创建 `docs/adr/` 下的 ADR。
 
-- [ ] 确认 `ResourceScope`、`ResourceContext`、`ResourceQueryConstraint`、`AccessControlModule` 的 TypeScript 签名和拒绝语义。
-- [ ] 确认平台与应用的 package ID、公开入口、module kind、assembly profile 与 env 声明形态；资源和 Agent 的具体 package export 留给 ARC-03。
-- [ ] 确认数据库/事务、可观测性、认证主体到 `AccessControlModule` 的基础依赖方向与拒绝语义；平台实现不得依赖任何资源领域模型。
+- [x] 确认 `ResourceScope`、`ResourceContext`、`ResourceQueryConstraint`、`AccessControlModule` 的 TypeScript 签名和拒绝语义。
+
+  > **NOTE:** “拒绝语义”尚未具体定义，应在开发过程中逐步完善。
+
+- [x] 确认平台与应用的 package ID、公开入口、module kind、assembly profile 与 env 声明形态；资源和 Agent 的具体 package export 留给 ARC-03。
+- [x] 确认数据库/事务、认证主体到 `AccessControlModule` 的基础依赖方向与拒绝语义；平台实现不得依赖任何资源领域模型。
 
 **验收：** A、B、EE-C 对可替换平台边界无阻塞问题；阶段 1、2 的工程与平台任务无需等待业务盘点即可开始。冻结后只能通过 ADR 修改。
 
@@ -204,12 +206,13 @@ flowchart TD
 
 **负责人：** CE 任务池  
 **前置：** 无；与 ARC-01、ARC-02 并行  
+**状态：** ✅ 已完成
 **主要文件：** `src/services/orchestration-instance.ts`、`src/services/launch-spec-builder.ts`、`src/services/environment-*.ts`、`src/transport/agent-relay.ts`、`packages/orchestration/`、`packages/plugin-sdk/` 及现有运行测试。
 
-- [ ] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
-- [ ] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
-- [ ] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
-- [ ] 向 ARC-03 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选签名；由 ARC-03 冻结后再开始代码提取。
+- [x] 画出实例创建/复用/停止、ACP relay、LaunchSpec、Environment、引擎调用和资源释放的实际调用图，标明哪些逻辑属于 runtime、哪些属于 AgentConfig 或其他资源。
+- [x] 记录当前实例 ID、session ID、relay、取消、超时、失败释放和并发额度的行为样例，写入 `docs/arch/agent-runtime-extraction-map.md`。
+- [x] 为运行链路补齐不依赖新 package 的特征测试，覆盖“启动成功、启动失败释放、停止、复用、取消/超时”最小集合。
+- [x] 向 ARC-03 提供 `AgentRuntimeModule`、`AgentInstanceStarter`、LaunchSpec 输入输出的候选边界；具体公开签名由 ARC-03 冻结后再开始代码提取。
 
 **验收：** 负责人不修改共享 workspace、SDK 或 migration 文件，也能完成真实调用图和可保护现有行为的测试；`AGT-01` 不需要再次探索运行链路。
 
@@ -223,7 +226,7 @@ flowchart TD
 **主要文件：** 根 `package.json`、`bun.lock`、`apps/`、`packages/platform/`、`packages/agent/`、`packages/resources/`。
 
 - [x] 将 workspace 规则扩展为覆盖 `apps/*` 与两级 `packages/*/*`，同时保留当前已有 `packages/*` 的构建入口。
-- [x] 创建 `apps/server`、`apps/web`、`platform-sdk`、`access-control`、`observability`、`agent-config` 的最小 `package.json` 和 README，以及 `packages/agent/` 的职责 README；README 仅说明目标职责和预计承载的实现。
+- [x] 创建 `apps/server`、`apps/web`、`platform-sdk`、`access-control`、`agent-config` 的最小 `package.json` 和 README，以及 `packages/agent/` 的职责 README；README 仅说明目标职责和预计承载的实现。
 - [x] 每个 manifest 只声明 package 名称、描述、私有属性和 ESM 类型；不声明 exports、跨包依赖、module ID、入口文件或 TypeScript path/project reference。
 - [x] 不移动现有 `src/index.ts` 或 `web/src/main.tsx`，不创建运行时/实例 package，也不改变根入口的运行方式。
 - [x] 通过 `bun install` 更新 workspace lockfile，并验证 `bun install --frozen-lockfile`、`bun run build:web`、`bun run precheck` 不被骨架改动破坏。
@@ -289,12 +292,22 @@ flowchart TD
 **前置：** FND-02
 **主要文件：** `apps/server/`、`apps/web/`、根 `package.json`、`scripts/ci.ts`、Bun/Vite/测试配置与入口文档。
 
-- [ ] 将现有 `src/index.ts` 与 `web/src/main.tsx` 分别迁入 `apps/server`、`apps/web`；保留现有服务和前端模块，只改变应用入口与装配位置，不迁移资源领域代码。
-- [ ] 修正根 `package.json` 的 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行；不得新增指向旧入口的兼容 script。
-- [ ] 更新根 `scripts/ci.ts` 的 format、lint、typecheck 与 test 路径：纳入 `apps/*`，并删除仅为已迁移 app 入口保留的根路径。尚未迁移的领域代码仍位于根 `src/`、`web/` 时，保留其检查路径并在 task 清单中标记后续归属，不得为了路径整洁提前排除检查。
-- [ ] 删除已迁移的根入口，并逐项记录仍引用根 `src/`、`web/` 的构建、测试、Vite、Docker、Compose、脚本和文档路径及其所属后续 task；运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
+- [x] 将现有 `src/index.ts` 与 `web/src/main.tsx` 分别迁入 `apps/server`、`apps/web`；保留现有服务和前端模块，只改变应用入口与装配位置，不迁移资源领域代码。
+- [x] 修正根 `package.json` 的 Bun scripts、TypeScript/Vite 配置、测试解析路径及生产构建产物路径，使开发、测试和生产构建均从 `apps/*` 入口执行；不得新增指向旧入口的兼容 script。
+- [x] 更新根 `scripts/ci.ts` 的 format、lint、typecheck 与 test 路径：纳入 `apps/*`，并删除仅为已迁移 app 入口保留的根路径。尚未迁移的领域代码仍位于根 `src/`、`web/` 时，保留其检查路径并在 task 清单中标记后续归属，不得为了路径整洁提前排除检查。
+- [x] 删除已迁移的根入口，并逐项记录仍引用根 `src/`、`web/` 的构建、测试、Vite、Docker、Compose、脚本和文档路径及其所属后续 task；运行 server、Web build 与测试，确认根目录不再存在第二条应用启动路径。
 
 **验收：** `apps/server`、`apps/web` 是唯一应用入口；现有功能行为不变，开发、测试与生产构建均可运行；根 `scripts/` 只保留全仓薄命令，不承载复制出的 app 或领域逻辑。镜像与 Compose 切换由阶段 7 的 DEL-02 完成。
+
+#### FND-05 遗留路径处置映射
+
+| 路径或引用 | 当前处理 | 后续唯一归属 |
+| --- | --- | --- |
+| 根 `src/`、`web/` 的领域实现与其测试 | 保留；应用入口已移除，不为目录整洁提前迁移业务实现或排除 CI 检查 | 阶段 3 的 ARC-03、AGT-01、REF-xx、ENV-01、WEB-xx 及阶段 4 的 RSC-xx，最终由 DEL-04 人工确认目录处置 |
+| `Dockerfile` 的 `src/index.ts` 构建、`web/dist` 复制路径 | 保留旧交付路径；本 task 不修改 Docker 以避免与交付阶段并发冲突 | DEL-02 |
+| `docker-compose.yml` 与 `docker/prod/` Compose | 本轮不变；逐项确认镜像启动与卷挂载是否依赖旧产物 | DEL-02 |
+| `build-image.sh`、`restart-server.sh` | 继续调用根 `package.json` 薄命令，已随新 script 自动进入 apps 入口；不得在脚本中新增旧入口路径 | DEL-03 复核发布脚本 |
+| `CONTRIBUTING.md`、`CLAUDE.md`、`drizzle/README.md` 与源码内启动路径说明 | 已更新活动入口说明；历史盘点、设计和 issue 文档中的旧路径不按文本批量改写 | DEL-04 人工确认文档归属 |
 
 ## 5. 第二阶段：平台基础与后续领域任务
 
@@ -324,19 +337,6 @@ flowchart TD
 - [ ] 不为尚未存在的第二种数据库实现引入 `databaseType` 分支或通用 ORM 抽象，也不迁移任何资源 schema、repository 或业务 service。
 
 **验收：** server、repository 和 data migration runner 通过明确的数据库/事务边界协作；测试证明失败不会提交半完成事务，资源领域仍不依赖具体连接创建过程。
-
-### PLT-03：实现可观测性平台
-
-**负责人：** CE 任务池
-**前置：** FND-03
-**主要文件：** `packages/platform/observability/`、`apps/server/` bootstrap 与 route context、观测测试。
-
-- [ ] 定义并导出 `Logger`、`AuditRecorder`、`Metrics`、`Tracer` 的稳定端口与上下文字段；禁止在端口中出现资源领域 DTO 或 Edition 条件。
-- [ ] 提供 CE 默认实现：结构化 JSON stdout 日志、审计/指标/trace 的可替换 adapter；默认实现不得记录 token、Cookie、密码、连接串、完整 prompt 或未脱敏外部响应。
-- [ ] 在 server route 入口建立 request/trace context，并为异步任务、实例、队列、relay 定义显式传递方式；不在本 task 接入资源动作审计。
-- [ ] 覆盖 context 字段传播、敏感字段脱敏、adapter 失败隔离和无配置 exporter 的降级行为。
-
-**验收：** 平台包可由 CE/EE app 注入替换实现；每个请求拥有可关联的日志/trace 上下文，观测 adapter 的故障不影响主请求且不会泄露敏感数据。
 
 ### DAT-01：治理 AgentConfig 能力簇的资源数据模型和迁移
 
@@ -642,7 +642,7 @@ EE 初版的差异只限于用户体系、认证和授权。它复用 CE 的 Age
 - [ ] 在 EE server 以 EE access-control 装配 CE resource services，验证无需 `edition` 条件分支即可替换 CE 授权实现。
 - [ ] 接入企业登录/SSO 后的主体映射、会话或服务账号认证；Web 只新增身份初始化、登录跳转和必要的企业导航/品牌，不复制 CE AgentConfig 页面。
 - [ ] 使用 CE 资源 Web contribution 和业务页面，验证模型/Skill/MCP/知识库/节点的可见范围，以及 AgentConfig create/list/update/delete/run 的企业权限语义。
-- [ ] 覆盖未认证、跨 workspace、服务账号、列表范围、写入归属、资源动作拒绝和审计事件。
+- [ ] 覆盖未认证、跨 workspace、服务账号、列表范围、写入归属、资源动作拒绝以及日志中的 `requestId` 关联。
 
 **验收（M2）：** EE 能以企业身份管理和运行 CE AgentConfig；CE 仍可独立构建运行，且不包含企业身份模型、SSO 配置或权限分支。
 
@@ -679,20 +679,19 @@ A、B 每次完成 task 后，从下表领取一个状态为“可领取”的 t
 | 阶段 | Task | 状态（初始） | 前置已完成条件 | 共享文件锁 / 交付物 |
 | --- | --- | --- | --- | --- |
 | 0 | ARC-01 重构清单与回归基线 | ✅ 已完成（liu xue yan） | 无 | `docs/arch/ce-refactoring-inventory.md`；旧实现、表、route、页面映射 |
-| 0 | AGT-00 运行链路盘点与特征测试 | ⬜ 可领取 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
+| 0 | AGT-00 运行链路盘点与特征测试 | ✅ 已完成 | 无 | `docs/arch/agent-runtime-extraction-map.md` 与运行链路特征测试；不改共享骨架 |
 | 1 | FND-00 workspace 物理骨架 | ✅ 已完成 | 无 | 根 `package.json`、`bun.lock`、最小 package manifests 与 README；独占 workspace 配置 |
 | 1 | FND-01 workspace package 与应用入口骨架 | ✅ 已完成 | FND-00 | workspace metadata、`tsconfig`、app 空入口；独占 package manifest 与 TypeScript 配置 |
 | 1 | FND-02 包依赖边界 CI | ✅ 已完成 | FND-01 | `dependency-cruiser`、CI 规则；独占边界配置 |
-| 1 | FND-05 应用入口迁移 | ⬜ 可领取 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
-| 2 | ARC-02 冻结基础平台公共契约 | ⬜ 可领取 | 无 | `platform-sdk`、AccessControl、DB/transaction、observability 的基础契约；需 EE-C 确认替换需求 |
+| 1 | FND-05 应用入口迁移 | ✅ 已完成 | FND-02 | `apps/server`、`apps/web`、Bun/Vite/测试入口；独占 app 入口 |
+| 2 | ARC-02 冻结基础平台公共契约 | ✅ 已完成（liu xue yan） | 无 | `platform-sdk`、AccessControl、DB/transaction 的基础契约；需 EE-C 确认替换需求 |
 | 2 | FND-03 静态 registry 与 assembly | 🔒 等待 FND-02 与 ARC-02 | FND-02、ARC-02 | `platform-sdk` manifest/profile、生成脚本、bootstrap；独占 assembly/SDK |
 | 2 | PLT-01 CE AccessControl 与资源范围 | 🔒 等待 PLT-02、FND-03、ARC-02 | PLT-02、FND-03、ARC-02 | CE 身份/授权实现及范围测试；必要时独占 SDK 变更 |
 | 2 | PLT-02 数据库连接与事务边界 | 🔒 等待 FND-03 | FND-03 | DB/transaction port、Drizzle host adapter、migration runner 接口；不改资源 schema |
-| 2 | PLT-03 可观测性平台 | 🔒 等待 FND-03 | FND-03 | `platform/observability` 端口/CE 默认实现、request/trace context；不接入资源业务审计 |
 | 2 | PLT-04 统一 server env loader | 🔒 等待 FND-03 | FND-03 | env loader、模块 env 声明与 bootstrap 注入；不改 deploy |
-| 3 | ARC-03 冻结首个资源闭环契约 | 🔒 等待 ARC-01、ARC-02、AGT-00 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
+| 3 | ARC-03 冻结首个资源闭环契约 | 🔒 等待 ARC-02 | ARC-01、ARC-02、AGT-00 | AgentConfig/Agent/强依赖资源的公开接口、路由与迁移范围 |
 | 3 | DAT-01 AgentConfig 能力簇数据治理 | 🔒 等待 PLT-01 与 ARC-03 | PLT-01、ARC-03 | 资源 ID、ownership、绑定表治理；独占 Drizzle migration journal |
-| 3 | AGT-01 runtime 与 InstanceManager | 🔒 等待 AGT-00、FND-01、ARC-03 | AGT-00、FND-01、ARC-03 | `agent-runtime`、`agent-instance`；不改资源 schema |
+| 3 | AGT-01 runtime 与 InstanceManager | 🔒 等待 ARC-03 | AGT-00、FND-01、ARC-03 | `agent-runtime`、`agent-instance`；不改资源 schema |
 | 3 | WEB-01 CE Web Shell 与装配骨架 | 🔒 等待 FND-03、FND-05 | FND-03、FND-05 | `apps/web` Shell、路由装配；不创建资源页面 |
 | 3 | REF-01 至 REF-04 资源运行能力 | 🔒 等待 DAT-01 | DAT-01、DB 锁空闲 | 模型/Provider、Skill、MCP、知识库/记忆的首期 service/route/web/运行解析；独占 DB 锁 |
 | 3 | ENV-01 Environment、节点、Site App | 🔒 等待 DAT-01、AGT-01 | DAT-01、AGT-01、DB 锁空闲 | 首期节点/Environment/Site App service/route/web、删除清理；独占 DB 锁 |

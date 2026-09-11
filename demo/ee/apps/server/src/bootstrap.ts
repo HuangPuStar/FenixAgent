@@ -1,4 +1,3 @@
-import { demoLogger } from "@fenix-ce/observability";
 import { loadServerEnv, serverHostEnv } from "@fenix-ce/platform-sdk/server-env";
 import { assembleEeApplication, resolveEeModules } from "./app";
 import { eeAssemblyConfig } from "./assembly-config";
@@ -10,6 +9,5 @@ export function bootstrapEeServer() {
   const env = loadServerEnv([...serverHostEnv, ...installedModules.flatMap((module) => module.envDefinitions ?? [])]);
   const eeApp = assembleEeApplication(eeAssemblyConfig, { env }, installedModules);
   const routes = createEnterpriseAppRoutes({ agentConfigs: eeApp.agentConfigs, agentRuns: eeApp.agentRuns });
-  demoLogger.info("server.bootstrapped", { edition: "ee", routeCount: routes.length });
   return { env, routes };
 }
