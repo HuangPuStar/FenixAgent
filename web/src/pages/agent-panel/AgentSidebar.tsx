@@ -24,6 +24,7 @@ interface AgentSidebarProps {
   onNavigate: (pageId: string) => void;
   onCreateAgent?: () => void;
   onEditAgent?: (agentName: string) => void;
+  onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
 
 export const AgentSidebar = memo(function AgentSidebar({
@@ -34,6 +35,7 @@ export const AgentSidebar = memo(function AgentSidebar({
   onNavigate,
   onCreateAgent,
   onEditAgent,
+  onDeleteAgentEnvironments,
 }: AgentSidebarProps) {
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const { data: session } = useSession();
@@ -103,6 +105,7 @@ export const AgentSidebar = memo(function AgentSidebar({
               onSelectInstance={onSelectInstance}
               onCreateAgent={onCreateAgent}
               onEditAgent={onEditAgent}
+              onDeleteAgentEnvironments={onDeleteAgentEnvironments}
             />
           </div>
         </ResizablePanel>

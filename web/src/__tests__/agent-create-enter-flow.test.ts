@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { EnterEnvironmentResponse, EnvironmentDetail } from "../api/environments";
-import { resolveCreatedAgentChatTarget } from "../pages/agent-panel/AgentPanelLayout";
+import { resolveCreatedAgentChatTarget } from "../pages/agent-panel/agent-create-navigation";
 
 describe("新建智能体进入对话", () => {
   // 新建智能体创建环境后必须显式进入环境，并携带实例 UID 导航，避免聊天页永久等待连接。

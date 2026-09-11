@@ -284,6 +284,8 @@
     "uploadedImage": "已上传图片",
     "imagePreview": "图片预览",
     "systemMessage": "系统提醒",
+    "openSystemMessage": "双击查看系统提醒详情",
+    "systemMessageDescription": "以下内容由系统注入，仅供检查当前会话上下文。",
     "turnError": "执行出错",
     "actions": "消息操作",
     "copy": "复制",

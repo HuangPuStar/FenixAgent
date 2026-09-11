@@ -29,6 +29,8 @@ interface ChatAreaProps {
   agentId: string | null;
   sessionId?: string | null;
   visible: boolean;
+  /** 已删除的 Environment；对应 keep-alive slot 必须立即卸载。 */
+  deletedEnvironmentIds?: ReadonlySet<string>;
   /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
 }
@@ -36,6 +38,25 @@ interface ChatAreaProps {
 interface SessionSlot {
   agentId: string;
   sessionId: string | null;
+}
+
+/** 删除状态命中当前 Environment 时禁用所有依赖其 ID 的请求和渲染。 */
+export function resolveActiveChatEnvironmentId(
+  agentId: string | null,
+  deletedEnvironmentIds?: ReadonlySet<string>,
+): string | null {
+  return agentId && !deletedEnvironmentIds?.has(agentId) ? agentId : null;
+}
+
+/** 驱逐已删除 Environment 的 keep-alive 会话，同时保留其他会话的引用稳定性。 */
+export function evictDeletedEnvironmentSlots<T extends SessionSlot>(
+  slots: Record<string, T>,
+  deletedEnvironmentIds: ReadonlySet<string>,
+): Record<string, T> {
+  const next = Object.fromEntries(
+    Object.entries(slots).filter(([, slot]) => !deletedEnvironmentIds.has(slot.agentId)),
+  ) as Record<string, T>;
+  return Object.keys(next).length === Object.keys(slots).length ? slots : next;
 }
 
 type ArtifactsLayoutMode = "floating" | "docked";
@@ -73,8 +94,9 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  * agentId/sessionId 从 AgentPanelLayout 的 URL 解析传入（而非 Route.useParams），
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
-export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAreaProps) {
+export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, modulesConfig }: ChatAreaProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
+  const activeAgentId = resolveActiveChatEnvironmentId(agentId, deletedEnvironmentIds);
 
   const artifactsCollapsedRef = useRef(true);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(true);
@@ -88,13 +110,13 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // 无论是否有 sessionId 都需加载——有 session 时按 agentId 拉取。
   const { data: agentConfigId = null } = useRequest(
     async () => {
-      if (!agentId) return null;
-      const env = await unwrap(envApi.get({ id: agentId }));
+      if (!activeAgentId) return null;
+      const env = await unwrap(envApi.get({ id: activeAgentId }));
       return env.agentConfigId ?? null;
     },
     {
-      refreshDeps: [agentId],
-      ready: !!agentId,
+      refreshDeps: [activeAgentId],
+      ready: !!activeAgentId,
       onError: (err) => console.warn("[ChatArea] 加载 environment 详情失败", err),
     },
   );
@@ -103,10 +125,10 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // 此处只做投影存储，不再持有完整 entries 或二次全量派生。
   // 按 agentName 过滤：ChatArea 维护跨 agent 的 session keep-alive 槽位，
   // 后台隐藏槽位（延迟节流 flush / 重连收流中）派发的 chat:stats 不得污染当前 agent 的面板
-  const changedFiles = useChangedFilesFromStats(agentId);
+  const changedFiles = useChangedFilesFromStats(activeAgentId);
   // 当前 slot 会在清理缓存后立即回填，必须单独递增重连版本以重新获取新实例的 capabilities。
   const [agentRestartVersions, setAgentRestartVersions] = useState<Record<string, number>>({});
-  const activeAgentRestartVersion = agentId ? (agentRestartVersions[agentId] ?? 0) : 0;
+  const activeAgentRestartVersion = activeAgentId ? (agentRestartVersions[activeAgentId] ?? 0) : 0;
 
   // ProdView 模块配置：若所有附加面板都被禁用，则不渲染右侧面板区域
   const hasPanelModules = useMemo(() => {
@@ -118,24 +140,24 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // ── Session keep-alive 缓存 ──
   // 缓存所有访问过的 session slot，key 为 sessionId 或 agent-level 兜底 key
   const [sessionSlots, setSessionSlots] = useState<Record<string, SessionSlot>>({});
-  const currentSessionKey = sessionId ?? (agentId ? `__agent_${agentId}` : null);
+  const currentSessionKey = sessionId ?? (activeAgentId ? `__agent_${activeAgentId}` : null);
 
   // 新 session 首次访问时注册到缓存，触发重渲染以包含新的 ChatPanel 实例
   useEffect(() => {
-    if (currentSessionKey && agentId && !sessionSlots[currentSessionKey]) {
+    if (currentSessionKey && activeAgentId && !sessionSlots[currentSessionKey]) {
       setSessionSlots((prev) => ({
         ...prev,
-        [currentSessionKey]: { agentId, sessionId: sessionId ?? null },
+        [currentSessionKey]: { agentId: activeAgentId, sessionId: sessionId ?? null },
       }));
     }
-  }, [currentSessionKey, agentId, sessionId, sessionSlots]);
+  }, [currentSessionKey, activeAgentId, sessionId, sessionSlots]);
 
   // 实例重启时：清除所有同 agent 的缓存 slot（它们都需要重建连接）
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       const restartedEnvironmentId = detail?.envId;
-      if (typeof restartedEnvironmentId !== "string" || restartedEnvironmentId !== agentId) return;
+      if (typeof restartedEnvironmentId !== "string" || restartedEnvironmentId !== activeAgentId) return;
 
       setAgentRestartVersions((versions) => ({
         ...versions,
@@ -154,12 +176,18 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     };
     window.addEventListener("agent:reconnect", handler);
     return () => window.removeEventListener("agent:reconnect", handler);
-  }, [agentId]);
+  }, [activeAgentId]);
+
+  // Agent 删除后驱逐其全部 session slot，确保隐藏 ChatPanel 断开连接并停止请求。
+  useEffect(() => {
+    if (!deletedEnvironmentIds || deletedEnvironmentIds.size === 0) return;
+    setSessionSlots((prev) => evictDeletedEnvironmentSlots(prev, deletedEnvironmentIds));
+  }, [deletedEnvironmentIds]);
 
   // 合并 state 中的缓存 + 当前渲染中的 slot（首次访问时 effect 尚未触发，需要兜底）
   const allSlots = { ...sessionSlots };
-  if (currentSessionKey && agentId) {
-    allSlots[currentSessionKey] = { agentId, sessionId: sessionId ?? null };
+  if (currentSessionKey && activeAgentId) {
+    allSlots[currentSessionKey] = { agentId: activeAgentId, sessionId: sessionId ?? null };
   }
 
   // 聊天面板列表：每个 slot 一个 ChatPanel 实例，通过 CSS display 切换
@@ -193,7 +221,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
     const handler = (event: Event) => {
-      if (!getArtifactsPreviewFileDetail(event, agentId)) return;
+      if (!getArtifactsPreviewFileDetail(event, activeAgentId)) return;
       if (artifactsCollapsedRef.current) {
         artifactsCollapsedRef.current = false;
         setArtifactsCollapsed(false);
@@ -201,7 +229,7 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
     };
     window.addEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
     return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
-  }, [agentId]);
+  }, [activeAgentId]);
 
   // 小屏只允许浮动模式。模式选择被保留，回到大屏时恢复用户偏好。
   useEffect(() => {
@@ -344,8 +372,8 @@ export function ChatArea({ agentId, sessionId, visible, modulesConfig }: ChatAre
                     }}
                   />
                   <ArtifactsPanel
-                    key={`${agentId}-${activeAgentRestartVersion}`}
-                    envId={agentId}
+                    key={`${activeAgentId}-${activeAgentRestartVersion}`}
+                    envId={activeAgentId}
                     agentConfigId={agentConfigId}
                     changedFiles={changedFiles}
                     modulesConfig={modulesConfig}

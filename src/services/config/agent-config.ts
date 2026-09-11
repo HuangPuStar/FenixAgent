@@ -250,15 +250,19 @@ export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise
     .from(environment)
     .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
   if (boundEnvs.length > 0) {
+    const environmentIds = boundEnvs.map((env) => env.id);
+    // 先关闭本地 ACP 连接，再停止运行实例；否则客户端仍会用已删除环境继续发消息。
+    const { closeAcpConnectionsForEnvironments } = await import("../../transport/acp-ws-handler");
+    closeAcpConnectionsForEnvironments(environmentIds);
+
     // 动态 import 打破模块循环：orchestration-instance 顶层静态 import ./config 的
     // getReadableAgentConfigById（本文件所在 index 的 re-export），此处若静态反向
     // import 会形成 agent-config → orchestration-instance → config 的循环依赖
     // （同 orchestration-instance 内 reclaimYjsDocs 的惰性导入模式）。
     const { stopInstancesForEnvironments } = await import("../orchestration-instance");
-    await stopInstancesForEnvironments(
-      boundEnvs.map((env) => env.id),
-      { organizationId: row.organizationId },
-    );
+    await stopInstancesForEnvironments(environmentIds, {
+      organizationId: row.organizationId,
+    });
   }
 
   return db.transaction(async (tx) => {

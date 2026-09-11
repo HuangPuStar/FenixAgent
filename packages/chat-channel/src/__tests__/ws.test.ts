@@ -63,11 +63,15 @@ class FakeWebSocket {
 const originalWebSocket = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
 const originalSetTimeout = Object.getOwnPropertyDescriptor(globalThis, "setTimeout");
 const originalClearTimeout = Object.getOwnPropertyDescriptor(globalThis, "clearTimeout");
+const originalDateNow = Date.now;
+let currentTime: number;
 let timers: ScheduledTimer[];
 
 function installFakes(): void {
   FakeWebSocket.instances = [];
+  currentTime = 0;
   timers = [];
+  Date.now = () => currentTime;
 
   Object.defineProperty(globalThis, "WebSocket", {
     configurable: true,
@@ -120,6 +124,7 @@ describe("createYjsWsClient", () => {
   });
 
   afterEach(() => {
+    Date.now = originalDateNow;
     restoreGlobal("WebSocket", originalWebSocket);
     restoreGlobal("setTimeout", originalSetTimeout);
     restoreGlobal("clearTimeout", originalClearTimeout);
@@ -142,6 +147,29 @@ describe("createYjsWsClient", () => {
     expect(timers[0]?.delay).toBe(4000);
   });
 
+  // 网关余额不足等持续故障可能表现为“连接成功后立刻再次断开”；自动恢复必须有上限，
+  // 不能因每次 onopen 重置退避而无限创建连接、重复触发 Agent/网关请求。
+  test("反复短连接达到上限后停止自动重连", () => {
+    const states: string[] = [];
+    const reconnectDelays: Array<number | undefined> = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      FakeWebSocket.instances[attempt]?.open();
+      FakeWebSocket.instances[attempt]?.closeFromServer(1011, "relay handle closed");
+      if (attempt < 5) {
+        reconnectDelays.push(timers[0]?.delay);
+        runNextTimer();
+      }
+    }
+
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    expect(reconnectDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
+    expect(timers).toHaveLength(0);
+    expect(states.at(-1)).toBe("error");
+  });
+
   // 连接曾成功恢复后，下一次断线应从最短退避时间重新开始。
   test("连接成功后重置重连延迟", () => {
     const client = createClient();
@@ -150,6 +178,7 @@ describe("createYjsWsClient", () => {
     FakeWebSocket.instances[0]?.closeFromServer();
     runNextTimer();
     FakeWebSocket.instances[1]?.open();
+    currentTime = 30_000;
     FakeWebSocket.instances[1]?.closeFromServer();
 
     expect(timers[0]?.delay).toBe(1000);
@@ -388,6 +417,7 @@ describe("createYjsWsClient 二进制 yjs:update 帧（SP-A4）", () => {
   });
 
   afterEach(() => {
+    Date.now = originalDateNow;
     restoreGlobal("WebSocket", originalWebSocket);
     restoreGlobal("setTimeout", originalSetTimeout);
     restoreGlobal("clearTimeout", originalClearTimeout);

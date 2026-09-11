@@ -230,6 +230,12 @@
     700 10px / 1.4 ui-monospace,
     monospace;
   letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.chat-system-reminder:hover,
+.chat-system-reminder:focus-visible {
+  border-color: #c5cfdd;
+  color: #46566d;
 }
 
 .message-content ul {

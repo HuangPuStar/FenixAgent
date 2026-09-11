@@ -58,6 +58,12 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   }, [activeId, visiblePrompts]);
 
   useEffect(() => {
+    const activePrompt = activeId ? document.getElementById(`chat-entry-${activeId}`) : null;
+    activePrompt?.classList.add("chat-entry--active-prompt");
+    return () => activePrompt?.classList.remove("chat-entry--active-prompt");
+  }, [activeId]);
+
+  useEffect(() => {
     const rail = railRef.current;
     const conversation = rail?.parentElement;
     if (!rail || !conversation || visiblePrompts.length === 0) return;

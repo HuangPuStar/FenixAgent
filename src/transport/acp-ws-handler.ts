@@ -582,6 +582,34 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   });
 }
 
+/**
+ * 关闭指定 Environment 关联的本地 ACP 连接，并清理 agent → machine 缓存。
+ *
+ * 删除 Environment/Agent 后连接端仍可能继续发送消息；只删除 DB 和 runtime instance
+ * 不会使这类连接失效，导致服务端持续用已删除的 environmentId 处理请求。
+ */
+export function closeAcpConnectionsForEnvironments(environmentIds: string[]): void {
+  if (environmentIds.length === 0) return;
+  const environmentIdSet = new Set(environmentIds);
+
+  for (const [wsId, entry] of connections) {
+    if (entry.isMachine || !entry.boundEnvId || !environmentIdSet.has(entry.boundEnvId)) continue;
+
+    if (entry.unsub) entry.unsub();
+    if (entry.keepalive) clearInterval(entry.keepalive);
+    connections.delete(wsId);
+    try {
+      entry.ws.close(1000, "environment deleted");
+    } catch (error) {
+      logError(`[ACP-WS-CLOSE] failed to close deleted environment connection: wsId=${wsId}`, error);
+    }
+  }
+
+  for (const environmentId of environmentIds) {
+    agentMachineCache.delete(environmentId);
+  }
+}
+
 /** Called from onClose — marks agent offline and cleans up */
 export function handleAcpWsClose(_ws: WsConnection, wsId: string, code?: number, reason?: string): void {
   const entry = connections.get(wsId);

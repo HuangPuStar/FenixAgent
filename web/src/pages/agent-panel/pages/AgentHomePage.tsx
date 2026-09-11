@@ -11,6 +11,7 @@ import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
 import { NS } from "../../../i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
+import { resolveCreatedAgentChatTarget } from "../agent-create-navigation";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
 import { AgentGenerationForm } from "../components/AgentGenerationForm";
 
@@ -142,30 +143,21 @@ export function AgentHomePage() {
       // 刷新左侧智能体列表
       dispatchConfigChange("agents");
 
-      // 3. 查找是否已有绑定该 agentConfigId 的 environment
-      const envList = await unwrap(envApi.list());
-      const existingEnv = (Array.isArray(envList) ? envList : []).find((e) => e.agentConfigId === agentConfigId);
-      if (existingEnv) {
-        void navigate({ to: "/agent/chat/$agentId", params: { agentId: existingEnv.id } });
-        return;
-      }
+      // 3. 创建或复用 environment，并显式进入实例后再导航。
+      // environment 的 autoStart 是异步预热，不能作为实例已可用的确认信号。
+      const target = await resolveCreatedAgentChatTarget(agentConfigId, {
+        list: async () => {
+          const environments = await unwrap(envApi.list());
+          return Array.isArray(environments) ? environments : [];
+        },
+        create: async (body) => unwrap(envApi.create(body)),
+        enter: async (environmentId) => unwrap(envApi.enter({ id: environmentId })),
+      });
 
-      // 4. 没有则创建新 environment（autoStart: true 自动启动实例）
-      const newEnv = await unwrap(
-        envApi.create({
-          name: `env-${agentConfigId.slice(0, 8)}`,
-          agentConfigId,
-          autoStart: true,
-        }),
-      );
-      const envId = newEnv?.id;
-      if (!envId) {
-        toast.error(t("createFailed"));
-        return;
-      }
-
-      // 5. 跳转聊天页
-      void navigate({ to: "/agent/chat/$agentId", params: { agentId: envId } });
+      await navigate({
+        to: "/agent/chat/$agentId/$sessionId",
+        params: { agentId: target.environmentId, sessionId: target.instanceUid },
+      });
     },
     {
       manual: true,

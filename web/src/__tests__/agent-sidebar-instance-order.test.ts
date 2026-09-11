@@ -38,6 +38,12 @@ describe("Agent sidebar Instance 排序", () => {
   });
 });
 
+test("聊天路由向侧边栏传递当前 Instance", () => {
+  const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/AgentPanelLayout.tsx"), "utf8");
+
+  expect(source).toContain("selectedInstanceId={isChatRoute ? chatSessionId : lastChatSessionRef.current}");
+});
+
 // 配置导航分区只允许内容容器滚动，避免与外层包装形成嵌套双滚动条。
 test("配置导航分区保持单一滚动容器", () => {
   const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/agent-panel.css"), "utf8");

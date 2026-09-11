@@ -284,6 +284,8 @@
     "uploadedImage": "Uploaded image",
     "imagePreview": "Image preview",
     "systemMessage": "SYSTEM REMINDER",
+    "openSystemMessage": "Double-click to view system reminder details",
+    "systemMessageDescription": "This system-injected content is shown only for inspecting the current conversation context.",
     "turnError": "Execution failed",
     "actions": "Message actions",
     "copy": "Copy",

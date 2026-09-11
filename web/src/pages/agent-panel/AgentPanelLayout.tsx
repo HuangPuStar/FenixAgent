@@ -1,36 +1,13 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import { type EnterEnvironmentResponse, type EnvironmentDetail, envApi } from "@/src/api/environments";
+import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
+import { resolveCreatedAgentChatTarget } from "./agent-create-navigation";
 import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
-
-interface CreatedAgentEnvironmentGateway {
-  list: () => Promise<EnvironmentDetail[]>;
-  create: (body: { name: string; agentConfigId: string; autoStart: boolean }) => Promise<EnvironmentDetail>;
-  enter: (environmentId: string) => Promise<EnterEnvironmentResponse>;
-}
-
-/** 新建 Agent 后确保关联到真实 Instance，再生成聊天路由目标。 */
-export async function resolveCreatedAgentChatTarget(
-  agentConfigId: string,
-  gateway: CreatedAgentEnvironmentGateway,
-): Promise<{ environmentId: string; instanceUid: string }> {
-  const environments = await gateway.list();
-  const existingEnvironment = environments.find((environment) => environment.agentConfigId === agentConfigId);
-  const environment =
-    existingEnvironment ??
-    (await gateway.create({
-      name: `env-${agentConfigId.slice(0, 8)}`,
-      agentConfigId,
-      autoStart: true,
-    }));
-  const entered = await gateway.enter(environment.id);
-  return { environmentId: entered.environmentId ?? environment.id, instanceUid: entered.instanceUid };
-}
 
 export function AgentPanelLayout() {
   const navigate = useNavigate();
@@ -44,6 +21,7 @@ export function AgentPanelLayout() {
 
   const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deletedEnvironmentIds, setDeletedEnvironmentIds] = useState<ReadonlySet<string>>(() => new Set());
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
     open: false,
     agentName: "",
@@ -120,19 +98,39 @@ export function AgentPanelLayout() {
     lastChatSessionRef.current = chatSessionId;
   }
 
+  const handleDeleteAgentEnvironments = useCallback(
+    (environmentIds: string[]) => {
+      if (environmentIds.length === 0) return;
+      setDeletedEnvironmentIds((current) => new Set([...current, ...environmentIds]));
+      if (selectedEnvironmentId && environmentIds.includes(selectedEnvironmentId)) {
+        lastChatAgentRef.current = null;
+        lastChatSessionRef.current = null;
+        void navigate({ to: "/agent/home" });
+      }
+    },
+    [navigate, selectedEnvironmentId],
+  );
+
   return (
     <div className="agent-panel-layout">
       <AgentSidebar
         activeNav={activeNav}
         selectedEnvironmentId={selectedEnvironmentId}
+        selectedInstanceId={isChatRoute ? chatSessionId : lastChatSessionRef.current}
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}
         onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
+        onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
       />
       <div className="agent-panel-body" ref={setPanelHost}>
         <Outlet />
-        <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
+        <ChatArea
+          agentId={lastChatAgentRef.current}
+          sessionId={lastChatSessionRef.current}
+          visible={isChatRoute}
+          deletedEnvironmentIds={deletedEnvironmentIds}
+        />
       </div>
       <AgentFormDialog
         open={createDialogOpen}

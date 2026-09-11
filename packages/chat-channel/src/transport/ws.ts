@@ -19,6 +19,10 @@ const NO_RECONNECT_CODES = new Set<number>([
 
 /** 重连间隔（指数退避），单位毫秒 */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
+/** 短连接连续失败上限；达到后停止自动重连，避免持续故障形成无限请求循环。 */
+const MAX_CONSECUTIVE_UNSTABLE_DISCONNECTS = 6;
+/** 连接持续达到此时间才视为稳定恢复，并清零短连接失败计数。 */
+const STABLE_CONNECTION_MS = 30_000;
 
 export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
 
@@ -118,6 +122,8 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
   let ws: WebSocket | null = null;
   let reconnectDelayIdx = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let consecutiveUnstableDisconnects = 0;
+  let connectedAt: number | null = null;
   let destroyed = false;
 
   function setState(state: YjsWsState) {
@@ -147,7 +153,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
 
     socket.onopen = () => {
       if (destroyed || ws !== socket) return;
-      reconnectDelayIdx = 0;
+      connectedAt = Date.now();
       setState("connected");
       for (const vector of getYjsStateVectors?.() ?? []) {
         socket.send(
@@ -238,6 +244,18 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
       onClose?.(close);
       // close code 只控制连接生命周期，不产生或改变用户可见错误。
       if (NO_RECONNECT_CODES.has(event.code)) {
+        setState("error");
+        return;
+      }
+      const connectionDuration = connectedAt === null ? 0 : Date.now() - connectedAt;
+      connectedAt = null;
+      if (connectionDuration >= STABLE_CONNECTION_MS) {
+        consecutiveUnstableDisconnects = 0;
+        reconnectDelayIdx = 0;
+      } else {
+        consecutiveUnstableDisconnects += 1;
+      }
+      if (consecutiveUnstableDisconnects >= MAX_CONSECUTIVE_UNSTABLE_DISCONNECTS) {
         setState("error");
         return;
       }
