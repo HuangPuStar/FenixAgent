@@ -521,7 +521,7 @@ CI 必须验证 `git diff --exit-code -- upstream/fenix`，确保 submodule 只�
 | --- | --- | --- |
 | 替换身份、租户、权限 | 在 platform 实现 `AccessControlModule`，app 静态替换 | 在资源 service 中读取 CE member/role 表 |
 | `AccessControlModule` 缺能力 | 见 10.1 | 给现有接口塞客户专属 optional 字段或 `as any` |
-| EE 对资源增加发布/审批/版本 | EE resources 包：自有 schema、状态机、Facade 覆盖/组合、route/web contribution | 修改 CE 资源表加入 EE 字段，或复制 CE CRUD |
+| EE 对资源增加发布/审批/版本 | EE resources 包：自有 schema、状态机、Facade 覆盖/组合、route/web contribution；参考 §10.2 | 修改 CE 资源表加入 EE 字段，或复制 CE CRUD |
 | 前端局部/整体差异 | EE 资源模块的 `web/` 复用 API client/组件或替换页面，在 app 静态选择 | fork 整个 CE web app、运行时注入路由 |
 | 新增从未有过的业务功能 | 新建 EE resource/agent/web 模块，声明依赖、schema、routes、UI、测试 | 将功能塞进 platform-sdk 或 app.ts |
 | 新引擎/RAG/MCP/Sandbox/部署目标 | 实现对应静态插件 SDK，app 选择 provider | 将 provider 特例写进 domain service |
@@ -593,6 +593,14 @@ const agentConfigs = new EnterpriseAgentConfigFacade(accessControl, approvalPoli
 ```
 
 CE 的 `AccessControlModule`、EE 的基础 AgentConfig CRUD 和其他客户均无需修改。若甲方需求将来被证明是多个客户共同需要的企业能力，再将该窄端口的默认实现上移到 EE；不要先把客户字段或方法加入 CE。
+
+### 10.2 EE Resource 的 Version / Tag 问题
+
+EE 需要对某些资源（如智能体）进行发布管理，会产生新的 Version/TAG。此时：
+
+1. CE 公共 Facade 与跨资源关联只使用唯一、不可变的资源 ID；EE 为资源增加版本时，每个可引用版本拥有独立 ID，tag 或 version 只是 EE 模块内部指向该 ID 的别名，不得将 tag、version 或通用 params 加入 CE 公共接口。
+2. 基础 list 仍列出具体资源记录，相当于列出所有版本对象；按逻辑资源聚合、列出 tag、解析 tag 等能力由 EE 资源模块扩展。
+3. AgentConfig 等引用者只保存依赖版本的确定 ID；版本内容变化必须产生新 ID，禁止在原 ID 下覆盖已被引用的内容。
 
 ## 11. 对现有工程切面的覆盖
 
