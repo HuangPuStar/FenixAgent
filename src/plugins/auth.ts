@@ -79,6 +79,7 @@ function enrichAlsContext(user: UserInfo, authContext: AuthContext | null): void
   if (authContext) {
     store.organizationId = authContext.organizationId;
     store.organizationName = authContext.organizationName;
+    store.role = authContext.role;
   }
 }
 

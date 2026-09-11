@@ -45,6 +45,8 @@ export interface RequestContext {
   username?: string;
   organizationId?: string;
   organizationName?: string;
+  /** 当前请求在 active organization 中的成员角色。 */
+  role?: "owner" | "admin" | "member";
 }
 
 export interface StructuredLogEntry {
