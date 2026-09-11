@@ -8,7 +8,7 @@ import { bootstrapServerAssembly } from "../bootstrap";
 
 const profile = {
   accessControl: "access-control",
-  runtime: "agent-runtime",
+  agentRuntime: "agent-runtime",
   webShell: "default",
   resources: ["agent-config"],
   web: ["agent-config"],
@@ -23,7 +23,7 @@ const manifests = [
   },
   {
     id: "agent-runtime",
-    kind: "runtime",
+    kind: "agent-runtime",
     dependsOn: ["access-control"],
     create: () => ({ id: "runtime" }),
   },
@@ -47,7 +47,7 @@ test("从 JSON 和 YAML 文件读取同一 assembly profile", async () => {
       yamlPath,
       [
         "accessControl: access-control",
-        "runtime: agent-runtime",
+        "agentRuntime: agent-runtime",
         "webShell: default",
         "resources:",
         "  - agent-config",

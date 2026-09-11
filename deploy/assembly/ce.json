@@ -1,6 +1,6 @@
 {
   "accessControl": "access-control",
-  "runtime": "agent-runtime",
+  "agentRuntime": "agent-runtime",
   "webShell": "default",
   "resources": [],
   "web": []

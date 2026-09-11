@@ -1,7 +1,7 @@
 import type { z } from "zod/v4";
 
 /** 构建期 registry 支持的模块类别。 */
-export type ModuleKind = "access-control" | "runtime" | "resource";
+export type ModuleKind = "access-control" | "agent-runtime" | "resource";
 
 /** 模块声明的部署级环境变量；读取和交叉声明校验由统一 env loader 负责。 */
 export interface EnvDefinition {

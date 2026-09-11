@@ -70,7 +70,10 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
     return manifest;
   }
 
-  function requireFoundation(id: string, kind: Extract<ModuleKind, "access-control" | "runtime">): ModuleManifest {
+  function requireFoundation(
+    id: string,
+    kind: Extract<ModuleKind, "access-control" | "agent-runtime">,
+  ): ModuleManifest {
     const manifest = requireModule(id, kind);
     if (!manifest.create) throw new Error(`基础模块 ${id} 未提供创建工厂`);
     return manifest;
@@ -80,10 +83,10 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
     resolveProfile(profileInput: unknown): ResolvedAssembly {
       const profile = parseAssemblyProfile(profileInput);
       requireFoundation(profile.accessControl, "access-control");
-      requireFoundation(profile.runtime, "runtime");
+      requireFoundation(profile.agentRuntime, "agent-runtime");
       for (const resourceId of profile.resources) requireModule(resourceId, "resource");
 
-      const requestedIds = [profile.accessControl, profile.runtime, ...profile.resources];
+      const requestedIds = [profile.accessControl, profile.agentRuntime, ...profile.resources];
       const enabledIds = new Set(requestedIds);
       const visiting = new Set<string>();
       const visited = new Set<string>();

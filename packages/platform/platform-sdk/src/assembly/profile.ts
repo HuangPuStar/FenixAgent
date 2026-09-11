@@ -7,7 +7,7 @@ const moduleIdSchema = z
 
 const assemblyProfileSchema = z.strictObject({
   accessControl: moduleIdSchema,
-  runtime: moduleIdSchema,
+  agentRuntime: moduleIdSchema,
   webShell: moduleIdSchema,
   resources: z.array(moduleIdSchema),
   web: z.array(moduleIdSchema),
@@ -16,7 +16,7 @@ const assemblyProfileSchema = z.strictObject({
 /** CE、EE 与客户版本共用的静态装配 profile。 */
 export interface AssemblyProfile {
   readonly accessControl: string;
-  readonly runtime: string;
+  readonly agentRuntime: string;
   readonly webShell: string;
   readonly resources: readonly string[];
   readonly web: readonly string[];

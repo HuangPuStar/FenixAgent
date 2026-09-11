@@ -4,7 +4,7 @@ import { bootstrapModules, createModuleRegistry, type ModuleManifest, parseAssem
 
 const validProfile = {
   accessControl: "access-control",
-  runtime: "agent-runtime",
+  agentRuntime: "agent-runtime",
   webShell: "default",
   resources: ["agent-config"],
   web: ["agent-config"],
@@ -35,11 +35,11 @@ function createManifests(events: string[] = []): readonly ModuleManifest[] {
     },
     {
       id: "agent-runtime",
-      kind: "runtime",
+      kind: "agent-runtime",
       dependsOn: ["access-control"],
       capabilities: ["agent.runtime"],
       create: ({ modules }) => {
-        events.push(`create:runtime:${String(modules.has("access-control"))}`);
+        events.push(`create:agent-runtime:${String(modules.has("access-control"))}`);
         return { id: "runtime" };
       },
     },
@@ -55,6 +55,23 @@ function createManifests(events: string[] = []): readonly ModuleManifest[] {
 }
 
 describe("assembly profile", () => {
+  // Agent 高耦合能力以单一 agentRuntime 槽位装配，旧字段不能形成第二套契约。
+  test("使用 agentRuntime 字段选择单一 Agent Runtime 模块并拒绝旧字段", () => {
+    const agentRuntimeProfile = {
+      accessControl: "access-control",
+      agentRuntime: "agent-runtime",
+      webShell: "default",
+      resources: ["agent-config"],
+      web: ["agent-config"],
+    };
+
+    expect(parseAssemblyProfile(agentRuntimeProfile)).toEqual(agentRuntimeProfile);
+    expect(() => parseAssemblyProfile({ ...agentRuntimeProfile, agent: "agent-runtime" })).toThrow("装配配置格式非法");
+    expect(() => parseAssemblyProfile({ ...agentRuntimeProfile, runtime: "agent-runtime" })).toThrow(
+      "装配配置格式非法",
+    );
+  });
+
   // 合法 profile 只保留稳定装配字段，不接受运行时代码入口。
   test("解析合法的静态装配 profile", () => {
     expect(parseAssemblyProfile(validProfile)).toEqual(validProfile);
@@ -69,8 +86,10 @@ describe("assembly profile", () => {
 
   // 模块 ID 只允许稳定 slug，不能退化为路径、包名或 URL。
   test("拒绝危险模块 ID", () => {
-    expect(() => parseAssemblyProfile({ ...validProfile, runtime: "../runtime.ts" })).toThrow("装配配置格式非法");
-    expect(() => parseAssemblyProfile({ ...validProfile, runtime: "@vendor/runtime" })).toThrow("装配配置格式非法");
+    expect(() => parseAssemblyProfile({ ...validProfile, agentRuntime: "../runtime.ts" })).toThrow("装配配置格式非法");
+    expect(() => parseAssemblyProfile({ ...validProfile, agentRuntime: "@vendor/runtime" })).toThrow(
+      "装配配置格式非法",
+    );
   });
 
   // 同一类别重复启用会破坏确定性装配，应在访问 registry 前失败。
@@ -88,8 +107,8 @@ describe("module registry", () => {
   // profile 引用必须完全来自构建期 registry，未知 ID 不能触发动态发现。
   test("拒绝未知模块 ID", () => {
     const registry = createModuleRegistry(createManifests());
-    expect(() => registry.resolveProfile({ ...validProfile, runtime: "unknown-runtime" })).toThrow(
-      "装配配置引用了未注册模块: unknown-runtime",
+    expect(() => registry.resolveProfile({ ...validProfile, agentRuntime: "unknown-agent-runtime" })).toThrow(
+      "装配配置引用了未注册模块: unknown-agent-runtime",
     );
   });
 
@@ -114,10 +133,15 @@ describe("module registry", () => {
   test("拒绝未启用的 manifest 依赖", () => {
     const manifests = [
       ...createManifests(),
-      { id: "standalone-runtime", kind: "runtime", dependsOn: [], create: () => ({ id: "standalone" }) },
+      {
+        id: "standalone-agent-runtime",
+        kind: "agent-runtime",
+        dependsOn: [],
+        create: () => ({ id: "standalone" }),
+      },
     ] satisfies readonly ModuleManifest[];
     const registry = createModuleRegistry(manifests);
-    expect(() => registry.resolveProfile({ ...validProfile, runtime: "standalone-runtime" })).toThrow(
+    expect(() => registry.resolveProfile({ ...validProfile, agentRuntime: "standalone-agent-runtime" })).toThrow(
       "模块 agent-config 依赖未启用模块 agent-runtime",
     );
   });
@@ -162,7 +186,7 @@ describe("module bootstrap", () => {
     expect(events).toEqual([
       "env:AUTH_MODE",
       "create:access:session",
-      "create:runtime:true",
+      "create:agent-runtime:true",
       "mount:agent-config:agent-config.routes",
     ]);
     expect(result.modules.map((manifest) => manifest.id)).toEqual(["access-control", "agent-runtime", "agent-config"]);
@@ -185,7 +209,7 @@ describe("module bootstrap", () => {
       },
       {
         id: "agent-runtime",
-        kind: "runtime",
+        kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
           registerCleanup(() => events.push("dispose:runtime"));
@@ -220,7 +244,7 @@ describe("module bootstrap", () => {
       },
       {
         id: "agent-runtime",
-        kind: "runtime",
+        kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
           registerCleanup(() => events.push("dispose:runtime-partial"));
@@ -254,7 +278,7 @@ describe("module bootstrap", () => {
       },
       {
         id: "agent-runtime",
-        kind: "runtime",
+        kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
           registerCleanup(() => events.push("dispose:runtime-partial"));
@@ -287,7 +311,7 @@ describe("module bootstrap", () => {
       },
       {
         id: "agent-runtime",
-        kind: "runtime",
+        kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
           registerCleanup(() => events.push("dispose:runtime"));
