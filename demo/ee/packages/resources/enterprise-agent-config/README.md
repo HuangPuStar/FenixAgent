@@ -9,7 +9,7 @@ EE 对 CE AgentConfig 的商业扩展模块。
 - 发布状态仓储：EE 创建配置时生成 `draft`，`publish()` 后转为 `active`。
 - `resolveForRun()` 覆盖：先校验 `use`，再限定只有已发布配置可启动。
 - `agentConfigPublicationModule`：EE 自有发布表、迁移、发布 API、控制台入口与 capability。
-- `db/`：EE 自己拥有的发布扩展表；不修改 CE `resources` 或属性表。
+- `db/`：EE 自己拥有的发布扩展表；以 `agent_config_id` 引用 CE `agent_configs`，不修改 CE 表。
 - `web/`：EE 静态替换的空发布页面 contribution。
 
 允许依赖：CE `agent-config` 的公开入口与 CE 平台契约。

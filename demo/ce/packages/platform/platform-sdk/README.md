@@ -2,7 +2,7 @@
 
 跨领域的平台契约包，不包含具体业务实现。
 
-包含：认证主体、资源归属范围与上下文、`AccessControlModule`、`ResourceQueryConstraint`、泛型 `AuthorizedResourceFacade`、资源 repository 端口、资源模块声明，以及 `ModuleManifest` / `createModuleRegistry` 装配契约。构建脚本据此收集各包的 `fenix.module.ts`，产出静态 registry；SDK 不负责扫描文件。
+包含：认证主体、`ResourceScope`、`ResourceAccess`、`ResourceScopeStore`、`AccessControlModule`、`ResourceQueryConstraint`、泛型 `AuthorizedResourceFacade`、资源 repository 端口、资源模块声明，以及 `ModuleManifest` / `createModuleRegistry` 装配契约。构建脚本据此收集各包的 `fenix.module.ts`，产出静态 registry；SDK 不负责扫描文件。
 
 `./assembly` 是 CE、EE 共用的公开子路径，导出 `AssemblyProfile` 与 `parseAssemblyProfile()`。它只校验 profile 的通用结构；具体模块 ID、依赖和版本规则由各自 app 使用生成 registry 校验。
 

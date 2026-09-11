@@ -3,6 +3,7 @@ import {
   AgentConfigFacade,
   type AgentConfigPage,
   type CreateAgentConfigInput,
+  InMemoryAgentConfigRepository,
   type ListAgentConfigsInput,
 } from "@fenix-ce/agent-config";
 import type { ResourceModule } from "@fenix-ce/platform-sdk";
@@ -42,8 +43,9 @@ export class EnterpriseAgentConfigFacade extends AgentConfigFacade {
   constructor(
     accessControl: ConstructorParameters<typeof AgentConfigFacade>[0],
     private readonly approvalPolicy: AgentConfigApprovalPolicy,
+    repository?: InMemoryAgentConfigRepository,
   ) {
-    super(accessControl);
+    super(accessControl, repository);
   }
 
   override async create(input: CreateAgentConfigInput): Promise<EnterpriseAgentConfig> {
@@ -58,11 +60,12 @@ export class EnterpriseAgentConfigFacade extends AgentConfigFacade {
   }
 
   async publish(input: { actorId: string; agentConfigId: string }): Promise<EnterpriseAgentConfig> {
-    const config = await this.getAuthorizedAgentConfig(input.actorId, input.agentConfigId, "publish");
+    // 发布是 AgentConfig 的专属状态机；先复用通用 update 授权，再进入 EE 审批端口。
+    const config = await this.getAuthorizedAgentConfig(input.actorId, input.agentConfigId, "update");
     await this.approvalPolicy.authorizePublish({
       actorId: input.actorId,
       agentConfigId: config.id,
-      ownershipScope: config.ownershipScope,
+      scope: config.scope,
     });
     this.publications.activate(config.id);
     return this.toEnterpriseAgentConfig(config);

@@ -1,41 +1,72 @@
-/**
- * 平台资源的归属与可见边界。
- *
- * CE 不假定范围一定是 organization；EE 或甲方版可以使用 workspace、project 等范围，
- * 而不修改 CE 的资源领域服务。
- */
+/** 资源默认可见范围；`public` 仅代表已认证用户可访问，不创建匿名入口。 */
+export type ResourceVisibility = "private" | "public";
+export type ResourceAction = "read" | "create" | "update" | "delete" | "use";
+export type OwnershipMode = "organization" | "organization-personal" | "personal";
+
+/** 由资源包静态声明的默认归属与动作，不由平台维护中央注册表。 */
+export interface ResourceDefinition {
+  readonly type: string;
+  readonly ownershipMode: OwnershipMode;
+  readonly actions: readonly ResourceAction[];
+  readonly memberDefaultActions: readonly Extract<ResourceAction, "read" | "use">[];
+}
+
+/** 资源主表固定列映射出的归属与可见范围。 */
 export interface ResourceScope {
-  readonly kind: string;
-  readonly id: string;
+  readonly organizationId?: string;
+  readonly ownerUserId?: string;
+  readonly visibility: ResourceVisibility;
 }
 
-/** 已认证主体可以是用户、服务账号或来自外部身份系统的主体。 */
-export interface Subject {
-  readonly id: string;
-  readonly type: "user" | "service" | "external";
+/** 当前 actor 对单个资源的有效动作；不是资源自身的归属信息。 */
+export interface ResourceAccess {
+  readonly actions: readonly ResourceAction[];
 }
 
-/** 在资源服务边界创建，携带资源写入归属。 */
-export interface ResourceContext {
-  readonly subject: Subject;
-  readonly scope: ResourceScope;
+/** 资源领域对外的稳定读模型：范围不随 actor 改变，access 则按 actor 计算。 */
+export type ResourceRecord<TData, TScope extends ResourceScope = ResourceScope> = TData & {
+  readonly scope: TScope;
+  readonly access: ResourceAccess;
+};
+
+/**
+ * 资源主表固定归属列的读写端口。
+ *
+ * CE 的 ColumnResourceScopeStore 将 organization_id、user_id、visibility 映射为 ResourceScope；
+ * 资源模块不直接读写这些列。
+ */
+export interface ResourceScopeStore<TScope extends ResourceScope = ResourceScope> {
+  initialize(input: { resourceType: string; resourceId: string; scope: TScope }): Promise<void>;
+  getMany(input: { resourceType: string; resourceIds: readonly string[] }): Promise<Map<string, TScope>>;
+  update(input: { resourceType: string; resourceId: string; scope: TScope }): Promise<void>;
+  remove(input: { resourceType: string; resourceId: string }): Promise<void>;
+}
+
+/** 认证层构造的可信调用主体。 */
+export interface ActorContext {
+  readonly kind: "user";
+  readonly userId: string;
+  readonly systemRole?: "super-admin";
+  readonly activeOrganizationId?: string;
+  readonly memberships: readonly { readonly organizationId: string; readonly role: "owner" | "admin" | "member" }[];
 }
 
 /**
- * repository 消费的范围过滤条件。
+ * 授权查询能力消费的不透明范围过滤条件。
  *
- * demo 用 matches() 表示数据库 WHERE；生产 repository 应将对应实现转换为 Drizzle 条件，
- * 而不是先读取全量数据再在 service 内过滤。
+ * 生产实现由 AuthorizedResourceQuery 将其编译为 Drizzle 条件；资源 repository 不解析它。
  */
-export interface ResourceQueryConstraint {
-  matches(scope: ResourceScope): boolean;
-}
+export type ResourceQueryConstraint = Readonly<{
+  readonly resourceType: string;
+  readonly action: "read" | "use";
+}>;
 
-/** CE 资源服务不理解具体角色或企业权限模型。 */
+/** 单资源授权的稳定输入；资源领域不传递主表归属列。 */
 export interface AuthorizationInput {
-  readonly actorId: string;
-  readonly action: string;
-  readonly resourceScope: ResourceScope;
+  readonly actor: ActorContext;
+  readonly action: ResourceAction;
+  readonly resource: ResourceDefinition;
+  readonly resourceId: string;
 }
 
 /**
@@ -45,9 +76,29 @@ export interface AuthorizationInput {
  */
 export interface AccessControlModule {
   readonly id: string;
-  createResourceContext(input: { actorId: string }): Promise<ResourceContext>;
-  buildResourceQueryConstraint(context: ResourceContext): ResourceQueryConstraint;
+  createActorContext(input: { actorId: string }): Promise<ActorContext>;
+  initializeResourceAccess(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    resourceId: string;
+  }): Promise<void>;
   authorize(input: AuthorizationInput): Promise<void>;
+  createListConstraint(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    action: "read" | "use";
+  }): ResourceQueryConstraint;
+  /** 平台授权查询将结果映射为 actor 专属的 ResourceAccess。 */
+  resolveAccess(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    resourceId: string;
+  }): Promise<ResourceAccess>;
+}
+
+/** 装配层将资源主表范围 Store 交给授权实现；资源业务模块不依赖此内部接线端口。 */
+export interface ResourceScopeStoreBinding {
+  bindResourceScopeStore(store: ResourceScopeStore): void;
 }
 
 /** 领域模块作为一个整体交付：数据、服务、API、控制台与能力声明不可拆散。 */
@@ -172,3 +223,4 @@ export function defineApplication<T extends object>(application: T): Readonly<T>
 
 export * from "./resource/scoped-resource";
 export * from "./services/authorized-resource-facade";
+export * from "./services/authorized-resource-query";

@@ -1,22 +1,35 @@
-import type { ResourcePage, ResourceScope } from "@fenix-ce/platform-sdk";
+import type { ResourceDefinition, ResourcePage, ResourceRecord, ResourceVisibility } from "@fenix-ce/platform-sdk";
 
-/** AgentConfig 专属属性表；归属与权限不属于此对象。 */
+/** AgentConfig 资源包静态持有的访问定义；平台只解释此定义，不维护中央 registry。 */
+export const agentConfigResourceDefinition = {
+  type: "agent-config",
+  ownershipMode: "organization",
+  actions: ["read", "create", "update", "delete", "use"],
+  memberDefaultActions: ["read", "use"],
+} as const satisfies ResourceDefinition;
+
+/** AgentConfig 专属属性表；资源范围不属于此对象。 */
 export interface AgentConfigProperties {
   readonly resourceId: string;
   readonly name: string;
   readonly engine: string;
 }
 
-/** 应用层读模型：资源基表的 ID/归属与 AgentConfig 属性表组合后提供给调用方。 */
-export interface AgentConfig {
+/** 应用层读模型：资源基表的 ID/范围与 AgentConfig 属性表组合后提供给调用方。 */
+export type AgentConfig = ResourceRecord<{
   readonly id: string;
   readonly name: string;
   readonly engine: string;
-  readonly ownershipScope: ResourceScope;
-}
+}>;
 
 export interface CreateAgentConfigInput {
   readonly actorId: string;
+  readonly name: string;
+  readonly engine: string;
+}
+
+/** Domain Service 只接收 AgentConfig 业务字段，不接触可信主体。 */
+export interface CreateAgentConfigData {
   readonly name: string;
   readonly engine: string;
 }
@@ -25,6 +38,17 @@ export interface UpdateAgentConfigInput {
   readonly actorId: string;
   readonly agentConfigId: string;
   readonly name: string;
+}
+
+/** Domain Service 的更新输入不携带 actor 或资源定位信息。 */
+export interface UpdateAgentConfigData {
+  readonly name: string;
+}
+
+export interface UpdateAgentConfigVisibilityInput {
+  readonly actorId: string;
+  readonly agentConfigId: string;
+  readonly visibility: ResourceVisibility;
 }
 
 export interface AgentConfigListQuery {
@@ -40,11 +64,11 @@ export type AgentConfigPage = ResourcePage<AgentConfig>;
 
 /** 纯领域规则：不认识 actor、授权、资源归属或 InstanceManager。 */
 export class AgentConfigDomainService {
-  create(input: CreateAgentConfigInput): Omit<AgentConfigProperties, "resourceId"> {
+  create(input: CreateAgentConfigData): Omit<AgentConfigProperties, "resourceId"> {
     return { name: this.requireName(input.name), engine: this.requireEngine(input.engine) };
   }
 
-  update(config: AgentConfigProperties, input: UpdateAgentConfigInput): AgentConfigProperties {
+  update(config: AgentConfigProperties, input: UpdateAgentConfigData): AgentConfigProperties {
     return { ...config, name: this.requireName(input.name) };
   }
 

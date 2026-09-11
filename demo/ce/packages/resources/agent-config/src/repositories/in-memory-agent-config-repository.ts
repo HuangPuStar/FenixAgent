@@ -1,62 +1,115 @@
-import type { ResourceQueryConstraint, ResourceScope, ScopedResourceRepository } from "@fenix-ce/platform-sdk";
-import type { AgentConfig, AgentConfigListQuery, AgentConfigPage, AgentConfigProperties } from "../domain/agent-config";
+import type { ResourceScope, ResourceScopeStore, ScopedResourceRepository } from "@fenix-ce/platform-sdk";
+import type { AgentConfig, AgentConfigListQuery, AgentConfigPage } from "../domain/agent-config";
 
-interface ResourceRow {
+/** 模拟 agent_configs 主表：业务字段与固定归属列由同一资源行承载。 */
+interface AgentConfigRow {
   readonly id: string;
-  readonly type: "agent-config";
-  readonly ownershipScope: ResourceScope;
+  readonly organizationId?: string;
+  readonly userId?: string;
+  readonly visibility?: ResourceScope["visibility"];
+  readonly name: string;
+  readonly engine: string;
 }
 
 /**
  * demo 专用 repository。
  *
- * 它刻意将 resources 基表与 agent_config_properties 属性表分 Map 存放；生产实现以 JOIN 和事务实现同一语义。
+ * 它以单个 Map 模拟 agent_configs 主表；生产实现将授权查询与业务条件编译到同一条 SQL。
  */
-export class InMemoryAgentConfigRepository implements ScopedResourceRepository<AgentConfig, AgentConfigListQuery> {
-  private readonly resources = new Map<string, ResourceRow>();
-  private readonly properties = new Map<string, AgentConfigProperties>();
+export class InMemoryAgentConfigRepository
+  implements ScopedResourceRepository<AgentConfig, AgentConfigListQuery>, ResourceScopeStore
+{
+  private readonly rows = new Map<string, AgentConfigRow>();
   private nextId = 1;
 
-  async create(record: Omit<AgentConfig, "id">): Promise<AgentConfig> {
+  async create(record: Omit<AgentConfig, "id" | "scope" | "access">): Promise<AgentConfig> {
     const id = `resource-agent-config-${this.nextId++}`;
-    this.resources.set(id, { id, type: "agent-config", ownershipScope: record.ownershipScope });
-    this.properties.set(id, { resourceId: id, name: record.name, engine: record.engine });
-    return this.toAgentConfig(id);
+    this.rows.set(id, {
+      id,
+      visibility: "private",
+      name: record.name,
+      engine: record.engine,
+    });
+    return { id, scope: { visibility: "private" }, access: { actions: [] }, name: record.name, engine: record.engine };
   }
 
-  async findById(id: string, queryConstraint: ResourceQueryConstraint): Promise<AgentConfig | undefined> {
-    const resource = this.resources.get(id);
-    return resource && queryConstraint.matches(resource.ownershipScope) ? this.toAgentConfig(id) : undefined;
+  async findById(id: string): Promise<AgentConfig | undefined> {
+    return this.rows.has(id) ? this.toAgentConfig(id) : undefined;
   }
 
-  async list(input: {
-    queryConstraint: ResourceQueryConstraint;
-    query: AgentConfigListQuery;
-  }): Promise<AgentConfigPage> {
-    const keyword = input.query.keyword?.trim().toLowerCase();
+  async list(query: AgentConfigListQuery): Promise<AgentConfigPage> {
+    const keyword = query.keyword?.trim().toLowerCase();
     return {
-      items: [...this.resources.values()]
-        .filter((resource) => input.queryConstraint.matches(resource.ownershipScope))
-        .map((resource) => this.toAgentConfig(resource.id))
-        .filter((config) => !keyword || config.name.toLowerCase().includes(keyword))
-        .slice(0, Math.min(input.query.limit, 100)),
+      items: [...this.rows.values()]
+        .map((row) => this.toAgentConfig(row.id))
+        .filter((config) => !keyword || config.name.toLowerCase().includes(keyword)),
     };
   }
 
   async replace(config: AgentConfig): Promise<AgentConfig> {
-    this.properties.set(config.id, { resourceId: config.id, name: config.name, engine: config.engine });
+    const row = this.rows.get(config.id);
+    if (!row) throw new Error("AgentConfig 资源不存在");
+    // 业务属性更新不能顺带回写范围；范围只能由 ResourceScopeStore.update() 修改。
+    this.rows.set(config.id, { ...row, name: config.name, engine: config.engine });
     return this.toAgentConfig(config.id);
   }
 
   async delete(id: string): Promise<void> {
-    this.properties.delete(id);
-    this.resources.delete(id);
+    this.rows.delete(id);
+  }
+
+  async initialize(input: { resourceType: string; resourceId: string; scope: ResourceScope }): Promise<void> {
+    this.writeScope(input);
+  }
+
+  async getMany(input: { resourceType: string; resourceIds: readonly string[] }): Promise<Map<string, ResourceScope>> {
+    this.requireResourceType(input.resourceType);
+    const scopes = new Map<string, ResourceScope>();
+    for (const resourceId of input.resourceIds) {
+      const row = this.rows.get(resourceId);
+      if (row) scopes.set(resourceId, this.toScope(row));
+    }
+    return scopes;
+  }
+
+  async update(input: { resourceType: string; resourceId: string; scope: ResourceScope }): Promise<void> {
+    this.writeScope(input);
+  }
+
+  async remove(input: { resourceType: string; resourceId: string }): Promise<void> {
+    this.requireResourceType(input.resourceType);
+    this.rows.delete(input.resourceId);
   }
 
   private toAgentConfig(id: string): AgentConfig {
-    const resource = this.resources.get(id);
-    const properties = this.properties.get(id);
-    if (!resource || !properties) throw new Error("AgentConfig 资源基表与属性表不一致");
-    return { id, ownershipScope: resource.ownershipScope, name: properties.name, engine: properties.engine };
+    const row = this.rows.get(id);
+    if (!row) throw new Error("AgentConfig 资源不存在");
+    return { id, scope: this.toScope(row), access: { actions: [] }, name: row.name, engine: row.engine };
+  }
+
+  /** 模拟 ColumnResourceScopeStore：只通过资源主表固定列构造范围对象。 */
+  private toScope(row: AgentConfigRow): ResourceScope {
+    if (!row.visibility) throw new Error("AgentConfig 资源尚未初始化归属范围");
+    return {
+      organizationId: row.organizationId,
+      ownerUserId: row.userId,
+      visibility: row.visibility,
+    };
+  }
+
+  private writeScope(input: { resourceType: string; resourceId: string; scope: ResourceScope }): void {
+    this.requireResourceType(input.resourceType);
+    const row = this.rows.get(input.resourceId);
+    if (!row) throw new Error("AgentConfig 资源不存在");
+    this.rows.set(input.resourceId, {
+      ...row,
+      organizationId: input.scope.organizationId,
+      userId: input.scope.ownerUserId,
+      visibility: input.scope.visibility,
+    });
+  }
+
+  private requireResourceType(resourceType: string): void {
+    if (resourceType !== "agent-config") throw new Error(`不支持的资源类型: ${resourceType}`);
   }
 }

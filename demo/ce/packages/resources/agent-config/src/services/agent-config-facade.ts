@@ -1,12 +1,14 @@
-import { type AccessControlModule, AuthorizedResourceFacade } from "@fenix-ce/platform-sdk";
+import { type AccessControlModule, AuthorizedResourceFacade, type ResourceAction } from "@fenix-ce/platform-sdk";
 import {
   type AgentConfig,
   AgentConfigDomainService,
   type AgentConfigListQuery,
   type AgentConfigPage,
+  agentConfigResourceDefinition,
   type CreateAgentConfigInput,
   type ListAgentConfigsInput,
   type UpdateAgentConfigInput,
+  type UpdateAgentConfigVisibilityInput,
 } from "../domain/agent-config";
 import { InMemoryAgentConfigRepository } from "../repositories/in-memory-agent-config-repository";
 
@@ -24,15 +26,12 @@ export interface AuthorizedAgentLaunchSpec {
 export class AgentConfigFacade extends AuthorizedResourceFacade<AgentConfig, AgentConfigListQuery> {
   private readonly domain = new AgentConfigDomainService();
 
-  constructor(accessControl: AccessControlModule) {
-    super(accessControl, new InMemoryAgentConfigRepository(), "agent-config");
+  constructor(accessControl: AccessControlModule, repository = new InMemoryAgentConfigRepository()) {
+    super(accessControl, repository, agentConfigResourceDefinition, repository);
   }
 
   async create(input: CreateAgentConfigInput): Promise<AgentConfig> {
-    return this.createAuthorized(input.actorId, (ownershipScope) => ({
-      ...this.domain.create(input),
-      ownershipScope,
-    }));
+    return this.createAuthorized(input.actorId, () => this.domain.create({ name: input.name, engine: input.engine }));
   }
 
   async get(input: { actorId: string; agentConfigId: string }): Promise<AgentConfig> {
@@ -45,14 +44,24 @@ export class AgentConfigFacade extends AuthorizedResourceFacade<AgentConfig, Age
 
   async update(input: UpdateAgentConfigInput): Promise<AgentConfig> {
     return this.updateAuthorized(input.actorId, input.agentConfigId, (config) => ({
-      ...this.domain.update({ resourceId: config.id, name: config.name, engine: config.engine }, input),
+      ...this.domain.update({ resourceId: config.id, name: config.name, engine: config.engine }, { name: input.name }),
       id: config.id,
-      ownershipScope: config.ownershipScope,
+      scope: config.scope,
+      access: config.access,
     }));
   }
 
   async delete(input: { actorId: string; agentConfigId: string }): Promise<void> {
     await this.deleteAuthorized(input.actorId, input.agentConfigId);
+  }
+
+  /** visibility 与归属一起由资源管理 Facade 更新，调用方不能直接写资源主表列。 */
+  async updateVisibility(input: UpdateAgentConfigVisibilityInput): Promise<AgentConfig> {
+    const config = await this.getAuthorizedAgentConfig(input.actorId, input.agentConfigId, "update");
+    return this.updateScopeAuthorized(input.actorId, input.agentConfigId, {
+      ...config.scope,
+      visibility: input.visibility,
+    });
   }
 
   async resolveForRun(input: { actorId: string; agentConfigId: string }): Promise<AuthorizedAgentLaunchSpec> {
@@ -64,7 +73,7 @@ export class AgentConfigFacade extends AuthorizedResourceFacade<AgentConfig, Age
   protected async getAuthorizedAgentConfig(
     actorId: string,
     agentConfigId: string,
-    action: string,
+    action: ResourceAction,
   ): Promise<AgentConfig> {
     return this.getAuthorizedResource(actorId, agentConfigId, action);
   }

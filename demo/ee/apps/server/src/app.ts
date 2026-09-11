@@ -1,4 +1,4 @@
-import { AgentConfigRunFacade } from "@fenix-ce/agent-config";
+import { AgentConfigRunFacade, InMemoryAgentConfigRepository } from "@fenix-ce/agent-config";
 import { AgentInstanceManager } from "@fenix-ce/agent-instance";
 import type { AgentRuntimeModule } from "@fenix-ce/agent-runtime";
 import {
@@ -7,6 +7,7 @@ import {
   defineApplication,
   type ModuleFactoryContext,
   type ModuleManifest,
+  type ResourceScopeStoreBinding,
 } from "@fenix-ce/platform-sdk";
 import type { AssemblyProfile } from "@fenix-ce/platform-sdk/assembly";
 import { type AgentConfigApprovalPolicy, EnterpriseAgentConfigFacade } from "@fenix-ee/agent-config";
@@ -32,13 +33,13 @@ export function assembleEeApplication(
   context: ModuleFactoryContext,
   installedModules = resolveEeModules(config),
 ) {
-  const accessControl = moduleRegistry.create<AccessControlModule & AgentConfigApprovalPolicy>(
-    config.accessControl,
-    "access-control",
-    context,
-  );
+  const accessControl = moduleRegistry.create<
+    AccessControlModule & AgentConfigApprovalPolicy & ResourceScopeStoreBinding
+  >(config.accessControl, "access-control", context);
   const agentRuntime = moduleRegistry.create<AgentRuntimeModule>(config.runtime, "runtime", context);
-  const agentConfigs = new EnterpriseAgentConfigFacade(accessControl, accessControl);
+  const agentConfigRepository = new InMemoryAgentConfigRepository();
+  accessControl.bindResourceScopeStore(agentConfigRepository);
+  const agentConfigs = new EnterpriseAgentConfigFacade(accessControl, accessControl, agentConfigRepository);
   const instanceManager = new AgentInstanceManager(agentRuntime, "ee");
   return defineApplication({
     edition: "ee",

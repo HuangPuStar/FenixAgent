@@ -52,15 +52,15 @@ POST /app/agent-configs/:id/run
 
 runtime 没有 actor、权限、发布状态或 AgentConfig 表依赖。它只接收通用的 `{ agentId, engine }`；资源层将 `agentConfigId` 映射为该参数。
 
-## 资源表拆分
+## 资源主表
 
-`agent-config` 的内存 repository 故意使用三类存储，模拟目标 DB 模型：
+`agent-config` 的内存 repository 模拟目标资源主表模型：
 
 ```text
-resources                    # ID、type、ownershipScope
-agent_config_properties      # name、engine 等领域属性
-resource_access_grants       # 显式共享/授权（本 demo 仅声明 schema）
+agent_configs                # ID、organizationId、userId、visibility、name、engine
 ```
+
+`visibility` 只有 `private | public`：`private` 不扩大归属范围；`public` 允许任意已认证平台用户取得资源定义声明的默认动作，不代表匿名入口，也不使用通用 grant 表。
 
 资源 CRUD 只用稳定 `resourceId`。`name` 是可变展示属性/搜索条件，不是 route、权限或更新删除的标识。
 

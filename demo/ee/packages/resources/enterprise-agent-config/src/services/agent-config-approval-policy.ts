@@ -6,5 +6,5 @@ import type { ResourceScope } from "@fenix-ce/platform-sdk";
  * 它不属于所有资源共有的 AccessControlModule；甲方可在 app 装配时替换该策略。
  */
 export interface AgentConfigApprovalPolicy {
-  authorizePublish(input: { actorId: string; agentConfigId: string; ownershipScope: ResourceScope }): Promise<void>;
+  authorizePublish(input: { actorId: string; agentConfigId: string; scope: ResourceScope }): Promise<void>;
 }

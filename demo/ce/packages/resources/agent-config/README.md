@@ -5,11 +5,11 @@ CE 的完整 AgentConfig 资源领域模块；后端、schema、数据迁移和 
 目录职责：
 
 - `domain/`：AgentConfig、输入 DTO 与不依赖授权的字段规则。
-- `services/`：`AgentConfigFacade` 处理 CRUD、`ResourceQueryConstraint`、`agent-config:use` 授权和启动参数解析；`AgentConfigRunFacade` 通过 `AgentInstanceStarter` 端口启动实例。
-- `repositories/`：repository 实现；demo 使用内存实现，生产版本将范围过滤转换为数据库 `WHERE`。
+- `services/`：`AgentConfigFacade` 处理 CRUD、visibility 更新、`ResourceQueryConstraint`、`use` 授权和启动参数解析；`AgentConfigRunFacade` 通过 `AgentInstanceStarter` 端口启动实例。
+- `repositories/`：repository 实现；demo 使用内存实现，生产版本由平台 `AuthorizedResourceQuery` 将范围过滤编译为数据库 `WHERE`。
 - `routes/`：`/app` route contribution，只负责 HTTP 协议适配。
 - `module.ts`：该资源的 schema、迁移、API、控制台和 capability 声明。
-- `db/`：`resources` 基表、`agent_config_properties` 属性表和数据迁移示例。
+- `db/`：`agent_configs` 主表 schema 和数据迁移示例。
 - `web/`：浏览器专用 `./web` 公开子路径；demo 提供空页面 contribution。
 
 允许依赖：`@fenix-ce/platform-sdk`。

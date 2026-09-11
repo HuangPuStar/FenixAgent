@@ -7,7 +7,7 @@
     ".": "./src/index.ts",
     "./web": "./web/index.ts",
     "./db/schema": "./db/schema.ts",
-    "./data-migrations": "./db/data-migrations/backfill-resource-base.ts",
+    "./data-migrations": "./db/data-migrations/backfill-agent-config-visibility.ts",
     "./module": "./fenix.module.ts"
   },
   "dependencies": {

@@ -1,4 +1,4 @@
-import { AgentConfigFacade, AgentConfigRunFacade } from "@fenix-ce/agent-config";
+import { AgentConfigFacade, AgentConfigRunFacade, InMemoryAgentConfigRepository } from "@fenix-ce/agent-config";
 import { AgentInstanceManager } from "@fenix-ce/agent-instance";
 import type { AgentRuntimeModule } from "@fenix-ce/agent-runtime";
 import {
@@ -7,6 +7,7 @@ import {
   defineApplication,
   type ModuleFactoryContext,
   type ModuleManifest,
+  type ResourceScopeStoreBinding,
 } from "@fenix-ce/platform-sdk";
 import type { AssemblyProfile } from "@fenix-ce/platform-sdk/assembly";
 import { generatedModuleManifests } from "../../generated/module-registry";
@@ -30,9 +31,15 @@ export function assembleCeApplication(
   context: ModuleFactoryContext,
   installedModules = resolveCeModules(config),
 ) {
-  const accessControl = moduleRegistry.create<AccessControlModule>(config.accessControl, "access-control", context);
+  const accessControl = moduleRegistry.create<AccessControlModule & ResourceScopeStoreBinding>(
+    config.accessControl,
+    "access-control",
+    context,
+  );
   const agentRuntime = moduleRegistry.create<AgentRuntimeModule>(config.runtime, "runtime", context);
-  const agentConfigs = new AgentConfigFacade(accessControl);
+  const agentConfigRepository = new InMemoryAgentConfigRepository();
+  accessControl.bindResourceScopeStore(agentConfigRepository);
+  const agentConfigs = new AgentConfigFacade(accessControl, agentConfigRepository);
   const instanceManager = new AgentInstanceManager(agentRuntime, "ce");
   return defineApplication({
     edition: "ce",

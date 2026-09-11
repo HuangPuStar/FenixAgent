@@ -18,7 +18,7 @@
       "@fenix-ce/agent-config": ["../ce/packages/resources/agent-config/src/index.ts"],
       "@fenix-ce/agent-config/web": ["../ce/packages/resources/agent-config/web/index.ts"],
       "@fenix-ce/agent-config/data-migrations": [
-        "../ce/packages/resources/agent-config/db/data-migrations/backfill-resource-base.ts"
+        "../ce/packages/resources/agent-config/db/data-migrations/backfill-agent-config-visibility.ts"
       ],
       "@fenix-ce/agent-config/module": ["../ce/packages/resources/agent-config/fenix.module.ts"],
       "@fenix-ee/access-control": ["packages/platform/enterprise-access-control/src/index.ts"],
