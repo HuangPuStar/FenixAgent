@@ -21,6 +21,7 @@ export function AgentPanelLayout() {
 
   const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deletedEnvironmentIds, setDeletedEnvironmentIds] = useState<ReadonlySet<string>>(() => new Set());
   const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
     open: false,
     agentName: "",
@@ -97,6 +98,19 @@ export function AgentPanelLayout() {
     lastChatSessionRef.current = chatSessionId;
   }
 
+  const handleDeleteAgentEnvironments = useCallback(
+    (environmentIds: string[]) => {
+      if (environmentIds.length === 0) return;
+      setDeletedEnvironmentIds((current) => new Set([...current, ...environmentIds]));
+      if (selectedEnvironmentId && environmentIds.includes(selectedEnvironmentId)) {
+        lastChatAgentRef.current = null;
+        lastChatSessionRef.current = null;
+        void navigate({ to: "/agent/home" });
+      }
+    },
+    [navigate, selectedEnvironmentId],
+  );
+
   return (
     <div className="agent-panel-layout">
       <AgentSidebar
@@ -107,10 +121,16 @@ export function AgentPanelLayout() {
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}
         onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
+        onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
       />
       <div className="agent-panel-body" ref={setPanelHost}>
         <Outlet />
-        <ChatArea agentId={lastChatAgentRef.current} sessionId={lastChatSessionRef.current} visible={isChatRoute} />
+        <ChatArea
+          agentId={lastChatAgentRef.current}
+          sessionId={lastChatSessionRef.current}
+          visible={isChatRoute}
+          deletedEnvironmentIds={deletedEnvironmentIds}
+        />
       </div>
       <AgentFormDialog
         open={createDialogOpen}

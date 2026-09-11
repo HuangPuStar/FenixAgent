@@ -1,4 +1,3 @@
-import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -81,6 +80,7 @@ interface AgentSidebarTreeProps {
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onCreateAgent?: () => void;
   onEditAgent?: (agentName: string) => void;
+  onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
 
 export const AgentSidebarTree = memo(function AgentSidebarTree({
@@ -89,12 +89,12 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   onSelectInstance,
   onCreateAgent,
   onEditAgent,
+  onDeleteAgentEnvironments,
 }: AgentSidebarTreeProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const { org } = useOrg();
   const orgId = org?.id;
-  const navigate = useNavigate();
 
   // 交互状态
   const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
@@ -312,22 +312,17 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   // ---- 删除智能体（manual useRequest）----
   const { run: runDeleteAgent, loading: deleting } = useRequest(
     async (agent: AgentConfigItem) => {
-      // 删除前判断：当前对话页打开的环境是否属于该 agent 配置。
-      // 通过 environmentId → agentConfigId 映射比对，兼容同一 agent 存在多个环境的情况。
-      const openConfigId = selectedEnvironmentId ? (envConfigMapRef.current.get(selectedEnvironmentId) ?? null) : null;
-      const deletingOpenAgent = openConfigId !== null && openConfigId === agent.id;
+      const deletingEnvironmentIds = [...envConfigMapRef.current.entries()]
+        .filter(([, agentConfigId]) => agentConfigId === agent.id)
+        .map(([environmentId]) => environmentId);
 
       await unwrap(agentApi.delete(agent.name));
       toast.success(t("deleteSuccess"));
+      onDeleteAgentEnvironments?.(deletingEnvironmentIds);
 
       // 通知其它页面（如智能体管理页）刷新列表
       dispatchConfigChange("agents");
       await refresh();
-
-      // 若删除的正是当前对话页打开的智能体，切换到新建智能体页面
-      if (deletingOpenAgent) {
-        void navigate({ to: "/agent/home" });
-      }
     },
     {
       manual: true,
