@@ -135,5 +135,7 @@ describe("PromptJumpRail", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
     expect(button.getAttribute("aria-current")).toBe("location");
     expect(button.getAttribute("aria-controls")).toBe("chat-entry-prompt-1");
+    expect(target.classList.contains("chat-entry--active-prompt")).toBe(true);
+    expect(document.getElementById("chat-entry-prompt-0")?.classList.contains("chat-entry--active-prompt")).toBe(false);
   });
 });

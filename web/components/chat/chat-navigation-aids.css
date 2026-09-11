@@ -68,6 +68,21 @@
   background: #202936;
 }
 
+.chat-entry--active-prompt {
+  border-radius: 12px;
+  animation: chat-active-prompt-flash 900ms ease-out;
+}
+
+@keyframes chat-active-prompt-flash {
+  0%,
+  20% {
+    background-color: rgb(100 116 139 / 14%);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 .chat-prompt-jump-index__preview {
   position: fixed;
   z-index: 30;
@@ -109,6 +124,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .chat-entry--active-prompt {
+    animation: none;
+    background-color: rgb(100 116 139 / 10%);
+  }
+
   .chat-prompt-jump-index__tick,
   .chat-prompt-jump-index__preview {
     transition: none;

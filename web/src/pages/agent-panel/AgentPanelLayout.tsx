@@ -125,6 +125,7 @@ export function AgentPanelLayout() {
       <AgentSidebar
         activeNav={activeNav}
         selectedEnvironmentId={selectedEnvironmentId}
+        selectedInstanceId={isChatRoute ? chatSessionId : lastChatSessionRef.current}
         onSelectInstance={handleSelectInstance}
         onNavigate={handleNavigate}
         onCreateAgent={() => setCreateDialogOpen(true)}
