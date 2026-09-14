@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createCoreRuntimeError } from "@fenix/core";
+import { EnvironmentNotFoundError } from "@fenix/orchestration";
 import { AppError } from "../errors";
 import { ApiMcpListQuerySchema } from "../schemas/api-mcp.schema";
 import { PaginationParamsSchema } from "../schemas/common.schema";
@@ -338,5 +340,40 @@ describe("round16 isolated protocol and boundary coverage", () => {
   test("未知 spawn 失败保持可重试", () => {
     expect(classifyPermanentSpawnFailure(new AppError("暂时失败", "INTERNAL_ERROR"))).toBeNull();
     expect(classifyPermanentSpawnFailure(new Error("暂时失败"))).toBeNull();
+  });
+
+  // 实例不存在（uid 非法/已回收/非本人）重连必然复现，必须转为终态而非无限自动重连。
+  test("实例不存在的失败被判为永久失败", () => {
+    expect(classifyPermanentSpawnFailure(new AppError("not found", "INSTANCE_NOT_FOUND", 404))).toBe(
+      "instance_not_found",
+    );
+    expect(classifyPermanentSpawnFailure(createCoreRuntimeError("INSTANCE_NOT_FOUND", "runtime gone"))).toBe(
+      "instance_not_found",
+    );
+  });
+
+  // 并发配额耗尽是自愈状态（其它实例释放或 idle 回收后自然解除），而终态会让客户端停止
+  // 自动重连且错误卡片不得提供重试（硬边界 2/9），因此必须保持瞬时失败交给 1011 退避重连。
+  test("并发配额耗尽保持可重试而不判永久失败", () => {
+    for (const code of [
+      "AGENT_CONCURRENCY_LIMIT_REACHED",
+      "USER_AGENT_CONCURRENCY_LIMIT_REACHED",
+      "SCHEDULED_AGENT_CONCURRENCY_LIMIT_REACHED",
+    ]) {
+      expect(classifyPermanentSpawnFailure(new AppError("quota", code, 429))).toBeNull();
+    }
+  });
+
+  // 环境被删除与引擎缺失同属配置与部署事实，重连不会改变结论。
+  test("环境不存在与引擎缺失被判为永久失败", () => {
+    expect(classifyPermanentSpawnFailure(new EnvironmentNotFoundError())).toBe("environment_not_found");
+    for (const code of ["ENGINE_NOT_SUPPORTED", "NO_ENGINE_AVAILABLE", "PLUGIN_NOT_FOUND"] as const) {
+      expect(classifyPermanentSpawnFailure(createCoreRuntimeError(code, "engine missing"))).toBe("engine_unavailable");
+    }
+  });
+
+  // 实例重启窗口是瞬时状态，不得进入永久失败分类而误停自动重连。
+  test("实例状态非法保持可重试", () => {
+    expect(classifyPermanentSpawnFailure(createCoreRuntimeError("INVALID_INSTANCE_STATE", "starting"))).toBeNull();
   });
 });

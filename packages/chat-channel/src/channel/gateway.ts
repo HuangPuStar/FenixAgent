@@ -8,9 +8,11 @@ import { flushPendingYjsActions, forwardYjsAction } from "./action-forward";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { ClientConnection, SharedRelay, WsConnection } from "./connection-types";
+import { describeErrorCause, describeSafeIdentifier } from "./error-cause";
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
+import { decideStartFailure, type StartFailureContext } from "./start-failure";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -96,20 +98,13 @@ export class Gateway {
       instanceId = await this.dependencies.ensureRunning(ownerUserId, agentId, locator.instanceUid);
     } catch (err) {
       registry.discardPending(wsId);
-      this.dependencies.reportError("[YJS-FE] Failed to start agent instance", typeof err);
-      if (this.dependencies.isMachineOffline(err)) {
-        this.sendPublicError(ws, "CONTROL_PLANE.MACHINE_UNAVAILABLE", "orchestration.ensure_running");
-        ws.close(4500, "machine offline");
-        return;
-      }
-      const permanentCode = this.dependencies.classifyPermanentSpawnFailure(err);
-      if (permanentCode) {
-        this.sendPublicError(ws, this.mapPermanentSpawnFailure(permanentCode), "orchestration.ensure_running");
-        ws.close(4502, "spawn rejected");
-        return;
-      }
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
-      ws.close(1011, "spawn failed");
+      this.settleStartFailure(ws, err, {
+        stage: "orchestration.ensure_running",
+        logContext: "[YJS-FE] Failed to start agent instance:",
+        transientCloseReason: "spawn failed",
+        wsId,
+        instanceUid: locator.instanceUid,
+      });
       return;
     }
     if (ws.readyState !== 1) {
@@ -151,9 +146,13 @@ export class Gateway {
       });
     } catch (err) {
       registry.discardPending(wsId);
-      this.dependencies.reportError("[YJS-FE] Failed to connect agent relay", typeof err);
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
-      ws.close(1011, "relay failed");
+      this.settleStartFailure(ws, err, {
+        stage: "orchestration.connect_relay",
+        logContext: "[YJS-FE] Failed to connect agent relay:",
+        transientCloseReason: "relay failed",
+        wsId,
+        instanceUid: locator.instanceUid,
+      });
       return;
     }
     const { shared } = acquired;
@@ -272,9 +271,13 @@ export class Gateway {
     try {
       await shared.handle.send({ type: "connect" } as never);
     } catch (err) {
-      this.reportError("[YJS-FE] relay connect handshake failed:", err);
-      this.sendPublicError(ws, "CONTROL_PLANE.INSTANCE_START_FAILED", "orchestration.ensure_running");
-      ws.close(1011, "relay handshake failed");
+      this.settleStartFailure(ws, err, {
+        stage: "orchestration.relay_handshake",
+        logContext: "[YJS-FE] relay connect handshake failed:",
+        transientCloseReason: "relay handshake failed",
+        wsId,
+        instanceUid: locator.instanceUid,
+      });
       return;
     }
     entry.relayReady = true;
@@ -362,12 +365,22 @@ export class Gateway {
     this.dependencies.broadcaster.sendToYjsWs(ws, { type: "error", payload: error });
     return error;
   }
-  private mapPermanentSpawnFailure(code: string): PublicErrorType {
-    if (code === "instance_limit_reached") return "CONTROL_PLANE.INSTANCE_LIMIT_REACHED";
-    if (code === "auto_start_disabled" || code === "configuration_invalid") {
-      return "CONTROL_PLANE.CONFIGURATION_INVALID";
-    }
-    return "CONTROL_PLANE.INSTANCE_START_FAILED";
+  /**
+   * 启动链路失败的统一终结：诊断日志 + 公开错误帧 + 关闭连接（决策见 start-failure.ts）。
+   *
+   * 三条失败路径（ensureRunning / relay 连接 / relay 握手）必须共用本方法，否则同类失败
+   * 会因路径不同产生不同重连语义。日志只记录**有界错误身份**（name + code + cause 链），
+   * 不把原始异常交给 pino——其 err 序列化会带出 message/stack，违反
+   * docs/arch/23-chat-error-diagnostics.md §7；错误全文只能经 errorId 关联受控采集系统。
+   * 同理，请求方提供的 `instanceUid` 必须经白名单校验后才入日志，否则可以伪造日志字段。
+   */
+  private settleStartFailure(ws: WsConnection, err: unknown, context: StartFailureContext): void {
+    const instanceUid = describeSafeIdentifier(context.instanceUid);
+    const wsId = describeSafeIdentifier(context.wsId);
+    this.reportError(context.logContext, `instanceUid=${instanceUid} wsId=${wsId} cause=${describeErrorCause(err)}`);
+    const outcome = decideStartFailure(err, this.dependencies, context.transientCloseReason);
+    this.sendPublicError(ws, outcome.type, context.stage);
+    ws.close(outcome.closeCode, outcome.closeReason);
   }
   private releaseRelay(instanceId: string, userId: string, rcsSessionId: string): void {
     const released = this.dependencies.registry.release(instanceId, userId, rcsSessionId);

@@ -239,6 +239,70 @@ export interface ActionErrorFrame {
 - 原始异常对象、message、payload、stack 和 stderr 不进入普通日志；
 - 若受控错误采集系统保存完整异常，必须通过 `errorId` 关联并执行独立访问控制。
 
+### 7.1 stage 有限集合
+
+`stage` 由服务端代码唯一产出，只允许取下列值；新增值必须同步本节：
+
+```text
+gateway.open                    # 打开阶段的准入拒绝（鉴权、容量、环境不可用、环境查询异常）
+orchestration.ensure_running    # 启动实例失败（ensureRunning 抛出）
+orchestration.connect_relay     # 建立 relay 连接失败
+orchestration.relay_handshake   # relay connect 握手失败
+action.forward                  # Action 转发到 SessionChannel 前失败
+action.command                  # 命令执行失败（含 relay 发送失败）
+relay.agent_error               # Agent 上报 error
+relay.session_error             # Agent 上报 session 级错误
+relay.connection_closed         # relay 连接关闭
+relay.prompt_response           # prompt 响应失败
+```
+
+启动链路的三条失败路径必须各自使用独立 stage：共用同一个 stage 会让「实例从未启动」与
+「实例已启动但 relay 未就绪」在日志中无法区分，而两者的处置完全不同。
+
+### 7.2 启动失败的终结语义
+
+启动链路（三个 `orchestration.*` stage）的失败必须收敛为有限结论，由
+`packages/chat-channel/src/channel/start-failure.ts` 统一判定；三条路径共用同一判定，
+不得按路径分叉重连语义（否则同一确定性失败在 relay 路径会退化为客户端无限自动重连）：
+
+| 判定 | 公开 Type | close code |
+|---|---|---|
+| 机器不可用 | `CONTROL_PLANE.MACHINE_UNAVAILABLE` | 4500（终态） |
+| 确定性永久失败 | 见下表 | 4502（终态，客户端停止自动重连） |
+| 其余（瞬时） | `CONTROL_PLANE.INSTANCE_START_FAILED` | 1011（按退避自动重连） |
+
+宿主 `classifyPermanentSpawnFailure` 产出的诊断码与公开 Type 一一对应：
+
+| 诊断码 | 触发条件 | 公开 Type |
+|---|---|---|
+| `auto_start_disabled` | `AppError.AUTO_START_DISABLED` | `CONTROL_PLANE.CONFIGURATION_INVALID` |
+| `launch_spec_build_failed` | 启动参数构建失败（配置态） | `CONTROL_PLANE.INSTANCE_START_FAILED` |
+| `instance_not_found` | 实例不存在、uid 非法、非本人或与环境不匹配 | `CONTROL_PLANE.INSTANCE_RECLAIMED` |
+| `environment_not_found` | 环境已删除或不再属于该用户 | `CONTROL_PLANE.ENVIRONMENT_UNAVAILABLE` |
+| `engine_unavailable` | 引擎/插件缺失，部署不支持 | `CONTROL_PLANE.CONFIGURATION_INVALID` |
+
+- 未登记的诊断码退回 `CONTROL_PLANE.INSTANCE_START_FAILED`，不向用户谎报具体原因；
+- 非确定性失败（DB 抖动、机器断连窗口、实例重启中的 `INVALID_INSTANCE_STATE`）不得进入永久失败分类；
+- 并发配额（`AGENT_CONCURRENCY_LIMIT_REACHED` / `USER_AGENT_CONCURRENCY_LIMIT_REACHED` /
+  `SCHEDULED_AGENT_CONCURRENCY_LIMIT_REACHED`）属**自愈失败**，必须留在瞬时分支：配额会在其它
+  实例释放或 idle 回收后自然解除，而终态让客户端停止自动重连且错误卡片不得提供重试（硬边界 2/9），
+  判终态等于把用户关在错误页。代价是 `CONTROL_PLANE.INSTANCE_LIMIT_REACHED` 当前无产出点，按
+  硬边界 8（公开 Type 只增不删）仍保留在注册表中；
+- 分类只决定连接生命周期与公开 Type，不产生任何用户可见的恢复操作（硬边界 2）。
+
+### 7.3 失败日志的错误身份
+
+启动与连接失败的服务端日志必须记录**有界错误身份**——构造器名 + 稳定机器码 + cause 链，
+形如 `cause=AppError:INSTANCE_NOT_FOUND` 或 `cause=DrizzleQueryError<-PostgresError:42P01`
+（`channel/error-cause.ts`）：
+
+- 不得把原始异常对象交给 pino：其 `err` 序列化会输出 message 与 stack，违反硬边界 7；
+- 也不得只记录 `typeof err`：日志只剩 `object`，公开错误 Type + ID 无法回溯根因
+  （2026-09-01 单日 2294 条 `CONTROL_PLANE.INSTANCE_START_FAILED` 因此完全不可诊断）；
+- 诊断日志必须携带 `wsId`（连接标识，与 `[YJS-WS] Opening` 行同源）作为按请求关联的**唯一**
+  键；`instanceUid` 由请求方提供，只能作为弱关联线索，且必须经 `describeSafeIdentifier` 白名单
+  校验后才可插值——否则请求方可以用 `inst_x cause=...` 伪造日志字段。
+
 ## 8. 安全摘要与本地化
 
 Type 注册表同时定义中英文安全摘要 key。摘要必须：
@@ -286,4 +350,9 @@ Type 注册表同时定义中英文安全摘要 key。摘要必须：
 7. UI 明确显示完整 `Type` 和 `ID`；
 8. 同一 ID 不重复显示；
 9. 错误 UI 不含重试、重连、重新发送、重新执行或配置跳转操作；
-10. `bun run build:web` 与 `bun run precheck` 全绿。
+10. 启动链路三条失败路径各自产生独立 `stage`，且确定性永久失败在三条路径上统一关闭为
+    `4502` 并给出对应公开 Type（不因路径退化为 `1011` 无限重连）；
+11. 启动失败日志含 `wsId`、经白名单校验的 `instanceUid` 与有界错误身份（机器码），
+    不含异常 message/stack；
+12. 并发配额耗尽保持在瞬时分支（`classifyPermanentSpawnFailure` 返回空），不得判 `4502`；
+13. `bun run build:web` 与 `bun run precheck` 全绿。

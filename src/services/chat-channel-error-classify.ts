@@ -40,15 +40,28 @@ export function isMachineOfflineError(err: unknown): boolean {
 /**
  * WS 打开阶段 spawn 失败的「永久性」判定。
  *
- * 返回诊断码（客户端 payload.code）当且仅当该失败是确定性永久失败：
- * 重连不会改变失败条件（autoStart 开关、launch spec 构建条件均为配置态），
- * 自动重连只会制造永不成功的循环；此时调用方应关闭为终态码并交由用户手动重试。
- * 返回 null 表示瞬时/未知失败，应保留 1011 自动重连（如并发竞态、内部注册窗口）。
+ * 返回诊断码当且仅当该失败是确定性永久失败：重连不会改变失败条件，自动重连只会制造
+ * 永不成功的循环；此时调用方应关闭为终态码 4502。返回 null 表示瞬时/未知失败，应保留
+ * 1011 自动重连（并发配额、DB 抖动、机器断连窗口、实例重启窗口）。
  * 与 isMachineOfflineError 无交集（机器离线仍走 4500 专用终态）。
+ *
+ * 诊断码是**服务端内部**取值，不随公开错误帧下发（帧里只有 type/id/message）；诊断码 →
+ * 公开 Type 的映射表在 packages/chat-channel 的 start-failure.ts，新增码必须同步该映射，
+ * 否则客户端只会收到通用 INSTANCE_START_FAILED。
+ *
+ * 判终态的代价是客户端停止自动重连，而当前 UI 没有恢复入口，因此**只有确实不可自愈**的
+ * 失败才允许进入本函数返回码集合（可自愈的并发配额、重启窗口必须保持 null）。
  */
 export function classifyPermanentSpawnFailure(err: unknown): string | null {
   if (err instanceof AppError) {
     if (err.code === "AUTO_START_DISABLED") return "auto_start_disabled";
+    // 实例不存在：DB 事实（uid 非法、被回收、非本人或与环境不匹配），重连不会改变结论。
+    // 只认 AppError 形态；core 的内存快照缺失（CoreRuntimeError.INSTANCE_NOT_FOUND）不同——
+    // see isCoreRuntimeError 分支。
+    if (err.code === "INSTANCE_NOT_FOUND") return "instance_not_found";
+    // 并发配额（AGENT_CONCURRENCY_LIMIT_REACHED / USER_ / SCHEDULED_，来源 agent-concurrency.ts）
+    // 故意保持传输瞬时：配额会在用户 stop 掉其它实例后自然释放，判终态会让用户在无恢复入口的
+    // 错误页里等到刷新页面；保留 1011 由客户端 6 次短连接上限收口。
     return null;
   }
   if (err instanceof OrchestrationError) {
@@ -56,6 +69,18 @@ export function classifyPermanentSpawnFailure(err: unknown): string | null {
     // controller.spawnInstance 每次必然抛 LaunchSpecBuildError（orchestration-instance.ts 注释），
     // 重连不改变配置，同样属于确定性永久失败。
     if (err.code === "LAUNCH_SPEC_BUILD_FAILED") return "launch_spec_build_failed";
+    // 环境被删除或不再属于该用户：重连不改变数据事实
+    if (err.code === "ENVIRONMENT_NOT_FOUND") return "environment_not_found";
+    return null;
+  }
+  if (isCoreRuntimeError(err)) {
+    // 引擎/插件缺失属部署与配置事实，重连不改变；注意 INVALID_INSTANCE_STATE 不在此列：
+    // 实例可能正在重启，属瞬时窗口，必须保留自动重连
+    if (err.code === "ENGINE_NOT_SUPPORTED" || err.code === "NO_ENGINE_AVAILABLE" || err.code === "PLUGIN_NOT_FOUND") {
+      return "engine_unavailable";
+    }
+    // core 侧实例快照已不存在（进程回收 / relay 建立前快照被清理）：与宿主 INSTANCE_NOT_FOUND 同义
+    if (err.code === "INSTANCE_NOT_FOUND") return "instance_not_found";
     return null;
   }
   return null;

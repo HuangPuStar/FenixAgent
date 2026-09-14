@@ -127,6 +127,13 @@ export function createSpawnClassifier(): {
     AUTO_START_DISABLED: "auto_start_disabled",
     MAX_SESSIONS_REACHED: "max_sessions_reached",
     LAUNCH_SPEC_BUILD_FAILED: "launch_spec_build_failed",
+    // 与宿主 chat-channel-error-classify.ts 同步扩展的确定性失败码（诊断码 → 公开类型
+    // 的映射表在 channel/start-failure.ts）。并发配额故意缺席：宿主保持其为瞬时失败。
+    INSTANCE_NOT_FOUND: "instance_not_found",
+    ENVIRONMENT_NOT_FOUND: "environment_not_found",
+    ENGINE_NOT_SUPPORTED: "engine_unavailable",
+    NO_ENGINE_AVAILABLE: "engine_unavailable",
+    PLUGIN_NOT_FOUND: "engine_unavailable",
   };
   const codeOf = (err: unknown): string | null =>
     err instanceof Error && typeof (err as Error & { code?: unknown }).code === "string"
