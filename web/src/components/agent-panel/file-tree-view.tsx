@@ -434,6 +434,30 @@ function FileTreeNode({
         </button>
         <button
           type="button"
+          className="file-tree-row-action"
+          title={
+            props.download?.path === data.path
+              ? props.download.error
+                ? t("fileTree.retryDownload")
+                : t("fileTree.downloading")
+              : data.isDir
+                ? t("fileTree.downloadZip")
+                : t("fileTree.download")
+          }
+          disabled={props.download?.path === data.path && !props.download.error}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onDownload(data.path, data.isDir);
+          }}
+        >
+          {props.download?.path === data.path && !props.download.error ? (
+            <Loader2 className="animate-spin" aria-hidden />
+          ) : (
+            <Download aria-hidden />
+          )}
+        </button>
+        <button
+          type="button"
           className="file-tree-row-action file-tree-row-action--delete"
           title={t("fileTree.contextMenu.delete")}
           onClick={(event) => {
