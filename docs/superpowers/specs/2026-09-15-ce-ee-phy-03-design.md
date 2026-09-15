@@ -8,7 +8,9 @@ PHY-03 只做现有 Agent Runtime 闭包的物理迁移，不改变任何业务�
 
 ## 物理归属与接线
 
-后端的 Environment repository、Environment Web service、Instance service、runtime coordinator/projection/ID、API instance 选择、ACP relay 及其直接依赖，以及 Chat Channel bootstrap 迁入 `packages/agent-runtime`。浏览器的 Environment API、Agent Panel、Chat 组件、YJS hooks/client 及其专项测试迁入该包的浏览器子路径。
+后端的 Environment repository、Environment Web service、Instance service、runtime coordinator/projection/ID、API instance 选择、ACP relay 及其直接依赖，以及 Chat Channel bootstrap 迁入 `packages/agent-runtime`。浏览器的 Environment API、YJS hooks/client、ChatPanel 与纯 Chat 组件及其专项测试迁入该包的浏览器子路径。
+
+`AgentPanelLayout`、Sidebar、ChatArea 及其 Agent 编辑器、文件、站点、任务、ProdView 等跨领域编排保留在现有 `web/` owner；它们通过精确 alias 引用 runtime 的浏览器实现。这样既不改变页面 URL 和用户流程，也不会让 PHY-03 抢占 PHY-04 至 PHY-09 的领域页面。
 
 `apps/server` 保留 `main`、bootstrap 和既有 `/web`、`/acp` 路由挂载，只将导入指向 runtime 的真实实现与宿主装配；`apps/web` 保留路由薄壳并指向 runtime 的浏览器入口。已迁移实现从根 `src/`、`web/` 删除，不建立 re-export shim 或副本。
 
