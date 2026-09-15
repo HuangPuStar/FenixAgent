@@ -2,8 +2,8 @@ import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
 import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { simplifyModelDisplayName } from "../../src/lib/model-config-utils";
-import { Button } from "../ui/button";
 import { ComposerContextMeter } from "./composer-context-meter";
 import { SessionModeSelector } from "./SessionModeSelector";
 

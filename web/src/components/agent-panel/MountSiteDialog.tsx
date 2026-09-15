@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { NS } from "../../i18n";
-import { cn } from "../../lib/utils";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 
 interface SiteOption {
   id: string;

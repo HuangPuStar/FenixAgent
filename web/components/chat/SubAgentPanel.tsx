@@ -1,8 +1,8 @@
 import { Bot, ChevronDown, Loader2 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "../../src/lib/types";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import { ToolCallGroup } from "./ToolCallGroup";
 
 // =============================================================================

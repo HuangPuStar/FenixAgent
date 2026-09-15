@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError } from "../../api/request";
+import { ApiError } from "@/src/api/request";
 import {
   buildSystemUserIdentifier,
   createSystemUser,

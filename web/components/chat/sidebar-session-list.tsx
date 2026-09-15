@@ -3,8 +3,6 @@ import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { stripHtmlTags } from "../../src/lib/strip-html-tags";
-import { cn } from "../../src/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,9 +12,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../ui/alert-dialog";
-import { Button } from "../ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/src/lib/utils";
+import { stripHtmlTags } from "../../src/lib/strip-html-tags";
 import { canDeleteSession } from "./session-actions";
 import { groupByRecency } from "./session-grouping";
 

@@ -1,8 +1,8 @@
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../src/i18n";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { NS } from "@/src/i18n";
 
 const PREVIEW_SIZES = [
   { key: "sm", labelKey: "small", w: "60vw", maxW: 800, h: "60vh", maxH: 600 },

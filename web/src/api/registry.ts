@@ -4,8 +4,8 @@
  * 封装机器注册表的查询操作，统一通过 request() 与后端 /web/registry/machines 通信。
  */
 
-import type { PaginatedResponse } from "./request";
-import { request } from "./request";
+import type { PaginatedResponse } from "@/src/api/request";
+import { request } from "@/src/api/request";
 
 /** 机器注册记录 */
 export interface MachineRecord {

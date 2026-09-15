@@ -126,13 +126,13 @@ describe("error handling", () => {
 describe("UUID helpers", () => {
   // 测试默认返回空字符串
   test("getUuid returns empty string by default", async () => {
-    const { getUuid } = await import("../api/helpers");
+    const { getUuid } = await import("@/src/api/helpers");
     expect(getUuid()).toBe("");
   });
 
   // 测试设置和获取 UUID
   test("setUuid and getUuid roundtrip", async () => {
-    const { getUuid, setUuid } = await import("../api/helpers");
+    const { getUuid, setUuid } = await import("@/src/api/helpers");
     setUuid("test-uuid-123");
     expect(getUuid()).toBe("test-uuid-123");
   });

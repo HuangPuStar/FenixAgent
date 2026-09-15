@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { mcpApi } from "@/src/api/mcp";
 import { unwrap } from "@/src/api/request";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "../../../types/config";
 import { AgentMcpCatalog } from "./agent-mcp-catalog";

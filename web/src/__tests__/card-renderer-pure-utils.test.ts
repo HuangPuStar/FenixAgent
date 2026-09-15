@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CardEventEmitter } from "../lib/card-renderer/emitter";
+import { CardEventEmitter } from "@/src/lib/card-renderer/emitter";
 import {
   buildProviderInlineTestPayload,
   formatOptionalNumber,

@@ -3,8 +3,8 @@
 import type { PermissionOption } from "@fenix/chat-channel";
 import { CheckIcon, ShieldAlertIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/src/lib/utils";
 
 // Get button variant based on option kind
 function getButtonVariant(kind: PermissionOption["kind"]): "default" | "destructive" | "outline" | "secondary" {

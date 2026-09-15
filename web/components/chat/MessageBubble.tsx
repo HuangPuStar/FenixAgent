@@ -1,16 +1,16 @@
 import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../src/i18n";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { NS } from "@/src/i18n";
+import { CardEventEmitter, MessageEmitterContext } from "@/src/lib/card-renderer";
 import { dispatchArtifactsPreviewFile, isWorkspaceRelativeFilePath } from "../../src/lib/artifacts-preview-events";
-import { CardEventEmitter, MessageEmitterContext } from "../../src/lib/card-renderer";
 import { isVisibleContentBlock, parseChatQuotes } from "../../src/lib/context-queue";
 import { splitSystemReminderBlocks } from "../../src/lib/strip-html-tags";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../../src/lib/types";
 import { MessageResponse } from "../ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../ai-elements/reasoning";
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { SystemMessage } from "./SystemMessage";
 

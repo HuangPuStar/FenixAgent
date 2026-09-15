@@ -1,11 +1,11 @@
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../src/i18n";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 import { dispatchArtifactsPreviewFile } from "../../src/lib/artifacts-preview-events";
 import type { ToolCallData, ToolCardKind } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";

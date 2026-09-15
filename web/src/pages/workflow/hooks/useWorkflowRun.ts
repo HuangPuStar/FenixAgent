@@ -2,7 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "../../../api/request";
+import { unwrap } from "@/src/api/request";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import {
   type DAGEvent,

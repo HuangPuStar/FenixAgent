@@ -10,10 +10,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import { useChangedFilesFromStats } from "../hooks/use-changed-files-stats";
 import { ChatStatsDispatcher, type ChatStatsSummary } from "../lib/chat-stats";
 import type { ChangedFile } from "../lib/extract-changed-files";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

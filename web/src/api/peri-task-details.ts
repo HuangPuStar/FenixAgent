@@ -1,4 +1,4 @@
-import { request, unwrap } from "./request";
+import { request, unwrap } from "@/src/api/request";
 
 export type PeriTaskDetail =
   | {

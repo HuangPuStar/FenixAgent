@@ -3,12 +3,12 @@ import { Window } from "happy-dom";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useForm } from "react-hook-form";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import { AgentEditorSections } from "../pages/agent-panel/agent-editor/AgentEditorSections";
 import { AgentResourcePicker } from "../pages/agent-panel/agent-editor/AgentResourcePicker";
 import { EditorPagination, EditorStepperField } from "../pages/agent-panel/agent-editor/agent-editor-controls";
 import { createAgentEditorDefaults } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentEditorData } from "../pages/agent-panel/agent-editor/use-agent-editor";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 const win = initializeHappyDomWindow(new Window());

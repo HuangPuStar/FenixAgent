@@ -2,7 +2,7 @@ import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
 import { lazy, Suspense, useId, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
 import { canManageAgentSharing } from "../../../lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";

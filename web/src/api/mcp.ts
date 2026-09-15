@@ -6,8 +6,8 @@
  * 域模块内部抽象为具名方法。
  */
 
+import { request } from "@/src/api/request";
 import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "../../src/types/config";
-import { request } from "./request";
 
 /** 列表响应：后端在 data.servers 中返回服务器数组 */
 interface McpListResult {

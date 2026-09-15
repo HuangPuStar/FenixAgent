@@ -15,7 +15,7 @@
  *   PUT    /web/organizations/:id/members/:memberId → 更新角色
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 /** 组织基本信息 */
 export interface OrgInfo {

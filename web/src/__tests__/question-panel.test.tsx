@@ -12,7 +12,7 @@ import type { QuestionProjection } from "@fenix/chat-channel";
 import { CSSStyleDeclaration, Element, Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { initializeHappyDomWindow } from "./happy-dom-window";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 
 // 最小 DOM 环境（react-dom/client 与 radix 模块加载需要 document）。
 // 注意：bun test 运行时已预置一个普通 window 对象（无 getComputedStyle 等 DOM

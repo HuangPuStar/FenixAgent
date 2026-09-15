@@ -8,7 +8,7 @@ const {
   generateMessageUuid,
   extractEventText,
   isConversationClearedStatus,
-} = await import("../lib/utils");
+} = await import("@/src/lib/utils");
 
 // =============================================================================
 // formatTime()

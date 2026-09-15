@@ -17,12 +17,12 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { Components } from "streamdown";
-import { NS } from "../../src/i18n";
-import { getRegisteredAllowedTags, getRegisteredComponents } from "../../src/lib/card-renderer";
-import { cn } from "../../src/lib/utils";
-import { Button } from "../ui/button";
-import { ButtonGroup, ButtonGroupText } from "../ui/button-group";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { NS } from "@/src/i18n";
+import { getRegisteredAllowedTags, getRegisteredComponents } from "@/src/lib/card-renderer";
+import { cn } from "@/src/lib/utils";
 import "./chat-message-content.css";
 import { IframePreview } from "./iframe-preview";
 

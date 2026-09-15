@@ -15,7 +15,7 @@ import {
   type StructuredMessage,
 } from "@fenix/chat-channel";
 // 直接引用 i18next 全局实例（web/src/i18n/index.ts 在此实例上注册各语言资源）：
-// 不 import "../i18n" 模块 —— 测试环境有测试文件 mock.module 该模块为无 default
+// 不 import "@/src/i18n" 模块 —— 测试环境有测试文件 mock.module 该模块为无 default
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
 import i18n from "i18next";
 import * as Y from "yjs";

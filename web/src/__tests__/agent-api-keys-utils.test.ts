@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ApiError } from "../api/request";
+import { ApiError } from "@/src/api/request";
 import {
   filterApiKeys,
   formatApiKeyDate,

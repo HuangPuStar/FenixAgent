@@ -1,7 +1,7 @@
 import { Calendar, Eye, FilesIcon, Globe, PanelRight, PanelRightDashed, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../i18n";
-import { cn } from "../../lib/utils";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 
 export type TopMode = "files" | "sites" | "tasks" | "views";
 

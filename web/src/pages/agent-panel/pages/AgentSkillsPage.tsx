@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import {
   canManageSkillSharing,

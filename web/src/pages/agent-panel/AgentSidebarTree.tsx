@@ -32,8 +32,8 @@ import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
 import { ensureMetaAgent } from "@/src/api/meta-agent";
 import { unwrap } from "@/src/api/request";
-import { useOrg } from "../../contexts/OrgContext";
-import { NS } from "../../i18n";
+import { useOrg } from "@/src/contexts/OrgContext";
+import { NS } from "@/src/i18n";
 import { shouldShowRemoteNode } from "../../lib/agent-node";
 import {
   getAgentAccessBadgeKey,

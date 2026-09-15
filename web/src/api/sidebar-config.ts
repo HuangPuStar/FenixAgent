@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 /** 侧边栏公开配置 */
 export interface SidebarConfig {

@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { isAgentWritable } from "../../../lib/agent-resource-access";
 import { isValidAgentNameInput } from "../../../lib/agent-utils";
 import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./AgentEditorChrome";

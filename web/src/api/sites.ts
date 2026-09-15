@@ -5,7 +5,7 @@
  * 以及与 AgentConfig 的绑定/解绑操作，统一通过 request() 与后端通信。
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 /** Agent Site 应用基本信息 */
 export interface SiteApp {

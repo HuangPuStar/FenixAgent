@@ -5,7 +5,7 @@
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "../../../lib/utils";
+import { cn } from "@/src/lib/utils";
 import type { IntegrityRow } from "../utils";
 
 interface ObserverIntegrityAlertProps {

@@ -6,7 +6,26 @@
     "types": ["bun"],
     "declaration": false,
     "declarationMap": false,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/components/ui/*": ["./components/ui/*"],
+      "@/components/*": ["../../web/components/*"],
+      "@/src/i18n/locales/*": ["../../web/src/i18n/locales/*"],
+      "@/src/i18n": ["./src/i18n/index.ts"],
+      "@/src/api/request": ["./src/api/request.ts"],
+      "@/src/api/helpers": ["./src/api/helpers.ts"],
+      "@/src/lib/card-renderer": ["./src/lib/card-renderer/index.ts"],
+      "@/src/lib/card-renderer/*": ["./src/lib/card-renderer/*"],
+      "@/src/lib/auth-client": ["./src/lib/auth-client.ts"],
+      "@/src/lib/utils": ["./src/lib/utils.ts"],
+      "@/src/lib/random-uuid-polyfill": ["./src/lib/random-uuid-polyfill.ts"],
+      "@/src/lib/theme": ["./src/lib/theme.ts"],
+      "@/src/contexts/OrgContext": ["./src/contexts/OrgContext.tsx"],
+      "@/src/*": ["../../web/src/*"],
+      "@server/*": ["../../src/*"],
+      "@fenix/chat-channel": ["../../packages/chat-channel/src/index.ts"],
+      "@fenix/chat-channel/server": ["../../packages/chat-channel/src/server.ts"]
+    }
   },
   "include": [
     "src/**/*.ts",

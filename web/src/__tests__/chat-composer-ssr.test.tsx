@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-
+import i18n from "@/src/i18n";
 import { ChatComposer } from "../../components/chat/ChatComposer";
 import { CommandMenu } from "../../components/chat/CommandMenu";
-import i18n from "../i18n";
 
 function renderComposer(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): string {
   return renderToStaticMarkup(

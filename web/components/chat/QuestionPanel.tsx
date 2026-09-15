@@ -18,8 +18,8 @@ import type { QuestionProjection } from "@fenix/chat-channel";
 import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/src/lib/utils";
 
 interface QuestionPanelProps {
   /** 待应答问题列表（已由 use-session-state 做 pending + 未过期过滤） */

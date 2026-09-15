@@ -2,8 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftToLine, Globe, Info, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { NS } from "../../i18n";
-import { cn } from "../../lib/utils";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 
 export interface SiteEntry {
   id: string;

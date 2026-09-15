@@ -1,5 +1,5 @@
+import { request, unwrap } from "@/src/api/request";
 import { getAdminKey } from "../lib/admin-key";
-import { request, unwrap } from "./request";
 
 export interface SystemPeopleAgent {
   id: string;

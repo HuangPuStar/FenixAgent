@@ -168,7 +168,7 @@ import { expect as domExpect, test as domTest } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { initializeHappyDomWindow } from "./happy-dom-window";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 
 /** ChatComposer 的 props 类型（类型空间 import，不产生运行时加载） */
 type ComposerProps = Parameters<typeof import("../../components/chat/ChatComposer")["ChatComposer"]>[0];

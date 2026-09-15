@@ -3,9 +3,9 @@ import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
+import i18n from "@/src/i18n";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import type { OrgMemberCandidate } from "../api/organizations";
-import i18n from "../i18n";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 const win = initializeHappyDomWindow(new Window());

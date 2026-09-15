@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/src/lib/utils";
 import type { ChangedFile } from "../../src/lib/extract-changed-files";
 import type { TodoItem } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
 
 type StatusTab = "todo" | "tasks" | "changes";
 

@@ -8,6 +8,7 @@ import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
+import { NS } from "@/src/i18n";
 import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
@@ -16,7 +17,6 @@ import { normalizeToUserPath } from "../../components/agent-panel/preview/utils"
 import { SiteFrame } from "../../components/agent-panel/SiteFrame";
 import { SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
-import { NS } from "../../i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { ProdViewsPanel } from "./ProdViewsPanel";
 import { TasksPanel } from "./TasksPanel";

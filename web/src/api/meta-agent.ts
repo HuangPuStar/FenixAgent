@@ -4,7 +4,7 @@
  * 对接后端 POST /web/meta-agent/ensure。
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 export interface EnsureMetaResult {
   environmentId: string;

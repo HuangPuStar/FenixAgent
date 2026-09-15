@@ -23,7 +23,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
-import { NS } from "../../i18n";
+import { NS } from "@/src/i18n";
 import type { ParsedFileNode } from "./file-tree-model";
 
 interface ContextMenuState {

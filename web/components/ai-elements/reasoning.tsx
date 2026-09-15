@@ -5,8 +5,8 @@ import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/src/lib/utils";
 import { Shimmer } from "./shimmer";
 
 interface ReasoningContextValue {

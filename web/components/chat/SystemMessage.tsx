@@ -1,8 +1,8 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../src/i18n";
-import { cn } from "../../src/lib/utils";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 
 interface SystemMessageProps {
   /** 原始 system-reminder 块仅在用户主动查看详情时展示。 */

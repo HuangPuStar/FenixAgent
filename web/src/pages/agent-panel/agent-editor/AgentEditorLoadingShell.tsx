@@ -1,7 +1,7 @@
 import { Cpu, Database, Eye, Layers3, Server, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { AgentEditorHeader } from "./AgentEditorChrome";
 import type { AgentEditorSection } from "./AgentEditorSections";
 

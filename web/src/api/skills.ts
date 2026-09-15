@@ -6,6 +6,7 @@
  * 上传使用 FormData，PUT 上传文件到 Skill 目录。
  */
 
+import { request } from "@/src/api/request";
 import type {
   ResourceAccess,
   SkillDetail,
@@ -13,7 +14,6 @@ import type {
   SkillUploadConflictResponse,
   SkillUploadResponse,
 } from "../../src/types/config";
-import { request } from "./request";
 
 /** 创建/更新 Skill 所需的 data 载荷 */
 export interface SkillData {
