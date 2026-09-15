@@ -11,9 +11,11 @@
         "@elysiajs/openapi": "^1.4.15",
         "@elysiajs/static": "^1.4.10",
         "@fenix/access-control": "workspace:*",
+        "@fenix/agent-runtime": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
         "@fenix/model-gateway-sdk": "workspace:*",
+        "@fenix/model-management": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
         "@hookform/resolvers": "^5.4.0",
@@ -131,8 +133,25 @@
     "apps/server": {
       "name": "@fenix/server-app",
       "dependencies": {
+        "@better-auth/api-key": "1.6.11",
+        "@elysiajs/cors": "^1.4.2",
+        "@elysiajs/openapi": "^1.4.15",
+        "@elysiajs/static": "^1.4.10",
         "@fenix/access-control": "workspace:*",
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/core": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "@fenix/model-management": "workspace:*",
+        "@fenix/orchestration": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
+        "@keyv/redis": "^5.1.6",
+        "better-auth": "1.6.11",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "ioredis": "^5.10.1",
+        "keyv": "^5.6.0",
+        "pg": "^8.23.0",
+        "zod": "^4.4.3",
       },
     },
     "apps/web": {
@@ -168,6 +187,23 @@
       "devDependencies": {
         "@types/bun": "^1.3.14",
         "acp-link": "workspace:*",
+      },
+    },
+    "packages/agent-runtime": {
+      "name": "@fenix/agent-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/chat-channel": "workspace:*",
+        "@fenix/core": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "@fenix/orchestration": "workspace:*",
+        "@fenix/plugin-sdk": "workspace:*",
+        "@fenix/remote-runtime": "workspace:*",
+        "acp-link": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "ioredis": "^5.10.1",
+        "uuid": "^14.0.0",
+        "yjs": "^13.6.31",
       },
     },
     "packages/chat-channel": {
@@ -209,6 +245,17 @@
       "name": "@fenix/model-gateway-sdk",
       "version": "0.1.0",
     },
+    "packages/model-management": {
+      "name": "@fenix/model-management",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/model-gateway-litellm": "workspace:*",
+        "@fenix/model-gateway-sdk": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "zod": "^4.4.3",
+      },
+    },
     "packages/opensandbox-cluster": {
       "name": "@fenix/opensandbox-cluster",
       "version": "0.1.0",
@@ -230,6 +277,7 @@
     "packages/platform/access-control": {
       "name": "@fenix/access-control",
       "dependencies": {
+        "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
       },
     },
@@ -631,6 +679,8 @@
 
     "@fenix/agent-config": ["@fenix/agent-config@workspace:packages/resources/agent-config"],
 
+    "@fenix/agent-runtime": ["@fenix/agent-runtime@workspace:packages/agent-runtime"],
+
     "@fenix/ccb": ["@fenix/ccb@workspace:packages/plugin-ccb"],
 
     "@fenix/chat-channel": ["@fenix/chat-channel@workspace:packages/chat-channel"],
@@ -644,6 +694,8 @@
     "@fenix/model-gateway-litellm": ["@fenix/model-gateway-litellm@workspace:packages/model-gateway-litellm"],
 
     "@fenix/model-gateway-sdk": ["@fenix/model-gateway-sdk@workspace:packages/model-gateway-sdk"],
+
+    "@fenix/model-management": ["@fenix/model-management@workspace:packages/model-management"],
 
     "@fenix/opencode": ["@fenix/opencode@workspace:packages/plugin-opencode"],
 
