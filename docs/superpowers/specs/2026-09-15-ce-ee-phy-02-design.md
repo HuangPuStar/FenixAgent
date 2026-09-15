@@ -12,7 +12,9 @@
 
 ## 接线设计
 
-`apps/web/vite.config.ts` 的 `publicDir`、TanStack Router 扫描目录和生成树目录改为 `apps/web` 内的新唯一实现。`@/src` 和 `@/components` 分别解析到新的公共源目录；尚未迁移的业务模块通过这些别名引用同一份公共能力。
+`apps/web/vite.config.ts` 的 `publicDir`、TanStack Router 扫描目录和生成树目录改为 `apps/web` 内的新唯一实现。`@/components` 解析到新的通用 UI；保留通用 `@/src` 到尚未迁移的业务源码，并用精确 alias 将已移动的 `@/src/api/request`、`@/src/i18n` 等公共入口解析到 `apps/web`。这使后续 PHY-03 至 PHY-09 的业务导入继续使用唯一实现，而不建立 shim。
+
+全局 i18n 初始化迁入后，继续直接加载尚未迁移的业务 locale JSON；locale 文件不复制也不改写，待各业务闭包按 owner 迁移。
 
 入口保持现有初始化顺序：浏览器兼容补丁、品牌加载与应用、i18n、卡片注册、路由树、全局 CSS，随后创建带 `/ctrl` basepath 的 router。Vite 代理与原始 URL 保留逻辑不变。
 
