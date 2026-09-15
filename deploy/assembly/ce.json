@@ -1,0 +1,7 @@
+{
+  "accessControl": "access-control",
+  "agentRuntime": "agent-runtime",
+  "webShell": "default",
+  "resources": [],
+  "web": []
+}

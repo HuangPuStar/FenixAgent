@@ -2,5 +2,12 @@
   "name": "@fenix/access-control",
   "description": "默认用户、组织与角色授权实现",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./module": "./fenix.module.ts"
+  },
+  "dependencies": {
+    "@fenix/logger": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*"
+  }
 }

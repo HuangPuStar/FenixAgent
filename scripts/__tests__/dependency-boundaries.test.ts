@@ -32,7 +32,7 @@ async function validateFixture(files: Record<string, string>): Promise<string> {
 // 公开包入口是 workspace package 间唯一允许的导入面。
 test("允许通过 package export 的公开导入", async () => {
   const output = await validateFixture({
-    "packages/agent/consumer.ts": 'import "@fenix/platform-sdk";\n',
+    "packages/agent-runtime/consumer.ts": 'import "@fenix/platform-sdk";\n',
     "packages/platform/platform-sdk/package.json": '{"name":"@fenix/platform-sdk"}\n',
   });
 
@@ -42,7 +42,7 @@ test("允许通过 package export 的公开导入", async () => {
 // package 间不得越过 export 直接读取对方 src 实现。
 test("拒绝跨 package 的 src 内部导入", async () => {
   const output = await validateFixture({
-    "packages/agent/consumer.ts": 'import "../platform/platform-sdk/src/internal";\n',
+    "packages/agent-runtime/consumer.ts": 'import "../platform/platform-sdk/src/internal";\n',
     "packages/platform/platform-sdk/src/internal.ts": "export const internal = true;\n",
   });
 
@@ -54,31 +54,31 @@ test("拒绝跨 package 的 src 内部导入", async () => {
 // 包依赖必须保持有向无环，避免装配顺序和发布边界不确定。
 test("拒绝 workspace package 循环依赖", async () => {
   const output = await validateFixture({
-    "packages/agent/index.ts": 'import "../resources/agent-config";\n',
-    "packages/resources/agent-config/index.ts": 'import "../../agent";\n',
+    "packages/agent-runtime/index.ts": 'import "../resources/agent-config";\n',
+    "packages/resources/agent-config/index.ts": 'import "../../agent-runtime";\n',
   });
 
   expect(output).toContain("no-circular");
-  expect(output).toContain("packages/agent/index.ts");
+  expect(output).toContain("packages/agent-runtime/index.ts");
   expect(output).toContain("packages/resources/agent-config/index.ts");
 });
 
 // platform 只能作为被依赖的基础层，不能反向进入上层模块。
-test("拒绝 platform 反向依赖 agent", async () => {
+test("拒绝 platform 反向依赖 agent-runtime", async () => {
   const output = await validateFixture({
-    "packages/platform/platform-sdk/index.ts": 'import "../../agent";\n',
-    "packages/agent/index.ts": "export const agent = true;\n",
+    "packages/platform/platform-sdk/index.ts": 'import "../../agent-runtime";\n',
+    "packages/agent-runtime/index.ts": "export const agentRuntime = true;\n",
   });
 
-  expect(output).toContain("platform-not-to-agent-resources-apps");
+  expect(output).toContain("platform-not-to-agent-runtime-resources-apps");
 });
 
-// agent 与 resources 的依赖方向由资源闭环设计决定，不能提前反向耦合。
-test("拒绝 agent 反向依赖 resources", async () => {
+// agent-runtime 与 resources 的依赖方向由资源闭环设计决定，不能提前反向耦合。
+test("拒绝 agent-runtime 反向依赖 resources", async () => {
   const output = await validateFixture({
-    "packages/agent/index.ts": 'import "../resources/agent-config";\n',
+    "packages/agent-runtime/index.ts": 'import "../resources/agent-config";\n',
     "packages/resources/agent-config/index.ts": "export const resource = true;\n",
   });
 
-  expect(output).toContain("agent-not-to-resources");
+  expect(output).toContain("agent-runtime-not-to-resources");
 });

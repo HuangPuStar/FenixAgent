@@ -9,7 +9,7 @@ import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { applyEnv, config } from "../../../src/config";
 import { initDb, client as pgClient } from "../../../src/db";
-import { findDeprecatedEnvVars, validateEnv } from "../../../src/env";
+import { findDeprecatedEnvVars } from "../../../src/env";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "../../../src/openapi";
 import { authPlugin } from "../../../src/plugins/auth";
 import { corsPlugin } from "../../../src/plugins/cors";
@@ -59,14 +59,15 @@ import { initCustomToolsRegistry } from "../../../src/services/workflow/custom-t
 import { closeAllAcpConnections } from "../../../src/transport/acp-ws-handler";
 import { closeAllFileWsConnections, stopFileWsSweep } from "../../../src/transport/file-ws-handler";
 import { closeAllRelayConnections } from "../../../src/transport/relay";
+import { loadServerEnv } from "./env-loader";
 
 const startedAt = new Date().toISOString();
 
+const env = loadServerEnv([]);
+applyEnv(env);
 await initDb();
 startupLog.info("Database initialized");
 
-const env = validateEnv();
-applyEnv(env);
 registerConfiguredSandboxProviders();
 
 // 废弃环境变量启动告警：RCS_DEFAULT_MACHINE_TYPE 是 637a4cef 引入的死配置，服务端从未读取，

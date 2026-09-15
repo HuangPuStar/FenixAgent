@@ -54,17 +54,17 @@ module.exports = {
       },
     })),
     {
-      name: "platform-not-to-agent-resources-apps",
-      comment: "platform 是底层能力，不能依赖 agent、resources 或 app 装配层。",
+      name: "platform-not-to-agent-runtime-resources-apps",
+      comment: "platform 是底层能力，不能依赖 agent-runtime、resources 或 app 装配层。",
       severity: "error",
       from: { path: "(?:^|/)packages/platform/" },
-      to: { path: "(?:^|/)(?:packages/(?:agent|resources)/|apps/)" },
+      to: { path: "(?:^|/)(?:packages/(?:agent-runtime|resources)/|apps/)" },
     },
     {
-      name: "agent-not-to-resources",
-      comment: "agent 层不能反向依赖资源领域包。",
+      name: "agent-runtime-not-to-resources",
+      comment: "agent-runtime 层不能反向依赖资源领域包。",
       severity: "error",
-      from: { path: "(?:^|/)packages/agent/" },
+      from: { path: "(?:^|/)packages/agent-runtime/" },
       to: { path: "(?:^|/)packages/resources/" },
     },
     {
