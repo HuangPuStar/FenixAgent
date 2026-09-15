@@ -1,11 +1,42 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../apps/web/tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
     "ignoreDeprecations": "6.0",
-    "rootDir": "../.."
+    "rootDir": "../..",
+    "baseUrl": "../..",
+    "paths": {
+      "@fenix/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
+      "@fenix/core": ["packages/core/src/index.ts"],
+      "@fenix/opencode": ["packages/plugin-opencode/src/index.ts"],
+      "@fenix/orchestration": ["packages/orchestration/src/index.ts"],
+      "@fenix/claude-code": ["packages/plugin-claude-code/src/index.ts"],
+      "@fenix/ccb": ["packages/plugin-ccb/src/index.ts"],
+      "@fenix/workflow-engine": ["packages/workflow-engine/src/index.ts"],
+      "@fenix/remote-runtime": ["packages/remote-runtime/src/index.ts"],
+      "@fenix/logger": ["packages/logger/src/index.ts"],
+      "@fenix/chat-channel": ["packages/chat-channel/src/index.ts"],
+      "@fenix/chat-channel/server": ["packages/chat-channel/src/server.ts"],
+      "@fenix/model-management": ["packages/model-management/src/index.ts"],
+      "@fenix/model-management/server": ["packages/model-management/src/server.ts"],
+      "@server/*": ["apps/server/src/*"],
+      "@/components/ui/*": ["apps/web/components/ui/*"],
+      "@/components/*": ["web/components/*"],
+      "@/src/i18n/locales/*": ["web/src/i18n/locales/*"],
+      "@/src/i18n": ["apps/web/src/i18n/index.ts"],
+      "@/src/api/request": ["apps/web/src/api/request.ts"],
+      "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
+      "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
+      "@/src/api/models": ["packages/model-management/web/api/models.ts"],
+      "@/src/api/providers": ["packages/model-management/web/api/providers.ts"],
+      "@/src/api/model-gateway": ["packages/model-management/web/api/model-gateway.ts"],
+      "@/src/lib/model-config-utils": ["packages/model-management/web/lib/model-config-utils.ts"],
+      "@/src/lib/model-gateway-usage": ["packages/model-management/web/lib/model-gateway-usage.ts"],
+      "@/components/model-icon/*": ["packages/model-management/web/components/model-icon/*"],
+      "@/src/*": ["web/src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]
 }

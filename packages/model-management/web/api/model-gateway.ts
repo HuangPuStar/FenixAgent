@@ -1,5 +1,5 @@
 import { request, unwrap } from "@/src/api/request";
-import { getAdminKey } from "../lib/admin-key";
+import { getAdminKey } from "@/src/lib/admin-key";
 
 export interface ModelSyncChange {
   modelId: string;

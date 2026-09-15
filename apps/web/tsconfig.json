@@ -14,6 +14,9 @@
       "@/src/i18n": ["./src/i18n/index.ts"],
       "@/src/api/request": ["./src/api/request.ts"],
       "@/src/api/helpers": ["./src/api/helpers.ts"],
+      "@/src/api/models": ["../../packages/model-management/web/api/models.ts"],
+      "@/src/api/providers": ["../../packages/model-management/web/api/providers.ts"],
+      "@/src/api/model-gateway": ["../../packages/model-management/web/api/model-gateway.ts"],
       "@/src/api/environments": ["../../packages/agent-runtime/web/api/environments.ts"],
       "@/src/yjs/*": ["../../packages/agent-runtime/web/yjs/*"],
       "@/src/hooks/use-chat-state": ["../../packages/agent-runtime/web/hooks/use-chat-state.ts"],
@@ -29,6 +32,24 @@
       "@/components/chat/*": ["../../packages/agent-runtime/web/components/chat/*"],
       "@/src/lib/card-renderer": ["./src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["./src/lib/card-renderer/*"],
+      "@/src/lib/model-config-utils": ["../../packages/model-management/web/lib/model-config-utils.ts"],
+      "@/src/lib/model-gateway-usage": ["../../packages/model-management/web/lib/model-gateway-usage.ts"],
+      "@/src/pages/admin/AdminModelGatewayPage": [
+        "../../packages/model-management/web/pages/admin/AdminModelGatewayPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/AgentModelsPage": [
+        "../../packages/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/VerticalModelsPage": [
+        "../../packages/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": [
+        "../../packages/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx"
+      ],
+      "@/components/config/ModelConfigDialog": [
+        "../../packages/model-management/web/components/config/ModelConfigDialog.tsx"
+      ],
+      "@/components/model-icon/*": ["../../packages/model-management/web/components/model-icon/*"],
       "@/src/lib/auth-client": ["./src/lib/auth-client.ts"],
       "@/src/lib/utils": ["./src/lib/utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["./src/lib/random-uuid-polyfill.ts"],

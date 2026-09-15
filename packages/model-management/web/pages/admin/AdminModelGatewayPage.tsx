@@ -31,12 +31,12 @@ import {
   syncModelGateway,
   updateModelGatewayBudgets,
 } from "../../api/model-gateway";
-import { fetchSystemPeopleTree } from "../../api/system-people-tree";
-import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
+import { fetchSystemPeopleTree } from "@/src/api/system-people-tree";
+import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
+import { MasterKeyGate } from "@/src/pages/admin/components/MasterKeyGate";
+import { SearchableUsageFilter } from "@/src/pages/admin/components/SearchableUsageFilter";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
-import { MasterKeyGate } from "./components/MasterKeyGate";
-import { ModelGatewayKeyManagementPanel } from "./components/ModelGatewayKeyManagementPanel";
-import { SearchableUsageFilter } from "./components/SearchableUsageFilter";
+import { ModelGatewayKeyManagementPanel } from "./ModelGatewayKeyManagementPanel";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
 import { buildModelGatewayOverviewUsageQuery, buildSevenDayUsageTrend } from "./model-gateway-overview";
 

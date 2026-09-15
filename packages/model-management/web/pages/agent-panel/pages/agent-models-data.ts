@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providerApi } from "@/src/api/providers";
 import { ApiError, unwrap } from "@/src/api/request";
-import { dispatchConfigChange } from "../../../lib/config-events";
-import type { ProviderInfo, ProviderModel } from "../../../types/config";
+import { dispatchConfigChange } from "@/src/lib/config-events";
+import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import type {
   DiscoveryState,
   ModelDraft,

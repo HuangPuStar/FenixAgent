@@ -1,4 +1,4 @@
-import type { ProviderInfo, ProviderModel } from "../../../types/config";
+import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 
 export interface ProviderCatalogData {
   providers: ProviderInfo[];

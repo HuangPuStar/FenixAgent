@@ -6,7 +6,7 @@
  */
 
 import { request } from "@/src/api/request";
-import type { ProviderDetail, ProviderInfo } from "../../src/types/config";
+import type { ProviderDetail, ProviderInfo } from "@/src/types/config";
 
 /** 列表响应：后端返回 providers 数组 */
 interface ProviderListResult {

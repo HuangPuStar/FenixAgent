@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { providerApi } from "@/src/api/providers";
 import { unwrap } from "@/src/api/request";
-import type { ProviderInfo, ProviderModel } from "../../../types/config";
+import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import {
   ModelField as Field,
   ModelModalityField as ModalityField,

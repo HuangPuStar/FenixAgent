@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mergeModelConfigUpdate } from "../../components/config/ModelConfigDialog";
+import { mergeModelConfigUpdate } from "../components/config/ModelConfigDialog";
 import { buildModelOptions } from "../lib/model-config-utils";
-import type { ModelConfig, ModelEntry, ResourceAccess } from "../types/config";
+import type { ModelConfig, ModelEntry, ResourceAccess } from "@/src/types/config";
 
 function modelEntry(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {

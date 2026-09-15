@@ -6,7 +6,7 @@
  */
 
 import { request } from "@/src/api/request";
-import type { ModelConfig, PermissionConfig } from "../../src/types/config";
+import type { ModelConfig, PermissionConfig } from "@/src/types/config";
 
 export const modelApi = {
   /** 获取当前模型配置 */
