@@ -299,10 +299,10 @@ LIMIT <limit> OFFSET <offset>;
 
 ## 6. 迁移规则
 
-本节描述最终数据状态和迁移依赖顺序，不表示需要把中间 schema 发布到生产。按照
-[ADR-0001](../../adr/0001-ce-local-refactoring-and-api-boundaries.md)，各资源 task 在本地和 CI
-持续演练迁移；生产只在阶段 7 `CE-RC` 通过后，于停机维护窗口从冻结旧版本一次性执行完整
-DDL/data migration 与结果核验。最终应用不兼容未发布的中间 schema，也不为中间状态增加双写。
+本节仅描述**逐包适配时**的最终数据状态与分析方向，不授权现行阶段 1 的分包任务接入本权限
+体系。按照 [ADR-0001](../../adr/0001-ce-local-refactoring-and-api-boundaries.md)，阶段 1 的
+`resource_permission`、表结构和旧资源授权均原样保留；阶段 3 由用户决定逐包顺序，为每个包
+单独评估现有存量数据、可上线的增量迁移与兼容/回滚方案，不假定生产旧版本一直冻结。
 
 1. 为支持全局公开的资源主表增加 `visibility` 固定列；不回填 JSONB。既有通用资源全局公开记录回填为 `visibility = public`；对外 Site 访问仍迁移到 Site 自己的发布范围或发布实体。
 2. 不将 `resource_permission` 重命名为 `resource_access_grant`。完成 `visibility` 回填与结果核验后，删除本方案不再使用的旧权限记录和表；不得保留双写或兼容路径。

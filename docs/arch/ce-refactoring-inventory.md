@@ -1,12 +1,12 @@
 # CE AgentConfig 重构现状清单与首个闭环冻结契约
 
-> 事实基线：`7ed74cac8684bac6466cbfc17bb6746839f3f497`。第 1 至 13 节记录该 revision 的生产源码与既有测试所呈现的当前事实；第 14 节是 ARC-03 冻结的目标契约，发生冲突时后者是 M1 实现的权威来源。ADR-0001 已确认第一方 HTTP 控制面使用 `/web/*`，并将发布方式确定为阶段 7 后单次生产切换；第 14 节涉及这两项的内容均按 ADR-0001 同步修订。
+> 事实基线：`7ed74cac8684bac6466cbfc17bb6746839f3f497`。第 1 至 13 节记录该 revision 的生产源码与既有测试所呈现的事实；第 14 节保留 ARC-03 的目标契约，供逐包适配分析参考。阶段 1 以实际运行代码和既有测试为权威，不得依第 14 节改接口、权限、数据或前端流程。发布规则改为先完成可上线的物理分包，再由用户决定逐包适配顺序，详见 ADR-0001。
 >
 > 相对初始盘点提交 `ba8ab4d1737634b62042290c1735be8744d947bb`，该基线没有改变 `src/`、`web/` 中的 AgentConfig 生产行为；期间完成的 FND-00/FND-01 仅新增或调整设计文档、workspace manifest、app 空入口、TypeScript 配置与 CI 覆盖。逻辑 owner 和直接交接边界按该 revision 的最新设计重核。
 
 ## 1. 范围、证据与术语
 
-证据优先级：可执行测试与生产源码 > `src/db/schema.ts` > 当前架构清单 `FUNCTIONAL_MODULE_INVENTORY.md` > 目标设计 `docs/design/ce-ee-refactoring/ce-ee-refactoring-collaboration-plan.md`、`docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md`。设计文档仅用于标注后续 task 和逻辑 owner，不能反向解释当前行为。
+证据优先级：可执行测试与生产源码 > `src/db/schema.ts` > 当前架构清单 `FUNCTIONAL_MODULE_INVENTORY.md` > 目标目录归属文档 `docs/design/ce-ee-refactoring/ce-ee-engineering-directory-structure.md`。迁移任务在对应阶段 plan 中，目标规范另见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md`；这些文档都不能反向解释当前业务行为。
 
 本文中的 `platform`、`agent`、`resources/agent-config`、`apps/server`、`apps/web` 是批准的**逻辑 owner 标签**，不是第 1 至 13 节事实基线中的当前仓库路径。基础平台签名与拒绝语义由 ARC-02 冻结；AgentConfig、Agent runtime/instance 和强依赖资源的公开接口与目标路径由第 14 节冻结。本文引用的其余反引号路径均在事实基线存在。
 
@@ -201,7 +201,9 @@ INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通�
 - 失败项分别位于 `src/__tests__/round46-knowledge-base-repository.test.ts`、`src/__tests__/round54-channels-routes.test.ts` 和 `web/src/__tests__/agent-form-dialog-ssr.test.tsx`；三个文件在本 worktree 中隔离运行分别为 34/24/3 pass、0 fail。
 - 用户于 2026-09-08 确认这是全量测试共享状态或顺序污染的已知基线问题，与 ARC-01 文档清单无直接关系。本任务只保留验证证据，不修改生产代码或测试，也不将其并入 ARC-01 修复范围。
 
-## 11. 责任、依赖与风险登记
+## 11. 历史责任、依赖与风险登记（旧任务依赖已撤销）
+
+下表为 ARC-01 盘点当时的任务分配记录；已完成项继续保留，未完成项不再可领取，不能依其目标行为实施现行阶段 1。新任务以[协作计划的 PHY 闭包](../design/ce-ee-refactoring/ce-ee-refactoring-collaboration-plan.md)为准。
 
 | Task | owner | 直接前置 | 本清单中的责任 |
 | --- | --- | --- | --- |
@@ -242,9 +244,11 @@ INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通�
 | 日志敏感数据与关联不足 | 中高 | LaunchSpec 日志、generic HTTP logger | 复用 `@fenix/logger` 与 `requestId`；INT-01 验证脱敏和诊断关联 |
 | 真实 DB/runtime/browser 证据缺失 | 中高 | 测试等级表 | DAT/AGT/WEB/INT tasks 补 E2E 与升级演练 |
 
-## 12. 删除台账
+## 12. 历史删除台账（阶段 1 只删除已搬移的源文件）
 
-### 12.1 Must-delete（切换完成后删除，不建兼容层）
+下表原先用于先改协议、再删旧业务入口；这些新接口与删旧协议的前置在阶段 1 **不成立**。阶段 1 所有旧功能入口包括 Environment 和旧 `/web` 全部原样搬到最终 owner，旧源码在搬移且调用方更新后删除；阶段 3 再逐包审查表中目标删改是否适用。
+
+### 12.1 历史 Must-delete（仅供阶段 3 评估，不是阶段 1 的删除清单）
 
 | 旧资产 | owner/task | 删除前置与证据 | 回滚边界 |
 | --- | --- | --- | --- |
@@ -254,7 +258,7 @@ INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通�
 | `web/src/api/agents.ts` | `resources/agent-config`（Web client）；WEB-02 | 页面、Sidebar、Task、ProdView、Home 全切 `/web/agent-configs` stable ID client；request tests/build 绿 | Web/server 作为同一最终版本切换和恢复 |
 | `web/src/routes/agent/_panel/agents.tsx` 中旧 adapter 与 `web/src/pages/agent-panel/pages/AgentManagementPage.tsx`、`web/src/pages/agent-panel/AgentFormDialog.tsx`、`web/src/pages/agent-panel/pages/AgentHomePage.tsx` 的 AgentConfig-owned 实现 | `apps/web`（薄 route）+ `resources/agent-config`（页面）；WEB-02 | 新 contribution 覆盖 loading/empty/error/retry/unauthorized/success；浏览器关键流绿；Shell 不再导入 | 静态 contribution 版本回滚，不并存两页面 |
 | `web/src/pages/agent-panel/AgentSidebarTree.tsx` 中 AgentConfig 业务片段及 AgentConfig-owned locale keys | `apps/web`（Shell）+ `resources/agent-config`（业务片段）；WEB-02 | Shell contribution 已重接；事件和 namespace 引用 search；仅删专属 key | 保留共享 Shell/namespace，不整文件盲删 |
-| `src/db/schema.ts` 中旧定义位置 | `resources/agent-config`; DAT-01 | 模块 schema 成为唯一真相；Drizzle diff 无意外表重建，仅包含 visibility DDL；空库/冻结线上版本升级库通过 | 最终切换失败按演练结果补偿或恢复数据库备份与旧版本 |
+| `src/db/schema.ts` 中旧定义位置 | `resources/agent-config`; DAT-01（旧任务） | 阶段 1 只搬 schema 源码且 SQL 零差异；增加 visibility 属阶段 3 独立治理 | 阶段 1 原迁移链与原 schema 保持一致 |
 
 ### 12.2 Retain-and-rewire（保留领域/协议，只替换依赖）
 
@@ -272,23 +276,23 @@ INT-01 至少验证：HTTP 请求的 `requestId` 会写入结构化日志并通�
 
 | 资产/冲突 | 必须决定 | 未决定前规则 |
 | --- | --- | --- |
-| `src/routes/api/agents.ts` | 外部 CRUD 是否退役、窗口、版本/限流/兼容义务 | M1 保留为同一 Facade 的兼容 adapter；最终退役走独立 ADR，见 14.5 |
-| `src/routes/api/instances.ts` | connect 是否并入 `/web/agent-configs/:id/run`，复用/响应 DTO | M1 deprecated 保留并重接；与 `/acp/relay` 共同退役，见 14.5 |
+| `src/routes/api/agents.ts` | 外部 CRUD 是否退役、窗口、版本/限流/兼容义务 | 阶段 1 原样保留；阶段 3 退役须独立 ADR，见 14.5 |
+| `src/routes/api/instances.ts` | connect 是否并入 `/web/agent-configs/:id/run`，复用/响应 DTO | 阶段 1 原样保留；阶段 3 若改动须外部合同决策，见 14.5 |
 | `src/routes/api/openai-chat.ts` | OpenAI-compatible 合同与外部消费者 | 作为长期协议入口保留，保持协议响应并统一 use 边界，见 14.5 |
 | auth/error | AgentConfig 403/404 与 `use` | 平台认证语义沿用 ARC-02；资源拒绝映射按 14.4 |
 | ID/schema | name/resourceKey、Environment route `agentId`、workflow/channel payload | 稳定 ID 与 Environment 边界按 14.3、14.4、14.7；逐字段迁移，不做字符串批量替换；废弃的 `user_config` 不参与迁移 |
 
 ## 13. 开始/停止与删除判定
 
-首个资源闭环实现开始前：固定本清单事实 revision；确认 ARC-02 平台边界与第 14 节 ARC-03 契约未被后续 ADR 修改；为每个引用建立 owner、数据回填、caller search、contract test、观测和回滚步骤；schema task 取得 migration journal 锁。
+阶段 1 各闭包开始前：核实本清单事实基线与当前源码的差异，确认原 route、schema、页面、调用方、测试和最终 owner；按当前代码建立行为对照。不能在物理移动时加入数据回填或改新权限；阶段 3 各包开始前再参考 ARC-02、ARC-03 分析真实数据与协议影响。
 
 立即停止并升级：需要生产行为修复但 task 未授权；身份/租户/use 或外部合同仍冲突；发现未分类调用方/数据引用；需要 live 凭证/客户数据；迁移无法幂等补偿；新旧写路径将并存；真实测试暴露与冻结基线不同；日志样例可能含敏感值。
 
-内部旧资产只有在新权威路径、数据/API/调用方和端到端验证通过且静态 caller search 为零后才可删除；中间版本不发布，因此不要求为旧 `/web` 路径建立生产观测窗口。已发布的外部 `/api` 只有在消费者盘点和约定观测窗口均证明可退役后才可删除。删除后不得以 deprecated shim、alias、双写或 name->ID 转发恢复旧内部路径。
+阶段 1 旧文件仅在原实现已完整搬移且旧路径 caller search 为零后删除；旧 `/web`、`/api` 的协议和业务入口不删除。阶段 3 若需删除已有接口，应先核实消费者、生产观测和对应包的可上线兼容方案；外部 `/api` 需独立协议决策。不得创建 deprecated shim、alias、双写或 name->ID 转发来掩盖重复实现。
 
 ## 14. ARC-03 首个资源闭环冻结契约
 
-> **状态：已冻结，ARC-03 review 通过（2026-09-13）。** 本节是 DAT-01、AGT-01、REF-01 至 REF-04、ENV-01、AGT-02、WEB-REF-01、RES-01、WEB-02 和 INT-01 的直接实现依据。此后实现任务不得重新选择 package/module/contribution ID、公开端口、路由语义、Environment 边界或首期迁移范围；改变语义必须先提交 ADR。
+> **状态：历史 ARC-03 目标契约，review 通过（2026-09-13）。** 以下公开接口、目标路由和数据治理属于阶段 2/3 的分析材料；旧 DAT/AGT/REF/ENV/WEB/RES/INT 任务和强制顺序已撤销。阶段 1 的原接口、Environment 页面、Provider 权限和数据均按现状保留；逐包适配时必须核对生产合同及 ADR-0001，不得把冻结目标当成迁移当下的改动许可。
 
 ### 14.1 唯一运行边界与依赖方向
 
@@ -651,9 +655,9 @@ M1 Web 接收 `environmentId + instanceUid`，继续按现有规则生成确定�
 
 除上述祖传外部合同外，不直接给 `/api/agents` 增加字段或动作；第一方新资源动作进入 `/web`，新增公开能力另行设计版本化 `/api` 合同。External adapter 位于 `apps/server` 的协议边界或专门 protocol contribution，不由资源 package 复制 route/business logic。`/acp/*`、`/mcp/*`、hooks、WS/SSE 保持各自协议前缀。
 
-### 14.6 首期精确迁移范围与顺序
+### 14.6 历史首期范围与顺序（已撤销，仅供目标契约查阅）
 
-M1 的“强依赖资源”只迁移 AgentConfig 用户闭环实际调用的能力，不等同于迁完资源的所有历史管理功能：
+以下是原 M1 的“强依赖资源”定义，**不再作为阶段 1 的范围**：阶段 1 应搬移所有现有功能，而非只搬 AgentConfig 调用到的子集。
 
 | Task | 必须迁移 | 明确不在首期 |
 | --- | --- | --- |
@@ -667,11 +671,11 @@ M1 的“强依赖资源”只迁移 AgentConfig 用户闭环实际调用的能�
 | AGT-02 | 通过上述公开 resolver 形成所有字段已解析的 DTO，再调用纯 `AgentLaunchSpecAssembler`；等价覆盖旧两次 builder 输出 | runtime 直接查询资源、重新设计 engine/plugin 协议 |
 | RES/WEB | 唯一 AgentConfig facade/repository/`/web` route、Web contribution、调用方切换和旧 Web 删除 | 新建开放平台版本、EE 发布审批功能 |
 
-强制依赖顺序：`ARC-03 → {DAT-01, AGT-01, WEB-01}`；`DAT-01 → REF-01 → REF-02 → REF-03 → REF-04`（共享 migration journal 串行，代码准备可并行但 schema 提交不可并行）；`{DAT-01, AGT-01} → ENV-01`；`{AGT-01, REF-01..04, ENV-01} → AGT-02 → RES-01`；`{WEB-01, REF-01..04, ENV-01} → WEB-REF-01`；`{RES-01, WEB-REF-01} → WEB-02 → INT-01`。
+历史强制依赖顺序已撤销。阶段 1 按现有功能闭包拆任务和实际引用排序；阶段 2 逐包查明依赖；阶段 3 由用户人工决定顺序。
 
 ### 14.7 Environment、数据治理与删除事务
 
-Environment 的实体、schema、repository、locator、workspace 计算和生命周期都属于 `@fenix/agent-runtime` 包内实现。它可以在包内继续使用 `env_*`、organization/user 字段保证隔离和兼容，但不导出 `EnvironmentService`、Environment DTO、资源 module、`/web/environments` 资源 CRUD、Web client 或管理页面。宿主协议必须使用 AgentConfig/Instance facade；旧 Environment route/page 仅在 ENV-01 caller 迁移窗口内保留，M1 前删除或降为非公开内部诊断入口需另有明确门禁。
+Environment 的实体、schema、repository、locator、workspace 计算和生命周期在目标架构归 `@fenix/agent-runtime`。其不对外暴露独立资源入口是**后续治理目标**；阶段 1 必须保留现有 `EnvironmentService`、DTO、`/web/environments` CRUD、Web client、管理页面与现有前后端流程，不通过分包改变其可用性。
 
 DAT-01 的数据真相与迁移步骤冻结如下：
 
@@ -698,12 +702,12 @@ AgentConfig 的更新与删除只迁移既有业务语义，不在 ARC-03 新增
 
 每次切片至少记录结构化字段 `requestId`、`operation`、`agentConfigId`、必要时 `instanceId`、结果 code 和 duration；迁移记录 migration ID、batch、scanned/updated/skipped/error count。禁止日志记录 token、Cookie、Environment secret、Provider/MCP credential、完整 prompt、文件内容、完整 launch spec 或未脱敏外部错误。INT-01 必须以日志捕获测试验证这些字段与禁项。
 
-CE 重构只支持“冻结线上版本 → 阶段 7 最终版本”的生产升级。最终维护窗口内完成停写、备份、完整 migration、数据核验和应用切换；失败时保持流量关闭，依靠幂等重跑、前滚修复，或恢复切换前数据库备份与旧版本。运行提取按 AGT-00 的机械切片提交回滚，不以旧/新 runtime 双栈兜底；不得自动修改已经被正式环境消费的 migration。
+阶段 1 不改表或 data migration，保持旧版本可用的迁移链与顺序；终态历史库升级、生产构建与 E2E 全绿即可作为可上线版本。阶段 3 按每个包制定增量生产升级与回滚策略，不假定生产始终冻结在旧版本；不得改写已经被正式环境消费的 migration，也不得以旧/新 runtime 双栈兜底。
 
-任一内部旧实现只有同时满足以下条件才能删除：所有静态 import/route/client/payload caller search 为零；行为契约/特征/浏览器/空库和冻结线上版本升级库测试全绿；数据 ID/scope/binding/reference verify 全绿；最终应用和恢复方案已演练；相关 operations/README 已更新。未发布的旧 `/web` 路径不要求生产流量观察；`/api` 外部合同仍必须满足 14.5 的消费者盘点、观测窗口和 ADR 门禁。删除后禁止 deprecated shim、name→ID 转发、双写、双 repo 或第二套 relay/session 协议。
+阶段 1 仅删除实现已完整搬移且旧位置静态 caller search 为零的源文件；对应 route/client/payload 仍须在最终 owner 原样存在。阶段 1 终态行为契约、特征、浏览器、空库及历史库升级测试全绿。阶段 3 若需删除旧业务或协议入口，先完成数据 ID/scope/reference、已发布接口消费者和回滚核验，`/api` 外部合同需独立 ADR；不得建立 deprecated shim、name→ID 转发、双写或第二套 relay/session 协议。
 
-### 14.9 review 通过后关闭的决策与实现阶段禁区
+### 14.9 历史 review 结论与阶段 3 的复核边界
 
-最终 review 通过后，ARC-03 关闭以下决策：单一 runtime package、所有稳定 ID、AgentConfig→runtime 唯一授权边界、AGT-01 阶段性宿主 port 与 AGT-02 resolver 切换、经 ADR-0001 修订的 `/web` DTO/错误/授权语义、外部合同去留、Environment 非资源化、首期范围与顺序、数据/调用方/删除门禁。实现负责人不得以“代码更方便”为由改回 runtime 查资源、公开 Environment、name CRUD、资源 route 双写或 `/api` 新功能。
+ARC-03 曾给出单一 runtime package、稳定 ID、AgentConfig→runtime 授权边界、目标 `/web` DTO、Environment 非资源化等设计；旧 AGT-01/02 宿主 port 切换、首期范围和顺序不再是现行实施任务。阶段 1 不得因这些目标去改目前 runtime 查询、Environment 或 name CRUD 的运行行为。阶段 3 实施前需核实该包现状和合同；不能为了实现便利创造双写、第二资源 route 或擅自扩展 `/api`。
 
-本次冻结有意保留两项后续 ADR 议题，但不阻塞 M1：一是外部 `/api/agents` 与 external connect 的最终退役版本；二是彻底移除兼容 wsUrl 中 Environment locator 后的 Chat/File URL 协议。两者在 ADR 通过前均按 14.5 与 14.7 的现状执行，不允许实现任务自行决策。
+两项协议仍须另行决策：外部 `/api/agents` 与 external connect 的退役版本，以及彻底移除 wsUrl 中 Environment locator 的 Chat/File URL。阶段 1 两者都维持现状；阶段 3 对应包适配前若无独立协议决策，也不得自行删除或更改。

@@ -13,7 +13,7 @@
 9. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
 10. **删除优于兼容**：内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或双写逻辑；对外契约（`/api/*` 等稳定接口、数据库迁移）的兼容性按协议契约单独评估，属于合同义务而非迁就旧代码。
 
-> **变更速查**：提交前运行 `bun run precheck`；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <name>` 和 `bun run db:migrate`。
+> **变更速查**：通常提交前运行 `bun run precheck`；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <name>` 和 `bun run db:migrate`。CE 阶段 1 物理迁移的中间闭包提交允许有记录的检查失败，阶段最终提交必须全绿；阶段 1 禁止改 schema 结构、DDL 与 data migration。
 
 ## 文档使用与规范入口
 
@@ -97,7 +97,7 @@ bun run db:migrate                  # 执行迁移
 - 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
-- `precheck` 必须全绿才能提交；它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建。
+- 常规任务提交前 `precheck` 必须全绿；CE 阶段 1 的中间功能闭包提交例外，须留存准确失败原因且阶段最终提交必须全绿。它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建；阶段 1 收口时同步移动测试入口并覆盖全部迁移后的测试。
 
 ## 架构边界与模块契约
 
@@ -233,7 +233,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 - 文件使用 kebab-case，组件使用 PascalCase，函数使用 camelCase，常量使用 UPPER_SNAKE_CASE。
 - 提交信息使用 Angular 风格：`feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:`，标题使用中文。
-- 未经明确要求不得创建 commit；代码改动提交前必须运行 `bun run precheck`，前端改动还必须运行 `bun run build:web`。
+- 未经明确要求不得创建 commit；代码改动提交前通常须运行 `bun run precheck`，前端改动还须运行 `bun run build:web`。仅 CE 阶段 1 物理迁移的中间闭包提交按已批准的新计划允许记录失败并继续；阶段最终提交不可有失败。
 
 ### 质量红线
 
