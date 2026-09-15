@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { resolveBoundKnowledgeBasesByConfigId, searchKnowledgeDetailedForAgent } from "../services/knowledge-runtime";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 function createJoinedBindingsQuery(rows: unknown[]) {
   return {

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "../../db";
-import { agentConfigSiteApp } from "../../db/schema";
+import { db } from "../../../apps/server/src/db";
+import { agentConfigSiteApp } from "../../../apps/server/src/db/schema";
 
 /**
  * Agent ↔ SiteApp 绑定关系服务。

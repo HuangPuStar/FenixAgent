@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import { z } from "zod/v4";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { AgentGenerationResponseSchema } from "../../schemas/agent-generation.schema";
 import { WebErrSchema } from "../../schemas/common.schema";
 import { generateAgentConfig, isGenerationConfigured } from "../../services/agent-generation";

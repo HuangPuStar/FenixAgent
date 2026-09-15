@@ -6,7 +6,7 @@
 // 422 config_error / 429 busy(+Retry-After) / 503 file_service_unavailable。
 
 import Elysia from "elysia";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import {
   BatchDeleteRequestSchema,
   BatchDeleteResponseSchema,

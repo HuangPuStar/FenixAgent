@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
-import { db } from "../db";
-import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "../db/schema";
-import { scheduledTaskV2 } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "../../apps/server/src/db/schema";
+import { scheduledTaskV2 } from "../../apps/server/src/db/schema";
 
 export type { ScheduledTaskV2Insert, ScheduledTaskV2Row };
 

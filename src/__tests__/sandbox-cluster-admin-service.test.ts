@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { config, setConfig } from "../config";
+import { config, setConfig } from "../../apps/server/src/config";
 import {
   createSandboxClusterAdminService,
   SandboxClusterUnavailableError,

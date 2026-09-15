@@ -92,7 +92,7 @@ async function tryApiKeyAuth(
   if (!token) return false;
 
   // 0. Environment secret match
-  const { environmentRepo } = await import("../repositories");
+  const { environmentRepo } = await import("../../../../src/repositories");
   const envRecord = await environmentRepo.getBySecret(token);
   if (envRecord?.userId) {
     const user = await lookupUserById(envRecord.userId);

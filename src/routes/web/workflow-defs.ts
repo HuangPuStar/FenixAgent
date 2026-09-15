@@ -29,7 +29,7 @@
 
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import {
   createWorkflowDef,
   deleteWorkflowDef,

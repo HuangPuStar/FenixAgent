@@ -1,5 +1,5 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
-import { NotFoundError } from "../errors";
+import { NotFoundError } from "../../apps/server/src/errors";
 import type { PeriTaskDetail, PeriTaskDetailQuery } from "../schemas/peri-task-details";
 import type { PeriTaskDetailStore } from "./peri-task-detail-store";
 

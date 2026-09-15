@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
-import { NotFoundError } from "../errors";
+import { NotFoundError } from "../../apps/server/src/errors";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { openAgentSession, setAgentChatServiceDeps } from "../services/agent-chat-service";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const VALID_AGENT_CONFIG_ID = "123e4567-e89b-12d3-a456-426614174000";
 const OPEN_INPUT = {

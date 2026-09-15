@@ -16,9 +16,9 @@
 import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { config, getBaseUrl } from "../config";
-import { NotFoundError } from "../errors";
-import type { AuthContext } from "../plugins/auth";
+import { config, getBaseUrl } from "../../apps/server/src/config";
+import { NotFoundError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { environmentRepo } from "../repositories";
 import { setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 describe("agentSiteAppRepo", () => {
   // repo 方法导入需要懒加载：stubDb 返回的 db 对象在 lazy import 之前设置

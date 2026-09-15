@@ -1,9 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { db } from "../../db";
-import { agentConfig, agentConfigSiteApp } from "../../db/schema";
-import { authGuardPlugin } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { agentConfig, agentConfigSiteApp } from "../../../apps/server/src/db/schema";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import {

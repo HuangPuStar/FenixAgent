@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { createCoreRuntimeError } from "@fenix/core";
 import { AgentNodeUnavailableError, MachineOfflineError, OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
-import { errorPlugin } from "../plugins/error-handler";
+import { errorPlugin } from "../../apps/server/src/plugins/error-handler";
 
 describe("errorPlugin 编排域错误映射", () => {
   const app = new Elysia()

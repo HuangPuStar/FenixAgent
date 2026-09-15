@@ -1,7 +1,7 @@
 import { and, eq, ilike, inArray, or } from "drizzle-orm";
-import { db } from "../db";
-import { member, user } from "../db/schema";
-import { normalizeChineseMainlandPhoneNumber } from "../services/phone-number";
+import { db } from "../../apps/server/src/db";
+import { member, user } from "../../apps/server/src/db/schema";
+import { normalizeChineseMainlandPhoneNumber } from "../../apps/server/src/services/phone-number";
 
 /**
  * 查询用户在各组织下的成员角色映射。

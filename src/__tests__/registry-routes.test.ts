@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { resetAllStubs, stubDb, stubRegistry } from "../test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 
 beforeEach(() => {
   resetAllStubs();

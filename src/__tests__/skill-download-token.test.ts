@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
 import {
   buildSkillDownloadUrl,
   generateSkillDownloadToken,

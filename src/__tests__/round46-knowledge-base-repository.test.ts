@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import {
   type AgentKnowledgeBindingInsert,
   agentKnowledgeBindingRepo,
@@ -7,7 +8,6 @@ import {
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../repositories/knowledge-base";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 

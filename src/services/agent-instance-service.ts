@@ -1,5 +1,5 @@
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
-import { AppError } from "../errors";
+import { AppError } from "../../apps/server/src/errors";
 import type { AgentInstanceRecord, IAgentInstanceRepo, InstanceCreationSource } from "../repositories";
 import { agentInstanceRepo } from "../repositories";
 import { createAgentInstanceUid, isAgentInstanceUid } from "./agent-instance-id";

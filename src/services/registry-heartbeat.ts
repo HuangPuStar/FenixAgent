@@ -1,7 +1,7 @@
 import { log, error as logError } from "@fenix/logger";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { machine } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { machine } from "../../apps/server/src/db/schema";
 import { touchSandboxInstanceHeartbeatByMachineId } from "../repositories/sandbox-instance-repository";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 

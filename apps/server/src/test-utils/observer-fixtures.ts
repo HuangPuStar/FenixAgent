@@ -7,12 +7,12 @@
 // ChatClientSnapshot / EnvironmentRecord，改动来源字段时同步维护此处。
 
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { EnvironmentRecord } from "../repositories";
-import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
-import type { ChatClientSnapshot, ObserverServiceDeps } from "../services/observer";
-import type { ExternalRelayConnectionSnapshot } from "../transport/relay/external-relay";
-import type { WsConnection } from "../transport/ws-types";
-import type { AcpConnectionSnapshot } from "../types/store";
+import type { EnvironmentRecord } from "../../../../src/repositories";
+import type { SpawnedInstance } from "../../../../src/services/agent-instance-runtime-projection";
+import type { ChatClientSnapshot, ObserverServiceDeps } from "../../../../src/services/observer";
+import type { ExternalRelayConnectionSnapshot } from "../../../../src/transport/relay/external-relay";
+import type { WsConnection } from "../../../../src/transport/ws-types";
+import type { AcpConnectionSnapshot } from "../../../../src/types/store";
 
 /** environment 权威表记录构造器（默认 org-1/user-1/acfg-1）。 */
 export function makeEnv(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {

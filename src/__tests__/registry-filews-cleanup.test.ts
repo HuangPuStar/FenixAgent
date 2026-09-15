@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AuthContext } from "../plugins/auth";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 
 // registry.ts 被 setup-mocks preload mock（REGISTRY_KEYS），本测试需要真实 deleteMachine /

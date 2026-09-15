@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { Env } from "./env";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../../src/services/agent-system-prompt";
 
 function buildConfig(env: Env) {
   return {

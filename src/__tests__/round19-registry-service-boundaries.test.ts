@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { readJson, resetAllStubs, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 import {
   CreateMachineSchema,
   EventQuerySchema,
   MachineQuerySchema,
   UpdateMachineSchema,
 } from "../schemas/registry.schema";
-import { readJson, resetAllStubs, stubRegistry } from "../test-utils/helpers";
 
 const authContext = { organizationId: "org-a", userId: "user-a", role: "owner" as const };
 

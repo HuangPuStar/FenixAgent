@@ -1,6 +1,6 @@
 import { and, eq, isNull, or } from "drizzle-orm";
-import { db } from "../db";
-import { type NewSandboxPool, type SandboxPool, sandboxPool } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { type NewSandboxPool, type SandboxPool, sandboxPool } from "../../apps/server/src/db/schema";
 
 export function isSandboxPoolReadable(pool: Pick<SandboxPool, "organizationId">, organizationId: string): boolean {
   return pool.organizationId === null || pool.organizationId === organizationId;

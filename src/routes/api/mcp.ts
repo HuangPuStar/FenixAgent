@@ -1,6 +1,6 @@
 import Elysia from "elysia";
-import { AppError } from "../../errors";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { AppError } from "../../../apps/server/src/errors";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 import {
   type ApiMcpCreateBody,

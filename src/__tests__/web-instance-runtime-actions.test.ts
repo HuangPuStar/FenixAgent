@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import type { AgentInstanceRecord } from "../repositories";
-import { resetAllStubs } from "../test-utils/helpers";
 
 const {
   default: webInstanceRoutes,

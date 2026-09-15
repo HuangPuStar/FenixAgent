@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubKnowledgeBaseService } from "../test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubKnowledgeBaseService } from "../../apps/server/src/test-utils/helpers";
 
 const apiKnowledgeBasesRoute = (await import("../routes/api/knowledge-bases")).default;
 

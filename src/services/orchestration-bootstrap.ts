@@ -19,8 +19,8 @@
 
 import { randomBytes } from "node:crypto";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
-import { config } from "../config";
-import { AppError } from "../errors";
+import { config } from "../../apps/server/src/config";
+import { AppError } from "../../apps/server/src/errors";
 import { agentConfigRepo, agentEngineRepo, environmentOrchestrationRepo } from "../repositories";
 import type { ExecutionNodeResolver } from "../repositories/environment-orchestration";
 import { resolveAgentNode } from "./config/agent-config";

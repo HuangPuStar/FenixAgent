@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type AgentNode, type AgentNodeSocket, AgentNodeUnavailableError } from "@fenix/orchestration";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../test-utils/helpers";
+import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 import { getAgentNodeService } from "../transport/agent-node-bridge";
 
 /** 最小 AgentNodeSocket：close 立即确认。 */

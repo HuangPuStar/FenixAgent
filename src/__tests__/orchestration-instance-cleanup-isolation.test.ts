@@ -8,13 +8,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
   stopInstancesForEnvironments,
 } from "../services/orchestration-instance";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 import type { InstanceSupplement } from "../types/store";
 
 const ORG_1 = "org-1";

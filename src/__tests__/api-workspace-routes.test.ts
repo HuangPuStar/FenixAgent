@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
-import { setTestOrgContext } from "../services/org-context";
 
 const apiWorkspaceRoute = (await import("../routes/api/workspaces")).default;
 

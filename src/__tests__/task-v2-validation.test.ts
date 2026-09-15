@@ -4,9 +4,9 @@
 // 注：HTTP 层 Zod（min(1)）已拦截空串，本测试守护 service 层防御纵深，
 // 因为 createTaskV2/updateTaskV2 是公共导出，可能被非 HTTP 入口调用。
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { ScheduledTaskV2Row } from "../db/schema";
+import type { ScheduledTaskV2Row } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { createTaskV2, updateTaskV2 } from "../services/task-v2";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const USER_ID = "user-1";
 const ORG_ID = "org-1";

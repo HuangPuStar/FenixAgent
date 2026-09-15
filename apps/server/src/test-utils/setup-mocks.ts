@@ -5,10 +5,10 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import * as actualKnowledgeBaseService from "../services/knowledge-base";
+import * as actualKnowledgeBaseService from "../../../../src/services/knowledge-base";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
-import * as actualFileWsHandler from "../transport/file-ws-handler";
-import * as actualFileWsRequests from "../transport/file-ws-requests";
+import * as actualFileWsHandler from "../../../../src/transport/file-ws-handler";
+import * as actualFileWsRequests from "../../../../src/transport/file-ws-requests";
 import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
@@ -113,7 +113,7 @@ const CONFIG_PG_KEYS = [
   "upsertSkill",
 ] as const;
 
-mock.module("../services/config/index", () =>
+mock.module("../../../../src/services/config/index", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(CONFIG_PG_KEYS, getConfigPgStub as (name: string) => any),
 );
@@ -154,7 +154,7 @@ mock.module("../auth/better-auth", () => {
 
 const API_KEY_SERVICE_KEYS = ["createApiKey", "hashApiKey"] as const;
 
-mock.module("../auth/api-key-service", () =>
+mock.module("../../../../src/auth/api-key-service", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(API_KEY_SERVICE_KEYS, getApiKeyServiceStub as (name: string) => any),
 );
@@ -178,7 +178,7 @@ const SYSTEM_API_KEYS = [
   "deleteUserApiKey",
 ] as const;
 
-mock.module("../services/system-api", () =>
+mock.module("../../../../src/services/system-api", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(SYSTEM_API_KEYS, getSystemApiStub as (name: string) => any),
 );
@@ -212,11 +212,11 @@ function createDbMock() {
 }
 
 mock.module("../db", createDbMock);
-mock.module("../../db", createDbMock);
+mock.module("../../../../db", createDbMock);
 
 // ── resource-permission repository ──
 
-mock.module("../repositories/resource-permission", () => ({
+mock.module("../../../../src/repositories/resource-permission", () => ({
   resourcePermissionRepo: resourcePermissionRepoStub,
 }));
 
@@ -229,9 +229,9 @@ mock.module("../repositories/resource-permission", () => ({
 // ── repositories/environment — 环境仓储（对象导出）──
 // 仅有 acp-machine-connection-lookup.test.ts 和 relay-handler-machine.test.ts 使用 mock
 
-mock.module("../repositories/environment", () => {
+mock.module("../../../../src/repositories/environment", () => {
   // 用 Proxy 实时转发而非对象 getter：具名导入（如 environment-core 的
-  // `import { environmentRepo } from "../repositories"`）在模块首次求值时固化绑定，
+  // `import { environmentRepo } from "../../../../src/repositories"`）在模块首次求值时固化绑定，
   // getter 一次返回的对象引用会被缓存——若其他测试文件先求值该模块，
   // 后置的 stubEnvironmentRepo 将永远不生效（fs-upload-escape.test.ts 全量运行曾因此 404）。
   // Proxy 把每次属性访问实时转发到当前 stub（与上方 ../db 的 createDbMock 同模式），
@@ -246,7 +246,7 @@ mock.module("../repositories/environment", () => {
   return { environmentRepo: environmentRepoProxy };
 });
 
-mock.module("../services/knowledge-base", () => ({
+mock.module("../../../../src/services/knowledge-base", () => ({
   ...actualKnowledgeBaseService,
   listKnowledgeBasesGlobal: (...args: unknown[]) =>
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesGlobal")(...args),
@@ -277,7 +277,7 @@ const REGISTRY_KEYS = [
   // 测试需经 stubRegistry 配置其行为
   "writeRegistryEvent",
 ] as const;
-mock.module("../services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
+mock.module("../../../../src/services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
 
 const REGISTRY_HEARTBEAT_KEYS = [
   "startHeartbeat",
@@ -286,7 +286,7 @@ const REGISTRY_HEARTBEAT_KEYS = [
   "startMachineSweep",
   "stopMachineSweep",
 ] as const;
-mock.module("../services/registry-heartbeat", () =>
+mock.module("../../../../src/services/registry-heartbeat", () =>
   createLazyMock(REGISTRY_HEARTBEAT_KEYS, (name) => registryHeartbeatRegistry.get(name) as AnyFn),
 );
 
@@ -319,7 +319,7 @@ const ENVIRONMENT_KEYS = [
   "listEnvironmentsWithInstances",
   "updateWebEnvironment",
 ] as const;
-mock.module("../services/environment", () =>
+mock.module("../../../../src/services/environment", () =>
   createLazyMock(ENVIRONMENT_KEYS, (name) => environmentServiceRegistry.get(name) as AnyFn),
 );
 
@@ -331,13 +331,13 @@ const CORE_BOOTSTRAP_KEYS = [
   "registerRemoteNode",
   "unregisterRemoteNode",
 ] as const;
-mock.module("../services/core-bootstrap", () =>
+mock.module("../../../../src/services/core-bootstrap", () =>
   createLazyMock(CORE_BOOTSTRAP_KEYS, (name) => coreBootstrapRegistry.get(name) as AnyFn),
 );
 
 // ── pg-storage-adapter ──
 
-mock.module("../services/workflow/pg-storage-adapter", () => ({
+mock.module("../../../../src/services/workflow/pg-storage-adapter", () => ({
   createPgStorageAdapter: () => {
     const storageObj: Record<string, unknown> = {};
     return new Proxy(storageObj, {
@@ -354,7 +354,7 @@ mock.module("../services/workflow/pg-storage-adapter", () => ({
 // 路由测试通过 stubCustomTools({ getCustomToolsRegistry: () => fakeRegistry }) 注入数据。
 
 const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] as const;
-mock.module("../services/workflow/custom-tools", () =>
+mock.module("../../../../src/services/workflow/custom-tools", () =>
   createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
 );
 
@@ -363,7 +363,7 @@ mock.module("../services/workflow/custom-tools", () =>
 // 自 handler 拆分后的请求发送域）可 stub，其余导出保留真实实现——file-ws-handler.test.ts
 // 直接测这两个函数的真实行为（背压、巡检、回执），因此 stub 未配置时回退真实实现而非空函数。
 const FILE_WS_KEYS = ["isFileWsConnected"] as const;
-mock.module("../transport/file-ws-handler", () => {
+mock.module("../../../../src/transport/file-ws-handler", () => {
   const obj: Record<string, unknown> = { ...actualFileWsHandler };
   for (const key of FILE_WS_KEYS) {
     Object.defineProperty(obj, key, {
@@ -383,7 +383,7 @@ mock.module("../transport/file-ws-handler", () => {
 });
 
 const FILE_WS_REQUEST_KEYS = ["sendFileOpAndWait"] as const;
-mock.module("../transport/file-ws-requests", () => {
+mock.module("../../../../src/transport/file-ws-requests", () => {
   const obj: Record<string, unknown> = { ...actualFileWsRequests };
   for (const key of FILE_WS_REQUEST_KEYS) {
     Object.defineProperty(obj, key, {

@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { account, apikey, member, organization, user } from "../db/schema";
-import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "./phone-number";
+import { db } from "../../apps/server/src/db";
+import { account, apikey, member, organization, user } from "../../apps/server/src/db/schema";
+import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "../../apps/server/src/services/phone-number";
 
 export interface SystemApiPagination {
   page: number;

@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "./services/agent-system-prompt";
-import { ENGINE_TYPES } from "./services/config/types";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../../src/services/agent-system-prompt";
+import { ENGINE_TYPES } from "../../../src/services/config/types";
 
 const databaseConnectionPoolSchema = z.object({
   RCS_DB_POOL_MAX: z.coerce.number().int().positive().default(20),

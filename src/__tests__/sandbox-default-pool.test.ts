@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxPool } from "../db/schema";
+import type { SandboxPool } from "../../apps/server/src/db/schema";
 import { initializeDefaultSandboxPool } from "../services/sandbox/sandbox-default-pool";
 
 const settings = {

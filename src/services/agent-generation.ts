@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { listSkills } from "./config/skill";
 
 /** Skill 条目（前端用 name + description 展示，用 id 提交） */

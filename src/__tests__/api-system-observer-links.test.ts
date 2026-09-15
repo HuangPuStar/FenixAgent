@@ -6,13 +6,13 @@
 // 直接对路由 app 发 Request 断言状态码与响应结构。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import {
   acpLinkProvider,
   type ObserverServiceDeps,
   observerService,
   setObserverServiceDeps,
 } from "../services/observer";
-import { resetAllStubs } from "../test-utils/helpers";
 import type { AcpConnectionSnapshot } from "../types/store";
 
 const apiSystemObserverRoutes = (await import("../routes/api/system-observer")).default;

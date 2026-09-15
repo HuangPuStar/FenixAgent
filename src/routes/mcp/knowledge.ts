@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { errorResponse } from "../../plugins/auth";
+import { errorResponse } from "../../../apps/server/src/plugins/auth";
 import { McpKnowledgeAuthHeadersSchema } from "../../schemas";
 import { getEnvironmentBySecret } from "../../services/environment";
 import {

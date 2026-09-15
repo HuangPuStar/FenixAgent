@@ -12,8 +12,8 @@
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "@fenix/logger";
-import { auth } from "../auth/better-auth";
-import type { AuthContext } from "../plugins/auth";
+import { auth } from "../../apps/server/src/auth/better-auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { agentInstanceService } from "./agent-instance-service";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";

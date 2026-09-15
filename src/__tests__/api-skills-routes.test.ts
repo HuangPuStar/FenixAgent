@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 import { _deps, _resetDeps } from "../services/skill";
 import type {
   ConflictCheckResult,
@@ -8,7 +9,6 @@ import type {
   ImportSkillsConflict,
   UploadSkillFile,
 } from "../services/skill-fs";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const apiSkillsRoute = (await import("../routes/api/skills")).default;
 

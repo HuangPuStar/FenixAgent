@@ -4,7 +4,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { knowledgeBaseRepo, knowledgeResourceRepo } from "../../repositories/knowledge-base";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {

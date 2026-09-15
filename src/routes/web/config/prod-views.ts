@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../plugins/auth";
+import { authGuardPlugin } from "../../../../apps/server/src/plugins/auth";
 import { WebErrSchema } from "../../../schemas/common.schema";
 import {
   CreateProdViewSchema,

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { NotFoundError } from "../errors";
+import { NotFoundError } from "../../apps/server/src/errors";
+import { resetAllStubs, stubEnvironmentService } from "../../apps/server/src/test-utils/helpers";
 import { closeAllFileEventsClients, type FileEventsAuth, handleFileEventsOpen } from "../routes/web/file-events";
 import { publishFileEvent } from "../services/file-event-queue";
-import { resetAllStubs, stubEnvironmentService } from "../test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 
 // file-events 端点的 handler 层测试（参照 file-ws-handler.test.ts 模式）：

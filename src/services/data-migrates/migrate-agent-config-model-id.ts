@@ -1,7 +1,7 @@
 import { log } from "@fenix/logger";
 import { and, eq, or } from "drizzle-orm";
-import { db } from "../../db";
-import { agentConfig, model, provider } from "../../db/schema";
+import { db } from "../../../apps/server/src/db";
+import { agentConfig, model, provider } from "../../../apps/server/src/db/schema";
 
 export interface AgentConfigModelMigrationRow {
   id: string;

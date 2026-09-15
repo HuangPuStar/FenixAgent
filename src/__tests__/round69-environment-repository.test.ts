@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 // @ts-expect-error Bun query import 会加载独立的真实仓储实例，同时 ../db 仍由 preload stubDb Proxy 隔离。
 const { environmentRepo } = await import("../repositories/environment?round69");

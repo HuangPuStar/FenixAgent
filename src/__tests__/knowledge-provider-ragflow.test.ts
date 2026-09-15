@@ -1,6 +1,6 @@
 // src/__tests__/knowledge-provider-ragflow.test.ts
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { resetConfig, setConfig } from "../config";
+import { resetConfig, setConfig } from "../../apps/server/src/config";
 import { checkRagFlowHealth, RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 
 const originalFetch = globalThis.fetch;

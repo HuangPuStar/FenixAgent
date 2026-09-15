@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { getBaseUrl } from "../config";
+import { getBaseUrl } from "../../apps/server/src/config";
 import type { WorkflowTriggerRow } from "../repositories/workflow-trigger";
 import { workflowTriggerRepo } from "../repositories/workflow-trigger";
 
@@ -168,8 +168,8 @@ async function triggerWorkflow(organizationId: string, workflowId: string, input
   const engine = getTeamEngine(organizationId);
 
   // 获取最新版本的 YAML — 多租户关键：必须带 organizationId 过滤
-  const { db } = await import("../db");
-  const { workflow } = await import("../db/schema");
+  const { db } = await import("../../apps/server/src/db");
+  const { workflow } = await import("../../apps/server/src/db/schema");
   const [wf] = await db
     .select()
     .from(workflow)

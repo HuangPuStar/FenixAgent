@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../db";
-import { model, provider } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { model, provider } from "../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import {
   assertInternalWritable,
   buildExternalPublicReadMap,

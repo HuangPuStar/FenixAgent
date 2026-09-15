@@ -1,8 +1,8 @@
 import { error as logError } from "@fenix/logger";
 import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
 import { sql } from "drizzle-orm";
-import { db } from "../../db";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import { addModel, removeModel, updateModel } from "../config/model";
 import { getProvider, getProviderById, upsertProvider } from "../config/provider";
 import type { ProviderUpsertData } from "../config/types";

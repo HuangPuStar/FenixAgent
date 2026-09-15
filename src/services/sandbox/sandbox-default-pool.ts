@@ -1,4 +1,4 @@
-import type { NewSandboxPool, SandboxPool } from "../../db/schema";
+import type { NewSandboxPool, SandboxPool } from "../../../apps/server/src/db/schema";
 import { upsertSandboxPool } from "../../repositories/sandbox-pool-repository";
 import { parseSandboxResources } from "./sandbox-config";
 

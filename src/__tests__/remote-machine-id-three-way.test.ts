@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setConfig } from "../config";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "../test-utils/helpers";
+import { setConfig } from "../../apps/server/src/config";
+import {
+  resetAllStubs,
+  stubDb,
+  stubEnvironmentRepo,
+  stubFileWsHandler,
+} from "../../apps/server/src/test-utils/helpers";
 
 const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";

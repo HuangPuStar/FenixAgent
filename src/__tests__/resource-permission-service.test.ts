@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import type { AuthContext } from "../plugins/auth";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
 import type { ResourcePermissionGrantRow } from "../repositories/resource-permission";
 import {
   _resetDeps,
@@ -11,7 +12,6 @@ import {
   setOrganizationRepoForTesting,
   setPublicRead,
 } from "../services/resource-permission";
-import { resetAllStubs, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const ownerCtx: AuthContext = {
   organizationId: "org_current",

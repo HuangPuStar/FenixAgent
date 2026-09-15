@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { readJson, resetAllStubs, stubPgStorageAdapter } from "../../apps/server/src/test-utils/helpers";
 import { getTeamEngine } from "../services/workflow";
-import { readJson, resetAllStubs, stubPgStorageAdapter } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/workflow-runs")).workflowRunsRoutes;
 

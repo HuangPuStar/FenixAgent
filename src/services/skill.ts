@@ -6,9 +6,9 @@
  */
 
 import { error as logError } from "@fenix/logger";
-import { config } from "../config";
-import { AppError } from "../errors";
-import type { AuthContext } from "../plugins/auth";
+import { config } from "../../apps/server/src/config";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import * as _configPg from "./config/index";
 import {
   assertValidSkillName as _assertValidSkillName,

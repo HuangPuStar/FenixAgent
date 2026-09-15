@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { config, setConfig } from "../config";
-import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { config, setConfig } from "../../apps/server/src/config";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 import { composeAgentSystemPrompt } from "../services/agent-system-prompt";
 import {
@@ -15,7 +16,6 @@ import {
   toKeyHint,
 } from "../services/config-utils";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "../services/launch-spec-builder";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-08-19T00:00:00.000Z");
 const originalConfig = { ...config };

@@ -9,11 +9,16 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../config";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { setConfig } from "../../apps/server/src/config";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import {
+  resetAllStubs,
+  stubDb,
+  stubEnvironmentRepo,
+  stubFileWsHandler,
+} from "../../apps/server/src/test-utils/helpers";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE } from "../services/file-types";
 import { remoteUploadFiles } from "../services/remote-file-service";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "../test-utils/helpers";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";

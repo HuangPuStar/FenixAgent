@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { authPlugin } from "../plugins/auth";
-import { resetAllStubs, stubAuthHandler, stubDb } from "../test-utils/helpers";
+import { authPlugin } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubAuthHandler, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 function createUserLookupDb(rows: Array<{ id: string }>) {
   return {

@@ -18,7 +18,7 @@
 
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { AuthContext } from "../../plugins/auth";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../../repositories";
 import {
   markInstanceRelayAttached,

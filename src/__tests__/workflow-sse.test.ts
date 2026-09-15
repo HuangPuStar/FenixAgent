@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubAuthApi, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { publishWorkflowEvent } from "../services/workflow/workflow-events";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 import { getAllEventBuses, removeEventBus } from "../transport/event-bus";
 
 // workflow-sse 路由模块 — 生产 SSE 事件流端点（原 transport/sse-writer 的 SSE 行为测试迁移至此）

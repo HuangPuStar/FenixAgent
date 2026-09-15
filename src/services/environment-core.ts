@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { ForbiddenError, NotFoundError } from "../errors";
+import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { EnvironmentResponse } from "../types/api";

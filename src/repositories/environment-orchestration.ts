@@ -1,8 +1,8 @@
 import type { EnvironmentData, EnvironmentRepo } from "@fenix/orchestration";
 import { eq } from "drizzle-orm";
-import { config } from "../config";
-import { db } from "../db";
-import { agentConfig, environment } from "../db/schema";
+import { config } from "../../apps/server/src/config";
+import { db } from "../../apps/server/src/db";
+import { agentConfig, environment } from "../../apps/server/src/db/schema";
 
 /**
  * 宿主注入的"执行节点解析器"（可选）。

@@ -4,7 +4,7 @@ import type {
   IResourcePermissionRepo,
   ResourcePermissionGrantRow,
   ResourcePermissionType,
-} from "../../repositories/resource-permission";
+} from "../../../../../src/repositories/resource-permission";
 
 type ResourcePermissionRepoOverrides = Partial<IResourcePermissionRepo>;
 

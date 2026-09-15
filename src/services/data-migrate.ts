@@ -1,6 +1,6 @@
 import { log } from "@fenix/logger";
-import { db } from "../db";
-import { dataMigrateRecord } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { dataMigrateRecord } from "../../apps/server/src/db/schema";
 import { migrateAgentConfigModelId } from "./data-migrates/migrate-agent-config-model-id";
 import { migrateSkillStorageByOrganization } from "./data-migrates/migrate-skill-storage-by-organization";
 

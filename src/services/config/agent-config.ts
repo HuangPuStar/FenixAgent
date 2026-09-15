@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../../db";
-import { agentConfig, environment } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { agentConfig, environment } from "../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "../agent-knowledge";
 import { resolveAgentKnowledgePolicy } from "../agent-knowledge";
 import {

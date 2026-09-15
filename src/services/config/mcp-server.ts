@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../db";
-import { mcpServer, mcpTool } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { mcpServer, mcpTool } from "../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import {
   assertInternalWritable,
   buildExternalPublicReadMap,

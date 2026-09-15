@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { config, setConfig } from "../config";
+import { config, setConfig } from "../../apps/server/src/config";
 import { resetAgentConcurrencyDeps, setAgentConcurrencyDeps } from "../services/agent-concurrency";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { spawnInstanceViaController } from "../services/orchestration-instance";

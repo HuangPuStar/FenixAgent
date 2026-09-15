@@ -19,6 +19,7 @@ import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import { markInstanceRelayAttached } from "../services/acp-idle-monitor";
 import {
   type AgentSession as ChatAgentSession,
@@ -29,7 +30,6 @@ import { globalInstanceRegistry } from "../services/instance-registry";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
 import { AgentChatSessionAdapter } from "../services/workflow/agent-chat-transport";
 import { acquireInstanceLease, clearInstanceLeases, hasActiveInstanceLease } from "../services/workflow/instance-lease";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 import type { InstanceSupplement } from "../types/store";
 
 // ---------- 测试专用 FakeTurn ----------

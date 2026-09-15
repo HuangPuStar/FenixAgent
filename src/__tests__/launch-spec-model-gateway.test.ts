@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { buildLaunchSpec, setRuntimeCredentialResolver } from "../services/launch-spec-builder";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-06-01T00:00:00.000Z");
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
+import { AppError } from "../../apps/server/src/errors";
 import { ApiMcpListQuerySchema } from "../schemas/api-mcp.schema";
 import { PaginationParamsSchema } from "../schemas/common.schema";
 import { composeAgentSystemPrompt, DEFAULT_AGENT_SYSTEM_PROMPT } from "../services/agent-system-prompt";

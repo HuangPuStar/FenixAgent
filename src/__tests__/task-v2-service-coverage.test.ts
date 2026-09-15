@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ScheduledTaskV2Row } from "../db/schema";
+import type { ScheduledTaskV2Row } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import {
   clearExecutionLogsV2,
   createTaskV2,
@@ -11,7 +12,6 @@ import {
   triggerTaskV2,
   updateTaskV2,
 } from "../services/task-v2";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const USER_ID = "user-current";
 const ORG_ID = "org-current";

@@ -3,7 +3,7 @@ import { OrchestrationError } from "@fenix/orchestration";
 import Elysia, { ValidationError } from "elysia";
 import { AppError } from "../errors";
 import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
-import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../../../src/services/sandbox/sandbox-errors";
 import { logError } from "./logger";
 
 // 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 plugin 中 scope 为

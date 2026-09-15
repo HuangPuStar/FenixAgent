@@ -4,8 +4,23 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@better-auth/api-key": "1.6.11",
+    "@elysiajs/cors": "^1.4.10",
+    "@elysiajs/openapi": "^1.4.15",
+    "@elysiajs/static": "^1.4.10",
     "@fenix/access-control": "workspace:*",
-    "@fenix/platform-sdk": "workspace:*"
+    "@fenix/core": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "@fenix/orchestration": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "@keyv/redis": "^5.1.6",
+    "better-auth": "1.6.11",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "ioredis": "^5.10.1",
+    "keyv": "^5.6.0",
+    "pg": "^8.23.0",
+    "zod": "^4.4.3"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -1,5 +1,5 @@
-import { AppError } from "../errors";
-import type { AuthContext } from "../plugins/auth";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
 import { getReadableAgentConfigById } from "./config";

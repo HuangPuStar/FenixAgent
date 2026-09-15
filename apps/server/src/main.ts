@@ -7,15 +7,6 @@ const startupLog = createLogger("rcs");
 
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
-import { applyEnv, config } from "../../../src/config";
-import { initDb, client as pgClient } from "../../../src/db";
-import { findDeprecatedEnvVars } from "../../../src/env";
-import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "../../../src/openapi";
-import { authPlugin } from "../../../src/plugins/auth";
-import { corsPlugin } from "../../../src/plugins/cors";
-import { errorPlugin } from "../../../src/plugins/error-handler";
-import { deriveRequestId, injectRequestId, logRequest, logResponse } from "../../../src/plugins/logger";
-import { ctrlStaticPlugin } from "../../../src/plugins/static";
 import acpRoutes from "../../../src/routes/acp";
 import { agentSitesCompatApp, agentSitesProxyApp } from "../../../src/routes/agent-sites-proxy";
 import apiAgentsRoutes from "../../../src/routes/api/agents";
@@ -42,7 +33,6 @@ import { workflowStaticApp } from "../../../src/routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
 import { agentInstanceService } from "../../../src/services/agent-instance-service";
 import { buildHealthInfo } from "../../../src/services/build-info";
-import { closeCache } from "../../../src/services/cache";
 import { initCoreRuntime } from "../../../src/services/core-bootstrap";
 import { runDataMigrations } from "../../../src/services/data-migrate";
 import { getHermesClient, initHermesClient } from "../../../src/services/hermes-client";
@@ -59,7 +49,17 @@ import { initCustomToolsRegistry } from "../../../src/services/workflow/custom-t
 import { closeAllAcpConnections } from "../../../src/transport/acp-ws-handler";
 import { closeAllFileWsConnections, stopFileWsSweep } from "../../../src/transport/file-ws-handler";
 import { closeAllRelayConnections } from "../../../src/transport/relay";
+import { applyEnv, config } from "./config";
+import { initDb, client as pgClient } from "./db";
+import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
+import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
+import { authPlugin } from "./plugins/auth";
+import { corsPlugin } from "./plugins/cors";
+import { errorPlugin } from "./plugins/error-handler";
+import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
+import { ctrlStaticPlugin } from "./plugins/static";
+import { closeCache } from "./services/cache";
 
 const startedAt = new Date().toISOString();
 

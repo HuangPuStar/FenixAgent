@@ -1,13 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AuthContext } from "../plugins/auth";
-import {
-  buildRelationTree,
-  type Observation,
-  ObserverKindNotFoundError,
-  observerService,
-  setObserverServiceDeps,
-} from "../services/observer";
-import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import {
   createRelayHandle,
   createWs,
@@ -18,7 +11,14 @@ import {
   makeFakeDeps,
   makeRelay,
   makeSpawnedInstance,
-} from "../test-utils/observer-fixtures";
+} from "../../apps/server/src/test-utils/observer-fixtures";
+import {
+  buildRelationTree,
+  type Observation,
+  ObserverKindNotFoundError,
+  observerService,
+  setObserverServiceDeps,
+} from "../services/observer";
 import { handleAcpWsClose, handleAcpWsOpen, listAcpConnections } from "../transport/acp-ws-handler";
 import {
   handleExternalRelayClose,

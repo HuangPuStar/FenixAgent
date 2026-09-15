@@ -1,6 +1,6 @@
 import Elysia from "elysia";
-import { auth } from "../../auth/better-auth";
-import { authGuardPlugin } from "../../plugins/auth";
+import { auth } from "../../../apps/server/src/auth/better-auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import {
   ApiKeyCreateResponseSchema,

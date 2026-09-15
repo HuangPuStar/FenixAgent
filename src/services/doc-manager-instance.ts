@@ -3,7 +3,7 @@
 
 import { DocManager } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
-import { getRedisConnection } from "./cache";
+import { getRedisConnection } from "../../apps/server/src/services/cache";
 
 export const docManager = new DocManager({
   getRedis: () => getRedisConnection(),

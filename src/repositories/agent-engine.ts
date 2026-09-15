@@ -1,7 +1,7 @@
 import type { AgentEngineData, AgentEngineRepo } from "@fenix/orchestration";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { agentConfig } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { agentConfig } from "../../apps/server/src/db/schema";
 
 /**
  * 编排域 AgentEngineRepo 的 PostgreSQL 实现。

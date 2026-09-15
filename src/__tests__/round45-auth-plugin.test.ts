@@ -7,9 +7,15 @@ import {
   errorResponse,
   resetTestAuth,
   setTestAuth,
-} from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { readJson, resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "../test-utils/helpers";
+} from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import {
+  readJson,
+  resetAllStubs,
+  stubAuthApi,
+  stubAuthHandler,
+  stubDb,
+} from "../../apps/server/src/test-utils/helpers";
 
 const user = { id: "user-1", email: "user-1@example.test", name: "测试用户" };
 

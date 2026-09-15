@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "../errors";
+import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
+import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import type { EnvironmentRecord } from "../repositories/environment";
 import {
   generateEnvSecret,
@@ -9,7 +10,6 @@ import {
   validateWorkspacePath,
 } from "../services/environment-core";
 import { normalizePayload } from "../services/transport";
-import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";
 
 function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
   return {

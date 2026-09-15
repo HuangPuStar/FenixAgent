@@ -23,10 +23,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { cleanupSpawnedInstances } from "../services/workflow";
 import { acquireInstanceLease, clearInstanceLeases, releaseInstanceLease } from "../services/workflow/instance-lease";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";

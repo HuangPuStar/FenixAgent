@@ -1,5 +1,5 @@
 import { type EnvDefinition, loadDeclaredEnv } from "@fenix/platform-sdk";
-import { type Env, parseEnv } from "../../../src/env";
+import { type Env, parseEnv } from "./env";
 
 /**
  * server 唯一环境加载边界：先解析宿主配置，再解析静态 assembly 启用模块声明。

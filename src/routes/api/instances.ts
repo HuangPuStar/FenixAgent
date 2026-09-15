@@ -1,9 +1,9 @@
 import { OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
-import { logError } from "../../plugins/logger";
+import { mapOrchestrationErrorToHttp } from "../../../apps/server/src/errors/orchestration-http";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
+import { logError } from "../../../apps/server/src/plugins/logger";
 import {
   ApiInstanceAgentConfigParamsSchema,
   type ApiInstanceConnectBody,

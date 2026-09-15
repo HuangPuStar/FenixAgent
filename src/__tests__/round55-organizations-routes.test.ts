@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../../apps/server/src/test-utils/helpers";
 import organizationsRoute from "../routes/web/organizations";
-import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 type Organization = {
   id: string;

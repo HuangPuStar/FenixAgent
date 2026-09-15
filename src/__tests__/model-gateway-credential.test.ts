@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { resetDbStub, stubDb } from "../../apps/server/src/test-utils/stubs/db-stub";
 import {
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
@@ -7,7 +8,6 @@ import {
   upsertModelGatewayCredential,
 } from "../repositories/model-gateway-credential";
 import { createModelGatewayCredentialCipher } from "../services/model-gateway/credential-cipher";
-import { resetDbStub, stubDb } from "../test-utils/stubs/db-stub";
 
 const KEY = "a".repeat(32);
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError, NotFoundError } from "../errors";
+import { AppError, NotFoundError } from "../../apps/server/src/errors";
+import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import type { EnvironmentRecord } from "../repositories";
 import {
   createTemporaryEnvironment,
@@ -21,7 +22,6 @@ import {
   touchEnvironmentPoll,
   updatePollTime,
 } from "../services/environment-acp";
-import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";
 
 function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
   return {

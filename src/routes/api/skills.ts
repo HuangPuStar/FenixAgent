@@ -6,8 +6,8 @@
  */
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../errors";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { AppError } from "../../../apps/server/src/errors";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import {
   ApiSkillCreateBodySchema,
   ApiSkillDeleteResponseSchema,

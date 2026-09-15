@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { RemoteTransport } from "@fenix/remote-runtime";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
 import {
   resetAllStubs,
   stubCoreBootstrap,
@@ -8,7 +8,7 @@ import {
   stubEnvironmentService,
   stubRegistry,
   stubRegistryHeartbeat,
-} from "../test-utils/helpers";
+} from "../../apps/server/src/test-utils/helpers";
 import {
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,

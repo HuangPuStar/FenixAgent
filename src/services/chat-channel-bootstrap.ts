@@ -18,11 +18,11 @@ import {
 import { log, error as logError } from "@fenix/logger";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
+import { getRedisConnection } from "../../apps/server/src/services/cache";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "./acp-idle-monitor";
 import { agentInstanceService } from "./agent-instance-service";
-import { getRedisConnection } from "./cache";
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "./chat-channel-error-classify";
 import { docManager } from "./doc-manager-instance";
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "./orchestration-instance";

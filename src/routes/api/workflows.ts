@@ -8,7 +8,7 @@
 import { WorkflowError } from "@fenix/workflow-engine";
 import Elysia from "elysia";
 import { z } from "zod/v4";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 import {
   ApiWorkflowAuthorizationHeadersSchema,

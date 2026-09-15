@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../config";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetConfig, setConfig } from "../../apps/server/src/config";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import { agentKnowledgeBindingRepo, type KnowledgeBaseRow, knowledgeBaseRepo } from "../repositories/knowledge-base";
 import webKnowledgeBasesRoute from "../routes/web/knowledge-bases";
 import {
@@ -14,7 +15,6 @@ import {
   verifyEmbeddingProvider,
 } from "../services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
-import { resetAllStubs } from "../test-utils/helpers";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 

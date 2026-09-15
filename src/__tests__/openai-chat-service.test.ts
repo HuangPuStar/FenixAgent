@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import {
   createAgentSession,
   openAgentSession,
   setAgentChatServiceDeps,
   startPromptTurn,
 } from "../services/agent-chat-service";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 function makeMockRelayHandle(overrides: Record<string, unknown> = {}) {
   return {

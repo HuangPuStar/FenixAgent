@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
 import {
   assertMcpServerInternalWritable,
   assertMcpServerInternalWritableById,
@@ -22,7 +23,6 @@ import {
   validateMcpConfig,
 } from "../services/config/mcp-server";
 import { _resetDeps, setOrganizationRepoForTesting } from "../services/resource-permission";
-import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const ctx: AuthContext = { organizationId: "org_current", userId: "user_owner", role: "owner" };
 const date = new Date("2026-08-19T00:00:00.000Z");

@@ -1,4 +1,4 @@
-export type { AuthContext } from "../../plugins/auth";
+export type { AuthContext } from "../../../apps/server/src/plugins/auth";
 export {
   AGENT_SETTABLE_FIELDS,
   assertAgentConfigInternalWritable,

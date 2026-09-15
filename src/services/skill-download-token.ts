@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { getBaseUrl } from "../config";
+import { getBaseUrl } from "../../apps/server/src/config";
 
 interface SkillTokenInput {
   id: string;

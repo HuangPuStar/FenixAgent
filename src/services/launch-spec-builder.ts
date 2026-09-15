@@ -10,10 +10,18 @@ import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { config, getBaseUrl } from "../config";
-import { db } from "../db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "../db/schema";
-import { AppError } from "../errors";
+import { config, getBaseUrl } from "../../apps/server/src/config";
+import { db } from "../../apps/server/src/db";
+import {
+  agentConfigMcp,
+  agentConfigSkill,
+  mcpServer,
+  member,
+  model,
+  provider,
+  skill,
+} from "../../apps/server/src/db/schema";
+import { AppError } from "../../apps/server/src/errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memory";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";

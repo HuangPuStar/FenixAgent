@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { agentInstanceService } from "../services/agent-instance-service";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 

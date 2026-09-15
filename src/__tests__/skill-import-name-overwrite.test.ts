@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
 import { _deps, _resetDeps, importSkillDirectories } from "../services/skill";
 import type { UploadSkillFile } from "../services/skill-fs";
 

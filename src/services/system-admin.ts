@@ -4,9 +4,9 @@ import { dirname } from "node:path";
 import { createLogger } from "@fenix/logger";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
-import { config } from "../config";
-import { db } from "../db";
-import { account, member, organization, user } from "../db/schema";
+import { config } from "../../apps/server/src/config";
+import { db } from "../../apps/server/src/db";
+import { account, member, organization, user } from "../../apps/server/src/db/schema";
 
 const systemAdminLog = createLogger("system-admin");
 

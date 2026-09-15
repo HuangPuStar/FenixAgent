@@ -18,7 +18,7 @@
 // （异步、按环境 fan-out、溢出收敛 invalidate_all）。本模块不直接碰队列发布。
 
 import { createLogger, error as logError } from "@fenix/logger";
-import { config } from "../config";
+import { config } from "../../apps/server/src/config";
 import type { FileWsConnectionEntry } from "../types/store";
 import { getCoreRuntime } from "./core-bootstrap";
 import {

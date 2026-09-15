@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { userConfig } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { userConfig } from "../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import type { PermissionConfig } from "./types";
 
 // ────────────────────────────────────────────

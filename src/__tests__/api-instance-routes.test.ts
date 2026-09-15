@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import { setApiInstanceDeps } from "../services/api-instance";
-import { setTestOrgContext } from "../services/org-context";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
 

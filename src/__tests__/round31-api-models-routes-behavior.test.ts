@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { readJson, resetAllStubs, stubConfigPg } from "../test-utils/helpers";
+import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { readJson, resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 
 const apiModelsRoute = (await import("../routes/api/models")).default;
 

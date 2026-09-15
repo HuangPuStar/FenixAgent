@@ -6,8 +6,8 @@
  */
 
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "../db";
-import { workflow, workflowSnapshot, workflowVersion } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { workflow, workflowSnapshot, workflowVersion } from "../../apps/server/src/db/schema";
 import {
   buildStoragePath,
   ensureWorkflowDir,

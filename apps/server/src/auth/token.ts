@@ -1,4 +1,4 @@
-import { tokenRepo } from "../repositories";
+import { tokenRepo } from "../../../../src/repositories";
 
 let tokenCounter = 0;
 

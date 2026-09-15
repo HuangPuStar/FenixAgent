@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AuthContext } from "../plugins/auth";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 // @ts-expect-error Bun 支持带 query 的模块 specifier，TypeScript 无法解析。
