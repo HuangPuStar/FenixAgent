@@ -1,7 +1,7 @@
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
-import { HindsightStatusResponseSchema } from "../../schemas";
-import { configSuccess } from "../../services/config-utils";
+import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
+import { HindsightStatusResponseSchema } from "../../schemas/hindsight.schema";
+import { configSuccess } from "../../../../../../../src/services/config-utils";
 import { getHindsightConfig, proxyToHindsight, resolveMemberId } from "../../services/hindsight";
 
 /** 构造 Hindsight v1 bank 路径前缀：/v1/default/banks/{bankId} */

@@ -52,6 +52,7 @@
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",
     "@fenix/model-management": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/sandbox-provider": "workspace:*",
     "@hookform/resolvers": "^5.4.0",

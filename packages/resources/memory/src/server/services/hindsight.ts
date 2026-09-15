@@ -1,8 +1,8 @@
 /** Hindsight 记忆 MCP 服务配置与 Bank 管理 */
 
-import { member } from "../../apps/server/src/db/schema";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import * as configPg from "./config/index";
+import { member } from "../../../../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
+import { createMcpServer } from "../../../../../../src/services/config";
 
 /** 读取 Hindsight MCP URL 配置，未配置返回 null */
 export function getHindsightConfig(): { url: string } | null {
@@ -45,7 +45,7 @@ export const HINDSIGHT_MCP_SERVER_NAME = "hindsight";
  * 从 member 表查询 (organizationId, userId) 唯一行。
  */
 export async function resolveMemberId(ctx: AuthContext): Promise<string | null> {
-  const { db } = await import("../../apps/server/src/db");
+  const { db } = await import("../../../../../../apps/server/src/db");
   const { eq, and } = await import("drizzle-orm");
   const rows = await db
     .select({ id: member.id })
@@ -72,7 +72,7 @@ export async function ensureHindsightMcpServer(ctx: AuthContext): Promise<{ ok: 
   };
 
   // 创建/更新 mcpServer 表记录（幂等）
-  await configPg.createMcpServer(ctx, HINDSIGHT_MCP_SERVER_NAME, "remote", mcpConfig);
+  await createMcpServer(ctx, HINDSIGHT_MCP_SERVER_NAME, "remote", mcpConfig);
 
   // 确保 Hindsight bank 存在
   const bankResult = await ensureBank(memberId);

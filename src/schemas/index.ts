@@ -152,13 +152,6 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
-// Hindsight
-export {
-  HindsightDisabledStatusSchema,
-  HindsightEnabledStatusSchema,
-  type HindsightStatusResponse,
-  HindsightStatusResponseSchema,
-} from "./hindsight.schema";
 // Instances
 export {
   type InstanceActivityInfo,

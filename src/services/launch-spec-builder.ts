@@ -9,6 +9,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
+import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "@fenix/resource-memory/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { config, getBaseUrl } from "../../apps/server/src/config";
 import { db } from "../../apps/server/src/db";
@@ -23,7 +24,6 @@ import {
 } from "../../apps/server/src/db/schema";
 import { AppError } from "../../apps/server/src/errors";
 import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
-import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "./agent-memory";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";

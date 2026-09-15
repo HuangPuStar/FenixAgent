@@ -1,3 +1,5 @@
+import * as agentMemoryConfigRepo from "@fenix/resource-memory/server";
+import { isAgentMemoryEnabled } from "@fenix/resource-memory/server";
 import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
@@ -13,7 +15,6 @@ import {
 } from "../../../../apps/server/src/db/schema";
 import { AppError } from "../../../../apps/server/src/errors";
 import { type AuthContext, authGuardPlugin } from "../../../../apps/server/src/plugins/auth";
-import * as agentMemoryConfigRepo from "../../../repositories/agent-memory-config";
 import { WebErrSchema } from "../../../schemas/common.schema";
 import {
   AgentMutationBodySchema,
@@ -35,7 +36,6 @@ import {
   listAgentKnowledgeBindingsById,
   syncAgentKnowledgeBindingsById,
 } from "../../../services/agent-knowledge";
-import { isAgentMemoryEnabled } from "../../../services/agent-memory";
 import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
   AGENT_SETTABLE_FIELDS,

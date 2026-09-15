@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getHindsightConfig } from "../services/hindsight";
+import { getHindsightConfig } from "@fenix/resource-memory/server";
 
 describe("hindsight service", () => {
   const originalEnv = { ...process.env };
