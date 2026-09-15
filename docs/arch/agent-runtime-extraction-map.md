@@ -20,15 +20,17 @@ WebSocket 不是单一路径：浏览器交互式 Chat 使用 `/acp/yjs/:agentId
 `/acp/file-ws` 只承载远程文件操作，不属于 Agent runtime/relay 生命周期，本次仅记录为同级入口，
 不纳入提取候选接口。
 
-运行职责目前分散在宿主 `src/services/`、`src/transport/`、`packages/chat-channel`、
-`packages/orchestration`、`packages/remote-runtime` 和 core/plugin SDK 之间；
-`launch-spec-builder.ts` 同时读取 AgentConfig、模型、Skill、MCP、知识库、记忆与环境密钥，
-是提取时最主要的资源反向依赖风险。
+AGT-00 盘点时，运行编排职责分散在宿主 `src/services/`、`src/transport/`，底层能力则由四个独立
+runtime workspace 提供。AGT-01 只迁移明确属于 Environment、Instance、Runtime 生命周期与
+relay/session 组合的实现；四个基础 package 保持独立并由组合层通过公开 exports 引用。模型等资源
+解析、Machine 接线、Workflow transport 与其协议入口继续留在原位置，等对应任务开始时一次迁到最终归属。
 
-目标方案已确定：先将 Environment、Instance、Runtime、relay、ACP session、Chat 与 YJS 作为一个
-高耦合整体迁入单一 `@fenix/agent-runtime` 包，不为追求分包改写在线逻辑。AgentConfig 仍是对外资源和权限
-边界；Environment 降为包内运行上下文，不再作为长期对外资源。认证、资源授权和 HTTP/WS 响应映射
-留在宿主 routes/resource facade，包内只维护租户隔离、实体一致性和运行生命周期不变量。
+目标方案已确定：将原 `src` 中 Environment、Instance、Runtime 生命周期、relay 与 ACP session 编排
+迁入 `@fenix/agent-runtime`，由它统一组合 `@fenix/core`、`@fenix/orchestration`、
+`@fenix/chat-channel` 与 `@fenix/remote-runtime`。四个基础包不迁移、不合并，也不为提取改写在线逻辑。
+AgentConfig 仍是对外资源和权限边界；Environment 降为组合层内部运行上下文，不再作为长期对外资源。
+认证、资源授权和 HTTP/WS 响应映射继续由现有宿主或资源边界负责；AGT-01 只建立维持原调用链所需的
+最小接口，不移动这些其他领域逻辑。稳定 runtime 内核只维护租户隔离、实体一致性和生命周期不变量。
 
 ## WebSocket 入口总览
 
@@ -357,12 +359,13 @@ sequenceDiagram
 3. `spawnInstanceViaController` 同步预留全局、用户和 scheduled 并发额度。
 4. `AgentController` 校验 Environment，构建编排域 `LaunchSpec`，解析 machine/node，并以持久 uid
    创建内存 `Instance`。
-5. 宿主桥接层再次构建 core `AgentLaunchSpec`，调用 core 启动进程，随后注册 RCS supplement。
+5. 宿主现有 LaunchSpec builder 通过 runtime 公开的最小调用边界构建 core `AgentLaunchSpec`，调用 core
+   启动进程，随后注册 RCS supplement。
 6. 无论成功失败，spawn reservation 都在 `finally` 释放；成功后正式 core/supplement 统计接管。
 
 步骤 4 与 5 当前存在两次 LaunchSpec 构建：编排域规格用于 Environment/node/工作区聚合，core
-规格包含模型密钥、Skill URL、MCP、知识库与动态环境变量。AGT-01 不应把这份重复构建原样搬进
-新 `@fenix/agent-runtime` 包之外形成第二套实现；提取阶段先保持现有调用顺序，是否合并必须另行审核。
+规格包含模型密钥、Skill URL、MCP、知识库与动态环境变量。AGT-01 保持两个 builder 的原有位置、
+调用顺序和行为，只建立 package 边界所需的最小接口；是否合并以及资源解析的最终归属由 AGT-02 审核。
 
 ### 失败与停止矩阵
 
@@ -399,10 +402,12 @@ supplement unregister、关闭实例关联的 YJS client、回收 Y.Doc。YJS �
 
 | 归属 | 内容 | 约束 |
 | --- | --- | --- |
-| `@fenix/agent-runtime` | Environment、Instance、Runtime、relay、ACP session、Chat、YJS、持久化 repository 与生命周期协调 | 先整体迁移并保留现有模块结构；不读取 cookie、API Key、成员关系或 `AuthContext`，不决定 AgentConfig 是否可读 |
-| AgentConfig 资源层 | Agent 配置及模型、Skill、MCP、知识库、记忆等资源授权与解析 | 继续由宿主提供；只向 agent facade 传已解析输入或通过受控 port 提供能力 |
-| routes/resource facade | HTTP/WS 认证、AgentConfig 访问判断、参数/schema、错误与关闭码映射 | 允许人工审核后调整，是本次入口迁移与 package 装配位置 |
-| Machine/file transport | `/acp/ws` runtime/relay 与 `/acp/file-ws` 文件传输 | 保持现有注册方向、fencing 和文件通道独立性；认证留在宿主入口 |
+| `@fenix/agent-runtime` 稳定内核 | 从原 `src` 迁入的 Environment、Instance、Runtime 生命周期、并发、relay/ACP session 组合逻辑与持久化 repository | 作为统一组合入口；不解释 cookie、API Key、成员关系或 AgentConfig 权限 |
+| `@fenix/core`、`@fenix/orchestration`、`@fenix/chat-channel`、`@fenix/remote-runtime` | Core、编排域、Chat/YJS、远程运行等既有基础能力 | 保持独立 workspace、源码、manifest、依赖和测试边界；组合层只通过公开 exports 使用 |
+| 现有 AgentConfig 与资源实现 | LaunchSpec、模型、Skill、MCP、知识库、记忆和密钥解析 | AGT-01 保持原位置和行为；REF-01 至 REF-04、ENV-01、AGT-02 再直接迁到最终 owner |
+| 现有 Machine/文件实现 | `/acp/ws`、`/acp/file-ws`、AgentNode、clean-slate 与 fencing | AGT-01 不迁移；ENV-01/EXE-01 在对应任务中直接迁到最终模块 |
+| 现有 Workflow 实现 | Workflow runtime/session transport 与 instance lease | AGT-01 不迁移；ORC-01 在对应任务中直接迁到 Workflow 模块 |
+| 协议与资源 routes | 认证、授权、参数校验、响应与关闭码映射 | 仅最终归属 runtime 的入口随 AGT-01 迁移；其他入口留在原位置等待所属任务，协议路径不变 |
 
 包内仍使用 `organizationId`、`userId`、`environmentId` 做 workspace、Doc、Instance 与租户隔离；这些是
 运行数据，不是权限策略。`organizationId` 对 agent 包是不透明隔离值，由上层将当前 `scopeId`
@@ -411,8 +416,8 @@ supplement unregister、关闭实例关联的 YJS client、回收 Y.Doc。YJS �
 
 ### Machine 入口归属
 
-`/acp/ws` 与 `/acp/file-ws` 均由 **Machine 资源模块**暴露；`apps/server` 只装配 route
-contribution。保留现有 URL，避免同时修改 Machine 客户端。
+最终态 `/acp/ws` 与 `/acp/file-ws` 均由 **Machine 资源模块**暴露；AGT-01 期间保持现有位置、
+URL 和行为，ENV-01/EXE-01 再直接迁到最终模块，避免重复搬迁和同时修改 Machine 客户端。
 
 ```text
 Machine Resource Routes
@@ -427,8 +432,9 @@ Machine Resource Routes
       → Workspace/File 模块
 ```
 
-Machine 资源层负责路径、schema、Machine 认证、upgrade、帧限制及连接生命周期；
-`@fenix/agent-runtime` 和 Workspace/File 只实现对应 port，不读取 Machine Secret，也不直接暴露 route。
+最终 Machine 资源层负责路径、schema、Machine 认证、upgrade、帧限制及连接生命周期；
+`@fenix/agent-runtime` 和 Workspace/File 只实现对应 port。AGT-01 不迁移 Machine 和文件实现，
+不能以运行链路存在调用关系为由扩大 runtime 职责。
 
 ### 交互式 Chat 新入口
 
@@ -436,7 +442,7 @@ Machine 资源层负责路径、schema、Machine 认证、upgrade、帧限制及
 前端提交 agentConfigId + 可选 instanceUid
               │
               ▼
-POST /api/agents/:agentConfigId/instances
+POST /web/agent-configs/:agentConfigId/instances
               │
               ▼
 后端内部：
@@ -467,6 +473,11 @@ AgentConfig 可读性且选择 `api/primary`，而交互式 Chat 需要保持上
 
 ### 兼容迁移
 
+这里的“第一阶段/第二阶段”是本地实现和验证的任务顺序，不是两次生产发布。按照
+[ADR-0001](../adr/0001-ce-local-refactoring-and-api-boundaries.md)，M1 不发布；只有阶段 7 `CE-RC`
+通过后，才从冻结线上版本一次性切换到最终接口与数据状态。两阶段之间无需保留面向生产的旧新
+双轨，但每个任务仍须保持本地可测试，并在调用方切换完成后删除旧内部入口。
+
 第一阶段新接口暂时返回 `environmentId + instanceUid`，前端停止自行查找/创建 Environment，但继续
 使用现有 `/acp/yjs/:environmentId`、确定性 RCS session、页面路由和文件接口。此时
 `environmentId` 只是过渡 locator，不再作为新业务资源推广。
@@ -479,9 +490,10 @@ AgentConfig 可读性且选择 `api/primary`，而交互式 Chat 需要保持上
 ### Agent Runtime package 出口
 
 对外只暴露按 AgentConfig/Instance 表达的 facade；Environment API 仅供包内组装，不进入公开契约。
-底层继续复用现有 `AgentInstanceService`、Coordinator、relay、session 与 Chat/YJS 控制流，不新建
-第二套协议栈。AgentConfig 授权和 LaunchSpec 资源解析通过宿主 facade/port 注入，package 不反向
-依赖宿主 `src/services/**`。
+组合层继续复用迁入的 `AgentInstanceService`、Coordinator、relay 与 session 控制流，并通过公开
+exports 复用四个基础包，不复制 Chat/YJS、Core、编排域或远程运行实现，也不新建第二套协议栈。
+尚未迁移的资源、Machine 与 Workflow 能力保留在原位置，并通过维持现有数据流所需的最小公开接口
+接入；对应任务直接将它们迁到最终 owner，不经过 runtime 临时目录。
 
 ## 特征测试索引
 
@@ -530,24 +542,25 @@ bun test \
 
 ## 提取实施流程与人工审核门禁
 
-Instance、runtime、relay、ACP session 与 Chat/YJS 目前形成一组高耦合但已在线运行的行为整体。
-AGT-01 的首要目标是移动边界并建立稳定出口，不是在迁移过程中同时重写内部设计。采用以下分层
-策略：
+Instance、runtime、relay、ACP session 与 Chat/YJS 目前形成一条高耦合但已在线运行的行为链路。
+AGT-01 的首要目标是迁移原 `src` 的组合边界并建立稳定出口，而非把链路上的独立基础包物理合并，
+也不是在迁移过程中重写其内部设计。采用以下分层策略：
 
 | 层级 | 提取策略 | 允许的变动 |
 | --- | --- | --- |
 | `service` 及以下底层 | 默认原样迁移，保留控制流、状态机、时序、错误映射和资源释放顺序 | 仅做新目录/package 所必需的 import、依赖注入和类型路径调整 |
-| Chat/YJS 协议与状态层 | 视同受保护底层整体迁移；保留与前端之间的 locator、action、Doc schema、关闭码和同步时序 | 不得在提取中顺手解耦前端、改协议或重写状态模型 |
-| `routes` | 作为协议出口，继续负责认证、授权、输入校验与响应/关闭码映射 | 可在人工审核后改为调用新 facade，不下沉业务逻辑 |
-| `facade` / bootstrap / composition root | 作为 package 出口和宿主组装层，封装依赖注入与 DTO 转换 | 可在人工审核后调整接口，但必须保持底层行为等价 |
+| `@fenix/chat-channel` 的 Chat/YJS 协议与状态层 | 保持既有独立 package 与实现；保留与前端之间的 locator、action、Doc schema、关闭码和同步时序 | 不得复制进组合包，也不得在提取中顺手改协议或重写状态模型 |
+| `routes` | 按最终领域 owner 迁移；AGT-01 只移动明确属于 runtime 的协议入口 | 认证、资源授权和其他领域 route 留在原位置等待所属任务；不建立临时 contribution |
+| `facade` / bootstrap / composition root | 进入 package，并形成按职责拆分的公开子路径；`server` 仅保留完整闭包聚合出口 | `apps/server` 只初始化、挂载、启动和关闭，普通调用方避免因聚合入口加载无关 Route、资源与 transport，底层行为保持等价 |
 
 ### 推荐迁移顺序
 
 1. 先以本文测试矩阵冻结 HTTP、Workflow、YJS Chat、外部 relay 与 Machine transport 的现状。
-2. 在单一 `@fenix/agent-runtime` 包内保留现有目录职责，按依赖方向机械迁移 Environment、Instance、
-   Runtime、relay/session、Chat/YJS；一次只移动一个可验证切片。
-3. 通过 facade/port 装配 AgentConfig、LaunchSpec、认证和 transport 宿主能力，不把权限实现迁入包。
-4. 增加 `POST /api/agents/:agentConfigId/instances`，先保留 `environmentId` 过渡返回；前端切换后删除
+2. 按依赖方向将宿主中的 Environment、Instance、Runtime 生命周期、relay/session 编排机械迁入
+   `@fenix/agent-runtime`；继续通过公开 exports 依赖四个既有基础包，一次只移动一个可验证切片。
+3. LaunchSpec 资源解析、Machine、Workflow 和不属于 runtime 的协议入口保持原位置；只通过最小接口
+   维持现有调用链，等待对应任务时直接迁到最终归属。
+4. 增加 `POST /web/agent-configs/:agentConfigId/instances`，先保留 `environmentId` 过渡返回；前端切换后删除
    `enter` 主调用链，YJS 与文件链路暂不改。
 5. 每个切片运行迁移前后相同的特征测试，核对 Instance uid、runtime generation、消息顺序、错误码
    与释放信号；通过后再删除旧入口，禁止双栈长期并存。
@@ -569,10 +582,11 @@ AGT-01 的首要目标是移动边界并建立稳定出口，不是在迁移过�
 
 ## AGT-01 提取守则
 
-1. `service` 及以下默认原样迁移；除必要的 import、DI 和类型路径调整外，任何逻辑变化先走上述
+1. `service` 及以下默认原样迁移；除必要的 import、DI、启动前配置兜底和类型路径调整外，任何逻辑变化先走上述
    人工审核门禁。routes/facade 是允许审核后调整的出口与组装边界。
-2. Environment、Instance、Runtime、relay/session、Chat/YJS 先进入同一 `@fenix/agent-runtime` 包；
-   AgentConfig 授权和资源解析通过宿主 facade/port 接入，不把 `AuthContext` 传入底层模块。
+2. 原 `src` 中明确属于 Environment、Instance、Runtime 生命周期与 relay/session 组合的实现迁入
+   `@fenix/agent-runtime`；Core、编排域、Chat/YJS 与 Remote Runtime 继续归属四个既有独立 package。
+   LaunchSpec 资源解析、Machine 与 Workflow 保持原位置，等待所属任务时直接迁到最终模块。
 3. 保持持久 Instance uid、编排 Instance id 与 core instance id 一致；不要恢复第二套随机 id。
 4. 保留 Coordinator singleflight、generation fencing、shutdown bounded drain 和权威 runtime 接管。
 5. 保留 spawn reservation、Workflow lease、relay count 三种不同作用域的并发保护，不能合并成
@@ -583,10 +597,10 @@ AGT-01 的首要目标是移动边界并建立稳定出口，不是在迁移过�
 8. 保持取消语义按入口区分：HTTP/Workflow 目前只取消本地等待，Chat 会转发
    `session/cancel`。任何统一都属于行为变更，必须单独设计兼容性、幂等性和测试。
 9. 保留 YJS 确定性 locator、owner 纵深校验、初始快照先于 `relayReady`、session 恢复、shared
-   relay 引用计数与 Doc 隔离；Y.Doc 可归属 `@fenix/agent-runtime` 的 Chat/YJS 子模块，但不得下沉到
-   Runtime/Instance 子模块。
+   relay 引用计数与 Doc 隔离；Y.Doc 与 Chat/YJS 实现继续归属 `@fenix/chat-channel`，
+   `@fenix/agent-runtime` 只负责宿主运行链路所需的组合。
 10. 保留 64 KB 背压、30 秒慢消费者隔离、pending + active 连接上限和单连接故障隔离。
 11. 保留 Machine clean-slate、server epoch 与 runtime generation 的完整 fencing；断连继续标记
     unknown，不能为了简化状态机直接映射成 stopped。
-12. `/acp/relay` 已无实际调用方，不迁入新 `@fenix/agent-runtime` 包；后续单独评估删除 route、
-    `instances/connect` 的 `relay.wsUrl` 返回字段、残留实现与测试，而不是先修复其 handle 释放缺口。
+12. `/acp/relay` 当前无实际调用方，不纳入 AGT-01 迁移；其 route、`instances/connect` 的
+    `relay.wsUrl` 返回字段与测试后续按外部合同门禁单独评估。

@@ -3,6 +3,8 @@
 > 状态：设计草案。本文只定义目标目录、边界、装配和开发规则；不冻结具体业务功能的拆分顺序。
 >
 > 基线：以 `AgentConfig → use 授权 → InstanceManager → AgentRuntime` 作为最小可运行闭环，并参考 2026-09-03 的 `FUNCTIONAL_MODULE_INVENTORY.md` 覆盖现有工程切面。
+>
+> ARC-03 已在 `docs/arch/ce-refactoring-inventory.md` 第 14 节冻结 M1 的具体 package、公开接口、路由、外部合同与迁移范围；ADR-0001 将第一方 HTTP 前缀修订为 `/web/*`，并冻结 CE 本地完整重构、阶段 7 后单次生产切换的交付策略。本文与冻结契约或 ADR 冲突时，以 `docs/arch` 和已接受 ADR 为准。
 
 ## 1. 目标与基本决策
 
@@ -46,7 +48,11 @@ fenix/ 或 fenix-ee/
 │   ├── platform/                       # 无业务领域依赖的平台契约与基础实现
 │   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符
 │   │   └── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
-│   ├── agent-runtime/                  # 单一 @fenix/agent-runtime package：Environment、Instance、Runtime、relay、ACP session、Chat 与 YJS
+│   ├── agent-runtime/                  # @fenix/agent-runtime：统一组合原 src 中的 Agent 运行编排
+│   ├── core/                           # @fenix/core：进程与实例执行内核
+│   ├── orchestration/                  # @fenix/orchestration：节点与实例编排基础能力
+│   ├── chat-channel/                   # @fenix/chat-channel：Chat/YJS 协议、状态与传输
+│   ├── remote-runtime/                 # @fenix/remote-runtime：远端运行与 relay transport
 │   ├── resources/                      # 完整资源领域模块（后端、DB、web contribution）
 │   │   ├── agent-config/               # 默认实现；EE 仓库以同路径扩展发布/审批
 │   │   └── <resource>/
@@ -74,9 +80,10 @@ fenix/ 或 fenix-ee/
 - `packages/**/fenix.module.ts` 声明模块，构建脚本生成 `apps/generated/module-registry.ts`；`deploy/assembly/*` 声明本版本启用的模块 ID；`apps/*` 从生成物解析、校验并注入它们。app 只做依赖注入、路由/web contribution 注册、启动和关闭，不放领域规则、包到模块 ID 的手写映射或 SQL。
 - `packages/platform` 不依赖 `agent-runtime`、`resources`、`apps`。
 - `packages/resources` 可依赖 platform 的公开入口；不得依赖 agent-runtime 的内部实现。需要 Agent 运行能力时，只依赖资源包本地定义的端口。
-- `packages/agent-runtime` 是单一 `@fenix/agent-runtime` workspace package，不再按 instance、chat 或 YJS 等职责拆成多个 package；它不依赖资源包，也不包含权限和资源流程。包内可按职责组织目录，跨包调用只能使用公开 exports。
-- `agentRuntime` 是 assembly profile 的 Agent Runtime 槽位；其稳定 module ID 和 kind 均为 `agent-runtime`，与单一 `@fenix/agent-runtime` package 对齐。manifest 位于 `packages/agent-runtime/fenix.module.ts`。
-- `packages/resources/<resource>/web` 是资源模块的浏览器专用子路径，可依赖公开 DTO、`/app` API client 和共享 UI；不得导入该资源的 services、repositories、adapters 或 db 内部实现。
+- `packages/agent-runtime` 是原 `src` Agent 运行编排的统一归属和组合入口；它通过公开 exports 依赖既有的 `@fenix/core`、`@fenix/orchestration`、`@fenix/chat-channel` 与 `@fenix/remote-runtime`，不得复制或吞并这些基础包的实现。
+- 四个基础运行包保持独立 workspace、依赖和测试边界。在线链路的高耦合由 `@fenix/agent-runtime` 组合，不等于将基础能力合并成一个物理 package。
+- `@fenix/agent-runtime` 不依赖资源包，也不拥有权限和资源规则；`agentRuntime` 是 assembly profile 的 Agent Runtime 槽位，其稳定 module ID 和 kind 均为 `agent-runtime`，manifest 位于 `packages/agent-runtime/fenix.module.ts`。AGT-01 只迁移最终属于 runtime 的 Environment、Instance、生命周期与 relay/session 组合实现；资源、Machine、Workflow 逻辑留在原位置，分别由 REF/ENV/EXE/ORC 直接迁到最终模块。
+- `packages/resources/<resource>/web` 是资源模块的浏览器专用子路径，可依赖公开 DTO、`/web` API client 和共享 UI；不得导入该资源的 services、repositories、adapters 或 db 内部实现。
 - `db/` 和 `deploy/` 是仓库级交付物，不属于任意业务模块；模块通过显式贡献接入它们。
 
 ### 2.2 模块的最小交付物
@@ -114,7 +121,7 @@ packages/resources/<resource>/
 
 ### 2.2.1 跨包引用与公开 API
 
-跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix/agent-runtime`、`@fenix/agent-config/web`、`@fenix-ee/agent-config`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
+跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix/agent-runtime`、`@fenix/core`、`@fenix/chat-channel/server`、`@fenix/agent-config/web`、`@fenix-ee/agent-config`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
 
 每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。EE 通过 `upstream/fenix` submodule 加入同一个 package-manager workspace，并从 `@fenix/*` 公开入口导入；不得因为物理目录相邻而导入 `upstream/fenix/packages/**/src/**`。`apps` 同样遵守该规则。
 
@@ -178,7 +185,7 @@ export interface SkillReferenceResolver {
 
 调用方资源只依赖此接口；具体 `SkillService` 在 `apps/server` 装配时作为实现注入。
 
-`agent-config` 与 Agent 运行链路是特殊但常见的例子：AgentConfig 的 `use` 授权、发布状态校验和启动参数生成属于资源层；`@fenix/agent-runtime` 包内的 Instance/Runtime 不理解 actor、权限或资源生命周期。资源层只定义所需的启动端口，`apps/server` 注入 `@fenix/agent-runtime` 从公开入口提供的无权限实现。因此 `resources/agent-config` 不依赖 `@fenix/agent-runtime` 的内部实现，`packages/agent-runtime` 也不反向依赖任何资源包。
+`agent-config` 与 Agent 运行链路是特殊但常见的例子：AgentConfig 的 `use` 授权最终属于资源层；`@fenix/agent-runtime` 的 Instance/Runtime 不解释 actor 或权限。本轮重构不新增 AgentConfig 生命周期门禁或删除状态机。宿主认证后产生的 `RuntimeExecutionSubject` 由 `@fenix/platform-sdk` 定义，只携带不透明 scope/owner 隔离键和来源。AGT-01 保持旧 `launch-spec-builder` 及其资源读取在原位置，通过阶段性 `HostLaunchSpecPort` 维持 Environment→Instance→controller→builder→core 的顺序；REF/ENV 完成后由 AGT-02 将资源 I/O 直接迁到公开 resolver，纯 LaunchSpec 组装进入 runtime。
 
 ### 2.2.3 包类别依赖矩阵
 
@@ -188,7 +195,8 @@ export interface SkillReferenceResolver {
 | --- | --- | --- | --- |
 | `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps`、任何 EE 包 | 最底层契约：资源范围、授权端口、装配 profile、模块 manifest 等 |
 | `packages/platform/*` 具体实现 | `platform-sdk`、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`；CE 包禁止 EE 包 | 例如 CE/EE AccessControl；实现 SDK 的端口，但不承载资源规则 |
-| `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`（仅 manifest/通用契约需要时）、无业务语义基础依赖 | `resources`、具体 AccessControl、`apps` | Environment、Instance、Runtime、relay、ACP session、Chat 与 YJS 先作为高耦合整体迁移；不理解资源、actor 或权限 |
+| `packages/core`、`packages/orchestration`、`packages/chat-channel`、`packages/remote-runtime` | 各自 manifest 声明的基础依赖 | `agent-runtime`、`resources`、具体 AccessControl、`apps` | 保持既有独立能力边界，不因上层在线链路高耦合而物理合并 |
+| `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、无业务语义基础依赖 | `resources`、具体 AccessControl、`apps` | 只迁移 Environment、Instance、生命周期、并发与 relay/session 组合；其他领域通过最小端口接入并留待其所属任务迁移 |
 | `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
 | `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
@@ -202,7 +210,7 @@ export interface SkillReferenceResolver {
                                   ↓
        platform 具体实现 · resources · agent-runtime
                      ↓              ↓        ↓
-                         platform-sdk
+             platform-sdk     core · orchestration · chat-channel · remote-runtime
 
 EE packages/apps ─────────────────────────→ CE public packages
 CE packages/apps ─────────────────────────╳ EE packages/apps
@@ -242,23 +250,25 @@ CE 的 `platform-sdk/assembly` 提供唯一的 `AssemblyProfile` 与 `parseAssem
 apps/server/src/
 ├── bootstrap.ts                    # 创建依赖、装配模块、注册关闭钩子
 ├── routes/
-│   ├── app.ts                      # 挂载所有 /app 模块贡献
+│   ├── web.ts                      # 挂载所有 /web 模块贡献
+│   ├── api.ts                      # 挂载已发布的 /api 外部协议 adapter
 │   └── protocols.ts                # ACP、MCP、Webhook、SSE、WS 等协议贡献
 └── index.ts                        # 进程入口
 ```
 
-领域路由随模块存在，例如 `createAgentConfigAppRoutes({ facade, logger })`。route 负责协议校验、认证上下文提取、DTO 转换、调用 service、错误映射和接口元数据；不直接访问 db，不写跨表事务，不调用别的 route。
+领域路由随模块存在，例如 `createAgentConfigWebRoutes({ facade, logger })`。route 负责协议校验、认证上下文提取、DTO 转换、调用 service、错误映射和接口元数据；不直接访问 db，不写跨表事务，不调用别的 route。
 
 路由前缀规则：
 
 | 前缀 | 消费者 | 规则 |
 | --- | --- | --- |
-| `/app/*` | 控制台与受控的程序调用方 | 唯一业务 HTTP 接口；统一认证、DTO、响应 envelope 与错误码 |
+| `/web/*` | CE 官方 Web 与可同步升级的第一方内部调用方 | 第一方控制面；可随 server/web 同步升级，不作为公开 OpenAPI 合同 |
+| `/api/*` | 外部程序、SDK 与 OpenAI-compatible 客户端 | 已发布的稳定协议面；只做认证、DTO 和错误映射，并调用与 `/web` 相同的 Resource Facade |
 | `/acp/*`、`/mcp/*`、`/hooks/*`、WS/SSE | 协议/内部桥接 | 独立协议契约，不作为第二套资源业务 API |
 
-非 CRUD 动作使用资源动作后缀，如 `POST /app/agent-configs/:id/run`、`POST /app/agent-configs/:id/publish`。动作始终进入资源 services 层，再经端口调用 runtime。
+非 CRUD 动作使用资源动作后缀，如 `POST /web/agent-configs/:id/run`、`POST /web/agent-configs/:id/publish`。动作始终进入资源 services 层，再经端口调用 runtime。
 
-本阶段不维护 `/api/*` 这一套外部 API。`/app/*` 不是“只允许浏览器调用”：认证模块可按同一主体模型识别 session、服务账号或受控 API Key，但所有调用方使用同一 DTO、授权和错误契约。若未来确需面向第三方提供稳定开放平台，须以独立 ADR 决定公开契约、限流、版本和兼容策略；不得在资源模块内重新复制 `/api/*` route。
+本阶段不在资源模块新增或扩展 `/api/*` 外部 API。`/web/*` 允许 session、服务账号或受控内部 API Key 等认证方式，但只有 CE 官方 Web 和可同步升级的内部调用方可以依赖其契约；第三方、用户脚本和 SDK 必须使用版本化的 `/api/*`。当前已经发布的 `/api/agents` CRUD、Instance connect 与 OpenAI-compatible endpoint 属于外部合同，按 ARC-03 冻结规则保留为调用同一 Facade 的薄协议 adapter，不是第二套业务实现；其变更或退役必须经独立 ADR、消费者盘点和迁移窗口，资源模块不得复制这些 route。
 
 ### 3.2 服务与 repository
 
@@ -292,7 +302,7 @@ apps/generated/
 └── module-registry.ts      # 构建期生成的资源 web contribution 静态 import
 
 packages/resources/<module>/web/
-├── api/                    # 调用 /app 的类型化客户端
+├── api/                    # 调用 /web 的类型化客户端
 ├── pages/                  # 领域页面与容器
 ├── components/             # 领域组件
 ├── hooks/                  # 本领域数据和状态逻辑
@@ -370,7 +380,7 @@ CE server env = server host env + CE profile 启用模块的 env
 EE server env = server host env + EE profile 启用的 CE/EE 模块 env
 ```
 
-前端 `apps/web` 不读取 server env，也永远拿不到 secret。它的少量公开构建配置（例如公开服务地址、构建版本、品牌默认值）由独立的 `webEnv` 声明并在构建时注入；更适合运行时变化的品牌、导航和功能开关则从受控的 `/app` 配置接口读取。
+前端 `apps/web` 不读取 server env，也永远拿不到 secret。它的少量公开构建配置（例如公开服务地址、构建版本、品牌默认值）由独立的 `webEnv` 声明并在构建时注入；更适合运行时变化的品牌、导航和功能开关则从受控的 `/web` 配置接口读取。
 
 ### 5.2 配置文件与密钥规则
 
@@ -438,7 +448,7 @@ EE 不得用 migration 修改 CE 拥有的表。若商业需求必须改变 CE �
 4. 有存量数据时，新增独立、幂等、可观测的数据迁移；记录完成标识与批次进度。
 5. CI 对空库和升级库都执行 migration smoke test；生产先备份并执行 migration preflight。
 
-生产演进采用 expand → backfill → switch → contract。应用版本在删列/收紧约束前必须兼容前一版本数据；失败迁移应新增补偿迁移，禁止改写已发布 migration。
+CE 重构期间不发布中间应用版本。各 task 仍按模块生成和测试 migration，但生产只支持“重构前冻结版本 → 阶段 7 最终版本”的完整升级链；不为未发布的中间 schema 保留应用兼容、双写或多版本共存。最终升级在停机窗口内依次完成 DDL、data migration、核验和应用切换，失败时保持流量关闭并按演练结果幂等重跑、前滚修复，或恢复切换前数据库备份与旧版本。已经被任何环境正式消费的 migration 仍不可改写。
 
 ### 6.4 数据迁移按模块就近维护、按仓库统一执行
 
@@ -497,7 +507,7 @@ packages/resources/agent-config/db/data-migrations/
 
 `deploy/compose` 使用“基础编排 + 可选 profile/overlay”：主服务、数据库、模型网关、知识库、Sandbox 等可独立启停。模块声明其依赖服务与健康检查；部署入口根据静态装配的模块生成/选择 profile，而不是由业务代码自行启动 Docker。
 
-发布顺序：备份与 preflight → CE migration → EE migration → data migration → 部署新镜像 → readiness/关键链路探测 → 流量切换。代码回滚与数据库回滚分开决策；只允许回滚到仍兼容当前 schema 的镜像，否则先做补偿 migration。
+CE 重构最终发布顺序：停止旧版本写入 → 备份与 preflight → CE DDL migration → CE data migration → 数据核验 → 部署阶段 7 最终镜像 → readiness、smoke 与关键 E2E → 流量切换。代码回滚与数据库恢复分开决策；旧应用不得运行在不兼容的最终 schema 上，必要时恢复切换前数据库备份。EE 仓库的发布与升级由其独立计划负责，不进入 CE 阶段 0 至 7 的完成条件。
 
 ## 9. Git submodule 升级流程
 
@@ -512,7 +522,7 @@ EE 根 `package.json` 将 `upstream/fenix/packages/*/*` 纳入 workspace，EE �
 5. 若 EE 需要适配，在 EE 自己的模块中完成；不得修改 submodule。不能兼容则停止升级或先在 CE 提供正式扩展点。
 6. 审查完成后合并；发布镜像记录 CE commit、EE commit、migration 版本。
 
-CI 必须验证 `git diff --exit-code -- upstream/fenix`，确保 submodule 只有合法指针变更。紧急回退优先回到上一个已验证的 CE 指针和 EE 镜像；数据库按 expand/contract 规则判断可否回退。
+CI 必须验证 `git diff --exit-code -- upstream/fenix`，确保 submodule 只有合法指针变更。紧急回退优先回到上一个已验证的 CE 指针和 EE 镜像；数据库按对应版本已经演练的迁移、补偿或备份恢复规则判断可否回退。
 
 ## 10. 扩展方案决策表
 
@@ -608,8 +618,8 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 | 当前功能分类 | 目标落位/扩展模型 |
 | --- | --- |
 | 身份、组织、API Key、资源权限 | platform identity/tenancy/access-control；可整体替换 |
-| Agent 配置、Skill、MCP、模型、知识库、站点 | resources；基础 CRUD + 各自 domain/services；Provider 用静态插件 |
-| Environment、Instance、Runtime、relay、ACP session、Chat、YJS | 单一 `@fenix/agent-runtime` 包；保持在线链路高内聚，不按运行阶段拆包 |
+| Agent 配置、Skill、MCP、模型、知识库、站点 | resources；基础 CRUD + 各自 domain/services；模型域由单一 `@fenix/model` 承载 Provider 聚合根与严格继承其权限的 Model 二级资源 |
+| Environment、Instance、Runtime、relay、ACP session、Chat、YJS | `@fenix/agent-runtime` 统一组合原 `src` 运行编排；基础实现继续归属 `@fenix/core`、`@fenix/orchestration`、`@fenix/chat-channel`、`@fenix/remote-runtime` |
 | 文件、机器、Sandbox | 资源或 transport adapter；通过公开 port 接入 `@fenix/agent-runtime`，不反向侵入 Agent 内部实现 |
 | 工作流、任务、Webhook、调度 | 独立资源或编排模块；通过 Agent 公开 port 接入，节点、执行器、触发器为静态插件 |
 | 控制台壳、导航、业务页面、品牌 | apps/web 壳 + resources 模块内的 `web/`；静态 contribution |
@@ -624,18 +634,20 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 
 1. 明确模块归属、依赖方向、授权/租户边界、失败和并发语义。
 2. 更新模块 README；影响长期边界时更新 `docs/arch` 或 ADR；待讨论方案放 `docs/design`。
-3. 修改 `/app` route 时同时更新接口 schema；修改 web 时覆盖 loading、empty、error、retry、i18n 与无权限体验。
+3. 修改 `/web` 或 `/api` route 时同时更新各自接口 schema；修改 web 时覆盖 loading、empty、error、retry、i18n 与无权限体验。
 4. 修改 schema 时生成、审查并执行 migration；有数据变化则提供独立幂等 data migration 和回滚/补偿说明。
 5. 修改 env、部署或可观测性时同步 `deploy/env` 模板、operations 文档和 preflight。
 6. 运行模块单测、契约测试、类型检查、lint/format；涉及 CE/EE 边界时运行 submodule 集成和升级 migration 测试。
 
-第一阶段重构只实现最小闭环：`platform-sdk + access-control + agent-config + @fenix/agent-runtime + /app route + web page + PostgreSQL/Drizzle + @fenix/logger/requestId + deploy preflight`。`@fenix/agent-runtime` 先整体承载 Environment、Instance、Runtime、relay、ACP session、Chat 与 YJS，不为追求分包改写在线逻辑。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
+第一阶段重构只实现最小闭环：`platform-sdk + access-control + agent-config + @fenix/agent-runtime + /web route + web page + PostgreSQL/Drizzle + @fenix/logger/requestId + deploy preflight`。`@fenix/agent-runtime` 先迁移并统一组合原 `src` 中的 Environment、Instance、生命周期、并发、relay 与 ACP session 运行编排；Core、orchestration、Chat/YJS 和 remote runtime 继续由既有独立包提供，不为迁移改写其内部逻辑。其余模块按本规范逐个迁移，不引入平行的旧/新授权或资源路径。
 
 ## 13. 从当前 CE 工程迁移到目标架构
 
 ### 13.1 总体策略：按垂直切片迁移，不做大爆炸重写
 
-当前 `src/`、`web/`、根 `drizzle/` 和 `docker/` 是正在运行的 CE。迁移目标不是先搬空目录再补功能，而是每次迁移一个可独立验证的模块闭环：数据归属 → domain/services/repositories → `/app` route → `resources/<module>/web` → 测试与观测 → 删除旧实现。
+当前 `src/`、`web/`、根 `drizzle/` 和 `docker/` 是正在运行的 CE。迁移目标不是先搬空目录再补功能，而是每次迁移一个可独立验证的模块闭环：数据归属 → domain/services/repositories → `/web` route → `resources/<module>/web` → 测试与观测 → 删除旧实现。
+
+所有切片只在本地重构分支和 CI 中逐步集成，阶段 3 的 M1 是人工验收点而不是生产发布点。M1 通过后继续阶段 4 至 7；只有阶段 7 完成、`CE-RC` 最终验收与整体升级演练全绿并经人工确认后，才从冻结的线上版本进行一次生产切换。
 
 允许“已迁移模块”和“尚未迁移模块”在同一仓库短暂共存；但同一个资源、同一个 route、同一张表的写入逻辑在任一时刻只能有一个权威实现。禁止新增旧/新 service 双写、兼容 facade 或长期转发层。
 
@@ -646,13 +658,13 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 | 0. 基线冻结 | 基于 `FUNCTIONAL_MODULE_INVENTORY.md` 为所有现有模块标明目标归属、调用方、表、route、web 页面、外部依赖和迁移风险；补齐关键链路回归测试与观测基线 | 可比较重构前后行为、性能和错误率 |
 | 1. 工程骨架 | 创建 `apps/server`、`apps/web`、platform/agent-runtime/resources 目录、workspace 与边界检查；将当前 server/web 入口一次性移入 apps，修正构建、测试、Docker 入口 | 不改业务行为，原测试与部署可运行 |
 | 2. 平台基础 | 抽取 `platform-sdk`、`access-control`、统一 env loader、DB client/transaction adapter；复用 `@fenix/logger` 与 `requestId`；定义稳定的 `AccessControlModule`、授权查询能力与 repository contract | 新模块不再直接读取 member/role 或 `process.env` |
-| 3. 最小闭环 | 迁移 AgentConfig、其 `/app` route、`web/` 页面，以及单一 `@fenix/agent-runtime` 包中的 Environment、Instance、Runtime、relay/session、Chat/YJS；用此闭环验证授权、发布扩展和实例边界 | 真实 CE 最小能力及其集成测试证明闭环成立 |
+| 3. 最小闭环 | 迁移 AgentConfig、其 `/web` route、`web/` 页面，以及原 `src` 的 Agent Runtime 运行编排；由 `@fenix/agent-runtime` 通过四个既有基础包组合完整链路 | 真实 CE 最小能力及其集成测试证明闭环成立，完成 M1 人工验收但不发布生产 |
 | 4. 资源目录 | 依赖从低到高迁移 Skill、MCP、模型/Provider、知识库、记忆、节点/Sandbox、Site App 等；每个资源独立完成 schema、授权、route、web 和删除旧代码 | 资源不再散落在 `src/services/config` 与 `web/src/pages`；Environment 不作为资源对外暴露 |
 | 5. 执行与连接 | 迁移 Machine、workspace/file、Sandbox 与引擎 adapter，通过公开 port 接入已迁移的 `@fenix/agent-runtime` runtime/control/relay；不复制实例或会话生命周期 | 运行、文件和节点能力通过公开端口连接 |
-| 6. 自动化与协作 | 在已迁入 `@fenix/agent-runtime` 的 Chat/YJS 边界上迁移 Workflow、Scheduler、Webhook、Channel；节点/执行器/Provider 采用静态插件点 | 长连接、恢复、调度等关键边界有专项测试 |
-| 7. 交付与治理 | 迁移 Site/Product View、系统管理、deploy、operations docs、release/preflight；删除旧根目录结构和过时文档 | 新目录是唯一入口，CI 强制边界规则 |
+| 6. 自动化与协作 | 在 `@fenix/chat-channel` 的既有 Chat/YJS 边界上迁移 Workflow、Scheduler、Webhook、Channel；由 `@fenix/agent-runtime` 组合运行链路，节点/执行器/Provider 采用静态插件点 | 长连接、恢复、调度等关键边界有专项测试 |
+| 7. 交付与治理 | 迁移 Product View、系统管理、deploy、operations docs、release/preflight；删除旧根目录结构和过时文档 | 新目录是唯一入口，CI 强制边界规则；`CE-RC` 最终验收和整体升级/恢复演练全绿 |
 
-阶段 3 是商业版启动门槛；阶段 4 以后按业务价值逐模块推进，不等待所有历史功能迁移才开始 EE。
+阶段 3 的 M1 是 AgentConfig 最小闭环人工验收门槛，不是商业发布。阶段 4 的资源集合在总计划中提前冻结，具体文件和步骤在每个资源开始前滚动细化；EE 在独立仓库平行推进，不属于 CE 重构任务或验收范围。
 
 ### 13.3 每个资源模块的固定迁移操作
 
@@ -664,7 +676,7 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 4. **迁移数据隔离**：复用资源主表现有组织归属与 owner 字段，增加或迁移固定 `visibility` 列；切换为 `AccessControlModule` 统一授权查询，验证后删除旧权限查询路径。
 5. **迁移领域与 services**：将字段校验、状态机按需放入 domain；将授权、事务、动作编排放入 service/facade。所有调用方在同一切片改为新公开入口，随后删除旧 service/repository。
 6. **迁移资源动作**：资源的 `run`/`publish` 等动作在 services 的 facade 完成授权与状态检查，再调用 runtime port；runtime 只接收通用已解析参数。
-7. **迁移 HTTP 与 web**：新增该资源的 `/app` route contribution，以及模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。调用方切换后删除旧 `/web`、`/api` 和旧页面，不保留长期 alias。
+7. **迁移 HTTP 与 web**：在该资源的 `/web` 控制面中使用稳定 ID 和清晰的资源路径，并迁移模块内 `web/` 页面/API client；`apps/web` 添加薄 route adapter。旧的 name CRUD、过重 route 和旧页面在调用方切换后删除，不为未发布的中间状态保留 alias；已发布的外部 `/api` 只按 ARC-03/对应 ADR 作为同一 Facade 的薄协议 adapter 处置。
 8. **补齐迁移与诊断**：有存量数据时在模块 `db/data-migrations/` 新增幂等迁移；补充结构化日志、`requestId` 关联、错误码和权限拒绝测试。
 9. **验收与删除**：运行模块、契约、route、web、迁移升级测试和 `precheck`；确认无旧入口引用后删除旧文件、旧 route、旧 i18n key 与旧文档。
 
@@ -676,32 +688,35 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 | --- | --- | --- |
 | `src/services/config/agent-config.ts`、相关 repository | `packages/resources/agent-config/src/{domain,services,repositories}` | 拆出纯配置规则、授权 facade、持久化 repository |
 | `src/db/schema.ts` 中 AgentConfig 及绑定表 | `packages/resources/agent-config/db/schema.ts` | 原表原 ID 移动定义；绑定资源按所属关系逐步迁移 |
-| `src/routes/web/config/agents.ts`、`src/routes/api/agents.ts` | `packages/resources/agent-config/src/routes/` | 合并为 `/app/agent-configs` contribution；完成切换后删除旧双 route |
+| `src/routes/web/config/agents.ts` | `packages/resources/agent-config/src/routes/` | 迁移为 `/web/agent-configs` contribution；完成切换后删除旧 name CRUD route |
+| `src/routes/api/agents.ts`、`src/routes/api/instances.ts`、`src/routes/api/openai-chat.ts` | AgentConfig 或宿主协议 adapter | 保持原位置和外部合同；对应资源/协议任务再直接迁到最终 contribution，并统一调用公开 Facade |
 | `web/src/pages/*Agent*`、对应 API 文件 | `packages/resources/agent-config/web/` | 页面、API client、i18n 就近放置；`apps/web` 只留路由适配 |
-| Environment、Instance、Runtime、relay/session、Chat/YJS 的现有职责 | `packages/agent-runtime`（`@fenix/agent-runtime`） | 作为高耦合整体机械迁移；保留现有控制流和内部职责，不把 AgentConfig 权限带入包内 |
-| 引擎插件与 LaunchSpec 构建 | `packages/agent-runtime` 内部实现 | 保持引擎多实现静态插件，资源层只输出通用启动参数；内部目录不得形成新的 workspace package，跨包能力经公开 exports 提供 |
+| `src` 中 Environment、Instance、生命周期、并发、relay/session 的运行编排 | `packages/agent-runtime`（`@fenix/agent-runtime`） | 机械迁移并形成统一组合入口；保留现有控制流，不把 AgentConfig 权限带入包内 |
+| 旧 LaunchSpec 资源解析、Machine 接线、Workflow transport | 各自当前路径，后续迁到对应资源、执行或 Workflow 模块 | AGT-01 不移动；REF/ENV/EXE/ORC 开始时直接迁到最终包，不允许复制或双栈 |
+| `@fenix/core`、`@fenix/orchestration`、`@fenix/chat-channel`、`@fenix/remote-runtime` | 原 workspace package | 保持源码、manifest、依赖和测试边界不变；`@fenix/agent-runtime` 只通过公开 exports 引用 |
+| 引擎插件与 LaunchSpec 构建 | `packages/agent-runtime` 内部纯组装器 + 资源公开 resolver | 保持引擎多实现静态插件；资源层完成所有 I/O 和引用解析，runtime 只校验、组装并执行完整启动参数；跨包能力经公开 exports 提供 |
 
 AgentConfig 关联的 Skill/MCP/知识库/节点/Site App 在第一切片中只保留已验证的读取/解析端口；其自身 CRUD 和 web 页面在各自资源切片迁移。Environment 已归入 `@fenix/agent-runtime`，不创建资源 CRUD 或 web 页面。不要为了“完整 AgentConfig”阻塞第一个闭环。
 
-### 13.5 路由统一为 `/app` 的迁移方式
+### 13.5 `/web` 第一方控制面与 `/api` 外部协议面的迁移方式
 
-当前 `/web/*` 与 `/api/*` 不应在新架构中长期共存。按资源切片执行：先完成新 `/app/<resource>` route、web client 和调用方切换；在同一发布窗口删除该资源旧 route。若已有无法立即迁移的外部调用方，必须先明确其停用窗口或单独设计开放平台，不得把旧 `/api` 无限期保留为兼容层。
+保留既有 `/web/*` 前缀，但不保留其中不符合目标边界的 name CRUD、直接数据库访问或 route 业务编排。按资源切片完成新的 `/web/<resource>` stable-ID route、Web client 和调用方切换，再删除该资源旧 handler；由于中间版本不发布，不创建旧新 alias 或转发层。现存 `/api/*` 外部合同不得随内部 route 直接删除：它只能作为调用同一 Facade 的薄协议 adapter 保留，不得形成第二写路径；其停用窗口、版本和兼容策略必须由独立 ADR 决定。ARC-03 经 ADR-0001 修订后的外部入口去留为权威规则。
 
-协议入口（ACP、MCP、Webhook、SSE、WebSocket）不参与 `/app` 合并；迁移时只移动其代码归属和依赖注入，不改变其协议前缀或消息契约。
+协议入口（ACP、MCP、Webhook、SSE、WebSocket）不参与 `/web` 控制面迁移；迁移时只移动其代码归属和依赖注入，不改变其协议前缀或消息契约。
 
 ### 13.6 数据、发布与回滚规则
 
 - **源码移动不是 DDL 变更**：迁移 schema 文件时先运行 migration diff，确认不会生成重复建表/删表 SQL。
-- **结构变更先扩后缩**：新增字段/表、回填数据、切换读写、观察后再删除旧字段；每一步都有可观测信号和补偿方案。
+- **本地增量、生产单次迁移**：task 内仍按可验证顺序新增结构、回填、切换读写并删除旧实现，但不为未发布中间版本维持生产兼容；最终从冻结线上版本一次迁移到阶段 7 最终结构。
 - **一个资源一次只迁一个权威写路径**：旧 route/service 在切换完成后删除，不允许两个实现同时写同一资源。
-- **发布顺序**：DDL migration → 模块 data migration → 部署新 server/web → readiness 与关键链路验证。数据库处于不兼容状态时不得直接回滚旧应用。
+- **最终发布顺序**：停写与备份 → preflight → 完整 DDL migration → 完整 data migration 与核验 → 部署最终 server/web → readiness、smoke、关键 E2E → 开放流量。数据库处于不兼容状态时不得直接回滚旧应用。
 - **EE 开始时机**：CE 的 platform-sdk、access-control 基础实现、AgentConfig 和 runtime 最小闭环稳定后，即可创建 EE submodule；未迁移的 CE 历史模块暂不作为 EE 扩展点。
 
 ### 13.7 当前模块迁移优先级
 
 1. platform：认证/组织上下文、资源授权、env、DB transaction；诊断复用 `@fenix/logger` 与 `requestId`。
-2. AgentConfig + 单一 `@fenix/agent-runtime`（Environment、Instance、Runtime、relay/session、Chat/YJS）：形成首个商业可用闭环。
-3. Skill、MCP、模型/Provider、知识库、节点/Sandbox、Site App：AgentConfig 最常引用的资源。
+2. AgentConfig + `@fenix/agent-runtime` 组合层（复用四个既有基础运行包）：形成首个商业可用闭环。
+3. Skill、MCP、模型（Provider 聚合根 + Model 二级资源）、知识库、节点/Sandbox、Site App：AgentConfig 最常引用的资源。
 4. Machine、workspace/file、Sandbox、引擎 adapter：通过公开 port 接入 `@fenix/agent-runtime` 的执行与连接底座。
 5. Workflow、Scheduler、Webhook、Channel：依赖 Agent/Chat 运行闭环的自动化与协作能力。
 6. Site、Product View、系统管理和剩余配置功能：按客户价值迁移。
@@ -717,11 +732,11 @@ AgentConfig 关联的 Skill/MCP/知识库/节点/Site App 在第一切片中只�
 `id` 是资源唯一、不可变、可被外键和 URL 安全引用的标识；`name` 只是可修改的展示属性，不能用于读取、更新、删除、运行或权限判断。
 
 ```text
-正确：GET /app/agent-configs/:id
-      PATCH /app/agent-configs/:id
-      POST /app/agent-configs/:id/run
+正确：GET /web/agent-configs/:id
+      PATCH /web/agent-configs/:id
+      POST /web/agent-configs/:id/run
 
-错误：GET /app/agent-configs/by-name/:name
+错误：GET /web/agent-configs/by-name/:name
       update({ name }) / delete({ name })
 ```
 

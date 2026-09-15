@@ -222,6 +222,8 @@ export interface AccessControlModule {
 
 Repository 不直接解释 `ResourceQueryConstraint`。平台提供统一的 `AuthorizedResourceQuery`，接收受控资源的 ID、组织与 owner 列以及业务条件，调用已装配的 `AccessControlModule` 生成最终数据库条件。
 
+Model 是 Provider 的二级资源，不注册独立 `ResourceDefinition` 或 `ResourceScopeStore`，也不保存独立 owner/visibility。Model 列表和详情必须关联 Provider，并在数据库分页、排序和计数前将 Provider 的授权约束下推；Model 的引用、CRUD 与运行解析按操作复用所属 Provider 的 read/use/update/delete 权限。
+
 ```ts
 class AgentConfigService {
   /**
@@ -296,6 +298,11 @@ LIMIT <limit> OFFSET <offset>;
 5. `admin` / `owner` 默认不自动读取或修改组织内个人资源。审计或代管必须另设显式动作和审计能力。
 
 ## 6. 迁移规则
+
+本节描述最终数据状态和迁移依赖顺序，不表示需要把中间 schema 发布到生产。按照
+[ADR-0001](../../adr/0001-ce-local-refactoring-and-api-boundaries.md)，各资源 task 在本地和 CI
+持续演练迁移；生产只在阶段 7 `CE-RC` 通过后，于停机维护窗口从冻结旧版本一次性执行完整
+DDL/data migration 与结果核验。最终应用不兼容未发布的中间 schema，也不为中间状态增加双写。
 
 1. 为支持全局公开的资源主表增加 `visibility` 固定列；不回填 JSONB。既有通用资源全局公开记录回填为 `visibility = public`；对外 Site 访问仍迁移到 Site 自己的发布范围或发布实体。
 2. 不将 `resource_permission` 重命名为 `resource_access_grant`。完成 `visibility` 回填与结果核验后，删除本方案不再使用的旧权限记录和表；不得保留双写或兼容路径。
