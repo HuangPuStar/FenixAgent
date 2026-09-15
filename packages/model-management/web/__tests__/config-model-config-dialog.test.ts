@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildModelOptions } from "../lib/model-config-utils";
 import type { ModelEntry } from "@/src/types/config";
+import { buildModelOptions } from "../lib/model-config-utils";
 
 describe("buildModelOptions", () => {
   test("maps available models to value/label pairs", () => {

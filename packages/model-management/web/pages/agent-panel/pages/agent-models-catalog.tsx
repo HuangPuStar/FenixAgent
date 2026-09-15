@@ -16,17 +16,17 @@ import {
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { ModelIcon } from "../../../components/model-icon/ModelIcon";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
+import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import { ModelIcon } from "../../../components/model-icon/ModelIcon";
 import type { ModelTestState } from "./agent-models-types";
 import {
   canWriteProvider,

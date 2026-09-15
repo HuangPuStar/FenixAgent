@@ -19,9 +19,9 @@ import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
-import { initializeHappyDomWindow } from "../../../../apps/web/src/__tests__/happy-dom-window";
+import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "@/src/yjs/doc-hub";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
-import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "../yjs/doc-hub";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

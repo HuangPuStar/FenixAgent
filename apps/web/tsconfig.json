@@ -58,7 +58,8 @@
       "@/src/*": ["../../web/src/*"],
       "@server/*": ["../../src/*"],
       "@fenix/chat-channel": ["../../packages/chat-channel/src/index.ts"],
-      "@fenix/chat-channel/server": ["../../packages/chat-channel/src/server.ts"]
+      "@fenix/chat-channel/server": ["../../packages/chat-channel/src/server.ts"],
+      "@fenix/model-management": ["../../packages/model-management/src/index.ts"]
     }
   },
   "include": [

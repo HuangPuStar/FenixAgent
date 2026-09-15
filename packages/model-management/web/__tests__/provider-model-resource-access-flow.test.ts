@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildModelOptions } from "../components/config/ModelConfigDialog";
 import { mapMcpOptions, mapModelOptions } from "@/src/pages/agent-panel/agent-editor/agent-editor-model";
+import type { ModelEntry, ProviderInfo, ResourceAccess } from "@/src/types/config";
+import { buildModelOptions } from "../components/config/ModelConfigDialog";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
@@ -12,7 +13,6 @@ import {
   providerMatchesScope,
   supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
-import type { ModelEntry, ProviderInfo, ResourceAccess } from "@/src/types/config";
 
 const internalProvider: ProviderInfo = {
   providerId: "provider-internal",
