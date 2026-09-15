@@ -19,7 +19,7 @@ import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
-import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
+import { initializeHappyDomWindow } from "../../../../apps/web/src/__tests__/happy-dom-window";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
 import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "../yjs/doc-hub";
 

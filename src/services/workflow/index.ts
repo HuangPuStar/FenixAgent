@@ -11,10 +11,10 @@
  * - workflow 结束后统一销毁启动的实例
  */
 
+import { stopInstance } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
-import { stopInstance } from "../agent-instance-runtime-projection";
 import { createAgentChatTransport } from "./agent-chat-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
 import { hasActiveInstanceLease } from "./instance-lease";

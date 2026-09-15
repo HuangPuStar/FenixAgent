@@ -6,7 +6,7 @@
 // env 缺失、关键角色缺省（如 machineId 注册前为 null）、归属不一致 → verified=false，
 // 计入 integrity 的 mismatchedItems。userId 哨兵 "__machine__" 不输出。
 
-import type { ExternalRelayConnectionSnapshot } from "../../../transport/relay/external-relay";
+import type { ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
 import type { AcpConnectionSnapshot } from "../../../types/store";
 import type { ChatClientSnapshot, KindProvider, Observation, ObserverContext } from "../types";
 

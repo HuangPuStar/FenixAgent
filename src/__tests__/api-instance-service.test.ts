@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { connectAgentInstance, setApiInstanceDeps } from "../services/api-instance";
+import { connectAgentInstance, setApiInstanceDeps } from "@fenix/agent-runtime/server";
 
 describe("api instance service", () => {
   beforeEach(() => {

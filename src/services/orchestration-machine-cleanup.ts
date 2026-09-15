@@ -21,7 +21,7 @@ const _deps = {
   // （避免与 chat-channel-bootstrap 的模块循环，同 orchestration-instance /
   // acp-idle-monitor 的既有模式）；测试注入 spy 验证接线，不依赖真实控制器装配。
   reclaimYjsDocs: (instanceId: string) =>
-    import("../transport/relay").then(({ reclaimInstanceYjsDocs }) => reclaimInstanceYjsDocs(instanceId)),
+    import("@fenix/agent-runtime/server").then(({ reclaimInstanceYjsDocs }) => reclaimInstanceYjsDocs(instanceId)),
 };
 const _defaultDeps = { ..._deps };
 

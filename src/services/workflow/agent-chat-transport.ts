@@ -9,6 +9,7 @@
  * - agent-chat-transport.ts（本文件）：桥接 agent-chat-service，实现 Transport 接口
  */
 
+import { agentInstanceService, connectAgentRelay } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
@@ -16,7 +17,6 @@ import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../apps/server/src/db";
 import { environment } from "../../../apps/server/src/db/schema";
-import { connectAgentRelay } from "../../transport/agent-relay";
 import { markInstanceRelayAttached, markInstanceRelayDetached, touchInstanceActivity } from "../acp-idle-monitor";
 import {
   type AgentSession as ChatAgentSession,
@@ -24,7 +24,6 @@ import {
   type PromptTurn,
   startPromptTurn,
 } from "../agent-chat-service";
-import { agentInstanceService } from "../agent-instance-service";
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../orchestration-instance";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 

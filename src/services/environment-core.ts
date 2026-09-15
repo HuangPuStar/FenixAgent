@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
+import { environmentRepo } from "@fenix/agent-runtime/server";
 import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
-import type { EnvironmentRecord } from "../repositories";
-import { environmentRepo } from "../repositories";
 import type { EnvironmentResponse } from "../types/api";
 import { stopInstancesForEnvironments } from "./orchestration-instance";
 
@@ -114,7 +114,7 @@ export async function getOwnedEnvironment(
  * 已校验归属）均在此前完成权限校验，环境内实例必然同属该环境。
  */
 export async function deleteEnvironment(envId: string): Promise<boolean> {
-  const { closeAcpConnectionsForEnvironments } = await import("../transport/acp-ws-handler");
+  const { closeAcpConnectionsForEnvironments } = await import("@fenix/agent-runtime/server");
   closeAcpConnectionsForEnvironments([envId]);
   await stopInstancesForEnvironments([envId]);
   return environmentRepo.delete(envId);

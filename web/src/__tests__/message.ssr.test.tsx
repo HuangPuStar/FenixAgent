@@ -4,9 +4,9 @@ import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import componentsEN from "@/src/i18n/locales/en/components.json";
 import componentsZH from "@/src/i18n/locales/zh/components.json";
 import { Message, MessageContent, MessageResponse } from "../../components/ai-elements/message";
-import { AssistantBubble, UserBubble } from "../../components/chat/MessageBubble";
-import { SubAgentPanel } from "../../components/chat/SubAgentPanel";
-import { SystemMessage } from "../../components/chat/SystemMessage";
+import { AssistantBubble, UserBubble } from "../components/chat/MessageBubble";
+import { SubAgentPanel } from "../components/chat/SubAgentPanel";
+import { SystemMessage } from "../components/chat/SystemMessage";
 
 async function renderStreaming(element: ReactNode) {
   const stream = await renderToReadableStream(element);

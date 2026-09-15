@@ -1,7 +1,7 @@
+import { agentInstanceService } from "@fenix/agent-runtime/server";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
-import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment";
 
 const defaultDeps = {

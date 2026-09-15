@@ -77,13 +77,13 @@ function _createMachineEntry(overrides: Partial<AcpConnectionEntry> = {}): AcpCo
 
 describe("findMachineConnectionById", () => {
   test("找到在线 machine 连接", async () => {
-    const { handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_001", "user_1", null, true);
 
     // 手动设置 machineId（模拟注册完成）
-    const { findMachineConnectionById: findById } = await import("../transport/acp-ws-handler");
+    const { findMachineConnectionById: findById } = await import("@fenix/agent-runtime/server");
     const result = findById("mach_001");
     // machineId 在注册前是 null，所以查找 null 不会匹配
     // 这个测试验证函数逻辑正确：machineId 不匹配时返回 null
@@ -92,7 +92,7 @@ describe("findMachineConnectionById", () => {
 
   test("找到在线 machine 连接（注册后）", async () => {
     // 直接测试函数逻辑 — 通过 connections Map 的内部状态
-    const { findMachineConnectionById } = await import("../transport/acp-ws-handler");
+    const { findMachineConnectionById } = await import("@fenix/agent-runtime/server");
 
     // 函数签名和导出验证
     const result = findMachineConnectionById("nonexistent");
@@ -100,13 +100,13 @@ describe("findMachineConnectionById", () => {
   });
 
   test("找不到离线 machine（readyState != 1）返回 null", async () => {
-    const { findMachineConnectionById } = await import("../transport/acp-ws-handler");
+    const { findMachineConnectionById } = await import("@fenix/agent-runtime/server");
     const result = findMachineConnectionById("mach_offline");
     expect(result).toBeNull();
   });
 
   test("忽略非 machine 连接", async () => {
-    const { findMachineConnectionById } = await import("../transport/acp-ws-handler");
+    const { findMachineConnectionById } = await import("@fenix/agent-runtime/server");
     // 即使有 machineId 匹配，非 machine 连接也会被忽略
     const result = findMachineConnectionById("mach_003");
     expect(result).toBeNull();
@@ -115,13 +115,13 @@ describe("findMachineConnectionById", () => {
 
 describe("sendToAgentWs", () => {
   test("缓存未命中时返回 false", async () => {
-    const { sendToAgentWs } = await import("../transport/acp-ws-handler");
+    const { sendToAgentWs } = await import("@fenix/agent-runtime/server");
     const result = sendToAgentWs("env_unknown", { type: "test" });
     expect(result).toBe(false);
   });
 
   test("缓存命中但连接已断时清除缓存并返回 false", async () => {
-    const { sendToAgentWs, setAgentMachineCache } = await import("../transport/acp-ws-handler");
+    const { sendToAgentWs, setAgentMachineCache } = await import("@fenix/agent-runtime/server");
 
     // 预设缓存指向不存在的 machineId
     setAgentMachineCache("env_stale", "mach_nonexistent");
@@ -132,7 +132,7 @@ describe("sendToAgentWs", () => {
 
 describe("handleAcpWsMessage — session 消息转发", () => {
   test("session_started 消息触发 onSessionMessage 回调", async () => {
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_s1", "user_s", null, true);
@@ -147,7 +147,7 @@ describe("handleAcpWsMessage — session 消息转发", () => {
   });
 
   test("无 onSessionMessage 时不崩溃", async () => {
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_s2", "user_s2", null, true);
@@ -161,7 +161,7 @@ describe("handleAcpWsMessage — session 消息转发", () => {
 describe("handleRegister 走 machine 路径", () => {
   // 注册消息携带 machine_id 时应触发 machine 注册流程。
   test("register 消息触发 handleMachineRegister 流程", async () => {
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_reg", "user_reg", null, true);
@@ -186,7 +186,7 @@ describe("handleRegister 走 machine 路径", () => {
     stubRegistry({
       registerMachine: async ({ machineId }: { machineId: string }) => ({ id: machineId, isNew: true }),
     });
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const firstWs = createMockWs();
     handleAcpWsOpen(firstWs, "ws_duplicate_first", "user_reg", null, true);
@@ -224,7 +224,7 @@ describe("handleRegister 走 machine 路径", () => {
           resolveRegistration = (result) => resolve(result ?? { id: machineId, isNew: true });
         }),
     });
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const firstWs = createMockWs();
     handleAcpWsOpen(firstWs, "ws_pending_first", "user_reg", null, true);
@@ -250,7 +250,7 @@ describe("handleRegister 走 machine 路径", () => {
 
   // 缺少 machine_id 时不得回退到历史 node_id。
   test("缺少 machine_id 时关闭连接", async () => {
-    const { handleAcpWsMessage, handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsMessage, handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_missing_machine", "user_reg", null, true);
@@ -267,7 +267,7 @@ describe("handleRegister 走 machine 路径", () => {
 
 describe("handleAcpWsOpen 非 machine 拒绝", () => {
   test("非 machine 连接被拒绝并关闭", async () => {
-    const { handleAcpWsOpen } = await import("../transport/acp-ws-handler");
+    const { handleAcpWsOpen } = await import("@fenix/agent-runtime/server");
 
     const ws = createMockWs();
     handleAcpWsOpen(ws, "ws_non_machine", "user_x", null, false);
@@ -280,7 +280,7 @@ describe("handleAcpWsOpen 非 machine 拒绝", () => {
 
 describe("findMachineConnectionByAgentId 导出验证", () => {
   test("函数已导出且接受 agentId 参数", async () => {
-    const { findMachineConnectionByAgentId } = await import("../transport/acp-ws-handler");
+    const { findMachineConnectionByAgentId } = await import("@fenix/agent-runtime/server");
     expect(typeof findMachineConnectionByAgentId).toBe("function");
     // 验证可以调用（会返回 null 因为 mock 环境没有真实数据）
     const result = await findMachineConnectionByAgentId("env_nonexistent");

@@ -1,9 +1,9 @@
+import { environmentRepo } from "@fenix/agent-runtime/server";
 import { eq } from "drizzle-orm";
 import { config } from "../../apps/server/src/config";
 import { db } from "../../apps/server/src/db";
 import { machine } from "../../apps/server/src/db/schema";
 import { AppError } from "../../apps/server/src/errors";
-import { environmentRepo } from "../repositories";
 import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repository";
 import { findReadableSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected } from "../transport/file-ws-handler";

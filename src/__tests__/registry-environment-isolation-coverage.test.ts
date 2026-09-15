@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
 import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
 import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
-import type { EnvironmentRecord } from "../repositories/environment";
 import {
   generateEnvSecret,
   getOwnedEnvironment,

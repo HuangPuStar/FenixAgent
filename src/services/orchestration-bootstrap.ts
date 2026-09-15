@@ -18,11 +18,12 @@
  */
 
 import { randomBytes } from "node:crypto";
+import type { ExecutionNodeResolver } from "@fenix/agent-runtime/server";
+import { environmentOrchestrationRepo } from "@fenix/agent-runtime/server";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
 import { config } from "../../apps/server/src/config";
 import { AppError } from "../../apps/server/src/errors";
-import { agentConfigRepo, agentEngineRepo, environmentOrchestrationRepo } from "../repositories";
-import type { ExecutionNodeResolver } from "../repositories/environment-orchestration";
+import { agentConfigRepo, agentEngineRepo } from "../repositories";
 import { resolveAgentNode } from "./config/agent-config";
 import { localNodeAwareAgentNodeService } from "./local-node-service";
 import { sandboxExecutionHandler } from "./sandbox";

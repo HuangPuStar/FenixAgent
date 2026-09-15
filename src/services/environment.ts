@@ -1,6 +1,12 @@
 // src/services/environment.ts — barrel re-export
 // 所有导出名称保持不变，下游 import 路径无需修改。
 
+// ── web ──
+export {
+  createWebEnvironment,
+  listEnvironmentsWithInstances,
+  updateWebEnvironment,
+} from "@fenix/agent-runtime/server";
 // ── acp ──
 export {
   createTemporaryEnvironment,
@@ -36,9 +42,3 @@ export {
   toResponse,
   validateWorkspacePath,
 } from "./environment-core";
-// ── web ──
-export {
-  createWebEnvironment,
-  listEnvironmentsWithInstances,
-  updateWebEnvironment,
-} from "./environment-web";

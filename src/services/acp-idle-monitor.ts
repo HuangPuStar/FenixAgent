@@ -4,17 +4,18 @@
 // 此文件保留：非交互式实例的空闲回收机制仍依赖它（routes/web/instances 的监控视图、
 // apps/server/src/main.ts 的定时器启停）。Chat 交互实例不再因 idle/activity 自动停止，但
 // scheduled / system 实例仍需要回收出口，避免后台任务长期泄漏。
-import type { RuntimeInstanceSnapshot } from "@fenix/core";
-import { createLogger } from "@fenix/logger";
-import { config } from "../../apps/server/src/config";
-import { findUsersBasicInfoByIds } from "../repositories";
-import { isActiveRuntimeStatus } from "./agent-concurrency";
+
 import {
   getInstance,
   type InstanceActivityInfo,
   stopInstance,
   toInstanceActivityInfo,
-} from "./agent-instance-runtime-projection";
+} from "@fenix/agent-runtime/server";
+import type { RuntimeInstanceSnapshot } from "@fenix/core";
+import { createLogger } from "@fenix/logger";
+import { config } from "../../apps/server/src/config";
+import { findUsersBasicInfoByIds } from "../repositories";
+import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { getCoreRuntime } from "./core-bootstrap";
 import { docManager } from "./doc-manager-instance";
 import { globalInstanceRegistry } from "./instance-registry";
@@ -171,7 +172,7 @@ async function reclaimInstance(
   supplement: NonNullable<ReturnType<typeof globalInstanceRegistry.get>>,
   reason: "inactive" | "idle",
 ): Promise<void> {
-  const { closeRelayConnectionsForIdleReclaim } = await import("../transport/relay");
+  const { closeRelayConnectionsForIdleReclaim } = await import("@fenix/agent-runtime/server");
   closeRelayConnectionsForIdleReclaim(snapshot.id);
 
   const result = await _deps.stopInstance(snapshot.id, supplement.organizationId);

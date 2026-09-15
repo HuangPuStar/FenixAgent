@@ -213,6 +213,9 @@ function createDbMock() {
 
 mock.module("../db", createDbMock);
 mock.module("../../../../db", createDbMock);
+// PHY-03 runtime 包直接引用宿主 DB；同时注册其规范绝对相对路径，避免 Bun 按导入
+// specifier 区分模块身份时绕过现有 `../db` 测试替身。
+mock.module("../../../../apps/server/src/db", createDbMock);
 
 // ── resource-permission repository ──
 
@@ -226,10 +229,10 @@ mock.module("../../../../src/repositories/resource-permission", () => ({
 // 注意：../repositories 等模块导出了对象实例（repo），不能使用 createLazyMock（仅适用于函数导出）。
 // 这些模块需要被测代码使用 DI 注入模式后才能安全加入 preload。当前保留 mock.module() 在测试文件中。
 
-// ── repositories/environment — 环境仓储（对象导出）──
+// ── agent-runtime 环境仓储（对象导出）──
 // 仅有 acp-machine-connection-lookup.test.ts 和 relay-handler-machine.test.ts 使用 mock
 
-mock.module("../../../../src/repositories/environment", () => {
+mock.module("../../../../packages/agent-runtime/src/server/repositories/environment", () => {
   // 用 Proxy 实时转发而非对象 getter：具名导入（如 environment-core 的
   // `import { environmentRepo } from "../../../../src/repositories"`）在模块首次求值时固化绑定，
   // getter 一次返回的对象引用会被缓存——若其他测试文件先求值该模块，
@@ -277,7 +280,9 @@ const REGISTRY_KEYS = [
   // 测试需经 stubRegistry 配置其行为
   "writeRegistryEvent",
 ] as const;
-mock.module("../../../../src/services/registry", () => createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn));
+mock.module("../../../../src/services/registry", () =>
+  createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn),
+);
 
 const REGISTRY_HEARTBEAT_KEYS = [
   "startHeartbeat",

@@ -1,8 +1,8 @@
 // PgEnvironmentOrchestrationRepo 的 machineId fallback 链测试（断裂点 4/5 回归）
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { type ExecutionNodeResolver, PgEnvironmentOrchestrationRepo } from "@fenix/agent-runtime/server";
 import { config, setConfig } from "../../apps/server/src/config";
 import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
-import { type ExecutionNodeResolver, PgEnvironmentOrchestrationRepo } from "../repositories/environment-orchestration";
 
 describe("PgEnvironmentOrchestrationRepo.getEnvironment", () => {
   const repo = new PgEnvironmentOrchestrationRepo();

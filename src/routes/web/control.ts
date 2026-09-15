@@ -1,11 +1,10 @@
+import { type AgentInstanceRecord, agentInstanceService, environmentRepo } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
-import { type AgentInstanceRecord, environmentRepo } from "../../repositories";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
-import { agentInstanceService } from "../../services/agent-instance-service";
 import { eventService } from "../../services/event-service";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";

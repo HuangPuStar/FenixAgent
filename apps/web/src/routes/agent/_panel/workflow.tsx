@@ -6,12 +6,8 @@ import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 
-const WorkflowList = lazy(() =>
-  import("@/src/pages/workflow/WorkflowList").then((m) => ({ default: m.WorkflowList })),
-);
-const WorkflowRuns = lazy(() =>
-  import("@/src/pages/workflow/WorkflowRuns").then((m) => ({ default: m.WorkflowRuns })),
-);
+const WorkflowList = lazy(() => import("@/src/pages/workflow/WorkflowList").then((m) => ({ default: m.WorkflowList })));
+const WorkflowRuns = lazy(() => import("@/src/pages/workflow/WorkflowRuns").then((m) => ({ default: m.WorkflowRuns })));
 
 function TabContentFallback() {
   return (

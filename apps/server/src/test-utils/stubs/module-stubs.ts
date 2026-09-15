@@ -27,7 +27,7 @@ export const launchSpecBuilderRegistry = createStubRegistry("launchSpecBuilder",
 // ../services/instance — 实例管理服务，2 个测试文件使用
 export const instanceRegistry = createStubRegistry("instance", false);
 
-// ../services/environment-web — 环境 Web API 服务，2 个测试文件使用
+// /agent-runtime/server — 环境 Web API 服务，2 个测试文件使用
 export const environmentWebRegistry = createStubRegistry("environmentWeb", false);
 
 // ../services/config/skill — skill 配置子模块，2 个测试文件使用
@@ -70,7 +70,7 @@ export const pgStorageAdapterRegistry = createStubRegistry("pgStorageAdapter", f
 // 路由测试通过 stubCustomTools({ getCustomToolsRegistry: () => ... }) 配置可控返回值
 export const customToolsRegistry = createStubRegistry("customTools", false);
 
-// ../repositories/environment — 环境仓储（对象导出），1 个测试文件使用
+// /agent-runtime/server — 环境仓储（对象导出），1 个测试文件使用
 // biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
 let _environmentRepoStub: Record<string, any> | null = null;
 export function stubEnvironmentRepo(overrides: Record<string, unknown>) {

@@ -2,9 +2,16 @@ import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/c
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ChatComposer } from "@/components/chat/ChatComposer";
+import { ChatView } from "@/components/chat/ChatView";
+import type { McpOption } from "@/components/chat/CommandMenu";
+import { derivePendingPermissions, deriveTodoItems } from "@/components/chat/chat-derived-state";
+import { prepareImageContent } from "@/components/chat/chat-image-content";
+import type { ChatInterfaceHandle, ChatInterfaceProps } from "@/components/chat/chat-interface-types";
+import { buildPromptText } from "@/components/chat/composer-prompt";
+import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
 import { agentApi } from "../src/api/agents";
-import { envApi } from "../src/api/environments";
 import { mcpApi } from "../src/api/mcp";
 import { getAgentConfigLookupKey } from "../src/lib/agent-resource-access";
 import { ChatStatsDispatcher } from "../src/lib/chat-stats";
@@ -13,13 +20,6 @@ import { extractChangedFiles } from "../src/lib/extract-changed-files";
 import { structuredToThreadEntries } from "../src/lib/structured-to-thread";
 import type { ChatInputMessage, ThreadEntry } from "../src/lib/types";
 import { ContextPanel } from "./ContextPanel";
-import { ChatComposer } from "./chat/ChatComposer";
-import { ChatView } from "./chat/ChatView";
-import type { McpOption } from "./chat/CommandMenu";
-import { derivePendingPermissions, deriveTodoItems } from "./chat/chat-derived-state";
-import { prepareImageContent } from "./chat/chat-image-content";
-import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat/chat-interface-types";
-import { buildPromptText } from "./chat/composer-prompt";
 
 const DEBUG_SENSITIVE_KEY = /(?:api[-_]?key|authorization|cookie|credential|password|secret|token|connectionString)/i;
 
@@ -49,13 +49,13 @@ function createDebugSnapshot(value: unknown, seen = new WeakSet<object>()): unkn
   );
 }
 
+import { ChatStatusPanel } from "@/components/chat/chat-status-panel";
+import { PeriTaskDetailSheet } from "@/components/chat/PeriTaskDetailSheet";
+import { PermissionPanel } from "@/components/chat/PermissionPanel";
+import { QuestionPanel } from "@/components/chat/QuestionPanel";
 import { Button } from "@/components/ui/button";
-import { ChatStatusPanel } from "./chat/chat-status-panel";
-import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
-import { PermissionPanel } from "./chat/PermissionPanel";
-import { QuestionPanel } from "./chat/QuestionPanel";
 
-export type { ChatInterfaceHandle } from "./chat/chat-interface-types";
+export type { ChatInterfaceHandle } from "@/components/chat/chat-interface-types";
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
   {

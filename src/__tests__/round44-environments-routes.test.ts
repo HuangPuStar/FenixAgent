@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "../../apps/server/src/errors";
 import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
@@ -9,7 +10,6 @@ import {
   stubCoreBootstrap,
   stubEnvironmentService,
 } from "../../apps/server/src/test-utils/helpers";
-import { agentInstanceService } from "../services/agent-instance-service";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
 
 const route = (await import("../routes/web/environments")).default;

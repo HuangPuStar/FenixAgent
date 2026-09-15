@@ -17,12 +17,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, LaunchInstanceRequest } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, setConfig } from "../../apps/server/src/config";
 import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
-import type { EnvironmentRecord, IEnvironmentRepo } from "../repositories/environment";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,

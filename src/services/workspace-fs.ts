@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { environmentRepo } from "../repositories";
+import { environmentRepo } from "@fenix/agent-runtime/server";
 import { resolveWorkspacePath as computeWorkspacePath } from "./workspace-resolver";
 
 // ── Constants ────────────────────────────────────────────────────────────────

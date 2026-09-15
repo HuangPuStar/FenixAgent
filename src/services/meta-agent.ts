@@ -11,10 +11,10 @@
 
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { auth } from "../../apps/server/src/auth/better-auth";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { agentInstanceService } from "./agent-instance-service";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import { syncAgentSkills } from "./config/agent-config-skill";
 import { getProvider, listProviders } from "./config/provider";
@@ -99,7 +99,7 @@ export interface EnsureMetaResult {
  * 用户维度隔离是干净的；这里只是把"查找"也按用户维度收敛。
  */
 export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: string; name: string } | null> {
-  const { environmentRepo } = await import("../repositories/environment");
+  const { environmentRepo } = await import("@fenix/agent-runtime/server");
   const envs = await environmentRepo.listByOrganizationId(ctx.organizationId);
   const meta = envs.find((e) => e.name === META_ENVIRONMENT_NAME && e.userId === ctx.userId);
   return meta ? { id: meta.id, name: meta.name } : null;
@@ -406,7 +406,7 @@ export async function ensureMetaEnvironment(ctx: AuthContext, request: Request):
     }
   }
 
-  const { createWebEnvironment } = await import("./environment-web");
+  const { createWebEnvironment } = await import("@fenix/agent-runtime/server");
   const env = await createWebEnvironment({
     name: META_ENVIRONMENT_NAME,
     description: "Meta Agent — 工作流编排助手（自动创建）",

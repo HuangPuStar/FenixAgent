@@ -1,7 +1,6 @@
+import { findRunningInstanceByEnvironment, sendToAgentWs, sendToInstanceRelay } from "@fenix/agent-runtime/server";
 import { log, error as logError } from "@fenix/logger";
 import { eventService } from "../services/event-service";
-import { sendToAgentWs, sendToInstanceRelay } from "../transport/relay";
-import { findRunningInstanceByEnvironment } from "./agent-instance-runtime-projection";
 import { findBindingForMessage } from "./channel-binding";
 
 // --- Types ---

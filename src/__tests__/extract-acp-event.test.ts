@@ -1,6 +1,6 @@
 // src/__tests__/extract-acp-event.test.ts
 import { expect, test } from "bun:test";
-import { extractAcpEvent } from "../transport/relay/relay-handler";
+import { extractAcpEvent } from "@fenix/agent-runtime/server";
 
 // 原始引擎格式：type=agent_message_chunk
 test("extracts raw engine type", () => {

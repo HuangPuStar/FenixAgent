@@ -228,7 +228,7 @@ export async function restartAgentConfigInstances(
   if (environmentIds.length === 0) return { environmentIds, restartedInstanceIds: [] };
 
   // 惰性导入避免 agent-config → agent-instance-service → orchestration-instance → config 的循环依赖。
-  const { agentInstanceService } = await import("../agent-instance-service");
+  const { agentInstanceService } = await import("@fenix/agent-runtime/server");
   const restartedInstanceIds = await agentInstanceService.restartActiveInstancesForEnvironments(environmentIds);
   return { environmentIds, restartedInstanceIds };
 }
@@ -252,7 +252,7 @@ export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise
   if (boundEnvs.length > 0) {
     const environmentIds = boundEnvs.map((env) => env.id);
     // 先关闭本地 ACP 连接，再停止运行实例；否则客户端仍会用已删除环境继续发消息。
-    const { closeAcpConnectionsForEnvironments } = await import("../../transport/acp-ws-handler");
+    const { closeAcpConnectionsForEnvironments } = await import("@fenix/agent-runtime/server");
     closeAcpConnectionsForEnvironments(environmentIds);
 
     // 动态 import 打破模块循环：orchestration-instance 顶层静态 import ./config 的

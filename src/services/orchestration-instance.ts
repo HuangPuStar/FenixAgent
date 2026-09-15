@@ -13,14 +13,13 @@
  * 收敛回编排域 LaunchSpec 的数据面，避免双份构建。
  */
 
+import { environmentRepo, setAgentMachineCache } from "@fenix/agent-runtime/server";
 import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "../../apps/server/src/config";
 import { NotFoundError } from "../../apps/server/src/errors";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { environmentRepo } from "../repositories";
-import { setAgentMachineCache } from "../transport/acp-ws-handler";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { getReadableAgentConfigById } from "./config";
@@ -40,14 +39,14 @@ const _deps = {
   // shared relay 及 listener 会残留为 Observer 中的孤儿 chat-relay；惰性导入避免
   // 与 chat-channel-bootstrap 的模块循环，测试可注入 spy 验证顺序。
   closeRelayConnectionsForStoppedInstance: (instanceId: string) =>
-    import("../transport/relay").then(({ closeRelayConnectionsForStoppedInstance }) =>
+    import("@fenix/agent-runtime/server").then(({ closeRelayConnectionsForStoppedInstance }) =>
       closeRelayConnectionsForStoppedInstance(instanceId),
     ),
   // SP-C2：实例停止完成后回收其内存 Y.Doc。默认经 transport/relay 惰性导入
   // （避免与 chat-channel-bootstrap 的模块循环，同 acp-idle-monitor 的既有模式）；
   // 测试注入 spy 验证接线，不依赖真实控制器装配。
   reclaimYjsDocs: (instanceId: string) =>
-    import("../transport/relay").then(({ reclaimInstanceYjsDocs }) => reclaimInstanceYjsDocs(instanceId)),
+    import("@fenix/agent-runtime/server").then(({ reclaimInstanceYjsDocs }) => reclaimInstanceYjsDocs(instanceId)),
 };
 const _defaultDeps = { ..._deps };
 

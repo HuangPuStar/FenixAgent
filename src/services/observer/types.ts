@@ -10,8 +10,7 @@
 // ExternalRelayConnectionSnapshot 定义于 src/transport/relay/external-relay.ts，
 // 这里仅 import type（编译期擦除），避免把 relay 模块运行时图拖进观察链路。
 
-import type { EnvironmentRecord } from "../../repositories";
-import type { ExternalRelayConnectionSnapshot } from "../../transport/relay/external-relay";
+import type { EnvironmentRecord, ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
 import type { AcpConnectionSnapshot } from "../../types/store";
 
 /** acp-link kind 的三类现场来源（linkId 前缀 = source，见 §4.4 linkId 归一化）。 */
