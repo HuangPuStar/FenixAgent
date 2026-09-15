@@ -1,3 +1,5 @@
+import * as configPg from "@fenix/model-management/server";
+import { buildModelData } from "@fenix/model-management/server";
 import Elysia from "elysia";
 import { AppError } from "../../../apps/server/src/errors";
 import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
@@ -23,8 +25,6 @@ import {
   type ApiProviderUpsertBody,
   ApiProviderUpsertBodySchema,
 } from "../../schemas/api-model.schema";
-import * as configPg from "../../services/config/index";
-import { buildModelData } from "../../services/config/provider";
 
 /**
  * 将业务异常映射到对外 API 的稳定错误结构。

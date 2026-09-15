@@ -165,7 +165,7 @@ describe("architecture check CLI", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain("model-icon-boundary");
-    expect(result.stdout).toContain("web/components/model-icon/");
+    expect(result.stdout).toContain("model-management 的 model-icon 组件");
   });
 
   // 前端请求只能使用当前协议前缀，重新引入历史 /v1、/v2 URL 必须失败。
@@ -185,7 +185,8 @@ describe("architecture check CLI", () => {
   test("accepts imports through documented public boundaries", async () => {
     const root = await createFixture({
       "src/services/chat-service.ts": 'import { createYjsStore } from "@fenix/chat-channel";\nvoid createYjsStore;\n',
-      "web/components/model-icon/model-icon-map.ts": 'import { OpenAI } from "@lobehub/icons";\nvoid OpenAI;\n',
+      "packages/model-management/web/components/model-icon/model-icon-map.ts":
+        'import { OpenAI } from "@lobehub/icons";\nvoid OpenAI;\n',
       "web/src/__tests__/session.test.ts":
         'import { createSessionDoc } from "@fenix/chat-channel/server";\nvoid createSessionDoc;\n',
       "web/src/api/tasks.ts":

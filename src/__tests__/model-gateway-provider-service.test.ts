@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import { getProviderById } from "../services/config/provider";
-import type { ProviderUpsertData } from "../services/config/types";
-import { createModelGatewayAdapterRegistry } from "../services/model-gateway/adapter-registry";
-import { createSystemModelGatewayProviderService } from "../services/model-gateway/provider-service";
+import {
+  createModelGatewayAdapterRegistry,
+  createSystemModelGatewayProviderService,
+  getProviderById,
+  type ProviderUpsertData,
+} from "@fenix/model-management/server";
 
 const fakeAdapter: ModelGatewayAdapter = {
   type: "litellm",

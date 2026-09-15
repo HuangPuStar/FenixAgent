@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { CardEventEmitter } from "@/src/lib/card-renderer/emitter";
 import {
   buildProviderInlineTestPayload,
   formatOptionalNumber,
   getProviderColor,
   parseOptionalNonNegativeNumber,
-} from "../pages/agent-panel/pages/agent-models-utils";
+} from "@fenix/model-management";
+import { CardEventEmitter } from "@/src/lib/card-renderer/emitter";
 
 describe("CardEventEmitter", () => {
   // 同一事件的多个订阅者应按订阅关系接收原始载荷。

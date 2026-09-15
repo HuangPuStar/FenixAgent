@@ -6,6 +6,11 @@ interceptConsole();
 const startupLog = createLogger("rcs");
 
 import { agentInstanceService, closeAllAcpConnections, closeAllRelayConnections } from "@fenix/agent-runtime/server";
+import {
+  apiSystemModelGatewayRoutes,
+  createModelGatewayRuntime,
+  createSystemModelGatewayProviderService,
+} from "@fenix/model-management/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import acpRoutes from "../../../src/routes/acp";
@@ -22,7 +27,6 @@ import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
 import apiSkillsRoutes from "../../../src/routes/api/skills";
 import apiSystemRoutes from "../../../src/routes/api/system";
 import apiSystemLogsRoutes from "../../../src/routes/api/system-logs";
-import apiSystemModelGatewayRoutes from "../../../src/routes/api/system-model-gateway";
 import apiSystemObserverRoutes from "../../../src/routes/api/system-observer";
 import apiSystemPeopleTreeRoutes from "../../../src/routes/api/system-people-tree";
 import apiWorkflowRoutes from "../../../src/routes/api/workflows";
@@ -38,8 +42,6 @@ import { runDataMigrations } from "../../../src/services/data-migrate";
 import { getHermesClient, initHermesClient } from "../../../src/services/hermes-client";
 import { checkRagFlowHealth } from "../../../src/services/knowledge-provider/ragflow";
 import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
-import { createSystemModelGatewayProviderService } from "../../../src/services/model-gateway/provider-service";
-import { createModelGatewayRuntime } from "../../../src/services/model-gateway/runtime";
 import { registerConfiguredSandboxProviders, sandboxManager } from "../../../src/services/sandbox";
 import { initializeDefaultSandboxPool } from "../../../src/services/sandbox/sandbox-default-pool";
 import { schedulerService } from "../../../src/services/scheduler/index";

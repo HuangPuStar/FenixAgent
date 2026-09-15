@@ -4,14 +4,11 @@ import type {
   GatewayCredentialSecret,
   ModelGatewayAdapter,
 } from "@fenix/model-gateway-sdk";
-import type {
-  ModelGatewayCredentialSubject,
-  UpsertModelGatewayCredentialInput,
-} from "../repositories/model-gateway-credential";
+import type { ModelGatewayCredentialSubject, UpsertModelGatewayCredentialInput } from "@fenix/model-management/server";
 import {
   createModelGatewayCredentialService,
   type ModelGatewayCredentialServiceDeps,
-} from "../services/model-gateway/credential-service";
+} from "@fenix/model-management/server";
 
 function createAdapter(
   created: GatewayCredentialSecret[] = [],

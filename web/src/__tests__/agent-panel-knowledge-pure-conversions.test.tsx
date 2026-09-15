@@ -1,4 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import {
+  cardKindToStyle,
+  isHindsightTool,
+  kindLabel,
+  simplifyToolName,
+  supportsFilePreview,
+  truncate,
+} from "@/components/chat/tool-call-utils";
 import { getFileCategory } from "../../components/knowledge/ResourcePreviewContent";
 import {
   buildPreviewUrl,
@@ -7,14 +15,6 @@ import {
   formatFileSize,
   getPreviewMimeType,
 } from "../components/agent-panel/preview/utils";
-import {
-  cardKindToStyle,
-  isHindsightTool,
-  kindLabel,
-  simplifyToolName,
-  supportsFilePreview,
-  truncate,
-} from "../components/chat/tool-call-utils";
 
 describe("Agent panel 文件预览纯转换", () => {
   // 路径段编码必须保留 URL 的分层语义，并额外转义 encodeURIComponent 默认遗漏的括号。

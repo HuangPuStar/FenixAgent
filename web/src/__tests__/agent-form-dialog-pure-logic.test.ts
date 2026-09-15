@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { buildUploadUrl } from "../api/fs";
 import {
   canManageAgentSharing,
@@ -23,7 +24,6 @@ import {
   getMcpDisplayName,
   getMcpResourceBadgeKey,
 } from "../lib/mcp-resource-access";
-import { buildModelOptions } from "../lib/model-config-utils";
 import { mapSkillOptions, normalizeSkillOptionsPayload } from "../lib/skill-resource-access";
 import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";

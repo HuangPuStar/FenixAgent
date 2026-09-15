@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  type ModelGatewayServices,
+  apiSystemModelGatewayRoutes as modelGatewayRoutes,
+  setModelGatewayServices,
+} from "@fenix/model-management/server";
 import { config, setConfig } from "../../apps/server/src/config";
-import modelGatewayRoutes from "../routes/api/system-model-gateway";
-import { type ModelGatewayServices, setModelGatewayServices } from "../services/model-gateway";
 
 const originalAdminUiUrl = config.modelGatewayAdminUiUrl;
 const originalSystemApiKeys = process.env.RCS_SYSTEM_API_KEYS;
@@ -20,7 +23,7 @@ describe("model gateway configuration route", () => {
   test("mounts the system model gateway routes in the server entrypoint", async () => {
     const source = await readFile(resolve(import.meta.dir, "../../apps/server/src/main.ts"), "utf8");
 
-    expect(source).toContain('import apiSystemModelGatewayRoutes from "../../../src/routes/api/system-model-gateway";');
+    expect(source).toContain("apiSystemModelGatewayRoutes");
     expect(source).toContain(".use(apiSystemModelGatewayRoutes)");
   });
 

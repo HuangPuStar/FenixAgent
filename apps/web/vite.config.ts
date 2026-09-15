@@ -26,6 +26,9 @@ export default defineConfig({
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
+      "@/src/api/models": path.resolve(__dirname, "../../packages/model-management/web/api/models.ts"),
+      "@/src/api/providers": path.resolve(__dirname, "../../packages/model-management/web/api/providers.ts"),
+      "@/src/api/model-gateway": path.resolve(__dirname, "../../packages/model-management/web/api/model-gateway.ts"),
       "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
       "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
       "@/src/hooks/use-chat-state": path.resolve(__dirname, "../../packages/agent-runtime/web/hooks/use-chat-state.ts"),
@@ -50,6 +53,35 @@ export default defineConfig({
         "../../packages/agent-runtime/web/agent-panel/session-mutation-refresh.ts",
       ),
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
+      "@/src/lib/model-config-utils": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/lib/model-config-utils.ts",
+      ),
+      "@/src/lib/model-gateway-usage": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/lib/model-gateway-usage.ts",
+      ),
+      "@/src/pages/admin/AdminModelGatewayPage": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/pages/admin/AdminModelGatewayPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentModelsPage": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/VerticalModelsPage": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx",
+      ),
+      "@/components/config/ModelConfigDialog": path.resolve(
+        __dirname,
+        "../../packages/model-management/web/components/config/ModelConfigDialog.tsx",
+      ),
+      "@/components/model-icon": path.resolve(__dirname, "../../packages/model-management/web/components/model-icon"),
       "@/src/lib/auth-client": path.resolve(__dirname, "src/lib/auth-client.ts"),
       "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),
       "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),

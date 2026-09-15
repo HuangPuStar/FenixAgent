@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { resetDbStub, stubDb } from "../../apps/server/src/test-utils/stubs/db-stub";
 import {
+  createModelGatewayCredentialCipher,
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
   listModelGatewayCredentialsAfter,
   upsertModelGatewayCredential,
-} from "../repositories/model-gateway-credential";
-import { createModelGatewayCredentialCipher } from "../services/model-gateway/credential-cipher";
+} from "@fenix/model-management/server";
+import { resetDbStub, stubDb } from "../../apps/server/src/test-utils/stubs/db-stub";
 
 const KEY = "a".repeat(32);
 

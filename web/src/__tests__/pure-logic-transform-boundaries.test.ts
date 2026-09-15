@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
-import { buildModelOptions } from "../lib/model-config-utils";
 import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall, parseTodosFromRawInput } from "../lib/todo";
 import type { TodoItem } from "../lib/types";
 import type { ModelEntry, ResourceAccess } from "../types/config";

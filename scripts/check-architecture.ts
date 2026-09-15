@@ -148,9 +148,10 @@ const RULES: readonly ArchitectureRule[] = [
   }),
   createImportRule({
     id: "model-icon-boundary",
-    appliesToFile: ({ relativePath }) => !relativePath.startsWith("web/components/model-icon/"),
+    appliesToFile: ({ relativePath }) =>
+      !relativePath.startsWith("packages/model-management/web/components/model-icon/"),
     isForbidden: ({ specifier }) => specifier === "@lobehub/icons" || specifier.startsWith("@lobehub/icons/"),
-    message: () => "模型品牌图标只能由 web/components/model-icon/ 封装",
+    message: () => "模型品牌图标只能由 model-management 的 model-icon 组件封装",
   }),
   {
     check(context) {

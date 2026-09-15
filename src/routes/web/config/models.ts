@@ -1,3 +1,4 @@
+import * as configPg from "@fenix/model-management/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { AppError } from "../../../../apps/server/src/errors";
@@ -8,7 +9,7 @@ import {
   ModelPreferencesResponseSchema,
   ModelRefreshResponseSchema,
 } from "../../../schemas/config.schema";
-import * as configPg from "../../../services/config/index";
+import { getUserConfig, setUserConfig } from "../../../services/config/user-config";
 import { configError, configSuccess } from "../../../services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
@@ -119,7 +120,7 @@ async function getAvailable(ctx: AuthContext, forceRefresh = false): Promise<Mod
 }
 
 async function handleGet(ctx: AuthContext) {
-  const uc = await configPg.getUserConfig(ctx);
+  const uc = await getUserConfig(ctx);
   const available = await getAvailable(ctx);
   return configSuccess({
     current: {
@@ -143,13 +144,13 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
     const err = await assertReadableModelRef(ctx, data.small_model);
     if (err) return err;
   }
-  await configPg.setUserConfig(ctx, {
+  await setUserConfig(ctx, {
     currentModel: data.model,
     smallModel: data.small_model,
     permission: data.permission as import("../../../services/config/types").PermissionConfig | null,
   });
   cachedAvailableByOrg.delete(ctx.organizationId);
-  const uc = await configPg.getUserConfig(ctx);
+  const uc = await getUserConfig(ctx);
   return configSuccess({
     model: uc.currentModel ?? null,
     small_model: uc.smallModel ?? null,

@@ -43,21 +43,6 @@ export {
   updateMcpServerById,
   validateMcpConfig,
 } from "./mcp-server";
-export { addModel, removeModel, removeModelById, updateModel, updateModelById } from "./model";
-export {
-  assertProviderInternalWritable,
-  assertProviderInternalWritableById,
-  buildModelData,
-  deleteProvider,
-  deleteProviderById,
-  getProvider,
-  getProviderById,
-  getProviderByResourceKey,
-  listProviders,
-  listReadableProviders,
-  updateProviderById,
-  upsertProvider,
-} from "./provider";
 export {
   deleteSkill,
   deleteSkillById,
@@ -78,16 +63,8 @@ export type {
   McpServerConfig,
   McpServerInfoOutput,
   McpServerSetOptions,
-  ModelCostConfig,
-  ModelEntryWithProviderAccess,
-  ModelLimitConfig,
-  ModelModalities,
-  ModelOptions,
   PermissionAction,
   PermissionConfig,
-  ProviderExtraOptions,
-  ProviderSetOptions,
-  ProviderUpsertData,
   ResourceAccess,
   ResourceAccessInput,
   SkillConfigRowWithAccess,

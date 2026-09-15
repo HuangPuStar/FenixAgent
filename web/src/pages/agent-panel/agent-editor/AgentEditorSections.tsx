@@ -20,7 +20,9 @@ type Props = {
   onCopyAgentId: () => void;
 };
 const ModelIcon = lazy(() =>
-  import("@/components/model-icon/ModelIcon").then((module) => ({ default: module.ModelIcon })),
+  import("../../../../../packages/model-management/web/components/model-icon/ModelIcon").then((module) => ({
+    default: module.ModelIcon,
+  })),
 );
 
 const capabilityIcons = { skills: Sparkles, mcp: Plug, sites: Globe2 } as const;
