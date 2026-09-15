@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "../../../apps/server/src/db";
-import { model, provider } from "../../../apps/server/src/db/schema";
-import { NotFoundError } from "../../../apps/server/src/errors";
-import type { AuthContext } from "../../../apps/server/src/plugins/auth";
-import { assertInternalWritable } from "../resource-permission";
-import type { ModelCostConfig, ModelLimitConfig, ModelModalities, ModelOptions } from "./types";
+import { db } from "../../../../../apps/server/src/db";
+import { model, provider } from "../../../../../apps/server/src/db/schema";
+import { NotFoundError } from "../../../../../apps/server/src/errors";
+import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
+import { assertInternalWritable } from "../../../../../src/services/resource-permission";
+import type { ModelCostConfig, ModelLimitConfig, ModelModalities, ModelOptions } from "./model-provider-types";
 
 // ────────────────────────────────────────────
 // Model 操作

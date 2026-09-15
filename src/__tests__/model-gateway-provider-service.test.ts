@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import { getProviderById } from "../services/config/provider";
-import type { ProviderUpsertData } from "../services/config/types";
+import { getProviderById, type ProviderUpsertData } from "@fenix/model-management/server";
 import { createModelGatewayAdapterRegistry } from "../services/model-gateway/adapter-registry";
 import { createSystemModelGatewayProviderService } from "../services/model-gateway/provider-service";
 

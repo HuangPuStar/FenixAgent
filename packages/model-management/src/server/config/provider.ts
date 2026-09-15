@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../../apps/server/src/db";
-import { model, provider } from "../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../apps/server/src/plugins/auth";
+import { db } from "../../../../../apps/server/src/db";
+import { model, provider } from "../../../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
 import {
   assertInternalWritable,
   buildExternalPublicReadMap,
@@ -9,7 +9,7 @@ import {
   decorateResourceAccess,
   listReadableResourceRefs,
   setPublicRead,
-} from "../resource-permission";
+} from "../../../../../src/services/resource-permission";
 import type {
   ModelCostConfig,
   ModelDataInput,
@@ -19,8 +19,8 @@ import type {
   ModelOptions,
   ProviderSetOptions,
   ProviderUpsertData,
-  ResourceAccess,
-} from "./types";
+} from "./model-provider-types";
+import type { ResourceAccess } from "../../../../../src/services/config/types";
 
 // ────────────────────────────────────────────
 // Provider 操作

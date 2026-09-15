@@ -12,6 +12,8 @@
  *   DELETE /config/providers/actions/models/:modelId?name=xxx     → 删除模型
  */
 
+import * as configPg from "@fenix/model-management/server";
+import { buildModelData } from "@fenix/model-management/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { AppError } from "../../../../apps/server/src/errors";
@@ -23,8 +25,6 @@ import {
   ProviderFetchModelsResponseSchema,
   ProviderSaveResponseSchema,
 } from "../../../schemas/config.schema";
-import * as configPg from "../../../services/config/index";
-import { buildModelData } from "../../../services/config/provider";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
 import { invalidateAvailableCache } from "./models";
 

@@ -1,11 +1,17 @@
 import { error as logError } from "@fenix/logger";
 import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
+import {
+  addModel,
+  getProvider,
+  getProviderById,
+  type ProviderUpsertData,
+  removeModel,
+  updateModel,
+  upsertProvider,
+} from "@fenix/model-management/server";
 import { sql } from "drizzle-orm";
 import { db } from "../../../apps/server/src/db";
 import type { AuthContext } from "../../../apps/server/src/plugins/auth";
-import { addModel, removeModel, updateModel } from "../config/model";
-import { getProvider, getProviderById, upsertProvider } from "../config/provider";
-import type { ProviderUpsertData } from "../config/types";
 import { setPublicRead } from "../resource-permission";
 import { ensureSystemAdmin } from "../system-admin";
 

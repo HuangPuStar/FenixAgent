@@ -5,17 +5,7 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": "../..",
-    "paths": {
-      "@server/*": ["apps/server/src/*"],
-      "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["web/components/*"],
-      "@/src/i18n/locales/*": ["web/src/i18n/locales/*"],
-      "@/src/i18n": ["apps/web/src/i18n/index.ts"],
-      "@/src/api/request": ["apps/web/src/api/request.ts"],
-      "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
-      "@/src/*": ["web/src/*"]
-    }
+    "rootDir": "../.."
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]
 }

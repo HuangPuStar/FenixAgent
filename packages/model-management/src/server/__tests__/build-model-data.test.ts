@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 // 测试 provider.ts 的 buildModelData 纯函数：前端字段 → PG 字段映射
-const { buildModelData } = await import("../services/config/provider");
+const { buildModelData } = await import("../config/provider");
 
 describe("buildModelData", () => {
   // 完整字段映射
