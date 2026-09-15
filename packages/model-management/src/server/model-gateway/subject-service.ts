@@ -1,8 +1,8 @@
 import { and, ilike, or } from "drizzle-orm";
-import { db } from "../../../apps/server/src/db";
-import { agentConfig } from "../../../apps/server/src/db/schema";
-import { findModelGatewayUsers } from "../../repositories/model-gateway-subject";
-import type { SystemApiPagination, SystemApiUserRecord } from "../system-api";
+import { db } from "../../../../../apps/server/src/db";
+import { agentConfig } from "../../../../../apps/server/src/db/schema";
+import { findModelGatewayUsers } from "../repositories/model-gateway-subject";
+import type { SystemApiPagination, SystemApiUserRecord } from "../../../../../src/services/system-api";
 
 export interface ModelGatewaySubjectAgent {
   id: string;

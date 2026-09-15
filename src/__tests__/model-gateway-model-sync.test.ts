@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
 import type { ModelUpsertData } from "@fenix/model-management/server";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import {
   createSystemModelGatewayProviderService,
   type ModelGatewayModelSyncDeps,
-} from "../services/model-gateway/provider-service";
+} from "@fenix/model-management/server";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 
 const adminContext = {
   organizationId: "admin-org",

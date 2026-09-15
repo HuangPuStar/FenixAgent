@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createModelGatewaySubjectService } from "../services/model-gateway/subject-service";
+import { createModelGatewaySubjectService } from "@fenix/model-management/server";
 
 describe("model gateway subject service", () => {
   // 验证用户候选查询保留关键字和组织条件，Agent 查询保留组织和属主筛选条件。

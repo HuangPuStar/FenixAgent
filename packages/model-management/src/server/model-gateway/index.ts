@@ -15,6 +15,7 @@ export {
   type SubjectSearchInput,
 } from "./subject-service";
 export { type AggregatedUsage, createModelGatewayUsageService, type UsageQueryInput } from "./usage-service";
+export { createModelGatewayUsageMappingLister, type ListUsageCredentialMappingsInput } from "./usage-mapping-service";
 
 import type { createModelGatewayBudgetService } from "./budget-service";
 import type { createModelGatewayKeyManagementService } from "./key-management-service";

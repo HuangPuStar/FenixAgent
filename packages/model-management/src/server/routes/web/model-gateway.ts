@@ -1,12 +1,12 @@
 import Elysia from "elysia";
-import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
+import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
 import {
   WebModelGatewayErrorResponseSchema,
   WebModelGatewayUsageParamsSchema,
   WebModelGatewayUsageQuerySchema,
   WebModelGatewayUsageResponseSchema,
 } from "../../schemas/web-model-gateway.schema";
-import { getModelGatewayServices } from "../../services/model-gateway";
+import { getModelGatewayServices } from "../../model-gateway";
 
 const app = new Elysia({ name: "web-model-gateway", prefix: "/model-gateway" }).use(authGuardPlugin).model({
   "web-model-gateway-usage": WebModelGatewayUsageResponseSchema,

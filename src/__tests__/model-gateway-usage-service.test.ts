@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import { createModelGatewayUsageService } from "../services/model-gateway/usage-service";
+import { createModelGatewayUsageService } from "@fenix/model-management/server";
 
 function createAdapter(): ModelGatewayAdapter {
   return {

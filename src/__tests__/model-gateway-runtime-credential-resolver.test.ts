@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createModelGatewayRuntimeCredentialResolver } from "../services/model-gateway/runtime-credential-resolver";
+import { createModelGatewayRuntimeCredentialResolver } from "@fenix/model-management/server";
 
 describe("model gateway runtime credential resolver", () => {
   // 预算已用尽时拒绝解析或创建动态 Key，避免 Agent 带着无效凭证启动。

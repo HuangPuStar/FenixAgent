@@ -1,4 +1,4 @@
-import type { ModelGatewayCredentialStatus } from "../../repositories/model-gateway-credential";
+import type { ModelGatewayCredentialStatus } from "../repositories/model-gateway-credential";
 
 const USAGE_MAPPING_BATCH_SIZE = 500;
 const USAGE_MAPPING_STATUSES: ModelGatewayCredentialStatus[] = ["active", "blocked", "error"];

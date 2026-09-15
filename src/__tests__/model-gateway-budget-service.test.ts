@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import { createModelGatewayBudgetService } from "../services/model-gateway/budget-service";
-import { stableInternalUserId } from "../services/model-gateway/credential-service";
+import { createModelGatewayBudgetService, stableInternalUserId } from "@fenix/model-management/server";
 
 function createAdapter() {
   const updates: string[] = [];

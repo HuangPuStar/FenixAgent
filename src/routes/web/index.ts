@@ -1,3 +1,4 @@
+import { webModelGatewayRoutes as webModelGateway } from "@fenix/model-management/server";
 import Elysia from "elysia";
 import webAgentGeneration from "./agent-generation";
 import webAgentSites from "./agent-sites";
@@ -12,7 +13,6 @@ import webHindsight from "./hindsight";
 import webInstances from "./instances";
 import webKnowledgeBases from "./knowledge-bases";
 import webMetaAgent from "./meta-agent";
-import webModelGateway from "./model-gateway";
 import webOrganizations from "./organizations";
 import webPeriTaskDetails from "./peri-task-details";
 import webProdViews from "./prod-views";

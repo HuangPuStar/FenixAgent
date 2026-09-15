@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
-import { db } from "../../apps/server/src/db";
-import { modelGatewayCredential } from "../../apps/server/src/db/schema";
+import { db } from "../../../../../apps/server/src/db";
+import { modelGatewayCredential } from "../../../../../apps/server/src/db/schema";
 
 export type ModelGatewayCredential = typeof modelGatewayCredential.$inferSelect;
 export type ModelGatewayCredentialStatus = ModelGatewayCredential["status"];

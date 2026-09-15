@@ -1,9 +1,9 @@
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { sql } from "drizzle-orm";
-import { config } from "../../../apps/server/src/config";
-import { db } from "../../../apps/server/src/db";
-import { agentConfig, member, organization, user } from "../../../apps/server/src/db/schema";
-import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
+import { config } from "../../../../../apps/server/src/config";
+import { db } from "../../../../../apps/server/src/db";
+import { agentConfig, member, organization, user } from "../../../../../apps/server/src/db/schema";
+import { findAgentConfigNamesByIds } from "../../../../../src/repositories/agent-config";
 import {
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,
@@ -12,10 +12,10 @@ import {
   listModelGatewayCredentialsPage,
   updateModelGatewayCredentialStatus,
   upsertModelGatewayCredential,
-} from "../../repositories/model-gateway-credential";
-import { organizationRepo } from "../../repositories/organization";
-import { findUsersBasicInfoByIds } from "../../repositories/user";
-import { canReadResource } from "../resource-permission";
+} from "../repositories/model-gateway-credential";
+import { organizationRepo } from "../../../../../src/repositories/organization";
+import { findUsersBasicInfoByIds } from "../../../../../src/repositories/user";
+import { canReadResource } from "../../../../../src/services/resource-permission";
 import { createModelGatewayBudgetService } from "./budget-service";
 import { createModelGatewayCredentialCipher } from "./credential-cipher";
 import { createModelGatewayCredentialService } from "./credential-service";

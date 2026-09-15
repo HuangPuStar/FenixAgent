@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createModelGatewayUsageMappingLister,
   type ListUsageCredentialMappingsInput,
-} from "../services/model-gateway/usage-mapping-service";
+} from "@fenix/model-management/server";
 
 describe("model gateway usage mapping lister", () => {
   // 用量查询必须只读取目标 Provider 的全部映射，不能混入其他 Provider 或被单批大小截断。

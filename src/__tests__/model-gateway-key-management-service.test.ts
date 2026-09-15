@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ModelGatewayError } from "@fenix/model-gateway-sdk";
-import { createModelGatewayKeyManagementService } from "../services/model-gateway/key-management-service";
+import { createModelGatewayKeyManagementService } from "@fenix/model-management/server";
 
 const mapping = (id: string) => ({
   id,

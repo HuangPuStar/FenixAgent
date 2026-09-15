@@ -3,7 +3,7 @@ import type {
   ModelGatewayCredential,
   ModelGatewayCredentialSubject,
   UpsertModelGatewayCredentialInput,
-} from "../../repositories/model-gateway-credential";
+} from "../repositories/model-gateway-credential";
 import type { ModelGatewayCredentialCipher } from "./credential-cipher";
 
 export interface ResolveModelGatewayCredentialInput extends ModelGatewayCredentialSubject {

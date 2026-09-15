@@ -1,7 +1,7 @@
 import { error as logError } from "@fenix/logger";
 import Elysia from "elysia";
-import { config } from "../../../apps/server/src/config";
-import { systemApiAuthPlugin } from "../../../apps/server/src/plugins/system-api-auth";
+import { config } from "../../../../../../apps/server/src/config";
+import { systemApiAuthPlugin } from "../../../../../../apps/server/src/plugins/system-api-auth";
 import {
   ModelGatewayAgentSubjectSchema,
   ModelGatewayApiErrorResponseSchema,
@@ -26,7 +26,7 @@ import {
   ModelGatewayUserIdParamsSchema,
   ModelGatewayUserListResponseSchema,
 } from "../../schemas/api-model-gateway.schema";
-import { getModelGatewayServices } from "../../services/model-gateway";
+import { getModelGatewayServices } from "../../model-gateway";
 
 function toUserResponse(user: {
   id: string;
