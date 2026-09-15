@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-
-import { issueToken, resolveToken } from "../auth/token";
 import { resetAllRepos } from "../../../../src/repositories";
+import { issueToken, resolveToken } from "../auth/token";
 
 // ---------- token ----------
 

@@ -20,11 +20,35 @@ export default defineConfig({
   resolve: {
     alias: {
       "@/components/ui": path.resolve(__dirname, "components/ui"),
+      "@/components/chat": path.resolve(__dirname, "../../packages/agent-runtime/web/components/chat"),
       "@/components": path.resolve(__dirname, "../../web/components"),
       "@/src/i18n/locales": path.resolve(__dirname, "../../web/src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
+      "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
+      "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
+      "@/src/hooks/use-chat-state": path.resolve(__dirname, "../../packages/agent-runtime/web/hooks/use-chat-state.ts"),
+      "@/src/hooks/use-session-state": path.resolve(
+        __dirname,
+        "../../packages/agent-runtime/web/hooks/use-session-state.ts",
+      ),
+      "@/src/pages/agent-panel/ChatPanel": path.resolve(
+        __dirname,
+        "../../packages/agent-runtime/web/agent-panel/ChatPanel.tsx",
+      ),
+      "@/src/pages/agent-panel/chat-auth-state": path.resolve(
+        __dirname,
+        "../../packages/agent-runtime/web/agent-panel/chat-auth-state.ts",
+      ),
+      "@/src/pages/agent-panel/chat-visible-reconnect": path.resolve(
+        __dirname,
+        "../../packages/agent-runtime/web/agent-panel/chat-visible-reconnect.ts",
+      ),
+      "@/src/pages/agent-panel/session-mutation-refresh": path.resolve(
+        __dirname,
+        "../../packages/agent-runtime/web/agent-panel/session-mutation-refresh.ts",
+      ),
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/auth-client": path.resolve(__dirname, "src/lib/auth-client.ts"),
       "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),

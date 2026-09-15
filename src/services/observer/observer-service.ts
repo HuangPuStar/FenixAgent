@@ -10,16 +10,18 @@
 // - environmentRepo 经 preload Proxy 调用时解析（setup-mocks.ts 头注释记载过同款事故：
 //   绑定一次引用会固化导致 stub 失效），因此 getEnvironment 每次调用都经属性访问转发。
 
-import { config } from "../../../apps/server/src/config";
-import { type EnvironmentRecord, environmentRepo, findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
-import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
-import { agentInstanceRepo } from "../../repositories/agent-instance";
-import { findMachineNamesByIds } from "../../repositories/machine-repository";
-import { listAcpConnections } from "../../transport/acp-ws-handler";
 import {
+  agentInstanceRepo,
+  type EnvironmentRecord,
   type ExternalRelayConnectionSnapshot,
+  environmentRepo,
+  listAcpConnections,
   listExternalRelayEntries as listExternalRelayEntriesModule,
-} from "../../transport/relay/external-relay";
+} from "@fenix/agent-runtime/server";
+import { config } from "../../../apps/server/src/config";
+import { findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
+import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
+import { findMachineNamesByIds } from "../../repositories/machine-repository";
 import type { AcpConnectionSnapshot } from "../../types/store";
 import { getAgentConfigById as getAgentConfigByIdFromConfig } from "../config/index";
 import { acpLinkProvider } from "./providers/acp-link";
@@ -64,7 +66,7 @@ const defaultDeps: ObserverServiceDeps = {
   listExternalRelayEntries: () => listExternalRelayEntriesModule(),
   listChatClients: async () => {
     // 惰性加载：chat-channel-bootstrap 会拖入 ioredis/yjs 重依赖，测试注入 fake 时不应加载
-    const { getChatChannelController } = await import("../chat-channel-bootstrap");
+    const { getChatChannelController } = await import("@fenix/agent-runtime/server");
     const out: ChatClientSnapshot[] = [];
     getChatChannelController().registry.forEachClientEntry((wsId, client) => {
       out.push({

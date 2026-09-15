@@ -6,11 +6,11 @@ import { usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
+import { ChatPanel } from "@/src/pages/agent-panel/ChatPanel";
 import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
-import { ChatPanel } from "./ChatPanel";
 import "./agent-panel.css";
 
 interface AgentAppShellProps {

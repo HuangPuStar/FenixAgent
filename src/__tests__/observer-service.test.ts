@@ -1,4 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  handleAcpWsClose,
+  handleAcpWsOpen,
+  handleExternalRelayClose,
+  handleExternalRelayOpen,
+  listAcpConnections,
+  listExternalRelayEntries,
+  setExternalRelayDeps,
+} from "@fenix/agent-runtime/server";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import {
@@ -19,13 +28,6 @@ import {
   observerService,
   setObserverServiceDeps,
 } from "../services/observer";
-import { handleAcpWsClose, handleAcpWsOpen, listAcpConnections } from "../transport/acp-ws-handler";
-import {
-  handleExternalRelayClose,
-  handleExternalRelayOpen,
-  listExternalRelayEntries,
-  setExternalRelayDeps,
-} from "../transport/relay/external-relay";
 
 describe("observer-service", () => {
   beforeEach(() => {

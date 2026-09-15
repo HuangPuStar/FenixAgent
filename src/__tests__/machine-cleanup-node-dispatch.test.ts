@@ -63,7 +63,7 @@ describe("triggerMachineCleanupByMachineId 编排域节点通知", () => {
     getAgentNodeService().ensureNode("e2p1-cleanup-m1");
     expect(registeredNode.status()).toBe("connected");
 
-    const { triggerMachineCleanupByMachineId } = await import("../transport/acp-ws-handler");
+    const { triggerMachineCleanupByMachineId } = await import("@fenix/agent-runtime/server");
     triggerMachineCleanupByMachineId("e2p1-cleanup-m1", "sweep: no active WS connection");
 
     expect(registeredNode.status()).toBe("disconnected");
@@ -72,7 +72,7 @@ describe("triggerMachineCleanupByMachineId 编排域节点通知", () => {
 
   // 服务重启后 DB 残留 online 但从未建立连接的机器：清理路径不得抛错
   test("未注册节点的清理路径不抛错", async () => {
-    const { triggerMachineCleanupByMachineId } = await import("../transport/acp-ws-handler");
+    const { triggerMachineCleanupByMachineId } = await import("@fenix/agent-runtime/server");
     expect(() =>
       triggerMachineCleanupByMachineId("e2p1-cleanup-ghost", "sweep: no active WS connection"),
     ).not.toThrow();

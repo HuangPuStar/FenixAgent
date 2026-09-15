@@ -10,12 +10,12 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ChatHeader } from "@/components/chat/ChatHeader";
+import { SidebarSessionList } from "@/components/chat/sidebar-session-list";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
-import { ChatHeader } from "./chat/ChatHeader";
-import { SidebarSessionList } from "./chat/sidebar-session-list";
 
 interface ACPMainProps {
   agentId?: string;

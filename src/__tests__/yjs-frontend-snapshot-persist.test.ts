@@ -5,8 +5,8 @@
 // persistClearedSessionSnapshot 现由 Chat 域桥接层（chat-channel-bootstrap）提供。
 
 import { describe, expect, test } from "bun:test";
+import { persistClearedSessionSnapshot } from "@fenix/agent-runtime/server";
 import * as Y from "yjs";
-import { persistClearedSessionSnapshot } from "../services/chat-channel-bootstrap";
 
 class SnapshotPersistenceDouble {
   disconnected = false;

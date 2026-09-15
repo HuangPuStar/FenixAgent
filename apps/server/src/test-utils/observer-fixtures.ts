@@ -6,11 +6,9 @@
 // 与真实来源字段一一对应：AcpConnectionSnapshot / ExternalRelayConnectionSnapshot /
 // ChatClientSnapshot / EnvironmentRecord，改动来源字段时同步维护此处。
 
+import type { EnvironmentRecord, ExternalRelayConnectionSnapshot, SpawnedInstance } from "@fenix/agent-runtime/server";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { EnvironmentRecord } from "../../../../src/repositories";
-import type { SpawnedInstance } from "../../../../src/services/agent-instance-runtime-projection";
 import type { ChatClientSnapshot, ObserverServiceDeps } from "../../../../src/services/observer";
-import type { ExternalRelayConnectionSnapshot } from "../../../../src/transport/relay/external-relay";
 import type { WsConnection } from "../../../../src/transport/ws-types";
 import type { AcpConnectionSnapshot } from "../../../../src/types/store";
 

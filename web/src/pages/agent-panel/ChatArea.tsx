@@ -22,7 +22,7 @@ import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/s
 import "./artifacts-workspace.css";
 import "./chat-layout.css";
 
-const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
+const ChatPanel = lazy(() => import("@/src/pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() => import("./ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })));
 
 interface ChatAreaProps {

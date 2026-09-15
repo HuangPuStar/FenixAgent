@@ -18,12 +18,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
 import { config, setConfig } from "../../apps/server/src/config";
 import { provider } from "../../apps/server/src/db/schema";
 import { resetAllStubs, stubCoreBootstrap, stubDb } from "../../apps/server/src/test-utils/helpers";
-import type { EnvironmentRecord, IEnvironmentRepo } from "../repositories/environment";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,

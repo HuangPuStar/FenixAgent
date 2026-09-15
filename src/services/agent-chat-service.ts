@@ -1,13 +1,11 @@
+import { agentInstanceService, connectAgentRelay, createWebEnvironment } from "@fenix/agent-runtime/server";
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../apps/server/src/db";
 import { environment } from "../../apps/server/src/db/schema";
 import { NotFoundError } from "../../apps/server/src/errors";
-import { connectAgentRelay } from "../transport/agent-relay";
 import type { InstanceSpawnSource } from "../types/store";
-import { agentInstanceService } from "./agent-instance-service";
-import { createWebEnvironment } from "./environment-web";
 
 // 编排域依赖注入点（对齐 openai-chat.ts 的 setOpenAIChatRouteDeps 模式）：
 // openAgentSession 的「spawn → relay → turn」编排依赖集中在此，测试可注入 fake

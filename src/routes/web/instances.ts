@@ -1,3 +1,4 @@
+import { agentInstanceService } from "@fenix/agent-runtime/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
@@ -9,7 +10,6 @@ import {
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "../../schemas/instance.schema";
 import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-monitor";
-import { agentInstanceService } from "../../services/agent-instance-service";
 import { getOwnedEnvironment } from "../../services/environment";
 
 const _deps = {

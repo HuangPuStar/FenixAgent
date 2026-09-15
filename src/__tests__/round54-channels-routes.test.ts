@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
 import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
 import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import type { ChannelBindingRow } from "../repositories/channel-binding";
 import { channelBindingRepo } from "../repositories/channel-binding";
-import type { EnvironmentRecord } from "../repositories/environment";
 import { setHermesClientGetter } from "../services/channel-provider";
 
 const route = (await import("../routes/web/channels")).default;

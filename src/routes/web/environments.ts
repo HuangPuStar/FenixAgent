@@ -1,3 +1,4 @@
+import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
@@ -19,7 +20,6 @@ import {
   UpdateEnvironmentRequestSchema,
   UpdateEnvironmentResponseSchema,
 } from "../../schemas/environment.schema";
-import { agentInstanceService } from "../../services/agent-instance-service";
 import {
   createWebEnvironment,
   deleteEnvironment,

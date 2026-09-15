@@ -73,7 +73,7 @@ export function startMachineSweep(intervalMs = 60_000): void {
   if (sweepTimer) return;
   sweepTimer = setInterval(async () => {
     try {
-      const mod = await import("../transport/acp-ws-handler");
+      const mod = await import("@fenix/agent-runtime/server");
       const onlineMachines = await db.select().from(machine).where(eq(machine.status, "online"));
       for (const m of onlineMachines) {
         const conn = mod.findMachineConnectionById(m.id);

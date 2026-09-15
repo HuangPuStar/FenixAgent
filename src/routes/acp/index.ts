@@ -1,3 +1,13 @@
+import {
+  environmentRepo,
+  getChatChannelController,
+  handleAcpWsClose,
+  handleAcpWsMessage,
+  handleAcpWsOpen,
+  handleExternalRelayClose,
+  handleExternalRelayMessage,
+  handleExternalRelayOpen,
+} from "@fenix/agent-runtime/server";
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import Elysia from "elysia";
@@ -6,10 +16,7 @@ import { validateEnv } from "../../../apps/server/src/env";
 import { AppError } from "../../../apps/server/src/errors";
 import type { RequestAuthResult } from "../../../apps/server/src/plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
-import { environmentRepo } from "../../repositories";
 import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
-import { getChatChannelController } from "../../services/chat-channel-bootstrap";
-import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../transport/acp-ws-handler";
 import { formatFileWsCloseLog } from "../../transport/file-ws-close-log";
 import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
 import {
@@ -18,11 +25,6 @@ import {
   estimateWsMessageBytes,
   parseFileWsMessage,
 } from "../../transport/file-ws-payload";
-import {
-  handleExternalRelayClose,
-  handleExternalRelayMessage,
-  handleExternalRelayOpen,
-} from "../../transport/relay/external-relay";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */

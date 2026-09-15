@@ -5,6 +5,7 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import { agentInstanceService, closeAllAcpConnections, closeAllRelayConnections } from "@fenix/agent-runtime/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import acpRoutes from "../../../src/routes/acp";
@@ -31,7 +32,6 @@ import skillDownloadRoutes from "../../../src/routes/skills";
 import webApp from "../../../src/routes/web";
 import { workflowStaticApp } from "../../../src/routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
-import { agentInstanceService } from "../../../src/services/agent-instance-service";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import { initCoreRuntime } from "../../../src/services/core-bootstrap";
 import { runDataMigrations } from "../../../src/services/data-migrate";
@@ -46,9 +46,7 @@ import { schedulerService } from "../../../src/services/scheduler/index";
 import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { ensureSystemAdmin } from "../../../src/services/system-admin";
 import { initCustomToolsRegistry } from "../../../src/services/workflow/custom-tools";
-import { closeAllAcpConnections } from "../../../src/transport/acp-ws-handler";
 import { closeAllFileWsConnections, stopFileWsSweep } from "../../../src/transport/file-ws-handler";
-import { closeAllRelayConnections } from "../../../src/transport/relay";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";

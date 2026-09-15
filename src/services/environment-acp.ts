@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
+import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
+import { environmentRepo } from "@fenix/agent-runtime/server";
 import { AppError, NotFoundError } from "../../apps/server/src/errors";
-import type { EnvironmentRecord } from "../repositories";
-import { environmentRepo } from "../repositories";
 import type { RegisterEnvironmentRequest } from "../types/api";
 import { deleteEnvironment, toResponse } from "./environment-core";
 

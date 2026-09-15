@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { SpawnedInstance } from "@fenix/agent-runtime/server";
 import { setConfig } from "../../apps/server/src/config";
 import {
   listInstanceActivitySnapshots,
@@ -7,7 +8,6 @@ import {
   setAcpIdleMonitorDeps,
   shouldCountInstanceActivity,
 } from "../services/acp-idle-monitor";
-import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
 import { globalInstanceRegistry } from "../services/instance-registry";
 
 function makeInstance(id: string, environmentId: string): SpawnedInstance {
