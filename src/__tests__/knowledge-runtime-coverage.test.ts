@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../config";
+import { resetConfig, setConfig } from "../../apps/server/src/config";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 import {
@@ -11,7 +12,6 @@ import {
   searchKnowledgeForTest,
   setKnowledgeRuntimeProviderForTesting,
 } from "../services/knowledge-runtime";
-import { resetAllStubs } from "../test-utils/helpers";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 

@@ -22,8 +22,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
-import { config, setConfig } from "../config";
-import { provider } from "../db/schema";
+import { config, setConfig } from "../../apps/server/src/config";
+import { provider } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubCoreBootstrap, stubDb } from "../../apps/server/src/test-utils/helpers";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../repositories/environment";
 import {
   beginSpawnReservation,
@@ -40,7 +41,6 @@ import {
   setOrchestrationInstanceDeps,
   spawnInstanceViaController,
 } from "../services/orchestration-instance";
-import { resetAllStubs, stubCoreBootstrap, stubDb } from "../test-utils/helpers";
 
 const ENV_ID = "env-1";
 const USER_ID = "user-1";

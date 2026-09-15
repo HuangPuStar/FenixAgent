@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { NS } from "../../i18n";
+import { NS } from "@/src/i18n";
 import { MountSiteDialog } from "./MountSiteDialog";
 
 interface ArtifactsDialogsProps {

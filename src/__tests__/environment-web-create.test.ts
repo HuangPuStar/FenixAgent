@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
+import { resetAllStubs, stubConfigPg, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 const { createWebEnvironment } = await import("../services/environment-web");
 

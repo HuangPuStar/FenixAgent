@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const apiAgentsRoute = (await import("../routes/api/agents")).default;
 

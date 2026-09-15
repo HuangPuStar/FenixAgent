@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubAuthApi, stubDb } from "../../apps/server/src/test-utils/helpers";
 import organizationsRoute from "../routes/web/organizations";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
 
 function createSequentialDb(responses: unknown[]) {
   let callIndex = 0;

@@ -1,9 +1,9 @@
 import { ChevronDown, KeyRound, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/src/lib/utils";
 import type { PendingPermission } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
-import { Button } from "../ui/button";
 
 // =============================================================================
 // 权限请求面板 — 固定在输入框上方（Anthropic warm token style）

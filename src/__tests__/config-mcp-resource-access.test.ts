@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import type { AuthContext } from "../plugins/auth";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
 import { _resetDeps, setOrganizationRepoForTesting } from "../services/resource-permission";
-import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const ctx: AuthContext = {
   organizationId: "org_current",

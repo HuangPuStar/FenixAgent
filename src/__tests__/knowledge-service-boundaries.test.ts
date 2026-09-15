@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import {
   createKnowledgeBaseRecord,
   resolveKnowledgeTenantIdentity,
   sanitizeKnowledgeBase,
 } from "../services/knowledge-base";
 import { listKnowledgeResources } from "../services/knowledge-upload";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 describe("知识库服务边界", () => {
   beforeEach(() => {

@@ -5,8 +5,8 @@
 import { Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/src/lib/utils";
 import type { ObserverMachineTree as ObserverMachineTreeView, ObserverNames } from "../../../api/observer";
-import { cn } from "../../../lib/utils";
 import { name } from "../utils";
 
 interface ObserverMachineTreeProps {

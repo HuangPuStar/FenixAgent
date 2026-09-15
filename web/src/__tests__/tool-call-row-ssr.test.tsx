@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-
+import i18n from "@/src/i18n";
 import { ToolCallRow } from "../../components/chat/ToolCallRow";
-import i18n from "../i18n";
 import type { ToolCallData } from "../lib/types";
 
 function tool(overrides: Partial<ToolCallData> = {}): ToolCallData {

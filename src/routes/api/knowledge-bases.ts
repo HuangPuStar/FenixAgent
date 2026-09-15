@@ -1,6 +1,6 @@
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { type AuthContext, authGuardPlugin } from "../../plugins/auth";
+import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import {
   type ApiKnowledgeBaseListQuery,
   ApiKnowledgeBaseListQuerySchema,

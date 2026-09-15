@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { agentConfigSkill } from "../../db/schema";
+import { db } from "../../../apps/server/src/db";
+import { agentConfigSkill } from "../../../apps/server/src/db/schema";
 
 /** 查询 Agent 关联的所有 skillId */
 export async function listAgentSkillIds(agentConfigId: string): Promise<string[]> {

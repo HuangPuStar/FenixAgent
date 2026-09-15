@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import { PromptJumpRail } from "../../components/chat/chat-navigation-aids";
 import type { UserMessageEntry } from "../lib/types";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

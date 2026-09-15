@@ -1,6 +1,6 @@
 import Elysia from "elysia";
-import { NotFoundError } from "../../errors";
-import { authGuardPlugin } from "../../plugins/auth";
+import { NotFoundError } from "../../../apps/server/src/errors";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import {
   PeriTaskDetailParamsSchema,

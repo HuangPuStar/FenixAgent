@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
+import {
+  resetAllStubs,
+  stubCoreBootstrap,
+  stubDb,
+  stubResourcePermissionRepo,
+} from "../../apps/server/src/test-utils/helpers";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
 import { _resetDeps } from "../services/resource-permission";
-import { resetAllStubs, stubCoreBootstrap, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 

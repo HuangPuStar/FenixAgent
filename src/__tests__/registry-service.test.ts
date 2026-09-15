@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 beforeEach(() => {
   resetAllStubs();

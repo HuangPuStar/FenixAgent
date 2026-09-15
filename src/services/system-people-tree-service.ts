@@ -2,8 +2,8 @@
 // 查询显式在服务层完成，避免路由直接接触持久化模型。
 
 import { and, asc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { agentConfig, member, organization, user } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { agentConfig, member, organization, user } from "../../apps/server/src/db/schema";
 
 export interface SystemPeopleAgent {
   id: string;

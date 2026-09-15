@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../i18n";
+import { NS } from "@/src/i18n";
 import { FileViewerPreview } from "./preview/FileViewerPreview";
 
 interface PreviewTabProps {

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-
+import { ApiError } from "@/src/api/request";
 import { getPeriTaskDetail, type PeriTaskDetail } from "../api/peri-task-details";
-import { ApiError } from "../api/request";
 
 const originalFetch = globalThis.fetch;
 const fetchCalls: Array<[string, RequestInit]> = [];

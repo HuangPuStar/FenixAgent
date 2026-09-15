@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { AppError, NotFoundError } from "../errors";
+import { AppError, NotFoundError } from "../../apps/server/src/errors";
 import type { EnvironmentRecord } from "../repositories";
 import { environmentRepo } from "../repositories";
 import type { RegisterEnvironmentRequest } from "../types/api";

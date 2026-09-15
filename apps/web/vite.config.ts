@@ -6,11 +6,11 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   root: __dirname,
-  publicDir: path.resolve(__dirname, "../../web/public"),
+  publicDir: path.resolve(__dirname, "public"),
   plugins: [
     TanStackRouterVite({
-      routesDirectory: path.resolve(__dirname, "../../web/src/routes"),
-      generatedRouteTree: path.resolve(__dirname, "../../web/src/routeTree.gen.ts"),
+      routesDirectory: path.resolve(__dirname, "src/routes"),
+      generatedRouteTree: path.resolve(__dirname, "src/routeTree.gen.ts"),
       quoteStyle: "double",
     }),
     react(),
@@ -19,8 +19,19 @@ export default defineConfig({
   base: "/ctrl/",
   resolve: {
     alias: {
-      "@/src": path.resolve(__dirname, "../../web/src"),
+      "@/components/ui": path.resolve(__dirname, "components/ui"),
       "@/components": path.resolve(__dirname, "../../web/components"),
+      "@/src/i18n/locales": path.resolve(__dirname, "../../web/src/i18n/locales"),
+      "@/src/i18n": path.resolve(__dirname, "src/i18n"),
+      "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
+      "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
+      "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
+      "@/src/lib/auth-client": path.resolve(__dirname, "src/lib/auth-client.ts"),
+      "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),
+      "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),
+      "@/src/contexts/OrgContext": path.resolve(__dirname, "src/contexts/OrgContext.tsx"),
+      "@/src/lib/theme": path.resolve(__dirname, "src/lib/theme.ts"),
+      "@/src": path.resolve(__dirname, "../../web/src"),
       "@server": path.resolve(__dirname, "../../src"),
       "@fenix/chat-channel": path.resolve(__dirname, "../../packages/chat-channel/src/index.ts"),
     },

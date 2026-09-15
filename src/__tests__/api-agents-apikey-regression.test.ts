@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-const setupMocksPath = new URL("../test-utils/setup-mocks.ts", import.meta.url).pathname;
+const setupMocksPath = new URL("../../apps/server/src/test-utils/setup-mocks.ts", import.meta.url).pathname;
 const routeModulePath = import.meta.resolve("../routes/api/agents");
-const authModulePath = import.meta.resolve("../plugins/auth");
-const orgContextModulePath = import.meta.resolve("../services/org-context");
+const authModulePath = import.meta.resolve("../../apps/server/src/plugins/auth");
+const orgContextModulePath = import.meta.resolve("../../apps/server/src/services/org-context");
 const agentKnowledgeModulePath = import.meta.resolve("../services/agent-knowledge");
-const helpersModulePath = import.meta.resolve("../test-utils/helpers");
-const moduleStubsPath = import.meta.resolve("../test-utils/stubs/module-stubs");
+const helpersModulePath = import.meta.resolve("../../apps/server/src/test-utils/helpers");
+const moduleStubsPath = import.meta.resolve("../../apps/server/src/test-utils/stubs/module-stubs");
 
 describe("API agents API key regression", () => {
   // 仅带 API key、没有 session cookie 时，/api/agents 仍应通过 API key 恢复组织上下文。

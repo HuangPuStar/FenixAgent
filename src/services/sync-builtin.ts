@@ -1,4 +1,4 @@
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { syncBuiltinSkillsToSystemAdmin } from "./meta-agent";
 import { ensureSystemAdmin } from "./system-admin";
 

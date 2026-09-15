@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { SandboxInstance, SandboxPool } from "../db/schema";
+import type { SandboxInstance, SandboxPool } from "../../apps/server/src/db/schema";
+import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 import { SandboxManager } from "../services/sandbox/sandbox-manager";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../test-utils/helpers";
 
 const resources = {
   cpu: 0.5,

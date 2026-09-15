@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../config";
+import { resetConfig, setConfig } from "../../apps/server/src/config";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
@@ -12,7 +13,6 @@ import {
   refreshKnowledgeResourceStatus,
   setKnowledgeUploadProviderForTesting,
 } from "../services/knowledge-upload";
-import { resetAllStubs } from "../test-utils/helpers";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 

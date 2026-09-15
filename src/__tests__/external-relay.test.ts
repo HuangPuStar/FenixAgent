@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import type { SpawnedInstance } from "../services/agent-instance-runtime-projection";
 import {
   type ExternalRelayEnvironment,

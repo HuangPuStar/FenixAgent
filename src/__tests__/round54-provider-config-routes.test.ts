@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubConfigPg, stubEnvironmentRepo } from "../test-utils/helpers";
+import { AppError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import {
+  resetAllStubs,
+  stubAuthApi,
+  stubConfigPg,
+  stubEnvironmentRepo,
+} from "../../apps/server/src/test-utils/helpers";
 
 const route = (await import("../routes/web/config/providers")).default;
 

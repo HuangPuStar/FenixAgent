@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import Elysia from "elysia";
-import { createWebOpenApiPlugin } from "../openapi";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { createWebOpenApiPlugin } from "../../apps/server/src/openapi";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { clearOrgCache, setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import webAgentSites from "../routes/web/agent-sites";
 import {
   AgentSiteAgentConfigParamsSchema,
@@ -12,8 +14,6 @@ import {
   CreateAgentSiteAppRequestSchema,
 } from "../schemas/agent-site.schema";
 import { WebErrSchema } from "../schemas/common.schema";
-import { clearOrgCache, setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const TEST_APP_ID = "00000000-0000-4000-8000-000000000001";
 const TEST_REMOTE_APP_ID = "app-abc12345";

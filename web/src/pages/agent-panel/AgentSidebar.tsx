@@ -9,10 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
+import { signOut, useSession } from "@/src/lib/auth-client";
 import { ChangePasswordDialog } from "../../../components/ChangePasswordDialog";
-import { signOut, useSession } from "../../../src/lib/auth-client";
-import { useOrg } from "../../contexts/OrgContext";
 import { AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
 

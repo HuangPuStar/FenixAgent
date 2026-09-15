@@ -1,7 +1,7 @@
 import { SandboxProviderError } from "@fenix/sandbox-provider";
 import Elysia, { status } from "elysia";
 import type * as z from "zod/v4";
-import { systemApiAuthPlugin } from "../../plugins/system-api-auth";
+import { systemApiAuthPlugin } from "../../../apps/server/src/plugins/system-api-auth";
 import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 import {
   SandboxDeleteResponseSchema,

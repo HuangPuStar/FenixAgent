@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import { waitForMachineConnection } from "../services/machine-connection-waiter";
 import { SandboxExecutionHandler } from "../services/sandbox/sandbox-execution-handler";
-import { resetAllStubs } from "../test-utils/helpers";
 import { getAcpEventBus, getEventBus, removeAcpEventBus, removeEventBus } from "../transport/event-bus";
 
 afterEach(() => {

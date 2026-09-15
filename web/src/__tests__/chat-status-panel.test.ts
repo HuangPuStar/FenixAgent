@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-
+import i18n from "@/src/i18n";
 import { ChatStatusPanel, fileNameFromPath } from "../../components/chat/chat-status-panel";
-import i18n from "../i18n";
 
 function renderPanel(props: Partial<Parameters<typeof ChatStatusPanel>[0]> = {}): string {
   return renderToStaticMarkup(

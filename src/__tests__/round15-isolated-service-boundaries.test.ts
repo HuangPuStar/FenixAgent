@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
+import { AppError } from "../../apps/server/src/errors";
+import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { shouldCountInstanceActivity } from "../services/acp-idle-monitor";
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "../services/chat-channel-error-classify";
 import {
@@ -8,7 +9,6 @@ import {
   type MachineStatusReader,
   waitForMachineConnection,
 } from "../services/machine-connection-waiter";
-import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
 import { EventBus, getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 
 async function withFrozenClock<T>(run: () => Promise<T>): Promise<T> {

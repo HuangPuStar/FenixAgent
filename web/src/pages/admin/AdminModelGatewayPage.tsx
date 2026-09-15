@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
+import { ApiError } from "@/src/api/request";
 import {
   checkModelGateway,
   getModelGatewayConfiguration,
@@ -30,7 +31,6 @@ import {
   syncModelGateway,
   updateModelGatewayBudgets,
 } from "../../api/model-gateway";
-import { ApiError } from "../../api/request";
 import { fetchSystemPeopleTree } from "../../api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";

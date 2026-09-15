@@ -1,4 +1,4 @@
-import type { SandboxInstance, SandboxPool } from "../../db/schema";
+import type { SandboxInstance, SandboxPool } from "../../../apps/server/src/db/schema";
 import { findMachinesBasicInfoByIds } from "../../repositories/machine-repository";
 import { organizationRepo } from "../../repositories/organization";
 import { findSandboxInstanceById, listSandboxInstances } from "../../repositories/sandbox-instance-repository";

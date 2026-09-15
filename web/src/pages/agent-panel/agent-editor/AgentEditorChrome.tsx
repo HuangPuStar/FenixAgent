@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { selectionToValue } from "../../../lib/agent-node";
 import { EditorPagination } from "./agent-editor-controls";
 import {

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import Elysia from "elysia";
-import { AppError, NotFoundError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { errorPlugin } from "../plugins/error-handler";
+import { AppError, NotFoundError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { errorPlugin } from "../../apps/server/src/plugins/error-handler";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
 import type { OpenAgentSessionResult } from "../services/agent-chat-service";
-import { setTestOrgContext } from "../services/org-context";
 
 const openaiChatModule = await import("../routes/api/openai-chat");
 const openaiChatRoute = openaiChatModule.default;

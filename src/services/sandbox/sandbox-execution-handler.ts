@@ -1,5 +1,5 @@
 import { createLogger } from "@fenix/logger";
-import { config } from "../../config";
+import { config } from "../../../apps/server/src/config";
 import {
   MachineConnectionTimeoutError,
   type MachineStatusReader,

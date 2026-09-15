@@ -15,12 +15,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
   terminateLocalDeadInstance,
 } from "../services/orchestration-instance";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 
 const INSTANCE_ID = "inst-1";
 

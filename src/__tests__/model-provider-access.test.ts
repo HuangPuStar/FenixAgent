@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { AppError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 import modelsRoute, { invalidateAvailableCache } from "../routes/web/config/models";
 import providersRoute from "../routes/web/config/providers";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const internalAccess = {
   ownership: "internal" as const,

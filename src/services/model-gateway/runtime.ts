@@ -1,8 +1,8 @@
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { sql } from "drizzle-orm";
-import { config } from "../../config";
-import { db } from "../../db";
-import { agentConfig, member, organization, user } from "../../db/schema";
+import { config } from "../../../apps/server/src/config";
+import { db } from "../../../apps/server/src/db";
+import { agentConfig, member, organization, user } from "../../../apps/server/src/db/schema";
 import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
 import {
   deleteModelGatewayCredential,

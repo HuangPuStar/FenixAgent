@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
 import {
   resetAllStubs,
   stubCoreBootstrap,
@@ -7,7 +7,7 @@ import {
   stubEnvironmentService,
   stubRegistry,
   stubRegistryHeartbeat,
-} from "../test-utils/helpers";
+} from "../../apps/server/src/test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 

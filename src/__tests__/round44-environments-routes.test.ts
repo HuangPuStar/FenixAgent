@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import { NotFoundError, ValidationError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { NotFoundError, ValidationError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import {
+  resetAllStubs,
+  stubAuthApi,
+  stubCoreBootstrap,
+  stubEnvironmentService,
+} from "../../apps/server/src/test-utils/helpers";
 import { agentInstanceService } from "../services/agent-instance-service";
-import { setTestOrgContext } from "../services/org-context";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
-import { resetAllStubs, stubAuthApi, stubCoreBootstrap, stubEnvironmentService } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/environments")).default;
 const environmentId = "env-1";

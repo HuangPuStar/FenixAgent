@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../../apps/server/src/services/org-context";
+import { resetAllStubs, stubAuthApi } from "../../../apps/server/src/test-utils/helpers";
+import { stubCustomTools } from "../../../apps/server/src/test-utils/stubs/module-stubs";
 import webWorkflowCustomTools from "../../routes/web/workflow-custom-tools";
-import { setTestOrgContext } from "../../services/org-context";
-import { resetAllStubs, stubAuthApi } from "../../test-utils/helpers";
-import { stubCustomTools } from "../../test-utils/stubs/module-stubs";
 
 describe("GET /web/workflow-custom-tools", () => {
   beforeEach(() => {

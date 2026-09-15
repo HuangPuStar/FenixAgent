@@ -3,8 +3,8 @@
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { type ComponentProps, createContext, type HTMLAttributes, useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
-import type { Button } from "../ui/button";
+import type { Button } from "@/components/ui/button";
+import { cn } from "@/src/lib/utils";
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string;

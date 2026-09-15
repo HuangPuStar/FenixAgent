@@ -5,8 +5,8 @@
  * 后端使用 RESTful 端点，域模块内部抽象为具名方法。
  */
 
+import { request } from "@/src/api/request";
 import type { ModelConfig, PermissionConfig } from "../../src/types/config";
-import { request } from "./request";
 
 export const modelApi = {
   /** 获取当前模型配置 */

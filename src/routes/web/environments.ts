@@ -2,9 +2,9 @@ import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { ValidationError as AppValidationError } from "../../errors";
-import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
-import { authGuardPlugin } from "../../plugins/auth";
+import { ValidationError as AppValidationError } from "../../../apps/server/src/errors";
+import { mapOrchestrationErrorToHttp } from "../../../apps/server/src/errors/orchestration-http";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   CreateEnvironmentRequestSchema,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyEnv, config } from "../config";
-import type { Env } from "../env";
+import { applyEnv, config } from "../../apps/server/src/config";
+import type { Env } from "../../apps/server/src/env";
 
 describe("system admin password file config", () => {
   // 系统 admin 的密码文件路径必须独立配置，不能和 skillDir 的语义耦合。

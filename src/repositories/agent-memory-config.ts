@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { agentMemoryConfig } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { agentMemoryConfig } from "../../apps/server/src/db/schema";
 
 export type AgentMemoryConfig = typeof agentMemoryConfig.$inferSelect;
 

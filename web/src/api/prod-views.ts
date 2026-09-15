@@ -6,7 +6,7 @@
  * 视图加载端点: /web/prod-views/:id/load
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 export interface ProdViewModuleConfig {
   enabled?: boolean;

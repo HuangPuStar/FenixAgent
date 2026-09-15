@@ -4,9 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
-import { NS } from "../../i18n";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 import type { ChangedFile } from "../../lib/extract-changed-files";
-import { cn } from "../../lib/utils";
 
 /** 可见的 tab 数量上限，超出部分折叠到 +N popover 中（伪多 tab，避免横向滚动溢出） */
 const MAX_VISIBLE_TABS = 5;

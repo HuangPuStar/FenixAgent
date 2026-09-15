@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
-import { resetAllStubs, stubCoreBootstrap } from "../test-utils/helpers";
 import { connectAgentRelay } from "../transport/agent-relay";
 
 const INSTANCE_ID = "inst-1";

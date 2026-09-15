@@ -1,4 +1,4 @@
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
 import { agentInstanceService } from "./agent-instance-service";

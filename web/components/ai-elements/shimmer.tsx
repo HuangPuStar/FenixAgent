@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { type ElementType, type JSX, memo } from "react";
-import { cn } from "../../src/lib/utils";
+import { cn } from "@/src/lib/utils";
 
 export interface TextShimmerProps {
   children: string;

@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,7 +8,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../ui/alert-dialog";
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/src/lib/utils";
 
 interface ConfirmDialogProps {
   open: boolean;

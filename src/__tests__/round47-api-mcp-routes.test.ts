@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { readJson, resetAllStubs, stubAuthApi, stubConfigPg, stubDb, stubEnvironmentRepo } from "../test-utils/helpers";
+import { AppError } from "../../apps/server/src/errors";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import {
+  readJson,
+  resetAllStubs,
+  stubAuthApi,
+  stubConfigPg,
+  stubDb,
+  stubEnvironmentRepo,
+} from "../../apps/server/src/test-utils/helpers";
 
 const route = (await import("../routes/api/mcp")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

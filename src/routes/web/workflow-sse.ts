@@ -6,7 +6,7 @@
  */
 
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { getWorkflowDef } from "../../repositories/workflow-def";
 import {
   WorkflowEventStreamParamsSchema,

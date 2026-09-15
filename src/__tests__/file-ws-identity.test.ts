@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "../config";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../test-utils/helpers";
+import { setConfig } from "../../apps/server/src/config";
+import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 
 // file-ws-handler 由 setup-mocks preload 部分 mock（仅 isFileWsConnected /

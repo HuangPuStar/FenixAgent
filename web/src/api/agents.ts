@@ -5,8 +5,8 @@
  * 后端使用标准 REST 端点（GET/POST/PUT/DELETE），域模块内部抽象为具名方法。
  */
 
+import { request } from "@/src/api/request";
 import type { AgentDetail, AgentInfo } from "../../src/types/config";
-import { request } from "./request";
 
 /** Agent 模板 */
 interface AgentTemplate {

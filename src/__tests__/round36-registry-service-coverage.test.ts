@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AuthContext } from "../plugins/auth";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 // @ts-expect-error Bun 以独立模块实例加载真实服务，避免路由测试的服务 stub。
 const registry = await import("../services/registry?round36");

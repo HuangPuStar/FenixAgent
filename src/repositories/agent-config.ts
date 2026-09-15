@@ -1,6 +1,6 @@
 import { type AgentConfigData, type AgentConfigRepo, LaunchSpecBuildError } from "@fenix/orchestration";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../db";
+import { db } from "../../apps/server/src/db";
 import {
   agentConfig,
   agentConfigMcp,
@@ -11,7 +11,7 @@ import {
   model,
   provider,
   skill,
-} from "../db/schema";
+} from "../../apps/server/src/db/schema";
 
 /**
  * 编排域 AgentConfigRepo 的 PostgreSQL 实现。

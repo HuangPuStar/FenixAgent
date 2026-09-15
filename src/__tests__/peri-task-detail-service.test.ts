@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { NotFoundError } from "../errors";
+import { NotFoundError } from "../../apps/server/src/errors";
 import { getPeriTaskDetail } from "../services/peri-task-detail-service";
 import type { PeriTaskDetailStore } from "../services/peri-task-detail-store";
 

@@ -1,7 +1,7 @@
 import { CheckCircle, Circle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/src/lib/utils";
 import type { TodoChange, TodoChangeKind } from "../../src/lib/types";
-import { cn } from "../../src/lib/utils";
 
 interface TodoChangesProps {
   changes: TodoChange[];

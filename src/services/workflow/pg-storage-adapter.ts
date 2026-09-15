@@ -17,8 +17,8 @@ import type {
   StorageAdapter,
 } from "@fenix/workflow-engine";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../db";
-import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "../../db/schema";
+import { db } from "../../../apps/server/src/db";
+import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "../../../apps/server/src/db/schema";
 
 /** 创建 PostgreSQL 存储适配器，所有查询限定在指定 team 内 */
 export function createPgStorageAdapter(organizationId: string): StorageAdapter {

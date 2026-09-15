@@ -42,7 +42,7 @@ describe("ConfirmDialog", () => {
   });
 
   test("ConfirmDialog uses AlertDialog internally (import check)", async () => {
-    const alertDialogMod = await import("../../components/ui/alert-dialog");
+    const alertDialogMod = await import("@/components/ui/alert-dialog");
     expect(typeof alertDialogMod.AlertDialog).toBe("function");
     expect(typeof alertDialogMod.AlertDialogContent).toBe("function");
     expect(typeof alertDialogMod.AlertDialogAction).toBe("function");
@@ -55,7 +55,7 @@ describe("ConfirmDialog", () => {
       "utf-8",
     );
     // import.meta.dirname = web/src/__tests__, so ../../components = web/components
-    expect(content).toContain('from "../ui/alert-dialog"');
+    expect(content).toContain('from "@/components/ui/alert-dialog"');
     expect(content).not.toMatch(/from.*ui\/dialog/);
   });
 });

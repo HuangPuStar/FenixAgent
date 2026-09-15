@@ -2,9 +2,9 @@ import type { PromptUsage } from "@fenix/chat-channel";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/src/lib/utils";
 import { simplifyModelDisplayName } from "../src/lib/model-config-utils";
 import type { ThreadEntry, ToolCallEntry } from "../src/lib/types";
-import { cn } from "../src/lib/utils";
 
 // =============================================================================
 // ContextPanel — 方案 A 紧凑流式布局

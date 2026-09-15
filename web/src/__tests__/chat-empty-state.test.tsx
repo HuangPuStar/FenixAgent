@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import zhComponents from "@/src/i18n/locales/zh/components.json";
 import { ChatView } from "../../components/chat/ChatView";
-import zhComponents from "../i18n/locales/zh/components.json";
 import type { ThreadEntry } from "../lib/types";
 
 describe("Chat 空状态", () => {

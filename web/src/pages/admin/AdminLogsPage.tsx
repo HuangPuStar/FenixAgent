@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError } from "../../api/request";
+import { ApiError } from "@/src/api/request";
 import {
   downloadSystemLog,
   fetchSystemLogFiles,

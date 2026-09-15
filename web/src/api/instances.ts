@@ -5,8 +5,8 @@
  * 后端路由前缀为 /web/instances，返回 snake_case 字段，本模块负责键名转换。
  */
 
-import type { ApiResponse } from "./request";
-import { request } from "./request";
+import type { ApiResponse } from "@/src/api/request";
+import { request } from "@/src/api/request";
 
 /** 单个 Instance 信息（camelCase 转换后） */
 export interface InstanceInfo {

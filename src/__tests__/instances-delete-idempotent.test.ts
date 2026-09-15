@@ -22,11 +22,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubCoreBootstrap, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { resetOrchestrationBootstrap } from "../services/orchestration-bootstrap";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
-import { resetAllStubs, stubCoreBootstrap, stubDb } from "../test-utils/helpers";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";

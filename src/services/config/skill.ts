@@ -1,8 +1,8 @@
 import { createLogger } from "@fenix/logger";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db } from "../../db";
-import { skill } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { skill } from "../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../apps/server/src/plugins/auth";
 import {
   assertInternalWritable,
   buildExternalPublicReadMap,

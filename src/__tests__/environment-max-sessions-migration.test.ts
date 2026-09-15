@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { environment } from "../db/schema";
+import { environment } from "../../apps/server/src/db/schema";
 
 describe("Environment 并发限制移除边界", () => {
   // 防回归：Environment schema 不得重新引入 max_sessions；并发配额统一由宿主 agent-concurrency reservation 管理。

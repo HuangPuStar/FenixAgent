@@ -1,7 +1,7 @@
 import { createLogger, error as logError } from "@fenix/logger";
 import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
-import { config } from "../config";
+import { config } from "../../apps/server/src/config";
 import { touchInstanceActivity } from "../services/acp-idle-monitor";
 import { agentInstanceService } from "../services/agent-instance-service";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";

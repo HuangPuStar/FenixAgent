@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import type { ChannelBindingRow } from "../repositories/channel-binding";
 import { channelBindingRepo } from "../repositories/channel-binding";
 import type { EnvironmentRecord } from "../repositories/environment";
 import { setHermesClientGetter } from "../services/channel-provider";
-import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/channels")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

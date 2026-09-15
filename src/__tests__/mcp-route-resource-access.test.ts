@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../errors";
-import { setTestAuth } from "../plugins/auth";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
+import { AppError } from "../../apps/server/src/errors";
+import { setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubConfigPg, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
 

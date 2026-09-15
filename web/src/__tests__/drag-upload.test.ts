@@ -2,8 +2,8 @@ import { beforeEach, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement, type DragEvent, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
 import type { FileInfo } from "../types";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 设置最小 DOM 环境（React 19 需要 window + document）
 const win = initializeHappyDomWindow(new Window());

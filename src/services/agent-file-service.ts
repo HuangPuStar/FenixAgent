@@ -10,7 +10,7 @@
 // If-Match 版本比对）与路由决策在 file-backends.ts；本文件仅保留门面。
 
 import { createLogger } from "@fenix/logger";
-import { AppError, ValidationError } from "../errors";
+import { AppError, ValidationError } from "../../apps/server/src/errors";
 import { BusyError } from "../transport/file-ws-requests";
 import { getOwnedEnvironment } from "./environment-core";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";

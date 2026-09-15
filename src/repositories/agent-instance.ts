@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "../db";
-import { agentInstance } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { agentInstance } from "../../apps/server/src/db/schema";
 
 /** Agent Instance 的不可变创建来源。 */
 export type InstanceCreationSource = "user" | "api" | "workflow";

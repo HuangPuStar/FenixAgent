@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { config, setConfig } from "../config";
+import { config, setConfig } from "../../apps/server/src/config";
 import modelGatewayRoutes from "../routes/api/system-model-gateway";
 import { type ModelGatewayServices, setModelGatewayServices } from "../services/model-gateway";
 

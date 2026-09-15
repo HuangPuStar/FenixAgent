@@ -6,7 +6,7 @@
  * 旧的 POST /web/apiKeys action 分发端点保留兼容。
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 /** API Key 基本信息 */
 export interface ApiKeyInfo {

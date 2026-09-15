@@ -10,7 +10,7 @@
 // - environmentRepo 经 preload Proxy 调用时解析（setup-mocks.ts 头注释记载过同款事故：
 //   绑定一次引用会固化导致 stub 失效），因此 getEnvironment 每次调用都经属性访问转发。
 
-import { config } from "../../config";
+import { config } from "../../../apps/server/src/config";
 import { type EnvironmentRecord, environmentRepo, findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
 import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
 import { agentInstanceRepo } from "../../repositories/agent-instance";

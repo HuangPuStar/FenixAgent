@@ -7,7 +7,7 @@ import type {
   SandboxResources,
   SandboxTemplate,
 } from "@fenix/sandbox-provider";
-import type { SandboxInstance, SandboxPool } from "../../db/schema";
+import type { SandboxInstance, SandboxPool } from "../../../apps/server/src/db/schema";
 import { findMachineOrganizationId, isMachineOnline } from "../../repositories/machine-repository";
 import type { SandboxInstanceLockScope } from "../../repositories/sandbox-instance-repository";
 import {

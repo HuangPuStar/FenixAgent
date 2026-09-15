@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
 import { unwrap } from "@/src/api/request";
-import { NS } from "../../i18n";
+import { NS } from "@/src/i18n";
 import { FileTreeInputDialog } from "./file-tree-input-dialog";
 import {
   collectDirectoryPaths,

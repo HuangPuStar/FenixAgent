@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { readJson, resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 import * as mcpInspector from "../services/mcp-inspector";
-import { setTestOrgContext } from "../services/org-context";
-import { readJson, resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 const mcpRoute = (await import("../routes/web/config/mcp")).default;
 

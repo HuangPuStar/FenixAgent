@@ -5,6 +5,7 @@
  * 所有方法严格遵循 RESTful 风格。
  */
 
+import { request } from "@/src/api/request";
 import type {
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
@@ -18,7 +19,6 @@ import type {
   RerankModelOption,
   UnassociatedKnowledgeBase,
 } from "../types/knowledge";
-import { request } from "./request";
 
 /** 创建知识库请求体 */
 export interface KnowledgeBaseCreateBody {

@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
-import { db } from "../db";
-import { shareEventSnapshot, shareLink } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { shareEventSnapshot, shareLink } from "../../apps/server/src/db/schema";
 
 /** ShareLink 仓储接口 — PostgreSQL 持久化 */
 export interface IShareLinkRepo {

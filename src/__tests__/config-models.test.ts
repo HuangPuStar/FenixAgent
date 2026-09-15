@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubConfigPg } from "../../apps/server/src/test-utils/helpers";
 import modelsRoute from "../routes/web/config/models";
-import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg } from "../test-utils/helpers";
 
 // In-memory store for stub implementations
 let _userConfig: {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubSystemApi } from "../test-utils/helpers";
+import { resetAllStubs, stubSystemApi } from "../../apps/server/src/test-utils/helpers";
 
 const apiSystemRoute = (await import("../routes/api/system")).default;
 

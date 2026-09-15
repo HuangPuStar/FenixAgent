@@ -1,7 +1,7 @@
 import type { AgentMachineData, AgentMachineRepo } from "@fenix/orchestration";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { machine } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { machine } from "../../apps/server/src/db/schema";
 
 /** 连接信息缺失时的兜底 host/port：host 指向本机回环，port 0 表示“端口由部署/代理 URL 决定”。 */
 const FALLBACK_HOST = "127.0.0.1";

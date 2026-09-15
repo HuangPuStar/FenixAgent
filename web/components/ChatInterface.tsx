@@ -2,10 +2,10 @@ import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/c
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { unwrap } from "@/src/api/request";
 import { agentApi } from "../src/api/agents";
 import { envApi } from "../src/api/environments";
 import { mcpApi } from "../src/api/mcp";
-import { unwrap } from "../src/api/request";
 import { getAgentConfigLookupKey } from "../src/lib/agent-resource-access";
 import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";
@@ -49,12 +49,11 @@ function createDebugSnapshot(value: unknown, seen = new WeakSet<object>()): unkn
   );
 }
 
+import { Button } from "@/components/ui/button";
 import { ChatStatusPanel } from "./chat/chat-status-panel";
 import { PeriTaskDetailSheet } from "./chat/PeriTaskDetailSheet";
 import { PermissionPanel } from "./chat/PermissionPanel";
 import { QuestionPanel } from "./chat/QuestionPanel";
-
-import { Button } from "./ui/button";
 
 export type { ChatInterfaceHandle } from "./chat/chat-interface-types";
 

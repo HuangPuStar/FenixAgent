@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import {
   canManageSkillSharing,
   canWriteSkill,

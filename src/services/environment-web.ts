@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { db } from "../db";
-import { agentConfig, environment, machine } from "../db/schema";
-import { ConflictError, NotFoundError, ValidationError } from "../errors";
+import { db } from "../../apps/server/src/db";
+import { agentConfig, environment, machine } from "../../apps/server/src/db/schema";
+import { ConflictError, NotFoundError, ValidationError } from "../../apps/server/src/errors";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories";
 import { environmentRepo } from "../repositories";
 import { agentInstanceService } from "./agent-instance-service";

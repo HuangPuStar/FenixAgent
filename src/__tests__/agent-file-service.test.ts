@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rename, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
+import {
+  resetAllStubs,
+  stubDb,
+  stubEnvironmentRepo,
+  stubFileWsHandler,
+} from "../../apps/server/src/test-utils/helpers";
 import { gate } from "../services/agent-file-service";
 import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import {
@@ -13,7 +19,6 @@ import {
   type ReadResult,
   type UploadFileInput,
 } from "../services/file-types";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "../test-utils/helpers";
 import { BusyError } from "../transport/file-ws-requests";
 
 const ORG_ID = "org-1";

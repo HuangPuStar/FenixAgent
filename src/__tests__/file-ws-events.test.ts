@@ -2,12 +2,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../config";
+import { setConfig } from "../../apps/server/src/config";
+import { resetAllStubs, stubEnvironmentRepo, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 import { gate } from "../services/agent-file-service";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";
 import { type FileAuthContext } from "../services/file-types";
-import { resetAllStubs, stubEnvironmentRepo, stubRegistry } from "../test-utils/helpers";
 import type { WsConnection } from "../transport/ws-types";
 
 // sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests，setup-mocks 部分

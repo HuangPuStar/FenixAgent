@@ -1,7 +1,7 @@
 import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { type AgentInstanceRecord, environmentRepo } from "../../repositories";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";

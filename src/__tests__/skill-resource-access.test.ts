@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "../config";
-import { AppError } from "../errors";
+import { setConfig } from "../../apps/server/src/config";
+import { AppError } from "../../apps/server/src/errors";
 import type { ResourceAccess, SkillConfigRowWithAccess } from "../services/config/types";
 import { _deps, _resetDeps, deleteSkill, getSkill, listSkills, setSkill } from "../services/skill";
 

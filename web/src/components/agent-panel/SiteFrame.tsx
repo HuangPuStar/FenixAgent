@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
-import { NS } from "../../i18n";
-import { cn } from "../../lib/utils";
+import { NS } from "@/src/i18n";
+import { cn } from "@/src/lib/utils";
 
 export interface SiteFrameProps {
   /** 远程 app id（形如 app-xxxx），拼接到同源根路径展示业务前端 */

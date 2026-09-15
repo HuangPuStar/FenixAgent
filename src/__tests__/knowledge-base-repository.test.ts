@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { agentKnowledgeBindingRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 describe("知识库仓储边界行为", () => {
   beforeEach(() => {

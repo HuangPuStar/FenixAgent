@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@fenix/logger";
-import { sanitizeErrorForLog } from "../plugins/logger";
+import { sanitizeErrorForLog } from "../../apps/server/src/plugins/logger";
 
 // 结构化日志：输出格式包含 level、module、message 字段
 describe("structured logger", () => {

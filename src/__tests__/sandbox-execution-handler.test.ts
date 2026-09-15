@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import { SandboxExecutionHandler } from "../services/sandbox/sandbox-execution-handler";
-import { resetAllStubs } from "../test-utils/helpers";
 
 afterEach(() => {
   resetAllStubs();

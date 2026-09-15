@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../config";
+import { resetConfig, setConfig } from "../../apps/server/src/config";
 import { RagFlowKnowledgeProvider } from "../services/knowledge-provider/ragflow";
 
 const originalFetch = globalThis.fetch;

@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
-import { db } from "../db";
-import { machine } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { machine } from "../../apps/server/src/db/schema";
 
 /** 查询 Machine 的租户归属；不存在时返回 null。 */
 export async function findMachineOrganizationId(machineId: string): Promise<string | null> {

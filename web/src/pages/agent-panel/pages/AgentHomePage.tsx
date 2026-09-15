@@ -9,7 +9,7 @@ import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
-import { NS } from "../../../i18n";
+import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import { resolveCreatedAgentChatTarget } from "../agent-create-navigation";
 import type { GenerationFormData } from "../components/AgentGenerationForm";

@@ -1,5 +1,5 @@
-import type { PaginatedResponse } from "./request";
-import { request } from "./request";
+import type { PaginatedResponse } from "@/src/api/request";
+import { request } from "@/src/api/request";
 
 export interface HttpDefinition {
   url: string;

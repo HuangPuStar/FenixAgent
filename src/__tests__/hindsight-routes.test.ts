@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { clearOrgCache, setTestOrgContext } from "../../apps/server/src/services/org-context";
+import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import webHindsight from "../routes/web/hindsight";
-import { clearOrgCache, setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 /** 测试用 member ID，对应 resolveMemberId 的返回值 */
 const TEST_MEMBER_ID = "mem-test-member-id";

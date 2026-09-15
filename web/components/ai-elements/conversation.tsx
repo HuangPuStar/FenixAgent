@@ -5,8 +5,8 @@ import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
-import { cn } from "../../src/lib/utils";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/src/lib/utils";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 

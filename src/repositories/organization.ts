@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
-import { db } from "../db";
-import { organization } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { organization } from "../../apps/server/src/db/schema";
 
 export interface IOrganizationRepo {
   listNamesByIds(ids: string[]): Promise<Map<string, string>>;

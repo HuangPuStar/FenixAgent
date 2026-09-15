@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import type { AuthContext } from "../plugins/auth";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import type { ModelUpsertData } from "../services/config/types";
 import {
   createSystemModelGatewayProviderService,

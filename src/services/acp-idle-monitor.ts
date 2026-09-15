@@ -6,7 +6,7 @@
 // scheduled / system 实例仍需要回收出口，避免后台任务长期泄漏。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
-import { config } from "../config";
+import { config } from "../../apps/server/src/config";
 import { findUsersBasicInfoByIds } from "../repositories";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import {

@@ -1,6 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { db } from "../db";
-import { taskExecutionLog } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { taskExecutionLog } from "../../apps/server/src/db/schema";
 
 /** TaskExecutionLog 行类型 */
 export type TaskExecutionLogRow = typeof taskExecutionLog.$inferSelect;

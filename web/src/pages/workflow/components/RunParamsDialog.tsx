@@ -7,7 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../../../../components/ui/dialog";
+} from "@/components/ui/dialog";
 
 export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";

@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-
+import i18n from "@/src/i18n";
 import { getFileCategory, ResourcePreviewContent } from "../../components/knowledge/ResourcePreviewContent";
-import i18n from "../i18n";
 import type { KnowledgeResourceInfo } from "../types/knowledge";
 
 function resource(sourceName: string): KnowledgeResourceInfo {

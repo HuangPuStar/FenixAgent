@@ -1,6 +1,6 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { db } from "../db";
-import { resourcePermission } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { resourcePermission } from "../../apps/server/src/db/schema";
 
 export type ResourcePermissionType = "provider" | "skill" | "mcp_server" | "agent_config";
 export type ResourcePermissionPrincipalType = "all" | "organization";

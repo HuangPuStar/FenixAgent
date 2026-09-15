@@ -16,8 +16,8 @@ import type { PeriTaskStatus, PeriTaskViewProjection } from "@fenix/chat-channel
 import { Ban, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../src/lib/utils";
-import { Badge } from "../ui/badge";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/src/lib/utils";
 
 interface PeriTaskViewCardProps {
   task: PeriTaskViewProjection;

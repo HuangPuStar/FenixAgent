@@ -7,7 +7,7 @@
  */
 
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../plugins/auth";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { getCustomToolsRegistry } from "../../services/workflow/custom-tools";
 
 export const webWorkflowCustomTools = new Elysia({ name: "web-workflow-custom-tools" }).use(authGuardPlugin).get(

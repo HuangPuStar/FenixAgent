@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 import type { TaskExecutionLogRow } from "../repositories/task";
 import { taskExecutionLogRepo } from "../repositories/task";
 import type { ScheduledTaskV2Row } from "../repositories/task-v2";
 import { scheduledTaskV2Repo } from "../repositories/task-v2";
 import { schedulerService } from "../services/scheduler";
-import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "../test-utils/helpers";
 
 const route = (await import("../routes/web/tasks-v2")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

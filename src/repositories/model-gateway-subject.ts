@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, or } from "drizzle-orm";
-import { db } from "../db";
-import { member, user } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { member, user } from "../../apps/server/src/db/schema";
 import type { SystemApiUserRecord } from "../services/system-api";
 
 export interface ModelGatewayUserSearchInput {

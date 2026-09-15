@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { agentConfigMcp } from "../../db/schema";
+import { db } from "../../../apps/server/src/db";
+import { agentConfigMcp } from "../../../apps/server/src/db/schema";
 
 /** 查询 Agent 关联的所有 mcpServerId。 */
 export async function listAgentMcpIds(agentConfigId: string): Promise<string[]> {

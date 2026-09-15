@@ -11,9 +11,9 @@ import {
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
 import { eq } from "drizzle-orm";
-import { config } from "../config";
-import { db } from "../db";
-import { machine } from "../db/schema";
+import { config } from "../../apps/server/src/config";
+import { db } from "../../apps/server/src/db";
+import { machine } from "../../apps/server/src/db/schema";
 import type { WsConnection } from "../transport/ws-types";
 import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";

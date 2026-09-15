@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb, stubRegistry } from "../test-utils/helpers";
+import { resetAllStubs, stubDb, stubRegistry } from "../../apps/server/src/test-utils/helpers";
 
 // @ts-expect-error Bun 以独立模块实例加载真实心跳服务，避免预加载的服务 stub。
 const heartbeat = await import("../services/registry-heartbeat?round68");

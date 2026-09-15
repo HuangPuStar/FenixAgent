@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { workflowTrigger } from "../db/schema";
+import { db } from "../../apps/server/src/db";
+import { workflowTrigger } from "../../apps/server/src/db/schema";
 
 export type WorkflowTriggerRow = typeof workflowTrigger.$inferSelect;
 export type WorkflowTriggerInsert = typeof workflowTrigger.$inferInsert;

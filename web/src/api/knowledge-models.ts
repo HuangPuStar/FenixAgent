@@ -9,13 +9,14 @@
  * 单独删除；删除粒度是「实例」。因此本 API 的 list 返回三级树，delete 按
  * 实例删除，setModelStatus 用于屏蔽/取消屏蔽单个模型。
  */
+
+import { request } from "@/src/api/request";
 import type {
   ConfiguredProviderNode,
   EmbeddingFactoryOption,
   InstanceModelOption,
   ProviderModelOption,
 } from "../types/knowledge";
-import { request } from "./request";
 
 export interface VerifyResult {
   success: boolean;

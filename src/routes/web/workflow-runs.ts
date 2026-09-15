@@ -9,9 +9,9 @@ import { createLogger } from "@fenix/logger";
 import { WorkflowError } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
-import { db } from "../../db";
-import { workflowSnapshot } from "../../db/schema";
-import { authGuardPlugin } from "../../plugins/auth";
+import { db } from "../../../apps/server/src/db";
+import { workflowSnapshot } from "../../../apps/server/src/db/schema";
+import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import {
   WorkflowApproveRequestBodySchema,

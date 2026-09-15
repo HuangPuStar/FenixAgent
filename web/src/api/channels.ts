@@ -5,7 +5,7 @@
  * 采用 RESTful 风格，统一通过 request() 与后端 /web/channels/* 通信。
  */
 
-import { request } from "./request";
+import { request } from "@/src/api/request";
 
 /** 通道绑定记录 */
 interface ChannelBinding {

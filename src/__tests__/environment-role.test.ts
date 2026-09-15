@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "../errors";
-import { resetAllStubs, stubEnvironmentRepo } from "../test-utils/helpers";
+import { ForbiddenError, NotFoundError } from "../../apps/server/src/errors";
+import { resetAllStubs, stubEnvironmentRepo } from "../../apps/server/src/test-utils/helpers";
 
 // 动态 import：environmentRepo 的 mock 是 setup-mocks.ts 注册的实时 Proxy，
 // beforeEach 注入 stub 即可生效（与 fs-upload-escape.test.ts 同模式）。

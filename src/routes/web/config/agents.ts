@@ -1,10 +1,18 @@
 import { and, eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { db } from "../../../db";
-import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "../../../db/schema";
-import { AppError } from "../../../errors";
-import { type AuthContext, authGuardPlugin } from "../../../plugins/auth";
+import { db } from "../../../../apps/server/src/db";
+import {
+  agentSiteApp,
+  knowledgeBase,
+  machine,
+  mcpServer,
+  model,
+  provider,
+  skill,
+} from "../../../../apps/server/src/db/schema";
+import { AppError } from "../../../../apps/server/src/errors";
+import { type AuthContext, authGuardPlugin } from "../../../../apps/server/src/plugins/auth";
 import * as agentMemoryConfigRepo from "../../../repositories/agent-memory-config";
 import { WebErrSchema } from "../../../schemas/common.schema";
 import {

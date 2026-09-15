@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
 import { createExecutionNodeResolver } from "../services/orchestration-bootstrap";
-import { resetAllStubs } from "../test-utils/helpers";
 
 describe("createExecutionNodeResolver", () => {
   const prepareCalls: Array<{ sandboxPoolId: string; userId: string; organizationId: string | null }> = [];
