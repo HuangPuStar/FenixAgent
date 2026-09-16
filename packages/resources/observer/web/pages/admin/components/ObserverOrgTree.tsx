@@ -3,11 +3,6 @@
 // 叶子行显示 source badge 与 machineId；拓扑反查时高亮 machine 承载的 leaf。
 // 使用原生 <details> 逐层钻取，保持键盘可访问性（open 属性默认展开层级）。
 
-import { Bot, Building2, Cpu, Layers, User } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/src/lib/utils";
 import {
   chatRelayPayload,
   formatClockTime,
@@ -16,7 +11,12 @@ import {
   name,
   sessionTabCounts,
   type YjsSessionGroup,
-} from "@/src/pages/admin/utils";
+} from "@fenix/resource-sandbox/web";
+import { Bot, Building2, Cpu, Layers, User } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/src/lib/utils";
 import type {
   ObserverAgentNode,
   ObserverInstanceNode,

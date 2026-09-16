@@ -2,15 +2,17 @@ import {
   RemoteSandboxListQuerySchema,
   RemoteSandboxListResponseSchema,
   RemoteSandboxSchema,
-  type SandboxServerAdminService,
   SandboxServerCommandBodySchema,
   SandboxServerSandboxParamsSchema,
+} from "../../server/schemas/api-sandbox-server.schema";
+import {
+  type SandboxServerAdminService,
   sandboxServerAdminService,
-} from "@fenix/resource-sandbox/server";
+} from "../../server/services/sandbox-server-admin-service";
 import Elysia, { status } from "elysia";
 import * as z from "zod/v4";
-import { systemApiAuthPlugin } from "../../../apps/server/src/plugins/system-api-auth";
-import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
+import { systemApiAuthPlugin } from "../../../../../../apps/server/src/plugins/system-api-auth";
+import { ApiErrorResponseSchema } from "../../../../../../src/schemas/api-common.schema";
 import { mapSandboxClusterAdminError } from "./sandbox-cluster";
 
 let service: SandboxServerAdminService = sandboxServerAdminService;

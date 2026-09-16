@@ -1,3 +1,4 @@
+import { MasterKeyGate } from "@fenix/resource-sandbox/web";
 import { useRequest } from "ahooks";
 import { Bot, Building2, ChevronRight, KeyRound, RefreshCw, UserPlus, UserRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -12,7 +13,6 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/src/api/request";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
-import { MasterKeyGate } from "@/src/pages/admin/components/MasterKeyGate";
 import {
   buildSystemUserIdentifier,
   createSystemUser,

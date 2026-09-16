@@ -2,10 +2,10 @@
 // 全部观察平坦表（id / source / 各角色 id / openTime），便于与树视图对照（docs/arch/21 §5）。
 // 数据来自 utils.mergeFlatRows（byOrg + byEntity 去重合并）。
 
+import { type FlatRow, name } from "@fenix/resource-sandbox/web";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type FlatRow, name } from "@/src/pages/admin/utils";
 import type { ObserverNames } from "../../../api/observer";
 
 interface ObserverFlatTableProps {

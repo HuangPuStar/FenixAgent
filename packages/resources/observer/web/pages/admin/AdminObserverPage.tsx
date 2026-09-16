@@ -5,6 +5,7 @@
 // - 请求 401（UNAUTHORIZED）→ clearAdminKey() 回 MasterKeyGate；
 // - 覆盖 loading / empty / error / retry 状态。
 
+import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
 import { useRequest } from "ahooks";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -16,8 +17,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/src/api/request";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
-import { MasterKeyGate } from "@/src/pages/admin/components/MasterKeyGate";
-import { integrityRows, machineReverseIndex, mergeFlatRows } from "@/src/pages/admin/utils";
 import { type AcpLinkSnapshot, fetchAcpLinkSnapshot } from "../../api/observer";
 import { ObserverFlatTable } from "./components/ObserverFlatTable";
 import { ObserverIntegrityAlert } from "./components/ObserverIntegrityAlert";

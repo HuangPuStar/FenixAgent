@@ -23,6 +23,7 @@
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",
     "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "zod": "^4.4.3"

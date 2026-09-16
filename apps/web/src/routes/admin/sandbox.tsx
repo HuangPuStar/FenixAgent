@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 
 const AdminSandboxPage = lazy(() =>
-  import("@/src/pages/admin/AdminSandboxPage").then((m) => ({ default: m.AdminSandboxPage })),
+  import("@fenix/resource-sandbox/web").then((m) => ({ default: m.AdminSandboxPage })),
 );
 
 export const Route = createFileRoute("/admin/sandbox")({

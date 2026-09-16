@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { setAdminKey } from "../../../lib/admin-key";
+import { setAdminKey } from "@/src/lib/admin-key";
 
 interface MasterKeyGateProps {
   onUnlock: () => void;

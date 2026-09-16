@@ -2,11 +2,11 @@
 // 一致性告警区（docs/arch/21 §5）：mismatched>0 时列出 kind+id 及可能原因；
 // 全部一致时显示绿色确认文案。
 
+import type { IntegrityRow } from "@fenix/resource-sandbox/web";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/src/lib/utils";
-import type { IntegrityRow } from "@/src/pages/admin/utils";
 
 interface ObserverIntegrityAlertProps {
   rows: IntegrityRow[];

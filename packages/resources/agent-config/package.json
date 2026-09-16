@@ -39,6 +39,7 @@
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",

@@ -27,7 +27,7 @@ import {
   type SandboxResourcePatch,
   systemSandboxApi,
 } from "../../api/system-sandbox";
-import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
+import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import { MasterKeyGate } from "./components/MasterKeyGate";
 import { RemoteSandboxPanel } from "./components/RemoteSandboxPanel";
 

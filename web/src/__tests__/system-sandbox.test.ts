@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildSandboxRebuildRequest, buildSandboxResourcePatch } from "../api/system-sandbox";
+import { buildSandboxRebuildRequest, buildSandboxResourcePatch } from "@fenix/resource-sandbox/web";
 
 describe("system sandbox request helpers", () => {
   // 资源表单只应提交 CPU、内存、磁盘和 GPU 四项覆盖值，空值用于取消对应覆盖。

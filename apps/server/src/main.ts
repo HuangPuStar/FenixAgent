@@ -68,6 +68,9 @@ import {
   apiSystemPeopleTreeRoutes,
 } from "@fenix/resource-observer/server";
 import {
+  apiSandboxClusterRoutes,
+  apiSandboxRoutes,
+  apiSandboxServerRoutes,
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
@@ -78,9 +81,6 @@ import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import apiModelsRoutes from "../../../src/routes/api/models";
-import apiSandboxRoutes from "../../../src/routes/api/sandbox";
-import apiSandboxClusterRoutes from "../../../src/routes/api/sandbox-cluster";
-import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
 import webApp from "../../../src/routes/web";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import {
