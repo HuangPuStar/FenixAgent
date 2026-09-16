@@ -1,15 +1,5 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
-import {
-  checkParsedObjectSize,
-  checkWsMessageSize,
-  estimateWsMessageBytes,
-  formatFileWsCloseLog,
-  handleFileWsClose,
-  handleFileWsMessage,
-  handleFileWsOpen,
-  parseFileWsMessage,
-} from "@fenix/resource-machine/server";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { validateEnv } from "../../../../../apps/server/src/env";
@@ -24,6 +14,7 @@ import {
 } from "../../schemas/acp.schema";
 import { environmentRepo } from "../../server/repositories/environment";
 import { getChatChannelController } from "../../server/services/chat-channel-bootstrap";
+import { getFileWsPort } from "../../server/services/file-ws-port";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../server/transport/acp-ws-handler";
 import {
   handleExternalRelayClose,
@@ -45,8 +36,8 @@ const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
  */
 function isOverWsLimit(data: unknown): boolean {
   return (
-    checkWsMessageSize(data as string | Uint8Array, MAX_WS_MESSAGE_SIZE) ||
-    checkParsedObjectSize(data, MAX_WS_MESSAGE_SIZE)
+    getFileWsPort().checkWsMessageSize(data as string | Uint8Array, MAX_WS_MESSAGE_SIZE) ||
+    getFileWsPort().checkParsedObjectSize(data, MAX_WS_MESSAGE_SIZE)
   );
 }
 
@@ -156,7 +147,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // Elysia's parseMessage auto-parses JSON strings into objects;
       // pass the already-parsed object directly to avoid redundant stringify→parse.
       if (isOverWsLimit(data)) {
-        logError(`[ACP-WS] Message too large: ${estimateWsMessageBytes(data)} bytes`);
+        logError(`[ACP-WS] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
@@ -196,7 +187,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // object，到不了本函数的字符串检查——该路径由 uWS 全局 maxPayloadLength
       // （apps/server/src/main.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
       // file-ws 32MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
-      if (typeof message === "string" && checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
+      if (typeof message === "string" && getFileWsPort().checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
         logError(`[File-WS] Message too large: ${Buffer.byteLength(message)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return "";
@@ -218,7 +209,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension
       (ws.data as any).__fileWsId = wsId;
       log(`[File-WS] Upgrade accepted: wsId=${wsId}`);
-      handleFileWsOpen(adaptWs(ws), wsId);
+      getFileWsPort().handleFileWsOpen(adaptWs(ws), wsId);
     },
     message(ws, data) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
@@ -226,20 +217,20 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
       if (!wsId) return;
       if (typeof data !== "string") {
         // 防御分支：parse 钩子已把文本帧归一为字符串，此处仅兜底二进制等异常帧
-        handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+        getFileWsPort().handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
         return;
       }
       // NDJSON 逐行解析（坏行记日志跳过，不中断整批），逐条分发；尺寸检查已在 parse 钩子完成
-      for (const msg of parseFileWsMessage(data)) {
-        handleFileWsMessage(adaptWs(ws), wsId, msg);
+      for (const msg of getFileWsPort().parseFileWsMessage(data)) {
+        getFileWsPort().handleFileWsMessage(adaptWs(ws), wsId, msg);
       }
     },
     close(ws, code, reason) {
       // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
       const wsId = (ws.data as any).__fileWsId as string | undefined;
       if (wsId) {
-        log(formatFileWsCloseLog(wsId, code, reason));
-        handleFileWsClose(adaptWs(ws), wsId);
+        log(getFileWsPort().formatFileWsCloseLog(wsId, code, reason));
+        getFileWsPort().handleFileWsClose(adaptWs(ws), wsId);
       }
     },
   })
@@ -316,7 +307,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     },
     message(ws, data) {
       if (isOverWsLimit(data)) {
-        logError(`[YJS-WS] Message too large: ${estimateWsMessageBytes(data)} bytes`);
+        logError(`[YJS-WS] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }
@@ -388,7 +379,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     },
     message(ws, data) {
       if (isOverWsLimit(data)) {
-        logError(`[External-Relay] Message too large: ${estimateWsMessageBytes(data)} bytes`);
+        logError(`[External-Relay] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
         adaptWs(ws).close(1009, "message too large");
         return;
       }

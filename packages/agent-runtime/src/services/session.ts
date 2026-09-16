@@ -1,5 +1,5 @@
 import { v4 as uuidReal } from "uuid";
-import { eventService as realEventService } from "../../../../src/services/event-service";
+import { getSessionEventBusPort } from "../server/services/session-event-bus-port";
 
 /**
  * Session 管理已下沉到 Agent 进程（acp-link）。
@@ -14,12 +14,7 @@ import { eventService as realEventService } from "../../../../src/services/event
 // ────────────────────────────────────────────
 // DI 注入点（测试时覆盖）
 // ────────────────────────────────────────────
-export let _eventService = realEventService;
 export let _uuid = uuidReal;
-
-export function _setEventService(es: typeof realEventService) {
-  _eventService = es;
-}
 
 export function _setUuid(fn: () => string) {
   _uuid = fn;
@@ -30,7 +25,7 @@ export function _setUuid(fn: () => string) {
 // ────────────────────────────────────────────
 
 export function updateSessionStatus(sessionId: string, status: string): void {
-  const bus = _eventService.getAllBuses().get(sessionId);
+  const bus = getSessionEventBusPort().getAllBuses().get(sessionId);
   if (!bus) return;
   bus.publish({
     id: _uuid(),
@@ -43,7 +38,7 @@ export function updateSessionStatus(sessionId: string, status: string): void {
 
 export function archiveSession(sessionId: string): void {
   updateSessionStatus(sessionId, "archived");
-  _eventService.removeBus(sessionId);
+  getSessionEventBusPort().removeBus(sessionId);
 }
 
 // ────────────────────────────────────────────
@@ -57,13 +52,13 @@ interface LightweightSession {
 
 /** Session 由 Agent 管理，此函数仅检查 EventBus 是否活跃 */
 export async function getSession(sessionId: string): Promise<LightweightSession | null> {
-  const bus = _eventService.getAllBuses().get(sessionId);
+  const bus = getSessionEventBusPort().getAllBuses().get(sessionId);
   if (!bus) return null;
   return { id: sessionId, status: "active" };
 }
 
 /** Session 由 Agent 管理，直接返回 sessionId */
 export async function resolveExistingSessionId(sessionId: string): Promise<string | null> {
-  const bus = _eventService.getAllBuses().get(sessionId);
+  const bus = getSessionEventBusPort().getAllBuses().get(sessionId);
   return bus ? sessionId : null;
 }

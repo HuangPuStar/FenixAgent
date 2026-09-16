@@ -1,5 +1,5 @@
+import { eventService } from "@fenix/resource-machine/server";
 import { v4 as uuid } from "uuid";
-import { eventService } from "../services/event-service";
 
 /**
  * Extract plain text from various message payload formats.

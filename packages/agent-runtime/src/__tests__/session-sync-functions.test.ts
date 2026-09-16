@@ -1,21 +1,20 @@
 // ── session.ts 同步函数返回 Promise 验证 ──
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { _setEventService, _setUuid, getSession, resolveExistingSessionId } from "../services/session";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { bindSessionEventBusPort, resetSessionEventBusPort } from "../server/services/session-event-bus-port";
+import { _setUuid, getSession, resolveExistingSessionId } from "../services/session";
 
 // 注入 mock eventService
 const mockBuses = new Map();
-
-_setEventService({
-  getAllBuses: () => mockBuses,
-  removeBus: () => {},
-} as any);
 
 _setUuid(() => "test-uuid");
 
 describe("getSession — 同步返回 Promise", () => {
   beforeEach(() => {
     mockBuses.clear();
+    bindSessionEventBusPort({ getAllBuses: () => mockBuses as never, removeBus: () => {} });
   });
+
+  afterEach(() => resetSessionEventBusPort());
 
   // 有活跃 EventBus 时返回 { id, status: "active" }
   test("getSession with active bus returns { id, status: active }", async () => {
@@ -34,7 +33,10 @@ describe("getSession — 同步返回 Promise", () => {
 describe("resolveExistingSessionId — 同步返回 Promise", () => {
   beforeEach(() => {
     mockBuses.clear();
+    bindSessionEventBusPort({ getAllBuses: () => mockBuses as never, removeBus: () => {} });
   });
+
+  afterEach(() => resetSessionEventBusPort());
 
   // 有活跃 EventBus 时返回 sessionId
   test("resolveExistingSessionId with active bus returns sessionId", async () => {

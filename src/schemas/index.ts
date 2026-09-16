@@ -82,6 +82,40 @@ export {
   type UploadKnowledgeResourcesResponse,
   UploadKnowledgeResourcesResponseSchema,
 } from "@fenix/resource-knowledge/server/schema";
+// Files
+// Registry
+export {
+  type EventQuery,
+  EventQuerySchema,
+  type FileContent,
+  FileContentSchema,
+  type FileEntry,
+  FileEntrySchema,
+  type FileListResponse,
+  FileListResponseSchema,
+  FileUploadItemSchema,
+  type FileUploadResponse,
+  FileUploadResponseSchema,
+  type FileWriteResult,
+  FileWriteResultSchema,
+  type Machine,
+  type MachineDetail,
+  type MachineDetailResponse,
+  MachineDetailResponseSchema,
+  MachineDetailSchema,
+  type MachineListResponse,
+  MachineListResponseSchema,
+  type MachineQuery,
+  MachineQuerySchema,
+  MachineSchema,
+  type RegistryEvent,
+  type RegistryEventListResponse,
+  RegistryEventListResponseSchema,
+  RegistryEventSchema,
+  type UpdateMachineInput,
+  UpdateMachineSchema,
+  WriteFileRequestSchema,
+} from "@fenix/resource-machine/server/schema";
 // MCP Knowledge
 export {
   McpKnowledgeAuthHeadersSchema,
@@ -141,21 +175,6 @@ export {
   SkillUploadResultSchema,
   UpdateSkillResponseSchema,
 } from "./config.schema";
-// Files
-export {
-  type FileContent,
-  FileContentSchema,
-  type FileEntry,
-  FileEntrySchema,
-  type FileListResponse,
-  FileListResponseSchema,
-  FileUploadItemSchema,
-  type FileUploadResponse,
-  FileUploadResponseSchema,
-  type FileWriteResult,
-  FileWriteResultSchema,
-  WriteFileRequestSchema,
-} from "./file.schema";
 // Meta Agent
 export {
   type EnsureMetaAgentResponse,
@@ -168,27 +187,6 @@ export {
   PeriTaskDetailResponseSchema,
   PeriTaskDetailSchema,
 } from "./peri-task-details";
-// Registry
-export {
-  type EventQuery,
-  EventQuerySchema,
-  type Machine,
-  type MachineDetail,
-  type MachineDetailResponse,
-  MachineDetailResponseSchema,
-  MachineDetailSchema,
-  type MachineListResponse,
-  MachineListResponseSchema,
-  type MachineQuery,
-  MachineQuerySchema,
-  MachineSchema,
-  type RegistryEvent,
-  type RegistryEventListResponse,
-  RegistryEventListResponseSchema,
-  RegistryEventSchema,
-  type UpdateMachineInput,
-  UpdateMachineSchema,
-} from "./registry.schema";
 // Sessions
 export {
   type SendEventResponse,

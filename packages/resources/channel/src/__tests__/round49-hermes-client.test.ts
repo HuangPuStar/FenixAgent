@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { eventService } from "../../../../../src/services/event-service";
+import { EventBus } from "@fenix/agent-runtime/server";
+import { bindAcpEventBusPort, resetAcpEventBusPort } from "../server/services/acp-event-bus-port";
 import { HermesClient } from "../server/services/hermes-client";
 
 class MemoryWebSocket {
@@ -96,6 +97,7 @@ const originalSetInterval = globalThis.setInterval;
 const originalClearInterval = globalThis.clearInterval;
 const clients: HermesClient[] = [];
 const agentIds: string[] = [];
+const acpBuses = new Map<string, EventBus>();
 let nextAgent = 0;
 let timerClock: ManualTimerClock;
 
@@ -117,7 +119,9 @@ function route(client: HermesClient, platform = "feishu", chatId = "chat-a", rep
 }
 
 function publish(agentId: string, type: string, payload: unknown, direction: "inbound" | "outbound" = "inbound"): void {
-  eventService.getAcpBus(agentId).publish({ id: crypto.randomUUID(), sessionId: agentId, type, payload, direction });
+  const bus = acpBuses.get(agentId);
+  if (!bus) throw new Error(`未绑定 ACP 事件总线: ${agentId}`);
+  bus.publish({ id: crypto.randomUUID(), sessionId: agentId, type, payload, direction });
 }
 
 function sent(socket: MemoryWebSocket): Record<string, unknown>[] {
@@ -125,6 +129,16 @@ function sent(socket: MemoryWebSocket): Record<string, unknown>[] {
 }
 
 beforeEach(() => {
+  bindAcpEventBusPort({
+    getAcpBus: (agentId) => {
+      let bus = acpBuses.get(agentId);
+      if (!bus) {
+        bus = new EventBus();
+        acpBuses.set(agentId, bus);
+      }
+      return bus;
+    },
+  });
   MemoryWebSocket.instances = [];
   timerClock = new ManualTimerClock();
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: MemoryWebSocket });
@@ -144,7 +158,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.stop()));
-  for (const agentId of agentIds.splice(0)) eventService.removeAcpBus(agentId);
+  for (const agentId of agentIds.splice(0)) acpBuses.delete(agentId);
+  resetAcpEventBusPort();
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: originalWebSocket });
   Object.defineProperties(globalThis, {
     setTimeout: { configurable: true, value: originalSetTimeout },

@@ -1,5 +1,5 @@
+import { FileUploadItemSchema } from "@fenix/resource-machine/server/schema";
 import * as z from "zod/v4";
-import { FileUploadItemSchema } from "./file.schema";
 
 export const ApiWorkspaceEnvironmentParamsSchema = z
   .object({

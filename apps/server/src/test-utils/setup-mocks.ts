@@ -6,8 +6,10 @@
 
 import { mock } from "bun:test";
 import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
+import * as actualFileWsCloseLog from "@fenix/resource-machine/file-ws-close-log";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "@fenix/resource-machine/file-ws-handler";
+import * as actualFileWsPayload from "@fenix/resource-machine/file-ws-payload";
 import * as actualFileWsRequests from "@fenix/resource-machine/file-ws-requests";
 import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
@@ -437,6 +439,17 @@ const { bindCoreRuntimePort } = await import(
 const { bindMachineRegistryPort } = await import(
   "../../../../packages/agent-runtime/src/server/services/machine-registry-port"
 );
+const { bindLocalNodeAgentNodeServicePort } = await import(
+  "../../../../packages/agent-runtime/src/server/services/local-node-agent-node-service-port"
+);
+const { bindSessionEventBusPort } = await import(
+  "../../../../packages/agent-runtime/src/server/services/session-event-bus-port"
+);
+const { bindFileWsPort } = await import("../../../../packages/agent-runtime/src/server/services/file-ws-port");
+// 测试 preload 以惰性 stub 绑定路由依赖；该测试钩子不得进入 Machine 的生产公开入口。
+const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
+const { getAgentNodeService } = await import("../../../../packages/agent-runtime/src/transport/agent-node-bridge");
+const { getAllEventBuses, removeEventBus } = await import("../../../../packages/agent-runtime/src/transport/event-bus");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
   registerRemoteNode: (...args) => {
@@ -453,4 +466,24 @@ bindMachineRegistryPort({
   startHeartbeat: (machineId, intervalMs, onTimeout) =>
     registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout),
   stopHeartbeat: (machineId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId),
+});
+bindLocalNodeAgentNodeServicePort({ getAgentNodeService });
+bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus });
+bindFileWsPort({
+  checkParsedObjectSize: actualFileWsPayload.checkParsedObjectSize,
+  checkWsMessageSize: actualFileWsPayload.checkWsMessageSize,
+  estimateWsMessageBytes: actualFileWsPayload.estimateWsMessageBytes,
+  formatFileWsCloseLog: actualFileWsCloseLog.formatFileWsCloseLog,
+  handleFileWsClose: actualFileWsHandler.handleFileWsClose,
+  handleFileWsMessage: actualFileWsHandler.handleFileWsMessage,
+  handleFileWsOpen: actualFileWsHandler.handleFileWsOpen,
+  parseFileWsMessage: actualFileWsPayload.parseFileWsMessage,
+});
+setRegistryRouteDeps({
+  createMachine: ((...args) => registryRegistry.get("createMachine")(...args)) as never,
+  deleteMachine: ((...args) => registryRegistry.get("deleteMachine")(...args)) as never,
+  getMachine: ((...args) => registryRegistry.get("getMachine")(...args)) as never,
+  listEvents: ((...args) => registryRegistry.get("listEvents")(...args)) as never,
+  listMachines: ((...args) => registryRegistry.get("listMachines")(...args)) as never,
+  updateMachine: ((...args) => registryRegistry.get("updateMachine")(...args)) as never,
 });

@@ -16,7 +16,7 @@ import {
   stubEnvironmentRepo,
   stubFileWsHandler,
 } from "../../../../../../apps/server/src/test-utils/helpers";
-import { contentDispositionAttachment } from "../../../../../../src/routes/web/fs";
+import { contentDispositionAttachment } from "../../routes/web/fs";
 import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
 
 const ORG_ID = "org-1";
@@ -30,7 +30,7 @@ const REMOTE_ZIP_TIMEOUT_MS = 70_000;
 
 // 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
 // （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../../../../../src/routes/web/fs");
+const fsRoutes = await import("../../routes/web/fs");
 
 let workspaceRoot: string;
 

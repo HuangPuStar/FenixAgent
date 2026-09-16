@@ -1,7 +1,7 @@
 // ── session.ts async 函数移除冗余 Promise.resolve 验证 ──
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { bindSessionEventBusPort, resetSessionEventBusPort } from "../server/services/session-event-bus-port";
 import {
-  _setEventService,
   _setUuid,
   archiveSession,
   getSession,
@@ -13,18 +13,16 @@ import {
 const mockBuses = new Map<string, { publish: typeof mock }>();
 const mockRemoveBus = mock((_id: string) => {});
 
-_setEventService({
-  getAllBuses: () => mockBuses,
-  removeBus: mockRemoveBus,
-} as any);
-
 _setUuid(() => "test-uuid-1234-5678-9abc-def012345678");
 
 describe("session async cleanup (removed redundant Promise.resolve)", () => {
   beforeEach(() => {
     mockBuses.clear();
     mockRemoveBus.mockClear();
+    bindSessionEventBusPort({ getAllBuses: () => mockBuses as never, removeBus: mockRemoveBus });
   });
+
+  afterEach(() => resetSessionEventBusPort());
 
   // getSession 返回 null（无 bus）
   test("getSession returns null when no bus", async () => {

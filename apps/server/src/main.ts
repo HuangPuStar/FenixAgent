@@ -14,9 +14,13 @@ import {
   bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
   bindEnvironmentAcpLifecyclePort,
+  bindFileWsPort,
+  bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindSessionEventBusPort,
   closeAllAcpConnections,
   closeAllRelayConnections,
+  getAgentNodeService,
   getOrchestrationController,
   openaiChatRoutes,
   setRuntimeCredentialResolver,
@@ -32,13 +36,24 @@ import {
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
 } from "@fenix/model-management/server";
-import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
+import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { apiSystemRoutes, ensureSystemAdmin } from "@fenix/resource-identity-admin/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
+  apiWorkspaceRoutes,
+  checkParsedObjectSize,
+  checkWsMessageSize,
   closeAllFileWsConnections,
   disconnectMachine,
+  estimateWsMessageBytes,
+  eventService,
+  formatFileWsCloseLog,
+  handleFileWsClose,
+  handleFileWsMessage,
+  handleFileWsOpen,
   handleHeartbeat,
+  LocalNodeAwareService,
+  parseFileWsMessage,
   registerMachine,
   startFileWsSweep,
   startHeartbeat,
@@ -66,7 +81,6 @@ import apiModelsRoutes from "../../../src/routes/api/models";
 import apiSandboxRoutes from "../../../src/routes/api/sandbox";
 import apiSandboxClusterRoutes from "../../../src/routes/api/sandbox-cluster";
 import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
-import apiWorkspaceRoutes from "../../../src/routes/api/workspaces";
 import webApp from "../../../src/routes/web";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import {
@@ -95,6 +109,24 @@ const env = loadServerEnv([]);
 applyEnv(env);
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+bindSessionEventBusPort({
+  getAllBuses: () => eventService.getAllBuses(),
+  removeBus: (sessionId) => eventService.removeBus(sessionId),
+});
+bindLocalNodeAgentNodeServicePort({
+  getAgentNodeService: () => new LocalNodeAwareService(getAgentNodeService),
+});
+bindAcpEventBusPort({ getAcpBus: (agentId) => eventService.getAcpBus(agentId) });
+bindFileWsPort({
+  checkParsedObjectSize,
+  checkWsMessageSize,
+  estimateWsMessageBytes,
+  formatFileWsCloseLog,
+  handleFileWsClose,
+  handleFileWsMessage,
+  handleFileWsOpen,
+  parseFileWsMessage,
+});
 bindAgentInstanceRuntimeOperations({
   spawnInstance: spawnInstanceViaController,
   stopInstance: stopInstanceViaController,

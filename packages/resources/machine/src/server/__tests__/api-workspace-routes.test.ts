@@ -7,7 +7,7 @@ import { resetTestAuth, setTestAuth } from "../../../../../../apps/server/src/pl
 import { setTestOrgContext } from "../../../../../../apps/server/src/services/org-context";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
 
-const apiWorkspaceRoute = (await import("../../../../../../src/routes/api/workspaces")).default;
+const apiWorkspaceRoute = (await import("../../routes/api/workspaces")).default;
 
 function request(path: string, init?: RequestInit) {
   return apiWorkspaceRoute.handle(new Request(`http://localhost${path}`, init));

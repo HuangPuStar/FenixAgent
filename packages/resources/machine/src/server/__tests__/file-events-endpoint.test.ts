@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { NotFoundError } from "../../../../../../apps/server/src/errors";
 import { resetAllStubs, stubEnvironmentService } from "../../../../../../apps/server/src/test-utils/helpers";
-import {
-  closeAllFileEventsClients,
-  type FileEventsAuth,
-  handleFileEventsOpen,
-} from "../../../../../../src/routes/web/file-events";
+import { closeAllFileEventsClients, type FileEventsAuth, handleFileEventsOpen } from "../../routes/web/file-events";
 import { publishFileEvent } from "../services/file-event-queue";
 import type { WsConnection } from "../transport/ws-types";
 

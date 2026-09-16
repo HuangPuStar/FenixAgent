@@ -21,13 +21,14 @@ import { config, getBaseUrl } from "../../../../apps/server/src/config";
 import { NotFoundError } from "../../../../apps/server/src/errors";
 import type { AuthContext } from "../../../../apps/server/src/plugins/auth";
 import { getCoreRuntime } from "../../../../src/services/core-bootstrap";
-import { LOCAL_DEFAULT_NODE_ID } from "../../../../src/services/local-node-service";
 import type { InstanceSpawnSource, InstanceSupplement } from "../../../../src/types/store";
 import { environmentRepo } from "../server/repositories/environment";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
+
+const LOCAL_DEFAULT_NODE_ID = "local-default";
 
 const _deps = {
   environmentRepo,

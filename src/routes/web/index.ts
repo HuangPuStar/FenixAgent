@@ -10,6 +10,11 @@ import {
   webOrganizationsRoutes as webOrganizations,
 } from "@fenix/resource-identity-admin/server";
 import { webKnowledgeBaseRoutes as webKnowledgeBases } from "@fenix/resource-knowledge/server";
+import {
+  webFileEventsRoutes as webFileEvents,
+  webFsRoutes as webFs,
+  webRegistryRoutes as webRegistry,
+} from "@fenix/resource-machine/server";
 import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
 import { webProdViewsRoutes } from "@fenix/resource-prod-view/server";
 import { webTasksV2Routes } from "@fenix/resource-task/server";
@@ -23,12 +28,9 @@ import {
 import Elysia from "elysia";
 import webConfig from "./config";
 import webEnvironments from "./environments";
-import webFileEvents from "./file-events";
-import webFs from "./fs";
 import webInstances from "./instances";
 import webMetaAgent from "./meta-agent";
 import webPeriTaskDetails from "./peri-task-details";
-import webRegistry from "./registry";
 import webSidebarConfig from "./sidebar-config";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })

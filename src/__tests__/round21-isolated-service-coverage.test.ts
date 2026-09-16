@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getAllEventBuses } from "@fenix/agent-runtime/server";
+import { eventService } from "@fenix/resource-machine/server";
 import { toInvocationDate } from "@fenix/resource-task/server";
 import { clearAllCache, getCache, getCacheBackend } from "../../apps/server/src/services/cache";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { resetAllStubs, stubAuthApi, stubDb } from "../../apps/server/src/test-utils/helpers";
-import { eventService } from "../services/event-service";
 
 const USER_ID = "user-round21";
 

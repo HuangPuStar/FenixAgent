@@ -16,7 +16,7 @@ const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-const fsRoutes = await import("../../../../../../src/routes/web/fs");
+const fsRoutes = await import("../../routes/web/fs");
 
 let workspaceRoot: string;
 
