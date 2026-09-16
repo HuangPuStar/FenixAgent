@@ -1,4 +1,35 @@
 // Common
+
+// Knowledge
+export {
+  type CreateKnowledgeBaseRequest,
+  CreateKnowledgeBaseRequestSchema,
+  ImportKnowledgeUrlRequestSchema,
+  type ImportKnowledgeUrlResponse,
+  ImportKnowledgeUrlResponseSchema,
+  type KnowledgeBaseDetailResponse,
+  KnowledgeBaseDetailResponseSchema,
+  type KnowledgeBaseInfo,
+  KnowledgeBaseInfoSchema,
+  type KnowledgeBaseListResponse,
+  KnowledgeBaseListResponseSchema,
+  KnowledgeBaseStatusSchema,
+  type KnowledgeResourceItem,
+  KnowledgeResourceItemSchema,
+  type KnowledgeResourceListResponse,
+  KnowledgeResourceListResponseSchema,
+  KnowledgeResourceStatusSchema,
+  type UpdateKnowledgeBaseRequest,
+  UpdateKnowledgeBaseRequestSchema,
+  type UploadKnowledgeResourcesResponse,
+  UploadKnowledgeResourcesResponseSchema,
+} from "@fenix/resource-knowledge/server/schema";
+// MCP Knowledge
+export {
+  McpKnowledgeAuthHeadersSchema,
+  McpKnowledgeReadToolInputSchema,
+  McpKnowledgeSearchToolInputSchema,
+} from "@fenix/resource-mcp/server/schema";
 export {
   type AcpAgent,
   type AcpAgentListResponse,
@@ -152,13 +183,6 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
-// Hindsight
-export {
-  HindsightDisabledStatusSchema,
-  HindsightEnabledStatusSchema,
-  type HindsightStatusResponse,
-  HindsightStatusResponseSchema,
-} from "./hindsight.schema";
 // Instances
 export {
   type InstanceActivityInfo,
@@ -176,36 +200,6 @@ export {
   type SpawnInstanceFromEnvironmentResponse,
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "./instance.schema";
-// Knowledge
-export {
-  type CreateKnowledgeBaseRequest,
-  CreateKnowledgeBaseRequestSchema,
-  ImportKnowledgeUrlRequestSchema,
-  type ImportKnowledgeUrlResponse,
-  ImportKnowledgeUrlResponseSchema,
-  type KnowledgeBaseDetailResponse,
-  KnowledgeBaseDetailResponseSchema,
-  type KnowledgeBaseInfo,
-  KnowledgeBaseInfoSchema,
-  type KnowledgeBaseListResponse,
-  KnowledgeBaseListResponseSchema,
-  KnowledgeBaseStatusSchema,
-  type KnowledgeResourceItem,
-  KnowledgeResourceItemSchema,
-  type KnowledgeResourceListResponse,
-  KnowledgeResourceListResponseSchema,
-  KnowledgeResourceStatusSchema,
-  type UpdateKnowledgeBaseRequest,
-  UpdateKnowledgeBaseRequestSchema,
-  type UploadKnowledgeResourcesResponse,
-  UploadKnowledgeResourcesResponseSchema,
-} from "./knowledge.schema";
-// MCP Knowledge
-export {
-  McpKnowledgeAuthHeadersSchema,
-  McpKnowledgeReadToolInputSchema,
-  McpKnowledgeSearchToolInputSchema,
-} from "./mcp-knowledge.schema";
 // Meta Agent
 export {
   type EnsureMetaAgentResponse,

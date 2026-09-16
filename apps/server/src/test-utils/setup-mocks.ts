@@ -5,7 +5,7 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import * as actualKnowledgeBaseService from "../../../../src/services/knowledge-base";
+import * as actualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "../../../../src/transport/file-ws-handler";
 import * as actualFileWsRequests from "../../../../src/transport/file-ws-requests";
@@ -249,7 +249,7 @@ mock.module("../../../../packages/agent-runtime/src/server/repositories/environm
   return { environmentRepo: environmentRepoProxy };
 });
 
-mock.module("../../../../src/services/knowledge-base", () => ({
+mock.module("@fenix/resource-knowledge/server", () => ({
   ...actualKnowledgeBaseService,
   listKnowledgeBasesGlobal: (...args: unknown[]) =>
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesGlobal")(...args),

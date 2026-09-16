@@ -12,8 +12,8 @@
       "@fenix/logger": ["./packages/logger/src/index.ts"],
       "@fenix/chat-channel": ["./packages/chat-channel/src/index.ts"],
       "@fenix/chat-channel/server": ["./packages/chat-channel/src/server.ts"],
-      "@fenix/model-management": ["./packages/model-management/src/index.ts"],
-      "@fenix/model-management/server": ["./packages/model-management/src/server.ts"]
+      "@fenix/model-management": ["./packages/resources/model-management/src/index.ts"],
+      "@fenix/model-management/server": ["./packages/resources/model-management/src/server.ts"]
     },
     "target": "ES2022",
     "module": "ES2022",

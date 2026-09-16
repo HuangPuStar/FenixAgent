@@ -45,24 +45,9 @@ export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 // Resource Access
 // ────────────────────────────────────────────
 
-/** Unified resource ownership and access metadata. */
-export interface ResourceAccess {
-  ownership: "internal" | "external";
-  sourceOrganizationId: string;
-  sourceOrganizationName?: string;
-  resourceUid: string;
-  resourceKey: string;
-  manageable: boolean;
-  writable: boolean;
-  publicReadable?: boolean;
-}
+import type { ResourceAccess } from "@fenix/access-control/server";
 
-/** Minimal config row shape used to decorate resource access metadata. */
-export interface ResourceAccessInput {
-  id: string;
-  organizationId: string;
-  name?: string | null;
-}
+export type { ResourceAccess, ResourceAccessInput } from "@fenix/access-control/server";
 
 // ────────────────────────────────────────────
 // Agent Knowledge

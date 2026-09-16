@@ -26,9 +26,69 @@ export default defineConfig({
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
-      "@/src/api/models": path.resolve(__dirname, "../../packages/model-management/web/api/models.ts"),
-      "@/src/api/providers": path.resolve(__dirname, "../../packages/model-management/web/api/providers.ts"),
-      "@/src/api/model-gateway": path.resolve(__dirname, "../../packages/model-management/web/api/model-gateway.ts"),
+      "@/src/api/skills": path.resolve(__dirname, "../../packages/resources/skill/web/api/skills.ts"),
+      "@/src/api/mcp": path.resolve(__dirname, "../../packages/resources/mcp/web/api/mcp.ts"),
+      "@/src/api/knowledge-bases": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/api/knowledge-bases.ts",
+      ),
+      "@/src/api/hindsight": path.resolve(__dirname, "../../packages/resources/memory/web/api/hindsight.ts"),
+      "@/src/pages/hindsight/MemoriesPage": path.resolve(
+        __dirname,
+        "../../packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx",
+      ),
+      "@/components/knowledge/ResourcePreviewContent": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/components/knowledge/ResourcePreviewContent.tsx",
+      ),
+      "@/components/knowledge/ResourcePreviewDialog": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/components/knowledge/ResourcePreviewDialog.tsx",
+      ),
+      "@/src/api/knowledge-models": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/api/knowledge-models.ts",
+      ),
+      "@/src/types/knowledge": path.resolve(__dirname, "../../packages/resources/knowledge/web/types/knowledge.ts"),
+      "@/src/pages/agent-panel/components/knowledge-graph-state": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/pages/agent-panel/knowledge-graph-state.ts",
+      ),
+      "@/src/lib/mcp-resource-access": path.resolve(
+        __dirname,
+        "../../packages/resources/mcp/web/lib/mcp-resource-access.ts",
+      ),
+      "@/src/pages/agent-panel/pages/AgentMcpPage": path.resolve(
+        __dirname,
+        "../../packages/resources/mcp/web/pages/agent-panel/pages/AgentMcpPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentKnowledgeBasesPage": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/agent-knowledge-directory": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/pages/agent-panel/pages/agent-knowledge-directory.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/agent-knowledge-resources": path.resolve(
+        __dirname,
+        "../../packages/resources/knowledge/web/pages/agent-panel/pages/agent-knowledge-resources.tsx",
+      ),
+      "@/src/lib/skill-resource-access": path.resolve(
+        __dirname,
+        "../../packages/resources/skill/web/lib/skill-resource-access.ts",
+      ),
+      "@/src/lib/skill-upload": path.resolve(__dirname, "../../packages/resources/skill/web/lib/skill-upload.ts"),
+      "@/src/pages/agent-panel/pages/AgentSkillsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/skill/web/pages/agent-panel/pages/AgentSkillsPage.tsx",
+      ),
+      "@/src/api/models": path.resolve(__dirname, "../../packages/resources/model-management/web/api/models.ts"),
+      "@/src/api/providers": path.resolve(__dirname, "../../packages/resources/model-management/web/api/providers.ts"),
+      "@/src/api/model-gateway": path.resolve(
+        __dirname,
+        "../../packages/resources/model-management/web/api/model-gateway.ts",
+      ),
       "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
       "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
       "@/src/hooks/use-chat-state": path.resolve(__dirname, "../../packages/agent-runtime/web/hooks/use-chat-state.ts"),
@@ -55,33 +115,36 @@ export default defineConfig({
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/model-config-utils": path.resolve(
         __dirname,
-        "../../packages/model-management/web/lib/model-config-utils.ts",
+        "../../packages/resources/model-management/web/lib/model-config-utils.ts",
       ),
       "@/src/lib/model-gateway-usage": path.resolve(
         __dirname,
-        "../../packages/model-management/web/lib/model-gateway-usage.ts",
+        "../../packages/resources/model-management/web/lib/model-gateway-usage.ts",
       ),
       "@/src/pages/admin/AdminModelGatewayPage": path.resolve(
         __dirname,
-        "../../packages/model-management/web/pages/admin/AdminModelGatewayPage.tsx",
+        "../../packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx",
       ),
       "@/src/pages/agent-panel/pages/AgentModelsPage": path.resolve(
         __dirname,
-        "../../packages/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx",
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx",
       ),
       "@/src/pages/agent-panel/pages/VerticalModelsPage": path.resolve(
         __dirname,
-        "../../packages/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx",
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx",
       ),
       "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": path.resolve(
         __dirname,
-        "../../packages/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx",
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx",
       ),
       "@/components/config/ModelConfigDialog": path.resolve(
         __dirname,
-        "../../packages/model-management/web/components/config/ModelConfigDialog.tsx",
+        "../../packages/resources/model-management/web/components/config/ModelConfigDialog.tsx",
       ),
-      "@/components/model-icon": path.resolve(__dirname, "../../packages/model-management/web/components/model-icon"),
+      "@/components/model-icon": path.resolve(
+        __dirname,
+        "../../packages/resources/model-management/web/components/model-icon",
+      ),
       "@/src/lib/auth-client": path.resolve(__dirname, "src/lib/auth-client.ts"),
       "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),
       "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { InvalidKnowledgeBindingError, setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
 import { setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { resetAllStubs, stubConfigPg, stubDb } from "../../apps/server/src/test-utils/helpers";
-import { InvalidKnowledgeBindingError, setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
 
 const route = (await import("../routes/web/config/agents")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

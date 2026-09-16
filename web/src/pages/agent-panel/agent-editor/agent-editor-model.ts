@@ -1,8 +1,8 @@
 import { z } from "zod/v4";
+import { getMcpDisplayName, getMcpKey } from "@/src/lib/mcp-resource-access";
+import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
 import { type AgentNodeSelection, agentNodeToSelection, selectionToAgentNode } from "../../../lib/agent-node";
-import { getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import type { AgentDetail, ModelEntry, ResourceAccess } from "../../../types/config";
-import type { KnowledgeBaseInfo } from "../../../types/knowledge";
 
 export interface AgentTemplate {
   id: string;

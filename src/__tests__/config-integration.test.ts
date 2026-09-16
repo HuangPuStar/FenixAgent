@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
+import { _deps, _resetDeps } from "@fenix/resource-skill/server";
 import { setConfig } from "../../apps/server/src/config";
 import { AppError } from "../../apps/server/src/errors";
 import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
 import { setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { resetAllStubs, stubConfigPg, stubDb } from "../../apps/server/src/test-utils/helpers";
-import { setListAgentKnowledgeBindingsById } from "../services/agent-knowledge";
-import { _deps, _resetDeps } from "../services/skill";
 
 const configRoute = (await import("../routes/web/config/index")).default;
 

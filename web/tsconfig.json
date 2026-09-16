@@ -38,6 +38,8 @@
       ],
       "@/src/lib/card-renderer": ["../apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["../apps/web/src/lib/card-renderer/*"],
+      "@/src/lib/mcp-resource-access": ["../packages/resources/mcp/web/lib/mcp-resource-access.ts"],
+      "@/src/types/knowledge": ["../packages/resources/knowledge/web/types/knowledge.ts"],
       "@/src/lib/auth-client": ["../apps/web/src/lib/auth-client.ts"],
       "@/src/lib/utils": ["../apps/web/src/lib/utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["../apps/web/src/lib/random-uuid-polyfill.ts"],
@@ -47,7 +49,7 @@
       "@server/*": ["../../src/*"],
       "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"],
       "@fenix/chat-channel/server": ["../packages/chat-channel/src/server.ts"],
-      "@fenix/model-management": ["../packages/model-management/src/index.ts"]
+      "@fenix/model-management": ["../packages/resources/model-management/src/index.ts"]
     }
   },
   "include": ["src", "components"]

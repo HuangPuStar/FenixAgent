@@ -1,20 +1,20 @@
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { hindsightApi } from "@/src/api/hindsight";
+import { kbApi } from "@/src/api/knowledge-bases";
+import { mcpApi } from "@/src/api/mcp";
 import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
+import { skillConfigApi } from "@/src/api/skills";
+import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
+import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
 import { agentApi } from "../../../api/agents";
-import { hindsightApi } from "../../../api/hindsight";
-import { kbApi } from "../../../api/knowledge-bases";
-import { mcpApi } from "../../../api/mcp";
 import { registryApi } from "../../../api/registry";
 import { sandboxPoolApi } from "../../../api/sandbox-pools";
 import { agentSitesApi } from "../../../api/sites";
-import { skillConfigApi } from "../../../api/skills";
 import { dispatchConfigChange } from "../../../lib/config-events";
-import { getSkillOptionValue, normalizeSkillOptionsPayload } from "../../../lib/skill-resource-access";
 import type { AgentDetail, ResourceAccess } from "../../../types/config";
-import type { KnowledgeBaseInfo } from "../../../types/knowledge";
 import {
   type AgentEditorOption,
   type AgentEditorValues,

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { setOrganizationRepoForTesting } from "@fenix/access-control/server";
 import { AppError } from "../../apps/server/src/errors";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
-import { setOrganizationRepoForTesting } from "../services/resource-permission";
 
 const ctx: AuthContext = {
   organizationId: "org_current",

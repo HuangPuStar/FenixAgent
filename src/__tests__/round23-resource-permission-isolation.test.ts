@@ -1,14 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../../apps/server/src/errors";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import type { IOrganizationRepo } from "../repositories/organization";
-import type {
-  CreateResourcePermissionGrantInput,
-  DeleteResourcePermissionGrantInput,
-  IResourcePermissionRepo,
-  ResourcePermissionAccessibleRow,
-  ResourcePermissionOwnedRow,
-} from "../repositories/resource-permission";
 import {
   _resetDeps,
   assertInternalWritable,
@@ -20,7 +10,17 @@ import {
   setOrganizationRepoForTesting,
   setPublicRead,
   setResourcePermissionRepoForTesting,
-} from "../services/resource-permission";
+} from "@fenix/access-control/server";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import type { IOrganizationRepo } from "../repositories/organization";
+import type {
+  CreateResourcePermissionGrantInput,
+  DeleteResourcePermissionGrantInput,
+  IResourcePermissionRepo,
+  ResourcePermissionAccessibleRow,
+  ResourcePermissionOwnedRow,
+} from "../repositories/resource-permission";
 
 const ctx: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
 const otherCtx: AuthContext = { organizationId: "org-b", userId: "user-b", role: "member" };

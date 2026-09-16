@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import {
+  canManageMcpSharing,
+  filterWritableMcps,
+  getMcpDisplayName,
+  getMcpResourceBadgeKey,
+} from "@/src/lib/mcp-resource-access";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
+import { mapSkillOptions, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
 import { buildUploadUrl } from "../api/fs";
 import {
   canManageAgentSharing,
@@ -18,13 +25,6 @@ import {
 } from "../lib/agent-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
-import {
-  canManageMcpSharing,
-  filterWritableMcps,
-  getMcpDisplayName,
-  getMcpResourceBadgeKey,
-} from "../lib/mcp-resource-access";
-import { mapSkillOptions, normalizeSkillOptionsPayload } from "../lib/skill-resource-access";
 import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 

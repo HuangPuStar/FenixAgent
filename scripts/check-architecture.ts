@@ -130,10 +130,10 @@ const RULES: readonly ArchitectureRule[] = [
       if (!specifier.startsWith(".")) return false;
 
       const targetPath = normalizePath(relative(root, resolve(dirname(absolutePath), specifier)));
-      const targetPackage = /^packages\/([^/]+)\/src(?:\/|$)/.exec(targetPath)?.[1];
+      const targetPackage = /^packages\/((?:resources\/)?[^/]+)\/src(?:\/|$)/.exec(targetPath)?.[1];
       if (!targetPackage) return false;
 
-      const sourcePackage = /^packages\/([^/]+)\//.exec(relativePath)?.[1];
+      const sourcePackage = /^packages\/((?:resources\/)?[^/]+)\//.exec(relativePath)?.[1];
       return sourcePackage !== targetPackage;
     },
     message: ({ specifier }) => `必须通过 workspace 包公开导出访问 "${specifier}"`,
@@ -149,7 +149,7 @@ const RULES: readonly ArchitectureRule[] = [
   createImportRule({
     id: "model-icon-boundary",
     appliesToFile: ({ relativePath }) =>
-      !relativePath.startsWith("packages/model-management/web/components/model-icon/"),
+      !relativePath.startsWith("packages/resources/model-management/web/components/model-icon/"),
     isForbidden: ({ specifier }) => specifier === "@lobehub/icons" || specifier.startsWith("@lobehub/icons/"),
     message: () => "模型品牌图标只能由 model-management 的 model-icon 组件封装",
   }),

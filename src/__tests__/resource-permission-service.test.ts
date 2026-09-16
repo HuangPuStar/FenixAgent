@@ -1,8 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../../apps/server/src/errors";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
-import type { ResourcePermissionGrantRow } from "../repositories/resource-permission";
 import {
   _resetDeps,
   assertInternalWritable,
@@ -11,7 +7,11 @@ import {
   listReadableResourceRefs,
   setOrganizationRepoForTesting,
   setPublicRead,
-} from "../services/resource-permission";
+} from "@fenix/access-control/server";
+import { AppError } from "../../apps/server/src/errors";
+import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import { resetAllStubs, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
+import type { ResourcePermissionGrantRow } from "../repositories/resource-permission";
 
 const ownerCtx: AuthContext = {
   organizationId: "org_current",

@@ -36,7 +36,7 @@ import type {
   ConfiguredProviderNode,
   EmbeddingFactoryOption,
   InstanceModelOption,
-} from "../../../types/knowledge";
+} from "@/src/types/knowledge";
 
 interface EmbeddingModelManagerProps {
   /** 是否有管理权限（用于显示/隐藏添加、删除、屏蔽按钮） */

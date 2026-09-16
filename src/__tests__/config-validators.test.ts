@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 // 纯函数验证逻辑的单元测试，不依赖数据库
-const { validateMcpConfig, isValidMcpName, toServerInfo } = await import("../services/config/mcp-server");
+const { validateMcpConfig, isValidMcpName, toServerInfo } = await import("@fenix/resource-mcp/server");
 
 const { validateAgentData, isBuiltInAgent, normalizeKnowledgeConfig } = await import("../services/config/agent-config");
 

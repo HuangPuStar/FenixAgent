@@ -1,3 +1,9 @@
+import {
+  type AgentKnowledgeConfig,
+  getAgentKnowledgeConfigById,
+  InvalidKnowledgeBindingError,
+  syncAgentKnowledgeBindingsById,
+} from "@fenix/resource-knowledge/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { AppError } from "../../../apps/server/src/errors";
@@ -14,12 +20,6 @@ import {
   type ApiAgentUpsertBody,
   ApiAgentUpsertBodySchema,
 } from "../../schemas/api-agent.schema";
-import {
-  type AgentKnowledgeConfig,
-  getAgentKnowledgeConfigById,
-  InvalidKnowledgeBindingError,
-  syncAgentKnowledgeBindingsById,
-} from "../../services/agent-knowledge";
 import {
   createAgentConfig,
   deleteAgentConfig,
