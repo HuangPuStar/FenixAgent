@@ -2,10 +2,10 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import { envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
+import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
 import { resolveCreatedAgentChatTarget } from "./agent-create-navigation";
-import { AgentFormDialog } from "./agent-editor/AgentFormDialog";
 import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
 

@@ -1,8 +1,4 @@
-import { SandboxProviderError } from "@fenix/sandbox-provider";
-import Elysia, { status } from "elysia";
-import type * as z from "zod/v4";
-import { systemApiAuthPlugin } from "../../../apps/server/src/plugins/system-api-auth";
-import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
+import * as sandboxApi from "@fenix/resource-sandbox/server";
 import {
   SandboxDeleteResponseSchema,
   SandboxInstanceIdParamsSchema,
@@ -18,9 +14,14 @@ import {
   SandboxPoolListResponseSchema,
   SandboxPoolResponseSchema,
   SandboxPoolUpdateBodySchema,
-} from "../../schemas/api-sandbox.schema";
-import * as sandboxApi from "../../services/sandbox/sandbox-admin-service";
-import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
+  SandboxProviderNotConfiguredError,
+  SandboxRuntimeNotReadyError,
+} from "@fenix/resource-sandbox/server";
+import { SandboxProviderError } from "@fenix/sandbox-provider";
+import Elysia, { status } from "elysia";
+import type * as z from "zod/v4";
+import { systemApiAuthPlugin } from "../../../apps/server/src/plugins/system-api-auth";
+import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;

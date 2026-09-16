@@ -30,38 +30,8 @@ export {
   upsertSkill,
 } from "@fenix/resource-skill/server/config";
 export type { AuthContext } from "../../../apps/server/src/plugins/auth";
-export {
-  AGENT_SETTABLE_FIELDS,
-  assertAgentConfigInternalWritable,
-  createAgentConfig,
-  deleteAgentConfig,
-  getAgentConfig,
-  getAgentConfigById,
-  getAgentConfigByResourceKey,
-  getReadableAgentConfigById,
-  isBuiltInAgent,
-  listAgentConfigs,
-  normalizeAgentNode,
-  normalizeKnowledgeConfig,
-  resolveAgentNode,
-  restartAgentConfigInstances,
-  updateAgentConfig,
-  validateAgentData,
-} from "./agent-config";
-export {
-  addAgentSiteApp,
-  listAgentSiteAppIds,
-  removeAgentSiteApp,
-  syncAgentSiteApps,
-} from "./agent-config-site-app";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
 export type {
-  AgentConfigDetailWithAccess,
-  AgentConfigRowWithAccess,
-  AgentConfigUpsertData,
-  AgentExtraConfig,
-  AgentKnowledgeConfig,
-  AgentNode,
   McpServerConfig,
   McpServerInfoOutput,
   McpServerSetOptions,

@@ -11,6 +11,14 @@
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
+    },
+    "./server/environment": {
+      "types": "./src/server/repositories/environment.ts",
+      "default": "./src/server/repositories/environment.ts"
+    },
+    "./server/orchestration-environment": {
+      "types": "./src/server/repositories/environment-orchestration.ts",
+      "default": "./src/server/repositories/environment-orchestration.ts"
     }
   },
   "scripts": {
@@ -18,6 +26,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",
     "@fenix/logger": "workspace:*",

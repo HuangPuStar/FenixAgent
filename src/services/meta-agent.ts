@@ -12,6 +12,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setPublicRead } from "@fenix/access-control/server";
+import { createAgentConfig, getAgentConfig, updateAgentConfig } from "@fenix/agent-config/server";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { getProvider, listProviders } from "@fenix/model-management/server";
@@ -30,7 +31,6 @@ import {
 import { listSkills as listStoredSkills } from "@fenix/resource-skill/server/config";
 import { auth } from "../../apps/server/src/auth/better-auth";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
 import type { SkillConfigRowWithAccess } from "./config/types";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";

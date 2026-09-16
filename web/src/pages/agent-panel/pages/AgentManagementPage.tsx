@@ -11,10 +11,10 @@ import { unwrap } from "@/src/api/request";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
+import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { getAgentConfigLookupKey, getAgentDisplayName } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { AgentInfo } from "../../../types/config";
-import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
 
 interface AgentManageNode {
   agent: AgentInfo;

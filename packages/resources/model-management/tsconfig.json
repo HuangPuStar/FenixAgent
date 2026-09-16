@@ -36,6 +36,9 @@
       "@/src/lib/model-gateway-usage": ["packages/resources/model-management/web/lib/model-gateway-usage.ts"],
       "@/src/lib/mcp-resource-access": ["packages/resources/mcp/web/lib/mcp-resource-access.ts"],
       "@/src/types/knowledge": ["packages/resources/knowledge/web/types/knowledge.ts"],
+      "@/src/pages/agent-panel/agent-editor/*": [
+        "packages/resources/agent-config/web/pages/agent-panel/agent-editor/*"
+      ],
       "@/components/model-icon/*": ["packages/resources/model-management/web/components/model-icon/*"],
       "@/src/*": ["web/src/*"]
     }

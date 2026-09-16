@@ -1,0 +1,16 @@
+{
+  "name": "@fenix/resource-sandbox",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fenix/logger": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
+    "@fenix/sandbox-provider": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.3.6"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  }
+}

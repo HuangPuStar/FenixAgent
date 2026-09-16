@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
+import {
+  mapMcpOptions,
+  mapModelOptions,
+} from "../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 
 const externalAccess: ResourceAccess = {

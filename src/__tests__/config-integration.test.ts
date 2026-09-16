@@ -8,6 +8,10 @@ import { setConfig } from "../../apps/server/src/config";
 import { AppError } from "../../apps/server/src/errors";
 import { resetTestAuth, setTestAuth } from "../../apps/server/src/plugins/auth";
 import { setTestOrgContext } from "../../apps/server/src/services/org-context";
+import {
+  installRouteConfigStubs,
+  resetRouteConfigStubs,
+} from "../../apps/server/src/test-utils/agent-config-route-deps";
 import { resetAllStubs, stubConfigPg, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 const configRoute = (await import("../routes/web/config/index")).default;
@@ -40,6 +44,7 @@ describe("Config Route Integration", () => {
 
   beforeEach(() => {
     resetAllStubs();
+    installRouteConfigStubs();
     _resetDeps();
     setListAgentKnowledgeBindingsById(async () => []);
     tempSkillDir = join(tmpdir(), `fenix-config-skill-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -95,6 +100,7 @@ describe("Config Route Integration", () => {
   });
 
   afterEach(() => {
+    resetRouteConfigStubs();
     setListAgentKnowledgeBindingsById(null);
     _resetDeps();
     resetTestAuth();

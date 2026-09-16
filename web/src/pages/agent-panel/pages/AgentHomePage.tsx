@@ -10,10 +10,10 @@ import { envApi } from "@/src/api/environments";
 import { modelApi } from "@/src/api/models";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
+import type { GenerationFormData } from "@/src/pages/agent-panel/components/AgentGenerationForm";
+import { AgentGenerationForm } from "@/src/pages/agent-panel/components/AgentGenerationForm";
 import { dispatchConfigChange } from "../../../lib/config-events";
 import { resolveCreatedAgentChatTarget } from "../agent-create-navigation";
-import type { GenerationFormData } from "../components/AgentGenerationForm";
-import { AgentGenerationForm } from "../components/AgentGenerationForm";
 
 const assetBase = import.meta.env.BASE_URL;
 

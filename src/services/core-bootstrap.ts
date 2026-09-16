@@ -14,8 +14,6 @@ import { eq } from "drizzle-orm";
 import { config } from "../../apps/server/src/config";
 import { db } from "../../apps/server/src/db";
 import { machine } from "../../apps/server/src/db/schema";
-import type { WsConnection } from "../transport/ws-types";
-import type { AcpConnectionEntry } from "../types/store";
 import { globalInstanceRegistry } from "./instance-registry";
 import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
 
@@ -137,15 +135,14 @@ export async function initCoreRuntime(): Promise<CoreRuntimeFacade> {
  */
 export function registerRemoteNode(
   machineId: string,
-  ws: WsConnection,
-  acpEntry: AcpConnectionEntry,
+  ws: WsConnectionLike,
+  acpEntry: { remoteTransport?: RemoteTransport },
   engineTypes?: string[],
 ): void {
   const runtime = getCoreRuntime();
 
   // WsConnection 没有 onmessage，通过 injectMessage 由 handleAcpWsMessage 路由
-  const wsLike = ws as unknown as WsConnectionLike;
-  const transport = createWsRemoteTransport(wsLike);
+  const transport = createWsRemoteTransport(ws);
   remoteTransports.set(machineId, transport);
 
   // 把 transport 挂到 entry 上，供 handleAcpWsMessage 路由消息

@@ -6,6 +6,7 @@
  */
 
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+import { getBoundCoreRuntime } from "../services/core-runtime-port";
 
 /** EngineRelayHandle 的扩展类型（含 onMessage / ready） */
 export type FullRelayHandle = EngineRelayHandle & {
@@ -18,8 +19,7 @@ export type FullRelayHandle = EngineRelayHandle & {
  * 共享于 WS relay 和 HTTP OpenAI 端点。
  */
 export async function connectAgentRelay(instanceId: string, sessionId: string): Promise<EngineRelayHandle> {
-  const { getCoreRuntime } = await import("../../../../../src/services/core-bootstrap");
-  const facade = getCoreRuntime();
+  const facade = getBoundCoreRuntime();
   try {
     const handle = await facade.connectInstanceRelay({ instanceId, sessionId });
     const full = handle as FullRelayHandle;

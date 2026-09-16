@@ -1,4 +1,12 @@
 import { createLogger } from "@fenix/logger";
+import {
+  createMachine,
+  deleteMachine,
+  getMachine,
+  listEvents,
+  listMachines,
+  updateMachine,
+} from "@fenix/resource-machine/server";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
@@ -14,14 +22,6 @@ import {
   RegistryEventListResponseSchema,
   UpdateMachineSchema,
 } from "../../schemas/registry.schema";
-import {
-  createMachine,
-  deleteMachine,
-  getMachine,
-  listEvents,
-  listMachines,
-  updateMachine,
-} from "../../services/registry";
 
 const logger = createLogger("registry");
 

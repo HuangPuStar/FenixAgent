@@ -18,15 +18,15 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type { ExecutionNodeResolver } from "@fenix/agent-runtime/server";
-import { environmentOrchestrationRepo } from "@fenix/agent-runtime/server";
+import { agentConfigRepo, resolveAgentNode } from "@fenix/agent-config/server";
+import type { ExecutionNodeResolver } from "@fenix/agent-runtime/server/orchestration-environment";
+import { environmentOrchestrationRepo } from "@fenix/agent-runtime/server/orchestration-environment";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
+import { sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { config } from "../../apps/server/src/config";
 import { AppError } from "../../apps/server/src/errors";
-import { agentConfigRepo, agentEngineRepo } from "../repositories";
-import { resolveAgentNode } from "./config/agent-config";
+import { agentEngineRepo } from "../repositories";
 import { localNodeAwareAgentNodeService } from "./local-node-service";
-import { sandboxExecutionHandler } from "./sandbox";
 
 let launchSpecBuilder: LaunchSpecBuilder | null = null;
 

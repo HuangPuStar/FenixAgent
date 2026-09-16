@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../../src/services/agent-system-prompt";
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
 import type { Env } from "./env";
 
 function buildConfig(env: Env) {

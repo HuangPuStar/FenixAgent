@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createSandboxServerAdminService } from "@fenix/resource-sandbox/server";
 import { config, setConfig } from "../../apps/server/src/config";
-import { createSandboxServerAdminService } from "../services/sandbox/sandbox-server-admin-service";
 
 describe("sandbox server admin service", () => {
   const originalUrl = config.openSandboxClusterUrl;

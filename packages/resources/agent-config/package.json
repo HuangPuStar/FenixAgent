@@ -1,6 +1,49 @@
 {
   "name": "@fenix/agent-config",
+  "version": "0.1.0",
   "description": "AgentConfig 基础资源领域能力",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "default": "./src/server.ts"
+    },
+    "./server/system-prompt": {
+      "types": "./src/server/services/agent-system-prompt.ts",
+      "default": "./src/server/services/agent-system-prompt.ts"
+    },
+    "./server/api-agent-schema": {
+      "types": "./src/server/schemas/api-agent.schema.ts",
+      "default": "./src/server/schemas/api-agent.schema.ts"
+    },
+    "./server/config": {
+      "types": "./src/server/services/config/agent-config.ts",
+      "default": "./src/server/services/config/agent-config.ts"
+    },
+    "./server/testing": {
+      "types": "./src/server/testing.ts",
+      "default": "./src/server/testing.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fenix/access-control": "workspace:*",
+    "@fenix/agent-runtime": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "gray-matter": "^4.0.3",
+    "openai": "^6.42.0",
+    "zod": "^4.4.3"
+  }
 }

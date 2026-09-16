@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { listPoolOptions } from "../services/sandbox/sandbox-admin-service";
+import { listPoolOptions } from "@fenix/resource-sandbox/server";
 
 describe("Sandbox Pool 配置查询", () => {
   // 沙盒关闭时不应向前端暴露任何可选资源池。

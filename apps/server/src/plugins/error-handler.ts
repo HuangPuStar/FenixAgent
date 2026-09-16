@@ -1,10 +1,7 @@
 import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia, { ValidationError } from "elysia";
-import {
-  SandboxProviderNotConfiguredError,
-  SandboxRuntimeNotReadyError,
-} from "../../../../src/services/sandbox/sandbox-errors";
 import { AppError } from "../errors";
 import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
 import { logError } from "./logger";

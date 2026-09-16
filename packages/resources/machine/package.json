@@ -1,0 +1,17 @@
+{
+  "name": "@fenix/resource-machine",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fenix/agent-runtime": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "@fenix/orchestration": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
+    "./file-ws-requests": "./src/server/transport/file-ws-requests.ts"
+  }
+}

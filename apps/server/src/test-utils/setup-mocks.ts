@@ -5,10 +5,10 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import * as actualKnowledgeBaseService from "@fenix/resource-knowledge/server";
+import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
-import * as actualFileWsHandler from "../../../../src/transport/file-ws-handler";
-import * as actualFileWsRequests from "../../../../src/transport/file-ws-requests";
+import * as actualFileWsHandler from "@fenix/resource-machine/file-ws-handler";
+import * as actualFileWsRequests from "@fenix/resource-machine/file-ws-requests";
 import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
@@ -217,6 +217,9 @@ mock.module("../../../../db", createDbMock);
 // specifier 区分模块身份时绕过现有 `../db` 测试替身。
 mock.module("../../../../apps/server/src/db", createDbMock);
 
+// 先注册 DB 替身，再载入会由公开入口触达认证路由的知识库服务，避免真实 DB/auth 初始化循环。
+const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await import("@fenix/resource-knowledge/server");
+
 // ── resource-permission repository ──
 
 mock.module("../../../../src/repositories/resource-permission", () => ({
@@ -368,7 +371,7 @@ mock.module("../../../../src/services/workflow/custom-tools", () =>
 // 自 handler 拆分后的请求发送域）可 stub，其余导出保留真实实现——file-ws-handler.test.ts
 // 直接测这两个函数的真实行为（背压、巡检、回执），因此 stub 未配置时回退真实实现而非空函数。
 const FILE_WS_KEYS = ["isFileWsConnected"] as const;
-mock.module("../../../../src/transport/file-ws-handler", () => {
+mock.module("@fenix/resource-machine/file-ws-handler", () => {
   const obj: Record<string, unknown> = { ...actualFileWsHandler };
   for (const key of FILE_WS_KEYS) {
     Object.defineProperty(obj, key, {
@@ -388,7 +391,7 @@ mock.module("../../../../src/transport/file-ws-handler", () => {
 });
 
 const FILE_WS_REQUEST_KEYS = ["sendFileOpAndWait"] as const;
-mock.module("../../../../src/transport/file-ws-requests", () => {
+mock.module("@fenix/resource-machine/file-ws-requests", () => {
   const obj: Record<string, unknown> = { ...actualFileWsRequests };
   for (const key of FILE_WS_REQUEST_KEYS) {
     Object.defineProperty(obj, key, {
@@ -424,3 +427,24 @@ mock.module("react-i18next", () => ({
   I18nextProvider: ({ children }: { children: any }) => children,
   withTranslation: () => (Component: unknown) => Component,
 }));
+
+// agent-runtime 已不再直接导入宿主 core-bootstrap；测试仍通过同一惰性 stub
+// 注册表提供 Core 能力，避免测试进程内创建第二个 runtime 单例。
+const { bindCoreRuntimePort, bindMachineRegistryPort } = await import("@fenix/agent-runtime/server");
+bindCoreRuntimePort({
+  getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
+  registerRemoteNode: (...args) => {
+    coreBootstrapRegistry.get("registerRemoteNode")(...args);
+  },
+  unregisterRemoteNode: (machineId) => {
+    coreBootstrapRegistry.get("unregisterRemoteNode")(machineId);
+  },
+});
+bindMachineRegistryPort({
+  registerMachine: (input) => registryRegistry.get("registerMachine")(input),
+  disconnectMachine: (machineId, reason) => registryRegistry.get("disconnectMachine")(machineId, reason),
+  handleHeartbeat: (machineId) => registryHeartbeatRegistry.get("handleHeartbeat")(machineId),
+  startHeartbeat: (machineId, intervalMs, onTimeout) =>
+    registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout),
+  stopHeartbeat: (machineId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId),
+});

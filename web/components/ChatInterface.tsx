@@ -9,10 +9,10 @@ import { derivePendingPermissions, deriveTodoItems } from "@/components/chat/cha
 import { prepareImageContent } from "@/components/chat/chat-image-content";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "@/components/chat/chat-interface-types";
 import { buildPromptText } from "@/components/chat/composer-prompt";
+import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { mcpApi } from "@/src/api/mcp";
 import { unwrap } from "@/src/api/request";
-import { agentApi } from "../src/api/agents";
 import { getAgentConfigLookupKey } from "../src/lib/agent-resource-access";
 import { ChatStatsDispatcher } from "../src/lib/chat-stats";
 import { flushContext } from "../src/lib/context-queue";

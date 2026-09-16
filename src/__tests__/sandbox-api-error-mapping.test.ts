@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { SandboxProviderError } from "@fenix/sandbox-provider";
 import { mapSandboxApiError } from "../routes/api/sandbox";
-import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../services/sandbox/sandbox-errors";
 
 describe("sandbox API error mapping", () => {
   // Pool 唯一约束冲突必须转换为资源冲突，而不是通用参数错误。

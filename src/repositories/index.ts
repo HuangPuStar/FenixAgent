@@ -7,11 +7,7 @@ export type {
   KnowledgeResourceRow,
 } from "@fenix/resource-knowledge/server";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "@fenix/resource-knowledge/server";
-export { agentConfigRepo, findAgentConfigNamesByIds } from "./agent-config";
 export { agentEngineRepo } from "./agent-engine";
-export { agentMachineRepo } from "./agent-machine";
-export type { AgentSiteAppInsert, AgentSiteAppRow, Visibility } from "./agent-site-app";
-export { agentSiteAppRepo } from "./agent-site-app";
 export type { ChannelBindingInsert, ChannelBindingRow, IChannelBindingRepo } from "./channel-binding";
 export { channelBindingRepo } from "./channel-binding";
 export type { IOrganizationRepo } from "./organization";

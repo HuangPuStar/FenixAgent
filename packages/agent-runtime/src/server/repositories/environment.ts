@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { db } from "../../../../../apps/server/src/db";
 import { environment, user } from "../../../../../apps/server/src/db/schema";
-import { resolveWorkspacePath } from "../../../../../src/services/workspace-resolver";
+import { resolveWorkspacePath } from "../services/workspace-resolver";
 
 /** Environment 持久化记录 */
 export interface EnvironmentRecord {

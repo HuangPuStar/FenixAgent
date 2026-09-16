@@ -5,6 +5,17 @@
 // 400 validation_error / 404 not_found / 413 payload_too_large /
 // 422 config_error / 429 busy(+Retry-After) / 503 file_service_unavailable。
 
+import {
+  computeListFingerprint,
+  computeReadFingerprint,
+  computeTreeFingerprint,
+  type FileAuthContext,
+  FileServiceError,
+  type FileWriteOptions,
+  gate,
+  normalizeUploadRelativePath,
+  type ReadMode,
+} from "@fenix/resource-machine/server";
 import Elysia from "elysia";
 import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import {
@@ -22,14 +33,6 @@ import {
   TreeResponseSchema,
   WriteFileRequestSchema,
 } from "../../schemas/file.schema";
-import { gate, normalizeUploadRelativePath } from "../../services/agent-file-service";
-import {
-  type FileAuthContext,
-  FileServiceError,
-  type FileWriteOptions,
-  type ReadMode,
-} from "../../services/file-types";
-import { computeListFingerprint, computeReadFingerprint, computeTreeFingerprint } from "../../services/workspace-fs";
 
 const app = new Elysia({ name: "web-fs", prefix: "/environments" }).use(authGuardPlugin).model({
   "tree-response": TreeResponseSchema,

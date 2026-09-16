@@ -50,24 +50,6 @@ import type { ResourceAccess } from "@fenix/access-control/server";
 export type { ResourceAccess, ResourceAccessInput } from "@fenix/access-control/server";
 
 // ────────────────────────────────────────────
-// Agent Knowledge
-// ────────────────────────────────────────────
-
-export interface AgentKnowledgePolicy {
-  searchFirst?: boolean;
-  maxResults?: number;
-  defaultNamespaces?: string[];
-}
-
-export interface AgentKnowledgeConfig {
-  knowledgeBaseIds: string[];
-  policy?: AgentKnowledgePolicy | null;
-}
-
-/** Extensible agent config bag for future UI/runtime metadata. */
-export type AgentExtraConfig = Record<string, unknown>;
-
-// ────────────────────────────────────────────
 // MCP Server
 // ────────────────────────────────────────────
 
@@ -176,52 +158,6 @@ export interface UserConfigData {
   currentModel?: string | null;
   smallModel?: string | null;
   permission?: PermissionConfig | null;
-}
-
-// ────────────────────────────────────────────
-// Agent Config
-// ────────────────────────────────────────────
-
-export type AgentNode =
-  | { kind?: never; machineId?: never; sandboxPoolId?: never }
-  | { kind: "machine"; machineId: string }
-  | { kind: "sandbox"; sandboxPoolId: string };
-
-/** Data shape for creating/updating an agent config */
-export interface AgentConfigUpsertData {
-  modelId?: string | null;
-  prompt?: string | null;
-  description?: string | null;
-  extra?: AgentExtraConfig | null;
-  knowledge?: AgentKnowledgeConfig | null;
-  agentNode?: AgentNode | null;
-  skillIds?: string[];
-  mcpIds?: string[];
-}
-
-/** Agent config row decorated with resource access metadata. */
-export interface AgentConfigRowWithAccess {
-  id: string;
-  userId: string;
-  organizationId: string;
-  name: string;
-  prompt: string | null;
-  modelId: string | null;
-  model: string | null;
-  description: string | null;
-  machineId: string | null;
-  agentNode?: AgentNode | null;
-  extra?: AgentExtraConfig | null;
-  createdAt: Date;
-  updatedAt: Date;
-  enableMemory?: boolean;
-  resourceAccess: ResourceAccess;
-}
-
-/** Agent config detail returned to the frontend with resolved access metadata. */
-export interface AgentConfigDetailWithAccess extends AgentConfigRowWithAccess {
-  skillIds?: string[];
-  mcpIds?: string[];
 }
 
 // ────────────────────────────────────────────

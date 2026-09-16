@@ -4,7 +4,7 @@
  * 遵循外部 API 规范：稳定分页结构、统一错误格式。
  */
 import * as z from "zod/v4";
-import { AgentResourceAccessSchema } from "../../../../../../src/schemas/config.schema";
+import { ResourceAccessSchema } from "../../../../../../src/schemas/resource-access.schema";
 
 /**
  * Skill 列表查询参数。
@@ -64,7 +64,7 @@ export const ApiSkillListItemSchema = z
     id: z.string().describe("Skill 唯一 ID。"),
     name: z.string().describe("Skill 名称。"),
     description: z.string().nullable().describe("Skill 描述。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("对外 Skill 列表项。");
 
@@ -92,7 +92,7 @@ export const ApiSkillDetailSchema = z
     description: z.string().nullable().describe("Skill 描述。"),
     content: z.string().describe("SKILL.md 正文内容。"),
     metadata: z.record(z.string(), z.string()).describe("额外元数据。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("对外 Skill 详情。");
 

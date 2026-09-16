@@ -10,6 +10,16 @@ import {
 } from "@fenix/agent-runtime/server";
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
+import {
+  checkParsedObjectSize,
+  checkWsMessageSize,
+  estimateWsMessageBytes,
+  formatFileWsCloseLog,
+  handleFileWsClose,
+  handleFileWsMessage,
+  handleFileWsOpen,
+  parseFileWsMessage,
+} from "@fenix/resource-machine/server";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import { validateEnv } from "../../../apps/server/src/env";
@@ -17,14 +27,6 @@ import { AppError } from "../../../apps/server/src/errors";
 import type { RequestAuthResult } from "../../../apps/server/src/plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { AcpAgentListResponseSchema, AcpRegistrySecretQuerySchema, AcpRelayParamsSchema } from "../../schemas";
-import { formatFileWsCloseLog } from "../../transport/file-ws-close-log";
-import { handleFileWsClose, handleFileWsMessage, handleFileWsOpen } from "../../transport/file-ws-handler";
-import {
-  checkParsedObjectSize,
-  checkWsMessageSize,
-  estimateWsMessageBytes,
-  parseFileWsMessage,
-} from "../../transport/file-ws-payload";
 import type { WsConnection } from "../../transport/ws-types";
 
 /** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */

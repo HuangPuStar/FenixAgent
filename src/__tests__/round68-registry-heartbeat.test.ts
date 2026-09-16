@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb, stubRegistry } from "../../apps/server/src/test-utils/helpers";
+import { registryRegistry } from "../../apps/server/src/test-utils/stubs/module-stubs";
 
-// @ts-expect-error Bun 以独立模块实例加载真实心跳服务，避免预加载的服务 stub。
-const heartbeat = await import("../services/registry-heartbeat?round68");
+const heartbeat = await import("@fenix/resource-machine/server");
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -16,6 +16,10 @@ function stubHeartbeatPersistence() {
 
 beforeEach(() => {
   resetAllStubs();
+  heartbeat.setRegistryHeartbeatDeps({
+    markHeartbeatTimeout: (machineId: string) => registryRegistry.get("markHeartbeatTimeout")(machineId),
+    updateHeartbeat: (machineId: string) => registryRegistry.get("updateHeartbeat")(machineId),
+  });
 });
 
 afterEach(() => {
@@ -25,6 +29,7 @@ afterEach(() => {
   heartbeat.stopHeartbeat("machine-replaced");
   heartbeat.stopHeartbeat("machine-stopped");
   heartbeat.stopMachineSweep();
+  heartbeat.resetRegistryHeartbeatDeps();
   resetAllStubs();
 });
 

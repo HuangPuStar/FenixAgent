@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { config, setConfig } from "../../apps/server/src/config";
 import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../../apps/server/src/db/schema";
 import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
-import { composeAgentSystemPrompt } from "../services/agent-system-prompt";
 import {
   configError,
   configNotFound,
