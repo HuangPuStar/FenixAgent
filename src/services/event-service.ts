@@ -4,14 +4,15 @@
  * 而非直接导入 transport/event-bus。
  */
 
-import type { EventBus, SessionEvent } from "../transport/event-bus";
 import {
+  type EventBus,
   getAcpEventBus,
   getAllEventBuses,
   getEventBus,
   removeAcpEventBus,
   removeEventBus,
-} from "../transport/event-bus";
+  type SessionEvent,
+} from "@fenix/agent-runtime/server";
 
 type Subscriber = (event: SessionEvent) => void;
 

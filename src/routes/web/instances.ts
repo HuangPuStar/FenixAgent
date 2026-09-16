@@ -1,16 +1,16 @@
-import { agentInstanceService } from "@fenix/agent-runtime/server";
+import {
+  agentInstanceService,
+  getOwnedEnvironment,
+  InstanceActivityListResponseSchema,
+  InstanceActivityQuerySchema,
+  listInstanceActivitySnapshotsWithUsers,
+  SpawnInstanceFromEnvironmentRequestSchema,
+  SpawnInstanceFromEnvironmentResponseSchema,
+} from "@fenix/agent-runtime/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
-import {
-  InstanceActivityListResponseSchema,
-  InstanceActivityQuerySchema,
-  SpawnInstanceFromEnvironmentRequestSchema,
-  SpawnInstanceFromEnvironmentResponseSchema,
-} from "../../schemas/instance.schema";
-import { listInstanceActivitySnapshotsWithUsers } from "../../services/acp-idle-monitor";
-import { getOwnedEnvironment } from "../../services/environment";
 
 const _deps = {
   getOwnedEnvironment,

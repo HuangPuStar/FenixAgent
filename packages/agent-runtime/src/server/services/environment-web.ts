@@ -5,11 +5,8 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../../../../../apps/server/src/db";
 import { agentConfig, environment, machine } from "../../../../../apps/server/src/db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../../../../../apps/server/src/errors";
-import type {
-  CreateWebEnvironmentParams,
-  UpdateWebEnvironmentParams,
-} from "../../../../../src/services/environment-core";
-import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../../../../src/services/environment-core";
+import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
+import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories/environment";
 import { environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";

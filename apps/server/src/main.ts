@@ -7,11 +7,25 @@ const startupLog = createLogger("rcs");
 
 import { agentSitesCompatApp, agentSitesProxyApp, apiAgentsRoutes } from "@fenix/agent-config/server";
 import {
+  acpRoutes,
   agentInstanceService,
+  apiInstanceRoutes,
+  bindAcpInstanceActivityPort,
+  bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
+  bindEnvironmentAcpLifecyclePort,
   bindMachineRegistryPort,
   closeAllAcpConnections,
   closeAllRelayConnections,
+  getOrchestrationController,
+  openaiChatRoutes,
+  setRuntimeCredentialResolver,
+  spawnInstanceViaController,
+  startAcpIdleMonitor,
+  stopAcpIdleMonitor,
+  stopInstancesForEnvironments,
+  stopInstanceViaController,
+  touchInstanceActivity,
 } from "@fenix/agent-runtime/server";
 import {
   apiSystemModelGatewayRoutes,
@@ -48,16 +62,12 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
-import acpRoutes from "../../../src/routes/acp";
-import apiInstanceRoutes from "../../../src/routes/api/instances";
 import apiModelsRoutes from "../../../src/routes/api/models";
-import openaiChatRoutes from "../../../src/routes/api/openai-chat";
 import apiSandboxRoutes from "../../../src/routes/api/sandbox";
 import apiSandboxClusterRoutes from "../../../src/routes/api/sandbox-cluster";
 import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
 import apiWorkspaceRoutes from "../../../src/routes/api/workspaces";
 import webApp from "../../../src/routes/web";
-import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import {
   getCoreRuntime,
@@ -66,7 +76,6 @@ import {
   unregisterRemoteNode,
 } from "../../../src/services/core-bootstrap";
 import { runDataMigrations } from "../../../src/services/data-migrate";
-import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
 import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
@@ -86,6 +95,19 @@ const env = loadServerEnv([]);
 applyEnv(env);
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+bindAgentInstanceRuntimeOperations({
+  spawnInstance: spawnInstanceViaController,
+  stopInstance: stopInstanceViaController,
+  hasActiveInstance: (instanceUid) =>
+    getOrchestrationController()
+      .listInstances()
+      .some((instance) => instance.instanceId === instanceUid),
+});
+bindEnvironmentAcpLifecyclePort({
+  closeAcpConnections: closeAcpConnectionsForEnvironments,
+  stopInstances: stopInstancesForEnvironments,
+});
+bindAcpInstanceActivityPort(touchInstanceActivity);
 await initDb();
 startupLog.info("Database initialized");
 

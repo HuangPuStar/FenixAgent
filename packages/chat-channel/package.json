@@ -11,6 +11,18 @@
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
+    },
+    "./web": {
+      "types": "./web/index.ts",
+      "default": "./web/index.ts"
+    },
+    "./web/chat-area": {
+      "types": "./web/chat-area.ts",
+      "default": "./web/chat-area.ts"
+    },
+    "./web/chat-area-lifecycle": {
+      "types": "./web/src/pages/agent-panel/chat-area-lifecycle.ts",
+      "default": "./web/src/pages/agent-panel/chat-area-lifecycle.ts"
     }
   },
   "scripts": {
@@ -19,6 +31,8 @@
   },
   "dependencies": {
     "@fenix/plugin-sdk": "workspace:*",
+    "@fenix/core": "workspace:*",
+    "@fenix/orchestration": "workspace:*",
     "acp-link": "workspace:*",
     "yjs": "^13.6.21",
     "ioredis": "^5.10.1"

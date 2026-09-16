@@ -23,8 +23,8 @@
  * 时，EnvironmentRepo 返回 machineId=null，AgentController 仍以配置错误拒绝启动。
  */
 
+import { getAgentNodeService } from "@fenix/agent-runtime/server";
 import { AgentNode, type AgentNodeServicePort, type AgentNodeSocket } from "@fenix/orchestration";
-import { getAgentNodeService } from "../transport/agent-node-bridge";
 
 /** 本地执行占位节点 ID（与旧路径 nodeId 兜底语义一致，core 侧同名注册）。 */
 export const LOCAL_DEFAULT_NODE_ID = "local-default";

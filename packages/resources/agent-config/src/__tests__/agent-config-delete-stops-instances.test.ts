@@ -19,6 +19,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _resetDeps } from "@fenix/access-control/server";
+import {
+  globalInstanceRegistry,
+  resetOrchestrationInstanceDeps,
+  setOrchestrationInstanceDeps,
+} from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import {
@@ -27,11 +32,6 @@ import {
   stubDb,
   stubResourcePermissionRepo,
 } from "../../../../../apps/server/src/test-utils/helpers";
-import { globalInstanceRegistry } from "../../../../../src/services/instance-registry";
-import {
-  resetOrchestrationInstanceDeps,
-  setOrchestrationInstanceDeps,
-} from "../../../../../src/services/orchestration-instance";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";

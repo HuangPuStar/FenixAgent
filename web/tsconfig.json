@@ -58,6 +58,8 @@
       "@server/*": ["../../src/*"],
       "@fenix/chat-channel": ["../packages/chat-channel/src/index.ts"],
       "@fenix/chat-channel/server": ["../packages/chat-channel/src/server.ts"],
+      "@fenix/chat-channel/web": ["../packages/chat-channel/web/index.ts"],
+      "@fenix/chat-channel/web/chat-area": ["../packages/chat-channel/web/chat-area.ts"],
       "@fenix/model-management": ["../packages/resources/model-management/src/index.ts"]
     }
   },

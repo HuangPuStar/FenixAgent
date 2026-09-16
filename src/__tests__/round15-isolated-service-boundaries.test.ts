@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  EventBus,
+  getAllEventBuses,
+  getEventBus,
+  removeEventBus,
+  shouldCountInstanceActivity,
+} from "@fenix/agent-runtime/server";
+import { classifyPermanentSpawnFailure, isMachineOfflineError } from "@fenix/chat-channel/server";
+import {
   DEFAULT_MACHINE_CONNECTION_TIMEOUT_MS,
   type MachineSleep,
   type MachineStatusReader,
@@ -7,9 +15,6 @@ import {
 } from "@fenix/resource-machine/server";
 import { AppError } from "../../apps/server/src/errors";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../../apps/server/src/services/org-context";
-import { shouldCountInstanceActivity } from "../services/acp-idle-monitor";
-import { classifyPermanentSpawnFailure, isMachineOfflineError } from "../services/chat-channel-error-classify";
-import { EventBus, getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 
 async function withFrozenClock<T>(run: () => Promise<T>): Promise<T> {
   const originalNow = Date.now;

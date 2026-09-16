@@ -5,8 +5,8 @@
  * 复用 transport/event-bus 的 EventBus 实例管理。
  */
 
+import { type EventBus, getEventBus, removeEventBus } from "@fenix/agent-runtime/server";
 import { nanoid } from "nanoid";
-import { type EventBus, getEventBus, removeEventBus } from "../../../../../../../src/transport/event-bus";
 
 /** Workflow SSE 事件类型 */
 export type WorkflowEventType =

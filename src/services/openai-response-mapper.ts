@@ -1,4 +1,4 @@
-import type { OpenAIChatCompletionResponse } from "../schemas/openai-chat.schema";
+import type { OpenAIChatCompletionResponse } from "@fenix/agent-runtime/server";
 
 // ── ACP 事件类型 ──
 

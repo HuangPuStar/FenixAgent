@@ -12,7 +12,10 @@
 import type { ChatChannelDependencies } from "@fenix/chat-channel/server";
 import {
   ChatChannelController,
+  classifyPermanentSpawnFailure,
   clearSessionDocContent,
+  docManager,
+  isMachineOfflineError,
   persistYjsClearedSnapshotWithCas,
 } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
@@ -23,18 +26,11 @@ import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
   touchInstanceActivity,
-} from "../../../../../src/services/acp-idle-monitor";
-import {
-  classifyPermanentSpawnFailure,
-  isMachineOfflineError,
-} from "../../../../../src/services/chat-channel-error-classify";
-import { docManager } from "../../../../../src/services/doc-manager-instance";
-import {
-  refreshInstanceEnvironment,
-  terminateLocalDeadInstance,
-} from "../../../../../src/services/orchestration-instance";
+} from "../../services/acp-idle-monitor";
+import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../../services/orchestration-instance";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
+import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
 import { agentInstanceService } from "./agent-instance-service";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
@@ -155,6 +151,14 @@ export function getChatChannelController(): ChatChannelController {
   }
   return controller;
 }
+
+bindRelayLifecyclePort({
+  closeClientsByInstance: (instanceId, code, reason) =>
+    getChatChannelController().registry.closeClientsByInstance(instanceId, code, reason),
+  reclaimInstanceRealtimeResources: (instanceId) =>
+    getChatChannelController().relayEvents.reclaimInstanceRealtimeResources(instanceId),
+  closeAllClients: (code, reason) => getChatChannelController().registry.closeAll(code, reason),
+});
 
 /** 重置控制器单例缓存（仅用于测试；测试注入依赖后必须重置才能生效）。 */
 export function resetChatChannelBootstrap(): void {

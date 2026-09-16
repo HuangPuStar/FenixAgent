@@ -9,9 +9,9 @@
 // file-types.ts；执行后端（BackEnd / LocalBackend / RemoteBackend /
 // If-Match 版本比对）与路由决策在 file-backends.ts；本文件仅保留门面。
 
+import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { AppError, ValidationError } from "../../../../../../apps/server/src/errors";
-import { getOwnedEnvironment } from "../../../../../../src/services/environment-core";
 import { BusyError } from "../transport/file-ws-requests";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
 import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";

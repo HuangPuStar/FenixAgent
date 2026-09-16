@@ -245,6 +245,8 @@ export default defineConfig({
       "@/src/lib/theme": path.resolve(__dirname, "src/lib/theme.ts"),
       "@/src": path.resolve(__dirname, "../../web/src"),
       "@server": path.resolve(__dirname, "../../src"),
+      "@fenix/chat-channel/web/chat-area": path.resolve(__dirname, "../../packages/chat-channel/web/chat-area.ts"),
+      "@fenix/chat-channel/web": path.resolve(__dirname, "../../packages/chat-channel/web/index.ts"),
       "@fenix/chat-channel": path.resolve(__dirname, "../../packages/chat-channel/src/index.ts"),
     },
   },

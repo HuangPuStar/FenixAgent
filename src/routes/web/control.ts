@@ -1,4 +1,11 @@
-import { type AgentInstanceRecord, agentInstanceService, environmentRepo } from "@fenix/agent-runtime/server";
+import {
+  type AgentInstanceRecord,
+  agentInstanceService,
+  environmentRepo,
+  getSession,
+  resolveExistingSessionId,
+  updateSessionStatus,
+} from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
@@ -6,7 +13,6 @@ import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
 import { eventService } from "../../services/event-service";
-import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
 import { publishSessionEvent } from "../../services/transport";
 
 const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({

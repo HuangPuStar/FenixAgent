@@ -1,5 +1,52 @@
 // Common
 
+// Environments
+// Instances
+// OpenAI Chat
+export {
+  type AcpAgent,
+  type AcpAgentListResponse,
+  AcpAgentListResponseSchema,
+  AcpAgentSchema,
+  AcpRegistrySecretQuerySchema,
+  AcpRelayParamsSchema,
+  type CreateEnvironmentRequest,
+  CreateEnvironmentRequestSchema,
+  EnterEnvironmentRequestSchema,
+  type EnterEnvironmentResponse,
+  EnterEnvironmentResponseSchema,
+  EnvironmentDetailResponseSchema,
+  type EnvironmentInfo,
+  EnvironmentInfoSchema,
+  type EnvironmentListResponse,
+  EnvironmentListResponseSchema,
+  InstanceActivityInfoSchema,
+  type InstanceActivityListResponse,
+  InstanceActivityListResponseSchema,
+  InstanceInfoSchema,
+  type InstanceListResponse,
+  InstanceListResponseSchema,
+  type InstanceSchemaActivityInfo as InstanceActivityInfo,
+  type InstanceSchemaInfo as InstanceInfo,
+  type InstanceStatus,
+  InstanceStatusSchema,
+  InstanceSummarySchema,
+  type ListInstancesResponse,
+  ListInstancesResponseSchema,
+  type OpenAIChatCompletionRequest,
+  OpenAIChatCompletionRequestSchema,
+  type OpenAIChatCompletionResponse,
+  OpenAIChatCompletionResponseSchema,
+  OpenAIErrorResponseSchema,
+  type SpawnInstanceFromEnvironmentRequest,
+  SpawnInstanceFromEnvironmentRequestSchema,
+  type SpawnInstanceFromEnvironmentResponse,
+  SpawnInstanceFromEnvironmentResponseSchema,
+  type UpdateEnvironmentRequest,
+  UpdateEnvironmentRequestSchema,
+  type UpdateEnvironmentResponse,
+  UpdateEnvironmentResponseSchema,
+} from "@fenix/agent-runtime/server";
 // Organizations
 export {
   type ApiKeyInfo,
@@ -41,14 +88,6 @@ export {
   McpKnowledgeReadToolInputSchema,
   McpKnowledgeSearchToolInputSchema,
 } from "@fenix/resource-mcp/server/schema";
-export {
-  type AcpAgent,
-  type AcpAgentListResponse,
-  AcpAgentListResponseSchema,
-  AcpAgentSchema,
-  AcpRegistrySecretQuerySchema,
-  AcpRelayParamsSchema,
-} from "./acp.schema";
 export {
   type PaginationParams,
   PaginationParamsSchema,
@@ -102,26 +141,6 @@ export {
   SkillUploadResultSchema,
   UpdateSkillResponseSchema,
 } from "./config.schema";
-// Environments
-export {
-  type CreateEnvironmentRequest,
-  CreateEnvironmentRequestSchema,
-  EnterEnvironmentRequestSchema,
-  type EnterEnvironmentResponse,
-  EnterEnvironmentResponseSchema,
-  EnvironmentDetailResponseSchema,
-  type EnvironmentInfo,
-  EnvironmentInfoSchema,
-  type EnvironmentListResponse,
-  EnvironmentListResponseSchema,
-  InstanceSummarySchema,
-  type ListInstancesResponse,
-  ListInstancesResponseSchema,
-  type UpdateEnvironmentRequest,
-  UpdateEnvironmentRequestSchema,
-  type UpdateEnvironmentResponse,
-  UpdateEnvironmentResponseSchema,
-} from "./environment.schema";
 // Files
 export {
   type FileContent,
@@ -137,36 +156,11 @@ export {
   FileWriteResultSchema,
   WriteFileRequestSchema,
 } from "./file.schema";
-// Instances
-export {
-  type InstanceActivityInfo,
-  InstanceActivityInfoSchema,
-  type InstanceActivityListResponse,
-  InstanceActivityListResponseSchema,
-  type InstanceInfo,
-  InstanceInfoSchema,
-  type InstanceListResponse,
-  InstanceListResponseSchema,
-  type InstanceStatus,
-  InstanceStatusSchema,
-  type SpawnInstanceFromEnvironmentRequest,
-  SpawnInstanceFromEnvironmentRequestSchema,
-  type SpawnInstanceFromEnvironmentResponse,
-  SpawnInstanceFromEnvironmentResponseSchema,
-} from "./instance.schema";
 // Meta Agent
 export {
   type EnsureMetaAgentResponse,
   EnsureMetaAgentResponseSchema,
 } from "./meta-agent.schema";
-// OpenAI Chat
-export {
-  type OpenAIChatCompletionRequest,
-  OpenAIChatCompletionRequestSchema,
-  type OpenAIChatCompletionResponse,
-  OpenAIChatCompletionResponseSchema,
-  OpenAIErrorResponseSchema,
-} from "./openai-chat.schema";
 export {
   type PeriTaskDetail,
   PeriTaskDetailParamsSchema,

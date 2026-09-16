@@ -233,6 +233,8 @@
       "name": "@fenix/chat-channel",
       "version": "0.1.0",
       "dependencies": {
+        "@fenix/core": "workspace:*",
+        "@fenix/orchestration": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "acp-link": "workspace:*",
         "ioredis": "^5.10.1",
@@ -291,7 +293,6 @@
       "dependencies": {
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
-        "@fenix/resource-identity-admin": "workspace:*",
       },
     },
     "packages/platform/platform-sdk": {

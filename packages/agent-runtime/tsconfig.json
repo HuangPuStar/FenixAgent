@@ -26,6 +26,7 @@
       "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
       "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["apps/web/src/lib/card-renderer/*"],
+      "@/src/lib/model-config-utils": ["packages/resources/model-management/web/lib/model-config-utils.ts"],
       "@/src/lib/auth-client": ["apps/web/src/lib/auth-client.ts"],
       "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["apps/web/src/lib/random-uuid-polyfill.ts"],

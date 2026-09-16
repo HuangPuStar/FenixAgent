@@ -2,16 +2,15 @@ import { createLogger, error as logError } from "@fenix/logger";
 import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { config } from "../../../../../apps/server/src/config";
-import { touchInstanceActivity } from "../../../../../src/services/acp-idle-monitor";
-import { touchEnvironmentPoll } from "../../../../../src/services/environment";
+import type { WsConnection } from "../../../../../src/transport/ws-types";
+import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../../../../../src/types/store";
+import { touchEnvironmentPoll } from "../../services/environment-acp";
 import {
   dispatchAgentNodeDisconnect,
   dispatchAgentNodeWsClose,
   getAgentNodeService,
   wsToAgentNodeSocket,
-} from "../../../../../src/transport/agent-node-bridge";
-import type { WsConnection } from "../../../../../src/transport/ws-types";
-import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../../../../../src/types/store";
+} from "../../transport/agent-node-bridge";
 import { agentInstanceService } from "../services/agent-instance-service";
 import { getBoundCoreRuntimePort, getBoundCoreRuntime as getCoreRuntime } from "../services/core-runtime-port";
 import { getMachineRegistryPort } from "../services/machine-registry-port";
@@ -27,6 +26,26 @@ const logger = createLogger("transport-acp-ws-handler");
  * 不得将当前内存集合视为跨实例锁。
  */
 const connections = new Map<string, AcpConnectionEntry>();
+
+let touchInstanceActivityPort: ((instanceId: string, message: Record<string, unknown>) => void) | null = null;
+
+/** 绑定 ACP 消息的实例活跃度记录操作；运行时装配遗漏时明确失败。 */
+export function bindAcpInstanceActivityPort(
+  port: (instanceId: string, message: Record<string, unknown>) => void,
+): void {
+  touchInstanceActivityPort = port;
+}
+
+/** 测试后解绑 ACP 活跃度回调，避免模块级装配状态泄漏。 */
+export function resetAcpInstanceActivityPort(): void {
+  touchInstanceActivityPort = null;
+}
+
+/** 记录 ACP 消息对应实例的业务活跃度。 */
+export function recordAcpInstanceActivity(instanceId: string, message: Record<string, unknown>): void {
+  if (!touchInstanceActivityPort) throw new Error("ACP instance activity port is not bound");
+  touchInstanceActivityPort(instanceId, message);
+}
 
 /** 服务端明确拒绝的 machine 重复连接：客户端收到后不得自动重连。 */
 const pendingMachineRegistrations = new Set<string>();
@@ -95,7 +114,7 @@ export function handleAcpWsOpen(
   // 本地 acp-link 回连（旧架构路径）
   if (boundEnvId) {
     logger.debug(`Local acp-link connection opened: wsId=${wsId} boundEnvId=${boundEnvId}`);
-    import("../../../../../src/services/environment-acp").then(({ handleAcpConnect }) => {
+    import("../../services/environment-acp").then(({ handleAcpConnect }) => {
       handleAcpConnect(boundEnvId).catch(() => {});
     });
 
@@ -134,7 +153,7 @@ export function handleAcpWsOpen(
     });
 
     // 订阅 EventBus 转发 outbound 消息
-    import("../../../../../src/transport/event-bus").then(({ getAcpEventBus }) => {
+    import("../../transport/event-bus").then(({ getAcpEventBus }) => {
       const bus = getAcpEventBus(boundEnvId);
       const unsub = bus.subscribe((event) => {
         const entry = connections.get(wsId);
@@ -389,7 +408,7 @@ export async function handleAcpWsMessage(
           continue;
         }
         if (typeof instanceId === "string") {
-          touchInstanceActivity(instanceId, msg);
+          recordAcpInstanceActivity(instanceId, msg);
         }
         logger.debug("ACP ← remote", {
           type: msg.type,
@@ -431,7 +450,7 @@ export async function handleAcpWsMessage(
       }
       const sessionId = msg.session_id as string | undefined;
       if (typeof instanceId === "string") {
-        touchInstanceActivity(instanceId, msg);
+        recordAcpInstanceActivity(instanceId, msg);
       }
       logger.debug("ACP ← session", {
         type: msg.type,
@@ -513,7 +532,7 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
   getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
   getMachineRegistryPort().stopHeartbeat(machineId);
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
-  import("../../../../../src/services/instance-registry").then(({ globalInstanceRegistry }) => {
+  import("../../services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();
     globalInstanceRegistry.reconcile(() => facade.listInstances());
   });

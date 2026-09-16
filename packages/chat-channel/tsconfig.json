@@ -2,6 +2,22 @@
   "extends": "../../tsconfig.json",
   "include": ["src"],
   "compilerOptions": {
-    "paths": {}
+    "paths": {
+      "@/components/chat/*": ["../../packages/agent-runtime/web/components/chat/*"],
+      "@/components/ui/*": ["../../apps/web/components/ui/*"],
+      "@/components/*": ["../../web/components/*"],
+      "@/src/api/agents": ["../../packages/resources/agent-config/web/api/agents.ts"],
+      "@/src/api/environments": ["../../packages/agent-runtime/web/api/environments.ts"],
+      "@/src/api/mcp": ["../../packages/resources/mcp/web/api/mcp.ts"],
+      "@/src/api/prod-views": ["../../packages/resources/prod-view/web/api/prod-views.ts"],
+      "@/src/api/request": ["../../apps/web/src/api/request.ts"],
+      "@/src/lib/model-config-utils": ["../../packages/resources/model-management/web/lib/model-config-utils.ts"],
+      "@/src/lib/utils": ["../../apps/web/src/lib/utils.ts"],
+      "@/src/*": ["../../web/src/*"],
+      "@fenix/chat-channel": ["./src/index.ts"],
+      "@fenix/chat-channel/server": ["./src/server.ts"],
+      "@fenix/chat-channel/web": ["./web/index.ts"],
+      "@fenix/chat-channel/web/chat-area": ["./web/chat-area.ts"]
+    }
   }
 }

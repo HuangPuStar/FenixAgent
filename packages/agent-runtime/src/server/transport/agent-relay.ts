@@ -32,7 +32,7 @@ export async function connectAgentRelay(instanceId: string, sessionId: string): 
     // "local-default" 与 local-node-service 的 LOCAL_DEFAULT_NODE_ID 保持一致。
     const snapshot = facade.getInstance(instanceId);
     if (snapshot?.nodeId === "local-default" && (snapshot.status === "running" || snapshot.status === "error")) {
-      const { terminateLocalDeadInstance } = await import("../../../../../src/services/orchestration-instance");
+      const { terminateLocalDeadInstance } = await import("../../services/orchestration-instance");
       void terminateLocalDeadInstance(instanceId);
     }
     throw err;

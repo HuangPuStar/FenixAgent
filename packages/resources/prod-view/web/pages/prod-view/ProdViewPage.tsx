@@ -8,7 +8,7 @@ import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import "@/src/pages/agent-panel/agent-panel.css";
 
-const ChatArea = lazy(() => import("@/src/pages/agent-panel/ChatArea").then((m) => ({ default: m.ChatArea })));
+const ChatArea = lazy(() => import("@fenix/chat-channel/web/chat-area").then((m) => ({ default: m.ChatArea })));
 
 export function ProdViewPage() {
   const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId: string };

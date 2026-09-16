@@ -1,3 +1,4 @@
+import { getEnvironmentBySecret } from "@fenix/agent-runtime/server";
 import {
   getKnowledgeGraphForAgent,
   readKnowledgeResourceForAgent,
@@ -8,7 +9,6 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { errorResponse } from "../../../../../../../apps/server/src/plugins/auth";
-import { getEnvironmentBySecret } from "../../../../../../../src/services/environment";
 import { McpKnowledgeAuthHeadersSchema } from "../../schemas/mcp-knowledge.schema";
 
 function getBearerToken(headerValue: string | undefined): string | null {

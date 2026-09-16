@@ -1,11 +1,6 @@
-import { createAgentInstanceUid, isAgentInstanceUid } from "@fenix/agent-runtime/server";
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
 import { AppError } from "../../../../../apps/server/src/errors";
-import { getOrchestrationController } from "../../../../../src/services/orchestration-bootstrap";
-import {
-  spawnInstanceViaController,
-  stopInstanceViaController,
-} from "../../../../../src/services/orchestration-instance";
+import { createAgentInstanceUid, isAgentInstanceUid } from "../instance/agent-instance-id";
 import type { AgentInstanceRecord, IAgentInstanceRepo, InstanceCreationSource } from "../repositories/agent-instance";
 import { agentInstanceRepo } from "../repositories/agent-instance";
 import {
@@ -17,6 +12,36 @@ import {
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
 export type AutomaticInstanceSelection = "chat" | "api" | "workflow";
+
+/** 持久实例协调器所需的编排操作，由运行时装配层绑定以避免 service 反向依赖编排实现。 */
+export interface AgentInstanceRuntimeOperations {
+  spawnInstance(
+    environmentId: string,
+    userId: string,
+    source: "interactive" | "scheduled",
+    options: { instanceUid: string; runtimeGeneration: number; serverEpoch: string },
+  ): Promise<unknown>;
+  stopInstance(instanceUid: string, mode: "strict"): Promise<unknown>;
+  hasActiveInstance(instanceUid: string): boolean;
+}
+
+let runtimeOperations: AgentInstanceRuntimeOperations | null = null;
+
+/** 绑定持久实例生命周期的编排操作；未绑定时启动/停止会以明确错误失败。 */
+export function bindAgentInstanceRuntimeOperations(operations: AgentInstanceRuntimeOperations): void {
+  runtimeOperations = operations;
+}
+
+/** 测试后解绑实例编排操作，避免模块级装配状态泄漏。 */
+export function resetAgentInstanceRuntimeOperations(): void {
+  runtimeOperations = null;
+}
+
+/** 获取已装配的实例编排操作；遗漏宿主装配时显式失败。 */
+export function getAgentInstanceRuntimeOperations(): AgentInstanceRuntimeOperations {
+  if (!runtimeOperations) throw new Error("Agent instance runtime operations are not bound");
+  return runtimeOperations;
+}
 
 const SELECTION: Record<
   AutomaticInstanceSelection,
@@ -31,7 +56,7 @@ const runtimeAdapter: RuntimeAdapter = {
   async start(instance, generation, signal) {
     signal.throwIfAborted();
     const source = instance.creationSource === "workflow" ? "scheduled" : "interactive";
-    await spawnInstanceViaController(instance.environmentId, instance.ownerUserId, source, {
+    await getAgentInstanceRuntimeOperations().spawnInstance(instance.environmentId, instance.ownerUserId, source, {
       instanceUid: instance.id,
       runtimeGeneration: generation,
       serverEpoch: SERVER_EPOCH,
@@ -41,20 +66,18 @@ const runtimeAdapter: RuntimeAdapter = {
     const coreInstance = getCoreRuntime().getInstance(instanceUid);
     return (
       (coreInstance !== null && coreInstance.status !== "stopped") ||
-      getOrchestrationController()
-        .listInstances()
-        .some((instance) => instance.instanceId === instanceUid)
+      getAgentInstanceRuntimeOperations().hasActiveInstance(instanceUid)
     );
   },
   async stopActiveRuntime(instanceUid, signal) {
     signal.throwIfAborted();
-    await stopInstanceViaController(instanceUid, "strict");
+    await getAgentInstanceRuntimeOperations().stopInstance(instanceUid, "strict");
   },
   async stop(instanceUid, generation, signal) {
     signal.throwIfAborted();
     const current = getCoreRuntime().getInstance(instanceUid);
     if (current?.runtimeGeneration !== generation || current.serverEpoch !== SERVER_EPOCH) return;
-    await stopInstanceViaController(instanceUid, "strict");
+    await getAgentInstanceRuntimeOperations().stopInstance(instanceUid, "strict");
   },
 };
 

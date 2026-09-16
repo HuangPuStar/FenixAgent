@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { ContextPanel } from "@fenix/chat-channel/web";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/src/i18n";
-import { ContextPanel } from "../../components/ContextPanel";
 import type { ThreadEntry } from "../lib/types";
 
 function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "claude-test") {

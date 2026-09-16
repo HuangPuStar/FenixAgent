@@ -327,6 +327,7 @@ const ENVIRONMENT_KEYS = [
   "listEnvironmentsWithInstances",
   "updateWebEnvironment",
 ] as const;
+
 mock.module("../../../../src/services/environment", () =>
   createLazyMock(ENVIRONMENT_KEYS, (name) => environmentServiceRegistry.get(name) as AnyFn),
 );
@@ -428,9 +429,14 @@ mock.module("react-i18next", () => ({
   withTranslation: () => (Component: unknown) => Component,
 }));
 
-// agent-runtime 已不再直接导入宿主 core-bootstrap；测试仍通过同一惰性 stub
-// 注册表提供 Core 能力，避免测试进程内创建第二个 runtime 单例。
-const { bindCoreRuntimePort, bindMachineRegistryPort } = await import("@fenix/agent-runtime/server");
+// 仅载入端口定义，不能在 preload 中载入 server barrel：barrel 会提前求值所有
+// runtime 服务，使后续测试无法将 environmentRepo 替换为实时 Proxy。
+const { bindCoreRuntimePort } = await import(
+  "../../../../packages/agent-runtime/src/server/services/core-runtime-port"
+);
+const { bindMachineRegistryPort } = await import(
+  "../../../../packages/agent-runtime/src/server/services/machine-registry-port"
+);
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
   registerRemoteNode: (...args) => {

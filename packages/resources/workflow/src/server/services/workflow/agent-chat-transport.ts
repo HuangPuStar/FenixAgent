@@ -9,7 +9,19 @@
  * - agent-chat-transport.ts（本文件）：桥接 agent-chat-service，实现 Transport 接口
  */
 
-import { agentInstanceService, connectAgentRelay } from "@fenix/agent-runtime/server";
+import {
+  agentInstanceService,
+  type AgentSession as ChatAgentSession,
+  connectAgentRelay,
+  createAgentSession,
+  markInstanceRelayAttached,
+  markInstanceRelayDetached,
+  type PromptTurn,
+  refreshInstanceEnvironment,
+  startPromptTurn,
+  terminateLocalDeadInstance,
+  touchInstanceActivity,
+} from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
@@ -17,21 +29,6 @@ import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../../../../../apps/server/src/db";
 import { environment } from "../../../../../../../apps/server/src/db/schema";
-import {
-  markInstanceRelayAttached,
-  markInstanceRelayDetached,
-  touchInstanceActivity,
-} from "../../../../../../../src/services/acp-idle-monitor";
-import {
-  type AgentSession as ChatAgentSession,
-  createAgentSession,
-  type PromptTurn,
-  startPromptTurn,
-} from "../../../../../../../src/services/agent-chat-service";
-import {
-  refreshInstanceEnvironment,
-  terminateLocalDeadInstance,
-} from "../../../../../../../src/services/orchestration-instance";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");

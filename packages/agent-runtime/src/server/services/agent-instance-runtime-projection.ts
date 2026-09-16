@@ -17,10 +17,10 @@
 // 已在休克疗法中删除，不再恢复。
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { error as logError } from "@fenix/logger";
-import { globalInstanceRegistry } from "../../../../../src/services/instance-registry";
-import { getOrchestrationController } from "../../../../../src/services/orchestration-bootstrap";
-import { stopInstanceViaController } from "../../../../../src/services/orchestration-instance";
 import type { InstanceSpawnSource, InstanceSupplement } from "../../../../../src/types/store";
+import { globalInstanceRegistry } from "../../services/instance-registry";
+import { getOrchestrationController } from "../../services/orchestration-bootstrap";
+import { stopInstanceViaController } from "../../services/orchestration-instance";
 import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
 // ────────────────────────────────────────────

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { composeAgentSystemPrompt, DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
+import { classifyPermanentSpawnFailure, isMachineOfflineError } from "@fenix/chat-channel/server";
 import { ApiMcpListQuerySchema } from "@fenix/resource-mcp/server/schema";
 import { AppError } from "../../apps/server/src/errors";
 import { PaginationParamsSchema } from "../schemas/common.schema";
-import { classifyPermanentSpawnFailure, isMachineOfflineError } from "../services/chat-channel-error-classify";
 import {
   configError,
   configNotFound,

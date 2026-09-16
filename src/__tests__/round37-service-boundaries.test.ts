@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { getAcpEventBus, getEventBus, removeAcpEventBus, removeEventBus } from "@fenix/agent-runtime/server";
 import { waitForMachineConnection } from "@fenix/resource-machine/server";
 import { SandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { resetAllStubs } from "../../apps/server/src/test-utils/helpers";
-import { getAcpEventBus, getEventBus, removeAcpEventBus, removeEventBus } from "../transport/event-bus";
 
 afterEach(() => {
   resetAllStubs();

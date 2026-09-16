@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { EngineRelayMessage } from "@fenix/plugin-sdk";
-import { markInstanceRelayAttached } from "../../../../../src/services/acp-idle-monitor";
 import {
   type AgentSession as ChatAgentSession,
   createPromptTurn,
+  globalInstanceRegistry,
+  markInstanceRelayAttached,
   type PromptTurn,
-} from "../../../../../src/services/agent-chat-service";
-import { globalInstanceRegistry } from "../../../../../src/services/instance-registry";
+} from "@fenix/agent-runtime/server";
+import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { AgentChatSessionAdapter, createAgentChatTransport } from "../server/services/workflow/agent-chat-transport";
 import { clearInstanceLeases, hasActiveInstanceLease } from "../server/services/workflow/instance-lease";
 import type { InstanceSupplement } from "../types/store";

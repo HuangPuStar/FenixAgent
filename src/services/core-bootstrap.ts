@@ -1,3 +1,4 @@
+import { cleanupOrchestrationInstancesForMachine, globalInstanceRegistry } from "@fenix/agent-runtime/server";
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
@@ -14,8 +15,6 @@ import { eq } from "drizzle-orm";
 import { config } from "../../apps/server/src/config";
 import { db } from "../../apps/server/src/db";
 import { machine } from "../../apps/server/src/db/schema";
-import { globalInstanceRegistry } from "./instance-registry";
-import { cleanupOrchestrationInstancesForMachine } from "./orchestration-machine-cleanup";
 
 let facade: CoreRuntimeFacade | null = null;
 

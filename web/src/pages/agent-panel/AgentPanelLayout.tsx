@@ -1,3 +1,4 @@
+import { ChatArea } from "@fenix/chat-channel/web/chat-area";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import { envApi } from "@/src/api/environments";
@@ -6,7 +7,6 @@ import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormD
 import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
 import { resolveCreatedAgentChatTarget } from "./agent-create-navigation";
-import { ChatArea } from "./ChatArea";
 import "./agent-panel.css";
 
 export function AgentPanelLayout() {

@@ -15,22 +15,20 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  type AgentSession as ChatAgentSession,
+  createPromptTurn,
+  globalInstanceRegistry,
+  markInstanceRelayAttached,
+  type PromptTurn,
+  resetOrchestrationInstanceDeps,
+  setOrchestrationInstanceDeps,
+} from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetAllStubs, stubCoreBootstrap } from "../../../../../apps/server/src/test-utils/helpers";
-import { markInstanceRelayAttached } from "../../../../../src/services/acp-idle-monitor";
-import {
-  type AgentSession as ChatAgentSession,
-  createPromptTurn,
-  type PromptTurn,
-} from "../../../../../src/services/agent-chat-service";
-import { globalInstanceRegistry } from "../../../../../src/services/instance-registry";
-import {
-  resetOrchestrationInstanceDeps,
-  setOrchestrationInstanceDeps,
-} from "../../../../../src/services/orchestration-instance";
 import type { InstanceSupplement } from "../../../../../src/types/store";
 import { AgentChatSessionAdapter } from "../server/services/workflow/agent-chat-transport";
 import {
