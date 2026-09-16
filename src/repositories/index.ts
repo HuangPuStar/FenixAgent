@@ -1,3 +1,5 @@
+export type { IOrganizationRepo } from "@fenix/resource-identity-admin/server/repository";
+export { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
 export type {
   AgentKnowledgeBindingRow,
   IAgentKnowledgeBindingRepo,
@@ -8,8 +10,6 @@ export type {
 } from "@fenix/resource-knowledge/server";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "@fenix/resource-knowledge/server";
 export { agentEngineRepo } from "./agent-engine";
-export type { IOrganizationRepo } from "./organization";
-export { organizationRepo } from "./organization";
 export type {
   CreateResourcePermissionGrantInput,
   DeleteResourcePermissionGrantInput,

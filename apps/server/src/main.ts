@@ -19,6 +19,7 @@ import {
   createSystemModelGatewayProviderService,
 } from "@fenix/model-management/server";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
+import { apiSystemRoutes, ensureSystemAdmin } from "@fenix/resource-identity-admin/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   closeAllFileWsConnections,
@@ -32,6 +33,11 @@ import {
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
 import { apiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
+import {
+  apiSystemLogsRoutes,
+  apiSystemObserverRoutes,
+  apiSystemPeopleTreeRoutes,
+} from "@fenix/resource-observer/server";
 import {
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
@@ -49,10 +55,6 @@ import openaiChatRoutes from "../../../src/routes/api/openai-chat";
 import apiSandboxRoutes from "../../../src/routes/api/sandbox";
 import apiSandboxClusterRoutes from "../../../src/routes/api/sandbox-cluster";
 import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
-import apiSystemRoutes from "../../../src/routes/api/system";
-import apiSystemLogsRoutes from "../../../src/routes/api/system-logs";
-import apiSystemObserverRoutes from "../../../src/routes/api/system-observer";
-import apiSystemPeopleTreeRoutes from "../../../src/routes/api/system-people-tree";
 import apiWorkspaceRoutes from "../../../src/routes/api/workspaces";
 import webApp from "../../../src/routes/web";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
@@ -66,7 +68,6 @@ import {
 import { runDataMigrations } from "../../../src/services/data-migrate";
 import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
 import { syncBuiltin } from "../../../src/services/sync-builtin";
-import { ensureSystemAdmin } from "../../../src/services/system-admin";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";

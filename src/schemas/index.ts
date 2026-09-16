@@ -1,5 +1,16 @@
 // Common
 
+// Organizations
+export {
+  type ApiKeyInfo,
+  ApiKeyInfoSchema,
+  type OrganizationDetail,
+  OrganizationDetailSchema,
+  type OrganizationInfo,
+  OrganizationInfoSchema,
+  type OrganizationMember,
+  OrganizationMemberSchema,
+} from "@fenix/resource-identity-admin/server/schema";
 // Knowledge
 export {
   type CreateKnowledgeBaseRequest,
@@ -38,15 +49,6 @@ export {
   AcpRegistrySecretQuerySchema,
   AcpRelayParamsSchema,
 } from "./acp.schema";
-// Branding
-export {
-  type BrandingConfig,
-  type BrandingConfigResponse,
-  BrandingConfigResponseSchema,
-  BrandingConfigSchema,
-  type BrandingLogoNotFoundResponse,
-  BrandingLogoNotFoundResponseSchema,
-} from "./branding.schema";
 export {
   type PaginationParams,
   PaginationParamsSchema,
@@ -165,17 +167,6 @@ export {
   OpenAIChatCompletionResponseSchema,
   OpenAIErrorResponseSchema,
 } from "./openai-chat.schema";
-// Organizations
-export {
-  type ApiKeyInfo,
-  ApiKeyInfoSchema,
-  type OrganizationDetail,
-  OrganizationDetailSchema,
-  type OrganizationInfo,
-  OrganizationInfoSchema,
-  type OrganizationMember,
-  OrganizationMemberSchema,
-} from "./organization.schema";
 export {
   type PeriTaskDetail,
   PeriTaskDetailParamsSchema,

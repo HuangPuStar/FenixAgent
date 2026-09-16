@@ -4,8 +4,14 @@ import {
 } from "@fenix/agent-config/server";
 import { webModelGatewayRoutes as webModelGateway } from "@fenix/model-management/server";
 import { webChannelsRoutes } from "@fenix/resource-channel/server";
+import {
+  webApiKeysRoutes as webApiKeys,
+  webBrandingRoutes as webBranding,
+  webOrganizationsRoutes as webOrganizations,
+} from "@fenix/resource-identity-admin/server";
 import { webKnowledgeBaseRoutes as webKnowledgeBases } from "@fenix/resource-knowledge/server";
 import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
+import { webProdViewsRoutes } from "@fenix/resource-prod-view/server";
 import { webTasksV2Routes } from "@fenix/resource-task/server";
 import {
   webWorkflowCustomTools,
@@ -15,17 +21,13 @@ import {
   workflowRunsRoutes,
 } from "@fenix/resource-workflow/server";
 import Elysia from "elysia";
-import webApiKeys from "./api-keys";
-import webBranding from "./branding";
 import webConfig from "./config";
 import webEnvironments from "./environments";
 import webFileEvents from "./file-events";
 import webFs from "./fs";
 import webInstances from "./instances";
 import webMetaAgent from "./meta-agent";
-import webOrganizations from "./organizations";
 import webPeriTaskDetails from "./peri-task-details";
-import webProdViews from "./prod-views";
 import webRegistry from "./registry";
 import webSidebarConfig from "./sidebar-config";
 
@@ -53,7 +55,7 @@ const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webWorkflowEngine)
   .use(webWorkflowSse)
   .use(workflowRunsRoutes)
-  .use(webProdViews)
+  .use(webProdViewsRoutes)
   .use(webAgentGeneration);
 
 export default webApp;

@@ -6,7 +6,7 @@
 // （roleId → machineId）按 id 去重；byOrg 叶子携带 payload(openTime)，
 // byEntity 侧缺失时用 byOrg 值补齐。
 
-import type { AcpLinkSnapshot, ObserverLeaf, ObserverOrgNode } from "../../api/observer";
+import type { AcpLinkSnapshot, ObserverLeaf, ObserverOrgNode } from "@/src/api/observer";
 
 /** 平坦表行（各角色 id 可缺省为 null；openTime 取自 LeafView.payload）。 */
 export interface FlatRow {

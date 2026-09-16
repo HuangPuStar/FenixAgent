@@ -178,7 +178,7 @@ const SYSTEM_API_KEYS = [
   "deleteUserApiKey",
 ] as const;
 
-mock.module("../../../../src/services/system-api", () =>
+mock.module("../../../../packages/resources/identity-admin/src/server/services/system-api", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(SYSTEM_API_KEYS, getSystemApiStub as (name: string) => any),
 );

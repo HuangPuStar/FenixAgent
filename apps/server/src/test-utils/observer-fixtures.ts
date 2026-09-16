@@ -8,7 +8,7 @@
 
 import type { EnvironmentRecord, ExternalRelayConnectionSnapshot, SpawnedInstance } from "@fenix/agent-runtime/server";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { ChatClientSnapshot, ObserverServiceDeps } from "../../../../src/services/observer";
+import type { ChatClientSnapshot, ObserverServiceDeps } from "@fenix/resource-observer/server";
 import type { WsConnection } from "../../../../src/transport/ws-types";
 import type { AcpConnectionSnapshot } from "../../../../src/types/store";
 

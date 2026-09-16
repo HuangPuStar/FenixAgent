@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/src/api/request";
-import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "../../api/system-people-tree";
+import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "@/src/api/system-people-tree";
 import {
   buildSandboxRebuildRequest,
   buildSandboxResourcePatch,

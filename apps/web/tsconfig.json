@@ -14,6 +14,13 @@
       "@/src/i18n": ["./src/i18n/index.ts"],
       "@/src/api/request": ["./src/api/request.ts"],
       "@/src/api/helpers": ["./src/api/helpers.ts"],
+      "@/src/api/api-keys": ["../../packages/resources/identity-admin/web/api/api-keys.ts"],
+      "@/src/api/branding": ["../../packages/resources/identity-admin/web/api/branding.ts"],
+      "@/src/api/organizations": ["../../packages/resources/identity-admin/web/api/organizations.ts"],
+      "@/src/api/observer": ["../../packages/resources/observer/web/api/observer.ts"],
+      "@/src/api/system-logs": ["../../packages/resources/observer/web/api/system-logs.ts"],
+      "@/src/api/system-people-tree": ["../../packages/resources/observer/web/api/system-people-tree.ts"],
+      "@/src/api/prod-views": ["../../packages/resources/prod-view/web/api/prod-views.ts"],
       "@/src/api/agents": ["../../packages/resources/agent-config/web/api/agents.ts"],
       "@/src/api/sites": ["../../packages/resources/agent-config/web/api/sites.ts"],
       "@/src/components/agent-panel/AgentSitesCard": [
@@ -82,6 +89,28 @@
       "@/src/pages/agent-panel/pages/AgentChannelsPage": [
         "../../packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx"
       ],
+      "@/src/pages/agent-panel/pages/AgentApiKeysPage": [
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentApiKeysPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/AgentOrganizationsPage": [
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/agent-organizations-utils": [
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/agent-organizations-utils.ts"
+      ],
+      "@/src/pages/admin/AdminLogsPage": ["../../packages/resources/observer/web/pages/admin/AdminLogsPage.tsx"],
+      "@/src/pages/admin/AdminObserverPage": [
+        "../../packages/resources/observer/web/pages/admin/AdminObserverPage.tsx"
+      ],
+      "@/src/pages/admin/AdminPeoplePage": ["../../packages/resources/observer/web/pages/admin/AdminPeoplePage.tsx"],
+      "@/src/pages/agent-panel/pages/AgentProdViewsPage": [
+        "../../packages/resources/prod-view/web/pages/agent-panel/pages/AgentProdViewsPage.tsx"
+      ],
+      "@/src/pages/agent-panel/ProdViewsPanel": [
+        "../../packages/resources/prod-view/web/pages/agent-panel/ProdViewsPanel.tsx"
+      ],
+      "@/src/pages/prod-view/ProdViewPage": ["../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx"],
+      "@/src/lib/prod-view-modules": ["../../packages/resources/prod-view/web/lib/prod-view-modules.ts"],
       "@/src/yjs/*": ["../../packages/agent-runtime/web/yjs/*"],
       "@/src/hooks/use-chat-state": ["../../packages/agent-runtime/web/hooks/use-chat-state.ts"],
       "@/src/hooks/use-session-state": ["../../packages/agent-runtime/web/hooks/use-session-state.ts"],
