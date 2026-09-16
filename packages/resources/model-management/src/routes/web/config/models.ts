@@ -1,16 +1,16 @@
-import * as configPg from "@fenix/model-management/server";
+import * as configPg from "../../../server/config/provider";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../../apps/server/src/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../../schemas/common.schema";
+import { AppError } from "../../../../../../../apps/server/src/errors";
+import { type AuthContext, authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../../../../../../src/schemas/common.schema";
 import {
   ModelPreferencesBodySchema,
   ModelPreferencesResponseSchema,
   ModelRefreshResponseSchema,
-} from "../../../schemas/config.schema";
-import { getUserConfig, setUserConfig } from "../../../services/config/user-config";
-import { configError, configSuccess } from "../../../services/config-utils";
+} from "../../../../../../../src/schemas/config.schema";
+import { getUserConfig, setUserConfig } from "../../../../../../../src/services/config/user-config";
+import { configError, configSuccess } from "../../../../../../../src/services/config-utils";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
   "model-preferences-body": ModelPreferencesBodySchema,
@@ -41,7 +41,7 @@ type ModelEntry = {
   providerDisplayName: string;
   contextLimit: number | null;
   outputLimit: number | null;
-  providerResourceAccess?: import("../../../services/config/types").ResourceAccess;
+  providerResourceAccess?: import("../../../../../../../src/services/config/types").ResourceAccess;
   providerResourceKey?: string;
   modalities?: unknown;
 };
@@ -147,7 +147,7 @@ async function handleSet(ctx: AuthContext, data: { model?: string; small_model?:
   await setUserConfig(ctx, {
     currentModel: data.model,
     smallModel: data.small_model,
-    permission: data.permission as import("../../../services/config/types").PermissionConfig | null,
+    permission: data.permission as import("../../../../../../../src/services/config/types").PermissionConfig | null,
   });
   cachedAvailableByOrg.delete(ctx.organizationId);
   const uc = await getUserConfig(ctx);

@@ -1,6 +1,7 @@
 import {
   webAgentGenerationRoutes as webAgentGeneration,
   webAgentSitesRoutes as webAgentSites,
+  webSidebarConfigRoutes as webSidebarConfig,
 } from "@fenix/agent-config/server";
 import { webModelGatewayRoutes as webModelGateway } from "@fenix/model-management/server";
 import { webChannelsRoutes } from "@fenix/resource-channel/server";
@@ -31,7 +32,6 @@ import webEnvironments from "./environments";
 import webInstances from "./instances";
 import webMetaAgent from "./meta-agent";
 import webPeriTaskDetails from "./peri-task-details";
-import webSidebarConfig from "./sidebar-config";
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webApiKeys)

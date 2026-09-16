@@ -51,6 +51,7 @@
     "@fenix/claude-code": "workspace:*",
     "@fenix/core": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/agent-config": "workspace:*",
     "@fenix/ccb": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/model-gateway-litellm": "workspace:*",

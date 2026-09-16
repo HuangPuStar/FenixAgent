@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { modelGatewayCredential, provider } from "../../apps/server/src/db/schema";
+import { modelGatewayCredential, provider } from "@server/db/schema";
 
 describe("model gateway persistence schema", () => {
   // 验证 Provider 类型通过正式字段表达，避免运行时依赖 extra_options 猜测网关。

@@ -1,5 +1,5 @@
+import { ensureMetaAgent } from "@fenix/agent-config/web";
 import { useEffect, useRef, useState } from "react";
-import { ensureMetaAgent } from "@/src/api/meta-agent";
 
 export interface UseMetaAgentOptions {
   /** localStorage key for persisting chatOpen state */

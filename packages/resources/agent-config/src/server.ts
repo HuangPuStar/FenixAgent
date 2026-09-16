@@ -1,5 +1,7 @@
 /** AgentConfig、模板与 Site App 的服务端公开入口。 */
 
+export { default as webSidebarConfigRoutes } from "./routes/web/sidebar-config";
+export * from "./schemas/meta-agent.schema";
 export * from "./server/repositories/agent-config";
 export * from "./server/repositories/agent-site-app";
 export {
@@ -37,3 +39,4 @@ export type {
   AgentKnowledgePolicy,
   AgentNode,
 } from "./server/services/config/types";
+export * from "./services/meta-agent";

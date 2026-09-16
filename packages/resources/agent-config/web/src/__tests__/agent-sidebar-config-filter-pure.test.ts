@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { FileText } from "lucide-react";
 
-import { filterNavGroups, type NavEntry } from "../pages/agent-panel/AgentSidebarConfig";
+import { filterNavGroups, type NavEntry } from "@/src/pages/agent-panel/AgentSidebarConfig";
 
 type TestGroup = {
   id: string;

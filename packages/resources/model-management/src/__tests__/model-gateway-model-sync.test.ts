@@ -5,7 +5,7 @@ import {
   createSystemModelGatewayProviderService,
   type ModelGatewayModelSyncDeps,
 } from "@fenix/model-management/server";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
+import type { AuthContext } from "@server/plugins/auth";
 
 const adminContext = {
   organizationId: "admin-org",

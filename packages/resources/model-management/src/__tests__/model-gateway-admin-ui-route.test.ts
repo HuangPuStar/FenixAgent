@@ -6,7 +6,7 @@ import {
   apiSystemModelGatewayRoutes as modelGatewayRoutes,
   setModelGatewayServices,
 } from "@fenix/model-management/server";
-import { config, setConfig } from "../../apps/server/src/config";
+import { config, setConfig } from "@server/config";
 
 const originalAdminUiUrl = config.modelGatewayAdminUiUrl;
 const originalSystemApiKeys = process.env.RCS_SYSTEM_API_KEYS;
@@ -21,7 +21,7 @@ afterEach(() => {
 describe("model gateway configuration route", () => {
   // 主应用必须挂载系统模型网关路由，否则管理页会收到未匹配路由的空响应。
   test("mounts the system model gateway routes in the server entrypoint", async () => {
-    const source = await readFile(resolve(import.meta.dir, "../../apps/server/src/main.ts"), "utf8");
+    const source = await readFile(resolve(import.meta.dir, "../../../../../apps/server/src/main.ts"), "utf8");
 
     expect(source).toContain("apiSystemModelGatewayRoutes");
     expect(source).toContain(".use(apiSystemModelGatewayRoutes)");

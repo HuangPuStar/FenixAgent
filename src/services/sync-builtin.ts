@@ -1,6 +1,6 @@
+import { syncBuiltinSkillsToSystemAdmin } from "@fenix/agent-config/server";
 import { ensureSystemAdmin } from "@fenix/resource-identity-admin/server/system-admin";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { syncBuiltinSkillsToSystemAdmin } from "./meta-agent";
 
 type BuiltinSyncContext = AuthContext;
 

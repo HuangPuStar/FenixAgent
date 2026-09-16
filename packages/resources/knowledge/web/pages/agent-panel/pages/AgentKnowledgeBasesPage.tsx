@@ -1,3 +1,4 @@
+import { EmbeddingModelManager } from "@fenix/model-management/web";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
@@ -40,7 +41,6 @@ import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
 import { ChunkDetailSheet } from "@/src/pages/agent-panel/components/ChunkDetailSheet";
-import { EmbeddingModelManager } from "@/src/pages/agent-panel/components/EmbeddingModelManager";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
 import { RetrievalTestPanel } from "@/src/pages/agent-panel/components/RetrievalTestPanel";
 import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";

@@ -14,3 +14,5 @@ export { AgentGenerationForm } from "../web/pages/agent-panel/components/AgentGe
 export { AgentSitesPage } from "../web/pages/agent-panel/pages/AgentSitesPage";
 export type { SiteVisibilityFilter } from "../web/pages/agent-panel/pages/agent-sites-catalog";
 export { AgentSitesCatalog } from "../web/pages/agent-panel/pages/agent-sites-catalog";
+export * from "../web/src/api/meta-agent";
+export * from "../web/src/api/sidebar-config";

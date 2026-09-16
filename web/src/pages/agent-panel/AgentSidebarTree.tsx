@@ -1,3 +1,4 @@
+import { ensureMetaAgent } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -30,7 +31,6 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
-import { ensureMetaAgent } from "@/src/api/meta-agent";
 import { unwrap } from "@/src/api/request";
 import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";

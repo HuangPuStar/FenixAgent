@@ -22,7 +22,7 @@
         "packages/resources/agent-config/src/server/services/config/agent-config.ts"
       ],
       "@fenix/agent-config/server/testing": ["packages/resources/agent-config/src/server/testing.ts"],
-      "@server/*": ["apps/server/src/*"],
+      "@server/*": ["apps/server/src/*", "src/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
       "@/components/*": ["web/components/*"],
       "@/components/model-icon/*": ["packages/resources/model-management/web/components/model-icon/*"],

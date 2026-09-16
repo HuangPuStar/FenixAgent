@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { selectSystemBuiltinSkillId, syncBuiltinSkillsToSystemAdmin } from "../services/meta-agent";
-import { syncBuiltin } from "../services/sync-builtin";
+import { syncBuiltin } from "@server/services/sync-builtin";
 
 describe("syncBuiltin", () => {
   // 启动同步 builtin 时，只应把 skill 托管到系统 admin 组织，而不是复制到所有业务组织。

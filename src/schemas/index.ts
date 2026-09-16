@@ -175,11 +175,6 @@ export {
   SkillUploadResultSchema,
   UpdateSkillResponseSchema,
 } from "./config.schema";
-// Meta Agent
-export {
-  type EnsureMetaAgentResponse,
-  EnsureMetaAgentResponseSchema,
-} from "./meta-agent.schema";
 export {
   type PeriTaskDetail,
   PeriTaskDetailParamsSchema,

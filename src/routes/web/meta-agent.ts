@@ -4,12 +4,11 @@
  * POST /web/meta-agent/ensure — 查找或创建 meta environment + spawn 实例
  */
 
+import { EnsureMetaAgentResponseSchema, ensureMetaEnvironment } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../../apps/server/src/plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
-import { EnsureMetaAgentResponseSchema } from "../../schemas/meta-agent.schema";
-import { ensureMetaEnvironment } from "../../services/meta-agent";
 
 const logger = createLogger("meta-agent");
 

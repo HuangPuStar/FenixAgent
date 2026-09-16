@@ -1,9 +1,10 @@
-import * as configPg from "@fenix/model-management/server";
-import { buildModelData } from "@fenix/model-management/server";
+import * as configPg from "../../server/config/provider";
+import { buildModelData } from "../../server/config/provider";
+import * as modelConfig from "../../server/config/model";
 import Elysia from "elysia";
-import { AppError } from "../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../apps/server/src/plugins/auth";
-import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
+import { AppError } from "../../../../../../apps/server/src/errors";
+import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
+import { ApiErrorResponseSchema } from "../../../../../../src/schemas/api-common.schema";
 import {
   ApiModelDeleteResponseSchema,
   ApiModelDetailSchema,
@@ -24,7 +25,7 @@ import {
   ApiProviderUpdateBodySchema,
   type ApiProviderUpsertBody,
   ApiProviderUpsertBodySchema,
-} from "../../schemas/api-model.schema";
+} from "../../../../../../src/schemas/api-model.schema";
 
 /**
  * 将业务异常映射到对外 API 的稳定错误结构。
@@ -380,7 +381,7 @@ app.post(
         return error(409, { error: { code: "CONFLICT", message: `Model '${payload.modelId}' already exists` } });
       }
 
-      const createdId = await configPg.addModel(authCtx, provider.id, {
+      const createdId = await modelConfig.addModel(authCtx, provider.id, {
         modelId: payload.modelId,
         ...toModelWriteData(payload),
       });
@@ -522,7 +523,7 @@ app.put(
         return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
       }
 
-      const updated = await configPg.updateModelById(authCtx, provider.id, id, toModelWriteData(payload));
+      const updated = await modelConfig.updateModelById(authCtx, provider.id, id, toModelWriteData(payload));
       if (!updated) {
         return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
       }
@@ -575,7 +576,7 @@ app.delete(
         return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
       }
 
-      const deleted = await configPg.removeModelById(authCtx, provider.id, id);
+      const deleted = await modelConfig.removeModelById(authCtx, provider.id, id);
       if (!deleted) {
         return error(404, { error: { code: "NOT_FOUND", message: `Model '${id}' not found` } });
       }

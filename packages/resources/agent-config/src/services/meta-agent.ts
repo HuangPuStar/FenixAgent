@@ -12,10 +12,9 @@
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setPublicRead } from "@fenix/access-control/server";
-import { createAgentConfig, getAgentConfig, updateAgentConfig } from "@fenix/agent-config/server";
+import { createAgentConfig, getAgentConfig, updateAgentConfig } from "../server/services/config/agent-config";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
-import { getProvider, listProviders } from "@fenix/model-management/server";
 import {
   buildSkillArchive,
   deleteSkill,
@@ -29,11 +28,21 @@ import {
   syncAgentSkills,
 } from "@fenix/resource-skill/server";
 import { listSkills as listStoredSkills } from "@fenix/resource-skill/server/config";
-import { auth } from "../../apps/server/src/auth/better-auth";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import type { SkillConfigRowWithAccess } from "./config/types";
+import { auth } from "../../../../../apps/server/src/auth/better-auth";
+import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
+import type { SkillConfigRowWithAccess } from "../../../../../src/services/config/types";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
+
+/** Host-bound read port keeps agent-config independent from model-management. */
+export type MetaAgentModelResolver = (ctx: AuthContext) => Promise<string | null>;
+
+let metaAgentModelResolver: MetaAgentModelResolver | undefined;
+
+/** Registers the host's model lookup implementation during server bootstrap. */
+export function setMetaAgentModelResolver(resolver: MetaAgentModelResolver | undefined): void {
+  metaAgentModelResolver = resolver;
+}
 
 /** Meta Agent 系统提示词 — 约束其只能通过 API 操作，不能直接读写文件 */
 const META_AGENT_PROMPT = [
@@ -116,15 +125,7 @@ export async function findMetaEnvironment(ctx: AuthContext): Promise<{ id: strin
 
 /** 确保环境中存在 meta agent 所需的 AgentConfig 和 Skill */
 async function resolveDefaultMetaModelRef(ctx: AuthContext): Promise<string | null> {
-  const providers = await listProviders(ctx);
-  for (const provider of providers) {
-    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
-    const detail = await getProvider(ctx, providerKey);
-    const firstModel = detail?.models?.[0];
-    if (!firstModel) continue;
-    return firstModel.id; // 返回 model UUID，运行时通过 modelId FK 直接定位
-  }
-  return null;
+  return (await metaAgentModelResolver?.(ctx)) ?? null;
 }
 
 /** 解析内置 SKILL.md，并把 frontmatter 与正文分离后交给统一写入流程。 */

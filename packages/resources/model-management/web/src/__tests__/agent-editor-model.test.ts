@@ -8,8 +8,8 @@ import {
   filterValidKnowledgeIds,
   mapModelOptions,
   mergeSelectedOptions,
-} from "../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { AgentDetail } from "../types/config";
+} from "@fenix/agent-config/web";
+import type { AgentDetail } from "@/src/types/config";
 
 const detail: AgentDetail = {
   id: "agent-1",

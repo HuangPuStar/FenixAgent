@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { getPeriTaskDetail, type PeriTaskDetailStore } from "@fenix/model-management/server";
 import { NotFoundError } from "../../apps/server/src/errors";
-import { getPeriTaskDetail } from "../services/peri-task-detail-service";
-import type { PeriTaskDetailStore } from "../services/peri-task-detail-store";
 
 const context = {
   organizationId: "org-1",

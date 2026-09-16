@@ -5,7 +5,12 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
-import { agentSitesCompatApp, agentSitesProxyApp, apiAgentsRoutes } from "@fenix/agent-config/server";
+import {
+  agentSitesCompatApp,
+  agentSitesProxyApp,
+  apiAgentsRoutes,
+  setMetaAgentModelResolver,
+} from "@fenix/agent-config/server";
 import {
   acpRoutes,
   agentInstanceService,
@@ -32,9 +37,12 @@ import {
   touchInstanceActivity,
 } from "@fenix/agent-runtime/server";
 import {
+  apiModelsRoutes,
   apiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
+  getProvider,
+  listProviders,
 } from "@fenix/model-management/server";
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { apiSystemRoutes, ensureSystemAdmin } from "@fenix/resource-identity-admin/server";
@@ -80,7 +88,6 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
-import apiModelsRoutes from "../../../src/routes/api/models";
 import webApp from "../../../src/routes/web";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import {
@@ -102,6 +109,16 @@ import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { closeCache } from "./services/cache";
+
+setMetaAgentModelResolver(async (ctx) => {
+  const providers = await listProviders(ctx);
+  for (const provider of providers) {
+    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
+    const firstModel = (await getProvider(ctx, providerKey))?.models?.[0];
+    if (firstModel) return firstModel.id;
+  }
+  return null;
+});
 
 const startedAt = new Date().toISOString();
 

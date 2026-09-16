@@ -13,6 +13,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
+    "./web": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
     "./server/system-prompt": {
       "types": "./src/server/services/agent-system-prompt.ts",
       "default": "./src/server/services/agent-system-prompt.ts"

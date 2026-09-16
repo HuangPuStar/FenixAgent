@@ -13,7 +13,7 @@
  */
 
 import * as configPg from "@fenix/model-management/server";
-import { buildModelData } from "@fenix/model-management/server";
+import { buildModelData, invalidateAvailableCache } from "@fenix/model-management/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { AppError } from "../../../../apps/server/src/errors";
@@ -26,7 +26,6 @@ import {
   ProviderSaveResponseSchema,
 } from "../../../schemas/config.schema";
 import { configError, configSuccess, resolveApiKey, toKeyHint } from "../../../services/config-utils";
-import { invalidateAvailableCache } from "./models";
 
 /** 包裹 Elysia handler，将内部抛出的 AppError 转换为统一错误响应 */
 // biome-ignore lint/suspicious/noExplicitAny: wrapper needs to match Elysia InlineHandler type
