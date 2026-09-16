@@ -21,6 +21,8 @@
       "@/components/*": ["./web/components/*"],
       "@/src/api/hindsight": ["./packages/resources/memory/web/api/hindsight.ts"],
       "@/src/pages/hindsight/MemoriesPage": ["./packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx"],
+      "@/src/lib/mcp-resource-access": ["./packages/resources/mcp/web/lib/mcp-resource-access.ts"],
+      "@/src/types/knowledge": ["./packages/resources/knowledge/web/types/knowledge.ts"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/*": ["./web/src/*"]
     }

@@ -1,9 +1,9 @@
 import { assertInternalWritable } from "@fenix/access-control/server";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../../../../apps/server/src/db";
-import { model, provider } from "../../../../../apps/server/src/db/schema";
-import { NotFoundError } from "../../../../../apps/server/src/errors";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
+import { db } from "../../../../../../apps/server/src/db";
+import { model, provider } from "../../../../../../apps/server/src/db/schema";
+import { NotFoundError } from "../../../../../../apps/server/src/errors";
+import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
 import type { ModelCostConfig, ModelLimitConfig, ModelModalities, ModelOptions } from "./model-provider-types";
 
 // ────────────────────────────────────────────

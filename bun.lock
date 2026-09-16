@@ -259,18 +259,6 @@
       "name": "@fenix/model-gateway-sdk",
       "version": "0.1.0",
     },
-    "packages/model-management": {
-      "name": "@fenix/model-management",
-      "version": "0.1.0",
-      "dependencies": {
-        "@fenix/access-control": "workspace:*",
-        "@fenix/model-gateway-litellm": "workspace:*",
-        "@fenix/model-gateway-sdk": "workspace:*",
-        "drizzle-orm": "^0.45.2",
-        "elysia": "^1.4.28",
-        "zod": "^4.4.3",
-      },
-    },
     "packages/opensandbox-cluster": {
       "name": "@fenix/opensandbox-cluster",
       "version": "0.1.0",
@@ -367,6 +355,18 @@
     "packages/resources/memory": {
       "name": "@fenix/resource-memory",
       "dependencies": {
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "zod": "^4.4.3",
+      },
+    },
+    "packages/resources/model-management": {
+      "name": "@fenix/model-management",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/access-control": "workspace:*",
+        "@fenix/model-gateway-litellm": "workspace:*",
+        "@fenix/model-gateway-sdk": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
         "zod": "^4.4.3",
@@ -742,7 +742,7 @@
 
     "@fenix/model-gateway-sdk": ["@fenix/model-gateway-sdk@workspace:packages/model-gateway-sdk"],
 
-    "@fenix/model-management": ["@fenix/model-management@workspace:packages/model-management"],
+    "@fenix/model-management": ["@fenix/model-management@workspace:packages/resources/model-management"],
 
     "@fenix/opencode": ["@fenix/opencode@workspace:packages/plugin-opencode"],
 

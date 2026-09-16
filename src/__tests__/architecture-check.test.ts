@@ -129,6 +129,20 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("../../chat-channel/src/channel/gateway");
   });
 
+  // resources 下的嵌套 workspace 同样只能经公开入口相互依赖，不能因目录层级绕过检查。
+  test("rejects relative imports into nested resource package internals", async () => {
+    const root = await createFixture({
+      "packages/resources/consumer/src/client.ts":
+        'import { gateway } from "../../model-management/src/server/model-gateway";\nvoid gateway;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("package-no-internal-imports");
+    expect(result.stdout).toContain("../../model-management/src/server/model-gateway");
+  });
+
   // 项目统一使用 Zod v4 入口，旧入口会让边界 Schema 的运行时与类型行为分裂。
   test("rejects imports from the legacy Zod entrypoint", async () => {
     const root = await createFixture({
@@ -185,7 +199,7 @@ describe("architecture check CLI", () => {
   test("accepts imports through documented public boundaries", async () => {
     const root = await createFixture({
       "src/services/chat-service.ts": 'import { createYjsStore } from "@fenix/chat-channel";\nvoid createYjsStore;\n',
-      "packages/model-management/web/components/model-icon/model-icon-map.ts":
+      "packages/resources/model-management/web/components/model-icon/model-icon-map.ts":
         'import { OpenAI } from "@lobehub/icons";\nvoid OpenAI;\n',
       "web/src/__tests__/session.test.ts":
         'import { createSessionDoc } from "@fenix/chat-channel/server";\nvoid createSessionDoc;\n',

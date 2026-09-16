@@ -20,7 +20,7 @@ type Props = {
   onCopyAgentId: () => void;
 };
 const ModelIcon = lazy(() =>
-  import("../../../../../packages/model-management/web/components/model-icon/ModelIcon").then((module) => ({
+  import("../../../../../packages/resources/model-management/web/components/model-icon/ModelIcon").then((module) => ({
     default: module.ModelIcon,
   })),
 );

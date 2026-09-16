@@ -3,7 +3,7 @@
 ## 目标
 
 将 Provider、Model 与模型网关的完整现有业务闭包物理迁移至
-`@fenix/model-management`。迁移保持现有 `/web`、`/api` 合同、权限、预算、
+`packages/resources/model-management`（包名保持为 `@fenix/model-management`）。迁移保持现有 `/web`、`/api` 合同、权限、预算、
 凭证隔离、用量归属和启动顺序，不引入功能、DDL、数据迁移或兼容层。
 
 ## 范围
@@ -27,7 +27,7 @@ PHY 闭包。它们只将已有导入更新至新包的公开接口。
 ## 包边界
 
 ```text
-packages/model-management/
+packages/resources/model-management/
   src/
     server/
       config/

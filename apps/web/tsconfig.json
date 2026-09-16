@@ -48,9 +48,9 @@
       "@/src/pages/agent-panel/pages/AgentSkillsPage": [
         "../../packages/resources/skill/web/pages/agent-panel/pages/AgentSkillsPage.tsx"
       ],
-      "@/src/api/models": ["../../packages/model-management/web/api/models.ts"],
-      "@/src/api/providers": ["../../packages/model-management/web/api/providers.ts"],
-      "@/src/api/model-gateway": ["../../packages/model-management/web/api/model-gateway.ts"],
+      "@/src/api/models": ["../../packages/resources/model-management/web/api/models.ts"],
+      "@/src/api/providers": ["../../packages/resources/model-management/web/api/providers.ts"],
+      "@/src/api/model-gateway": ["../../packages/resources/model-management/web/api/model-gateway.ts"],
       "@/src/api/environments": ["../../packages/agent-runtime/web/api/environments.ts"],
       "@/src/yjs/*": ["../../packages/agent-runtime/web/yjs/*"],
       "@/src/hooks/use-chat-state": ["../../packages/agent-runtime/web/hooks/use-chat-state.ts"],
@@ -66,24 +66,24 @@
       "@/components/chat/*": ["../../packages/agent-runtime/web/components/chat/*"],
       "@/src/lib/card-renderer": ["./src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["./src/lib/card-renderer/*"],
-      "@/src/lib/model-config-utils": ["../../packages/model-management/web/lib/model-config-utils.ts"],
-      "@/src/lib/model-gateway-usage": ["../../packages/model-management/web/lib/model-gateway-usage.ts"],
+      "@/src/lib/model-config-utils": ["../../packages/resources/model-management/web/lib/model-config-utils.ts"],
+      "@/src/lib/model-gateway-usage": ["../../packages/resources/model-management/web/lib/model-gateway-usage.ts"],
       "@/src/pages/admin/AdminModelGatewayPage": [
-        "../../packages/model-management/web/pages/admin/AdminModelGatewayPage.tsx"
+        "../../packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/AgentModelsPage": [
-        "../../packages/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx"
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/VerticalModelsPage": [
-        "../../packages/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx"
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": [
-        "../../packages/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx"
+        "../../packages/resources/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx"
       ],
       "@/components/config/ModelConfigDialog": [
-        "../../packages/model-management/web/components/config/ModelConfigDialog.tsx"
+        "../../packages/resources/model-management/web/components/config/ModelConfigDialog.tsx"
       ],
-      "@/components/model-icon/*": ["../../packages/model-management/web/components/model-icon/*"],
+      "@/components/model-icon/*": ["../../packages/resources/model-management/web/components/model-icon/*"],
       "@/src/lib/auth-client": ["./src/lib/auth-client.ts"],
       "@/src/lib/utils": ["./src/lib/utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["./src/lib/random-uuid-polyfill.ts"],
@@ -93,7 +93,7 @@
       "@server/*": ["../../src/*"],
       "@fenix/chat-channel": ["../../packages/chat-channel/src/index.ts"],
       "@fenix/chat-channel/server": ["../../packages/chat-channel/src/server.ts"],
-      "@fenix/model-management": ["../../packages/model-management/src/index.ts"]
+      "@fenix/model-management": ["../../packages/resources/model-management/src/index.ts"]
     }
   },
   "include": [

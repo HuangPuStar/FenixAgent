@@ -11,9 +11,9 @@ import {
   upsertProvider,
 } from "@fenix/model-management/server";
 import { sql } from "drizzle-orm";
-import { db } from "../../../../../apps/server/src/db";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
-import { ensureSystemAdmin } from "../../../../../src/services/system-admin";
+import { db } from "../../../../../../apps/server/src/db";
+import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
+import { ensureSystemAdmin } from "../../../../../../src/services/system-admin";
 
 export const SYSTEM_MODEL_GATEWAY_PROVIDER_NAME = "fenix-model-gateway";
 
