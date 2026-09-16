@@ -14,7 +14,7 @@ PHY-08 以一个可回滚的功能闭包提交，将根 `src/`、`web/` 中仍�
 - `@fenix/resource-task` 是 task-v2、Scheduler、HTTP/Agent executor、执行日志与其浏览器页面/API/i18n 的唯一 owner。
 - `@fenix/resource-channel` 是 Channel binding/provider 及其浏览器页面/API/i18n 的唯一 owner。
 
-`apps/server` 继续持有 Elysia 的原路由挂载、认证/DB/配置插件、启动顺序与进程生命周期；它只将原 `schedulerService.start/stop`、custom tool 初始化、Workflow API/Web route 和静态 proxy 的 import 改为资源包公开的 server 出口。`hermes-client`、Agent runtime 和 Chat/YJS 仍由各自真实 owner 持有，资源包只使用已有接口，不复制源码。
+`apps/server` 继续持有 Elysia 的原路由挂载、认证/DB/配置插件、启动顺序与进程生命周期；它只将原 `schedulerService.start/stop`、custom tool 初始化、Workflow API/Web route 和静态 proxy 的 import 改为资源包公开的 server 出口。`hermes-client` 直接依赖 Channel binding 并仅服务于 Channel 路由与宿主生命周期，因此随 `@fenix/resource-channel` 迁移；Agent runtime 和 Chat/YJS 仍由各自真实 owner 持有，资源包只使用已有接口，不复制源码。
 
 后端 server 出口与浏览器入口必须分开。`@fenix/resource-*/server` 可导出 route contribution 和宿主所需的服务；浏览器入口只暴露浏览器安全的页面、API client、类型和 i18n contribution，不能经值导入携带 Node、Elysia、Drizzle 或服务端密钥能力。
 
