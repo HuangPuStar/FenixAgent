@@ -4,8 +4,9 @@
  * POST /hooks/:publicHash — 无需认证，通过 hash 标识 trigger。
  * 收到请求后异步触发对应 workflow，立即返回 200。
  */
+
+import { handleWebhookRequest } from "@fenix/resource-workflow/server";
 import Elysia from "elysia";
-import { handleWebhookRequest } from "../services/workflow-trigger";
 
 const app = new Elysia({ name: "hooks" });
 

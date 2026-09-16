@@ -1,6 +1,8 @@
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
+import channelsEN from "../../../../packages/resources/channel/web/i18n/en/channels.json";
+import channelsZH from "../../../../packages/resources/channel/web/i18n/zh/channels.json";
 import knowledgeEN from "../../../../packages/resources/knowledge/web/i18n/locales/en/knowledge.json";
 import knowledgeZH from "../../../../packages/resources/knowledge/web/i18n/locales/zh/knowledge.json";
 import mcpEN from "../../../../packages/resources/mcp/web/i18n/locales/en/mcp.json";
@@ -9,11 +11,14 @@ import hindsightEN from "../../../../packages/resources/memory/web/i18n/locales/
 import hindsightZH from "../../../../packages/resources/memory/web/i18n/locales/zh/hindsight.json";
 import skillsEN from "../../../../packages/resources/skill/web/i18n/locales/en/skills.json";
 import skillsZH from "../../../../packages/resources/skill/web/i18n/locales/zh/skills.json";
+import tasksV2EN from "../../../../packages/resources/task/web/i18n/en/tasks-v2.json";
+import tasksV2ZH from "../../../../packages/resources/task/web/i18n/zh/tasks-v2.json";
+import workflowsEN from "../../../../packages/resources/workflow/web/i18n/en/workflows.json";
+import workflowsZH from "../../../../packages/resources/workflow/web/i18n/zh/workflows.json";
 import agentHomeEN from "../../../../web/src/i18n/locales/en/agentHome.json";
 import agentPanelEN from "../../../../web/src/i18n/locales/en/agentPanel.json";
 import agentsEN from "../../../../web/src/i18n/locales/en/agents.json";
 import apikeyEN from "../../../../web/src/i18n/locales/en/apikey.json";
-import channelsEN from "../../../../web/src/i18n/locales/en/channels.json";
 import commonEN from "../../../../web/src/i18n/locales/en/common.json";
 import componentsEN from "../../../../web/src/i18n/locales/en/components.json";
 import dashboardEN from "../../../../web/src/i18n/locales/en/dashboard.json";
@@ -27,14 +32,11 @@ import sessionsEN from "../../../../web/src/i18n/locales/en/sessions.json";
 import settingsEN from "../../../../web/src/i18n/locales/en/settings.json";
 import sidebarEN from "../../../../web/src/i18n/locales/en/sidebar.json";
 import tasksEN from "../../../../web/src/i18n/locales/en/tasks.json";
-import tasksV2EN from "../../../../web/src/i18n/locales/en/tasks-v2.json";
 import toolNarratorEN from "../../../../web/src/i18n/locales/en/toolNarrator.json";
-import workflowsEN from "../../../../web/src/i18n/locales/en/workflows.json";
 import agentHomeZH from "../../../../web/src/i18n/locales/zh/agentHome.json";
 import agentPanelZH from "../../../../web/src/i18n/locales/zh/agentPanel.json";
 import agentsZH from "../../../../web/src/i18n/locales/zh/agents.json";
 import apikeyZH from "../../../../web/src/i18n/locales/zh/apikey.json";
-import channelsZH from "../../../../web/src/i18n/locales/zh/channels.json";
 import commonZH from "../../../../web/src/i18n/locales/zh/common.json";
 import componentsZH from "../../../../web/src/i18n/locales/zh/components.json";
 import dashboardZH from "../../../../web/src/i18n/locales/zh/dashboard.json";
@@ -48,9 +50,7 @@ import sessionsZH from "../../../../web/src/i18n/locales/zh/sessions.json";
 import settingsZH from "../../../../web/src/i18n/locales/zh/settings.json";
 import sidebarZH from "../../../../web/src/i18n/locales/zh/sidebar.json";
 import tasksZH from "../../../../web/src/i18n/locales/zh/tasks.json";
-import tasksV2ZH from "../../../../web/src/i18n/locales/zh/tasks-v2.json";
 import toolNarratorZH from "../../../../web/src/i18n/locales/zh/toolNarrator.json";
-import workflowsZH from "../../../../web/src/i18n/locales/zh/workflows.json";
 
 export const NS = {
   COMMON: "common",

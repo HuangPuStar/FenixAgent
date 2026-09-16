@@ -25,12 +25,15 @@
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
+        "@fenix/resource-channel": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
         "@fenix/resource-machine": "workspace:*",
         "@fenix/resource-mcp": "workspace:*",
         "@fenix/resource-memory": "workspace:*",
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
+        "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-workflow": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
         "@fenix/workflow-engine": "workspace:*",
         "@hookform/resolvers": "^5.4.0",
@@ -350,6 +353,16 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/resources/channel": {
+      "name": "@fenix/resource-channel",
+      "dependencies": {
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "zod": "^4.4.3",
+      },
+    },
     "packages/resources/knowledge": {
       "name": "@fenix/resource-knowledge",
       "dependencies": {
@@ -412,6 +425,33 @@
       "name": "@fenix/resource-skill",
       "dependencies": {
         "@fenix/access-control": "workspace:*",
+      },
+    },
+    "packages/resources/task": {
+      "name": "@fenix/resource-task",
+      "dependencies": {
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "cron-parser": "^4.9.0",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "node-schedule": "^2.1.1",
+        "zod": "^4.4.3",
+      },
+    },
+    "packages/resources/workflow": {
+      "name": "@fenix/resource-workflow",
+      "dependencies": {
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/chat-channel": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "@fenix/plugin-sdk": "workspace:*",
+        "@fenix/workflow-engine": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "js-yaml": "^5.1.0",
+        "nanoid": "^5.1.6",
+        "zod": "^4.4.3",
       },
     },
     "packages/sandbox-provider": {
@@ -792,6 +832,8 @@
 
     "@fenix/remote-runtime": ["@fenix/remote-runtime@workspace:packages/remote-runtime"],
 
+    "@fenix/resource-channel": ["@fenix/resource-channel@workspace:packages/resources/channel"],
+
     "@fenix/resource-knowledge": ["@fenix/resource-knowledge@workspace:packages/resources/knowledge"],
 
     "@fenix/resource-machine": ["@fenix/resource-machine@workspace:packages/resources/machine"],
@@ -803,6 +845,10 @@
     "@fenix/resource-sandbox": ["@fenix/resource-sandbox@workspace:packages/resources/sandbox"],
 
     "@fenix/resource-skill": ["@fenix/resource-skill@workspace:packages/resources/skill"],
+
+    "@fenix/resource-task": ["@fenix/resource-task@workspace:packages/resources/task"],
+
+    "@fenix/resource-workflow": ["@fenix/resource-workflow@workspace:packages/resources/workflow"],
 
     "@fenix/sandbox-provider": ["@fenix/sandbox-provider@workspace:packages/sandbox-provider"],
 

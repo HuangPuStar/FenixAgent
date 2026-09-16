@@ -30,6 +30,19 @@
       "@/src/api/models": ["./packages/resources/model-management/web/api/models.ts"],
       "@/src/api/hindsight": ["./packages/resources/memory/web/api/hindsight.ts"],
       "@/src/api/environments": ["./packages/agent-runtime/web/api/environments.ts"],
+      "@/src/api/workflow-defs": ["./packages/resources/workflow/web/api/workflow-defs.ts"],
+      "@/src/api/workflow-engine": ["./packages/resources/workflow/web/api/workflow-engine.ts"],
+      "@/src/api/workflow-sse": ["./packages/resources/workflow/web/api/workflow-sse.ts"],
+      "@/src/api/workflows": ["./packages/resources/workflow/web/api/workflows.ts"],
+      "@/src/api/tasks-v2": ["./packages/resources/task/web/api/tasks-v2.ts"],
+      "@/src/api/channels": ["./packages/resources/channel/web/api/channels.ts"],
+      "@/src/pages/agent-panel/pages/AgentTasksPage": [
+        "./packages/resources/task/web/pages/agent-panel/pages/AgentTasksPage.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/AgentChannelsPage": [
+        "./packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx"
+      ],
+      "@/src/pages/workflow/*": ["./packages/resources/workflow/web/pages/workflow/*"],
       "@/src/lib/mcp-resource-access": ["./packages/resources/mcp/web/lib/mcp-resource-access.ts"],
       "@/src/lib/skill-resource-access": ["./packages/resources/skill/web/lib/skill-resource-access.ts"],
       "@/src/lib/model-config-utils": ["./packages/resources/model-management/web/lib/model-config-utils.ts"],

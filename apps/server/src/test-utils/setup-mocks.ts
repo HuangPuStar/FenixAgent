@@ -345,7 +345,7 @@ mock.module("../../../../src/services/core-bootstrap", () =>
 
 // ── pg-storage-adapter ──
 
-mock.module("../../../../src/services/workflow/pg-storage-adapter", () => ({
+mock.module("../../../../packages/resources/workflow/src/server/services/workflow/pg-storage-adapter", () => ({
   createPgStorageAdapter: () => {
     const storageObj: Record<string, unknown> = {};
     return new Proxy(storageObj, {
@@ -362,7 +362,7 @@ mock.module("../../../../src/services/workflow/pg-storage-adapter", () => ({
 // 路由测试通过 stubCustomTools({ getCustomToolsRegistry: () => fakeRegistry }) 注入数据。
 
 const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] as const;
-mock.module("../../../../src/services/workflow/custom-tools", () =>
+mock.module("../../../../packages/resources/workflow/src/server/services/workflow/custom-tools", () =>
   createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
 );
 

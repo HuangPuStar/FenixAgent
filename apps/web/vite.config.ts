@@ -112,6 +112,24 @@ export default defineConfig({
         "../../packages/resources/model-management/web/api/model-gateway.ts",
       ),
       "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
+      "@/src/api/workflow-defs": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflow-defs.ts"),
+      "@/src/api/workflow-engine": path.resolve(
+        __dirname,
+        "../../packages/resources/workflow/web/api/workflow-engine.ts",
+      ),
+      "@/src/api/workflow-sse": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflow-sse.ts"),
+      "@/src/api/workflows": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflows.ts"),
+      "@/src/api/tasks-v2": path.resolve(__dirname, "../../packages/resources/task/web/api/tasks-v2.ts"),
+      "@/src/api/channels": path.resolve(__dirname, "../../packages/resources/channel/web/api/channels.ts"),
+      "@/src/pages/agent-panel/pages/AgentTasksPage": path.resolve(
+        __dirname,
+        "../../packages/resources/task/web/pages/agent-panel/pages/AgentTasksPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentChannelsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx",
+      ),
+      "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
       "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
       "@/src/hooks/use-chat-state": path.resolve(__dirname, "../../packages/agent-runtime/web/hooks/use-chat-state.ts"),
       "@/src/hooks/use-session-state": path.resolve(

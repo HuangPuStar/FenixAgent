@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PgAgentMachineRepo } from "@fenix/resource-machine/server";
+import { taskExecutionLogRepo } from "@fenix/resource-task/server";
 import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { PgAgentEngineRepo } from "../repositories/agent-engine";
 import { shareLinkRepo } from "../repositories/share-link";
-import { taskExecutionLogRepo } from "../repositories/task";
 
 const engineRepo = new PgAgentEngineRepo();
 const machineRepo = new PgAgentMachineRepo();

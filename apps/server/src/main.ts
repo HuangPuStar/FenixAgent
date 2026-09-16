@@ -18,6 +18,7 @@ import {
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
 } from "@fenix/model-management/server";
+import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   closeAllFileWsConnections,
@@ -37,6 +38,8 @@ import {
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
 import { apiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
+import { schedulerService } from "@fenix/resource-task/server";
+import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import acpRoutes from "../../../src/routes/acp";
@@ -50,10 +53,8 @@ import apiSystemRoutes from "../../../src/routes/api/system";
 import apiSystemLogsRoutes from "../../../src/routes/api/system-logs";
 import apiSystemObserverRoutes from "../../../src/routes/api/system-observer";
 import apiSystemPeopleTreeRoutes from "../../../src/routes/api/system-people-tree";
-import apiWorkflowRoutes from "../../../src/routes/api/workflows";
 import apiWorkspaceRoutes from "../../../src/routes/api/workspaces";
 import webApp from "../../../src/routes/web";
-import { workflowStaticApp } from "../../../src/routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
 import { buildHealthInfo } from "../../../src/services/build-info";
 import {
@@ -63,12 +64,9 @@ import {
   unregisterRemoteNode,
 } from "../../../src/services/core-bootstrap";
 import { runDataMigrations } from "../../../src/services/data-migrate";
-import { getHermesClient, initHermesClient } from "../../../src/services/hermes-client";
 import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
-import { schedulerService } from "../../../src/services/scheduler/index";
 import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { ensureSystemAdmin } from "../../../src/services/system-admin";
-import { initCustomToolsRegistry } from "../../../src/services/workflow/custom-tools";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";

@@ -140,7 +140,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 | 场景 | 权威实现 | 生命周期 |
 |------|----------|----------|
 | HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
-| Workflow | `src/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
+| Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
 | 前端交互式 Chat | `packages/chat-channel/src/channel/`（宿主装配 `src/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
