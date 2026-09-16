@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
-// @ts-expect-error Bun 以独立模块实例加载真实服务，避免路由测试的服务 stub。
-const registry = await import("../services/registry?round36");
+const registry = await import("@fenix/resource-machine/server");
 
 const owner: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
 const foreign: AuthContext = { organizationId: "org-b", userId: "user-b", role: "owner" };
@@ -72,7 +71,7 @@ describe("registry 服务真实业务覆盖", () => {
         .mockImplementationOnce(() => ({ from: () => ({ where: async () => [{ count: 1 }] }) }));
       stubDb({ select: selected });
       const result = await registry.listMachines(owner, item.filters);
-      expect(result).toEqual({ data: [{ id: "mach-a" }], total: 1 });
+      expect(result).toEqual({ data: [{ id: "mach-a" }], total: 1 } as never);
       expect(selected).toHaveBeenCalledTimes(2);
     });
   }
@@ -87,7 +86,7 @@ describe("registry 服务真实业务覆盖", () => {
         id: "mach-visible",
         organizationId: context.organizationId,
         recentEvents: [{ type: "register" }],
-      });
+      } as never);
     });
 
     test(`读取${context.organizationId}不可见机器返回空而不查询事件`, async () => {

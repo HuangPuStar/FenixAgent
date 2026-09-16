@@ -26,8 +26,10 @@
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
+        "@fenix/resource-machine": "workspace:*",
         "@fenix/resource-mcp": "workspace:*",
         "@fenix/resource-memory": "workspace:*",
+        "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
         "@fenix/workflow-engine": "workspace:*",
@@ -207,6 +209,7 @@
       "name": "@fenix/agent-runtime",
       "version": "0.1.0",
       "dependencies": {
+        "@fenix/agent-config": "workspace:*",
         "@fenix/chat-channel": "workspace:*",
         "@fenix/core": "workspace:*",
         "@fenix/logger": "workspace:*",
@@ -333,6 +336,19 @@
     },
     "packages/resources/agent-config": {
       "name": "@fenix/agent-config",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/access-control": "workspace:*",
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/resource-knowledge": "workspace:*",
+        "@fenix/resource-memory": "workspace:*",
+        "@fenix/resource-skill": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "elysia": "^1.4.28",
+        "gray-matter": "^4.0.3",
+        "openai": "^6.42.0",
+        "zod": "^4.4.3",
+      },
     },
     "packages/resources/knowledge": {
       "name": "@fenix/resource-knowledge",
@@ -340,6 +356,15 @@
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
         "zod": "^4.4.3",
+      },
+    },
+    "packages/resources/machine": {
+      "name": "@fenix/resource-machine",
+      "dependencies": {
+        "@fenix/agent-runtime": "workspace:*",
+        "@fenix/logger": "workspace:*",
+        "@fenix/orchestration": "workspace:*",
+        "drizzle-orm": "^0.45.2",
       },
     },
     "packages/resources/mcp": {
@@ -365,11 +390,22 @@
       "version": "0.1.0",
       "dependencies": {
         "@fenix/access-control": "workspace:*",
+        "@fenix/agent-config": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
         "@fenix/model-gateway-sdk": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
         "zod": "^4.4.3",
+      },
+    },
+    "packages/resources/sandbox": {
+      "name": "@fenix/resource-sandbox",
+      "dependencies": {
+        "@fenix/logger": "workspace:*",
+        "@fenix/resource-machine": "workspace:*",
+        "@fenix/sandbox-provider": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "zod": "^4.3.6",
       },
     },
     "packages/resources/skill": {
@@ -758,9 +794,13 @@
 
     "@fenix/resource-knowledge": ["@fenix/resource-knowledge@workspace:packages/resources/knowledge"],
 
+    "@fenix/resource-machine": ["@fenix/resource-machine@workspace:packages/resources/machine"],
+
     "@fenix/resource-mcp": ["@fenix/resource-mcp@workspace:packages/resources/mcp"],
 
     "@fenix/resource-memory": ["@fenix/resource-memory@workspace:packages/resources/memory"],
+
+    "@fenix/resource-sandbox": ["@fenix/resource-sandbox@workspace:packages/resources/sandbox"],
 
     "@fenix/resource-skill": ["@fenix/resource-skill@workspace:packages/resources/skill"],
 

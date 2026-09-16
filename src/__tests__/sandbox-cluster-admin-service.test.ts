@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createSandboxClusterAdminService, SandboxClusterUnavailableError } from "@fenix/resource-sandbox/server";
 import { config, setConfig } from "../../apps/server/src/config";
-import {
-  createSandboxClusterAdminService,
-  SandboxClusterUnavailableError,
-} from "../services/sandbox/sandbox-cluster-admin-service";
 
 describe("sandbox cluster admin service", () => {
   const originalUrl = config.openSandboxClusterUrl;

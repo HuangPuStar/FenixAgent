@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { resolveSandboxConfig } from "@fenix/resource-sandbox/server";
 import type { SandboxResources } from "@fenix/sandbox-provider";
-import { resolveSandboxConfig } from "../services/sandbox/sandbox-config";
 
 const defaults: SandboxResources = {
   cpu: 2,

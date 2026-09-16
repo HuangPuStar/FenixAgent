@@ -12,37 +12,37 @@ beforeEach(() => {
 
 describe("registry.ts 服务函数", () => {
   test("registerMachine 函数已导出", async () => {
-    const { registerMachine } = await import("../services/registry");
+    const { registerMachine } = await import("@fenix/resource-machine/server");
     expect(typeof registerMachine).toBe("function");
   });
 
   test("listMachines 函数已导出", async () => {
-    const { listMachines } = await import("../services/registry");
+    const { listMachines } = await import("@fenix/resource-machine/server");
     expect(typeof listMachines).toBe("function");
   });
 
   test("getMachine 函数已导出", async () => {
-    const { getMachine } = await import("../services/registry");
+    const { getMachine } = await import("@fenix/resource-machine/server");
     expect(typeof getMachine).toBe("function");
   });
 
   test("listEvents 函数已导出", async () => {
-    const { listEvents } = await import("../services/registry");
+    const { listEvents } = await import("@fenix/resource-machine/server");
     expect(typeof listEvents).toBe("function");
   });
 
   test("disconnectMachine 函数已导出", async () => {
-    const { disconnectMachine } = await import("../services/registry");
+    const { disconnectMachine } = await import("@fenix/resource-machine/server");
     expect(typeof disconnectMachine).toBe("function");
   });
 
   test("markHeartbeatTimeout 函数已导出", async () => {
-    const { markHeartbeatTimeout } = await import("../services/registry");
+    const { markHeartbeatTimeout } = await import("@fenix/resource-machine/server");
     expect(typeof markHeartbeatTimeout).toBe("function");
   });
 
   test("updateHeartbeat 函数已导出", async () => {
-    const { updateHeartbeat } = await import("../services/registry");
+    const { updateHeartbeat } = await import("@fenix/resource-machine/server");
     expect(typeof updateHeartbeat).toBe("function");
   });
 
@@ -55,36 +55,36 @@ describe("registry.ts 服务函数", () => {
 describe("registerMachine 参数 machineId", () => {
   // 注册协议必须携带管理面预创建的 machineId。
   test("registerMachine 签名接受 machineId 参数", async () => {
-    const { registerMachine } = await import("../services/registry");
+    const { registerMachine } = await import("@fenix/resource-machine/server");
     expect(typeof registerMachine).toBe("function");
   });
 });
 
 describe("registry-heartbeat.ts 心跳检测", () => {
   test("startHeartbeat 函数已导出", async () => {
-    const { startHeartbeat } = await import("../services/registry-heartbeat");
+    const { startHeartbeat } = await import("@fenix/resource-machine/server");
     expect(typeof startHeartbeat).toBe("function");
   });
 
   test("handleHeartbeat 函数已导出", async () => {
-    const { handleHeartbeat } = await import("../services/registry-heartbeat");
+    const { handleHeartbeat } = await import("@fenix/resource-machine/server");
     expect(typeof handleHeartbeat).toBe("function");
   });
 
   test("stopHeartbeat 函数已导出", async () => {
-    const { stopHeartbeat } = await import("../services/registry-heartbeat");
+    const { stopHeartbeat } = await import("@fenix/resource-machine/server");
     expect(typeof stopHeartbeat).toBe("function");
   });
 
   test("startHeartbeat 和 stopHeartbeat 不报错", async () => {
-    const { startHeartbeat, stopHeartbeat } = await import("../services/registry-heartbeat");
+    const { startHeartbeat, stopHeartbeat } = await import("@fenix/resource-machine/server");
     const cb = mock(() => {});
     expect(() => startHeartbeat("mach_001", 30000, cb)).not.toThrow();
     expect(() => stopHeartbeat("mach_001")).not.toThrow();
   });
 
   test("startHeartbeat 重复调用覆盖不报错", async () => {
-    const { startHeartbeat, stopHeartbeat } = await import("../services/registry-heartbeat");
+    const { startHeartbeat, stopHeartbeat } = await import("@fenix/resource-machine/server");
     const cb = mock(() => {});
     startHeartbeat("mach_002", 10000, cb);
     expect(() => startHeartbeat("mach_002", 20000, cb)).not.toThrow();
@@ -92,12 +92,12 @@ describe("registry-heartbeat.ts 心跳检测", () => {
   });
 
   test("stopHeartbeat 对不存在 entry 不报错", async () => {
-    const { stopHeartbeat } = await import("../services/registry-heartbeat");
+    const { stopHeartbeat } = await import("@fenix/resource-machine/server");
     expect(() => stopHeartbeat("mach_nonexistent")).not.toThrow();
   });
 
   test("handleHeartbeat 调用不报错", async () => {
-    const { handleHeartbeat } = await import("../services/registry-heartbeat");
+    const { handleHeartbeat } = await import("@fenix/resource-machine/server");
     // handleHeartbeat calls updateHeartbeat which tries db — will throw the mock error but we test that the function exists
     expect(typeof handleHeartbeat).toBe("function");
   });
@@ -105,14 +105,14 @@ describe("registry-heartbeat.ts 心跳检测", () => {
 
 describe("updateMachine 函数", () => {
   test("updateMachine 函数已导出", async () => {
-    const { updateMachine } = await import("../services/registry");
+    const { updateMachine } = await import("@fenix/resource-machine/server");
     expect(typeof updateMachine).toBe("function");
   });
 });
 
 describe("deleteMachine 函数", () => {
   test("deleteMachine 函数已导出", async () => {
-    const { deleteMachine } = await import("../services/registry");
+    const { deleteMachine } = await import("@fenix/resource-machine/server");
     expect(typeof deleteMachine).toBe("function");
   });
 });

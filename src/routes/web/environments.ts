@@ -1,6 +1,7 @@
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../../apps/server/src/errors";
@@ -28,7 +29,6 @@ import {
   sanitizeResponse,
   updateWebEnvironment,
 } from "../../services/environment";
-import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "../../services/sandbox/sandbox-errors";
 
 const logger = createLogger("env-route");
 

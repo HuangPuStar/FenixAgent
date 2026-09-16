@@ -6,14 +6,36 @@ interceptConsole();
 const startupLog = createLogger("rcs");
 
 import { agentSitesCompatApp, agentSitesProxyApp, apiAgentsRoutes } from "@fenix/agent-config/server";
-import { agentInstanceService, closeAllAcpConnections, closeAllRelayConnections } from "@fenix/agent-runtime/server";
+import {
+  agentInstanceService,
+  bindCoreRuntimePort,
+  bindMachineRegistryPort,
+  closeAllAcpConnections,
+  closeAllRelayConnections,
+} from "@fenix/agent-runtime/server";
 import {
   apiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
 } from "@fenix/model-management/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
+import {
+  closeAllFileWsConnections,
+  disconnectMachine,
+  handleHeartbeat,
+  registerMachine,
+  startFileWsSweep,
+  startHeartbeat,
+  startMachineSweep,
+  stopFileWsSweep,
+  stopHeartbeat,
+} from "@fenix/resource-machine/server";
 import { apiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
+import {
+  initializeDefaultSandboxPool,
+  registerConfiguredSandboxProviders,
+  sandboxManager,
+} from "@fenix/resource-sandbox/server";
 import { apiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
@@ -34,17 +56,19 @@ import webApp from "../../../src/routes/web";
 import { workflowStaticApp } from "../../../src/routes/web/workflow-proxy";
 import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
 import { buildHealthInfo } from "../../../src/services/build-info";
-import { initCoreRuntime } from "../../../src/services/core-bootstrap";
+import {
+  getCoreRuntime,
+  initCoreRuntime,
+  registerRemoteNode,
+  unregisterRemoteNode,
+} from "../../../src/services/core-bootstrap";
 import { runDataMigrations } from "../../../src/services/data-migrate";
 import { getHermesClient, initHermesClient } from "../../../src/services/hermes-client";
 import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
-import { registerConfiguredSandboxProviders, sandboxManager } from "../../../src/services/sandbox";
-import { initializeDefaultSandboxPool } from "../../../src/services/sandbox/sandbox-default-pool";
 import { schedulerService } from "../../../src/services/scheduler/index";
 import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { ensureSystemAdmin } from "../../../src/services/system-admin";
 import { initCustomToolsRegistry } from "../../../src/services/workflow/custom-tools";
-import { closeAllFileWsConnections, stopFileWsSweep } from "../../../src/transport/file-ws-handler";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
@@ -61,6 +85,8 @@ const startedAt = new Date().toISOString();
 
 const env = loadServerEnv([]);
 applyEnv(env);
+bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
+bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
 await initDb();
 startupLog.info("Database initialized");
 
@@ -145,16 +171,12 @@ if (ragflowHealth.ok) {
 }
 
 // 定期巡检：将无活跃 WS 连接的 machine 标为 offline（处理服务重启、网络分区等场景）
-import("../../../src/services/registry-heartbeat").then(({ startMachineSweep }) => {
-  startMachineSweep(60_000);
-});
+startMachineSweep(60_000);
 // file-ws 僵尸连接巡检（P0-1）：独立于 startMachineSweep——后者只查 DB 中 status=online
 // 的机器（registry-heartbeat.ts），覆盖不到 file-ws 的 half-open 僵尸。默认关闭，
 // 灰度防误杀旧机器端（keep_alive 缺失或间隔 >90s），开启时按配置间隔巡检。
 if (config.fileWsSweepEnabled) {
-  import("../../../src/transport/file-ws-handler").then(({ startFileWsSweep }) => {
-    startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
-  });
+  startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
 }
 startAcpIdleMonitor();
 

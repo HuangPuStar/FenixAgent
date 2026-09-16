@@ -3,10 +3,7 @@ import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { config } from "../../../../../apps/server/src/config";
 import { touchInstanceActivity } from "../../../../../src/services/acp-idle-monitor";
-import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../../../../../src/services/core-bootstrap";
 import { touchEnvironmentPoll } from "../../../../../src/services/environment";
-import { disconnectMachine, registerMachine } from "../../../../../src/services/registry";
-import { handleHeartbeat, startHeartbeat, stopHeartbeat } from "../../../../../src/services/registry-heartbeat";
 import {
   dispatchAgentNodeDisconnect,
   dispatchAgentNodeWsClose,
@@ -16,6 +13,8 @@ import {
 import type { WsConnection } from "../../../../../src/transport/ws-types";
 import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../../../../../src/types/store";
 import { agentInstanceService } from "../services/agent-instance-service";
+import { getBoundCoreRuntimePort, getBoundCoreRuntime as getCoreRuntime } from "../services/core-runtime-port";
+import { getMachineRegistryPort } from "../services/machine-registry-port";
 
 const logger = createLogger("transport-acp-ws-handler");
 
@@ -54,7 +53,7 @@ function activateRemoteMachine(entry: AcpConnectionEntry): void {
     const engineTypes = Array.isArray(entry.capabilities?.engineTypes)
       ? (entry.capabilities.engineTypes as string[])
       : ["opencode"];
-    registerRemoteNode(entry.machineId, entry.ws, entry, engineTypes);
+    getBoundCoreRuntimePort().registerRemoteNode(entry.machineId, entry.ws, entry, engineTypes);
   }
 
   const agentNodeService = getAgentNodeService();
@@ -210,7 +209,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
   pendingMachineRegistrations.add(specifiedMachineId);
 
   try {
-    const result = await registerMachine({
+    const result = await getMachineRegistryPort().registerMachine({
       agentName,
       tenantId,
       machineId: specifiedMachineId,
@@ -256,7 +255,7 @@ async function handleMachineRegister(wsId: string, msg: Record<string, unknown>)
     logger.info(
       `[MACHINE-REGISTER] Starting heartbeat for machineId=${result.id} interval=${HEARTBEAT_INTERVAL_MS}ms timeout=${HEARTBEAT_INTERVAL_MS * 3}ms`,
     );
-    startHeartbeat(result.id, HEARTBEAT_INTERVAL_MS, () => {
+    getMachineRegistryPort().startHeartbeat(result.id, HEARTBEAT_INTERVAL_MS, () => {
       logger.info(`[MACHINE-HEARTBEAT] Timeout triggered for machineId=${result.id}`);
       triggerMachineDisconnect(wsId, result.id, "heartbeat timeout");
     });
@@ -273,7 +272,7 @@ async function handleMachineDisconnect(entry: AcpConnectionEntry, reason?: strin
   if (!entry.machineId) return;
 
   try {
-    await disconnectMachine(entry.machineId, reason ?? "connection closed");
+    await getMachineRegistryPort().disconnectMachine(entry.machineId, reason ?? "connection closed");
     logger.debug(`Machine disconnected: id=${entry.machineId} reason=${reason ?? "(none)"}`);
   } catch (err) {
     logError("Machine disconnect error:", err);
@@ -327,9 +326,11 @@ export async function handleAcpWsMessage(
         try {
           // clean-slate 已确认但激活曾部分失败时，heartbeat 是同一在线连接的幂等自愈点。
           activateRemoteMachine(entry);
-          handleHeartbeat(entry.machineId).catch((err) => {
-            logError("Heartbeat handling error:", err);
-          });
+          getMachineRegistryPort()
+            .handleHeartbeat(entry.machineId)
+            .catch((err) => {
+              logError("Heartbeat handling error:", err);
+            });
         } catch (err) {
           logError("Remote machine activation error:", err);
         }
@@ -509,8 +510,8 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
     }
   }
   handleMachineDisconnect(entry, reason).catch(() => {});
-  unregisterRemoteNode(machineId);
-  stopHeartbeat(machineId);
+  getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
+  getMachineRegistryPort().stopHeartbeat(machineId);
   // 清理 RCS registry 中对应 machineId 的孤儿 supplement
   import("../../../../../src/services/instance-registry").then(({ globalInstanceRegistry }) => {
     const facade = getCoreRuntime();
@@ -561,9 +562,11 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   dispatchAgentNodeDisconnect(machineId);
 
   // 更新 DB 状态
-  disconnectMachine(machineId, reason).catch((err) => {
-    logError("Machine disconnect error:", err);
-  });
+  getMachineRegistryPort()
+    .disconnectMachine(machineId, reason)
+    .catch((err) => {
+      logError("Machine disconnect error:", err);
+    });
 
   const disconnectedInstances = getCoreRuntime()
     .listInstances()
@@ -575,8 +578,8 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
     }
   }
 
-  unregisterRemoteNode(machineId);
-  stopHeartbeat(machineId);
+  getBoundCoreRuntimePort().unregisterRemoteNode(machineId);
+  getMachineRegistryPort().stopHeartbeat(machineId);
   import("./relay/client-close").then(({ closeClientsForMachineInstances }) => {
     closeClientsForMachineInstances(instanceIds, "machine unavailable");
   });
@@ -734,7 +737,9 @@ export function closeAllAcpConnections(): void {
       if (entry.isMachine && entry.machineId) {
         // 通知编排域 AgentNode 断连（与 performMachineCleanup 的 dispatch 幂等）
         dispatchAgentNodeWsClose(entry.ws);
-        disconnectMachine(entry.machineId, "server_shutdown").catch(() => {});
+        getMachineRegistryPort()
+          .disconnectMachine(entry.machineId, "server_shutdown")
+          .catch(() => {});
       }
     } catch {
       // ignore errors during shutdown

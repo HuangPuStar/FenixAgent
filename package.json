@@ -62,6 +62,8 @@
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",

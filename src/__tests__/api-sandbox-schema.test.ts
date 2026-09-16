@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SandboxInstanceUpdateBodySchema } from "../schemas/api-sandbox.schema";
+import { SandboxInstanceUpdateBodySchema } from "@fenix/resource-sandbox/server";
 
 describe("sandbox instance update schema", () => {
   // 管理面资源更新只允许四项资源参数，避免覆盖沙盒工作空间和连接环境变量。

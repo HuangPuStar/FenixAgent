@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { SandboxManager } from "@fenix/resource-sandbox/server";
 import type { SandboxInstance, SandboxPool } from "../../apps/server/src/db/schema";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../../apps/server/src/test-utils/helpers";
-import { SandboxManager } from "../services/sandbox/sandbox-manager";
+import { resetAllStubs, stubCoreBootstrap } from "../../apps/server/src/test-utils/helpers";
 
 const resources = {
   cpu: 0.5,
@@ -49,13 +49,10 @@ describe("SandboxManager machine identity", () => {
     let machineInput: Record<string, unknown> | undefined;
     let providerInput: Record<string, unknown> | undefined;
     const instance = makeInstance({ resolvedConfig: undefined as never });
-    stubRegistry({
-      createSandboxMachine: async (input: Record<string, unknown>) => {
+    const manager = new SandboxManager({
+      createMachine: async (input) => {
         machineInput = input;
       },
-    });
-
-    const manager = new SandboxManager({
       pools: { findById: async () => pool },
       instances: {
         findActive: async () => null,
@@ -100,13 +97,10 @@ describe("SandboxManager machine identity", () => {
     let machineInput: Record<string, unknown> | undefined;
     const periPool = { ...pool, extra: { agent_type: "peri" } } as SandboxPool;
     const instance = makeInstance({ resolvedConfig: undefined as never });
-    stubRegistry({
-      createSandboxMachine: async (input: Record<string, unknown>) => {
+    const manager = new SandboxManager({
+      createMachine: async (input) => {
         machineInput = input;
       },
-    });
-
-    const manager = new SandboxManager({
       pools: { findById: async () => periPool },
       instances: {
         findActive: async () => null,
@@ -148,6 +142,7 @@ describe("SandboxManager machine identity", () => {
       defaultResources: { ...resources, volumes: [{ name: "workspace", source: "ws", target: "/workspace" }] },
     } as SandboxPool;
     const manager = new SandboxManager({
+      createMachine: async () => {},
       pools: { findById: async () => workspacePool },
       instances: {
         findActive: async () => null,
@@ -678,13 +673,10 @@ describe("SandboxManager machine identity", () => {
     const providerCreated = new Promise<void>((resolve) => {
       releaseProvider = resolve;
     });
-    stubRegistry({
-      createSandboxMachine: async () => {
+    const manager = new SandboxManager({
+      createMachine: async () => {
         machineCreateCount += 1;
       },
-    });
-
-    const manager = new SandboxManager({
       pools: { findById: async () => pool },
       instances: {
         findActive: async () => (claimed ? instance : null),
@@ -814,12 +806,10 @@ describe("SandboxManager machine identity", () => {
       resolvedConfig: { image: "sandbox:test", resources, providerExtra: {} },
     });
     let deleted = false;
-    stubRegistry({
-      createSandboxMachine: async () => {
+    const manager = new SandboxManager({
+      createMachine: async () => {
         throw new Error("machine insert failed");
       },
-    });
-    const manager = new SandboxManager({
       pools: { findById: async () => pool },
       instances: {
         findActive: async () => null,

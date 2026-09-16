@@ -8,12 +8,11 @@ import type { WsConnection } from "../transport/ws-types";
 // 会解析为独立实例、绕过 mock 注册表；该实例内部导入的 ../db 仍走 stubDb（Proxy 实时转发），
 // file-ws-handler 不被 preload mock（真实模块），因此"stubDb → deleteMachine → handler 清理"
 // 整条链路均为真实代码。`?real` 仅用于测试入口，生产代码不受影响。
-// @ts-expect-error -- TS 无法解析带 query 的 specifier（Bun 运行时支持），原因见上方注释
-const realRegistry = await import("../services/registry?real");
+const realRegistry = await import("@fenix/resource-machine/server");
 
 // sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests，setup-mocks 部分
 // mock——未配置 stub 时回退真实实现），此处动态 import 发起真实 pending
-const requests = await import("../transport/file-ws-requests");
+const requests = await import("@fenix/resource-machine/server");
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
@@ -35,7 +34,7 @@ function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {
 
 /** 建立一条已注册的 file-ws 连接（open + register），返回 mock ws */
 function openRegisteredWs(
-  handler: typeof import("../transport/file-ws-handler"),
+  handler: typeof import("@fenix/resource-machine/server"),
   wsId: string,
   machineId: string,
 ): WsConnection & { _messages: string[] } {
@@ -68,19 +67,19 @@ function stubDeleteMachineDb(machineRecord: { id: string; status: string }, inse
 
 beforeEach(async () => {
   resetAllStubs();
-  const handler = await import("../transport/file-ws-handler");
+  const handler = await import("@fenix/resource-machine/server");
   handler.closeAllFileWsConnections();
 });
 
 afterAll(async () => {
-  const handler = await import("../transport/file-ws-handler");
+  const handler = await import("@fenix/resource-machine/server");
   handler.closeAllFileWsConnections();
 });
 
 describe("deleteMachine 退役清理（P0-5 / D18）", () => {
   // 退役机器必须立即切断 file-ws：pending 被 reject、索引清理、连接 close，并写 retired 事件
   test("删除后 file-ws 连接关闭、pending 拒绝、retired 事件落库", async () => {
-    const handler = await import("../transport/file-ws-handler");
+    const handler = await import("@fenix/resource-machine/server");
     const ws = openRegisteredWs(handler, "ws_retire", "mach_retire");
     const pending = requests.sendFileOpAndWait("mach_retire", "list", { path: "/" }).catch((e) => e);
 

@@ -33,10 +33,10 @@ import {
   refreshInstanceEnvironment,
   terminateLocalDeadInstance,
 } from "../../../../../src/services/orchestration-instance";
-import { resolveWorkspacePath } from "../../../../../src/services/workspace-resolver";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { agentInstanceService } from "./agent-instance-service";
+import { resolveWorkspacePath } from "./workspace-resolver";
 
 type ChatChannelBootstrapDeps = {
   environmentRepo: typeof environmentRepo;

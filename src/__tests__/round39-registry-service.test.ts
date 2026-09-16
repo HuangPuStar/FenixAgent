@@ -3,8 +3,7 @@ import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
-// @ts-expect-error Bun 支持带 query 的模块 specifier，TypeScript 无法解析。
-const registry = await import("../services/registry?round39");
+const registry = await import("@fenix/resource-machine/server");
 
 const owner: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
 
@@ -51,7 +50,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
       .mockImplementationOnce(() => ({ from: () => ({ where: async () => [{ count: 3 }] }) }));
     stubDb({ select });
 
-    await expect(registry.listMachines(owner, {})).resolves.toEqual({ data: [{ id: "mach-1" }], total: 3 });
+    await expect(registry.listMachines(owner, {})).resolves.toEqual({ data: [{ id: "mach-1" }], total: 3 } as never);
     expect(select).toHaveBeenCalledTimes(2);
   });
 
@@ -64,7 +63,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
 
     await expect(
       registry.listMachines(owner, { status: "online", type: "sandbox", labels: ["gpu"], limit: 1, offset: 2 }),
-    ).resolves.toEqual({ data: [{ id: "sandbox-1", status: "online" }], total: 1 });
+    ).resolves.toEqual({ data: [{ id: "sandbox-1", status: "online" }], total: 1 } as never);
   });
 
   // 可见机器详情必须附带按时间排序的近期事件。
@@ -78,7 +77,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
       id: "mach-1",
       organizationId: "org-a",
       recentEvents: [{ type: "register" }],
-    });
+    } as never);
   });
 
   // 不可见或不存在的机器不得继续读取事件，避免泄露生命周期数据。
@@ -113,7 +112,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     await expect(registry.listEvents(owner, "mach-1", { limit: 5, offset: 5 })).resolves.toEqual({
       data: [{ id: "evt-1", type: "disconnect" }],
       total: 7,
-    });
+    } as never);
   });
 
   // 管理员预创建机器应写入 pending 状态和默认引擎。
@@ -337,7 +336,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     await expect(registry.updateMachine(owner, "mach-1", { labels: ["gpu"] })).resolves.toEqual({
       id: "mach-1",
       labels: ["gpu"],
-    });
+    } as never);
     expect(updates).toEqual([expect.objectContaining({ labels: ["gpu"] })]);
     expect(updates[0]).not.toHaveProperty("name");
     expect(updates[0]).not.toHaveProperty("agentName");

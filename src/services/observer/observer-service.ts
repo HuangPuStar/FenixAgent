@@ -19,9 +19,9 @@ import {
   listAcpConnections,
   listExternalRelayEntries as listExternalRelayEntriesModule,
 } from "@fenix/agent-runtime/server";
+import { findMachineNamesByIds } from "@fenix/resource-machine/server";
 import { config } from "../../../apps/server/src/config";
 import { findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
-import { findMachineNamesByIds } from "../../repositories/machine-repository";
 import type { AcpConnectionSnapshot } from "../../types/store";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";

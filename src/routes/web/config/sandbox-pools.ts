@@ -1,9 +1,9 @@
+import { listPoolOptions } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { config } from "../../../../apps/server/src/config";
 import { authGuardPlugin } from "../../../../apps/server/src/plugins/auth";
 import { configSuccess } from "../../../services/config-utils";
-import { listPoolOptions } from "../../../services/sandbox/sandbox-admin-service";
 
 const SandboxPoolOptionSchema = z.object({
   id: z.string(),

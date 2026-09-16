@@ -1,7 +1,6 @@
 import { createAgentInstanceUid, isAgentInstanceUid } from "@fenix/agent-runtime/server";
 import { SERVER_EPOCH } from "@fenix/remote-runtime";
 import { AppError } from "../../../../../apps/server/src/errors";
-import { getCoreRuntime } from "../../../../../src/services/core-bootstrap";
 import { getOrchestrationController } from "../../../../../src/services/orchestration-bootstrap";
 import {
   spawnInstanceViaController,
@@ -15,6 +14,7 @@ import {
   type RuntimeSnapshot,
   type RuntimeStopMode,
 } from "./agent-instance-runtime-coordinator";
+import { getBoundCoreRuntime as getCoreRuntime } from "./core-runtime-port";
 
 export type AutomaticInstanceSelection = "chat" | "api" | "workflow";
 

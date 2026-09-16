@@ -10,10 +10,10 @@ import type {
   UpdateWebEnvironmentParams,
 } from "../../../../../src/services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../../../../src/services/environment-core";
-import { resolveWorkspacePath } from "../../../../../src/services/workspace-resolver";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories/environment";
 import { environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
+import { resolveWorkspacePath } from "./workspace-resolver";
 
 export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
 
