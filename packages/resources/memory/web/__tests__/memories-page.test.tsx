@@ -78,7 +78,7 @@ describe("MemoriesPage", () => {
     statusEnabled = false;
     const { container, root } = await renderPage();
 
-    expect(container.textContent).toContain("status.notConfigured");
+    expect(container.textContent).toContain("Hindsight is not configured.");
     expect(container.querySelector("nav")).toBeNull();
     act(() => root.unmount());
   });
@@ -88,10 +88,10 @@ describe("MemoriesPage", () => {
     statusFailuresRemaining = 1;
     const { container, root } = await renderPage();
 
-    expect(container.textContent).toContain("status.loadFailed");
-    expect(container.textContent).not.toContain("status.notConfigured");
+    expect(container.textContent).toContain("Failed to load Hindsight status");
+    expect(container.textContent).not.toContain("Hindsight is not configured.");
     const retryButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("status.retry"),
+      button.textContent?.includes("Retry"),
     );
 
     await act(async () => {
@@ -99,7 +99,7 @@ describe("MemoriesPage", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    expect(container.textContent).not.toContain("status.loadFailed");
+    expect(container.textContent).not.toContain("Failed to load Hindsight status");
     expect(container.querySelector("nav")).not.toBeNull();
     act(() => root.unmount());
   });
@@ -110,7 +110,7 @@ describe("MemoriesPage", () => {
 
     expect(graphRequests).toEqual([{ type: "world", query: "" }]);
     const worldButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("tabs.worldFacts"),
+      button.textContent?.includes("World Facts"),
     );
     expect(worldButton?.getAttribute("aria-pressed")).toBe("true");
     act(() => root.unmount());
@@ -120,7 +120,7 @@ describe("MemoriesPage", () => {
   test("切换经验视角", async () => {
     const { container, root } = await renderPage();
     const experienceButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("tabs.experience"),
+      button.textContent?.includes("Experience"),
     );
 
     await act(async () => {

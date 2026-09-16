@@ -12,8 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { mcpApi } from "@/src/api/mcp";
 import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
-import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import type { McpServerInfo } from "@/src/types/config";
+import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import {
   buildMcpPayload,
   type KeyValueEntry,

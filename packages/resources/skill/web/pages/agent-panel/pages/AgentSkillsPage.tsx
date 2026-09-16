@@ -6,18 +6,9 @@ import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
 import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "@/src/lib/config-events";
-import {
-  canManageSkillSharing,
-  canWriteSkill,
-  getSkillKey,
-  getSkillLookupKey,
-} from "@/src/lib/skill-resource-access";
+import { canManageSkillSharing, canWriteSkill, getSkillKey, getSkillLookupKey } from "@/src/lib/skill-resource-access";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "@/src/lib/skill-upload";
-import type {
-  SkillUploadConflictResponse,
-  SkillUploadConflictStrategy,
-  UploadSkillSummary,
-} from "@/src/types/config";
+import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
 import { AgentSkillsCatalog } from "./agent-skills-catalog";
 import { AgentSkillsDialogs } from "./agent-skills-dialogs";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";

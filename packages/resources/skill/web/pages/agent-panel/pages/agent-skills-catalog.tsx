@@ -31,8 +31,11 @@ import {
   getSkillKey,
   getSkillOptionLabel,
 } from "@/src/lib/skill-resource-access";
+import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type { SkillDetail as SkillDetailData } from "@/src/types/config";
-import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
 import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
 import "./agent-skills.css";

@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetConfig, setConfig } from "../../../../../apps/server/src/config";
 import { resetAllStubs } from "../../../../../apps/server/src/test-utils/helpers";
-import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../server/repositories/knowledge-base";
+import {
+  agentKnowledgeBindingRepo,
+  knowledgeBaseRepo,
+  knowledgeResourceRepo,
+} from "../server/repositories/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import {
   deleteKnowledgeGraphForKb,

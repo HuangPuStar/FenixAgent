@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 import { AppError } from "../../../../../../../../apps/server/src/errors";
 import { type AuthContext, authGuardPlugin } from "../../../../../../../../apps/server/src/plugins/auth";
 import { WebErrSchema, WebOkSchema } from "../../../../../../../../src/schemas/common.schema";
+import type { McpRemoteConfig, McpServerConfig } from "../../../../../../../../src/services/config/types";
 import * as configPg from "../../../services/config/mcp-server";
 import {
   countToolsByServer,
@@ -13,7 +14,6 @@ import {
   toServerInfo,
   validateMcpConfig,
 } from "../../../services/config/mcp-server";
-import type { McpRemoteConfig, McpServerConfig } from "../../../../../../../../src/services/config/types";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
 
 function splitMcpConfigInput(input: unknown) {

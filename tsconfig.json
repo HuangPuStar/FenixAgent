@@ -15,7 +15,15 @@
     "declarationMap": false,
     "outDir": "dist",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/components/ui/*": ["./apps/web/components/ui/*"],
+      "@/components/*": ["./web/components/*"],
+      "@/src/api/hindsight": ["./packages/resources/memory/web/api/hindsight.ts"],
+      "@/src/pages/hindsight/MemoriesPage": ["./packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx"],
+      "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
+      "@/src/*": ["./web/src/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "web"]

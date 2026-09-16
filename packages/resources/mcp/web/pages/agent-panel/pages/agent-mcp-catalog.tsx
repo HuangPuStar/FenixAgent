@@ -20,9 +20,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
-import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
+import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type { McpServerInfo, McpToolInfo } from "@/src/types/config";
-import { AgentMasterDetailHeader, AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
+import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
 import "./agent-mcp-detail.css";

@@ -7,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FormDialog } from "@/components/config/FormDialog";
-import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -44,6 +43,8 @@ import { ChunkDetailSheet } from "@/src/pages/agent-panel/components/ChunkDetail
 import { EmbeddingModelManager } from "@/src/pages/agent-panel/components/EmbeddingModelManager";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
 import { RetrievalTestPanel } from "@/src/pages/agent-panel/components/RetrievalTestPanel";
+import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
+import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";
 import { AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type {
   KnowledgeBaseDetail,
@@ -53,8 +54,7 @@ import type {
   KnowledgeResourceInfo,
   UnassociatedKnowledgeBase,
 } from "@/src/types/knowledge";
-import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
-import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";
+import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
 import "./agent-knowledge.css";
 
 /** 资源状态 → 语义色 badge 样式 */

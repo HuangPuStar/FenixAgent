@@ -6,11 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NS } from "@/src/i18n";
-import type {
-  SkillUploadConflictResponse,
-  SkillUploadConflictStrategy,
-  UploadSkillSummary,
-} from "@/src/types/config";
+import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
 import type { SkillCreateMode, SkillInfo } from "./agent-skills-types";
 
 type AgentSkillsDialogsProps = {

@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
-import { getMcpDisplayName } from "../../../lib/mcp-resource-access";
 import type { McpServerConfig, McpServerInfo } from "@/src/types/config";
+import { getMcpDisplayName } from "../../../lib/mcp-resource-access";
 
 export type McpCatalogScope = "all" | "organization" | "public";
 export type KeyValueEntry = { key: string; value: string };

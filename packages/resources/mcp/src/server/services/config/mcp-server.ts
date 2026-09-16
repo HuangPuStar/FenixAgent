@@ -1,8 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../../../../../../apps/server/src/db";
-import { mcpServer, mcpTool } from "../../../../../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../../../../../apps/server/src/plugins/auth";
 import {
   assertInternalWritable,
   buildExternalPublicReadMap,
@@ -11,8 +7,17 @@ import {
   listReadableResourceRefs,
   setPublicRead,
 } from "@fenix/access-control/server";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { db } from "../../../../../../../apps/server/src/db";
+import { mcpServer, mcpTool } from "../../../../../../../apps/server/src/db/schema";
+import type { AuthContext } from "../../../../../../../apps/server/src/plugins/auth";
 import { parseJsonb } from "../../../../../../../src/services/config/jsonb";
-import type { McpServerConfig, McpServerInfoOutput, McpServerSetOptions, ResourceAccess } from "../../../../../../../src/services/config/types";
+import type {
+  McpServerConfig,
+  McpServerInfoOutput,
+  McpServerSetOptions,
+  ResourceAccess,
+} from "../../../../../../../src/services/config/types";
 
 // ────────────────────────────────────────────
 // MCP Server 操作

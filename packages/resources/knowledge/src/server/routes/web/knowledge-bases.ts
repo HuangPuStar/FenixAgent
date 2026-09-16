@@ -5,8 +5,8 @@ import { extname, join } from "node:path";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { knowledgeBaseRepo, knowledgeResourceRepo } from "../../repositories/knowledge-base";
 import { WebErrSchema, WebOkSchema } from "../../../../../../../src/schemas/common.schema";
+import { knowledgeBaseRepo, knowledgeResourceRepo } from "../../repositories/knowledge-base";
 import {
   CreateKnowledgeBaseRequestSchema,
   ImportKnowledgeUrlRequestSchema,

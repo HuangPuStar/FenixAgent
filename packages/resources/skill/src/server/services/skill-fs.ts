@@ -9,9 +9,9 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import type { ResourceAccess } from "@fenix/access-control/server";
 import matter from "gray-matter";
 import * as yaml from "js-yaml";
-import type { ResourceAccess } from "@fenix/access-control/server";
 
 // ────────────────────────────────────────────
 // 类型

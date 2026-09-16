@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
 import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
 import { clearOrgCache, setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
 import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
-import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
 
 /** 测试用 member ID，对应 resolveMemberId 的返回值 */
 const TEST_MEMBER_ID = "mem-test-member-id";
