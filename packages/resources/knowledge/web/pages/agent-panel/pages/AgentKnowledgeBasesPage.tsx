@@ -40,9 +40,7 @@ import { AppPage } from "@/src/components/layout/app-page";
 import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
-import { ChunkDetailSheet } from "@/src/pages/agent-panel/components/ChunkDetailSheet";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
-import { RetrievalTestPanel } from "@/src/pages/agent-panel/components/RetrievalTestPanel";
 import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
 import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";
 import { AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
@@ -55,6 +53,8 @@ import type {
   UnassociatedKnowledgeBase,
 } from "@/src/types/knowledge";
 import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
+import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
+import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
 import "./agent-knowledge.css";
 
 /** 资源状态 → 语义色 badge 样式 */

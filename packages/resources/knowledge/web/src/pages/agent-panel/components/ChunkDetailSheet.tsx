@@ -312,7 +312,7 @@ function SuspensePreviewContent({ resource, kbId }: { resource: KnowledgeResourc
   useEffect(() => {
     let cancelled = false;
     // 动态导入预览组件（包含 mammoth 等重依赖）
-    import("../../../../../packages/resources/knowledge/web/components/knowledge/ResourcePreviewContent")
+    import("../../../../components/knowledge/ResourcePreviewContent")
       .then((mod) => {
         if (!cancelled) setPreviewContent(() => mod.ResourcePreviewContent);
       })

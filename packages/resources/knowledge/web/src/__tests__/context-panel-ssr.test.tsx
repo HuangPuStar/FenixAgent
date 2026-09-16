@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/src/i18n";
-import type { ThreadEntry } from "../lib/types";
+import type { ThreadEntry } from "../../../../../../web/src/lib/types";
 
 function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "claude-test") {
   return renderToStaticMarkup(

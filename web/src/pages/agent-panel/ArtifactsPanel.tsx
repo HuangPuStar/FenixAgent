@@ -1,3 +1,4 @@
+import { SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
 import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,8 +17,6 @@ import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs
 import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
 import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
-import { SiteFrame } from "../../components/agent-panel/SiteFrame";
-import { SiteTabsBar } from "../../components/agent-panel/SiteTabsBar";
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 
