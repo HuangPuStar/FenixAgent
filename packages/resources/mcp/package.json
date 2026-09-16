@@ -1,0 +1,17 @@
+{
+  "name": "@fenix/resource-mcp",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./server/schema": "./src/server/schemas/mcp-knowledge.schema.ts"
+  },
+  "dependencies": {
+    "@fenix/access-control": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "elysia": "^1.4.28",
+    "zod": "^4.4.3",
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

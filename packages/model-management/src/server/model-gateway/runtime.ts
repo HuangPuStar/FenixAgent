@@ -1,3 +1,4 @@
+import { canReadResource } from "@fenix/access-control/server";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { sql } from "drizzle-orm";
 import { config } from "../../../../../apps/server/src/config";
@@ -6,7 +7,6 @@ import { agentConfig, member, organization, user } from "../../../../../apps/ser
 import { findAgentConfigNamesByIds } from "../../../../../src/repositories/agent-config";
 import { organizationRepo } from "../../../../../src/repositories/organization";
 import { findUsersBasicInfoByIds } from "../../../../../src/repositories/user";
-import { canReadResource } from "../../../../../src/services/resource-permission";
 import {
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,

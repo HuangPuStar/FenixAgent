@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { _resetDeps } from "@fenix/access-control/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import {
@@ -9,7 +10,6 @@ import {
 } from "../../apps/server/src/test-utils/helpers";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
-import { _resetDeps } from "../services/resource-permission";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 

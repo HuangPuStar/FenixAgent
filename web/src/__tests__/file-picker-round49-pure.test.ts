@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { McpResourceLike } from "../lib/mcp-resource-access";
+import type { McpResourceLike } from "@/src/lib/mcp-resource-access";
 import {
   canManageMcpSharing,
   canWriteMcp,
@@ -8,7 +8,7 @@ import {
   getMcpKey,
   getMcpLookupKey,
   getMcpResourceBadgeKey,
-} from "../lib/mcp-resource-access";
+} from "@/src/lib/mcp-resource-access";
 import type { ResourceAccess } from "../types/config";
 
 const ownedAccess: ResourceAccess = {

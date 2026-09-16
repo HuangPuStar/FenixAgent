@@ -9,7 +9,15 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
+import { listAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "@fenix/resource-memory/server";
+import {
+  buildSkillArchive,
+  buildSkillDownloadUrl,
+  getGlobalSkillsDir,
+  getSkillArchivePath,
+  getSkillSourceDir,
+} from "@fenix/resource-skill/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { config, getBaseUrl } from "../../apps/server/src/config";
 import { db } from "../../apps/server/src/db";
@@ -23,13 +31,9 @@ import {
   skill,
 } from "../../apps/server/src/db/schema";
 import { AppError } from "../../apps/server/src/errors";
-import { listAgentKnowledgeBindingsById } from "./agent-knowledge";
 import { composeAgentSystemPrompt } from "./agent-system-prompt";
 import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
-import { getGlobalSkillsDir } from "./skill";
-import { buildSkillDownloadUrl } from "./skill-download-token";
-import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "./skill-fs";
 
 type LaunchModelProtocol = ModelConfig["protocol"];
 type SkillRow = typeof skill.$inferSelect;

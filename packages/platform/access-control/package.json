@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./module": "./fenix.module.ts"
+    "./module": "./fenix.module.ts",
+    "./server": "./src/server.ts"
   },
   "dependencies": {
     "@fenix/logger": "workspace:*",

@@ -1,0 +1,14 @@
+{
+  "name": "@fenix/resource-skill",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fenix/access-control": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./server/config": "./src/server-config.ts",
+    "./server/migration": "./src/server-migration.ts"
+  }
+}

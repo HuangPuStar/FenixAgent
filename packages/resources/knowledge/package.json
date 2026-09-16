@@ -1,0 +1,15 @@
+{
+  "name": "@fenix/resource-knowledge",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./server/schema": "./src/server/schemas/knowledge.schema.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.4.28",
+    "zod": "^4.4.3",
+    "drizzle-orm": "^0.45.2"
+  }
+}

@@ -1,8 +1,8 @@
 import { log } from "@fenix/logger";
+import { migrateSkillStorageByOrganization } from "@fenix/resource-skill/server/migration";
 import { db } from "../../apps/server/src/db";
 import { dataMigrateRecord } from "../../apps/server/src/db/schema";
 import { migrateAgentConfigModelId } from "./data-migrates/migrate-agent-config-model-id";
-import { migrateSkillStorageByOrganization } from "./data-migrates/migrate-skill-storage-by-organization";
 
 export interface DataMigrate {
   name: string;

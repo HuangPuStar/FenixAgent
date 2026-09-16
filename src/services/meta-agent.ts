@@ -11,18 +11,27 @@
 
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { setPublicRead } from "@fenix/access-control/server";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { getProvider, listProviders } from "@fenix/model-management/server";
+import {
+  buildSkillArchive,
+  deleteSkill,
+  getGlobalSkillsDir,
+  getSkill,
+  getSkillArchivePath,
+  getSkillSourceDir,
+  listSkills,
+  parseFrontmatter,
+  setSkill,
+  syncAgentSkills,
+} from "@fenix/resource-skill/server";
+import { listSkills as listStoredSkills } from "@fenix/resource-skill/server/config";
 import { auth } from "../../apps/server/src/auth/better-auth";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "./config/agent-config";
-import { syncAgentSkills } from "./config/agent-config-skill";
-import { deleteSkill, getSkill, listSkills } from "./config/skill";
 import type { SkillConfigRowWithAccess } from "./config/types";
-import { setPublicRead } from "./resource-permission";
-import { getGlobalSkillsDir, setSkill } from "./skill";
-import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir, parseFrontmatter } from "./skill-fs";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 
@@ -178,7 +187,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   const builtinNames = new Set(builtinSkills.map((s) => s.name));
 
   // 查询 DB 中由 meta agent 注册的 skill，找出需要清理的孤儿
-  const allDbSkills = await listSkills(ctx);
+  const allDbSkills = await listStoredSkills(ctx);
   const orphans = allDbSkills.filter(
     (s) =>
       // 只清理 meta agent 自己注册的（通过 metadata.source 标记识别）
@@ -245,7 +254,11 @@ async function listBuiltinSkillIds(_ctx: AuthContext): Promise<string[]> {
   // builtin 绑定固定来自系统 admin 组织，不从当前业务组织解析同名 skill。
   const { ensureSystemAdmin } = await import("./system-admin");
   const admin = await ensureSystemAdmin();
-  const systemSkills = await listSkills({ organizationId: admin.organization.id, userId: admin.userId, role: "owner" });
+  const systemSkills = await listStoredSkills({
+    organizationId: admin.organization.id,
+    userId: admin.userId,
+    role: "owner",
+  });
   const skillIds: string[] = [];
   for (const builtin of scanBuiltinSkills()) {
     const skillId = selectSystemBuiltinSkillId(systemSkills, builtin.name);

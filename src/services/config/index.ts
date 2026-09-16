@@ -1,3 +1,34 @@
+export {
+  assertMcpServerInternalWritable,
+  assertMcpServerInternalWritableById,
+  createMcpServer,
+  deleteMcpServer,
+  deleteMcpServerById,
+  getMcpServer,
+  getMcpServerById,
+  getMcpServerByResourceKey,
+  isValidMcpName,
+  listAgentMcpIds,
+  listMcpServers,
+  setMcpServerEnabled,
+  syncAgentMcps,
+  toServerInfo,
+  updateMcpServer,
+  updateMcpServerById,
+  validateMcpConfig,
+} from "@fenix/resource-mcp/server";
+export {
+  deleteSkill,
+  deleteSkillById,
+  getSkill,
+  getSkillById,
+  getSkillByResourceKey,
+  listAgentSkillIds,
+  listSkills,
+  setSkillPublicReadable,
+  syncAgentSkills,
+  upsertSkill,
+} from "@fenix/resource-skill/server/config";
 export type { AuthContext } from "../../../apps/server/src/plugins/auth";
 export {
   AGENT_SETTABLE_FIELDS,
@@ -17,42 +48,13 @@ export {
   updateAgentConfig,
   validateAgentData,
 } from "./agent-config";
-export { listAgentMcpIds, syncAgentMcps } from "./agent-config-mcp";
 export {
   addAgentSiteApp,
   listAgentSiteAppIds,
   removeAgentSiteApp,
   syncAgentSiteApps,
 } from "./agent-config-site-app";
-export { listAgentSkillIds, syncAgentSkills } from "./agent-config-skill";
 export { parseJsonb, parseJsonbOr } from "./jsonb";
-export {
-  assertMcpServerInternalWritable,
-  assertMcpServerInternalWritableById,
-  createMcpServer,
-  deleteMcpServer,
-  deleteMcpServerById,
-  getMcpServer,
-  getMcpServerById,
-  getMcpServerByResourceKey,
-  isValidMcpName,
-  listMcpServers,
-  setMcpServerEnabled,
-  toServerInfo,
-  updateMcpServer,
-  updateMcpServerById,
-  validateMcpConfig,
-} from "./mcp-server";
-export {
-  deleteSkill,
-  deleteSkillById,
-  getSkill,
-  getSkillById,
-  getSkillByResourceKey,
-  listSkills,
-  setSkillPublicReadable,
-  upsertSkill,
-} from "./skill";
 export type {
   AgentConfigDetailWithAccess,
   AgentConfigRowWithAccess,

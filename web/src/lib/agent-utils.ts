@@ -1,5 +1,5 @@
+import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
 import type { AgentDetail } from "../types/config";
-import type { KnowledgeBaseInfo } from "../types/knowledge";
 
 export function isValidAgentNameInput(name: string): boolean {
   return (

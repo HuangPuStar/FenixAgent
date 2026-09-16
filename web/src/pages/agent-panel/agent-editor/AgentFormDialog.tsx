@@ -40,7 +40,7 @@ import "./agent-editor-responsive.css";
 import "./agent-editor-form-fields.css";
 import "./agent-editor-form-surfaces.css";
 import "./agent-editor-library.css";
-import "./agent-editor-knowledge.css";
+import "../../../../../packages/resources/knowledge/web/pages/agent-panel/agent-editor-knowledge.css";
 import "./agent-editor-loading.css";
 import "./agent-editor-form-responsive.css";
 
