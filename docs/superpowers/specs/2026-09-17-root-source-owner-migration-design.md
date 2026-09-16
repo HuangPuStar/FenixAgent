@@ -25,6 +25,10 @@
 
 跨 package 只使用 `package.json#exports` 公开入口；不得保留根目录转发文件、兼容 shim、双写或双实现。浏览器入口不得引入 server-only 模块。
 
+### `index.ts` 与公开出口
+
+`index.ts` 不按原路径整体搬运。业务实现尽量原样移动，但公开出口按最终调用者的最小稳定契约重建：资源包以 browser-safe 根入口和显式 `./server`/`./web` 子路径区分服务端与浏览器能力；包内私有 barrel 可随内部目录移动。根 `src/repositories/index.ts`、`src/schemas/index.ts` 等混合 barrel 必须拆散，资源消费者直接使用所属 package 的公开出口，宿主共有协议进入 `apps/server/src/`。`src/routes/web/index.ts` 等纯装配 barrel 迁至 `apps/server/src/routes/`。任何仅为保留旧根路径存在的转发文件直接删除。
+
 ## 迁移任务与依赖顺序
 
 | 顺序 | 任务 | 最终 owner | 迁移闭包 |
