@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ApiAgentDetailSchema, ApiAgentUpsertBodySchema } from "../schemas/api-agent.schema";
+import { ApiAgentDetailSchema, ApiAgentUpsertBodySchema } from "@fenix/agent-config/server/api-agent-schema";
 
 describe("api agent schema", () => {
   // knowledge 应是可文档化的对象结构，而不是任意 unknown。

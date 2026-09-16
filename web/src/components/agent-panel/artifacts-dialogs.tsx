@@ -9,8 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { MountSiteDialog } from "@/src/components/agent-panel/MountSiteDialog";
 import { NS } from "@/src/i18n";
-import { MountSiteDialog } from "./MountSiteDialog";
 
 interface ArtifactsDialogsProps {
   agentConfigId: string | null;

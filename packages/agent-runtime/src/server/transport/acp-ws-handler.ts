@@ -672,7 +672,7 @@ export async function findMachineConnectionByAgentId(agentId: string): Promise<A
   const { environmentRepo } = await import("../repositories/environment");
   const env = await environmentRepo.getById(agentId);
   if (!env?.agentConfigId) return null;
-  const { getAgentConfigById } = await import("../../../../../src/services/config/agent-config");
+  const { getAgentConfigById } = await import("@fenix/agent-config/server");
   const agentCfg = await getAgentConfigById(env.agentConfigId);
   if (!agentCfg?.machineId) return null;
   // 3. 缓存并查找连接

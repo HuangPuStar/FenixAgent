@@ -13,7 +13,8 @@
  * 收敛回编排域 LaunchSpec 的数据面，避免双份构建。
  */
 
-import { environmentRepo, setAgentMachineCache } from "@fenix/agent-runtime/server";
+import { getReadableAgentConfigById } from "@fenix/agent-config/server";
+import { environmentRepo } from "@fenix/agent-runtime/server/environment";
 import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
@@ -22,7 +23,6 @@ import { NotFoundError } from "../../apps/server/src/errors";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/store";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
-import { getReadableAgentConfigById } from "./config";
 import { getCoreRuntime } from "./core-bootstrap";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
@@ -478,6 +478,8 @@ async function buildAgentLaunchSpecForCore(
   // 缓存 environmentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用；
   // 与旧路径 spawnInstanceFromEnvironment 的 setAgentMachineCache 语义对齐。
   if (agentConfig.machineId) {
+    // 运行时入口的服务聚合会回指本模块；仅在实例已进入启动流程后加载，避免模块初始化环。
+    const { setAgentMachineCache } = await import("@fenix/agent-runtime/server");
     setAgentMachineCache(launchSpec.environmentId, agentConfig.machineId);
   }
 

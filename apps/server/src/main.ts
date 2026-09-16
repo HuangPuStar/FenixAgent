@@ -5,6 +5,7 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import { agentSitesCompatApp, agentSitesProxyApp, apiAgentsRoutes } from "@fenix/agent-config/server";
 import { agentInstanceService, closeAllAcpConnections, closeAllRelayConnections } from "@fenix/agent-runtime/server";
 import {
   apiSystemModelGatewayRoutes,
@@ -17,8 +18,6 @@ import { apiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/serv
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import acpRoutes from "../../../src/routes/acp";
-import { agentSitesCompatApp, agentSitesProxyApp } from "../../../src/routes/agent-sites-proxy";
-import apiAgentsRoutes from "../../../src/routes/api/agents";
 import apiInstanceRoutes from "../../../src/routes/api/instances";
 import apiModelsRoutes from "../../../src/routes/api/models";
 import openaiChatRoutes from "../../../src/routes/api/openai-chat";

@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { AgentResourceAccessSchema } from "../../../../../../src/schemas/config.schema";
+import { ResourceAccessSchema } from "../../../../../../src/schemas/resource-access.schema";
 
 /**
  * MCP 列表查询参数。
@@ -68,7 +68,7 @@ export const ApiMcpListItemSchema = z
     enabled: z.boolean().describe("MCP Server 是否启用。"),
     summary: z.string().describe("MCP Server 摘要信息。"),
     toolsCount: z.number().int().min(0).describe("缓存的 MCP Tool 数量。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("MCP 列表项。");
 
@@ -95,7 +95,7 @@ export const ApiMcpDetailSchema = z
     enabled: z.boolean().describe("MCP Server 是否启用。"),
     summary: z.string().describe("MCP Server 摘要信息。"),
     config: z.unknown().describe("MCP Server 完整配置。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("MCP 详情。");
 

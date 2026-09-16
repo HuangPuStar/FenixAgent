@@ -1,4 +1,6 @@
 /** 服务端 Agent Runtime 的公开装配入口。 */
+
+export { stopInstancesForEnvironments } from "../../../src/services/orchestration-instance";
 export * from "./server/instance/agent-instance-id";
 export * from "./server/repositories";
 export * from "./server/repositories/environment-orchestration";

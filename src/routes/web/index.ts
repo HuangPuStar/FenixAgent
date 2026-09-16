@@ -1,9 +1,11 @@
+import {
+  webAgentGenerationRoutes as webAgentGeneration,
+  webAgentSitesRoutes as webAgentSites,
+} from "@fenix/agent-config/server";
 import { webModelGatewayRoutes as webModelGateway } from "@fenix/model-management/server";
 import { webKnowledgeBaseRoutes as webKnowledgeBases } from "@fenix/resource-knowledge/server";
 import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
 import Elysia from "elysia";
-import webAgentGeneration from "./agent-generation";
-import webAgentSites from "./agent-sites";
 import webApiKeys from "./api-keys";
 import webBranding from "./branding";
 import webChannels from "./channels";

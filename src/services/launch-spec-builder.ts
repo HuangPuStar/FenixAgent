@@ -7,6 +7,8 @@
 // 抽象。当前保留现有实现作为运行时权威路径，后续可随 Chat 域重构进一步收敛。
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
+import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { log, error as logError } from "@fenix/logger";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { listAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
@@ -31,8 +33,6 @@ import {
   skill,
 } from "../../apps/server/src/db/schema";
 import { AppError } from "../../apps/server/src/errors";
-import { composeAgentSystemPrompt } from "./agent-system-prompt";
-import type { AgentConfigDetailWithAccess } from "./config";
 import { resolveApiKey } from "./config-utils";
 
 type LaunchModelProtocol = ModelConfig["protocol"];

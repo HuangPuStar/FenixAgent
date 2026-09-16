@@ -1,3 +1,4 @@
+import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { environmentRepo } from "@fenix/agent-runtime/server";
 import { eq } from "drizzle-orm";
 import { config } from "../../apps/server/src/config";
@@ -8,8 +9,6 @@ import { findActiveSandboxInstance } from "../repositories/sandbox-instance-repo
 import { findReadableSandboxPoolById } from "../repositories/sandbox-pool-repository";
 import { isFileWsConnected } from "../transport/file-ws-handler";
 import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";
-import { getAgentConfigById, resolveAgentNode } from "./config/agent-config";
-import type { AgentNode } from "./config/types";
 
 type RemoteMachineResolutionInput = {
   agentNode: AgentNode | null;

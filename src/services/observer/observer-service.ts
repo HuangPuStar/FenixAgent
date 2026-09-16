@@ -10,6 +10,7 @@
 // - environmentRepo 经 preload Proxy 调用时解析（setup-mocks.ts 头注释记载过同款事故：
 //   绑定一次引用会固化导致 stub 失效），因此 getEnvironment 每次调用都经属性访问转发。
 
+import { findAgentConfigNamesByIds, getAgentConfigById } from "@fenix/agent-config/server";
 import {
   agentInstanceRepo,
   type EnvironmentRecord,
@@ -20,10 +21,8 @@ import {
 } from "@fenix/agent-runtime/server";
 import { config } from "../../../apps/server/src/config";
 import { findUsersBasicInfoByIds, organizationRepo } from "../../repositories";
-import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
 import { findMachineNamesByIds } from "../../repositories/machine-repository";
 import type { AcpConnectionSnapshot } from "../../types/store";
-import { getAgentConfigById as getAgentConfigByIdFromConfig } from "../config/index";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";
 import type {
@@ -83,7 +82,7 @@ const defaultDeps: ObserverServiceDeps = {
   },
   // 调用时经 preload Proxy 属性访问转发到当前 stub，stub 才能生效（setup-mocks 注释）
   getEnvironment: (id) => environmentRepo.getById(id),
-  getAgentConfigById: (id) => getAgentConfigByIdFromConfig(id),
+  getAgentConfigById: (id) => getAgentConfigById(id),
   getDefaultMachineId: () => config.defaultMachineId ?? null,
   getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
   listOrganizationNamesByIds: (ids) => organizationRepo.listNamesByIds(ids),

@@ -5,7 +5,7 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import * as actualKnowledgeBaseService from "@fenix/resource-knowledge/server";
+import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "../../../../src/transport/file-ws-handler";
 import * as actualFileWsRequests from "../../../../src/transport/file-ws-requests";
@@ -216,6 +216,9 @@ mock.module("../../../../db", createDbMock);
 // PHY-03 runtime 包直接引用宿主 DB；同时注册其规范绝对相对路径，避免 Bun 按导入
 // specifier 区分模块身份时绕过现有 `../db` 测试替身。
 mock.module("../../../../apps/server/src/db", createDbMock);
+
+// 先注册 DB 替身，再载入会由公开入口触达认证路由的知识库服务，避免真实 DB/auth 初始化循环。
+const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await import("@fenix/resource-knowledge/server");
 
 // ── resource-permission repository ──
 

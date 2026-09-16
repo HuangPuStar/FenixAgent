@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
+import { getReadableAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../../../../../apps/server/src/db";
 import { agentConfig, environment, machine } from "../../../../../apps/server/src/db/schema";
 import { ConflictError, NotFoundError, ValidationError } from "../../../../../apps/server/src/errors";
-import { resolveAgentNode } from "../../../../../src/services/config/agent-config";
-import * as configPg from "../../../../../src/services/config/index";
 import type {
   CreateWebEnvironmentParams,
   UpdateWebEnvironmentParams,
@@ -156,7 +155,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
 
   // Agent 配置校验：环境必须绑定 Agent 配置，并自动填充 machineName
   let machineName: string | undefined;
-  const agent = await configPg.getReadableAgentConfigById(
+  const agent = await getReadableAgentConfigById(
     { organizationId: organizationId ?? userId, userId, role: "owner" },
     params.agentConfigId,
   );
@@ -229,7 +228,7 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     patch.name = params.name;
   }
   if (params.agentConfigId !== undefined) {
-    const agent = await configPg.getReadableAgentConfigById(
+    const agent = await getReadableAgentConfigById(
       { organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" },
       params.agentConfigId,
     );

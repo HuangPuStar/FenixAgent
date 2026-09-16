@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { AgentResourceAccessSchema } from "./config.schema";
+import { ResourceAccessSchema } from "./resource-access.schema";
 
 /**
  * Model / Provider 列表查询参数。
@@ -111,7 +111,7 @@ export const ApiProviderListItemSchema = z
     protocol: z.enum(["openai", "anthropic"]).describe("Provider 协议类型。"),
     baseUrl: z.string().nullable().describe("Provider Base URL。"),
     modelCount: z.number().int().min(0).describe("该 Provider 下的模型数量。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("Provider 列表项。");
 
@@ -154,7 +154,7 @@ export const ApiProviderDetailSchema = z
     baseUrl: z.string().nullable().describe("Provider Base URL。"),
     extraOptions: z.record(z.string(), z.unknown()).nullable().describe("Provider 扩展配置。"),
     models: z.array(ApiProviderModelSummarySchema).describe("该 Provider 下的模型摘要列表。"),
-    resourceAccess: AgentResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
   })
   .describe("Provider 详情。");
 

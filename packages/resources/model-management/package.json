@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@fenix/access-control": "workspace:*",
+    "@fenix/agent-config": "workspace:*",
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",
     "drizzle-orm": "^0.45.2",

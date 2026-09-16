@@ -8,7 +8,7 @@ import {
   filterValidKnowledgeIds,
   mapModelOptions,
   mergeSelectedOptions,
-} from "../pages/agent-panel/agent-editor/agent-editor-model";
+} from "../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentDetail } from "../types/config";
 
 const detail: AgentDetail = {

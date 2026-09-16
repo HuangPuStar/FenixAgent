@@ -26,6 +26,28 @@ export default defineConfig({
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
+      "@/src/api/agents": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/agents.ts"),
+      "@/src/api/sites": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/sites.ts"),
+      "@/src/components/agent-panel/AgentSitesCard": path.resolve(
+        __dirname,
+        "../../packages/resources/agent-config/web/components/agent-panel/AgentSitesCard.tsx",
+      ),
+      "@/src/components/agent-panel/MountSiteDialog": path.resolve(
+        __dirname,
+        "../../packages/resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx",
+      ),
+      "@/src/pages/agent-panel/agent-editor": path.resolve(
+        __dirname,
+        "../../packages/resources/agent-config/web/pages/agent-panel/agent-editor",
+      ),
+      "@/src/pages/agent-panel/components/AgentGenerationForm": path.resolve(
+        __dirname,
+        "../../packages/resources/agent-config/web/pages/agent-panel/components/AgentGenerationForm.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentSitesPage": path.resolve(
+        __dirname,
+        "../../packages/resources/agent-config/web/pages/agent-panel/pages/AgentSitesPage.tsx",
+      ),
       "@/src/api/skills": path.resolve(__dirname, "../../packages/resources/skill/web/api/skills.ts"),
       "@/src/api/mcp": path.resolve(__dirname, "../../packages/resources/mcp/web/api/mcp.ts"),
       "@/src/api/knowledge-bases": path.resolve(

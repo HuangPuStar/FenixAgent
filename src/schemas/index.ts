@@ -38,26 +38,7 @@ export {
   AcpRegistrySecretQuerySchema,
   AcpRelayParamsSchema,
 } from "./acp.schema";
-export {
-  type AgentGenerationResponse,
-  AgentGenerationResponseSchema,
-  type AgentGenerationResult,
-  AgentGenerationResultSchema,
-  type AgentGenerationSkill,
-  AgentGenerationSkillSchema,
-} from "./agent-generation.schema";
-// Agent Sites
-export {
-  type AgentSiteApp,
-  AgentSiteAppDetailResponseSchema,
-  AgentSiteAppListResponseSchema,
-  AgentSiteAppOkResponseSchema,
-  AgentSiteAppSchema,
-  type CreateAgentSiteAppRequest,
-  CreateAgentSiteAppRequestSchema,
-  type UpdateAgentSiteAppRequest,
-  UpdateAgentSiteAppRequestSchema,
-} from "./agent-site.schema";
+// Branding
 export {
   type BrandingConfig,
   type BrandingConfigResponse,
@@ -105,10 +86,6 @@ export {
 } from "./common.schema";
 // Config
 export {
-  type AgentDetail,
-  AgentDetailSchema,
-  type AgentInfo,
-  AgentInfoSchema,
   type ConfigAction,
   ConfigActionSchema,
   type ConfigBody,

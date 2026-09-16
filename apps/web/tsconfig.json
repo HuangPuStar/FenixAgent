@@ -14,6 +14,23 @@
       "@/src/i18n": ["./src/i18n/index.ts"],
       "@/src/api/request": ["./src/api/request.ts"],
       "@/src/api/helpers": ["./src/api/helpers.ts"],
+      "@/src/api/agents": ["../../packages/resources/agent-config/web/api/agents.ts"],
+      "@/src/api/sites": ["../../packages/resources/agent-config/web/api/sites.ts"],
+      "@/src/components/agent-panel/AgentSitesCard": [
+        "../../packages/resources/agent-config/web/components/agent-panel/AgentSitesCard.tsx"
+      ],
+      "@/src/components/agent-panel/MountSiteDialog": [
+        "../../packages/resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx"
+      ],
+      "@/src/pages/agent-panel/agent-editor/*": [
+        "../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/*"
+      ],
+      "@/src/pages/agent-panel/components/AgentGenerationForm": [
+        "../../packages/resources/agent-config/web/pages/agent-panel/components/AgentGenerationForm.tsx"
+      ],
+      "@/src/pages/agent-panel/pages/AgentSitesPage": [
+        "../../packages/resources/agent-config/web/pages/agent-panel/pages/AgentSitesPage.tsx"
+      ],
       "@/src/api/skills": ["../../packages/resources/skill/web/api/skills.ts"],
       "@/src/api/mcp": ["../../packages/resources/mcp/web/api/mcp.ts"],
       "@/src/api/knowledge-bases": ["../../packages/resources/knowledge/web/api/knowledge-bases.ts"],

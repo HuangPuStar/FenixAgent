@@ -12,7 +12,7 @@
       "@/src/api/environments": ["../../../packages/agent-runtime/web/api/environments.ts"],
       "@/src/api/fs": ["../../../web/src/api/fs.ts"],
       "@/src/api/request": ["../../../apps/web/src/api/request.ts"],
-      "@/src/api/sites": ["../../../web/src/api/sites.ts"],
+      "@/src/api/sites": ["../../agent-config/web/api/sites.ts"],
       "@/src/components/agent-panel/WorkbenchPanel": ["../../../web/src/components/agent-panel/WorkbenchPanel.tsx"],
       "@/src/components/file-icon-helper": ["../../../web/src/components/file-icon-helper.tsx"],
       "@/src/i18n": ["../../../apps/web/src/i18n/index.ts"],

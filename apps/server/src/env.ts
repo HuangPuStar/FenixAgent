@@ -1,5 +1,5 @@
+import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
 import { z } from "zod/v4";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "../../../src/services/agent-system-prompt";
 import { ENGINE_TYPES } from "../../../src/services/config/types";
 
 const databaseConnectionPoolSchema = z.object({
