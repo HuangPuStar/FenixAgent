@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import apiWorkflowRoutes from "../routes/api/workflows";
+import { apiWorkflowRoutes } from "@fenix/resource-workflow/server";
 import webRoutes from "../routes/web";
 
 const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/references");

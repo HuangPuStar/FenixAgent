@@ -1,8 +1,8 @@
-import * as z from "zod/v4";
 import {
   ApiSystemErrorResponseSchema,
   ApiSystemUserListResponseSchema,
-} from "../../../../../../src/schemas/api-system.schema";
+} from "@fenix/resource-identity-admin/server/schema";
+import * as z from "zod/v4";
 
 const UsageDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期必须为 YYYY-MM-DD 格式。");
 

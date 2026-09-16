@@ -252,7 +252,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
 /** 从系统 admin 组织反查 builtin 名称对应的 skill id，供后续绑定 AgentConfig 或公开设置。 */
 async function listBuiltinSkillIds(_ctx: AuthContext): Promise<string[]> {
   // builtin 绑定固定来自系统 admin 组织，不从当前业务组织解析同名 skill。
-  const { ensureSystemAdmin } = await import("./system-admin");
+  const { ensureSystemAdmin } = await import("@fenix/resource-identity-admin/server/system-admin");
   const admin = await ensureSystemAdmin();
   const systemSkills = await listStoredSkills({
     organizationId: admin.organization.id,

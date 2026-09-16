@@ -52,17 +52,17 @@
 | Agent 记忆 | Agent 记忆配置及其与 Agent 的绑定；记忆相关控制台页面与 Hindsight 查询入口 | `src/repositories/agent-memory-config.ts`、`src/services/agent-memory.ts`、`web/src/pages/hindsight/`、`src/routes/web/hindsight.ts` | 依赖 Agent 配置和组织；被 Agent 运行消费 | 可选功能包 `agent-memory`；记忆后端为插件点 |
 | 环境配置 | 环境的创建、查询、修改、删除、启动和停止；绑定 Agent 配置与机器；ACP 环境参数；启动锁；环境状态管理 | `src/services/environment*.ts`、`src/repositories/environment*.ts`、`src/routes/web/environments.ts` | 依赖组织、机器、工作区、实例编排；被运行时使用 | 核心资源包 `environments` |
 | 沙盒资源池与沙盒实例 | 沙盒 Provider 注册；资源池、实例的 CRUD；默认池初始化；分配、复用、删除和重建；重启恢复；集群／服务器／隧道管理 API | `src/services/sandbox/`、`src/repositories/sandbox-*.ts`、`src/routes/api/sandbox*.ts`、`packages/sandbox-provider/`、`packages/opensandbox-cluster/` | 依赖环境、工作区、机器与实例编排 | 可选基础包 `sandbox`；Provider、集群实现为插件点 |
-| IM 通道与路由 | IM 通道配置查询；通道路由；创建、删除、启停和更新绑定；按通道把消息路由到 Agent | `src/services/channel-provider.ts`、`src/services/channel-binding.ts`、`src/repositories/channel-binding.ts`、`src/routes/web/channels.ts` | 依赖 Agent 配置、组织和电话号处理 | 可选功能包 `channels`；每个 IM Provider 为插件点 |
+| IM 通道与路由 | IM 通道配置查询；通道路由；创建、删除、启停和更新绑定；按通道把消息路由到 Agent | `packages/resources/channel/` | 依赖 Agent 配置、组织和电话号处理 | 可选功能包 `channels`；每个 IM Provider 为插件点 |
 
 ## 三、自动化与编排模块
 
 | 模块 | 功能点（完整业务能力） | 当前主要实现位置 | 主要依赖／被依赖方 | AppBuilder 建议角色 |
 | --- | --- | --- | --- | --- |
-| 工作流定义与版本 | YAML 工作流创建、读取、更新、删除、复制、校验、导入导出；版本管理、发布与回滚；工作流看板与用户配置 | `src/services/workflow/resolve-yaml.ts`、`src/repositories/workflow-def.ts`、`src/routes/web/workflow-defs.ts`、`packages/workflow-engine/` | 被执行、触发器和控制台使用；引用 Agent、MCP、模型与环境 | 可选功能包 `workflow-definition` |
-| 工作流执行、运行记录与恢复 | DAG 解析、调度、并行、重试、取消、审批、快照恢复；运行创建、查询、终止；节点输出、事件流（SSE）、持久化与实例租约；Agent Chat transport | `src/services/workflow/`、`src/routes/web/workflow-engine.ts`、`src/routes/web/workflow-runs.ts`、`src/routes/web/workflow-sse.ts`、`packages/workflow-engine/` | 依赖 Agent 运行、实例、数据库、事件流 | 可选功能包 `workflow-runtime` |
-| 工作流节点与自定义工具 | 内置 Agent/API/Shell/Python/循环/子工作流/审批等节点执行器；扫描注册自定义工具；Slurm/SSH 作业传输；自定义节点元数据查询 | `packages/workflow-engine/src/executor/`、`packages/workflow-engine/src/plugins/`、`src/services/workflow/custom-tools.ts`、`src/routes/web/workflow-custom-tools.ts` | 被工作流运行时加载；可调用 Agent、远程资源 | 工作流插件 SDK + 节点插件 |
-| 定时任务 | 定时任务 CRUD、启停、手动触发、下次执行计算；HTTP 与 Agent 执行器；执行日志与失败记录；调度服务启动/停止 | `src/services/scheduler/`、`src/services/task-v2.ts`、`src/repositories/task-v2.ts`、`src/routes/web/tasks-v2.ts` | 依赖 Agent 运行、HTTP、组织与日志 | 可选功能包 `scheduler`；执行器为插件点 |
-| 工作流触发器与 Webhook | 工作流触发器 CRUD；生成与校验公共 Hash；接收外部 Webhook 并启动相应工作流 | `src/services/workflow-trigger.ts`、`src/repositories/workflow-trigger.ts`、`src/routes/hooks.ts`、`src/routes/web/workflow-defs.ts` | 依赖工作流运行、认证与限流 | 可选功能包 `workflow-triggers`；触发器类型为插件点 |
+| 工作流定义与版本 | YAML 工作流创建、读取、更新、删除、复制、校验、导入导出；版本管理、发布与回滚；工作流看板与用户配置 | `packages/resources/workflow/`、`packages/workflow-engine/` | 被执行、触发器和控制台使用；引用 Agent、MCP、模型与环境 | 可选功能包 `workflow-definition` |
+| 工作流执行、运行记录与恢复 | DAG 解析、调度、并行、重试、取消、审批、快照恢复；运行创建、查询、终止；节点输出、事件流（SSE）、持久化与实例租约；Agent Chat transport | `packages/resources/workflow/`、`packages/workflow-engine/` | 依赖 Agent 运行、实例、数据库、事件流 | 可选功能包 `workflow-runtime` |
+| 工作流节点与自定义工具 | 内置 Agent/API/Shell/Python/循环/子工作流/审批等节点执行器；扫描注册自定义工具；Slurm/SSH 作业传输；自定义节点元数据查询 | `packages/workflow-engine/src/executor/`、`packages/workflow-engine/src/plugins/`、`packages/resources/workflow/` | 被工作流运行时加载；可调用 Agent、远程资源 | 工作流插件 SDK + 节点插件 |
+| 定时任务 | 定时任务 CRUD、启停、手动触发、下次执行计算；HTTP 与 Agent 执行器；执行日志与失败记录；调度服务启动/停止 | `packages/resources/task/` | 依赖 Agent 运行、HTTP、组织与日志 | 可选功能包 `scheduler`；执行器为插件点 |
+| 工作流触发器与 Webhook | 工作流触发器 CRUD；生成与校验公共 Hash；接收外部 Webhook 并启动相应工作流 | `packages/resources/workflow/`、`src/routes/hooks.ts` | 依赖工作流运行、认证与限流 | 可选功能包 `workflow-triggers`；触发器类型为插件点 |
 | Peri 任务详情 | 聚合和持久化 Agent 运行过程中的 Peri 任务详情；详情查询与 Chat 投影衔接 | `src/services/peri-task-detail-*.ts`、`src/routes/web/peri-task-details.ts`、`packages/chat-channel/` | 依赖 ACP、Chat 和实例 | 可并入 `agent-session-control` 的可选子模块 |
 
 ## 四、会话协作模块

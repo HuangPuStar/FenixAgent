@@ -1,0 +1,16 @@
+{
+  "name": "@fenix/resource-channel",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fenix/agent-runtime": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "zod": "^4.4.3"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  }
+}

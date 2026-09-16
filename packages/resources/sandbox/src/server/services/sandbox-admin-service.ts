@@ -1,6 +1,6 @@
+import { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
 import { findMachinesBasicInfoByIds } from "@fenix/resource-machine/server";
 import type { SandboxInstance, SandboxPool } from "../../../../../../apps/server/src/db/schema";
-import { organizationRepo } from "../../../../../../src/repositories/organization";
 import { findUsersBasicInfoByIds } from "../../../../../../src/repositories/user";
 import { findSandboxInstanceById, listSandboxInstances } from "../repositories/sandbox-instance-repository";
 import {

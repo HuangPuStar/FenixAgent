@@ -11,9 +11,9 @@ import {
   setPublicRead,
   setResourcePermissionRepoForTesting,
 } from "@fenix/access-control/server";
+import type { IOrganizationRepo } from "@fenix/resource-identity-admin/server/repository";
 import { AppError } from "../../apps/server/src/errors";
 import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import type { IOrganizationRepo } from "../repositories/organization";
 import type {
   CreateResourcePermissionGrantInput,
   DeleteResourcePermissionGrantInput,

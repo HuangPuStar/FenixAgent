@@ -1,3 +1,5 @@
+export type { IOrganizationRepo } from "@fenix/resource-identity-admin/server/repository";
+export { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
 export type {
   AgentKnowledgeBindingRow,
   IAgentKnowledgeBindingRepo,
@@ -8,10 +10,6 @@ export type {
 } from "@fenix/resource-knowledge/server";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "@fenix/resource-knowledge/server";
 export { agentEngineRepo } from "./agent-engine";
-export type { ChannelBindingInsert, ChannelBindingRow, IChannelBindingRepo } from "./channel-binding";
-export { channelBindingRepo } from "./channel-binding";
-export type { IOrganizationRepo } from "./organization";
-export { organizationRepo } from "./organization";
 export type {
   CreateResourcePermissionGrantInput,
   DeleteResourcePermissionGrantInput,
@@ -26,29 +24,9 @@ export type {
 export { resourcePermissionRepo } from "./resource-permission";
 export type { IShareLinkRepo } from "./share-link";
 export { shareLinkRepo } from "./share-link";
-export type { ITaskExecutionLogRepo, TaskExecutionLogRow } from "./task";
-export { taskExecutionLogRepo } from "./task";
 export type { ITokenRepo, TokenRecord } from "./token";
 export { tokenRepo } from "./token";
 export { findUsersBasicInfoByIds } from "./user";
-export type { AuthCtx as WorkflowAuthCtx, WorkflowDefRow, WorkflowVersionRow } from "./workflow-def";
-export {
-  createWorkflowDef,
-  deleteWorkflowDef,
-  getVersions,
-  getVersionYaml,
-  getWorkflowDef,
-  listRecoverableWorkflows,
-  listWorkflowDefs,
-  publishVersion,
-  recoverWorkflows,
-  restoreVersionToDraft,
-  saveDraft,
-  setLatestVersion,
-  updateWorkflowMeta,
-} from "./workflow-def";
-export type { IWorkflowTriggerRepo, WorkflowTriggerInsert, WorkflowTriggerRow } from "./workflow-trigger";
-export { workflowTriggerRepo } from "./workflow-trigger";
 
 import { tokenRepo } from "./token";
 

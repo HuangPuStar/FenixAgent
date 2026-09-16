@@ -1,11 +1,11 @@
 import { canReadResource } from "@fenix/access-control/server";
 import { findAgentConfigNamesByIds } from "@fenix/agent-config/server";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
+import { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
 import { sql } from "drizzle-orm";
 import { config } from "../../../../../../apps/server/src/config";
 import { db } from "../../../../../../apps/server/src/db";
 import { agentConfig, member, organization, user } from "../../../../../../apps/server/src/db/schema";
-import { organizationRepo } from "../../../../../../src/repositories/organization";
 import { findUsersBasicInfoByIds } from "../../../../../../src/repositories/user";
 import {
   deleteModelGatewayCredential,

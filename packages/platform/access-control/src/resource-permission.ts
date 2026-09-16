@@ -1,6 +1,6 @@
 import { AppError } from "../../../../apps/server/src/errors";
 import type { AuthContext } from "../../../../apps/server/src/plugins/auth";
-import { type IOrganizationRepo, organizationRepo } from "../../../../src/repositories/organization";
+import { type IOrganizationRepo, organizationRepo } from "../../../../src/repositories";
 import {
   type IResourcePermissionRepo,
   type ResourcePermissionAccessibleRow,

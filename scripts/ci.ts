@@ -111,6 +111,14 @@ const STEPS = [
       return summary.length > 0 ? summary.join("\n") : null;
     },
   },
+  {
+    name: "migrated-resource-tests",
+    cmd: "bun test packages/resources/workflow/src/__tests__/ packages/resources/task/src/__tests__/ packages/resources/channel/src/__tests__/ packages/resources/workflow/web/__tests__/ packages/resources/task/web/__tests__/ 2>&1",
+    filter: (out: string) => {
+      const summary = out.split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l) || /^Ran /.test(l));
+      return summary.length > 0 ? summary.join("\n") : null;
+    },
+  },
 ] as const;
 
 function runStep(step: (typeof STEPS)[number]): { ok: boolean; output: string | null; ms: number } {

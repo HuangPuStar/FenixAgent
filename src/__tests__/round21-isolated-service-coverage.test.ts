@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { toInvocationDate } from "@fenix/resource-task/server";
 import { clearAllCache, getCache, getCacheBackend } from "../../apps/server/src/services/cache";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../../apps/server/src/services/org-context";
 import { resetAllStubs, stubAuthApi, stubDb } from "../../apps/server/src/test-utils/helpers";
 import { eventService } from "../services/event-service";
-import { toInvocationDate } from "../services/scheduler/utils";
 import { getAllEventBuses } from "../transport/event-bus";
 
 const USER_ID = "user-round21";

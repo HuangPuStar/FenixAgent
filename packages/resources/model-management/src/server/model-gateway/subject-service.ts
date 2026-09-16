@@ -1,7 +1,7 @@
+import type { SystemApiPagination, SystemApiUserRecord } from "@fenix/resource-identity-admin/server/system-api";
 import { and, ilike, or } from "drizzle-orm";
 import { db } from "../../../../../../apps/server/src/db";
 import { agentConfig } from "../../../../../../apps/server/src/db/schema";
-import type { SystemApiPagination, SystemApiUserRecord } from "../../../../../../src/services/system-api";
 import { findModelGatewayUsers } from "../repositories/model-gateway-subject";
 
 export interface ModelGatewaySubjectAgent {

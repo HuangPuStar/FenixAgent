@@ -26,6 +26,19 @@ export default defineConfig({
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
+      "@/src/api/api-keys": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/api-keys.ts"),
+      "@/src/api/branding": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/branding.ts"),
+      "@/src/api/organizations": path.resolve(
+        __dirname,
+        "../../packages/resources/identity-admin/web/api/organizations.ts",
+      ),
+      "@/src/api/observer": path.resolve(__dirname, "../../packages/resources/observer/web/api/observer.ts"),
+      "@/src/api/system-logs": path.resolve(__dirname, "../../packages/resources/observer/web/api/system-logs.ts"),
+      "@/src/api/system-people-tree": path.resolve(
+        __dirname,
+        "../../packages/resources/observer/web/api/system-people-tree.ts",
+      ),
+      "@/src/api/prod-views": path.resolve(__dirname, "../../packages/resources/prod-view/web/api/prod-views.ts"),
       "@/src/api/agents": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/agents.ts"),
       "@/src/api/sites": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/sites.ts"),
       "@/src/components/agent-panel/AgentSitesCard": path.resolve(
@@ -112,6 +125,64 @@ export default defineConfig({
         "../../packages/resources/model-management/web/api/model-gateway.ts",
       ),
       "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
+      "@/src/api/workflow-defs": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflow-defs.ts"),
+      "@/src/api/workflow-engine": path.resolve(
+        __dirname,
+        "../../packages/resources/workflow/web/api/workflow-engine.ts",
+      ),
+      "@/src/api/workflow-sse": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflow-sse.ts"),
+      "@/src/api/workflows": path.resolve(__dirname, "../../packages/resources/workflow/web/api/workflows.ts"),
+      "@/src/api/tasks-v2": path.resolve(__dirname, "../../packages/resources/task/web/api/tasks-v2.ts"),
+      "@/src/api/channels": path.resolve(__dirname, "../../packages/resources/channel/web/api/channels.ts"),
+      "@/src/pages/agent-panel/pages/AgentTasksPage": path.resolve(
+        __dirname,
+        "../../packages/resources/task/web/pages/agent-panel/pages/AgentTasksPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentChannelsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentApiKeysPage": path.resolve(
+        __dirname,
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentApiKeysPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentOrganizationsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/agent-organizations-utils": path.resolve(
+        __dirname,
+        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/agent-organizations-utils.ts",
+      ),
+      "@/src/pages/admin/AdminLogsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/observer/web/pages/admin/AdminLogsPage.tsx",
+      ),
+      "@/src/pages/admin/AdminObserverPage": path.resolve(
+        __dirname,
+        "../../packages/resources/observer/web/pages/admin/AdminObserverPage.tsx",
+      ),
+      "@/src/pages/admin/AdminPeoplePage": path.resolve(
+        __dirname,
+        "../../packages/resources/observer/web/pages/admin/AdminPeoplePage.tsx",
+      ),
+      "@/src/pages/agent-panel/pages/AgentProdViewsPage": path.resolve(
+        __dirname,
+        "../../packages/resources/prod-view/web/pages/agent-panel/pages/AgentProdViewsPage.tsx",
+      ),
+      "@/src/pages/agent-panel/ProdViewsPanel": path.resolve(
+        __dirname,
+        "../../packages/resources/prod-view/web/pages/agent-panel/ProdViewsPanel.tsx",
+      ),
+      "@/src/pages/prod-view/ProdViewPage": path.resolve(
+        __dirname,
+        "../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx",
+      ),
+      "@/src/lib/prod-view-modules": path.resolve(
+        __dirname,
+        "../../packages/resources/prod-view/web/lib/prod-view-modules.ts",
+      ),
+      "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
       "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
       "@/src/hooks/use-chat-state": path.resolve(__dirname, "../../packages/agent-runtime/web/hooks/use-chat-state.ts"),
       "@/src/hooks/use-session-state": path.resolve(
