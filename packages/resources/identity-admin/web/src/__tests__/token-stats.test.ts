@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { computeStats, formatTokenCount } from "../lib/token-stats";
-import type { ThreadEntry } from "../lib/types";
+import { computeStats, formatTokenCount } from "../../../../../../web/src/lib/token-stats";
+import type { ThreadEntry } from "../../../../../../web/src/lib/types";
 
 // 小于 1000 的数字原样显示
 describe("formatTokenCount", () => {

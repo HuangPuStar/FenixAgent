@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllRepos } from "../../../../src/repositories";
+import { tokenRepo } from "@fenix/resource-identity-admin/server";
 import { issueToken, resolveToken } from "../auth/token";
 
 // ---------- token ----------
 
 describe("issueToken / resolveToken", () => {
   beforeEach(() => {
-    resetAllRepos();
+    tokenRepo.reset?.();
   });
 
   test("issues and resolves a token", async () => {

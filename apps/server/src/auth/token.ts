@@ -1,4 +1,4 @@
-import { tokenRepo } from "../../../../src/repositories";
+import { tokenRepo } from "@fenix/resource-identity-admin/server";
 
 let tokenCounter = 0;
 

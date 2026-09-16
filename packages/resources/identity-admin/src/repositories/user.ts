@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
-import { db } from "../../apps/server/src/db";
-import { user } from "../../apps/server/src/db/schema";
+import { db } from "../../../../../apps/server/src/db";
+import { user } from "../../../../../apps/server/src/db/schema";
 
 /**
  * 按用户 ID 批量查询基础展示信息。

@@ -8,6 +8,7 @@ import { webChannelsRoutes } from "@fenix/resource-channel/server";
 import {
   webApiKeysRoutes as webApiKeys,
   webBrandingRoutes as webBranding,
+  webControlRoutes as webControl,
   webOrganizationsRoutes as webOrganizations,
 } from "@fenix/resource-identity-admin/server";
 import { webKnowledgeBaseRoutes as webKnowledgeBases } from "@fenix/resource-knowledge/server";
@@ -36,6 +37,7 @@ import webPeriTaskDetails from "./peri-task-details";
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webApiKeys)
   .use(webBranding)
+  .use(webControl)
   .use(webSidebarConfig)
   .use(webAgentSites)
   .use(webChannelsRoutes)

@@ -4,6 +4,7 @@ import {
   assertInternalWritable,
   buildResourceAccess,
   canReadResource,
+  configureResourcePermissionService,
   decorateResourceAccess,
   getPublicReadMap,
   listReadableResourceRefs,
@@ -11,9 +12,6 @@ import {
   setPublicRead,
   setResourcePermissionRepoForTesting,
 } from "@fenix/access-control/server";
-import type { IOrganizationRepo } from "@fenix/resource-identity-admin/server/repository";
-import { AppError } from "../../apps/server/src/errors";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
 import type {
   CreateResourcePermissionGrantInput,
   DeleteResourcePermissionGrantInput,
@@ -21,9 +19,10 @@ import type {
   ResourcePermissionAccessibleRow,
   ResourcePermissionOwnedRow,
 } from "../repositories/resource-permission";
+import type { ResourcePermissionAuthContext, ResourcePermissionOrganizationRepo } from "../resource-permission";
 
-const ctx: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
-const otherCtx: AuthContext = { organizationId: "org-b", userId: "user-b", role: "member" };
+const ctx: ResourcePermissionAuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
+const otherCtx: ResourcePermissionAuthContext = { organizationId: "org-b", userId: "user-b", role: "member" };
 
 type ResourcePermissionGrant = Awaited<ReturnType<IResourcePermissionRepo["createGrant"]>>;
 
@@ -48,7 +47,7 @@ function createRepo(overrides: Partial<IResourcePermissionRepo> = {}): IResource
   };
 }
 
-function createOrganizationRepo(names: Record<string, string> = {}): IOrganizationRepo {
+function createOrganizationRepo(names: Record<string, string> = {}): ResourcePermissionOrganizationRepo {
   return {
     listNamesByIds: async (ids) => new Map(ids.flatMap((id) => (names[id] ? [[id, names[id]]] : []))),
   };
@@ -56,6 +55,10 @@ function createOrganizationRepo(names: Record<string, string> = {}): IOrganizati
 
 beforeEach(() => {
   _resetDeps();
+  configureResourcePermissionService({
+    organizationRepo: { listNamesByIds: async () => new Map() },
+    createError: (message, code, statusCode) => Object.assign(new Error(message), { code, statusCode }),
+  });
 });
 
 afterEach(() => {
@@ -331,7 +334,7 @@ describe("resource-permission 组织隔离与授权边界", () => {
 
   // 外部资源不得开启公开读。
   test("外部资源开启公开读返回 FORBIDDEN", async () => {
-    expect(() => assertInternalWritable(ctx, "skill", "skill-1", "org-b")).toThrow(AppError);
+    expect(() => assertInternalWritable(ctx, "skill", "skill-1", "org-b")).toThrow("External resource is read-only");
     expect(() => assertInternalWritable(ctx, "skill", "skill-1", "org-b")).toThrow("External resource is read-only");
   });
 
@@ -350,7 +353,9 @@ describe("resource-permission 组织隔离与授权边界", () => {
 
   // 不同认证上下文只能管理自身组织资源。
   test("不同组织上下文不能管理对方资源", () => {
-    expect(() => assertInternalWritable(otherCtx, "provider", "provider-1", "org-a")).toThrow(AppError);
+    expect(() => assertInternalWritable(otherCtx, "provider", "provider-1", "org-a")).toThrow(
+      "External resource is read-only",
+    );
   });
 
   // 依赖复位后不应沿用先前的注入实现。

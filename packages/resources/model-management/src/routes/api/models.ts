@@ -1,6 +1,3 @@
-import * as configPg from "../../server/config/provider";
-import { buildModelData } from "../../server/config/provider";
-import * as modelConfig from "../../server/config/model";
 import Elysia from "elysia";
 import { AppError } from "../../../../../../apps/server/src/errors";
 import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
@@ -26,6 +23,9 @@ import {
   type ApiProviderUpsertBody,
   ApiProviderUpsertBodySchema,
 } from "../../../../../../src/schemas/api-model.schema";
+import * as modelConfig from "../../server/config/model";
+import * as configPg from "../../server/config/provider";
+import { buildModelData } from "../../server/config/provider";
 
 /**
  * 将业务异常映射到对外 API 的稳定错误结构。

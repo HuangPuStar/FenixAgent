@@ -224,7 +224,7 @@ const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await impo
 
 // ── resource-permission repository ──
 
-mock.module("../../../../src/repositories/resource-permission", () => ({
+mock.module("../../../../packages/platform/access-control/src/repositories/resource-permission", () => ({
   resourcePermissionRepo: resourcePermissionRepoStub,
 }));
 
@@ -480,10 +480,10 @@ bindFileWsPort({
   parseFileWsMessage: actualFileWsPayload.parseFileWsMessage,
 });
 setRegistryRouteDeps({
-  createMachine: ((...args) => registryRegistry.get("createMachine")(...args)) as never,
-  deleteMachine: ((...args) => registryRegistry.get("deleteMachine")(...args)) as never,
-  getMachine: ((...args) => registryRegistry.get("getMachine")(...args)) as never,
-  listEvents: ((...args) => registryRegistry.get("listEvents")(...args)) as never,
-  listMachines: ((...args) => registryRegistry.get("listMachines")(...args)) as never,
-  updateMachine: ((...args) => registryRegistry.get("updateMachine")(...args)) as never,
+  createMachine: ((...args: unknown[]) => registryRegistry.get("createMachine")(...args)) as never,
+  deleteMachine: ((...args: unknown[]) => registryRegistry.get("deleteMachine")(...args)) as never,
+  getMachine: ((...args: unknown[]) => registryRegistry.get("getMachine")(...args)) as never,
+  listEvents: ((...args: unknown[]) => registryRegistry.get("listEvents")(...args)) as never,
+  listMachines: ((...args: unknown[]) => registryRegistry.get("listMachines")(...args)) as never,
+  updateMachine: ((...args: unknown[]) => registryRegistry.get("updateMachine")(...args)) as never,
 });

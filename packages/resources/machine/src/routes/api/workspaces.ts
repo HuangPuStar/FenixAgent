@@ -1,4 +1,3 @@
-import { uploadWorkspaceFiles } from "../../server/services/api-workspace";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
@@ -6,6 +5,7 @@ import {
   ApiWorkspaceEnvironmentParamsSchema,
   ApiWorkspaceFileUploadResponseSchema,
 } from "../../../../../../src/schemas/api-workspace.schema";
+import { uploadWorkspaceFiles } from "../../server/services/api-workspace";
 
 const ApiErrorResponseSchema = z.object({
   error: z.object({

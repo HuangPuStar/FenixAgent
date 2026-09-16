@@ -1,4 +1,3 @@
-import * as configPg from "../../../server/config/provider";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { AppError } from "../../../../../../../apps/server/src/errors";
@@ -11,6 +10,7 @@ import {
 } from "../../../../../../../src/schemas/config.schema";
 import { getUserConfig, setUserConfig } from "../../../../../../../src/services/config/user-config";
 import { configError, configSuccess } from "../../../../../../../src/services/config-utils";
+import * as configPg from "../../../server/config/provider";
 
 const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
   "model-preferences-body": ModelPreferencesBodySchema,

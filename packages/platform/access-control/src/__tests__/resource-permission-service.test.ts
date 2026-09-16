@@ -3,23 +3,23 @@ import {
   _resetDeps,
   assertInternalWritable,
   canReadResource,
+  configureResourcePermissionService,
   decorateResourceAccess,
   listReadableResourceRefs,
   setOrganizationRepoForTesting,
   setPublicRead,
+  setResourcePermissionRepoForTesting,
 } from "@fenix/access-control/server";
-import { AppError } from "../../apps/server/src/errors";
-import type { AuthContext } from "../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubResourcePermissionRepo } from "../../apps/server/src/test-utils/helpers";
-import type { ResourcePermissionGrantRow } from "../repositories/resource-permission";
+import type { IResourcePermissionRepo, ResourcePermissionGrantRow } from "../repositories/resource-permission";
+import type { ResourcePermissionAuthContext } from "../resource-permission";
 
-const ownerCtx: AuthContext = {
+const ownerCtx: ResourcePermissionAuthContext = {
   organizationId: "org_current",
   userId: "user_owner",
   role: "owner",
 };
 
-const memberCtx: AuthContext = {
+const memberCtx: ResourcePermissionAuthContext = {
   organizationId: "org_current",
   userId: "user_member",
   role: "member",
@@ -38,16 +38,30 @@ const grantRow = {
   updatedAt: new Date("2026-06-01T00:00:00.000Z"),
 } satisfies ResourcePermissionGrantRow;
 
+function stubResourcePermissionRepo(overrides: Partial<IResourcePermissionRepo>) {
+  setResourcePermissionRepoForTesting({
+    listByResource: async () => [],
+    createGrant: async () => grantRow,
+    deleteGrant: async () => false,
+    listOwnedByOrganization: async () => [],
+    listAccessibleForPrincipal: async () => [],
+    canReadExternalResource: async () => false,
+    ...overrides,
+  });
+}
+
 describe("resource-permission service", () => {
   beforeEach(() => {
-    resetAllStubs();
     _resetDeps();
-    setOrganizationRepoForTesting({
-      listNamesByIds: async () =>
-        new Map([
-          ["org_current", "Current Team"],
-          ["org_source", "Source Team"],
-        ]),
+    configureResourcePermissionService({
+      organizationRepo: {
+        listNamesByIds: async () =>
+          new Map([
+            ["org_current", "Current Team"],
+            ["org_source", "Source Team"],
+          ]),
+      },
+      createError: (message, code, statusCode) => Object.assign(new Error(message), { code, statusCode }),
     });
   });
 
@@ -179,17 +193,18 @@ describe("resource-permission service", () => {
     });
   });
 
-  // 外部 ownerOrganizationId 写入被拒绝为 403 AppError
+  // 外部 ownerOrganizationId 写入被拒绝为 403 授权错误
   test("assertInternalWritable 拒绝外部资源写入", () => {
-    expect(() => assertInternalWritable(ownerCtx, "skill", "skill_1", "org_source")).toThrow(AppError);
+    expect(() => assertInternalWritable(ownerCtx, "skill", "skill_1", "org_source")).toThrow(
+      "External resource is read-only",
+    );
 
     try {
       assertInternalWritable(ownerCtx, "skill", "skill_1", "org_source");
       throw new Error("should not reach");
     } catch (err) {
-      expect(err).toBeInstanceOf(AppError);
-      expect((err as AppError).code).toBe("FORBIDDEN");
-      expect((err as AppError).statusCode).toBe(403);
+      expect((err as { code: string }).code).toBe("FORBIDDEN");
+      expect((err as { statusCode: number }).statusCode).toBe(403);
     }
   });
 

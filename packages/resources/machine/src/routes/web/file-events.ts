@@ -1,12 +1,12 @@
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
-import { subscribe } from "../../server/services/file-event-queue";
 import Elysia from "elysia";
 import { validateEnv } from "../../../../../../apps/server/src/env";
 import { AppError, NotFoundError } from "../../../../../../apps/server/src/errors";
 import { authenticateRequest, type RequestAuthResult } from "../../../../../../apps/server/src/plugins/auth";
-import { FileEventsSubscribeSchema } from "../../schemas/file-events.schema";
 import type { WsConnection } from "../../../../../../src/transport/ws-types";
+import { FileEventsSubscribeSchema } from "../../schemas/file-events.schema";
+import { subscribe } from "../../server/services/file-event-queue";
 
 /**
  * WS /web/file-events — 文件变更事件订阅端点（docs/arch/12-files.md §4.3）。

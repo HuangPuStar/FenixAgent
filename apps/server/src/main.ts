@@ -6,6 +6,10 @@ interceptConsole();
 const startupLog = createLogger("rcs");
 
 import {
+  configureResourcePermissionRepository,
+  configureResourcePermissionService,
+} from "@fenix/access-control/server";
+import {
   agentSitesCompatApp,
   agentSitesProxyApp,
   apiAgentsRoutes,
@@ -45,7 +49,7 @@ import {
   listProviders,
 } from "@fenix/model-management/server";
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
-import { apiSystemRoutes, ensureSystemAdmin } from "@fenix/resource-identity-admin/server";
+import { apiSystemRoutes, ensureSystemAdmin, organizationRepo } from "@fenix/resource-identity-admin/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   apiWorkspaceRoutes,
@@ -102,12 +106,14 @@ import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
+import { AppError } from "./errors";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
+import { pgResourcePermissionRepo } from "./repositories/resource-permission";
 import { closeCache } from "./services/cache";
 
 setMetaAgentModelResolver(async (ctx) => {
@@ -208,6 +214,14 @@ await sandboxManager.recoverAfterRestart();
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
+
+// 平台授权服务通过宿主端口取得组织目录与统一 HTTP 错误，避免反向依赖 apps/root 实现。
+// builtin 同步会设置 skill 的公开读取权限，因此必须先于 syncBuiltin 完成装配。
+configureResourcePermissionService({
+  organizationRepo,
+  createError: (message, code, statusCode) => new AppError(message, code, statusCode),
+});
+configureResourcePermissionRepository(pgResourcePermissionRepo);
 
 await schedulerService.start();
 

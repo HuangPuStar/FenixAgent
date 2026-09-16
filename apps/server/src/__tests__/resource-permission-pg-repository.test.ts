@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 // @ts-expect-error Bun query import 会加载独立的真实仓储实例，同时 ../db 仍由 preload stubDb Proxy 隔离。
-const { resourcePermissionRepo } = await import("../repositories/resource-permission?round64");
+const { pgResourcePermissionRepo } = await import("../repositories/resource-permission?round64");
 
 const existingGrant = {
   id: "grant-existing",
@@ -71,7 +71,7 @@ describe("round64 resource-permission repository", () => {
   // 按组织、类型和资源读取时返回数据库的授权记录。
   test("listByResource 返回授权记录", async () => {
     const calls = installDb({ selectRows: [[existingGrant]] });
-    await expect(resourcePermissionRepo.listByResource("org-owner", "skill", "skill-1")).resolves.toEqual([
+    await expect(pgResourcePermissionRepo.listByResource("org-owner", "skill", "skill-1")).resolves.toEqual([
       existingGrant,
     ]);
     expect(calls.select).toBe(1);
@@ -80,13 +80,13 @@ describe("round64 resource-permission repository", () => {
   // 无匹配资源时读取结果为空数组。
   test("listByResource 无匹配记录返回空数组", async () => {
     installDb({ selectRows: [[]] });
-    await expect(resourcePermissionRepo.listByResource("org-owner", "provider", "provider-1")).resolves.toEqual([]);
+    await expect(pgResourcePermissionRepo.listByResource("org-owner", "provider", "provider-1")).resolves.toEqual([]);
   });
 
   // 相同组织、主体和动作已存在时复用已有授权。
   test("createGrant 复用已有组织主体授权", async () => {
     const calls = installDb({ selectRows: [[existingGrant]] });
-    await expect(resourcePermissionRepo.createGrant(organizationGrant)).resolves.toEqual(existingGrant);
+    await expect(pgResourcePermissionRepo.createGrant(organizationGrant)).resolves.toEqual(existingGrant);
     expect(calls.insert).toBe(0);
   });
 
@@ -95,7 +95,7 @@ describe("round64 resource-permission repository", () => {
     const publicGrant = { ...existingGrant, principalType: "all", principalId: null };
     const calls = installDb({ selectRows: [[publicGrant]] });
     await expect(
-      resourcePermissionRepo.createGrant({ ...organizationGrant, principalType: "all", principalId: null }),
+      pgResourcePermissionRepo.createGrant({ ...organizationGrant, principalType: "all", principalId: null }),
     ).resolves.toEqual(publicGrant);
     expect(calls.insert).toBe(0);
   });
@@ -104,56 +104,56 @@ describe("round64 resource-permission repository", () => {
   test("createGrant 在不存在时插入记录", async () => {
     const created = { ...existingGrant, id: "grant-created" };
     const calls = installDb({ selectRows: [[]], createdRows: [created] });
-    await expect(resourcePermissionRepo.createGrant(organizationGrant)).resolves.toEqual(created);
+    await expect(pgResourcePermissionRepo.createGrant(organizationGrant)).resolves.toEqual(created);
     expect(calls.insert).toBe(1);
   });
 
   // 创建记录完整传递所属组织。
   test("createGrant 写入所属组织", async () => {
     const calls = installDb({ selectRows: [[]], createdRows: [existingGrant] });
-    await resourcePermissionRepo.createGrant(organizationGrant);
+    await pgResourcePermissionRepo.createGrant(organizationGrant);
     expect(calls.insertValues[0]).toMatchObject({ organizationId: "org-owner" });
   });
 
   // 创建记录完整传递资源类型。
   test("createGrant 写入资源类型", async () => {
     const calls = installDb({ selectRows: [[]], createdRows: [existingGrant] });
-    await resourcePermissionRepo.createGrant(organizationGrant);
+    await pgResourcePermissionRepo.createGrant(organizationGrant);
     expect(calls.insertValues[0]).toMatchObject({ resourceType: "skill" });
   });
 
   // 创建记录完整传递资源标识。
   test("createGrant 写入资源标识", async () => {
     const calls = installDb({ selectRows: [[]], createdRows: [existingGrant] });
-    await resourcePermissionRepo.createGrant(organizationGrant);
+    await pgResourcePermissionRepo.createGrant(organizationGrant);
     expect(calls.insertValues[0]).toMatchObject({ resourceId: "skill-1" });
   });
 
   // 创建记录完整传递组织主体。
   test("createGrant 写入组织主体", async () => {
     const calls = installDb({ selectRows: [[]], createdRows: [existingGrant] });
-    await resourcePermissionRepo.createGrant(organizationGrant);
+    await pgResourcePermissionRepo.createGrant(organizationGrant);
     expect(calls.insertValues[0]).toMatchObject({ principalType: "organization", principalId: "org-reader" });
   });
 
   // 创建记录完整传递创建者。
   test("createGrant 写入创建者", async () => {
     const calls = installDb({ selectRows: [[]], createdRows: [existingGrant] });
-    await resourcePermissionRepo.createGrant(organizationGrant);
+    await pgResourcePermissionRepo.createGrant(organizationGrant);
     expect(calls.insertValues[0]).toMatchObject({ createdBy: "user-owner", action: "read" });
   });
 
   // 删除到匹配授权时报告成功。
   test("deleteGrant 删除匹配授权返回 true", async () => {
     const calls = installDb({ deletedRows: [{ id: "grant-existing" }] });
-    await expect(resourcePermissionRepo.deleteGrant(organizationGrant)).resolves.toBeTrue();
+    await expect(pgResourcePermissionRepo.deleteGrant(organizationGrant)).resolves.toBeTrue();
     expect(calls.delete).toBe(1);
   });
 
   // 删除不到匹配授权时报告失败。
   test("deleteGrant 无匹配授权返回 false", async () => {
     installDb({ deletedRows: [] });
-    await expect(resourcePermissionRepo.deleteGrant(organizationGrant)).resolves.toBeFalse();
+    await expect(pgResourcePermissionRepo.deleteGrant(organizationGrant)).resolves.toBeFalse();
   });
 
   // 所有类型的自有资源都将聚合计数转换为数字。
@@ -171,7 +171,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
       { grantCount: 2 },
     ]);
   });
@@ -191,7 +191,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
       { organizationId: "org-owner" },
     ]);
   });
@@ -211,7 +211,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner", "mcp_server")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner", "mcp_server")).resolves.toMatchObject([
       { resourceType: "mcp_server", resourceId: "mcp-1" },
     ]);
   });
@@ -231,7 +231,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
       { hasPublicRead: true },
     ]);
   });
@@ -251,7 +251,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner")).resolves.toMatchObject([
       { hasPublicRead: false },
     ]);
   });
@@ -259,7 +259,7 @@ describe("round64 resource-permission repository", () => {
   // 指定类型没有自有资源时返回空数组。
   test("listOwnedByOrganization 指定类型无结果返回空数组", async () => {
     installDb({ selectRows: [[]] });
-    await expect(resourcePermissionRepo.listOwnedByOrganization("org-owner", "agent_config")).resolves.toEqual([]);
+    await expect(pgResourcePermissionRepo.listOwnedByOrganization("org-owner", "agent_config")).resolves.toEqual([]);
   });
 
   // 可访问列表保留资源的来源组织。
@@ -269,7 +269,7 @@ describe("round64 resource-permission repository", () => {
         [{ organizationId: "org-source", resourceType: "skill", resourceId: "skill-shared", hasPublicRead: false }],
       ],
     });
-    await expect(resourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toMatchObject([
       { organizationId: "org-source" },
     ]);
   });
@@ -288,7 +288,7 @@ describe("round64 resource-permission repository", () => {
         ],
       ],
     });
-    await expect(resourcePermissionRepo.listAccessibleForPrincipal("org-reader", "provider")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listAccessibleForPrincipal("org-reader", "provider")).resolves.toMatchObject([
       { resourceType: "provider", resourceId: "provider-shared" },
     ]);
   });
@@ -300,7 +300,7 @@ describe("round64 resource-permission repository", () => {
         [{ organizationId: "org-source", resourceType: "skill", resourceId: "skill-public", hasPublicRead: true }],
       ],
     });
-    await expect(resourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toMatchObject([
+    await expect(pgResourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toMatchObject([
       { hasPublicRead: true },
     ]);
   });
@@ -308,14 +308,14 @@ describe("round64 resource-permission repository", () => {
   // 没有公开或组织主体授权时可访问列表为空。
   test("listAccessibleForPrincipal 无授权返回空数组", async () => {
     installDb({ selectRows: [[]] });
-    await expect(resourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toEqual([]);
+    await expect(pgResourcePermissionRepo.listAccessibleForPrincipal("org-reader", "skill")).resolves.toEqual([]);
   });
 
   // 存在组织主体读取授权时允许读取外部资源。
   test("canReadExternalResource 组织主体授权返回 true", async () => {
     installDb({ selectRows: [[{ id: "grant-org" }]] });
     await expect(
-      resourcePermissionRepo.canReadExternalResource("org-owner", "skill", "skill-1", "org-reader"),
+      pgResourcePermissionRepo.canReadExternalResource("org-owner", "skill", "skill-1", "org-reader"),
     ).resolves.toBeTrue();
   });
 
@@ -323,7 +323,7 @@ describe("round64 resource-permission repository", () => {
   test("canReadExternalResource 公开主体授权返回 true", async () => {
     installDb({ selectRows: [[{ id: "grant-public" }]] });
     await expect(
-      resourcePermissionRepo.canReadExternalResource("org-owner", "provider", "provider-1", "org-reader"),
+      pgResourcePermissionRepo.canReadExternalResource("org-owner", "provider", "provider-1", "org-reader"),
     ).resolves.toBeTrue();
   });
 
@@ -331,7 +331,7 @@ describe("round64 resource-permission repository", () => {
   test("canReadExternalResource 无授权返回 false", async () => {
     installDb({ selectRows: [[]] });
     await expect(
-      resourcePermissionRepo.canReadExternalResource("org-owner", "skill", "skill-private", "org-reader"),
+      pgResourcePermissionRepo.canReadExternalResource("org-owner", "skill", "skill-private", "org-reader"),
     ).resolves.toBeFalse();
   });
 });

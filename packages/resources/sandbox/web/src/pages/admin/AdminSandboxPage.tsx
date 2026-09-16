@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/src/api/request";
 import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "@/src/api/system-people-tree";
+import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {
   buildSandboxRebuildRequest,
   buildSandboxResourcePatch,
@@ -27,7 +28,6 @@ import {
   type SandboxResourcePatch,
   systemSandboxApi,
 } from "../../api/system-sandbox";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import { MasterKeyGate } from "./components/MasterKeyGate";
 import { RemoteSandboxPanel } from "./components/RemoteSandboxPanel";
 

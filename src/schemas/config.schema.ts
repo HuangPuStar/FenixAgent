@@ -1,6 +1,6 @@
+import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
 import * as z from "zod/v4";
 import { WebOkSchema } from "./common.schema";
-import { ResourceAccessSchema } from "./resource-access.schema";
 
 // ── Config 通用结构 ──
 
