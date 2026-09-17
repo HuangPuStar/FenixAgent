@@ -5,17 +5,19 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock ./
+COPY apps/server/package.json apps/server/package.json
+COPY apps/web/package.json apps/web/package.json
 COPY packages ./packages
 RUN bun install --frozen-lockfile
 
 FROM deps AS build
 ARG GIT_COMMIT_SHA=unknown
 COPY tsconfig.json tsconfig.base.json ./
-COPY apps/server/src ./apps/server/src
+COPY apps/server ./apps/server
 COPY apps/web ./apps/web
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
-RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outfile dist/index.js \
+RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outdir dist --entry-naming index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
