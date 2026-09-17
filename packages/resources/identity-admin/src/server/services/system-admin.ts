@@ -1,7 +1,21 @@
 import { randomInt, randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { createLogger } from "@fenix/logger";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fchmodSync,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
+import { createLogger, type Logger } from "@fenix/logger";
 import { config } from "@server/config";
 import { db } from "@server/db";
 import { account, member, organization, user } from "@server/db/schema";
@@ -119,10 +133,235 @@ async function createSystemAdminRecords(password: string): Promise<{ userId: str
   return { userId, organizationId };
 }
 
-/** 首次启动才写密码文件；后续启动保留原文件，避免让部署侧拿到过期信息。 */
-function writePasswordFile(password: string) {
-  mkdirSync(dirname(config.systemAdminPasswordFile), { recursive: true });
-  writeFileSync(config.systemAdminPasswordFile, buildPasswordFileContent(password), "utf-8");
+interface PreparedPasswordFile {
+  password: string;
+}
+
+class InvalidSystemAdminCredentialFileError extends Error {
+  constructor(
+    message = "Existing system admin credential file is invalid; refusing to overwrite",
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "InvalidSystemAdminCredentialFileError";
+  }
+}
+
+/** 对目录 fd 执行持久化屏障，确保此前的目录项变更在崩溃后可见。 */
+function syncDirectory(directoryPath: string): void {
+  let descriptor: number | undefined;
+  let syncError: unknown;
+  try {
+    descriptor = openSync(directoryPath, "r");
+    fsyncSync(descriptor);
+  } catch (error) {
+    syncError = error;
+  }
+
+  if (descriptor !== undefined) {
+    try {
+      closeSync(descriptor);
+    } catch (closeError) {
+      if (syncError !== undefined) {
+        throw new AggregateError([syncError, closeError], "Unable to sync system admin credential directory");
+      }
+      throw new Error("Unable to close system admin credential directory", { cause: closeError });
+    }
+  }
+  if (syncError !== undefined) {
+    throw new Error("Unable to sync system admin credential directory", { cause: syncError });
+  }
+}
+
+/** 删除目录项后同步父目录，避免进程崩溃让已删除文件重新出现。 */
+function unlinkAndSync(filePath: string, directoryPath: string): void {
+  unlinkSync(filePath);
+  _deps.syncDirectory(directoryPath);
+}
+
+/** 创建缺失目录并自上而下持久化每层 dentry；失败时不递归删除可能已创建的空目录。 */
+function ensureDirectoryDurably(directoryPath: string): void {
+  const absoluteDirectoryPath = resolve(directoryPath);
+
+  try {
+    mkdirSync(absoluteDirectoryPath, { recursive: true });
+  } catch (error) {
+    throw new Error("Unable to create system admin credential directory hierarchy", { cause: error });
+  }
+
+  const { root } = parse(absoluteDirectoryPath);
+  const childSegments = relative(root, absoluteDirectoryPath)
+    .split(sep)
+    .filter((segment) => segment.length > 0);
+  const syncedParents = new Set<string>();
+  let parentPath = root;
+  for (const childSegment of childSegments) {
+    const childPath = join(parentPath, childSegment);
+    if (!syncedParents.has(parentPath)) {
+      try {
+        _deps.syncDirectory(parentPath);
+        syncedParents.add(parentPath);
+      } catch (error) {
+        throw new Error("Unable to persist system admin credential directory hierarchy", { cause: error });
+      }
+    }
+    parentPath = childPath;
+  }
+}
+
+/** 判断系统错误是否表示路径不存在。 */
+function isNoEntryError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/** lstat 快速拒绝 symlink、FIFO、socket 和 device，避免阻塞或跟随非普通文件。 */
+function inspectCredentialPath(targetPath: string, allowMissing: boolean): boolean {
+  try {
+    if (!lstatSync(targetPath).isFile()) {
+      throw new InvalidSystemAdminCredentialFileError("Existing system admin credential intent must be a regular file");
+    }
+  } catch (error) {
+    if (allowMissing && isNoEntryError(error)) return false;
+    if (error instanceof InvalidSystemAdminCredentialFileError) throw error;
+    throw new Error("Unable to inspect existing system admin credential file", { cause: error });
+  }
+  return true;
+}
+
+/** 通过 no-follow/non-blocking 打开并在同一 fd 上复核普通文件，封闭 lstat/open 的 TOCTOU 窗口。 */
+function withSecureCredentialFile<T>(targetPath: string, operation: (descriptor: number) => T): T {
+  if (typeof constants.O_NOFOLLOW !== "number" || typeof constants.O_NONBLOCK !== "number") {
+    throw new Error("Secure system admin credential files require O_NOFOLLOW and O_NONBLOCK support");
+  }
+
+  let descriptor: number | undefined;
+  let result: T | undefined;
+  let operationError: unknown;
+  try {
+    descriptor = _deps.openPasswordFile(targetPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    if (!fstatSync(descriptor).isFile()) {
+      throw new InvalidSystemAdminCredentialFileError("Existing system admin credential intent must be a regular file");
+    }
+    result = operation(descriptor);
+  } catch (error) {
+    operationError = error;
+  }
+
+  let closeError: unknown;
+  if (descriptor !== undefined) {
+    try {
+      closeSync(descriptor);
+    } catch (error) {
+      closeError = error;
+    }
+  }
+  if (operationError !== undefined && closeError !== undefined) {
+    throw new AggregateError(
+      [operationError, closeError],
+      "Unable to securely process existing system admin credential file",
+    );
+  }
+  if (operationError !== undefined) {
+    if (operationError instanceof InvalidSystemAdminCredentialFileError) throw operationError;
+    throw new Error("Unable to securely open existing system admin credential file", { cause: operationError });
+  }
+  if (closeError !== undefined) {
+    throw new Error("Unable to close existing system admin credential file", { cause: closeError });
+  }
+  return result as T;
+}
+
+/** 严格读取受控格式的普通凭据文件，格式不符时绝不覆盖。 */
+function readExistingPasswordFile(targetPath: string, allowMissing = false): PreparedPasswordFile | null {
+  if (!inspectCredentialPath(targetPath, allowMissing)) return null;
+  const content = withSecureCredentialFile(targetPath, (descriptor) => {
+    fchmodSync(descriptor, 0o600);
+    return readFileSync(descriptor, "utf8");
+  });
+
+  const lines = content.split("\n");
+  const passwordMatch = /^password: ([A-Za-z0-9]{16})$/.exec(lines[3] ?? "");
+  if (
+    lines.length !== 6 ||
+    lines[0] !== "system admin account" ||
+    lines[1] !== `username: ${SYSTEM_ADMIN_NAME}` ||
+    lines[2] !== `email: ${SYSTEM_ADMIN_EMAIL}` ||
+    !passwordMatch ||
+    lines[4] !== `organization: ${SYSTEM_ADMIN_ORG_NAME}` ||
+    lines[5] !== ""
+  ) {
+    throw new InvalidSystemAdminCredentialFileError();
+  }
+
+  return { password: passwordMatch[1] };
+}
+
+/** 判断 hard-link 发布是否因目标已由另一启动进程创建而失败。 */
+function isAlreadyExistsError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
+}
+
+/**
+ * 先在目标目录写入唯一临时文件，再通过 hard-link 原子且排他地发布凭据文件。
+ * POSIX rename 会覆盖既有目标；hard-link 的 EEXIST 语义可避免并发启动覆盖有效凭据。
+ */
+function preparePasswordFile(password: string): PreparedPasswordFile {
+  const targetPath = resolve(config.systemAdminPasswordFile);
+  const targetDir = dirname(targetPath);
+  const temporaryPath = join(targetDir, `.${basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
+  let descriptor: number | undefined;
+
+  ensureDirectoryDurably(targetDir);
+  const existingPasswordFile = readExistingPasswordFile(targetPath, true);
+  if (existingPasswordFile) return existingPasswordFile;
+
+  try {
+    descriptor = openSync(temporaryPath, "wx", 0o600);
+    writeFileSync(descriptor, buildPasswordFileContent(password), "utf8");
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    try {
+      linkSync(temporaryPath, targetPath);
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) throw error;
+      unlinkAndSync(temporaryPath, targetDir);
+      const concurrentPasswordFile = readExistingPasswordFile(targetPath);
+      if (!concurrentPasswordFile) throw new Error("Concurrent system admin credential publication disappeared");
+      return concurrentPasswordFile;
+    }
+    _deps.syncDirectory(targetDir);
+    unlinkAndSync(temporaryPath, targetDir);
+    return { password };
+  } catch (error) {
+    if (error instanceof InvalidSystemAdminCredentialFileError) throw error;
+    const cleanupErrors: unknown[] = [];
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (existsSync(temporaryPath)) {
+      try {
+        unlinkAndSync(temporaryPath, targetDir);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError([error, ...cleanupErrors], "Unable to prepare system admin credential file");
+    }
+    throw new Error("Unable to prepare system admin credential file", { cause: error });
+  }
+}
+
+/** 已有 admin 不重写凭据，仅在文件仍存在时收紧权限。 */
+function secureExistingPasswordFile(): void {
+  const targetPath = resolve(config.systemAdminPasswordFile);
+  if (!inspectCredentialPath(targetPath, true)) return;
+  withSecureCredentialFile(targetPath, (descriptor) => fchmodSync(descriptor, 0o600));
 }
 
 /** 可替换依赖：让启动引导逻辑能在不触碰真实 DB 和文件系统的情况下测试。 */
@@ -131,13 +370,21 @@ export const _deps: {
   findAdminOrganizationForUser: (userId: string) => Promise<SystemAdminOrganizationLookup | null>;
   createSystemAdminRecords: (password: string) => Promise<{ userId: string; organizationId: string }>;
   generateSystemAdminPassword: () => string;
-  writePasswordFile: (password: string) => void;
+  preparePasswordFile: (password: string) => PreparedPasswordFile;
+  openPasswordFile: (path: string, flags: number) => number;
+  secureExistingPasswordFile: () => void;
+  syncDirectory: (directoryPath: string) => void;
+  logger: Pick<Logger, "info">;
 } = {
   findUserByEmail,
   findAdminOrganizationForUser,
   createSystemAdminRecords,
   generateSystemAdminPassword,
-  writePasswordFile,
+  preparePasswordFile,
+  openPasswordFile: openSync,
+  secureExistingPasswordFile,
+  syncDirectory,
+  logger: systemAdminLog,
 };
 
 /** 测试辅助：恢复默认依赖实现。 */
@@ -146,15 +393,20 @@ export function _resetDeps() {
   _deps.findAdminOrganizationForUser = findAdminOrganizationForUser;
   _deps.createSystemAdminRecords = createSystemAdminRecords;
   _deps.generateSystemAdminPassword = generateSystemAdminPassword;
-  _deps.writePasswordFile = writePasswordFile;
+  _deps.preparePasswordFile = preparePasswordFile;
+  _deps.openPasswordFile = openSync;
+  _deps.secureExistingPasswordFile = secureExistingPasswordFile;
+  _deps.syncDirectory = syncDirectory;
+  _deps.logger = systemAdminLog;
 }
 
 /**
  * 确保系统 admin 用户和 admin 组织存在。
  *
  * 约束：
- * - 只要 `admin@fenix.com` 已存在，就完全跳过，不做修复和密码重置
- * - 首次创建时同时写日志和密码文件，方便部署方获取初始凭据
+ * - `admin@fenix.com` 已存在时不重置密码或覆盖内容，仅在凭据文件存在时收紧为 `0600`
+ * - 首次创建时只把初始密码写入密码文件，日志不得泄露明文凭据
+ * - 合法凭据完成持久发布后作为 bootstrap intent 保留，DB 初始化失败不得删除
  * - 如果发现用户已存在但没有 admin 组织归属，直接抛错阻断启动，避免系统资源写入到不明确归属下
  */
 export async function ensureSystemAdmin(): Promise<SystemAdminBootstrapResult> {
@@ -166,7 +418,8 @@ export async function ensureSystemAdmin(): Promise<SystemAdminBootstrapResult> {
         `[system-admin] ${SYSTEM_ADMIN_EMAIL} exists but admin organization membership is missing; bootstrap cannot continue`,
       );
     }
-    systemAdminLog.info(`Skip bootstrap for existing system admin: ${SYSTEM_ADMIN_EMAIL}`);
+    _deps.secureExistingPasswordFile();
+    _deps.logger.info(`Skip bootstrap for existing system admin: ${SYSTEM_ADMIN_EMAIL}`);
     return {
       created: false,
       userId: existing.id,
@@ -178,15 +431,18 @@ export async function ensureSystemAdmin(): Promise<SystemAdminBootstrapResult> {
     };
   }
 
-  const password = _deps.generateSystemAdminPassword();
-  const created = await _deps.createSystemAdminRecords(password);
-  _deps.writePasswordFile(password);
-  systemAdminLog.info(
+  const preparedFile = _deps.preparePasswordFile(_deps.generateSystemAdminPassword());
+  let created: { userId: string; organizationId: string };
+  try {
+    created = await _deps.createSystemAdminRecords(preparedFile.password);
+  } catch (error) {
+    throw new Error("System admin bootstrap failed; credential intent was preserved for retry", { cause: error });
+  }
+  _deps.logger.info(
     [
       "System admin account created",
       `username=${SYSTEM_ADMIN_NAME}`,
       `email=${SYSTEM_ADMIN_EMAIL}`,
-      `password=${password}`,
       `organization=${SYSTEM_ADMIN_ORG_NAME}`,
       `passwordFile=${config.systemAdminPasswordFile}`,
     ].join(" "),

@@ -93,6 +93,7 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
+import { runCriticalStartupSequence } from "./bootstrap/startup-sequence";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
@@ -159,43 +160,55 @@ bindEnvironmentAcpLifecyclePort({
   stopInstances: stopInstancesForEnvironments,
 });
 bindAcpInstanceActivityPort(touchInstanceActivity);
-await initDb();
-startupLog.info("Database initialized");
+await runCriticalStartupSequence({
+  initDb: async () => {
+    await initDb();
+    startupLog.info("Database initialized");
+  },
+  wirePermissions: () => {
+    // 模型网关与 builtin 都会查询资源授权，必须在业务资源初始化前完成宿主装配。
+    configureResourcePermissionService({
+      organizationRepo,
+      createError: (message, code, statusCode) => new AppError(message, code, statusCode),
+    });
+    configureResourcePermissionRepository(pgResourcePermissionRepo);
+  },
+  initModelGateway: async () => {
+    registerConfiguredSandboxProviders();
 
-registerConfiguredSandboxProviders();
+    // 部署侧配置旧变量时显式提示，避免死配置被 zod strip 静默丢弃。
+    for (const { name, replacement } of findDeprecatedEnvVars()) {
+      startupLog.warn(
+        `Deprecated environment variable ${name} is ignored; use ${replacement} instead (local execution only, remote engine is controlled by machine-side AGENT_TYPE)`,
+      );
+    }
 
-// 废弃环境变量启动告警：RCS_DEFAULT_MACHINE_TYPE 是 637a4cef 引入的死配置，服务端从未读取，
-// 且 c71ee18c 后 ENGINE_TYPE 仅对 local 执行生效（远程引擎由机器端 AGENT_TYPE 唯一控制）。
-// 部署侧配置了旧变量时显式提示，避免死配置被 zod strip 静默丢弃。
-for (const { name, replacement } of findDeprecatedEnvVars()) {
-  startupLog.warn(
-    `Deprecated environment variable ${name} is ignored; use ${replacement} instead (local execution only, remote engine is controlled by machine-side AGENT_TYPE)`,
-  );
-}
+    // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
+    const systemAdmin = await ensureSystemAdmin();
+    startupLog.info(`System admin ready: ${systemAdmin.email}`);
 
-// 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
-const systemAdmin = await ensureSystemAdmin();
-startupLog.info(`System admin ready: ${systemAdmin.email}`);
+    // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
+    await runDataMigrations();
+    startupLog.info("Data migrations completed");
 
-// 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
-await runDataMigrations();
-startupLog.info("Data migrations completed");
+    const modelGatewayRuntime = createModelGatewayRuntime();
+    if (modelGatewayRuntime) {
+      await modelGatewayRuntime.services.provider.ensureProvider();
+      setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
+      startupLog.info("Model gateway runtime initialized");
+      return;
+    }
 
-const modelGatewayRuntime = createModelGatewayRuntime();
-if (modelGatewayRuntime) {
-  await modelGatewayRuntime.services.provider.ensureProvider();
-  setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
-  startupLog.info("Model gateway runtime initialized");
-} else {
-  // Provider 投影即使未配置管理凭证也需要存在，便于管理端显示待配置状态。
-  await createSystemModelGatewayProviderService(
-    {},
-    {
-      baseUrl: config.modelGatewayPublicBaseUrl,
-      gatewayType: config.modelGatewayType,
-    },
-  ).ensureProvider();
-}
+    // Provider 投影即使未配置管理凭证也需要存在，便于管理端显示待配置状态。
+    await createSystemModelGatewayProviderService(
+      {},
+      {
+        baseUrl: config.modelGatewayPublicBaseUrl,
+        gatewayType: config.modelGatewayType,
+      },
+    ).ensureProvider();
+  },
+});
 
 // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
 // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
@@ -210,14 +223,6 @@ await sandboxManager.recoverAfterRestart();
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
-
-// 平台授权服务通过宿主端口取得组织目录与统一 HTTP 错误，避免反向依赖 apps/root 实现。
-// builtin 同步会设置 skill 的公开读取权限，因此必须先于 syncBuiltin 完成装配。
-configureResourcePermissionService({
-  organizationRepo,
-  createError: (message, code, statusCode) => new AppError(message, code, statusCode),
-});
-configureResourcePermissionRepository(pgResourcePermissionRepo);
 
 await schedulerService.start();
 
