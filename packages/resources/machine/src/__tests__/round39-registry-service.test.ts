@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AuthContext } from "@server/plugins/auth";
 import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { writeRegistryEvent } from "../server/repositories/registry-event";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 const registry = await import("@fenix/resource-machine/server");
@@ -299,12 +300,12 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     ]);
   });
 
-  // 通用事件入口应生成事件 id 并原样传递业务 detail。
-  test("通用事件入口写入带前缀的事件记录", async () => {
+  // registry event repository 应生成事件 id 并原样传递业务 detail。
+  test("事件 repository 写入带前缀的事件记录", async () => {
     const inserts: unknown[] = [];
     stubDb({ insert: insertRecorder(inserts) });
 
-    await registry.writeRegistryEvent("mach-1", "degraded", { reason: "disk full" });
+    await writeRegistryEvent("mach-1", "degraded", { reason: "disk full" });
 
     expect(inserts).toEqual([
       expect.objectContaining({
@@ -379,9 +380,10 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     await expect(registry.deleteMachine(owner, "mach-default")).rejects.toThrow("default engine");
   });
 
-  // 删除已成功时，即使退休事件归档失败，也必须保持删除成功的幂等结果。
-  test("删除后退休事件失败不影响删除结果", async () => {
+  // 删除已成功时，即使 retired 事件写入尝试失败，也必须保持删除成功的幂等结果。
+  test("删除后 retired 事件写入尝试失败不影响删除结果", async () => {
     const deleted: string[] = [];
+    const attemptedEvents: unknown[] = [];
     const select = mock()
       .mockImplementationOnce(() => limitedRows([{ id: "mach-retire", status: "offline" }]))
       .mockImplementationOnce(() => limitedRows([]))
@@ -389,11 +391,12 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     stubDb({
       select,
       delete: mock(() => ({ where: async () => deleted.push("mach-retire") })),
-      insert: insertRecorder([], true),
+      insert: insertRecorder(attemptedEvents, true),
     });
 
     await expect(registry.deleteMachine(owner, "mach-retire")).resolves.toEqual({ deleted: true });
     expect(deleted).toEqual(["mach-retire"]);
+    expect(attemptedEvents).toEqual([expect.objectContaining({ machineId: "mach-retire", type: "retired" })]);
   });
 
   // 服务重启清理应将所有 online 机器批量重置为 offline。

@@ -3,6 +3,7 @@ import { db } from "@server/db";
 import { agentConfig, machine, organization, registryEvent } from "@server/db/schema";
 import type { AuthContext } from "@server/plugins/auth";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { writeRegistryEvent } from "../repositories/registry-event";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 import { markSandboxInstanceReadyForMachine } from "./machine-sandbox-projection";
 
@@ -298,27 +299,6 @@ export async function markHeartbeatTimeout(machineId: string): Promise<void> {
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
   await db.update(machine).set({ lastHeartbeatAt: new Date(), updatedAt: new Date() }).where(eq(machine.id, machineId));
-}
-
-/**
- * 通用 registry 事件落库（P0-5，D18）。
- *
- * 供机器生命周期各路径复用：`deleteMachine` 的 retired 事件（本文件）、
- * file-ws-handler 的 degraded 落库（W1 预留钩子）与波次 4 W7 的告警。
- * 业务语义（type / detail）由调用方定义，本函数只负责生成事件 id 并插入，
- * 保证所有调用方的事件格式与落库行为一致。
- */
-export async function writeRegistryEvent(
-  machineId: string,
-  type: string,
-  detail: Record<string, unknown>,
-): Promise<void> {
-  await db.insert(registryEvent).values({
-    id: genId("evt"),
-    machineId,
-    type,
-    detail,
-  });
 }
 
 /**

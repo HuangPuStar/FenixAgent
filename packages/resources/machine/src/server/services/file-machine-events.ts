@@ -21,6 +21,7 @@ import { getBoundCoreRuntime } from "@fenix/agent-runtime/server";
 import { createLogger, error as logError } from "@fenix/logger";
 import { config } from "@server/config";
 import type { FileWsConnectionEntry } from "@server/types/store";
+import { writeRegistryEvent } from "../repositories/registry-event";
 import {
   type FileChangeKind,
   type FileChangeSource,
@@ -29,7 +30,6 @@ import {
   publishInvalidateAllLimited,
 } from "./file-event-limiter";
 import { registerEnvironmentQueue } from "./file-event-queue";
-import { writeRegistryEvent } from "./registry";
 
 const logger = createLogger("file-machine-events");
 
