@@ -106,7 +106,69 @@
 - `packages/resources/machine/src/server/__tests__/file-events-endpoint.test.ts`
 - `apps/web/src/__tests__/card-renderer-pure-utils.test.ts`
 
-按用户最新决定，PHY-10 改为按任务近似提交：任务 2、3、4、5、7、8、9 各自形成已验证提交，任务 1、6 仅产生证据或验证结果且不创建空提交。任务 10 不再合并重写既有提交，只提交本计划及必要的最终收口文件；review、`e2e.md` 与备份继续留在工作区且不提交。
+## 最终提交映射与实际文件边界
+
+以下映射以 `git show --name-status <hash>` 为真相源；`A`、`M`、`D` 分别表示新增、修改、删除：
+
+| Task | 提交 | 归属 |
+|------|------|------|
+| Task 1 | 无空提交 | 只建立基线与未提交证据 |
+| Task 2 | `ec8a728a0` | 解除 Machine registry 与 file-WS 事件依赖环 |
+| Task 3 | `a1096215b` | 收口全仓测试矩阵并删除 20 个全局污染旧测试 |
+| Task 4 | `3cdb93673` | 清理 53 个文件的 Biome warning |
+| Task 5 | `ccc4703c4` | 修复生产镜像应用路径及静态守护 |
+| Task 6 | 无空提交 | 只执行全量门禁与构建验证 |
+| Task 7 | `ffdfa21e2` | 修复空库生产镜像启动顺序 |
+| Task 8 | `5a5382910` | 隔离现有库验收期间的后台调度写入 |
+| Task 9 | `fa8b06d43` | 修复现有库关键 API/页面验收边界 |
+| Task 10 | `ab335a6b6` | 收口执行计划与 env 测试 fixture |
+
+Task 2、3、7、8、9 的实际提交范围如下；验收阶段发现的最小修复归属对应验收任务，不归入 Task 10：
+
+- **Task 2 / `ec8a728a0`**
+  - `A packages/resources/machine/src/server/repositories/registry-event.ts`
+  - `M packages/resources/machine/src/server/services/file-machine-events.ts`
+  - `M packages/resources/machine/src/server/services/registry.ts`
+  - `M packages/resources/machine/src/__tests__/registry-filews-cleanup.test.ts`
+  - `M packages/resources/machine/src/__tests__/round39-registry-service.test.ts`
+- **Task 3 / `a1096215b`**
+  - `M .github/workflows/ci.yml`
+  - `M apps/server/src/__tests__/architecture-check.test.ts`
+  - `A scripts/__tests__/ci-output.test.ts`
+  - `M scripts/__tests__/rmd-04-migration.test.ts`
+  - `M scripts/__tests__/rmd-08-migration.test.ts`
+  - `A scripts/ci-output.ts`
+  - `M scripts/ci.ts`
+  - `D`：上方“删除”小节列出的 20 个旧测试；该清单与此提交的删除路径逐项一致。
+- **Task 7 / `ffdfa21e2`**：空库验收发现权限端口晚于模型网关装配，以及系统管理员凭据在首启、并发和失败重试中的安全边界问题；最小修复限定为关键启动编排、凭据安全发布及其测试。
+  - `A apps/server/src/bootstrap/startup-sequence.ts`
+  - `M apps/server/src/main.ts`
+  - `M apps/server/src/__tests__/resource-permission-bootstrap-order.test.ts`
+  - `M packages/resources/identity-admin/src/server/services/system-admin.ts`
+  - `M packages/resources/identity-admin/src/__tests__/system-admin.test.ts`
+- **Task 8 / `5a5382910`**：现有库验收发现后台 Scheduler 会改变只读指纹，最小修复增加显式启动边界与禁用配置，并同步部署样例和测试。
+  - `M .env.example`
+  - `M apps/server/src/__tests__/env-validation.test.ts`
+  - `A apps/server/src/__tests__/scheduler-bootstrap.test.ts`
+  - `A apps/server/src/bootstrap/scheduler-startup.ts`
+  - `M apps/server/src/env.ts`
+  - `M apps/server/src/main.ts`
+  - `M docker-compose.yml`
+  - `M docker/prod/.env.example`
+  - `M docker/prod/docker-compose.yml`
+- **Task 9 / `fa8b06d43`**：核心 API/页面验收发现 query 转发、Channel 文案、Hindsight 错误映射和 Skill 资源 ID 校验边界，最小修复及回归测试限定在以下文件。
+  - `M apps/web/src/__tests__/request.test.ts`
+  - `M apps/web/src/api/request.ts`
+  - `A packages/resources/channel/web/__tests__/channel-i18n-contract.test.ts`
+  - `M packages/resources/channel/web/i18n/en/channels.json`
+  - `M packages/resources/channel/web/i18n/zh/channels.json`
+  - `M packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx`
+  - `A packages/resources/memory/web/__tests__/hindsight-api-error.test.ts`
+  - `M packages/resources/memory/web/api/hindsight.ts`
+  - `A packages/resources/skill/src/__tests__/skill-resource-id-validation.test.ts`
+  - `M packages/resources/skill/src/server/services/config/skill.ts`
+
+随后若产生仅修正文档表述、路径或数字的复审更正提交，不改变上述任务代码归属，也不把既有实现移动到 Task 10。按用户最新决定，PHY-10 保留按任务近似提交历史；Task 1、6 仅产生证据或验证结果且不创建空提交。Task 10 不再合并重写既有提交，只提交本计划及必要的最终收口文件；review、`e2e.md` 与备份继续留在工作区且不提交。
 
 ## 任务 1：建立 PHY-10 基线和证据骨架
 
