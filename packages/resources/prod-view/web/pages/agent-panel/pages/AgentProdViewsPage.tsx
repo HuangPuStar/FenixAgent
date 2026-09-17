@@ -181,7 +181,7 @@ export function AgentProdViewsPage() {
         <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
         <div className="mt-6 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            // Static skeleton placeholders have no domain identifier.
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>

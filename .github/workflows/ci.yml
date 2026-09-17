@@ -49,13 +49,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Backend tests
-        run: bun test $(find apps/server/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1
+      - name: Server, script, and platform SDK tests
+        run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/
 
-      # workspace 包测试（orchestration / workflow-engine / acp-server 等）：
-      # 独立于 apps/server/src/__tests__ 运行，防止包级回归只在本地 precheck 中被发现
       - name: Package tests
-        run: bun test packages/ --verbose --bail=1
+        run: bun test packages/
 
-      - name: Frontend tests
-        run: bun test $(find apps/web/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') scripts/__tests__/rmd-08-migration.test.ts --verbose --bail=1
+      - name: Web app tests
+        run: bun test apps/web/src/__tests__/

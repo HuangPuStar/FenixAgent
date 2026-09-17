@@ -6,7 +6,6 @@ import {
   configureResourcePermissionService,
   decorateResourceAccess,
   listReadableResourceRefs,
-  setOrganizationRepoForTesting,
   setPublicRead,
   setResourcePermissionRepoForTesting,
 } from "@fenix/access-control/server";

@@ -479,9 +479,9 @@ export function useChatState(rcsSessionId: string) {
   );
   const getReplacementVersion = useCallback(() => getDocHubReplacementVersion(rcsSessionId), [rcsSessionId]);
   const replacementVersion = useSyncExternalStore(subscribeReplacement, getReplacementVersion, getReplacementVersion);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）
+  // bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）。
   const subscribeChat = useCallback((cb: () => void) => stores.chat.subscribe(cb), [bindEpoch]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上，bindEpoch 仅驱动引用变化
+  // 同上，bindEpoch 仅驱动引用变化。
   const subscribeMeta = useCallback((cb: () => void) => stores.meta.subscribe(cb), [bindEpoch]);
 
   const token = useSyncExternalStore(subscribeChat, stores.chat.getSnapshot);

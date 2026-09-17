@@ -26,7 +26,7 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/mcp");
     const { data, error } = await mcpApi.list();
     expect(error).toBeUndefined();
-    const result = data as any;
+    const result = data!;
     expect(result.servers).toHaveLength(1);
     expect(result.servers[0].id).toBe("mcp_1");
     expect(result.servers[0].name).toBe("my-local");
@@ -56,7 +56,7 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/mcp");
     const { data, error } = await mcpApi.get("my-local");
     expect(error).toBeUndefined();
-    const result = data as any;
+    const result = data!;
     expect(result.config.type).toBe("local");
   });
 
@@ -79,7 +79,7 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/mcp");
     const { data, error } = await mcpApi.create("new-server", { type: "local", command: ["npx"] });
     expect(error).toBeUndefined();
-    expect((data as any).name).toBe("new-server");
+    expect(data!.name).toBe("new-server");
   });
 
   // 测试创建 MCP 服务器发送正确请求 (POST + body: { name, config })
@@ -131,7 +131,7 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/mcp");
     const { data, error } = await mcpApi.enable("s1");
     expect(error).toBeUndefined();
-    expect((data as any).enabled).toBe(true);
+    expect(data!.enabled).toBe(true);
   });
 
   // 测试禁用 MCP 服务器正常返回
@@ -140,7 +140,7 @@ describe("MCP SDK module", () => {
     const { mcpApi } = await import("../api/mcp");
     const { data, error } = await mcpApi.disable("s1");
     expect(error).toBeUndefined();
-    expect((data as any).enabled).toBe(false);
+    expect(data!.enabled).toBe(false);
   });
 
   // 测试错误响应返回 error

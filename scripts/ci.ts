@@ -7,6 +7,8 @@
 
 import { execSync } from "node:child_process";
 
+import { filterTestSummary } from "./ci-output";
+
 const STEPS = [
   {
     name: "format",
@@ -74,50 +76,19 @@ const STEPS = [
     },
   },
   {
-    name: "test",
+    name: "server-and-script-tests",
     cmd: "bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ 2>&1",
-    filter: (out: string) => {
-      const lines = out.split("\n");
-
-      // 提取汇总行
-      const summary = lines.filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l) || /^Ran /.test(l));
-
-      // 提取失败测试
-      const failedTests: string[] = [];
-      let inFailBlock = false;
-      for (const line of lines) {
-        if (line.includes("(fail)")) {
-          inFailBlock = true;
-          failedTests.push(line.trim());
-        } else if (inFailBlock && line.trim() === "") {
-          inFailBlock = false;
-        } else if (inFailBlock) {
-          // 失败测试的错误详情（diff、at 行等）
-          if (
-            line.includes("error:") ||
-            line.startsWith(" ") ||
-            line.startsWith("+") ||
-            line.startsWith("-") ||
-            line.startsWith("at ")
-          ) {
-            failedTests.push(line);
-          }
-        }
-      }
-
-      if (failedTests.length > 0) {
-        return [...failedTests, "", ...summary].join("\n");
-      }
-      return summary.length > 0 ? summary.join("\n") : null;
-    },
+    filter: filterTestSummary,
   },
   {
-    name: "migrated-resource-tests",
-    cmd: "bun test packages/resources/workflow/src/__tests__/ packages/resources/task/src/__tests__/ packages/resources/channel/src/__tests__/ packages/resources/workflow/web/__tests__/ packages/resources/task/web/__tests__/ 2>&1",
-    filter: (out: string) => {
-      const summary = out.split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l) || /^Ran /.test(l));
-      return summary.length > 0 ? summary.join("\n") : null;
-    },
+    name: "package-tests",
+    cmd: "bun test packages/ 2>&1",
+    filter: filterTestSummary,
+  },
+  {
+    name: "web-app-tests",
+    cmd: "bun test apps/web/src/__tests__/ 2>&1",
+    filter: filterTestSummary,
   },
 ] as const;
 

@@ -21,7 +21,6 @@ import {
   getSkill,
   getSkillArchivePath,
   getSkillSourceDir,
-  listSkills,
   parseFrontmatter,
   setSkill,
   syncAgentSkills,

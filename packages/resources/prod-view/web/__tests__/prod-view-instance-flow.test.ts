@@ -21,7 +21,9 @@ describe("ProdView 实例连接数据流", () => {
   test("路由切换以完整 relay identity 卸载旧 ChatArea，同时保留同视图 identity", () => {
     const source = readFileSync(PROD_VIEW_PAGE_PATH, "utf8");
 
-    expect(source).toContain("key={`${prodViewId}:${viewConfig.environmentId}:${viewConfig.instanceUid}`}");
+    expect(source).toContain(
+      "key={`$" + "{prodViewId}:$" + "{viewConfig.environmentId}:$" + "{viewConfig.instanceUid}`}",
+    );
     expect(source).toContain("generation !== requestGeneration.current");
   });
 

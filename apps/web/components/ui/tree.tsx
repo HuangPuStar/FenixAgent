@@ -311,7 +311,7 @@ export function Tree({
     onToggle,
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: getChildren 变化时需要重新加载根节点
+  // getChildren 变化时需要重新加载根节点。
   useEffect(() => {
     state.loadChildren(null);
   }, [state.loadChildren, getChildren]);

@@ -65,7 +65,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/artifacts-preview-events.test.ts", "apps/web/src/__tests__/artifacts-preview-events.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
-  ["web/src/__tests__/card-renderer-pure-utils.test.ts", "apps/web/src/__tests__/card-renderer-pure-utils.test.ts"],
   ["web/src/__tests__/config-datatable.test.ts", "apps/web/src/__tests__/config-datatable.test.ts"],
   ["web/src/__tests__/config-helpers.test.ts", "apps/web/src/__tests__/config-helpers.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
@@ -264,12 +263,18 @@ const RMD_08_MOVES = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 183 个应用壳源文件都必须从旧根路径移除，并保留在唯一的 apps/web 目标。
+  // 182 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 apps/web 目标。
   test("removes every legacy source and retains its exact apps/web target", () => {
-    expect(RMD_08_MOVES).toHaveLength(183);
+    expect(RMD_08_MOVES).toHaveLength(182);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
     }
+  });
+
+  // 已批准退役的污染测试在旧根路径和迁移目标中都不得复活。
+  test("keeps the retired card renderer test deleted", () => {
+    expect(existsSync("web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
   });
 });

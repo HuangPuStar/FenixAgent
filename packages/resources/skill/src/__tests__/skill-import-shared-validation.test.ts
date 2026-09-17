@@ -9,7 +9,7 @@ beforeEach(() => {
     upsertSkill: mock(async () => "skill-id"),
     deleteSkill: mock(async () => true),
     listSkills: mock(async () => []),
-  } as any;
+  } as unknown as typeof _deps.configPg;
   _deps.skillFs = {
     assertValidSkillName: (name: string) => name.trim(),
     getSkillOrganizationDir: (root: string, organizationId: string) => `${root}/${organizationId}`,
@@ -21,7 +21,7 @@ beforeEach(() => {
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
-      const e = new Error(msg) as any;
+      const e = new Error(msg) as Error & { code: string };
       e.code = "TEST";
       return e;
     },

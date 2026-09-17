@@ -210,7 +210,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       ) : loading ? (
         <div className="p-3 space-y-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: loading placeholder
+            // Loading placeholders have no domain identifier.
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>

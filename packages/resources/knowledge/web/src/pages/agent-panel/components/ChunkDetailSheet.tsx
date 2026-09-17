@@ -238,7 +238,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                       className={`text-[12px] text-[#475569] leading-relaxed break-words [&_video]:max-w-full [&_video]:rounded-lg [&_img]:max-w-full [&_img]:rounded-lg [&_table]:w-full [&_a]:text-[#6366f1] [&_a]:underline ${
                         textMode === "ellipse" ? "line-clamp-3" : ""
                       }`}
-                      // biome-ignore lint/security/noDangerouslySetInnerHtml: DOMPurify 已清洗
+                      // 内容已经 DOMPurify 清洗。
                       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chunk.content) }}
                     />
 
@@ -347,7 +347,7 @@ function ChunkListSkeleton() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders, index is stable
+        // Static skeleton placeholders have stable indices.
         <div key={`skeleton-${i}`} className="rounded-xl border border-[#eef2f6] bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2.5">
             <Skeleton className="h-3 w-8 rounded" />

@@ -11,8 +11,9 @@ let testOverrides: Partial<RouteConfigDeps> | null = null;
  */
 export const routeConfigDeps = new Proxy({} as RouteConfigDeps, {
   get: (_target, property) => {
-    if (typeof property !== "string") return undefined;
+    if (typeof property !== "string") return;
     const key = property as keyof RouteConfigDeps;
+    // biome-ignore lint/performance/noDynamicNamespaceImportAccess: 测试 override 与生产依赖必须解析同一个 named export，避免手工映射遗漏字段。
     return testOverrides?.[key] ?? configServices[key];
   },
 });

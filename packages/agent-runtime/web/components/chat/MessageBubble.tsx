@@ -202,7 +202,7 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
               const isLastThought = i === all.length - 1 || all.slice(i + 1).every((c) => c.type !== "thought");
               const thoughtStreaming = isStreaming && isLastThought;
               return (
-                // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
+                // Chunks lack a unique identifier.
                 <Reasoning key={i} isStreaming={thoughtStreaming} className="chat-thinking-block">
                   <ReasoningTrigger className="chat-thinking-trigger" />
                   <ReasoningContent className="chat-thinking-content">
@@ -214,13 +214,13 @@ export function AssistantBubble({ entry, isStreaming, sessionId, envId, cardEmit
             // 完整 system-reminder 块 — 渲染为系统消息标签，双击后以 Popover 展示原始块
             if (!isVisibleContentBlock({ type: "text", text: chunk.text })) {
               return (
-                // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
+                // Chunks lack a unique identifier.
                 <SystemMessage key={i} rawText={chunk.text} />
               );
             }
             // 普通消息块 — 直接输出，无包裹卡片
             return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: chunks lack a unique identifier
+              // Chunks lack a unique identifier.
               <div key={i} className="message-content chat-markdown-content text-text-primary leading-[1.75]">
                 <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
               </div>
@@ -301,7 +301,7 @@ function ImageThumbnail({ image }: { image: UserMessageImage }) {
 function ThoughtContent({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: text 变化时滚动到底部
+  // text 变化时滚动到底部。
   useEffect(() => {
     if (!isStreaming) return;
     const el = containerRef.current;

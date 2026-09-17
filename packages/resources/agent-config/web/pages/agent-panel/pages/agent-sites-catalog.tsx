@@ -232,7 +232,7 @@ function SitesLoading() {
       <Skeleton className="mt-7 h-10 w-full" />
       <div className="mt-7 grid grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 静态骨架无领域标识。
+          // 静态骨架无领域标识。
           <Skeleton key={index} className="h-64 rounded-[10px]" />
         ))}
       </div>

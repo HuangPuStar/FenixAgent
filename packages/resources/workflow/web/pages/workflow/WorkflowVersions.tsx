@@ -99,7 +99,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     return (
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+          // Static skeleton placeholders have no domain identifier.
           <Skeleton key={i} className="h-16 w-full rounded-lg" />
         ))}
       </div>
@@ -150,7 +150,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       {versionsLoading ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            // Static skeleton placeholders have no domain identifier.
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>

@@ -621,7 +621,7 @@ export function Constellation({
     heatLegendEndpoints,
     nodeSizeFn,
     sizeLegendLabel,
-    // biome-ignore lint/correctness/useExhaustiveDependencies: drawLabel is a render-scope helper that does not need stable identity
+    // drawLabel is a render-scope helper that does not need stable identity.
     drawLabel,
     compactLabels,
   ]);

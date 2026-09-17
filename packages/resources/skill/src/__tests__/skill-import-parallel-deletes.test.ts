@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { _deps, _resetDeps } from "../server/services/skill";
+import type { UploadSkillFile } from "../server/services/skill-fs";
 
-const deleteSkillMock = mock(async (_ctx: any, _name: string) => true);
+const deleteSkillMock = mock(async (_ctx: unknown, _name: string) => true);
 const upsertSkillMock = mock(async () => "skill_1");
-const getSkillMock = mock<(_ctx: any, _name: string) => Promise<unknown>>(async () => null);
+const getSkillMock = mock<(_ctx: unknown, _name: string) => Promise<unknown>>(async () => null);
 
 beforeEach(() => {
   _deps.configPg = {
@@ -12,7 +13,7 @@ beforeEach(() => {
     upsertSkill: upsertSkillMock,
     getSkill: getSkillMock,
     listSkills: mock(async () => []),
-  } as any;
+  } as unknown as typeof _deps.configPg;
   _deps.skillFs = {
     assertValidSkillName: (name: string) => name.trim(),
     getSkillOrganizationDir: (root: string, organizationId: string) => `${root}/${organizationId}`,
@@ -24,7 +25,7 @@ beforeEach(() => {
     buildSkillArchive: mock(async () => {}),
     deleteSkillArchive: mock(async () => {}),
     createSkillValidationError: (msg: string) => {
-      const e = new Error(msg) as any;
+      const e = new Error(msg) as Error & { code: string };
       e.code = "TEST";
       return e;
     },
@@ -40,17 +41,20 @@ beforeEach(() => {
     readSkillDetailFromMd: mock(async () => null),
     writeSkillMd: mock(async (_dir: string, _name: string) => "/path/SKILL.md"),
     deleteSkillDir: mock(async () => {}),
-    resolveImportPlan: (grouped: Map<string, unknown>, _conflicts: unknown[], _strategy: string | undefined) =>
-      ({
-        pendingEntries: Array.from(grouped.entries()),
-        skipped: [],
-      }) as any,
+    resolveImportPlan: (
+      grouped: Map<string, UploadSkillFile[]>,
+      _conflicts: unknown[],
+      _strategy: string | undefined,
+    ) => ({
+      pendingEntries: Array.from(grouped.entries()),
+      skipped: [],
+    }),
     writeImportFiles: mock(async (_dir: string, entries: [string, unknown][]) => {
       return entries.map(([name]) => name);
     }),
     buildImportedSkillInfos: mock(async (_dir: string, names: string[]) => {
       return names.map((n) => ({ name: n, description: "", path: `/path/${n}/SKILL.md` }));
-    }) as any,
+    }) as unknown as typeof _deps.skillFs.buildImportedSkillInfos,
     backupSkillDirs: mock(async () => new Map()),
     cleanupWrittenSkills: mock(async () => {}),
     restoreFromBackup: mock(async () => {}),
@@ -64,7 +68,6 @@ afterEach(() => {
 });
 
 import { importSkillDirectories } from "../server/services/skill";
-import type { UploadSkillFile } from "../server/services/skill-fs";
 
 describe("importSkillDirectories PG rollback semantics", () => {
   beforeEach(() => {
@@ -78,7 +81,7 @@ describe("importSkillDirectories PG rollback semantics", () => {
   }
 
   test("overwrite 策略下冲突 skill 不应在写入前删除 PG 记录", async () => {
-    getSkillMock.mockImplementation(async (_ctx: any, name: string) => ({
+    getSkillMock.mockImplementation(async (_ctx: unknown, name: string) => ({
       name,
       organizationId: "test-org",
       description: `${name} desc`,
@@ -147,7 +150,7 @@ describe("importSkillDirectories PG rollback semantics", () => {
       throw new Error("restore me");
     });
 
-    getSkillMock.mockImplementation(async (_ctx: any, name: string) => ({
+    getSkillMock.mockImplementation(async (_ctx: unknown, name: string) => ({
       name,
       organizationId: "test-org",
       description: `${name} old`,

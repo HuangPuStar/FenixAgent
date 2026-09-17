@@ -67,8 +67,8 @@ function installMocks() {
     cleanupBackupDir: mock(async () => {}),
   };
 
-  _deps.configPg = configPg as any;
-  _deps.skillFs = skillFs as any;
+  _deps.configPg = configPg as unknown as typeof _deps.configPg;
+  _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
   return { configPg, skillFs };
 }
 

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { setConfig } from "@server/config";
 import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import { gate } from "../services/agent-file-service";

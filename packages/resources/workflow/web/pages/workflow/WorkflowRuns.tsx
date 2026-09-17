@@ -88,7 +88,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   }, [searchQuery]);
 
   // 筛选条件或搜索词变化时，重置到第 1 页
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选/搜索变化时需重置页码，但 effect 体只用 setPage
+  // 筛选/搜索变化时需重置页码，但 effect 体只用 setPage。
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter]);
@@ -170,7 +170,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            // Static skeleton placeholders have no domain identifier.
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>

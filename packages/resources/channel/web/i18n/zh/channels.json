@@ -32,6 +32,10 @@
   "actions": {
     "delete": "删除"
   },
+  "confirm": {
+    "deleteTitle": "删除通道绑定",
+    "deleteDescription": "确定要删除这个通道绑定吗？此操作无法撤销。"
+  },
   "dialog": {
     "title": "新建通道绑定",
     "platform": "平台",

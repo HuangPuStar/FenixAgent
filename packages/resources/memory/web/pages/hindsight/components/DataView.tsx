@@ -278,7 +278,7 @@ export function DataView({
   }, []);
 
   // 组件挂载或 factType 变化时自动加载数据
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only load, loadData ref stable via ref pattern
+  // Mount-only load; loadData remains stable through the ref pattern.
   useEffect(() => {
     loadData();
   }, []);

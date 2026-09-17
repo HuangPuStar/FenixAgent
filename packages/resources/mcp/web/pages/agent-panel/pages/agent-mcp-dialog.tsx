@@ -365,7 +365,7 @@ function KeyValueEditor({
       </div>
       <div className="space-y-2">
         {entries.map((entry, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 该受控列表仅追加和按索引删除，不发生重排。
+          // 该受控列表仅追加和按索引删除，不发生重排。
           <div className="flex items-center gap-2" key={index}>
             <Input
               value={entry.key}

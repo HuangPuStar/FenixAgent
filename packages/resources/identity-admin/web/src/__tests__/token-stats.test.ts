@@ -28,7 +28,7 @@ describe("computeStats", () => {
 
   // user_message 的 content 计入 input tokens
   test("counts user_message content as input tokens", () => {
-    const entries: ThreadEntry[] = [{ type: "user_message", id: "u1", content: "Hello world test" } as any];
+    const entries: ThreadEntry[] = [{ type: "user_message", id: "u1", content: "Hello world test" }];
     const stats = computeStats(entries);
     // "Hello world test" = 16 chars / 4 = 4 tokens
     expect(stats.estimatedInputTokens).toBe(4);
@@ -45,7 +45,7 @@ describe("computeStats", () => {
           { type: "message", text: "Hello" },
           { type: "message", text: " world" },
         ],
-      } as any,
+      },
     ];
     const stats = computeStats(entries);
     // "Hello" + " world" = 12 chars / 4 = 3 tokens
@@ -65,7 +65,7 @@ describe("computeStats", () => {
           status: "complete",
           rawOutput: { result: "ok" },
         },
-      } as any,
+      },
     ];
     const stats = computeStats(entries);
     // JSON.stringify({result:"ok"}) = '{"result":"ok"}' = 15 chars / 4 = 3.75 → 4 tokens
@@ -76,12 +76,12 @@ describe("computeStats", () => {
   // 混合 entries 正确分类统计
   test("aggregates mixed entries correctly", () => {
     const entries: ThreadEntry[] = [
-      { type: "user_message", id: "u1", content: "a".repeat(40) } as any,
+      { type: "user_message", id: "u1", content: "a".repeat(40) },
       {
         type: "assistant_message",
         id: "a1",
         chunks: [{ type: "message", text: "b".repeat(80) }],
-      } as any,
+      },
     ];
     const stats = computeStats(entries);
     // input: 40/4=10, output: 80/4=20, total: 120/4=30

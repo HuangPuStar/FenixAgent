@@ -38,6 +38,8 @@ services:
             RCS_BASE_URL: ${RCS_BASE_URL:-http://localhost:3000}
             HINDSIGHT_MCP_URL: ${HINDSIGHT_MCP_URL:-}
             RCS_API_KEYS: ${RCS_API_KEYS:-}
+            # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
+            RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
             # BETTER_AUTH_URL: http://localhost:3000
             REGISTRY_SECRET: ${REGISTRY_SECRET}
             DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs

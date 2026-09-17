@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import type { QuestionProjection } from "@fenix/chat-channel";
 // Element/CSSStyleDeclaration 引用 happy-dom 自身类型（与 win.getComputedStyle
 // 签名一致，避免 lib.dom 与 happy-dom 声明的函数类型不兼容）
-import { CSSStyleDeclaration, Element, Window } from "happy-dom";
+import { type CSSStyleDeclaration, type Element, Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { initializeHappyDomWindow } from "../../../../apps/web/src/__tests__/happy-dom-window";

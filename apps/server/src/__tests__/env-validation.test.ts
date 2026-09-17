@@ -15,6 +15,7 @@ describe("env validation", () => {
     delete process.env.APP_BRAND_NAME;
     delete process.env.APP_LOGO_PATH;
     delete process.env.APP_HIDDEN_SIDEBAR_TABS;
+    delete process.env.RCS_DISABLE_SCHEDULER;
   });
 
   afterEach(() => {
@@ -53,6 +54,16 @@ describe("env validation", () => {
     expect(env.APP_BRAND_NAME).toBe("Fenix");
     expect(env.APP_LOGO_PATH).toBe("");
     expect(env.APP_HIDDEN_SIDEBAR_TABS).toBe("");
+    expect(env.RCS_DISABLE_SCHEDULER).toBe(false);
+  });
+
+  // 现有库只读启动验收可显式禁用持久化任务调度。
+  test("RCS_DISABLE_SCHEDULER=true 时禁用调度器", () => {
+    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
+    process.env.RCS_API_KEYS = "test-key";
+    process.env.RCS_DISABLE_SCHEDULER = "true";
+
+    expect(validateEnv().RCS_DISABLE_SCHEDULER).toBe(true);
   });
 
   test("PORT 非数字时校验失败", () => {

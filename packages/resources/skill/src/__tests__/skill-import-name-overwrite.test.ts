@@ -80,8 +80,8 @@ function installMocks() {
     return entries.map(([name]) => name);
   });
 
-  _deps.configPg = configPg as any;
-  _deps.skillFs = skillFs as any;
+  _deps.configPg = configPg as unknown as typeof _deps.configPg;
+  _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
   return { configPg, skillFs };
 }
 
@@ -181,7 +181,7 @@ describe("skill import name overwrite semantics", () => {
       }
       return grouped;
     });
-    _deps.skillFs = skillFs as any;
+    _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
 
     await expect(
       importSkillDirectories(ctx, [makeFile("demo"), { ...makeFile("Demo"), skillName: "Demo" }]),

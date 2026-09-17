@@ -45,6 +45,8 @@ services:
             # OPENAI_MODEL: deepseek-v4-flash
             RCS_BASE_URL: http://localhost:3000
             RCS_API_KEYS: ${RCS_API_KEYS:-}
+            # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
+            RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
             REGISTRY_SECRET: "340b6908-031d-47de-9cfb-26f75818f969"
             DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
             ACPX_G_URL: http://localhost:8848

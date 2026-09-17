@@ -92,7 +92,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
   // 加载超时兜底：每次 reloadKey 变化（用户点刷新）重挂载 iframe 时重启定时器，
   // onLoad 触发后清除。src 在组件实例内是常量（父组件用 key={remoteAppId} 重挂载），
   // 变化等同整个组件重挂载，effect 自然重新执行，故不列入依赖。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是 reload 信号，effect 内部不需要直接引用
+  // reloadKey 是 reload 信号，effect 内部不需要直接引用。
   useEffect(() => {
     setLoadState("loading");
     timerRef.current = setTimeout(() => {

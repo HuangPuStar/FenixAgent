@@ -2,9 +2,10 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AuthContext } from "@server/plugins/auth";
 import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import type { WsConnection } from "@server/transport/ws-types";
+import { writeRegistryEvent } from "../server/repositories/registry-event";
 
-// registry.ts 被 setup-mocks preload mock（REGISTRY_KEYS），本测试需要真实 deleteMachine /
-// writeRegistryEvent 实现：Bun 的模块 mock 按解析后路径匹配，带 query 的 specifier（?real）
+// registry.ts 被 setup-mocks preload mock（REGISTRY_KEYS），本测试需要真实 deleteMachine 实现：
+// Bun 的模块 mock 按解析后路径匹配，带 query 的 specifier（?real）
 // 会解析为独立实例、绕过 mock 注册表；该实例内部导入的 ../db 仍走 stubDb（Proxy 实时转发），
 // file-ws-handler 不被 preload mock（真实模块），因此"stubDb → deleteMachine → handler 清理"
 // 整条链路均为真实代码。`?real` 仅用于测试入口，生产代码不受影响。
@@ -77,8 +78,8 @@ afterAll(async () => {
 });
 
 describe("deleteMachine 退役清理（P0-5 / D18）", () => {
-  // 退役机器必须立即切断 file-ws：pending 被 reject、索引清理、连接 close，并写 retired 事件
-  test("删除后 file-ws 连接关闭、pending 拒绝、retired 事件落库", async () => {
+  // 退役机器必须立即切断 file-ws，并按既有时序尝试调用 retired 事件写入。
+  test("删除后 file-ws 连接关闭、pending 拒绝并尝试写入 retired 事件", async () => {
     const handler = await import("@fenix/resource-machine/server");
     const ws = openRegisteredWs(handler, "ws_retire", "mach_retire");
     const pending = requests.sendFileOpAndWait("mach_retire", "list", { path: "/" }).catch((e) => e);
@@ -96,33 +97,36 @@ describe("deleteMachine 退役清理（P0-5 / D18）", () => {
     const err = await pending;
     expect((err as Error).message).toContain("machine retired");
     expect(ws.close).toHaveBeenCalled();
-    // retired 事件落库：values 携带 machineId + type + detail
+    // retired 事件写入尝试必须携带 machineId、type 和 detail；不代表真实 FK 下能成功归档。
     expect(insert).toHaveBeenCalledTimes(1);
     expect(valuesMock).toHaveBeenCalledWith(
       expect.objectContaining({ machineId: "mach_retire", type: "retired", detail: { reason: "machine deleted" } }),
     );
   });
 
-  // 无活跃 file-ws 的机器删除时清理函数为空操作，不抛错且事件正常落库
-  test("无 file-ws 连接的机器删除不抛错且事件正常落库", async () => {
-    const valuesMock = mock(async () => {});
+  // 无活跃 file-ws 时，即使 retired 事件写入失败，已完成的机器删除仍返回成功。
+  test("无 file-ws 连接时 retired 事件写入失败不改变删除结果", async () => {
+    const valuesMock = mock(async () => {
+      throw new Error("retired event write failed");
+    });
     const insert = mock(() => ({ values: valuesMock }));
     stubDeleteMachineDb({ id: "mach_idle", status: "offline" }, insert);
 
     const result = await realRegistry.deleteMachine(authCtx, "mach_idle");
 
     expect(result).toEqual({ deleted: true });
+    // best-effort 写入失败被 deleteMachine 捕获，但调用参数仍必须正确。
     expect(valuesMock).toHaveBeenCalledWith(expect.objectContaining({ machineId: "mach_idle", type: "retired" }));
   });
 });
 
-describe("writeRegistryEvent 通用落库导出", () => {
-  // 通用落库导出（W1 degraded 钩子 / W7 告警复用）：生成 evt_ id 并插入 registryEvent
+describe("registry event repository", () => {
+  // repository 通用落库能力（W1 degraded 钩子 / W7 告警复用）：生成 evt_ id 并插入 registryEvent
   test("写入 registryEvent：id 前缀 evt_、type/detail 透传", async () => {
     const valuesMock = mock(async () => {});
     stubDb({ insert: mock(() => ({ values: valuesMock })) });
 
-    await realRegistry.writeRegistryEvent("mach_evt", "degraded", { reason: "idle timeout" });
+    await writeRegistryEvent("mach_evt", "degraded", { reason: "idle timeout" });
 
     expect(valuesMock).toHaveBeenCalledWith(
       expect.objectContaining({
