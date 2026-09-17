@@ -12,6 +12,7 @@
  */
 
 import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
 import {
   CreateSkillResponseSchema,
   DeleteSkillResponseSchema,
@@ -19,9 +20,7 @@ import {
   SkillListResponseSchema,
   SkillUploadResponseSchema,
   UpdateSkillResponseSchema,
-  WebOkSchema,
-} from "@server/schemas";
-import { WebErrSchema } from "@server/schemas/common.schema";
+} from "@server/schemas/config.schema";
 import { configError, configNotFound, configSuccess, configValidationError } from "@server/services/config-utils";
 import Elysia from "elysia";
 import {

@@ -1,4 +1,4 @@
-import { SidebarConfigResponseSchema } from "@server/schemas";
+import { SidebarConfigResponseSchema } from "@server/schemas/sidebar-config.schema";
 import Elysia from "elysia";
 import { getSidebarConfig } from "../../services/sidebar-config";
 
