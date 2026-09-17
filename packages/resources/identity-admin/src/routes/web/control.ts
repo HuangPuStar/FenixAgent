@@ -8,12 +8,12 @@ import {
 } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { eventService } from "@fenix/resource-machine/server";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
+import { SendEventResponseSchema, SessionEventPayloadSchema } from "@server/schemas/session.schema";
+import { publishSessionEvent } from "@server/services/transport";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../../../../../src/schemas/common.schema";
-import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../../../../../src/schemas/session.schema";
-import { publishSessionEvent } from "../../../../../../src/services/transport";
 
 const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({
   "send-event-response": SendEventResponseSchema,

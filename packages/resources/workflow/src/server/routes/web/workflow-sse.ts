@@ -5,8 +5,8 @@
  * 接收 workflow 状态变更事件。支持 Last-Event-ID / fromSeqNum 断线重连。
  */
 
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import { getWorkflowDef } from "../../repositories/workflow-def";
 import {
   WorkflowEventStreamParamsSchema,

@@ -1,9 +1,9 @@
 import { createLogger, error as logError } from "@fenix/logger";
 import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
+import { config } from "@server/config";
+import type { WsConnection } from "@server/transport/ws-types";
+import type { AcpConnectionEntry, AcpConnectionSnapshot } from "@server/types/store";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
-import { config } from "../../../../../apps/server/src/config";
-import type { WsConnection } from "../../../../../src/transport/ws-types";
-import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../../../../../src/types/store";
 import { touchEnvironmentPoll } from "../../services/environment-acp";
 import {
   dispatchAgentNodeDisconnect,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../../../../../apps/server/src/config";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { readJson, resetAllStubs } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetConfig, setConfig } from "@server/config";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { readJson, resetAllStubs } from "@server/test-utils/helpers";
 import { type KnowledgeBaseRow, knowledgeBaseRepo } from "../server/repositories/knowledge-base";
 import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";

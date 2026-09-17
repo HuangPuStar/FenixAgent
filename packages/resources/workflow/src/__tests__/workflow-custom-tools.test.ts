@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import { resetAllStubs, stubAuthApi } from "../../../../../apps/server/src/test-utils/helpers";
-import { stubCustomTools } from "../../../../../apps/server/src/test-utils/stubs/module-stubs";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { resetAllStubs, stubAuthApi } from "@server/test-utils/helpers";
+import { stubCustomTools } from "@server/test-utils/stubs/module-stubs";
 import webWorkflowCustomTools from "../server/routes/web/workflow-custom-tools";
 
 describe("GET /web/workflow-custom-tools", () => {

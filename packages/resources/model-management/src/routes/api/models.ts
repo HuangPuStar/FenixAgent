@@ -1,7 +1,6 @@
-import Elysia from "elysia";
-import { AppError } from "../../../../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
-import { ApiErrorResponseSchema } from "../../../../../../src/schemas/api-common.schema";
+import { AppError } from "@server/errors";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { ApiErrorResponseSchema } from "@server/schemas/api-common.schema";
 import {
   ApiModelDeleteResponseSchema,
   ApiModelDetailSchema,
@@ -22,7 +21,8 @@ import {
   ApiProviderUpdateBodySchema,
   type ApiProviderUpsertBody,
   ApiProviderUpsertBodySchema,
-} from "../../../../../../src/schemas/api-model.schema";
+} from "@server/schemas/api-model.schema";
+import Elysia from "elysia";
 import * as modelConfig from "../../server/config/model";
 import * as configPg from "../../server/config/provider";
 import { buildModelData } from "../../server/config/provider";

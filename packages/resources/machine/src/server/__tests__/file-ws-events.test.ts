@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetAllStubs, stubEnvironmentRepo, stubRegistry } from "../../../../../../apps/server/src/test-utils/helpers";
-import { registryRegistry } from "../../../../../../apps/server/src/test-utils/stubs/module-stubs";
+import { setConfig } from "@server/config";
+import { resetAllStubs, stubEnvironmentRepo, stubRegistry } from "@server/test-utils/helpers";
+import { registryRegistry } from "@server/test-utils/stubs/module-stubs";
 import { gate } from "../services/agent-file-service";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";

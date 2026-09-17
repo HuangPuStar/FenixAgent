@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../../src/schemas/common.schema";
 
 /** Agent Sites App 响应对象 */
 export const AgentSiteAppSchema = z.object({

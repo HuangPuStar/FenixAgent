@@ -8,8 +8,8 @@ import {
   stubRegistry,
   stubRegistryHeartbeat,
 } from "@server/test-utils/helpers";
-import type { WsConnection } from "../../../../src/transport/ws-types";
-import type { AcpConnectionEntry } from "../../../../src/types/store";
+import type { WsConnection } from "@server/transport/ws-types";
+import type { AcpConnectionEntry } from "@server/types/store";
 
 // registry / registry-heartbeat / environment / core-bootstrap 已在 setup-mocks.ts 中
 // 通过 preload mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。

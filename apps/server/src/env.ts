@@ -1,6 +1,6 @@
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
 import { z } from "zod/v4";
-import { ENGINE_TYPES } from "../../../src/services/config/types";
+import { ENGINE_TYPES } from "./services/config/types";
 
 const databaseConnectionPoolSchema = z.object({
   RCS_DB_POOL_MAX: z.coerce.number().int().positive().default(20),

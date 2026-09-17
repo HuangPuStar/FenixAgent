@@ -21,8 +21,8 @@ import {
 } from "@fenix/agent-runtime/server";
 import { findUsersBasicInfoByIds, organizationRepo } from "@fenix/resource-identity-admin/server";
 import { findMachineNamesByIds } from "@fenix/resource-machine/server";
-import { config } from "../../../../../../../apps/server/src/config";
-import type { AcpConnectionSnapshot } from "../../../../../../../src/types/store";
+import { config } from "@server/config";
+import type { AcpConnectionSnapshot } from "@server/types/store";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";
 import type {

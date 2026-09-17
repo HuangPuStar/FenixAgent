@@ -5,6 +5,7 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
+import { configureResourcePermissionRepository } from "@fenix/access-control/server";
 import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 import * as actualFileWsCloseLog from "@fenix/resource-machine/file-ws-close-log";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
@@ -30,6 +31,8 @@ import { getSystemApiStub } from "./stubs/system-api-stub";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
+
+configureResourcePermissionRepository(resourcePermissionRepoStub);
 
 /**
  * 创建带惰性包装函数的 mock 对象。
@@ -115,7 +118,7 @@ const CONFIG_PG_KEYS = [
   "upsertSkill",
 ] as const;
 
-mock.module("../../../../src/services/config/index", () =>
+mock.module("@server/services/config", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(CONFIG_PG_KEYS, getConfigPgStub as (name: string) => any),
 );
@@ -217,7 +220,7 @@ mock.module("../db", createDbMock);
 mock.module("../../../../db", createDbMock);
 // PHY-03 runtime 包直接引用宿主 DB；同时注册其规范绝对相对路径，避免 Bun 按导入
 // specifier 区分模块身份时绕过现有 `../db` 测试替身。
-mock.module("../../../../apps/server/src/db", createDbMock);
+mock.module("@server/db", createDbMock);
 
 // 先注册 DB 替身，再载入会由公开入口触达认证路由的知识库服务，避免真实 DB/auth 初始化循环。
 const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await import("@fenix/resource-knowledge/server");
@@ -239,7 +242,7 @@ mock.module("../../../../packages/platform/access-control/src/repositories/resou
 
 mock.module("../../../../packages/agent-runtime/src/server/repositories/environment", () => {
   // 用 Proxy 实时转发而非对象 getter：具名导入（如 environment-core 的
-  // `import { environmentRepo } from "../../../../src/repositories"`）在模块首次求值时固化绑定，
+  // `import { environmentRepo } from "@server/repositories"`）在模块首次求值时固化绑定，
   // getter 一次返回的对象引用会被缓存——若其他测试文件先求值该模块，
   // 后置的 stubEnvironmentRepo 将永远不生效（fs-upload-escape.test.ts 全量运行曾因此 404）。
   // Proxy 把每次属性访问实时转发到当前 stub（与上方 ../db 的 createDbMock 同模式），
@@ -262,78 +265,6 @@ mock.module("@fenix/resource-knowledge/server", () => ({
     knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
 }));
 
-// ── registry / registry-heartbeat / environment / core-bootstrap ──
-// 从 acp-machine-connection-lookup.test.ts 的 mock.module() 迁移到 preload。
-// 使用 createLazyMock 模式（与 config/index、repositories 完全一致），
-// 默认返回空函数（throwOnMissing=false）。各测试文件通过 stubXxx() 配置行为。
-// beforeEach 中的 resetAllStubs() 会清除 stub，使其他测试得到空函数（无害）。
-
-const REGISTRY_KEYS = [
-  "listMachines",
-  "getMachine",
-  "listEvents",
-  "createMachine",
-  "createSandboxMachine",
-  "deleteMachine",
-  "registerMachine",
-  "disconnectMachine",
-  "markHeartbeatTimeout",
-  "updateHeartbeat",
-  "resetAllMachinesOffline",
-  "updateMachine",
-  // W7 起 file-ws-handler 复用 writeRegistryEvent 落库事件告警（§7.5），
-  // 测试需经 stubRegistry 配置其行为
-  "writeRegistryEvent",
-] as const;
-mock.module("../../../../src/services/registry", () =>
-  createLazyMock(REGISTRY_KEYS, (name) => registryRegistry.get(name) as AnyFn),
-);
-
-const REGISTRY_HEARTBEAT_KEYS = [
-  "startHeartbeat",
-  "handleHeartbeat",
-  "stopHeartbeat",
-  "startMachineSweep",
-  "stopMachineSweep",
-] as const;
-mock.module("../../../../src/services/registry-heartbeat", () =>
-  createLazyMock(REGISTRY_HEARTBEAT_KEYS, (name) => registryHeartbeatRegistry.get(name) as AnyFn),
-);
-
-const ENVIRONMENT_KEYS = [
-  "createTemporaryEnvironment",
-  "deregisterEnvironment",
-  "getEnvironment",
-  "getEnvironmentBySecret",
-  "handleAcpConnect",
-  "handleAcpDisconnect",
-  "handleAcpIdentify",
-  "handleAcpRegister",
-  "listActiveEnvironments",
-  "listActiveEnvironmentsByUsername",
-  "listActiveEnvironmentsResponse",
-  "markEnvironmentActive",
-  "markEnvironmentIdle",
-  "reconnectEnvironment",
-  "registerEnvironment",
-  "touchEnvironmentPoll",
-  "updateEnvironmentCapabilities",
-  "deleteEnvironment",
-  "ensureWorkspaceDir",
-  "generateEnvSecret",
-  "getOwnedEnvironment",
-  "sanitizeResponse",
-  "toResponse",
-  "validateWorkspacePath",
-  "createWebEnvironment",
-  "listEnvironmentsWithInstances",
-  "updateWebEnvironment",
-] as const;
-
-mock.module("../../../../src/services/environment", () =>
-  createLazyMock(ENVIRONMENT_KEYS, (name) => environmentServiceRegistry.get(name) as AnyFn),
-);
-
 const CORE_BOOTSTRAP_KEYS = [
   "getCoreRuntime",
   "initCoreRuntime",
@@ -342,7 +273,7 @@ const CORE_BOOTSTRAP_KEYS = [
   "registerRemoteNode",
   "unregisterRemoteNode",
 ] as const;
-mock.module("../../../../src/services/core-bootstrap", () =>
+mock.module("@server/services/core-bootstrap", () =>
   createLazyMock(CORE_BOOTSTRAP_KEYS, (name) => coreBootstrapRegistry.get(name) as AnyFn),
 );
 

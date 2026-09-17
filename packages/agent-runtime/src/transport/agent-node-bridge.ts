@@ -18,8 +18,8 @@
 
 import { error as logError } from "@fenix/logger";
 import { AgentNodeService, type AgentNodeSocket, AgentNodeUnavailableError } from "@fenix/orchestration";
-import { config } from "../../../../apps/server/src/config";
-import type { WsConnection } from "../../../../src/transport/ws-types";
+import { config } from "@server/config";
+import type { WsConnection } from "@server/transport/ws-types";
 
 /** 创建编排域 AgentNodeService 单例（可按需重复调用，但宿主应复用导出单例）。 */
 export function createAgentNodeService(): AgentNodeService {

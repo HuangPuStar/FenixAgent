@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import {
-  installRouteConfigStubs,
-  resetRouteConfigStubs,
-} from "../../../../../apps/server/src/test-utils/agent-config-route-deps";
-import { resetAllStubs, stubAuthApi, stubConfigPg, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { installRouteConfigStubs, resetRouteConfigStubs } from "@server/test-utils/agent-config-route-deps";
+import { resetAllStubs, stubAuthApi, stubConfigPg, stubDb } from "@server/test-utils/helpers";
 
 const route = (await import("../server/routes/web/agent-sites")).default;
 

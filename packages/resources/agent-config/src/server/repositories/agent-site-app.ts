@@ -1,6 +1,6 @@
+import { db } from "@server/db";
+import { agentSiteApp } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { agentSiteApp } from "../../../../../../apps/server/src/db/schema";
 
 export type AgentSiteAppRow = typeof agentSiteApp.$inferSelect;
 export type AgentSiteAppInsert = typeof agentSiteApp.$inferInsert;

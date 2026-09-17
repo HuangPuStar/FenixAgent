@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildOpenAIError, mapToNonStreamingResponse } from "../../../../src/services/openai-response-mapper";
+import { buildOpenAIError, mapToNonStreamingResponse } from "@server/services/openai-response-mapper";
 
 describe("mapToNonStreamingResponse", () => {
   // agent_thought_chunk → reasoning_content

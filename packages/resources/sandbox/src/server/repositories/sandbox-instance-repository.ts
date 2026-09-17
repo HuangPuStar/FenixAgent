@@ -1,10 +1,6 @@
+import { db } from "@server/db";
+import { type NewSandboxInstance, type SandboxInstance, sandboxInstance } from "@server/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import {
-  type NewSandboxInstance,
-  type SandboxInstance,
-  sandboxInstance,
-} from "../../../../../../apps/server/src/db/schema";
 
 export type SandboxInstancePatch = Partial<
   Pick<

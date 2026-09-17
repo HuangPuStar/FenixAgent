@@ -1,7 +1,7 @@
+import { db } from "@server/db";
+import { environment, user } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
-import { db } from "../../../../../apps/server/src/db";
-import { environment, user } from "../../../../../apps/server/src/db/schema";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
 
 /** Environment 持久化记录 */

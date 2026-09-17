@@ -1,8 +1,8 @@
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema } from "@server/schemas/common.schema";
+import { configError, configSuccess } from "@server/services/config-utils";
 import Elysia from "elysia";
 import { z } from "zod/v4";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema } from "../../../../../../../src/schemas/common.schema";
-import { configError, configSuccess } from "../../../../../../../src/services/config-utils";
 import { AgentGenerationResponseSchema } from "../../schemas/agent-generation.schema";
 import { generateAgentConfig, isGenerationConfigured } from "../../services/agent-generation";
 

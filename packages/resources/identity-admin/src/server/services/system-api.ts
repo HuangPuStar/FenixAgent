@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { defaultKeyHasher } from "@better-auth/api-key";
+import { db } from "@server/db";
+import { account, apikey, member, organization, user } from "@server/db/schema";
+import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "@server/services/phone-number";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { account, apikey, member, organization, user } from "../../../../../../apps/server/src/db/schema";
-import {
-  buildPhoneTempEmail,
-  normalizeChineseMainlandPhoneNumber,
-} from "../../../../../../apps/server/src/services/phone-number";
 
 export interface SystemApiPagination {
   page: number;

@@ -11,8 +11,7 @@
  * POST   /config/skills/upload → 批量上传技能目录（multipart/form-data）
  */
 
-import Elysia from "elysia";
-import { type AuthContext, authGuardPlugin } from "../../../../../../../../apps/server/src/plugins/auth";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import {
   CreateSkillResponseSchema,
   DeleteSkillResponseSchema,
@@ -21,14 +20,10 @@ import {
   SkillUploadResponseSchema,
   UpdateSkillResponseSchema,
   WebOkSchema,
-} from "../../../../../../../../src/schemas";
-import { WebErrSchema } from "../../../../../../../../src/schemas/common.schema";
-import {
-  configError,
-  configNotFound,
-  configSuccess,
-  configValidationError,
-} from "../../../../../../../../src/services/config-utils";
+} from "@server/schemas";
+import { WebErrSchema } from "@server/schemas/common.schema";
+import { configError, configNotFound, configSuccess, configValidationError } from "@server/services/config-utils";
+import Elysia from "elysia";
 import {
   deleteSkill,
   getGlobalSkillsDir,

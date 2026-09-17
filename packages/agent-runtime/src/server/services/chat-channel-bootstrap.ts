@@ -19,9 +19,9 @@ import {
   persistYjsClearedSnapshotWithCas,
 } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
+import { getRedisConnection } from "@server/services/cache";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getRedisConnection } from "../../../../../apps/server/src/services/cache";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,

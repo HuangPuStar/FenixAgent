@@ -27,9 +27,9 @@ import {
   syncAgentSkills,
 } from "@fenix/resource-skill/server";
 import { listSkills as listStoredSkills } from "@fenix/resource-skill/server/config";
-import { auth } from "../../../../../apps/server/src/auth/better-auth";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
-import type { SkillConfigRowWithAccess } from "../../../../../src/services/config/types";
+import { auth } from "@server/auth/better-auth";
+import type { AuthContext } from "@server/plugins/auth";
+import type { SkillConfigRowWithAccess } from "@server/services/config/types";
 import { createAgentConfig, getAgentConfig, updateAgentConfig } from "../server/services/config/agent-config";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";

@@ -1,9 +1,9 @@
 // 系统级人员管理树：按组织聚合成员与归属智能体，供 Admin 只读展示。
 // 查询显式在服务层完成，避免路由直接接触持久化模型。
 
+import { db } from "@server/db";
+import { agentConfig, member, organization, user } from "@server/db/schema";
 import { and, asc, eq } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { agentConfig, member, organization, user } from "../../../../../../apps/server/src/db/schema";
 
 export interface SystemPeopleAgent {
   id: string;

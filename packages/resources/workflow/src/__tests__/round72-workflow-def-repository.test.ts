@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 
 // @ts-expect-error Bun query import 会加载独立的真实仓储实例，同时 ../db 仍由 preload stubDb Proxy 隔离。
 const workflowDef = await import("../server/repositories/workflow-def?round72");

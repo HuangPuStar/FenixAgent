@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../src/schemas/common.schema";
 
 /** 写操作成功响应（§7.2 op_id 回显契约）：op_id 与 success/data 平级（消费者
  *  解包 data 不受影响），X-File-Op-Id 请求头原样回显；未携带时缺省（响应结构

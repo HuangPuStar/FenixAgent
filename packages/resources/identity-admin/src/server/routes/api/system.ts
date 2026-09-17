@@ -1,5 +1,5 @@
+import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
-import { systemApiAuthPlugin } from "../../../../../../../apps/server/src/plugins/system-api-auth";
 import {
   type ApiSystemAddOrganizationMemberBody,
   ApiSystemAddOrganizationMemberBodySchema,

@@ -9,8 +9,8 @@ import { docManager } from "@fenix/chat-channel/server";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { findUsersBasicInfoByIds } from "@fenix/resource-identity-admin/server";
-import { config } from "../../../../apps/server/src/config";
-import { getCoreRuntime } from "../../../../src/services/core-bootstrap";
+import { config } from "@server/config";
+import { getCoreRuntime } from "@server/services/core-bootstrap";
 import {
   getInstance,
   type InstanceActivityInfo,

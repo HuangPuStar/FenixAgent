@@ -1,16 +1,16 @@
 import { OrchestrationError } from "@fenix/orchestration";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import Elysia from "elysia";
-import * as z from "zod/v4";
-import { mapOrchestrationErrorToHttp } from "../../../../../apps/server/src/errors/orchestration-http";
-import { type AuthContext, authGuardPlugin } from "../../../../../apps/server/src/plugins/auth";
-import { logError } from "../../../../../apps/server/src/plugins/logger";
+import { mapOrchestrationErrorToHttp } from "@server/errors/orchestration-http";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { logError } from "@server/plugins/logger";
 import {
   ApiInstanceAgentConfigParamsSchema,
   type ApiInstanceConnectBody,
   ApiInstanceConnectBodySchema,
   ApiInstanceConnectResponseSchema,
-} from "../../../../../src/schemas/api-instance.schema";
+} from "@server/schemas/api-instance.schema";
+import Elysia from "elysia";
+import * as z from "zod/v4";
 import { connectAgentInstance } from "../../server/services/api-instance";
 
 const ApiErrorResponseSchema = z.object({

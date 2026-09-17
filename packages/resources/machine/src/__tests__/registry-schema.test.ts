@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 describe("machine 表", () => {
   // machine 表列定义正确
   test("machine 表列定义正确", async () => {
-    const { machine } = await import("../../../../../apps/server/src/db/schema");
+    const { machine } = await import("@server/db/schema");
     const columns = Object.keys(machine);
     const expectedColumns = [
       "id",
@@ -33,7 +33,7 @@ describe("machine 表", () => {
 describe("registry_event 表", () => {
   // registry_event 表列定义正确
   test("registry_event 表列定义正确", async () => {
-    const { registryEvent } = await import("../../../../../apps/server/src/db/schema");
+    const { registryEvent } = await import("@server/db/schema");
     const columns = Object.keys(registryEvent);
     const expectedColumns = ["id", "machineId", "type", "detail", "createdAt"];
     for (const col of expectedColumns) {
@@ -45,7 +45,7 @@ describe("registry_event 表", () => {
 describe("agentConfig 新增 machineId 外键列", () => {
   // agentConfig 新增 machineId 外键列
   test("agentConfig 包含 machineId 列", async () => {
-    const { agentConfig } = await import("../../../../../apps/server/src/db/schema");
+    const { agentConfig } = await import("@server/db/schema");
     const columns = Object.keys(agentConfig);
     expect(columns).toContain("machineId");
   });
@@ -80,7 +80,7 @@ describe("REGISTRY_SECRET 环境变量", () => {
     const { restore } = withRequiredEnv();
     delete process.env.REGISTRY_SECRET;
     try {
-      const { validateEnv } = await import("../../../../../apps/server/src/env");
+      const { validateEnv } = await import("@server/env");
       const env = validateEnv();
       expect(env.REGISTRY_SECRET).toBe("rcs-registry-secret");
     } finally {
@@ -93,7 +93,7 @@ describe("REGISTRY_SECRET 环境变量", () => {
     const { restore } = withRequiredEnv();
     try {
       process.env.REGISTRY_SECRET = "my-secret";
-      const { validateEnv } = await import("../../../../../apps/server/src/env");
+      const { validateEnv } = await import("@server/env");
       const env = validateEnv();
       expect(env.REGISTRY_SECRET).toBe("my-secret");
     } finally {

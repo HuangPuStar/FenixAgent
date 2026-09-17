@@ -1,6 +1,6 @@
 import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../../src/schemas/common.schema";
 
 export const AgentLabelSchema = z
   .object({

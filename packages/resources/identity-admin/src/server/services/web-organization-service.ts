@@ -1,4 +1,4 @@
-import { auth } from "../../../../../../apps/server/src/auth/better-auth";
+import { auth } from "@server/auth/better-auth";
 import {
   findMembershipRolesByUserId,
   findOrganizationMemberUserIds,

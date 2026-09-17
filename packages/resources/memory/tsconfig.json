@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "paths": {
+      "@server/*": ["../../../apps/server/src/*"],
       "@/components/ui/*": ["../../../apps/web/components/ui/*"],
       "@/components/*": ["../../../web/components/*"],
       "@/src/api/hindsight": ["web/api/hindsight.ts"],

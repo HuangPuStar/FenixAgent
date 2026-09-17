@@ -1,8 +1,8 @@
 import type { CoreRuntimeFacade, RuntimeInstanceStatus } from "@fenix/core";
-import { config } from "../../../../apps/server/src/config";
-import { AppError } from "../../../../apps/server/src/errors";
-import { getCoreRuntime } from "../../../../src/services/core-bootstrap";
-import type { InstanceSpawnSource, InstanceSupplement } from "../../../../src/types/store";
+import { config } from "@server/config";
+import { AppError } from "@server/errors";
+import { getCoreRuntime } from "@server/services/core-bootstrap";
+import type { InstanceSpawnSource, InstanceSupplement } from "@server/types/store";
 import { globalInstanceRegistry, type InstanceRegistry } from "./instance-registry";
 
 const _deps = {

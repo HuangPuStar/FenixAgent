@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ScheduledTaskV2Row } from "../../../../../apps/server/src/db/schema";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import type { ScheduledTaskV2Row } from "@server/db/schema";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import {
   clearExecutionLogsV2,
   createTaskV2,

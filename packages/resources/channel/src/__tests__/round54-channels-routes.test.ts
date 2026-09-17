@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import {
-  readJson,
-  resetAllStubs,
-  stubAuthApi,
-  stubEnvironmentRepo,
-} from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import type { ChannelBindingRow } from "../server/repositories/channel-binding";
 import { channelBindingRepo } from "../server/repositories/channel-binding";
 import { setHermesClientGetter } from "../server/services/channel-provider";

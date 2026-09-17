@@ -26,12 +26,7 @@ import {
 } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
-import {
-  resetAllStubs,
-  stubCoreBootstrap,
-  stubDb,
-  stubResourcePermissionRepo,
-} from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubCoreBootstrap, stubDb, stubResourcePermissionRepo } from "@server/test-utils/helpers";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";

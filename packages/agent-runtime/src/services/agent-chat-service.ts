@@ -1,10 +1,10 @@
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
+import { db } from "@server/db";
+import { environment } from "@server/db/schema";
+import { NotFoundError } from "@server/errors";
+import type { InstanceSpawnSource } from "@server/types/store";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../../../apps/server/src/db";
-import { environment } from "../../../../apps/server/src/db/schema";
-import { NotFoundError } from "../../../../apps/server/src/errors";
-import type { InstanceSpawnSource } from "../../../../src/types/store";
 import { agentInstanceService } from "../server/services/agent-instance-service";
 import { createWebEnvironment } from "../server/services/environment-web";
 import { connectAgentRelay } from "../server/transport/agent-relay";

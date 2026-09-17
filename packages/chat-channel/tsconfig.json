@@ -3,6 +3,7 @@
   "include": ["src"],
   "compilerOptions": {
     "paths": {
+      "@server/*": ["../../apps/server/src/*"],
       "@/components/chat/*": ["../../packages/agent-runtime/web/components/chat/*"],
       "@/components/ui/*": ["../../apps/web/components/ui/*"],
       "@/components/*": ["../../web/components/*"],

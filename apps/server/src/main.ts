@@ -27,6 +27,7 @@ import {
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
   bindSessionEventBusPort,
+  closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
   closeAllRelayConnections,
   getAgentNodeService,
@@ -92,16 +93,6 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
-import webApp from "../../../src/routes/web";
-import { buildHealthInfo } from "../../../src/services/build-info";
-import {
-  getCoreRuntime,
-  initCoreRuntime,
-  registerRemoteNode,
-  unregisterRemoteNode,
-} from "../../../src/services/core-bootstrap";
-import { runDataMigrations } from "../../../src/services/data-migrate";
-import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
@@ -114,7 +105,12 @@ import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { pgResourcePermissionRepo } from "./repositories/resource-permission";
+import webApp from "./routes/web";
+import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
+import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
+import { runDataMigrations } from "./services/data-migrate";
+import { syncBuiltin } from "./services/sync-builtin";
 
 setMetaAgentModelResolver(async (ctx) => {
   const providers = await listProviders(ctx);

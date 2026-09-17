@@ -26,9 +26,9 @@ import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
+import { db } from "@server/db";
+import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../../../../../../apps/server/src/db";
-import { environment } from "../../../../../../../apps/server/src/db/schema";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");

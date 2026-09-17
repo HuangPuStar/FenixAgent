@@ -8,14 +8,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetTestAuth, setTestAuth } from "../../../../../../apps/server/src/plugins/auth";
-import {
-  resetAllStubs,
-  stubDb,
-  stubEnvironmentRepo,
-  stubFileWsHandler,
-} from "../../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
 import { contentDispositionAttachment } from "../../routes/web/fs";
 import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
 

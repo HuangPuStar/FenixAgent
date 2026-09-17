@@ -1,4 +1,4 @@
-import type { InstanceSupplement } from "../../../../src/types/store";
+import type { InstanceSupplement } from "@server/types/store";
 
 /**
  * InstanceRegistry — 简化版内存注册表

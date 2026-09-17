@@ -1,7 +1,7 @@
 import type { SystemApiUserRecord } from "@fenix/resource-identity-admin/server/system-api";
+import { db } from "@server/db";
+import { member, user } from "@server/db/schema";
 import { and, asc, eq, ilike, or } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { member, user } from "../../../../../../apps/server/src/db/schema";
 
 export interface ModelGatewayUserSearchInput {
   keyword?: string;

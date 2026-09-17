@@ -6,10 +6,10 @@ import {
 } from "@fenix/resource-knowledge/server";
 import { listAgentMcpIds, syncAgentMcps } from "@fenix/resource-mcp/server";
 import { listAgentSkillIds, listSkills, syncAgentSkills } from "@fenix/resource-skill/server";
+import { AppError } from "@server/errors";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../../../../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import {
   ApiAgentDeleteResponseSchema,
   ApiAgentDetailSchema,

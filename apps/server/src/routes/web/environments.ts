@@ -1,0 +1,390 @@
+import {
+  agentInstanceService,
+  CreateEnvironmentRequestSchema,
+  CreateEnvironmentResponseSchema,
+  createWebEnvironment,
+  deleteEnvironment,
+  EnterEnvironmentRequestSchema,
+  EnterEnvironmentResponseSchema,
+  EnvironmentDetailEnvelopeSchema,
+  EnvironmentInfoSchema,
+  EnvironmentListEnvelopeSchema,
+  EnvironmentListSchema,
+  getOwnedEnvironment,
+  ListInstancesResponseSchema,
+  listEnvironmentsWithInstances,
+  sanitizeResponse,
+  UpdateEnvironmentRequestSchema,
+  UpdateEnvironmentResponseSchema,
+  updateWebEnvironment,
+} from "@fenix/agent-runtime/server";
+import { createLogger } from "@fenix/logger";
+import { OrchestrationError } from "@fenix/orchestration";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
+import Elysia from "elysia";
+import * as z from "zod/v4";
+import { ValidationError as AppValidationError } from "../../errors";
+import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
+import { authGuardPlugin } from "../../plugins/auth";
+import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
+
+const logger = createLogger("env-route");
+
+/** Web 环境路由依赖，测试可在不替换运行时模块的情况下提供本地实现。 */
+export interface EnvironmentRouteDeps {
+  createWebEnvironment: typeof createWebEnvironment;
+  deleteEnvironment: typeof deleteEnvironment;
+  getOwnedEnvironment: typeof getOwnedEnvironment;
+  listEnvironmentsWithInstances: typeof listEnvironmentsWithInstances;
+  sanitizeResponse: typeof sanitizeResponse;
+  updateWebEnvironment: typeof updateWebEnvironment;
+}
+
+const defaultEnvironmentRouteDeps: EnvironmentRouteDeps = {
+  createWebEnvironment,
+  deleteEnvironment,
+  getOwnedEnvironment,
+  listEnvironmentsWithInstances,
+  sanitizeResponse,
+  updateWebEnvironment,
+};
+
+/**
+ * 创建 Web 环境路由。
+ *
+ * 默认装配保持生产公开入口契约；显式依赖仅供路由隔离测试使用，避免替换共享模块。
+ */
+export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvironmentRouteDeps) {
+  const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
+    "create-environment-request": CreateEnvironmentRequestSchema,
+    "create-environment-response": CreateEnvironmentResponseSchema,
+    "delete-environment-response": WebOkSchema(z.null()).describe("删除环境后的成功响应。"),
+    "enter-environment-response": EnterEnvironmentResponseSchema,
+    "environment-detail-response": EnvironmentDetailEnvelopeSchema,
+    "environment-info": EnvironmentInfoSchema,
+    "environment-instances-response": ListInstancesResponseSchema,
+    "environment-list": EnvironmentListSchema,
+    "environment-list-response": EnvironmentListEnvelopeSchema,
+    "update-environment-request": UpdateEnvironmentRequestSchema,
+    "update-environment-response": UpdateEnvironmentResponseSchema,
+    "enter-environment-request": EnterEnvironmentRequestSchema,
+  });
+
+  /** GET /web/environments — List environments for the current team */
+  app.get(
+    "/environments",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store }: any) => {
+      const authCtx = store.authContext!;
+      const user = store.user!;
+      // 环境现在统一要求绑定 agentConfig；列表按当前用户视角过滤 runtime env，
+      // 避免前端把其他成员的 runtime 误挂到自己的 agent 上。
+      return {
+        success: true as const,
+        data: await deps.listEnvironmentsWithInstances(authCtx.organizationId, user.id),
+      };
+    },
+    {
+      sessionAuth: true,
+      response: "environment-list-response",
+      detail: {
+        tags: ["Environments"],
+        summary: "获取环境列表",
+        description:
+          "返回当前组织下已绑定 Agent 配置的环境列表，并附带每个环境的活跃实例摘要。运行时环境按当前用户隔离。",
+      },
+    },
+  );
+
+  /** POST /web/environments — Register a new environment */
+  app.post(
+    "/environments",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, body, error }: any) => {
+      const user = store.user!;
+      const authCtx = store.authContext!;
+      const b = body as {
+        name: string;
+        description?: string;
+        agentConfigId: string;
+        autoStart?: boolean;
+      };
+
+      let record: Awaited<ReturnType<EnvironmentRouteDeps["createWebEnvironment"]>>;
+      try {
+        record = await deps.createWebEnvironment({
+          name: b.name,
+          description: b.description,
+          agentConfigId: b.agentConfigId,
+          autoStart: b.autoStart,
+          userId: user.id,
+          organizationId: authCtx.organizationId,
+        });
+      } catch (err: unknown) {
+        if (
+          err instanceof AppValidationError ||
+          (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
+        ) {
+          return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: (err as Error).message } });
+        }
+        throw err;
+      }
+
+      if (b.autoStart && record.userId) {
+        agentInstanceService
+          .findOrCreateDefaultInstance(record.id, record.userId)
+          .then((instance) => agentInstanceService.ensureInstanceRuntime(instance))
+          .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
+          .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
+      }
+
+      return { success: true as const, data: { ...deps.sanitizeResponse(record), secret: record.secret } };
+    },
+    {
+      sessionAuth: true,
+      body: "create-environment-request",
+      response: {
+        200: "create-environment-response",
+        400: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "创建环境",
+        description: "创建一个新的环境，必须绑定 Agent 配置，并可选开启自动启动。",
+      },
+    },
+  );
+
+  /** GET /web/environments/:id — Get environment detail (with secret) */
+  app.get(
+    "/environments/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const authCtx = store.authContext!;
+      const user = store.user!;
+      try {
+        const env = await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        return { success: true as const, data: { ...deps.sanitizeResponse(env), secret: env.secret } };
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        throw err;
+      }
+    },
+    {
+      sessionAuth: true,
+      response: {
+        200: "environment-detail-response",
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "获取环境详情",
+        description: "根据环境 ID 返回环境详情，其中包含环境密钥等完整信息。",
+      },
+    },
+  );
+
+  /** PUT /web/environments/:id — Update environment metadata */
+  app.put(
+    "/environments/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, params, body, error }: any) => {
+      const authCtx = store.authContext!;
+      const user = store.user!;
+      const b = body as {
+        name?: string;
+        description?: string | null;
+        agentConfigId?: string;
+        autoStart?: boolean;
+      };
+
+      let updated: Awaited<ReturnType<EnvironmentRouteDeps["updateWebEnvironment"]>>;
+      try {
+        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        updated = await deps.updateWebEnvironment(params.id, authCtx.organizationId, {
+          name: b.name,
+          description: b.description,
+          agentConfigId: b.agentConfigId,
+          autoStart: b.autoStart,
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        if (
+          err instanceof AppValidationError ||
+          (err instanceof Error && "code" in err && (err as { code?: string }).code === "VALIDATION_ERROR")
+        ) {
+          return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: err.message } });
+        }
+        throw err;
+      }
+      return { success: true as const, data: deps.sanitizeResponse(updated!) };
+    },
+    {
+      sessionAuth: true,
+      body: "update-environment-request",
+      response: {
+        200: "update-environment-response",
+        400: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "更新环境",
+        description: "更新环境名称、描述、绑定的 Agent 配置以及自动启动设置。",
+      },
+    },
+  );
+
+  /** POST /web/environments/:id/enter — Enter an environment */
+  app.post(
+    "/environments/:id/enter",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, params, body, error }: any) => {
+      const user = store.user!;
+      const authCtx = store.authContext!;
+      try {
+        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        throw err;
+      }
+
+      const b = body as { instanceUid?: string };
+      try {
+        const instance = await agentInstanceService.resolveInstanceForOperation({
+          environmentId: params.id,
+          ownerUserId: user.id,
+          requestedInstanceUid: b.instanceUid,
+          automaticSelection: "chat",
+        });
+        await agentInstanceService.ensureInstanceRuntime(instance);
+        return {
+          success: true as const,
+          data: {
+            instanceUid: instance.id,
+            environmentId: instance.environmentId,
+            name: instance.name,
+            status: agentInstanceService.getRuntimeSnapshot(instance.id).state,
+            createdAt: instance.createdAt.toISOString(),
+          },
+        };
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND") {
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        }
+        // Sandbox 服务不可用（Provider 未配置 / Runtime 未就绪）→ 503；本路由有本地
+        // catch 不冒泡 errorPlugin，必须在此处理。message 固定通用文案，不得泄漏
+        // providerKey / sbi_* sandboxId（错误对象携带这些内部标识）。
+        if (err instanceof SandboxProviderNotConfiguredError || err instanceof SandboxRuntimeNotReadyError) {
+          return error(503, {
+            success: false,
+            error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+          });
+        }
+        if (err instanceof OrchestrationError) {
+          const mapped = mapOrchestrationErrorToHttp(err);
+          return error(mapped.status, {
+            success: false,
+            error: { code: err.code, message: mapped.message },
+          });
+        }
+        return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
+      }
+    },
+    {
+      sessionAuth: true,
+      body: "enter-environment-request",
+      response: {
+        200: "enter-environment-response",
+        404: WebErrSchema,
+        500: WebErrSchema,
+        503: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "进入环境",
+        description: "为环境选择或拉起实例，并返回进入该环境所需的实例和会话信息。",
+      },
+    },
+  );
+
+  /** DELETE /web/environments/:id — Delete environment */
+  app.delete(
+    "/environments/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const authCtx = store.authContext!;
+      const user = store.user!;
+      try {
+        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        throw err;
+      }
+      await deps.deleteEnvironment(params.id);
+      return { success: true as const, data: null };
+    },
+    {
+      sessionAuth: true,
+      response: {
+        200: "delete-environment-response",
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "删除环境",
+        description: "删除指定环境。删除前会先校验该环境是否属于当前组织。",
+      },
+    },
+  );
+
+  /** GET /web/environments/:id/instances — List instances for an environment */
+  app.get(
+    "/environments/:id/instances",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + error 分支组合下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const authCtx = store.authContext!;
+      const user = store.user!;
+      try {
+        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+      } catch (err: unknown) {
+        if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
+          return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
+        throw err;
+      }
+      const instances = await agentInstanceService.listInstances(user.id, params.id);
+      return {
+        success: true as const,
+        data: {
+          environment_id: params.id,
+          instances: instances.map((instance) => ({
+            instanceUid: instance.id,
+            name: instance.name,
+            status: instance.runtime.state,
+            createdAt: instance.createdAt.toISOString(),
+          })),
+        },
+      };
+    },
+    {
+      sessionAuth: true,
+      response: {
+        200: "environment-instances-response",
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["Environments"],
+        summary: "获取环境实例列表",
+        description: "返回指定环境下当前活跃的实例列表。",
+      },
+    },
+  );
+
+  return app;
+}
+
+export default createEnvironmentRoutes();

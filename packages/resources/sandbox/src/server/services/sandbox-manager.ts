@@ -14,7 +14,7 @@ import type {
   SandboxResources,
   SandboxTemplate,
 } from "@fenix/sandbox-provider";
-import type { SandboxInstance, SandboxPool } from "../../../../../../apps/server/src/db/schema";
+import type { SandboxInstance, SandboxPool } from "@server/db/schema";
 import type { SandboxInstanceLockScope } from "../repositories/sandbox-instance-repository";
 import {
   createSandboxInstance,

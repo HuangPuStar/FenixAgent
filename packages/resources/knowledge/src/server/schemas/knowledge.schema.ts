@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../../src/schemas/common.schema";
 /** 知识库状态 */
 export const KnowledgeBaseStatusSchema = z.enum(["empty", "indexing", "ready", "error"]).describe("知识库状态。");
 

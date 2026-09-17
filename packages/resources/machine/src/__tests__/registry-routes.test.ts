@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubDb, stubRegistry } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubDb, stubRegistry } from "@server/test-utils/helpers";
 
 beforeEach(() => {
   resetAllStubs();
@@ -245,19 +245,19 @@ describe("registry 路由文件", () => {
 
 describe("schemas/index.ts 导出 registry", () => {
   test("schemas index 导出 MachineSchema", async () => {
-    const mod = await import("../../../../../src/schemas");
+    const mod = await import("@server/schemas");
     expect(mod.MachineSchema).toBeDefined();
   });
 
   test("schemas index 导出 RegistryEventSchema", async () => {
-    const mod = await import("../../../../../src/schemas");
+    const mod = await import("@server/schemas");
     expect(mod.RegistryEventSchema).toBeDefined();
   });
 });
 
 describe("web/index.ts 注册 registry 路由", () => {
   test("web index 导入 webRegistry", async () => {
-    const mod = await import("../../../../../src/routes/web/index");
+    const mod = await import("@server/routes/web/index");
     expect(mod.default).toBeDefined();
   });
 });

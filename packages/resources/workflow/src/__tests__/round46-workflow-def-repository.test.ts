@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import {
   deleteWorkflowDef,
   getVersions,

@@ -5,8 +5,8 @@
 // 400 validation_error / 404 not_found / 413 payload_too_large /
 // 422 config_error / 429 busy(+Retry-After) / 503 file_service_unavailable。
 
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { type AuthContext, authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
 import {
   BatchDeleteRequestSchema,
   BatchDeleteResponseSchema,

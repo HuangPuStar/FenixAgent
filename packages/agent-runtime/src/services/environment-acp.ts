@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { AppError, NotFoundError } from "../../../../apps/server/src/errors";
-import type { RegisterEnvironmentRequest } from "../../../../src/types/api";
+import { AppError, NotFoundError } from "@server/errors";
+import type { RegisterEnvironmentRequest } from "@server/types/api";
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { environmentRepo } from "../server/repositories/environment";
 import { deleteEnvironment, toResponse } from "./environment-core";

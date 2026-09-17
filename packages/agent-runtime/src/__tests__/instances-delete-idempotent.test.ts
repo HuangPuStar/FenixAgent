@@ -106,7 +106,7 @@ describe("DELETE /web/instances/:id", () => {
     registerRunningInstance("inst_1", "env-1", ORG_1);
     fakeControllerInstances.add("inst_1");
 
-    const mod = await import("../../../../src/routes/web/instances");
+    const mod = await import("@server/routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_1", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
@@ -126,7 +126,7 @@ describe("DELETE /web/instances/:id", () => {
     registerRunningInstance("inst_2", "env-1", ORG_1);
     fakeControllerInstances.add("inst_2");
 
-    const mod = await import("../../../../src/routes/web/instances");
+    const mod = await import("@server/routes/web/instances");
     const first = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
     const second = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
 
@@ -143,7 +143,7 @@ describe("DELETE /web/instances/:id", () => {
   // 从未存在/已无痕的实例：无 supplement、活跃表空、core 空 → 幂等终态 200，
   // 且不触碰 facade（stopInstance / deleteInstance 均不被调用）
   test("对从未存在或已无痕的实例 DELETE 返回 200 而非 404", async () => {
-    const mod = await import("../../../../src/routes/web/instances");
+    const mod = await import("@server/routes/web/instances");
     const response = await mod.default.handle(
       new Request("http://localhost/instances/inst_ghost", { method: "DELETE" }),
     );
@@ -166,7 +166,7 @@ describe("DELETE /web/instances/:id", () => {
       authContext: { organizationId: ORG_2, userId: "user-2", role: "member" },
     });
 
-    const mod = await import("../../../../src/routes/web/instances");
+    const mod = await import("@server/routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_4", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
@@ -183,7 +183,7 @@ describe("DELETE /web/instances/:id", () => {
   test("supplement 残留（活跃表无记录）时 DELETE 收敛清理", async () => {
     registerRunningInstance("inst_5", "env-1", ORG_1);
 
-    const mod = await import("../../../../src/routes/web/instances");
+    const mod = await import("@server/routes/web/instances");
     const response = await mod.default.handle(new Request("http://localhost/instances/inst_5", { method: "DELETE" }));
 
     expect(response.status).toBe(404);

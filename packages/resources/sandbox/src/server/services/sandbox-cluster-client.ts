@@ -1,4 +1,4 @@
-import { config } from "../../../../../../apps/server/src/config";
+import { config } from "@server/config";
 
 export type SandboxClusterFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 

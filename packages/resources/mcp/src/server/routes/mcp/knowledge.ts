@@ -6,9 +6,9 @@ import {
 } from "@fenix/resource-knowledge/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { errorResponse } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { errorResponse } from "../../../../../../../apps/server/src/plugins/auth";
 import { McpKnowledgeAuthHeadersSchema } from "../../schemas/mcp-knowledge.schema";
 
 function getBearerToken(headerValue: string | undefined): string | null {

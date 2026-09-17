@@ -18,8 +18,8 @@
 
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
-import type { WsConnection } from "../../../../../../src/transport/ws-types";
+import type { AuthContext } from "@server/plugins/auth";
+import type { WsConnection } from "@server/transport/ws-types";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,

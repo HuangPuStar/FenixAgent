@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
 import { ForbiddenError, NotFoundError } from "@server/errors";
+import { normalizePayload } from "@server/services/transport";
 import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
-import { normalizePayload } from "../../../../src/services/transport";
 import {
   generateEnvSecret,
   getOwnedEnvironment,

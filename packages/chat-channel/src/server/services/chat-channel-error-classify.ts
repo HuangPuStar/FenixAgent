@@ -4,7 +4,7 @@
 
 import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
-import { AppError } from "../../../../../apps/server/src/errors";
+import { AppError } from "@server/errors";
 
 /**
  * YJS 前端 WS 打开阶段的 spawn 错误分类（机器离线 + 确定性永久失败）。

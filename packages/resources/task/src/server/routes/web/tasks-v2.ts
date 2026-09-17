@@ -1,5 +1,5 @@
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import { WebErrSchema } from "../../schemas/common.schema";
 import type { CreateTaskV2Request, UpdateTaskV2Request } from "../../schemas/task-v2.schema";
 import {

@@ -12,7 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import type { WsConnection } from "../../../../src/transport/ws-types";
+import type { WsConnection } from "@server/transport/ws-types";
 import { wsToAgentNodeSocket } from "../transport/agent-node-bridge";
 
 function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {

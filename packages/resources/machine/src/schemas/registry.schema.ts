@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../src/schemas/common.schema";
 
 /** 机器注册记录 */
 export const MachineSchema = z.object({

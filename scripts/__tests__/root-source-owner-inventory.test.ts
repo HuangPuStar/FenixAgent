@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { $ } from "bun";
 import {
   auditRootSourceOwners,
@@ -11,6 +12,7 @@ import {
 import {
   AmbiguousRootOwnerRuleError,
   getMostSpecificRootOwnerRule,
+  RETAINED_HOST_TEST_RATIONALES,
   ROOT_OWNER_RULES,
   ROOT_OWNERS,
   type RootOwnerRule,
@@ -231,8 +233,8 @@ test("resource permission 测试归属平台访问控制", () => {
   }
 });
 
-// registry 与 ACP 会话专项测试必须继续跟随其直接被测模块。
-test("新增专项测试不落入 host fallback", async () => {
+// RMD-07 完成后根目录不再保留 host 测试，历史清单中的测试均迁入 apps/server。
+test("RMD-07 host 测试完成迁入且不落入根目录 fallback", async () => {
   const expectations = [
     ["src/__tests__/round36-registry-service-coverage.test.ts", "resource-machine", "RMD-02"],
     ["src/__tests__/round39-registry-service.test.ts", "resource-machine", "RMD-02"],
@@ -246,8 +248,12 @@ test("新增专项测试不落入 host fallback", async () => {
   const hostTests = audit.assignments.filter(
     (assignment) => assignment.rule.owner === "apps-server" && assignment.file.includes("__tests__/"),
   );
-  expect(hostTests.every((assignment) => assignment.hostRationale)).toBe(true);
-  expect(new Set(hostTests.map((assignment) => assignment.hostRationale)).size).toBeGreaterThan(1);
+  expect(hostTests).toHaveLength(0);
+  for (const source of Object.keys(RETAINED_HOST_TEST_RATIONALES)) {
+    const target = getRootOwnerTargetPath(source, getMostSpecificRootOwnerRule(source)!);
+    expect(existsSync(source), `legacy host test still exists: ${source}`).toBe(false);
+    expect(existsSync(target), `migrated host test is missing: ${target}`).toBe(true);
+  }
   expect(
     audit.assignments
       .filter((assignment) => assignment.rule.owner !== "apps-server")
@@ -269,8 +275,7 @@ test("chat 专项前端测试跟随运行时 owner", async () => {
   const hostTests = audit.assignments.filter(
     (assignment) => assignment.rule.owner === "apps-server" && assignment.file.includes("__tests__/"),
   );
-  expect(hostTests.every((assignment) => (assignment.hostRationale?.length ?? 0) > 20)).toBe(true);
-  expect(hostTests.some((assignment) => assignment.hostRationale?.includes("error-handler"))).toBe(true);
+  expect(hostTests).toHaveLength(0);
 });
 
 // 规则表自身是任务范围的稳定合同，不能由当前文件恰好为空而掩盖任务缺失。

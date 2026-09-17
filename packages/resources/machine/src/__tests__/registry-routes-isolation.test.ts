@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { readJson, resetAllStubs, stubAuthApi, stubRegistry } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubRegistry } from "@server/test-utils/helpers";
 
 const registryRoutes = (await import("../routes/web/registry")).default;
 

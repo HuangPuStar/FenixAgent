@@ -2,13 +2,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rename, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import {
-  resetAllStubs,
-  stubDb,
-  stubEnvironmentRepo,
-  stubFileWsHandler,
-} from "../../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
 import { gate } from "../services/agent-file-service";
 import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import {

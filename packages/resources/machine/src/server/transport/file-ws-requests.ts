@@ -12,8 +12,8 @@
 // - BusyError：背压拒绝错误（P0-2），上层映射 HTTP 429 + Retry-After（W5b）。
 
 import { error as logError } from "@fenix/logger";
-import type { WsConnection } from "../../../../../../src/transport/ws-types";
-import type { FileWsConnectionEntry } from "../../../../../../src/types/store";
+import type { WsConnection } from "@server/transport/ws-types";
+import type { FileWsConnectionEntry } from "@server/types/store";
 import { registerMachineEnvironment } from "../services/file-machine-events";
 import { runFileOpWithRetry } from "./file-op-retry";
 

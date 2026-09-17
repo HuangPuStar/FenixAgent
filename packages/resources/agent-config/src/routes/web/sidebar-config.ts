@@ -1,5 +1,5 @@
+import { SidebarConfigResponseSchema } from "@server/schemas";
 import Elysia from "elysia";
-import { SidebarConfigResponseSchema } from "../../../../../../src/schemas";
 import { getSidebarConfig } from "../../services/sidebar-config";
 
 const app = new Elysia({ name: "web-sidebar-config", prefix: "/sidebar-config" })

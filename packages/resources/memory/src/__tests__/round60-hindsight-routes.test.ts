@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { webHindsightRoutes as hindsightRoutes } from "@fenix/resource-memory/server";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { readJson, resetAllStubs, stubAuthApi, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { readJson, resetAllStubs, stubAuthApi, stubDb } from "@server/test-utils/helpers";
 
 type FetchCall = { url: string; init?: RequestInit };
 

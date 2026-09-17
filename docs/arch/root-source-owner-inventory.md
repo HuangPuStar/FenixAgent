@@ -4,7 +4,7 @@
 
 ## 审计结果
 
-- 文件总数：730
+- 文件总数：655
 - 未归属：0
 - 歧义：0
 - 不安全删除：0
@@ -13,7 +13,6 @@
 
 | 任务 | Owner | 文件数 |
 | --- | --- | ---: |
-| RMD-07 | apps-server | 75 |
 | RMD-08 | apps-web | 183 |
 | RMD-09 | delete | 472 |
 
@@ -177,82 +176,7 @@ RMD-01、RMD-02、RMD-03、RMD-04、RMD-05、RMD-06、RMD-07、RMD-08、RMD-09 �
 
 | 原路径 | 明确目标路径 | Owner | 主要消费者 | 测试目标 | RMD 批次 |
 | --- | --- | --- | --- | --- | --- |
-| `src/__tests__/agent-platform-api-reference.test.ts` | `apps/server/src/__tests__/agent-platform-api-reference.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/agent-platform-api-reference.test.ts | RMD-07 |
-| `src/__tests__/architecture-check.test.ts` | `apps/server/src/__tests__/architecture-check.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/architecture-check.test.ts | RMD-07 |
-| `src/__tests__/automationState.test.ts` | `apps/server/src/__tests__/automationState.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/automationState.test.ts | RMD-07 |
-| `src/__tests__/build-info.test.ts` | `apps/server/src/__tests__/build-info.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/build-info.test.ts | RMD-07 |
-| `src/__tests__/capabilities-coalescing.test.ts` | `apps/server/src/__tests__/capabilities-coalescing.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/capabilities-coalescing.test.ts | RMD-07 |
-| `src/__tests__/config-integration.test.ts` | `apps/server/src/__tests__/config-integration.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/config-integration.test.ts | RMD-07 |
-| `src/__tests__/config-validators.test.ts` | `apps/server/src/__tests__/config-validators.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/config-validators.test.ts | RMD-07 |
-| `src/__tests__/data-migrate.test.ts` | `apps/server/src/__tests__/data-migrate.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/data-migrate.test.ts | RMD-07 |
-| `src/__tests__/engine-type-schema.test.ts` | `apps/server/src/__tests__/engine-type-schema.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/engine-type-schema.test.ts | RMD-07 |
-| `src/__tests__/error-class-semantics.test.ts` | `apps/server/src/__tests__/error-class-semantics.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/error-class-semantics.test.ts | RMD-07 |
-| `src/__tests__/error-handler.test.ts` | `apps/server/src/__tests__/error-handler.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/error-handler.test.ts | RMD-07 |
-| `src/__tests__/executable.test.ts` | `apps/server/src/__tests__/executable.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/executable.test.ts | RMD-07 |
-| `src/__tests__/jsonb-utils.test.ts` | `apps/server/src/__tests__/jsonb-utils.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/jsonb-utils.test.ts | RMD-07 |
-| `src/__tests__/migrate-agent-config-model-id.test.ts` | `apps/server/src/__tests__/migrate-agent-config-model-id.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/migrate-agent-config-model-id.test.ts | RMD-07 |
-| `src/__tests__/pagination-bounds.test.ts` | `apps/server/src/__tests__/pagination-bounds.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/pagination-bounds.test.ts | RMD-07 |
-| `src/__tests__/peri-task-detail-service.test.ts` | `apps/server/src/__tests__/peri-task-detail-service.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/peri-task-detail-service.test.ts | RMD-07 |
-| `src/__tests__/phone-signup-route.test.ts` | `apps/server/src/__tests__/phone-signup-route.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/phone-signup-route.test.ts | RMD-07 |
-| `src/__tests__/round15-isolated-service-boundaries.test.ts` | `apps/server/src/__tests__/round15-isolated-service-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round15-isolated-service-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round16-isolated-protocol-boundaries.test.ts` | `apps/server/src/__tests__/round16-isolated-protocol-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round16-isolated-protocol-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round18-agent-config-model-migration-boundaries.test.ts` | `apps/server/src/__tests__/round18-agent-config-model-migration-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round18-agent-config-model-migration-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round18-openai-response-protocol-boundaries.test.ts` | `apps/server/src/__tests__/round18-openai-response-protocol-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round18-openai-response-protocol-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round19-isolated-repository-boundaries.test.ts` | `apps/server/src/__tests__/round19-isolated-repository-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round19-isolated-repository-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round21-isolated-service-coverage.test.ts` | `apps/server/src/__tests__/round21-isolated-service-coverage.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round21-isolated-service-coverage.test.ts | RMD-07 |
-| `src/__tests__/round22-launch-spec-isolation.test.ts` | `apps/server/src/__tests__/round22-launch-spec-isolation.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round22-launch-spec-isolation.test.ts | RMD-07 |
-| `src/__tests__/round29-cache-isolation.test.ts` | `apps/server/src/__tests__/round29-cache-isolation.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round29-cache-isolation.test.ts | RMD-07 |
-| `src/__tests__/round37-service-boundaries.test.ts` | `apps/server/src/__tests__/round37-service-boundaries.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round37-service-boundaries.test.ts | RMD-07 |
-| `src/__tests__/round45-auth-plugin.test.ts` | `apps/server/src/__tests__/round45-auth-plugin.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round45-auth-plugin.test.ts | RMD-07 |
-| `src/__tests__/round52-agent-model-migration.test.ts` | `apps/server/src/__tests__/round52-agent-model-migration.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/round52-agent-model-migration.test.ts | RMD-07 |
-| `src/__tests__/sanitize-execution-log.test.ts` | `apps/server/src/__tests__/sanitize-execution-log.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/sanitize-execution-log.test.ts | RMD-07 |
-| `src/__tests__/structured-logger.test.ts` | `apps/server/src/__tests__/structured-logger.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/structured-logger.test.ts | RMD-07 |
-| `src/__tests__/task-schema.test.ts` | `apps/server/src/__tests__/task-schema.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/task-schema.test.ts | RMD-07 |
-| `src/__tests__/test-openai-chat.sh` | `apps/server/src/__tests__/test-openai-chat.sh` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/test-openai-chat.sh | RMD-07 |
-| `src/__tests__/web-instance-runtime-actions.test.ts` | `apps/server/src/__tests__/web-instance-runtime-actions.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/web-instance-runtime-actions.test.ts | RMD-07 |
-| `src/__tests__/workspace-symlink-escape.test.ts` | `apps/server/src/__tests__/workspace-symlink-escape.test.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/workspace-symlink-escape.test.ts | RMD-07 |
 | `src/.DS_Store` | 删除 | delete | 删除：非源码产物 | scripts/__tests__/root-source-owner-inventory.test.ts | RMD-09 |
-| `src/errors/index.ts` | `apps/server/src/errors/index.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | packages/agent-runtime/src/__tests__/agent-chat-service-boundaries.test.ts, packages/agent-runtime/src/__tests__/environment-role.test.ts, packages/agent-runtime/src/__tests__/openai-chat-routes.test.ts, packages/agent-runtime/src/__tests__/registry-environment-isolation-coverage.test.ts, packages/agent-runtime/src/__tests__/round44-environments-routes.test.ts, packages/agent-runtime/src/__tests__/round45-environment-acp.test.ts | RMD-07 |
-| `src/repositories/agent-engine.ts` | `apps/server/src/repositories/agent-engine.ts` | apps-server | src/repositories/index.ts | src/__tests__/round19-isolated-repository-boundaries.test.ts | RMD-07 |
-| `src/repositories/index.ts` | `apps/server/src/repositories/index.ts` | apps-server | apps/server/src/test-utils/setup-mocks.ts; packages/agent-runtime/src/services/orchestration-bootstrap.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/routes/hooks.ts` | `apps/server/src/routes/hooks.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/routes/web/config/index.ts` | `apps/server/src/routes/web/config/index.ts` | apps-server | src/routes/web/index.ts | src/__tests__/config-integration.test.ts | RMD-07 |
-| `src/routes/web/config/providers.ts` | `apps/server/src/routes/web/config/providers.ts` | apps-server | src/routes/web/config/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/routes/web/config/sandbox-pools.ts` | `apps/server/src/routes/web/config/sandbox-pools.ts` | apps-server | src/routes/web/config/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/routes/web/environments.ts` | `apps/server/src/routes/web/environments.ts` | apps-server | src/routes/web/index.ts | packages/agent-runtime/src/__tests__/round44-environments-routes.test.ts | RMD-07 |
-| `src/routes/web/index.ts` | `apps/server/src/routes/web/index.ts` | apps-server | apps/server/src/main.ts | packages/resources/machine/src/__tests__/registry-routes.test.ts, src/__tests__/agent-platform-api-reference.test.ts | RMD-07 |
-| `src/routes/web/instances.ts` | `apps/server/src/routes/web/instances.ts` | apps-server | src/routes/web/index.ts | packages/agent-runtime/src/__tests__/instances-delete-idempotent.test.ts, src/__tests__/web-instance-runtime-actions.test.ts | RMD-07 |
-| `src/routes/web/meta-agent.ts` | `apps/server/src/routes/web/meta-agent.ts` | apps-server | src/routes/web/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/routes/web/peri-task-details.ts` | `apps/server/src/routes/web/peri-task-details.ts` | apps-server | src/routes/web/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/api-common.schema.ts` | `apps/server/src/schemas/api-common.schema.ts` | apps-server | packages/resources/mcp/src/server/routes/api/mcp.ts; packages/resources/model-management/src/routes/api/models.ts; packages/resources/sandbox/src/routes/api/sandbox-cluster.ts; packages/resources/sandbox/src/routes/api/sandbox-server.ts; packages/resources/sandbox/src/routes/api/sandbox.ts; packages/resources/workflow/src/server/schemas/api-common.schema.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/api-instance.schema.ts` | `apps/server/src/schemas/api-instance.schema.ts` | apps-server | packages/agent-runtime/src/routes/api/instances.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/api-model.schema.ts` | `apps/server/src/schemas/api-model.schema.ts` | apps-server | packages/resources/model-management/src/routes/api/models.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/api-workspace.schema.ts` | `apps/server/src/schemas/api-workspace.schema.ts` | apps-server | packages/resources/machine/src/routes/api/workspaces.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/common.schema.ts` | `apps/server/src/schemas/common.schema.ts` | apps-server | packages/agent-runtime/src/schemas/environment.schema.ts; packages/agent-runtime/src/schemas/instance.schema.ts; packages/resources/agent-config/src/server/routes/web/agent-generation.ts; packages/resources/agent-config/src/server/routes/web/agent-site-association-routes.ts; packages/resources/agent-config/src/server/routes/web/agent-site-route-support.ts; packages/resources/agent-config/src/server/routes/web/agent-sites.ts; packages/resources/agent-config/src/server/routes/web/config/agents.ts; packages/resources/agent-config/src/server/schemas/agent-generation.schema.ts; packages/resources/agent-config/src/server/schemas/agent-site.schema.ts; packages/resources/agent-config/src/server/schemas/config.schema.ts; packages/resources/channel/src/server/schemas/common.schema.ts; packages/resources/identity-admin/src/routes/web/control.ts; packages/resources/identity-admin/src/server/routes/web/api-keys.ts; packages/resources/identity-admin/src/server/routes/web/organizations.ts; packages/resources/identity-admin/src/server/schemas/organization.schema.ts; packages/resources/knowledge/src/server/routes/web/knowledge-bases.ts; packages/resources/knowledge/src/server/schemas/knowledge.schema.ts; packages/resources/machine/src/routes/web/registry.ts; packages/resources/machine/src/schemas/file.schema.ts; packages/resources/machine/src/schemas/registry.schema.ts; packages/resources/mcp/src/server/routes/web/config/mcp.ts; packages/resources/model-management/src/routes/web/config/models.ts; packages/resources/prod-view/src/server/routes/web/config/prod-views.ts; packages/resources/prod-view/src/server/routes/web/prod-views.ts; packages/resources/skill/src/server/routes/web/config/skills.ts; packages/resources/task/src/server/schemas/common.schema.ts; packages/resources/workflow/src/server/schemas/common.schema.ts; src/routes/web/config/providers.ts; src/routes/web/environments.ts; src/routes/web/instances.ts; src/routes/web/meta-agent.ts; src/routes/web/peri-task-details.ts; src/schemas/config.schema.ts; src/schemas/index.ts; src/schemas/peri-task-details.ts; src/schemas/session.schema.ts | packages/resources/agent-config/src/__tests__/agent-sites-routes.test.ts, src/__tests__/round16-isolated-protocol-boundaries.test.ts | RMD-07 |
-| `src/schemas/config.schema.ts` | `apps/server/src/schemas/config.schema.ts` | apps-server | packages/resources/model-management/src/routes/web/config/models.ts; src/routes/web/config/providers.ts; src/schemas/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/index.ts` | `apps/server/src/schemas/index.ts` | apps-server | packages/resources/agent-config/src/routes/web/sidebar-config.ts; packages/resources/skill/src/server/routes/web/config/skills.ts | packages/resources/machine/src/__tests__/registry-routes.test.ts | RMD-07 |
-| `src/schemas/peri-task-details.ts` | `apps/server/src/schemas/peri-task-details.ts` | apps-server | packages/resources/model-management/src/services/peri-task-detail-service.ts; src/routes/web/peri-task-details.ts; src/schemas/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/session.schema.ts` | `apps/server/src/schemas/session.schema.ts` | apps-server | packages/resources/identity-admin/src/routes/web/control.ts; src/schemas/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/schemas/sidebar-config.schema.ts` | `apps/server/src/schemas/sidebar-config.schema.ts` | apps-server | src/schemas/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/services/automationState.ts` | `apps/server/src/services/automationState.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/automationState.test.ts | RMD-07 |
-| `src/services/build-info.ts` | `apps/server/src/services/build-info.ts` | apps-server | apps/server/src/main.ts | src/__tests__/build-info.test.ts | RMD-07 |
-| `src/services/config-utils.ts` | `apps/server/src/services/config-utils.ts` | apps-server | packages/agent-runtime/src/services/launch-spec-builder.ts; packages/resources/agent-config/src/server/routes/web/agent-generation.ts; packages/resources/agent-config/src/server/routes/web/config/agent-route-support.ts; packages/resources/memory/src/server/routes/web/hindsight.ts; packages/resources/model-management/src/routes/web/config/models.ts; packages/resources/skill/src/server/routes/web/config/skills.ts; src/routes/web/config/providers.ts; src/routes/web/config/sandbox-pools.ts | src/__tests__/round16-isolated-protocol-boundaries.test.ts, src/__tests__/round22-launch-spec-isolation.test.ts | RMD-07 |
-| `src/services/config/index.ts` | `apps/server/src/services/config/index.ts` | apps-server | packages/resources/memory/src/server/services/hindsight.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/services/config/jsonb.ts` | `apps/server/src/services/config/jsonb.ts` | apps-server | packages/resources/mcp/src/server/services/config/mcp-server.ts; src/services/config/index.ts | src/__tests__/jsonb-utils.test.ts | RMD-07 |
-| `src/services/config/types.ts` | `apps/server/src/services/config/types.ts` | apps-server | apps/server/src/env.ts; packages/resources/agent-config/src/services/meta-agent.ts; packages/resources/mcp/src/server/routes/web/config/mcp.ts; packages/resources/mcp/src/server/services/config/mcp-server.ts; packages/resources/model-management/src/routes/web/config/models.ts; packages/resources/model-management/src/server/config/model-provider-types.ts; packages/resources/model-management/src/server/config/provider.ts; src/services/config/index.ts; src/services/config/user-config.ts | src/__tests__/engine-type-schema.test.ts | RMD-07 |
-| `src/services/config/user-config.ts` | `apps/server/src/services/config/user-config.ts` | apps-server | packages/resources/agent-config/src/server/routes/web/config/agent-route-support.ts; packages/resources/model-management/src/routes/web/config/models.ts; src/services/config/index.ts | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/services/core-bootstrap.ts` | `apps/server/src/services/core-bootstrap.ts` | apps-server | apps/server/src/main.ts; packages/agent-runtime/src/services/acp-idle-monitor.ts; packages/agent-runtime/src/services/agent-concurrency.ts; packages/agent-runtime/src/services/orchestration-instance.ts | packages/agent-runtime/src/__tests__/acp-idle-monitor.test.ts | RMD-07 |
-| `src/services/data-migrate.ts` | `apps/server/src/services/data-migrate.ts` | apps-server | apps/server/src/main.ts | src/__tests__/data-migrate.test.ts | RMD-07 |
-| `src/services/data-migrates/migrate-agent-config-model-id.ts` | `apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts` | apps-server | src/services/data-migrate.ts | src/__tests__/migrate-agent-config-model-id.test.ts, src/__tests__/round18-agent-config-model-migration-boundaries.test.ts, src/__tests__/round52-agent-model-migration.test.ts | RMD-07 |
-| `src/services/openai-response-mapper.ts` | `apps/server/src/services/openai-response-mapper.ts` | apps-server | packages/agent-runtime/src/routes/api/openai-chat.ts | packages/agent-runtime/src/__tests__/openai-response-mapper.test.ts, src/__tests__/round16-isolated-protocol-boundaries.test.ts, src/__tests__/round18-openai-response-protocol-boundaries.test.ts | RMD-07 |
-| `src/services/sync-builtin.ts` | `apps/server/src/services/sync-builtin.ts` | apps-server | apps/server/src/main.ts | packages/resources/agent-config/src/__tests__/meta-agent.test.ts | RMD-07 |
-| `src/services/transport.ts` | `apps/server/src/services/transport.ts` | apps-server | packages/resources/identity-admin/src/routes/web/control.ts | packages/agent-runtime/src/__tests__/registry-environment-isolation-coverage.test.ts, packages/agent-runtime/src/__tests__/transport-normalize.test.ts | RMD-07 |
-| `src/transport/ws-types.ts` | `apps/server/src/transport/ws-types.ts` | apps-server | apps/server/src/test-utils/observer-fixtures.ts; packages/agent-runtime/src/routes/acp/index.ts; packages/agent-runtime/src/server/transport/acp-ws-handler.ts; packages/agent-runtime/src/server/transport/relay/external-relay.ts; packages/agent-runtime/src/transport/agent-node-bridge.ts; packages/resources/machine/src/routes/web/file-events.ts; packages/resources/machine/src/server/transport/file-ws-handler.ts; packages/resources/machine/src/server/transport/file-ws-requests.ts; src/types/store.ts | packages/agent-runtime/src/__tests__/acp-machine-connection-lookup.test.ts, packages/agent-runtime/src/__tests__/agent-node-socket-send.test.ts, packages/agent-runtime/src/__tests__/external-relay.test.ts, packages/resources/machine/src/__tests__/registry-filews-cleanup.test.ts | RMD-07 |
-| `src/types/api.ts` | `apps/server/src/types/api.ts` | apps-server | packages/agent-runtime/src/services/environment-acp.ts; packages/agent-runtime/src/services/environment-core.ts; src/services/automationState.ts | src/__tests__/automationState.test.ts | RMD-07 |
-| `src/types/global.d.ts` | `apps/server/src/types/global.d.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/types/messages.ts` | `apps/server/src/types/messages.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | 无直接专项测试；RMD-07 迁移验收 | RMD-07 |
-| `src/types/store.ts` | `apps/server/src/types/store.ts` | apps-server | apps/server/src/test-utils/observer-fixtures.ts; packages/agent-runtime/src/server/services/agent-instance-runtime-projection.ts; packages/agent-runtime/src/server/transport/acp-ws-handler.ts; packages/agent-runtime/src/services/agent-chat-service.ts; packages/agent-runtime/src/services/agent-concurrency.ts; packages/agent-runtime/src/services/instance-registry.ts; packages/agent-runtime/src/services/orchestration-instance.ts; packages/resources/machine/src/server/services/file-machine-events.ts; packages/resources/machine/src/server/transport/file-ws-requests.ts; packages/resources/observer/src/server/services/observer/observer-service.ts; packages/resources/observer/src/server/services/observer/providers/acp-link.ts; packages/resources/observer/src/server/services/observer/types.ts | packages/agent-runtime/src/__tests__/acp-machine-connection-lookup.test.ts, packages/agent-runtime/src/__tests__/agent-concurrency.test.ts, packages/agent-runtime/src/__tests__/orchestration-instance-cleanup-isolation.test.ts, packages/resources/observer/src/__tests__/api-system-observer-links.test.ts, packages/resources/workflow/src/__tests__/agent-chat-transport.test.ts | RMD-07 |
-| `src/utils/executable.ts` | `apps/server/src/utils/executable.ts` | apps-server | 无仓内生产 importer；RMD-07 接线时确认 apps/server 公开入口 | src/__tests__/executable.test.ts | RMD-07 |
 | `web/components/ai-elements/chat-message-content.css` | `apps/web/components/ai-elements/chat-message-content.css` | apps-web | web/components/ai-elements/message.tsx | 无直接专项测试；RMD-08 迁移验收 | RMD-08 |
 | `web/components/ai-elements/code-block.tsx` | `apps/web/components/ai-elements/code-block.tsx` | apps-web | web/components/ai-elements/index.ts; web/components/ai-elements/tool.tsx | 无直接专项测试；RMD-08 迁移验收 | RMD-08 |
 | `web/components/ai-elements/conversation.tsx` | `apps/web/components/ai-elements/conversation.tsx` | apps-web | packages/agent-runtime/web/components/chat/ChatView.tsx; web/components/ai-elements/index.ts | 无直接专项测试；RMD-08 迁移验收 | RMD-08 |
@@ -912,37 +836,3 @@ RMD-01、RMD-02、RMD-03、RMD-04、RMD-05、RMD-06、RMD-07、RMD-08、RMD-09 �
 
 | 保留的 host 测试 | 依据 |
 | --- | --- |
-| `src/__tests__/agent-platform-api-reference.test.ts` | Agent Platform API 参考文档与 apps/server 路由契约的宿主一致性。 |
-| `src/__tests__/architecture-check.test.ts` | scripts/check-architecture.ts 对全仓 apps/server 分层约束的检查。 |
-| `src/__tests__/automationState.test.ts` | apps/server 自动化状态装配与全局配置状态。 |
-| `src/__tests__/build-info.test.ts` | apps/server build-info 服务读取构建元数据的宿主入口。 |
-| `src/__tests__/capabilities-coalescing.test.ts` | 服务端 capability 聚合的跨模块协议装配。 |
-| `src/__tests__/config-integration.test.ts` | apps/server config 集成、环境变量与持久化配置装配。 |
-| `src/__tests__/config-validators.test.ts` | apps/server config validator 的共享宿主配置契约。 |
-| `src/__tests__/data-migrate.test.ts` | apps/server data-migrate 启动迁移编排。 |
-| `src/__tests__/engine-type-schema.test.ts` | apps/server engine type 通用 schema 契约。 |
-| `src/__tests__/error-class-semantics.test.ts` | apps/server AppError 分类及 HTTP 错误语义。 |
-| `src/__tests__/error-handler.test.ts` | apps/server error-handler 插件及 Elysia 响应边界。 |
-| `src/__tests__/executable.test.ts` | apps/server executable 工具与进程宿主适配。 |
-| `src/__tests__/jsonb-utils.test.ts` | apps/server JSONB 配置工具的数据库宿主边界。 |
-| `src/__tests__/migrate-agent-config-model-id.test.ts` | apps/server 历史 agent-config model-id 数据迁移入口。 |
-| `src/__tests__/pagination-bounds.test.ts` | apps/server API 分页通用参数边界。 |
-| `src/__tests__/peri-task-detail-service.test.ts` | apps/server peri-task detail 跨服务投影装配。 |
-| `src/__tests__/phone-signup-route.test.ts` | apps/server phone signup 路由与 better-auth 插件集成。 |
-| `src/__tests__/round15-isolated-service-boundaries.test.ts` | apps/server service 边界隔离审计基线。 |
-| `src/__tests__/round16-isolated-protocol-boundaries.test.ts` | apps/server ACP/API 协议边界隔离审计基线。 |
-| `src/__tests__/round18-agent-config-model-migration-boundaries.test.ts` | agent-config model migration 与 apps/server 数据迁移边界。 |
-| `src/__tests__/round18-openai-response-protocol-boundaries.test.ts` | OpenAI response 与 apps/server 对外协议边界。 |
-| `src/__tests__/round19-isolated-repository-boundaries.test.ts` | apps/server repository 分层边界审计基线。 |
-| `src/__tests__/round21-isolated-service-coverage.test.ts` | apps/server 服务覆盖率隔离审计基线。 |
-| `src/__tests__/round22-launch-spec-isolation.test.ts` | launchSpec 与 apps/server 启动装配隔离边界。 |
-| `src/__tests__/round29-cache-isolation.test.ts` | apps/server 缓存隔离与全局生命周期边界。 |
-| `src/__tests__/round37-service-boundaries.test.ts` | apps/server service 层依赖方向审计基线。 |
-| `src/__tests__/round45-auth-plugin.test.ts` | apps/server better-auth 插件注册与请求上下文。 |
-| `src/__tests__/round52-agent-model-migration.test.ts` | agent model migration 的 apps/server 数据兼容入口。 |
-| `src/__tests__/sanitize-execution-log.test.ts` | apps/server 执行日志脱敏的安全宿主边界。 |
-| `src/__tests__/structured-logger.test.ts` | apps/server structured logger 的进程级观测装配。 |
-| `src/__tests__/task-schema.test.ts` | apps/server task 通用 schema 与 API 参数契约。 |
-| `src/__tests__/test-openai-chat.sh` | apps/server OpenAI chat HTTP 入口的端到端脚本。 |
-| `src/__tests__/web-instance-runtime-actions.test.ts` | apps/server web instance runtime action 路由装配。 |
-| `src/__tests__/workspace-symlink-escape.test.ts` | apps/server workspace 文件 API 的 symlink 安全边界。 |

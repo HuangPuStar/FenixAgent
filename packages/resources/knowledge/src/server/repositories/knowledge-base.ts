@@ -1,6 +1,6 @@
+import { db } from "@server/db";
+import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "@server/db/schema";
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "../../../../../../apps/server/src/db/schema";
 
 /** KnowledgeBase 行类型 */
 export type KnowledgeBaseRow = typeof knowledgeBase.$inferSelect;

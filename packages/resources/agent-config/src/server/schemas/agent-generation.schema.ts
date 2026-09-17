@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../../../src/schemas/common.schema";
 
 /** Agent 智能生成返回的推荐 Skill 项。 */
 export const AgentGenerationSkillSchema = z.object({

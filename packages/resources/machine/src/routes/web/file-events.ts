@@ -1,10 +1,10 @@
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
+import { validateEnv } from "@server/env";
+import { AppError, NotFoundError } from "@server/errors";
+import { authenticateRequest, type RequestAuthResult } from "@server/plugins/auth";
+import type { WsConnection } from "@server/transport/ws-types";
 import Elysia from "elysia";
-import { validateEnv } from "../../../../../../apps/server/src/env";
-import { AppError, NotFoundError } from "../../../../../../apps/server/src/errors";
-import { authenticateRequest, type RequestAuthResult } from "../../../../../../apps/server/src/plugins/auth";
-import type { WsConnection } from "../../../../../../src/transport/ws-types";
 import { FileEventsSubscribeSchema } from "../../schemas/file-events.schema";
 import { subscribe } from "../../server/services/file-event-queue";
 

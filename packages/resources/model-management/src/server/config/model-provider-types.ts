@@ -1,4 +1,4 @@
-import type { ResourceAccess } from "../../../../../../src/services/config/types";
+import type { ResourceAccess } from "@server/services/config/types";
 
 /** Provider 额外配置。 */
 export type ProviderExtraOptions = Record<string, unknown>;

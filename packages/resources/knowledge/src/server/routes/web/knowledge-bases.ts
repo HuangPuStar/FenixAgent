@@ -2,10 +2,10 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../../../../../../src/schemas/common.schema";
 import { knowledgeBaseRepo, knowledgeResourceRepo } from "../../repositories/knowledge-base";
 import {
   CreateKnowledgeBaseRequestSchema,

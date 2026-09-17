@@ -1,6 +1,6 @@
+import { db } from "@server/db";
+import { type ProdViewRow, prodView } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { type ProdViewRow, prodView } from "../../../../../../apps/server/src/db/schema";
 
 /** ProdView 数据访问层接口 — 封装 ProdView 表的 CRUD 操作 */
 export interface IProdViewRepository {

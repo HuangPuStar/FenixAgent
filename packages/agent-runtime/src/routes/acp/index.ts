@@ -1,12 +1,12 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
+import { validateEnv } from "@server/env";
+import { AppError } from "@server/errors";
+import type { RequestAuthResult } from "@server/plugins/auth";
+import { authenticateRequest, authGuardPlugin } from "@server/plugins/auth";
+import type { WsConnection } from "@server/transport/ws-types";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
-import { validateEnv } from "../../../../../apps/server/src/env";
-import { AppError } from "../../../../../apps/server/src/errors";
-import type { RequestAuthResult } from "../../../../../apps/server/src/plugins/auth";
-import { authenticateRequest, authGuardPlugin } from "../../../../../apps/server/src/plugins/auth";
-import type { WsConnection } from "../../../../../src/transport/ws-types";
 import {
   AcpAgentListResponseSchema,
   AcpRegistrySecretQuerySchema,

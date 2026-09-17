@@ -316,8 +316,7 @@ ${assignmentRows}
 
 | 保留的 host 测试 | 依据 |
 | --- | --- |
-${retainedHostTestRows}
-`;
+${retainedHostTestRows}`;
 }
 
 /** 输出所有无法由汇总数字定位的审计失败项。 */

@@ -1,6 +1,6 @@
 import { getReadableAgentConfigById } from "@fenix/agent-config/server";
-import { AppError } from "../../../../../apps/server/src/errors";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
+import { AppError } from "@server/errors";
+import type { AuthContext } from "@server/plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";

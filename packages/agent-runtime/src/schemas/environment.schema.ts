@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@server/schemas/common.schema";
 import * as z from "zod/v4";
-import { WebOkSchema } from "../../../../src/schemas/common.schema";
 /** 环境基础信息 */
 export const EnvironmentInfoSchema = z
   .object({

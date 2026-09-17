@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { InvalidKnowledgeBindingError, setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import {
-  installRouteConfigStubs,
-  resetRouteConfigStubs,
-} from "../../../../../apps/server/src/test-utils/agent-config-route-deps";
-import { resetAllStubs, stubConfigPg, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { installRouteConfigStubs, resetRouteConfigStubs } from "@server/test-utils/agent-config-route-deps";
+import { resetAllStubs, stubConfigPg, stubDb } from "@server/test-utils/helpers";
 
 const route = (await import("../server/routes/web/config/agents")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

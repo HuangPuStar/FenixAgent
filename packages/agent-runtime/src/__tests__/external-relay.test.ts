@@ -9,7 +9,7 @@ import {
 } from "@fenix/agent-runtime/server";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AuthContext } from "@server/plugins/auth";
-import type { WsConnection } from "../../../../src/transport/ws-types";
+import type { WsConnection } from "@server/transport/ws-types";
 
 interface MockWs extends WsConnection {
   messages: string[];

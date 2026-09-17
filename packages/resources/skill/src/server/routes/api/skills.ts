@@ -4,10 +4,11 @@
  * 遵循对外 API 规范：标准 REST 方法、稳定分页结构、统一错误格式。
  * Skill 创建接口使用 multipart/form-data 上传协议，详情和删除接口统一按 Skill 唯一 ID 访问。
  */
+
+import { AppError } from "@server/errors";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../../../../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import {
   ApiSkillCreateBodySchema,
   ApiSkillDeleteResponseSchema,

@@ -7,10 +7,10 @@ import {
 } from "@fenix/access-control/server";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "@fenix/resource-knowledge/server";
 import { resolveAgentKnowledgePolicy } from "@fenix/resource-knowledge/server";
+import { db } from "@server/db";
+import { agentConfig, environment } from "@server/db/schema";
+import type { AuthContext } from "@server/plugins/auth";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../../apps/server/src/db";
-import { agentConfig, environment } from "../../../../../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../../../../../apps/server/src/plugins/auth";
 import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess, AgentNode } from "./types";
 
 // ────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
-import type { WsConnection } from "../../../../../src/transport/ws-types";
+import type { AuthContext } from "@server/plugins/auth";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import type { WsConnection } from "@server/transport/ws-types";
 
 // registry.ts 被 setup-mocks preload mock（REGISTRY_KEYS），本测试需要真实 deleteMachine /
 // writeRegistryEvent 实现：Bun 的模块 mock 按解析后路径匹配，带 query 的 specifier（?real）

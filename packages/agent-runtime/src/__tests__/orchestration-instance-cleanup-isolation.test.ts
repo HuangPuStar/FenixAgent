@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
-import type { InstanceSupplement } from "../../../../src/types/store";
+import type { InstanceSupplement } from "@server/types/store";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,

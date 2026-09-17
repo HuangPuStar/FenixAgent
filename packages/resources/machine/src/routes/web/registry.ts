@@ -1,7 +1,7 @@
 import { createLogger } from "@fenix/logger";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../../../../../src/schemas/common.schema";
 import {
   CreateMachineResponseSchema,
   CreateMachineSchema,

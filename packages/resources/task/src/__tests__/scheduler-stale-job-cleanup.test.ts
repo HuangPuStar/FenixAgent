@@ -3,7 +3,7 @@
 // 任务从 DB 删除后，execute 发现任务不存在时必须清理残留 job 并返回 failed，
 // 且不写执行日志、不遗留 running 状态（否则同一任务会被永久误判为 running）。
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import { SchedulerService } from "../server/services/scheduler/index";
 
 // 任务查询（getById 链：select().from().where().limit()）返回给定行集合

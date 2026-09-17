@@ -1,6 +1,6 @@
+import type { AuthContext } from "@server/plugins/auth";
+import { authenticateRequest } from "@server/plugins/auth";
 import Elysia from "elysia";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
-import { authenticateRequest } from "../../../../../../apps/server/src/plugins/auth";
 import type { Visibility } from "../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../repositories/agent-site-app";
 import { isAgentSitesConfigured, proxyToAgentSites } from "../services/agent-sites";

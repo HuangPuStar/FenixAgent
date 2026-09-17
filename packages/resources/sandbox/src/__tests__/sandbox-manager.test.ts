@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SandboxManager } from "@fenix/resource-sandbox/server";
-import type { SandboxInstance, SandboxPool } from "../../../../../apps/server/src/db/schema";
-import { resetAllStubs, stubCoreBootstrap } from "../../../../../apps/server/src/test-utils/helpers";
+import type { SandboxInstance, SandboxPool } from "@server/db/schema";
+import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
 
 const resources = {
   cpu: 0.5,

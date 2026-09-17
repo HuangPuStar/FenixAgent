@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { globalInstanceRegistry } from "@fenix/agent-runtime/server";
-import { resetAllStubs, stubCoreBootstrap } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
 import { cleanupSpawnedInstances } from "../server/services/workflow";
 import {
   acquireInstanceLease,

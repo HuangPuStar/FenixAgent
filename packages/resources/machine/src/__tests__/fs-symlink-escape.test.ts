@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../apps/server/src/config";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";

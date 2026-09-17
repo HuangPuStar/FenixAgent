@@ -19,8 +19,8 @@
 
 import { getBoundCoreRuntime } from "@fenix/agent-runtime/server";
 import { createLogger, error as logError } from "@fenix/logger";
-import { config } from "../../../../../../apps/server/src/config";
-import type { FileWsConnectionEntry } from "../../../../../../src/types/store";
+import { config } from "@server/config";
+import type { FileWsConnectionEntry } from "@server/types/store";
 import {
   type FileChangeKind,
   type FileChangeSource,

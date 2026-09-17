@@ -7,12 +7,7 @@ import {
 } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
-import {
-  resetAllStubs,
-  stubCoreBootstrap,
-  stubDb,
-  stubResourcePermissionRepo,
-} from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubCoreBootstrap, stubDb, stubResourcePermissionRepo } from "@server/test-utils/helpers";
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 

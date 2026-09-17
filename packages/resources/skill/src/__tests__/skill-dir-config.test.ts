@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { applyEnv, config } from "../../../../../apps/server/src/config";
-import type { Env } from "../../../../../apps/server/src/env";
+import { applyEnv, config } from "@server/config";
+import type { Env } from "@server/env";
 
 function makeEnv(skillDir: string): Env {
   return {

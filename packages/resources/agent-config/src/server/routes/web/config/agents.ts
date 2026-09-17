@@ -1,9 +1,9 @@
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
+import { AppError } from "@server/errors";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema } from "@server/schemas/common.schema";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../../../../../../../apps/server/src/errors";
-import { authGuardPlugin } from "../../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema } from "../../../../../../../../src/schemas/common.schema";
 import { AgentNameQuerySchema, GetAgentResponseSchema } from "../../../schemas/config.schema";
 import {
   agentRouteModels,

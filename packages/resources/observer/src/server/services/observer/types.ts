@@ -11,7 +11,7 @@
 // 这里仅 import type（编译期擦除），避免把 relay 模块运行时图拖进观察链路。
 
 import type { EnvironmentRecord, ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
-import type { AcpConnectionSnapshot } from "../../../../../../../src/types/store";
+import type { AcpConnectionSnapshot } from "@server/types/store";
 
 /** acp-link kind 的三类现场来源（linkId 前缀 = source，见 §4.4 linkId 归一化）。 */
 export const OBSERVER_LINK_SOURCES = ["acp-ws", "external-relay", "chat-relay"] as const;

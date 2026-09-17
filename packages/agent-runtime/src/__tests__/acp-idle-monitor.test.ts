@@ -81,7 +81,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: busyInstance.id, status: "running" },
           ],
-        }) as unknown as ReturnType<typeof import("../../../../src/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === busyInstance.id) return busyInstance;
@@ -131,7 +131,7 @@ describe("acp idle monitor", () => {
               pluginMetadata: { port: 9527 },
             },
           ],
-        }) as unknown as ReturnType<typeof import("../../../../src/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === trackedInstance.id) return trackedInstance;
         return;
@@ -185,7 +185,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: activeInstance.id, status: "running" },
           ],
-        }) as unknown as ReturnType<typeof import("../../../../src/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === activeInstance.id) return activeInstance;
@@ -218,7 +218,7 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [{ instanceId: staleInstance.id, status: "running" }],
-        }) as unknown as ReturnType<typeof import("../../../../src/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === staleInstance.id) return staleInstance;
         return;
@@ -250,7 +250,7 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [{ instanceId: activeInstance.id, status: "running" }],
-        }) as unknown as ReturnType<typeof import("../../../../src/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
       getInstance: (instanceId: string) => {
         if (instanceId === activeInstance.id) return activeInstance;
         return;

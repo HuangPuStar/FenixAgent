@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "paths": {
+      "@server/*": ["./apps/server/src/*"],
       "@fenix/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@fenix/core": ["./packages/core/src/index.ts"],
       "@fenix/opencode": ["./packages/plugin-opencode/src/index.ts"],

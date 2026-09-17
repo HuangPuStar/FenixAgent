@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
-import type { InstanceSupplement } from "../../../../src/types/store";
+import type { InstanceSupplement } from "@server/types/store";
 import {
   getActiveAgentCount,
   getActiveScheduledAgentCount,

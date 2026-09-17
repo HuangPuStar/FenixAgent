@@ -20,20 +20,12 @@ import {
   getSkillArchivePath,
   getSkillSourceDir,
 } from "@fenix/resource-skill/server";
+import { config, getBaseUrl } from "@server/config";
+import { db } from "@server/db";
+import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "@server/db/schema";
+import { AppError } from "@server/errors";
+import { resolveApiKey } from "@server/services/config-utils";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { config, getBaseUrl } from "../../../../apps/server/src/config";
-import { db } from "../../../../apps/server/src/db";
-import {
-  agentConfigMcp,
-  agentConfigSkill,
-  mcpServer,
-  member,
-  model,
-  provider,
-  skill,
-} from "../../../../apps/server/src/db/schema";
-import { AppError } from "../../../../apps/server/src/errors";
-import { resolveApiKey } from "../../../../src/services/config-utils";
 
 type LaunchModelProtocol = ModelConfig["protocol"];
 type SkillRow = typeof skill.$inferSelect;

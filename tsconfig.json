@@ -17,6 +17,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
+      "@server/*": ["./apps/server/src/*"],
       "@/components/ui/*": ["./apps/web/components/ui/*"],
       "@/components/*": ["./web/components/*"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
@@ -78,6 +79,6 @@
       "@/src/*": ["./web/src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["apps/server/src/**/*.ts"],
   "exclude": ["node_modules", "dist", "web"]
 }

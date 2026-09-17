@@ -4,7 +4,7 @@ import {
   type MachineStatusReader,
   waitForMachineConnection,
 } from "@fenix/resource-machine/server";
-import { config } from "../../../../../../apps/server/src/config";
+import { config } from "@server/config";
 import { SandboxRuntimeNotReadyError } from "./sandbox-errors";
 import type { SandboxManager, SandboxManagerCreateInput } from "./sandbox-manager";
 

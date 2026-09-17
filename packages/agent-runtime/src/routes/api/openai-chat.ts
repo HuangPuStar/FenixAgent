@@ -1,12 +1,8 @@
 import { log, error as logError } from "@fenix/logger";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "@server/services/openai-response-mapper";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { type AuthContext, authGuardPlugin } from "../../../../../apps/server/src/plugins/auth";
-import {
-  buildOpenAIError,
-  mapToNonStreamingResponse,
-  mapToSSEChunks,
-} from "../../../../../src/services/openai-response-mapper";
 import { OpenAIChatCompletionRequestSchema, OpenAIErrorResponseSchema } from "../../schemas/openai-chat.schema";
 import { openAgentSession } from "../../services/agent-chat-service";
 

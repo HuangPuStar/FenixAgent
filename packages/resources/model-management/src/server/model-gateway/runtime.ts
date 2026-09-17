@@ -3,10 +3,10 @@ import { findAgentConfigNamesByIds } from "@fenix/agent-config/server";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { findUsersBasicInfoByIds } from "@fenix/resource-identity-admin/server";
 import { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
+import { config } from "@server/config";
+import { db } from "@server/db";
+import { agentConfig, member, organization, user } from "@server/db/schema";
 import { sql } from "drizzle-orm";
-import { config } from "../../../../../../apps/server/src/config";
-import { db } from "../../../../../../apps/server/src/db";
-import { agentConfig, member, organization, user } from "../../../../../../apps/server/src/db/schema";
 import {
   deleteModelGatewayCredential,
   findModelGatewayCredentialBySubject,

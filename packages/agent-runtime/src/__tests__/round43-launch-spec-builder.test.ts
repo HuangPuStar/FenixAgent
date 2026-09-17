@@ -1,16 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
-import { config, setConfig } from "../../../../apps/server/src/config";
-import {
-  agentConfigMcp,
-  agentConfigSkill,
-  mcpServer,
-  member,
-  model,
-  provider,
-  skill,
-} from "../../../../apps/server/src/db/schema";
-import { resetAllStubs, stubDb } from "../../../../apps/server/src/test-utils/helpers";
+import { config, setConfig } from "@server/config";
+import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "@server/db/schema";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "../services/launch-spec-builder";
 
 const now = new Date("2026-08-19T00:00:00.000Z");

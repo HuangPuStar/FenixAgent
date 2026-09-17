@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { readJson, resetAllStubs, stubRegistry } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { readJson, resetAllStubs, stubRegistry } from "@server/test-utils/helpers";
 import {
   CreateMachineSchema,
   EventQuerySchema,
