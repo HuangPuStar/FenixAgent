@@ -1,7 +1,6 @@
 import { createLogger } from "@fenix/logger";
 import {
   createSandboxMachine,
-  findMachineOrganizationId,
   isMachineOnline,
   releaseMachineRuntime,
   stopHeartbeat,
@@ -77,7 +76,6 @@ export type SandboxManagerDependencies = {
   providers: SandboxProviderRegistry;
   now?: () => Date;
   isMachineOnline?: (machineId: string) => Promise<boolean>;
-  findMachineOrganizationId?: (machineId: string) => Promise<string | null>;
   /** 由 Machine 资源提供的身份创建能力；注入点避免 Manager 测试依赖数据库。 */
   createMachine?: typeof createSandboxMachine;
 };
@@ -142,7 +140,6 @@ export class SandboxManager {
   private readonly instances: SandboxInstanceRepository;
   private readonly now: () => Date;
   private readonly isMachineOnline: (machineId: string) => Promise<boolean>;
-  private readonly findMachineOrganizationId: (machineId: string) => Promise<string | null>;
   private readonly createMachine: typeof createSandboxMachine;
 
   constructor(private readonly dependencies: SandboxManagerDependencies) {
@@ -162,7 +159,6 @@ export class SandboxManager {
     };
     this.now = dependencies.now ?? (() => new Date());
     this.isMachineOnline = dependencies.isMachineOnline ?? isMachineOnline;
-    this.findMachineOrganizationId = dependencies.findMachineOrganizationId ?? findMachineOrganizationId;
     this.createMachine = dependencies.createMachine ?? createSandboxMachine;
   }
 
@@ -177,17 +173,7 @@ export class SandboxManager {
     }
 
     const existing = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-    if (existing) {
-      // schema 唯一键当前仍是 user + pool；在不修改迁移决策的前提下，复用必须按 Machine
-      // 持久租户归属 fail-closed，禁止同一用户把首个组织的执行身份带入其他组织。
-      if (input.organizationId) {
-        const machineOrganizationId = await this.findMachineOrganizationId(existing.machineId);
-        if (machineOrganizationId !== input.organizationId) {
-          throw new SandboxInstanceConflictError("sandbox instance belongs to another organization");
-        }
-      }
-      return this.reconcileWithLock(existing);
-    }
+    if (existing) return this.reconcileWithLock(existing);
 
     const createdAt = this.now();
     const machineId = sandboxMachineId(input.sandboxId);
@@ -223,15 +209,7 @@ export class SandboxManager {
       if (isUniqueConstraintError(error)) {
         // 并发创建冲突：复用抢占成功的一方；machine 和 provider 资源均由持有记录的一方创建。
         const concurrent = await this.instances.findActive(input.providerKey, input.poolId, input.userId);
-        if (concurrent) {
-          if (input.organizationId) {
-            const machineOrganizationId = await this.findMachineOrganizationId(concurrent.machineId);
-            if (machineOrganizationId !== input.organizationId) {
-              throw new SandboxInstanceConflictError("sandbox instance belongs to another organization");
-            }
-          }
-          return this.reconcileWithLock(concurrent);
-        }
+        if (concurrent) return this.reconcileWithLock(concurrent);
         // 冲突但查不到并发实例（极端竞态）：按冲突上报
         throw new SandboxInstanceConflictError(
           error instanceof Error ? error.message : "sandbox instance create conflicted",
@@ -248,7 +226,7 @@ export class SandboxManager {
       createMachine: async () => {
         await this.createMachine({
           id: machineId,
-          organizationId: input.organizationId ?? null,
+          organizationId: null,
           userId: input.userId,
           agentName: input.agentName ?? getSandboxAgentType(pool.extra),
         });

@@ -82,14 +82,86 @@ describe("SandboxManager machine identity", () => {
       poolId: "pool_default",
       providerKey: "test-provider",
       userId: "user_test",
+      organizationId: "org-second",
       template: { type: "image", value: "ignored" },
     });
 
-    expect(machineInput).toMatchObject({ id: "mach_sandbox_sbi_test", userId: "user_test" });
+    expect(machineInput).toMatchObject({
+      id: "mach_sandbox_sbi_test",
+      organizationId: null,
+      userId: "user_test",
+    });
     expect(instance.machineId).toBe("mach_sandbox_sbi_test");
     expect((providerInput?.resources as { environment: Record<string, string> }).environment.RCS_MACHINE_ID).toBe(
       "mach_sandbox_sbi_test",
     );
+  });
+
+  // Sandbox 按用户和资源池复用；切换组织时应沿用已有实例。
+  test("reuses a user sandbox across organizations", async () => {
+    const existing = makeInstance({ status: "starting" });
+    const readablePoolLookups: Array<{ poolId: string; organizationId: string }> = [];
+    const manager = new SandboxManager({
+      pools: {
+        findById: async () => pool,
+        findReadableById: async (poolId, organizationId) => {
+          readablePoolLookups.push({ poolId, organizationId });
+          return pool;
+        },
+      },
+      instances: {
+        findActive: async () => existing,
+        findByIdForUser: async () => existing,
+        update: async (_id: string, status: string, patch?: Record<string, unknown>) =>
+          Object.assign(existing, { status, ...patch }),
+      } as never,
+      providers: { get: () => ({}) } as never,
+    });
+
+    const result = await manager.createOrReuse({
+      sandboxId: "sbi_other_org",
+      poolId: existing.sandboxPoolId,
+      providerKey: existing.providerKey,
+      userId: existing.userId,
+      organizationId: "org-second",
+      template: { type: "image", value: "ignored" },
+    });
+
+    expect(result).toBe(existing);
+    expect(readablePoolLookups).toEqual([{ poolId: existing.sandboxPoolId, organizationId: "org-second" }]);
+  });
+
+  // 跨组织复用不绕过资源池可见性；目标组织不可读时不得查询或复用用户的 Sandbox。
+  test("rejects cross-organization reuse when the sandbox pool is not readable", async () => {
+    let findActiveCalls = 0;
+    const manager = new SandboxManager({
+      pools: {
+        findById: async () => pool,
+        findReadableById: async () => null,
+      },
+      instances: {
+        findActive: async () => {
+          findActiveCalls += 1;
+          return makeInstance();
+        },
+        findByIdForUser: async () => null,
+        update: async () => null,
+      } as never,
+      providers: { get: () => ({}) } as never,
+    });
+
+    await expect(
+      manager.createOrReuse({
+        sandboxId: "sbi_hidden_pool",
+        poolId: "pool_default",
+        providerKey: "test-provider",
+        userId: "user_test",
+        organizationId: "org-second",
+        template: { type: "image", value: "ignored" },
+      }),
+    ).rejects.toThrow("sandbox pool 'pool_default' not found");
+
+    expect(findActiveCalls).toBe(0);
   });
 
   // 创建 Sandbox Machine 时应使用资源池声明的 Agent 类型，而不是固定写入 opencode。
@@ -793,6 +865,7 @@ describe("SandboxManager machine identity", () => {
       poolId: existing.sandboxPoolId,
       providerKey: existing.providerKey,
       userId: existing.userId,
+      organizationId: "org-second",
       template: { type: "image", value: "ignored" },
     });
 
