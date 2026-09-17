@@ -80,6 +80,10 @@ const envSchema = databaseConnectionPoolSchema.extend({
   RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
   RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
+  RCS_DISABLE_SCHEDULER: z
+    .string()
+    .default("false")
+    .transform((value) => value === "true"),
   RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   RCS_SANDBOX_ENABLED: z
     .string()

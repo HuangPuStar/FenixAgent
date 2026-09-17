@@ -93,6 +93,7 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
+import { startSchedulerUnlessDisabled } from "./bootstrap/scheduler-startup";
 import { runCriticalStartupSequence } from "./bootstrap/startup-sequence";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
@@ -224,7 +225,11 @@ await sandboxManager.recoverAfterRestart();
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
 
-await schedulerService.start();
+await startSchedulerUnlessDisabled({
+  disabled: env.RCS_DISABLE_SCHEDULER,
+  start: () => schedulerService.start(),
+  onDisabled: () => startupLog.info("Scheduler startup disabled by RCS_DISABLE_SCHEDULER"),
+});
 
 try {
   // builtin 资源现在统一托管到系统 admin 组织，不再在启动时遍历所有组织复制副本。
