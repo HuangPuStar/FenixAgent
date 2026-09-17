@@ -21,6 +21,15 @@ const logger = createLogger("config-skill");
 
 type SkillConfigRow = Omit<SkillConfigRowWithAccess, "resourceAccess">;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 过滤遗留坏引用，并统一为 PostgreSQL uuid 返回的规范小写形式。 */
+function normalizeSkillResourceRefs<T extends { resourceId: string }>(refs: T[]): T[] {
+  return refs.flatMap((ref) =>
+    UUID_PATTERN.test(ref.resourceId) ? [{ ...ref, resourceId: ref.resourceId.toLowerCase() }] : [],
+  );
+}
+
 function parseResourceKey(resourceKey: string) {
   const slashIndex = resourceKey.indexOf("/");
   if (slashIndex <= 0 || slashIndex === resourceKey.length - 1) return null;
@@ -34,7 +43,7 @@ async function listExternalSkills(ctx: AuthContext): Promise<{
   rows: SkillConfigRow[];
   publicReadMap: Map<string, boolean>;
 }> {
-  const refs = await listReadableResourceRefs(ctx, "skill");
+  const refs = normalizeSkillResourceRefs(await listReadableResourceRefs(ctx, "skill"));
   const ids = refs.map((ref) => ref.resourceId);
   if (ids.length === 0) return { rows: [], publicReadMap: new Map() };
 

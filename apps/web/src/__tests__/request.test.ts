@@ -89,6 +89,101 @@ describe("request helpers", () => {
       });
     }
   });
+
+  // 字符串错误是历史接口的合法失败载荷，公共层必须保留其诊断文本。
+  test("normalizes string error payload", async () => {
+    fetchMock.status = 503;
+    fetchMock.body = { success: false, error: "Hindsight service unavailable" };
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error?.message).toBe("Hindsight service unavailable");
+  });
+
+  // 空错误消息不能覆盖可定位的 HTTP 状态兜底。
+  test("falls back for empty error message", async () => {
+    fetchMock.status = 503;
+    fetchMock.body = { success: false, error: { message: "" } };
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error?.message).toBe("请求失败 (503)");
+  });
+
+  // 仅含空白的错误消息与空字符串等价，不能作为用户可见诊断。
+  test("falls back for whitespace-only error message", async () => {
+    fetchMock.status = 503;
+    fetchMock.body = { success: false, error: { message: "   " } };
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error?.message).toBe("请求失败 (503)");
+  });
+
+  // 非 JSON HTTP 错误应返回统一状态消息，不能因解析失败退化为网络错误。
+  test("falls back for non-JSON HTTP error", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response("upstream unavailable", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error?.message).toBe("请求失败 (503)");
+  });
+
+  // 声明 JSON 的 HTTP 错误即使响应体损坏，也应保留 HTTP 语义而不能误报为网络故障。
+  test("falls back for malformed JSON HTTP error", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response("{invalid-json", {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error).toEqual({ code: "SERVER_ERROR", message: "请求失败 (503)" });
+  });
+
+  // 2xx 响应的 JSON 声明与实际内容不符时，应按现有异常响应合同返回服务端错误。
+  test("reports malformed JSON success response as unexpected server format", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response("{invalid-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error).toEqual({ code: "SERVER_ERROR", message: "服务器返回了意外的响应格式" });
+  });
+
+  // 未知 JSON 错误结构应安全回退，不把对象字符串泄露给页面。
+  test("falls back for unknown JSON error payload", async () => {
+    fetchMock.status = 503;
+    fetchMock.body = { success: false, error: { detail: "upstream unavailable" } };
+
+    const { request } = await import("../api/request");
+    const result = await request("/web/hindsight/status");
+
+    expect(result.error?.message).toBe("请求失败 (503)");
+  });
 });
 
 describe("request bearerToken", () => {

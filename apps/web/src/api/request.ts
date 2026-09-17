@@ -212,7 +212,27 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
         };
       }
 
-      const json: Record<string, unknown> = await r.json();
+      let json: Record<string, unknown>;
+      try {
+        json = await r.json();
+      } catch (err) {
+        // JSON 语法损坏是服务端响应问题；读取响应体时的 abort/网络异常仍交给外层按 transport 错误处理。
+        if (!(err instanceof SyntaxError)) throw err;
+        console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl} ${r.status} — JSON 响应格式异常`);
+        if (!r.ok) {
+          return {
+            success: false,
+            error: normalizeErrorResponse(undefined, r.status),
+          };
+        }
+        return {
+          success: false,
+          error: {
+            code: "SERVER_ERROR",
+            message: `服务器返回了意外的响应格式`,
+          },
+        };
+      }
       if (!r.ok || json.success === false) {
         console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, json?.error);
         const baseError = normalizeErrorResponse(json?.error, r.status);
@@ -264,9 +284,23 @@ class NetworkError extends Error {}
  * /web/* 规范使用 code；未提供 code 时回退到 HTTP status 映射。
  */
 function normalizeErrorResponse(err: unknown, status: number): { code: ErrorCode; message: string } {
-  const obj = err as { code?: string; message?: string } | undefined;
-  const code = normalizeErrorCode(obj?.code, status);
-  return { code, message: obj?.message ?? `请求失败 (${status})` };
+  const fallbackMessage = `请求失败 (${status})`;
+  if (typeof err === "string") {
+    return {
+      code: statusToCode(status),
+      message: err.trim() ? err : fallbackMessage,
+    };
+  }
+
+  const code = normalizeErrorCode(
+    typeof err === "object" && err !== null && "code" in err && typeof err.code === "string" ? err.code : undefined,
+    status,
+  );
+  const message =
+    typeof err === "object" && err !== null && "message" in err && typeof err.message === "string" && err.message.trim()
+      ? err.message
+      : fallbackMessage;
+  return { code, message };
 }
 
 /**

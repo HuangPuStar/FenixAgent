@@ -32,6 +32,10 @@
   "actions": {
     "delete": "Delete"
   },
+  "confirm": {
+    "deleteTitle": "Delete channel binding",
+    "deleteDescription": "Are you sure you want to delete this channel binding? This action cannot be undone."
+  },
   "dialog": {
     "title": "New Channel Binding",
     "platform": "Platform",

@@ -58,13 +58,13 @@ export function AgentChannelsPage() {
     {
       manual: true,
       onSuccess: () => {
-        toast.success(t("toast.created"));
+        toast.success(t("bindingCreated"));
         setDialogOpen(false);
         refresh();
       },
       onError: (err) => {
         console.error("Save failed", err);
-        toast.error(t("toast.saveFailed"));
+        toast.error(t("createBindingFailed"));
       },
     },
   );
@@ -79,7 +79,7 @@ export function AgentChannelsPage() {
     },
     onError: (err) => {
       console.error("Delete failed", err);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(t("deleteBindingFailed"));
     },
   });
 
@@ -92,7 +92,7 @@ export function AgentChannelsPage() {
 
   const handleSave = () => {
     if (!formPlatform.trim() || !formAgentId) {
-      toast.error(t("validation.required"));
+      toast.error(t("selectPlatformAndAgent"));
       return;
     }
     runCreate(formPlatform, formChatId, formAgentId);
@@ -121,17 +121,13 @@ export function AgentChannelsPage() {
 
   return (
     <AppPage>
-      <AppHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={<Button onClick={handleCreate}>{t("btn.create")}</Button>}
-      />
+      <AppHeader title={t("title")} actions={<Button onClick={handleCreate}>{t("newBinding")}</Button>} />
       <AgentCardList
         items={bindings}
         cardKey={(b) => b.id}
-        searchPlaceholder={t("searchPlaceholder")}
+        searchPlaceholder={t("table.searchPlaceholder")}
         searchFn={(b, q) => b.platform.toLowerCase().includes(q) || (b.agentName?.toLowerCase().includes(q) ?? false)}
-        emptyMessage={t("emptyMessage")}
+        emptyMessage={t("table.emptyMessage")}
         renderCard={(binding) => (
           <div className="group rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm">
             <div className="flex items-center gap-3">
@@ -151,7 +147,7 @@ export function AgentChannelsPage() {
                     setConfirmOpen(true);
                   }}
                 >
-                  {t("btn.delete")}
+                  {t("actions.delete")}
                 </Button>
               </div>
             </div>
@@ -162,26 +158,26 @@ export function AgentChannelsPage() {
       <FormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title={t("dialog.createTitle")}
+        title={t("dialog.title")}
         onSubmit={handleSave}
         loading={formSaving}
       >
         <div className="space-y-4">
           <div>
-            <Label>{t("form.platform")}</Label>
+            <Label>{t("dialog.platform")}</Label>
             <Input
               value={formPlatform}
               onChange={(e) => setFormPlatform(e.target.value)}
               className="mt-1"
-              placeholder="telegram"
+              placeholder={t("dialog.platformPlaceholder")}
             />
           </div>
           <div>
-            <Label>{t("form.chatId")}</Label>
+            <Label>{t("dialog.chatId")}</Label>
             <Input value={formChatId} onChange={(e) => setFormChatId(e.target.value)} className="mt-1" />
           </div>
           <div>
-            <Label>{t("form.agent")}</Label>
+            <Label>{t("dialog.agent")}</Label>
             <Select value={formAgentId} onValueChange={setFormAgentId}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
