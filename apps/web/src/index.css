@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
-/* 应用入口已迁入 apps/web，领域源码仍在 web；显式保留其 Tailwind 扫描范围。 */
+/* 应用壳与领域 Web 组件分布在 apps/web 和 packages 下的各 Web 目录，两侧都必须进入 Tailwind 扫描。 */
 @source "../**/*.{ts,tsx}";
+@source "../../../packages/**/web/**/*.{ts,tsx}";
 
 /* ============================================================
    Theme — Nexus Indigo Palette

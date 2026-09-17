@@ -305,9 +305,10 @@ test("前端类型检查使用 apps web 配置", () => {
   expect(webTsconfig).toContain('"src/**/*.tsx"');
 });
 
-// 前端入口迁入 apps 后，Tailwind 必须继续扫描应用壳源码以生成页面 utility 样式。
-test("Tailwind 扫描 apps web 应用壳源码以生成页面 utility 样式", () => {
+// 前端组件迁入 apps 与 package Web 边界后，Tailwind 必须扫描两侧源码以生成页面 utility 样式。
+test("Tailwind 扫描 apps 与 package web 源码以生成页面 utility 样式", () => {
   const styles = readRepoFile("apps/web/src/index.css");
 
   expect(styles).toContain('@source "../**/*.{ts,tsx}";');
+  expect(styles).toContain('@source "../../../packages/**/web/**/*.{ts,tsx}";');
 });
