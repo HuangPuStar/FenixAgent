@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
+import type { FileInfo } from "../../../../../../apps/web/src/types";
 
 describe("FilePickerDialog", () => {
   test("exports FilePickerDialog as a function", async () => {
@@ -42,7 +43,7 @@ describe("FilePickerDialog", () => {
 
   test("FileInfo type is exported from types", async () => {
     const _typesMod = await import("../../../../../../apps/web/src/types");
-    const dummy: any = { name: "test.txt", path: "user/test.txt", type: "file" as const, size: 100, modifiedAt: 0 };
+    const dummy: FileInfo = { name: "test.txt", path: "user/test.txt", type: "file", size: 100, modifiedAt: 0 };
     expect(dummy.name).toBe("test.txt");
     // Verify the import works — if FileInfo type doesn't exist, this file won't compile
   });

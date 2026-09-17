@@ -72,7 +72,7 @@ export function Pagination({
         </Button>
         {pageNumbers.map((p, idx) =>
           p === "ellipsis" ? (
-            // biome-ignore lint/suspicious/noArrayIndexKey: ellipsis separators are static, no reordering
+            // Ellipsis separators are static and never reordered.
             <span key={`e-${idx}`} className="px-1 text-xs text-muted-foreground">
               ...
             </span>

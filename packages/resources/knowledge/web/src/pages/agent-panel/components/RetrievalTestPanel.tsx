@@ -440,7 +440,7 @@ function fmtScore(s: number | null | undefined): string {
  * 使用 dangerouslySetInnerHTML 渲染后端返回的含 <em> 标签的高亮 HTML，来源受控。
  */
 function HighlightSpan({ html, className }: { html: string; className: string }) {
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: RAGFlow 后端返回的高亮 HTML，来源受控
+  // RAGFlow 后端返回的高亮 HTML 来源受控。
   return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 

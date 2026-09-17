@@ -5,10 +5,10 @@ let mockWs: {
   send: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   readyState: number;
-  onopen: ((ev: any) => void) | null;
-  onmessage: ((ev: any) => void) | null;
-  onclose: ((ev: any) => void) | null;
-  onerror: ((ev: any) => void) | null;
+  onopen: ((ev: Event) => void) | null;
+  onmessage: ((ev: MessageEvent) => void) | null;
+  onclose: ((ev: CloseEvent) => void) | null;
+  onerror: ((ev: Event) => void) | null;
 };
 
 function createMockWs() {
@@ -29,8 +29,8 @@ let wsConstructor: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   createMockWs();
-  wsConstructor = vi.fn(() => mockWs) as any;
-  globalThis.WebSocket = wsConstructor as any;
+  wsConstructor = vi.fn(() => mockWs);
+  globalThis.WebSocket = wsConstructor as unknown as typeof WebSocket;
 });
 
 afterEach(() => {
@@ -45,10 +45,10 @@ describe("HermesClient", () => {
     client.start();
 
     mockWs.readyState = 1;
-    mockWs.onopen!({});
+    mockWs.onopen!({} as Event);
 
     // Default platforms include common Hermes platforms
-    const subscribeCalls = mockWs.send.mock.calls.filter((call: any[]) => JSON.parse(call[0]).type === "subscribe");
+    const subscribeCalls = mockWs.send.mock.calls.filter((call) => JSON.parse(call[0] as string).type === "subscribe");
     expect(subscribeCalls.length).toBe(1);
     const platforms = JSON.parse(subscribeCalls[0][0]).platforms as string[];
     expect(platforms).toContain("feishu");
@@ -62,7 +62,7 @@ describe("HermesClient", () => {
     client.start();
 
     // Simulate connection close
-    mockWs.onclose!({ code: 1006, reason: "" });
+    mockWs.onclose!({ code: 1006, reason: "" } as CloseEvent);
 
     const status = client.getStatus();
     expect(status.reconnecting).toBe(true);
@@ -79,7 +79,7 @@ describe("HermesClient", () => {
     const client = new HermesClient("ws://127.0.0.1:8642/messaging");
     client.start();
     mockWs.readyState = 1;
-    mockWs.onopen!({});
+    mockWs.onopen!({} as Event);
 
     await client.stop();
 
@@ -106,7 +106,7 @@ describe("HermesClient", () => {
     const client = new HermesClient("ws://127.0.0.1:8642/messaging");
     client.start();
     mockWs.readyState = 1;
-    mockWs.onopen!({});
+    mockWs.onopen!({} as Event);
 
     client.send("feishu", "chat_123", "hello");
 
@@ -138,12 +138,12 @@ describe("HermesClient", () => {
 
     client.start();
     mockWs.readyState = 1;
-    mockWs.onopen!({});
+    mockWs.onopen!({} as Event);
     expect(cb).toHaveBeenCalled();
 
     cb.mockClear();
     unsub();
-    mockWs.onclose!({ code: 1000, reason: "" });
+    mockWs.onclose!({ code: 1000, reason: "" } as CloseEvent);
     expect(cb).not.toHaveBeenCalled();
   });
 
@@ -153,16 +153,16 @@ describe("HermesClient", () => {
     const client = new HermesClient("ws://127.0.0.1:8642/messaging");
     client.start();
     mockWs.readyState = 1;
-    mockWs.onopen!({});
+    mockWs.onopen!({} as Event);
 
     // Initial subscribe sent on connect (contains default platforms)
-    const subscribeCalls = mockWs.send.mock.calls.filter((call: any[]) => JSON.parse(call[0]).type === "subscribe");
+    const subscribeCalls = mockWs.send.mock.calls.filter((call) => JSON.parse(call[0] as string).type === "subscribe");
     expect(subscribeCalls.length).toBe(1);
 
     // Simulate platform_status for feishu connected (from Hermes response to subscribe)
     mockWs.onmessage!({
       data: JSON.stringify({ type: "platform_status", platform: "feishu", state: "connected" }),
-    });
+    } as MessageEvent);
 
     const status = client.getStatus();
     expect(status.platforms).toEqual(["feishu"]);
@@ -170,13 +170,13 @@ describe("HermesClient", () => {
     // Simulate telegram connected
     mockWs.onmessage!({
       data: JSON.stringify({ type: "platform_status", platform: "telegram", state: "connected" }),
-    });
+    } as MessageEvent);
     expect(client.getStatus().platforms).toEqual(["feishu", "telegram"]);
 
     // Simulate feishu disconnected
     mockWs.onmessage!({
       data: JSON.stringify({ type: "platform_status", platform: "feishu", state: "disconnected" }),
-    });
+    } as MessageEvent);
     expect(client.getStatus().platforms).toEqual(["telegram"]);
   });
 

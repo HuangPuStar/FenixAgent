@@ -164,7 +164,7 @@ export function ArtifactsPanel({
   // 1. 切到 Sites 模式
   // 2. 在已绑定的 sites 中按 remoteAppId 查找并选中
   // 3. 若未绑定：自动调用 bindSite 挂载（通过 runBind mutation hook），刷新列表后选中
-  // biome-ignore lint/correctness/useExhaustiveDependencies: handler 不重新注册，靠 ref 获取最新值
+  // handler 不重新注册，靠 ref 获取最新值。
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { siteId: string };

@@ -1,7 +1,6 @@
 import {
   type AgentKnowledgeConfig,
   getAgentKnowledgeConfigById,
-  InvalidKnowledgeBindingError,
   listAgentKnowledgeBindingsById,
   syncAgentKnowledgeBindingsById,
 } from "@fenix/resource-knowledge/server";

@@ -216,7 +216,7 @@ export function useTaskViews(rcsSessionId: string) {
   // 后必须重建订阅，否则切换会话 / StrictMode 双挂载后后续 update 不再触发
   // 渲染（快照永久 stale，SP-B1 回归测试捕获的真实缺陷）。
   const [bindEpoch, setBindEpoch] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）
+  // bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）。
   const subscribe = useCallback((cb: () => void) => store.subscribe(cb), [bindEpoch]);
 
   const snapshot = useSyncExternalStore(subscribe, store.getSnapshot);

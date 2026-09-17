@@ -33,7 +33,7 @@ function SubAgentTimeline({ entries }: { entries: ThreadEntry[] }) {
         }
 
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: tool group entries lack unique key
+          // Tool group entries lack a unique key.
           <div key={`sub-tool-group-${index}`} className="[&_.tool-call-group]:!pl-0">
             {renderToolGroup?.(item.entries)}
           </div>

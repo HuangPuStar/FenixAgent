@@ -44,7 +44,7 @@ export function AgentTasksPage() {
   }, [searchKeyword]);
 
   // 筛选条件或搜索词变化时，重置到第 1 页
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选/搜索变化时需重置页码，但 effect 体只用 setPage
+  // 筛选/搜索变化时需重置页码，但 effect 体只用 setPage。
   useEffect(() => {
     setPage(1);
   }, [debouncedKeyword, typeFilter]);
@@ -283,7 +283,7 @@ export function AgentTasksPage() {
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            // Static skeleton placeholders have no domain identifier.
             <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>

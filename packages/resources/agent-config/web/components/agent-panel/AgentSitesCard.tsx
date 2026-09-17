@@ -26,7 +26,7 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
   const [siteName, setSiteName] = useState<string | null>(null);
 
   // 仅挂载时执行一次：agentSiteId/emit 不应作为重触发依赖，cleanup 由 cancelled flag 保证
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时执行一次
+  // 仅挂载时执行一次。
   useEffect(() => {
     if (!agentSiteId) {
       setError("缺少 agent-site-id 属性");

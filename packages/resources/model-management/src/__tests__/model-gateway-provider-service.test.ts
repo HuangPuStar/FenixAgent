@@ -3,7 +3,7 @@ import type { ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
 import {
   createModelGatewayAdapterRegistry,
   createSystemModelGatewayProviderService,
-  getProviderById,
+  type getProviderById,
   type ProviderUpsertData,
 } from "@fenix/model-management/server";
 

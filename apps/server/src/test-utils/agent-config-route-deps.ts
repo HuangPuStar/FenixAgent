@@ -6,7 +6,7 @@ type ConfigStubName = Parameters<typeof getConfigPgStub>[0];
 
 const routeConfigStubs = new Proxy({} as RouteConfigStubs, {
   get: (_target, property) => {
-    if (typeof property !== "string") return undefined;
+    if (typeof property !== "string") return;
     const stubName = property as ConfigStubName;
     const stub = getConfigPgStub(stubName);
     if (typeof stub !== "function") {

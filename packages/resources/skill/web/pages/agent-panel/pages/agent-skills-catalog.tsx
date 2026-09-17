@@ -429,7 +429,7 @@ function SkillsLoading() {
       <div className="mt-6 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white">
         {Array.from({ length: 8 }).map((_, index) => (
           <div
-            // biome-ignore lint/suspicious/noArrayIndexKey: static loading placeholders
+            // Static loading placeholders have no domain identifier.
             key={index}
             className="flex h-[62px] items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
           >

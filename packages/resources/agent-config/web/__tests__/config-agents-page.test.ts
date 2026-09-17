@@ -67,7 +67,7 @@ describe("Agent knowledge form helpers", () => {
           knowledgeBaseIds: ["kb_a", "kb_b"],
           policy: { searchFirst: false, maxResults: 8 },
         },
-      } as any),
+      }),
     ).toEqual({
       knowledgeBaseIds: ["kb_a", "kb_b"],
       searchFirst: false,
@@ -104,7 +104,7 @@ describe("Agent knowledge form helpers", () => {
   });
 
   test("过滤掉已不存在的知识库 id", () => {
-    expect(filterKnowledgeBaseIds(["kb_a", "kb_missing", "kb_b"], [{ id: "kb_a" }, { id: "kb_b" }] as any)).toEqual([
+    expect(filterKnowledgeBaseIds(["kb_a", "kb_missing", "kb_b"], [{ id: "kb_a" }, { id: "kb_b" }])).toEqual([
       "kb_a",
       "kb_b",
     ]);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { getChannelProvider, listChannelProviders, setHermesClientGetter } from "../server/services/channel-provider";
+import type { HermesClient } from "../server/services/hermes-client";
 
 describe("channel provider registry", () => {
   afterEach(() => {
@@ -35,7 +36,7 @@ describe("channel provider with Hermes connected", () => {
             reconnecting: false,
             lastConnectedAt: 1715184000000,
           }),
-        }) as any,
+        }) as unknown as HermesClient,
     );
 
     const providers = listChannelProviders();

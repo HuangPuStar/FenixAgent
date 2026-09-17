@@ -27,6 +27,6 @@ export function useConfigChangeListener(callback: (module: ConfigModule) => void
     };
     window.addEventListener(CONFIG_CHANGE_EVENT, handler);
     return () => window.removeEventListener(CONFIG_CHANGE_EVENT, handler);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps is a caller-provided array, intentionally dynamic
+    // deps is a caller-provided array and is intentionally dynamic.
   }, deps);
 }

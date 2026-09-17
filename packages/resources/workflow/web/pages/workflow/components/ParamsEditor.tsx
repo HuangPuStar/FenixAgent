@@ -53,7 +53,7 @@ export function ParamsEditor({
   };
 
   const entriesLen = entries.length;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on length change
+  // Reset confirmation when the entry count changes.
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {

@@ -18,7 +18,6 @@ import { getDbStub } from "./stubs/db-stub";
 import {
   coreBootstrapRegistry,
   customToolsRegistry,
-  environmentServiceRegistry,
   fileWsHandlerRegistry,
   getEnvironmentRepoStub,
   knowledgeBaseServiceRegistry,

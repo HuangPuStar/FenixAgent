@@ -1,22 +1,14 @@
-import { db } from "@server/db";
-import { agentConfig, agentConfigSiteApp } from "@server/db/schema";
 import { authGuardPlugin } from "@server/plugins/auth";
-import type { WebErr } from "@server/schemas/common.schema";
 import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
-import { eq, inArray } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import {
-  AgentSiteAgentConfigParamsSchema,
-  type AgentSiteApp,
   AgentSiteAppDetailResponseSchema,
   AgentSiteAppFileParamsSchema,
   AgentSiteAppIdParamsSchema,
   AgentSiteAppListResponseSchema,
   AgentSiteAppOkResponseSchema,
-  AgentSiteBindingParamsSchema,
   AgentSiteDeployResponseSchema,
   AgentSiteRemoteAppParamsSchema,
   type CreateAgentSiteAppRequest,
@@ -29,21 +21,13 @@ import {
   deleteRemoteApp,
   deployCustomApp,
   issuePlatformToken,
-  proxyToAgentSites,
   revokePlatformToken,
   uploadRemoteBundle,
   uploadRemoteFile,
 } from "../../services/agent-sites";
 import { invalidateAppCache } from "../agent-sites-proxy";
 import { agentSiteAssociationRoutes } from "./agent-site-association-routes";
-import {
-  attachCreatorNames,
-  buildError,
-  canRead,
-  canWrite,
-  resolveSiteApp,
-  toResponse,
-} from "./agent-site-route-support";
+import { attachCreatorNames, buildError, canRead, canWrite, toResponse } from "./agent-site-route-support";
 
 const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
   .use(authGuardPlugin)

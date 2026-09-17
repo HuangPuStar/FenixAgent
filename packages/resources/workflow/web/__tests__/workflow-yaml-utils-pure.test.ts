@@ -149,7 +149,8 @@ describe("workflow yaml utils 纯逻辑", () => {
   // 由 inputs 引用的输出字段应注入源节点，供输出 Handle 展示。
   test("yamlToFlow 为被引用的源节点注入输出字段", () => {
     const { nodes } = yamlToFlow(
-      "nodes:\n  - id: source\n    type: shell\n  - id: target\n    type: shell\n    inputs:\n      value: ${{ nodes.source.output.answer }}\n",
+      "nodes:\n  - id: source\n    type: shell\n  - id: target\n    type: shell\n    inputs:\n      value: $" +
+        "{{ nodes.source.output.answer }}\n",
     );
 
     expect(nodes.find((node) => node.id === "source")?.data).toEqual({ _outputFields: ["answer"] });
@@ -416,7 +417,7 @@ describe("workflow yaml utils 纯逻辑", () => {
   // 模板表达式语法应去除包装符后按相同规则解析。
   test("parseDataFlowEdges 解析模板表达式引用", () => {
     const result = parseDataFlowEdges([
-      flowNode("target", "shell", { inputs: { value: "${{ nodes.source.answer }}" } }),
+      flowNode("target", "shell", { inputs: { value: "$" + "{{ nodes.source.answer }}" } }),
     ]);
 
     expect(result).toEqual([

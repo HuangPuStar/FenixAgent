@@ -9,7 +9,7 @@ import { gate } from "../services/agent-file-service";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";
 import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
-import { type FileAuthContext } from "../services/file-types";
+import type { FileAuthContext } from "../services/file-types";
 import type { WsConnection } from "../transport/ws-types";
 
 // sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests，setup-mocks 部分

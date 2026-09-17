@@ -126,7 +126,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
   );
 
   // 自动保存：有未保存变更时 debounce 3s 自动保存
-  // biome-ignore lint/correctness/useExhaustiveDependencies: nodes/edges/meta 故意作为触发器
+  // nodes/edges/meta 故意作为触发器。
   useEffect(() => {
     if (!workflowId || readOnly || lastSavedYaml === "" || !hasUnsavedChanges) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
