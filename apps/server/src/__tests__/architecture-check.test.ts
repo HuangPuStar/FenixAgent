@@ -232,8 +232,9 @@ describe("architecture check CLI", () => {
       "tsc (app skeletons)",
       "dependency-boundaries",
       "lint",
-      "test",
-      "migrated-resource-tests",
+      "server-and-script-tests",
+      "package-tests",
+      "web-app-tests",
     ]);
   });
 });

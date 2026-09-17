@@ -13,7 +13,6 @@ const RMD_04_MOVES = [
     "packages/resources/model-management/src/services/peri-task-detail-store.ts",
   ],
   ...[
-    "model-gateway-admin-ui-route",
     "model-gateway-budget-service",
     "model-gateway-credential-service",
     "model-gateway-credential",
@@ -62,12 +61,20 @@ const RMD_04_MOVES = [
 ] as const;
 
 describe("RMD-04 ownership migration", () => {
-  // 32 个已批准的源文件必须只存在于其指定资源包中，防止旧根路径悄然复活。
+  // 31 个保留的源文件必须只存在于其指定资源包中，防止旧根路径悄然复活。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_04_MOVES).toHaveLength(32);
+    expect(RMD_04_MOVES).toHaveLength(31);
     for (const [source, target] of RMD_04_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `owner target is missing: ${target}`).toBe(true);
     }
+  });
+
+  // 已批准退役的污染测试在旧根路径和资源包中都不得复活。
+  test("keeps the retired model gateway route test deleted", () => {
+    expect(existsSync("src/__tests__/model-gateway-admin-ui-route.test.ts")).toBe(false);
+    expect(existsSync("packages/resources/model-management/src/__tests__/model-gateway-admin-ui-route.test.ts")).toBe(
+      false,
+    );
   });
 });
