@@ -80,5 +80,5 @@
     }
   },
   "include": ["apps/server/src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "web"]
+  "exclude": ["node_modules", "dist"]
 }

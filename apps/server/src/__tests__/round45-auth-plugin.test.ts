@@ -9,13 +9,7 @@ import {
   setTestAuth,
 } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import {
-  readJson,
-  resetAllStubs,
-  stubAuthApi,
-  stubAuthHandler,
-  stubDb,
-} from "../test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "../test-utils/helpers";
 
 const user = { id: "user-1", email: "user-1@example.test", name: "测试用户" };
 

@@ -30,21 +30,21 @@
 FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
-- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置与前端业务实现，root `web/` 仅保留待删除的构建产物。
+- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置、前端业务实现与构建产物。
 - `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
 ### 后端地图
 
 - `apps/server/src/main.ts`：服务入口和装配层。
-- `src/routes/web/`：控制台内部 API。
-- `src/routes/api/`：对外稳定 API / OpenAPI。
-- `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
-- `src/services/`：领域规则、业务编排、事务边界和外部能力调用。
-- `src/repositories/`：数据访问层。
-- `src/schemas/`：请求、响应和配置 schema。
-- `src/transport/`：WebSocket、SSE、relay 和 EventBus。
-- `src/db/schema.ts`：数据库 schema 真相来源。
-- `src/__tests__/`、`src/test-utils/`：后端测试和测试基础设施。
+- `apps/server/src/routes/web/`：控制台内部 API。
+- `apps/server/src/routes/api/`：对外稳定 API / OpenAPI。
+- `apps/server/src/routes/acp/`、`apps/server/src/routes/mcp/`、`apps/server/src/routes/hooks.ts`：内部协议和 Webhook 入口。
+- `apps/server/src/services/`：领域规则、业务编排、事务边界和外部能力调用。
+- `apps/server/src/repositories/`：数据访问层。
+- `apps/server/src/schemas/`：请求、响应和配置 schema。
+- `apps/server/src/transport/`：WebSocket、SSE、relay 和 EventBus。
+- `apps/server/src/db/schema.ts`：数据库 schema 真相来源。
+- `apps/server/src/__tests__/`、`apps/server/src/test-utils/`：后端测试和测试基础设施。
 
 ### 前端地图
 
@@ -92,11 +92,11 @@ bun run db:migrate                  # 执行迁移
 
 ### 按变更类型验证
 
-- 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
+- 后端改动：运行相关 `bun test apps/server/src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
 - 前端改动：运行相关 `bun test apps/web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
-- 常规任务提交前 `precheck` 必须全绿；CE 阶段 1 的中间功能闭包提交例外，须留存准确失败原因且阶段最终提交必须全绿。它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建；阶段 1 收口时同步移动测试入口并覆盖全部迁移后的测试。
+- 常规任务提交前 `precheck` 必须全绿；CE 阶段 1 的中间功能闭包提交例外，须留存准确失败原因且阶段最终提交必须全绿。它目前只运行 `apps/server/src/__tests__/`，不能替代前端测试和前端生产构建；阶段 1 收口时同步移动测试入口并覆盖全部迁移后的测试。
 
 ## 架构边界与模块契约
 
@@ -109,7 +109,7 @@ bun run db:migrate                  # 执行迁移
 - repository 只负责持久化和查询条件封装，不承载业务规则。
 - 新增数据库操作应收敛到 repository；历史 service 直连 DB 的写法不得继续扩散。
 - 禁止反向依赖和跨层复用内部实现，例如 repository 调用 service/route，或一个 route 导入另一个 route 的业务逻辑。
-- schema 放在 `src/schemas/`，复杂请求/响应结构不得内联在 route 中。
+- schema 放在 `apps/server/src/schemas/`，复杂请求/响应结构不得内联在 route 中。
 
 ### API 与数据模型边界
 
@@ -138,9 +138,9 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 | 场景 | 权威实现 | 生命周期 |
 |------|----------|----------|
-| HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
+| HTTP / 程序化单轮调用 | `apps/server/src/routes/api/openai-chat.ts` → `apps/server/src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
 | Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
-| 前端交互式 Chat | `packages/chat-channel/src/channel/`（宿主装配 `src/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
+| 前端交互式 Chat | `packages/chat-channel/src/channel/`（宿主装配 `apps/server/src/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
 - `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
@@ -197,11 +197,11 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
 9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
 10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。
-11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端 vite alias 直连根入口，从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 事故：`node:crypto` 外置桩致整包加载崩溃）；边界由 `src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
+11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端 vite alias 直连根入口，从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 事故：`node:crypto` 外置桩致整包加载崩溃）；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
 
 ## 数据库与迁移
 
-- Schema 真相来源是 `src/db/schema.ts`。
+- Schema 真相来源是 `apps/server/src/db/schema.ts`。
 - 标准流程：修改 schema → `bun run db:generate --name <name>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 运行相关测试和 `bun run precheck`。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
 - 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
@@ -212,8 +212,8 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ### 测试
 
-- 后端测试位于 `src/__tests__/`，前端测试位于 `apps/web/src/__tests__/`。
-- 优先复用 `src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
+- 后端测试位于 `apps/server/src/__tests__/`，前端测试位于 `apps/web/src/__tests__/`。
+- 优先复用 `apps/server/src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
 - 每个 `test(...)` 上方添加一行中文注释，说明行为和业务意图。
 - 前端只测试关键交互、状态和数据流，不编写纯 UI 结构断言或仅重复类型检查的测试。
 - 并发、重连、权限、租户隔离、迁移和失败回滚必须覆盖关键边界测试。
@@ -243,7 +243,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ## 环境变量
 
-环境变量的类型、默认值和必填性以 `src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是 YJS transport 中直接读取的兼容变量；`RCS_YJS_SNAPSHOT_*` 三项在 `src/env.ts` 声明校验、由 `packages/chat-channel` 持久层直读（provider 收敛到宿主 DI 后应改为经 options 注入）。关键变量：
+环境变量的类型、默认值和必填性以 `apps/server/src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是 YJS transport 中直接读取的兼容变量；`RCS_YJS_SNAPSHOT_*` 三项在 `apps/server/src/env.ts` 声明校验、由 `packages/chat-channel` 持久层直读（provider 收敛到宿主 DI 后应改为经 options 注入）。关键变量：
 
 - 必填：`DATABASE_URL`、`RCS_API_KEYS`。
 - 系统 API：`RCS_SYSTEM_API_KEYS`。

@@ -3,7 +3,6 @@ import { Window } from "happy-dom";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useForm } from "react-hook-form";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 import { AgentEditorSections } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/AgentEditorSections";
 import { AgentResourcePicker } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/AgentResourcePicker";
 import {
@@ -12,6 +11,7 @@ import {
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-controls";
 import { createAgentEditorDefaults } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentEditorData } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/use-agent-editor";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 const win = initializeHappyDomWindow(new Window());

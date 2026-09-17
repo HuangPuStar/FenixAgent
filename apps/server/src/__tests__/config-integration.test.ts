@@ -8,10 +8,7 @@ import { setConfig } from "../config";
 import { AppError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import {
-  installRouteConfigStubs,
-  resetRouteConfigStubs,
-} from "../test-utils/agent-config-route-deps";
+import { installRouteConfigStubs, resetRouteConfigStubs } from "../test-utils/agent-config-route-deps";
 import { resetAllStubs, stubConfigPg, stubDb, stubResourcePermissionRepo } from "../test-utils/helpers";
 
 const configRoute = (await import("../routes/web/config/index")).default;

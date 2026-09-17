@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
 import { z } from "zod/v4";
 import { ENGINE_TYPES } from "./services/config/types";
@@ -54,6 +55,12 @@ const envSchema = databaseConnectionPoolSchema.extend({
   RCS_TRUSTED_ORIGINS: z.string().default(""),
   RCS_BASE_URL: z.string().default(""),
   RCS_VERSION: z.string().default("0.1.0"),
+  // Bun bundle 输出在应用源码目录外，静态资源需通过此绝对根目录定位，避免依赖启动 cwd。
+  RCS_APPLICATION_ROOT: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "RCS_APPLICATION_ROOT must be an absolute path")
+    .optional(),
   SKILL_DIR: z.string().default("./data/skills"),
   RCS_SYSTEM_ADMIN_PASSWORD_FILE: z.string().default("./data/password.txt"),
   APP_BRAND_NAME: z.string().default("Fenix"),

@@ -21,16 +21,16 @@
 
 ## 组件地图
 
-前端只建立**一条** WebSocket 连接：ChatPanel 挂载时通过 `createYjsWs()` / `buildYjsUrl()`（`web/src/yjs/yjs-ws.ts`）连接 `/acp/yjs/:agentId`，所有 Agent 交互（会话、消息、权限、状态）经 YJS CRDT 增量同步完成，不再有独立的 relay / JSON-RPC 通道。
+前端只建立**一条** WebSocket 连接：ChatPanel 挂载时通过 `createYjsWs()` / `buildYjsUrl()`（`packages/agent-runtime/web/yjs/yjs-ws.ts`）连接 `/acp/yjs/:agentId`，所有 Agent 交互（会话、消息、权限、状态）经 YJS CRDT 增量同步完成，不再有独立的 relay / JSON-RPC 通道。
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| ChatPanel | `web/src/pages/agent-panel/ChatPanel.tsx` | 创建 YJS WS 连接、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
-| ACPMain | `web/components/ACPMain.tsx` | 会话引导 bootstrap：等待 Agent `capabilities` 后列出会话并选择/新建；sessions 增量可能分多次到达，用防抖（300ms）等待列表稳定后再执行引导 |
-| ChatInterface | `web/components/ChatInterface.tsx` | 核心中枢——注册所有 ACP handler，消费 Chat Doc / Session Doc 渲染 `ThreadEntry[]`，管理 isLoading / errorMessage / todoItems 状态 |
-| AgentSidebar | `web/src/pages/agent-panel/AgentSidebar.tsx` | 会话列表与切换 |
-| ArtifactsPanel | `web/src/pages/agent-panel/ArtifactsPanel.tsx` | 产出物与文件浏览 |
-| FilePicker | `web/components/chat/FilePickerPanel.tsx` / `web/src/components/FilePickerDialog.tsx` | 工作区文件选择与上传 |
+| ChatPanel | `packages/agent-runtime/web/agent-panel/ChatPanel.tsx` | 创建 YJS WS 连接、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
+| ACPMain | `packages/chat-channel/web/components/ACPMain.tsx` | 会话引导 bootstrap：等待 Agent `capabilities` 后列出会话并选择/新建；sessions 增量可能分多次到达，用防抖（300ms）等待列表稳定后再执行引导 |
+| ChatInterface | `packages/chat-channel/web/components/ChatInterface.tsx` | 核心中枢——注册所有 ACP handler，消费 Chat Doc / Session Doc 渲染 `ThreadEntry[]`，管理 isLoading / errorMessage / todoItems 状态 |
+| AgentSidebar | `apps/web/src/pages/agent-panel/AgentSidebar.tsx` | 会话列表与切换 |
+| ArtifactsPanel | `apps/web/src/pages/agent-panel/ArtifactsPanel.tsx` | 产出物与文件浏览 |
+| FilePicker | `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx` / `apps/web/src/components/FilePickerDialog.tsx` | 工作区文件选择与上传 |
 
 ## 权威边界
 

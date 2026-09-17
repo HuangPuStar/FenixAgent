@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 const STEPS = [
   {
     name: "format",
-    cmd: "biome format --write src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome format --write apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Formatted")) return null;
       return out;
@@ -18,7 +18,7 @@ const STEPS = [
   },
   {
     name: "import-sort",
-    cmd: "biome check --write --linter-enabled=false src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check --write --linter-enabled=false apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Checked")) return null;
       return out;
@@ -65,7 +65,7 @@ const STEPS = [
   },
   {
     name: "lint",
-    cmd: "biome check src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("Checked") && !out.includes("error") && !out.includes("warning")) return null;
       // 只保留有问题的文件行
@@ -75,7 +75,7 @@ const STEPS = [
   },
   {
     name: "test",
-    cmd: "bun test src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ apps/server/src/__tests__/ 2>&1",
+    cmd: "bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ 2>&1",
     filter: (out: string) => {
       const lines = out.split("\n");
 

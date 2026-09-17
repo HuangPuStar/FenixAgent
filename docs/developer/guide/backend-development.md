@@ -4,38 +4,27 @@
 
 ## 1. 目录结构说明
 
-后端主要目录集中在 `src/`、`packages/`、`drizzle/`、`scripts/`、`docs/`。
+后端主要目录集中在 `apps/server/src/`、`packages/`、`drizzle/`、`scripts/`、`docs/`。
 
-### 1.1 `src/` 后端主服务源码
+### 1.1 `apps/server/src/` 后端主服务源码
 
 - `apps/server/src/main.ts`：服务启动入口，负责装配插件、路由、启动阶段任务，例如数据迁移。
-- `src/openapi.ts`：统一维护 OpenAPI / Scalar 文档插件与全局 tag 定义，供入口按 `/api` 和 `/web` 两套文档分别挂载。
-- `src/routes/`：HTTP / WebSocket 路由定义。
-- `src/routes/web/`：控制台前端使用的内部业务 API。
-- `src/routes/api/`：对外开放的稳定 API。
-- `src/routes/acp/`：ACP WebSocket / relay 相关路由。
-- `src/routes/mcp/`：MCP 协议相关入口。
-- `src/services/`：业务服务层，承载业务规则、事务边界、跨表编排、对外部能力的调用。
-- `src/services/config/`：配置类资源的领域服务，按资源类型内聚。
-- `src/services/workflow/`：工作流相关服务逻辑。
-- `src/services/data-migrates/`：数据迁移脚本实现，供启动时迁移器按顺序执行。
-- `src/repositories/`：低层数据访问封装，只做持久化操作，不承载业务规则。
-- `src/db/`：数据库连接、Schema 定义等。
-- `src/schemas/`：请求参数、响应结构、配置 body 等校验 Schema。
-- `src/plugins/`：Elysia 插件、中间件、鉴权、错误处理等横切逻辑。
-- `src/auth/`：认证、鉴权、token、加密等能力。
-- `src/transport/`：WebSocket、SSE、relay、事件总线等传输层能力。
-- `src/types/`：跨模块共享的类型定义。
-- `src/utils/`：纯工具函数。
-- `src/errors/`、`src/errors.ts`：错误类型、错误码、错误映射。
-- `src/test-utils/`：测试 stub、测试辅助方法。
-- `src/__tests__/`：后端测试。
+- `apps/server/src/openapi.ts`：统一维护 OpenAPI / Scalar 文档插件与全局 tag 定义，供入口按 `/api` 和 `/web` 两套文档分别挂载。
+- `apps/server/src/routes/`：主服务装配的 HTTP / WebSocket 路由定义；控制台共享路由在 `apps/server/src/routes/web/`。
+- `apps/server/src/services/`：主服务业务编排、启动与横切服务；`apps/server/src/services/config/` 按配置资源类型内聚，`apps/server/src/services/data-migrates/` 存放启动时数据迁移。
+- `apps/server/src/repositories/`：低层数据访问封装，只做持久化操作，不承载业务规则。
+- `apps/server/src/db/`：数据库连接、Schema 定义等。
+- `apps/server/src/schemas/`：请求参数、响应结构、配置 body 等校验 Schema。
+- `apps/server/src/plugins/`、`apps/server/src/auth/`、`apps/server/src/transport/`：Elysia 横切插件与认证、传输层能力。
+- `apps/server/src/types/`、`apps/server/src/utils/`、`apps/server/src/errors/`、`apps/server/src/errors.ts`：共享类型、纯工具和错误定义。
+- `apps/server/src/test-utils/`、`apps/server/src/__tests__/`：测试辅助与主服务测试。
 
 ### 1.2 `packages/` 可插拔能力包
 
 - `packages/*` 放独立 workspace 包。
 - 适合放运行时插件、协议适配器、SDK、可替换执行引擎、独立封装的服务接入层。
 - 原则上主服务只依赖抽象和包导出的稳定接口，不直接耦合包内部实现细节。
+- 资源领域的路由与服务随所属包维护，例如 `packages/agent-runtime/src/routes/`、`packages/resources/*/src/server/routes/` 和 `packages/resources/workflow/src/server/services/workflow/`。
 
 #### Workspace 包依赖边界
 
@@ -74,20 +63,20 @@
 
 - `services` 是唯一允许组织业务流程的层。
 - `services` 可以调用 repository、其他 service、packages 导出的接口、文件系统和外部服务客户端。
-- `services` 不应直接操作数据库连接、ORM 实例或 SQL 构造器；凡是数据库读写、查询条件拼装、事务内持久化步骤，都应先收敛到 `src/repositories/` 暴露的接口，再由 service 编排调用。
+- `services` 不应直接操作数据库连接、ORM 实例或 SQL 构造器；凡是数据库读写、查询条件拼装、事务内持久化步骤，都应先收敛到 `apps/server/src/repositories/` 或所属资源包 repository 暴露的接口，再由 service 编排调用。
 - 一个完整业务动作的事务边界、幂等控制、权限判断、跨表写入、日志记录，应优先收敛在 service。
 - 同一张表或同一类资源的业务操作，尽量内聚在同一个 service 模块或同一组紧邻的 service 文件中，不要分散到很多“数据类”“工具类”里。
 
 #### 2.2.1 Service 直接使用数据库的例外
 
-- 默认情况下，业务 `service` 必须通过 repository 访问数据库，不把 `src/db/` 直接暴露为常规依赖。
+- 默认情况下，业务 `service` 必须通过 repository 访问数据库，不把 `apps/server/src/db/` 直接暴露为常规依赖。
 - 若需要跨多个 repository 组织同一事务，优先让 repository 支持接收统一的 `db/tx` 上下文；service 负责开启事务和编排，不负责下沉为具体 SQL。
 - 数据迁移、运维修复、一次性补算脚本等非长期业务 service，可基于实际需要直接使用 `db`，但应尽量限制影响范围，不把这类写法扩散回常规业务模块。
 - 极少数无法合理沉淀到 repository 的复杂只读查询，可在评审后作为例外处理；但需要在实现处注明原因，避免后续演变成随意绕过 repository 的先例。
 
 ### 2.3 Repository / DAO 层职责
 
-- `src/repositories/` 只做数据访问封装。
+- `apps/server/src/repositories/` 只做数据访问封装。
 - repository 负责查询、插入、更新、删除、分页、条件拼装等持久化细节。
 - repository 不承载业务判断，不做跨领域编排，不返回带业务副作用的结果。
 - repository 默认不直接暴露给 route；只能由 service 调用。
@@ -118,7 +107,7 @@
 
 ## 3. 数据库设计说明
 
-数据库以 PostgreSQL + Drizzle ORM 为标准方案，`src/db/schema.ts` 是唯一 Schema 真相来源。
+数据库以 PostgreSQL + Drizzle ORM 为标准方案，`apps/server/src/db/schema.ts` 是唯一 Schema 真相来源。
 
 ### 3.1 表设计基本原则
 
@@ -147,17 +136,17 @@
 
 ### 3.4 数据库相关文件放置位置
 
-- 表结构定义：`src/db/schema.ts`
-- 数据库连接与导出：`src/db/`
+- 表结构定义：`apps/server/src/db/schema.ts`
+- 数据库连接与导出：`apps/server/src/db/`
 - DDL 迁移文件：`drizzle/`
 - 迁移执行入口：`scripts/migrate.ts`
-- 数据迁移实现：`src/services/data-migrate.ts` 与 `src/services/data-migrates/`
+- 数据迁移实现：`apps/server/src/services/data-migrate.ts` 与 `apps/server/src/services/data-migrates/`
 
 ### 3.5 Schema 变更流程
 
 表结构变更按下面流程执行：
 
-1. 修改 `src/db/schema.ts`
+1. 修改 `apps/server/src/db/schema.ts`
 2. 执行 `bun run db:generate --name <migration-name>` 生成迁移
 3. 执行 `bun run db:migrate` 应用迁移并在本地开发环境验证
 4. 检查生成的 `drizzle/*.sql` 与 `drizzle/meta/*`
@@ -175,12 +164,12 @@
 DDL 迁移和数据迁移必须分离：
 
 - 表结构变更走 `drizzle/`。
-- 已有数据的批量搬迁、修复、补算、回填，走 `src/services/data-migrate.ts`。
+- 已有数据的批量搬迁、修复、补算、回填，走 `apps/server/src/services/data-migrate.ts`。
 
 数据迁移规则：
 
-- 每个数据迁移在 `src/services/data-migrates/` 下独立成文件。
-- 必须实现统一接口并注册到 `src/services/data-migrate.ts`。
+- 每个数据迁移在 `apps/server/src/services/data-migrates/` 下独立成文件。
+- 必须实现统一接口并注册到 `apps/server/src/services/data-migrate.ts`。
 - `name` 必须唯一，执行记录写入 `data_migrate_record`。
 - 迁移逻辑必须幂等；失败后再次启动时应可安全重试。
 - 不要把批量 `UPDATE/INSERT/DELETE` 数据修复逻辑直接写进 DDL SQL。
@@ -209,32 +198,32 @@ DDL 迁移和数据迁移必须分离：
 
 - 面向控制台前端和项目内部业务页面。
 - 允许更贴近页面交互和控制面板场景。
-- 统一放在 `src/routes/web/`。
+- 统一放在所属领域包的 `src/server/routes/web/`，或主服务共享路由 `apps/server/src/routes/web/`。
 - 默认返回 `{ success: true, data }` 或 `{ success: false, error }`。
 - 历史上存在配置类 `action` 分发接口，新增接口时不默认沿用；若不是配置聚合型场景，应优先设计为单一职责接口。
 
 ### 4.2 `/api` API
 
 - 面向外部系统、OpenAPI、API Key 调用方。
-- 统一放在 `src/routes/api/`。
+- 统一放在所属领域包的 `src/routes/api/` 或 `src/server/routes/api/`。
 - 必须优先保证协议稳定和向后兼容。
 - 返回结构应清晰、稳定、适合第三方接入，不随前端页面实现细节摆动。
 
 ### 4.2.1 非 `/web` / `/api` 的内部协议路由
 
-- 如果接口既不是给控制台前端 `/web` 场景使用，也不是给外部 OpenAPI `/api` 场景使用，就不要放进 `src/routes/web/` 或 `src/routes/api/`。
-- 这类接口应按协议或内部用途单独放在 `src/routes/` 下的独立文件或目录中，例如 `src/routes/mcp/`、`src/routes/acp/`、`src/routes/hooks.ts`、`src/routes/skills.ts`。
+- 如果接口既不是给控制台前端 `/web` 场景使用，也不是给外部 OpenAPI `/api` 场景使用，就不要放进领域包的 `src/server/routes/web/` 或 `src/server/routes/api/`。
+- 这类接口应按协议或内部用途放在所属包的独立 route 模块中，例如 `packages/resources/mcp/src/server/routes/mcp/`、`packages/agent-runtime/src/routes/acp/`、`apps/server/src/routes/hooks.ts`、`packages/resources/skill/src/server/routes/skills.ts`。
 - 路由前缀应与用途明确对应，使用独立前缀，例如 `/mcp/*`、`/acp/*`、`/hooks/*`、`/skills/*`，避免与 `/web/*`、`/api/*` 语义混淆。
 - 这类接口通常属于内部协议入口、系统桥接层、静态资源下载入口、Webhook 或框架透传能力，不应为了“风格统一”强行并入 `/web` 或 `/api`。
 - 这类接口默认按内部使用处理，OpenAPI 文档一般应设置 `detail.hide: true` 隐藏；只有在明确要求对外展示或确有文档消费方时，才公开到文档中。
 
 ### 4.2.2 OpenAPI 文档组织
 
-- OpenAPI / Scalar 的统一装配入口放在 `src/openapi.ts`，不要把全局 tags、文档路径和插件配置散落到各 route 文件或 `apps/server/src/main.ts` 中。
+- OpenAPI / Scalar 的统一装配入口放在 `apps/server/src/openapi.ts`，不要把全局 tags、文档路径和插件配置散落到各 route 文件或 `apps/server/src/main.ts` 中。
 - 当前维护两套文档：
   - 对外 API 文档：面向 `/api/*`
   - 控制台 Web API 文档：面向 `/web/*` 和平台内部接口
-- route 负责声明就近的 `detail`、schema 和响应结构；全局文档分组、tag 描述和文档挂载路径由 `src/openapi.ts` 统一维护。
+- route 负责声明就近的 `detail`、schema 和响应结构；全局文档分组、tag 描述和文档挂载路径由 `apps/server/src/openapi.ts` 统一维护。
 
 ### 4.3 路由设计规范
 
@@ -265,12 +254,12 @@ DDL 迁移和数据迁移必须分离：
 
 - route 上应补充 `detail`，并显式声明 `params`、`query`、`headers`、`body`、`response`。
 - `summary`、`description`、tag 描述统一优先使用中文。
-- schema 必须定义在 `src/schemas/` 目录中，禁止在 route 文件中内联声明请求体、响应体或字段结构。
-- route 上声明 `params`、`query`、`headers`、`body`、`response` 时，默认直接使用 `src/schemas/` 中导出的 schema 实体；不要补 `any`。
+- schema 必须定义在 `apps/server/src/schemas/` 或所属资源包的 `src/server/schemas/` 目录中，禁止在 route 文件中内联声明请求体、响应体或字段结构。
+- route 上声明 `params`、`query`、`headers`、`body`、`response` 时，默认直接使用对应 schema 目录中导出的 schema 实体；不要补 `any`。
 - 字符串 model 引用仅适用于历史兼容或少量共享注册场景；新接口默认优先使用 schema 实体。
 - 当 route 已声明 `response`，且实现中存在非 2xx 返回分支时，默认使用 `status(code, body)` 返回；不要优先使用 `error(code, body)`。
 - 使用 `status(code, body)` 时，不要改变已有响应结构；除非明确要求更新结构体，否则如果前端已经依赖历史错误结构，必须保持原 body 兼容。
-- 为 OpenAPI 展示补充必要的 `model` 注册，并为所属全局 tag 补充中文 `description`；全局 tag 定义统一维护在 `src/openapi.ts` 中。
+- 为 OpenAPI 展示补充必要的 `model` 注册，并为所属全局 tag 补充中文 `description`；全局 tag 定义统一维护在 `apps/server/src/openapi.ts` 中。
 - 如果接口属于内部使用、框架透传、静态资源、代理入口、MCP 服务入口、WebSocket、协议入口等不面向外部开发者的能力，也要补说明；需要隐藏时使用 `detail.hide: true`。
 
 ### 4.5 接口变更要求
@@ -328,13 +317,13 @@ flowchart LR
 ### 5.4 职责边界
 
 - 主服务负责抽象定义、schema、配置读取、权限控制、生命周期管理和业务编排。
-- `src/services/` 只依赖抽象接口，不直接散落第三方 SDK 调用。
+- `apps/server/src/services/` 只依赖抽象接口，不直接散落第三方 SDK 调用。
 - `packages/<name>/` 负责具体实现细节，不把第三方协议细节泄漏到主服务各处。
 - 需要暴露页面或控制台能力时，优先由 route 做代理边界。
 
 ### 5.5 禁止事项
 
-- 不要在 `src/services/` 里直接散落某个第三方服务的大量 SDK 调用。
+- 不要在 `apps/server/src/services/` 里直接散落某个第三方服务的大量 SDK 调用。
 - 不要让业务逻辑到处 `if provider === "xxx"` 分支。
 - 不要把页面、路由、服务、数据结构全部绑死在一个具体外部实现上。
 
@@ -397,7 +386,7 @@ flowchart LR
 提交前至少自检以下事项：
 
 - route 是否只调用 service，没有直接碰 repository / db
-- service 是否通过 repository 访问数据库，没有直接操作 `src/db/` 或手写持久化细节
+- service 是否通过 repository 访问数据库，没有直接操作 `apps/server/src/db/` 或手写持久化细节
 - service 是否收敛了该领域的核心业务逻辑
 - 同一资源的表操作是否足够内聚
 - schema 变更是否同时提交 `drizzle/` 完整产物
@@ -411,7 +400,7 @@ flowchart LR
 
 `bun run precheck` 的 `architecture` 阶段负责阻断可通过静态语法可靠判断的架构违规。后端当前自动检查：
 
-- `src/services/` 和 `src/repositories/` 不得反向依赖 `src/routes/`。
+- `apps/server/src/services/` 和 `apps/server/src/repositories/` 不得反向依赖 `apps/server/src/routes/`。
 - 跨 workspace 包不得绕过公开导出访问 `@fenix/*/src/*`。
 - Zod 必须从 `zod/v4` 导入。
 

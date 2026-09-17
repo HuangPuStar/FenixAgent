@@ -8,8 +8,8 @@
 
 核心模块分工：
 
-- **调度引擎**——`SchedulerService`（`src/services/scheduler/index.ts`）基于 `node-schedule` 管理 cron job 的注册和取消；按任务 `type` 分派到对应 executor
-- **任务管理**——任务的 CRUD（`src/services/task-v2.ts`）、执行协调、日志写入
+- **调度引擎**——`SchedulerService`（`packages/resources/task/src/server/services/scheduler/index.ts`）基于 `node-schedule` 管理 cron job 的注册和取消；按任务 `type` 分派到对应 executor
+- **任务管理**——任务的 CRUD（`packages/resources/task/src/server/services/task-v2.ts`）、执行协调、日志写入
 - **执行器**——按类型注册：`httpExecutor`（HTTP 请求）与 `agentExecutor`（spawn Agent 进程执行 prompt）
 
 ## 数据模型
@@ -65,7 +65,7 @@
 
 ### agentExecutor（Agent 执行）
 
-- 复用 `openAgentSession`（`src/services/agent-chat-service.ts`）以 `agentId` 对应的 Agent 执行 `prompt`
+- 复用 `openAgentSession`（`packages/agent-runtime/src/services/agent-chat-service.ts`）以 `agentId` 对应的 Agent 执行 `prompt`
 - 从 ACP 事件流提取纯文本输出（过滤 tool_call / tool_result 帧），写入 `resultSummary`
 
 ## 核心流程
@@ -111,7 +111,7 @@ cron 触发
 ## 和其他模块的关系
 
 - → **数据库 Schema**：操作 `scheduledTaskV2` 和 `taskExecutionLog` 表
-- → **数据访问层**：任务仓储（`src/repositories/task-v2.ts`）和日志仓储
+- → **数据访问层**：任务仓储（`packages/resources/task/src/server/repositories/task-v2.ts`）和日志仓储
 - → **Agent 会话服务**：agent 类型经 `openAgentSession` 执行 prompt
 - ← **服务器入口**：启动时注册 job，关闭时取消所有 job
-- ← **路由层**：`src/routes/web/tasks-v2.ts` 调用任务 CRUD 函数
+- ← **路由层**：`packages/resources/task/src/server/routes/web/tasks-v2.ts` 调用任务 CRUD 函数

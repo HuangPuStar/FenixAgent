@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  clearAllCache,
-  closeCache,
-  getCache,
-  getCacheBackend,
-  getRedisConnection,
-} from "../services/cache";
+import { clearAllCache, closeCache, getCache, getCacheBackend, getRedisConnection } from "../services/cache";
 
 beforeEach(async () => {
   await closeCache();

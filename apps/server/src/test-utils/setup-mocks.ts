@@ -362,25 +362,19 @@ mock.module("react-i18next", () => ({
   withTranslation: () => (Component: unknown) => Component,
 }));
 
-// 仅载入端口定义，不能在 preload 中载入 server barrel：barrel 会提前求值所有
-// runtime 服务，使后续测试无法将 environmentRepo 替换为实时 Proxy。
-const { bindCoreRuntimePort } = await import(
-  "../../../../packages/agent-runtime/src/server/services/core-runtime-port"
-);
-const { bindMachineRegistryPort } = await import(
-  "../../../../packages/agent-runtime/src/server/services/machine-registry-port"
-);
-const { bindLocalNodeAgentNodeServicePort } = await import(
-  "../../../../packages/agent-runtime/src/server/services/local-node-agent-node-service-port"
-);
-const { bindSessionEventBusPort } = await import(
-  "../../../../packages/agent-runtime/src/server/services/session-event-bus-port"
-);
-const { bindFileWsPort } = await import("../../../../packages/agent-runtime/src/server/services/file-ws-port");
+// 测试依赖必须经 runtime 的服务端公开入口加载，避免绕过 workspace 的稳定边界。
+const {
+  bindCoreRuntimePort,
+  bindFileWsPort,
+  bindLocalNodeAgentNodeServicePort,
+  bindMachineRegistryPort,
+  bindSessionEventBusPort,
+  getAgentNodeService,
+  getAllEventBuses,
+  removeEventBus,
+} = await import("@fenix/agent-runtime/server");
 // 测试 preload 以惰性 stub 绑定路由依赖；该测试钩子不得进入 Machine 的生产公开入口。
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
-const { getAgentNodeService } = await import("../../../../packages/agent-runtime/src/transport/agent-node-bridge");
-const { getAllEventBuses, removeEventBus } = await import("../../../../packages/agent-runtime/src/transport/event-bus");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
   registerRemoteNode: (...args) => {

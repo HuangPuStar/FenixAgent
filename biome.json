@@ -66,7 +66,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/__tests__/**", "apps/web/src/__tests__/**", "packages/*/src/__tests__/**"],
+      "includes": ["apps/server/src/__tests__/**", "apps/web/src/__tests__/**", "packages/*/src/__tests__/**"],
       "linter": {
         "rules": {
           "suspicious": {
