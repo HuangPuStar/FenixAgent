@@ -30,7 +30,7 @@
 FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
-- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口与 Vite 配置，`web/` 没有独立 `package.json` 并保留前端业务实现。
+- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置与前端业务实现，root `web/` 仅保留待删除的构建产物。
 - `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
 
 ### 后端地图
@@ -48,13 +48,12 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 ### 前端地图
 
-- `web/src/routes/`：TanStack Router 文件路由；Agent 面板页面位于 `web/src/routes/agent/_panel/`；`routeTree.gen.ts` 为生成文件，严禁手改。
-- `web/src/pages/`：页面和业务容器。
-- `web/components/`：通用 UI 与业务组件。
-- `web/src/api/`：前端 API 建模层。
-- `web/src/acp/`：ACP 客户端。
-- `web/src/i18n/`：国际化配置与语言资源。
-- `web/src/__tests__/`：前端关键流程测试。
+- `apps/web/src/routes/`：TanStack Router 文件路由；`routeTree.gen.ts` 为生成文件，严禁手改。
+- `apps/web/src/pages/`：页面和业务容器。
+- `apps/web/components/`：通用 UI 与业务组件。
+- `apps/web/src/api/`：前端 API 建模层。
+- `apps/web/src/i18n/`：国际化配置与语言资源。
+- `apps/web/src/__tests__/`：前端关键流程测试。
 
 ## 开发工作流
 
@@ -94,7 +93,7 @@ bun run db:migrate                  # 执行迁移
 ### 按变更类型验证
 
 - 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
-- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
+- 前端改动：运行相关 `bun test apps/web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
 - 常规任务提交前 `precheck` 必须全绿；CE 阶段 1 的中间功能闭包提交例外，须留存准确失败原因且阶段最终提交必须全绿。它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建；阶段 1 收口时同步移动测试入口并覆盖全部迁移后的测试。
@@ -125,13 +124,13 @@ bun run db:migrate                  # 执行迁移
 ### 前端边界与体验
 
 - 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
-- 请求统一通过 `web/src/api/request.ts`；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
+- 请求统一通过 `apps/web/src/api/request.ts`；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
-- 基础组件优先复用 `web/components/ui/`；通用图标使用 `lucide-react`；模型品牌图标使用 `web/components/model-icon/ModelIcon.tsx`。
+- 基础组件优先复用 `apps/web/components/ui/`；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
 - 纯逻辑模块不得依赖 UI 图标包；特别是不得让后端或纯逻辑测试间接加载 `@lobehub/icons`。
 - 页面流程必须覆盖 loading、empty、error、retry、success feedback 和可访问性状态。
-- 路径别名：`@/src` → `web/src`，`@/components` → `web/components`，`@server` → `../src`。
+- 路径别名：`@/src` → `apps/web/src`，`@/components` → `apps/web/components`，`@server` → `apps/server/src`。
 
 ### Agent 通信权威路径
 
@@ -213,7 +212,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ### 测试
 
-- 后端测试位于 `src/__tests__/`，前端测试位于 `web/src/__tests__/`。
+- 后端测试位于 `src/__tests__/`，前端测试位于 `apps/web/src/__tests__/`。
 - 优先复用 `src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
 - 每个 `test(...)` 上方添加一行中文注释，说明行为和业务意图。
 - 前端只测试关键交互、状态和数据流，不编写纯 UI 结构断言或仅重复类型检查的测试。

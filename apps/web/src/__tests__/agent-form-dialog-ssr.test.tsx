@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 
 import i18n from "@/src/i18n";
-import { AgentFormDialog } from "../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/AgentFormDialog";
+import { AgentFormDialog } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/AgentFormDialog";
 
 function renderDialog(props: Parameters<typeof AgentFormDialog>[0]) {
   return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(AgentFormDialog, props)));

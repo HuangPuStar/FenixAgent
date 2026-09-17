@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { FileTypeIcon, getFileExtension } from "../../../../../../web/src/components/file-icon-helper";
+import { FileTypeIcon, getFileExtension } from "../../../../../../apps/web/src/components/file-icon-helper";
 
 describe("文件图标辅助逻辑 Round 39", () => {
   // 常规扩展名应提取为小写，供预设映射查询。

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const { buildRunSummary } = await import("../../../../../web/src/lib/use-workflow-events");
+const { buildRunSummary } = await import("../../../../../apps/web/src/lib/use-workflow-events");
 
 describe("buildRunSummary", () => {
   test("返回 null 当 dag_status 为 PENDING 且无节点状态", () => {

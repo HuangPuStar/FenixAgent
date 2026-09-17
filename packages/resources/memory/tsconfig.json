@@ -8,18 +8,20 @@
     "paths": {
       "@server/*": ["../../../apps/server/src/*"],
       "@/components/ui/*": ["../../../apps/web/components/ui/*"],
-      "@/components/*": ["../../../web/components/*"],
+      "@/components/*": ["../../../apps/web/components/*"],
       "@/src/api/hindsight": ["web/api/hindsight.ts"],
       "@/src/api/environments": ["../../../packages/agent-runtime/web/api/environments.ts"],
-      "@/src/api/fs": ["../../../web/src/api/fs.ts"],
+      "@/src/api/fs": ["../../../apps/web/src/api/fs.ts"],
       "@/src/api/request": ["../../../apps/web/src/api/request.ts"],
       "@/src/api/sites": ["../../agent-config/web/api/sites.ts"],
-      "@/src/components/agent-panel/WorkbenchPanel": ["../../../web/src/components/agent-panel/WorkbenchPanel.tsx"],
-      "@/src/components/file-icon-helper": ["../../../web/src/components/file-icon-helper.tsx"],
+      "@/src/components/agent-panel/WorkbenchPanel": [
+        "../../../apps/web/src/components/agent-panel/WorkbenchPanel.tsx"
+      ],
+      "@/src/components/file-icon-helper": ["../../../apps/web/src/components/file-icon-helper.tsx"],
       "@/src/i18n": ["../../../apps/web/src/i18n/index.ts"],
       "@/src/lib/card-renderer": ["../../../apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/utils": ["../../../apps/web/src/lib/utils.ts"],
-      "@/src/*": ["../../../web/src/*"]
+      "@/src/*": ["../../../apps/web/src/*"]
     }
   },
   "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]

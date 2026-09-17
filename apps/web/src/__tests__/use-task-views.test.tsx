@@ -20,7 +20,7 @@ import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
 import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "@/src/yjs/doc-hub";
-import { initializeHappyDomWindow } from "../../../apps/web/src/__tests__/happy-dom-window";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
 
 // 告知 React 当前为测试环境，消除 act() 警告

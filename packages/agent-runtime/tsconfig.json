@@ -7,7 +7,7 @@
       "@server/*": ["apps/server/src/*"],
       "@/components/chat/*": ["packages/agent-runtime/web/components/chat/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["web/components/*"],
+      "@/components/*": ["apps/web/components/*"],
       "@/src/api/environments": ["packages/agent-runtime/web/api/environments.ts"],
       "@/src/hooks/use-chat-state": ["packages/agent-runtime/web/hooks/use-chat-state.ts"],
       "@/src/hooks/use-session-state": ["packages/agent-runtime/web/hooks/use-session-state.ts"],
@@ -20,7 +20,7 @@
         "packages/agent-runtime/web/agent-panel/session-mutation-refresh.ts"
       ],
       "@/src/yjs/*": ["packages/agent-runtime/web/yjs/*"],
-      "@/src/i18n/locales/*": ["web/src/i18n/locales/*"],
+      "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
       "@/src/i18n": ["apps/web/src/i18n/index.ts"],
       "@/src/api/request": ["apps/web/src/api/request.ts"],
       "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
@@ -32,7 +32,7 @@
       "@/src/lib/random-uuid-polyfill": ["apps/web/src/lib/random-uuid-polyfill.ts"],
       "@/src/lib/theme": ["apps/web/src/lib/theme.ts"],
       "@/src/contexts/OrgContext": ["apps/web/src/contexts/OrgContext.tsx"],
-      "@/src/*": ["web/src/*"]
+      "@/src/*": ["apps/web/src/*"]
     }
   },
   "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]

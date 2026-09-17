@@ -44,7 +44,7 @@
 
 ### 通用业务组件
 
-在 shadcn/ui 原语之上封装了一套通用业务组件（`web/components/config/`），统一项目内高频交互模式：
+在 shadcn/ui 原语之上封装了一套通用业务组件（`apps/web/components/config/`），统一项目内高频交互模式：
 
 | 组件 | 用途 |
 |------|------|
@@ -64,9 +64,9 @@
 
 与后端 better-auth 三路认证体系对接：
 
-- **better-auth 客户端**（`web/src/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
+- **better-auth 客户端**（`apps/web/src/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
 - **组织上下文传递**：活跃组织 ID 存 localStorage，通过 HTTP header 注入到 `/web/*` 和 `/api/*` 请求；WebSocket relay 通过 query param 传递（因 WS 不支持自定义 header）
-- **API Client 自动认证**：`web/src/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
+- **API Client 自动认证**：`apps/web/src/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
 
 ---
 
@@ -77,15 +77,15 @@
 - **命名空间**：使用 `NS` 常量组织翻译资源，禁止字符串字面量
 - **翻译文件**：按语言（`en/zh`）和命名空间组织 JSON 文件
 - **检测**：localStorage → navigator 兜底 → 英文 fallback
-- **新增命名空间**：创建语言文件 → 在 `web/src/i18n/index.ts` 注册 → 组件中引用常量
+- **新增命名空间**：创建语言文件 → 在 `apps/web/src/i18n/index.ts` 注册 → 组件中引用常量
 
 当前已有 21 个命名空间：`common`、`login`、`sidebar`、`dashboard`、`agents`、`models`、`skills`、`mcp`、`tasks`、`workflows`、`settings`、`sessions`、`environments`、`orgs`、`apikey`、`channels`、`knowledge`、`agentPanel`、`components`、`hindsight`、`agentHome`。
 
 ---
 
-## 6. API Client：web/src/api/request.ts
+## 6. API Client：apps/web/src/api/request.ts
 
-前端 API 调用统一通过 `web/src/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
+前端 API 调用统一通过 `apps/web/src/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
 
 ---
 
@@ -95,13 +95,13 @@
 
 ### SSE 实时通信适配
 
-Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-transport.ts`）接入后端 SSE 事件流，而非默认的 HTTP stream。`rcs-chat-adapter.ts` 负责将后端会话事件转换为 AI SDK 的 thread entries。
+Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport` 接入后端 SSE 事件流，而非默认的 HTTP stream。`rcs-chat-adapter.ts` 负责将后端会话事件转换为 AI SDK 的 thread entries。
 
 ### ACP/YJS 通信通道
 
 前端通过单条 `/acp/yjs/:agentId` WebSocket 连接后端，使用 YJS CRDT 进行增量数据同步：
 
-- **`buildYjsUrl()`** / **`createYjsWs()`**：`web/src/yjs/yjs-ws.ts` 中封装，自动拼装协议、主机、agentId 参数
+- **`buildYjsUrl()`** / **`createYjsWs()`**：`packages/agent-runtime/web/yjs/yjs-ws.ts` 中封装，自动拼装协议、主机、agentId 参数
 - **ChatPanel**：前端 WS 唯一入口，在挂载时创建连接
 
 ---
@@ -109,7 +109,7 @@ Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-tran
 ## 8. 前端项目目录结构
 
 ```
-web/
+apps/web/
   components/
     ui/              — shadcn/ui 包装的 Radix UI 原语组件（36 个）
     config/          — 通用业务组件（FormDialog、DataTable、ConfirmDialog 等）
@@ -132,7 +132,7 @@ web/
 ## 9. 前端测试方案
 
 - **运行环境**：bun test + happy-dom + React Testing Library
-- **测试文件命名**：`<功能>-flow.test.ts`，位于 `web/src/__tests__/`
+- **测试文件命名**：`<功能>-flow.test.ts`，位于 `apps/web/src/__tests__/`
 - **Mock 策略**：fetch mock 或 MSW，禁止在测试文件中使用 `mock.module()`
 - **测试原则**：只测关键流程（表单提交、数据操作、导航路由、状态联动），不写类型检查测试和纯 UI 结构断言
 
@@ -141,7 +141,7 @@ web/
 ## 10. 构建与启动
 
 - **启动流程**：`apps/web/src/main.tsx` → `loadAppBrand()` 加载品牌配置 → `createRouter()` + `RouterProvider`
-- **build**：`bun run build:web`，产物写入 `web/dist/`，后端通过 `@elysiajs/static` 以 `base: "/ctrl/"` 前缀托管
+- **build**：`bun run build:web`，产物写入 `apps/web/dist/`，后端通过 `@elysiajs/static` 以 `base: "/ctrl/"` 前缀托管
 - **Vite 代理**：dev 模式下 `/web`、`/api`、`/acp` 代理到后端
 - **vendor chunk 拆分**：8 个独立 chunk（shiki / mermaid / motion / vendor / ai-sdk / radix-ui / tanstack / hookform），控制包体积
 - **关键约束**：TanStack Router Vite 插件必须在 `plugins` 数组第一位；修改前端代码后必须 `build:web` 才能生效

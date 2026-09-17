@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 const STEPS = [
   {
     name: "format",
-    cmd: "biome format --write src/ web/src/ web/components/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome format --write src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Formatted")) return null;
       return out;
@@ -18,7 +18,7 @@ const STEPS = [
   },
   {
     name: "import-sort",
-    cmd: "biome check --write --linter-enabled=false src/ web/src/ web/components/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check --write --linter-enabled=false src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Checked")) return null;
       return out;
@@ -65,7 +65,7 @@ const STEPS = [
   },
   {
     name: "lint",
-    cmd: "biome check src/ web/src/ web/components/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check src/ apps/ packages/ scripts/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("Checked") && !out.includes("error") && !out.includes("warning")) return null;
       // 只保留有问题的文件行

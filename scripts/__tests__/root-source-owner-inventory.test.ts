@@ -120,15 +120,6 @@ test("审计当前根目录源码的归属", async () => {
   expect(audit.assignments.every((assignment) => assignment.testOwner.length > 0)).toBe(true);
 });
 
-// i18n JSON 也是被前端代码和测试直接导入的模块，盘点不能只扫描 TypeScript 目标。
-test("记录 JSON 资源的实际消费者与测试入口", async () => {
-  const audit = await auditRootSourceOwners(["web/src/i18n/locales/en/components.json"]);
-  const assignment = audit.assignments[0];
-
-  expect(assignment?.consumers).toContain("apps/web/src/i18n/index.ts");
-  expect(assignment?.testOwner).toContain("web/src/__tests__/message.ssr.test.tsx");
-});
-
 // 专属路径必须在通用 routes/components 规则前闭包到其领域模块。
 test("专属文件优先归属其领域模块并推导精确目标路径", () => {
   const expectations = [
@@ -364,14 +355,13 @@ test("检测生成文档与审计结果不一致", () => {
   expect(compareRootOwnerInventoryMarkdown("expected", "expected")).toBeUndefined();
 });
 
-// 生成的 Markdown 是可审查的完整清单，而不是仅供机器读取的汇总。
-test("渲染根目录源码归属 Markdown 清单", async () => {
+// 全部迁移完成后，清单只保留 RMD-09 可删除的根目录构建产物。
+test("渲染完成态的根目录源码归属 Markdown 清单", async () => {
   const markdown = renderRootOwnerInventoryMarkdown(await auditRootSourceOwners());
 
   expect(markdown).toContain("文件总数");
-  expect(markdown).toContain("RMD-01");
   expect(markdown).toContain("RMD-09");
   expect(markdown).toContain("delete");
   expect(markdown).toContain("## 逐文件映射");
-  expect(markdown).toContain("src/routes/web/file-events.ts");
+  expect(markdown).not.toContain("RMD-08 | apps-web");
 });

@@ -12,7 +12,7 @@ import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { NS } from "@/src/i18n";
 import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { ProdViewsPanel } from "@/src/pages/agent-panel/ProdViewsPanel";
-import { TasksPanel } from "../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
+import { TasksPanel } from "../../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
 import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
 import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";

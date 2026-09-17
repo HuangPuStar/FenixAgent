@@ -19,7 +19,7 @@
     "paths": {
       "@server/*": ["./apps/server/src/*"],
       "@/components/ui/*": ["./apps/web/components/ui/*"],
-      "@/components/*": ["./web/components/*"],
+      "@/components/*": ["./apps/web/components/*"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/api/request": ["./apps/web/src/api/request.ts"],
       "@/src/api/helpers": ["./apps/web/src/api/helpers.ts"],
@@ -76,7 +76,7 @@
       "@/src/lib/model-config-utils": ["./packages/resources/model-management/web/lib/model-config-utils.ts"],
       "@/src/types/knowledge": ["./packages/resources/knowledge/web/types/knowledge.ts"],
       "@/src/pages/hindsight/MemoriesPage": ["./packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx"],
-      "@/src/*": ["./web/src/*"]
+      "@/src/*": ["./apps/web/src/*"]
     }
   },
   "include": ["apps/server/src/**/*.ts"],

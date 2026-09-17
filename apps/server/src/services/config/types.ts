@@ -3,7 +3,7 @@
  *
  * These types provide compile-time safety for config data flowing through
  * service functions, route handlers, and the config API. They mirror the
- * frontend types in web/src/types/config.ts; keep both in sync.
+ * frontend types in apps/web/src/types/config.ts; keep both in sync.
  */
 
 // ────────────────────────────────────────────

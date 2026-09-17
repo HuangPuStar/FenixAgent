@@ -5,9 +5,9 @@ import {
   getFileTreeNameByteLength,
   isValidFileTreeBasename,
   isValidFileTreeMovePath,
-} from "../../../../../../web/src/components/agent-panel/FileTreeTab";
+} from "../../../../../../apps/web/src/components/agent-panel/FileTreeTab";
 
-const webSourceRoot = join(import.meta.dirname, "..", "..", "..", "..", "..", "..", "web", "src");
+const webSourceRoot = join(import.meta.dirname, "..", "..", "..", "..", "..", "..", "apps", "web", "src");
 
 describe("file tree dialogs", () => {
   // 无滚动内容时不展示 sticky，避免顶部目录栏占用文件树空间。

@@ -10,7 +10,7 @@ import { mapSkillOptions, normalizeSkillOptionsPayload } from "@/src/lib/skill-r
 import {
   mapMcpOptions,
   mapModelOptions,
-} from "../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
+} from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import { buildUploadUrl } from "../api/fs";
 import {
   canManageAgentSharing,

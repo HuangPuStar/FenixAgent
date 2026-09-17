@@ -13,7 +13,7 @@ import type {
   SkillInfo,
   SkillUploadConflictResponse,
   SkillUploadResponse,
-} from "../../../../../web/src/types/config";
+} from "../../../../../apps/web/src/types/config";
 
 /** 创建/更新 Skill 所需的 data 载荷 */
 export interface SkillData {

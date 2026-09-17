@@ -23,8 +23,8 @@
       "@fenix/model-management/server": ["packages/resources/model-management/src/server.ts"],
       "@server/*": ["apps/server/src/*", "src/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["web/components/*"],
-      "@/src/i18n/locales/*": ["web/src/i18n/locales/*"],
+      "@/components/*": ["apps/web/components/*"],
+      "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
       "@/src/i18n": ["apps/web/src/i18n/index.ts"],
       "@/src/api/request": ["apps/web/src/api/request.ts"],
       "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
@@ -41,7 +41,7 @@
         "packages/resources/agent-config/web/pages/agent-panel/agent-editor/*"
       ],
       "@/components/model-icon/*": ["packages/resources/model-management/web/components/model-icon/*"],
-      "@/src/*": ["web/src/*"]
+      "@/src/*": ["apps/web/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]

@@ -3,7 +3,7 @@ import {
   filterFileTree,
   parsePathsToTree,
   splitFileTreeSections,
-} from "../../../../../../web/src/components/agent-panel/file-tree-model";
+} from "../../../../../../apps/web/src/components/agent-panel/file-tree-model";
 
 describe("file-tree-model", () => {
   // 搜索命中文件时保留完整祖先链，确保结果仍能在树中定位。

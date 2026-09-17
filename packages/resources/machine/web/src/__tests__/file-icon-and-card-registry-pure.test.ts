@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getFileExtension } from "../../../../../../apps/web/src/components/file-icon-helper";
 import {
   getRegisteredAllowedTags,
   getRegisteredComponents,
@@ -6,7 +7,6 @@ import {
   getTagRenderer,
   registerTagRenderer,
 } from "../../../../../../apps/web/src/lib/card-renderer/registry";
-import { getFileExtension } from "../../../../../../web/src/components/file-icon-helper";
 
 const firstRenderer = (_props: Record<string, unknown>) => null;
 const secondRenderer = (_props: Record<string, unknown>) => null;

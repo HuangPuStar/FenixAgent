@@ -3,12 +3,12 @@ import ReactDOMServer from "react-dom/server";
 
 describe("FilePickerDialog", () => {
   test("exports FilePickerDialog as a function", async () => {
-    const mod = await import("../../../../../../web/src/components/FilePickerDialog");
+    const mod = await import("../../../../../../apps/web/src/components/FilePickerDialog");
     expect(typeof mod.FilePickerDialog).toBe("function");
   });
 
   test("renders without throwing with required props", async () => {
-    const { FilePickerDialog } = await import("../../../../../../web/src/components/FilePickerDialog");
+    const { FilePickerDialog } = await import("../../../../../../apps/web/src/components/FilePickerDialog");
     expect(() => {
       ReactDOMServer.renderToString(
         <FilePickerDialog open={true} envId="env_1" onClose={() => {}} onSelect={() => {}} />,
@@ -17,7 +17,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("renders with open=false without throwing", async () => {
-    const { FilePickerDialog } = await import("../../../../../../web/src/components/FilePickerDialog");
+    const { FilePickerDialog } = await import("../../../../../../apps/web/src/components/FilePickerDialog");
     expect(() => {
       ReactDOMServer.renderToString(
         <FilePickerDialog open={false} envId="env_1" onClose={() => {}} onSelect={() => {}} />,
@@ -33,7 +33,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("exports workspace file API from api/fs", async () => {
-    const fsMod = await import("../../../../../../web/src/api/fs");
+    const fsMod = await import("../../../../../../apps/web/src/api/fs");
     expect(fsMod.fsApi).toBeDefined();
     expect(typeof fsMod.fsApi.listDir).toBe("function");
     expect(typeof fsMod.uploadFiles).toBe("function");
@@ -41,7 +41,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("FileInfo type is exported from types", async () => {
-    const _typesMod = await import("../../../../../../web/src/types");
+    const _typesMod = await import("../../../../../../apps/web/src/types");
     const dummy: any = { name: "test.txt", path: "user/test.txt", type: "file" as const, size: 100, modifiedAt: 0 };
     expect(dummy.name).toBe("test.txt");
     // Verify the import works — if FileInfo type doesn't exist, this file won't compile

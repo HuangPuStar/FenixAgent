@@ -24,7 +24,7 @@
       "@fenix/agent-config/server/testing": ["packages/resources/agent-config/src/server/testing.ts"],
       "@server/*": ["apps/server/src/*", "src/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["web/components/*"],
+      "@/components/*": ["apps/web/components/*"],
       "@/components/model-icon/*": ["packages/resources/model-management/web/components/model-icon/*"],
       "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
       "@/src/i18n": ["apps/web/src/i18n/index.ts"],
@@ -44,7 +44,7 @@
       "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/model-config-utils": ["packages/resources/model-management/web/lib/model-config-utils.ts"],
       "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
-      "@/src/*": ["web/src/*"]
+      "@/src/*": ["apps/web/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]

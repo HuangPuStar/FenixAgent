@@ -9,7 +9,7 @@ import {
   getMcpLookupKey,
   getMcpResourceBadgeKey,
 } from "@/src/lib/mcp-resource-access";
-import type { ResourceAccess } from "../../../../../../web/src/types/config";
+import type { ResourceAccess } from "../../../../../../apps/web/src/types/config";
 
 const ownedAccess: ResourceAccess = {
   ownership: "internal",

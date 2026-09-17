@@ -58,4 +58,4 @@ jobs:
         run: bun test packages/ --verbose --bail=1
 
       - name: Frontend tests
-        run: bun test $(find web/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1
+        run: bun test $(find apps/web/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') scripts/__tests__/rmd-08-migration.test.ts --verbose --bail=1

@@ -23,7 +23,7 @@ test("server 与 web 只有 apps 下的应用入口", () => {
 test("开发、构建和静态托管使用 apps 入口", () => {
   const packageJson = JSON.parse(readRepoFile("package.json")) as { scripts: Record<string, string> };
   const viteConfig = readRepoFile("apps/web/vite.config.ts");
-  const staticPlugin = readRepoFile("src/plugins/static.ts");
+  const staticPlugin = readRepoFile("apps/server/src/plugins/static.ts");
 
   expect(packageJson.scripts.dev).toBe("bun run apps/server/src/main.ts");
   expect(packageJson.scripts.start).toBe("bun run apps/server/src/main.ts");
@@ -40,12 +40,12 @@ test("前端类型检查使用 apps web 配置", () => {
   const webTsconfig = readRepoFile("apps/web/tsconfig.json");
 
   expect(packageJson.scripts["typecheck:web"]).toContain("apps/web/tsconfig.json");
-  expect(webTsconfig).toContain('"../../web/src/**/*.tsx"');
+  expect(webTsconfig).toContain('"src/**/*.tsx"');
 });
 
-// 前端入口迁入 apps 后，Tailwind 仍须扫描保留在 web 下的页面与组件源码。
-test("Tailwind 扫描 web 领域源码以生成页面 utility 样式", () => {
-  const styles = readRepoFile("web/src/index.css");
+// 前端入口迁入 apps 后，Tailwind 必须继续扫描应用壳源码以生成页面 utility 样式。
+test("Tailwind 扫描 apps web 应用壳源码以生成页面 utility 样式", () => {
+  const styles = readRepoFile("apps/web/src/index.css");
 
   expect(styles).toContain('@source "../**/*.{ts,tsx}";');
 });

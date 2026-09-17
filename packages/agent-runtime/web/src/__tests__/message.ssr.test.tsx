@@ -6,7 +6,7 @@ import { SubAgentPanel } from "@/components/chat/SubAgentPanel";
 import { SystemMessage } from "@/components/chat/SystemMessage";
 import componentsEN from "@/src/i18n/locales/en/components.json";
 import componentsZH from "@/src/i18n/locales/zh/components.json";
-import { Message, MessageContent, MessageResponse } from "../../../../../web/components/ai-elements/message";
+import { Message, MessageContent, MessageResponse } from "../../../../../apps/web/components/ai-elements/message";
 
 async function renderStreaming(element: ReactNode) {
   const stream = await renderToReadableStream(element);
