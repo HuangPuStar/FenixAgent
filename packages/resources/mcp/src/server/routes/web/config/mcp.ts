@@ -1,9 +1,9 @@
+import { AppError } from "@server/errors";
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
+import type { McpRemoteConfig, McpServerConfig } from "@server/services/config/types";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AppError } from "../../../../../../../../apps/server/src/errors";
-import { type AuthContext, authGuardPlugin } from "../../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../../../../../../../src/schemas/common.schema";
-import type { McpRemoteConfig, McpServerConfig } from "../../../../../../../../src/services/config/types";
 import * as configPg from "../../../services/config/mcp-server";
 import {
   countToolsByServer,

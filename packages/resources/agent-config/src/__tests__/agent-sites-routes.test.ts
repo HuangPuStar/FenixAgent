@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createWebOpenApiPlugin } from "@server/openapi";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { WebErrSchema } from "@server/schemas/common.schema";
+import { clearOrgCache, setTestOrgContext } from "@server/services/org-context";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import Elysia from "elysia";
-import { createWebOpenApiPlugin } from "../../../../../apps/server/src/openapi";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { clearOrgCache, setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
-import { WebErrSchema } from "../../../../../src/schemas/common.schema";
 import webAgentSites from "../server/routes/web/agent-sites";
 import {
   AgentSiteAgentConfigParamsSchema,

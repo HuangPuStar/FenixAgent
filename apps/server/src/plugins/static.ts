@@ -6,14 +6,19 @@ import { createLogger } from "@fenix/logger";
 import Elysia from "elysia";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const cwd = process.cwd();
-const distDir = resolve(cwd, "apps/web/dist");
-const srcDir = resolve(__dirname, "../../apps/web/dist");
-const webDir = existsSync(resolve(distDir, "index.html"))
-  ? distDir
-  : existsSync(resolve(srcDir, "index.html"))
-    ? srcDir
-    : resolve(cwd, "web");
+const sourceApplicationRoot = resolve(__dirname, "../../../..");
+
+/**
+ * Resolve the console assets from the application root.
+ *
+ * Source execution derives the root from this module. Bundled deployments must set
+ * `RCS_APPLICATION_ROOT`, because the bundle lives outside `apps/server/src`.
+ */
+export function resolveCtrlStaticAssetsDirectory(applicationRoot = process.env.RCS_APPLICATION_ROOT): string {
+  return resolve(applicationRoot ?? sourceApplicationRoot, "apps/web/dist");
+}
+
+const webDir = resolveCtrlStaticAssetsDirectory();
 const indexHtmlPath = resolve(webDir, "index.html");
 const logger = createLogger("http");
 

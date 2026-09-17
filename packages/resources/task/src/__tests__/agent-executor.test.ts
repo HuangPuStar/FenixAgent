@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { OpenAgentSessionResult } from "../../../../../src/services/agent-chat-service";
+import type { OpenAgentSessionResult } from "@fenix/agent-runtime/server";
 import { agentExecutor, setAgentExecutorDeps } from "../server/services/scheduler/agent-executor";
 
 function makeOpenSessionResult(): OpenAgentSessionResult {

@@ -5,26 +5,68 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
-import { agentSitesCompatApp, agentSitesProxyApp, apiAgentsRoutes } from "@fenix/agent-config/server";
 import {
+  configureResourcePermissionRepository,
+  configureResourcePermissionService,
+} from "@fenix/access-control/server";
+import {
+  agentSitesCompatApp,
+  agentSitesProxyApp,
+  apiAgentsRoutes,
+  setMetaAgentModelResolver,
+} from "@fenix/agent-config/server";
+import {
+  acpRoutes,
   agentInstanceService,
+  apiInstanceRoutes,
+  bindAcpInstanceActivityPort,
+  bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
+  bindEnvironmentAcpLifecyclePort,
+  bindFileWsPort,
+  bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindSessionEventBusPort,
+  closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
   closeAllRelayConnections,
+  getAgentNodeService,
+  getOrchestrationController,
+  openaiChatRoutes,
+  setRuntimeCredentialResolver,
+  spawnInstanceViaController,
+  startAcpIdleMonitor,
+  stopAcpIdleMonitor,
+  stopInstancesForEnvironments,
+  stopInstanceViaController,
+  touchInstanceActivity,
 } from "@fenix/agent-runtime/server";
 import {
+  apiModelsRoutes,
   apiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
+  getProvider,
+  listProviders,
 } from "@fenix/model-management/server";
-import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
-import { apiSystemRoutes, ensureSystemAdmin } from "@fenix/resource-identity-admin/server";
+import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
+import { apiSystemRoutes, ensureSystemAdmin, organizationRepo } from "@fenix/resource-identity-admin/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
+  apiWorkspaceRoutes,
+  checkParsedObjectSize,
+  checkWsMessageSize,
   closeAllFileWsConnections,
   disconnectMachine,
+  estimateWsMessageBytes,
+  eventService,
+  formatFileWsCloseLog,
+  handleFileWsClose,
+  handleFileWsMessage,
+  handleFileWsOpen,
   handleHeartbeat,
+  LocalNodeAwareService,
+  parseFileWsMessage,
   registerMachine,
   startFileWsSweep,
   startHeartbeat,
@@ -39,6 +81,9 @@ import {
   apiSystemPeopleTreeRoutes,
 } from "@fenix/resource-observer/server";
 import {
+  apiSandboxClusterRoutes,
+  apiSandboxRoutes,
+  apiSandboxServerRoutes,
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
@@ -48,37 +93,34 @@ import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
-import acpRoutes from "../../../src/routes/acp";
-import apiInstanceRoutes from "../../../src/routes/api/instances";
-import apiModelsRoutes from "../../../src/routes/api/models";
-import openaiChatRoutes from "../../../src/routes/api/openai-chat";
-import apiSandboxRoutes from "../../../src/routes/api/sandbox";
-import apiSandboxClusterRoutes from "../../../src/routes/api/sandbox-cluster";
-import apiSandboxServerRoutes from "../../../src/routes/api/sandbox-server";
-import apiWorkspaceRoutes from "../../../src/routes/api/workspaces";
-import webApp from "../../../src/routes/web";
-import { startAcpIdleMonitor, stopAcpIdleMonitor } from "../../../src/services/acp-idle-monitor";
-import { buildHealthInfo } from "../../../src/services/build-info";
-import {
-  getCoreRuntime,
-  initCoreRuntime,
-  registerRemoteNode,
-  unregisterRemoteNode,
-} from "../../../src/services/core-bootstrap";
-import { runDataMigrations } from "../../../src/services/data-migrate";
-import { setRuntimeCredentialResolver } from "../../../src/services/launch-spec-builder";
-import { syncBuiltin } from "../../../src/services/sync-builtin";
 import { applyEnv, config } from "./config";
 import { initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
+import { AppError } from "./errors";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
+import { pgResourcePermissionRepo } from "./repositories/resource-permission";
+import webApp from "./routes/web";
+import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
+import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
+import { runDataMigrations } from "./services/data-migrate";
+import { syncBuiltin } from "./services/sync-builtin";
+
+setMetaAgentModelResolver(async (ctx) => {
+  const providers = await listProviders(ctx);
+  for (const provider of providers) {
+    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
+    const firstModel = (await getProvider(ctx, providerKey))?.models?.[0];
+    if (firstModel) return firstModel.id;
+  }
+  return null;
+});
 
 const startedAt = new Date().toISOString();
 
@@ -86,6 +128,37 @@ const env = loadServerEnv([]);
 applyEnv(env);
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+bindSessionEventBusPort({
+  getAllBuses: () => eventService.getAllBuses(),
+  removeBus: (sessionId) => eventService.removeBus(sessionId),
+});
+bindLocalNodeAgentNodeServicePort({
+  getAgentNodeService: () => new LocalNodeAwareService(getAgentNodeService),
+});
+bindAcpEventBusPort({ getAcpBus: (agentId) => eventService.getAcpBus(agentId) });
+bindFileWsPort({
+  checkParsedObjectSize,
+  checkWsMessageSize,
+  estimateWsMessageBytes,
+  formatFileWsCloseLog,
+  handleFileWsClose,
+  handleFileWsMessage,
+  handleFileWsOpen,
+  parseFileWsMessage,
+});
+bindAgentInstanceRuntimeOperations({
+  spawnInstance: spawnInstanceViaController,
+  stopInstance: stopInstanceViaController,
+  hasActiveInstance: (instanceUid) =>
+    getOrchestrationController()
+      .listInstances()
+      .some((instance) => instance.instanceId === instanceUid),
+});
+bindEnvironmentAcpLifecyclePort({
+  closeAcpConnections: closeAcpConnectionsForEnvironments,
+  stopInstances: stopInstancesForEnvironments,
+});
+bindAcpInstanceActivityPort(touchInstanceActivity);
 await initDb();
 startupLog.info("Database initialized");
 
@@ -137,6 +210,14 @@ await sandboxManager.recoverAfterRestart();
 
 await initCoreRuntime();
 startupLog.info("Core runtime initialized");
+
+// 平台授权服务通过宿主端口取得组织目录与统一 HTTP 错误，避免反向依赖 apps/root 实现。
+// builtin 同步会设置 skill 的公开读取权限，因此必须先于 syncBuiltin 完成装配。
+configureResourcePermissionService({
+  organizationRepo,
+  createError: (message, code, statusCode) => new AppError(message, code, statusCode),
+});
+configureResourcePermissionRepository(pgResourcePermissionRepo);
 
 await schedulerService.start();
 

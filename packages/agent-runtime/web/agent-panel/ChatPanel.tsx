@@ -4,11 +4,11 @@ import {
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
+import { ACPMain } from "@fenix/chat-channel/web";
 import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ACPMain } from "@/components/ACPMain";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTaskViews } from "@/src/hooks/use-task-views";
 import { useChatPageVisible } from "@/src/hooks/usePageVisible";
@@ -167,7 +167,6 @@ export function ChatPanel({
   );
 
   // 已连接且页面可见时发送客户端 keep_alive，服务端据此判断是否应发送自身的 keepalive 心跳。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 用于 WS 就绪后启动 keepalive
   useEffect(() => {
     if (!pageVisible) return;
     const ws = yjsWsRef.current;

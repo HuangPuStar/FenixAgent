@@ -11,7 +11,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
+    "./server/schema": "./src/server/schema.ts",
+    "./server/testing": "./src/server/testing.ts",
     "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
+    "./file-ws-close-log": "./src/server/transport/file-ws-close-log.ts",
+    "./file-ws-payload": "./src/server/transport/file-ws-payload.ts",
     "./file-ws-requests": "./src/server/transport/file-ws-requests.ts"
   }
 }

@@ -1,6 +1,6 @@
+import { db } from "@server/db";
+import { sandboxInstance } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { sandboxInstance } from "../../../../../../apps/server/src/db/schema";
 
 /** Machine 注册后投影关联 Sandbox Instance 的就绪状态。 */
 export async function markSandboxInstanceReadyForMachine(machineId: string, at = new Date()): Promise<void> {

@@ -1,5 +1,5 @@
+import { openAgentSession, type PromptTurn } from "@fenix/agent-runtime/server";
 import { log, error as logError } from "@fenix/logger";
-import { openAgentSession, type PromptTurn } from "../../../../../../../src/services/agent-chat-service";
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 
 const deps = {

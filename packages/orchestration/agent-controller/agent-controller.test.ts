@@ -7,18 +7,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { AgentController } from "../src/agent-controller";
-import { AgentNode } from "../src/agent-node/agent-node";
-import { AgentNodeService } from "../src/agent-node/agent-node-service";
-import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
 import {
   AgentNodeUnavailableError,
   EnvironmentNotFoundError,
   LaunchSpecBuildError,
   OrchestrationError,
-} from "../src/errors";
-import { Instance } from "../src/instance/instance";
-import { LaunchSpecBuilder } from "../src/launch-spec/launch-spec-builder";
+} from "@server/errors";
 import type {
   AgentConfigData,
   AgentConfigRepo,
@@ -26,7 +20,13 @@ import type {
   AgentEngineRepo,
   EnvironmentData,
   EnvironmentRepo,
-} from "../src/types/deps";
+} from "@server/types/deps";
+import { AgentController } from "../src/agent-controller";
+import { AgentNode } from "../src/agent-node/agent-node";
+import { AgentNodeService } from "../src/agent-node/agent-node-service";
+import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
+import { Instance } from "../src/instance/instance";
+import { LaunchSpecBuilder } from "../src/launch-spec/launch-spec-builder";
 
 /** Mock WS 信道：记录发送数据，可手动触发 open/close/error 事件。 */
 class MockSocket implements AgentNodeSocket {

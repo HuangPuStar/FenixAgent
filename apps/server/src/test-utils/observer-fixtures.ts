@@ -9,8 +9,8 @@
 import type { EnvironmentRecord, ExternalRelayConnectionSnapshot, SpawnedInstance } from "@fenix/agent-runtime/server";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { ChatClientSnapshot, ObserverServiceDeps } from "@fenix/resource-observer/server";
-import type { WsConnection } from "../../../../src/transport/ws-types";
-import type { AcpConnectionSnapshot } from "../../../../src/types/store";
+import type { WsConnection } from "../transport/ws-types";
+import type { AcpConnectionSnapshot } from "../types/store";
 
 /** environment 权威表记录构造器（默认 org-1/user-1/acfg-1）。 */
 export function makeEnv(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {

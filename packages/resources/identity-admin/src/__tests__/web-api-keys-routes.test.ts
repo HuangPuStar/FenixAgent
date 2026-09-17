@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubAuthApi } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubAuthApi } from "@server/test-utils/helpers";
 import webApiKeysRoute from "../server/routes/web/api-keys";
 
 describe("web api-keys routes", () => {

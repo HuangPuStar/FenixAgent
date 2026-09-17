@@ -1,5 +1,5 @@
+import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { type AuthContext, authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import { getModelGatewayServices } from "../../model-gateway";
 import {
   WebModelGatewayErrorResponseSchema,

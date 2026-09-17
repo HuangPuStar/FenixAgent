@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import {
-  installRouteConfigStubs,
-  resetRouteConfigStubs,
-} from "../../../../../apps/server/src/test-utils/agent-config-route-deps";
-import { resetAllStubs, stubConfigPg } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { installRouteConfigStubs, resetRouteConfigStubs } from "@server/test-utils/agent-config-route-deps";
+import { resetAllStubs, stubConfigPg } from "@server/test-utils/helpers";
 
 const apiAgentsRoute = (await import("../server/routes/api/agents")).default;
 

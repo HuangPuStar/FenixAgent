@@ -71,7 +71,7 @@ docker compose up -d postgres
 bun run db:migrate
 ```
 
-如果修改了 `src/db/schema.ts`，生成迁移文件：
+如果修改了 `apps/server/src/db/schema.ts`，生成迁移文件：
 
 ```bash
 bun run db:generate --name <migration-name>
@@ -128,20 +128,18 @@ bun run docs:build
 测试相关：
 
 ```bash
-bun test src/__tests__/
-bun test src/__tests__/store.test.ts
-bun test web/src/__tests__/
-bun test web/src/__tests__/config-mcp-page.test.ts
+bun test apps/server/src/__tests__/
+bun test apps/server/src/__tests__/store.test.ts
+bun test apps/web/src/__tests__/
+bun test apps/web/src/__tests__/config-mcp-page.test.ts
 ```
 
 ## 仓库结构
 
 ### 主要目录
 
-- `apps/server/`：后端应用入口
+- `apps/server/`：后端应用入口和业务实现
 - `apps/web/`：前端应用入口、Vite 配置和构建产物
-- `src/`：后端业务实现
-- `web/`：前端页面、路由和组件实现
 - `packages/`：内部 workspace 包
 - `scripts/`：脚本和辅助工具
 - `docs/`：文档站点

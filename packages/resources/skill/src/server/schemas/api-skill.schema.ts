@@ -3,8 +3,9 @@
  *
  * 遵循外部 API 规范：稳定分页结构、统一错误格式。
  */
+
+import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
 import * as z from "zod/v4";
-import { ResourceAccessSchema } from "../../../../../../src/schemas/resource-access.schema";
 
 /**
  * Skill 列表查询参数。

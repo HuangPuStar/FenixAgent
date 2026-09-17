@@ -10,7 +10,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
-const SOURCE_ROOTS = ["src", "web/src", "web/components", "packages"] as const;
+const SOURCE_ROOTS = ["apps/server/src", "apps/web/src", "apps/web/components", "packages"] as const;
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const IGNORED_DIRECTORIES = new Set([".git", "coverage", "dist", "node_modules"]);
 
@@ -101,7 +101,8 @@ const RULES: readonly ArchitectureRule[] = [
   createImportRule({
     id: "browser-no-server-imports",
     appliesToFile: ({ relativePath }) =>
-      (relativePath.startsWith("web/src/") || relativePath.startsWith("web/components/")) && !isTestFile(relativePath),
+      (relativePath.startsWith("apps/web/src/") || relativePath.startsWith("apps/web/components/")) &&
+      !isTestFile(relativePath),
     isForbidden: ({ specifier }) =>
       specifier.startsWith("node:") ||
       specifier.startsWith("@server/") ||
@@ -112,13 +113,13 @@ const RULES: readonly ArchitectureRule[] = [
   createImportRule({
     id: "backend-no-route-imports",
     appliesToFile: ({ relativePath }) =>
-      relativePath.startsWith("src/services/") || relativePath.startsWith("src/repositories/"),
+      relativePath.startsWith("apps/server/src/services/") || relativePath.startsWith("apps/server/src/repositories/"),
     isForbidden: ({ specifier }, { absolutePath, root }) => {
       if (specifier === "@server/routes" || specifier.startsWith("@server/routes/")) return true;
       if (!specifier.startsWith(".")) return false;
 
       const targetPath = normalizePath(relative(root, resolve(dirname(absolutePath), specifier)));
-      return targetPath === "src/routes" || targetPath.startsWith("src/routes/");
+      return targetPath === "apps/server/src/routes" || targetPath.startsWith("apps/server/src/routes/");
     },
     message: ({ specifier }) => `Service/Repository 不得反向依赖 Route "${specifier}"`,
   }),
@@ -156,7 +157,8 @@ const RULES: readonly ArchitectureRule[] = [
   {
     check(context) {
       if (
-        (!context.relativePath.startsWith("web/src/") && !context.relativePath.startsWith("web/components/")) ||
+        (!context.relativePath.startsWith("apps/web/src/") &&
+          !context.relativePath.startsWith("apps/web/components/")) ||
         isTestFile(context.relativePath)
       ) {
         return [];

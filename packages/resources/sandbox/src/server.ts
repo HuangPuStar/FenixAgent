@@ -1,5 +1,8 @@
 /** Sandbox 资源包服务端公开入口。 */
 
+export { default as apiSandboxRoutes } from "./routes/api/sandbox";
+export { default as apiSandboxClusterRoutes } from "./routes/api/sandbox-cluster";
+export { default as apiSandboxServerRoutes } from "./routes/api/sandbox-server";
 export * from "./server/repositories/sandbox-instance-repository";
 export * from "./server/repositories/sandbox-pool-repository";
 export * from "./server/schemas/api-sandbox.schema";

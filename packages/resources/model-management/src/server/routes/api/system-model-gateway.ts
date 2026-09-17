@@ -1,7 +1,7 @@
 import { error as logError } from "@fenix/logger";
+import { config } from "@server/config";
+import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
-import { config } from "../../../../../../../apps/server/src/config";
-import { systemApiAuthPlugin } from "../../../../../../../apps/server/src/plugins/system-api-auth";
 import { getModelGatewayServices } from "../../model-gateway";
 import {
   ModelGatewayAgentSubjectSchema,

@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-const setupMocksPath = new URL("../../../../../apps/server/src/test-utils/setup-mocks.ts", import.meta.url).pathname;
+const setupMocksPath = new URL("@server/test-utils/setup-mocks.ts", import.meta.url).pathname;
 const routeModulePath = import.meta.resolve("../server/routes/api/agents");
-const routeConfigTestDepsPath = import.meta.resolve(
-  "../../../../../apps/server/src/test-utils/agent-config-route-deps",
-);
-const authModulePath = import.meta.resolve("../../../../../apps/server/src/plugins/auth");
-const orgContextModulePath = import.meta.resolve("../../../../../apps/server/src/services/org-context");
+const routeConfigTestDepsPath = import.meta.resolve("@server/test-utils/agent-config-route-deps");
+const authModulePath = import.meta.resolve("@server/plugins/auth");
+const orgContextModulePath = import.meta.resolve("@server/services/org-context");
 const agentKnowledgeModulePath = import.meta.resolve("@fenix/resource-knowledge/server");
-const helpersModulePath = import.meta.resolve("../../../../../apps/server/src/test-utils/helpers");
-const moduleStubsPath = import.meta.resolve("../../../../../apps/server/src/test-utils/stubs/module-stubs");
+const helpersModulePath = import.meta.resolve("@server/test-utils/helpers");
+const moduleStubsPath = import.meta.resolve("@server/test-utils/stubs/module-stubs");
 
 describe("API agents API key regression", () => {
   // 仅带 API key、没有 session cookie 时，/api/agents 仍应通过 API key 恢复组织上下文。

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import { resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 
 const route = (await import("../server/routes/web/workflow-defs")).default;
 

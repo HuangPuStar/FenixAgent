@@ -1,8 +1,8 @@
 import { log } from "@fenix/logger";
+import { db } from "@server/db";
+import { agentConfig, machine, organization, registryEvent } from "@server/db/schema";
+import type { AuthContext } from "@server/plugins/auth";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { agentConfig, machine, organization, registryEvent } from "../../../../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 import { markSandboxInstanceReadyForMachine } from "./machine-sandbox-projection";
 

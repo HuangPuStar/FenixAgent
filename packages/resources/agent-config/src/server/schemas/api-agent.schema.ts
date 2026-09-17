@@ -1,5 +1,5 @@
+import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
 import * as z from "zod/v4";
-import { ResourceAccessSchema } from "../../../../../../src/schemas/resource-access.schema";
 import { AgentDetailSchema, AgentInfoSchema, AgentKnowledgeConfigSchema } from "./config.schema";
 
 const AgentNodeSchema = z.union([

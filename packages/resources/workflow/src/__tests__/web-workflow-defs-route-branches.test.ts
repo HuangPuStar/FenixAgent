@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
-import { readJson, resetAllStubs, stubDb } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
+import { readJson, resetAllStubs, stubDb } from "@server/test-utils/helpers";
 
 const workflowDefsRoute = (await import("../server/routes/web/workflow-defs")).default;
 const WORKFLOW_BASE_DIR = join(process.cwd(), ".agents", "workflows");

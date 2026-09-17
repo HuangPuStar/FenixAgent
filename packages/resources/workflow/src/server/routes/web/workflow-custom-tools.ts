@@ -6,8 +6,8 @@
  * （tool 定义本身是全局的；按 org 隔离的是 WorkflowEngine 实例和 storage）。
  */
 
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import { getCustomToolsRegistry } from "../../services/workflow/custom-tools";
 
 export const webWorkflowCustomTools = new Elysia({ name: "web-workflow-custom-tools" }).use(authGuardPlugin).get(

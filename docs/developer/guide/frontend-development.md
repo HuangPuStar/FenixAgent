@@ -10,7 +10,7 @@
 ## 1. 目录结构
 
 ```
-web/
+apps/web/
 ├── src/
 │   ├── routes/             # TanStack Router 文件路由（routeTree.gen.ts 严禁手动编辑）
 │   ├── pages/              # 页面组件（agent-panel / workflow / hindsight / login）
@@ -20,18 +20,16 @@ web/
 │   ├── i18n/               # i18n 配置 + locales/{en,zh}/ 翻译文件
 │   ├── types/              # 全局类型定义
 │   ├── contexts/           # React Context（OrgContext）
+│   ├── components/         # 应用壳组件（含 agent-panel）
 │   └── __tests__/          # 前端测试
 ├── components/
 │   ├── ui/                 # shadcn/ui 包装的 Radix UI 原语组件
-│   ├── config/             # 通用业务组件（FormDialog、DataTable、ConfirmDialog 等）
-│   ├── chat/               # 聊天面板组件
-│   ├── model-icon/         # 模型图标（ModelIcon + 本地对照表）
-│   └── agent-panel/        # Agent 面板专属组件
+│   └── config/             # 通用业务组件（FormDialog、DataTable、ConfirmDialog 等）
 ```
 
 ## 2. 路由与导航
 
-使用 TanStack Router（file-based routing），`web/src/routes/` 下文件自动映射为 URL。
+使用 TanStack Router（file-based routing），`apps/web/src/routes/` 下文件自动映射为 URL。
 
 ### 2.1 文件命名约定
 
@@ -41,7 +39,7 @@ web/
 | `$param` | 动态路径参数 | `chat.$agentId.tsx` → `/agent/chat/:agentId` |
 | `_` 后缀 | 分隔相邻动态参数 | `chat.$agentId_.$sessionId.tsx` |
 
-新增页面：在 `web/src/routes/agent/_panel/` 下创建 `.tsx` 文件。
+新增页面：在 `apps/web/src/routes/agent/_panel/` 下创建 `.tsx` 文件。
 
 ### 2.2 导航
 
@@ -87,7 +85,7 @@ export const Route = createFileRoute("/agent/_panel/models")({
 
 ### 2.5 侧边栏
 
-导航项通过 `web/src/pages/agent-panel/AgentSidebarConfig.tsx` 声明式定义——`NavGroup[]` 数组，每项含 `id`（映射到路由 `/agent/:id`）、`labelKey`（i18n key）、`icon`（lucide-react 组件）。
+导航项通过 `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 声明式定义——`NavGroup[]` 数组，每项含 `id`（映射到路由 `/agent/:id`）、`labelKey`（i18n key）、`icon`（lucide-react 组件）。
 
 ## 3. 状态管理
 
@@ -228,11 +226,11 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 
 ## 4. 组件规范
 
-**shadcn/ui 已有组件禁止重复开发**。`web/components/ui/` 下已有的基础组件（Button、Input、Select、Dialog、Tabs、Skeleton 等 36 个），直接使用，不手写替代品。
+**shadcn/ui 已有组件禁止重复开发**。`apps/web/components/ui/` 下已有的基础组件（Button、Input、Select、Dialog、Tabs、Skeleton 等 36 个），直接使用，不手写替代品。
 
 ### 4.1 通用业务组件
 
-`web/components/config/` 下封装了项目统一的交互模式：
+`apps/web/components/config/` 下封装了项目统一的交互模式：
 
 | 组件 | 用途 | 关键 props |
 |------|------|------------|
@@ -330,7 +328,7 @@ export function AgentPageHeader({ title, subtitle }: Props) { ... }
 ### 4.5 类型定义
 
 - **页面内联**：只在该页面使用的类型，`interface` 定义在组件函数上方
-- **独立文件**：跨页面共用的类型放 `web/src/types/`
+- **独立文件**：跨页面共用的类型放 `apps/web/src/types/`
 
 ### 4.6 文件结构
 
@@ -363,22 +361,22 @@ export function AgentTasksPage() {
 
 ## 5. API 建模层
 
-前端通过 `web/src/api/` 下的 API 模块统一管理后端接口调用，禁止在组件中直接写 `fetch`。
+前端通过 `apps/web/src/api/` 下的 API 模块统一管理后端接口调用，禁止在组件中直接写 `fetch`。
 
 ### 5.1 原则
 
-- 每个后端资源域 → 一个 `web/src/api/<domain>.ts` 文件 → 一个命名的 API 对象导出
+- 每个后端资源域 → 一个 `apps/web/src/api/<domain>.ts` 文件 → 一个命名的 API 对象导出
 - 组件只 import API 模块，不写 URL 字符串、不调 `fetch`
-- 共享基础设施集中在 `web/src/api/request.ts` 基础模块，各域模块 import 使用
+- 共享基础设施集中在 `apps/web/src/api/request.ts` 基础模块，各域模块 import 使用
 - API 模块负责：URL 拼装、请求/响应序列化、错误统一处理
 - 组件负责：调用 API → 处理结果 → 更新 UI
 
 ### 5.2 共享基础模块 `request.ts`
 
-所有域模块共享同一个 `web/src/api/request.ts`，统一管理 credentials、header 注入、错误标准化、超时、日志：
+所有域模块共享同一个 `apps/web/src/api/request.ts`，统一管理 credentials、header 注入、错误标准化、超时、日志：
 
 ```ts
-// web/src/api/request.ts
+// apps/web/src/api/request.ts
 
 /** 统一错误码体系 */
 export type ErrorCode =
@@ -525,7 +523,7 @@ function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
 以 tasks 域为例，域模块从 `api/request.ts` import 共享 `request` 函数和类型：
 
 ```ts
-// web/src/api/tasks.ts
+// apps/web/src/api/tasks.ts
 import { request } from "./request";
 import type { ApiResponse, PaginatedResponse } from "./request";
 import type { TaskInfo } from "../types";
@@ -761,8 +759,8 @@ t("toast.saved", { name: item.name })  // 插值
 
 ### 9.2 新增命名空间
 
-1. 创建 `web/src/i18n/locales/{en,zh}/<namespace>.json`
-2. 在 `web/src/i18n/index.ts` 中 import 并注册 `NS` 常量
+1. 创建 `apps/web/src/i18n/locales/{en,zh}/<namespace>.json`
+2. 在 `apps/web/src/i18n/index.ts` 中 import 并注册 `NS` 常量
 3. 组件中用 `useTranslation(NS.XXX)` 引用
 
 ### 9.3 规则
@@ -791,7 +789,7 @@ t("toast.saved", { name: item.name })  // 插值
 <div className="space-y-3">
 ```
 
-`cn()` 仅限 `web/components/ui/` 下的基础组件使用，业务页面直接写 className 字符串。
+`cn()` 仅限 `apps/web/components/ui/` 下的基础组件使用，业务页面直接写 className 字符串。
 
 ### 10.2 图标
 
@@ -809,7 +807,7 @@ t("toast.saved", { name: item.name })  // 插值
 - [ ] **`bun run precheck` 通过**（format → import-sort → architecture → server/web tsc → lint → 后端测试）
 - [ ] 用户可见字符串全部走 `t()` i18n
 - [ ] 导航使用 `useNavigate()` / `<Link>`，未使用 `window.location` 写操作
-- [ ] 新增页面在 `web/src/routes/agent/_panel/` 下，已懒加载
+- [ ] 新增页面在 `apps/web/src/routes/agent/_panel/` 下，已懒加载
 - [ ] API 调用通过 `@/src/api/` 建模层，组件中无裸 `fetch`
 - [ ] Loading 态有骨架屏守卫
 - [ ] Empty 态有占位提示
@@ -826,7 +824,7 @@ t("toast.saved", { name: item.name })  // 插值
 字面量，当前自动阻断以下高置信规则：
 
 - 浏览器生产代码不得导入 `node:*`、`@server/*` 或 `@fenix/chat-channel/server`；测试代码可使用服务端测试工具。
-- `@lobehub/icons` 只能由 `web/components/model-icon/` 封装。
+- `@lobehub/icons` 只能由 `packages/resources/model-management/web/components/model-icon/` 封装。
 - 跨 workspace 包不得绕过公开导出访问 `@fenix/*/src/*`。
 - Zod 必须从 `zod/v4` 导入。
 - 前端生产代码通过 `request()` 调用 RCS API 时，不得重新引入 `/v1`、`/v2` 历史前缀。

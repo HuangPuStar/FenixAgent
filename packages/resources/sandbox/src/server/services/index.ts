@@ -1,5 +1,5 @@
 import { OpenSandboxClusterProvider, type OpenSandboxClusterProviderConfig } from "@fenix/sandbox-provider";
-import { config } from "../../../../../../apps/server/src/config";
+import { config } from "@server/config";
 import { SandboxExecutionHandler } from "./sandbox-execution-handler";
 import { SandboxManager } from "./sandbox-manager";
 import { SandboxProviderRegistry } from "./sandbox-provider-registry";

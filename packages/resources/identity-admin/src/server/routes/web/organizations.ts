@@ -1,8 +1,8 @@
+import { auth } from "@server/auth/better-auth";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema } from "@server/schemas/common.schema";
 import Elysia from "elysia";
 import type * as z from "zod/v4";
-import { auth } from "../../../../../../../apps/server/src/auth/better-auth";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema } from "../../../../../../../src/schemas/common.schema";
 import {
   AddMemberBodySchema,
   CreateOrganizationBodySchema,

@@ -1,7 +1,7 @@
+import { db } from "@server/db";
+import { agentConfig } from "@server/db/schema";
+import type { WebErr } from "@server/schemas/common.schema";
 import { inArray } from "drizzle-orm";
-import { db } from "../../../../../../../apps/server/src/db";
-import { agentConfig } from "../../../../../../../apps/server/src/db/schema";
-import type { WebErr } from "../../../../../../../src/schemas/common.schema";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import type { AgentSiteApp } from "../../schemas/agent-site.schema";

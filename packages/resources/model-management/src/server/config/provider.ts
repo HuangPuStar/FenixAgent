@@ -6,11 +6,11 @@ import {
   listReadableResourceRefs,
   setPublicRead,
 } from "@fenix/access-control/server";
+import { db } from "@server/db";
+import { model, provider } from "@server/db/schema";
+import type { AuthContext } from "@server/plugins/auth";
+import type { ResourceAccess } from "@server/services/config/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { model, provider } from "../../../../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
-import type { ResourceAccess } from "../../../../../../src/services/config/types";
 import type {
   ModelCostConfig,
   ModelDataInput,

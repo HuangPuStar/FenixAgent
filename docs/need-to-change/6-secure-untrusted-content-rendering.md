@@ -15,8 +15,8 @@
 - `web/components/knowledge/ResourcePreviewContent.tsx:308-317`：`srcDoc` 使用 `sandbox="allow-scripts allow-same-origin"`。
 - `web/components/knowledge/ResourcePreviewContent.tsx:341-348`：Mammoth 结果直接 `dangerouslySetInnerHTML`，注释错误声称已清洗。
 - `node_modules/mammoth/README.md:84-85,146-147,528-535`：库明确声明不执行 sanitisation。
-- `web/src/pages/agent-panel/components/RetrievalTestPanel.tsx:438-444`：远端高亮 HTML 未清洗进入 DOM。
-- `web/src/pages/agent-panel/components/ChunkDetailSheet.tsx:234-243`：相邻路径已使用 DOMPurify，当前规则不一致。
+- `packages/resources/knowledge/web/src/pages/agent-panel/components/RetrievalTestPanel.tsx:438-444`：远端高亮 HTML 未清洗进入 DOM。
+- `packages/resources/knowledge/web/src/pages/agent-panel/components/ChunkDetailSheet.tsx:234-243`：相邻路径已使用 DOMPurify，当前规则不一致。
 
 ## 架构诊断
 

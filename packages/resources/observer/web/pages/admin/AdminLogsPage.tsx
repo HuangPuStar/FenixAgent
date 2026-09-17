@@ -1,3 +1,4 @@
+import { MasterKeyGate } from "@fenix/resource-sandbox/web";
 import { useRequest } from "ahooks";
 import { AlertCircle, Download, FileText, RefreshCw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -9,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/src/api/request";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
-import { MasterKeyGate } from "@/src/pages/admin/components/MasterKeyGate";
 import {
   downloadSystemLog,
   fetchSystemLogFiles,

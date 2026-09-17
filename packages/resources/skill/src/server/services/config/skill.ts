@@ -7,10 +7,10 @@ import {
   setPublicRead,
 } from "@fenix/access-control/server";
 import { createLogger } from "@fenix/logger";
+import { db } from "@server/db";
+import { skill } from "@server/db/schema";
+import type { AuthContext } from "@server/plugins/auth";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../../apps/server/src/db";
-import { skill } from "../../../../../../../apps/server/src/db/schema";
-import type { AuthContext } from "../../../../../../../apps/server/src/plugins/auth";
 import type { SkillConfigRowWithAccess, SkillSetOptions, SkillUpsertData } from "./types";
 
 const logger = createLogger("config-skill");

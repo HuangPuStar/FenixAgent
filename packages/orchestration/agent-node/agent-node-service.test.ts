@@ -6,15 +6,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { AgentNode } from "../src/agent-node/agent-node";
-import { AgentNodeFsm } from "../src/agent-node/agent-node-fsm";
-import { AgentNodeService } from "../src/agent-node/agent-node-service";
-import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
 import {
   AgentNodeConnectionConflictError,
   AgentNodeUnavailableError,
   IllegalStateTransitionError,
-} from "../src/errors";
+} from "@server/errors";
+import { AgentNode } from "../src/agent-node/agent-node";
+import { AgentNodeFsm } from "../src/agent-node/agent-node-fsm";
+import { AgentNodeService } from "../src/agent-node/agent-node-service";
+import type { AgentNodeSocket, TimerScheduler } from "../src/agent-node/types";
 
 /** Mock WS 信道：记录发送数据，可手动触发 open/close/error 事件。 */
 class MockSocket implements AgentNodeSocket {

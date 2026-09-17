@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "../../../../../../apps/server/src/test-utils/helpers";
-import { registryRegistry } from "../../../../../../apps/server/src/test-utils/stubs/module-stubs";
+import { setConfig } from "@server/config";
+import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "@server/test-utils/helpers";
+import { registryRegistry } from "@server/test-utils/stubs/module-stubs";
 import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
 import type { WsConnection } from "../transport/ws-types";
 

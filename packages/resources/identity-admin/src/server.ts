@@ -1,5 +1,11 @@
 /** Identity-admin 资源包的服务端公开入口。 */
 
+export type { IShareLinkRepo } from "./repositories/share-link";
+export { shareLinkRepo } from "./repositories/share-link";
+export type { ITokenRepo, TokenRecord } from "./repositories/token";
+export { tokenRepo } from "./repositories/token";
+export { findUsersBasicInfoByIds } from "./repositories/user";
+export { default as webControlRoutes } from "./routes/web/control";
 export type { IOrganizationRepo } from "./server/repositories/organization";
 export { organizationRepo } from "./server/repositories/organization";
 export { default as apiSystemRoutes } from "./server/routes/api/system";

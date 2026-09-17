@@ -12,7 +12,7 @@ import {
   mergeFlatRows,
   name,
   sessionTabCounts,
-} from "@/src/pages/admin/utils";
+} from "@fenix/resource-sandbox/web";
 import type { AcpLinkSnapshot } from "../api/observer";
 
 /** 构造一致的 acp-link 观察视图 fixture（byOrg + byEntity 交叉覆盖去重场景）。 */

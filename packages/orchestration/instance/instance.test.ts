@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { AgentNodeUnavailableError } from "@server/errors";
 import { AgentNode } from "../src/agent-node/agent-node";
 import type { AgentNodeSocket } from "../src/agent-node/types";
-import { AgentNodeUnavailableError } from "../src/errors";
 import type { LaunchSpec } from "../src/launch-spec/types";
 
 /** Mock WS 信道：send 可配置为抛错（模拟 readyState!==1 的信道不可用）。 */

@@ -4,7 +4,7 @@ import type {
   IResourcePermissionRepo,
   ResourcePermissionGrantRow,
   ResourcePermissionType,
-} from "../../../../../src/repositories/resource-permission";
+} from "@fenix/access-control/server";
 
 type ResourcePermissionRepoOverrides = Partial<IResourcePermissionRepo>;
 

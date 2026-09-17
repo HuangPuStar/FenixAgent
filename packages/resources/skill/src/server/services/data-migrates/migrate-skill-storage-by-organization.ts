@@ -2,8 +2,8 @@ import { cpSync, existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { log, warn } from "@fenix/logger";
-import { db } from "../../../../../../../apps/server/src/db";
-import { skill } from "../../../../../../../apps/server/src/db/schema";
+import { db } from "@server/db";
+import { skill } from "@server/db/schema";
 import { getGlobalSkillsDir } from "../skill";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "../skill-fs";
 

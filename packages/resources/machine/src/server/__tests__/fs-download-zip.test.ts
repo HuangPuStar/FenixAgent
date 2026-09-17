@@ -12,8 +12,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetAllStubs, stubEnvironmentRepo } from "../../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import { gate } from "../services/agent-file-service";
 import type { FileAuthContext } from "../services/file-types";
 

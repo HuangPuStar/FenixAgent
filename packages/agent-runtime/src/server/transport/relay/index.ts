@@ -1,14 +1,18 @@
 export { sendToAgentWs } from "../acp-ws-handler";
 export { closeClientsForMachineInstances } from "./client-close";
+export * from "./lifecycle-port";
 export { closeInstanceRelay, extractAcpEvent, extractJsonRpc, sendToInstanceRelay } from "./relay-handler";
 
-// C7：前端 YJS WS 连接注册表迁入包内后由 Chat 域桥接层持有（yjs-frontend 目录已删除），
-// 实例回收 / graceful shutdown 通过控制器单例关闭连接。
-import { getChatChannelController } from "../../services/chat-channel-bootstrap";
+import {
+  closeAllRelayConnections as closeAllRelayLifecycleConnections,
+  closeRelayConnectionsForIdleReclaim as closeRelayLifecycleForIdle,
+  closeRelayConnectionsForStoppedInstance as closeRelayLifecycleForStopped,
+  reclaimInstanceYjsDocs as reclaimRelayLifecycleYjsDocs,
+} from "./lifecycle-port";
 
 /** 关闭指定实例的所有前端 yjs WS 连接（替代原 relay ConnectionManager 遍历） */
 export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
-  getChatChannelController().registry.closeClientsByInstance(instanceId, 4001, "instance_idle_reclaimed");
+  closeRelayLifecycleForIdle(instanceId);
 }
 
 /**
@@ -19,7 +23,7 @@ export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
  * 以免活跃实例的实时流被错误中断。
  */
 export function closeRelayConnectionsForStoppedInstance(instanceId: string): void {
-  getChatChannelController().registry.closeClientsByInstance(instanceId, 4002, "instance_stopped");
+  closeRelayLifecycleForStopped(instanceId);
 }
 
 /**
@@ -29,10 +33,10 @@ export function closeRelayConnectionsForStoppedInstance(instanceId: string): voi
  * 已确认停止——前端断开但实例可能存活时禁止回收（C6 断链语义一，重连依赖内存实时 Doc）。
  */
 export async function reclaimInstanceYjsDocs(instanceId: string): Promise<void> {
-  await getChatChannelController().relayEvents.reclaimInstanceRealtimeResources(instanceId);
+  await reclaimRelayLifecycleYjsDocs(instanceId);
 }
 
 /** 关闭所有前端 yjs WS 连接（graceful shutdown） */
 export function closeAllRelayConnections(): void {
-  getChatChannelController().registry.closeAll(1001, "server_shutdown");
+  closeAllRelayLifecycleConnections();
 }

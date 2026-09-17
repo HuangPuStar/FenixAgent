@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetTestAuth, setTestAuth } from "../../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "../../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import {
   computeListFingerprint,
   computeReadFingerprint,
@@ -23,7 +23,7 @@ const ENV_ID = "env-1";
 
 // 动态 import 路由模块。environmentRepo 的 mock 是实时转发（setup-mocks.ts），
 // 属性访问总是转发到当前 stub，beforeEach 注入即可（与 fs-routes-converged 同模式）。
-const fsRoutes = await import("../../../../../../src/routes/web/fs");
+const fsRoutes = await import("../../routes/web/fs");
 
 let workspaceRoot: string;
 

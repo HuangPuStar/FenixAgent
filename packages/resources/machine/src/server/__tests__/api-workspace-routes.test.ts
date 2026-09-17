@@ -3,11 +3,11 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetTestAuth, setTestAuth } from "../../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../../apps/server/src/services/org-context";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
 
-const apiWorkspaceRoute = (await import("../../../../../../src/routes/api/workspaces")).default;
+const apiWorkspaceRoute = (await import("../../routes/api/workspaces")).default;
 
 function request(path: string, init?: RequestInit) {
   return apiWorkspaceRoute.handle(new Request(`http://localhost${path}`, init));

@@ -1,6 +1,6 @@
+import { config } from "@server/config";
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { config } from "../../../../../../../apps/server/src/config";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 
 /** 将请求转发到 acpx-g 并流式返回响应 */
 async function proxyToAcpxG(targetPath: string, request: Request): Promise<Response> {

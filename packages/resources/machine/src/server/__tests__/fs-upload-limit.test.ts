@@ -9,14 +9,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../../apps/server/src/config";
-import { resetTestAuth, setTestAuth } from "../../../../../../apps/server/src/plugins/auth";
-import {
-  resetAllStubs,
-  stubDb,
-  stubEnvironmentRepo,
-  stubFileWsHandler,
-} from "../../../../../../apps/server/src/test-utils/helpers";
+import { setConfig } from "@server/config";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE } from "../services/file-types";
 import { remoteUploadFiles } from "../services/remote-file-service";
 
@@ -29,7 +24,7 @@ const MB = 1024 * 1024;
 
 // 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
 // （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../../../../../src/routes/web/fs");
+const fsRoutes = await import("../../routes/web/fs");
 
 let workspaceRoot: string;
 

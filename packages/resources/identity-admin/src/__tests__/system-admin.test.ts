@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setConfig } from "../../../../../apps/server/src/config";
+import { setConfig } from "@server/config";
 import { _deps, _resetDeps, ensureSystemAdmin } from "../server/services/system-admin";
 
 describe("ensureSystemAdmin", () => {

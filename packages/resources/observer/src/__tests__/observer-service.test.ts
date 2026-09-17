@@ -8,8 +8,8 @@ import {
   listExternalRelayEntries,
   setExternalRelayDeps,
 } from "@fenix/agent-runtime/server";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "../../../../../apps/server/src/test-utils/helpers";
+import type { AuthContext } from "@server/plugins/auth";
+import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import {
   createRelayHandle,
   createWs,
@@ -20,7 +20,7 @@ import {
   makeFakeDeps,
   makeRelay,
   makeSpawnedInstance,
-} from "../../../../../apps/server/src/test-utils/observer-fixtures";
+} from "@server/test-utils/observer-fixtures";
 import {
   buildRelationTree,
   type Observation,

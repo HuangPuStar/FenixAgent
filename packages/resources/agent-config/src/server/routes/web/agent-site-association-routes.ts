@@ -1,9 +1,9 @@
+import { db } from "@server/db";
+import { agentConfigSiteApp } from "@server/db/schema";
+import { authGuardPlugin } from "@server/plugins/auth";
+import { WebErrSchema } from "@server/schemas/common.schema";
 import { eq } from "drizzle-orm";
 import Elysia from "elysia";
-import { db } from "../../../../../../../apps/server/src/db";
-import { agentConfigSiteApp } from "../../../../../../../apps/server/src/db/schema";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { WebErrSchema } from "../../../../../../../src/schemas/common.schema";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import {

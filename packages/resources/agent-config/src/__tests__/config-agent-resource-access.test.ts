@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { setOrganizationRepoForTesting } from "@fenix/access-control/server";
-import { AppError } from "../../../../../apps/server/src/errors";
-import type { AuthContext } from "../../../../../apps/server/src/plugins/auth";
-import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "../../../../../apps/server/src/test-utils/helpers";
+import { AppError } from "@server/errors";
+import type { AuthContext } from "@server/plugins/auth";
+import { resetAllStubs, stubDb, stubResourcePermissionRepo } from "@server/test-utils/helpers";
 
 const ctx: AuthContext = {
   organizationId: "org_current",

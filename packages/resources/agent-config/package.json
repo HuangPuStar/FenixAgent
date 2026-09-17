@@ -13,6 +13,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
+    "./web": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
     "./server/system-prompt": {
       "types": "./src/server/services/agent-system-prompt.ts",
       "default": "./src/server/services/agent-system-prompt.ts"
@@ -39,6 +43,7 @@
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",

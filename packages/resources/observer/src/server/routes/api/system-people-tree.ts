@@ -2,8 +2,8 @@
 
 import { error as logError } from "@fenix/logger";
 import { ApiSystemErrorResponseSchema } from "@fenix/resource-identity-admin/server/schema";
+import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
-import { systemApiAuthPlugin } from "../../../../../../../apps/server/src/plugins/system-api-auth";
 import { SystemPeopleTreeResponseSchema } from "../../schemas/api-system-people-tree.schema";
 import { type SystemPeopleTreeService, systemPeopleTreeService } from "../../services/system-people-tree-service";
 

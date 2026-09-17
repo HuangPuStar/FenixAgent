@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "../../../../../apps/server/src/config";
+import { resetConfig, setConfig } from "@server/config";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,

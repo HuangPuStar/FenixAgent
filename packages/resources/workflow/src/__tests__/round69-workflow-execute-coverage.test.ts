@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DAGRunResult } from "@fenix/workflow-engine";
-import { resetAllStubs, stubDb, stubPgStorageAdapter } from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb, stubPgStorageAdapter } from "@server/test-utils/helpers";
 import { clearAllEngines, getTeamEngine } from "../server/services/workflow";
 import { executeWorkflow } from "../server/services/workflow/workflow-execute";
 

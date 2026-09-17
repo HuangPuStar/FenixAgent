@@ -6,8 +6,8 @@
 // 直接对路由 app 发 Request 断言状态码与响应结构。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs } from "../../../../../apps/server/src/test-utils/helpers";
-import type { AcpConnectionSnapshot } from "../../../../../src/types/store";
+import { resetAllStubs } from "@server/test-utils/helpers";
+import type { AcpConnectionSnapshot } from "@server/types/store";
 import {
   acpLinkProvider,
   type ObserverServiceDeps,

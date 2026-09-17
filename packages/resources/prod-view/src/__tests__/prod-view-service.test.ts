@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import {
-  resetAllStubs,
-  stubDb,
-  stubEnvironmentRepo,
-  stubEnvironmentService,
-} from "../../../../../apps/server/src/test-utils/helpers";
+import { resetAllStubs, stubDb, stubEnvironmentRepo, stubEnvironmentService } from "@server/test-utils/helpers";
 import { deleteProdView, loadProdView, setProdViewDeps } from "../server/services/prod-view";
 
 const findOrCreateDefaultInstance = mock(async () => ({

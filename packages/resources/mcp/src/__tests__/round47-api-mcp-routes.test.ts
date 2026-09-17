@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "../../../../../apps/server/src/errors";
-import { resetTestAuth, setTestAuth } from "../../../../../apps/server/src/plugins/auth";
-import { setTestOrgContext } from "../../../../../apps/server/src/services/org-context";
+import { AppError } from "@server/errors";
+import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import { setTestOrgContext } from "@server/services/org-context";
 import {
   readJson,
   resetAllStubs,
@@ -9,7 +9,7 @@ import {
   stubConfigPg,
   stubDb,
   stubEnvironmentRepo,
-} from "../../../../../apps/server/src/test-utils/helpers";
+} from "@server/test-utils/helpers";
 
 const route = (await import("../server/routes/api/mcp")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");

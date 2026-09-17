@@ -1,6 +1,6 @@
 import { listSkills } from "@fenix/resource-skill/server";
+import type { AuthContext } from "@server/plugins/auth";
 import OpenAI from "openai";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
 
 /** Skill 条目（前端用 name + description 展示，用 id 提交） */
 export interface SkillItem {

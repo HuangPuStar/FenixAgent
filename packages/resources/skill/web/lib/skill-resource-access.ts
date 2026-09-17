@@ -1,4 +1,4 @@
-import type { ResourceAccess } from "../../../../../web/src/types/config";
+import type { ResourceAccess } from "../../../../../apps/web/src/types/config";
 
 export interface SkillResourceLike {
   id?: string;

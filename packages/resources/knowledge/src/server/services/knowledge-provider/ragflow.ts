@@ -1,4 +1,4 @@
-import { config } from "../../../../../../../apps/server/src/config";
+import { config } from "@server/config";
 import type {
   ConfiguredModelInfo,
   EmbeddingModelOption,

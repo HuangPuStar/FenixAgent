@@ -1,6 +1,6 @@
 import { environmentRepo } from "@fenix/agent-runtime/server";
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
 import {
   ChannelBindingListResponseSchema,
   ChannelBindingSchema,

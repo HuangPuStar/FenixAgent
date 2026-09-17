@@ -11,3 +11,5 @@ export { ModelIcon } from "../web/components/model-icon/ModelIcon";
 export * from "../web/lib/model-config-utils";
 export * from "../web/lib/model-gateway-usage";
 export * from "../web/pages/agent-panel/pages/agent-models-utils";
+export { EmbeddingModelManager } from "../web/src/pages/agent-panel/components/EmbeddingModelManager";
+export { AlgorithmsPage } from "../web/src/pages/agent-panel/pages/AlgorithmsPage";

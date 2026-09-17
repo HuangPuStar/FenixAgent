@@ -11,11 +11,11 @@ RUN bun install --frozen-lockfile
 FROM deps AS build
 ARG GIT_COMMIT_SHA=unknown
 COPY tsconfig.json tsconfig.base.json ./
-COPY src ./src
-COPY web ./web
+COPY apps/server/src ./apps/server/src
+COPY apps/web ./apps/web
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
-RUN bun build src/index.ts --target=bun --sourcemap=external --outdir dist \
+RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outfile dist/index.js \
     --define process.env.GIT_COMMIT_SHA="'${GIT_COMMIT_SHA}'"
 
 ############### migration image ###############
@@ -43,6 +43,7 @@ ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 ENV RCS_HOST=0.0.0.0
 ENV RCS_PORT=3000
+ENV RCS_APPLICATION_ROOT=/app
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
 ENV BUN_INSTALL_GLOBAL=/root/.bun
 ENV PATH=/root/.bun/bin:${PATH}
@@ -78,7 +79,7 @@ RUN opencode plugin @konghayao/opencode-hindsight -g
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/web/dist ./web/dist
+COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
 

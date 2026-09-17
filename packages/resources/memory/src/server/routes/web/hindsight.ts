@@ -1,6 +1,6 @@
+import { authGuardPlugin } from "@server/plugins/auth";
+import { configSuccess } from "@server/services/config-utils";
 import Elysia from "elysia";
-import { authGuardPlugin } from "../../../../../../../apps/server/src/plugins/auth";
-import { configSuccess } from "../../../../../../../src/services/config-utils";
 import { HindsightStatusResponseSchema } from "../../schemas/hindsight.schema";
 import { getHindsightConfig, proxyToHindsight, resolveMemberId } from "../../services/hindsight";
 

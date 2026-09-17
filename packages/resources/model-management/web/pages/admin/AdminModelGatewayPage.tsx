@@ -1,3 +1,4 @@
+import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
 import { useRequest } from "ahooks";
 import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -21,8 +22,6 @@ import { Progress } from "@/components/ui/progress";
 import { ApiError } from "@/src/api/request";
 import { fetchSystemPeopleTree } from "@/src/api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
-import { MasterKeyGate } from "@/src/pages/admin/components/MasterKeyGate";
-import { SearchableUsageFilter } from "@/src/pages/admin/components/SearchableUsageFilter";
 import {
   checkModelGateway,
   getModelGatewayConfiguration,

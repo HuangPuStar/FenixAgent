@@ -1,6 +1,6 @@
 import { findRunningInstanceByEnvironment, sendToAgentWs, sendToInstanceRelay } from "@fenix/agent-runtime/server";
 import { log, error as logError } from "@fenix/logger";
-import { eventService } from "../../../../../../src/services/event-service";
+import { getAcpEventBusPort } from "./acp-event-bus-port";
 import { findBindingForMessage } from "./channel-binding";
 
 // --- Types ---
@@ -278,7 +278,7 @@ export class HermesClient {
 
     let accumulated = "";
 
-    const bus = eventService.getAcpBus(agentId);
+    const bus = getAcpEventBusPort().getAcpBus(agentId);
     const unsub = bus.subscribe((event) => {
       if (event.direction !== "inbound") return;
 

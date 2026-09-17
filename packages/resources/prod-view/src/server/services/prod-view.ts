@@ -1,5 +1,5 @@
 import { agentInstanceService, createWebEnvironment } from "@fenix/agent-runtime/server";
-import type { AuthContext } from "../../../../../../apps/server/src/plugins/auth";
+import type { AuthContext } from "@server/plugins/auth";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
 

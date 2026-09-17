@@ -1,10 +1,10 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { db } from "@server/db";
+import { skill } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { db } from "../../../../../../apps/server/src/db";
-import { skill } from "../../../../../../apps/server/src/db/schema";
 import { getGlobalSkillsDir } from "../services/skill";
 import { verifySkillDownloadToken } from "../services/skill-download-token";
 import { assertValidSkillName, getSkillArchivePath } from "../services/skill-fs";

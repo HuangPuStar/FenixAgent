@@ -4,7 +4,7 @@
 > 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿）
 > 范围：浏览器 → 主服务 → Machine 的流式对话链路、关键实体生命周期、数据归属与隔离、典型用户场景。
 > 定位：本文档描述**已验证实现**，是前端交互式 Chat（YJS 路径）的权威架构契约。代码演进偏离时，先更新本文档再改代码；关键实现文件以相对路径引用（行号不维护，以语义为准）。
-> 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`src/services/chat-channel-bootstrap.ts` 装配单例 + `src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
+> 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配单例 + `packages/agent-runtime/src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
 > 实现差异速览（评审决策，详见对应章节）：事件日志与租约不实现（Q5，§7.2/§8.2）、Y.Doc schema 一次性切换无兼容窗口（Q4，§5.4）、ACP 私有帧在 ACPChannel 边界内规范化为事件（Q6，§6.2）、前端信封只发 `commandId`（Q9，§7.1）；连接初始化采用 generation-aware state-vector 差量握手，`load_session` / `create_session` 通过 projection replacement 切换干净世代，禁止在旧 Y.Doc 上 clear 后重放。
 
 ## 1. 总体架构
@@ -35,7 +35,7 @@ flowchart TB
         TRL["Translator\ntranslator.ts\n出站：action → ACP JSON-RPC"]
         ACPC["ACPChannel\nacp-channel.ts\n入站：私有帧 / session/update → 规范化事件"]
     end
-    subgraph Host["宿主桥接（src/services/ + src/routes/acp/）"]
+    subgraph Host["宿主桥接（packages/agent-runtime/src/server/services/ + packages/agent-runtime/src/routes/acp/）"]
         HOST["chat-channel-bootstrap\nChatChannelDependencies 装配"]
         ENSURE["ensureRunning\n（编排域复用 / 创建实例）"]
         RELAY["connectAgentRelay\n共享 relay 连接"]
@@ -103,7 +103,7 @@ flowchart TB
 
 ### 2.3 模块职责
 
-实现位置均为 `packages/chat-channel/src/` 下的相对路径；宿主侧只有 `src/services/chat-channel-bootstrap.ts` 装配单例（`ChatChannelController` 构造器注入，`getChatChannelController()` 惰性单例）与 `src/routes/acp/index.ts` WS 端点装配。
+实现位置均为 `packages/chat-channel/src/` 下的相对路径；宿主侧只有 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配单例（`ChatChannelController` 构造器注入，`getChatChannelController()` 惰性单例）与 `packages/agent-runtime/src/routes/acp/index.ts` WS 端点装配。
 
 | 模块 | 实现位置 | 单一职责 | 不应承担 |
 |---|---|---|---|
@@ -606,7 +606,7 @@ flowchart LR
     Doc --> Browser["同 rcsSessionId 的浏览器连接"]
 ```
 
-主服务只管理可信 binding 与实例生命周期（`src/services/chat-channel-bootstrap.ts` 装配包内控制器）；`packages/chat-channel` 是唯一的 ACP 解析和 YJS 投影边界。
+主服务只管理可信 binding 与实例生命周期（`packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配包内控制器）；`packages/chat-channel` 是唯一的 ACP 解析和 YJS 投影边界。
 
 ### 6.2 输入、路由与输出
 

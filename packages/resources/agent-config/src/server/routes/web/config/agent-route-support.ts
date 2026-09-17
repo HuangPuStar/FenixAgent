@@ -9,27 +9,19 @@ import { listAgentMcpIds, syncAgentMcps } from "@fenix/resource-mcp/server";
 import * as agentMemoryConfigRepo from "@fenix/resource-memory/server";
 import { isAgentMemoryEnabled } from "@fenix/resource-memory/server";
 import { listAgentSkillIds, listSkills, syncAgentSkills } from "@fenix/resource-skill/server";
-import { and, eq, inArray } from "drizzle-orm";
-import { db } from "../../../../../../../../apps/server/src/db";
-import {
-  agentSiteApp,
-  knowledgeBase,
-  machine,
-  mcpServer,
-  model,
-  provider,
-  skill,
-} from "../../../../../../../../apps/server/src/db/schema";
-import { AppError } from "../../../../../../../../apps/server/src/errors";
-import type { AuthContext } from "../../../../../../../../apps/server/src/plugins/auth";
-import { getUserConfig, setUserConfig } from "../../../../../../../../src/services/config/user-config";
+import { db } from "@server/db";
+import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
+import { AppError } from "@server/errors";
+import type { AuthContext } from "@server/plugins/auth";
+import { getUserConfig, setUserConfig } from "@server/services/config/user-config";
 import {
   configError,
   configNotFound,
   configSuccess,
   configValidationError,
   isValidResourceName,
-} from "../../../../../../../../src/services/config-utils";
+} from "@server/services/config-utils";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   AgentMutationBodySchema,
   AgentNameQuerySchema,

@@ -1,34 +1,68 @@
-import { AppError } from "../../../../apps/server/src/errors";
-import type { AuthContext } from "../../../../apps/server/src/plugins/auth";
-import { type IOrganizationRepo, organizationRepo } from "../../../../src/repositories";
 import {
   type IResourcePermissionRepo,
   type ResourcePermissionAccessibleRow,
   type ResourcePermissionType,
   resourcePermissionRepo,
-} from "../../../../src/repositories/resource-permission";
+} from "./repositories/resource-permission";
 import type { ResourceAccess, ResourceAccessInput } from "./resource-access";
 
-export const _deps: { repo: IResourcePermissionRepo; organizationRepo: IOrganizationRepo } = {
-  organizationRepo,
+/** 授权服务仅需的认证上下文，避免平台包反向依赖宿主认证实现。 */
+export interface ResourcePermissionAuthContext {
+  organizationId: string;
+  userId: string;
+  role: string;
+}
+
+/** 授权服务使用的组织名称查询端口。 */
+export interface ResourcePermissionOrganizationRepo {
+  listNamesByIds(ids: string[]): Promise<Map<string, string>>;
+}
+
+export interface ResourcePermissionError extends Error {
+  code: string;
+  statusCode: number;
+}
+
+type ResourcePermissionErrorFactory = (message: string, code: string, statusCode: number) => ResourcePermissionError;
+
+function createDefaultForbiddenError(message: string, code: string, statusCode: number): ResourcePermissionError {
+  return Object.assign(new Error(message), { code, statusCode });
+}
+
+export const _deps: {
+  repo: IResourcePermissionRepo;
+  organizationRepo?: ResourcePermissionOrganizationRepo;
+  createError: ResourcePermissionErrorFactory;
+} = {
   repo: resourcePermissionRepo,
+  createError: createDefaultForbiddenError,
 };
 
 export function _resetDeps() {
-  _deps.organizationRepo = organizationRepo;
   _deps.repo = resourcePermissionRepo;
+  _deps.organizationRepo = undefined;
+  _deps.createError = createDefaultForbiddenError;
 }
 
 export function setResourcePermissionRepoForTesting(repo: IResourcePermissionRepo) {
   _deps.repo = repo;
 }
 
-export function setOrganizationRepoForTesting(repo: IOrganizationRepo) {
+/** 由宿主装配组织查询端口及标准错误构造器。 */
+export function configureResourcePermissionService(input: {
+  organizationRepo: ResourcePermissionOrganizationRepo;
+  createError: ResourcePermissionErrorFactory;
+}) {
+  _deps.organizationRepo = input.organizationRepo;
+  _deps.createError = input.createError;
+}
+
+export function setOrganizationRepoForTesting(repo: ResourcePermissionOrganizationRepo) {
   _deps.organizationRepo = repo;
 }
 
 export function buildResourceAccess(
-  ctx: AuthContext,
+  ctx: ResourcePermissionAuthContext,
   _resourceType: ResourcePermissionType,
   row: ResourceAccessInput,
   publicReadable?: boolean,
@@ -54,19 +88,26 @@ export function buildExternalPublicReadMap(refs: ResourcePermissionAccessibleRow
   return new Map(refs.map((ref) => [`${ref.organizationId}/${ref.resourceId}`, ref.hasPublicRead]));
 }
 
-export async function listReadableResourceRefs(ctx: AuthContext, resourceType: ResourcePermissionType) {
+export async function listReadableResourceRefs(
+  ctx: ResourcePermissionAuthContext,
+  resourceType: ResourcePermissionType,
+) {
   const rows = await _deps.repo.listAccessibleForPrincipal(ctx.organizationId, resourceType);
   return rows.filter((row) => row.organizationId !== ctx.organizationId);
 }
 
-export async function getPublicReadMap(ctx: AuthContext, resourceType: ResourcePermissionType, resourceIds: string[]) {
+export async function getPublicReadMap(
+  ctx: ResourcePermissionAuthContext,
+  resourceType: ResourcePermissionType,
+  resourceIds: string[],
+) {
   const idSet = new Set(resourceIds);
   const rows = await _deps.repo.listOwnedByOrganization(ctx.organizationId, resourceType);
   return new Map(rows.filter((row) => idSet.has(row.resourceId)).map((row) => [row.resourceId, row.hasPublicRead]));
 }
 
 export async function decorateResourceAccess<T extends ResourceAccessInput>(
-  ctx: AuthContext,
+  ctx: ResourcePermissionAuthContext,
   resourceType: ResourcePermissionType,
   rows: T[],
   externalPublicReadMap: ReadonlyMap<string, boolean> = new Map(),
@@ -74,7 +115,7 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
   const internalIds = rows.filter((row) => row.organizationId === ctx.organizationId).map((row) => row.id);
   const publicReadMap = await getPublicReadMap(ctx, resourceType, internalIds);
   const organizationIds = [...new Set(rows.map((row) => row.organizationId))];
-  const organizationNameMap = await _deps.organizationRepo.listNamesByIds(organizationIds);
+  const organizationNameMap = await _deps.organizationRepo?.listNamesByIds(organizationIds);
 
   return rows.map((row) => ({
     ...row,
@@ -85,13 +126,13 @@ export async function decorateResourceAccess<T extends ResourceAccessInput>(
       row.organizationId === ctx.organizationId
         ? (publicReadMap.get(row.id) ?? false)
         : externalPublicReadMap.get(`${row.organizationId}/${row.id}`),
-      organizationNameMap.get(row.organizationId),
+      organizationNameMap?.get(row.organizationId),
     ),
   }));
 }
 
 export async function setPublicRead(
-  ctx: AuthContext,
+  ctx: ResourcePermissionAuthContext,
   resourceType: ResourcePermissionType,
   ownerOrganizationId: string,
   resourceId: string,
@@ -120,7 +161,7 @@ export async function setPublicRead(
 }
 
 export async function canReadResource(
-  ctx: AuthContext,
+  ctx: ResourcePermissionAuthContext,
   resourceType: ResourcePermissionType,
   resourceId: string,
   ownerOrganizationId: string,
@@ -130,13 +171,13 @@ export async function canReadResource(
 }
 
 export function assertInternalWritable(
-  ctx: AuthContext,
+  ctx: ResourcePermissionAuthContext,
   _resourceType: ResourcePermissionType,
   _resourceId: string,
   ownerOrganizationId: string,
 ) {
   if (ownerOrganizationId !== ctx.organizationId) {
-    throw new AppError("External resource is read-only", "FORBIDDEN", 403);
+    throw _deps.createError("External resource is read-only", "FORBIDDEN", 403);
   }
 }
 

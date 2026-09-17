@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart TB
-    subgraph FE["前端 web/"]
+    subgraph FE["前端 apps/web/"]
         direction LR
         REACT["React 19"]
         VITE["Vite"]
@@ -30,7 +30,7 @@ flowchart TB
         I18N["i18n"]
     end
 
-    subgraph BE["后端 src/"]
+    subgraph BE["后端 apps/server/src/"]
         ELYSIA["Elysia"]
         AUTH["better-auth"]
         PLUGINS["Plugins<br/>CORS·日志·限流·静态"]

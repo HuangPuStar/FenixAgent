@@ -5,9 +5,9 @@
  * YAML 内容通过 workflow-fs 读写文件系统，数据库只存路径引用。
  */
 
+import { db } from "@server/db";
+import { workflow, workflowSnapshot, workflowVersion } from "@server/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "../../../../../../apps/server/src/db";
-import { workflow, workflowSnapshot, workflowVersion } from "../../../../../../apps/server/src/db/schema";
 import {
   buildStoragePath,
   ensureWorkflowDir,
