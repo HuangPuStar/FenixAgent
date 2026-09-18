@@ -1,4 +1,4 @@
-import { CheckCircle2, Plug, Search, SquareSlash } from "lucide-react";
+import { CheckCircle2, Plug, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../lib/i18n";
@@ -17,8 +17,9 @@ import type { AvailableCommand } from "../types";
  * 结构、键盘导航与类名逐字保留。
  *
  * 纯化改动（2026-09-18，命令/技能行改版，样式见 `../css/chat-design-command-menu.css`）：
- * 1. 行首的 `/` 前缀文字改为 `SquareSlash` 图标 —— `/` 本就是 slash 命令的标记，图标化后左侧列
- *    有了视觉锚点，也与 MCP 行的 `Plug` 同构（MCP 行一直是「图标 + 名称」）。
+ * 1. 行首的 `/` 前缀文字改为图标：这些行在能力面板里就是「技能」（区间标题即 `Skills`），
+ *    故用技能目录页的代表图标 `Sparkles`（见 `packages/resources/skill/.../agent-skills-catalog.tsx`
+ *    的 `getSkillIcon` 兜底分支），与 MCP 行的 `Plug` 同构（MCP 行一直是「图标 + 名称」）。
  * 2. 图标独立占网格首列（源里只有 MCP 行有图标列），技能行与 MCP 行的名称因此左对齐；
  *    名称不再带 `/{name}`，插入草稿的文本仍由 `ChatComposer` 拼 `/${name} `，协议不变。
  * 3. 右侧提示与选中勾选收进 `.chat-command-menu-tail`：二者同属行的尾列，源实现把它们与
@@ -174,7 +175,7 @@ export function CommandMenu({
                         onMouseEnter={() => setActiveKey(navigationKey)}
                         className={`chat-command-menu-item${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
                       >
-                        <SquareSlash className="chat-command-menu-command-icon" />
+                        <Sparkles className="chat-command-menu-command-icon" />
                         <span className="chat-command-menu-name">{command.name}</span>
                         <span className="chat-command-menu-description">{command.description}</span>
                         {(hint || selected) && (
