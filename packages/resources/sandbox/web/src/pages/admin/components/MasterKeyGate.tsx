@@ -3,12 +3,12 @@
 // 不纳入 better-auth 会话体系；401 由面板层 clearAdminKey() 后带错误提示回到本门。
 
 import { setAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Input } from "@fenix/ui-components/ui/input";
 import { KeyRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 
 interface MasterKeyGateProps {
   onUnlock: () => void;

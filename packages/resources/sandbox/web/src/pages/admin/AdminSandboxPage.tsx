@@ -1,23 +1,33 @@
 import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
+import {
+  fetchSystemPeopleTree,
+  type SystemPeopleOrganization,
+} from "@fenix/resource-observer/web/api/system-people-tree";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@fenix/ui-components/ui/command";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Check, ChevronRight, ChevronsUpDown, Database, Plus, RefreshCw, Server } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
-import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "@/src/api/system-people-tree";
 import {
   buildSandboxRebuildRequest,
   buildSandboxResourcePatch,

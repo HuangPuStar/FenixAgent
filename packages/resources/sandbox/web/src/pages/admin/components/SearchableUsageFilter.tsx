@@ -1,8 +1,15 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@fenix/ui-components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export interface SearchableUsageFilterOption {
   value: string;

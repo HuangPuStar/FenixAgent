@@ -1,14 +1,14 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { type ClusterServer, type RemoteSandbox, systemSandboxApi } from "../../../api/system-sandbox";
 
 type RemoteSandboxPanelProps = {
