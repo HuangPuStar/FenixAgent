@@ -31,6 +31,15 @@ export const NS = {
   AGENT_HOME: "agentHome",
   PROD_VIEWS: "prodViews",
   TOOL_NARRATOR: "toolNarrator",
+  /**
+   * `@fenix/ui-components` 自有命名空间。
+   *
+   * 该包不自带 i18n 单例，组件统一通过 `useTranslation(UI_COMPONENTS_NS)` 取文案，
+   * 文案真相来源是 `packages/ui-components/web/i18n/locales/<lng>/uiComponents.json`。
+   * 宿主必须在渲染这些组件前把该 bundle 注册到同名命名空间，否则文案回退为 key。
+   * 命名空间归属该包，故不在此处重复声明常量，只登记名称以保证宿主 `ns` 列表齐全。
+   */
+  UI_COMPONENTS: "uiComponents",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];

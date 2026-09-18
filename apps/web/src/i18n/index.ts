@@ -24,6 +24,8 @@ import tasksV2EN from "../../../../packages/resources/task/web/i18n/en/tasks-v2.
 import tasksV2ZH from "../../../../packages/resources/task/web/i18n/zh/tasks-v2.json";
 import workflowsEN from "../../../../packages/resources/workflow/web/i18n/en/workflows.json";
 import workflowsZH from "../../../../packages/resources/workflow/web/i18n/zh/workflows.json";
+import uiComponentsEN from "../../../../packages/ui-components/web/i18n/locales/en/uiComponents.json";
+import uiComponentsZH from "../../../../packages/ui-components/web/i18n/locales/zh/uiComponents.json";
 import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import agentsEN from "./locales/en/agents.json";
@@ -84,6 +86,8 @@ i18n
         [NS.AGENT_HOME]: agentHomeEN,
         [NS.PROD_VIEWS]: prodViewsEN,
         [NS.TOOL_NARRATOR]: toolNarratorEN,
+        // `@fenix/ui-components` 的组件文案（packages 的 web 前端已切到该包）
+        [NS.UI_COMPONENTS]: uiComponentsEN,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -111,6 +115,7 @@ i18n
         [NS.AGENT_HOME]: agentHomeZH,
         [NS.PROD_VIEWS]: prodViewsZH,
         [NS.TOOL_NARRATOR]: toolNarratorZH,
+        [NS.UI_COMPONENTS]: uiComponentsZH,
       },
     },
     fallbackLng: "en",
@@ -139,6 +144,7 @@ i18n
       NS.AGENT_HOME,
       NS.PROD_VIEWS,
       NS.TOOL_NARRATOR,
+      NS.UI_COMPONENTS,
     ],
     interpolation: { escapeValue: false },
     detection: {
