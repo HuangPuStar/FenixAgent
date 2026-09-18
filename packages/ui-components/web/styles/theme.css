@@ -2,8 +2,11 @@
  * @fenix/ui-components 设计 token（Nexus Indigo 调色板）。
  *
  * 来源：apps/web/src/index.css 的 @theme 块与 .dark 变量，逐字迁移，未做数值调整。
- * 只迁移 token 定义；源文件里的应用壳样式（base 层、sonner 定位、滚动条）、
- * @utility 工具类与 @keyframes 动画都属于宿主外观，不进入包内。
+ * 除 token 外还迁移了 base 层里「组件外观强依赖」的全局规则（见文件末尾「Base 层」段）。
+ * 源文件其余应用壳样式（html/body 字号字体、sonner 定位、滚动条）、@utility 工具类与
+ * @keyframes 动画仍属宿主外观：它们的使用方是别的包（tool-status-pill*、tool-call-*、
+ * agent-badge*、chat-loading-dots*、status-active-pulse 等只被 agent-runtime 与
+ * chat-channel 引用），本包组件不依赖，故不迁移。
  *
  * @source 指向本包 web/ 目录，保证消费方与 demo 打包时都能扫描到本包组件用到的工具类
  * （宿主仓库的 Tailwind 约定是扫描各包源码所在的 web 目录）；demo 目录由 Tailwind 基于
@@ -206,4 +209,39 @@
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
   --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================
+   Base 层 — 只迁移「组件外观强依赖」的全局默认，其余仍属应用壳
+   ------------------------------------------------------------
+   这三条不是装饰性宿主外观：包内组件靠它们才能与源仓库渲染一致，
+   缺失时不会报错，只会静默走样，因此随组件一并迁移。
+   ============================================================ */
+@layer base {
+  /* 组件大量使用「只写宽度、不写颜色」的边框工具类（`border` / `border-t` /
+     `divide-y` 等，包内 51 处），它们的颜色依赖这条规则把默认边框色指向 --color-border。
+     缺失时边框回落到 currentColor（文字色），比宿主的浅灰边框明显偏深。 */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  /* 组件自带 focus-visible ring / outline（tabs、slider、button 等），宿主统一关掉
+     浏览器默认 outline。缺失时会出现「组件 ring + 浏览器默认焦点框」双层描边。 */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+/* 动效降级：与宿主一致的 prefers-reduced-motion 处理。宿主该规则未包在 @layer 内，
+   此处保持一致以免被 Tailwind 的 utilities 层反超。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
 }

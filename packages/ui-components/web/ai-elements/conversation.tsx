@@ -7,6 +7,7 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { cn } from "../lib/cn";
 import { UI_COMPONENTS_NS } from "../lib/i18n";
 import { Button } from "../ui/button";
+import "./conversation.css";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 

@@ -21,10 +21,40 @@ body,
   min-height: 100%;
 }
 
+/* 与源宿主 apps/web/src/index.css 的 @layer base 对齐：13px 基准字号 + --font-body
+   决定组件的视觉尺寸，缺了会让展示页比宿主里明显偏大；底色与字色同样取宿主的
+   surface-0 / text-primary（而非 --color-background/--color-foreground）。 */
+html {
+  background-color: var(--color-surface-0);
+}
+
 body {
   margin: 0;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 源宿主的自定义滚动条。属于应用壳，只为展示页观感一致而复制，不进包产物。 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 /* ---------- 外壳：左侧导航 + 右侧内容 ---------- */

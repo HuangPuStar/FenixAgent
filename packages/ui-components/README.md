@@ -34,6 +34,8 @@ demo/                     Vite 展示页（非库产物）
 | `web/lib/i18n.ts` | `@/src/i18n` 单例 + `NS.COMPONENTS` / `NS.COMMON` | 只导出 `UI_COMPONENTS_NS = "uiComponents"`，资源由宿主注册 |
 | `web/lib/theme.tsx` | 源实现临时强制浅色，忽略 localStorage 与系统偏好 | 移除该 hack：初始主题取 localStorage，缺省回退 `defaultTheme`，`system` 跟随系统 |
 | `web/lib/card-renderer.tsx` | `@/src/lib/card-renderer/registry` + context/emitter | 只保留注册表，去掉会话事件通道；初始注册表为空 |
+| `web/ai-elements/conversation.css` | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖 |
+| `web/ai-elements/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。
@@ -66,9 +68,18 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    - 移除条件：宿主提供该工具类，或改为包内 token 驱动的高亮。
 3. **`@plugin "@tailwindcss/typography"`**：`tool` / `reasoning` 组件使用 `prose` 系列类名，主题入口因此声明了该插件，
    消费方编译本包 CSS 时需能解析到 `@tailwindcss/typography`（已列入 dependencies）。
-4. **宿主外观不随包迁移**：源 `apps/web/src/index.css` 的 base 层、sonner 定位、滚动条、`@utility tool-status-pill*`
-   与 `@keyframes`（`status-active-pulse`、`shimmerSlide` 等）都属于应用壳，未进入 `theme.css`。
-   - 影响范围：目前 `ui/`、`config/`、`ai-elements/` 下已核对的组件未使用这些类；后续批次若引入依赖它们的组件需重新评估。
+4. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
+   `*, ::before, ::after { border-color: var(--color-border) }`（包内 51 处只写宽度的 `border` / `divide-*` 依赖它，
+   否则回落到 `currentColor`）、`:focus-visible { outline: none }`（组件自带 ring，缺它会双层描边）与
+   `prefers-reduced-motion` 降级；`ai-elements/chat-message-content.css` 另带走两条全局 streamdown 规则
+   （隐藏 streamdown 代码块头部、放行浮动操作按钮点击）。
+   以下仍是应用壳，不进入包内：`html, body` 的字号字体、sonner 定位、滚动条，以及
+   `@utility tool-status-pill*` / `tool-call-*` 与 `@keyframes`（`status-active-pulse`、`shimmerSlide`、
+   `agent-badge-pulse` 等）。
+   - 影响范围：这些 `@utility` / `@keyframes` 的实际使用方是 `agent-runtime`、`chat-channel` 的组件
+     （`ToolCallRow`、`AgentBadge`、`ContextPanel` 等），本包 `ui/`、`config/`、`ai-elements/` 下组件均不引用；
+     后续批次若引入依赖它们的组件需重新评估。
+   - demo 为观感一致，自行复制了 `html, body` 基准字号与滚动条，不随包分发。
 5. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
    本包字典不含该命名空间；消费方必须自行传入 `t`。
 6. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
@@ -81,6 +92,12 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
    - 影响范围：不传 `envId` 时 URL 原样透传，组件不依赖任何宿主路由；传 `envId` 的宿主需自行提供该路由。
    - 移除条件：宿主改为注入自定义 `urlTransform`，或把代理前缀提升为 prop。
+8. **`MessageResponse` 自带 `chat-markdown-content` 容器类**：源仓库里该类由宿主容器（`MessageBubble`）注入，
+   而 markdown 排版（`chat-message-content.css` 内 32 条规则：标题/列表/引用/行内代码/代码块/表格）全挂在它上面；
+   宿主不注入时这些规则一条都不生效。包内改由 `MessageResponse` 自身携带，独立使用时排版才正确。
+   - 影响范围：宿主已注入该类的场景（如 `apps/web`）为重复声明同值；该样式表未包 `@layer`，
+     其 `color: #27364f` / `font-size: 14px` 在两侧都压过 `text-text-primary`，因此行为一致。
+   - 移除条件：宿主统一改为给 `MessageResponse` 提供等价的 markdown 容器类，或把排版规则改为不依赖包裹类。
 
 ## 未来接入 apps/web（本期不做）
 

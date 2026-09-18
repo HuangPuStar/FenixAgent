@@ -225,3 +225,18 @@
   border: 0;
   background: #e5eaf1;
 }
+
+/* ── 源宿主 index.css 里的全局 streamdown 规则（随组件一并迁移） ──
+   这两条不挂在任何包裹类上，命中的是 streamdown 自己渲染出的 DOM，
+   而该 DOM 由本包 message.tsx 的 MessageResponse 产生，因此属于组件依赖。 */
+
+/* 隐藏 streamdown 渲染的代码块头部（由 Agent 消息 markdown 产生） */
+[data-streamdown="code-block-header"] {
+  display: none;
+}
+
+/* 确保 streamdown 浮动操作按钮始终可点击（外层 pointer-events-none + 内层 pointer-events-auto 可能被覆盖） */
+[data-streamdown="code-block-actions"],
+[data-streamdown="mermaid-block-actions"] {
+  pointer-events: auto;
+}

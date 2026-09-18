@@ -1,0 +1,40 @@
+/*
+ * Conversation 滚动按钮的定位与外观。
+ *
+ * 来源：packages/chat-channel/web/src/pages/agent-panel/chat-design-shell.css 的
+ * `.chat-scroll-navigation` / `.chat-scroll-to-latest` 两条规则，逐字迁移（含 hover）。
+ * 这两个类名由本包 ai-elements/conversation.tsx 使用，样式原本挂在 chat-channel 的
+ * 会话外壳样式表里——包内组件不得依赖其它包的样式表，故随组件收进包内。
+ *
+ * 说明：
+ * - `--chat-floating-artifacts-width` 是宿主壳（浮动产物面板宽度）提供的变量，缺失时回退 0px，
+ *   居中定位在该宿主下自动退化为普通居中，不影响独立使用。
+ * - 与源实现一致使用固定色值（未 token 化），以保证与源仓库渲染一致；深色模式下同样不切换。
+ */
+.chat-scroll-navigation {
+  position: absolute;
+  z-index: 24;
+  bottom: 12px;
+  left: calc((100% - var(--chat-floating-artifacts-width, 0px)) / 2);
+  display: flex;
+  transform: translateX(-50%);
+}
+
+.chat-scroll-to-latest {
+  width: auto;
+  height: 30px;
+  gap: 6px;
+  border: 0;
+  padding: 0 11px;
+  color: #475569;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+
+.chat-scroll-to-latest:hover {
+  color: #334155;
+  background: #fff;
+}

@@ -405,8 +405,12 @@ export const MessageResponse = memo(
             allowedTags={allowedTags}
             components={components}
             urlTransform={urlTransform}
+            // `chat-markdown-content` 在源仓库由宿主容器（MessageBubble）提供，markdown 排版
+            // （标题/列表/引用/代码块/表格，chat-message-content.css 内 32 条规则）全挂在它上面。
+            // 包内自带该容器类，才能在宿主未提供时也渲染出正确排版；宿主已提供时重复声明同值，
+            // 且该样式表未包 @layer，其 color/font-size 在两侧都压过 text-text-primary，故为无副作用。
             className={cn(
-              "chat-markdown-response chat-markdown-response--rendered size-full break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+              "chat-markdown-content chat-markdown-response chat-markdown-response--rendered size-full break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
               className,
             )}
             {...props}
