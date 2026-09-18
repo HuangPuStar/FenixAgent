@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ResourceAccess } from "@fenix/agent-config/web/types/config";
 import type { McpResourceLike } from "@/src/lib/mcp-resource-access";
 import {
   canManageMcpSharing,
@@ -9,7 +10,6 @@ import {
   getMcpLookupKey,
   getMcpResourceBadgeKey,
 } from "@/src/lib/mcp-resource-access";
-import type { ResourceAccess } from "../../../../../../apps/web/src/types/config";
 
 const ownedAccess: ResourceAccess = {
   ownership: "internal",

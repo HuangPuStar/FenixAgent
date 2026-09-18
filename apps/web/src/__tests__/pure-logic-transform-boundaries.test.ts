@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ModelEntry, ResourceAccess } from "@fenix/agent-config/web/types/config";
 import {
   getTodoChanges,
   getTodosFromRawInput,
@@ -8,7 +9,6 @@ import {
 import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import type { TodoItem } from "../lib/types";
-import type { ModelEntry, ResourceAccess } from "../types/config";
 
 const baseModel: ModelEntry = {
   id: "model-1",

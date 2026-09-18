@@ -5,8 +5,8 @@
 //
 // 类型对齐后端 schema src/schemas/api-system-observer.schema.ts（data.trees 骨架）。
 
+import { getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { request, unwrap } from "@fenix/web-runtime/api/request";
-import { getAdminKey } from "@/src/lib/admin-key";
 
 /** 叶子对象行（归属树内；payload 概要承载 openTime/session 等）。 */
 export interface ObserverLeaf {

@@ -1,3 +1,4 @@
+import type { McpServerInfo } from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
@@ -12,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { mcpApi } from "@/src/api/mcp";
-import type { McpServerInfo } from "@/src/types/config";
 import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import {
   buildMcpPayload,

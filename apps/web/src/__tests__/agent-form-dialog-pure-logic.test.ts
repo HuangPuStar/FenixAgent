@@ -1,5 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canManageAgentSharing,
+  getAgentAccessBadgeKey,
+  getAgentConfigLookupKey,
+  getAgentDisplayName,
+  getAgentOptionValue,
+  isAgentWritable,
+} from "@fenix/agent-config/web/lib/agent-resource-access";
+import {
+  buildAgentPayload,
+  buildKnowledgeFormState,
+  filterKnowledgeBaseIds,
+  getDefaultKnowledgeFormState,
+  isValidAgentNameInput,
+} from "@fenix/agent-config/web/lib/agent-utils";
+import type { ModelEntry, ResourceAccess } from "@fenix/agent-config/web/types/config";
+import {
   canManageMcpSharing,
   filterWritableMcps,
   getMcpDisplayName,
@@ -12,24 +28,8 @@ import {
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import { buildUploadUrl } from "../api/fs";
-import {
-  canManageAgentSharing,
-  getAgentAccessBadgeKey,
-  getAgentConfigLookupKey,
-  getAgentDisplayName,
-  getAgentOptionValue,
-  isAgentWritable,
-} from "../lib/agent-resource-access";
-import {
-  buildAgentPayload,
-  buildKnowledgeFormState,
-  filterKnowledgeBaseIds,
-  getDefaultKnowledgeFormState,
-  isValidAgentNameInput,
-} from "../lib/agent-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
-import type { ModelEntry, ResourceAccess } from "../types/config";
 
 const externalAccess: ResourceAccess = {
   ownership: "external",

@@ -1,3 +1,4 @@
+import type { ModelConfig, ModelEntry } from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
@@ -10,7 +11,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { modelApi } from "@/src/api/models";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
-import type { ModelConfig, ModelEntry } from "@/src/types/config";
 
 export { buildModelOptions };
 

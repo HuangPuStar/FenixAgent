@@ -1,5 +1,5 @@
+import { getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { request, unwrap } from "@fenix/web-runtime/api/request";
-import { getAdminKey } from "@/src/lib/admin-key";
 
 export interface SandboxResources {
   cpu: number;

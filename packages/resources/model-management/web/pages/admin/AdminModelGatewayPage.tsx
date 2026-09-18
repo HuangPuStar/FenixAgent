@@ -1,3 +1,4 @@
+import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
@@ -21,7 +22,6 @@ import {
 import { Pagination } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
 import { fetchSystemPeopleTree } from "@/src/api/system-people-tree";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {
   checkModelGateway,
   getModelGatewayConfiguration,

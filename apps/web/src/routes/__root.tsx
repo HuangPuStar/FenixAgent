@@ -1,9 +1,9 @@
+import { OrgProvider } from "@fenix/resource-identity-admin/web/contexts/OrgContext";
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
-import { OrgProvider } from "@/src/contexts/OrgContext";
-import { useSession } from "@/src/lib/auth-client";
 import { ThemeProvider } from "@/src/lib/theme";
 
 export const Route = createRootRoute({

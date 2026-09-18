@@ -19,8 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isAgentWritable } from "@/src/lib/agent-resource-access";
-import { isValidAgentNameInput } from "@/src/lib/agent-utils";
+import { isAgentWritable } from "../../../lib/agent-resource-access";
+import { isValidAgentNameInput } from "../../../lib/agent-utils";
 import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./AgentEditorChrome";
 import { AgentEditorLoadingShell } from "./AgentEditorLoadingShell";
 import { type AgentEditorSection, AgentEditorSections } from "./AgentEditorSections";

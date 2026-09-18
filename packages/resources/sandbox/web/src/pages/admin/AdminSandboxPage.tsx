@@ -1,3 +1,4 @@
+import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Check, ChevronRight, ChevronsUpDown, Database, Plus, RefreshCw, Server } from "lucide-react";
@@ -17,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "@/src/api/system-people-tree";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {
   buildSandboxRebuildRequest,
   buildSandboxResourcePatch,

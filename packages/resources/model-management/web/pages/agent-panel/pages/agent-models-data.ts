@@ -1,3 +1,4 @@
+import type { ProviderInfo, ProviderModel } from "@fenix/agent-config/web/types/config";
 import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
@@ -5,7 +6,6 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providerApi } from "@/src/api/providers";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import type {
   DiscoveryState,
   ModelDraft,

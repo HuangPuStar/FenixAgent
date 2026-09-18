@@ -1,3 +1,4 @@
+import type { ProviderInfo, ProviderModel } from "@fenix/agent-config/web/types/config";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   CheckCircle2,
@@ -25,7 +26,6 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import { ModelIcon } from "../../../components/model-icon/ModelIcon";
 import type { ModelTestState } from "./agent-models-types";
 import {

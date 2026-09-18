@@ -1,3 +1,4 @@
+import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { MasterKeyGate } from "@fenix/resource-sandbox/web";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
@@ -9,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {
   downloadSystemLog,
   fetchSystemLogFiles,

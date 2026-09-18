@@ -9,8 +9,8 @@ import { type OrgMember, type OrgMemberCandidate, orgApi } from "@/src/api/organ
 import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { useSession } from "@/src/lib/auth-client";
+import { useOrg } from "../../../contexts/OrgContext";
+import { useSession } from "../../../lib/auth-client";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";
 import "./agent-organizations.css";
 import type { MachineCreateResult, MachineFormState, OrganizationListItem } from "./agent-organizations-types";

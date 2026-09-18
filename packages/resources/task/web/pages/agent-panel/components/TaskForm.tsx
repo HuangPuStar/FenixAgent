@@ -1,3 +1,4 @@
+import type { AgentInfo } from "@fenix/agent-config/web/types/config";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
@@ -6,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { AgentInfo } from "@/src/types/config";
 import { CronEditor } from "./CronEditor";
 
 export interface TaskFormValues {

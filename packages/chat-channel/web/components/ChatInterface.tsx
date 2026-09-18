@@ -1,3 +1,4 @@
+import { getAgentConfigLookupKey } from "@fenix/agent-config/web/lib/agent-resource-access";
 import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/chat-channel";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
@@ -15,7 +16,6 @@ import { buildPromptText } from "@/components/chat/composer-prompt";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { mcpApi } from "@/src/api/mcp";
-import { getAgentConfigLookupKey } from "@/src/lib/agent-resource-access";
 import { flushContext } from "@/src/lib/context-queue";
 import { extractChangedFiles } from "@/src/lib/extract-changed-files";
 import type { ChatInputMessage, ThreadEntry } from "@/src/lib/types";

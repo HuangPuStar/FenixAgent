@@ -13,8 +13,8 @@ import { registryApi } from "@/src/api/registry";
 import { agentSitesApi } from "@/src/api/sites";
 import { skillConfigApi } from "@/src/api/skills";
 import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
-import type { AgentDetail, ResourceAccess } from "@/src/types/config";
 import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import type { AgentDetail, ResourceAccess } from "../../../types/config";
 import {
   type AgentEditorOption,
   type AgentEditorValues,

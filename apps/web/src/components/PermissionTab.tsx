@@ -1,3 +1,4 @@
+import type { PermissionAction, SkillInfo } from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useCallback, useState } from "react";
@@ -8,8 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { skillConfigApi } from "@/src/api/skills";
-import type { SkillInfo } from "@/src/types/config";
-import type { PermissionAction } from "../types/config";
 
 // ── 常量定义 ──
 

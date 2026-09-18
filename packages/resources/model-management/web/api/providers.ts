@@ -5,8 +5,8 @@
  * 后端使用 REST + query-param 风格端点以支持含 / 的 resource key。
  */
 
+import type { ProviderDetail, ProviderInfo } from "@fenix/agent-config/web/types/config";
 import { request } from "@fenix/web-runtime/api/request";
-import type { ProviderDetail, ProviderInfo } from "@/src/types/config";
 
 /** 列表响应：后端返回 providers 数组 */
 interface ProviderListResult {

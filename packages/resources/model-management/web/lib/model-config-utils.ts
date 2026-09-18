@@ -1,4 +1,4 @@
-import type { ModelEntry } from "@/src/types/config";
+import type { ModelEntry } from "@fenix/agent-config/web/types/config";
 
 /** 提取运行时模型名称中的 Peri 别名，其他名称保持原样。 */
 export function simplifyModelDisplayName(modelName: string): string {

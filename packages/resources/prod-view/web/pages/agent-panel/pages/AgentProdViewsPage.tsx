@@ -1,3 +1,4 @@
+import type { AgentInfo } from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
@@ -19,7 +20,6 @@ import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
 import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";
-import type { AgentInfo } from "@/src/types/config";
 
 /** 模块配置开关区域 */
 function ModuleConfigSection({

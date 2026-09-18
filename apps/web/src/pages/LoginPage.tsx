@@ -1,10 +1,10 @@
+import { authClient, signUpWithPhone } from "@fenix/resource-identity-admin/web/lib/auth-client";
+import { encryptPassword } from "@fenix/resource-identity-admin/web/lib/password-crypto";
 import { useNavigate } from "@tanstack/react-router";
 import { CirclePlus, Eye, EyeOff, MessageSquare, ShieldCheck, Users } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authClient, signUpWithPhone } from "@/src/lib/auth-client";
 import { type AuthMethod, getPreferredAuthMethod, setPreferredAuthMethod } from "../lib/auth-preference";
-import { encryptPassword } from "../lib/password-crypto";
 
 const brandTags = ["AI Orchestration", "Multi-Agent", "Intelligent Core"];
 const particleKeys = ["particle-1", "particle-2", "particle-3", "particle-4", "particle-5", "particle-6"];

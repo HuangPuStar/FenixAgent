@@ -145,11 +145,9 @@
         "../../packages/resources/model-management/web/components/config/ModelConfigDialog.tsx"
       ],
       "@/components/model-icon/*": ["../../packages/resources/model-management/web/components/model-icon/*"],
-      "@/src/lib/auth-client": ["./src/lib/auth-client.ts"],
       "@/src/lib/utils": ["./src/lib/utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["./src/lib/random-uuid-polyfill.ts"],
       "@/src/lib/theme": ["./src/lib/theme.ts"],
-      "@/src/contexts/OrgContext": ["./src/contexts/OrgContext.tsx"],
       "@/src/*": ["./src/*"],
       "@server/*": ["../server/src/*"],
       "@fenix/chat-channel": ["../../packages/chat-channel/src/index.ts"],

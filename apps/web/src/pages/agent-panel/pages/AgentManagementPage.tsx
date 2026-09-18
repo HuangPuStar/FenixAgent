@@ -1,3 +1,5 @@
+import { getAgentConfigLookupKey, getAgentDisplayName } from "@fenix/agent-config/web/lib/agent-resource-access";
+import type { AgentInfo } from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
@@ -13,8 +15,6 @@ import { type EnvironmentDetail, envApi } from "@/src/api/environments";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
-import { getAgentConfigLookupKey, getAgentDisplayName } from "../../../lib/agent-resource-access";
-import type { AgentInfo } from "../../../types/config";
 
 interface AgentManageNode {
   agent: AgentInfo;

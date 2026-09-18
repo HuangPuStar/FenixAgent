@@ -1,3 +1,4 @@
+import type { McpServerInfo, McpToolInfo } from "@fenix/agent-config/web/types/config";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
@@ -24,7 +25,6 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { McpServerInfo, McpToolInfo } from "@/src/types/config";
 import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";

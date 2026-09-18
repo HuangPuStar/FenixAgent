@@ -13,6 +13,22 @@
   "exports": {
     ".": "./src/index.ts",
     "./web": "./web/index.ts",
+    "./web/contexts/OrgContext": {
+      "types": "./web/contexts/OrgContext.tsx",
+      "default": "./web/contexts/OrgContext.tsx"
+    },
+    "./web/lib/auth-client": {
+      "types": "./web/lib/auth-client.ts",
+      "default": "./web/lib/auth-client.ts"
+    },
+    "./web/lib/admin-key": {
+      "types": "./web/lib/admin-key.ts",
+      "default": "./web/lib/admin-key.ts"
+    },
+    "./web/lib/password-crypto": {
+      "types": "./web/lib/password-crypto.ts",
+      "default": "./web/lib/password-crypto.ts"
+    },
     "./server": "./src/server.ts",
     "./server/repository": "./src/repository.ts",
     "./server/schema": "./src/schema.ts",

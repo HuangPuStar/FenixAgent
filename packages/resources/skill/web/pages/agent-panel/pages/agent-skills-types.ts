@@ -1,4 +1,4 @@
-import type { ResourceAccess } from "@/src/types/config";
+import type { ResourceAccess } from "@fenix/agent-config/web/types/config";
 
 export type SkillInfo = {
   id?: string;

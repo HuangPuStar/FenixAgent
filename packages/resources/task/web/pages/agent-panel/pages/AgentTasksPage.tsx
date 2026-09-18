@@ -1,3 +1,4 @@
+import type { AgentInfo } from "@fenix/agent-config/web/types/config";
 import type { PaginatedResponse } from "@fenix/web-runtime/api/request";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -16,7 +17,6 @@ import type { TaskV2CreateBody, TaskV2Info, TaskV2UpdateBody } from "@/src/api/t
 import { taskV2Api } from "@/src/api/tasks-v2";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import type { AgentInfo } from "@/src/types/config";
 import { TaskForm, type TaskFormValues } from "../components/TaskForm";
 import { TaskLogDialog } from "../components/TaskLogDialog";
 import { AgentTaskRuntimeBoard } from "./agent-task-runtime-board";

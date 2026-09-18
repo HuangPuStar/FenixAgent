@@ -1,4 +1,6 @@
 import { EmbeddingModelManager } from "@fenix/model-management/web";
+import { useOrg } from "@fenix/resource-identity-admin/web/contexts/OrgContext";
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -38,8 +40,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/knowledge-bases";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { useSession } from "@/src/lib/auth-client";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
 import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
 import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";

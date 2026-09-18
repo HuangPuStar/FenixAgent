@@ -1,3 +1,4 @@
+import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { MasterKeyGate } from "@fenix/resource-sandbox/web";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
@@ -12,7 +13,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {
   buildSystemUserIdentifier,
   createSystemUser,

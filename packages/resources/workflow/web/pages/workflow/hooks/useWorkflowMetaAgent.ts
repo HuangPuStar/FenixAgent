@@ -1,9 +1,9 @@
+import { useMetaAgent } from "@fenix/agent-config/web/hooks/use-meta-agent";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { envApi } from "@/src/api/environments";
-import { useMetaAgent } from "@/src/hooks/useMetaAgent";
 import type { WfMeta } from "../yaml-utils";
 
 export interface UseWorkflowMetaAgentParams {

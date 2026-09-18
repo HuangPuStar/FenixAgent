@@ -1,4 +1,4 @@
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import type { ProviderInfo, ProviderModel } from "@fenix/agent-config/web/types/config";
 
 export type ProviderScope = "all" | "organization" | "public";
 

@@ -5,6 +5,7 @@ import {
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/chat-channel/web";
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Bot, Loader2 } from "lucide-react";
@@ -13,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTaskViews } from "@/src/hooks/use-task-views";
-import { useSession } from "@/src/lib/auth-client";
 import { randomUUID } from "@/src/lib/utils";
 import { useChatState } from "../hooks/use-chat-state";
 import { useSessionState } from "../hooks/use-session-state";

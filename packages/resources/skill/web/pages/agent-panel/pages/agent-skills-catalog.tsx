@@ -1,3 +1,4 @@
+import type { SkillDetail as SkillDetailData } from "@fenix/agent-config/web/types/config";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
@@ -35,7 +36,6 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { SkillDetail as SkillDetailData } from "@/src/types/config";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
 import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
 import "./agent-skills.css";

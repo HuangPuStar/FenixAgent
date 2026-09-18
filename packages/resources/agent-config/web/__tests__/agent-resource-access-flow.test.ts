@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { agentApi } from "../api/agents";
 import {
   canManageAgentSharing,
   getAgentConfigLookupKey,
   getAgentDisplayName,
   getAgentOptionValue,
   isAgentWritable,
-} from "@/src/lib/agent-resource-access";
-import type { ResourceAccess } from "@/src/types/config";
-import { agentApi } from "../api/agents";
+} from "../lib/agent-resource-access";
+import type { ResourceAccess } from "../types/config";
 
 const internalAccess: ResourceAccess = {
   ownership: "internal",

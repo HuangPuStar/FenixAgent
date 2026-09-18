@@ -1,5 +1,5 @@
+import type { McpServerConfig, McpServerInfo } from "@fenix/agent-config/web/types/config";
 import * as z from "zod/v4";
-import type { McpServerConfig, McpServerInfo } from "@/src/types/config";
 import { getMcpDisplayName } from "../../../lib/mcp-resource-access";
 
 export type McpCatalogScope = "all" | "organization" | "public";

@@ -5,7 +5,7 @@ import {
   filterKnowledgeBaseIds,
   getDefaultKnowledgeFormState,
   isValidAgentNameInput,
-} from "@/src/lib/agent-utils";
+} from "../lib/agent-utils";
 
 describe("isValidAgentNameInput", () => {
   test("valid name", () => {

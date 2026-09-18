@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-
+import type { ModelEntry, ResourceAccess } from "@fenix/agent-config/web/types/config";
 import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ResourceAccess } from "../types/config";
 
 function access(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
   return {

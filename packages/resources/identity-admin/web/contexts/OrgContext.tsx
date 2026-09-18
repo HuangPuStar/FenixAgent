@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { orgApi } from "@/src/api/organizations";
+import { orgApi } from "../api/organizations";
 
 interface OrgInfo {
   id: string;

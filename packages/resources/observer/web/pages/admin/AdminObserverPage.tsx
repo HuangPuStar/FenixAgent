@@ -5,6 +5,7 @@
 // - 请求 401（UNAUTHORIZED）→ clearAdminKey() 回 MasterKeyGate；
 // - 覆盖 loading / empty / error / retry 状态。
 
+import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
 import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
@@ -16,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import { type AcpLinkSnapshot, fetchAcpLinkSnapshot } from "../../api/observer";
 import { ObserverFlatTable } from "./components/ObserverFlatTable";
 import { ObserverIntegrityAlert } from "./components/ObserverIntegrityAlert";

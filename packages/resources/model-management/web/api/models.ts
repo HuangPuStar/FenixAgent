@@ -5,8 +5,8 @@
  * 后端使用 RESTful 端点，域模块内部抽象为具名方法。
  */
 
+import type { ModelConfig, PermissionConfig } from "@fenix/agent-config/web/types/config";
 import { request } from "@fenix/web-runtime/api/request";
-import type { ModelConfig, PermissionConfig } from "@/src/types/config";
 
 export const modelApi = {
   /** 获取当前模型配置 */

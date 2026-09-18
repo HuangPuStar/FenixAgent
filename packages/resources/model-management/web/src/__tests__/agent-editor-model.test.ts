@@ -9,7 +9,7 @@ import {
   mapModelOptions,
   mergeSelectedOptions,
 } from "@fenix/agent-config/web";
-import type { AgentDetail } from "@/src/types/config";
+import type { AgentDetail } from "@fenix/agent-config/web/types/config";
 
 const detail: AgentDetail = {
   id: "agent-1",

@@ -1,3 +1,8 @@
+import type {
+  SkillUploadConflictResponse,
+  SkillUploadConflictStrategy,
+  UploadSkillSummary,
+} from "@fenix/agent-config/web/types/config";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
@@ -8,7 +13,6 @@ import { toast } from "sonner";
 import { skillConfigApi } from "@/src/api/skills";
 import { canManageSkillSharing, canWriteSkill, getSkillKey, getSkillLookupKey } from "@/src/lib/skill-resource-access";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "@/src/lib/skill-upload";
-import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
 import { AgentSkillsCatalog } from "./agent-skills-catalog";
 import { AgentSkillsDialogs } from "./agent-skills-dialogs";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";

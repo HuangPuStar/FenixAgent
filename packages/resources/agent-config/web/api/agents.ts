@@ -6,7 +6,7 @@
  */
 
 import { request } from "@fenix/web-runtime/api/request";
-import type { AgentDetail, AgentInfo } from "@/src/types/config";
+import type { AgentDetail, AgentInfo } from "../types/config";
 
 /** Agent 模板 */
 interface AgentTemplate {

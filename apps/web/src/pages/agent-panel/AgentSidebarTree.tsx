@@ -1,4 +1,13 @@
 import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { shouldShowRemoteNode } from "@fenix/agent-config/web/lib/agent-node";
+import {
+  getAgentAccessBadgeKey,
+  getAgentConfigLookupKey,
+  getAgentDisplayName,
+  isAgentWritable,
+} from "@fenix/agent-config/web/lib/agent-resource-access";
+import type { AgentNode, ResourceAccess } from "@fenix/agent-config/web/types/config";
+import { useOrg } from "@fenix/resource-identity-admin/web/contexts/OrgContext";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
@@ -34,15 +43,6 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { shouldShowRemoteNode } from "../../lib/agent-node";
-import {
-  getAgentAccessBadgeKey,
-  getAgentConfigLookupKey,
-  getAgentDisplayName,
-  isAgentWritable,
-} from "../../lib/agent-resource-access";
-import type { AgentNode, ResourceAccess } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
