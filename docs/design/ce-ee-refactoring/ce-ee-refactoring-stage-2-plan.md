@@ -1,41 +1,73 @@
-# CE 阶段 2：逐包适配分析执行计划
+# CE 阶段 2：整体架构适配
 
-> **给执行智能体：** 此文件仅在全部业务已物理分包、阶段 1 最终版本验收通过后使用。逐包分析读取[目标架构与开发规范](./ce-ee-engineering-standards.md)的相关章节；需要核对实际包归属时再查[目录结构与归属说明](./ce-ee-engineering-directory-structure.md)。阶段 2 只写短计划，不实现改动，不决定全仓适配顺序。
+实施从[CE / EE 工程架构设计索引](./ce-ee-engineering-architecture.md)进入全部权威设计，结合执行时的真实源码、依赖、测试、迁移和部署状态，完成任务拆解、执行、复审、验证与收口。
 
-**目标：** 每个 `packages/` workspace 包根目录都有一份可由用户快速审查的 `refactor-plan.md`。分析的输入是实际迁移完成的代码、包公开出口、现有生产合同，以及适用的工程架构、访问控制和开发规范；以真实依赖为准，不从原计划推测实现。
+实施必须持续到仓库满足设计文档中的全部架构约束与一致性验收标准；发现设计矛盾、缺失或需要改变公共合同、稳定协议、数据语义时停止对应分支，先由用户评审并修订权威设计，再继续实施。
 
-## 1. 工作范围
+## 1. 需要改动的范围
 
-1. 盘点**所有**已有平台/运行/基础包和物理迁移后新增的业务包；以现存 package manifests、入口 exports、import 和装配引用确定包列表，不提前指定哪些包“不需要治理”。只有 workspace package 需要根目录的 `refactor-plan.md`；`apps/server`、`apps/web` 的宿主适配事项归其依赖包或单独产品级任务，不能虚构为资源包。
-2. 每包记录直接依赖的其他包，以及哪些包的适配需先完成才能安全适配本包；分别说明“代码中已经依赖”和“目标治理要求的前置”，不要臆造循环或强制总顺序。如果包之间真实存在循环，记录具体消费者和当前边界，留给用户决定优先级。
-3. 简短列出该包自身需要的架构/权限/资源接口/数据或工程规范适配、与外部可用协议和现有存量数据相关的兼容约束。Provider 与 Model 属于同一个 `model` 包；规划中不得推导 Model 独立授权或独立资源包。
-4. 如确实没有需要适配的内容，也要写计划注明“无须适配”及核查依据，便于用户验收。不得在本阶段改 route、权限、schema、页面和 service，也不创建详细的代码步骤、技术方案、PR 或迁移脚本。
+以下清单是阶段 2 的适配范围，用于避免遗漏；实施方式由执行时的真实情况决定。每项都应以当前源码、调用图、测试、数据库和部署产物为准，实际不存在的能力不因本清单而预造。
 
-## 2. 每包文档的统一结构
+### 1.1 仓库级边界与装配
 
-每份文件保持精简，只需这三个小节；必要信息可用简短条目，不列文件级实施任务：
+- 建立 `packages/platform/platform-sdk` 的稳定契约：`ActorContext`、`AccessControlModule`、资源范围与授权查询约束、模块描述符、assembly profile，以及应用基础设施的受限读取入口。
+- 为需要参与装配的模块补齐实际 `fenix.module.ts`、`package.json` exports 与显式 workspace dependencies；区分编译依赖与 manifest `dependsOn`，并使它们与 assembly 保持一致。
+- 实现受版本控制 workspace 的 manifest 扫描、静态 module registry 生成及其校验；`apps/server`、`apps/web` 只能从生成 registry 选择已编译模块，不能手写业务注册表或动态加载代码。
+- 新增并维护 `deploy/assembly/` 中的受控 profile、模块 capability/env/migration preflight 与关闭时的逆序资源释放；profile 不得携带路径、URL、包名或代码。
+- 完善架构门禁：阻断跨包内部路径导入、未声明 workspace dependency、循环依赖、未登记的特殊依赖，以及浏览器入口加载服务端模块。
+- 核查 `packages/` 中 `platform/`、`agent-runtime/`、`resources/` 以外的现有包（如 `acp-link`、`core`、`chat-channel`、各插件与 provider）：保持其 SDK/插件职责与公开入口，只修复包间依赖环和被服务模块错误穿透的内部引用，不要求按资源模块改造。
 
-```markdown
-# <包名> 适配计划
+### 1.2 Platform：身份、租户与授权
 
-## 依赖及前置
+- 将 `packages/resources/identity-admin` 的用户、组织、成员、认证/API Key、DB、route 与 Web 职责迁入新的 `packages/platform/identity`；删除 `identity-admin`，不保留兼容包或 re-export shim。
+- 将 `packages/platform/access-control` 收敛为仅依赖 platform-sdk 与 Identity 公开入口的具体授权实现；Identity 与 AccessControl 保持两个独立包，不能互相穿透内部实现。
+- 将资源动作的身份、组织上下文和权限判断收敛到 Resource Application Facade；Facade 使用可信 `ActorContext` 和 `AccessControlModule`，Domain Service 不接收 actor，Repository 不读取 member/role 或复制授权 SQL。
+- 实现统一授权查询约束，使普通用户的列表、分页、排序、计数、详情和变更动作使用同一范围语义，并在数据库查询前完成限制；保留系统管理员真实 `userId` 的审计主体与 API Key 的组织恢复、保守拒绝行为。
+- 迁移并最终删除旧 `resource_permission` 的读取、写入、公开出口及表；迁移期间不得长期保留双写、兼容表或两套授权判断。
+- 为跨组织、owner/admin/member、private/public、系统管理员、API Key、拒绝路径及授权查询下推补齐自动化回归。
 
-- 当前依赖：<实际依赖的包及使用的公开能力>。
-- 需要先适配：<确实影响本包适配的依赖包；没有则写“无”及理由>。
+### 1.3 资源模块的完整交付物
 
-## 本包需要适配
+- 将每个有状态资源包按其实际职责补齐唯一 owner 的 domain/service、repository、adapter、schema、migration、route contribution、`web/` contribution、测试与 README；不得在 app 与 package 或新旧包之间保留重复实现。
+- 为资源之间真实存在的引用，改为依赖对方包根入口导出的 Domain Service、DTO 或必要的窄端口；禁止导入对方的 `src/**`、repository、schema，禁止 route 调 route。循环关系应改为稳定契约或由 `apps/server` use case 编排。
+- 将 AgentConfig 的创建、修改、运行与引用解析收敛到 Facade：完成 `use` 授权、Skill/MCP/模型/知识等引用的有效性校验，生成已授权 LaunchSpec 后再调用 Runtime port。
+- 将 Provider 与 Model 收敛到单一模型资源聚合根：Model 严格继承 Provider 权限，不建立独立 owner/visibility；现有模型管理、网关预算、凭证隔离、用量与 API/Web 调用均须迁入这一边界。
+- 分别适配现有 `agent-config`、`channel`、`knowledge`、`mcp`、`memory`、`machine`、`model-management`、`observer`、`prod-view`、`sandbox`、`skill`、`task`、`workflow` 等资源包，使其后端、DB、协议入口、前端和测试与唯一 owner 一致；发现尚未归属的 Site、组织管理、系统管理、文件或品牌能力时，按其真实领域补入对应 owner，不留在 app 的领域实现中。
+- 各资源的浏览器入口只从 `./web` 导出页面、API client、hook、DTO、i18n 与浏览器组件；补齐 loading、empty、error、retry、无权限、成功反馈和可访问性状态，且不得经重导出加载 Node、DB 或 server-only 代码。
 
-- <自身需完成的边界、权限、接口或工程规范调整；没有则写“无须适配”及核查依据>。
+### 1.4 Agent Runtime、Machine 与 Sandbox
 
-## 需保护的现有合同
+- 将 Environment、Agent Instance、运行时生命周期、并发控制、进程/relay、ACP session、交互式 Chat 与 YJS 的运行组合收敛到 `@fenix/agent-runtime`；`core`、`orchestration`、`chat-channel`、`remote-runtime` 继续保持各自独立实现，不复制合并。
+- 定义并使用 Runtime 的公开启动、停止、状态与回收 port；Runtime 只能接受已经授权的通用启动输入，不得读取资源表、Actor、role、scope、visibility 或发布状态。
+- 将 Machine、Sandbox 保持为独立资源 owner；只暴露给 Runtime 所需的专用公开运行入口，固定依赖为 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine`，严格禁止反向依赖。
+- 收敛 HTTP/OpenAI、Workflow 与交互式 Chat 三条链路到唯一的 Runtime、relay 与 ACP 规则，保持持久 runtime、lease、session、YJS、ACP/RCS ID、重连、背压与 dispose 的既有不变量。
+- 补齐 Machine 远端不可用不回退本地文件系统、workspace/symlink 越界、消息大小、超时、取消、并发、断连和资源释放的边界验证。
 
-- <已发布接口、调用方、数据库存量数据或运行不变量；没有则写“无已确认的外部合同”>。
-```
+### 1.5 apps/server：宿主与协议聚合
 
-占位文字是本执行文档展示的**格式样例**，实际生成的包计划不可留待定项；尚未证实的差异明确写“需在实施前核查”并说明风险，而不是把推测当成既定实施任务。
+- 将 `apps/server` 收敛为进程入口、认证 adapter、协议聚合、OpenAPI、通用错误/CORS/static/logger、环境变量、应用基础设施初始化与统一关闭编排；迁出其中的资源领域规则、具体业务 service/repository 和资源页面实现。
+- 将 `/web/*`、`/api/*`、ACP、MCP、Webhook、SSE、WebSocket 路由改为模块 route contribution 由宿主挂载；route 只做协议校验、认证上下文、DTO 转换、调用 Facade 与错误映射，不直接访问 DB 或调用其他 route。
+- 将已发布 `/api/*`、内部 `/web/*` 和协议入口统一为同一 Facade 的薄 adapter；保持既有对外稳定合同，不能形成第二套 CRUD 或业务流程。
+- 把 `process.env` 的读取与校验、DB client 创建、模块配置拆分和进程级资源关闭集中在 `apps/server`；调用 `initializeApplicationInfrastructure()` 后，包从 `@fenix/platform-sdk/server` 读取已注册的 DB/config，不得依赖 `apps/server` 内部路径。
 
-## 3. 执行与验收
+### 1.6 apps/web：Shell 与资源页面装配
 
-逐包阅读真实实现和目标规范的对应章节，写短计划、自检准确性和依赖方向、review 修复至无问题，再处理下一包。review 文档保留在工作区、不提交，供用户验收后自行删除；这一阶段的文档变更按用户确认的提交安排处理，不能把仅写计划说成包适配已完成。
+- 将 `apps/web` 收敛为最终 WebShell、登录与全局 Provider、品牌/布局/导航容器、错误边界及 TanStack Router 薄 route adapter；把资源页面、领域 API client、hook、i18n 与领域组件迁入所属资源包的 `web/`。
+- 让 WebShell 从静态 registry 的资源 web contribution 收集导航、路由与页面，不允许资源模块反向决定全局布局，也不允许运行时注入路由或远程脚本。
+- 保持文件路由和生成 `routeTree` 的工具链；不手改生成文件。前端仅通过 API client 访问后端，前端可见性不能替代服务端授权。
+- 核查并修复构建别名、Vite 入口、静态资源、路由、测试与生产静态挂载，确保浏览器 bundle 不含 server-only 依赖。
 
-验收标准是所有 `packages/` workspace 包（包含无须适配的包）根目录都存在 `refactor-plan.md`，依赖关系可核对、事项简洁，无任何代码/协议/数据的行为性改动，阶段 1 的可上线版本继续可用。完成后由用户根据这些计划决定下一个阶段的顺序。
+### 1.7 DB、配置、迁移与交付
+
+- 将表、索引和 schema 的唯一真相迁到实际 owner 模块；`drizzle.config.ts` 只显式聚合 schema 路径，不定义或 re-export 表；已发布的 SQL、snapshot、journal 不得改写。
+- 建立模块就近的数据迁移 manifest：包含全局唯一 ID、依赖、幂等分批 `run`、`verify`、可观测字段和补偿方案；仓库 `db/data-migration-runner.ts` 只负责汇总、排序、记录和执行，应用启动不自动运行业务数据迁移。
+- 为空库与真实历史升级库补齐 migration smoke，覆盖 DDL、数据迁移重试、verify、补偿、锁风险与完成记录。
+- 将模块 env 声明、配置冲突校验、密钥保护、Provider/Sandbox/子进程环境白名单收敛到设计规定的边界；模块不得直接读 `process.env` 或 `.env`，前端不得获得 server secret。
+- 整理 `scripts/`、`deploy/compose/`、镜像构建、无密钥 env 模板、migration、data migration、preflight、readiness、SBOM、备份、回滚与不可逆迁移补偿的交付链路；脚本只做薄编排，不承载业务逻辑。
+
+### 1.8 日志、测试、文档与收口证据
+
+- 保持并规范 `@fenix/logger` 与请求 ALS：HTTP 入口创建并返回 `requestId`，异步任务/实例/relay 显式传递关联 ID；日志记录关键状态、重试、超时和外部失败，但不记录密钥、Cookie、连接串、完整 prompt/文件或未脱敏响应。
+- 迁移、补充并运行资源级、跨包 contract、授权隔离、Runtime、协议、前端、迁移和部署测试；测试入口与 CI 必须扫描新目录。
+- 更新实际架构、开发指南、运维说明、模块 README 和必要 ADR，使其与最终代码、公开接口、部署和迁移方式一致；移除过期说明与临时边界豁免。
+- 完成目录 owner、依赖图、公开出口、授权、三条 Agent 通信路径、Web bundle、DB/迁移、镜像启动与关闭、deploy preflight/readiness、回滚演练和关键 E2E 的最终证据，并确保 `bun run precheck`、`bun run build:web`、`bun run docs:build` 及相关 migration/E2E 检查通过。
