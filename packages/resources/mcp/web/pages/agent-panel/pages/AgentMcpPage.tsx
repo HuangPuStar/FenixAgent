@@ -1,13 +1,13 @@
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@fenix/agent-config/web/types/config";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { mcpApi } from "@/src/api/mcp";
-import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "@/src/lib/mcp-resource-access";
+import { mcpApi } from "../../../api/mcp";
+import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import { AgentMcpCatalog } from "./agent-mcp-catalog";
 import { AgentMcpDialog, type McpEditorTarget } from "./agent-mcp-dialog";
 import type { McpCatalogScope } from "./agent-mcp-utils";

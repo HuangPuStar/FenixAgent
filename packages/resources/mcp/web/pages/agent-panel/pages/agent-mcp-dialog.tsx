@@ -1,18 +1,18 @@
 import type { McpServerInfo } from "@fenix/agent-config/web/types/config";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { mcpApi } from "@/src/api/mcp";
+import { mcpApi } from "../../../api/mcp";
 import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import {
   buildMcpPayload,

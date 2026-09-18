@@ -1,4 +1,12 @@
 import type { McpServerInfo, McpToolInfo } from "@fenix/agent-config/web/types/config";
+import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
@@ -17,14 +25,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
 import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
