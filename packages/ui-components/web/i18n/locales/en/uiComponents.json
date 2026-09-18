@@ -285,45 +285,6 @@
     "scrollToLastUserMessage": "Scroll to last user message",
     "startConversation": "Start a conversation to see messages here"
   },
-  "cron": {
-    "custom": "Custom",
-    "customCron": "Custom cron",
-    "describe": {
-      "daily": "Daily at {{time}} {{period}}",
-      "everyNMinutes": "Every {{minutes}} min",
-      "monthly": "Monthly on day {{day}} at {{time}} {{period}}",
-      "periodAfternoon": "PM",
-      "periodMorning": "AM",
-      "periodNoon": "PM",
-      "weekday": {
-        "fri": "Fri",
-        "mon": "Mon",
-        "sat": "Sat",
-        "sun": "Sun",
-        "thu": "Thu",
-        "tue": "Tue",
-        "wed": "Wed"
-      },
-      "weekdaySeparator": ", ",
-      "weekly": "Weekly on {{days}} at {{time}} {{period}}",
-      "yearly": "Yearly on {{month}}/{{day}} at {{time}} {{period}}"
-    },
-    "error": {
-      "empty": "Cron cannot be empty",
-      "fieldCount": "Cron expression must have 5 fields",
-      "invalid": "Invalid cron expression, please check the field value ranges"
-    },
-    "parsedResult": "Parsed",
-    "preset": "Preset",
-    "presets": {
-      "daily9am": "Daily at 9:00 AM",
-      "every5min": "Every 5 min",
-      "everyHour": "Every hour",
-      "monthly1st": "1st of month",
-      "weekday9am": "Weekdays at 9:00 AM"
-    },
-    "quickSelect": "Quick Select"
-  },
   "dataTable": {
     "actions": "Actions",
     "noData": "No data",
@@ -417,11 +378,6 @@
     "primaryModel": "Primary Model",
     "subAgent": "Sub-Agent",
     "unconfigured": "Unconfigured"
-  },
-  "tagInput": {
-    "clear": "Clear",
-    "placeholder": "Filter by tag…",
-    "removeTag": "Remove tag {{tag}}"
   },
   "tool": {
     "error": "Error",

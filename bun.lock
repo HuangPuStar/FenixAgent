@@ -536,7 +536,6 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
-        "cron-parser": "^4.9.0",
         "lucide-react": "^1.47.0",
         "motion": "^13.4.0",
         "nanoid": "^6.0.1",

@@ -285,45 +285,6 @@
     "scrollToLastUserMessage": "滚动到最后一条用户消息",
     "startConversation": "开始对话以查看消息"
   },
-  "cron": {
-    "custom": "自定义",
-    "customCron": "自定义 cron",
-    "describe": {
-      "daily": "每天{{period}} {{time}}",
-      "everyNMinutes": "每 {{minutes}} 分钟",
-      "monthly": "每月 {{day}} 号{{period}} {{time}}",
-      "periodAfternoon": "下午",
-      "periodMorning": "上午",
-      "periodNoon": "中午",
-      "weekday": {
-        "fri": "五",
-        "mon": "一",
-        "sat": "六",
-        "sun": "日",
-        "thu": "四",
-        "tue": "二",
-        "wed": "三"
-      },
-      "weekdaySeparator": "、",
-      "weekly": "每周{{days}}{{period}} {{time}}",
-      "yearly": "{{month}}月{{day}}号{{period}}{{time}}"
-    },
-    "error": {
-      "empty": "Cron 不能为空",
-      "fieldCount": "Cron 表达式必须为 5 个字段",
-      "invalid": "Cron 表达式无效，请检查字段取值范围"
-    },
-    "parsedResult": "解析结果",
-    "preset": "预设",
-    "presets": {
-      "daily9am": "每天上午 9:00",
-      "every5min": "每 5 分钟",
-      "everyHour": "每小时",
-      "monthly1st": "每月 1 号",
-      "weekday9am": "工作日上午 9:00"
-    },
-    "quickSelect": "快捷选择"
-  },
   "dataTable": {
     "actions": "操作",
     "noData": "暂无数据",
@@ -417,11 +378,6 @@
     "primaryModel": "主模型",
     "subAgent": "子Agent",
     "unconfigured": "未配置"
-  },
-  "tagInput": {
-    "clear": "清除",
-    "placeholder": "按标签筛选…",
-    "removeTag": "移除标签 {{tag}}"
   },
   "tool": {
     "error": "错误",

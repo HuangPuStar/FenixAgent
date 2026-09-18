@@ -42,14 +42,22 @@ demo/                     Vite 展示页（非库产物）
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
 | `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
-| `web/ui/cron-editor.tsx` | 描述与校验的中文硬编码（每 N 分钟、上午/中午/下午、星期名、三条校验错误）+ `NS.TASKS_V2` | 全部改走包内 `cron.*` 键（含插值）；`t` 签名放宽为导出的 `CronTranslate`，`useTranslation` 的 `t` 无需 cast 即可传入，中文输出与源实现逐字一致 |
-| `web/ui/searchable-select.tsx` | `SearchableUsageFilter`（沙箱消耗统计域命名） | 改名 `SearchableSelect` / `SearchableSelectOption` 去掉领域词；文案（`allLabel` / `emptyLabel` / `searchPlaceholder`）全部由 props 传入，组件零 i18n 依赖 |
-| `web/ui/tag-filter-input.tsx` | `NS.HINDSIGHT` 的 `dataView.filterByTagPlaceholder` / `dataView.removeTag` / `common.clear`，且 `common.clear` 挂了 `defaultValue: "Clear"` | 换成包内 `tagInput.placeholder` / `tagInput.removeTag` / `tagInput.clear`；去掉 `defaultValue` 兜底，包内字典是唯一文案来源 |
-| `web/ui/segmented-switcher.tsx` | `MemoryViewSwitcher` / `MemoryViewOption`（记忆视图域命名） | 改名 `SegmentedSwitcher` / `SegmentedSwitcherOption`；`label` / `ariaLabel` 本就是 props，泛型与 ARIA 属性未变 |
-| `web/layout/collapsible-side-panel.tsx` | `MemoryVisualizationShell`（记忆图谱域命名与注释） | 改名 `CollapsibleSidePanel` 并去掉领域注释；props 与 `children(height)` 测量式渲染契约原样保留（见「已知限制」第 11 条） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。
+
+### 收录范围：只收录源自 `apps/web` 的组件
+
+抽取过程中曾把 `packages/resources/{sandbox,memory,task}/web` 的 5 个组件一并纳入
+（`SearchableSelect`、`TagFilterInput`、`SegmentedSwitcher`、`CronEditor`、`CollapsibleSidePanel`）。
+这 5 个在 `apps/web` 中既无同名实现也无功能等价物，且 `apps/web` 不依赖任何 `@fenix/resources` 包
+（`apps/web/package.json` 无相关依赖，源码中零 import），因此不属于「web 的通用前端组件」，已于 2026-09-18 删除，
+连同它们的 barrel 出口、demo 示例、`cron` / `tagInput` 文案键与 `cron-parser` 依赖。
+
+- 影响范围：这 5 个组件在源包（如 `packages/resources/task/web/pages/agent-panel/components/CronEditor.tsx`）
+  中仍各自存在，删除只影响本包的覆盖面，不影响任何消费方——本包尚未被接入。
+- 重新纳入的条件：先确认这些组件的宿主归属与真实消费方（谁渲染、谁提供文案与数据），
+  再按同一套纯化约定单独评估，不要因为「看起来通用」而再次越过 `apps/web` 这条范围线。
 
 ## i18n
 
@@ -119,11 +127,6 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
     - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
     - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
-11. **`CollapsibleSidePanel` 的测量式子渲染与断点限制**：`children` 是 `(height: number) => ReactNode`，
-    高度来自 `ResizeObserver` 且初始值为 1，画布类子组件需自行处理首帧高度 1；侧栏展开使用 `md:` 断点，
-    小屏下宽度恒为 0 且未提供移动端抽屉替代；折叠动画无 `prefers-reduced-motion` 降级。
-    - 影响范围：仅影响直接使用该容器的页面；本包不提供移动端替代交互。
-    - 移除条件：宿主统一提供响应式抽屉方案时，再决定是否在包内补齐。
 
 ## 未来接入 apps/web（本期不做）
 
