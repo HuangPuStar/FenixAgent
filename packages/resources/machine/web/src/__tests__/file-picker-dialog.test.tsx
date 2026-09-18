@@ -27,7 +27,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("imports Dialog component from ui/dialog", async () => {
-    const dialogMod = await import("@/components/ui/dialog");
+    const dialogMod = await import("@fenix/ui-components/ui/dialog");
     expect(typeof dialogMod.Dialog).toBe("function");
     expect(typeof dialogMod.DialogContent).toBe("function");
     expect(typeof dialogMod.DialogTitle).toBe("function");
