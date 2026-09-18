@@ -16,10 +16,9 @@ fenix/ 或 fenix-ee/
 │   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符
 │   │   └── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
 │   ├── agent-runtime/                  # @fenix/agent-runtime：统一组合原 src 中的 Agent 运行编排
-│   ├── core/                           # @fenix/core：进程与实例执行内核
-│   ├── orchestration/                  # @fenix/orchestration：节点与实例编排基础能力
-│   ├── chat-channel/                   # @fenix/chat-channel：Chat/YJS 协议、状态与传输
-│   ├── remote-runtime/                 # @fenix/remote-runtime：远端运行与 relay transport
+│   ├── <other 1>/                      # SDK、插件等独立包，如 acp-link、core、plugins，服务模块直接包引用，内部不需要遵循 资源包内部目录规范
+│   ├── <other 2>/
+│   ├── <other n>/
 │   ├── resources/                      # 完整资源领域模块（后端、DB、web contribution）
 │   │   ├── agent-config/               # 默认实现；EE 仓库以同路径扩展发布/审批
 │   │   └── <resource>/
