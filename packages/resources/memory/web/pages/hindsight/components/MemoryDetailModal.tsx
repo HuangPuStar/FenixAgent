@@ -1,10 +1,10 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Calendar, Loader2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { hindsightApi } from "@/src/api/hindsight";
+import { hindsightApi } from "../../../api/hindsight";
 import type { MemoryDetail } from "../types";
 
 interface MemoryDetailModalProps {

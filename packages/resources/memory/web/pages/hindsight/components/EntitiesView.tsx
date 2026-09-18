@@ -1,3 +1,5 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertCircle,
@@ -12,9 +14,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { hindsightApi } from "@/src/api/hindsight";
+import { hindsightApi } from "../../../api/hindsight";
 import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
