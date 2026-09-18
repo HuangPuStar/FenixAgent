@@ -1,3 +1,10 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -5,15 +12,8 @@ import { CheckCircle2, Clock, Play, Settings2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { ExecutionLogInfo, TaskV2Info } from "@/src/api/tasks-v2";
-import { taskV2Api } from "@/src/api/tasks-v2";
-import { cn } from "@/src/lib/utils";
+import type { ExecutionLogInfo, TaskV2Info } from "../../api/tasks-v2";
+import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
 
 interface TasksPanelProps {

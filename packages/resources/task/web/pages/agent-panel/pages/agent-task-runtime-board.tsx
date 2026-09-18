@@ -1,9 +1,9 @@
+import { Tabs, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Activity, CheckCircle2, Clock3, PauseCircle, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { TaskV2Info } from "@/src/api/tasks-v2";
+import type { TaskV2Info } from "../../../api/tasks-v2";
 import { describeCron } from "../components/CronEditor";
 import { projectCronOccurrences, projectTaskTime } from "./agent-tasks-utils";
 import "./agent-tasks.css";

@@ -1,4 +1,16 @@
 import type { AgentInfo } from "@fenix/agent-config/web/types/config";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@fenix/ui-components/ui/dropdown-menu";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   CheckCircle2,
@@ -17,19 +29,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
+import type { HttpDefinition, TaskV2Info } from "../../../api/tasks-v2";
 import { describeCron } from "../components/CronEditor";
 import { formatTaskRelativeTime } from "./agent-tasks-utils";
 

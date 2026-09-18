@@ -1,6 +1,6 @@
 import { parseExpression } from "cron-parser";
 import { z } from "zod/v4";
-import type { AgentDefinition, HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
+import type { AgentDefinition, HttpDefinition, TaskV2Info } from "../../../api/tasks-v2";
 import type { TaskFormValues } from "../components/TaskForm";
 
 function isValidCronExpression(cron: string, timezone: string): boolean {
