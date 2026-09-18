@@ -3,6 +3,273 @@
     "clear": "清除",
     "selected": "已选择 {{count}} 项"
   },
+  "chat": {
+    "agentPanel": {},
+    "components": {
+      "acpMain": {
+        "cancel": "取消",
+        "cannotDeleteActiveSession": "当前活动会话不能删除",
+        "chatBusy": "请等待当前对话完成后再切换会话",
+        "clickToCreate": "点击上方 + 创建新会话",
+        "delete": "删除",
+        "deleteConfirm": "确定要删除会话 \"{{title}}\" 吗？此操作不可撤销。",
+        "deleteFailed": "删除失败：{{message}}",
+        "deleteSessionTitle": "删除会话",
+        "earlier": "更早",
+        "historySessions": "历史会话",
+        "newSession": "新会话",
+        "noSessions": "暂无会话",
+        "rename": "重命名",
+        "renameFailed": "重命名失败：{{message}}",
+        "sessions": "会话",
+        "today": "今天",
+        "yesterday": "昨天"
+      },
+      "agentBadge": {
+        "edit": "编辑",
+        "enterChat": "进入对话"
+      },
+      "askUser": {
+        "next": "下一个",
+        "nextQuestion": "下一个问题",
+        "previous": "上一个问题",
+        "submit": "提交",
+        "title": "需要你回答"
+      },
+      "chatComposer": {
+        "attach": "添加图片或文件",
+        "context": "上下文",
+        "contextUsed": "已使用 {{count}} / {{limit}} Token",
+        "contextUsedUnknownLimit": "已使用 {{count}} Token，上下文上限未知",
+        "fileButton": "文件",
+        "fileTooLarge": "单个文件不能超过 100 MB",
+        "filesTooLarge": "一次上传的文件总量不能超过 100 MB",
+        "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
+        "newSession": "新会话",
+        "send": "发送",
+        "skillButton": "技能",
+        "stop": "停止",
+        "uploadFailed": "文件上传失败",
+        "uploadingFiles": "正在上传 {{count}} 个文件…"
+      },
+      "chatEmpty": {
+        "eyebrow": "从一次充分讨论开始",
+        "noSkills": "暂无绑定 Skills",
+        "readyWithAgent": "{{agentName}} 已准备就绪",
+        "skills": "已加载 Skills",
+        "skillsHint": "输入 / 打开 Skill 弹窗",
+        "startConversation": "开始对话",
+        "startConversationDesc": "描述想法、贴入上下文，或从一个话题开始讨论。",
+        "suggestionBuild": "讨论构建失败的可能原因",
+        "suggestionPlan": "讨论技术方案的选择与取舍",
+        "suggestionReview": "讨论代码变更的思路与风险"
+      },
+      "chatHeader": {
+        "hideSessions": "收起会话面板",
+        "newSession": "新会话",
+        "noResults": "没有匹配的会话",
+        "searchPlaceholder": "搜索历史会话…",
+        "showSessions": "展开会话面板"
+      },
+      "chatInput": {
+        "placeholder": "给智能体发送消息…"
+      },
+      "chatInterface": {
+        "agentPlaceholder": "给智能体发送消息…",
+        "readonlyMode": "只读模式 — 无法发送消息",
+        "waitingSession": "等待会话..."
+      },
+      "chatStatus": {
+        "added": "新增",
+        "changes": "Changes",
+        "modified": "已修改",
+        "subtasks": "子任务",
+        "title": "状态显示",
+        "todo": "Todo",
+        "todoStatus": {
+          "completed": "已完成",
+          "in_progress": "正在执行",
+          "pending": "排队中"
+        },
+        "toggle": "展开或收起状态"
+      },
+      "chatView": {
+        "startConversation": "开始对话",
+        "startConversationDesc": "输入消息开始聊天",
+        "thinking": "思考中"
+      },
+      "commandMenu": {
+        "connected": "已连接",
+        "mcps": "MCP 插件",
+        "mcpsCaption": "Agent 已绑定的连接",
+        "noMatch": "没有匹配的命令",
+        "searchPlaceholder": "搜索命令名称或说明",
+        "selectedCapabilities": "本轮已选择能力",
+        "skills": "Skills",
+        "skillsCaption": "当前对话的工作方式"
+      },
+      "composerAssets": {
+        "image": "待发送图片",
+        "imageNumber": "图片 {{count}}",
+        "prepareImageFailed": "图片处理失败，请移除后重试",
+        "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用",
+        "quoteNumber": "引用 {{count}}",
+        "quoteTruncated": "引用过长，已省略 {{count}} 个字符",
+        "quoteTruncatedBadge": "{{count}} chars omitted",
+        "removeFile": "移除 {{name}}",
+        "removeImage": "移除图片",
+        "removeQuote": "移除引用",
+        "title": "待发送 Assets"
+      },
+      "contextPanel": {
+        "hideContext": "隐藏上下文面板",
+        "input": "输入",
+        "messages": "消息",
+        "noToolCalls": "暂无工具调用",
+        "output": "输出",
+        "pendingConfirmation": "待确认",
+        "running": "运行中",
+        "showContext": "显示上下文面板",
+        "tokenUsage": "Token 用量",
+        "tokens": "Token",
+        "toolCalls": "工具调用",
+        "tools": "工具",
+        "unknownModel": "未知"
+      },
+      "filePicker": {
+        "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
+        "loadFailed": "加载文件失败",
+        "noFiles": "暂无文件",
+        "searchPlaceholder": "搜索文件...",
+        "totalTooLarge": "文件总量 {{total}} 超过了单次上传 {{max}} 限制，请分批次上传",
+        "uploadFailed": "上传失败",
+        "uploadFile": "上传文件",
+        "uploadTooLarge": "上传失败：文件大小超过 100MB 限制"
+      },
+      "fileTree": {
+        "openFile": "打开 {{name}}"
+      },
+      "hindsightToolCard": {
+        "failed": "失败"
+      },
+      "messageBubble": {
+        "actions": "消息操作",
+        "addToConversation": "添加到对话",
+        "copy": "复制",
+        "expand": "展开",
+        "imagePreview": "图片预览",
+        "openSystemMessage": "双击查看系统提醒详情",
+        "quote": "引用",
+        "systemMessage": "系统提醒",
+        "systemMessageDescription": "以下内容由系统注入，仅供检查当前会话上下文。",
+        "turnError": "执行出错",
+        "uploadedImage": "已上传图片"
+      },
+      "periTask": {
+        "activeCount": "{{count}} 进行中",
+        "detailClose": "关闭",
+        "detailExpired": "此任务详情已过期。",
+        "detailLoadFailed": "详情加载失败",
+        "detailLoading": "正在加载详情…",
+        "detailRetry": "重试",
+        "detailTitle": "任务详情",
+        "detailUnavailable": "Peri 未提供此任务的详情。",
+        "empty": "暂无任务",
+        "kindBackground": "后台任务",
+        "kindSubagent": "子代理",
+        "loading": "正在加载任务…",
+        "previewOnly": "仅提供摘要",
+        "reconnecting": "重连中 — 任务列表可能不完整",
+        "status": {
+          "cancelled": "已取消",
+          "completed": "已完成",
+          "failed": "失败",
+          "running": "运行中"
+        },
+        "subtype": {
+          "agent": "Agent",
+          "shell": "Shell",
+          "workflow": "Workflow"
+        },
+        "syncing": "正在同步任务…",
+        "title": "任务活动",
+        "unknownTitle": "未知任务",
+        "viewDetail": "查看详情"
+      },
+      "permissionPanel": {
+        "aboutToRun": "即将执行",
+        "audit": "本次选择将记录在会话审计中",
+        "title": "权限确认",
+        "waiting": "Agent 正在等待"
+      },
+      "promptJump": {
+        "title": "用户提示词快速跳转",
+        "untitled": "未命名提示词"
+      },
+      "sessionModeSelector": {
+        "default": "默认"
+      },
+      "subAgentPanel": {
+        "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤",
+        "title": "子 Agent 执行轨迹"
+      },
+      "todoChanges": {
+        "added": "新增",
+        "completed": "已完成",
+        "in_progress": "进行中",
+        "pending": "待办",
+        "removed": "移除",
+        "updated": "更新"
+      },
+      "todoPanel": {
+        "completed": "已完成",
+        "inProgress": "进行中"
+      },
+      "toolCallGroup": {
+        "input": "输入",
+        "output": "输出"
+      },
+      "toolCallRow": {
+        "previewFile": "预览 {{path}}",
+        "running": "工具正在执行中…",
+        "toolName": "工具",
+        "viewParams": "查看参数"
+      }
+    },
+    "toolNarrator": {
+      "common": {
+        "inPath": "在 {{path}}",
+        "lineRange": "第 {{range}} 行",
+        "status": {
+          "canceled": "已取消",
+          "complete": "已完成",
+          "error": "失败",
+          "running": "进行中",
+          "waiting_for_confirmation": "待确认"
+        },
+        "subtitle": "{{verb}} {{object}}",
+        "subtitleRunning": "正在{{verb}} {{object}}"
+      },
+      "edit": {
+        "changes": "{{count}} 处"
+      },
+      "glob": {
+        "files": "{{count}} 个文件"
+      },
+      "grep": {
+        "results": "找到 {{count}} 个"
+      },
+      "read": {
+        "entries": "{{count}} 个条目"
+      },
+      "todo": {
+        "items": "{{count}} 项"
+      },
+      "webSearch": {
+        "results": "找到 {{count}} 个"
+      }
+    }
+  },
   "codeBlock": {
     "copied": "已复制",
     "copy": "复制"
@@ -18,6 +285,45 @@
     "scrollToLastUserMessage": "滚动到最后一条用户消息",
     "startConversation": "开始对话以查看消息"
   },
+  "cron": {
+    "custom": "自定义",
+    "customCron": "自定义 cron",
+    "describe": {
+      "daily": "每天{{period}} {{time}}",
+      "everyNMinutes": "每 {{minutes}} 分钟",
+      "monthly": "每月 {{day}} 号{{period}} {{time}}",
+      "periodAfternoon": "下午",
+      "periodMorning": "上午",
+      "periodNoon": "中午",
+      "weekday": {
+        "fri": "五",
+        "mon": "一",
+        "sat": "六",
+        "sun": "日",
+        "thu": "四",
+        "tue": "二",
+        "wed": "三"
+      },
+      "weekdaySeparator": "、",
+      "weekly": "每周{{days}}{{period}} {{time}}",
+      "yearly": "{{month}}月{{day}}号{{period}}{{time}}"
+    },
+    "error": {
+      "empty": "Cron 不能为空",
+      "fieldCount": "Cron 表达式必须为 5 个字段",
+      "invalid": "Cron 表达式无效，请检查字段取值范围"
+    },
+    "parsedResult": "解析结果",
+    "preset": "预设",
+    "presets": {
+      "daily9am": "每天上午 9:00",
+      "every5min": "每 5 分钟",
+      "everyHour": "每小时",
+      "monthly1st": "每月 1 号",
+      "weekday9am": "工作日上午 9:00"
+    },
+    "quickSelect": "快捷选择"
+  },
   "dataTable": {
     "actions": "操作",
     "noData": "暂无数据",
@@ -26,6 +332,43 @@
   },
   "datePicker": {
     "placeholder": "选择日期"
+  },
+  "fileTree": {
+    "accessibleName": "文件树",
+    "clearSearch": "清除文件搜索",
+    "contextMenu": {
+      "delete": "删除",
+      "move": "移动",
+      "newFolder": "新建文件夹",
+      "reference": "引用到聊天",
+      "rename": "重命名"
+    },
+    "download": "下载",
+    "downloadZip": "下载 ZIP",
+    "downloading": "正在下载...",
+    "dropToUpload": "释放文件以上传",
+    "emptyHint": "通过上方按钮或拖拽文件到此处上传",
+    "emptyState": "工作区暂无文件",
+    "newFile": "新建文件",
+    "noSearchResults": "没有匹配的文件",
+    "preview": {
+      "download": "下载",
+      "fullscreen": "全屏",
+      "loading": "加载中...",
+      "noFileSelected": "选择文件以预览",
+      "retry": "重试"
+    },
+    "refresh": "刷新",
+    "retry": "重试",
+    "retryDownload": "重试下载",
+    "searchPlaceholder": "搜索文件",
+    "staleBanner": "文件服务暂时不可用，正在自动重连",
+    "title": "文件",
+    "upload": "上传",
+    "uploadFolder": "上传文件夹",
+    "user": "我的文件",
+    "userEmptyState": "暂无文件",
+    "workspace": "工作区"
   },
   "formDialog": {
     "cancel": "取消",
@@ -75,6 +418,11 @@
     "subAgent": "子Agent",
     "unconfigured": "未配置"
   },
+  "tagInput": {
+    "clear": "清除",
+    "placeholder": "按标签筛选…",
+    "removeTag": "移除标签 {{tag}}"
+  },
   "tool": {
     "error": "错误",
     "parameters": "参数",
@@ -89,6 +437,7 @@
     "statusRunning": "运行中"
   },
   "tree": {
+    "loading": "加载中…",
     "showMore": "+{{count}} 更多"
   }
 }

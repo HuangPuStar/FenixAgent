@@ -1,6 +1,8 @@
 import type { GlyphType } from "react-file-icon";
 import { FileIcon } from "react-file-icon";
 
+import { cn } from "../lib/cn";
+
 /**
  * 从文件名中提取扩展名（不含点号前缀），无扩展名返回空字符串。
  * 仅处理最后一个点号之后的部分。
@@ -260,25 +262,52 @@ function hashColor(str: string): string {
 }
 
 /**
+ * 默认外框尺寸：16px 见方（与源仓库最常见的 `h-4 w-4` 图标位一致）。
+ *
+ * react-file-icon 渲染的是 `<svg width="100%">` 且**没有固有高度**（viewBox 40×48），
+ * 所以尺寸必须由外部容器决定。源仓库把这个约束放在每个使用点
+ * （`<span className="h-3.5 w-3.5"><FileTypeIcon /></span>`），组件自身不带；
+ * 一旦独立使用（demo、其它宿主）就会撑满父容器宽度并按 1.2 倍给出高度，
+ * 渲染成巨大的图标。故把尺寸收进组件，源仓库的既有包裹写法依旧生效（见下）。
+ */
+const DEFAULT_SIZE_CLASS = "size-4";
+
+export interface FileTypeIconProps {
+  filename: string;
+  /** 覆盖默认外框尺寸（Tailwind 尺寸类）；默认 `size-4`。 */
+  className?: string;
+}
+
+/**
  * 根据文件名渲染对应的 react-file-icon 文件类型图标。
  * 替换通用的 File 图标，按扩展名展示不同颜色和类型的文件图标。
  * 已知扩展名使用预定义配色，未知扩展名使用哈希颜色确保区分度。
+ *
+ * 外框同时带 `max-h-full max-w-full`，让**更小**的外部尺寸容器仍然说话算数
+ * （如源文件树的 12px 图标位）：父元素尺寸确定时 100% 生效并收窄本组件；
+ * 父元素尺寸为 auto 时按 CSS 规则百分比最大值视为 none，回落到默认尺寸。
  */
-export function FileTypeIcon({ filename }: { filename: string }) {
+export function FileTypeIcon({ filename, className }: FileTypeIconProps) {
   const ext = getFileExtension(filename);
 
-  if (!ext) {
-    return <FileIcon type="document" color="#78909C" />;
-  }
+  const icon = !ext ? (
+    <FileIcon type="document" color="#78909C" />
+  ) : EXT_COLORS[ext] ? (
+    <FileIcon extension={ext} {...EXT_COLORS[ext]} />
+  ) : (
+    // 无预设的扩展名：用 hash 取色 + 推断 glyph 类型
+    <FileIcon extension={ext} color={hashColor(ext)} type={guessType(ext)} />
+  );
 
-  const custom = EXT_COLORS[ext];
-  if (custom) {
-    return <FileIcon extension={ext} {...custom} />;
-  }
-
-  // 无预设的扩展名：用 hash 取色 + 推断 glyph 类型
-  const color = hashColor(ext);
-  const type = guessType(ext);
-
-  return <FileIcon extension={ext} color={color} type={type} />;
+  return (
+    <span
+      className={cn(
+        DEFAULT_SIZE_CLASS,
+        "inline-flex max-h-full max-w-full shrink-0 items-center justify-center [&>svg]:size-full",
+        className,
+      )}
+    >
+      {icon}
+    </span>
+  );
 }

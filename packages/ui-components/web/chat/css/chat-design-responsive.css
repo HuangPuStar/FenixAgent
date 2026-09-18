@@ -1,0 +1,24 @@
+/*
+ * Chat 窄屏适配：交互栈/状态面板宽度、输入岛内边距、次要文案与页签文字的收缩。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-responsive.css，逐字复制。
+ * 纯化改动：无（保持源选择器前缀不变）。媒体查询内的规则与 chat-design-status.css、
+ * chat-design-composer.css 中的同名选择器构成特指度相同的级联，源侧依赖导入顺序；本文件在
+ * web/chat/css/chat.css 中最后导入，与源聚合器 chat-design.css 的导入顺序一致。
+ */
+@media (max-width: 720px) {
+  .chat-interaction-stack,
+  .chat-status-panel {
+    width: calc(100% - 20px);
+  }
+  .chat-composer-wrapper {
+    padding-inline: 10px;
+  }
+  .chat-composer-context strong,
+  .chat-composer-context > span {
+    display: none;
+  }
+  .chat-status-tabs button span {
+    display: none;
+  }
+}

@@ -18,7 +18,7 @@ web/                      组件源码；必须在 web/ 下
   lib/                    cn / i18n 命名空间常量 / theme / card-renderer
   styles/theme.css        设计 token（唯一样式入口）
   i18n/locales/{en,zh}/   包内文案，命名空间 uiComponents
-  ui/ config/ ai-elements/ components/ layout/
+  ui/ config/ chat/ components/ layout/
 demo/                     Vite 展示页（非库产物）
 ```
 
@@ -34,9 +34,19 @@ demo/                     Vite 展示页（非库产物）
 | `web/lib/i18n.ts` | `@/src/i18n` 单例 + `NS.COMPONENTS` / `NS.COMMON` | 只导出 `UI_COMPONENTS_NS = "uiComponents"`，资源由宿主注册 |
 | `web/lib/theme.tsx` | 源实现临时强制浅色，忽略 localStorage 与系统偏好 | 移除该 hack：初始主题取 localStorage，缺省回退 `defaultTheme`，`system` 跟随系统 |
 | `web/lib/card-renderer.tsx` | `@/src/lib/card-renderer/registry` + context/emitter | 只保留注册表，去掉会话事件通道；初始注册表为空 |
-| `web/ai-elements/conversation.css` | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖 |
-| `web/ai-elements/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
+| `web/chat/primitives/conversation.css` | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖 |
+| `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
+| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 9 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；`locale` / `messages` 提为 props，默认值与源一致 |
+| `web/components/preview/FileViewerPreview.tsx` 错误边界内的中文串 | 「预览组件加载失败」等提示硬编码中文 | 逐字保留：它是 React 边界内的兜底提示，不属于预览器文案，未纳入 props；需要多语言的宿主应在外层包一层本地化边界（见「已知限制」第 10 条） |
+| `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
+| `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
+| `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
+| `web/ui/cron-editor.tsx` | 描述与校验的中文硬编码（每 N 分钟、上午/中午/下午、星期名、三条校验错误）+ `NS.TASKS_V2` | 全部改走包内 `cron.*` 键（含插值）；`t` 签名放宽为导出的 `CronTranslate`，`useTranslation` 的 `t` 无需 cast 即可传入，中文输出与源实现逐字一致 |
+| `web/ui/searchable-select.tsx` | `SearchableUsageFilter`（沙箱消耗统计域命名） | 改名 `SearchableSelect` / `SearchableSelectOption` 去掉领域词；文案（`allLabel` / `emptyLabel` / `searchPlaceholder`）全部由 props 传入，组件零 i18n 依赖 |
+| `web/ui/tag-filter-input.tsx` | `NS.HINDSIGHT` 的 `dataView.filterByTagPlaceholder` / `dataView.removeTag` / `common.clear`，且 `common.clear` 挂了 `defaultValue: "Clear"` | 换成包内 `tagInput.placeholder` / `tagInput.removeTag` / `tagInput.clear`；去掉 `defaultValue` 兜底，包内字典是唯一文案来源 |
+| `web/ui/segmented-switcher.tsx` | `MemoryViewSwitcher` / `MemoryViewOption`（记忆视图域命名） | 改名 `SegmentedSwitcher` / `SegmentedSwitcherOption`；`label` / `ariaLabel` 本就是 props，泛型与 ARIA 属性未变 |
+| `web/layout/collapsible-side-panel.tsx` | `MemoryVisualizationShell`（记忆图谱域命名与注释） | 改名 `CollapsibleSidePanel` 并去掉领域注释；props 与 `children(height)` 测量式渲染契约原样保留（见「已知限制」第 11 条） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。
@@ -72,13 +82,13 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
 4. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
    `*, ::before, ::after { border-color: var(--color-border) }`（包内 51 处只写宽度的 `border` / `divide-*` 依赖它，
    否则回落到 `currentColor`）、`:focus-visible { outline: none }`（组件自带 ring，缺它会双层描边）与
-   `prefers-reduced-motion` 降级；`ai-elements/chat-message-content.css` 另带走两条全局 streamdown 规则
+   `prefers-reduced-motion` 降级；`chat/primitives/chat-message-content.css` 另带走两条全局 streamdown 规则
    （隐藏 streamdown 代码块头部、放行浮动操作按钮点击）。
    以下仍是应用壳，不进入包内：`html, body` 的字号字体、sonner 定位、滚动条，以及
    `@utility tool-status-pill*` / `tool-call-*` 与 `@keyframes`（`status-active-pulse`、`shimmerSlide`、
    `agent-badge-pulse` 等）。
    - 影响范围：这些 `@utility` / `@keyframes` 的实际使用方是 `agent-runtime`、`chat-channel` 的组件
-     （`ToolCallRow`、`AgentBadge`、`ContextPanel` 等），本包 `ui/`、`config/`、`ai-elements/` 下组件均不引用；
+     （`ToolCallRow`、`AgentBadge`、`ContextPanel` 等），本包 `ui/`、`config/`、`chat/` 下组件均不引用；
      后续批次若引入依赖它们的组件需重新评估。
    - demo 为观感一致，自行复制了 `html, body` 基准字号与滚动条，不随包分发。
 5. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
@@ -86,7 +96,7 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
 6. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
    为 streamdown 全屏表格对话框补上缺失的 `data-streamdown="table-wrapper"`（缺失时全屏视图下的复制/下载按钮无响应）。
    该补丁依赖 streamdown 内部 DOM 结构，属于应用壳，未随组件进入本包。
-   - 影响范围：仅 `ai-elements/message.tsx`（`MessageResponse` 渲染 streamdown）的表格全屏视图；demo 未安装该补丁，
+   - 影响范围：仅 `chat/primitives/message.tsx`（`MessageResponse` 渲染 streamdown）的表格全屏视图；demo 未安装该补丁，
      需要该行为的宿主必须在自己的入口安装等价补丁。
    - 移除条件：streamdown 修复全屏表格缺失 `data-streamdown="table-wrapper"` 的行为。
 7. **`MessageResponse` 的 `envId` 指向宿主文件代理路由**：传入 `envId` 时相对资源路径会被改写为
@@ -99,6 +109,21 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    - 影响范围：宿主已注入该类的场景（如 `apps/web`）为重复声明同值；该样式表未包 `@layer`，
      其 `color: #27364f` / `font-size: 14px` 在两侧都压过 `text-text-primary`，因此行为一致。
    - 移除条件：宿主统一改为给 `MessageResponse` 提供等价的 markdown 容器类，或把排版规则改为不依赖包裹类。
+9. **`FileViewerPreview` 的默认 `buildPreviewUrl` 指向宿主文件代理路由**：不传该 prop 时预览 URL 为
+   `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
+   - 影响范围：仅默认值；与第 7 条 `MessageResponse.envId` 属同类取舍。宿主传入自定义 `buildPreviewUrl`
+     即完全解除该路由依赖。组件同时带 `import "@open-file-viewer/core/style.css"` 副作用导入，
+     消费方（含 demo）编译时需能解析该 CSS —— 依赖已列入 dependencies。
+   - 移除条件：宿主统一注入自定义构建器，或把代理前缀提升为必填 prop。
+10. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
+    React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
+    - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
+    - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
+11. **`CollapsibleSidePanel` 的测量式子渲染与断点限制**：`children` 是 `(height: number) => ReactNode`，
+    高度来自 `ResizeObserver` 且初始值为 1，画布类子组件需自行处理首帧高度 1；侧栏展开使用 `md:` 断点，
+    小屏下宽度恒为 0 且未提供移动端抽屉替代；折叠动画无 `prefers-reduced-motion` 降级。
+    - 影响范围：仅影响直接使用该容器的页面；本包不提供移动端替代交互。
+    - 移除条件：宿主统一提供响应式抽屉方案时，再决定是否在包内补齐。
 
 ## 未来接入 apps/web（本期不做）
 

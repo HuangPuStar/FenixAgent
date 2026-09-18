@@ -3,6 +3,273 @@
     "clear": "Clear",
     "selected": "{{count}} items selected"
   },
+  "chat": {
+    "agentPanel": {},
+    "components": {
+      "acpMain": {
+        "cancel": "Cancel",
+        "cannotDeleteActiveSession": "The active session cannot be deleted",
+        "chatBusy": "Please wait for the current conversation to finish before switching",
+        "clickToCreate": "Click + above to create a new session",
+        "delete": "Delete",
+        "deleteConfirm": "Delete session \"{{title}}\"? This action cannot be undone.",
+        "deleteFailed": "Delete failed: {{message}}",
+        "deleteSessionTitle": "Delete Session",
+        "earlier": "Earlier",
+        "historySessions": "History Sessions",
+        "newSession": "New Session",
+        "noSessions": "No sessions",
+        "rename": "Rename",
+        "renameFailed": "Rename failed: {{message}}",
+        "sessions": "Sessions",
+        "today": "Today",
+        "yesterday": "Yesterday"
+      },
+      "agentBadge": {
+        "edit": "Edit",
+        "enterChat": "Enter Chat"
+      },
+      "askUser": {
+        "next": "Next",
+        "nextQuestion": "Next question",
+        "previous": "Previous question",
+        "submit": "Submit",
+        "title": "Question from Agent"
+      },
+      "chatComposer": {
+        "attach": "Add image or file",
+        "context": "Context",
+        "contextUsed": "{{count}} / {{limit}} tokens used",
+        "contextUsedUnknownLimit": "{{count}} tokens used; context limit unknown",
+        "fileButton": "File",
+        "fileTooLarge": "A file cannot exceed 100 MB",
+        "filesTooLarge": "The total upload cannot exceed 100 MB",
+        "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
+        "newSession": "New Thread",
+        "send": "Send",
+        "skillButton": "Skill",
+        "stop": "Stop",
+        "uploadFailed": "File upload failed",
+        "uploadingFiles": "Uploading {{count}} files…"
+      },
+      "chatEmpty": {
+        "eyebrow": "Start with a thoughtful discussion",
+        "noSkills": "No skills bound",
+        "readyWithAgent": "{{agentName}} is ready",
+        "skills": "Loaded Skills",
+        "skillsHint": "Type / to open skill menu",
+        "startConversation": "Start a Conversation",
+        "startConversationDesc": "Share an idea, add context, or start by discussing a topic.",
+        "suggestionBuild": "Discuss possible causes of a build failure",
+        "suggestionPlan": "Discuss the options and trade-offs in a technical plan",
+        "suggestionReview": "Discuss the approach and risks of code changes"
+      },
+      "chatHeader": {
+        "hideSessions": "Hide sessions panel",
+        "newSession": "New Session",
+        "noResults": "No matching sessions",
+        "searchPlaceholder": "Search history sessions...",
+        "showSessions": "Show sessions panel"
+      },
+      "chatInput": {
+        "placeholder": "Send a message to the agent..."
+      },
+      "chatInterface": {
+        "agentPlaceholder": "Send a message to the agent...",
+        "readonlyMode": "Read-only mode — cannot send messages",
+        "waitingSession": "Waiting for session..."
+      },
+      "chatStatus": {
+        "added": "Added",
+        "changes": "Changes",
+        "modified": "Modified",
+        "subtasks": "Subtasks",
+        "title": "Status",
+        "todo": "Todo",
+        "todoStatus": {
+          "completed": "Completed",
+          "in_progress": "Running",
+          "pending": "Queued"
+        },
+        "toggle": "Expand or collapse status"
+      },
+      "chatView": {
+        "startConversation": "Start Conversation",
+        "startConversationDesc": "Send a message to start chatting",
+        "thinking": "Thinking..."
+      },
+      "commandMenu": {
+        "connected": "Connected",
+        "mcps": "MCP plugins",
+        "mcpsCaption": "Connections bound to this agent",
+        "noMatch": "No matching commands",
+        "searchPlaceholder": "Search command names or descriptions",
+        "selectedCapabilities": "Capabilities selected for this turn",
+        "skills": "Skills",
+        "skillsCaption": "Ways of working for this conversation"
+      },
+      "composerAssets": {
+        "image": "Image to send",
+        "imageNumber": "Image {{count}}",
+        "prepareImageFailed": "The image could not be processed. Remove it and try again.",
+        "quoteLimitReached": "The quote limit for this turn has been reached. Send or remove a quote first.",
+        "quoteNumber": "Quote {{count}}",
+        "quoteTruncated": "The quote was too long; {{count}} characters were omitted.",
+        "quoteTruncatedBadge": "{{count}} chars omitted",
+        "removeFile": "Remove {{name}}",
+        "removeImage": "Remove image",
+        "removeQuote": "Remove quote",
+        "title": "Assets to send"
+      },
+      "contextPanel": {
+        "hideContext": "Hide context panel",
+        "input": "Input",
+        "messages": "Messages",
+        "noToolCalls": "No tool calls",
+        "output": "Output",
+        "pendingConfirmation": "Pending",
+        "running": "Running",
+        "showContext": "Show context panel",
+        "tokenUsage": "Token Usage",
+        "tokens": "Tokens",
+        "toolCalls": "Tool Calls",
+        "tools": "Tools",
+        "unknownModel": "Unknown"
+      },
+      "filePicker": {
+        "fileTooLarge": "{{name}} is too large (max {{max}})",
+        "loadFailed": "Failed to load files",
+        "noFiles": "No files",
+        "searchPlaceholder": "Search files...",
+        "totalTooLarge": "Total file size {{total}} exceeds the {{max}} single upload limit, please upload in multiple batches",
+        "uploadFailed": "Upload failed",
+        "uploadFile": "Upload file",
+        "uploadTooLarge": "Upload failed: file size exceeds the 100MB limit"
+      },
+      "fileTree": {
+        "openFile": "Open {{name}}"
+      },
+      "hindsightToolCard": {
+        "failed": "Failed"
+      },
+      "messageBubble": {
+        "actions": "Message actions",
+        "addToConversation": "Add to conversation",
+        "copy": "Copy",
+        "expand": "Expand",
+        "imagePreview": "Image preview",
+        "openSystemMessage": "Double-click to view system reminder details",
+        "quote": "Quote",
+        "systemMessage": "SYSTEM REMINDER",
+        "systemMessageDescription": "This system-injected content is shown only for inspecting the current conversation context.",
+        "turnError": "Execution failed",
+        "uploadedImage": "Uploaded image"
+      },
+      "periTask": {
+        "activeCount": "{{count}} active",
+        "detailClose": "Close",
+        "detailExpired": "This task detail has expired.",
+        "detailLoadFailed": "Failed to load detail",
+        "detailLoading": "Loading detail...",
+        "detailRetry": "Retry",
+        "detailTitle": "Task detail",
+        "detailUnavailable": "Peri did not provide detail for this task.",
+        "empty": "No task activity yet",
+        "kindBackground": "Background",
+        "kindSubagent": "Subagent",
+        "loading": "Loading tasks...",
+        "previewOnly": "Summary only",
+        "reconnecting": "Reconnecting — task list may be incomplete",
+        "status": {
+          "cancelled": "Cancelled",
+          "completed": "Completed",
+          "failed": "Failed",
+          "running": "Running"
+        },
+        "subtype": {
+          "agent": "Agent",
+          "shell": "Shell",
+          "workflow": "Workflow"
+        },
+        "syncing": "Syncing tasks...",
+        "title": "Task Activity",
+        "unknownTitle": "Unknown task",
+        "viewDetail": "View detail"
+      },
+      "permissionPanel": {
+        "aboutToRun": "About to run",
+        "audit": "This decision will be recorded in the session audit",
+        "title": "Permission required",
+        "waiting": "Agent is waiting"
+      },
+      "promptJump": {
+        "title": "Jump to user prompts",
+        "untitled": "Untitled prompt"
+      },
+      "sessionModeSelector": {
+        "default": "Default"
+      },
+      "subAgentPanel": {
+        "summary": "{{messages}} messages · {{tools}} tool steps",
+        "title": "Sub-agent activity"
+      },
+      "todoChanges": {
+        "added": "Added",
+        "completed": "Completed",
+        "in_progress": "In progress",
+        "pending": "To do",
+        "removed": "Removed",
+        "updated": "Updated"
+      },
+      "todoPanel": {
+        "completed": "completed",
+        "inProgress": "in progress"
+      },
+      "toolCallGroup": {
+        "input": "Input",
+        "output": "Output"
+      },
+      "toolCallRow": {
+        "previewFile": "Preview {{path}}",
+        "running": "Tool is running…",
+        "toolName": "Tool",
+        "viewParams": "View Parameters"
+      }
+    },
+    "toolNarrator": {
+      "common": {
+        "inPath": "in {{path}}",
+        "lineRange": "lines {{range}}",
+        "status": {
+          "canceled": "Canceled",
+          "complete": "Done",
+          "error": "Failed",
+          "running": "Running",
+          "waiting_for_confirmation": "Pending"
+        },
+        "subtitle": "{{verb}} {{object}}",
+        "subtitleRunning": "{{verb}} {{object}}…"
+      },
+      "edit": {
+        "changes": "{{count}} change(s)"
+      },
+      "glob": {
+        "files": "{{count}} file(s)"
+      },
+      "grep": {
+        "results": "{{count}} match(es)"
+      },
+      "read": {
+        "entries": "{{count}} entries"
+      },
+      "todo": {
+        "items": "{{count}} item(s)"
+      },
+      "webSearch": {
+        "results": "{{count}} result(s)"
+      }
+    }
+  },
   "codeBlock": {
     "copied": "Copied",
     "copy": "Copy"
@@ -18,6 +285,45 @@
     "scrollToLastUserMessage": "Scroll to last user message",
     "startConversation": "Start a conversation to see messages here"
   },
+  "cron": {
+    "custom": "Custom",
+    "customCron": "Custom cron",
+    "describe": {
+      "daily": "Daily at {{time}} {{period}}",
+      "everyNMinutes": "Every {{minutes}} min",
+      "monthly": "Monthly on day {{day}} at {{time}} {{period}}",
+      "periodAfternoon": "PM",
+      "periodMorning": "AM",
+      "periodNoon": "PM",
+      "weekday": {
+        "fri": "Fri",
+        "mon": "Mon",
+        "sat": "Sat",
+        "sun": "Sun",
+        "thu": "Thu",
+        "tue": "Tue",
+        "wed": "Wed"
+      },
+      "weekdaySeparator": ", ",
+      "weekly": "Weekly on {{days}} at {{time}} {{period}}",
+      "yearly": "Yearly on {{month}}/{{day}} at {{time}} {{period}}"
+    },
+    "error": {
+      "empty": "Cron cannot be empty",
+      "fieldCount": "Cron expression must have 5 fields",
+      "invalid": "Invalid cron expression, please check the field value ranges"
+    },
+    "parsedResult": "Parsed",
+    "preset": "Preset",
+    "presets": {
+      "daily9am": "Daily at 9:00 AM",
+      "every5min": "Every 5 min",
+      "everyHour": "Every hour",
+      "monthly1st": "1st of month",
+      "weekday9am": "Weekdays at 9:00 AM"
+    },
+    "quickSelect": "Quick Select"
+  },
   "dataTable": {
     "actions": "Actions",
     "noData": "No data",
@@ -26,6 +332,43 @@
   },
   "datePicker": {
     "placeholder": "Select date"
+  },
+  "fileTree": {
+    "accessibleName": "File tree",
+    "clearSearch": "Clear file search",
+    "contextMenu": {
+      "delete": "Delete",
+      "move": "Move",
+      "newFolder": "New Folder",
+      "reference": "Reference in chat",
+      "rename": "Rename"
+    },
+    "download": "Download",
+    "downloadZip": "Download ZIP",
+    "downloading": "Downloading...",
+    "dropToUpload": "Drop files to upload",
+    "emptyHint": "Use the toolbar or drag files here to upload",
+    "emptyState": "No files in workspace",
+    "newFile": "New File",
+    "noSearchResults": "No matching files",
+    "preview": {
+      "download": "Download",
+      "fullscreen": "Fullscreen",
+      "loading": "Loading...",
+      "noFileSelected": "Select a file to preview",
+      "retry": "Retry"
+    },
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "retryDownload": "Retry download",
+    "searchPlaceholder": "Search files",
+    "staleBanner": "File service temporarily unavailable, reconnecting...",
+    "title": "File Browser",
+    "upload": "Upload",
+    "uploadFolder": "Upload Folder",
+    "user": "My files",
+    "userEmptyState": "No files",
+    "workspace": "Workspace"
   },
   "formDialog": {
     "cancel": "Cancel",
@@ -75,6 +418,11 @@
     "subAgent": "Sub-Agent",
     "unconfigured": "Unconfigured"
   },
+  "tagInput": {
+    "clear": "Clear",
+    "placeholder": "Filter by tag…",
+    "removeTag": "Remove tag {{tag}}"
+  },
   "tool": {
     "error": "Error",
     "parameters": "Parameters",
@@ -89,6 +437,7 @@
     "statusRunning": "Running"
   },
   "tree": {
+    "loading": "Loading...",
     "showMore": "+{{count}} more"
   }
 }

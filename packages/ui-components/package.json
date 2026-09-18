@@ -20,9 +20,9 @@
       "types": "./web/config/*",
       "default": "./web/config/*"
     },
-    "./ai-elements/*": {
-      "types": "./web/ai-elements/*",
-      "default": "./web/ai-elements/*"
+    "./chat/*": {
+      "types": "./web/chat/*",
+      "default": "./web/chat/*"
     },
     "./components/*": {
       "types": "./web/components/*",
@@ -49,6 +49,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
+    "@open-file-viewer/core": "^0.1.17",
+    "@open-file-viewer/react": "^0.1.17",
     "@radix-ui/react-accordion": "^1.2.20",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-checkbox": "^1.3.11",
@@ -73,10 +75,12 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cron-parser": "^4.9.0",
     "lucide-react": "^1.47.0",
     "motion": "^13.4.0",
     "nanoid": "^6.0.1",
     "radix-ui": "^1.6.7",
+    "react-arborist": "^3.16.0",
     "react-day-picker": "^10.0.1",
     "react-file-icon": "^1.6.0",
     "react-hook-form": "^7.88.0",
@@ -98,6 +102,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "happy-dom": "^20.9.0",
     "i18next": "^26.4.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

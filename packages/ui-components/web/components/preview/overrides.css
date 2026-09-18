@@ -1,0 +1,32 @@
+/*
+ * 预览器外观覆盖（从 apps/web 的 `agent-panel/preview/overrides.css` 逐字复制）。
+ *
+ * 纯化取舍：源文件本身不耦合任何宿主变量（只覆盖 ofv-* 结构与类名），可原样入包。
+ * 约束：必须与 `FileViewerPreview.tsx` 同目录并由该组件 import —— 它修正的是
+ * @open-file-viewer 的默认外观（工具栏置底、去掉根容器边框、隐藏代码块操作按钮），
+ * 一旦随组件打包时被遗漏，预览工具栏会回到顶部并与源宿主外观不一致。
+ */
+
+/* 将 @open-file-viewer 工具栏从顶部移到预览区底部 */
+.ofv-host {
+  flex-direction: column-reverse;
+}
+.ofv-root {
+  border: 0;
+}
+
+/* 将顶部 border-bottom 改为底部 border-top */
+.ofv-toolbar {
+  border-bottom: none;
+  border-top: 1px solid var(--ofv-border);
+}
+
+/* 底部工具栏镜像按钮不匹配的文案改为底部视角 */
+.ofv-toolbar-search {
+  margin-left: auto;
+}
+
+/* 隐藏代码块的复制/全屏等操作按钮 */
+.ofv-code-actions {
+  display: none;
+}

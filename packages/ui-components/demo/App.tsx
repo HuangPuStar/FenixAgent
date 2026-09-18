@@ -3,14 +3,17 @@ import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { changeDemoLanguage, DEMO_NS, type DemoLanguage, getDemoLanguage } from "./i18n";
-import { AiSection } from "./sections/ai";
+import { ChatSection } from "./sections/chat";
+import { ChatPrimitivesSection } from "./sections/chat-primitives";
 import { CompositeSection } from "./sections/composite";
 import { DataSection } from "./sections/data";
 import { FeedbackSection } from "./sections/feedback";
+import { FileTreeSection } from "./sections/file-tree";
 import { FormsSection } from "./sections/forms";
 import { OverlaySection } from "./sections/overlay";
 import { PrimitivesSection } from "./sections/primitives";
 import { ThemeSection } from "./sections/theme";
+import { WorkspaceSection } from "./sections/workspace";
 
 /**
  * demo 外壳：左侧分组导航 + 右侧分区内容，顶部提供语言与主题切换。
@@ -19,9 +22,32 @@ import { ThemeSection } from "./sections/theme";
  * 分区 id 同时是 demo 命名空间下 `sections.<id>` 的文案键，两者必须一一对应。
  */
 
-type SectionId = "primitives" | "forms" | "data" | "feedback" | "overlay" | "ai" | "composite" | "theme";
+type SectionId =
+  | "primitives"
+  | "forms"
+  | "data"
+  | "feedback"
+  | "overlay"
+  | "chatPrimitives"
+  | "chat"
+  | "composite"
+  | "workspace"
+  | "fileTree"
+  | "theme";
 
-const SECTION_IDS: SectionId[] = ["primitives", "forms", "data", "feedback", "overlay", "ai", "composite", "theme"];
+const SECTION_IDS: SectionId[] = [
+  "primitives",
+  "forms",
+  "data",
+  "feedback",
+  "overlay",
+  "chatPrimitives",
+  "chat",
+  "composite",
+  "workspace",
+  "fileTree",
+  "theme",
+];
 
 const SECTION_COMPONENTS: Record<SectionId, ComponentType> = {
   primitives: PrimitivesSection,
@@ -29,8 +55,11 @@ const SECTION_COMPONENTS: Record<SectionId, ComponentType> = {
   data: DataSection,
   feedback: FeedbackSection,
   overlay: OverlaySection,
-  ai: AiSection,
+  chatPrimitives: ChatPrimitivesSection,
+  chat: ChatSection,
   composite: CompositeSection,
+  workspace: WorkspaceSection,
+  fileTree: FileTreeSection,
   theme: ThemeSection,
 };
 
