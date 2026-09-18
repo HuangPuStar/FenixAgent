@@ -1,14 +1,14 @@
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { type OrgMember, type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
 import { type MachineRecord, registryApi } from "@/src/api/registry";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
+import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/organizations";
 import { useOrg } from "../../../contexts/OrgContext";
 import { useSession } from "../../../lib/auth-client";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";

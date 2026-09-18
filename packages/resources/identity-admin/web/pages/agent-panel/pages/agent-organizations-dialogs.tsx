@@ -1,6 +1,3 @@
-import { Check, Copy, Search, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,12 +7,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import type { OrgMemberCandidate } from "@/src/api/organizations";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Check, Copy, Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import type { OrgMemberCandidate } from "../../../api/organizations";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

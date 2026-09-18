@@ -1,5 +1,5 @@
-import type { OrgDetail, OrgMember, OrgMemberCandidate } from "@/src/api/organizations";
 import type { MachineRecord } from "@/src/api/registry";
+import type { OrgDetail, OrgMember, OrgMemberCandidate } from "../../../api/organizations";
 
 export interface OrganizationListItem {
   id: string;

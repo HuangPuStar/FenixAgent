@@ -5,7 +5,7 @@ import {
   nameToSlug,
   parseLabels,
   readDefaultMachineId,
-} from "@/src/pages/agent-panel/pages/agent-organizations-utils";
+} from "../pages/agent-panel/pages/agent-organizations-utils";
 
 const MACHINE: MachineRecord = {
   id: "machine-1",

@@ -1,8 +1,8 @@
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Eye, EyeOff } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { encryptPassword } from "../lib/password-crypto";
 
 interface ChangePasswordDialogProps {

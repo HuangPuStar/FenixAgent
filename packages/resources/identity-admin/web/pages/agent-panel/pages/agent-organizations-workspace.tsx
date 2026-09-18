@@ -1,4 +1,11 @@
 import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import {
   Check,
   Copy,
   Monitor,
@@ -13,15 +20,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { OrgMember } from "@/src/api/organizations";
 import type { MachineRecord } from "@/src/api/registry";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
+import type { OrgMember } from "../../../api/organizations";
 import type { OrganizationsWorkspaceProps } from "./agent-organizations-types";
 import { canOperateMachine } from "./agent-organizations-utils";
 
