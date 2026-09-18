@@ -349,13 +349,36 @@ ChatArea 保留一条宿主别名引用，已登记进上表。
 
 本轮**未擅自动它**——它改的是 ui-components 的公共契约，而该包当时正被另一条写入流收敛。
 
-### 观察：ui-components 有 3 个先于本轮改动就失败的测试
+### 观察：`precheck` 唯一失败项是 ui-components 的 5 个既有失败用例
 
-`bun test packages/ui-components/web` = 17 pass / 3 fail（20 个用例）。3 个失败为
-`chat-composer.test.tsx`（2 例）与 `mock-chat-store.test.tsx`（1 例），经 `git stash` 对照实验确认
-**在应用本轮的 card-renderer 改动之前就已失败**，来自 ui-components 自身的另一条写入流，
-与本轮 packages 侧改动无关，故未处理（该包不属本轮授权范围）。本轮改动只多影响
-`barrel-exports.test.ts` 的导出总数断言，已同步 `EXPECTED_EXPORTS` 并恢复通过。
+`bun run precheck` 实测（2026-09-18，18 个提交落地后）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| format / import-sort / module-registry / architecture | ✓ |
+| tsc (server) / tsc (web) / tsc (app skeletons) | ✓ |
+| dependency-boundaries | ✓（本轮修复 `agent-runtime-not-to-resources` 后为 0 violations） |
+| lint / server-and-script-tests / web-app-tests | ✓ |
+| **package-tests** | **✗ 5 failed**（6550 pass / 2 skip，跨 520 文件） |
+
+5 个失败全部落在 `packages/ui-components`：
+
+- `demo/chat-smoke.test.tsx` → `demo chat section` 2 例
+- `web/__tests__/chat-composer.test.tsx` → `ChatComposer 纯化接缝` 2 例
+- `web/__tests__/mock-chat-store.test.tsx` → `sendPrompt 后分片回放…` 1 例
+
+**证据（对照实验，非推断）**：把 `packages/ui-components/web/lib/card-renderer.tsx` 与
+`__tests__/barrel-exports.test.ts` 回退到 `67b1523a` 后重跑，失败用例集合与数量**完全一致**（2 pass / 2 fail）；
+单独 stash 本轮 card-renderer 改动后 `bun test packages/ui-components/web` 同样为 17 pass / 3 fail。
+故 5 个失败均**先于本轮改动存在**。
+
+**根因**：属该包自身正在进行的 i18n 字典搬运（组件改用 `chat.components.*` 前缀 + `UI_COMPONENTS_NS`，
+断言侧字典与实例尚未同步）。失败信息即典型形态：
+`Expected "The quote limit for this turn has been reached…" / Received "chat.components.composerAssets.quoteLimitReached"`。
+
+**影响与处置**：与本轮 packages 侧改动无关；该包不属本轮授权范围，且正被另一条写入流收敛
+（`9f11ba87`、`9f534350`），此刻代为「修好」会与该流的迁移意图冲突、且可能被其后续提交覆盖，
+故**记录不代修**。它同时是本分支 `precheck` 唯一的红灯，Phase 3 收口前需由该包的归属方清零。
 
 ## 验证口径
 
