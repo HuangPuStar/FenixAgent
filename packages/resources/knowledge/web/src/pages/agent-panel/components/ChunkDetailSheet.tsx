@@ -1,5 +1,10 @@
 "use client";
 
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import DOMPurify from "dompurify";
@@ -7,13 +12,8 @@ import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { kbApi } from "@/src/api/knowledge-bases";
-import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "@/src/types/knowledge";
+import { kbApi } from "../../../../api/knowledge-bases";
+import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "../../../../types/knowledge";
 
 interface ChunkDetailSheetProps {
   open: boolean;

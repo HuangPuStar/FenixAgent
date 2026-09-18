@@ -1,3 +1,5 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { Loader2 } from "lucide-react";
@@ -8,10 +10,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { kbApi } from "@/src/api/knowledge-bases";
-import type { KnowledgeResourceInfo } from "@/src/types/knowledge";
+import { kbApi } from "../../api/knowledge-bases";
+import type { KnowledgeResourceInfo } from "../../types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */
 function getVideoMimeType(ext: string): string {

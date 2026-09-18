@@ -1,23 +1,23 @@
 "use client";
 
+import { Button } from "@fenix/ui-components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Slider } from "@fenix/ui-components/ui/slider";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { kbApi } from "@/src/api/knowledge-bases";
+import { kbApi } from "../../../../api/knowledge-bases";
 import type {
   KnowledgeRetrievalChunk,
   KnowledgeSearchResultData,
   MetaDataFilter,
   MetaDataFilterMethod,
   RerankModelOption,
-} from "@/src/types/knowledge";
+} from "../../../../types/knowledge";
 
 /** 检索测试默认参数常量 */
 const DEFAULTS = {

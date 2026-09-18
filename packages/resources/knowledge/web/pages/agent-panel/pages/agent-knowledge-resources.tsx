@@ -1,3 +1,6 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   ExternalLink,
@@ -13,9 +16,6 @@ import {
 } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
 
 interface AgentKnowledgeResourcesProps {

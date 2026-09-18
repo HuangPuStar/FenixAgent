@@ -1,9 +1,9 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { kbApi } from "@/src/api/knowledge-bases";
-import type { KnowledgeResourceInfo } from "@/src/types/knowledge";
+import { kbApi } from "../../api/knowledge-bases";
+import type { KnowledgeResourceInfo } from "../../types/knowledge";
 import { ResourcePreviewContent } from "./ResourcePreviewContent";
 
 interface ResourcePreviewDialogProps {

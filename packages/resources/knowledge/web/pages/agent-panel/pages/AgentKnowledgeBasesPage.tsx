@@ -1,6 +1,36 @@
 import { EmbeddingModelManager } from "@fenix/model-management/web";
 import { useOrg } from "@fenix/resource-identity-admin/web/contexts/OrgContext";
 import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
+import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -10,40 +40,11 @@ import type { ReactNode } from "react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
-import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
-import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";
-import { AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
+import { kbApi } from "../../../api/knowledge-bases";
+import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
+import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
+import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
 import type {
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
@@ -51,10 +52,9 @@ import type {
   KnowledgeParseMethod,
   KnowledgeResourceInfo,
   UnassociatedKnowledgeBase,
-} from "@/src/types/knowledge";
-import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
-import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
-import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
+} from "../../../types/knowledge";
+import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
+import { AgentKnowledgeResources } from "./agent-knowledge-resources";
 import "./agent-knowledge.css";
 
 /** 资源状态 → 语义色 badge 样式 */
