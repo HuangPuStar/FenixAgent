@@ -1,5 +1,5 @@
 /**
- * chat 分区示例：面板层（权限 / 问答 / 待办 / 状态三 Tab）。
+ * chat 分区示例：面板层（权限 / 问答 / 状态三 Tab）。
  *
  * 全部面板都直接吃 mock 会话的投影：权限与问答的应答经 `session.respondPermission` /
  * `respondQuestion` 回到 mock 状态机（卡片随即消失），待办与变更文件用包内纯函数
@@ -14,7 +14,6 @@ import {
   extractChangedFiles,
   PermissionPanel,
   QuestionPanel,
-  TodoPanel,
 } from "@fenix/ui-components";
 import type { MockChatSession } from "@fenix/ui-components/chat/mocks/mock-chat-store";
 import { useMemo, useState } from "react";
@@ -73,16 +72,6 @@ export function ChatPanelsExamples({ session }: { session: MockChatSession }) {
           {questions.length === 0
             ? "问题已提交（空列表时组件返回 null）。"
             : "每个问题项都要选中一个选项，提交按钮才会启用。"}
-        </p>
-      </div>
-
-      <div className="demo-example">
-        <h2 className="demo-example-title">TodoPanel</h2>
-        <TodoPanel todos={todos} title="来自 plan 快照的待办" />
-        <p className="demo-hint">
-          {todos.length === 0
-            ? "当前时间线还没有 plan 快照：在下方「会话外壳」里发送一条消息即可生成。"
-            : "待办取自最后一条 plan 快照（与 ChatInterface 的 deriveTodoItems 一致）。"}
         </p>
       </div>
 

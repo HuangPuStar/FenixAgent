@@ -166,19 +166,7 @@
         "uploadedImage": "Uploaded image"
       },
       "periTask": {
-        "activeCount": "{{count}} active",
-        "detailClose": "Close",
-        "detailExpired": "This task detail has expired.",
-        "detailLoadFailed": "Failed to load detail",
-        "detailLoading": "Loading detail...",
-        "detailRetry": "Retry",
-        "detailTitle": "Task detail",
-        "detailUnavailable": "Peri did not provide detail for this task.",
-        "empty": "No task activity yet",
-        "kindBackground": "Background",
-        "kindSubagent": "Subagent",
         "loading": "Loading tasks...",
-        "previewOnly": "Summary only",
         "reconnecting": "Reconnecting — task list may be incomplete",
         "status": {
           "cancelled": "Cancelled",
@@ -186,15 +174,7 @@
           "failed": "Failed",
           "running": "Running"
         },
-        "subtype": {
-          "agent": "Agent",
-          "shell": "Shell",
-          "workflow": "Workflow"
-        },
-        "syncing": "Syncing tasks...",
-        "title": "Task Activity",
-        "unknownTitle": "Unknown task",
-        "viewDetail": "View detail"
+        "unknownTitle": "Unknown task"
       },
       "permissionPanel": {
         "aboutToRun": "About to run",
@@ -212,10 +192,6 @@
       "subAgentPanel": {
         "summary": "{{messages}} messages · {{tools}} tool steps",
         "title": "Sub-agent activity"
-      },
-      "todoPanel": {
-        "completed": "completed",
-        "inProgress": "in progress"
       },
       "toolCallGroup": {
         "input": "Input",

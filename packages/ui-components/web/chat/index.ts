@@ -52,7 +52,6 @@ export * from "./narrators/index";
 export * from "./panels/chat-status-panel";
 export * from "./panels/PermissionPanel";
 export * from "./panels/QuestionPanel";
-export * from "./panels/TodoPanel";
 // primitives —— 对话与产物展示基元（含 prompt-input 子体系）
 export * from "./primitives/code-block";
 export * from "./primitives/conversation";
@@ -80,9 +79,6 @@ export * from "./shell/FilePickerPanel";
 export * from "./shell/sidebar-session-list";
 // timeline —— 工具时间线层
 export * from "./timeline/HindsightToolCard";
-export * from "./timeline/PeriTaskDetailSheet";
-export * from "./timeline/PeriTaskList";
-export * from "./timeline/PeriTaskViewCard";
 export * from "./timeline/SubAgentPanel";
 export * from "./timeline/sub-agent-tool-call-context";
 export * from "./timeline/TodoChanges";

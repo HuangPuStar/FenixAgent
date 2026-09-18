@@ -7,7 +7,7 @@
  * 纯化改动点：
  * - `@fenix/chat-channel` 类型改为包内 `../types`；`PromptUsage` 在包内命名为 `TokenUsage`（字段一致）。
  * - 新增宿主注入端口，替代组件内的业务耦合：`boundMcps`（MCP 查询）、`projectEntries`（YJS 消息投影）、
- *   `flushContext`（有状态上下文队列）、`loadPeriTaskDetail`（Peri Task 详情 HTTP）、`onNotice`（sonner toast）、
+ *   `flushContext`（有状态上下文队列）、`onNotice`（sonner toast）、
  *   `onStatsChange`（`chat:stats` window 事件 + ChatStatsDispatcher），以及 ChatComposer 的上传/压缩/
  *   文件选择器/外部输入订阅端口。
  */
@@ -16,7 +16,6 @@ import type { ReactNode } from "react";
 import type { ComposerFilePickerRenderProps } from "../composer/ChatComposer";
 import type { ComposerExternalSubscribe } from "../composer/composer-effects";
 import type { CompressImage, UploadComposerFiles } from "../composer/composer-file-processing";
-import type { PeriTaskDetail } from "../timeline/PeriTaskDetailSheet";
 import type {
   AvailableCommand,
   ChangedFile,
@@ -115,11 +114,6 @@ export interface ChatInterfaceProps {
    * 复制进包内；未提供时本次提交不注入上下文块。
    */
   flushContext?: (scope?: string) => string | null;
-  /**
-   * Peri Task 详情加载器（宿主注入，闭包 environmentId / sessionId）。
-   * 源实现由 `PeriTaskDetailSheet` 内部直连 HTTP，纯化后由宿主提供；未提供时不渲染详情抽屉。
-   */
-  loadPeriTaskDetail?: (taskId: string, signal: AbortSignal) => Promise<PeriTaskDetail>;
   /** 运行时提示出口（替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
   /** 会话统计摘要出口（替代 `chat:stats` window 事件 + ChatStatsDispatcher） */

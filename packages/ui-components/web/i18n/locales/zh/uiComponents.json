@@ -166,19 +166,7 @@
         "uploadedImage": "已上传图片"
       },
       "periTask": {
-        "activeCount": "{{count}} 进行中",
-        "detailClose": "关闭",
-        "detailExpired": "此任务详情已过期。",
-        "detailLoadFailed": "详情加载失败",
-        "detailLoading": "正在加载详情…",
-        "detailRetry": "重试",
-        "detailTitle": "任务详情",
-        "detailUnavailable": "Peri 未提供此任务的详情。",
-        "empty": "暂无任务",
-        "kindBackground": "后台任务",
-        "kindSubagent": "子代理",
         "loading": "正在加载任务…",
-        "previewOnly": "仅提供摘要",
         "reconnecting": "重连中 — 任务列表可能不完整",
         "status": {
           "cancelled": "已取消",
@@ -186,15 +174,7 @@
           "failed": "失败",
           "running": "运行中"
         },
-        "subtype": {
-          "agent": "Agent",
-          "shell": "Shell",
-          "workflow": "Workflow"
-        },
-        "syncing": "正在同步任务…",
-        "title": "任务活动",
-        "unknownTitle": "未知任务",
-        "viewDetail": "查看详情"
+        "unknownTitle": "未知任务"
       },
       "permissionPanel": {
         "aboutToRun": "即将执行",
@@ -212,10 +192,6 @@
       "subAgentPanel": {
         "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤",
         "title": "子 Agent 执行轨迹"
-      },
-      "todoPanel": {
-        "completed": "已完成",
-        "inProgress": "进行中"
       },
       "toolCallGroup": {
         "input": "输入",

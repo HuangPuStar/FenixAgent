@@ -7,7 +7,6 @@ import { ScrollArea } from "../../ui/scroll-area";
 import type { ComposerFilePickerRenderProps } from "../composer/ChatComposer";
 import type { ComposerExternalSubscribe } from "../composer/composer-effects";
 import type { CompressImage, UploadComposerFiles } from "../composer/composer-file-processing";
-import type { PeriTaskDetail } from "../timeline/PeriTaskDetailSheet";
 import type {
   AvailableCommand,
   ChatStateSnapshot,
@@ -28,7 +27,7 @@ import { SidebarSessionList } from "./sidebar-session-list";
  * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
  * 纯化改动点：`sidebarOpen` / `onSidebarOpenChange` 取代 localStorage `acp-sidebar-open`；
  * `onNotice` 取代 sonner toast；并把宿主端口（`boundMcps` / `projectEntries` / `flushContext` /
- * `loadPeriTaskDetail` / Composer 上传相关回调 / `onStatsChange`）透传给 ChatInterface。
+ * Composer 上传相关回调 / `onStatsChange`）透传给 ChatInterface。
  */
 interface ACPMainProps {
   agentId?: string;
@@ -89,8 +88,6 @@ interface ACPMainProps {
   projectEntries?: (structuredMessages: readonly StructuredMessage[]) => ThreadEntry[];
   /** 上下文队列取出并清空（透传给 ChatInterface，源为宿主 `@/src/lib/context-queue.flushContext`） */
   flushContext?: (scope?: string) => string | null;
-  /** Peri Task 详情加载器（透传给 ChatInterface，由宿主闭包 environmentId / sessionId） */
-  loadPeriTaskDetail?: (taskId: string, signal: AbortSignal) => Promise<PeriTaskDetail>;
   /** ChatComposer 宿主端口（原样透传给 ChatInterface，见 `../composer/ChatComposer`） */
   uploadFiles?: UploadComposerFiles;
   /** 图片压缩回调（透传） */
@@ -152,7 +149,6 @@ export function ACPMain({
   boundMcps,
   projectEntries,
   flushContext,
-  loadPeriTaskDetail,
   uploadFiles,
   compressImage,
   renderFilePicker,
@@ -460,7 +456,6 @@ export function ACPMain({
             boundMcps={boundMcps}
             projectEntries={projectEntries}
             flushContext={flushContext}
-            loadPeriTaskDetail={loadPeriTaskDetail}
             uploadFiles={uploadFiles}
             compressImage={compressImage}
             renderFilePicker={renderFilePicker}

@@ -214,7 +214,7 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
         )}
       </div>
 
-      {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的 TodoPanel 承载。 */}
+      {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的状态面板（ChatStatusPanel）承载。 */}
       {tool.todoChanges && <TodoChanges changes={tool.todoChanges} />}
 
       {/* 子 agent 嵌套面板（保留） */}

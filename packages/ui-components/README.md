@@ -62,6 +62,19 @@ demo/                     Vite 展示页（非库产物）
 - 重新纳入的条件：先确认这些组件的宿主归属与真实消费方（谁渲染、谁提供文案与数据），
   再按同一套纯化约定单独评估，不要因为「看起来通用」而再次越过 `apps/web` 这条范围线。
 
+同一条线在 2026-09-18 又清掉 4 个源自 `packages/agent-runtime/web/components/chat/` 的组件：
+`PeriTaskList`、`PeriTaskViewCard`、`PeriTaskDetailSheet`、`TodoPanel`。它们在 `apps/web` 中同样没有
+对应渲染组件（`apps/web/src/hooks/use-task-views.ts` 只派生投影数据，源码里没有这些组件的引用），属旧组件。
+
+- 一并移除的接线：仅为详情抽屉存在的 `loadPeriTaskDetail` 宿主端口（`ChatInterface` / `ACPMain` /
+  `chat-interface-types` 三处）、demo 的对应示例、`chat.components.todoPanel.*` 文案，以及仅这 4 个组件
+  引用的 `chat.components.periTask.*` 键（`loading` / `reconnecting` / `unknownTitle` / `status.*`
+  由 `ChatStatusPanel` 继续使用，故保留）。
+- 保留的部分：`PeriTaskViewProjection` 等投影类型与 mock 样本仍在用（`ChatStatusPanel` 的 tasks Tab）。
+- 影响范围：`ChatStatusPanel` 的 tasks Tab 变为只读——原先点击任务行会由 `ChatInterface` 接到详情抽屉；
+  需要详情入口的宿主应自行渲染该面板并传 `onOpenTask`。
+- 重新纳入的条件：先确认 Peri Task / Todo 面板的真实归属与消费方（谁渲染、谁提供数据与详情端口）。
+
 ## i18n
 
 本包不自带 i18n 实例。宿主渲染这些组件前必须把包内文案注册到 `uiComponents` 命名空间：

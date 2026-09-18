@@ -29,7 +29,7 @@ export function ChatSection() {
       <h1 className="demo-section-title">{t("sections.chat")}</h1>
 
       <ChatMessagesExamples />
-      <ChatTimelineExamples session={session} />
+      <ChatTimelineExamples />
       <ChatComposerExamples />
       <ChatPanelsExamples session={session} />
       <ChatShellExamples session={session} />
