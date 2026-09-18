@@ -6,15 +6,15 @@ import type {
   SessionMode,
   SessionStateSnapshot,
 } from "@fenix/chat-channel";
+import { Button } from "@fenix/ui-components/ui/button";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { SidebarSessionList } from "@/components/chat/sidebar-session-list";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 
 interface ACPMainProps {

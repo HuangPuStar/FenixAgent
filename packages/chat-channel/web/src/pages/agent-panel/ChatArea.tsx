@@ -1,3 +1,5 @@
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import type { ProdViewModulesConfig } from "@fenix/resource-prod-view/web/api/prod-views";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useChangedFilesFromStats } from "@fenix/web-runtime/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
@@ -20,13 +22,13 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { envApi } from "@/src/api/environments";
-import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type SessionSlot } from "./chat-area-lifecycle";
 import "@/src/pages/agent-panel/artifacts-workspace.css";
 import "./chat-layout.css";
 
-const ChatPanel = lazy(() => import("@/src/pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
+const ChatPanel = lazy(() =>
+  import("@fenix/agent-runtime/web/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })),
+);
 const ArtifactsPanel = lazy(() =>
   import("@/src/pages/agent-panel/ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })),
 );

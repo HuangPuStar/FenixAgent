@@ -1,5 +1,12 @@
+import { agentApi } from "@fenix/agent-config/web/api/agents";
 import { getAgentConfigLookupKey } from "@fenix/agent-config/web/lib/agent-resource-access";
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/chat-channel";
+import { mcpApi } from "@fenix/resource-mcp/web/api/mcp";
+import type { McpOption } from "@fenix/ui-components/chat/composer/CommandMenu";
+import { buildPromptText } from "@fenix/ui-components/chat/composer/composer-prompt";
+import { extractChangedFiles } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { ChatInputMessage, ThreadEntry } from "@fenix/ui-components/chat/types";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
 import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
@@ -8,17 +15,10 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatView } from "@/components/chat/ChatView";
-import type { McpOption } from "@/components/chat/CommandMenu";
 import { derivePendingPermissions, deriveTodoItems } from "@/components/chat/chat-derived-state";
 import { prepareImageContent } from "@/components/chat/chat-image-content";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "@/components/chat/chat-interface-types";
-import { buildPromptText } from "@/components/chat/composer-prompt";
-import { agentApi } from "@/src/api/agents";
-import { envApi } from "@/src/api/environments";
-import { mcpApi } from "@/src/api/mcp";
 import { flushContext } from "@/src/lib/context-queue";
-import { extractChangedFiles } from "@/src/lib/extract-changed-files";
-import type { ChatInputMessage, ThreadEntry } from "@/src/lib/types";
 import { ContextPanel } from "./ContextPanel";
 
 const DEBUG_SENSITIVE_KEY = /(?:api[-_]?key|authorization|cookie|credential|password|secret|token|connectionString)/i;
@@ -49,11 +49,11 @@ function createDebugSnapshot(value: unknown, seen = new WeakSet<object>()): unkn
   );
 }
 
+import { Button } from "@fenix/ui-components/ui/button";
 import { ChatStatusPanel } from "@/components/chat/chat-status-panel";
 import { PeriTaskDetailSheet } from "@/components/chat/PeriTaskDetailSheet";
 import { PermissionPanel } from "@/components/chat/PermissionPanel";
 import { QuestionPanel } from "@/components/chat/QuestionPanel";
-import { Button } from "@/components/ui/button";
 
 export type { ChatInterfaceHandle } from "@/components/chat/chat-interface-types";
 
