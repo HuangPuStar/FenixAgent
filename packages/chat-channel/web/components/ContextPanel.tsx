@@ -1,5 +1,5 @@
 import type { PromptUsage } from "@fenix/chat-channel";
-import { simplifyModelDisplayName } from "@fenix/model-management/web/lib/model-config-utils";
+import { simplifyModelDisplayName } from "@fenix/ui-components/chat/lib/simplify-model-display-name";
 import type { ThreadEntry, ToolCallEntry } from "@fenix/ui-components/chat/types";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { PanelRight, PanelRightClose } from "lucide-react";

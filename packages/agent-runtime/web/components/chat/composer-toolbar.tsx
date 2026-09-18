@@ -1,5 +1,5 @@
 import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
-import { simplifyModelDisplayName } from "@fenix/model-management/web/lib/model-config-utils";
+import { simplifyModelDisplayName } from "@fenix/ui-components/chat/lib/simplify-model-display-name";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
 import type { RefObject } from "react";

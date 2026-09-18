@@ -3,6 +3,7 @@ import { splitSystemReminderBlocks } from "@fenix/ui-components/chat/lib/strip-h
 import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@fenix/ui-components/chat/primitives/reasoning";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "@fenix/ui-components/chat/types";
+import { CardEventEmitter, MessageEmitterContext } from "@fenix/ui-components/lib/card-renderer";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -13,7 +14,6 @@ import {
 import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CardEventEmitter, MessageEmitterContext } from "@/src/lib/card-renderer";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { SystemMessage } from "./SystemMessage";
 

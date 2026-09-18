@@ -204,6 +204,8 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
   ],
   layout: ["AppHeader", "AppPage"],
   lib: [
+    "CardEventEmitter",
+    "MessageEmitterContext",
     "ThemeProvider",
     "UI_COMPONENTS_NS",
     "cn",
@@ -212,6 +214,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "getRegisteredTags",
     "getTagRenderer",
     "registerTagRenderer",
+    "useCardEmit",
     "useTheme",
   ],
   ui: [

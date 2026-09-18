@@ -1,7 +1,7 @@
+import { useCardEmit } from "@fenix/ui-components/lib/card-renderer";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { AlertCircle, ArrowRight, Globe, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useCardEmit } from "@/src/lib/card-renderer";
 import { agentSitesApi } from "../../api/sites";
 
 interface AgentSitesCardProps {
