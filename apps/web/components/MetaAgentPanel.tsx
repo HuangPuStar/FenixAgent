@@ -1,3 +1,4 @@
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -42,6 +43,9 @@ export function MetaAgentPanel({
   togglePosition = "right",
 }: MetaAgentPanelProps) {
   const { t } = useTranslation(NS.COMPONENTS);
+  // 登录态由宿主注入 ChatPanel：agent-runtime 不得依赖 resources 领域包
+  // （dependency-cruiser 规则 agent-runtime-not-to-resources），故 useSession 留在宿主侧。
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession();
 
   const isLeft = togglePosition === "left";
 
@@ -100,6 +104,7 @@ export function MetaAgentPanel({
               scenePrompt={scenePrompt}
               contextKey={contextKey}
               onPromptComplete={onPromptComplete}
+              auth={{ pending: sessionPending, error: sessionError, userId: session?.user?.id }}
             />
           </div>
         </div>

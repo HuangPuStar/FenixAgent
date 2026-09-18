@@ -1,3 +1,4 @@
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useParams } from "@tanstack/react-router";
@@ -13,6 +14,9 @@ const ChatArea = lazy(() => import("@fenix/chat-channel/web/chat-area").then((m)
 export function ProdViewPage() {
   const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId: string };
   const { t } = useTranslation(NS.PROD_VIEWS);
+  // 登录态由本页注入，经 ChatArea 透传给 ChatPanel：agent-runtime 不得依赖 resources
+  // 领域包（dependency-cruiser 规则 agent-runtime-not-to-resources），故 useSession 在此调用。
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession();
   const requestGeneration = useRef(0);
 
   const {
@@ -76,6 +80,7 @@ export function ProdViewPage() {
               sessionId={viewConfig.instanceUid}
               visible={true}
               modulesConfig={viewConfig.modulesConfig ?? {}}
+              auth={{ pending: sessionPending, error: sessionError, userId: session?.user?.id }}
             />
           </Suspense>
         )}

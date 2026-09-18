@@ -1,4 +1,5 @@
 import { ChatArea } from "@fenix/chat-channel/web/chat-area";
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -11,6 +12,9 @@ import "./agent-panel.css";
 
 export function AgentPanelLayout() {
   const navigate = useNavigate();
+  // 登录态由宿主注入，经 ChatArea 透传给 ChatPanel：agent-runtime 不得依赖
+  // resources 领域包（dependency-cruiser 规则 agent-runtime-not-to-resources）。
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession();
   // 仅订阅 pathname：避免 useRouterState() 无选择器订阅全部路由状态
   // 导致每次 search/hash/loader 变动都触发级联重渲染
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -130,6 +134,7 @@ export function AgentPanelLayout() {
           sessionId={lastChatSessionRef.current}
           visible={isChatRoute}
           deletedEnvironmentIds={deletedEnvironmentIds}
+          auth={{ pending: sessionPending, error: sessionError, userId: session?.user?.id }}
         />
       </div>
       <AgentFormDialog

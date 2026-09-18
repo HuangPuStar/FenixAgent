@@ -39,6 +39,11 @@ interface ChatAreaProps {
   deletedEnvironmentIds?: ReadonlySet<string>;
   /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
+  /**
+   * 宿主注入的登录态，原样透传给 ChatPanel（后者以它派生 Y.Doc key 与建连守卫）。
+   * chat-channel 不依赖 agent-runtime 的实现细节，故此处内联等价的结构类型。
+   */
+  auth?: { pending: boolean; error: unknown; userId: string | undefined };
 }
 
 export { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId } from "./chat-area-lifecycle";
@@ -78,7 +83,7 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  * agentId/sessionId 从 AgentPanelLayout 的 URL 解析传入（而非 Route.useParams），
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
-export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, modulesConfig }: ChatAreaProps) {
+export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, modulesConfig, auth }: ChatAreaProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const activeAgentId = resolveActiveChatEnvironmentId(agentId, deletedEnvironmentIds);
 
@@ -184,7 +189,7 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     return (
       <ChatPageVisibleContext.Provider key={`${key}:${restartVersion}`} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>
-          <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
+          <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} auth={auth} />
         </div>
       </ChatPageVisibleContext.Provider>
     );

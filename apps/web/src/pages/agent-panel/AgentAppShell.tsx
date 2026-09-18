@@ -1,3 +1,4 @@
+import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useNavigate } from "@tanstack/react-router";
@@ -21,6 +22,9 @@ interface AgentAppShellProps {
 export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("agentPanel");
+  // 登录态由宿主注入 ChatPanel：agent-runtime 不得依赖 resources 领域包
+  // （dependency-cruiser 规则 agent-runtime-not-to-resources），故 useSession 留在宿主侧。
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession();
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(agentId);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId ?? null);
@@ -135,7 +139,11 @@ export function AgentAppShell({ agentId, sessionId }: AgentAppShellProps) {
           <ResizablePanelGroup orientation="horizontal" className="agent-panel-resizable">
             <ResizablePanel defaultSize="60%" minSize="30%">
               <div className="agent-chat-area">
-                <ChatPanel agentId={selectedAgentId} sessionId={currentSessionId} />
+                <ChatPanel
+                  agentId={selectedAgentId}
+                  sessionId={currentSessionId}
+                  auth={{ pending: sessionPending, error: sessionError, userId: session?.user?.id }}
+                />
               </div>
             </ResizablePanel>
 

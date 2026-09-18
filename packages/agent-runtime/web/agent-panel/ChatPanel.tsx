@@ -1,3 +1,12 @@
+/**
+ * ChatPanel — agent-runtime 层的聊天面板。
+ *
+ * 登录态（user session）由宿主注入（`auth` prop），本组件不再直接调用 useSession：
+ * agent-runtime 是底层能力，不得依赖 `packages/resources/**`（dependency-cruiser 规则
+ * `agent-runtime-not-to-resources`），identity-admin 的 auth-client 属于资源领域包。
+ *
+ * TODO(Phase 2)：本文件将被重写为消费 `@fenix/ui-components/chat/*`。
+ */
 import {
   type ActionAck,
   type ActionError,
@@ -5,7 +14,6 @@ import {
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/chat-channel/web";
-import { useSession } from "@fenix/resource-identity-admin/web/lib/auth-client";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Bot, Loader2 } from "lucide-react";
@@ -19,7 +27,7 @@ import { useChatState } from "../hooks/use-chat-state";
 import { useSessionState } from "../hooks/use-session-state";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
 import { buildYjsUrl, createYjsWs, type YjsWsState } from "../yjs/yjs-ws";
-import { resolveChatAuthState } from "./chat-auth-state";
+import { type ChatAuthInput, resolveChatAuthState } from "./chat-auth-state";
 import type { ChatWsConnectionState } from "./chat-visible-reconnect";
 import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";
 
@@ -33,6 +41,11 @@ interface ChatPanelProps {
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
+  /**
+   * 宿主注入的登录态（替代组件内 useSession）。Y.Doc key 由 userId 参与派生，
+   * 未就绪/失败时不得建连；缺省视为未登录（failed），因此不传也不会误建连。
+   */
+  auth?: ChatAuthInput;
 }
 
 export function ChatPanel({
@@ -43,6 +56,7 @@ export function ChatPanel({
   scenePrompt,
   contextKey,
   onPromptComplete,
+  auth,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
@@ -64,11 +78,11 @@ export function ChatPanel({
   const showActionError = useCallback((err: ActionError) => setActionError(err), []);
 
   // ── Yjs 被动观察（旁路，不改变现有逻辑）──
-  // 登录态驱动 rcsSessionKey 与建连守卫；useSession 未就绪/失败时不得建连，
+  // 登录态驱动 rcsSessionKey 与建连守卫；宿主注入的 auth 未就绪/失败时不得建连，
   // 否则服务端快照会落入错误 Y.Doc 命名空间（历史竞态根因）。
-  const { data: session, isPending: sessionPending, error: sessionError, refetch: _refetchSession } = useSession();
-  const userId = session?.user?.id;
-  const authState = resolveChatAuthState({ pending: sessionPending, error: sessionError, userId });
+  // 缺省（未注入 auth）视为未登录：不传 auth 也不会误建连。
+  const userId = auth?.userId;
+  const authState = resolveChatAuthState(auth ?? { pending: false, error: null, userId: undefined });
 
   // rcsSessionKey: 与服务端一致的 RCS session ID (由 agentId + userId + sessionId 确定性生成)
   // Y.Doc key 必须与此匹配，否则 sessionId guard 会拦截所有 yjs:update
