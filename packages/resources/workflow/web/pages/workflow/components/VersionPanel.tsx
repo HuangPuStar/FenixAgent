@@ -1,9 +1,9 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Inbox, Loader, Rocket, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import { DAG_STATUS_CFG } from "../utils";
 

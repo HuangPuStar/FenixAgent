@@ -1,12 +1,11 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 export type ParamType = "string" | "number" | "boolean" | "object";
 

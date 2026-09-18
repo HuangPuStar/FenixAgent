@@ -1,3 +1,7 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -5,10 +9,6 @@ import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/src/components/layout/app-header";
 import { workflowDefApi } from "../../api/workflow-defs";
 
 interface WorkflowVersionsProps {

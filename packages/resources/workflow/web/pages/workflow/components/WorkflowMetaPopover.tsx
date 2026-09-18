@@ -1,6 +1,6 @@
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { WfMeta } from "../yaml-utils";
 import { WorkflowMetaCard } from "./WorkflowMetaCard";
 

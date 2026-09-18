@@ -1,16 +1,16 @@
+import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { AlertTriangle, Inbox, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import { SkeletonTable } from "./components/SkeletonRows";
 

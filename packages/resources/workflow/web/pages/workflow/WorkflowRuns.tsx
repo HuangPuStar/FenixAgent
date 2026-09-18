@@ -1,13 +1,13 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Pagination } from "@/components/ui/pagination";
-import { Skeleton } from "@/components/ui/skeleton";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {

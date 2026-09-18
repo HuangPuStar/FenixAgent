@@ -1,10 +1,9 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export type OutputType = "file" | "file-list" | "dir" | "value";
 
