@@ -1,12 +1,6 @@
 import type { ProviderInfo, ProviderModel } from "@fenix/agent-config/web/types/config";
-import { unwrap } from "@fenix/web-runtime/api/request";
-import { useRequest } from "ahooks";
-import { Check, LoaderCircle, Search } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,11 +8,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { providerApi } from "@/src/api/providers";
+} from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useRequest } from "ahooks";
+import { Check, LoaderCircle, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { providerApi } from "../../../api/providers";
 import {
   ModelField as Field,
   ModelModalityField as ModalityField,

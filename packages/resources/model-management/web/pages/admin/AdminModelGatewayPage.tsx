@@ -1,16 +1,10 @@
 import { clearAdminKey, getAdminKey } from "@fenix/resource-identity-admin/web/lib/admin-key";
+import { fetchSystemPeopleTree } from "@fenix/resource-observer/web/api/system-people-tree";
 import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
-import { ApiError } from "@fenix/web-runtime/api/request";
-import { useRequest } from "ahooks";
-import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/chart";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { ChartContainer } from "@fenix/ui-components/ui/chart";
 import {
   Dialog,
   DialogContent,
@@ -18,10 +12,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Pagination } from "@/components/ui/pagination";
-import { Progress } from "@/components/ui/progress";
-import { fetchSystemPeopleTree } from "@/src/api/system-people-tree";
+} from "@fenix/ui-components/ui/dialog";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Progress } from "@fenix/ui-components/ui/progress";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import { useRequest } from "ahooks";
+import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 import {
   checkModelGateway,
   getModelGatewayConfiguration,

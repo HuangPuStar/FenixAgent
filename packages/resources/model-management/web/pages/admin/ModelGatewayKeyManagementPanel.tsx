@@ -1,16 +1,16 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Pagination } from "@/components/ui/pagination";
-import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "@/src/api/model-gateway";
+import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "../../api/model-gateway";
 
 function keyReason(key: ModelGatewayManagedKey): string {
   return key.usable ? "usable" : (key.invalidReason ?? "unusable");

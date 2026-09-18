@@ -1,4 +1,6 @@
 import type { ModelConfig, ModelEntry } from "@fenix/agent-config/web/types/config";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
@@ -7,10 +9,8 @@ import { Settings } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { modelApi } from "@/src/api/models";
-import { buildModelOptions } from "@/src/lib/model-config-utils";
+import { modelApi } from "../../api/models";
+import { buildModelOptions } from "../../lib/model-config-utils";
 
 export { buildModelOptions };
 

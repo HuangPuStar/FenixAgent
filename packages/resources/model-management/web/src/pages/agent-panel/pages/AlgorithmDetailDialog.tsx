@@ -1,7 +1,7 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@fenix/ui-components/ui/dialog-xl";
 import { Copy } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@/components/ui/dialog-xl";
 import type { Algorithm } from "./AlgorithmsPage";
 
 interface AlgorithmDetailDialogProps {

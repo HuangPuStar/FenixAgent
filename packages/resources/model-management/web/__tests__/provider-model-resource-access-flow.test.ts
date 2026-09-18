@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import {
+  mapMcpOptions,
+  mapModelOptions,
+} from "@fenix/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { ModelEntry, ProviderInfo, ResourceAccess } from "@fenix/agent-config/web/types/config";
-import { mapMcpOptions, mapModelOptions } from "@/src/pages/agent-panel/agent-editor/agent-editor-model";
 import { buildModelOptions } from "../components/config/ModelConfigDialog";
 import {
   buildProviderInlineTestPayload,

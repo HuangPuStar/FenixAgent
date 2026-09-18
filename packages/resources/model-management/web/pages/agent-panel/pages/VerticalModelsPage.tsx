@@ -1,10 +1,10 @@
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { AppHeader } from "@/src/components/layout/app-header";
 
 interface VerticalModel {
   id: string;

@@ -1,5 +1,5 @@
+import { Input } from "@fenix/ui-components/ui/input";
 import { Check } from "lucide-react";
-import { Input } from "@/components/ui/input";
 
 export function ModelField({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -1,9 +1,9 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { ArrowLeft, Gauge } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { queryMyModelGatewayUsage } from "../../../api/model-gateway";
 import { buildRecentUsageDateRange } from "../../../lib/model-gateway-usage";
 

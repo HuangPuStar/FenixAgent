@@ -13,12 +13,14 @@
  * - 添加：必填实例名（默认 = 厂商名），提交后该厂商目录下所有模型自动可用。
  */
 
-import { unwrap } from "@fenix/web-runtime/api/request";
-import { useRequest } from "ahooks";
-import { Boxes, Check, ChevronRight, Cpu, KeyRound, Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { embeddingModelApi } from "@fenix/resource-knowledge/web/api/knowledge-models";
+import type {
+  ConfiguredInstanceNode,
+  ConfiguredProviderNode,
+  EmbeddingFactoryOption,
+  InstanceModelOption,
+} from "@fenix/resource-knowledge/web/types/knowledge";
+import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -26,18 +28,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { embeddingModelApi } from "@/src/api/knowledge-models";
-import type {
-  ConfiguredInstanceNode,
-  ConfiguredProviderNode,
-  EmbeddingFactoryOption,
-  InstanceModelOption,
-} from "@/src/types/knowledge";
+} from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useRequest } from "ahooks";
+import { Boxes, Check, ChevronRight, Cpu, KeyRound, Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface EmbeddingModelManagerProps {
   /** 是否有管理权限（用于显示/隐藏添加、删除、屏蔽按钮） */

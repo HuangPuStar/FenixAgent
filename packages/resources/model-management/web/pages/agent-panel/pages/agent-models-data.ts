@@ -5,7 +5,7 @@ import { useRequest } from "ahooks";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { providerApi } from "@/src/api/providers";
+import { providerApi } from "../../../api/providers";
 import type {
   DiscoveryState,
   ModelDraft,

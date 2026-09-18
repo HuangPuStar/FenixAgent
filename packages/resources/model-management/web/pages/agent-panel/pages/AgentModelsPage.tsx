@@ -1,10 +1,10 @@
 import type { ProviderInfo, ProviderModel } from "@fenix/agent-config/web/types/config";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
 import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog, ProviderEditorDialog } from "./agent-models-dialogs";
