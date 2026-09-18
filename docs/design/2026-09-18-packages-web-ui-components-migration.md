@@ -268,16 +268,37 @@ Bucket A 表假设 ui-components 的 chat 组件是「逐字纯净实现」，�
 结论：**chat 运行时的切换必须与端口注入同批完成**，即 Phase 2 的 `ChatPanel` / `ChatArea` 改写，
 不能拆成「Phase 1 改 import、Phase 2 补注入」两步。
 
-### 修正 2：`@/src/lib/card-renderer` 存在符号缺口，无处可去
+### 修正 2：`@/src/lib/card-renderer` 符号缺口 —— 已解决（`393dfc12`）
 
-ui-components 的 `web/lib/card-renderer.tsx` 只保留了 tag 注册表（6 个导出），
-**不含** `CardEventEmitter` / `MessageEmitterContext` / `useCardEmit`（该文件头明确「事件通道属于宿主会话层」）。
+ui-components 的 `web/lib/card-renderer.tsx` 原先只保留了 tag 注册表（6 个导出），
+**不含** `CardEventEmitter` / `MessageEmitterContext` / `useCardEmit`（旧注释判定「事件通道属于宿主会话层」）。
 宿主 `apps/web/src/lib/card-renderer/` 则是 registry + builtins + emitter + context 四件套。
-两条真实引用因此无法收敛：`agent-runtime/web/components/chat/MessageBubble.tsx`（Emitter/Context）、
-`agent-config/web/components/agent-panel/AgentSitesCard.tsx`（useCardEmit）—— 本轮原样保留。
 
-> 注：ui-components 的 `web/chat/view/internal/card-emitter.ts` 已有 `CardEventEmitter` 的方法签名契约，
-> 但未作为公共出口暴露。Phase 2 需决定是补出口，还是把 `emitter` / `context` 一并纳入该包 `lib/`。
+**改判依据**：事件通道是卡片渲染协议的组成部分——注册进注册表的卡片组件正是靠 `useCardEmit`
+把交互抛给宿主，二者不可分割；且两个真实消费方（`agent-runtime` 的 MessageBubble、
+`agent-config` 的 AgentSitesCard）无法在不依赖宿主私有模块的前提下取到它们。
+故并入包内同一文件（`@fenix/ui-components/lib/card-renderer` 保持「文件」而非「目录」形态，
+避免通配出口下目录索引解析的不确定性），实现与源实现行为一致。
+
+连带发现并修复：Phase 1 把 `simplifyModelDisplayName` 指向
+`@fenix/model-management/web/lib/model-config-utils`，触发 depcruise
+`agent-runtime-not-to-resources`（agent-runtime 不得反向依赖资源领域包）。
+包内 `chat/lib/simplify-model-display-name.ts` 本就是同一纯函数的纯净实现，
+改指它即合规，`agent-runtime` 与 `chat-channel` 两处消费点一并收敛。
+`@/src/lib/card-renderer` 在 `packages/**` 内残留已归零。
+
+### `ArtifactsPanel.tsx` 归属判定：留在 `apps/web`（不搬清单）
+
+`apps/web/src/pages/agent-panel/ArtifactsPanel.tsx`（501 行）虽被 `chat-channel` 的 ChatArea 引用，
+但依赖方向决定了它无处可去：它 import 了 5 个宿主私有组件
+（`artifacts-dialogs`、`artifacts-files-workspace`、`FileTreeTab`、`preview/utils`、`TopModeTabs`）
+与 3 个领域包（agent-config / task / web-runtime + prod-views）。
+
+- 进 **ui-components** 不成立：该包零 `@fenix/*` 依赖，是纯 UI 层。
+- 进 **chat-channel** 不成立：会把 prod-views / task 领域依赖反向压进会话层，违反分层。
+
+因此它是「宿主装配层」，与 `apps/web` 的组件副本同批收敛（下一批），
+ChatArea 保留一条宿主别名引用，已登记进上表。
 
 ### 修正 3：`uiComponents` 命名空间已接线（原接线清单第 5 项）
 
@@ -312,6 +333,29 @@ ui-components 的 `web/lib/card-renderer.tsx` 只保留了 tag 注册表（6 个
 另有 1 处非 `@/` 口径的欠账：`resources/machine` 的测试仍以相对深链指向
 `apps/web/src/components/agent-panel/{file-tree-model,FileTreeTab}` 与 `apps/web/src/components/FilePickerDialog`
 （后者在 Phase 2 进 ui-components 后可一并收敛）。
+
+### 待决策：`context-queue` 的队列 API 与 ui-components 的纯化决策冲突
+
+`@/src/lib/context-queue` 的 `flushContext`、`@/src/lib/use-context-queue` 的 `pushContext` / `removeContext` /
+`dumpContext` 在 ui-components 侧**被故意移除**（该包文件的注释写明有状态队列「已在纯化时被移出包外」），
+但 workflow 的 `WorkflowEditor` 与 chat-channel 的 `ChatInterface` 仍在用它们。
+
+这不是「没来得及搬」，而是**两条设计意图冲突**：ui-components 要求组件无状态、I/O 靠注入，
+而调用方需要的是一个有状态队列单例。可行的三条路：
+
+1. 队列下沉到 `@fenix/web-runtime`（它本就是「通用宿主 web 运行时」，持有跨包共享的有状态设施）；
+2. ui-components 把队列改成注入端口，使用方各自持有实例；
+3. 队列留在 `apps/web`，两个消费方保留宿主别名（与「解除宿主依赖」目标相悖）。
+
+本轮**未擅自动它**——它改的是 ui-components 的公共契约，而该包当时正被另一条写入流收敛。
+
+### 观察：ui-components 有 3 个先于本轮改动就失败的测试
+
+`bun test packages/ui-components/web` = 17 pass / 3 fail（20 个用例）。3 个失败为
+`chat-composer.test.tsx`（2 例）与 `mock-chat-store.test.tsx`（1 例），经 `git stash` 对照实验确认
+**在应用本轮的 card-renderer 改动之前就已失败**，来自 ui-components 自身的另一条写入流，
+与本轮 packages 侧改动无关，故未处理（该包不属本轮授权范围）。本轮改动只多影响
+`barrel-exports.test.ts` 的导出总数断言，已同步 `EXPECTED_EXPORTS` 并恢复通过。
 
 ## 验证口径
 
