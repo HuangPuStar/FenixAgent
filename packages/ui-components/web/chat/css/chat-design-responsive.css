@@ -9,7 +9,9 @@
 @media (max-width: 720px) {
   .chat-interaction-stack,
   .chat-status-panel {
-    width: calc(100% - 20px);
+    /* 纯化改动（2026-09-18）：本断点输入岛 padding 收成 10px（卡片宽 = 100% - 20px），
+     * 面板仍按每侧再窄 16px 取值，与宽列下的台阶保持一致。源为 `calc(100% - 20px)`（与卡片齐平）。 */
+    width: calc(100% - 52px);
   }
   .chat-composer-wrapper {
     padding-inline: 10px;

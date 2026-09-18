@@ -46,6 +46,7 @@ demo/                     Vite 展示页（非库产物）
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
 | `web/chat/css/chat-design-composer.css` | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
+| `web/chat/css/chat-design-status.css`、`chat-design-responsive.css` | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18） |
 | `web/chat/css/chat-design-composer.css` | `.chat-composer-send.is-stop`（turn 运行中，图标切成停止方块）底色为深墨蓝 `#25344a` | 改用包内 token `var(--color-brand)`：源色在浅色下近乎黑色、暗色下几乎融进背景，且与本包其余「主题色」入口不一致（`.is-ready` 的蓝、`PromptInputSubmit` 的 `bg-primary`）；尺寸、圆角与 `color: #fff` 保持不变（2026-09-18） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，

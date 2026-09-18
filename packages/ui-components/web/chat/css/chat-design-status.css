@@ -16,7 +16,11 @@
 
 .chat-interaction-stack,
 .chat-status-panel {
-  width: min(760px, calc(100% - 32px));
+  /* 纯化改动（2026-09-18）：比输入岛卡片每侧窄 16px（共 32px），形成台阶。
+   * 源为 `min(760px, calc(100% - 32px))`：源只在宽列下比卡片窄 28px，列宽不足 792px 时
+   * 与卡片完全齐平（100% - 32px 正好等于卡片宽）。输入岛卡片宽 = min(820px, 100%) - 32px
+   * （`.chat-composer-wrapper` 的 `padding: 0 16px`），故此处按卡片宽再收 32px 取值。 */
+  width: min(756px, calc(100% - 64px));
   margin: 0 auto;
 }
 .chat-interaction-region,
