@@ -29,6 +29,9 @@ export default defineConfig({
     outDir: "dist",
   },
   server: {
-    port: 5273,
+    // 固定端口（随机取值 49917，避开常用端口段），strictPort 保证被占用时直接失败而不是静默改端口，
+    // 便于人工检查时始终用同一个地址访问。
+    port: 49917,
+    strictPort: true,
   },
 });

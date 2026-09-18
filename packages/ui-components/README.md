@@ -95,7 +95,7 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
 ## 脚本
 
 ```bash
-bun run dev        # 启动 demo（端口 5273）
+bun run dev        # 启动 demo（固定端口 49917，strictPort：端口被占用时直接失败而不改端口）
 bun run build      # 构建 demo 到 dist/
 bun run preview    # 预览 demo 构建产物
 bun run typecheck  # tsc -p tsconfig.json --noEmit
