@@ -221,6 +221,98 @@ Phase 4  每模块一个 review agent 并行：核对残留引用、双份实现
 若交给并行 agent，每个模块会独立决定 `@fenix/web-runtime/api/request` 的路径与导出形态，产出 16 套互不兼容的答案。
 Phase 0 结束后映射表冻结，Phase 1 才是可安全并行的纯消费阶段。
 
+## Phase 1 执行结果与实测修正（2026-09-18 收口）
+
+16 个模块 agent 并行执行完毕，共 **17 个 commit**（`ff6346c8` 宿主接线 + 16 个模块各一个），
+工作树除用户未跟踪的 `process.md` 外干净。每包自证：`bun test <pkg>/web` 全绿、`bunx biome check` 无残留、
+`bunx tsc -p apps/web/tsconfig.json --noEmit` exit 0。
+
+| 包 | 改写 | 未处置 | 本包测试 |
+| --- | --- | --- | --- |
+| agent-runtime | 131 | 18 | 456 pass / 0 fail |
+| chat-channel | 18 | 15 | 32 pass / 0 fail |
+| agent-config | 50 | 2 | 79 pass / 0 fail |
+| identity-admin | 29 | 7 | 24 pass / 0 fail |
+| knowledge | 45 | 2 | 7 pass / 0 fail |
+| workflow | 44 | 5 | 236 pass / 0 fail |
+| task | 41 | 1 | 166 pass / 0 fail |
+| model-management | 54 | 0 | 52 pass / 0 fail |
+| memory | 35 | 0 | 2 pass / 0 fail |
+| observer | 25 | 0 | 11 pass / 0 fail |
+| prod-view | 30 | 1 | 37 pass / 0 fail |
+| sandbox | 27 | 0 | 63 pass / 0 fail |
+| mcp | 16 | 0 | 35 pass / 0 fail |
+| skill | 15 | 0 | 107 pass / 0 fail |
+| channel | 13 | 0 | 5 pass / 0 fail |
+| machine | 4 | 1 | 87 pass / 0 fail |
+
+### 修正 1：`@/components/chat/*` 不是 drop-in 替换（推翻 Bucket A 的隐含假设）
+
+Bucket A 表假设 ui-components 的 chat 组件是「逐字纯净实现」，实测**不成立**。该包的 chat 组件是
+**端口注入 + 独立 `uiComponents` 命名空间**的纯化版，与宿主组装版存在两类契约差：
+
+- **I/O 改为可选注入端口**：`ChatComposer` 的 `uploadFiles` / `compressImage` / `renderFilePicker` /
+  `subscribeExternal` / `onNotice`，`chat-image-content.prepareImageContent(image, compress?)`，
+  `chat-derived-state.derivePendingPermissions(perms, { shouldSuppress })`，
+  `composer-file-processing.uploadComposerFiles(files, upload)`；缺省即降级（禁附件、不压缩、不过滤）。
+- **props 不同形**：`ChatInterfaceProps` 删除 `hideContextPanel`、`ChatComposer` 已无 `envId`。
+
+因此「把消费方的 import 指过来」在缺少注入时是**静默降级**，不是等价替换。本轮的实际处置：
+
+- `chat-channel` 的 11 处 `@/components/chat/*` **全部保留原样**（该包调用点尚不具备注入能力，
+  且补注入需引入 `browser-image-compression` 等新依赖，超出 Phase 1 授权）。
+- `agent-runtime` 的 chat 实现本身就是 Phase 2 的删除对象，其 18 个 chat 测试**已按目标契约迁移**
+  （直测 `@fenix/ui-components/chat/narrators/*`、mockT 改用 `chat.toolNarrator.*` 前缀、
+  `shouldSuppress` 与 `upload` 改注入），因此该包测试现在验证的是**目的地实现**而非本包副本。
+
+结论：**chat 运行时的切换必须与端口注入同批完成**，即 Phase 2 的 `ChatPanel` / `ChatArea` 改写，
+不能拆成「Phase 1 改 import、Phase 2 补注入」两步。
+
+### 修正 2：`@/src/lib/card-renderer` 存在符号缺口，无处可去
+
+ui-components 的 `web/lib/card-renderer.tsx` 只保留了 tag 注册表（6 个导出），
+**不含** `CardEventEmitter` / `MessageEmitterContext` / `useCardEmit`（该文件头明确「事件通道属于宿主会话层」）。
+宿主 `apps/web/src/lib/card-renderer/` 则是 registry + builtins + emitter + context 四件套。
+两条真实引用因此无法收敛：`agent-runtime/web/components/chat/MessageBubble.tsx`（Emitter/Context）、
+`agent-config/web/components/agent-panel/AgentSitesCard.tsx`（useCardEmit）—— 本轮原样保留。
+
+> 注：ui-components 的 `web/chat/view/internal/card-emitter.ts` 已有 `CardEventEmitter` 的方法签名契约，
+> 但未作为公共出口暴露。Phase 2 需决定是补出口，还是把 `emitter` / `context` 一并纳入该包 `lib/`。
+
+### 修正 3：`uiComponents` 命名空间已接线（原接线清单第 5 项）
+
+`packages/web-runtime/web/i18n/namespace.ts` 新增 `NS.UI_COMPONENTS = "uiComponents"`；
+`apps/web/src/i18n/index.ts` 注册 `packages/ui-components/web/i18n/locales/{en,zh}/uiComponents.json`。
+未接线前 `ConfirmDialog` / `FormDialog` / `layout/*` / chat 组件文案会回退为 key —— 这是 13 个包共用的路径，
+故按宿主职责由本阶段独立提交（`ff6346c8`）。
+
+### Phase 1 未处置清单 —— Phase 2 的入口条件
+
+以下 specifier 因**目标未落地或无归属**而原样保留（括号内为引用数）。它们全部属 Phase 0.2b 的搬迁欠账，
+不是 Phase 1 的执行遗漏；搬迁完成前，这些包的 web 前端仍依赖宿主别名：
+
+| 未落地模块 | 应到位置 | 引用方 |
+| --- | --- | --- |
+| `apps/web/src/api/registry.ts` | `machine/web/api/registry.ts` | identity-admin 5、agent-config 1 |
+| `apps/web/src/types/index.ts`（FileInfo 与其余 DTO） | FileInfo → ui-components chat types；其余 → agent-runtime | agent-runtime 3、machine 测试深链 |
+| `apps/web/src/api/fs.ts` | `agent-runtime/web/api/fs.ts` | agent-runtime 3 |
+| `apps/web/src/api/peri-task-details.ts` | agent-runtime | agent-runtime 1 |
+| `apps/web/src/hooks/use-task-views.ts` | `task/web/hooks/use-task-views.ts` | agent-runtime 1 |
+| `apps/web/src/lib/use-workflow-events.ts` | `workflow/web/lib/use-workflow-events.ts` | workflow 2 + 2 处测试深链 |
+| `apps/web/src/lib/use-context-queue.ts` 与 `context-queue` 的队列 API | ui-components（含 `flushContext` / `dumpContext`） | workflow 2、chat-channel 1 |
+| `apps/web/src/components/MetaAgentPanel.tsx` | `agent-runtime/web/components/MetaAgentPanel.tsx` | workflow 1 |
+| `apps/web/src/components/FilePickerDialog.tsx` | ui-components | agent-runtime 1 |
+| `apps/web/src/pages/agent-panel/components/KnowledgeGraphPanel.tsx` | knowledge | knowledge 1 |
+| `apps/web/src/pages/agent-panel/ArtifactsPanel.tsx` | **待定归属** | chat-channel 1 |
+| `apps/web/src/lib/citation-preview-context.tsx` | **删除**（Phase 2 后零消费方） | agent-runtime 1 |
+| `agent-panel.css` / `artifacts-workspace.css` | 宿主 CSS（`agent-runtime/web` 更名 `agent-panel/web` 后自然满足） | prod-view 1、chat-channel 1 |
+| 测试里的 `@/src/i18n` 单例与 `@/src/i18n/locales/*` | 宿主 i18n（不搬清单） | agent-runtime 6、identity-admin 2、knowledge 1、task 1 |
+| `@/src/lib/utils` 的 `cn` 以外符号（`randomUUID` 等） | 无归属 | agent-runtime 1 |
+
+另有 1 处非 `@/` 口径的欠账：`resources/machine` 的测试仍以相对深链指向
+`apps/web/src/components/agent-panel/{file-tree-model,FileTreeTab}` 与 `apps/web/src/components/FilePickerDialog`
+（后者在 Phase 2 进 ui-components 后可一并收敛）。
+
 ## 验证口径
 
 - 手工验证基线（2026-09-18 实测）：`bun run check:dependencies` 绿（2338 模块）；
