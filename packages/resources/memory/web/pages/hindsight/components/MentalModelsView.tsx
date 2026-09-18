@@ -1,8 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
 
 import type { MentalModel } from "../types";
 

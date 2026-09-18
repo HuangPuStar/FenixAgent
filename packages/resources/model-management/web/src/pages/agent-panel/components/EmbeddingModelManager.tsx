@@ -12,6 +12,8 @@
  *   不是单个模型、也不是整个供应商。
  * - 添加：必填实例名（默认 = 厂商名），提交后该厂商目录下所有模型自动可用。
  */
+
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Boxes, Check, ChevronRight, Cpu, KeyRound, Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -30,7 +32,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { embeddingModelApi } from "@/src/api/knowledge-models";
-import { unwrap } from "@/src/api/request";
 import type {
   ConfiguredInstanceNode,
   ConfiguredProviderNode,

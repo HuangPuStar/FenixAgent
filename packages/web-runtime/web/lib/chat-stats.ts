@@ -1,4 +1,4 @@
-import type { ChangedFile } from "./extract-changed-files";
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 
 /**
  * chat:stats 事件摘要协议（SP-B7）。

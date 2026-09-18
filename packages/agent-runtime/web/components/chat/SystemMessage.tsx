@@ -1,7 +1,7 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { NS } from "@/src/i18n";
 import { cn } from "@/src/lib/utils";
 
 interface SystemMessageProps {

@@ -16,9 +16,9 @@
 
 import type { ChatStateSnapshot } from "@fenix/chat-channel";
 import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
+import { sessionOptionKindsToPermissionOptions } from "@fenix/web-runtime/chat/structured-to-thread";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as Y from "yjs";
-import { sessionOptionKindsToPermissionOptions } from "@/src/lib/structured-to-thread";
 import {
   createChatDocBinding,
   createSessionDocBinding,

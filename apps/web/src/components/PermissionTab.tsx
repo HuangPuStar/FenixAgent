@@ -1,3 +1,4 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,7 +7,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
 import type { SkillInfo } from "@/src/types/config";
 import type { PermissionAction } from "../types/config";

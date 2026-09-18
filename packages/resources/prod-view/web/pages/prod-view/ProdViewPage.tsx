@@ -1,11 +1,11 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useParams } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { lazy, Suspense, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { prodViewApi } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import "@/src/pages/agent-panel/agent-panel.css";
 
 const ChatArea = lazy(() => import("@fenix/chat-channel/web/chat-area").then((m) => ({ default: m.ChatArea })));

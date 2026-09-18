@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
   ExternalLink,
@@ -22,7 +23,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { SiteApp } from "@/src/api/sites";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];

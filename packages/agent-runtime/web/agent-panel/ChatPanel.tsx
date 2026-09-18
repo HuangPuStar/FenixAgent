@@ -5,14 +5,14 @@ import {
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/chat-channel/web";
+import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTaskViews } from "@/src/hooks/use-task-views";
-import { useChatPageVisible } from "@/src/hooks/usePageVisible";
-import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
 import { randomUUID } from "@/src/lib/utils";
 import { useChatState } from "../hooks/use-chat-state";

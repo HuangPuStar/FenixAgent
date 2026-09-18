@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   CheckCircle2,
   ChevronRight,
@@ -20,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,

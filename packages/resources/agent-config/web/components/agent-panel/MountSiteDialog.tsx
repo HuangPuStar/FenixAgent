@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { Globe, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,9 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { NS } from "@/src/i18n";
 import { cn } from "@/src/lib/utils";
 
 interface SiteOption {

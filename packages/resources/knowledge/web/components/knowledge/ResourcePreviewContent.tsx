@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { Loader2 } from "lucide-react";
 import mammoth from "mammoth";
@@ -10,7 +11,6 @@ import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { NS } from "@/src/i18n";
 import type { KnowledgeResourceInfo } from "@/src/types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */

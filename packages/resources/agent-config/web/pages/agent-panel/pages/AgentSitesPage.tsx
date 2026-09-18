@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { useMemo, useState } from "react";
@@ -10,9 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { NS } from "@/src/i18n";
 import { AgentSitesCatalog, type SiteVisibilityFilter } from "./agent-sites-catalog";
 
 const PAGE_SIZE = 20;

@@ -14,8 +14,11 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { NormalizedEvent, StructuredMessage } from "@fenix/chat-channel";
 // 聚合层服务端能力经 server 子路径导入（双入口边界，见 CLAUDE.md YJS 不变量 11）
 import { applyNormalizedEvent, createChatDoc, createSessionDoc, type DocPair } from "@fenix/chat-channel/server";
+import {
+  chatDocEntriesToStructuredMessages,
+  structuredToThreadEntries,
+} from "@fenix/web-runtime/chat/structured-to-thread";
 import type * as Y from "yjs";
-import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from "@/src/lib/structured-to-thread";
 
 let pair: DocPair;
 

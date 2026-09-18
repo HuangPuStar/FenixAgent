@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -28,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
 import type { AgentInfo } from "@/src/types/config";
 import { describeCron } from "../components/CronEditor";
 import { formatTaskRelativeTime } from "./agent-tasks-utils";

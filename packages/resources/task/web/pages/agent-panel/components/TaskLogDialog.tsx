@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -9,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ExecutionLogInfo } from "@/src/api/tasks-v2";
 import { taskV2Api } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
 
 type StatusFilter = "all" | "success" | "failed" | "timeout" | "skipped";
 

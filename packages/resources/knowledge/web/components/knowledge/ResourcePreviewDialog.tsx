@@ -1,8 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { NS } from "@/src/i18n";
 import type { KnowledgeResourceInfo } from "@/src/types/knowledge";
 import { ResourcePreviewContent } from "./ResourcePreviewContent";
 

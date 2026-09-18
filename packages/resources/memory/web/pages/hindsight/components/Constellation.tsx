@@ -1,7 +1,7 @@
 import { layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import type { GraphData, GraphLink, GraphNode } from "./Graph2d";
 
 // ============================================================================

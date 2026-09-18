@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,

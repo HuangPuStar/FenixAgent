@@ -1,3 +1,4 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Check, ChevronRight, ChevronsUpDown, Database, Plus, RefreshCw, Server } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,7 +16,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/src/api/request";
 import { fetchSystemPeopleTree, type SystemPeopleOrganization } from "@/src/api/system-people-tree";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import {

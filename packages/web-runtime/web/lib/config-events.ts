@@ -28,5 +28,6 @@ export function useConfigChangeListener(callback: (module: ConfigModule) => void
     window.addEventListener(CONFIG_CHANGE_EVENT, handler);
     return () => window.removeEventListener(CONFIG_CHANGE_EVENT, handler);
     // deps is a caller-provided array and is intentionally dynamic.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: deps 由调用方按需构造并原样透传，语义上无法静态枚举（源宿主 apps/web 未声明 react 依赖、未启用 react 域规则，迁入本包后规则才生效）。
   }, deps);
 }

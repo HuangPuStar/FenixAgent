@@ -1,6 +1,6 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 
 export const Route = createFileRoute("/no-access")({
   component: NoAccessPage,

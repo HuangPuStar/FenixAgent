@@ -1,3 +1,11 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useChangedFilesFromStats } from "@fenix/web-runtime/hooks/use-changed-files-stats";
+import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import {
+  ARTIFACTS_PREVIEW_FILE_EVENT,
+  getArtifactsPreviewFileDetail,
+} from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
 import {
@@ -14,11 +22,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
-import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
-import { ChatPageVisibleContext } from "@/src/hooks/usePageVisible";
-import { NS } from "@/src/i18n";
-import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type SessionSlot } from "./chat-area-lifecycle";
 import "@/src/pages/agent-panel/artifacts-workspace.css";
 import "./chat-layout.css";

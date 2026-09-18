@@ -1,3 +1,4 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -10,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "@/src/api/model-gateway";
-import { ApiError } from "@/src/api/request";
 
 function keyReason(key: ModelGatewayManagedKey): string {
   return key.usable ? "usable" : (key.invalidReason ?? "unusable");

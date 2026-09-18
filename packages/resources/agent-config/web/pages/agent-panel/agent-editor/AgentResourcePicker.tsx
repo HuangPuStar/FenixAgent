@@ -1,8 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "@/components/ui/checkbox";
-import { NS } from "@/src/i18n";
 import { EditorGroupFilter, EditorPagination } from "./agent-editor-controls";
 import {
   AGENT_EDITOR_PAGE_SIZE,

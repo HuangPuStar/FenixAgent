@@ -1,14 +1,13 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Loader2, Search, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
 
 import type { DocumentItem } from "../types";
 

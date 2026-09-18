@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
-import { structuredToThreadEntries } from "../lib/structured-to-thread";
-import { getTodoChanges } from "../lib/todo";
+import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
+import { getTodoChanges } from "@fenix/web-runtime/chat/todo";
 import type { TodoItem } from "../lib/types";
 
 describe("TodoWrite 增量投影", () => {

@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertCircle,
   Calendar,
@@ -21,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";

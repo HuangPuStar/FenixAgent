@@ -5,7 +5,7 @@
  * 所有方法严格遵循 RESTful 风格。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type {
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,

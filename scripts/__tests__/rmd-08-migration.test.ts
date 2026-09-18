@@ -169,10 +169,10 @@ const RMD_08_MOVES = [
   ["web/src/components/file-icon-helper.tsx", "apps/web/src/components/file-icon-helper.tsx"],
   ["web/src/components/layout/app-header.tsx", "apps/web/src/components/layout/app-header.tsx"],
   ["web/src/components/layout/app-page.tsx", "apps/web/src/components/layout/app-page.tsx"],
-  ["web/src/hooks/use-changed-files-stats.ts", "apps/web/src/hooks/use-changed-files-stats.ts"],
+  ["web/src/hooks/use-changed-files-stats.ts", "packages/web-runtime/web/hooks/use-changed-files-stats.ts"],
   ["web/src/hooks/use-task-views.ts", "apps/web/src/hooks/use-task-views.ts"],
   ["web/src/hooks/useMetaAgent.ts", "apps/web/src/hooks/useMetaAgent.ts"],
-  ["web/src/hooks/usePageVisible.ts", "apps/web/src/hooks/usePageVisible.ts"],
+  ["web/src/hooks/usePageVisible.ts", "packages/web-runtime/web/hooks/use-page-visible.ts"],
   ["web/src/i18n/locales/en/agentHome.json", "apps/web/src/i18n/locales/en/agentHome.json"],
   ["web/src/i18n/locales/en/agentPanel.json", "apps/web/src/i18n/locales/en/agentPanel.json"],
   ["web/src/i18n/locales/en/agents.json", "apps/web/src/i18n/locales/en/agents.json"],
@@ -206,19 +206,19 @@ const RMD_08_MOVES = [
   ["web/src/lib/agent-resource-access.ts", "apps/web/src/lib/agent-resource-access.ts"],
   ["web/src/lib/agent-utils.ts", "apps/web/src/lib/agent-utils.ts"],
   ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
-  ["web/src/lib/artifacts-preview-events.ts", "apps/web/src/lib/artifacts-preview-events.ts"],
+  ["web/src/lib/artifacts-preview-events.ts", "packages/web-runtime/web/lib/artifacts-preview-events.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
-  ["web/src/lib/chat-stats.ts", "apps/web/src/lib/chat-stats.ts"],
+  ["web/src/lib/chat-stats.ts", "packages/web-runtime/web/lib/chat-stats.ts"],
   ["web/src/lib/citation-preview-context.tsx", "apps/web/src/lib/citation-preview-context.tsx"],
-  ["web/src/lib/config-events.ts", "apps/web/src/lib/config-events.ts"],
+  ["web/src/lib/config-events.ts", "packages/web-runtime/web/lib/config-events.ts"],
   ["web/src/lib/context-queue.ts", "apps/web/src/lib/context-queue.ts"],
   ["web/src/lib/extract-changed-files.ts", "apps/web/src/lib/extract-changed-files.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
   ["web/src/lib/password-crypto.ts", "apps/web/src/lib/password-crypto.ts"],
   ["web/src/lib/retry.ts", "apps/web/src/lib/retry.ts"],
   ["web/src/lib/strip-html-tags.ts", "apps/web/src/lib/strip-html-tags.ts"],
-  ["web/src/lib/structured-to-thread.ts", "apps/web/src/lib/structured-to-thread.ts"],
-  ["web/src/lib/todo.ts", "apps/web/src/lib/todo.ts"],
+  ["web/src/lib/structured-to-thread.ts", "packages/web-runtime/web/chat/structured-to-thread.ts"],
+  ["web/src/lib/todo.ts", "packages/web-runtime/web/chat/todo.ts"],
   ["web/src/lib/token-stats.ts", "apps/web/src/lib/token-stats.ts"],
   ["web/src/lib/tool-semantic.ts", "apps/web/src/lib/tool-semantic.ts"],
   ["web/src/lib/types.ts", "apps/web/src/lib/types.ts"],
@@ -263,12 +263,15 @@ const RMD_08_MOVES = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 182 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 apps/web 目标。
-  test("removes every legacy source and retains its exact apps/web target", () => {
+  // 182 个保留的应用壳源文件都必须从旧根路径移除，并存在于唯一的规范目标。
+  // target 是「当前规范位置」而非恒定的 apps/web 路径：文件被后续迁移（如 C1 迁出
+  // 宿主通用 web 运行时到 packages/web-runtime）再次搬走时同步改写 target，
+  // 这样本守卫继续同时断言「旧根路径没有复活」与「规范位置确实存在」。
+  test("removes every legacy source and retains its exact canonical target", () => {
     expect(RMD_08_MOVES).toHaveLength(182);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
-      expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
+      expect(existsSync(target), `canonical target is missing: ${target}`).toBe(true);
     }
   });
 

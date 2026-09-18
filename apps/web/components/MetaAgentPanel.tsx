@@ -1,6 +1,6 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import { ChatPanel } from "@/src/pages/agent-panel/ChatPanel";
 
 export interface MetaAgentPanelProps {

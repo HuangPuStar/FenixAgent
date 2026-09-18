@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { Copy, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -14,8 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import type { ProdViewInfo } from "@/src/api/prod-views";
 import { prodViewApi } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
 import { cn } from "@/src/lib/utils";
 

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import {
+  getTodoChanges,
+  getTodosFromRawInput,
+  isTodoWriteToolCall,
+  parseTodosFromRawInput,
+} from "@fenix/web-runtime/chat/todo";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
-import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall, parseTodosFromRawInput } from "../lib/todo";
 import type { TodoItem } from "../lib/types";
 import type { ModelEntry, ResourceAccess } from "../types/config";
 

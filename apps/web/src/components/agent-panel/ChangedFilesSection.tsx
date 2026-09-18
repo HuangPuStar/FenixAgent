@@ -1,7 +1,7 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { FilePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
-import { NS } from "@/src/i18n";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 
 interface ChangedFilesSectionProps {

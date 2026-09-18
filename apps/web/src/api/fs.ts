@@ -5,7 +5,7 @@
  * 后端路由前缀为 /web/environments/:id/fs，本模块内部拼接完整路径。
  */
 
-import { ApiError, request, UPLOAD_TIMEOUT_MS, unwrap, WRITE_TIMEOUT_MS } from "@/src/api/request";
+import { ApiError, request, UPLOAD_TIMEOUT_MS, unwrap, WRITE_TIMEOUT_MS } from "@fenix/web-runtime/api/request";
 import { randomUUID } from "@/src/lib/utils";
 
 /**

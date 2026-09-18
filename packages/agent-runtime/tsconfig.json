@@ -4,6 +4,9 @@
     "noEmit": true,
     "baseUrl": "../..",
     "paths": {
+      "@fenix/web-runtime/*": ["packages/web-runtime/web/*"],
+      "@fenix/ui-components": ["packages/ui-components/web/index.ts"],
+      "@fenix/ui-components/*": ["packages/ui-components/web/*"],
       "@server/*": ["apps/server/src/*"],
       "@/components/chat/*": ["packages/agent-runtime/web/components/chat/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
@@ -22,7 +25,6 @@
       "@/src/yjs/*": ["packages/agent-runtime/web/yjs/*"],
       "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
       "@/src/i18n": ["apps/web/src/i18n/index.ts"],
-      "@/src/api/request": ["apps/web/src/api/request.ts"],
       "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
       "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["apps/web/src/lib/card-renderer/*"],

@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useNavigate } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -5,10 +7,8 @@ import { useTranslation } from "react-i18next";
 import { usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { ChatPanel } from "@/src/pages/agent-panel/ChatPanel";
-import { dispatchConfigChange } from "../../lib/config-events";
 import { AgentSidebar } from "./AgentSidebar";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import "./agent-panel.css";

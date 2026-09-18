@@ -10,8 +10,8 @@
 // 故 name 断言基于 key 文案。
 
 import { beforeAll, describe, expect, test } from "bun:test";
+import { sessionOptionKindsToPermissionOptions } from "@fenix/web-runtime/chat/structured-to-thread";
 import i18n from "i18next";
-import { sessionOptionKindsToPermissionOptions } from "../lib/structured-to-thread";
 
 beforeAll(async () => {
   // 全量测试时其他测试可能已 import web/src/i18n（初始化并注册完整语言资源），

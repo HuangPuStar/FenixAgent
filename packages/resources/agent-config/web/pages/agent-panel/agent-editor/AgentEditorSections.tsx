@@ -1,8 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
 import { lazy, Suspense, useId, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import { selectionToValue, valueToSelection } from "@/src/lib/agent-node";
 import { canManageAgentSharing } from "@/src/lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";

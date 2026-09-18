@@ -1,3 +1,6 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
 import { Settings } from "lucide-react";
 import { useState } from "react";
@@ -6,9 +9,6 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { modelApi } from "@/src/api/models";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import { dispatchConfigChange } from "@/src/lib/config-events";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
 import type { ModelConfig, ModelEntry } from "@/src/types/config";
 

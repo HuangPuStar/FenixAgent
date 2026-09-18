@@ -1,4 +1,7 @@
 import type { ContentBlock, PeriTaskViewProjection, PromptUsage } from "@fenix/chat-channel";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
+import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -12,12 +15,9 @@ import { buildPromptText } from "@/components/chat/composer-prompt";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { mcpApi } from "@/src/api/mcp";
-import { unwrap } from "@/src/api/request";
 import { getAgentConfigLookupKey } from "@/src/lib/agent-resource-access";
-import { ChatStatsDispatcher } from "@/src/lib/chat-stats";
 import { flushContext } from "@/src/lib/context-queue";
 import { extractChangedFiles } from "@/src/lib/extract-changed-files";
-import { structuredToThreadEntries } from "@/src/lib/structured-to-thread";
 import type { ChatInputMessage, ThreadEntry } from "@/src/lib/types";
 import { ContextPanel } from "./ContextPanel";
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import DOMPurify from "dompurify";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -11,8 +13,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "@/src/types/knowledge";
 
 interface ChunkDetailSheetProps {

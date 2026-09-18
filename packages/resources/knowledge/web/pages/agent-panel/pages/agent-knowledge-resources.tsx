@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   ExternalLink,
   File,
@@ -15,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { NS } from "@/src/i18n";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
 
 interface AgentKnowledgeResourcesProps {

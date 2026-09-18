@@ -4,7 +4,7 @@
  * 封装品牌配置的读取操作，统一通过 request() 与后端通信。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 /** 品牌配置数据 */
 export interface BrandingConfig {

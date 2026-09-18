@@ -1,10 +1,10 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import type { PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
 import { buildPreviewUrl, getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./utils";

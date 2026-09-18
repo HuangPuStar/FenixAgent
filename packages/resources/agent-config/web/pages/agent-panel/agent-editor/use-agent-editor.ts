@@ -1,4 +1,6 @@
 import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -8,10 +10,8 @@ import { kbApi } from "@/src/api/knowledge-bases";
 import { mcpApi } from "@/src/api/mcp";
 import { modelApi } from "@/src/api/models";
 import { registryApi } from "@/src/api/registry";
-import { unwrap } from "@/src/api/request";
 import { agentSitesApi } from "@/src/api/sites";
 import { skillConfigApi } from "@/src/api/skills";
-import { dispatchConfigChange } from "@/src/lib/config-events";
 import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
 import type { AgentDetail, ResourceAccess } from "@/src/types/config";
 import type { KnowledgeBaseInfo } from "@/src/types/knowledge";

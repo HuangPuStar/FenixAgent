@@ -1,4 +1,5 @@
 import { sidebarConfigApi } from "@fenix/agent-config/web";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -18,7 +19,6 @@ import {
   Workflow,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 
 export interface NavEntry {
   id: string;

@@ -6,7 +6,7 @@
  * 上传使用 FormData，PUT 上传文件到 Skill 目录。
  */
 
-import { request } from "../../../../../apps/web/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type {
   ResourceAccess,
   SkillDetail,

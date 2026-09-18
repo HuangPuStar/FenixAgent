@@ -113,7 +113,7 @@ export interface DryRunResult {
 
 // ── API Client ──
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 export const workflowEngineApi = {
   /** 执行工作流（异步启动，立即返回 runId；完整状态通过 getRunStatus / SSE 获取） */

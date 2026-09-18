@@ -1,3 +1,4 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Check, LoaderCircle, Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -17,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { providerApi } from "@/src/api/providers";
-import { unwrap } from "@/src/api/request";
 import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import {
   ModelField as Field,

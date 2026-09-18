@@ -1,7 +1,7 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import type { UserMessageEntry } from "@/src/lib/types";
 import "./chat-navigation-aids.css";
 

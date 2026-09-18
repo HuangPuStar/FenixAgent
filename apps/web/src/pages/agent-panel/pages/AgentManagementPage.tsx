@@ -1,3 +1,6 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
@@ -7,13 +10,10 @@ import { toast } from "sonner";
 import { AgentBadge } from "@/components/chat/AgentBadge";
 import { agentApi } from "@/src/api/agents";
 import { type EnvironmentDetail, envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { getAgentConfigLookupKey, getAgentDisplayName } from "../../../lib/agent-resource-access";
-import { useConfigChangeListener } from "../../../lib/config-events";
 import type { AgentInfo } from "../../../types/config";
 
 interface AgentManageNode {

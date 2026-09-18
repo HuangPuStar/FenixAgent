@@ -1,3 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import {
+  dispatchArtifactsPreviewFile,
+  isWorkspaceRelativeFilePath,
+} from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -5,8 +10,6 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { NS } from "@/src/i18n";
-import { dispatchArtifactsPreviewFile, isWorkspaceRelativeFilePath } from "@/src/lib/artifacts-preview-events";
 import { CardEventEmitter, MessageEmitterContext } from "@/src/lib/card-renderer";
 import { isVisibleContentBlock, parseChatQuotes } from "@/src/lib/context-queue";
 import { splitSystemReminderBlocks } from "@/src/lib/strip-html-tags";

@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { AlertCircle, Eye, Fingerprint, Globe, Lightbulb, Network, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hindsightApi } from "@/src/api/hindsight";
 import { WorkbenchPanel } from "@/src/components/agent-panel/WorkbenchPanel";
-import { NS } from "@/src/i18n";
 import { DataView as HindsightDataView } from "./components/DataView";
 import { EntitiesView } from "./components/EntitiesView";
 import { MentalModelsView } from "./components/MentalModelsView";

@@ -6,6 +6,7 @@
 // - 覆盖 loading / empty / error / retry 状态。
 
 import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -15,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiError } from "@/src/api/request";
 import { clearAdminKey, getAdminKey } from "@/src/lib/admin-key";
 import { type AcpLinkSnapshot, fetchAcpLinkSnapshot } from "../../api/observer";
 import { ObserverFlatTable } from "./components/ObserverFlatTable";

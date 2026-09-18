@@ -572,6 +572,23 @@
         "react-i18next": "^17",
       },
     },
+    "packages/web-runtime": {
+      "name": "@fenix/web-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fenix/chat-channel": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
+        "i18next": "^26.4.2",
+        "yjs": "^13.6.31",
+      },
+      "devDependencies": {
+        "@types/react": "^19.3.0",
+        "react": "^19.3.0",
+      },
+      "peerDependencies": {
+        "react": "^19",
+      },
+    },
     "packages/workflow-engine": {
       "name": "@fenix/workflow-engine",
       "version": "0.1.0",
@@ -971,6 +988,8 @@
     "@fenix/ui-components": ["@fenix/ui-components@workspace:packages/ui-components"],
 
     "@fenix/web-app": ["@fenix/web-app@workspace:apps/web"],
+
+    "@fenix/web-runtime": ["@fenix/web-runtime@workspace:packages/web-runtime"],
 
     "@fenix/workflow-engine": ["@fenix/workflow-engine@workspace:packages/workflow-engine"],
 

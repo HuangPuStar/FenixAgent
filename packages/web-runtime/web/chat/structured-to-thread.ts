@@ -1,4 +1,4 @@
-// web/src/lib/structured-to-thread.ts
+// packages/web-runtime/web/chat/structured-to-thread.ts
 // 新 schema（文档 5.2 Chat Doc：entries/blocks）→ StructuredMessage[] → ThreadEntry[] 渲染转换层。
 //
 // 职责错位纠正后消息时间线在 Chat Doc，本文件新增 chatDocEntriesToStructuredMessages：
@@ -14,14 +14,20 @@ import {
   type PublicErrorInfo,
   type StructuredMessage,
 } from "@fenix/chat-channel";
-// 直接引用 i18next 全局实例（web/src/i18n/index.ts 在此实例上注册各语言资源）：
-// 不 import "@/src/i18n" 模块 —— 测试环境有测试文件 mock.module 该模块为无 default
+import { classifyToolSemantic, semanticToToolCardKind } from "@fenix/ui-components/chat/lib/tool-semantic";
+import type {
+  AssistantChunk,
+  ThreadEntry,
+  TodoItem,
+  ToolCallData,
+  ToolCallStatus,
+} from "@fenix/ui-components/chat/types";
+// 直接引用 i18next 全局实例（宿主 apps/web/src/i18n/index.ts 在此实例上注册各语言资源）：
+// 不 import 宿主 i18n 单例模块 —— 测试环境有测试文件 mock.module 该模块为无 default
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
 import i18n from "i18next";
 import * as Y from "yjs";
 import { getTodoChanges, getTodosFromRawInput } from "./todo";
-import { classifyToolSemantic, semanticToToolCardKind } from "./tool-semantic";
-import type { AssistantChunk, ThreadEntry, TodoItem, ToolCallData, ToolCallStatus } from "./types";
 
 /**
  * Session Doc 三态权限选项（allow_once/allow_session/deny）→ acp-link PermissionOption[]。

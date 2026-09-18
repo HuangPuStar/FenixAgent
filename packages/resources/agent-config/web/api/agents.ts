@@ -5,7 +5,7 @@
  * 后端使用标准 REST 端点（GET/POST/PUT/DELETE），域模块内部抽象为具名方法。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type { AgentDetail, AgentInfo } from "@/src/types/config";
 
 /** Agent 模板 */

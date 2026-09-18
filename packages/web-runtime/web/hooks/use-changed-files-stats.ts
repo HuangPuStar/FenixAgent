@@ -1,6 +1,6 @@
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { useEffect, useState } from "react";
-import type { ChatStatsSummary } from "@/src/lib/chat-stats";
-import type { ChangedFile } from "@/src/lib/extract-changed-files";
+import type { ChatStatsSummary } from "../lib/chat-stats";
 
 /**
  * 消费 chat:stats 摘要事件，返回当前 agent 的 changedFiles 投影。

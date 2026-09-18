@@ -1,5 +1,5 @@
-import { classifyToolSemantic } from "./tool-semantic";
-import type { TodoChange, TodoChangeKind, TodoItem, TodoStatus } from "./types";
+import { classifyToolSemantic } from "@fenix/ui-components/chat/lib/tool-semantic";
+import type { TodoChange, TodoChangeKind, TodoItem, TodoStatus } from "@fenix/ui-components/chat/types";
 
 /** 从 TodoWrite 原始入参解析待办列表；不存在待办字段时返回 null。 */
 export function getTodosFromRawInput(rawInput: Record<string, unknown> | undefined): TodoItem[] | null {

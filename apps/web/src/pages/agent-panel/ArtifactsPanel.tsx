@@ -1,4 +1,10 @@
 import { SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import {
+  ARTIFACTS_PREVIEW_FILE_EVENT,
+  getArtifactsPreviewFileDetail,
+} from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { useRequest } from "ahooks";
 import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,10 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { NS } from "@/src/i18n";
-import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { ProdViewsPanel } from "@/src/pages/agent-panel/ProdViewsPanel";
 import { TasksPanel } from "../../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
 import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";

@@ -1,11 +1,11 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { mcpApi } from "@/src/api/mcp";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "@/src/lib/mcp-resource-access";
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@/src/types/config";
 import { AgentMcpCatalog } from "./agent-mcp-catalog";

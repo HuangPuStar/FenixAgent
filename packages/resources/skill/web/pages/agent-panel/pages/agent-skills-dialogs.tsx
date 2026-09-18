@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { type ChangeEvent, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
@@ -5,7 +6,6 @@ import { FormDialog } from "@/components/config/FormDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { NS } from "@/src/i18n";
 import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
 import type { SkillCreateMode, SkillInfo } from "./agent-skills-types";
 

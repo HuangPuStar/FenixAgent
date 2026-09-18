@@ -1,4 +1,6 @@
 import { EmbeddingModelManager } from "@fenix/model-management/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
@@ -34,11 +36,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { unwrap } from "@/src/api/request";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { useOrg } from "@/src/contexts/OrgContext";
-import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
 import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
 import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";

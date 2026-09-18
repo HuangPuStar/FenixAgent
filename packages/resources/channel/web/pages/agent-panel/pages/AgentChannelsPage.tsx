@@ -1,3 +1,4 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { channelApi } from "@/src/api/channels";
 import { envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";

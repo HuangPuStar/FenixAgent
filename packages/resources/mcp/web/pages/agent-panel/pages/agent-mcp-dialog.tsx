@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,8 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { mcpApi } from "@/src/api/mcp";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import type { McpServerInfo } from "@/src/types/config";
 import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import {

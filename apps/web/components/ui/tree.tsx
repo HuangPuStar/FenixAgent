@@ -1,9 +1,9 @@
 "use client";
 
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { ChevronDown, ChevronRight, Loader2, RotateCw } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "../../src/i18n";
 import { cn } from "../../src/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 

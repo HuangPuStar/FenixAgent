@@ -1,10 +1,10 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import type { FileUIPart } from "ai";
 import { PaperclipIcon, XIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { NS } from "@/src/i18n";
 
 function withClassName(baseClassName: string, className?: string): string {
   return className ? `${baseClassName} ${className}` : baseClassName;

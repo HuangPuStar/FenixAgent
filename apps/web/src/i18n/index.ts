@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
@@ -51,36 +52,6 @@ import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import tasksZH from "./locales/zh/tasks.json";
 import toolNarratorZH from "./locales/zh/toolNarrator.json";
-
-export const NS = {
-  COMMON: "common",
-  LOGIN: "login",
-  SIDEBAR: "sidebar",
-  DASHBOARD: "dashboard",
-  AGENTS: "agents",
-  MODELS: "models",
-  OBSERVER: "observer",
-  SKILLS: "skills",
-  MCP: "mcp",
-  TASKS: "tasks",
-  TASKS_V2: "tasksV2",
-  WORKFLOWS: "workflows",
-  SETTINGS: "settings",
-  SESSIONS: "sessions",
-  ENVIRONMENTS: "environments",
-  ORGS: "orgs",
-  APIKEY: "apikey",
-  CHANNELS: "channels",
-  KNOWLEDGE: "knowledge",
-  AGENT_PANEL: "agentPanel",
-  COMPONENTS: "components",
-  HINDSIGHT: "hindsight",
-  AGENT_HOME: "agentHome",
-  PROD_VIEWS: "prodViews",
-  TOOL_NARRATOR: "toolNarrator",
-} as const;
-
-export type Namespace = (typeof NS)[keyof typeof NS];
 
 i18n
   .use(LanguageDetector)

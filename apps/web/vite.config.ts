@@ -19,12 +19,16 @@ export default defineConfig({
   base: "/ctrl/",
   resolve: {
     alias: {
+      // 两条别名都指向包的 web/ 目录而非入口文件：字符串别名的前缀匹配会把子路径
+      // （@fenix/web-runtime/api/request）拼到替换值之后，只有目录形式能命中真实文件；
+      // 若指向 index.ts 会得到 ".../index.ts/api/request"。
+      "@fenix/web-runtime": path.resolve(__dirname, "../../packages/web-runtime/web"),
+      "@fenix/ui-components": path.resolve(__dirname, "../../packages/ui-components/web"),
       "@/components/ui": path.resolve(__dirname, "components/ui"),
       "@/components/chat": path.resolve(__dirname, "../../packages/agent-runtime/web/components/chat"),
       "@/components": path.resolve(__dirname, "components"),
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
-      "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
       "@/src/api/api-keys": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/api-keys.ts"),
       "@/src/api/branding": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/branding.ts"),

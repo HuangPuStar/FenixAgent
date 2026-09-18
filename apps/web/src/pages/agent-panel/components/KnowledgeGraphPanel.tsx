@@ -2,6 +2,8 @@
 
 import type { ElementDatum, IElementEvent } from "@antv/g6";
 import { Graph } from "@antv/g6";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,8 +19,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import { isKnowledgeGraphNotFound } from "@/src/pages/agent-panel/components/knowledge-graph-state";
 import type { KnowledgeGraphData, KnowledgeGraphProgress } from "@/src/types/knowledge";
 

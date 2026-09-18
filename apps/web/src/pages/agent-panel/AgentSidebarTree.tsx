@@ -1,4 +1,7 @@
 import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -31,9 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
-import { unwrap } from "@/src/api/request";
 import { useOrg } from "@/src/contexts/OrgContext";
-import { NS } from "@/src/i18n";
 import { shouldShowRemoteNode } from "../../lib/agent-node";
 import {
   getAgentAccessBadgeKey,
@@ -41,7 +42,6 @@ import {
   getAgentDisplayName,
   isAgentWritable,
 } from "../../lib/agent-resource-access";
-import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
 import type { AgentNode, ResourceAccess } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 

@@ -6,13 +6,15 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "paths": {
+      "@fenix/web-runtime/*": ["../../../packages/web-runtime/web/*"],
+      "@fenix/ui-components": ["../../../packages/ui-components/web/index.ts"],
+      "@fenix/ui-components/*": ["../../../packages/ui-components/web/*"],
       "@server/*": ["../../../apps/server/src/*"],
       "@/components/ui/*": ["../../../apps/web/components/ui/*"],
       "@/components/*": ["../../../apps/web/components/*"],
       "@/src/api/hindsight": ["web/api/hindsight.ts"],
       "@/src/api/environments": ["../../../packages/agent-runtime/web/api/environments.ts"],
       "@/src/api/fs": ["../../../apps/web/src/api/fs.ts"],
-      "@/src/api/request": ["../../../apps/web/src/api/request.ts"],
       "@/src/api/sites": ["../../agent-config/web/api/sites.ts"],
       "@/src/components/agent-panel/WorkbenchPanel": [
         "../../../apps/web/src/components/agent-panel/WorkbenchPanel.tsx"

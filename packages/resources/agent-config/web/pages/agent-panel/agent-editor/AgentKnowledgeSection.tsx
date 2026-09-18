@@ -1,8 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Database, Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import { AgentResourcePicker } from "./AgentResourcePicker";
 import { EditorStepperField, EditorTextarea, Field, Intro } from "./agent-editor-controls";
 import type { AgentEditorValues } from "./agent-editor-model";

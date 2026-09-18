@@ -7,11 +7,11 @@
 // 3) 派发器默认走 window.dispatchEvent 派发 chat:stats，与消费方构成闭环。
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { useChangedFilesFromStats } from "@fenix/web-runtime/hooks/use-changed-files-stats";
+import { ChatStatsDispatcher, type ChatStatsSummary } from "@fenix/web-runtime/lib/chat-stats";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
-import { ChatStatsDispatcher, type ChatStatsSummary } from "@/src/lib/chat-stats";
 import type { ChangedFile } from "@/src/lib/extract-changed-files";
 import { initializeHappyDomWindow } from "../../../../../apps/web/src/__tests__/happy-dom-window";
 

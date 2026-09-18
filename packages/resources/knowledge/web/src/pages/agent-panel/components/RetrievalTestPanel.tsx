@@ -1,5 +1,6 @@
 "use client";
 
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,7 +11,6 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { kbApi } from "@/src/api/knowledge-bases";
-import { NS } from "@/src/i18n";
 import type {
   KnowledgeRetrievalChunk,
   KnowledgeSearchResultData,

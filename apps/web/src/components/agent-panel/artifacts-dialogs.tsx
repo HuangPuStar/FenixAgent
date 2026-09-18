@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -10,7 +11,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { MountSiteDialog } from "@/src/components/agent-panel/MountSiteDialog";
-import { NS } from "@/src/i18n";
 
 interface ArtifactsDialogsProps {
   agentConfigId: string | null;

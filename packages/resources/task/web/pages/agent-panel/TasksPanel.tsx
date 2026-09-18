@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { CheckCircle2, Clock, Play, Settings2, XCircle } from "lucide-react";
@@ -12,7 +13,6 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ExecutionLogInfo, TaskV2Info } from "@/src/api/tasks-v2";
 import { taskV2Api } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
 import { cn } from "@/src/lib/utils";
 import { describeCron } from "./components/CronEditor";
 
