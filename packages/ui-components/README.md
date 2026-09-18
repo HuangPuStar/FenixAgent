@@ -45,6 +45,7 @@ demo/                     Vite 展示页（非库产物）
 | `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见；另有 `publicError` 块（message + Type + ID）落在卡片右侧 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效）；移除右侧 `publicError` 块——其 message 与第二行同源（`narrate` 的 `errorDetail` 优先取 `publicError.message`），脱敏错误的 Type / ID 因此不再出现在卡片上 |
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
+| `web/chat/css/chat-design-composer.css` | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。
@@ -154,6 +155,13 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     - demo 例外：mock 与输入岛示例的图片因此指向 `https://picsum.photos/...`（见 `MOCK_USER_IMAGE_URL`），
       是 demo 里唯一的远程资源——断网时该图退化为 alt 文案，其余示例仍全部离线可渲染。
     - 移除条件：宿主把展示地址纳入协议（例如 Chat 历史直接下发可访问 URL），包内即可退化为直接透传该字段。
+12. **`ChatHeader` 的扁平化样式仍依赖宿主壳类 `.acp-main-root`**：`chat-design-shell.css` 的
+    `.acp-main-root .chat-header-card`（`height: 45px`、`border-bottom`、圆角置零、去除玻璃底）特指度为 (0,2,0)，
+    压过宿主补充段的 `.chat-header-card` (0,1,0)。`ChatHeader` 的根元素自身就是 `.chat-header-card`，
+    没有可挂前缀的组件内包装类，独立渲染时只能拿到宿主段的玻璃样式（圆角 16px + `backdrop-filter`）。
+    - 影响范围：仅外观（扁平 vs 玻璃），不会像 2026-09-18 修正的 `ChatComposer` 元信息条那样破坏布局；
+      包内 `ChatHeader` 目前只由 `ACPMain` / `ChatInterface` 渲染，两者自带 `.acp-main-root`，故不受影响。
+    - 移除条件：给 `ChatHeader` 增加组件内包装元素，或把该组规则的宿主前缀一并换成组件自有类名。
 
 ## 未来接入 apps/web（本期不做）
 

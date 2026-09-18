@@ -14,18 +14,25 @@
  *    它与 `.chat-composer-plugin:hover` 特指度相同、仅 `color` 冲突，源侧靠「后者胜出」决定悬停色；
  *    两处仍按源顺序（本体规则在前、`[data-open]` 在后）排列，级联结果不变。
  * 2. 未加包根包裹类：输入岛内的命令面板与 popover 可 portal 到 body，整体包裹会导致样式静默失效。
- * 3. 补充段的冲突处理见下方注释（两份来源的级联关系以源仓库实际生效结果为准）。
+ * 3. 卡片与元信息条的三条设计规则改用组件自身的 `.chat-composer-wrapper` 作前缀，源实现为宿主壳类
+ *    `.acp-main-root`（源：`.acp-main-root .chat-composer-card` 等）。特指度同为 (0,2,0)，
+ *    与宿主补充段的级联关系逐条不变；但 `ChatComposer` 可独立渲染（demo 的输入岛示例即如此），
+ *    此时宿主壳类不存在，元信息条会失去 `display:flex` —— 本应同行的 `meta-main` / `meta-actions`
+ *    竖排成两行、卡片也退回宿主段的样式（2026-09-18 修正）。
+ *    包装类由 `ChatComposer` 自身渲染，卡片与元信息条必为其后代，故不会漏配；下方补充段注释里
+ *    引用的选择器名同步更新，声明与数值均未改。
+ * 4. 补充段的冲突处理见下方注释（两份来源的级联关系以源仓库实际生效结果为准）。
  */
 
 /* biome-ignore-all lint/style/noDescendingSpecificity: 本文件由两份源样式表合并（chat-design-composer.css
-   与宿主 agent-panel.css 的 chat 段）。为复刻源渲染结果必须保持源级联顺序——带 `.acp-main-root` 前缀的
-   设计规则在前、宿主补充段在后，宿主段因此在本文件内呈现特指度回落；该回落是源侧既有的事实
+   与宿主 agent-panel.css 的 chat 段）。为复刻源渲染结果必须保持源级联顺序——带 `.chat-composer-wrapper`
+   前缀的设计规则在前、宿主补充段在后，宿主段因此在本文件内呈现特指度回落；该回落是源侧既有的事实
    （源仓库中两者分属不同文件），不是遗漏，故整文件抑制该规则。 */
 .chat-composer-wrapper {
   max-width: 820px;
   padding: 0 16px 12px;
 }
-.acp-main-root .chat-composer-card {
+.chat-composer-wrapper .chat-composer-card {
   overflow: visible;
   border: 1px solid #dce4ef;
   border-radius: 17px;
@@ -33,12 +40,12 @@
   box-shadow: 0 14px 42px rgb(30 64 120 / 10%);
   backdrop-filter: blur(14px);
 }
-.acp-main-root .chat-composer-card:focus-within {
+.chat-composer-wrapper .chat-composer-card:focus-within {
   border-color: #dce4ef;
   box-shadow: 0 14px 42px rgb(30 64 120 / 10%);
   outline: 0;
 }
-.acp-main-root .chat-composer-meta {
+.chat-composer-wrapper .chat-composer-meta {
   display: flex;
   min-width: 0;
   min-height: 44px;
@@ -370,7 +377,7 @@
  *
  * 两份来源的冲突与级联（重要，勿按「宿主优先」简化理解）：
  *   - 源仓库 `agent-panel.css` 第 1 行 `@import chat-design.css`，即本文件前半部分的设计规则
- *     在级联中位于这些样式之前；但 `.acp-main-root .chat-composer-card` 等带 `.acp-main-root` 前缀的
+ *     在级联中位于这些样式之前；但 `.chat-composer-wrapper .chat-composer-card` 等带包装类前缀的
  *     选择器特指度为 (0,2,0)，高于宿主段的 `.chat-composer-card` (0,1,0)，因此浅色下**设计规则胜出**
  *     （边框 #dce4ef、圆角 17px、背景 rgb(255 255 255 / 92%)、阴影 0 14px 42px）。
  *   - 宿主段的 `.dark .chat-composer-card` / `:root.dark .chat-composer-card` 同为 (0,2,0) 且靠后，
