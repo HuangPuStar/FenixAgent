@@ -10,9 +10,14 @@ import { useRequest } from "ahooks";
 import { type ChangeEvent, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { skillConfigApi } from "@/src/api/skills";
-import { canManageSkillSharing, canWriteSkill, getSkillKey, getSkillLookupKey } from "@/src/lib/skill-resource-access";
-import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "@/src/lib/skill-upload";
+import { skillConfigApi } from "../../../api/skills";
+import {
+  canManageSkillSharing,
+  canWriteSkill,
+  getSkillKey,
+  getSkillLookupKey,
+} from "../../../lib/skill-resource-access";
+import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../../../lib/skill-upload";
 import { AgentSkillsCatalog } from "./agent-skills-catalog";
 import { AgentSkillsDialogs } from "./agent-skills-dialogs";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";

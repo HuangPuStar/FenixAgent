@@ -3,14 +3,14 @@ import type {
   SkillUploadConflictStrategy,
   UploadSkillSummary,
 } from "@fenix/agent-config/web/types/config";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { type ChangeEvent, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import type { SkillCreateMode, SkillInfo } from "./agent-skills-types";
 
 type AgentSkillsDialogsProps = {
