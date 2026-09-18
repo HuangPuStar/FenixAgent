@@ -9,6 +9,9 @@
  * - `cn` / Dialog / 类型 / 工具函数改从包内相对路径导入。
  * - i18n 命名空间改为 `uiComponents`：组件文案加 `chat.components.` 前缀，
  *   narrator 文案加 `chat.toolNarrator.` 前缀。
+ * - 移除 `tool.publicError` 错误块（源实现在卡片右侧渲染「message + Type + ID」）：该块是
+ *   `.tool-call-row-compact` 网格的第二列，与标题下方第二行的错误信息重复（`narrate` 的
+ *   `errorDetail` 优先取 `publicError.message`），故只保留第二行；脱敏错误的 Type / ID 不再展示。
  */
 
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
@@ -204,14 +207,6 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
             </button>
           )}
         </div>
-
-        {tool.publicError && (
-          <div className="tool-call-row-public-error text-[10px] text-status-error/80" role="alert">
-            <p>{tool.publicError.message}</p>
-            <p className="break-all">Type: {tool.publicError.type}</p>
-            <p className="break-all">ID: {tool.publicError.id}</p>
-          </div>
-        )}
       </div>
 
       {/* TodoWrite 仅展示相较上一轮的变更，完整清单由输入框上方的状态面板（ChatStatusPanel）承载。 */}
