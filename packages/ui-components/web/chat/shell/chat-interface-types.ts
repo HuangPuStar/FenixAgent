@@ -99,6 +99,14 @@ export interface ChatInterfaceProps {
   tokenUsage?: TokenUsage | null;
   periTasks?: readonly PeriTaskViewProjection[];
   periTasksLoaded?: boolean;
+  /**
+   * Peri Task 详情抽屉注入槽。
+   *
+   * 抽屉组件（`PeriTask*` 三件套）按收录范围未进本包（见 README「收录范围」），因此详情入口以注入槽保留：
+   * 点击任务行时本组件把选中的 `PeriTaskViewProjection` 与关闭回调交给宿主渲染的抽屉，详情数据的加载
+   * 也由宿主负责。未提供时任务行只读（`ChatStatusPanel` 的 tasks Tab 仍正常显示）。
+   */
+  renderPeriTaskDetail?: (task: PeriTaskViewProjection, close: () => void) => ReactNode;
   connectionState?: string;
   /** 已绑定到当前 agent 的 MCP 列表（宿主查询后注入，替代包内 envApi/agentApi/mcpApi 调用） */
   boundMcps?: readonly BoundMcpOption[];

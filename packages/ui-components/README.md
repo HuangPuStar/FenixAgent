@@ -71,9 +71,13 @@ demo/                     Vite 展示页（非库产物）
   引用的 `chat.components.periTask.*` 键（`loading` / `reconnecting` / `unknownTitle` / `status.*`
   由 `ChatStatusPanel` 继续使用，故保留）。
 - 保留的部分：`PeriTaskViewProjection` 等投影类型与 mock 样本仍在用（`ChatStatusPanel` 的 tasks Tab）。
-- 影响范围：`ChatStatusPanel` 的 tasks Tab 变为只读——原先点击任务行会由 `ChatInterface` 接到详情抽屉；
-  需要详情入口的宿主应自行渲染该面板并传 `onOpenTask`。
-- 重新纳入的条件：先确认 Peri Task / Todo 面板的真实归属与消费方（谁渲染、谁提供数据与详情端口）。
+- 详情入口的去向：不再由 `ChatInterface` 直接渲染抽屉，改为可选注入槽
+  `renderPeriTaskDetail?: (task, close) => ReactNode`（`ChatInterface` / `ACPMain` 均透传）。
+  宿主注入后，点任务行会把选中的投影与关闭回调交给宿主自己的抽屉（详情数据加载也在宿主侧）；
+  不注入时任务行只读。这是 2026-09-18 与宿主对齐的结论：既有消费方 `packages/chat-channel`
+  的 `ChatInterface` 仍在渲染 agent-runtime 的 `PeriTaskDetailSheet`，切到本包后必须继续保有该能力。
+- 重新纳入的条件：先确认 Peri Task / Todo 面板的真实归属与消费方（谁渲染、谁提供数据与详情端口）；
+  若确认抽屉是通用能力（不绑 agent-runtime），再连同本槽位一并收进包内。
 
 ## i18n
 

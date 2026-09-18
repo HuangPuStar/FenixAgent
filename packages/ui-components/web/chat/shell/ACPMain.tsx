@@ -73,6 +73,8 @@ interface ACPMainProps {
   periTasks?: readonly PeriTaskViewProjection[];
   /** tasks/taskOrder 子树是否已同步（未同步时任务面板显示加载态） */
   periTasksLoaded?: boolean;
+  /** Peri Task 详情抽屉注入槽（透传给 ChatInterface，见 `chat-interface-types`） */
+  renderPeriTaskDetail?: (task: PeriTaskViewProjection, close: () => void) => ReactNode;
 
   // ── 纯化新增端口 ──
   /**
@@ -144,6 +146,7 @@ export function ACPMain({
   tokenUsage,
   periTasks = [],
   periTasksLoaded = false,
+  renderPeriTaskDetail,
   sidebarOpen: sidebarOpenProp,
   onSidebarOpenChange,
   boundMcps,
@@ -453,6 +456,7 @@ export function ACPMain({
             connectionState={connectionState}
             periTasks={periTasks}
             periTasksLoaded={periTasksLoaded}
+            renderPeriTaskDetail={renderPeriTaskDetail}
             boundMcps={boundMcps}
             projectEntries={projectEntries}
             flushContext={flushContext}

@@ -13,7 +13,8 @@
  *   （单文件 500 行约束）；类型与工具函数全部改为包内导入，i18n 收敛到 `UI_COMPONENTS_NS`。
  * - `loadPeriTaskDetail` 端口与 `PeriTaskDetailSheet` 详情抽屉一并移除（2026-09-18）：`PeriTask*`
  *   三件套源自 `agent-runtime`，在 `apps/web` 无对应实现，属旧组件。`ChatStatusPanel` 的 tasks Tab
- *   仍在（`periTasks` / `periTasksLoaded` 保留），但不再由本组件接详情入口，任务行随之为只读。
+ *   仍在（`periTasks` / `periTasksLoaded` 保留）；详情入口改由 `renderPeriTaskDetail` 注入槽承接
+ *   （宿主渲染自己的抽屉），未注入时任务行只读。
  */
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -27,7 +28,7 @@ import { classifyToolSemantic } from "../lib/tool-semantic";
 import { ChatStatusPanel } from "../panels/chat-status-panel";
 import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
-import type { ThreadEntry, TokenUsage } from "../types";
+import type { PeriTaskViewProjection, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import { ContextPanel } from "./ContextPanel";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
@@ -65,6 +66,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     tokenUsage,
     periTasks = [],
     periTasksLoaded = false,
+    renderPeriTaskDetail,
     connectionState,
     boundMcps = [],
     projectEntries,
@@ -285,9 +287,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     sessionState,
   }));
 
+  // 详情抽屉的选中态由本组件持有，抽屉内容由宿主经 `renderPeriTaskDetail` 渲染（见文件头与 README「收录范围」）。
+  const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
+
   return (
     <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
       <div className="chat-interface-column flex flex-col flex-1 min-w-0">
+        {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
+        {renderPeriTaskDetail && selectedPeriTask
+          ? renderPeriTaskDetail(selectedPeriTask, () => setSelectedPeriTask(null))
+          : null}
+
         {/* Chat messages — unified ChatView */}
         <ChatView
           entries={renderEntries}
@@ -312,6 +322,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               tasksLoaded={periTasksLoaded}
               reconnecting={Boolean(connectionState && connectionState !== "connected")}
               changedFiles={changedFiles}
+              onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
               onPreviewFile={agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined}
             />
           )}
