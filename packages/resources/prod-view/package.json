@@ -10,6 +10,14 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./web/api/prod-views": {
+      "types": "./web/api/prod-views.ts",
+      "default": "./web/api/prod-views.ts"
+    },
+    "./web/lib/prod-view-modules": {
+      "types": "./web/lib/prod-view-modules.ts",
+      "default": "./web/lib/prod-view-modules.ts"
+    }
   }
 }

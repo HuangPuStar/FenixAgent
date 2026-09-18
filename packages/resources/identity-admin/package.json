@@ -33,6 +33,18 @@
     "./server/repository": "./src/repository.ts",
     "./server/schema": "./src/schema.ts",
     "./server/system-admin": "./src/system-admin.ts",
-    "./server/system-api": "./src/system-api.ts"
+    "./server/system-api": "./src/system-api.ts",
+    "./web/api/organizations": {
+      "types": "./web/api/organizations.ts",
+      "default": "./web/api/organizations.ts"
+    },
+    "./web/api/api-keys": {
+      "types": "./web/api/api-keys.ts",
+      "default": "./web/api/api-keys.ts"
+    },
+    "./web/pages/agent-panel/pages/agent-organizations-utils": {
+      "types": "./web/pages/agent-panel/pages/agent-organizations-utils.ts",
+      "default": "./web/pages/agent-panel/pages/agent-organizations-utils.ts"
+    }
   }
 }

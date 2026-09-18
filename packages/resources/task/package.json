@@ -13,6 +13,10 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./web/api/tasks-v2": {
+      "types": "./web/api/tasks-v2.ts",
+      "default": "./web/api/tasks-v2.ts"
+    }
   }
 }

@@ -56,6 +56,18 @@
     "./server/testing": {
       "types": "./src/server/testing.ts",
       "default": "./src/server/testing.ts"
+    },
+    "./web/api/sites": {
+      "types": "./web/api/sites.ts",
+      "default": "./web/api/sites.ts"
+    },
+    "./web/api/agents": {
+      "types": "./web/api/agents.ts",
+      "default": "./web/api/agents.ts"
+    },
+    "./web/pages/agent-panel/agent-editor/agent-editor-model": {
+      "types": "./web/pages/agent-panel/agent-editor/agent-editor-model.ts",
+      "default": "./web/pages/agent-panel/agent-editor/agent-editor-model.ts"
     }
   },
   "scripts": {

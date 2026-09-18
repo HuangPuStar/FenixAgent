@@ -15,6 +15,22 @@
     "./web": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./web/lib/model-config-utils": {
+      "types": "./web/lib/model-config-utils.ts",
+      "default": "./web/lib/model-config-utils.ts"
+    },
+    "./web/api/providers": {
+      "types": "./web/api/providers.ts",
+      "default": "./web/api/providers.ts"
+    },
+    "./web/api/models": {
+      "types": "./web/api/models.ts",
+      "default": "./web/api/models.ts"
+    },
+    "./web/api/model-gateway": {
+      "types": "./web/api/model-gateway.ts",
+      "default": "./web/api/model-gateway.ts"
     }
   },
   "scripts": {

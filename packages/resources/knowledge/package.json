@@ -5,7 +5,27 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./server/schema": "./src/server/schemas/knowledge.schema.ts"
+    "./server/schema": "./src/server/schemas/knowledge.schema.ts",
+    "./web/types/knowledge": {
+      "types": "./web/types/knowledge.ts",
+      "default": "./web/types/knowledge.ts"
+    },
+    "./web/api/knowledge-bases": {
+      "types": "./web/api/knowledge-bases.ts",
+      "default": "./web/api/knowledge-bases.ts"
+    },
+    "./web/api/knowledge-models": {
+      "types": "./web/api/knowledge-models.ts",
+      "default": "./web/api/knowledge-models.ts"
+    },
+    "./web/pages/agent-panel/pages/agent-knowledge-resources": {
+      "types": "./web/pages/agent-panel/pages/agent-knowledge-resources.tsx",
+      "default": "./web/pages/agent-panel/pages/agent-knowledge-resources.tsx"
+    },
+    "./web/pages/agent-panel/pages/agent-knowledge-directory": {
+      "types": "./web/pages/agent-panel/pages/agent-knowledge-directory.tsx",
+      "default": "./web/pages/agent-panel/pages/agent-knowledge-directory.tsx"
+    }
   },
   "dependencies": {
     "@fenix/model-management": "workspace:*",

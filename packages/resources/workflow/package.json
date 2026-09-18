@@ -16,6 +16,22 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./web/pages/workflow/WorkflowList": {
+      "types": "./web/pages/workflow/WorkflowList.tsx",
+      "default": "./web/pages/workflow/WorkflowList.tsx"
+    },
+    "./web/pages/workflow/WorkflowEditor": {
+      "types": "./web/pages/workflow/WorkflowEditor.tsx",
+      "default": "./web/pages/workflow/WorkflowEditor.tsx"
+    },
+    "./web/pages/workflow/WorkflowRuns": {
+      "types": "./web/pages/workflow/WorkflowRuns.tsx",
+      "default": "./web/pages/workflow/WorkflowRuns.tsx"
+    },
+    "./web/pages/workflow/WorkflowVersions": {
+      "types": "./web/pages/workflow/WorkflowVersions.tsx",
+      "default": "./web/pages/workflow/WorkflowVersions.tsx"
+    }
   }
 }

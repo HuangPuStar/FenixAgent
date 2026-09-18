@@ -10,6 +10,10 @@
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
+    },
+    "./web/api/hindsight": {
+      "types": "./web/api/hindsight.ts",
+      "default": "./web/api/hindsight.ts"
     }
   },
   "dependencies": {

@@ -5,7 +5,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./server/schema": "./src/server-schema.ts"
+    "./server/schema": "./src/server-schema.ts",
+    "./web/lib/mcp-resource-access": {
+      "types": "./web/lib/mcp-resource-access.ts",
+      "default": "./web/lib/mcp-resource-access.ts"
+    },
+    "./web/api/mcp": {
+      "types": "./web/api/mcp.ts",
+      "default": "./web/api/mcp.ts"
+    }
   },
   "dependencies": {
     "@fenix/access-control": "workspace:*",

@@ -15,6 +15,14 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./web/api/system-people-tree": {
+      "types": "./web/api/system-people-tree.ts",
+      "default": "./web/api/system-people-tree.ts"
+    },
+    "./web/api/observer": {
+      "types": "./web/api/observer.ts",
+      "default": "./web/api/observer.ts"
+    }
   }
 }

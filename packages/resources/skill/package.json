@@ -9,6 +9,18 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./server/config": "./src/server-config.ts",
-    "./server/migration": "./src/server-migration.ts"
+    "./server/migration": "./src/server-migration.ts",
+    "./web/lib/skill-resource-access": {
+      "types": "./web/lib/skill-resource-access.ts",
+      "default": "./web/lib/skill-resource-access.ts"
+    },
+    "./web/lib/skill-upload": {
+      "types": "./web/lib/skill-upload.ts",
+      "default": "./web/lib/skill-upload.ts"
+    },
+    "./web/api/skills": {
+      "types": "./web/api/skills.ts",
+      "default": "./web/api/skills.ts"
+    }
   }
 }
