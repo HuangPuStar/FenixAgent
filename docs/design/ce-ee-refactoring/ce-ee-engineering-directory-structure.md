@@ -1,6 +1,6 @@
 # CE / EE 工程目录结构与归属说明
 
-> 本文仅描述目标**物理目录**及文件 owner；现有接口、权限、数据和业务行为是否适配新规范由相应执行阶段决定。阶段 1 只需依据本目录图和当前代码确认归属。
+> 本文仅描述目标**物理目录**及文件 owner；现有接口、权限、数据和业务行为的架构约束由[目标架构与开发规范](./ce-ee-engineering-standards.md)定义。
 
 ## 1. 仓库与目录归属
 
@@ -12,11 +12,12 @@ fenix/ 或 fenix-ee/
 │   ├── server/                         # HTTP、WebSocket、启动装配、进程生命周期
 │   └── web/                            # 控制台壳、TanStack Router 最终装配
 ├── packages/
-│   ├── platform/                       # 无业务领域依赖的平台契约与基础实现
-│   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符
-│   │   └── access-control/             # 默认实现；EE 仓库以同路径提供替换实现
+│   ├── platform/                       # 平台契约，以及成套替换的身份、租户和授权实现
+│   │   ├── platform-sdk/               # Context、授权端口、资源端口、模块描述符、应用基础设施契约；无 DB/Web
+│   │   ├── identity/                   # 用户、组织、成员、认证/API Key；包含 DB、route 与 Web
+│   │   └── access-control/             # 默认授权实现；依赖同版本 identity 的公开入口
 │   ├── agent-runtime/                  # @fenix/agent-runtime：统一组合原 src 中的 Agent 运行编排
-│   ├── <other 1>/                      # SDK、插件等独立包，如 acp-link、core、plugins，服务模块直接包引用，内部不需要遵循 资源包内部目录规范
+│   ├── <other 1>/                      # 独立 SDK、插件等包，如 acp-link、core、plugins；服务模块直接包引用，只要求包间依赖无环
 │   ├── <other 2>/
 │   ├── <other n>/
 │   ├── resources/                      # 完整资源领域模块（后端、DB、web contribution）
@@ -41,22 +42,26 @@ fenix/ 或 fenix-ee/
 └── upstream/fenix/                      # 仅 EE：Git submodule
 ```
 
-`upstream/fenix/` 及 EE 的替换实现只表示商业仓库的目标归属，不属于 CE 阶段 1 的搬迁范围；未来 `deploy/manifests/` 等未使用目录也不因图示而创建。
+`upstream/fenix/` 及 EE 的替换实现只表示商业仓库的目标归属；未来 `deploy/manifests/` 等未使用目录也不因图示而创建。
 
 ### 1.1 目录责任
 
 - `apps/server` 持有服务入口、现有 HTTP/WebSocket 接入、启动组装与进程生命周期；`apps/web` 持有控制台入口、壳与路由适配。`apps/generated` 是生成代码的归属，`deploy/assembly` 是现有装配配置的归属；不因目录图创建新的装配机制。
-- `packages/platform` 归属无业务领域依赖的平台公共能力；业务鉴权逻辑是否适配新平台不由目录归属决定。
+- `packages/platform/platform-sdk` 只归属无具体业务实现的平台稳定契约和应用基础设施访问入口，不包含 DB、route 或 Web，也不依赖任何具体平台或资源模块。应用基础设施只定义受限的注册与读取规则，不创建或拥有具体基础设施。
+- `packages/` 中除 `platform/`、`agent-runtime/`、`resources/` 外的包均为独立 SDK 或插件包。服务模块直接通过包引用使用其能力；这些包不适用资源包内部目录或服务模块依赖规则，只要求包间依赖无环。
+- `packages/platform/identity` 与 `packages/platform/access-control` 是同一版本成套替换的有状态平台模块。Identity 拥有用户、组织、成员、认证/API Key 及相应 DB、route、Web；AccessControl 可依赖 Identity 的公开入口，但不得导入其 repository、schema 或内部路径。当前 `packages/resources/identity-admin` 按职责拆分后删除，不保留兼容包。
 - `packages/resources/<resource>` 是该业务已有后端、DB 与前端文件的物理归属；不能仅凭业务引用关系把其他资源的源码复制到本包。
 - `packages/agent-runtime` 归属原 `src` 的 Environment、Instance、生命周期与 relay/session 运行组合；已经独立的四个基础运行包仍归各自原包，不复制。
 - 四个基础运行包保持独立 workspace、依赖和测试边界。在线链路的高耦合由 `@fenix/agent-runtime` 组合，不等于将基础能力合并成一个物理 package。
-- `packages/agent-runtime` 持有运行组合；LaunchSpec 中的业务资源解析归所属资源，Machine 和 Workflow 的原有实现分别归其自身业务 owner。目录归属不要求移动时重写既有业务行为。
+- `packages/agent-runtime` 持有运行组合；LaunchSpec 中的业务资源解析归所属资源，Workflow 仍归自身业务 owner。Machine 与 Sandbox 保持独立资源包及各自 DB/Web owner，但作为 Runtime 的固定基础资源，允许 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` 的公开入口依赖；Machine/Sandbox 不得反向依赖 Runtime。
 - `packages/resources/<resource>/web` 是该业务页面、API client、i18n 和专有前端组件的物理归属；共同的全局壳与通用组件归 `apps/web`。
 - `db/` 和 `deploy/` 是仓库级交付物，不属于任意业务模块；模块通过显式贡献接入它们。
 
 ### 1.2 资源包内部目录示例
 
-下面的子目录只定义文件的物理归属。阶段 1 只承接现有文件，未有真实文件的子目录无需创建；是否引入新的 Facade、DTO、capability 或 migration manifest，不能由目录图自行推导。`web/` 不因此更改现有页面或 API。
+下面的子目录只定义文件的物理归属。未有真实文件的子目录无需创建；是否引入新的 Facade、DTO、capability 或 migration manifest，不能由目录图自行推导。`web/` 不因此更改现有页面或 API。
+
+`packages/platform/identity` 虽不属于普通资源，但同样是有状态模块，因此也按实际需要拥有 `src/`、`db/`、`web/`、manifest、测试和 README；其物理位置仍在 `packages/platform/identity`，不能为了复用下列示例将它放回 `packages/resources`。
 
 ```text
 packages/resources/<resource>/

@@ -4,7 +4,7 @@
 
 | 子文档 | 只说明 | 使用范围 |
 | --- | --- | --- |
-| [仓库目录结构与归属说明](./ce-ee-engineering-directory-structure.md) | `apps/`、`packages/`、`db/`、`deploy/` 等目录及模块文件的物理 owner | 阶段 1 的文件落点；后续也可用来核查包归属 |
-| [目标架构与开发规范](./ce-ee-engineering-standards.md) | 模块接口、依赖、装配、权限、协议、前端、DB 与部署等长期规范 | 阶段 2 的逐包分析和阶段 3 的逐包适配；**不作为阶段 1 的业务改动依据** |
+| [仓库目录结构与归属说明](./ce-ee-engineering-directory-structure.md) | `apps/`、`packages/`、`db/`、`deploy/` 等目录及模块文件的物理 owner | 核查模块与文件归属 |
+| [目标架构与开发规范](./ce-ee-engineering-standards.md) | 模块接口、依赖、装配、权限、协议、前端、DB、部署与最终一致性验收等长期规范 | 工程适配、架构核查与验收的目标依据 |
 
-迁移范围、闭包任务、开发顺序、review、提交、发布和验收只在[迁移执行计划索引](./ce-ee-refactoring-collaboration-plan.md)及其三个阶段子计划中记录。目录文档不能要求以新规范修改既有接口、权限或数据；目标规范也不能自行规定某个阶段的迁移步骤。
+[EE 扩展架构](./ee-extension-architecture.md) 仅用于 EE 和客户化扩展的设计，不属于 CE 重构输入。
