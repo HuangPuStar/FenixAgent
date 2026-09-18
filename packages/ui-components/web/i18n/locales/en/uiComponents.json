@@ -121,21 +121,6 @@
         "removeQuote": "Remove quote",
         "title": "Assets to send"
       },
-      "contextPanel": {
-        "hideContext": "Hide context panel",
-        "input": "Input",
-        "messages": "Messages",
-        "noToolCalls": "No tool calls",
-        "output": "Output",
-        "pendingConfirmation": "Pending",
-        "running": "Running",
-        "showContext": "Show context panel",
-        "tokenUsage": "Token Usage",
-        "tokens": "Tokens",
-        "toolCalls": "Tool Calls",
-        "tools": "Tools",
-        "unknownModel": "Unknown"
-      },
       "filePicker": {
         "fileTooLarge": "{{name}} is too large (max {{max}})",
         "loadFailed": "Failed to load files",

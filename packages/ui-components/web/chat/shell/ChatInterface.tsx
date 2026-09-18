@@ -15,6 +15,9 @@
  *   三件套源自 `agent-runtime`，在 `apps/web` 无对应实现，属旧组件。`ChatStatusPanel` 的 tasks Tab
  *   仍在（`periTasks` / `periTasksLoaded` 保留）；详情入口改由 `renderPeriTaskDetail` 注入槽承接
  *   （宿主渲染自己的抽屉），未注入时任务行只读。
+ * - `ContextPanel` 右栏与其开关一并移除（2026-09-18）：该面板源自 `chat-channel`，`apps/web` 从不渲染它
+ *   （宿主走 `@fenix/chat-channel/web/chat-area`），源 ACPMain 也一直传 `hideContextPanel={true}`。
+ *   `hideContextPanel` prop 随之删除；`renderEntries` / `promptUsage` 仍被状态面板与输入岛上下文计使用。
  */
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -30,7 +33,6 @@ import { PermissionPanel } from "../panels/PermissionPanel";
 import { QuestionPanel } from "../panels/QuestionPanel";
 import type { PeriTaskViewProjection, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
-import { ContextPanel } from "./ContextPanel";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
@@ -42,7 +44,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   {
     agentId,
     readonly,
-    hideContextPanel,
     rcsSessionId,
     detailSessionId,
     onSessionCreated,
@@ -120,8 +121,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 追踪用户主动取消操作，避免取消后触发错误提示
   const userCancelledRef = useRef(false);
-  const [contextPanelOpen, setContextPanelOpen] = useState(true);
-  // ACP 返回的真实 token 用量（prompt/complete 响应），用于 ContextPanel 优先展示
+  // ACP 返回的真实 token 用量（prompt/complete 响应），供输入岛上下文计展示
   const [promptUsage, setPromptUsage] = useState<TokenUsage | null>(null);
 
   // Notify parent when active session changes
@@ -259,7 +259,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     props: {
       agentId,
       readonly,
-      hideContextPanel,
       rcsSessionId,
       detailSessionId,
       availableCommands,
@@ -386,18 +385,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </div>
         )}
       </div>
-
-      {/* Context Panel */}
-      {!readonly && !hideContextPanel && (
-        <ContextPanel
-          entries={renderEntries}
-          agentName={agentId}
-          modelName={modelName}
-          collapsed={!contextPanelOpen}
-          onToggle={() => setContextPanelOpen(!contextPanelOpen)}
-          acpUsage={tokenUsage ?? promptUsage}
-        />
-      )}
     </div>
   );
 });

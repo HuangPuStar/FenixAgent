@@ -121,21 +121,6 @@
         "removeQuote": "移除引用",
         "title": "待发送 Assets"
       },
-      "contextPanel": {
-        "hideContext": "隐藏上下文面板",
-        "input": "输入",
-        "messages": "消息",
-        "noToolCalls": "暂无工具调用",
-        "output": "输出",
-        "pendingConfirmation": "待确认",
-        "running": "运行中",
-        "showContext": "显示上下文面板",
-        "tokenUsage": "Token 用量",
-        "tokens": "Token",
-        "toolCalls": "工具调用",
-        "tools": "工具",
-        "unknownModel": "未知"
-      },
       "filePicker": {
         "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
         "loadFailed": "加载文件失败",

@@ -431,7 +431,6 @@ export function ACPMain({
             ref={chatRef}
             agentId={agentId}
             readonly={readonly}
-            hideContextPanel={true}
             rcsSessionId={rcsSessionId}
             detailSessionId={detailSessionId}
             scenePrompt={scenePrompt}

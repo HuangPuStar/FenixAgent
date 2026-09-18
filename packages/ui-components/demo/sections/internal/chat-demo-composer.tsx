@@ -32,7 +32,7 @@ import {
 } from "@fenix/ui-components/chat/mocks/mock-fixtures";
 import { useRef, useState } from "react";
 
-/** 上下文用量样本：与 ContextPanel / 会话外壳示例同源（mock 工厂函数，避免静态值失真）。 */
+/** 上下文用量样本：与命令菜单 / 资产行示例同源（mock 工厂函数，避免静态值失真）。 */
 const MOCK_CONTEXT_USAGE = createMockTokenUsage();
 
 /**

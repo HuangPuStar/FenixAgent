@@ -73,7 +73,6 @@ export * from "./shell/AgentAvatar";
 export * from "./shell/AgentBadge";
 export * from "./shell/ChatHeader";
 export * from "./shell/ChatInterface";
-export * from "./shell/ContextPanel";
 export * from "./shell/chat-interface-types";
 export * from "./shell/FilePickerPanel";
 export * from "./shell/sidebar-session-list";

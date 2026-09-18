@@ -70,7 +70,6 @@ export interface ChatNotice {
 export interface ChatInterfaceProps {
   agentId?: string;
   readonly?: boolean;
-  hideContextPanel?: boolean;
   rcsSessionId?: string;
   detailSessionId?: string;
   /**

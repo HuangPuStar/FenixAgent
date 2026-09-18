@@ -1,12 +1,12 @@
 /**
- * chat 分区示例：会话外壳层（ACPMain 全貌 / ContextPanel / 会话列表）。
+ * chat 分区示例：会话外壳层（ACPMain 全貌 / 会话列表）。
  *
  * ACPMain 吃 mock 会话的两份快照：发送、取消、权限/问答应答、模式切换、新建与切换会话全部回到 mock 状态机。
  * mock 不持有会话的改名与删除（真实系统里那是宿主的会话管理职责），示例用本层 overlay 兑现，
- * 并与 ContextPanel / 会话列表共享，保证三处显示一致。
+ * 并与会话列表共享，保证两处显示一致。
  */
 
-import { ACPMain, ContextPanel, SidebarSessionList } from "@fenix/ui-components";
+import { ACPMain, SidebarSessionList } from "@fenix/ui-components";
 import type { MockChatSession } from "@fenix/ui-components/chat/mocks/mock-chat-store";
 import { MOCK_AGENT_ID } from "@fenix/ui-components/chat/mocks/mock-fixtures";
 import { useCallback, useMemo, useState } from "react";
@@ -14,7 +14,6 @@ import { useCallback, useMemo, useState } from "react";
 /** 会话外壳示例组。 */
 export function ChatShellExamples({ session }: { session: MockChatSession }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [contextCollapsed, setContextCollapsed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // 会话改名/删除的宿主 overlay：mock 只提供消息与会话选择。
   const [renamedTitles, setRenamedTitles] = useState<Record<string, string>>({});
@@ -31,11 +30,6 @@ export function ChatShellExamples({ session }: { session: MockChatSession }) {
   );
 
   const chatState = useMemo(() => ({ ...session.chatState, sessions }), [session.chatState, sessions]);
-
-  const entries = useMemo(
-    () => session.projectEntries(session.sessionState.structuredMessages),
-    [session.projectEntries, session.sessionState.structuredMessages],
-  );
 
   const handleRenameSession = useCallback((sessionId: string, title: string) => {
     setRenamedTitles((current) => ({ ...current, [sessionId]: title }));
@@ -90,22 +84,6 @@ export function ChatShellExamples({ session }: { session: MockChatSession }) {
           在输入岛回车即可看到流式回放：推理 → 工具 → 计划 → 权限（暂停等待应答）→ 问答 → 完成。
         </p>
         <p className="demo-hint">{notice ?? "等待交互…"}</p>
-      </div>
-
-      <div className="demo-example">
-        <h2 className="demo-example-title">ContextPanel（模型 / 用量 / 工具统计 / 待确认队列）</h2>
-        <div className="flex h-[420px] overflow-hidden rounded-lg border border-border">
-          <ContextPanel
-            entries={entries}
-            agentName="Fenix Agent"
-            modelName={session.modelName}
-            duration="00:42"
-            collapsed={contextCollapsed}
-            onToggle={() => setContextCollapsed((collapsed) => !collapsed)}
-            acpUsage={session.tokenUsage}
-          />
-        </div>
-        <p className="demo-hint">点左侧边缘的折叠按钮可切换收起态（收起后只留一条窄边）。</p>
       </div>
 
       <div className="demo-example">

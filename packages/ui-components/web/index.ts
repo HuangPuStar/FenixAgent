@@ -58,7 +58,6 @@ export * from "./chat/shell/AgentAvatar";
 export * from "./chat/shell/AgentBadge";
 export * from "./chat/shell/ChatHeader";
 export * from "./chat/shell/ChatInterface";
-export * from "./chat/shell/ContextPanel";
 export * from "./chat/shell/chat-interface-types";
 export * from "./chat/shell/FilePickerPanel";
 export * from "./chat/shell/sidebar-session-list";

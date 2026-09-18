@@ -35,7 +35,6 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "ComposerAssets",
     "ComposerContextMeter",
     "ComposerToolbar",
-    "ContextPanel",
     "Conversation",
     "ConversationContent",
     "ConversationEmptyState",

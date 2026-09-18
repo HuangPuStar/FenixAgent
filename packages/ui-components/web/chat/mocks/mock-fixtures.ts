@@ -217,7 +217,7 @@ export function createMockQuestions(): Map<string, QuestionProjection> {
   ]);
 }
 
-/** 会话用量样本（驱动 ContextPanel 与输入岛环形指示）。 */
+/** 会话用量样本（驱动输入岛上下文计与环形指示）。 */
 export function createMockTokenUsage(): TokenUsage {
   return { totalTokens: 18_432, inputTokens: 16_220, outputTokens: 2_212, contextWindow: 200_000 };
 }

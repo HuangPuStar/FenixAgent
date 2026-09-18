@@ -81,6 +81,20 @@ demo/                     Vite 展示页（非库产物）
 - 重新纳入的条件：先确认 Peri Task / Todo 面板的真实归属与消费方（谁渲染、谁提供数据与详情端口）；
   若确认抽屉是通用能力（不绑 agent-runtime），再连同本槽位一并收进包内。
 
+同一条线在 2026-09-18 又清掉 `ContextPanel`（源自 `packages/chat-channel/web/components/ContextPanel.tsx`，
+会话右栏：模型信息 / token 用量 / 工具调用统计 / 待确认队列）。`apps/web` 走
+`@fenix/chat-channel/web/chat-area`，从不渲染它；源 `ACPMain` 也一直传 `hideContextPanel={true}`，
+即既有宿主路径下这块面板本就是隐藏的。
+
+- 一并移除的接线：`hideContextPanel` prop（`ChatInterface` / `ACPMain` / `chat-interface-types` 三处）、
+  `contextPanelOpen` 状态与右栏渲染块、demo 的 ContextPanel 示例、`chat.components.contextPanel.*`
+  文案（13 键 × zh/en 两份字典）。
+- 保留的部分：`renderEntries` 与 `promptUsage` 仍由 `ChatStatusPanel` 与输入岛上下文计使用；
+  `createMockTokenUsage()` 仍是输入岛示例的样本来源。
+- 影响范围：源包 `packages/chat-channel/web/components/ContextPanel.tsx` 原样保留（`packages/resources/knowledge`
+  的 SSR 用例仍引用它），删除只影响本包覆盖面 —— 本包尚未被任何消费方接入。
+- 重新纳入的条件：宿主出现渲染上下文面板的真实需求，并给出数据来源（`entries` / `acpUsage`）与折叠交互的宿主契约。
+
 ## i18n
 
 本包不自带 i18n 实例。宿主渲染这些组件前必须把包内文案注册到 `uiComponents` 命名空间：
@@ -118,7 +132,7 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    `@utility tool-status-pill*` / `tool-call-*` 与 `@keyframes`（`status-active-pulse`、`shimmerSlide`、
    `agent-badge-pulse` 等）。
    - 影响范围：这些 `@utility` / `@keyframes` 的实际使用方是 `agent-runtime`、`chat-channel` 的组件
-     （`ToolCallRow`、`AgentBadge`、`ContextPanel` 等），本包 `ui/`、`config/`、`chat/` 下组件均不引用；
+     （`ToolCallRow`、`AgentBadge` 等），本包 `ui/`、`config/`、`chat/` 下组件均不引用；
      后续批次若引入依赖它们的组件需重新评估。
    - demo 为观感一致，自行复制了 `html, body` 基准字号与滚动条，不随包分发。
 5. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
