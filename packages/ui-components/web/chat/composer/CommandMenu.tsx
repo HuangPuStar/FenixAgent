@@ -1,4 +1,4 @@
-import { CheckCircle2, Plug, Search } from "lucide-react";
+import { CheckCircle2, Plug, Search, SquareSlash } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../lib/i18n";
@@ -15,6 +15,14 @@ import type { AvailableCommand } from "../types";
  * `@/components/ui/{input,scroll-area,use-roving-list-navigation}` → 包内 `../../ui/*`；
  * 命名空间改为 `UI_COMPONENTS_NS`（键 `chat.components.commandMenu.*`）；
  * 结构、键盘导航与类名逐字保留。
+ *
+ * 纯化改动（2026-09-18，命令/技能行改版，样式见 `../css/chat-design-command-menu.css`）：
+ * 1. 行首的 `/` 前缀文字改为 `SquareSlash` 图标 —— `/` 本就是 slash 命令的标记，图标化后左侧列
+ *    有了视觉锚点，也与 MCP 行的 `Plug` 同构（MCP 行一直是「图标 + 名称」）。
+ * 2. 图标独立占网格首列（源里只有 MCP 行有图标列），技能行与 MCP 行的名称因此左对齐；
+ *    名称不再带 `/{name}`，插入草稿的文本仍由 `ChatComposer` 拼 `/${name} `，协议不变。
+ * 3. 右侧提示与选中勾选收进 `.chat-command-menu-tail`：二者同属行的尾列，源实现把它们与
+ *    名称/描述并列为网格子项，一行同时有提示与勾选时会多出一个子项被挤到隐式第二行。
  */
 
 /** Agent 已绑定的 MCP 连接（本轮上下文候选）。 */
@@ -154,6 +162,7 @@ export function CommandMenu({
                     const navigationKey = `skill:${command.name}`;
                     const active = navigationKey === activeKey;
                     const selected = selectedCommandNames.has(command.name);
+                    const hint = command.input?.hint;
                     return (
                       <button
                         ref={registerItem(navigationKey)}
@@ -165,10 +174,15 @@ export function CommandMenu({
                         onMouseEnter={() => setActiveKey(navigationKey)}
                         className={`chat-command-menu-item${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
                       >
-                        <span className="chat-command-menu-name">/{command.name}</span>
+                        <SquareSlash className="chat-command-menu-command-icon" />
+                        <span className="chat-command-menu-name">{command.name}</span>
                         <span className="chat-command-menu-description">{command.description}</span>
-                        {command.input?.hint && <span className="chat-command-menu-hint">{command.input.hint}</span>}
-                        {selected && <CheckCircle2 className="chat-command-menu-check" />}
+                        {(hint || selected) && (
+                          <span className="chat-command-menu-tail">
+                            {hint && <span className="chat-command-menu-hint">{hint}</span>}
+                            {selected && <CheckCircle2 className="chat-command-menu-check" />}
+                          </span>
+                        )}
                       </button>
                     );
                   })}

@@ -3,7 +3,7 @@
  * 列表项、分区标题、勾选与 MCP 状态、底部快捷键提示。
  *
  * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-composer.css 的命令面板段
- * （源第 179-377 行、507-579 行、585-625 行），逐字复制（含色值，未 token 化）。
+ * （源第 179-377 行、507-579 行、585-625 行），逐字复制（含色值，未 token 化；后改的色值见第 4 条）。
  * 源文件 658 行，因仓库 500 行红线按职责拆分：输入岛本体见 chat-design-composer.css（本文件为其对侧）。
  *
  * 纯化改动：
@@ -13,6 +13,12 @@
  *    祖先包裹会逃出作用域导致样式静默失效，故保持源选择器前缀不变。
  * 3. `.chat-command-menu--panel` 段为「能力面板」形态，与 popover/inline 形态共用基础类名，
  *    靠特指度（(0,3,0) 覆盖 (0,2,0)）生效，与源一致，未调整顺序。
+ * 4. 面板改版（2026-09-18，配合 CommandMenu 的 `/` → `SquareSlash` 图标）：去掉蓝色字体与蓝色
+ *    强调色（`.chat-command-menu-name` 的 `#3d5f95` / `#58739d`、hover 与 `.is-active` 的 `#294d87`、
+ *    `.chat-command-menu-title svg` 的 `#3567ad`），名称改用菜单正文色 `#263247`，hover 底色改中性
+ *    `#f5f7fa`；行首新增 16px 图标列（技能行与 MCP 行的名称列因此对齐），尾列提示与勾选合并为
+ *    `.chat-command-menu-tail`；选中勾选由蓝色 `#5f83bd` 改为与 MCP「已连接」同源的绿 `#25856e`；
+ *    `.is-active` 的左侧强调条改用包内 token `var(--color-brand)`（唯一的蓝，来自主题色）。
  */
 .chat-command-popover {
   width: min(600px, calc(100vw - 32px));
@@ -67,7 +73,7 @@
 .chat-command-menu-title svg {
   width: 14px;
   height: 14px;
-  color: #3567ad;
+  color: #445269;
   stroke-width: 1.8;
 }
 
@@ -122,7 +128,7 @@
   display: grid;
   width: 100%;
   min-height: 42px;
-  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(120px, max-content) minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   border-radius: 6px;
@@ -136,17 +142,17 @@
 
 .chat-command-menu-item:hover,
 .chat-command-menu-item.is-active {
-  color: #294d87;
-  background: #f4f7fc;
+  color: #263247;
+  background: #f5f7fa;
 }
 
 .chat-command-menu-item.is-active {
-  box-shadow: inset 2px 0 #3567ad;
+  box-shadow: inset 2px 0 var(--color-brand);
 }
 
 .chat-command-menu-name {
   overflow: hidden;
-  color: #3d5f95;
+  color: #263247;
   font-size: 12px;
   font-weight: 620;
   text-overflow: ellipsis;
@@ -160,6 +166,13 @@
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-command-menu-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
 }
 
 .chat-command-menu-hint {
@@ -253,7 +266,7 @@
 
 .chat-command-menu--panel .chat-command-menu-item {
   min-height: 34px;
-  grid-template-columns: minmax(150px, max-content) minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(150px, max-content) minmax(0, 1fr) auto;
   gap: 6px;
   border-radius: 5px;
   padding: 2px 8px;
@@ -272,13 +285,13 @@
 
 .chat-command-menu--panel .chat-command-menu-item:hover,
 .chat-command-menu--panel .chat-command-menu-item.is-active {
-  color: #58739d;
+  color: #263247;
   background: #f7f8fa;
   box-shadow: none;
 }
 
 .chat-command-menu--panel .chat-command-menu-name {
-  color: #58739d;
+  color: #263247;
   font-size: 14px;
   font-weight: 600;
 }
@@ -313,6 +326,7 @@
 }
 
 .chat-command-menu-check,
+.chat-command-menu-command-icon,
 .chat-command-menu-mcp-icon {
   width: 16px;
   height: 16px;
@@ -320,7 +334,7 @@
 }
 
 .chat-command-menu-check {
-  color: #5f83bd;
+  color: #25856e;
 }
 
 .chat-command-menu-mcp-state {
