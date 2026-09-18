@@ -1,21 +1,21 @@
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { channelApi } from "@/src/api/channels";
-import { envApi } from "@/src/api/environments";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";
+import { channelApi } from "../../../api/channels";
 
 type ChannelBinding = {
   id: string;
