@@ -1,0 +1,94 @@
+{
+  "batchActionBar": {
+    "clear": "清除",
+    "selected": "已选择 {{count}} 项"
+  },
+  "codeBlock": {
+    "copied": "已复制",
+    "copy": "复制"
+  },
+  "confirmDialog": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "processing": "处理中..."
+  },
+  "conversation": {
+    "noMessages": "暂无消息",
+    "scrollToBottom": "回到最新消息",
+    "scrollToLastUserMessage": "滚动到最后一条用户消息",
+    "startConversation": "开始对话以查看消息"
+  },
+  "dataTable": {
+    "actions": "操作",
+    "noData": "暂无数据",
+    "pagination": "第 {{start}}-{{end}} 条，共 {{total}} 条",
+    "searchPlaceholder": "搜索..."
+  },
+  "datePicker": {
+    "placeholder": "选择日期"
+  },
+  "formDialog": {
+    "cancel": "取消",
+    "save": "保存",
+    "saving": "保存中..."
+  },
+  "fullscreen": "全屏",
+  "large": "大",
+  "medium": "中",
+  "message": {
+    "attachment": "附件",
+    "collapse": "缩小",
+    "expand": "扩大",
+    "image": "图片",
+    "nextBranch": "下一个分支",
+    "previousBranch": "上一个分支",
+    "remove": "移除",
+    "removeAttachment": "移除附件"
+  },
+  "permissionRequest": {
+    "title": "需要权限"
+  },
+  "preview": "预览",
+  "promptInput": {
+    "addPhotosOrFiles": "添加图片或文件",
+    "attachment": "附件",
+    "image": "图片",
+    "remove": "移除",
+    "removeAttachment": "移除附件",
+    "submit": "提交",
+    "uploadFiles": "上传文件"
+  },
+  "reasoning": {
+    "thinking": "思考中...",
+    "thought": "思考了一会",
+    "thoughtFor": "思考了 {{duration}} 秒"
+  },
+  "small": "小",
+  "statusBadge": {
+    "all": "全部",
+    "builtin": "内置",
+    "configured": "已配置",
+    "custom": "自定义",
+    "disabled": "已禁用",
+    "enabled": "已启用",
+    "primaryModel": "主模型",
+    "subAgent": "子Agent",
+    "unconfigured": "未配置"
+  },
+  "tool": {
+    "error": "错误",
+    "parameters": "参数",
+    "result": "结果",
+    "statusAwaitingApproval": "等待批准",
+    "statusCompleted": "已完成",
+    "statusDenied": "已拒绝",
+    "statusError": "错误",
+    "statusPending": "等待中",
+    "statusRejected": "已拒绝",
+    "statusResponded": "已响应",
+    "statusRunning": "运行中"
+  },
+  "tree": {
+    "showMore": "+{{count}} 更多"
+  }
+}

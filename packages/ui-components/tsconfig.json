@@ -1,0 +1,10 @@
+{
+  "extends": "../../apps/web/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@fenix/ui-components": ["./web/index.ts"],
+      "@fenix/ui-components/*": ["./web/*"]
+    }
+  },
+  "include": ["web/**/*.ts", "web/**/*.tsx", "demo/**/*.tsx", "demo/**/*.ts", "vite.config.ts"]
+}

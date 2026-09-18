@@ -1,0 +1,94 @@
+{
+  "batchActionBar": {
+    "clear": "Clear",
+    "selected": "{{count}} items selected"
+  },
+  "codeBlock": {
+    "copied": "Copied",
+    "copy": "Copy"
+  },
+  "confirmDialog": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "processing": "Processing..."
+  },
+  "conversation": {
+    "noMessages": "No messages yet",
+    "scrollToBottom": "Back to latest",
+    "scrollToLastUserMessage": "Scroll to last user message",
+    "startConversation": "Start a conversation to see messages here"
+  },
+  "dataTable": {
+    "actions": "Actions",
+    "noData": "No data",
+    "pagination": "{{start}}-{{end}} of {{total}}",
+    "searchPlaceholder": "Search..."
+  },
+  "datePicker": {
+    "placeholder": "Select date"
+  },
+  "formDialog": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "fullscreen": "Fullscreen",
+  "large": "Large",
+  "medium": "Medium",
+  "message": {
+    "attachment": "Attachment",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "image": "Image",
+    "nextBranch": "Next branch",
+    "previousBranch": "Previous branch",
+    "remove": "Remove",
+    "removeAttachment": "Remove attachment"
+  },
+  "permissionRequest": {
+    "title": "Permission Required"
+  },
+  "preview": "Preview",
+  "promptInput": {
+    "addPhotosOrFiles": "Add photos or files",
+    "attachment": "Attachment",
+    "image": "Image",
+    "remove": "Remove",
+    "removeAttachment": "Remove attachment",
+    "submit": "Submit",
+    "uploadFiles": "Upload files"
+  },
+  "reasoning": {
+    "thinking": "Thinking...",
+    "thought": "Thought for a while",
+    "thoughtFor": "Thought for {{duration}}s"
+  },
+  "small": "Small",
+  "statusBadge": {
+    "all": "All",
+    "builtin": "Built-in",
+    "configured": "Configured",
+    "custom": "Custom",
+    "disabled": "Disabled",
+    "enabled": "Enabled",
+    "primaryModel": "Primary Model",
+    "subAgent": "Sub-Agent",
+    "unconfigured": "Unconfigured"
+  },
+  "tool": {
+    "error": "Error",
+    "parameters": "Parameters",
+    "result": "Result",
+    "statusAwaitingApproval": "Awaiting Approval",
+    "statusCompleted": "Completed",
+    "statusDenied": "Denied",
+    "statusError": "Error",
+    "statusPending": "Pending",
+    "statusRejected": "Rejected",
+    "statusResponded": "Responded",
+    "statusRunning": "Running"
+  },
+  "tree": {
+    "showMore": "+{{count}} more"
+  }
+}
