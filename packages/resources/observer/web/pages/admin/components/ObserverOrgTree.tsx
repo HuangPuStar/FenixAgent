@@ -12,11 +12,11 @@ import {
   sessionTabCounts,
   type YjsSessionGroup,
 } from "@fenix/resource-sandbox/web";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { Bot, Building2, Cpu, Layers, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/src/lib/utils";
 import type {
   ObserverAgentNode,
   ObserverInstanceNode,
