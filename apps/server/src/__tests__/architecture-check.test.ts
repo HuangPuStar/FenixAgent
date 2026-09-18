@@ -13,6 +13,31 @@ interface CheckResult {
   stdout: string;
 }
 
+/** 与根 package.json 一致的 workspace 声明；依赖类规则只有声明了包边界才有意义。 */
+const WORKSPACE_ROOT_MANIFEST = '{"name":"fixture-root","workspaces":["packages/*","packages/*/*","apps/*"]}\n';
+
+/** 生成一份最小台账；`owner` / `removeWhen` / `rationale` 非空是加载器的硬性要求。 */
+function ledger(
+  exceptions: readonly { rule: string; from: string; to: string }[],
+  extra: { handwrittenRegistryBaseline?: readonly string[] } = {},
+): string {
+  return `${JSON.stringify(
+    {
+      exceptions: exceptions.map((entry) => ({
+        ...entry,
+        owner: "1.1",
+        removeWhen: "夹具用条目，验收后随夹具销毁",
+        rationale: "行为夹具：验证台账的放行与失效判定，不代表真实仓库的债务。",
+      })),
+      ...(extra.handwrittenRegistryBaseline
+        ? { handwrittenRegistryBaseline: [...extra.handwrittenRegistryBaseline] }
+        : {}),
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 async function createFixture(files: Record<string, string>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "fenix-architecture-check-"));
   temporaryRoots.push(root);
@@ -84,7 +109,7 @@ describe("architecture check CLI", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("browser-no-server-imports");
+    expect(result.stdout).toContain("browser-entry-server-import");
     expect(result.stdout).toContain(relative(root, join(root, "apps/web/src/pages/AgentPage.tsx")));
   });
 
@@ -213,6 +238,231 @@ describe("architecture check CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("✓ architecture-check");
+  });
+
+  // workspace 包导入另一个包却没有在 package.json 声明依赖时，依赖会被根 workspace 的偶然提升掩盖。
+  test("rejects workspace imports without a declared dependency", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/platform-sdk/package.json": '{"name":"@fenix/platform-sdk"}\n',
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts":
+        'import { getDatabase } from "@fenix/platform-sdk";\nvoid getDatabase;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("undeclared-workspace-dependency");
+    expect(result.stdout).toContain("未声明依赖");
+  });
+
+  // 无 scope 的 workspace 包（`acp-link`）曾因规则按 `@fenix/` 前缀推断包名而整包逃过检查。
+  test("rejects undeclared imports of unscoped workspace packages", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/acp-link/package.json": '{"name":"acp-link"}\n',
+      "packages/plugin-consumer/package.json": '{"name":"@fenix/plugin-consumer"}\n',
+      "packages/plugin-consumer/src/handler.ts": 'import { startServer } from "acp-link/client";\nvoid startServer;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("undeclared-workspace-dependency");
+    expect(result.stdout).toContain("acp-link");
+  });
+
+  // 包名解析必须以根 workspaces 声明为准，否则与 workspace 同名但非 workspace 的依赖会被误报。
+  test("ignores scoped specifiers that are not workspace packages", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts": 'import { helper } from "@fenix/external-sdk";\nvoid helper;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("✓ architecture-check");
+  });
+
+  // 声明了 workspace 依赖的导入必须放行，否则规则会逼出无意义的重复声明。
+  test("accepts workspace imports backed by a declared dependency", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/platform-sdk/package.json": '{"name":"@fenix/platform-sdk"}\n',
+      "packages/resources/consumer/package.json":
+        '{"name":"@fenix/consumer","dependencies":{"@fenix/platform-sdk":"workspace:*"}}\n',
+      "packages/resources/consumer/src/client.ts":
+        'import { getDatabase } from "@fenix/platform-sdk";\nvoid getDatabase;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("✓ architecture-check");
+  });
+
+  // 应用是唯一的 composition root；资源包反向读取宿主实现会让模块无法独立装配。
+  test("rejects package imports of the server application internals", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts": 'import { db } from "@server/db";\nvoid db;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("apps-boundary");
+    expect(result.stdout).toContain("不得依赖应用");
+  });
+
+  // web contribution 只被浏览器 bundle 消费，反向读取宿主实现会让资源页面无法独立演进。
+  test("rejects web contributions that reach into the host application", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/web/page.tsx": 'import { request } from "@/src/api/request";\nvoid request;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("web-package-not-to-app");
+    expect(result.stdout).toContain("@/src/api/request");
+  });
+
+  // 相对路径越过包目录进入宿主同属这条边界，且只能由一条规则报出：两条规则都报会让同一处导入
+  // 需要两条台账记录，「不再违规即删除」的语义随之失效。
+  test("reports relative host escapes once, under the web contribution rule", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/web/page.tsx":
+        'import { cn } from "../../../../apps/web/src/lib/utils";\nvoid cn;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[web-package-not-to-app]");
+    expect(result.stdout).not.toContain("[apps-boundary]");
+  });
+
+  // §2.3 禁止 resource 依赖 platform-impl：授权只能经 platform-sdk 的 AccessControlModule 契约。
+  test("rejects resource imports of the concrete access control implementation", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/platform-sdk/package.json": '{"name":"@fenix/platform-sdk"}\n',
+      "packages/platform/access-control/package.json": '{"name":"@fenix/access-control"}\n',
+      "packages/resources/consumer/package.json":
+        '{"name":"@fenix/consumer","dependencies":{"@fenix/access-control":"workspace:*"}}\n',
+      "packages/resources/consumer/src/client.ts":
+        'import { createAccessControl } from "@fenix/access-control";\nvoid createAccessControl;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("special-dependency");
+  });
+
+  // 登记过的包对放行存量违规，门禁只阻断未登记的新增，这样阶段 2 可以在真实债务上推进。
+  test("accepts boundary violations registered in the ledger", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts": 'import { db } from "@server/db";\nvoid db;\n',
+      "scripts/architecture/exceptions.json": ledger([
+        {
+          rule: "apps-boundary",
+          from: "@fenix/consumer",
+          to: "@fenix/server-app",
+        },
+      ]),
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("1 条已登记例外");
+  });
+
+  // 台账是待清偿清单：某条边不再违规后仍留在台账里，等于把豁免永久化，必须失败要求删除。
+  test("rejects ledger entries that no longer match a violation", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts": "export const consumer = true;\n",
+      "scripts/architecture/exceptions.json": ledger([
+        {
+          rule: "apps-boundary",
+          from: "@fenix/consumer",
+          to: "@fenix/server-app",
+        },
+      ]),
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("已不再违规，必须删除");
+    expect(result.stdout).toContain("apps-boundary @fenix/consumer @fenix/server-app");
+  });
+
+  // 台账由两个门禁共用：本门禁看不到 dependency-cruiser 规则的违规，不能把对方的生效条目误判为失效。
+  test("ignores ledger entries owned by the dependency-cruiser gate", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/src/client.ts": "export const consumer = true;\n",
+      "scripts/architecture/exceptions.json": ledger([
+        {
+          rule: "no-circular",
+          from: "@fenix/consumer",
+          to: "@fenix/consumer",
+        },
+      ]),
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("✓ architecture-check");
+  });
+
+  // 宿主入口在切换到静态 registry 之前必须停止扩大手写挂载，否则新模块会绕过 assembly profile。
+  test("rejects new handwritten module mounts in the server entrypoint", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
+      "apps/server/src/main.ts": 'import "@fenix/agent-config";\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("no-new-handwritten-registry");
+    expect(result.stdout).toContain("apps/server/src/main.ts");
+  });
+
+  // 冻结基线里的手写挂载是 1.5 之前的存量，删除导入不在本任务的范围内，因此只阻断新增。
+  test("accepts handwritten module mounts recorded in the frozen baseline", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "apps/server/src/main.ts": 'import "@fenix/agent-config";\n',
+      "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
+      "scripts/architecture/exceptions.json": ledger([], {
+        handwrittenRegistryBaseline: ["@fenix/agent-config"],
+      }),
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("✓ architecture-check");
   });
 

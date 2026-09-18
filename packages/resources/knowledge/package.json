@@ -12,5 +12,8 @@
     "elysia": "^1.4.28",
     "zod": "^4.4.3",
     "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@fenix/chat-channel": "workspace:*"
   }
 }

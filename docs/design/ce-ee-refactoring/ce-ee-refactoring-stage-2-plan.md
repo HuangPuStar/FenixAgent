@@ -8,14 +8,14 @@
 
 以下清单是阶段 2 的适配范围，用于避免遗漏；实施方式由执行时的真实情况决定。每项都应以当前源码、调用图、测试、数据库和部署产物为准，实际不存在的能力不因本清单而预造。
 
-### 1.1 仓库级边界与装配
+### 1.1 仓库级边界与装配（已完成）
 
 - 建立 `packages/platform/platform-sdk` 的稳定契约：`ActorContext`、`AccessControlModule`、资源范围与授权查询约束、模块描述符、assembly profile，以及应用基础设施的受限读取入口。
 - 为需要参与装配的模块补齐实际 `fenix.module.ts`、`package.json` exports 与显式 workspace dependencies；区分编译依赖与 manifest `dependsOn`，并使它们与 assembly 保持一致。
 - 实现受版本控制 workspace 的 manifest 扫描、静态 module registry 生成及其校验；`apps/server`、`apps/web` 只能从生成 registry 选择已编译模块，不能手写业务注册表或动态加载代码。
 - 新增并维护 `deploy/assembly/` 中的受控 profile、模块 capability/env/migration preflight 与关闭时的逆序资源释放；profile 不得携带路径、URL、包名或代码。
 - 完善架构门禁：阻断跨包内部路径导入、未声明 workspace dependency、循环依赖、未登记的特殊依赖，以及浏览器入口加载服务端模块。
-- 核查 `packages/` 中 `platform/`、`agent-runtime/`、`resources/` 以外的现有包（如 `acp-link`、`core`、`chat-channel`、各插件与 provider）：保持其 SDK/插件职责与公开入口，只修复包间依赖环和被服务模块错误穿透的内部引用，不要求按资源模块改造。
+- 核查 `packages/` 中 `platform/`、`agent-runtime/`、`resources/` 以外的现有包（如 `acp-link`、`core`、`chat-channel`、各插件与 provider）：保持其 SDK/插件职责与公开入口，修复包间依赖环和被服务模块错误穿透的内部引用，不要求按资源模块改造；本阶段内不便拆解的环按架构台账逐条登记并写明承担任务与移除条件。
 
 ### 1.2 Platform：身份、租户与授权
 

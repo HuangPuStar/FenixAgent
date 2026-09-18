@@ -48,7 +48,9 @@ ResourceModule = domain + services + repositories/adapters + schemas
 
 跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix/agent-runtime`、`@fenix/core`、`@fenix/chat-channel/server`、`@fenix/agent-config/web`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
 
-每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。`apps` 同样遵守该规则。
+每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。`apps` 同样遵守该规则。只在构建或测试中使用的 workspace 依赖声明在 `devDependencies`，`dependencies` 保留给运行时需要被消费者解析的依赖。
+
+§2.4 中由生成 registry 引入的 `apps/*/fenix.module.ts` 是上述相对导入禁令的唯一例外：它是构建期装配描述符，不作为可安装入口对外暴露。
 
 ### 2.2 资源模块之间的依赖规则
 
@@ -126,7 +128,7 @@ export interface SkillReferenceResolver {
 | `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现 |
 | `packages/resources/sandbox` | `platform-sdk`、Machine 公开入口、Sandbox Provider 公开 API、本资源声明的基础依赖 | `agent-runtime`、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有执行环境供给、恢复和管理面，多实现差异留在 Provider 插件点 |
 | 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
-| `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle |
+| `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、已作为公开入口发布的共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle。共享 UI 目前没有独立公开入口，资源 web 不得因此穿透 `apps/web` 内部；复用方式（提取公开入口或其他）单独决定 |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
 | `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
 
@@ -153,12 +155,14 @@ Machine/Sandbox ─────────────────────�
 
 1. Platform 需要的能力只有在它定义身份、租户、授权等平台基础语义时，才重新归类为 `packages/platform/*`；平台模块可以拥有 DB、route、Web 和 migration。若仍是普通业务资源，Platform 不得直接依赖，只能由 app 编排或通过经评审的窄端口注入。
 2. Agent Runtime 只有在某资源是所有 Runtime 装配必需的运行基础能力、调用不解释 actor/role/visibility、依赖能保持无环，并且多实现差异已收敛在资源内部 Provider/adapter 时，才能直接依赖其专用公开运行入口。任一条件不满足，使用 Resource Facade、app use case 或窄端口。
-3. 每条例外必须精确写入本矩阵和架构门禁，例如 `agent-runtime → sandbox`；禁止使用 `agent-runtime → resources/*` 或 `platform → resources/*` 通配规则。
+3. 每条例外必须精确写入本矩阵和架构门禁，例如 `agent-runtime → sandbox`；禁止使用 `agent-runtime → resources/*` 或 `platform → resources/*` 通配规则。禁则的覆盖范围包括同一类别内部各包之间的方向（例如 `identity → access-control`），矩阵写明的方向必须能被门禁判定，不依赖人工约定。
 4. 被依赖包只能暴露稳定 service/DTO 或专用 runtime-facing subpath；调用方不得导入 route、repository、schema 或 `src/**`，不得把资源授权、存储模型和管理面泄漏到 Platform/Runtime。
 5. `package.json` 编译依赖、manifest `dependsOn` 和 assembly 必须表达同一方向；必需模块成套启用。新增例外必须同时更新本矩阵，并提供 dependency-cruiser/architecture check、contract test 和循环依赖测试。
 6. 若能力需要替换整个模块，具体直接依赖不成立，应依赖稳定契约并由 app 装配；若只替换同一资源的 Provider/adapter，则资源包保持稳定，调用方可以依赖资源公开入口。
 
 `fenix.module.ts` 的 `dependsOn` 是**装配依赖**，表示一个 manifest 被 profile 启用时需要同时启用哪些模块；它不能取代 TypeScript 的 `package.json` dependency，也不能放宽上述编译依赖规则。反过来，两个包存在 TypeScript 依赖也不必然意味着它们必须在每个 assembly profile 中同时启用：是否需要共同启用取决于其公开能力是否在该 profile 中被实际装配。
+
+manifest 的 `kind` 取 `access-control`、`agent-runtime`、`identity`、`resource`、`web-shell` 之一；`capabilities` 是模块对外声明的能力标识，同一 capability 不得由两个已启用模块提供。两者都参与 profile 与 preflight 校验；需要新增类别或固定语义时先修订本节。
 
 ### 2.4 配置驱动的静态装配
 
@@ -177,7 +181,11 @@ Machine/Sandbox ─────────────────────�
 
 `platform-sdk/assembly` 提供唯一的 `AssemblyProfile` 与 `parseAssemblyProfile()`：它只校验 Identity、授权、Agent Runtime、Shell、资源和 Web 模块 ID 列表的通用结构。Identity 与 AccessControl 由各自 manifest 的精确 `dependsOn` 成套绑定；随后 app 对生成 registry 做 ID、类别和依赖校验，不复制 parser。
 
-每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
+`webShell` 必须指向一个 `kind` 为 `web-shell` 的已注册模块，否则装配直接失败：Shell 是 profile 描述浏览器侧组合的锚点，允许它悬空等于 profile 与 bundle 静默不一致。`identity` 在 `packages/platform/identity` 落地前为**可选**，未提供时既不校验也不进入装配顺序；Identity 包交付后转为必填（见阶段 2 任务 1.2）。Server 只校验并绑定 `webShell`，不实例化 Shell——它由 `apps/web` 自行消费，因此不进入服务端的 `modules` 与 `instances`。
+
+每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts` 与 `apps/*/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
+
+`apps/*` 下的 manifest 是本节前一段「WebShell 是应用级组合，不是资源模块」的直接结果：Shell 不在 `packages` 中，`webShell` 却必须指向一个已注册模块，因此允许应用根目录提供 manifest。两条附加约束保证它不会污染服务端 registry：该目录下的 manifest 只能是 `kind: "web-shell"`，且文件内只允许 `import type`（类型导入在运行时被擦除），不得出现值导入与 `export ... from`；生成器以相对路径引入它，不建立 `apps/server → apps/web` 的包依赖。
 
 启动流程依次执行：读取 JSON/YAML → 校验结构和重复 ID → 从**生成 registry**确认 ID 和类别 → 校验 manifest 依赖、capability 冲突、所需 env 与 migration preflight → 创建依赖并挂载 route/web contribution。profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；其位置由发布脚本固定，不能由 profile 自己指定。配置中禁止出现任意文件路径、URL、npm 包名、表达式或代码片段；它不能 import、下载或执行新代码。
 
@@ -262,6 +270,8 @@ TanStack Router 仍保持文件路由：应用的 `routes/` 是薄文件，静�
 ```text
 assembly.web      → generated module registry → resources/*/web contribution
 ```
+
+浏览器侧消费 contribution 时不得因重导出链加载服务端模块（§10.2.4）。服务端 registry 与浏览器消费的清单是否共用一份产物由实现决定，约束是浏览器入口的加载图里不出现服务端实现。
 
 因此，资源页不能反向决定全局布局；Shell 可收集已启用资源模块的导航、路由和页面 contribution，但不得导入资源模块的 server service、repository 或 db。若将来确实有两个以上独立 Web 应用复用同一完整 Shell，才把已稳定的 Shell 实现抽取为 package；即使如此，`apps/web` 仍是最终选择和装配入口。
 
@@ -465,4 +475,4 @@ packages/resources/agent-config/db/data-migrations/
 1. 空库与真实历史升级库迁移、关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
 3. `bun run precheck`、`bun run build:web`、`bun run docs:build`、migration smoke、关键 E2E、deploy preflight/readiness 和回滚演练全部通过，且没有 error 或 warning。
-4. 旧实现、临时边界豁免、兼容 shim、双写、未登记依赖和待决设计矛盾为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
+4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。

@@ -30,6 +30,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@fenix/logger": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/core": "workspace:*",
     "@fenix/orchestration": "workspace:*",

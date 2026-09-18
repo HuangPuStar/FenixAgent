@@ -2,4 +2,25 @@
 
 此目录保存随构建版本交付的静态模块组合。profile 只能选择已经编译进 `apps/generated/module-registry.ts` 的模块 ID，不能声明路径、URL、包名或代码入口。
 
-`ce.json` 固定 CE 产品线选择的 access-control、Agent Runtime 和 Web Shell ID。profile 声明目标组合，不保证对应 manifest 已注册或基础模块工厂已经可用；registry 和 bootstrap 必须拒绝未知模块、类别不匹配及缺少工厂的基础模块。
+`ce.json` 固定 CE 产品线选择的 access-control、Agent Runtime 和 Web Shell ID。registry 与 bootstrap 必须拒绝未知模块、类别不匹配及缺少工厂的基础模块。
+
+## 字段与校验
+
+| 字段 | 必填 | 校验 |
+| --- | --- | --- |
+| `identity` | 否（1.2 起必填） | 必须指向已注册的 `kind: "identity"` 模块 |
+| `accessControl` | 是 | 必须指向已注册的 `kind: "access-control"` 模块 |
+| `agentRuntime` | 是 | 必须指向已注册的 `kind: "agent-runtime"` 模块 |
+| `webShell` | 是 | 必须指向已注册的 `kind: "web-shell"` 模块 |
+| `resources` | 是 | 每项必须是已注册的资源模块 ID，按 `dependsOn` 拓扑排序 |
+| `web` | 是 | 每项必须是已注册的 web contribution；只被浏览器 bundle 消费 |
+
+`identity` 目前为**可选**：`packages/platform/identity` 尚未交付，profile 里不写该字段即不参与校验与装配顺序。阶段 2 任务 1.2 交付 Identity 包后转为必填，并在此处删除本段说明。
+
+`webShell` 只做校验与绑定，**不进入服务端的 `modules` / `instances`**：Shell 由 `apps/web` 自行消费，server 不实例化它。对应的 manifest 是 `apps/web/fenix.module.ts`（`kind: "web-shell"`，纯元数据，只允许 `import type`）。
+
+## 与生成 registry 的关系
+
+profile 是「目标组合」，registry 是「已编译进镜像的模块清单」。二者必须同时满足：profile 选择了未注册的 ID 会在启动时抛错，而不是静默降级到某个默认实现。新增模块的流程是提供 package + manifest，再运行 `bun run generate:module-registry`，不需要改 app 的注册逻辑。
+
+profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；其位置由发布脚本固定，不能由 profile 自己指定。

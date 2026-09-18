@@ -41,11 +41,8 @@ export class AuthorizedResourceFacade<TResource extends ScopedResource, TListQue
 
   protected async listAuthorized(actorId: string, query: TListQuery): Promise<ResourcePage<TResource>> {
     const actor = await this.accessControl.createActorContext({ actorId });
-    const page = await this.authorizedQuery.list({
-      repository: this.repository,
-      query,
-      access: this.accessControl.createListConstraint({ actor, resource: this.resource, action: "read" }),
-    });
+    const access = await this.accessControl.createListConstraint({ actor, resource: this.resource, action: "read" });
+    const page = await this.authorizedQuery.list({ repository: this.repository, query, access });
     return { ...page, items: await Promise.all(page.items.map((resource) => this.withAccess(actor, resource))) };
   }
 
@@ -79,11 +76,8 @@ export class AuthorizedResourceFacade<TResource extends ScopedResource, TListQue
     action: ResourceAction,
   ): Promise<TResource> {
     const actor = await this.accessControl.createActorContext({ actorId });
-    const resource = await this.authorizedQuery.findById({
-      repository: this.repository,
-      resourceId,
-      access: this.accessControl.createListConstraint({ actor, resource: this.resource, action: "read" }),
-    });
+    const access = await this.accessControl.createListConstraint({ actor, resource: this.resource, action: "read" });
+    const resource = await this.authorizedQuery.findById({ repository: this.repository, resourceId, access });
     if (!resource) throw new Error("未找到当前资源范围内的资源");
     await this.accessControl.authorize({ actor, action, resource: this.resource, resourceId });
     return this.withAccess(actor, resource);

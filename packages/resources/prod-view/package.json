@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/chat-channel": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "zod": "^4.4.3"

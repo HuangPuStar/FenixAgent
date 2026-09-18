@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./assembly": "./src/assembly/profile.ts"
+    "./assembly": "./src/assembly/profile.ts",
+    "./server": "./src/server.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

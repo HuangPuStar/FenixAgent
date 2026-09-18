@@ -36,6 +36,17 @@ jobs:
       - name: Typecheck (frontend)
         run: bun run typecheck:web
 
+      # 装配相关的三项检查必须与 precheck 走同一入口：registry 是生成物，架构门禁与依赖边界门禁
+      # 共用同一份例外台账，只在本机生效等于没有门禁。
+      - name: Generated module registry is up to date
+        run: bun run generate:module-registry --check
+
+      - name: Architecture boundaries
+        run: bun run architecture:check
+
+      - name: Workspace dependency boundaries
+        run: bun run check:dependencies
+
   test:
     name: Test
     runs-on: ubuntu-latest

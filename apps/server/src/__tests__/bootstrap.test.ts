@@ -34,6 +34,13 @@ const manifests = [
     contributions: [{ id: "agent-config.routes", kind: "app-route", value: "routes" }],
     web: { id: "agent-config", contribution: "page" },
   },
+  // profile 的 webShell 必须解析到已注册的 web-shell 模块；Shell 是应用级组合，只做绑定校验，
+  // 不进入 server 的 modules / instances（因此下面的 preflight 仍为 3）。
+  {
+    id: "default",
+    kind: "web-shell",
+    dependsOn: [],
+  },
 ] satisfies readonly ModuleManifest[];
 
 // 部署入口可选择 JSON 或 YAML，但两者必须进入同一个 SDK parser。

@@ -5,5 +5,13 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fenix/agent-config": "workspace:*",
+    "@fenix/chat-channel": "workspace:*",
+    "@fenix/model-management": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*"
   }
 }

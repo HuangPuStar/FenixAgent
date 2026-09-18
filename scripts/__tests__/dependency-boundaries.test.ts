@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
 
+import { compareBoundaryViolations } from "../check-dependency-boundaries";
+import { type ArchitectureException, exceptionFingerprint } from "../lib/architecture-exceptions";
+
 const repoRoot = resolve(import.meta.dir, "../..");
 const configPath = join(repoRoot, ".dependency-cruiser.cjs");
 
@@ -81,4 +84,77 @@ test("拒绝 agent-runtime 反向依赖 resources", async () => {
   });
 
   expect(output).toContain("agent-runtime-not-to-resources");
+});
+
+/** 构造台账条目；只有 rule / from / to 参与判定，其余字段是加载器的非空要求。 */
+function exception(rule: string, from: string, to: string): ArchitectureException {
+  return { from, owner: "1.1", rationale: "单元测试夹具", removeWhen: "夹具销毁", rule, to };
+}
+
+function ledgerOf(entries: readonly ArchitectureException[]): Map<string, ArchitectureException> {
+  return new Map(entries.map((entry) => [exceptionFingerprint(entry.rule, entry.from, entry.to), entry]));
+}
+
+// 未登记的包级边是新违规，必须失败并把包对与命中次数一起报出来。
+test("未登记的边界违规计入未登记并聚合命中次数", () => {
+  const comparison = compareBoundaryViolations({
+    exceptions: ledgerOf([]),
+    ownRuleNames: ["no-circular"],
+    violations: [
+      { from: "@fenix/a", rule: "no-circular", to: "@fenix/b" },
+      { from: "@fenix/a", rule: "no-circular", to: "@fenix/b" },
+      { from: "@fenix/c", rule: "no-circular", to: "@fenix/d" },
+    ],
+  });
+
+  expect(comparison.registeredCount).toBe(0);
+  expect(comparison.stale).toEqual([]);
+  expect(comparison.unregistered).toEqual([
+    { count: 2, from: "@fenix/a", rule: "no-circular", to: "@fenix/b" },
+    { count: 1, from: "@fenix/c", rule: "no-circular", to: "@fenix/d" },
+  ]);
+});
+
+// 登记过的包对整体放行，无论该边命中多少文件：台账粒度是包对而不是文件。
+test("已登记的包对整体放行且不产生未登记项", () => {
+  const registered = ledgerOf([exception("no-circular", "@fenix/a", "@fenix/b")]);
+
+  const comparison = compareBoundaryViolations({
+    exceptions: registered,
+    ownRuleNames: ["no-circular"],
+    violations: [
+      { from: "@fenix/a", rule: "no-circular", to: "@fenix/b" },
+      { from: "@fenix/a", rule: "no-circular", to: "@fenix/b" },
+    ],
+  });
+
+  expect(comparison.registeredCount).toBe(1);
+  expect(comparison.unregistered).toEqual([]);
+  expect(comparison.stale).toEqual([]);
+});
+
+// 规则名不同即不同指纹：循环与跨包穿透可能指向同一对包，不能互相顶替。
+test("规则名参与指纹，不同规则的同一条包对独立判定", () => {
+  const comparison = compareBoundaryViolations({
+    exceptions: ledgerOf([exception("no-circular", "@fenix/a", "@fenix/b")]),
+    ownRuleNames: ["no-circular", "no-cross-package-src:packages/a"],
+    violations: [{ from: "@fenix/a", rule: "no-cross-package-src:packages/a", to: "@fenix/b" }],
+  });
+
+  expect(comparison.unregistered).toEqual([
+    { count: 1, from: "@fenix/a", rule: "no-cross-package-src:packages/a", to: "@fenix/b" },
+  ]);
+  expect(comparison.stale).toEqual([exception("no-circular", "@fenix/a", "@fenix/b")]);
+});
+
+// 台账由两个门禁共用，各自的规则名互不可见；越界判定会把对方生效中的条目误报成失效。
+test("只把本门禁负责的规则条目标记为失效", () => {
+  const exceptions = ledgerOf([
+    exception("no-circular", "@fenix/a", "@fenix/b"),
+    exception("apps-boundary", "@fenix/c", "@fenix/server-app"),
+  ]);
+
+  const comparison = compareBoundaryViolations({ exceptions, ownRuleNames: ["no-circular"], violations: [] });
+
+  expect(comparison.stale.map((entry) => entry.rule)).toEqual(["no-circular"]);
 });

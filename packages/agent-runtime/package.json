@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./module": {
+      "types": "./fenix.module.ts",
+      "default": "./fenix.module.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
@@ -26,6 +30,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-identity-admin": "workspace:*",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
@@ -34,6 +39,10 @@
     "@fenix/orchestration": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
     "acp-link": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.10.1",

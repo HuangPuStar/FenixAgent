@@ -41,7 +41,11 @@
   "dependencies": {
     "@fenix/access-control": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "@fenix/orchestration": "workspace:*",
+    "@fenix/resource-identity-admin": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-mcp": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
@@ -50,5 +54,8 @@
     "gray-matter": "^4.0.3",
     "openai": "^6.42.0",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@fenix/core": "workspace:*"
   }
 }

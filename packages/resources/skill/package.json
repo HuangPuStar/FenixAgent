@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@fenix/access-control": "workspace:*"
+    "@fenix/access-control": "workspace:*",
+    "@fenix/logger": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",

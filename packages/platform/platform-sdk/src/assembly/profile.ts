@@ -6,6 +6,13 @@ const moduleIdSchema = z
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 
 const assemblyProfileSchema = z.strictObject({
+  /**
+   * Identity 模块 ID。
+   *
+   * 过渡态：`packages/platform/identity` 落地前该字段可选，AccessControl 的 manifest
+   * `dependsOn` 也尚未绑定 Identity；Identity 落地后本字段转为必填。
+   */
+  identity: moduleIdSchema.optional(),
   accessControl: moduleIdSchema,
   agentRuntime: moduleIdSchema,
   webShell: moduleIdSchema,
@@ -15,6 +22,8 @@ const assemblyProfileSchema = z.strictObject({
 
 /** CE、EE 与客户版本共用的静态装配 profile。 */
 export interface AssemblyProfile {
+  /** 见 {@link assemblyProfileSchema} 中 `identity` 的过渡态说明。 */
+  readonly identity?: string;
   readonly accessControl: string;
   readonly agentRuntime: string;
   readonly webShell: string;

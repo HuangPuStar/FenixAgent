@@ -2,7 +2,12 @@ import type { ModuleKind, ModuleManifest } from "./module-manifest";
 import type { AssemblyProfile } from "./profile";
 import { isModuleId, parseAssemblyProfile } from "./profile";
 
-/** 已校验并按装配依赖排序的 profile 解析结果。 */
+/**
+ * 已校验并按装配依赖排序的 profile 解析结果。
+ *
+ * `modules` 只包含需要 server 实例化的模块：`webShell` 指向的 Shell manifest 已完成类别校验，
+ * 但不进入该列表——Shell 是应用级组合，由 `apps/web` 自己消费，server 不实例化它。
+ */
 export interface ResolvedAssembly {
   readonly profile: AssemblyProfile;
   readonly modules: readonly ModuleManifest[];
@@ -72,7 +77,7 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
 
   function requireFoundation(
     id: string,
-    kind: Extract<ModuleKind, "access-control" | "agent-runtime">,
+    kind: Extract<ModuleKind, "access-control" | "agent-runtime" | "identity">,
   ): ModuleManifest {
     const manifest = requireModule(id, kind);
     if (!manifest.create) throw new Error(`基础模块 ${id} 未提供创建工厂`);
@@ -84,9 +89,17 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
       const profile = parseAssemblyProfile(profileInput);
       requireFoundation(profile.accessControl, "access-control");
       requireFoundation(profile.agentRuntime, "agent-runtime");
+      // Shell 只在此校验 ID 与类别，不进入 modules：server 不实例化 Shell。
+      requireModule(profile.webShell, "web-shell");
+      if (profile.identity !== undefined) requireFoundation(profile.identity, "identity");
       for (const resourceId of profile.resources) requireModule(resourceId, "resource");
 
-      const requestedIds = [profile.accessControl, profile.agentRuntime, ...profile.resources];
+      const requestedIds = [
+        ...(profile.identity === undefined ? [] : [profile.identity]),
+        profile.accessControl,
+        profile.agentRuntime,
+        ...profile.resources,
+      ];
       const enabledIds = new Set(requestedIds);
       const visiting = new Set<string>();
       const visited = new Set<string>();

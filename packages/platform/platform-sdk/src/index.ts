@@ -62,7 +62,7 @@ export interface AccessControlModule {
     actor: ActorContext;
     resource: ResourceDefinition;
     action: "read" | "use";
-  }): ResourceQueryConstraint;
+  }): Promise<ResourceQueryConstraint>;
   resolveAccess(input: {
     actor: ActorContext;
     resource: ResourceDefinition;

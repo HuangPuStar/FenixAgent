@@ -59,6 +59,8 @@ export type ResourceDefinition = {
   ownershipMode: OwnershipMode;
   actions: readonly ResourceAction[];
   memberDefaultActions: readonly Extract<ResourceAction, "read" | "use">[];
+  /** visibility = public 时对任意已认证用户开放的默认动作；不声明则不开放。 */
+  publicDefaultActions: readonly Extract<ResourceAction, "read" | "use">[];
 };
 ```
 
@@ -213,8 +215,17 @@ export interface AccessControlModule {
     resource: ResourceDefinition;
   }): Promise<ResourceQueryConstraint>;
 
+  /** 给出单个资源在当前 actor 下的有效动作，供 Resource Facade 组装 `access`。 */
+  resolveAccess(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    resourceId: string;
+  }): Promise<ResourceAccess>;
+
 }
 ```
+
+`ResourceRecord.access` 只由该入口产出：资源领域、route 与 Repository 都不根据范围、角色或 `visibility` 自行推导。
 
 ### 3.4 授权查询能力
 

@@ -29,7 +29,7 @@
     "preview:web": "bunx vite preview --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",
-    "check:dependencies": "depcruise --config .dependency-cruiser.cjs --output-type err-long apps packages",
+    "check:dependencies": "bun run scripts/check-dependency-boundaries.ts",
     "lint": "biome check apps/server/src/ apps/web/src/ apps/web/components/ apps/ packages/",
     "lint:fix": "biome check --write apps/server/src/ apps/web/src/ apps/web/components/ apps/ packages/",
     "format": "biome format --write apps/server/src/ apps/web/src/ apps/web/components/ apps/ packages/",

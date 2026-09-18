@@ -6,6 +6,7 @@ import type {
   ResourceAccess,
   ResourceAction,
   ResourceDefinition,
+  ResourceQueryConstraint,
   ResourceScope,
   ResourceScopeStore,
   ResourceScopeStoreBinding,
@@ -58,8 +59,12 @@ export class DefaultAccessControl implements AccessControlModule, ResourceScopeS
     }
   }
 
-  createListConstraint(input: { actor: ActorContext; resource: ResourceDefinition; action: "read" | "use" }) {
-    return { resourceType: input.resource.type, action: input.action } as const;
+  async createListConstraint(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    action: "read" | "use";
+  }): Promise<ResourceQueryConstraint> {
+    return { resourceType: input.resource.type, action: input.action };
   }
 
   async resolveAccess(input: {

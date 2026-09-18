@@ -10,6 +10,14 @@ const validProfile = {
   web: ["agent-config"],
 };
 
+/** Shell 是应用级组合：只满足 profile 的 webShell 绑定校验，server 侧不会实例化它。 */
+const webShellManifest: ModuleManifest = {
+  id: "default",
+  kind: "web-shell",
+  dependsOn: [],
+  capabilities: ["web.shell.default"],
+};
+
 /** 构造覆盖基础模块、资源贡献和依赖顺序的最小可信 registry。 */
 function createManifests(events: string[] = []): readonly ModuleManifest[] {
   return [
@@ -51,6 +59,7 @@ function createManifests(events: string[] = []): readonly ModuleManifest[] {
       contributions: [{ id: "agent-config.routes", kind: "app-route", value: { prefix: "/app/agents" } }],
       web: { id: "agent-config", contribution: { route: "/agents" } },
     },
+    webShellManifest,
   ];
 }
 
@@ -146,6 +155,57 @@ describe("module registry", () => {
     );
   });
 
+  // webShell 拼错或指向资源模块时必须失败，不能静默退回默认外壳。
+  test("拒绝未注册或类别不匹配的 Web Shell", () => {
+    const registry = createModuleRegistry(createManifests());
+    expect(() => registry.resolveProfile({ ...validProfile, webShell: "unknown-shell" })).toThrow(
+      "装配配置引用了未注册模块: unknown-shell",
+    );
+    expect(() => registry.resolveProfile({ ...validProfile, webShell: "agent-config" })).toThrow(
+      "模块 agent-config 必须是 web-shell，实际为 resource",
+    );
+  });
+
+  // Shell 只做绑定校验，不进入 server 实例化的模块列表。
+  test("Web Shell 不参与 server 侧实例化", () => {
+    const registry = createModuleRegistry(createManifests());
+    expect(registry.resolveProfile(validProfile).modules.map((manifest) => manifest.id)).toEqual([
+      "access-control",
+      "agent-runtime",
+      "agent-config",
+    ]);
+  });
+
+  // Identity 落地前 identity 字段可选；一旦声明就必须是已注册且可创建的 Identity 模块。
+  test("identity 暂为可选字段，声明时必须已注册", () => {
+    const registry = createModuleRegistry(createManifests());
+    expect(registry.resolveProfile(validProfile).profile.identity).toBeUndefined();
+    expect(() => registry.resolveProfile({ ...validProfile, identity: "identity" })).toThrow(
+      "装配配置引用了未注册模块: identity",
+    );
+  });
+
+  // Identity 与 AccessControl 各自独立成套启用，声明后必须纳入依赖排序。
+  test("声明 identity 时按依赖顺序纳入装配", () => {
+    const manifests = [
+      ...createManifests(),
+      {
+        id: "identity",
+        kind: "identity",
+        dependsOn: [],
+        capabilities: ["platform.identity"],
+        create: () => ({ id: "identity" }),
+      },
+    ] satisfies readonly ModuleManifest[];
+    const resolved = createModuleRegistry(manifests).resolveProfile({ ...validProfile, identity: "identity" });
+    expect(resolved.modules.map((manifest) => manifest.id)).toEqual([
+      "identity",
+      "access-control",
+      "agent-runtime",
+      "agent-config",
+    ]);
+  });
+
   // 同一独占 capability 只能由一个已启用 manifest 提供，替换必须通过 profile 完成。
   test("拒绝已启用模块的 capability 冲突", () => {
     const manifests = [
@@ -203,7 +263,9 @@ describe("module bootstrap", () => {
         kind: "access-control",
         dependsOn: [],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:access"));
+          registerCleanup(() => {
+            events.push("dispose:access");
+          });
           return { id: "access" };
         },
       },
@@ -212,14 +274,16 @@ describe("module bootstrap", () => {
         kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:runtime"));
+          registerCleanup(() => {
+            events.push("dispose:runtime");
+          });
           return { id: "runtime" };
         },
       },
     ] satisfies readonly ModuleManifest[];
     const result = await bootstrapModules({
       profile: { ...validProfile, resources: [], web: [] },
-      manifests: lifecycleManifests,
+      manifests: [...lifecycleManifests, webShellManifest],
       loadEnv: () => ({}),
     });
 
@@ -238,7 +302,9 @@ describe("module bootstrap", () => {
         kind: "access-control",
         dependsOn: [],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:access"));
+          registerCleanup(() => {
+            events.push("dispose:access");
+          });
           return { id: "access" };
         },
       },
@@ -247,7 +313,9 @@ describe("module bootstrap", () => {
         kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:runtime-partial"));
+          registerCleanup(() => {
+            events.push("dispose:runtime-partial");
+          });
           throw new Error("runtime failed");
         },
       },
@@ -256,7 +324,7 @@ describe("module bootstrap", () => {
     await expect(
       bootstrapModules({
         profile: { ...validProfile, resources: [], web: [] },
-        manifests: lifecycleManifests,
+        manifests: [...lifecycleManifests, webShellManifest],
         loadEnv: () => ({}),
       }),
     ).rejects.toThrow("runtime failed");
@@ -272,7 +340,9 @@ describe("module bootstrap", () => {
         kind: "access-control",
         dependsOn: [],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:access"));
+          registerCleanup(() => {
+            events.push("dispose:access");
+          });
           return { id: "access" };
         },
       },
@@ -281,7 +351,9 @@ describe("module bootstrap", () => {
         kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:runtime-partial"));
+          registerCleanup(() => {
+            events.push("dispose:runtime-partial");
+          });
         },
       },
     ] satisfies readonly ModuleManifest[];
@@ -289,7 +361,7 @@ describe("module bootstrap", () => {
     await expect(
       bootstrapModules({
         profile: { ...validProfile, resources: [], web: [] },
-        manifests: lifecycleManifests,
+        manifests: [...lifecycleManifests, webShellManifest],
         loadEnv: () => ({}),
       }),
     ).rejects.toThrow("基础模块 agent-runtime 工厂未返回实例");
@@ -305,7 +377,9 @@ describe("module bootstrap", () => {
         kind: "access-control",
         dependsOn: [],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:access"));
+          registerCleanup(() => {
+            events.push("dispose:access");
+          });
           return { id: "access" };
         },
       },
@@ -314,7 +388,9 @@ describe("module bootstrap", () => {
         kind: "agent-runtime",
         dependsOn: ["access-control"],
         create: ({ registerCleanup }) => {
-          registerCleanup(() => events.push("dispose:runtime"));
+          registerCleanup(() => {
+            events.push("dispose:runtime");
+          });
           return { id: "runtime" };
         },
       },
@@ -332,11 +408,13 @@ describe("module bootstrap", () => {
     await expect(
       bootstrapModules({
         profile: { ...validProfile, web: [] },
-        manifests: lifecycleManifests,
+        manifests: [...lifecycleManifests, webShellManifest],
         loadEnv: () => ({}),
         mountContribution: ({ contribution, registerCleanup }) => {
           if (contribution.id === "agent-config.lifecycle") throw new Error("mount failed");
-          registerCleanup(() => events.push("dispose:routes"));
+          registerCleanup(() => {
+            events.push("dispose:routes");
+          });
         },
       }),
     ).rejects.toThrow("mount failed");

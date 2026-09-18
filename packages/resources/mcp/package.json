@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@fenix/access-control": "workspace:*",
+    "@fenix/agent-runtime": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "elysia": "^1.4.28",
     "zod": "^4.4.3",
