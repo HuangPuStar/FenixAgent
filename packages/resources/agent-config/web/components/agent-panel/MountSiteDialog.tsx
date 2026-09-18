@@ -1,11 +1,5 @@
-import { unwrap } from "@fenix/web-runtime/api/request";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { useRequest } from "ahooks";
-import { Globe, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +7,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { agentSitesApi, type SiteApp } from "@/src/api/sites";
-import { cn } from "@/src/lib/utils";
+} from "@fenix/ui-components/ui/dialog";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
+import { Globe, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { agentSitesApi, type SiteApp } from "../../api/sites";
 
 interface SiteOption {
   id: string;

@@ -1,8 +1,8 @@
+import { cn } from "@fenix/ui-components/lib/cn";
 import { AlertCircle, ArrowRight, Globe, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { agentSitesApi } from "@/src/api/sites";
 import { useCardEmit } from "@/src/lib/card-renderer";
-import { cn } from "@/src/lib/utils";
+import { agentSitesApi } from "../../api/sites";
 
 interface AgentSitesCardProps {
   /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入），前端据此拼出同源地址 */

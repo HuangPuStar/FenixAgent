@@ -1,9 +1,9 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@fenix/ui-components/ui/tooltip";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftToLine, Globe, Info, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/src/lib/utils";
 
 export interface SiteEntry {
   id: string;

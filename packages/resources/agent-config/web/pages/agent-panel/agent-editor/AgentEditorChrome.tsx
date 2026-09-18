@@ -1,3 +1,6 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   Brain,
@@ -14,9 +17,6 @@ import {
 } from "lucide-react";
 import { type RefObject, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { selectionToValue } from "../../../lib/agent-node";
 import { EditorPagination } from "./agent-editor-controls";
 import {

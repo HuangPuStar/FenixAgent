@@ -1,4 +1,4 @@
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web/types/knowledge";
 import type { AgentDetail } from "../types/config";
 
 export function isValidAgentNameInput(name: string): boolean {

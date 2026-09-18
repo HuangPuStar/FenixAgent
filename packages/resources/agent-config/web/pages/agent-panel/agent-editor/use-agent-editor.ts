@@ -1,19 +1,19 @@
+import { modelApi } from "@fenix/model-management/web/api/models";
+import { kbApi } from "@fenix/resource-knowledge/web/api/knowledge-bases";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web/types/knowledge";
+import { mcpApi } from "@fenix/resource-mcp/web/api/mcp";
+import { hindsightApi } from "@fenix/resource-memory/web/api/hindsight";
 import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
+import { skillConfigApi } from "@fenix/resource-skill/web/api/skills";
+import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@fenix/resource-skill/web/lib/skill-resource-access";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { hindsightApi } from "@/src/api/hindsight";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { mcpApi } from "@/src/api/mcp";
-import { modelApi } from "@/src/api/models";
 import { registryApi } from "@/src/api/registry";
-import { agentSitesApi } from "@/src/api/sites";
-import { skillConfigApi } from "@/src/api/skills";
-import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import { agentApi } from "../../../api/agents";
+import { agentSitesApi } from "../../../api/sites";
 import type { AgentDetail, ResourceAccess } from "../../../types/config";
 import {
   type AgentEditorOption,

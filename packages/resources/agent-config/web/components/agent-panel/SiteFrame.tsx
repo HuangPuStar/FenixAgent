@@ -1,3 +1,6 @@
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
@@ -6,9 +9,6 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { envApi } from "@/src/api/environments";
-import { cn } from "@/src/lib/utils";
 
 export interface SiteFrameProps {
   /** 远程 app id（形如 app-xxxx），拼接到同源根路径展示业务前端 */

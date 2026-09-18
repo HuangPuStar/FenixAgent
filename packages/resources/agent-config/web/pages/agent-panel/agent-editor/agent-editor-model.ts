@@ -1,6 +1,6 @@
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web/types/knowledge";
+import { getMcpDisplayName, getMcpKey } from "@fenix/resource-mcp/web/lib/mcp-resource-access";
 import { z } from "zod/v4";
-import { getMcpDisplayName, getMcpKey } from "@/src/lib/mcp-resource-access";
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
 import { type AgentNodeSelection, agentNodeToSelection, selectionToAgentNode } from "../../../lib/agent-node";
 import type { AgentDetail, ModelEntry, ResourceAccess } from "../../../types/config";
 
