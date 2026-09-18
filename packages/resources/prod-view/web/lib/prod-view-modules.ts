@@ -1,4 +1,4 @@
-import type { ProdViewModulesConfig } from "@/src/api/prod-views";
+import type { ProdViewModulesConfig } from "../api/prod-views";
 
 /** Chat 主体模块 */
 export const CHAT_MODULE_KEYS = [

@@ -1,3 +1,13 @@
+import { agentApi } from "@fenix/agent-config/web/api/agents";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
@@ -5,19 +15,9 @@ import { Copy, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { agentApi } from "@/src/api/agents";
-import type { ProdViewInfo } from "@/src/api/prod-views";
-import { prodViewApi } from "@/src/api/prod-views";
-import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
-import { cn } from "@/src/lib/utils";
+import type { ProdViewInfo } from "../../api/prod-views";
+import { prodViewApi } from "../../api/prod-views";
+import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "../../lib/prod-view-modules";
 
 interface ProdViewsPanelProps {
   agentId: string | null;
