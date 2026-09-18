@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { globNarrator } from "@/components/chat/narrators/glob";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { globNarrator } from "@fenix/ui-components/chat/narrators/glob";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * globNarrator 单测。
@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "glob.files") return `${opts?.count} 个文件`;
+  if (key === "chat.toolNarrator.glob.files") return `${opts?.count} 个文件`;
   return key;
 }) as unknown as NarrationContext["t"];
 

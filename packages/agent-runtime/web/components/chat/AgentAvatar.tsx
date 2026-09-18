@@ -1,7 +1,7 @@
 // 品牌 Agent 头像 — 多圆+连线组成网络节点图案
 // lucide-react 无对应图标，提取为独立组件集中管理
 
-import { cn } from "@/src/lib/utils";
+import { cn } from "@fenix/ui-components/lib/cn";
 
 interface AgentAvatarProps {
   className?: string;

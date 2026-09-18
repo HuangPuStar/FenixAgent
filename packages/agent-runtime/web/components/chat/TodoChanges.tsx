@@ -1,7 +1,7 @@
+import type { TodoChange, TodoChangeKind } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
 import { CheckCircle, Circle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { TodoChange, TodoChangeKind } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 
 interface TodoChangesProps {
   changes: TodoChange[];

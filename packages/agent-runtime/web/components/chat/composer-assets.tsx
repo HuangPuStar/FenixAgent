@@ -1,7 +1,7 @@
+import { createQuotePreview } from "@fenix/ui-components/chat/lib/context-queue";
+import type { FileAttachment, UserMessageImage } from "@fenix/ui-components/chat/types";
 import { FileText, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { createQuotePreview } from "@/src/lib/context-queue";
-import type { FileAttachment, UserMessageImage } from "@/src/lib/types";
 
 export interface ComposerQuote {
   id: string;

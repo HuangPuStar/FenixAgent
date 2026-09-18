@@ -1,4 +1,4 @@
-import type { ChatInputMessage } from "@/src/lib/types";
+import type { ChatInputMessage } from "@fenix/ui-components/chat/types";
 
 /**
  * 在发送边界将本轮选中的能力编码为 Agent 可见上下文。

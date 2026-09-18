@@ -1,8 +1,6 @@
 import type { SessionSummary } from "@fenix/chat-channel";
-import { Pencil, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { stripHtmlTags } from "@fenix/ui-components/chat/lib/strip-html-tags";
+import { cn } from "@fenix/ui-components/lib/cn";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,11 +10,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { stripHtmlTags } from "@/src/lib/strip-html-tags";
-import { cn } from "@/src/lib/utils";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@fenix/ui-components/ui/tooltip";
+import { Pencil, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { canDeleteSession } from "./session-actions";
 import { groupByRecency } from "./session-grouping";
 

@@ -1,6 +1,6 @@
+import type { FileAttachment, UserMessageImage } from "@fenix/ui-components/chat/types";
 import imageCompression from "browser-image-compression";
 import { uploadChatFiles } from "@/src/api/fs";
-import type { FileAttachment, UserMessageImage } from "@/src/lib/types";
 
 const IMAGE_COMPRESSION_OPTIONS = {
   maxSizeMB: 2,

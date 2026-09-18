@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { skillNarrator } from "@/components/chat/narrators/skill";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { skillNarrator } from "@fenix/ui-components/chat/narrators/skill";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * skillNarrator 单测。

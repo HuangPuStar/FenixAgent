@@ -1,4 +1,4 @@
-import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "@/src/lib/types";
+import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "@fenix/ui-components/chat/types";
 
 export type ChatRenderItem =
   | { type: "entry"; entry: ThreadEntry; density: "normal" | "activity" }

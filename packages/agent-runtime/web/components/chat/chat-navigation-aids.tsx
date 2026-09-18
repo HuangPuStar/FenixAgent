@@ -1,8 +1,8 @@
+import type { UserMessageEntry } from "@fenix/ui-components/chat/types";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import type { UserMessageEntry } from "@/src/lib/types";
 import "./chat-navigation-aids.css";
 
 const PROMPT_JUMP_CLASS = "chat-prompt-jump-index";

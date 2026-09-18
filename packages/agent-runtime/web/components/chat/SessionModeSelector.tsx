@@ -1,9 +1,9 @@
 import type { SessionMode } from "@fenix/chat-channel";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface SessionModeSelectorProps {
   modes: SessionMode[];

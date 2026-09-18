@@ -1,9 +1,9 @@
 import type { PeriTaskViewProjection } from "@fenix/chat-channel";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getPeriTaskDetail, type PeriTaskDetail } from "@/src/api/peri-task-details";
 
 interface PeriTaskDetailSheetProps {

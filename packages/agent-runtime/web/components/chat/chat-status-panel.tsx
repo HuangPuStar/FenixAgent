@@ -1,4 +1,7 @@
 import type { PeriTaskViewProjection } from "@fenix/chat-channel";
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { TodoItem } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
 import {
   Ban,
   CheckCircle2,
@@ -13,9 +16,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ChangedFile } from "@/src/lib/extract-changed-files";
-import type { TodoItem } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 
 type StatusTab = "todo" | "tasks" | "changes";
 

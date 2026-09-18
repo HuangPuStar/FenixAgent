@@ -288,8 +288,8 @@ export function extractDisplayMeta(
 // ToolCardKind 解析 — 将 display 元数据 + rawInput 结构映射为统一 kind
 // =============================================================================
 
-import { classifyToolSemantic, semanticToToolCardKind } from "@/src/lib/tool-semantic";
-import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
+import { classifyToolSemantic, semanticToToolCardKind } from "@fenix/ui-components/chat/lib/tool-semantic";
+import type { ToolCallData, ToolCardKind } from "@fenix/ui-components/chat/types";
 
 /** display.type → ToolCardKind 的精确映射 */
 const DISPLAY_TYPE_MAP: Record<string, ToolCardKind> = {

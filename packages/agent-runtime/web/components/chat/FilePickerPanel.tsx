@@ -1,13 +1,13 @@
+import { FileTypeIcon } from "@fenix/ui-components/components/file-icon-helper";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
 import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { fsApi, uploadChatFiles } from "@/src/api/fs";
-import { FileTypeIcon } from "@/src/components/file-icon-helper";
-import { cn } from "@/src/lib/utils";
 import type { FileInfo } from "@/src/types";
 
 export interface FilePickerPanelProps {

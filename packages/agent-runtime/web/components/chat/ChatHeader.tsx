@@ -1,4 +1,21 @@
 import type { AgentSessionInfo } from "@fenix/chat-channel";
+import { stripHtmlTags } from "@fenix/ui-components/chat/lib/strip-html-tags";
+import { cn } from "@fenix/ui-components/lib/cn";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@fenix/ui-components/ui/tooltip";
 import {
   ChevronDown,
   Loader2,
@@ -14,23 +31,6 @@ import {
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { stripHtmlTags } from "@/src/lib/strip-html-tags";
-import { cn } from "@/src/lib/utils";
 import { canDeleteSession } from "./session-actions";
 import { groupByRecency } from "./session-grouping";
 

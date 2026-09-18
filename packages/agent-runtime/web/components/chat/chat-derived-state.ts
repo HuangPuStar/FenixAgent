@@ -1,6 +1,6 @@
 import type { PermissionRequest } from "@fenix/chat-channel";
-import { classifyToolSemantic } from "@/src/lib/tool-semantic";
-import type { PendingPermission, ThreadEntry, TodoItem } from "@/src/lib/types";
+import { classifyToolSemantic } from "@fenix/ui-components/chat/lib/tool-semantic";
+import type { PendingPermission, ThreadEntry, TodoItem } from "@fenix/ui-components/chat/types";
 
 /** 从当前消息投影读取最新的标准 ACP plan 完整快照。 */
 export function deriveTodoItems(entries: ThreadEntry[]): TodoItem[] {

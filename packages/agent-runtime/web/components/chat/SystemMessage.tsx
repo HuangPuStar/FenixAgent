@@ -1,8 +1,8 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/src/lib/utils";
 
 interface SystemMessageProps {
   /** 原始 system-reminder 块仅在用户主动查看详情时展示。 */

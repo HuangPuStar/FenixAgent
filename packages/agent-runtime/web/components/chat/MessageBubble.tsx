@@ -1,3 +1,10 @@
+import { isVisibleContentBlock, parseChatQuotes } from "@fenix/ui-components/chat/lib/context-queue";
+import { splitSystemReminderBlocks } from "@fenix/ui-components/chat/lib/strip-html-tags";
+import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
+import { Reasoning, ReasoningContent, ReasoningTrigger } from "@fenix/ui-components/chat/primitives/reasoning";
+import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "@fenix/ui-components/chat/types";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   dispatchArtifactsPreviewFile,
@@ -6,14 +13,7 @@ import {
 import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MessageResponse } from "@/components/ai-elements/message";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { CardEventEmitter, MessageEmitterContext } from "@/src/lib/card-renderer";
-import { isVisibleContentBlock, parseChatQuotes } from "@/src/lib/context-queue";
-import { splitSystemReminderBlocks } from "@/src/lib/strip-html-tags";
-import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "@/src/lib/types";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { SystemMessage } from "./SystemMessage";
 

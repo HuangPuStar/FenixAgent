@@ -1,10 +1,10 @@
 import type { AvailableCommand } from "@fenix/chat-channel";
+import { Input } from "@fenix/ui-components/ui/input";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { useRovingListNavigation } from "@fenix/ui-components/ui/use-roving-list-navigation";
 import { CheckCircle2, Plug, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useRovingListNavigation } from "@/components/ui/use-roving-list-navigation";
 
 export interface McpOption {
   id: string;

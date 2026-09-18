@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import { webFetchNarrator } from "@/components/chat/narrators/web-fetch";
-import type { ToolCallData } from "@/src/lib/types";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import { webFetchNarrator } from "@fenix/ui-components/chat/narrators/web-fetch";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * webFetchNarrator 单测。

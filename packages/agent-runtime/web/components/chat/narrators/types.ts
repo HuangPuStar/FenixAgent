@@ -1,7 +1,7 @@
+import type { ToolCallData, ToolCardKind } from "@fenix/ui-components/chat/types";
 import type { TFunction } from "i18next";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
 
 /**
  * 工具调用的状态枚举。映射自 ACP 协议 ToolCallUpdate.status。

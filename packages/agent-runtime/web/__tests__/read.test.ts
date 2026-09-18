@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readNarrator } from "@/components/chat/narrators/read";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { readNarrator } from "@fenix/ui-components/chat/narrators/read";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * readNarrator 单测。
@@ -14,12 +14,12 @@ import type { ToolCallData } from "@/src/lib/types";
  * - 字段兼容（file_path / path / filePath）
  */
 
-// mockT：覆盖 read narrator 用到的所有 i18n key
-// - common.lineRange：文件场景行号区间
-// - read.entries：目录场景条目数
+// mockT：覆盖 read narrator 用到的所有 i18n key（ui-components 命名空间下带前缀）
+// - chat.toolNarrator.common.lineRange：文件场景行号区间
+// - chat.toolNarrator.read.entries：目录场景条目数
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "common.lineRange") return `第 ${opts?.range} 行`;
-  if (key === "read.entries") return `${opts?.count} 个条目`;
+  if (key === "chat.toolNarrator.common.lineRange") return `第 ${opts?.range} 行`;
+  if (key === "chat.toolNarrator.read.entries") return `${opts?.count} 个条目`;
   return key;
 }) as unknown as NarrationContext["t"];
 

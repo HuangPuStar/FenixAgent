@@ -1,8 +1,8 @@
+import type { TodoItem } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
 import { CheckCircle, Circle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TodoItem } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 
 // =============================================================================
 // Todo 条目类型

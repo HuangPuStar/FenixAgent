@@ -1,16 +1,16 @@
 import type { AvailableCommand, SessionMode } from "@fenix/chat-channel";
-import { X } from "lucide-react";
-import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { FilePickerDialog } from "@/src/components/FilePickerDialog";
 import {
   limitQuotedText,
   MAX_QUOTE_COUNT,
   MAX_TOTAL_QUOTED_TEXT_LENGTH,
   serializeChatQuotes,
-} from "@/src/lib/context-queue";
-import type { ChatInputMessage, FileAttachment, UserMessageImage } from "@/src/lib/types";
+} from "@fenix/ui-components/chat/lib/context-queue";
+import type { ChatInputMessage, FileAttachment, UserMessageImage } from "@fenix/ui-components/chat/types";
+import { X } from "lucide-react";
+import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { FilePickerDialog } from "@/src/components/FilePickerDialog";
 import type { FileInfo } from "@/src/types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
 import { ComposerAssets, type ComposerQuote } from "./composer-assets";

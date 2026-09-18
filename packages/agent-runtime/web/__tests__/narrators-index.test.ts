@@ -1,30 +1,32 @@
 import { describe, expect, test } from "bun:test";
+import { narrate } from "@fenix/ui-components/chat/narrators";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
+import zhUiComponents from "@fenix/ui-components/i18n/locales/zh/uiComponents.json";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import i18n from "i18next";
-import { narrate } from "@/components/chat/narrators";
-import zhToolNarrator from "@/src/i18n/locales/zh/toolNarrator.json";
-import type { ToolCallData } from "@/src/lib/types";
 
 /**
  * narrate() 中央入口测试。
  *
- * 用真实的 i18n 实例（绑定到 toolNarrator 命名空间）+ 真实 fallback narrator，
+ * 用真实的 i18n 实例（绑定 ui-components 命名空间，文案真相来源是该包自带的
+ * `web/i18n/locales/zh/uiComponents.json`）+ 真实 fallback narrator，
  * 覆盖：状态归一化、副标题模板、状态词、徽章优先级、错误提取、detail 字段。
  *
  * 注意：此测试运行时注册表里只有 fallback narrator
  * （其他专用 narrator 在后续 task 加入），所以测试用 "SomeUnknownTool" 触发兜底。
  */
 
-// 初始化测试用 i18n 实例（绑定到 toolNarrator 命名空间，使用中文 JSON）
+// 初始化测试用 i18n 实例（绑定 uiComponents 命名空间，使用该包的中文 bundle）
 // 不使用 initReactI18next —— 测试不依赖 React context，直接用 i18next 原生 API 即可
 i18n.init({
-  resources: { zh: { toolNarrator: zhToolNarrator } },
+  resources: { zh: { [NS.UI_COMPONENTS]: zhUiComponents } },
   lng: "zh",
-  ns: ["toolNarrator"],
-  defaultNS: "toolNarrator",
+  ns: [NS.UI_COMPONENTS],
+  defaultNS: NS.UI_COMPONENTS,
   interpolation: { escapeValue: false },
 });
 
-const t = i18n.getFixedT("zh", "toolNarrator");
+const t = i18n.getFixedT("zh", NS.UI_COMPONENTS);
 
 // 构造工具调用数据，默认是 complete 状态的 unknown 工具（走 fallback narrator）
 function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {

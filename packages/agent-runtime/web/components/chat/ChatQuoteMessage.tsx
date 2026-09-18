@@ -1,7 +1,7 @@
+import { createQuotePreview, type SerializedChatQuote } from "@fenix/ui-components/chat/lib/context-queue";
 import { Quote } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { createQuotePreview, type SerializedChatQuote } from "@/src/lib/context-queue";
 
 interface ChatQuoteMessageProps {
   quote: SerializedChatQuote;

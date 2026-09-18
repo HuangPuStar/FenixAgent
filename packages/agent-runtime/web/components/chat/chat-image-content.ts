@@ -1,6 +1,6 @@
 import type { ImageContent } from "@fenix/chat-channel";
+import type { UserMessageImage } from "@fenix/ui-components/chat/types";
 import imageCompression from "browser-image-compression";
-import type { UserMessageImage } from "@/src/lib/types";
 
 const IMAGE_COMPRESSION_OPTIONS = {
   maxSizeMB: 2,

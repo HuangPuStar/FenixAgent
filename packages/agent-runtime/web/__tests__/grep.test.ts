@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { grepNarrator } from "@/components/chat/narrators/grep";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { grepNarrator } from "@fenix/ui-components/chat/narrators/grep";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * grepNarrator 单测。
@@ -11,8 +11,8 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "common.inPath") return `在 ${opts?.path}`;
-  if (key === "grep.results") return `找到 ${opts?.count} 个`;
+  if (key === "chat.toolNarrator.common.inPath") return `在 ${opts?.path}`;
+  if (key === "chat.toolNarrator.grep.results") return `找到 ${opts?.count} 个`;
   return key;
 }) as unknown as NarrationContext["t"];
 

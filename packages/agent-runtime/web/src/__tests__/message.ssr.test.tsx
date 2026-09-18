@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { SubAgentPanel } from "@fenix/ui-components/chat/timeline/SubAgentPanel";
+import { AssistantBubble, UserBubble } from "@fenix/ui-components/chat/view/MessageBubble";
+import { SystemMessage } from "@fenix/ui-components/chat/view/SystemMessage";
 import { createElement, type ReactNode } from "react";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
-import { AssistantBubble, UserBubble } from "@/components/chat/MessageBubble";
-import { SubAgentPanel } from "@/components/chat/SubAgentPanel";
-import { SystemMessage } from "@/components/chat/SystemMessage";
 import componentsEN from "@/src/i18n/locales/en/components.json";
 import componentsZH from "@/src/i18n/locales/zh/components.json";
 import { Message, MessageContent, MessageResponse } from "../../../../../apps/web/components/ai-elements/message";

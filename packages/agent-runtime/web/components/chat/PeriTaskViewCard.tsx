@@ -13,11 +13,11 @@
 //   （use-task-views），内容变更必然生成新对象，比较器无需深比较。
 
 import type { PeriTaskStatus, PeriTaskViewProjection } from "@fenix/chat-channel";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { Ban, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/src/lib/utils";
 
 interface PeriTaskViewCardProps {
   task: PeriTaskViewProjection;

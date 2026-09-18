@@ -1,4 +1,4 @@
-import type { ToolCallEntry } from "@/src/lib/types";
+import type { ToolCallEntry } from "@fenix/ui-components/chat/types";
 import { HindsightToolCard, isHindsightTool } from "./HindsightToolCard";
 import { ToolCallRow } from "./ToolCallRow";
 

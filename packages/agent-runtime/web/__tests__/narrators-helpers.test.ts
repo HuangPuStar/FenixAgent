@@ -7,7 +7,7 @@ import {
   findFirstStringValue,
   formatElapsed,
   truncate,
-} from "@/components/chat/narrators/helpers";
+} from "@fenix/ui-components/chat/narrators/helpers";
 
 /**
  * narrators/helpers.ts 纯函数单测。

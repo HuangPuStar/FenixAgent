@@ -15,11 +15,11 @@
 //   或 60s 过期 expired）
 
 import type { QuestionProjection } from "@fenix/chat-channel";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
 import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/src/lib/utils";
 
 interface QuestionPanelProps {
   /** 待应答问题列表（已由 use-session-state 做 pending + 未过期过滤） */

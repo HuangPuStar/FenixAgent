@@ -1,9 +1,9 @@
+import type { PendingPermission } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
 import { ChevronDown, KeyRound, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import type { PendingPermission } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 
 // =============================================================================
 // 权限请求面板 — 固定在输入框上方（Anthropic warm token style）

@@ -1,8 +1,12 @@
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButtons,
+} from "@fenix/ui-components/chat/primitives/conversation";
+import type { ThreadEntry, ToolCallEntry } from "@fenix/ui-components/chat/types";
 import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Conversation, ConversationContent, ConversationScrollButtons } from "@/components/ai-elements/conversation";
-import type { ThreadEntry, ToolCallEntry } from "@/src/lib/types";
 import { AgentBadgeSkeleton, type AgentSkillInfo } from "./AgentBadge";
 import { ChatSelectionAction, PromptJumpRail } from "./chat-navigation-aids";
 import { buildChatRenderBlocks, type ChatRenderItem } from "./chat-render-layout";

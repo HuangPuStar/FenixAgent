@@ -1,4 +1,4 @@
-import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
+import type { ToolCallData, ToolCardKind } from "@fenix/ui-components/chat/types";
 
 // =============================================================================
 // 工具卡片样式 — 基于 ToolCardKind

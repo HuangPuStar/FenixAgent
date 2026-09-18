@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { extractDisplayMeta, resolveToolCardKind } from "@/components/chat/narrators/helpers";
-import { supportsFilePreview } from "@/components/chat/tool-call-utils";
-import type { ToolCallData } from "@/src/lib/types";
+import { supportsFilePreview } from "@fenix/ui-components/chat/lib/tool-call-utils";
+import { extractDisplayMeta, resolveToolCardKind } from "@fenix/ui-components/chat/narrators/helpers";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /** 构造最小工具调用数据，便于测试 */
 function makeTool(overrides: Partial<ToolCallData> = {}): ToolCallData {

@@ -1,6 +1,6 @@
+import { formatTokenCount } from "@fenix/ui-components/chat/lib/token-stats";
 import { CircleGauge } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { formatTokenCount } from "@/src/lib/token-stats";
 
 interface ContextUsage {
   totalTokens?: number;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { editNarrator } from "@/components/chat/narrators/edit";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { editNarrator } from "@fenix/ui-components/chat/narrators/edit";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * editNarrator 单测。
@@ -11,7 +11,7 @@ import type { ToolCallData } from "@/src/lib/types";
  */
 
 const mockT = ((key: string, opts?: Record<string, unknown>) => {
-  if (key === "edit.changes") return `${opts?.count} 处`;
+  if (key === "chat.toolNarrator.edit.changes") return `${opts?.count} 处`;
   return key;
 }) as unknown as NarrationContext["t"];
 

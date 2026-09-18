@@ -1,9 +1,9 @@
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Brain, ChevronRight, Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { ToolCallData } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 import { isHindsightTool as _isHindsightTool, formatOutput, truncate } from "./tool-call-utils";
 
 // Re-export for backward compatibility (ToolCallGroup imports from here)

@@ -1,11 +1,11 @@
+import type { ToolCallData, ToolCardKind } from "@fenix/ui-components/chat/types";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchArtifactsPreviewFile } from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { ToolCallData, ToolCardKind } from "@/src/lib/types";
-import { cn } from "@/src/lib/utils";
 import { narrate } from "./narrators";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";

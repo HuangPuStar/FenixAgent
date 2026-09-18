@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { bashNarrator } from "@/components/chat/narrators/bash";
-import type { NarrationContext } from "@/components/chat/narrators/types";
-import type { ToolCallData } from "@/src/lib/types";
+import { bashNarrator } from "@fenix/ui-components/chat/narrators/bash";
+import type { NarrationContext } from "@fenix/ui-components/chat/narrators/types";
+import type { ToolCallData } from "@fenix/ui-components/chat/types";
 
 /**
  * bashNarrator 单测。

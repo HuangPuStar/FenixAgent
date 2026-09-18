@@ -1,8 +1,8 @@
+import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "@fenix/ui-components/chat/types";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
 import { Bot, ChevronDown, Loader2 } from "lucide-react";
 import { memo, useContext, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "@/src/lib/types";
 import { SubAgentToolCallGroupContext } from "./sub-agent-tool-call-context";
 
 // =============================================================================

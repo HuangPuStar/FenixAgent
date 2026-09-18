@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { PermissionRequest } from "@fenix/chat-channel";
-import { derivePendingPermissions } from "@/components/chat/chat-derived-state";
-import { resolveToolCardKind } from "@/components/chat/narrators/helpers";
-import { extractChangedFiles } from "@/src/lib/extract-changed-files";
-import { classifyToolSemantic, normalizeToolName } from "@/src/lib/tool-semantic";
-import type { ThreadEntry, ToolCallData } from "@/src/lib/types";
+import { derivePendingPermissions } from "@fenix/ui-components/chat/lib/chat-derived-state";
+import { extractChangedFiles } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import { classifyToolSemantic, normalizeToolName } from "@fenix/ui-components/chat/lib/tool-semantic";
+import { resolveToolCardKind } from "@fenix/ui-components/chat/narrators/helpers";
+import type { ThreadEntry, ToolCallData } from "@fenix/ui-components/chat/types";
 
 function tool(title: string, rawInput?: Record<string, unknown>): ToolCallData {
   const semantic = classifyToolSemantic({ name: title, rawInput });
@@ -46,7 +46,11 @@ describe("统一工具语义分类", () => {
       { id: "ask", tool: "Askuserquestion", status: "pending", args: {}, options: [] },
       { id: "bash", tool: "Bash", status: "pending", args: {}, options: [] },
     ] as unknown as PermissionRequest[];
-    expect(derivePendingPermissions(permissions).map((item) => item.requestId)).toEqual(["bash"]);
+    // 纯化契约：过滤判定由宿主注入（等价于源实现固定调用的 classifyToolSemantic）
+    const shouldSuppress = (toolName: string) => classifyToolSemantic({ name: toolName }) === "ask-user-question";
+    expect(derivePendingPermissions(permissions, { shouldSuppress }).map((item) => item.requestId)).toEqual(["bash"]);
+    // 未注入端口时不过滤：端口可选，默认保留全部 pending 权限
+    expect(derivePendingPermissions(permissions).map((item) => item.requestId)).toEqual(["ask", "bash"]);
   });
 
   // Changes 面板必须只收集统一分类为 write/edit 的文件工具，并忽略 TodoWrite。
