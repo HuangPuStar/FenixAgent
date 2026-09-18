@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
 import { isVisibleContentBlock, parseChatQuotes } from "../lib/context-queue";
 import { splitSystemReminderBlocks } from "../lib/strip-html-tags";
 import { MessageResponse } from "../primitives/message";
+import { MessageAttachment, MessageAttachments } from "../primitives/message-attachments";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "../primitives/reasoning";
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../types";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
@@ -136,13 +137,13 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
       {visibleContent && (
         <div className="flex justify-end">
           <div className="chat-user-message-frame">
-            {/* 图片附件 */}
+            {/* 图片附件 — 与消息附件共用同一套 attach 基元，横向排布、按需换行 */}
             {entry.images && entry.images.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 justify-center">
-                {entry.images.map((img) => (
-                  <ImageThumbnail key={img.data} image={img} />
+              <MessageAttachments className="mb-2">
+                {entry.images.map((image) => (
+                  <UserImageAttachment key={image.url ?? image.data} image={image} />
                 ))}
-              </div>
+              </MessageAttachments>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
             <div className="chat-user-bubble message-bubble-enter">
@@ -342,26 +343,31 @@ export function AssistantBubble({
 }
 
 // =============================================================================
-// 图片缩略图 — 点击放大
+// 图片附件 — 复用消息附件基元，点击放大
 // =============================================================================
 
-function ImageThumbnail({ image }: { image: UserMessageImage }) {
+/**
+ * 用户消息中的图片缩略图（点击放大查看原图）。
+ *
+ * 纯化改动点（相对源 `ImageThumbnail`）：自绘的 `<img className="h-20 w-20">` 换成消息附件基元
+ * `MessageAttachment`，与助手消息附件（`MessageAttachments`）保持同一套视觉；外层 `Button`
+ * 保留源实现的点击放大与键盘可达性（未传 `onRemove`，基元内部不会出现嵌套按钮）。
+ */
+function UserImageAttachment({ image }: { image: UserMessageImage }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [open, setOpen] = useState(false);
-  const dataUrl = `data:${image.mimeType};base64,${image.data}`;
+  // 展示地址优先取 `url`，缺省时回退到 base64 载荷拼出的 data URL。
+  const src = image.url ?? `data:${image.mimeType};base64,${image.data}`;
+  const alt = t("chat.components.messageBubble.uploadedImage");
   return (
     <>
-      <Button variant="ghost" className="rounded-lg overflow-hidden p-0 h-auto" onClick={() => setOpen(true)}>
-        <img src={dataUrl} alt={t("chat.components.messageBubble.uploadedImage")} className="h-20 w-20 object-cover" />
+      <Button variant="ghost" className="h-auto rounded-lg p-0" onClick={() => setOpen(true)}>
+        <MessageAttachment alt={alt} data={{ type: "file", mediaType: image.mimeType, url: src }} />
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[min(92vw,960px)] p-3 bg-white">
           <DialogTitle className="sr-only">{t("chat.components.messageBubble.imagePreview")}</DialogTitle>
-          <img
-            src={dataUrl}
-            alt={t("chat.components.messageBubble.uploadedImage")}
-            className="max-h-[82vh] w-full object-contain"
-          />
+          <img src={src} alt={alt} className="max-h-[82vh] w-full object-contain" />
         </DialogContent>
       </Dialog>
     </>

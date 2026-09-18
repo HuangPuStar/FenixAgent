@@ -14,26 +14,23 @@ function withClassName(baseClassName: string, className?: string): string {
 export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;
   className?: string;
+  /** 图片替代文本；缺省时回退到文件名，再回退到通用文案。 */
+  alt?: string;
   onRemove?: () => void;
 };
 
 /** Renders one image or file attachment while keeping removal accessible by keyboard. */
-export function MessageAttachment({ data, className, onRemove, ...props }: MessageAttachmentProps) {
+export function MessageAttachment({ data, className, alt, onRemove, ...props }: MessageAttachmentProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const filename = data.filename ?? "";
   const isImage = Boolean(data.mediaType?.startsWith("image/") && data.url);
   const attachmentLabel = filename || (isImage ? t("message.image") : t("message.attachment"));
+  const imageAlt = alt ?? (filename || t("message.attachment"));
 
   return (
     <div className={withClassName("group relative size-24 overflow-hidden rounded-lg", className)} {...props}>
       {isImage ? (
-        <img
-          alt={filename || t("message.attachment")}
-          className="size-full object-cover"
-          height={100}
-          src={data.url}
-          width={100}
-        />
+        <img alt={imageAlt} className="size-full object-cover" height={100} src={data.url} width={100} />
       ) : (
         <Tooltip>
           <TooltipTrigger asChild>

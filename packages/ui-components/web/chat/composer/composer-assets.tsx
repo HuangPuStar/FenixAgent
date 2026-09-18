@@ -44,7 +44,11 @@ export function ComposerAssets({
     <div className="chat-composer-assets" role="group" aria-label={t("chat.components.composerAssets.title")}>
       {images.map((image, index) => (
         <article key={`${image.mimeType}-${image.data.slice(0, 24)}`} className="chat-composer-asset">
-          <img src={`data:${image.mimeType};base64,${image.data}`} alt={t("chat.components.composerAssets.image")} />
+          {/* 展示地址与消息气泡同规则：优先 `url`，缺省时用 base64 载荷拼 data URL。 */}
+          <img
+            src={image.url ?? `data:${image.mimeType};base64,${image.data}`}
+            alt={t("chat.components.composerAssets.image")}
+          />
           <strong>{t("chat.components.composerAssets.imageNumber", { count: index + 1 })}</strong>
           <RemoveButton label={t("chat.components.composerAssets.removeImage")} onClick={() => onRemoveImage(index)} />
         </article>

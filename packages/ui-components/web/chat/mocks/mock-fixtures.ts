@@ -27,11 +27,22 @@ import type {
   SessionSummary,
   TokenUsage,
 } from "../types";
-import { createMockChatEntries, createMockConversation, MOCK_PERMISSION_OPTIONS } from "./internal/mock-conversation";
+import {
+  createMockChatEntries,
+  createMockConversation,
+  MOCK_PERMISSION_OPTIONS,
+  MOCK_USER_IMAGE_URL,
+} from "./internal/mock-conversation";
 import { createMockStreamScript, type MockStreamStep } from "./internal/mock-stream-script";
 
 export type { MockStreamStep };
-export { createMockChatEntries, createMockConversation, createMockStreamScript, MOCK_PERMISSION_OPTIONS };
+export {
+  createMockChatEntries,
+  createMockConversation,
+  createMockStreamScript,
+  MOCK_PERMISSION_OPTIONS,
+  MOCK_USER_IMAGE_URL,
+};
 
 /** demo 用的 agent/environment 标识（仅展示，不参与任何鉴权或持久化）。 */
 export const MOCK_AGENT_ID = "env_demo_fenix";

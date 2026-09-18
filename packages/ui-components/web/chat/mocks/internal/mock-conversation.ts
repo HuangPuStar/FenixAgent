@@ -31,6 +31,15 @@ export const MOCK_PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: "deny", name: "拒绝", kind: "reject_once" },
 ];
 
+/**
+ * 样本图片地址（真实远程图，picsum 按 seed 稳定返回同一张）。
+ *
+ * 纯化取舍：demo 与其它示例都需要一张「看起来像真的」图片，而包内不宜内联大体积 base64，
+ * 故这里用远程 URL；离线时该图会退化为 alt 文案，不影响其余示例（其余示例仍全部离线可渲染）。
+ * 统一收在 mocks 里，避免每个 demo 分区各写一份 URL。
+ */
+export const MOCK_USER_IMAGE_URL = "https://picsum.photos/seed/fenix-ui-components/640/400.jpg";
+
 /** 构造助手结构化消息。 */
 function assistantMessage(
   id: string,
@@ -373,8 +382,11 @@ export function createMockChatEntries(): ThreadEntry[] {
           images: [
             {
               mimeType: "image/png",
-              // 1×1 透明 PNG：仅作占位，避免把二进制资源带进包内。
+              // 1×1 透明 PNG：`data` 是发送路径（`prepareImageContent` → `atob`）要求的载荷，
+              // 历史样本不会再次发送，这里仅作占位，渲染不会用到它。
               data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+              // 展示走真实远程图：demo 里能看到实际照片，而不是一块 1×1 像素拉成的纯色方块。
+              url: MOCK_USER_IMAGE_URL,
             },
           ],
         }

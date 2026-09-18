@@ -127,6 +127,13 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
     - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
     - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
+11. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
+    想展示一张真实网络图片就必须把二进制内联进源码。包内加可选 `url`，渲染方统一按「`url` 优先、
+    缺省回退到 `data` 拼出的 data URL」取地址（消息气泡与输入岛附件行同规则），发送路径仍只读 `data`。
+    - 影响范围：新增字段可选，宿主既有 `UserMessageImage` 可直接传入，不构成破坏性变更。
+    - demo 例外：mock 与输入岛示例的图片因此指向 `https://picsum.photos/...`（见 `MOCK_USER_IMAGE_URL`），
+      是 demo 里唯一的远程资源——断网时该图退化为 alt 文案，其余示例仍全部离线可渲染。
+    - 移除条件：宿主把展示地址纳入协议（例如 Chat 历史直接下发可访问 URL），包内即可退化为直接透传该字段。
 
 ## 未来接入 apps/web（本期不做）
 

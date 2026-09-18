@@ -119,10 +119,23 @@ export interface ToolCallData {
  */
 export type AssistantChunk = { type: "message"; text: string } | { type: "thought"; text: string };
 
-/** 用户消息中的图片（base64）。复制自 `apps/web/src/lib/types.ts`。 */
+/**
+ * 用户消息中的图片（base64）。复制自 `apps/web/src/lib/types.ts`。
+ *
+ * 纯化改动点：新增可选 `url`（展示用地址）。源类型只有 `mimeType` + `data`，
+ * 想让 demo / mock 展示一张真实网络图片，就只能把二进制 base64 内联进包内源码。
+ */
 export interface UserMessageImage {
   mimeType: string;
+  /** base64 编码的图片内容。发送路径依赖该字段（`prepareImageContent` → `atob`），保持必填。 */
   data: string; // base64 encoded
+  /**
+   * 展示用图片地址（远程 URL 或 data URL），只影响渲染、不参与发送。
+   *
+   * 渲染方统一按「`url` 优先，缺省回退到 `mimeType` + `data` 拼出的 data URL」取地址；
+   * 因此只想换掉画面上那张图（例如 mock 显示真实照片）时补 `url` 即可，不必伪造 base64 载荷。
+   */
+  url?: string;
 }
 
 /** 用户消息条目。复制自 `apps/web/src/lib/types.ts`。 */

@@ -28,16 +28,21 @@ import {
   MOCK_AVAILABLE_MODES,
   MOCK_BOUND_MCPS,
   MOCK_DEFAULT_MODE_ID,
+  MOCK_USER_IMAGE_URL,
 } from "@fenix/ui-components/chat/mocks/mock-fixtures";
 import { useRef, useState } from "react";
 
 /** 上下文用量样本：与 ContextPanel / 会话外壳示例同源（mock 工厂函数，避免静态值失真）。 */
 const MOCK_CONTEXT_USAGE = createMockTokenUsage();
 
-/** 1×1 PNG：附件行的图片缩略图用内联 base64，离线可渲染。 */
+/**
+ * 待发送图片样本：`data` 是 1×1 PNG 占位——发送路径（`prepareImageContent` → `atob`）
+ * 要求 base64 载荷；附件行按 `url ?? data URL` 取展示地址，因此画面上是真实照片。
+ */
 const DEMO_IMAGE: UserMessageImage = {
   mimeType: "image/png",
   data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  url: MOCK_USER_IMAGE_URL,
 };
 
 /** 初始待发送附件与引用（受控形态，便于演示「附件行」与移除交互）。 */
