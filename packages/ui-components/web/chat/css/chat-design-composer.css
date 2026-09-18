@@ -21,7 +21,10 @@
  *    竖排成两行、卡片也退回宿主段的样式（2026-09-18 修正）。
  *    包装类由 `ChatComposer` 自身渲染，卡片与元信息条必为其后代，故不会漏配；下方补充段注释里
  *    引用的选择器名同步更新，声明与数值均未改。
- * 4. 补充段的冲突处理见下方注释（两份来源的级联关系以源仓库实际生效结果为准）。
+ * 4. `.chat-composer-send.is-stop` 的底色由源实现 `#25344a` 改为包内 token `var(--color-brand)`：
+ *    源色在浅色下近乎黑色，与本包其余「主题色」入口（`.is-ready` 的蓝、`PromptInputSubmit` 的
+ *    `bg-primary`）不一致，暗色下也几乎与背景同色。只有这一条声明改动，尺寸与图标不变。
+ * 5. 补充段的冲突处理见下方注释（两份来源的级联关系以源仓库实际生效结果为准）。
  */
 
 /* biome-ignore-all lint/style/noDescendingSpecificity: 本文件由两份源样式表合并（chat-design-composer.css
@@ -194,8 +197,11 @@
   background: #2f6fe4;
   color: #fff;
 }
+/* 停止态（turn 运行中）：源实现为深墨蓝 #25344a，在浅色下近乎黑色、在暗色下几乎融进背景，
+ * 与「主题色」的其余入口（`.is-ready`、`PromptInputSubmit` 的 `bg-primary`）不一致。
+ * 改用包内 token `--color-brand`，暗色下随主题变亮（见文件头纯化改动点 4）。 */
 .chat-composer-send.is-stop {
-  background: #25344a;
+  background: var(--color-brand);
   color: #fff;
 }
 .chat-composer-send svg {
