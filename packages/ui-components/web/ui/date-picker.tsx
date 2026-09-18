@@ -40,7 +40,7 @@ function DatePicker({ value, onChange, placeholder, disabled, className, locale 
             onChange?.(date);
             setOpen(false);
           }}
-          initialFocus
+          autoFocus
         />
       </PopoverContent>
     </Popover>
