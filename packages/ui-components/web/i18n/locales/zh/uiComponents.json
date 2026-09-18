@@ -213,14 +213,6 @@
         "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤",
         "title": "子 Agent 执行轨迹"
       },
-      "todoChanges": {
-        "added": "新增",
-        "completed": "已完成",
-        "in_progress": "进行中",
-        "pending": "待办",
-        "removed": "移除",
-        "updated": "更新"
-      },
       "todoPanel": {
         "completed": "已完成",
         "inProgress": "进行中"

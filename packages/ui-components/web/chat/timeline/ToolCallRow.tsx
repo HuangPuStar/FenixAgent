@@ -12,13 +12,14 @@
  */
 
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { cardKindToStyle, formatOutput, kindLabel, supportsFilePreview, truncate } from "../lib/tool-call-utils";
 import { narrate } from "../narrators";
+import { Shimmer } from "../primitives/shimmer";
 import type { ToolCallData, ToolCardKind } from "../types";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
@@ -32,6 +33,17 @@ function extractPreviewPath(rawInput: Record<string, unknown> | undefined): stri
   if (!rawInput) return null;
   const path = rawInput.file_path ?? rawInput.path ?? rawInput.filePath;
   return typeof path === "string" && path.length > 0 ? path : null;
+}
+
+/**
+ * 运行中的标题文字套一层载入微光。
+ *
+ * 纯化改动点（相对源实现）：源实现运行时只有 `Loader2` 转圈 + 静态标题，没有微光；
+ * 这里复用包内统一的 `chat/primitives/shimmer`（reasoning 的「思考中」同源）。
+ * 非运行态、或节点不是纯文本（含文件链接等交互元素）时原样返回，避免把按钮也染成微光。
+ */
+function withLoadingShimmer(node: ReactNode, isLoading: boolean): ReactNode {
+  return isLoading && typeof node === "string" ? <Shimmer as="span">{node}</Shimmer> : node;
 }
 
 // =============================================================================
@@ -72,6 +84,8 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
   const Icon = result.icon ?? Loader2;
 
   const isRunning = tool.status === "running";
+  // 完成是默认结果：右侧不再渲染「Done / 已完成」这类状态词（见下方状态位渲染）
+  const isComplete = tool.status === "complete";
   const isError = tool.status === "error";
   const isPending = tool.status === "waiting_for_confirmation";
   const isCanceled = tool.status === "canceled" || tool.status === "rejected";
@@ -119,7 +133,7 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
             <span className="tool-call-row-heading">
               {showFileLink ? (
                 <span className="tool-call-row-title" title={titleText}>
-                  <span>{fileAction} </span>
+                  <span>{withLoadingShimmer(fileAction, isRunning)} </span>
                   <button
                     type="button"
                     className="tool-call-row-file-link"
@@ -131,7 +145,7 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
                 </span>
               ) : (
                 <span className="tool-call-row-title" title={titleText}>
-                  {result.title}
+                  {withLoadingShimmer(result.title, isRunning)}
                 </span>
               )}
               {result.subtitle ? (
@@ -139,12 +153,13 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
                   <span className="truncate">{result.subtitle}</span>
                 </span>
               ) : null}
-              {result.errorDetail && (
-                <span className="tool-call-row-error" title={result.errorDetail}>
-                  {result.errorDetail}
-                </span>
-              )}
             </span>
+            {/* 错误信息独占第二行：源实现内联在标题行内，长错误会把标题挤到看不见 */}
+            {result.errorDetail && (
+              <span className="tool-call-row-error" title={result.errorDetail}>
+                {result.errorDetail}
+              </span>
+            )}
           </span>
 
           <span className="tool-call-row-end">
@@ -161,17 +176,20 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
                 {result.badge.text}
               </span>
             )}
-            <span
-              className={cn(
-                "tool-call-row-status text-[10px] font-medium shrink-0",
-                isError && "text-status-error",
-                isPending && "text-brand",
-                isCanceled && "text-text-dim",
-                !isError && !isPending && !isCanceled && "text-text-dim",
-              )}
-            >
-              {result.statusLabel}
-            </span>
+            {/* 完成态不渲染状态词（「Done / 已完成」是默认结果的噪音）；其余状态仍需明确提示 */}
+            {!isComplete && (
+              <span
+                className={cn(
+                  "tool-call-row-status text-[10px] font-medium shrink-0",
+                  isError && "text-status-error",
+                  isPending && "text-brand",
+                  isCanceled && "text-text-dim",
+                  !isError && !isPending && !isCanceled && "text-text-dim",
+                )}
+              >
+                {result.statusLabel}
+              </span>
+            )}
           </span>
 
           {hasDetails && (

@@ -42,6 +42,9 @@ demo/                     Vite 展示页（非库产物）
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
 | `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
+| `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效） |
+| `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
+| `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。

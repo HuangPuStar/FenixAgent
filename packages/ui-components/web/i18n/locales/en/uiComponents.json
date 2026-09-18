@@ -213,14 +213,6 @@
         "summary": "{{messages}} messages · {{tools}} tool steps",
         "title": "Sub-agent activity"
       },
-      "todoChanges": {
-        "added": "Added",
-        "completed": "Completed",
-        "in_progress": "In progress",
-        "pending": "To do",
-        "removed": "Removed",
-        "updated": "Updated"
-      },
       "todoPanel": {
         "completed": "completed",
         "inProgress": "in progress"
