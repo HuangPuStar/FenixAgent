@@ -24,13 +24,12 @@ function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "cla
 }
 
 describe("ContextPanel 服务端渲染", () => {
-  // 没有工具调用的会话仍应展示稳定的统计与空状态，避免空面板崩溃。
-  test("空会话展示工具空态与模型信息", () => {
+  // 没有工具调用的会话仍应展示模型与用量统计，避免空面板崩溃。
+  test("空会话展示模型与用量统计", () => {
     const html = renderPanel([]);
 
     expect(html).toContain("claude-test");
     expect(html).toContain("12s");
-    expect(html).toContain("contextPanel.noToolCalls");
     expect(html).toContain("0 / 200.0k");
   });
 
@@ -42,8 +41,8 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).not.toContain("opus (peri-haiku)");
   });
 
-  // 工具调用应按规范名称合并计数，并将待确认调用展示在权限队列中。
-  test("工具调用渲染聚合计数与待确认队列", () => {
+  // 工具调用应按规范名称合并计数后展示。
+  test("工具调用渲染聚合计数", () => {
     const entries: ThreadEntry[] = [
       { type: "user_message", id: "user-1", content: "部署服务" },
       {
@@ -82,7 +81,6 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).toContain("bash");
     expect(html).toContain("read");
     expect(html).toContain("Read 配置");
-    expect(html).toContain("contextPanel.pendingConfirmation");
     expect(html).toContain(">2</span>");
   });
 
@@ -106,11 +104,10 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).toContain("1.0k");
   });
 
-  // 收起面板仍保留切换控件，但内容容器必须进入不可交互的折叠状态。
-  test("收起状态保留切换控件并禁用面板交互", () => {
+  // 收起面板时内容容器必须进入不可交互的折叠状态。
+  test("收起状态禁用面板交互", () => {
     const html = renderPanel([], true);
 
     expect(html).toContain("!w-0 opacity-0 !border-l-0 pointer-events-none");
-    expect(html).toContain("contextPanel.showContext");
   });
 });

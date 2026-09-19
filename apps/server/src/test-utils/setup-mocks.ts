@@ -304,23 +304,16 @@ mock.module("@fenix/resource-machine/file-ws-requests", () => {
   return obj;
 });
 
-// ── react-i18next ──
-// CI 的 bun 包缓存（npmmirror 镜像）解析出的 react-i18next@17.0.8 的 es/index.js
-// 不导出 initReactI18next，导致任何导入 react-i18next 的前端测试抛出 SyntaxError。
-// 这里提供一个最小 mock，覆盖所有 react-i18next 导出，对后端测试无害（它们不导入该模块）。
-
-mock.module("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
-  initReactI18next: { type: "3rdParty", init: () => {} },
-  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
-  Trans: ({ children }: { children: any }) => children,
-  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
-  I18nextProvider: ({ children }: { children: any }) => children,
-  withTranslation: () => (Component: unknown) => Component,
-}));
+// ── react-i18next（2026-09-20 移除，勿恢复）──
+// 此处原有「react-i18next 不可用时按需注册最小 mock」的探针与回退分支，其前提已证伪：
+// bun.lock 记录的 react-i18next@17.0.8 integrity 与 registry.npmjs.org 的 dist.integrity
+// 逐字节一致，且 CI 走 `bun install --frozen-lockfile`（integrity 不符会安装失败而非静默装入），
+// 因此任何来源装出的都是上游正版 tarball，其 dist/es/index.js:11 导出 initReactI18next。
+// 实测探针为 true、回退分支从未注册——该导出是否存在只取决于包内容，而包内容由锁文件 integrity 固定；
+// 整段删除后 `env -u ANTHROPIC_MODEL bun run precheck` 仍全绿，故按死代码移除。
+// 移除理由：探针让每个测试进程（含纯后端）都执行 `import("react-i18next")` 并提前加载 React；
+// 且 try/catch 会把任何 import 异常静默转成 mock，真实依赖故障会被伪装成文案断言失败，更难定位。
+// 若将来 Bun 对根入口 named export 的解析真的回归，表现为 import 期直接失败，报错直指缺导出。
 
 // 测试依赖必须经 runtime 的服务端公开入口加载，避免绕过 workspace 的稳定边界。
 const {

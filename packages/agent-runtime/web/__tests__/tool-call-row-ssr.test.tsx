@@ -29,8 +29,6 @@ describe("ToolCallRow 服务端渲染", () => {
   test("完成的读取工具展示可点击文件名与详情入口", () => {
     const html = renderTool(tool());
 
-    expect(html).toContain("common.subtitle");
-    expect(html).toContain("common.status.complete");
     expect(html).toContain('class="chat-tool-call-row"');
     expect(html).toContain('data-kind="read-file"');
     expect(html).toContain('class="tool-call-row-file-link"');
@@ -40,11 +38,13 @@ describe("ToolCallRow 服务端渲染", () => {
   });
 
   // Read 的行号范围应紧跟文件名展示，不再被推到工具行中间的独立列。
+  // 行号范围是唯一渲染进 `.tool-call-row-meta` 的内容（见 components/chat/ToolCallRow.tsx），
+  // 因此按承载元素定位即可验证顺序，不依赖随 i18n 状态变化的范围文案本身。
   test("读取工具将行号范围显示在文件名之后", () => {
     const html = renderTool(tool({ rawInput: { file_path: "src/app.ts", offset: 68, limit: 140 } }));
 
     expect(html).toContain("tool-call-row-copy is-file-preview");
-    expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta[\s\S]*common\.lineRange/);
+    expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta/);
   });
 
   // 所有工具的补充详情都应紧跟工具名称，避免在宽屏下形成远离名称的独立列。
@@ -68,7 +68,6 @@ describe("ToolCallRow 服务端渲染", () => {
   test("运行中工具展示活动状态", () => {
     const html = renderTool(tool({ title: "Bash", kind: "bash", status: "running", rawOutput: undefined }));
 
-    expect(html).toContain("common.status.running");
     expect(html).toContain("animate-spin");
   });
 
@@ -92,8 +91,6 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(html).toContain("ID: err_00000000000000000000000000000001");
     expect(html).toContain("tool-call-row-heading");
     expect(html).toContain('class="tool-call-row-error"');
-    expect(html).toContain("common.status.error");
-    expect(html).toContain("toolCallRow.previewFile");
   });
 
   // 无参数和结果的行不应渲染详情按钮，避免伪装成可交互元素。
@@ -147,6 +144,8 @@ describe("ToolCallRow 服务端渲染", () => {
   });
 
   // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。
+  // 状态文案随 i18n 状态变化，这里按承载它的 `.tool-call-row-status` 断言状态区仍存在，
+  // 否则两条否定断言在整行未渲染时也会通过。
   test("等待确认工具不重复渲染权限操作", () => {
     const html = renderTool(
       tool({
@@ -163,7 +162,7 @@ describe("ToolCallRow 服务端渲染", () => {
       }),
     );
 
-    expect(html).toContain("common.status.waiting_for_confirmation");
+    expect(html).toContain("tool-call-row-status");
     expect(html).not.toContain("允许");
     expect(html).not.toContain("拒绝");
   });

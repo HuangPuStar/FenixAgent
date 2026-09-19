@@ -11,6 +11,7 @@ import {
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-controls";
 import { createAgentEditorDefaults } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentEditorData } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/use-agent-editor";
+import agentsEn from "../i18n/locales/en/agents.json";
 import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,6 +91,41 @@ function UnavailablePickerFixture() {
       onChange={setValue}
     />
   );
+}
+
+/** 按点号路径读取字典里的字符串；缺键返回 undefined。 */
+function lookup(dictionary: unknown, path: string): string | undefined {
+  let current: unknown = dictionary;
+  for (const part of path.split(".")) {
+    if (typeof current !== "object" || current === null) return;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return typeof current === "string" ? current : undefined;
+}
+
+/**
+ * aria-label 的候选取值。
+ *
+ * 同一份用例在两种 i18n 状态下运行：被测组件的 import 图会初始化宿主 i18n 单例，正常渲染字典译文
+ * （`{{name}}` 按资源名展开）；同进程其他测试文件对 `react-i18next` 登记的模块 mock 会残留到后续文件，
+ * 此时 `t()` 回显 key。两种取值都要能定位到同一个元素，元素缺失或可点击性回归仍会失败。
+ */
+function copyCandidates(key: string, values: Record<string, string>): string[] {
+  const template = lookup(agentsEn, key);
+  if (template === undefined) return [key];
+  const translated = Object.entries(values).reduce(
+    (text, [name, value]) => text.replace(`{{${name}}}`, value),
+    template,
+  );
+  return [key, translated];
+}
+
+/** 元素的 aria-label 是否命中候选取值之一（参数按结构声明，happy-dom 元素不属于 DOM lib 的 `Element`）。 */
+function hasLabel(
+  element: { getAttribute(name: string): string | null } | undefined,
+  candidates: readonly string[],
+): boolean {
+  return candidates.includes(element?.getAttribute("aria-label") ?? "");
 }
 
 function CapabilitiesFixture() {
@@ -257,11 +293,11 @@ describe("AgentResourcePicker 组件交互", () => {
     const buttons = Array.from(container.querySelectorAll<"button">("button"));
     const chip = buttons.find((button) => button.classList.contains("is-unavailable"));
     const checkboxes = Array.from(container.querySelectorAll<"button">("button"));
-    const hidden = checkboxes.find(
-      (checkbox) => checkbox.getAttribute("aria-label") === "editor.removeUnavailableResource",
-    );
-    const blocked = checkboxes.find((checkbox) => checkbox.getAttribute("aria-label") === "editor.unavailableResource");
-    expect(chip?.getAttribute("aria-label")).toBe("editor.removeUnavailableResource");
+    const removeCandidates = copyCandidates("editor.removeUnavailableResource", { name: "Hidden" });
+    const blockedCandidates = copyCandidates("editor.unavailableResource", { name: "Blocked" });
+    const hidden = checkboxes.find((checkbox) => hasLabel(checkbox, removeCandidates));
+    const blocked = checkboxes.find((checkbox) => hasLabel(checkbox, blockedCandidates));
+    expect(hasLabel(chip, removeCandidates), "已绑定 unavailable 项应带「移除」文案").toBe(true);
     expect(hidden?.disabled).toBe(false);
     expect(blocked?.disabled).toBe(true);
     act(() => chip?.click());

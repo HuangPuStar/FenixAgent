@@ -1,6 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
+import componentsEn from "@/src/i18n/locales/en/components.json";
 import { buildPromptText } from "../components/chat/composer-prompt";
+
+/** 按点号路径读取字典里的字符串；缺键返回 undefined。 */
+function lookup(dictionary: unknown, path: string): string | undefined {
+  let current: unknown = dictionary;
+  for (const part of path.split(".")) {
+    if (typeof current !== "object" || current === null) return;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return typeof current === "string" ? current : undefined;
+}
+
+/**
+ * 断言渲染结果里出现了某条 composer 文案（命名空间 `components`，字典见 `apps/web/src/i18n/locales/en/components.json`）。
+ *
+ * 同一 bun 进程里 `useTranslation` 的取值取决于同进程其他测试文件：本文件既不注入 `I18nextProvider`
+ * 也不 import `@/src/i18n`，单文件跑时 i18next 没有可用实例，按自身回退规则返回 key；整包跑时同进程
+ * 其他文件会初始化宿主单例（或对 `react-i18next` 登记模块 mock），后续文件的 `t()` 因此拿到真实译文
+ * 或回显 key。两种形态都接受，元素缺失仍会失败，因此断言在两种环境下都成立。
+ */
+function expectCopy(html: string, key: string) {
+  const translated = lookup(componentsEn, key);
+  const hit = [key, translated].some((candidate) => typeof candidate === "string" && html.includes(candidate));
+  expect(hit, `文案 ${key} 既没有以译文也没有以 key 形态出现在渲染结果里`).toBe(true);
+}
 
 describe("Composer prompt capabilities", () => {
   // 未选择能力时保持用户正文原样，不产生额外 reminder。
@@ -72,13 +97,13 @@ describe("ChatComposer", () => {
     expect(html).not.toContain("%");
   });
 
-  // 元信息条：新会话按钮文案（i18n 未初始化时返回 key，参考 fde9e38 做法）
+  // 元信息条：新会话按钮文案（i18n 译文或 key 回显，见 expectCopy）
   test("renders new session button when showNewSession is true", async () => {
     const { ChatComposer } = await import("../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} showNewSession={true} onNewSession={() => {}} />,
     );
-    expect(html).toContain("chatComposer.newSession");
+    expectCopy(html, "chatComposer.newSession");
   });
 
   // 浮动按钮组：技能按钮在有 commands 和 envId 时渲染
@@ -91,8 +116,8 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} commands={mockCommands} envId="env_test" />,
     );
-    expect(html).toContain("chatComposer.skillButton");
-    expect(html).toContain("chatComposer.attach");
+    expectCopy(html, "chatComposer.skillButton");
+    expectCopy(html, "chatComposer.attach");
   });
 
   // 无环境时仍展示文件入口以保持工具栏稳定，但入口必须禁用，不能触发无作用上传。
@@ -100,9 +125,10 @@ describe("ChatComposer", () => {
     const { ChatComposer } = await import("../components/chat/ChatComposer");
     const mockCommands = [{ name: "review", description: "Code review" }];
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
-    expect(html).toContain("chatComposer.skillButton");
-    expect(html).toContain('aria-label="chatComposer.attach"');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="chatComposer\.attach"/);
+    expectCopy(html, "chatComposer.skillButton");
+    expectCopy(html, "chatComposer.attach");
+    // 「入口被禁用」按稳定类名断言：aria-label 的取值随 i18n 状态变化，不作为禁用与否的判据。
+    expect(html).toMatch(/<button[^>]*chat-composer-file[^>]*disabled=""/);
   });
 
   // 浮动按钮组：仅有 envId 无 commands 时，只有文件按钮
@@ -110,7 +136,7 @@ describe("ChatComposer", () => {
     const { ChatComposer } = await import("../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} envId="env_test" />);
     expect(html).not.toContain("chatComposer.commandButton");
-    expect(html).toContain('aria-label="chatComposer.attach"');
+    expectCopy(html, "chatComposer.attach");
   });
 
   // 浮动按钮组：commands 为空数组时不显示技能按钮，无 envId 时不显示文件按钮
@@ -118,7 +144,7 @@ describe("ChatComposer", () => {
     const { ChatComposer } = await import("../components/chat/ChatComposer");
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={[]} />);
     expect(html).not.toContain("chatComposer.commandButton");
-    expect(html).toContain('aria-label="chatComposer.attach"');
+    expectCopy(html, "chatComposer.attach");
   });
 
   // 断点 1 修复：canCancel（accepting/running/awaiting_permission）时按钮渲染 Square 停止图标，
@@ -138,7 +164,8 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
     );
-    expect(html).toContain('chat-composer-send is-stop" type="button" aria-label="chatComposer.stop"');
+    expect(html).toContain('chat-composer-send is-stop" type="button"');
+    expectCopy(html, "chatComposer.stop");
   });
 
   // cancelling（isLoading 且 canCancel=false）：渲染 Square 且 disabled，防止重复点发重取消
