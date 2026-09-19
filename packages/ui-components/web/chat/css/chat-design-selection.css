@@ -1,0 +1,22 @@
+/*
+ * Chat 划词引用浮层样式。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-selection.css，逐字复制（含色值）。
+ * 纯化改动：无。浮层为 fixed 定位（会脱离最近的滚动/裁剪上下文），因此保持源选择器前缀不变，
+ * 未加包根包裹类——祖先包裹对 fixed 元素不构成有效作用域。
+ */
+.chat-selection-action {
+  position: fixed;
+  z-index: 100;
+  overflow: hidden;
+  border: 1px solid #dfe5ed;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 9px 26px rgb(30 50 80 / 14%);
+}
+.chat-selection-action button {
+  padding: 8px 12px;
+  color: #275ebd;
+  font-size: 12px;
+  font-weight: 600;
+}

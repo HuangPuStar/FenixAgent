@@ -1,0 +1,293 @@
+/*
+ * Chat 工具时间线样式：工具分组、工具行、文件链接、状态与耗时。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-messages-tools.css 的「工具」段
+ * （源文件第 256-518 行），逐字复制（含色值，未 token 化）。
+ * 源文件因职责拆分 + 仓库 500 行红线，拆为 chat-design-messages.css 与 chat-design-tools.css（本文件）。
+ *
+ * 纯化改动：
+ * 1. 保持源选择器前缀（.tool-call-* / .chat-tool-call-* / .chat-activity-chain）不变，未加包根包裹类：
+ *    portal 渲染的元素会逃出祖先作用域，整体包裹会导致样式静默失效。
+ * 2. 追加 `.tool-call-detail-code`（见文件末尾）：源为宿主 apps/web/src/index.css 的 @utility，
+ *    包内 timeline/ToolCallRow.tsx 直接使用该类名，缺失会导致工具详情代码块不回绕，属复制遗漏补全。
+ * 3. 依赖 `@keyframes spin`（`.tool-call-group-summary span.is-running svg`）：该动画由 Tailwind 在包内
+ *    生成（包内多处使用 `animate-spin`，已确认 dist 产物含 `@keyframes spin`），无需在本文件重复定义。
+ * 4. `.tool-call-row-error` 追加 `display: block`：包内把错误信息从标题行内联改为独占第二行
+ *    （见 timeline/ToolCallRow.tsx），该选择器自带的 `overflow: hidden` / `text-overflow: ellipsis`
+ *    只对块级盒子生效，缺这条声明时长错误会直接溢出而不是截断省略。
+ */
+.tool-call-group {
+  position: relative;
+  margin: 2px 0 4px;
+}
+.tool-call-group-list {
+  display: grid;
+  gap: 1px;
+}
+.tool-call-group-summary {
+  position: sticky;
+  top: 6px;
+  z-index: 5;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 94%);
+  color: #7b899d;
+  text-align: left;
+  backdrop-filter: blur(8px);
+}
+.tool-call-group-summary > svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 0.16s;
+}
+.tool-call-group-summary > svg.is-open {
+  transform: rotate(90deg);
+}
+.tool-call-group-summary strong {
+  color: #69768a;
+  font-size: 13px;
+}
+.tool-call-group-summary span {
+  font-size: 11px;
+}
+.tool-call-group-summary span.is-error {
+  color: #dc5a54;
+}
+.tool-call-group-summary span.is-running {
+  display: inline-flex;
+  gap: 4px;
+  color: #c77720;
+}
+.tool-call-group-summary span.is-running svg {
+  width: 13px;
+  animation: spin 1s linear infinite;
+}
+.tool-call-group-summary small {
+  margin-left: auto;
+  color: #8390a2;
+}
+
+.tool-call-row-compact {
+  display: grid;
+  /* min-height: 38px; */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 2px;
+  border-radius: 6px;
+  /* background: #fff; */
+}
+
+.chat-tool-call-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  border-radius: 6px;
+  color: inherit;
+  text-align: left;
+}
+
+.chat-tool-call-row:not(:disabled) {
+  cursor: pointer;
+}
+
+.chat-tool-call-row:disabled {
+  cursor: default;
+}
+
+.chat-tool-call-row:focus-visible {
+  outline: 2px solid #8aa4c7;
+  outline-offset: 2px;
+}
+
+.chat-tool-call-row-details-button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 5px;
+  color: #8a96a8;
+}
+
+.chat-tool-call-row-details-button:hover {
+  background: #edf2f8;
+  color: #657287;
+}
+
+.chat-tool-call-row-details-button:focus-visible,
+.tool-call-row-file-link:focus-visible {
+  outline: 2px solid #8aa4c7;
+  outline-offset: 2px;
+}
+
+.chat-tool-call-row-details-icon {
+  width: 13px;
+  height: 13px;
+  color: #8a96a8;
+}
+
+.tool-call-row-compact:hover {
+  background: #f7f9fc;
+}
+.tool-call-row-compact.is-cancelled {
+  opacity: 0.55;
+}
+.tool-call-row-icon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  color: #7d899b;
+  border-radius: 999px;
+  background: #fff;
+}
+.tool-call-row-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tool-call-row-compact.is-error .tool-call-row-icon {
+  color: #d5534f;
+}
+
+.chat-activity-chain .tool-call-row-compact {
+  margin-left: -32px;
+  padding-left: 0;
+}
+
+.chat-activity-chain .tool-call-group-summary {
+  width: calc(100% + 32px);
+  margin-left: -32px;
+  padding-left: 0;
+}
+
+.chat-activity-chain .tool-call-group-summary > svg {
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #fff;
+}
+.tool-call-row-copy {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+.tool-call-row-copy.is-file-preview {
+  display: block;
+}
+
+.tool-call-row-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #7d899b;
+  font-size: 12.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.tool-call-row-copy.is-file-preview) .tool-call-row-heading {
+  display: flex;
+}
+
+:is(.tool-call-row-copy.is-file-preview) .tool-call-row-heading > .tool-call-row-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+}
+
+:where(.tool-call-row-copy.is-file-preview) .tool-call-row-meta {
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.tool-call-row-file-link {
+  display: inline;
+  max-width: 100%;
+  overflow: hidden;
+  color: #2878d0;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.tool-call-row-file-link:hover {
+  color: #1764b7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tool-call-row-heading,
+.tool-call-row-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.tool-call-row-heading {
+  gap: 9px;
+}
+
+.tool-call-row-meta {
+  color: #aab3c0;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.tool-call-row-error {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #d5534f;
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-row-end {
+  display: flex;
+  align-items: baseline;
+  justify-self: end;
+  gap: 12px;
+}
+
+.tool-call-row-duration {
+  min-width: 42px;
+  text-align: right;
+}
+
+.tool-call-row-status {
+  min-width: 40px;
+  color: #8a96a8;
+  text-align: right;
+}
+
+.tool-call-row-compact.is-error .tool-call-row-status {
+  color: #d5534f;
+}
+
+/* 源宿主 apps/web/src/index.css 第 362-366 行的 @utility tool-call-detail-code，声明逐字复制。
+   包内 timeline/ToolCallRow.tsx 的两个 <pre> 直接使用该类名，而 web/styles/theme.css 明确未迁移宿主
+   @utility（判断为「本包组件不依赖」），实际该工具类被使用，缺失会让代码块从 pre-wrap 退化为不换行
+   （横向滚动），属可见回归，故随工具类规则一并收进本文件。
+   此处以普通类规则（而非 @utility）落地：使用方是纯类名，且这些元素上没有其它会与之冲突的
+   whitespace/break 工具类（已核对 ToolCallRow.tsx），因此与 utilities 层的先后顺序不影响结果。 */
+.tool-call-detail-code {
+  tab-size: 2;
+  word-break: break-all;
+  white-space: pre-wrap;
+}

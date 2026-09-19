@@ -1,0 +1,69 @@
+{
+  "name": "@fenix/web-runtime",
+  "version": "0.1.0",
+  "description": "宿主无关的 web 运行时基础设施（HTTP 客户端、i18n 命名空间表、事件总线、chat 投影层）",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api/request": {
+      "types": "./web/api/request.ts",
+      "default": "./web/api/request.ts"
+    },
+    "./i18n/namespace": {
+      "types": "./web/i18n/namespace.ts",
+      "default": "./web/i18n/namespace.ts"
+    },
+    "./lib/config-events": {
+      "types": "./web/lib/config-events.ts",
+      "default": "./web/lib/config-events.ts"
+    },
+    "./lib/artifacts-preview-events": {
+      "types": "./web/lib/artifacts-preview-events.ts",
+      "default": "./web/lib/artifacts-preview-events.ts"
+    },
+    "./lib/chat-stats": {
+      "types": "./web/lib/chat-stats.ts",
+      "default": "./web/lib/chat-stats.ts"
+    },
+    "./hooks/use-changed-files-stats": {
+      "types": "./web/hooks/use-changed-files-stats.ts",
+      "default": "./web/hooks/use-changed-files-stats.ts"
+    },
+    "./hooks/use-page-visible": {
+      "types": "./web/hooks/use-page-visible.ts",
+      "default": "./web/hooks/use-page-visible.ts"
+    },
+    "./chat/structured-to-thread": {
+      "types": "./web/chat/structured-to-thread.ts",
+      "default": "./web/chat/structured-to-thread.ts"
+    },
+    "./chat/todo": {
+      "types": "./web/chat/todo.ts",
+      "default": "./web/chat/todo.ts"
+    },
+    "./chat/context-queue": {
+      "types": "./web/chat/context-queue.ts",
+      "default": "./web/chat/context-queue.ts"
+    },
+    "./chat/use-context-queue": {
+      "types": "./web/chat/use-context-queue.ts",
+      "default": "./web/chat/use-context-queue.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fenix/chat-channel": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "i18next": "^26.2.0",
+    "yjs": "^13.6.31"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "react": "^19.2.6"
+  }
+}

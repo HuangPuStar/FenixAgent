@@ -1,0 +1,388 @@
+{
+  "name": "@fenix/ui-components",
+  "version": "0.1.0",
+  "description": "通用 React UI 组件包（从 apps/web 抽取并纯化），自带最小 Vite 展示页",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./web/index.ts",
+      "default": "./web/index.ts"
+    },
+    "./styles.css": {
+      "default": "./web/styles/theme.css"
+    },
+    "./chat/composer/CommandMenu": {
+      "types": "./web/chat/composer/CommandMenu.tsx",
+      "default": "./web/chat/composer/CommandMenu.tsx"
+    },
+    "./chat/composer/composer-file-processing": {
+      "types": "./web/chat/composer/composer-file-processing.ts",
+      "default": "./web/chat/composer/composer-file-processing.ts"
+    },
+    "./chat/composer/composer-prompt": {
+      "types": "./web/chat/composer/composer-prompt.ts",
+      "default": "./web/chat/composer/composer-prompt.ts"
+    },
+    "./chat/lib/chat-derived-state": {
+      "types": "./web/chat/lib/chat-derived-state.ts",
+      "default": "./web/chat/lib/chat-derived-state.ts"
+    },
+    "./chat/lib/context-queue": {
+      "types": "./web/chat/lib/context-queue.ts",
+      "default": "./web/chat/lib/context-queue.ts"
+    },
+    "./chat/lib/extract-changed-files": {
+      "types": "./web/chat/lib/extract-changed-files.ts",
+      "default": "./web/chat/lib/extract-changed-files.ts"
+    },
+    "./chat/lib/simplify-model-display-name": {
+      "types": "./web/chat/lib/simplify-model-display-name.ts",
+      "default": "./web/chat/lib/simplify-model-display-name.ts"
+    },
+    "./chat/lib/strip-html-tags": {
+      "types": "./web/chat/lib/strip-html-tags.ts",
+      "default": "./web/chat/lib/strip-html-tags.ts"
+    },
+    "./chat/lib/token-stats": {
+      "types": "./web/chat/lib/token-stats.ts",
+      "default": "./web/chat/lib/token-stats.ts"
+    },
+    "./chat/lib/tool-call-utils": {
+      "types": "./web/chat/lib/tool-call-utils.ts",
+      "default": "./web/chat/lib/tool-call-utils.ts"
+    },
+    "./chat/lib/tool-semantic": {
+      "types": "./web/chat/lib/tool-semantic.ts",
+      "default": "./web/chat/lib/tool-semantic.ts"
+    },
+    "./chat/mocks/mock-chat-store": {
+      "types": "./web/chat/mocks/mock-chat-store.ts",
+      "default": "./web/chat/mocks/mock-chat-store.ts"
+    },
+    "./chat/mocks/mock-fixtures": {
+      "types": "./web/chat/mocks/mock-fixtures.ts",
+      "default": "./web/chat/mocks/mock-fixtures.ts"
+    },
+    "./chat/narrators": {
+      "types": "./web/chat/narrators/index.ts",
+      "default": "./web/chat/narrators/index.ts"
+    },
+    "./chat/narrators/bash": {
+      "types": "./web/chat/narrators/bash.ts",
+      "default": "./web/chat/narrators/bash.ts"
+    },
+    "./chat/narrators/edit": {
+      "types": "./web/chat/narrators/edit.ts",
+      "default": "./web/chat/narrators/edit.ts"
+    },
+    "./chat/narrators/glob": {
+      "types": "./web/chat/narrators/glob.ts",
+      "default": "./web/chat/narrators/glob.ts"
+    },
+    "./chat/narrators/grep": {
+      "types": "./web/chat/narrators/grep.ts",
+      "default": "./web/chat/narrators/grep.ts"
+    },
+    "./chat/narrators/helpers": {
+      "types": "./web/chat/narrators/helpers.ts",
+      "default": "./web/chat/narrators/helpers.ts"
+    },
+    "./chat/narrators/question": {
+      "types": "./web/chat/narrators/question.ts",
+      "default": "./web/chat/narrators/question.ts"
+    },
+    "./chat/narrators/read": {
+      "types": "./web/chat/narrators/read.ts",
+      "default": "./web/chat/narrators/read.ts"
+    },
+    "./chat/narrators/skill": {
+      "types": "./web/chat/narrators/skill.ts",
+      "default": "./web/chat/narrators/skill.ts"
+    },
+    "./chat/narrators/task": {
+      "types": "./web/chat/narrators/task.ts",
+      "default": "./web/chat/narrators/task.ts"
+    },
+    "./chat/narrators/todo-write": {
+      "types": "./web/chat/narrators/todo-write.ts",
+      "default": "./web/chat/narrators/todo-write.ts"
+    },
+    "./chat/narrators/types": {
+      "types": "./web/chat/narrators/types.ts",
+      "default": "./web/chat/narrators/types.ts"
+    },
+    "./chat/narrators/web-fetch": {
+      "types": "./web/chat/narrators/web-fetch.ts",
+      "default": "./web/chat/narrators/web-fetch.ts"
+    },
+    "./chat/narrators/web-search": {
+      "types": "./web/chat/narrators/web-search.ts",
+      "default": "./web/chat/narrators/web-search.ts"
+    },
+    "./chat/narrators/write": {
+      "types": "./web/chat/narrators/write.ts",
+      "default": "./web/chat/narrators/write.ts"
+    },
+    "./chat/primitives/conversation": {
+      "types": "./web/chat/primitives/conversation.tsx",
+      "default": "./web/chat/primitives/conversation.tsx"
+    },
+    "./chat/primitives/message": {
+      "types": "./web/chat/primitives/message.tsx",
+      "default": "./web/chat/primitives/message.tsx"
+    },
+    "./chat/primitives/permission-request": {
+      "types": "./web/chat/primitives/permission-request.tsx",
+      "default": "./web/chat/primitives/permission-request.tsx"
+    },
+    "./chat/primitives/reasoning": {
+      "types": "./web/chat/primitives/reasoning.tsx",
+      "default": "./web/chat/primitives/reasoning.tsx"
+    },
+    "./chat/timeline/SubAgentPanel": {
+      "types": "./web/chat/timeline/SubAgentPanel.tsx",
+      "default": "./web/chat/timeline/SubAgentPanel.tsx"
+    },
+    "./chat/types": {
+      "types": "./web/chat/types.ts",
+      "default": "./web/chat/types.ts"
+    },
+    "./chat/view/MessageBubble": {
+      "types": "./web/chat/view/MessageBubble.tsx",
+      "default": "./web/chat/view/MessageBubble.tsx"
+    },
+    "./chat/view/SystemMessage": {
+      "types": "./web/chat/view/SystemMessage.tsx",
+      "default": "./web/chat/view/SystemMessage.tsx"
+    },
+    "./components/AgentCardList": {
+      "types": "./web/components/AgentCardList.tsx",
+      "default": "./web/components/AgentCardList.tsx"
+    },
+    "./components/WorkbenchPanel": {
+      "types": "./web/components/WorkbenchPanel.tsx",
+      "default": "./web/components/WorkbenchPanel.tsx"
+    },
+    "./components/agent-master-detail-workspace": {
+      "types": "./web/components/agent-master-detail-workspace.tsx",
+      "default": "./web/components/agent-master-detail-workspace.tsx"
+    },
+    "./components/file-icon-helper": {
+      "types": "./web/components/file-icon-helper.tsx",
+      "default": "./web/components/file-icon-helper.tsx"
+    },
+    "./config/ConfirmDialog": {
+      "types": "./web/config/ConfirmDialog.tsx",
+      "default": "./web/config/ConfirmDialog.tsx"
+    },
+    "./config/FormDialog": {
+      "types": "./web/config/FormDialog.tsx",
+      "default": "./web/config/FormDialog.tsx"
+    },
+    "./i18n/locales/en/uiComponents.json": {
+      "default": "./web/i18n/locales/en/uiComponents.json"
+    },
+    "./i18n/locales/zh/uiComponents.json": {
+      "default": "./web/i18n/locales/zh/uiComponents.json"
+    },
+    "./layout/app-header": {
+      "types": "./web/layout/app-header.tsx",
+      "default": "./web/layout/app-header.tsx"
+    },
+    "./layout/app-page": {
+      "types": "./web/layout/app-page.tsx",
+      "default": "./web/layout/app-page.tsx"
+    },
+    "./lib/card-renderer": {
+      "types": "./web/lib/card-renderer.tsx",
+      "default": "./web/lib/card-renderer.tsx"
+    },
+    "./lib/cn": {
+      "types": "./web/lib/cn.ts",
+      "default": "./web/lib/cn.ts"
+    },
+    "./lib/i18n": {
+      "types": "./web/lib/i18n.ts",
+      "default": "./web/lib/i18n.ts"
+    },
+    "./ui/alert-dialog": {
+      "types": "./web/ui/alert-dialog.tsx",
+      "default": "./web/ui/alert-dialog.tsx"
+    },
+    "./ui/badge": {
+      "types": "./web/ui/badge.tsx",
+      "default": "./web/ui/badge.tsx"
+    },
+    "./ui/button": {
+      "types": "./web/ui/button.tsx",
+      "default": "./web/ui/button.tsx"
+    },
+    "./ui/card": {
+      "types": "./web/ui/card.tsx",
+      "default": "./web/ui/card.tsx"
+    },
+    "./ui/chart": {
+      "types": "./web/ui/chart.tsx",
+      "default": "./web/ui/chart.tsx"
+    },
+    "./ui/checkbox": {
+      "types": "./web/ui/checkbox.tsx",
+      "default": "./web/ui/checkbox.tsx"
+    },
+    "./ui/collapsible": {
+      "types": "./web/ui/collapsible.tsx",
+      "default": "./web/ui/collapsible.tsx"
+    },
+    "./ui/command": {
+      "types": "./web/ui/command.tsx",
+      "default": "./web/ui/command.tsx"
+    },
+    "./ui/dialog": {
+      "types": "./web/ui/dialog.tsx",
+      "default": "./web/ui/dialog.tsx"
+    },
+    "./ui/dialog-xl": {
+      "types": "./web/ui/dialog-xl.tsx",
+      "default": "./web/ui/dialog-xl.tsx"
+    },
+    "./ui/dropdown-menu": {
+      "types": "./web/ui/dropdown-menu.tsx",
+      "default": "./web/ui/dropdown-menu.tsx"
+    },
+    "./ui/input": {
+      "types": "./web/ui/input.tsx",
+      "default": "./web/ui/input.tsx"
+    },
+    "./ui/label": {
+      "types": "./web/ui/label.tsx",
+      "default": "./web/ui/label.tsx"
+    },
+    "./ui/pagination": {
+      "types": "./web/ui/pagination.tsx",
+      "default": "./web/ui/pagination.tsx"
+    },
+    "./ui/popover": {
+      "types": "./web/ui/popover.tsx",
+      "default": "./web/ui/popover.tsx"
+    },
+    "./ui/progress": {
+      "types": "./web/ui/progress.tsx",
+      "default": "./web/ui/progress.tsx"
+    },
+    "./ui/scroll-area": {
+      "types": "./web/ui/scroll-area.tsx",
+      "default": "./web/ui/scroll-area.tsx"
+    },
+    "./ui/select": {
+      "types": "./web/ui/select.tsx",
+      "default": "./web/ui/select.tsx"
+    },
+    "./ui/sheet": {
+      "types": "./web/ui/sheet.tsx",
+      "default": "./web/ui/sheet.tsx"
+    },
+    "./ui/skeleton": {
+      "types": "./web/ui/skeleton.tsx",
+      "default": "./web/ui/skeleton.tsx"
+    },
+    "./ui/slider": {
+      "types": "./web/ui/slider.tsx",
+      "default": "./web/ui/slider.tsx"
+    },
+    "./ui/switch": {
+      "types": "./web/ui/switch.tsx",
+      "default": "./web/ui/switch.tsx"
+    },
+    "./ui/table": {
+      "types": "./web/ui/table.tsx",
+      "default": "./web/ui/table.tsx"
+    },
+    "./ui/tabs": {
+      "types": "./web/ui/tabs.tsx",
+      "default": "./web/ui/tabs.tsx"
+    },
+    "./ui/textarea": {
+      "types": "./web/ui/textarea.tsx",
+      "default": "./web/ui/textarea.tsx"
+    },
+    "./ui/tooltip": {
+      "types": "./web/ui/tooltip.tsx",
+      "default": "./web/ui/tooltip.tsx"
+    },
+    "./ui/use-roving-list-navigation": {
+      "types": "./web/ui/use-roving-list-navigation.ts",
+      "default": "./web/ui/use-roving-list-navigation.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
+    "@open-file-viewer/core": "^0.1.17",
+    "@open-file-viewer/react": "^0.1.17",
+    "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-hover-card": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slider": "^1.3.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tanstack/react-table": "^8.21.3",
+    "ai": "^6.0.190",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "lucide-react": "^1.16.0",
+    "motion": "^12.40.0",
+    "nanoid": "^5.1.11",
+    "radix-ui": "^1.4.3",
+    "react-arborist": "^3.16.0",
+    "react-day-picker": "^9",
+    "react-file-icon": "^1.6.0",
+    "react-hook-form": "^7.76.0",
+    "react-resizable-panels": "^4.11.1",
+    "recharts": "^3.10.1",
+    "streamdown": "^2.5.0",
+    "tailwind-merge": "^3.6.0",
+    "use-stick-to-bottom": "^1.1.4",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "i18next": "^26.2.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-i18next": "^17"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "happy-dom": "^20.9.0",
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwindcss": "^4.3.0",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  }
+}

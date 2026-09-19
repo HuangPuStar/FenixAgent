@@ -243,6 +243,14 @@
       "rationale": "2 处内部穿透；阶段 2 未排期。"
     },
     {
+      "rule": "no-cross-package-src:packages/chat-channel",
+      "from": "@fenix/web-runtime",
+      "to": "@fenix/chat-channel",
+      "owner": "1.6",
+      "removeWhen": "structured-to-thread.ts 交还给 chat-channel（packages/chat-channel/web/lib/），web-runtime 不再自行读取 Chat Doc",
+      "rationale": "实测 1 处 / 1 个文件：web/chat/structured-to-thread.ts 第 8–16 行值导入 getEntriesMap / getEntryOrder / getToolCallsMap / isPublicError 与 StructuredMessage 等类型。与同组前两条不同，此处走的正是 chat-channel 的**根入口**——该包声明的浏览器安全面，exports[\".\"] 即 ./src/index.ts——并非绕过 ./server；.dependency-cruiser.cjs 的 workspaceSourcePathPattern 只按解析后的最终路径判定，根入口落在 src/ 因而被计入。因此正确的处置不是改写导入（浏览器侧没有更合适的入口，./server 会把 node 依赖带进 bundle），而是把这份投影层交还给 chat-channel：Chat Doc → 展示结构的投影本属该包的 web 职责。该搬迁与 §1.6 的资源包 web 交付物下沉同批，此前不构成方向问题。"
+    },
+    {
       "rule": "apps-boundary",
       "from": "@fenix/agent-runtime",
       "to": "@fenix/server-app",

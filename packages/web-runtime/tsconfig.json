@@ -1,0 +1,11 @@
+{
+  "extends": "../../apps/web/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@fenix/web-runtime/*": ["./web/*"],
+      "@fenix/ui-components": ["../ui-components/web/index.ts"],
+      "@fenix/ui-components/*": ["../ui-components/web/*"]
+    }
+  },
+  "include": ["web/**/*.ts", "web/**/*.tsx"]
+}

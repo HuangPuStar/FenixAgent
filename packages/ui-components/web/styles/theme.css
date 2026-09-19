@@ -1,0 +1,247 @@
+/*
+ * @fenix/ui-components 设计 token（Nexus Indigo 调色板）。
+ *
+ * 来源：apps/web/src/index.css 的 @theme 块与 .dark 变量，逐字迁移，未做数值调整。
+ * 除 token 外还迁移了 base 层里「组件外观强依赖」的全局规则（见文件末尾「Base 层」段）。
+ * 源文件其余应用壳样式（html/body 字号字体、sonner 定位、滚动条）、@utility 工具类与
+ * @keyframes 动画仍属宿主外观：它们的使用方是别的包（tool-status-pill*、tool-call-*、
+ * agent-badge*、chat-loading-dots*、status-active-pulse 等只被 agent-runtime 与
+ * chat-channel 引用），本包组件不依赖，故不迁移。
+ *
+ * @source 指向本包 web/ 目录，保证消费方与 demo 打包时都能扫描到本包组件用到的工具类
+ * （宿主仓库的 Tailwind 约定是扫描各包源码所在的 web 目录）；demo 目录由 Tailwind 基于
+ * Vite root 的自动内容探测覆盖，无需重复声明。
+ *
+ * 已知限制：源仓库并未实际引入 tw-animate-css，因此 `animate-in` / `animate-out` /
+ * `animate-accordion-*` 在源仓库本就是空操作；本文件保持现状一致，同样不引入该依赖，
+ * 以免包内出现宿主并不具备的动画能力。
+ *
+ * @plugin "@tailwindcss/typography" 是例外而非常规 token：tool / reasoning 等组件
+ * 直接使用 prose 系列类名，缺少该插件时排版会明显失真，故随主题一并声明。
+ */
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@source "../**/*.{ts,tsx}";
+
+/* ============================================================
+   Theme — Nexus Indigo Palette
+   ============================================================ */
+@theme {
+  /* Fonts — system-native stacks, no external CDN */
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", Arial, sans-serif;
+  --font-display:
+    system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", Arial, sans-serif;
+  --font-body:
+    system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
+
+  /* Brand — Nexus Indigo */
+  --color-brand: #1677ff;
+  --color-brand-light: #4096ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.08);
+  --color-brand-glow: rgba(22, 119, 255, 0.15);
+
+  /* Cyan accent */
+  --color-cyan: #22d3ee;
+  --color-cyan-subtle: rgba(34, 211, 238, 0.1);
+
+  /* Surfaces — bright & clean */
+  --color-surface-0: #f8fafc;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-surface-3: #e2e8f0;
+  --color-surface-hover: #e6f0ff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-overlay: #f1f5f9;
+
+  /* Text — slate neutrals */
+  --color-text-bright: #0f172a;
+  --color-text-primary: #334155;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
+  --color-text-dim: #94a3b8;
+
+  /* Inverted — for user message bubbles */
+  --color-bg-inverted: #1677ff;
+  --color-text-inverted: #ffffff;
+
+  /* User bubble */
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
+
+  /* Warning */
+  --color-warning-bg: #fef3c7;
+  --color-warning-border: #f59e0b;
+  --color-warning-text: #92400e;
+
+  /* Status — semantic */
+  --color-status-active: #10b981;
+  --color-status-running: #10b981;
+  --color-status-idle: #1677ff;
+  --color-status-error: #ef4444;
+  --color-status-warning: #f59e0b;
+
+  /* Accent colors */
+  --color-accent-tiffany: #22d3ee;
+  --color-accent-pink: #f472b6;
+  --color-accent-green: #10b981;
+  --color-accent-yellow: #f59e0b;
+  --color-accent-red: #ef4444;
+
+  /* Tool card */
+  --color-tool-card: #f1f5f9;
+
+  /* shadcn/ui tokens — Nexus Indigo */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  --color-primary: #1677ff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #334155;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #94a3b8;
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #334155;
+  --color-destructive: #ef4444;
+
+  /* Border / Input / Ring */
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-light: rgba(0, 0, 0, 0.06);
+  --color-border-active: rgba(22, 119, 255, 0.35);
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --color-border-default: rgba(0, 0, 0, 0.1);
+  --color-input: rgba(0, 0, 0, 0.1);
+  --color-ring: #1677ff;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+
+  /* Default utility values */
+  --default-border-color: var(--color-border);
+  --default-ring-color: var(--color-ring);
+
+  /* Radius */
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Layout */
+  --navbar-height: 48px;
+  --sidebar-width: 200px;
+  --sidebar-collapsed: 60px;
+  --topbar-height: 56px;
+}
+
+/* ============================================================
+   Dark mode — Nexus Indigo dark palette
+   ============================================================ */
+.dark {
+  --color-brand: #4096ff;
+  --color-brand-light: #69b1ff;
+  --color-brand-subtle: rgba(22, 119, 255, 0.12);
+  --color-brand-glow: rgba(22, 119, 255, 0.2);
+
+  --color-cyan: #22d3ee;
+  --color-cyan-subtle: rgba(34, 211, 238, 0.1);
+
+  --color-surface-0: #0f172a;
+  --color-surface-1: #1e293b;
+  --color-surface-2: #334155;
+  --color-surface-3: #475569;
+  --color-surface-hover: #1a3a6b;
+  --color-surface-elevated: #1e293b;
+  --color-surface-overlay: #334155;
+
+  --color-text-bright: #f8fafc;
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-text-dim: #475569;
+
+  --color-bg-inverted: #1677ff;
+  --color-text-inverted: #ffffff;
+  --color-user-bubble: #1677ff;
+  --color-user-bubble-border: #4096ff;
+
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-light: rgba(255, 255, 255, 0.06);
+  --color-border-active: rgba(22, 119, 255, 0.4);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.1);
+  --color-tool-card: #1e293b;
+
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-border: #f59e0b;
+  --color-warning-text: #fcd34d;
+
+  --color-status-active: #10b981;
+  --color-status-running: #10b981;
+  --color-status-idle: #4096ff;
+  --color-status-error: #ef4444;
+  --color-status-warning: #f59e0b;
+
+  --color-background: #0f172a;
+  --color-foreground: #f1f5f9;
+  --color-card: #1e293b;
+  --color-card-foreground: #f1f5f9;
+  --color-popover: #1e293b;
+  --color-popover-foreground: #f1f5f9;
+  --color-primary: #1677ff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #334155;
+  --color-secondary-foreground: #e2e8f0;
+  --color-muted: #334155;
+  --color-muted-foreground: #64748b;
+  --color-accent: #334155;
+  --color-accent-foreground: #e2e8f0;
+  --color-destructive: #ef4444;
+
+  --color-input: rgba(255, 255, 255, 0.1);
+  --color-ring: #4096ff;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================
+   Base 层 — 只迁移「组件外观强依赖」的全局默认，其余仍属应用壳
+   ------------------------------------------------------------
+   这三条不是装饰性宿主外观：包内组件靠它们才能与源仓库渲染一致，
+   缺失时不会报错，只会静默走样，因此随组件一并迁移。
+   ============================================================ */
+@layer base {
+  /* 组件大量使用「只写宽度、不写颜色」的边框工具类（`border` / `border-t` /
+     `divide-y` 等，包内 51 处），它们的颜色依赖这条规则把默认边框色指向 --color-border。
+     缺失时边框回落到 currentColor（文字色），比宿主的浅灰边框明显偏深。 */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  /* 组件自带 focus-visible ring / outline（tabs、slider、button 等），宿主统一关掉
+     浏览器默认 outline。缺失时会出现「组件 ring + 浏览器默认焦点框」双层描边。 */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+/* 动效降级：与宿主一致的 prefers-reduced-motion 处理。宿主该规则未包在 @layer 内，
+   此处保持一致以免被 Tailwind 的 utilities 层反超。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}

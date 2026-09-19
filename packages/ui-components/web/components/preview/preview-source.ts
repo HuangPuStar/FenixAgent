@@ -1,0 +1,181 @@
+/**
+ * 文件预览的「源判定」工具集（从 apps/web 的 `agent-panel/preview/utils.ts` 复制并纯化，
+ * 只取 L1–L167 这段：扩展名分类表、`classifyFile`、`getPreviewMimeType`、
+ * `shouldLoadPreviewAsBlob`、`loadByteAccuratePreviewSource`）。
+ *
+ * 纯化取舍：
+ * 1. 源文件其余部分刻意**未**随包迁移，宿主 `ArtifactsPanel.tsx` 与宿主测试
+ *    `apps/web/src/__tests__/preview-utils-normalize.test.ts` 仍引用原文件，原文件保持不动：
+ *    - `encodePathSegment`：URL 路径段编码细节，只有宿主路由实现需要；
+ *    - `buildPreviewUrl`：硬编码宿主路由，已改为 `FileViewerPreview` 的可选 prop 默认值；
+ *    - `normalizeToUserPath` / `formatFileSize`：宿主路径规范与展示约定，与预览渲染无关。
+ * 2. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的 fetch 由调用方注入，
+ *    因此可独立测试，也不会把宿主的鉴权/代理策略带进包内。
+ * 3. 分类表与判定顺序逐字保留源实现，避免宿主与本包对同一文件的预览方式分叉。
+ */
+
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
+
+const CODE_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "py",
+  "go",
+  "rs",
+  "rb",
+  "java",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "swift",
+  "kt",
+  "r",
+  "scala",
+  "lua",
+  "perl",
+  "sh",
+  "bash",
+  "zsh",
+  "fish",
+  "ps1",
+  "json",
+  "jsonc",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "cfg",
+  "conf",
+  "css",
+  "scss",
+  "less",
+  "sass",
+  "html",
+  "htm",
+  "xml",
+  "vue",
+  "svelte",
+  "md",
+  "mdx",
+  "sql",
+  "graphql",
+  "gql",
+  "proto",
+  "dockerfile",
+  "makefile",
+  "cmake",
+  "gradle",
+  "lock",
+  "log",
+  "txt",
+  "env",
+  "gitignore",
+  "editorconfig",
+  "prettierrc",
+  "eslintrc",
+  "properties",
+  "tf",
+  "hcl",
+  "dart",
+  "zig",
+  "nim",
+  "ex",
+  "exs",
+  "erl",
+  "hs",
+  "ml",
+  "fs",
+  "clj",
+  "lisp",
+  "v",
+  "vhd",
+  "asm",
+]);
+
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "ico",
+  "bmp",
+  "svg",
+  "tiff",
+  "tif",
+  "heic",
+  "heif",
+]);
+
+const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm", "xlsb"]);
+
+const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "ods", "rtf", "wps", "et", "dps"]);
+
+const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
+
+const HTML_EXTENSIONS = new Set(["html", "htm"]);
+
+function getExtension(filePath: string): string {
+  const segments = filePath.split("/");
+  const fileName = segments[segments.length - 1] ?? "";
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex === -1 || dotIndex === 0) return fileName.toLowerCase();
+  return fileName.slice(dotIndex + 1).toLowerCase();
+}
+
+export function classifyFile(filePath: string): FileCategory {
+  const ext = getExtension(filePath);
+  if (ext === "pdf") return "pdf";
+  if (IMAGE_EXTENSIONS.has(ext)) return "image";
+  if (TABLE_EXTENSIONS.has(ext)) return "table";
+  if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
+  if (HTML_EXTENSIONS.has(ext)) return "html";
+  if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
+  if (CODE_EXTENSIONS.has(ext)) return "code";
+  return "binary";
+}
+
+/**
+ * 获取预览组件使用的文本 MIME 类型。
+ * @open-file-viewer 会把文件名中的 # 当作 URL fragment，导致 #123.txt 的扩展名丢失；
+ * 显式传入文本 MIME 后仍能匹配 textPlugin，同时不需要修改用户看到的原始文件名。
+ */
+export function getPreviewMimeType(filePath: string): string | undefined {
+  const ext = getExtension(filePath);
+  if (MARKDOWN_EXTENSIONS.has(ext)) return "text/markdown";
+  if (HTML_EXTENSIONS.has(ext)) return "text/html";
+  if (CODE_EXTENSIONS.has(ext)) return "text/plain";
+  return;
+}
+
+/**
+ * URL 形式的文本源会让 @open-file-viewer 在元数据缺失时退化为 `text.length`，
+ * 把字符数误显示为字节数。HTML 需要保留 URL 供 sandbox iframe 渲染，因此不在此转换。
+ */
+export function shouldLoadPreviewAsBlob(filePath: string): boolean {
+  const category = classifyFile(filePath);
+  return category === "code" || category === "markdown";
+}
+
+/**
+ * 将文本预览响应保留为 Blob，使预览器使用原始响应字节数并自行按 BOM 解码。
+ * 非成功响应必须在进入预览器前显式失败，避免把错误页当作文件内容展示。
+ *
+ * 注意：错误消息为中文硬编码（与源实现一致）。需要本地化的宿主要么接受该文案，
+ * 要么在调用方先行探测并在失败时给出自己的错误界面 —— 本模块不引入 i18n，避免把宿主命名空间绑进工具层。
+ */
+export async function loadByteAccuratePreviewSource(
+  previewUrl: string,
+  fetchPreview: (url: string, init?: RequestInit) => Promise<Response> = fetch,
+  init?: RequestInit,
+): Promise<Blob> {
+  const response = await fetchPreview(previewUrl, init);
+  if (!response.ok) throw new Error(`文件预览加载失败 (${response.status})`);
+  return response.blob();
+}
