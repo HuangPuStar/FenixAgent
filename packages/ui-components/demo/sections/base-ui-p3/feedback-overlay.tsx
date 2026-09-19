@@ -1,4 +1,13 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
   Button,
   Command,
   CommandDialog,
@@ -9,6 +18,14 @@ import {
   CommandList,
   CommandSeparator,
   CommandShortcut,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -31,33 +48,41 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  XLDialog,
+  XLDialogClose,
+  XLDialogContent,
+  XLDialogHeader,
+  XLDialogTitle,
+  XLDialogTrigger,
 } from "@fenix/ui-components";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
-
-import { DEMO_NS } from "../i18n";
 
 /**
- * 浮层分区：Popover / Tooltip / HoverCard / DropdownMenu / Command（cmdk）/ Resizable / Tabs。
+ * Base UI P3 · 弹窗与浮层：AlertDialog / Dialog / XLDialog / Sheet / Popover / Tooltip / HoverCard /
+ * DropdownMenu / Command（cmdk）。
  *
- * 动画依赖：Popover、Tooltip、HoverCard、DropdownMenu 与 Tabs 的进出场类来自 tw-animate-css
+ * 动画依赖：Popover、Tooltip、HoverCard、DropdownMenu 与 Sheet 的进出场类来自 tw-animate-css
  * （demo.css 已 @import）。包本身不引入该依赖，宿主缺少它时组件功能完整但没有过渡动画。
  *
- * Tabs 与 Resizable 不是浮层：本分区按 demo 的划分收纳「切换容器」与「可拖拽布局」，
- * Tabs 用 line 变体，与 composite 分区展示的默认实心变体互为补充。
+ * 覆盖「确认」与「危险操作」两类状态：危险操作由 AlertDialog 的 destructive 动作承担，
+ * 普通确认由 Dialog / XLDialog / Sheet 承担。带 loading 的确认与表单弹窗自持异步流程，
+ * 属于组合容器层（Base UI P2），不在本子文件。
  *
- * 导出名被 demo/App.tsx 引用，新增示例时保持导出名与签名不变。
+ * 已知限制：包内没有 Toast / Notification 类组件。
+ * 影响范围：瞬时提示只能靠弹窗内文案与调用方回显表达，本子文件缺少自动消失的轻提示示例。
+ * 移除条件：包内新增 toast 组件后，在本子文件补一个对应小节。
  */
 
 /**
@@ -93,21 +118,127 @@ function CommandItems({ onSelect }: { onSelect: (value: string) => void }) {
   );
 }
 
-export function OverlaySection() {
-  const { t } = useTranslation(DEMO_NS);
+/** 弹窗与浮层示例组。 */
+export function FeedbackOverlayExamples() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [density, setDensity] = useState("comfortable");
   const [lastAction, setLastAction] = useState<string | null>(null);
+  const [lastEvent, setLastEvent] = useState<string | null>(null);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.overlay")}</h1>
-
+    <>
       <p className="demo-hint">
         本分区的浮层组件依赖 tw-animate-css 提供 animate-in / animate-out 等过渡类（demo.css 已引入）；
         宿主未安装该依赖时浮层仍可用，只是没有进出场动画。
       </p>
+
+      <div className="demo-example">
+        <h2 className="demo-example-title">AlertDialog</h2>
+        <div className="demo-field">
+          <p className="demo-hint">危险操作的二次确认：取消按钮默认聚焦，动作按钮使用 destructive 变体。</p>
+          <div className="demo-row">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline">Delete workspace</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete workspace?</AlertDialogTitle>
+                  <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={() => setLastEvent("Delete confirmed (simulated)")}>
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </div>
+
+      <div className="demo-example">
+        <h2 className="demo-example-title">Dialog / XLDialog</h2>
+        <div className="demo-field">
+          <p className="demo-hint">
+            常规弹窗与 960px 的超大弹窗；两者都是 Radix Dialog 的封装，XLDialog 只放开宽度与内边距。
+          </p>
+          <div className="demo-row">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">Open dialog</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Archive session</DialogTitle>
+                  <DialogDescription>Archived sessions stay readable but reject new prompts.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="ghost">Cancel</Button>
+                  </DialogClose>
+                  <Button onClick={() => setLastEvent("Session archived (simulated)")}>Archive</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <XLDialog>
+              <XLDialogTrigger asChild>
+                <Button variant="outline">Open XL dialog</Button>
+              </XLDialogTrigger>
+              <XLDialogContent>
+                <XLDialogHeader className="border-b p-6">
+                  <XLDialogTitle>Agent trace</XLDialogTitle>
+                </XLDialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto p-6 text-sm text-muted-foreground">
+                  XLDialog 主体自行滚动，适合长内容与图文混排；下面的页脚保持固定高度。
+                </div>
+                <div className="flex justify-end gap-2 border-t p-4">
+                  <XLDialogClose asChild>
+                    <Button variant="outline">Close</Button>
+                  </XLDialogClose>
+                </div>
+              </XLDialogContent>
+            </XLDialog>
+          </div>
+        </div>
+      </div>
+
+      <div className="demo-example">
+        <h2 className="demo-example-title">Sheet</h2>
+        <div className="demo-field">
+          <p className="demo-hint">
+            侧滑抽屉：side 支持 right / left / top / bottom，进出场动画依赖 tw-animate-css（见浮层分区说明）。
+          </p>
+          <div className="demo-row">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline">Open sheet</Button>
+              </SheetTrigger>
+              <SheetContent side="right">
+                <SheetHeader>
+                  <SheetTitle>Filters</SheetTitle>
+                  <SheetDescription>Adjust the filters, then apply them to the list.</SheetDescription>
+                </SheetHeader>
+                <div className="flex flex-1 flex-col gap-4 px-4">
+                  <div className="demo-field">
+                    <Label htmlFor="demo-sheet-query">Keyword</Label>
+                    <Input id="demo-sheet-query" placeholder="Search sessions" />
+                  </div>
+                </div>
+                <SheetFooter>
+                  <Button onClick={() => setLastEvent("Filters applied (simulated)")}>Apply</Button>
+                  <SheetClose asChild>
+                    <Button variant="outline">Close</Button>
+                  </SheetClose>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </div>
 
       <div className="demo-example">
         <h2 className="demo-example-title">Popover</h2>
@@ -282,46 +413,7 @@ export function OverlaySection() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Resizable</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
-            面板尺寸由 react-resizable-panels 维护，拖拽中间手柄调整比例；withHandle 只是手柄的外观开关。
-          </p>
-          <ResizablePanelGroup orientation="horizontal" className="h-36 rounded-lg border">
-            <ResizablePanel defaultSize="30%">
-              <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">Sidebar</div>
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="70%">
-              <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">Content</div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
-      </div>
-
-      <div className="demo-example">
-        <h2 className="demo-example-title">Tabs</h2>
-        <div className="demo-field">
-          <p className="demo-hint">line 变体：面板切换是纯客户端行为，不产生浮层；内容面板可放任意组合内容。</p>
-          <Tabs defaultValue="preview">
-            <TabsList variant="line">
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="code">Code</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-            </TabsList>
-            <TabsContent value="preview" className="text-sm text-muted-foreground">
-              预览面板与触发项一一对应，未激活的面板不渲染。
-            </TabsContent>
-            <TabsContent value="code" className="text-sm text-muted-foreground">
-              TabsList 的 variant 支持 default 与 line，纵向布局用 orientation="vertical"。
-            </TabsContent>
-            <TabsContent value="logs" className="text-sm text-muted-foreground">
-              面板内容按需挂载，适合承载较重的视图。
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
-    </section>
+      {lastEvent ? <p className="demo-hint">Last callback: {lastEvent}</p> : null}
+    </>
   );
 }

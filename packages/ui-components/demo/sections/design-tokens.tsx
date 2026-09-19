@@ -20,8 +20,10 @@ import { useTranslation } from "react-i18next";
 import { DEMO_NS } from "../i18n";
 
 /**
- * 主题分区：ThemeToggle / useTheme 与包内设计 token 抽样。
- * 导出名被 demo/App.tsx 引用，新增示例时保持导出名与签名不变。
+ * Design Tokens 分区：ThemeToggle / useTheme 与包内设计 token 抽样。
+ *
+ * 本分区是层级导航的第一层：token 是其余所有分区的视觉基底，因此排在 Base UI 之前，
+ * 用示例展示「一处 token 改动如何同时作用到按钮、徽标、进度与输入框」。
  *
  * useTheme 必须在包的 ThemeProvider 内调用；demo 在根部（demo/providers.tsx）挂载了
  * ThemeProvider（defaultTheme="system"），本节所有组件共享同一份上下文，Provider 之外调用会直接抛错。
@@ -103,13 +105,14 @@ function ThemePreviewPanel({
   );
 }
 
-export function ThemeSection() {
+export function DesignTokensSection() {
   const { t } = useTranslation(DEMO_NS);
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   return (
     <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.theme")}</h1>
+      <h1 className="demo-section-title">{t("sections.designTokens")}</h1>
+      <p className="demo-hint">{t("sectionHints.designTokens")}</p>
 
       <div className="demo-example">
         <h2 className="demo-example-title">ThemeToggle / useTheme</h2>

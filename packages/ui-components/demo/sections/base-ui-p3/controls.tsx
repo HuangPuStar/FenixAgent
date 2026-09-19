@@ -26,26 +26,34 @@ import {
   InputGroupText,
   InputGroupTextarea,
   Label,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
   ScrollArea,
   ScrollBar,
   Separator,
-  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
 } from "@fenix/ui-components";
-import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 
-import { DEMO_NS } from "../i18n";
+import { ComponentBlock, Example } from "./shared";
 
 /**
- * 基础控件分区：Button / ButtonGroup / Badge / Card / Input / Textarea / Label / InputGroup /
- * Separator / Skeleton / ScrollArea / Accordion / Collapsible。
+ * Base UI P3 · 交互控件：Button / ButtonGroup / Badge / Card / Input / Textarea / Label / InputGroup /
+ * Separator / ScrollArea / Accordion / Collapsible / Resizable / Tabs。
  *
  * 布局仿 antd 官网：每个组件一个小节（标题 + 一句话说明），小节内并列 2~3 个示例
  * （h3 标题 + 说明 + 并排演示区）。每个组件的示例集合至少包含一个边界示例
  * （disabled / 空态 / 无关联 / 内容不溢出 / 全收起），并在说明里点明边界含义。
  *
- * 导出名被 demo/App.tsx 引用，新增示例时保持导出名与签名不变。
+ * Resizable 与 Tabs 既不是浮层也不是表单控件，按「可拖拽布局」与「切换容器」的性质归入本文件；
+ * 与浮层子文件分开放，是为了避免读者把纯客户端的面板切换误当成浮层行为。
+ *
+ * 动画依赖：Tabs 的进出场类来自 tw-animate-css（demo.css 已 @import）。包本身不引入该依赖，
+ * 宿主缺少它时组件功能完整但没有过渡动画。
  */
 
 /** ScrollArea 的演示数据；用稳定字符串而非下标作 key，避免依赖数组顺序。 */
@@ -67,35 +75,10 @@ const SCROLL_ITEMS = [
 /** 横向滚动的方块标签，长度固定以保证演示区宽度可预期。 */
 const SCROLL_TILES = ["01", "02", "03", "04", "05", "06", "07", "08"];
 
-/** 组件小节：h2 标题 + 说明 + 若干示例。demo 内部结构件，不属于包公开面。 */
-function ComponentBlock({ name, description, children }: { name: string; description: string; children: ReactNode }) {
+/** 交互控件示例组。 */
+export function ControlsExamples() {
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">{name}</h2>
-      <p className="demo-hint">{description}</p>
-      <div className="mt-4 flex flex-col gap-6">{children}</div>
-    </div>
-  );
-}
-
-/** 小节内的单个示例：h3 标题 + 说明 + 并排演示区。children 直接进入 flex 演示区。 */
-function Example({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3 className="text-sm font-medium">{title}</h3>
-      <p className="demo-hint">{description}</p>
-      <div className="demo-row mt-3">{children}</div>
-    </section>
-  );
-}
-
-export function PrimitivesSection() {
-  const { t } = useTranslation(DEMO_NS);
-
-  return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.primitives")}</h1>
-
+    <>
       <ComponentBlock name="Button" description="按钮；默认 variant=default、size=default，尺寸与语义变体互相独立。">
         <Example title="Variants" description="六种语义变体；link 变体无背景，用于低权重的跳转。">
           <Button>Default</Button>
@@ -306,39 +289,6 @@ export function PrimitivesSection() {
         </Example>
       </ComponentBlock>
 
-      <ComponentBlock name="Skeleton" description="加载占位块；尺寸完全由 className 决定，组件本身不含业务语义。">
-        <Example title="Text lines" description="用不等宽的三行模拟段落，避免加载完成时布局跳动。">
-          <div className="flex w-full max-w-sm flex-col gap-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-4 w-2/3" />
-          </div>
-        </Example>
-        <Example title="Media object" description="圆形头像 + 文本行的经典组合，圆角由 rounded-full 覆盖。">
-          <div className="flex items-center gap-3">
-            <Skeleton className="size-10 rounded-full" />
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-20" />
-            </div>
-          </div>
-        </Example>
-        <Example
-          title="Empty card"
-          description="边界：卡片数据到达前的空态占位，结构必须与真实卡片一致才有防跳动效果。"
-        >
-          <Card className="w-full max-w-sm">
-            <CardHeader>
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-3 w-40" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-16 w-full" />
-            </CardContent>
-          </Card>
-        </Example>
-      </ComponentBlock>
-
       <ComponentBlock name="ScrollArea" description="自定义滚动条容器；内容未超出时既不可滚动也不显示滚动条。">
         <Example title="Vertical" description="限制高度后内容溢出，右侧出现细滚动条。">
           <ScrollArea className="h-40 w-full max-w-xs rounded-md border p-3">
@@ -430,6 +380,47 @@ export function PrimitivesSection() {
           </Collapsible>
         </Example>
       </ComponentBlock>
-    </section>
+
+      <div className="demo-example">
+        <h2 className="demo-example-title">Resizable</h2>
+        <div className="demo-field">
+          <p className="demo-hint">
+            面板尺寸由 react-resizable-panels 维护，拖拽中间手柄调整比例；withHandle 只是手柄的外观开关。
+          </p>
+          <ResizablePanelGroup orientation="horizontal" className="h-36 rounded-lg border">
+            <ResizablePanel defaultSize="30%">
+              <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">Sidebar</div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize="70%">
+              <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">Content</div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      </div>
+
+      <div className="demo-example">
+        <h2 className="demo-example-title">Tabs</h2>
+        <div className="demo-field">
+          <p className="demo-hint">line 变体：面板切换是纯客户端行为，不产生浮层；内容面板可放任意组合内容。</p>
+          <Tabs defaultValue="preview">
+            <TabsList variant="line">
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="code">Code</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
+            </TabsList>
+            <TabsContent value="preview" className="text-sm text-muted-foreground">
+              预览面板与触发项一一对应，未激活的面板不渲染。
+            </TabsContent>
+            <TabsContent value="code" className="text-sm text-muted-foreground">
+              TabsList 的 variant 支持 default 与 line，纵向布局用 orientation="vertical"。
+            </TabsContent>
+            <TabsContent value="logs" className="text-sm text-muted-foreground">
+              面板内容按需挂载，适合承载较重的视图。
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </>
   );
 }

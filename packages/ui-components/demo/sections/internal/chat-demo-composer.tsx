@@ -1,15 +1,16 @@
 /**
- * chat 分区示例：输入岛层（ChatComposer 全量能力、命令菜单、待发送资产行、上下文占用计、模式选择器）。
+ * chat 分区示例：输入岛层（ChatComposer 全量能力、待发送资产行、上下文占用计、模式选择器）。
  *
- * 纯化后的宿主端口在示例里都用本地实现补齐：`uploadFiles` / `compressImage` 直接返回内存附件，
- * `renderFilePicker` 渲染一个内联文件选择器，`onNotice` 写回提示行 —— 与真实宿主的接入方式一致。
+ * 输入岛的边界是「一整块区域」：它自己装配命令菜单与附件行，宿主只需注入数据与端口。纯化后的宿主端口
+ * 在示例里都用本地实现补齐：`uploadFiles` / `compressImage` 直接返回内存附件，`renderFilePicker`
+ * 渲染一个内联文件选择器，`onNotice` 写回提示行 —— 与真实宿主的接入方式一致。
+ *
+ * 命令菜单的独立形态在 L3（chat-demo-command-menu.tsx）演示：这里只演示它被输入岛装配后的样子。
  */
 
 import {
-  type AvailableCommand,
   Button,
   ChatComposer,
-  CommandMenu,
   ComposerAssets,
   ComposerContextMeter,
   type ComposerExternalEvent,
@@ -18,7 +19,6 @@ import {
   type ComposerFilePickerRenderProps,
   type ComposerQuote,
   type FileAttachment,
-  type McpOption,
   SessionModeSelector,
   type UserMessageImage,
 } from "@fenix/ui-components";
@@ -48,7 +48,7 @@ const DEMO_IMAGE: UserMessageImage = {
 /** 初始待发送附件与引用（受控形态，便于演示「附件行」与移除交互）。 */
 const DEMO_ATTACHMENTS: FileAttachment[] = [
   { name: "README.md", path: "packages/ui-components/README.md" },
-  { name: "chat.tsx", path: "packages/ui-components/demo/sections/chat.tsx" },
+  { name: "chat-l2.tsx", path: "packages/ui-components/demo/sections/chat-l2.tsx" },
 ];
 
 const DEMO_QUOTES: ComposerQuote[] = [
@@ -62,8 +62,8 @@ const DEMO_QUOTES: ComposerQuote[] = [
 /** 内联文件选择器候选（renderFilePicker 的演示数据）。 */
 const DEMO_PICKER_FILES: ComposerFileInfo[] = [
   {
-    name: "chat.tsx",
-    path: "packages/ui-components/demo/sections/chat.tsx",
+    name: "chat-l2.tsx",
+    path: "packages/ui-components/demo/sections/chat-l2.tsx",
     type: "file",
     size: 6144,
     modifiedAt: Date.now(),
@@ -118,8 +118,6 @@ export function ChatComposerExamples() {
   const [lastSubmit, setLastSubmit] = useState<string | null>(null);
   // 模拟 turn 运行态：驱动 isLoading 与 canCancel —— 运行中时同一位置显示停止按钮（onInterrupt）。
   const [isRunning, setIsRunning] = useState(false);
-  const [selectedCommand, setSelectedCommand] = useState<AvailableCommand | null>(null);
-  const [selectedMcp, setSelectedMcp] = useState<McpOption | null>(null);
   // 外部输入通道：源实现监听 3 个 window 事件（建议提示词 / 文件树引用 / 聊天引用），
   // 纯化后由宿主注入订阅函数；示例用按钮手动触发，便于观察草稿与资产行的变化。
   const emitRef = useRef<((event: ComposerExternalEvent) => void) | null>(null);
@@ -216,22 +214,6 @@ export function ChatComposerExamples() {
         <p className="demo-hint">
           三个按钮分别走 subscribeExternal 的三类外部事件，效果与源宿主的 window 事件一致； 「模拟 turn
           运行中」会把发送按钮切成停止按钮（canCancel / isLoading）。
-        </p>
-      </div>
-
-      <div className="demo-example">
-        <h2 className="demo-example-title">CommandMenu（独立形态）</h2>
-        <CommandMenu
-          commands={MOCK_AVAILABLE_COMMANDS}
-          mcps={MOCK_BOUND_MCPS}
-          filter=""
-          onSelect={(command) => setSelectedCommand(command)}
-          onToggleMcp={(mcp) => setSelectedMcp(mcp)}
-          onClose={() => setNotice("命令菜单已关闭")}
-        />
-        <p className="demo-hint">
-          {selectedCommand ? `已选命令：/${selectedCommand.name}` : "点命令即回调 onSelect；MCP 行为开关切换。"}
-          {selectedMcp ? `（最近切换：${selectedMcp.name}）` : ""}
         </p>
       </div>
 

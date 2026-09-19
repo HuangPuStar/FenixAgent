@@ -25,21 +25,21 @@ import {
   Switch,
 } from "@fenix/ui-components";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useTranslation } from "react-i18next";
 import { z } from "zod/v4";
 
-import { DEMO_NS } from "../i18n";
+import { ComponentBlock, Example } from "./shared";
 
 /**
- * 表单分区：Checkbox / Switch / Slider / Select / Form / Calendar / DatePicker / Pagination。
+ * Base UI P3 · 表单控件：Checkbox / Switch / Slider / Select / Form / Calendar / DatePicker / Pagination。
  *
  * 布局仿 antd 官网：每个组件一个小节（标题 + 一句话说明），小节内并列 2~3 个示例
  * （h3 标题 + 说明 + 并排演示区）。每个组件的示例集合至少包含一个边界示例
  * （disabled / 空态 / 未选中 / 单页 / 校验失败），并在说明里点明边界含义。
  *
- * 导出名被 demo/App.tsx 引用，新增示例时保持导出名与签名不变。
+ * 文本框类基元（Input / Textarea / Label / InputGroup）留在 controls 子文件，
+ * 本文件只收「带自身状态或校验语义」的表单控件，两边的划分以是否持有值语义为准。
  */
 
 /** Select 的可选项；用常量数组而非内联字面量，避免重复渲染时重建列表。 */
@@ -65,28 +65,6 @@ const paginationT = (key: string, opts?: Record<string, unknown>): string => {
   if (key.endsWith("pagination_page_size")) return `${String(opts?.size ?? 0)} / page`;
   return key;
 };
-
-/** 组件小节：h2 标题 + 说明 + 若干示例。demo 内部结构件，不属于包公开面。 */
-function ComponentBlock({ name, description, children }: { name: string; description: string; children: ReactNode }) {
-  return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">{name}</h2>
-      <p className="demo-hint">{description}</p>
-      <div className="mt-4 flex flex-col gap-6">{children}</div>
-    </div>
-  );
-}
-
-/** 小节内的单个示例：h3 标题 + 说明 + 并排演示区。children 直接进入 flex 演示区。 */
-function Example({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3 className="text-sm font-medium">{title}</h3>
-      <p className="demo-hint">{description}</p>
-      <div className="demo-row mt-3">{children}</div>
-    </section>
-  );
-}
 
 /** 最小可用表单：单字段 + zod 校验；直接提交空值即可看到 FormMessage 的错误态。 */
 function MinimalForm() {
@@ -181,17 +159,15 @@ function ControlledDatePicker() {
   );
 }
 
-export function FormsSection() {
-  const { t } = useTranslation(DEMO_NS);
+/** 表单控件示例组。 */
+export function FormsExamples() {
   const [page, setPage] = useState(2);
   const [pageSize, setPageSize] = useState(20);
   const [longPage, setLongPage] = useState(10);
   const [singlePage, setSinglePage] = useState(1);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.forms")}</h1>
-
+    <>
       <ComponentBlock name="Checkbox" description="复选框；配合 Label 使用 htmlFor / id 建立关联。">
         <Example title="Basic" description="选中、未选中与不确定态；不确定态常用于「部分子项选中」。">
           <div className="demo-row">
@@ -388,6 +364,6 @@ export function FormsSection() {
           />
         </Example>
       </ComponentBlock>
-    </section>
+    </>
   );
 }
