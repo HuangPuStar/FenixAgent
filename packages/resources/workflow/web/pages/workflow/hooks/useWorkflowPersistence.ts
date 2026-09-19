@@ -3,8 +3,8 @@ import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { pushWorkflowError } from "@/src/lib/use-workflow-events";
 import { workflowDefApi } from "../../../api/workflow-defs";
+import { pushWorkflowError } from "../../../lib/use-workflow-events";
 import { flowToYaml, syncEdgeCounter, syncNodeCounter, type WfMeta, yamlToFlow } from "../yaml-utils";
 
 const AUTO_SAVE_DELAY = 3000;

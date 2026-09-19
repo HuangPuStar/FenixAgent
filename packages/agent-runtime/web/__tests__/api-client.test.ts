@@ -86,7 +86,7 @@ describe("file SDK functions", () => {
 describe("environment SDK functions", () => {
   test("envApi.del — DELETE /web/environments/:id", async () => {
     fetchMock.responseData = { success: true, data: null };
-    const { envApi } = await import("@/src/api/environments");
+    const { envApi } = await import("../api/environments");
     await envApi.del({ id: "env_1" });
     expect(fetchMock.lastUrl).toContain("/web/environments/env_1");
     expect(fetchMock.lastOpts.method).toBe("DELETE");
@@ -102,7 +102,7 @@ describe("error handling", () => {
   test("SDK returns error object on non-ok response", async () => {
     fetchMock.response = { ok: false, status: 401, statusText: "Unauthorized" };
     fetchMock.responseData = { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } };
-    const { envApi } = await import("@/src/api/environments");
+    const { envApi } = await import("../api/environments");
     const { data, error } = await envApi.get({ id: "env-1" });
     expect(error).not.toBeNull();
     expect(data).toBeUndefined();
@@ -112,7 +112,7 @@ describe("error handling", () => {
   test("SDK returns SERVER_ERROR on 500 response", async () => {
     fetchMock.response = { ok: false, status: 500, statusText: "Internal Server Error" };
     fetchMock.responseData = {};
-    const { envApi } = await import("@/src/api/environments");
+    const { envApi } = await import("../api/environments");
     const { error } = await envApi.list();
     expect(error).not.toBeNull();
     expect(error?.code).toBe("SERVER_ERROR");

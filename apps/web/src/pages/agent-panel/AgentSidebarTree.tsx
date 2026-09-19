@@ -7,6 +7,7 @@ import {
   isAgentWritable,
 } from "@fenix/agent-config/web/lib/agent-resource-access";
 import type { AgentNode, ResourceAccess } from "@fenix/agent-config/web/types/config";
+import type { Environment, EnvironmentInstance } from "@fenix/agent-runtime/web/types/index";
 import { useOrg } from "@fenix/resource-identity-admin/web/contexts/OrgContext";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -43,7 +44,6 @@ import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
-import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
   id: string;

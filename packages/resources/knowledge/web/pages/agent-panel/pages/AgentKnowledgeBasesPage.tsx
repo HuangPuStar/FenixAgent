@@ -40,7 +40,6 @@ import type { ReactNode } from "react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
 import { kbApi } from "../../../api/knowledge-bases";
 import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
 import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
@@ -53,6 +52,7 @@ import type {
   KnowledgeResourceInfo,
   UnassociatedKnowledgeBase,
 } from "../../../types/knowledge";
+import { KnowledgeGraphPanel } from "../KnowledgeGraphPanel";
 import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
 import { AgentKnowledgeResources } from "./agent-knowledge-resources";
 import "./agent-knowledge.css";

@@ -1,3 +1,4 @@
+import { type MachineRecord, registryApi } from "@fenix/resource-machine/web/api/registry";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -7,7 +8,6 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { type MachineRecord, registryApi } from "@/src/api/registry";
 import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/organizations";
 import { useOrg } from "../../../contexts/OrgContext";
 import { useSession } from "../../../lib/auth-client";

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { FileInfo } from "@fenix/agent-runtime/web/types/index";
 import ReactDOMServer from "react-dom/server";
-import type { FileInfo } from "../../../../../../apps/web/src/types";
 
 describe("FilePickerDialog", () => {
   test("exports FilePickerDialog as a function", async () => {
@@ -34,7 +34,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("exports workspace file API from api/fs", async () => {
-    const fsMod = await import("../../../../../../apps/web/src/api/fs");
+    const fsMod = await import("@fenix/agent-runtime/web/api/fs");
     expect(fsMod.fsApi).toBeDefined();
     expect(typeof fsMod.fsApi.listDir).toBe("function");
     expect(typeof fsMod.uploadFiles).toBe("function");
@@ -42,7 +42,7 @@ describe("FilePickerDialog", () => {
   });
 
   test("FileInfo type is exported from types", async () => {
-    const _typesMod = await import("../../../../../../apps/web/src/types");
+    const _typesMod = await import("@fenix/agent-runtime/web/types/index");
     const dummy: FileInfo = { name: "test.txt", path: "user/test.txt", type: "file", size: 100, modifiedAt: 0 };
     expect(dummy.name).toBe("test.txt");
     // Verify the import works — if FileInfo type doesn't exist, this file won't compile

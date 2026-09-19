@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+// use-file-uploads 仍住在宿主 apps/web（本批只搬 fs API），沿用包内既有的宿主深链口径
+// （同 happy-dom-window），待该文件自身搬迁后再收敛为包出口。
+import { createUploadBatches } from "../../../../apps/web/src/components/agent-panel/use-file-uploads";
 import { MAX_UPLOAD_BATCH_SIZE_BYTES, uploadFiles } from "../api/fs";
-import { createUploadBatches } from "../components/agent-panel/use-file-uploads";
 
 describe("目录上传分批", () => {
   test("大目录按字节分批且保持相对路径与同名文件对应", () => {

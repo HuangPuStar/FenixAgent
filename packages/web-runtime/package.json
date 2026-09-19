@@ -40,6 +40,14 @@
     "./chat/todo": {
       "types": "./web/chat/todo.ts",
       "default": "./web/chat/todo.ts"
+    },
+    "./chat/context-queue": {
+      "types": "./web/chat/context-queue.ts",
+      "default": "./web/chat/context-queue.ts"
+    },
+    "./chat/use-context-queue": {
+      "types": "./web/chat/use-context-queue.ts",
+      "default": "./web/chat/use-context-queue.ts"
     }
   },
   "scripts": {

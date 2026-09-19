@@ -8,6 +8,7 @@ import { buildPromptText } from "@fenix/ui-components/chat/composer/composer-pro
 import { extractChangedFiles } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import type { ChatInputMessage, ThreadEntry } from "@fenix/ui-components/chat/types";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { flushContext } from "@fenix/web-runtime/chat/context-queue";
 import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
 import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -18,7 +19,6 @@ import { ChatView } from "@/components/chat/ChatView";
 import { derivePendingPermissions, deriveTodoItems } from "@/components/chat/chat-derived-state";
 import { prepareImageContent } from "@/components/chat/chat-image-content";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "@/components/chat/chat-interface-types";
-import { flushContext } from "@/src/lib/context-queue";
 import { ContextPanel } from "./ContextPanel";
 
 const DEBUG_SENSITIVE_KEY = /(?:api[-_]?key|authorization|cookie|credential|password|secret|token|connectionString)/i;

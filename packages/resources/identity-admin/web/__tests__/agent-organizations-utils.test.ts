@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { MachineRecord } from "@/src/api/registry";
+import type { MachineRecord } from "@fenix/resource-machine/web/api/registry";
 import {
   canOperateMachine,
   nameToSlug,

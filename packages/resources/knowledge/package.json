@@ -18,6 +18,10 @@
       "types": "./web/api/knowledge-models.ts",
       "default": "./web/api/knowledge-models.ts"
     },
+    "./web/pages/agent-panel/KnowledgeGraphPanel": {
+      "types": "./web/pages/agent-panel/KnowledgeGraphPanel.tsx",
+      "default": "./web/pages/agent-panel/KnowledgeGraphPanel.tsx"
+    },
     "./web/pages/agent-panel/pages/agent-knowledge-resources": {
       "types": "./web/pages/agent-panel/pages/agent-knowledge-resources.tsx",
       "default": "./web/pages/agent-panel/pages/agent-knowledge-resources.tsx"

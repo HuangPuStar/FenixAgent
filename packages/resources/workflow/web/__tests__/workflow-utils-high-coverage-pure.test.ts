@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildRunSummary } from "../../../../../apps/web/src/lib/use-workflow-events";
+import { buildRunSummary } from "../lib/use-workflow-events";
 import { dedupEvents, formatEventType, formatMeta } from "../pages/workflow/utils";
 
 function translate(key: string, options?: Record<string, unknown>): string {

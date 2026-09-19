@@ -15,6 +15,7 @@ import {
   isValidAgentNameInput,
 } from "@fenix/agent-config/web/lib/agent-utils";
 import type { ModelEntry, ResourceAccess } from "@fenix/agent-config/web/types/config";
+import { buildUploadUrl } from "@fenix/agent-runtime/web/api/fs";
 import {
   canManageMcpSharing,
   filterWritableMcps,
@@ -27,7 +28,6 @@ import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import { buildUploadUrl } from "../api/fs";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
 

@@ -1,3 +1,4 @@
+import type { MachineRecord } from "@fenix/resource-machine/web/api/registry";
 import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
@@ -20,7 +21,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { MachineRecord } from "@/src/api/registry";
 import type { OrgMember } from "../../../api/organizations";
 import type { OrganizationsWorkspaceProps } from "./agent-organizations-types";
 import { canOperateMachine } from "./agent-organizations-utils";

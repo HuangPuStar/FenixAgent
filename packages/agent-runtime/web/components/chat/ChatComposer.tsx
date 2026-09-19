@@ -11,7 +11,7 @@ import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useMem
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { FilePickerDialog } from "@/src/components/FilePickerDialog";
-import type { FileInfo } from "@/src/types";
+import type { FileInfo } from "../../types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
 import { ComposerAssets, type ComposerQuote } from "./composer-assets";
 import { processImageFiles, uploadComposerFiles } from "./composer-file-processing";

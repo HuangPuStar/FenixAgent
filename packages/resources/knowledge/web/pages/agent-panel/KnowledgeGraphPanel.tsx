@@ -2,12 +2,6 @@
 
 import type { ElementDatum, IElementEvent } from "@antv/g6";
 import { Graph } from "@antv/g6";
-import { unwrap } from "@fenix/web-runtime/api/request";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -16,11 +10,17 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { isKnowledgeGraphNotFound } from "@/src/pages/agent-panel/components/knowledge-graph-state";
-import type { KnowledgeGraphData, KnowledgeGraphProgress } from "@/src/types/knowledge";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { kbApi } from "../../api/knowledge-bases";
+import type { KnowledgeGraphData, KnowledgeGraphProgress } from "../../types/knowledge";
+import { isKnowledgeGraphNotFound } from "./knowledge-graph-state";
 
 interface KnowledgeGraphPanelProps {
   knowledgeBaseId: string;

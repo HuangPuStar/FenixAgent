@@ -17,6 +17,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
+    "./web/lib/use-workflow-events": {
+      "types": "./web/lib/use-workflow-events.ts",
+      "default": "./web/lib/use-workflow-events.ts"
+    },
     "./web/pages/workflow/WorkflowList": {
       "types": "./web/pages/workflow/WorkflowList.tsx",
       "default": "./web/pages/workflow/WorkflowList.tsx"

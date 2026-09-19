@@ -1,4 +1,4 @@
-import { pushContext, removeContext } from "./context-queue";
+import { pushContext, removeContext } from "@fenix/web-runtime/chat/context-queue";
 
 interface DAGSnapshot {
   dag_status: string;

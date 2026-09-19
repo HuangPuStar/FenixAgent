@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useContextQueue } from "@fenix/web-runtime/chat/use-context-queue";
 import {
   Bot,
   Boxes,
@@ -41,7 +42,6 @@ import {
   Upload,
 } from "lucide-react";
 import { MetaAgentPanel } from "@/components/MetaAgentPanel";
-import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type CustomToolItem, customToolsApi, type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -307,7 +307,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "D") {
         e.preventDefault();
-        import("@/src/lib/context-queue").then(({ dumpContext }) => {
+        import("@fenix/web-runtime/chat/context-queue").then(({ dumpContext }) => {
           console.log("[Workflow CQ]", new Date().toLocaleTimeString(), dumpContext());
         });
       }

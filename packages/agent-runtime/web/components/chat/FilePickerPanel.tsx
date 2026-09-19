@@ -7,8 +7,8 @@ import { useRequest } from "ahooks";
 import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { fsApi, uploadChatFiles } from "@/src/api/fs";
-import type { FileInfo } from "@/src/types";
+import { fsApi, uploadChatFiles } from "../../api/fs";
+import type { FileInfo } from "../../types";
 
 export interface FilePickerPanelProps {
   envId: string;

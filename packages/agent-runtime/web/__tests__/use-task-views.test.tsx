@@ -19,9 +19,10 @@ import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
-import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "@/src/yjs/doc-hub";
+// happy-dom-window 仍住在宿主 apps/web（宿主测试夹具），沿用包内既有的深链口径。
+import { initializeHappyDomWindow } from "../../../../apps/web/src/__tests__/happy-dom-window";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
-import { initializeHappyDomWindow } from "./happy-dom-window";
+import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "../yjs/doc-hub";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

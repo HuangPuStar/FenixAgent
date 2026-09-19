@@ -1,6 +1,6 @@
 import { type DragEvent, useCallback, useEffect, useRef, useState } from "react";
-import { getChatUploadPath, uploadChatFiles } from "@/src/api/fs";
-import type { FileInfo } from "@/src/types";
+import { getChatUploadPath, uploadChatFiles } from "../../api/fs";
+import type { FileInfo } from "../../types";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 

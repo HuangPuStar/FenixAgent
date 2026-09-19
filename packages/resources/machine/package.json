@@ -13,6 +13,10 @@
     "./server": "./src/server.ts",
     "./server/schema": "./src/server/schema.ts",
     "./server/testing": "./src/server/testing.ts",
+    "./web/api/registry": {
+      "types": "./web/api/registry.ts",
+      "default": "./web/api/registry.ts"
+    },
     "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
     "./file-ws-close-log": "./src/server/transport/file-ws-close-log.ts",
     "./file-ws-payload": "./src/server/transport/file-ws-payload.ts",

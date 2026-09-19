@@ -1,5 +1,5 @@
+import { MAX_UPLOAD_SIZE_BYTES } from "@fenix/agent-runtime/web/api/fs";
 import type { TreeNodeData } from "@/components/ui/tree";
-import { MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
 
 export interface ParsedFileNode {
   name: string;

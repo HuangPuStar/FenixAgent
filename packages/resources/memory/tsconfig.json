@@ -14,7 +14,6 @@
       "@/components/*": ["../../../apps/web/components/*"],
       "@/src/api/hindsight": ["web/api/hindsight.ts"],
       "@/src/api/environments": ["../../../packages/agent-runtime/web/api/environments.ts"],
-      "@/src/api/fs": ["../../../apps/web/src/api/fs.ts"],
       "@/src/api/sites": ["../../agent-config/web/api/sites.ts"],
       "@/src/components/agent-panel/WorkbenchPanel": [
         "../../../apps/web/src/components/agent-panel/WorkbenchPanel.tsx"

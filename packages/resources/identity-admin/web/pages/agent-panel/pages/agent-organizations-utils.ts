@@ -1,4 +1,4 @@
-import type { MachineRecord } from "@/src/api/registry";
+import type { MachineRecord } from "@fenix/resource-machine/web/api/registry";
 
 /** Derive a stable URL slug without creating a second server-side validation contract. */
 export function nameToSlug(name: string): string {

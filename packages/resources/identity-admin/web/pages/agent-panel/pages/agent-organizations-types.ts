@@ -1,4 +1,4 @@
-import type { MachineRecord } from "@/src/api/registry";
+import type { MachineRecord } from "@fenix/resource-machine/web/api/registry";
 import type { OrgDetail, OrgMember, OrgMemberCandidate } from "../../../api/organizations";
 
 export interface OrganizationListItem {

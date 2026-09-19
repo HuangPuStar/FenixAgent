@@ -24,6 +24,22 @@
       "types": "./web/api/environments.ts",
       "default": "./web/api/environments.ts"
     },
+    "./web/api/fs": {
+      "types": "./web/api/fs.ts",
+      "default": "./web/api/fs.ts"
+    },
+    "./web/api/peri-task-details": {
+      "types": "./web/api/peri-task-details.ts",
+      "default": "./web/api/peri-task-details.ts"
+    },
+    "./web/hooks/use-task-views": {
+      "types": "./web/hooks/use-task-views.ts",
+      "default": "./web/hooks/use-task-views.ts"
+    },
+    "./web/types/index": {
+      "types": "./web/types/index.ts",
+      "default": "./web/types/index.ts"
+    },
     "./web/agent-panel/ChatPanel": {
       "types": "./web/agent-panel/ChatPanel.tsx",
       "default": "./web/agent-panel/ChatPanel.tsx"

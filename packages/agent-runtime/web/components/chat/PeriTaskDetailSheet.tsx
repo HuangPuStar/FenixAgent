@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getPeriTaskDetail, type PeriTaskDetail } from "@/src/api/peri-task-details";
+import { getPeriTaskDetail, type PeriTaskDetail } from "../../api/peri-task-details";
 
 interface PeriTaskDetailSheetProps {
   environmentId: string;

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { EnvironmentInstance } from "@fenix/agent-runtime/web/types/index";
 import { orderInstancesByRunningStatus } from "../pages/agent-panel/AgentSidebarTree";
-import type { EnvironmentInstance } from "../types";
 
 function instance(instanceUid: string, status: EnvironmentInstance["status"]): EnvironmentInstance {
   return { instanceUid, name: instanceUid, status, createdAt: "2026-09-01T00:00:00.000Z" };

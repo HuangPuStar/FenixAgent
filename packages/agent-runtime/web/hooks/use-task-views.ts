@@ -26,7 +26,7 @@ import type {
 import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
-import { createSessionDocBinding, getDocHubReplacementVersion, subscribeDocHubReplacement } from "@/src/yjs/doc-hub";
+import { createSessionDocBinding, getDocHubReplacementVersion, subscribeDocHubReplacement } from "../yjs/doc-hub";
 
 /** 终态集合：非终态（running）展示在前 */
 const PERI_TASK_TERMINAL_STATUSES: ReadonlySet<PeriTaskStatus> = new Set(["completed", "failed", "cancelled"]);

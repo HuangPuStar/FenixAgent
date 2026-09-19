@@ -1,6 +1,7 @@
 import { modelApi } from "@fenix/model-management/web/api/models";
 import { kbApi } from "@fenix/resource-knowledge/web/api/knowledge-bases";
 import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web/types/knowledge";
+import { registryApi } from "@fenix/resource-machine/web/api/registry";
 import { mcpApi } from "@fenix/resource-mcp/web/api/mcp";
 import { hindsightApi } from "@fenix/resource-memory/web/api/hindsight";
 import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
@@ -11,7 +12,6 @@ import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { registryApi } from "@/src/api/registry";
 import { agentApi } from "../../../api/agents";
 import { agentSitesApi } from "../../../api/sites";
 import type { AgentDetail, ResourceAccess } from "../../../types/config";

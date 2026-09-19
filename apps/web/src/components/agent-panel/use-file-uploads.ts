@@ -1,6 +1,10 @@
+import {
+  MAX_UPLOAD_BATCH_SIZE_BYTES,
+  MAX_UPLOAD_SIZE_BYTES,
+  uploadFiles as uploadWorkspaceFiles,
+} from "@fenix/agent-runtime/web/api/fs";
 import type { TFunction } from "i18next";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
-import { MAX_UPLOAD_BATCH_SIZE_BYTES, MAX_UPLOAD_SIZE_BYTES, uploadFiles as uploadWorkspaceFiles } from "@/src/api/fs";
 import { MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
 
 interface UseFileUploadsOptions {

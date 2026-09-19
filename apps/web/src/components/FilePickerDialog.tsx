@@ -1,7 +1,7 @@
+import type { FileInfo } from "@fenix/agent-runtime/web/types/index";
 import { useTranslation } from "react-i18next";
 import { FilePickerPanel } from "@/components/chat/FilePickerPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { FileInfo } from "../types";
 
 interface FilePickerDialogProps {
   open: boolean;
