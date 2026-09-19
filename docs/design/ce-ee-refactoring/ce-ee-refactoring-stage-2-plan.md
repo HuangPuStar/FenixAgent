@@ -17,7 +17,7 @@
 - 完善架构门禁：阻断跨包内部路径导入、未声明 workspace dependency、循环依赖、未登记的特殊依赖，以及浏览器入口加载服务端模块。
 - 核查 `packages/` 中 `platform/`、`agent-runtime/`、`resources/` 以外的现有包（如 `acp-link`、`core`、`chat-channel`、各插件与 provider）：保持其 SDK/插件职责与公开入口，修复包间依赖环和被服务模块错误穿透的内部引用，不要求按资源模块改造；本阶段内不便拆解的环按架构台账逐条登记并写明承担任务与移除条件。
 
-### 1.2 Platform：身份、租户与授权
+### 1.2 Platform：身份、租户与授权（已完成）
 
 - 将 `packages/resources/identity-admin` 的用户、组织、成员、认证/API Key、DB、route 与 Web 职责迁入新的 `packages/platform/identity`；删除 `identity-admin`，不保留兼容包或 re-export shim。
 - 将 `packages/platform/access-control` 收敛为仅依赖 platform-sdk 与 Identity 公开入口的具体授权实现；Identity 与 AccessControl 保持两个独立包，不能互相穿透内部实现。
