@@ -6,7 +6,7 @@
  */
 
 import { request } from "@/src/api/request";
-import type { AgentDetail, AgentInfo } from "@/src/types/config";
+import type { AgentDetail, AgentInfo, ResourceAccessView } from "@/src/types/config";
 
 /** Agent 模板 */
 interface AgentTemplate {
@@ -28,17 +28,19 @@ interface AgentListResult {
   agents: AgentInfo[];
 }
 
-/** 创建/更新响应 */
-interface AgentSaveResult {
+/** 创建/更新响应：授权视图字段随资源一并返回，供保存后立即更新界面状态。 */
+interface AgentSaveResult extends Partial<ResourceAccessView> {
   name: string;
   id?: string;
-  resourceAccess?: unknown;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
 /** 设置默认 Agent 响应 */
-interface AgentSetDefaultResult {
+interface AgentSetDefaultResult extends Partial<ResourceAccessView> {
   default_agent: string;
-  resourceAccess?: unknown;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
 interface AgentRestartResult {

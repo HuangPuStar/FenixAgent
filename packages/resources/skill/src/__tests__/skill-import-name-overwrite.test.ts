@@ -1,88 +1,71 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { setConfig } from "@server/config";
-import { _deps, _resetDeps, importSkillDirectories } from "../server/services/skill";
-import type { UploadSkillFile } from "../server/services/skill-fs";
+import type { ImportSkillsConflict, UploadSkillFile } from "../server/services/skill-content";
+import { _deps, importSkillDirectories, resetSkillContentDeps } from "../server/services/skill-content";
 
-const ctx = { organizationId: "org-1", userId: "user-1", role: "owner" } as const;
+/**
+ * 导入的冲突与覆盖语义用例（内容层）。
+ *
+ * 冲突集合由调用方给出（只有它持有授权信息：其他组织公开的同名技能不算冲突），内容层只按策略规划
+ * 写入并回调资源行写入。冲突探测本身在 Facade，见 `skill-facade` 用例。
+ */
+
 const root = "/tmp/rcs-skills";
+const organizationId = "org-1";
+const targetDir = `${root}/${organizationId}`;
 
-function makeFile(name: string): UploadSkillFile {
-  return {
-    skillName: name,
-    relativePath: "SKILL.md",
-    content: `---\nname: ${name}\ndescription: ${name} desc\n---\nBody`,
-  };
+function makeFile(name: string, content = `---\nname: ${name}\ndescription: ${name} desc\n---\nBody`): UploadSkillFile {
+  return { skillName: name, relativePath: "SKILL.md", content };
 }
 
-function installMocks() {
-  const configPg = {
-    getSkill: mock(async () => null),
-    upsertSkill: mock(async () => "skill-id"),
-    deleteSkill: mock(async () => true),
-    listSkills: mock(async () => []),
-  };
-  const skillFs = {
-    assertValidSkillName: (name: string) => name.trim(),
-    getSkillOrganizationDir: (skillRoot: string, organizationId: string) => `${skillRoot}/${organizationId}`,
-    getSkillSourceDir: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}`,
-    getSkillMdPath: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}/SKILL.md`,
-    getSkillArchivePath: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}.zip`,
-    buildSkillArchive: mock(async () => {}),
-    deleteSkillArchive: mock(async () => {}),
-    createSkillValidationError: (msg: string) => {
-      const e = new Error(msg) as Error & { code: string };
-      e.code = "VALIDATION_ERROR";
-      return e;
-    },
-    groupUploadFiles: (files: UploadSkillFile[]) => {
-      const grouped = new Map<string, UploadSkillFile[]>();
-      for (const file of files) {
-        const skillName = file.skillName.trim();
-        grouped.set(skillName, [...(grouped.get(skillName) ?? []), { ...file, skillName }]);
-      }
-      return grouped;
-    },
-    listSkillsFromDir: mock(async () => []),
-    readSkillDetailFromMd: mock(async () => null),
-    writeSkillMd: mock(async (dir: string) => `${dir}/SKILL.md`),
-    deleteSkillDir: mock(async () => {}),
-    resolveImportPlan: (grouped: Map<string, UploadSkillFile[]>, conflicts: unknown[], strategy?: string) => {
-      const conflictNames = new Set((conflicts as Array<{ name: string }>).map((item) => item.name));
-      return {
-        pendingEntries: [...grouped.entries()].filter(([name]) => strategy !== "ignore" || !conflictNames.has(name)),
-        skipped: strategy === "ignore" ? [...conflictNames] : [],
-      };
-    },
-    writeImportFiles: mock(async (_dir: string, entries: [string, UploadSkillFile[]][]) =>
-      entries.map(([name]) => name),
-    ),
-    buildImportedSkillInfos: mock(async (dir: string, names: string[]) =>
-      names.map((name) => {
-        const skillMd = entriesByName.get(name)?.find((file) => file.relativePath === "SKILL.md")?.content ?? "";
-        const description = skillMd.match(/description:\s*([^\n]+)/)?.[1]?.trim() ?? `${name} desc`;
-        return { name, enabled: true, description, path: `${dir}/${name}/SKILL.md` };
-      }),
-    ),
-    backupSkillDirs: mock(async (_backupRoot: string, _targetDir: string, names: string[]) => {
-      return new Map(names.map((name) => [name, null] as [string, string | null]));
-    }),
-    cleanupWrittenSkills: mock(async () => {}),
-    restoreFromBackup: mock(async () => {}),
-    createBackupDir: mock(async () => "/tmp/backup"),
-    cleanupBackupDir: mock(async () => {}),
-  };
-  const entriesByName = new Map<string, UploadSkillFile[]>();
-  skillFs.writeImportFiles.mockImplementation(async (_dir: string, entries: [string, UploadSkillFile[]][]) => {
-    for (const [name, files] of entries) entriesByName.set(name, files);
-    return entries.map(([name]) => name);
-  });
+function conflictOf(name: string): ImportSkillsConflict {
+  return { name, enabled: true, path: `${targetDir}/${name}/SKILL.md` };
+}
 
-  _deps.configPg = configPg as unknown as typeof _deps.configPg;
+/** 装入文件系统替身；写入与回调是断言点，路径解析用真实拼装规则。 */
+function installFs() {
+  const writtenByName = new Map<string, UploadSkillFile[]>();
+  const skillFs = {
+    assertValidSkillName: _deps.skillFs.assertValidSkillName,
+    createSkillValidationError: _deps.skillFs.createSkillValidationError,
+    groupUploadFiles: _deps.skillFs.groupUploadFiles,
+    resolveImportPlan: _deps.skillFs.resolveImportPlan,
+    getSkillOrganizationDir: (_skillRoot: string, orgId: string) => `${_skillRoot}/${orgId}`,
+    getSkillSourceDir: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}`,
+    getSkillMdPath: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}/SKILL.md`,
+    getSkillArchivePath: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}.zip`,
+    readSkillDetailFromMd: mock(async () => null),
+    readSkillDocumentFromMd: mock(async () => null),
+    writeSkillMd: mock(async (dir: string) => `${dir}/SKILL.md`),
+    buildSkillArchive: mock(async () => undefined),
+    deleteSkillArchive: mock(async () => undefined),
+    deleteSkillDir: mock(async () => undefined),
+    createBackupDir: mock(async () => "/tmp/backup"),
+    backupSkillDirs: mock(async (_backupRoot: string, _dir: string, names: string[]) => {
+      return new Map(names.map((name) => [name, `/tmp/backup/${name}`] as [string, string]));
+    }),
+    cleanupWrittenSkills: mock(async () => undefined),
+    restoreFromBackup: mock(async () => undefined),
+    cleanupBackupDir: mock(async () => undefined),
+    writeImportFiles: mock(async (_dir: string, entries: [string, UploadSkillFile[]][]) => {
+      for (const [name, files] of entries) writtenByName.set(name, files);
+      return entries.map(([name]) => name);
+    }),
+    buildImportedSkillInfos: mock(async (dir: string, names: string[]) =>
+      names.map((name) => ({
+        name,
+        enabled: true,
+        description:
+          writtenByName
+            .get(name)?.[0]
+            ?.content.match(/description:\s*([^\n]+)/)?.[1]
+            ?.trim() ?? "",
+        path: `${dir}/${name}/SKILL.md`,
+      })),
+    ),
+  };
   _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
-  return { configPg, skillFs };
+  return skillFs;
 }
 
 beforeEach(() => {
@@ -90,105 +73,87 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  _resetDeps();
+  resetSkillContentDeps();
 });
 
-describe("skill import name overwrite semantics", () => {
-  // 首次同名上传只返回 conflicts，不进入任何破坏性写入链路。
-  test("首次同名上传返回 conflicts 且不写入文件和 PG", async () => {
-    const { configPg, skillFs } = installMocks();
-    configPg.getSkill.mockImplementationOnce(
-      async () => ({ name: "demo", enabled: true, organizationId: "org-1" }) as unknown as null,
-    );
+describe("导入的冲突与覆盖", () => {
+  // 有冲突但没有策略时只返回冲突清单：用户还没决定，任何写入都是破坏性的。
+  test("有冲突且未给策略时只返回冲突清单", async () => {
+    const skillFs = installFs();
 
-    const result = await importSkillDirectories(ctx, [makeFile("demo")]);
-
-    expect(result).toEqual({
-      imported: [],
-      skipped: [],
-      conflicts: [{ name: "demo", enabled: true, path: `${root}/org-1/demo/SKILL.md` }],
+    const result = await importSkillDirectories({
+      organizationId,
+      files: [makeFile("demo")],
+      conflicts: [conflictOf("demo")],
     });
+
+    expect(result).toEqual({ imported: [], skipped: [], conflicts: [conflictOf("demo")] });
     expect(skillFs.writeImportFiles).not.toHaveBeenCalled();
-    expect(skillFs.cleanupWrittenSkills).not.toHaveBeenCalled();
-    expect(configPg.deleteSkill).not.toHaveBeenCalled();
-    expect(configPg.upsertSkill).not.toHaveBeenCalled();
-    expect(skillFs.buildSkillArchive).not.toHaveBeenCalled();
+    expect(skillFs.createBackupDir).not.toHaveBeenCalled();
   });
 
-  // ignore 策略跳过已有目录，继续导入同批次中的新目录。
-  test("ignore 策略跳过冲突目录并导入非冲突目录", async () => {
-    const { configPg } = installMocks();
-    configPg.getSkill.mockImplementation(async (...args: unknown[]) => {
-      const name = args[1];
-      return typeof name === "string" && name === "existing"
-        ? ({ name, enabled: true, organizationId: "org-1" } as unknown as null)
-        : null;
-    });
+  // ignore 策略跳过冲突目标，同批次中的其他技能照常导入，被跳过的名称回传给调用方。
+  test("ignore 策略跳过冲突目标并导入其余技能", async () => {
+    const skillFs = installFs();
+    const written: string[] = [];
 
-    const result = await importSkillDirectories(ctx, [makeFile("existing"), makeFile("fresh")], "ignore");
+    const result = await importSkillDirectories({
+      organizationId,
+      files: [makeFile("existing"), makeFile("fresh")],
+      conflicts: [conflictOf("existing")],
+      strategy: "ignore",
+      onSkillWritten: async (info) => {
+        written.push(info.name);
+      },
+    });
 
     expect(result.imported.map((item) => item.name)).toEqual(["fresh"]);
     expect(result.skipped).toEqual(["existing"]);
     expect(result.conflicts).toEqual([]);
-    expect(configPg.deleteSkill).not.toHaveBeenCalled();
-    expect(configPg.upsertSkill).toHaveBeenCalledWith(
-      ctx,
-      "fresh",
-      {
-        description: "fresh desc",
-      },
-      { auditAction: "upload_create" },
-    );
+    expect(written).toEqual(["fresh"]);
+    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${targetDir}/fresh`, `${targetDir}/fresh.zip`);
+    expect(skillFs.buildSkillArchive).not.toHaveBeenCalledWith(`${targetDir}/existing`, `${targetDir}/existing.zip`);
   });
 
-  // overwrite 策略以上传目录名作为身份，即使 frontmatter name 不同也不改变覆盖目标。
-  test("overwrite 策略使用目录名覆盖并忽略 frontmatter name", async () => {
-    const { configPg } = installMocks();
-    const file = {
-      skillName: "folder-name",
-      relativePath: "SKILL.md",
-      content: "---\nname: other-name\ndescription: New\n---\nBody",
-    };
-    configPg.getSkill.mockImplementationOnce(
-      async () => ({ name: "folder-name", enabled: true, organizationId: "org-1" }) as unknown as null,
-    );
+  // 覆盖目标以上传目录名为身份：SKILL.md 头部写着别的 name 也不改变写入与回调的名称。
+  test("overwrite 策略按目录名覆盖并忽略 frontmatter name", async () => {
+    const skillFs = installFs();
+    const written: string[] = [];
+    const file = makeFile("folder-name", "---\nname: other-name\ndescription: New\n---\nBody");
 
-    const result = await importSkillDirectories(ctx, [file], "overwrite");
-
-    expect(configPg.deleteSkill).not.toHaveBeenCalledWith(ctx, "folder-name");
-    expect(configPg.upsertSkill).toHaveBeenCalledWith(
-      ctx,
-      "folder-name",
-      {
-        description: "New",
+    const result = await importSkillDirectories({
+      organizationId,
+      files: [file],
+      conflicts: [conflictOf("folder-name")],
+      strategy: "overwrite",
+      onSkillWritten: async (info) => {
+        written.push(info.name);
       },
-      { auditAction: "upload_overwrite" },
-    );
-    expect(result.imported[0]?.name).toBe("folder-name");
-  });
-
-  // 批内大小写不同的同名目录应在写入前失败，避免覆盖语义不明确。
-  test("同一批上传目录名重复时抛出验证错误", async () => {
-    const { configPg, skillFs } = installMocks();
-    skillFs.groupUploadFiles = mock((files: UploadSkillFile[]) => {
-      const seen = new Set<string>();
-      const grouped = new Map<string, UploadSkillFile[]>();
-      for (const file of files) {
-        const key = file.skillName.trim().toLowerCase();
-        if (seen.has(key)) throw skillFs.createSkillValidationError("Duplicate skill names in upload: demo");
-        seen.add(key);
-        grouped.set(file.skillName.trim(), [file]);
-      }
-      return grouped;
     });
-    _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
+
+    expect(written).toEqual(["folder-name"]);
+    expect(result.imported.map((item) => item.name)).toEqual(["folder-name"]);
+    // 覆盖前先备份旧目录（可恢复），而不是先删除旧内容。
+    expect(skillFs.backupSkillDirs).toHaveBeenCalledWith("/tmp/backup", targetDir, ["folder-name"]);
+    expect(skillFs.cleanupWrittenSkills).toHaveBeenCalledWith(targetDir, ["folder-name"]);
+  });
+
+  // 资源行回滚失败不能掩盖原始错误：调用方要看到真正让导入失败的原因。
+  test("回滚回调失败不掩盖原始错误", async () => {
+    const skillFs = installFs();
+    skillFs.buildImportedSkillInfos.mockImplementationOnce(async () => {
+      throw new Error("disk full");
+    });
 
     await expect(
-      importSkillDirectories(ctx, [makeFile("demo"), { ...makeFile("Demo"), skillName: "Demo" }]),
-    ).rejects.toThrow("Duplicate skill names in upload: demo");
-
-    expect(configPg.getSkill).not.toHaveBeenCalled();
-    expect(skillFs.writeImportFiles).not.toHaveBeenCalled();
-    expect(configPg.upsertSkill).not.toHaveBeenCalled();
+      importSkillDirectories({
+        organizationId,
+        files: [makeFile("fail-skill")],
+        conflicts: [],
+        onRollbackCleanup: async () => {
+          throw new Error("db down");
+        },
+      }),
+    ).rejects.toThrow("disk full");
   });
 });

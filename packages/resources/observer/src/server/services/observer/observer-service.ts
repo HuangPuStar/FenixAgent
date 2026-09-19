@@ -19,7 +19,7 @@ import {
   listAcpConnections,
   listExternalRelayEntries as listExternalRelayEntriesModule,
 } from "@fenix/agent-runtime/server";
-import { findUsersBasicInfoByIds, organizationRepo } from "@fenix/resource-identity-admin/server";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { findMachineNamesByIds } from "@fenix/resource-machine/server";
 import { config } from "@server/config";
 import type { AcpConnectionSnapshot } from "@server/types/store";
@@ -53,8 +53,10 @@ export interface ObserverServiceDeps {
   // ── name(id) 展示名称解析（文档 §4 names；只读、即用即弃，不缓存）──
   /** instanceUid → 持久实例名称；未知实例返回 undefined。 */
   getInstanceName: (instanceUid: string) => Promise<string | undefined>;
-  listOrganizationNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
-  listUserNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
+  // 组织名与用户名来自 `IdentityDirectory`，其契约只承诺只读投影，故这里也按 `ReadonlyMap`
+  // 声明（`Map` 天然满足它，测试 fixture 不受影响）；下方只经 `Object.fromEntries` 读取。
+  listOrganizationNamesByIds: (ids: string[]) => Promise<ReadonlyMap<string, string>>;
+  listUserNamesByIds: (ids: string[]) => Promise<ReadonlyMap<string, string>>;
   listAgentConfigNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
   listMachineNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
 }
@@ -85,10 +87,10 @@ const defaultDeps: ObserverServiceDeps = {
   getAgentConfigById: (id) => getAgentConfigById(id),
   getDefaultMachineId: () => config.defaultMachineId ?? null,
   getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
-  listOrganizationNamesByIds: (ids) => organizationRepo.listNamesByIds(ids),
+  listOrganizationNamesByIds: (ids) => getIdentityDirectory().listOrganizationNames(ids),
   listUserNamesByIds: async (ids) => {
-    const rows = await findUsersBasicInfoByIds(ids);
-    return new Map(rows.map((row) => [row.id, row.name]));
+    const users = await getIdentityDirectory().listUserDisplayInfo(ids);
+    return new Map([...users].map(([id, user]) => [id, user.name]));
   },
   listAgentConfigNamesByIds: (ids) => findAgentConfigNamesByIds(ids),
   listMachineNamesByIds: (ids) => findMachineNamesByIds(ids),

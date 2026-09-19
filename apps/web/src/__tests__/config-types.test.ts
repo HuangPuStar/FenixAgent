@@ -90,15 +90,9 @@ describe("PermissionConfig types", () => {
       agentNode: { kind: "machine", machineId: "machine-1" },
       skillIds: ["skill-1"],
       mcpIds: ["mcp-1"],
-      resourceAccess: {
-        ownership: "internal",
-        sourceOrganizationId: "org_current",
-        resourceUid: "agc_1",
-        resourceKey: "org_current/agc_1",
-        manageable: true,
-        writable: true,
-        publicReadable: false,
-      },
+      scope: { organizationId: "org_current", ownerUserId: "user_1", visibility: "private" },
+      access: { actions: ["read", "create", "update", "delete", "use"] },
+      organizationName: "Current Team",
     };
     expect(detail.description).toBe("测试Agent");
     expect(detail.extra).toEqual({ sidebar: { collapsed: false } });
@@ -120,14 +114,9 @@ describe("PermissionConfig types", () => {
       agentNode: {},
       skillIds: [],
       mcpIds: [],
-      resourceAccess: {
-        ownership: "external",
-        sourceOrganizationId: "org_source",
-        resourceUid: "agc_2",
-        resourceKey: "org_source/agc_2",
-        manageable: false,
-        writable: false,
-      },
+      scope: { organizationId: "org_source", visibility: "public" },
+      access: { actions: ["read"] },
+      organizationName: "Source Team",
     };
     expect(detail.extra).toBeNull();
   });
@@ -171,15 +160,9 @@ describe("PermissionConfig types", () => {
       agentNode: {},
       knowledgeBaseCount: 0,
       skillLabels: [{ id: "skill-1", label: "deploy-skill" }],
-      resourceAccess: {
-        ownership: "internal",
-        sourceOrganizationId: "org_current",
-        resourceUid: "agc_build",
-        resourceKey: "org_current/agc_build",
-        manageable: true,
-        writable: true,
-        publicReadable: true,
-      },
+      scope: { organizationId: "org_current", ownerUserId: "user_1", visibility: "public" },
+      access: { actions: ["read", "update"] },
+      organizationName: "Current Team",
     };
     expect(info.description).toBe("构建Agent");
   });

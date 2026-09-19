@@ -1,7 +1,7 @@
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { db } from "@server/db";
 import { agentConfigSiteApp } from "@server/db/schema";
 import { authGuardPlugin } from "@server/plugins/auth";
-import { WebErrSchema } from "@server/schemas/common.schema";
 import { eq } from "drizzle-orm";
 import Elysia from "elysia";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
@@ -14,7 +14,8 @@ import {
   AgentSiteBindingParamsSchema,
 } from "../../schemas/agent-site.schema";
 import { proxyToAgentSites } from "../../services/agent-sites";
-import { routeConfigDeps } from "../config-route-deps";
+import { addAgentSiteApp, removeAgentSiteApp } from "../../services/config/agent-config-site-app";
+import { getAgentConfigById } from "../../system-entries";
 import { attachCreatorNames, buildError, canRead, resolveSiteApp, toResponse } from "./agent-site-route-support";
 
 export const agentSiteAssociationRoutes = new Elysia({ name: "web-agent-sites-associations" })
@@ -67,7 +68,7 @@ export const agentSiteAssociationRoutes = new Elysia({ name: "web-agent-sites-as
     "/agent-configs/:agentConfigId/sites/:siteAppId",
     async ({ params, store, status }) => {
       const authCtx = store.authContext!;
-      const agentConfig = await routeConfigDeps.getAgentConfigById(params.agentConfigId, authCtx.organizationId);
+      const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
       if (!agentConfig) {
         return status(404, buildError("not_found", "Agent 配置不存在"));
       }
@@ -78,7 +79,7 @@ export const agentSiteAssociationRoutes = new Elysia({ name: "web-agent-sites-as
         return status(404, buildError("not_found", "Site 不存在"));
       }
       // 永远用 siteApp.id（UUID）写入绑定表，保证 listByIds 的 JOIN 正确
-      await routeConfigDeps.addAgentSiteApp(params.agentConfigId, siteApp.id);
+      await addAgentSiteApp(params.agentConfigId, siteApp.id);
       return { success: true as const, data: null };
     },
     {
@@ -100,7 +101,7 @@ export const agentSiteAssociationRoutes = new Elysia({ name: "web-agent-sites-as
     "/agent-configs/:agentConfigId/sites/:siteAppId",
     async ({ params, store, status }) => {
       const authCtx = store.authContext!;
-      const agentConfig = await routeConfigDeps.getAgentConfigById(params.agentConfigId, authCtx.organizationId);
+      const agentConfig = await getAgentConfigById(params.agentConfigId, authCtx.organizationId);
       if (!agentConfig) {
         return status(404, buildError("not_found", "Agent 配置不存在"));
       }
@@ -108,7 +109,7 @@ export const agentSiteAssociationRoutes = new Elysia({ name: "web-agent-sites-as
       if (!siteApp || siteApp.organizationId !== authCtx.organizationId) {
         return status(404, buildError("not_found", "Site 不存在"));
       }
-      await routeConfigDeps.removeAgentSiteApp(params.agentConfigId, siteApp.id);
+      await removeAgentSiteApp(params.agentConfigId, siteApp.id);
       return { success: true as const, data: null };
     },
     {

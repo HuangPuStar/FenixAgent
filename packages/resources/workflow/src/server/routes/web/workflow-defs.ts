@@ -28,6 +28,7 @@
  */
 
 import { createLogger } from "@fenix/logger";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import {
@@ -56,7 +57,6 @@ import {
   WorkflowDefsActionResponseSchema,
   WorkflowDefsPostBodySchema,
 } from "../../schemas";
-import { WebErrSchema } from "../../schemas/common.schema";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 import {
   createTrigger,

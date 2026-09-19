@@ -7,10 +7,10 @@ import {
   SpawnInstanceFromEnvironmentRequestSchema,
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "@fenix/agent-runtime/server";
+import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 
 const _deps = {
   getOwnedEnvironment,

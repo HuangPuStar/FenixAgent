@@ -5,16 +5,19 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import { configureResourcePermissionRepository } from "@fenix/access-control/server";
+import type { IdentityDirectory } from "@fenix/platform-sdk";
+import { registerIdentityDirectory } from "@fenix/platform-sdk/server";
 import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 import * as actualFileWsCloseLog from "@fenix/resource-machine/file-ws-close-log";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "@fenix/resource-machine/file-ws-handler";
 import * as actualFileWsPayload from "@fenix/resource-machine/file-ws-payload";
 import * as actualFileWsRequests from "@fenix/resource-machine/file-ws-requests";
-import { getApiKeyServiceStub, getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
+import { getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
 import { getConfigPgStub } from "./stubs/config-pg-stub";
 import { getDbStub } from "./stubs/db-stub";
+import { getIdentityDirectoryStub } from "./stubs/identity-directory-stub";
+import { getIdentityConfigStub } from "./stubs/identity-stub";
 import {
   coreBootstrapRegistry,
   customToolsRegistry,
@@ -25,13 +28,10 @@ import {
   registryHeartbeatRegistry,
   registryRegistry,
 } from "./stubs/module-stubs";
-import { resourcePermissionRepoStub } from "./stubs/resource-permission-repo-stub";
 import { getSystemApiStub } from "./stubs/system-api-stub";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
-
-configureResourcePermissionRepository(resourcePermissionRepoStub);
 
 /**
  * 创建带惰性包装函数的 mock 对象。
@@ -55,67 +55,10 @@ function createLazyMock(keys: readonly string[], getStub: (name: string) => any)
 }
 
 // ── config service barrel 导出名称 ──
-
-const CONFIG_PG_KEYS = [
-  "AGENT_SETTABLE_FIELDS",
-  "addAgentSiteApp",
-  "addModel",
-  "createAgentConfig",
-  "createMcpServer",
-  "deleteAgentConfig",
-  "deleteMcpServerById",
-  "deleteMcpServer",
-  "deleteProviderById",
-  "deleteProvider",
-  "deleteSkill",
-  "deleteSkillById",
-  "assertMcpServerInternalWritableById",
-  "assertMcpServerInternalWritable",
-  "assertAgentConfigInternalWritable",
-  "assertProviderInternalWritableById",
-  "assertProviderInternalWritable",
-  "getAgentConfig",
-  "getAgentConfigById",
-  "getAgentConfigByResourceKey",
-  "getReadableAgentConfigById",
-  "getMcpServerById",
-  "getMcpServer",
-  "getMcpServerByResourceKey",
-  "getProviderById",
-  "getProvider",
-  "getProviderByResourceKey",
-  "getSkill",
-  "getSkillById",
-  "getSkillByResourceKey",
-  "getUserConfig",
-  "listAgentConfigs",
-  "listAgentMcpIds",
-  "listAgentSiteAppIds",
-  "listAgentSkillIds",
-  "listMcpServers",
-  "listProviders",
-  "listReadableProviders",
-  "listSkills",
-  "removeAgentSiteApp",
-  "removeModel",
-  "removeModelById",
-  "resolveAgentNode",
-  "restartAgentConfigInstances",
-  "setMcpServerEnabled",
-  "setSkillPublicReadable",
-  "setUserConfig",
-  "syncAgentMcps",
-  "syncAgentSiteApps",
-  "syncAgentSkills",
-  "updateAgentConfig",
-  "updateProviderById",
-  "updateMcpServerById",
-  "updateMcpServer",
-  "updateModel",
-  "updateModelById",
-  "upsertProvider",
-  "upsertSkill",
-] as const;
+//
+// 只列会触碰 DB / 外部状态的函数；清单必须与 `services/config/index.ts` 的真实导出同步，理由见
+// config-pg-stub.ts。mcp / skill / provider / model 的配置面已在任务 1.2 迁入各自资源包，不在此处。
+const CONFIG_PG_KEYS = ["getUserConfig", "setUserConfig", "upsertSystemMcpServer"] as const;
 
 mock.module("@server/services/config", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
@@ -143,24 +86,48 @@ const AUTH_API_KEYS = [
   "getSession",
 ] as const;
 
-mock.module("../auth/better-auth", () => {
+// identity 是纯库：better-auth 实例经 `getAuth()` 惰性构造，构造期需要宿主完成应用基础设施初始化
+// （DB + identity 模块配置），而测试进程不初始化基础设施（见下方 identity 基础设施 mock 的说明）。
+// 因此这里直接替换整个模块，`resetAuth()` 退化为空操作——测试里的单例状态由各用例的 stub 决定。
+mock.module("../../../../packages/platform/identity/src/auth/better-auth", () => {
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   const apiObj = createLazyMock(AUTH_API_KEYS, getAuthApiStub as (name: string) => any);
   return {
-    auth: {
+    getAuth: () => ({
       api: apiObj,
       handler: (req: Request) => getAuthHandlerStub()?.(req) ?? new Response("mocked", { status: 200 }),
-    },
+    }),
+    resetAuth: () => {},
   };
 });
 
-// ── api-key-service 导出名称 ──
+// ── identity 的基础设施入口（DB 与模块配置）──
 
-const API_KEY_SERVICE_KEYS = ["createApiKey", "hashApiKey"] as const;
+// identity 经 `@fenix/platform-sdk/server` 读取 DB 与模块配置，生产由宿主 main.ts 的
+// `initializeApplicationInfrastructure()` 提供。测试进程不初始化应用基础设施：
+// platform-sdk 的 server-infrastructure.test.ts 依赖"未初始化时读取必须失败"这一前提，
+// 在 preload 里初始化会让那条用例失去意义。因此这里把 identity 的两个入口接到既有 stub
+// 注册表——DB 走 getDbStub()（与宿主 ../db 的替身同源），配置走 stubIdentityConfig()。
+const identityDbProxy = new Proxy({} as Record<string, unknown>, {
+  get: (_target, prop) => getDbStub()[prop as string],
+});
+mock.module("../../../../packages/platform/identity/src/db", () => ({
+  getIdentityDatabase: () => identityDbProxy,
+}));
+mock.module("../../../../packages/platform/identity/src/config", () => ({
+  getIdentityConfig: () => getIdentityConfigStub(),
+}));
 
-mock.module("../../../../src/auth/api-key-service", () =>
-  // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
-  createLazyMock(API_KEY_SERVICE_KEYS, getApiKeyServiceStub as (name: string) => any),
+// ── 身份只读窄契约（IdentityDirectory）──
+
+// 生产由宿主 main.ts 在装配阶段 `registerIdentityDirectory()` 注入 identity 的实现；测试进程不装配
+// 宿主，若这里不注册，任何经 `getIdentityDirectory()` 的调用都会抛错（org-context、acp 空闲监控、
+// observer 名称解析等）。注册的是转发代理而非快照：用例在任意时刻 `stubIdentityDirectory()` 都能
+// 立即生效，不需要重新注册。
+registerIdentityDirectory(
+  new Proxy({} as IdentityDirectory, {
+    get: (_target, prop) => getIdentityDirectoryStub()[prop as keyof IdentityDirectory],
+  }),
 );
 
 // ── system api service 导出名称 ──
@@ -182,7 +149,7 @@ const SYSTEM_API_KEYS = [
   "deleteUserApiKey",
 ] as const;
 
-mock.module("../../../../packages/resources/identity-admin/src/server/services/system-api", () =>
+mock.module("../../../../packages/platform/identity/src/services/system-api", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(SYSTEM_API_KEYS, getSystemApiStub as (name: string) => any),
 );
@@ -223,12 +190,6 @@ mock.module("@server/db", createDbMock);
 
 // 先注册 DB 替身，再载入会由公开入口触达认证路由的知识库服务，避免真实 DB/auth 初始化循环。
 const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await import("@fenix/resource-knowledge/server");
-
-// ── resource-permission repository ──
-
-mock.module("../../../../packages/platform/access-control/src/repositories/resource-permission", () => ({
-  resourcePermissionRepo: resourcePermissionRepoStub,
-}));
 
 // ── 以下模块按批次添加：只有当所有使用该模块的测试文件都已迁移到 stub 注册表后才能注册 ──
 // 添加前须确认：没有任何未迁移的测试会通过被测代码间接导入这些模块

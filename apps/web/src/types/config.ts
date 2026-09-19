@@ -143,7 +143,13 @@ export interface OpenCodeConfig {
 
 // --- Providers ---
 
-export interface ProviderInfo {
+/**
+ * 用于前端展示的 Provider 列表项。
+ *
+ * `scope` / `access` 是授权视图字段（见 {@link ResourceAccessView}）：`/web` 列表恒返回，因此声明为
+ * 必填，消费点不得再回退读取旧栈的 `resourceAccess`。
+ */
+export interface ProviderInfo extends ResourceAccessView {
   /** 数据库主键；Provider 配置 API 的 id 字段仍表示名称。 */
   providerId: string;
   id: string;
@@ -154,10 +160,9 @@ export interface ProviderInfo {
   keyHint: string | null;
   baseURL: string | null;
   modelCount: number;
-  resourceAccess?: ResourceAccess;
-  resourceKey?: string;
 }
 
+/** Provider 下的模型配置；模型不独立持有归属与授权，可访问性完全继承所属 Provider。 */
 export interface ProviderModel {
   id: string;
   name: string;
@@ -165,11 +170,10 @@ export interface ProviderModel {
   limit: unknown;
   cost: unknown;
   options?: Record<string, unknown>;
-  providerResourceAccess?: ResourceAccess;
-  providerResourceKey?: string;
 }
 
-export interface ProviderDetail {
+/** Provider 详情（编辑用）；`scope` / `access` 必填的原因同 {@link ProviderInfo}。 */
+export interface ProviderDetail extends ResourceAccessView {
   id: string;
   name: string;
   kind: "direct" | "gateway";
@@ -178,22 +182,29 @@ export interface ProviderDetail {
   keyHint: string | null;
   baseURL: string | null;
   models: ProviderModel[];
-  resourceAccess?: ResourceAccess;
-  resourceKey?: string;
 }
 
 // --- Models ---
 
-export interface ModelEntry {
+/**
+ * 用于模型配置与 Agent 编辑器的可用模型条目。
+ *
+ * 模型不独立持有归属与授权：`scope` / `access` 一律继承所属 Provider（`providerId` 标识），
+ * 消费点据此推导跨组织引用键与共享来源。声明为可选的原因同 {@link SkillInfo}。
+ */
+export interface ModelEntry extends Partial<ResourceAccessView> {
   id: string;
   modelId: string;
   displayName: string;
+  /** 所属 Provider 的配置名（组织内唯一）。 */
   provider: string;
+  /** 所属 Provider 的资源 UUID；与 `scope.organizationId` 缺一时跨组织引用退化为 `${provider}/${modelId}`。 */
+  providerId?: string;
   providerDisplayName: string;
   contextLimit: number | null;
   outputLimit: number | null;
-  providerResourceAccess?: ResourceAccess;
-  providerResourceKey?: string;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
   modalities?: unknown;
 }
 
@@ -213,7 +224,13 @@ export type AgentNode =
   | { kind: "machine"; machineId: string }
   | { kind: "sandbox"; sandboxPoolId: string };
 
-export interface AgentInfo {
+/**
+ * 用于前端展示的 Agent 列表项。
+ *
+ * `scope` / `access` 是授权视图字段，后端 `/web` 列表恒返回；声明为可选的原因同 {@link SkillInfo}
+ * （消费点必须显式处理缺失情况，按「本组织私有、不可写」保守降级）。
+ */
+export interface AgentInfo extends Partial<ResourceAccessView> {
   id: string;
   name: string;
   builtIn: boolean;
@@ -224,10 +241,12 @@ export interface AgentInfo {
   agentNode: AgentNode;
   knowledgeBaseCount: number;
   skillLabels?: Array<{ id: string; label: string }>;
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
-export interface AgentDetail {
+/** Agent 详情（编辑用）；`scope` / `access` 可选的原因同 {@link AgentInfo}。 */
+export interface AgentDetail extends Partial<ResourceAccessView> {
   id?: string;
   name: string;
   builtIn: boolean;
@@ -249,33 +268,53 @@ export interface AgentDetail {
     knowledgeBases?: Array<{ id: string; label: string; slug?: string | null }>;
     siteApps?: Array<{ id: string; label: string; remoteAppId: string | null }>;
   };
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
   enableMemory?: boolean;
 }
 
-// --- Skills ---
+// --- 资源授权视图 ---
 
-export interface ResourceAccess {
-  ownership: "internal" | "external";
-  sourceOrganizationId: string;
-  sourceOrganizationName?: string;
-  resourceUid: string;
-  resourceKey: string;
-  manageable: boolean;
-  writable: boolean;
-  publicReadable?: boolean;
+/** 资源归属范围：`organizationId` 缺失表示归属个人；`visibility` 决定是否对其他组织公开可读。 */
+export interface ResourceScopeView {
+  organizationId?: string;
+  ownerUserId?: string;
+  visibility: "private" | "public";
 }
 
-export interface SkillInfo {
+/** 当前主体对资源的有效动作集合；授权判断在服务端完成，前端只按动作做保守展示。 */
+export type ResourceAccessActions = Array<"read" | "create" | "update" | "delete" | "use">;
+
+/**
+ * 资源授权视图：新授权栈下 `/web` 响应统一携带的 `scope` + `access` 组合。
+ *
+ * 旧字段 `resourceAccess` 是服务端预先算好的布尔结果；新视图把归属（`scope`）与有效动作
+ * （`access.actions`）分开返回，前端判断必须基于 `scope.organizationId` 与动作集合自行推导，
+ * 不得再回退读取 `resourceAccess`。
+ */
+export interface ResourceAccessView {
+  scope: ResourceScopeView;
+  access: { actions: ResourceAccessActions };
+}
+
+/**
+ * 用于前端列表展示的 Skill 信息。
+ *
+ * `scope` / `access` 是授权视图字段，后端 `/web` 列表恒返回；声明为可选是为了让消费点必须显式
+ * 处理缺失情况（缺失按「本组织私有、不可写」保守降级），避免部分响应或旧缓存导致越权展示。
+ */
+export interface SkillInfo extends Partial<ResourceAccessView> {
   id?: string;
   name: string;
   enabled: boolean;
   description: string;
   path: string;
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
-export interface SkillDetail {
+/** Skill 详情（编辑用）；`scope` / `access` 可选的原因同 {@link SkillInfo}。 */
+export interface SkillDetail extends Partial<ResourceAccessView> {
   id?: string;
   name: string;
   description: string;
@@ -283,7 +322,8 @@ export interface SkillDetail {
   enabled: boolean;
   path: string;
   metadata: Record<string, string>;
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
 export interface UploadManifestEntry {
@@ -324,8 +364,13 @@ export interface SkillUploadConflictResponse {
 
 // --- MCP ---
 
-/** 用于前端列表展示的 MCP 服务器信息 */
-export interface McpServerInfo {
+/**
+ * 用于前端列表展示的 MCP 服务器信息。
+ *
+ * `scope` / `access` 是授权视图字段，后端 `/web` 列表恒返回；声明为可选是为了让消费点必须显式
+ * 处理缺失情况（缺失按「本组织私有、不可写」保守降级），避免部分响应或旧缓存导致越权展示。
+ */
+export interface McpServerInfo extends Partial<ResourceAccessView> {
   id: string;
   name: string;
   type: "local" | "remote" | "streamable-http" | "disabled";
@@ -333,16 +378,16 @@ export interface McpServerInfo {
   summary: string;
   timeout?: number;
   toolsCount?: number;
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
-/** MCP 服务器详情（编辑用） */
-export interface McpServerDetail {
+/** MCP 服务器详情（编辑用）；`scope` / `access` 可选的原因同 {@link McpServerInfo}。 */
+export interface McpServerDetail extends Partial<ResourceAccessView> {
   name: string;
   config: McpServerConfig;
-  enabled?: boolean;
-  summary?: string;
-  resourceAccess?: ResourceAccess;
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
 }
 
 /** MCP Tool 缓存记录 */

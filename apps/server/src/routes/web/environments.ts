@@ -20,13 +20,13 @@ import {
 } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
+import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { ValidationError as AppValidationError } from "../../errors";
 import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 
 const logger = createLogger("env-route");
 

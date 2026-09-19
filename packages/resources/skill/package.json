@@ -3,13 +3,16 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@fenix/access-control": "workspace:*",
-    "@fenix/logger": "workspace:*"
+    "@fenix/logger": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
+    "./server/runtime": "./src/server/runtime.ts",
+    "./server/content": "./src/server-content.ts",
     "./server/config": "./src/server-config.ts",
-    "./server/migration": "./src/server-migration.ts"
+    "./server/migration": "./src/server-migration.ts",
+    "./server/testing": "./src/server/testing.ts"
   }
 }

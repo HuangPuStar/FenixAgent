@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { createWebOpenApiPlugin } from "@server/openapi";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { WebErrSchema } from "@server/schemas/common.schema";
 import { clearOrgCache, setTestOrgContext } from "@server/services/org-context";
 import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import Elysia from "elysia";

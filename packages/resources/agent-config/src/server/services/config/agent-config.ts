@@ -1,22 +1,18 @@
-import {
-  assertInternalWritable,
-  canReadResource,
-  decorateResourceAccess,
-  listReadableResourceRefs,
-  setPublicRead,
-} from "@fenix/access-control/server";
 import type { AgentKnowledgeConfig, AgentKnowledgePolicy } from "@fenix/resource-knowledge/server";
 import { resolveAgentKnowledgePolicy } from "@fenix/resource-knowledge/server";
-import { db } from "@server/db";
-import { agentConfig, environment } from "@server/db/schema";
-import type { AuthContext } from "@server/plugins/auth";
-import { and, eq, inArray } from "drizzle-orm";
-import type { AgentConfigDetailWithAccess, AgentConfigRowWithAccess, AgentNode } from "./types";
+import type { AgentConfigWriteData } from "../../repositories/agent-config-resource";
+import type { AgentNode } from "./types";
 
-// ────────────────────────────────────────────
-// Agent Config 操作
-// ────────────────────────────────────────────
+/**
+ * Agent 配置的**纯领域校验与规范化**。
+ *
+ * 本文件不再接触数据库与授权：资源行的读写经 `repositories/agent-config-resource.ts`（受控读取由
+ * 平台授权谓词下推），授权判断在 `facades/agent-config-facade.ts`。这里只保留可在无 DB、无 actor
+ * 情况下被任何层复用的规则——协议层（`/web` 与 `/api` 两套路由）在调用 Facade 前用它做字段校验，
+ * 并把请求数据规范化为领域可写的形状。
+ */
 
+/** 可由配置写入的字段；`knowledge` 不是 `agent_config` 的列（它在绑定表里），因此单独处理。 */
 const AGENT_SETTABLE_FIELDS = ["model", "modelId", "prompt", "description", "extra", "agentNode", "knowledge"] as const;
 
 export function normalizeAgentNode(input: unknown): AgentNode | null {
@@ -39,257 +35,46 @@ export function resolveAgentNode(row: { agentNode?: unknown; machineId: string |
   return row.machineId ? { kind: "machine", machineId: row.machineId } : {};
 }
 
-/** 前端字段名 → Drizzle 列名映射（路由层已做映射，此处为防御性兜底） */
-const FIELD_ALIAS: Record<string, string> = { top_p: "topP" };
+/**
+ * 把协议层的请求数据规范化为领域可写列集合。
+ *
+ * 白名单过滤 + 逐字段规范化都在这里做一次，`/web` 与 `/api` 两套路由共用，避免两边的可写字段集合
+ * 慢慢分叉（历史上 `FIELD_ALIAS` 这类映射就只在其中一条路径上生效）。`knowledge` 与 `skillIds` /
+ * `mcpIds` / `siteAppIds` 不属于资源行，调用方另行同步绑定表。
+ */
+export function toAgentConfigWriteData(data: Record<string, unknown>): AgentConfigWriteData {
+  const write: {
+    model?: string | null;
+    modelId?: string | null;
+    prompt?: string | null;
+    description?: string | null;
+    extra?: Record<string, unknown> | null;
+    agentNode?: unknown;
+  } = {};
 
-type AgentConfigRow = typeof agentConfig.$inferSelect;
-type AgentConfigSetOptions = { publicReadable?: boolean };
-
-function parseResourceKey(resourceKey: string) {
-  const slashIndex = resourceKey.indexOf("/");
-  if (slashIndex <= 0 || slashIndex === resourceKey.length - 1) return null;
-  return {
-    sourceOrganizationId: resourceKey.slice(0, slashIndex),
-    resourceUid: resourceKey.slice(slashIndex + 1),
-  };
-}
-
-async function listExternalAgentConfigs(ctx: AuthContext): Promise<AgentConfigRow[]> {
-  const refs = await listReadableResourceRefs(ctx, "agent_config");
-  const ids = refs.map((ref) => ref.resourceId);
-  if (ids.length === 0) return [];
-
-  const rows = await db.select().from(agentConfig).where(inArray(agentConfig.id, ids));
-  const refKeys = new Set(refs.map((ref) => `${ref.organizationId}/${ref.resourceId}`));
-  return rows.filter((row) => refKeys.has(`${row.organizationId}/${row.id}`));
-}
-
-export async function listAgentConfigs(ctx: AuthContext): Promise<AgentConfigRowWithAccess[]> {
-  const internal = await db.select().from(agentConfig).where(eq(agentConfig.organizationId, ctx.organizationId));
-  const external = await listExternalAgentConfigs(ctx);
-  return (await decorateResourceAccess(ctx, "agent_config", [
-    ...internal,
-    ...external,
-  ])) as unknown as AgentConfigRowWithAccess[];
-}
-
-export async function getAgentConfigByResourceKey(
-  ctx: AuthContext,
-  resourceKey: string,
-): Promise<AgentConfigDetailWithAccess | null> {
-  const parsed = parseResourceKey(resourceKey);
-  if (!parsed) return null;
-
-  const rows = await db.select().from(agentConfig).where(eq(agentConfig.id, parsed.resourceUid)).limit(1);
-  const row = rows[0] ?? null;
-  if (!row || row.organizationId !== parsed.sourceOrganizationId) return null;
-
-  const readable = await canReadResource(ctx, "agent_config", row.id, row.organizationId);
-  if (!readable) return null;
-
-  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [row]);
-  return decorated as unknown as AgentConfigDetailWithAccess;
-}
-
-export async function getAgentConfig(
-  ctx: AuthContext,
-  nameOrResourceKey: string,
-): Promise<AgentConfigDetailWithAccess | null> {
-  if (parseResourceKey(nameOrResourceKey)) {
-    return getAgentConfigByResourceKey(ctx, nameOrResourceKey);
-  }
-
-  const rows = await db
-    .select()
-    .from(agentConfig)
-    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.name, nameOrResourceKey)))
-    .limit(1);
-  const internal = rows[0] ?? null;
-  if (internal) {
-    const [decorated] = await decorateResourceAccess(ctx, "agent_config", [internal]);
-    return decorated as unknown as AgentConfigDetailWithAccess;
-  }
-
-  const external = (await listExternalAgentConfigs(ctx)).find((row) => row.name === nameOrResourceKey);
-  if (!external) return null;
-
-  const readable = await canReadResource(ctx, "agent_config", external.id, external.organizationId);
-  if (!readable) return null;
-
-  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [external]);
-  return decorated as unknown as AgentConfigDetailWithAccess;
-}
-
-export async function getAgentConfigById(id: string, orgId?: string) {
-  const conditions = [eq(agentConfig.id, id)];
-  if (orgId) {
-    conditions.push(eq(agentConfig.organizationId, orgId));
-  }
-  const rows = await db
-    .select()
-    .from(agentConfig)
-    .where(and(...conditions))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export async function getReadableAgentConfigById(
-  ctx: AuthContext,
-  id: string,
-): Promise<AgentConfigDetailWithAccess | null> {
-  const row = await getAgentConfigById(id);
-  if (!row) return null;
-
-  if (row.organizationId !== ctx.organizationId) {
-    const readable = await canReadResource(ctx, "agent_config", row.id, row.organizationId);
-    if (!readable) return null;
-  }
-
-  const [decorated] = await decorateResourceAccess(ctx, "agent_config", [row]);
-  return decorated as unknown as AgentConfigDetailWithAccess;
-}
-
-/** 将 data 中 AGENT_SETTABLE_FIELDS 范围内的字段映射为 Drizzle set 对象 */
-function buildSetFromData(data: Record<string, unknown>): Partial<typeof agentConfig.$inferInsert> {
-  const set: Partial<typeof agentConfig.$inferInsert> = { updatedAt: new Date() };
   for (const field of AGENT_SETTABLE_FIELDS) {
-    if (data[field] !== undefined) {
-      const drizzleKey = FIELD_ALIAS[field] ?? field;
-      (set as Record<string, unknown>)[drizzleKey] =
-        field === "agentNode" ? (normalizeAgentNode(data[field]) ?? {}) : (data[field] ?? null);
+    const value = data[field];
+    if (value === undefined) continue;
+    switch (field) {
+      case "agentNode":
+        write.agentNode = normalizeAgentNode(value) ?? {};
+        break;
+      case "extra":
+        write.extra = (value ?? null) as Record<string, unknown> | null;
+        break;
+      case "knowledge":
+        // 知识库绑定在 `agent_knowledge_binding`，不是资源行的一列。
+        break;
+      default:
+        write[field] = (value ?? null) as string | null;
     }
   }
-  return set;
+
+  return write;
 }
-
-export async function createAgentConfig(
-  ctx: AuthContext,
-  name: string,
-  data: Record<string, unknown>,
-  options: AgentConfigSetOptions = {},
-) {
-  const set = buildSetFromData(data);
-  const [row] = await db
-    .insert(agentConfig)
-    .values({
-      organizationId: ctx.organizationId,
-      userId: ctx.userId,
-      name,
-      ...set,
-    } as typeof agentConfig.$inferInsert)
-    .onConflictDoUpdate({
-      target: [agentConfig.organizationId, agentConfig.name],
-      set,
-    })
-    .returning({ id: agentConfig.id });
-
-  if (options.publicReadable !== undefined) {
-    await setPublicRead(ctx, "agent_config", ctx.organizationId, row.id, options.publicReadable);
-  }
-
-  return row.id;
-}
-
-export async function updateAgentConfig(
-  ctx: AuthContext,
-  nameOrResourceKey: string,
-  data: Record<string, unknown>,
-  options: AgentConfigSetOptions = {},
-): Promise<boolean> {
-  const existing = await getAgentConfig(ctx, nameOrResourceKey);
-  if (!existing) return false;
-
-  assertInternalWritable(ctx, "agent_config", existing.id, existing.organizationId);
-  const set = buildSetFromData(data);
-  const result = await db
-    .update(agentConfig)
-    .set(set)
-    .where(eq(agentConfig.id, existing.id))
-    .returning({ id: agentConfig.id });
-  if (result.length > 0 && options.publicReadable !== undefined) {
-    await setPublicRead(ctx, "agent_config", ctx.organizationId, existing.id, options.publicReadable);
-  }
-  return result.length > 0;
-}
-
-export async function restartAgentConfigInstances(
-  ctx: AuthContext,
-  nameOrResourceKey: string,
-): Promise<{ environmentIds: string[]; restartedInstanceIds: string[] } | null> {
-  const row = await getAgentConfig(ctx, nameOrResourceKey);
-  if (!row) return null;
-
-  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
-  const boundEnvs = await db
-    .select({ id: environment.id })
-    .from(environment)
-    .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
-  const environmentIds = boundEnvs.map((env) => env.id);
-  if (environmentIds.length === 0) return { environmentIds, restartedInstanceIds: [] };
-
-  // 惰性导入避免 agent-config → agent-instance-service → orchestration-instance → config 的循环依赖。
-  const { agentInstanceService } = await import("@fenix/agent-runtime/server");
-  const restartedInstanceIds = await agentInstanceService.restartActiveInstancesForEnvironments(environmentIds);
-  return { environmentIds, restartedInstanceIds };
-}
-
-export async function deleteAgentConfig(ctx: AuthContext, name: string): Promise<boolean> {
-  const row = await getAgentConfig(ctx, name);
-  if (!row) return false;
-
-  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
-
-  // 删除前先停止绑定 environment 上的运行实例：删除 DB 只移记录，不停止编排实例，
-  // Agent 进程 / controller 活跃表 / registry supplement 与并发额度会残留为泄漏
-  // （见 docs/issues/2026-08-19-agent-delete-instance-leak.md）。
-  // stop 在 DB 事务外执行（stopInstanceViaController 不读 DB，避免把慢速 kill 关进
-  // DB 长事务）；"先停后删"即使 DB 删除失败也只是实例已停、DB 行仍在（可重新 spawn
-  // 恢复），比"先删后停、stop 失败 → 对已删 env 的实例彻底孤儿"更安全。
-  const boundEnvs = await db
-    .select({ id: environment.id })
-    .from(environment)
-    .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
-  if (boundEnvs.length > 0) {
-    const environmentIds = boundEnvs.map((env) => env.id);
-    // 动态 import 保持与运行时装配的惰性边界，避免删除链在模块初始化期形成循环依赖。
-    const { closeAcpConnectionsForEnvironments, stopInstancesForEnvironments } = await import(
-      "@fenix/agent-runtime/server"
-    );
-    // 先关闭本地 ACP 连接，再停止运行实例；否则客户端仍会用已删除环境继续发消息。
-    closeAcpConnectionsForEnvironments(environmentIds);
-    await stopInstancesForEnvironments(environmentIds, {
-      organizationId: row.organizationId,
-    });
-  }
-
-  return db.transaction(async (tx) => {
-    // 绑定 agent 的 runtime environment 在 agent 删除后没有独立业务价值，直接清理掉，
-    // 避免遗留为无绑定环境继续出现在 /web/environments 列表里。
-    await tx
-      .delete(environment)
-      .where(and(eq(environment.organizationId, row.organizationId), eq(environment.agentConfigId, row.id)));
-
-    const result = await tx.delete(agentConfig).where(eq(agentConfig.id, row.id)).returning({ id: agentConfig.id });
-    return result.length > 0;
-  });
-}
-
-export async function assertAgentConfigInternalWritable(
-  ctx: AuthContext,
-  nameOrResourceKey: string,
-): Promise<AgentConfigDetailWithAccess | null> {
-  const row = parseResourceKey(nameOrResourceKey)
-    ? await getAgentConfigByResourceKey(ctx, nameOrResourceKey)
-    : await getAgentConfig(ctx, nameOrResourceKey);
-  if (!row) return null;
-  assertInternalWritable(ctx, "agent_config", row.id, row.organizationId);
-  return row;
-}
-
-export { AGENT_SETTABLE_FIELDS };
 
 // ────────────────────────────────────────────
-// Agent Config 验证与转换
+// Agent Config 验证
 // ────────────────────────────────────────────
 
 type PermissionAction = "ask" | "allow" | "deny";
@@ -420,3 +205,5 @@ function normalizeKnowledgePolicy(value: AgentKnowledgePolicy | null | undefined
 export function isBuiltInAgent(name: string): boolean {
   return BUILT_IN_AGENTS.has(name);
 }
+
+export { AGENT_SETTABLE_FIELDS };

@@ -1,19 +1,31 @@
-import { setPublicRead } from "@fenix/access-control/server";
 import { error as logError } from "@fenix/logger";
 import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk";
-import {
-  addModel,
-  getProvider,
-  getProviderById,
-  type ProviderUpsertData,
-  removeModel,
-  updateModel,
-  upsertProvider,
-} from "@fenix/model-management/server";
-import { ensureSystemAdmin } from "@fenix/resource-identity-admin/server/system-admin";
+import type { AccessControlModule, ActorContext, ResourceQueryConstraint, SystemTenant } from "@fenix/platform-sdk";
+// 系统托管租户经 platform-sdk 的只读窄契约取得：resource 类别不得依赖 platform-impl（identity）。
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { db } from "@server/db";
-import type { AuthContext } from "@server/plugins/auth";
 import { sql } from "drizzle-orm";
+import { providerResource } from "../access/provider-resource";
+import { getModelManagementModule } from "../module-runtime";
+import type { ModelRepository, ModelRow } from "../repositories/model-resource";
+import type { ProviderWriteData } from "../repositories/provider-resource";
+import type { ProviderService } from "../services/provider-service";
+
+/**
+ * 系统模型网关 Provider 的编排。
+ *
+ * 这是**系统路径**：没有请求 actor，动作的归属主体是系统托管租户（见 {@link systemActor}）。它绕过
+ * Facade 直接调用领域服务与子表仓储，理由有两条：
+ *
+ * 1. Facade 会对 `kind === "gateway"` 的行抛出"由系统管理"的拒绝（那正是用户请求路径要的行为），
+ *    系统维护路径必须能改它；
+ * 2. 系统路径不存在"当前主体"，把系统租户伪装成一次用户请求只会让授权的两个来源互相掩盖。
+ *
+ * 但它并不因此绕过授权：所有受控读取都用系统租户主体的 `createListConstraint` 条件，创建时显式写入
+ * `visibility: "public"`（系统网关是全体已认证用户使用模型的唯一入口）。Provider 是 Fenix 的公开
+ * 消费投影，所有上游管理凭证都保留在 Adapter 配置中，因此这里明确写入空 `apiKey`，避免把 LiteLLM
+ * Master Key 暴露给 Agent。
+ */
 
 export const SYSTEM_MODEL_GATEWAY_PROVIDER_NAME = "fenix-model-gateway";
 
@@ -23,15 +35,17 @@ export interface SystemModelGatewayProviderOptions {
   displayName?: string;
 }
 
+/**
+ * 编排依赖；`service` / `models` / `accessControl` 默认取自已装配的资源模块，测试可整体替换。
+ *
+ * 默认值是惰性求值的：模块尚未装配时构造本服务不会立刻抛错（`main.ts` 的模型网关初始化早于任何
+ * 用户请求，但测试会用自己的替身构造）。
+ */
 interface ProviderServiceDeps {
-  ensureSystemAdmin: typeof ensureSystemAdmin;
-  upsertProvider: typeof upsertProvider;
-  setPublicRead: typeof setPublicRead;
-  getProviderById: typeof getProviderById;
-  getProvider: typeof getProvider;
-  addModel: typeof addModel;
-  updateModel: typeof updateModel;
-  removeModel: typeof removeModel;
+  resolveSystemTenant: () => Promise<SystemTenant>;
+  service: ProviderService;
+  models: ModelRepository;
+  accessControl: AccessControlModule;
   adapter?: ModelGatewayAdapter;
   invalidateModelCache: () => void;
   withModelSyncLock: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -68,6 +82,25 @@ export type ModelSyncResult = { added: number; updated: number; removed: number 
 export type ModelGatewayModelSyncDeps = Partial<ProviderServiceDeps>;
 
 /**
+ * 系统网关请求的主体：系统托管租户的 owner。
+ *
+ * 不使用 `systemRole: "super-admin"`：按决策 D8 当前没有任何生产赋值点，那条契约分支只保留给系统
+ * 管理形态确定后的扩展。系统租户的 owner 成员关系已经覆盖它对**自身组织**内资源的全部动作，因此
+ * 这里不需要任何越过归属的特权。
+ *
+ * `memberships` 显式给出"系统租户 + owner"这一条即可：授权只会取当前组织那一条，而这里的
+ * active organization 就是系统租户本身。这个主体只代表系统租户内的操作，不承载其他组织的身份。
+ */
+function systemActor(tenant: SystemTenant): ActorContext {
+  return {
+    kind: "user",
+    userId: tenant.userId,
+    activeOrganizationId: tenant.organizationId,
+    memberships: [{ organizationId: tenant.organizationId, role: "owner" }],
+  };
+}
+
+/**
  * 使用事务级 advisory lock 串行化模型投影同步。
  *
  * 当前模型写入服务仍使用宿主 db 连接，事务在这里主要负责持有跨实例锁；
@@ -80,12 +113,6 @@ async function withDatabaseModelSyncLock<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
-/**
- * 系统模型网关 Provider 编排。
- *
- * Provider 是 Fenix 的公开消费投影，所有上游管理凭证都保留在 Adapter 配置中，
- * 因此这里明确写入空 apiKey，避免把 LiteLLM Master Key 暴露给 Agent。
- */
 export function createSystemModelGatewayProviderService(
   deps: Partial<ProviderServiceDeps> = {},
   options: SystemModelGatewayProviderOptions,
@@ -93,46 +120,110 @@ export function createSystemModelGatewayProviderService(
   if (!options) throw new Error("model gateway provider options are required");
   if (!options.baseUrl.trim()) throw new Error("model gateway provider baseUrl is required");
   if (!options.gatewayType.trim()) throw new Error("model gateway provider gatewayType is required");
-  const resolvedDeps: ProviderServiceDeps = {
-    ensureSystemAdmin: deps.ensureSystemAdmin ?? ensureSystemAdmin,
-    upsertProvider: deps.upsertProvider ?? upsertProvider,
-    setPublicRead: deps.setPublicRead ?? setPublicRead,
-    getProviderById: deps.getProviderById ?? getProviderById,
-    getProvider: deps.getProvider ?? getProvider,
-    addModel: deps.addModel ?? addModel,
-    updateModel: deps.updateModel ?? updateModel,
-    removeModel: deps.removeModel ?? removeModel,
-    adapter: deps.adapter,
-    invalidateModelCache: deps.invalidateModelCache ?? (() => {}),
-    withModelSyncLock: deps.withModelSyncLock ?? withDatabaseModelSyncLock,
-  };
 
-  async function getGatewayContext() {
-    const admin = await resolvedDeps.ensureSystemAdmin();
-    return {
-      admin,
-      context: {
-        organizationId: admin.organization.id,
-        userId: admin.userId,
-        role: "owner" as const,
-      } satisfies AuthContext,
-    };
+  const resolveSystemTenant = deps.resolveSystemTenant ?? (() => getIdentityDirectory().resolveSystemTenant());
+  const service = () => deps.service ?? getModelManagementModule().service;
+  const models = () => deps.models ?? getModelManagementModule().models;
+  const accessControl = () => deps.accessControl ?? getModelManagementModule().accessControl;
+  const facade = () => getModelManagementModule().facade;
+  const invalidateModelCache = deps.invalidateModelCache ?? (() => {});
+  const withModelSyncLock = deps.withModelSyncLock ?? withDatabaseModelSyncLock;
+
+  /** 系统主体 + 它在该资源上的读取条件；两者必须成对使用，分开获取会让条件对不上主体。 */
+  async function systemContext(): Promise<{
+    tenant: SystemTenant;
+    actor: ActorContext;
+    access: ResourceQueryConstraint;
+  }> {
+    const tenant = await resolveSystemTenant();
+    const actor = systemActor(tenant);
+    const access = await accessControl().createListConstraint({
+      actor,
+      action: "read",
+      resource: providerResource.definition,
+    });
+    return { tenant, actor, access };
   }
 
   function getAdapter() {
-    if (!resolvedDeps.adapter) throw new Error("model gateway adapter is not configured");
-    return resolvedDeps.adapter;
+    if (!deps.adapter) throw new Error("model gateway adapter is not configured");
+    return deps.adapter;
   }
 
-  async function readModels(providerId: string) {
-    const { admin, context } = await getGatewayContext();
-    const providerRow = await resolvedDeps.getProviderById(context, providerId);
+  /** 按名读取系统网关 Provider；同组织同名是唯一索引约束，因此至多一行。 */
+  async function findGatewayProvider(access: ResourceQueryConstraint, tenant: SystemTenant) {
+    return service().findByName({
+      access,
+      name: SYSTEM_MODEL_GATEWAY_PROVIDER_NAME,
+      organizationId: tenant.organizationId,
+    });
+  }
+
+  function toSummary(
+    tenant: SystemTenant,
+    row: { id: string; name: string; displayName: string | null; gatewayType: string | null; baseUrl: string | null },
+    modelCount: number,
+  ): ModelGatewayProviderSummary {
+    return {
+      id: row.id,
+      name: row.name,
+      displayName: row.displayName ?? SYSTEM_MODEL_GATEWAY_PROVIDER_NAME,
+      gatewayType: row.gatewayType ?? options.gatewayType,
+      baseUrl: row.baseUrl,
+      modelCount,
+      owner: { email: tenant.email, organizationSlug: tenant.organizationSlug },
+    };
+  }
+
+  /** Gateway Provider 的可写配置；创建与同步共用，保证两条路径写出的字段集合一致。 */
+  function gatewayWriteData(): ProviderWriteData {
+    return {
+      displayName: options.displayName ?? "全局模型网关",
+      kind: "gateway",
+      gatewayType: options.gatewayType,
+      protocol: "openai",
+      baseUrl: options.baseUrl,
+      apiKey: null,
+    };
+  }
+
+  /** 读取网关 Provider 行与两侧模型清单（本地投影 + 上游），是 check / sync 的共同前置。 */
+  async function readGateway(providerId: string) {
+    const { tenant, access } = await systemContext();
+    const providerRow = await service().findById({ access, resourceId: providerId });
     if (providerRow?.kind !== "gateway") throw new Error("model gateway provider not found");
     if (providerRow.gatewayType !== options.gatewayType) throw new Error("model gateway type mismatch");
-    return { admin, context, providerRow, remoteModels: await getAdapter().listModels() };
+    return {
+      tenant,
+      providerRow,
+      localModels: await models().listByProviderId({ providerId }),
+      remoteModels: await getAdapter().listModels(),
+    };
   }
 
-  function diffModels(existing: Array<{ modelId: string; displayName: string | null }>, remote: GatewayModel[]) {
+  /** 确保系统网关 Provider 存在，返回它的资源 ID。 */
+  async function ensureProvider(): Promise<string> {
+    const { tenant, access } = await systemContext();
+    const existing = await findGatewayProvider(access, tenant);
+    if (existing) {
+      if (existing.kind !== "gateway") throw new Error("system model gateway provider has an invalid kind");
+      return existing.id;
+    }
+
+    const resourceId = await service().create({
+      name: SYSTEM_MODEL_GATEWAY_PROVIDER_NAME,
+      data: gatewayWriteData(),
+      organizationId: tenant.organizationId,
+      ownerUserId: tenant.userId,
+      // 系统网关必须对全体已认证用户可读：它是 Agent 使用模型的唯一入口。归属仍留在系统租户，
+      // `visibility` 只放开 read，不放开 update / delete。
+      visibility: "public",
+    });
+    if (resourceId === undefined) throw new Error("system model gateway provider could not be persisted");
+    return resourceId;
+  }
+
+  function diffModels(existing: readonly ModelRow[], remote: GatewayModel[]) {
     const existingById = new Map(existing.map((item) => [item.modelId, item]));
     const remoteById = new Map(remote.map((item) => [item.id, item]));
     const changes: ModelSyncChange[] = [];
@@ -140,7 +231,9 @@ export function createSystemModelGatewayProviderService(
       const current = existingById.get(item.id);
       const displayName = item.displayName ?? item.id;
       if (!current) changes.push({ modelId: item.id, kind: "added", displayName });
-      else if (current.displayName !== displayName) changes.push({ modelId: item.id, kind: "updated", displayName });
+      else if (current.displayName !== displayName) {
+        changes.push({ modelId: item.id, kind: "updated", displayName });
+      }
     }
     for (const item of existing) {
       if (!remoteById.has(item.modelId)) {
@@ -151,9 +244,14 @@ export function createSystemModelGatewayProviderService(
   }
 
   return {
-    /** 返回当前调用者可读取的指定 Gateway Provider 摘要，供 Provider 上下文页面使用。 */
-    async getProviderForUsage(context: AuthContext, providerId: string) {
-      const provider = await resolvedDeps.getProviderById(context, providerId);
+    /**
+     * 返回当前调用者可读取的指定 Gateway Provider 摘要，供 Provider 上下文页面使用。
+     *
+     * 这是**用户请求路径**：授权经 Facade 的受控读取完成，`actor` 必须是真实请求主体（宿主从
+     * `store.actor` 注入），不得传系统主体——那会让任何调用者都读得到系统租户的资源。
+     */
+    async getProviderForUsage(actor: ActorContext, providerId: string) {
+      const provider = await facade().getById(actor, providerId);
       if (provider?.kind !== "gateway" || provider.gatewayType !== options.gatewayType) {
         throw new Error("model gateway provider is unavailable");
       }
@@ -165,62 +263,25 @@ export function createSystemModelGatewayProviderService(
     },
     /** 读取本地 Gateway Provider 投影，不访问 LiteLLM 上游。 */
     async getConfiguration(): Promise<{ provider: ModelGatewayProviderSummary | null }> {
-      const { admin, context } = await getGatewayContext();
-      const providerRow = await resolvedDeps.getProvider(context, SYSTEM_MODEL_GATEWAY_PROVIDER_NAME);
+      const { tenant, access } = await systemContext();
+      const providerRow = await findGatewayProvider(access, tenant);
       if (providerRow?.kind !== "gateway") return { provider: null };
-      return {
-        provider: {
-          id: providerRow.id,
-          name: providerRow.name,
-          displayName: providerRow.displayName ?? SYSTEM_MODEL_GATEWAY_PROVIDER_NAME,
-          gatewayType: providerRow.gatewayType ?? options.gatewayType,
-          baseUrl: providerRow.baseUrl,
-          modelCount: providerRow.models?.length ?? 0,
-          owner: { email: admin.email, organizationSlug: admin.organization.slug },
-        },
-      };
+      const localModels = await models().listByProviderId({ providerId: providerRow.id });
+      return { provider: toSummary(tenant, providerRow, localModels.length) };
     },
     /** 获取现有系统 Provider，不更新其配置，用于检查配置差异。 */
-    async getProviderForCheck(): Promise<string> {
-      return this.ensureProvider();
-    },
-    async ensureProvider(): Promise<string> {
-      const { admin, context } = await getGatewayContext();
-      const existing = await resolvedDeps.getProvider(context, SYSTEM_MODEL_GATEWAY_PROVIDER_NAME);
-      if (existing) {
-        if (existing.kind !== "gateway") throw new Error("system model gateway provider has an invalid kind");
-        return existing.id;
-      }
-      const data: ProviderUpsertData = {
-        displayName: options.displayName ?? "全局模型网关",
-        kind: "gateway",
-        gatewayType: options.gatewayType,
-        protocol: "openai",
-        baseUrl: options.baseUrl,
-        apiKey: null,
-      };
-      const providerId = await resolvedDeps.upsertProvider(context, SYSTEM_MODEL_GATEWAY_PROVIDER_NAME, data);
-      await resolvedDeps.setPublicRead(context, "provider", admin.organization.id, providerId, true);
-      return providerId;
-    },
+    getProviderForCheck: () => ensureProvider(),
+    ensureProvider,
     async checkModels(providerId: string): Promise<ModelSyncCheckResult> {
       try {
-        const { admin, providerRow, remoteModels } = await readModels(providerId);
-        const changes = diffModels(providerRow.models ?? [], remoteModels);
+        const { tenant, providerRow, localModels, remoteModels } = await readGateway(providerId);
+        const changes = diffModels(localModels, remoteModels);
         const providerBaseUrlChanged = providerRow.baseUrl !== options.baseUrl;
         return {
           status: changes.length > 0 || providerBaseUrlChanged ? "pending" : "synced",
           changes,
           models: remoteModels,
-          provider: {
-            id: providerRow.id,
-            name: providerRow.name,
-            displayName: providerRow.displayName ?? SYSTEM_MODEL_GATEWAY_PROVIDER_NAME,
-            gatewayType: providerRow.gatewayType ?? options.gatewayType,
-            baseUrl: providerRow.baseUrl,
-            modelCount: providerRow.models?.length ?? 0,
-            owner: { email: admin.email, organizationSlug: admin.organization.slug },
-          },
+          provider: toSummary(tenant, providerRow, localModels.length),
           ...(providerBaseUrlChanged ? { providerBaseUrlChanged: true } : {}),
         };
       } catch (error) {
@@ -233,41 +294,41 @@ export function createSystemModelGatewayProviderService(
       }
     },
     async syncModels(providerId: string): Promise<ModelSyncResult> {
-      return resolvedDeps.withModelSyncLock(async () => {
-        const { context, providerRow, remoteModels } = await readModels(providerId);
+      return withModelSyncLock(async () => {
+        const { providerRow, localModels, remoteModels } = await readGateway(providerId);
+
         // 配置变更在同步动作中落库，检查动作保持只读，避免掩盖待同步状态。
         if (providerRow.baseUrl !== options.baseUrl) {
-          await resolvedDeps.upsertProvider(context, SYSTEM_MODEL_GATEWAY_PROVIDER_NAME, {
-            displayName: options.displayName ?? "全局模型网关",
-            kind: "gateway",
-            gatewayType: options.gatewayType,
-            protocol: "openai",
-            baseUrl: options.baseUrl,
-            apiKey: null,
-          });
+          const updated = await service().update({ resourceId: providerRow.id, data: gatewayWriteData() });
+          if (!updated) throw new Error("model gateway provider not found");
         }
-        const changes = diffModels(providerRow.models ?? [], remoteModels);
+
+        const changes = diffModels(localModels, remoteModels);
         let added = 0;
         let updated = 0;
         let removed = 0;
         for (const change of changes) {
+          const scope = { organizationId: providerRow.organizationId, providerId };
           if (change.kind === "added") {
-            await resolvedDeps.addModel(context, providerId, {
+            await models().upsert({
+              ...scope,
               modelId: change.modelId,
-              displayName: change.displayName,
+              data: { displayName: change.displayName },
             });
             added += 1;
           } else if (change.kind === "updated") {
-            await resolvedDeps.updateModel(context, providerId, change.modelId, {
-              displayName: change.displayName,
+            await models().updateByModelId({
+              ...scope,
+              modelId: change.modelId,
+              data: { displayName: change.displayName },
             });
             updated += 1;
           } else {
-            await resolvedDeps.removeModel(context, providerId, change.modelId);
+            await models().removeByModelId({ ...scope, modelId: change.modelId });
             removed += 1;
           }
         }
-        if (changes.length > 0) resolvedDeps.invalidateModelCache();
+        if (changes.length > 0) invalidateModelCache();
         return { added, updated, removed };
       });
     },

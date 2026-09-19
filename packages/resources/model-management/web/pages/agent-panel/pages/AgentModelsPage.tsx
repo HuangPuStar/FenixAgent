@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useOrg } from "@/src/contexts/OrgContext";
 import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
@@ -17,6 +18,9 @@ import "./agent-models-states.css";
 export function AgentModelsPage() {
   const { t } = useTranslation("models");
   const navigate = useNavigate();
+  // 当前组织 id 用于判定 Provider 归属：`/web` 视图只给 scope.organizationId，需本地比对才知道是否共享来源。
+  const { org } = useOrg();
+  const activeOrganizationId = org?.id;
   const data = useAgentModelsData();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<ProviderScope>("all");
@@ -31,7 +35,7 @@ export function AgentModelsPage() {
   const filteredProviders = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return providers.filter((provider) => {
-      if (!providerMatchesScope(provider, scope)) return false;
+      if (!providerMatchesScope(provider, scope, activeOrganizationId)) return false;
       if (!keyword) return true;
       const models = modelsByProvider[getProviderKey(provider)] ?? [];
       return [provider.id, provider.name, provider.protocol, ...models.flatMap((model) => [model.id, model.name])]
@@ -39,7 +43,7 @@ export function AgentModelsPage() {
         .toLowerCase()
         .includes(keyword);
     });
-  }, [modelsByProvider, providers, query, scope]);
+  }, [activeOrganizationId, modelsByProvider, providers, query, scope]);
 
   const selectedProvider =
     filteredProviders.find((provider) => getProviderKey(provider) === selectedKey) ?? filteredProviders[0] ?? null;
@@ -72,6 +76,7 @@ export function AgentModelsPage() {
         allProviders={providers}
         modelsByProvider={modelsByProvider}
         selectedProvider={selectedProvider}
+        activeOrganizationId={activeOrganizationId}
         query={query}
         scope={scope}
         detailFailures={data.catalog.data?.detailFailures ?? []}

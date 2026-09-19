@@ -1,4 +1,5 @@
 import { environmentRepo } from "@fenix/agent-runtime/server";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import {
@@ -14,7 +15,6 @@ import {
   UpdateChannelBindingRequestSchema,
   UpdateChannelBindingResponseSchema,
 } from "../../schemas/channel.schema";
-import { WebErrSchema } from "../../schemas/common.schema";
 import { createBinding, deleteBinding, listBindings, updateBinding } from "../../services/channel-binding";
 import { listChannelProviders } from "../../services/channel-provider";
 import { getHermesClient } from "../../services/hermes-client";

@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { bootstrapModules, createModuleRegistry, type ModuleManifest, parseAssemblyProfile } from "../index";
 
 const validProfile = {
+  identity: "identity",
   accessControl: "access-control",
   agentRuntime: "agent-runtime",
   webShell: "default",
@@ -21,6 +22,16 @@ const webShellManifest: ModuleManifest = {
 /** 构造覆盖基础模块、资源贡献和依赖顺序的最小可信 registry。 */
 function createManifests(events: string[] = []): readonly ModuleManifest[] {
   return [
+    {
+      id: "identity",
+      kind: "identity",
+      dependsOn: [],
+      capabilities: ["platform.identity"],
+      create: () => {
+        events.push("create:identity");
+        return { id: "identity" };
+      },
+    },
     {
       id: "access-control",
       kind: "access-control",
@@ -67,6 +78,7 @@ describe("assembly profile", () => {
   // Agent 高耦合能力以单一 agentRuntime 槽位装配，旧字段不能形成第二套契约。
   test("使用 agentRuntime 字段选择单一 Agent Runtime 模块并拒绝旧字段", () => {
     const agentRuntimeProfile = {
+      identity: "identity",
       accessControl: "access-control",
       agentRuntime: "agent-runtime",
       webShell: "default",
@@ -84,6 +96,12 @@ describe("assembly profile", () => {
   // 合法 profile 只保留稳定装配字段，不接受运行时代码入口。
   test("解析合法的静态装配 profile", () => {
     expect(parseAssemblyProfile(validProfile)).toEqual(validProfile);
+  });
+
+  // Identity 是身份、组织与成员的唯一 owner；缺失该字段不能退化为"无身份模块"启动。
+  test("拒绝缺少 identity 的 profile", () => {
+    const { identity: _identity, ...withoutIdentity } = validProfile;
+    expect(() => parseAssemblyProfile(withoutIdentity)).toThrow("装配配置格式非法");
   });
 
   // 未知字段可能携带路径、URL 或表达式，必须由 strict schema 整体拒绝。
@@ -166,44 +184,40 @@ describe("module registry", () => {
     );
   });
 
-  // Shell 只做绑定校验，不进入 server 实例化的模块列表。
+  // Shell 只做绑定校验，不进入 server 实例化的模块列表；Identity 与 AccessControl 各自成套。
   test("Web Shell 不参与 server 侧实例化", () => {
     const registry = createModuleRegistry(createManifests());
     expect(registry.resolveProfile(validProfile).modules.map((manifest) => manifest.id)).toEqual([
-      "access-control",
-      "agent-runtime",
-      "agent-config",
-    ]);
-  });
-
-  // Identity 落地前 identity 字段可选；一旦声明就必须是已注册且可创建的 Identity 模块。
-  test("identity 暂为可选字段，声明时必须已注册", () => {
-    const registry = createModuleRegistry(createManifests());
-    expect(registry.resolveProfile(validProfile).profile.identity).toBeUndefined();
-    expect(() => registry.resolveProfile({ ...validProfile, identity: "identity" })).toThrow(
-      "装配配置引用了未注册模块: identity",
-    );
-  });
-
-  // Identity 与 AccessControl 各自独立成套启用，声明后必须纳入依赖排序。
-  test("声明 identity 时按依赖顺序纳入装配", () => {
-    const manifests = [
-      ...createManifests(),
-      {
-        id: "identity",
-        kind: "identity",
-        dependsOn: [],
-        capabilities: ["platform.identity"],
-        create: () => ({ id: "identity" }),
-      },
-    ] satisfies readonly ModuleManifest[];
-    const resolved = createModuleRegistry(manifests).resolveProfile({ ...validProfile, identity: "identity" });
-    expect(resolved.modules.map((manifest) => manifest.id)).toEqual([
       "identity",
       "access-control",
       "agent-runtime",
       "agent-config",
     ]);
+  });
+
+  // Identity 一经声明就必须来自构建期 registry，不能退化为按包名动态发现。
+  test("identity 指向未注册模块时失败", () => {
+    const registry = createModuleRegistry(createManifests());
+    expect(() => registry.resolveProfile({ ...validProfile, identity: "identity-ee" })).toThrow(
+      "装配配置引用了未注册模块: identity-ee",
+    );
+  });
+
+  // Identity 与 AccessControl 是两个独立平台实现，类别不能被对方顶替。
+  test("identity 槽位拒绝非 identity 类别的模块", () => {
+    const registry = createModuleRegistry(createManifests());
+    expect(() => registry.resolveProfile({ ...validProfile, identity: "access-control" })).toThrow(
+      "模块 access-control 必须是 identity，实际为 access-control",
+    );
+  });
+
+  // 身份不可用时不启动：没有工厂的 identity 模块必须在任何实例创建前失败。
+  test("拒绝没有工厂的 identity 模块", () => {
+    const manifests = createManifests().map((manifest) =>
+      manifest.id === "identity" ? { ...manifest, create: undefined } : manifest,
+    );
+    const registry = createModuleRegistry(manifests);
+    expect(() => registry.resolveProfile(validProfile)).toThrow("基础模块 identity 未提供创建工厂");
   });
 
   // 同一独占 capability 只能由一个已启用 manifest 提供，替换必须通过 profile 完成。
@@ -228,6 +242,14 @@ describe("module registry", () => {
 });
 
 describe("module bootstrap", () => {
+  /** 生命周期用例共用的 identity 模块：必填基础模块，但不注册任何 cleanup。 */
+  const identityLifecycleManifest: ModuleManifest = {
+    id: "identity",
+    kind: "identity",
+    dependsOn: [],
+    create: () => ({ id: "identity" }),
+  };
+
   // bootstrap 必须先汇总 env，再按依赖创建实例，最后挂载贡献。
   test("按固定阶段和依赖顺序装配模块", async () => {
     const events: string[] = [];
@@ -245,11 +267,18 @@ describe("module bootstrap", () => {
 
     expect(events).toEqual([
       "env:AUTH_MODE",
+      "create:identity",
       "create:access:session",
       "create:agent-runtime:true",
       "mount:agent-config:agent-config.routes",
     ]);
-    expect(result.modules.map((manifest) => manifest.id)).toEqual(["access-control", "agent-runtime", "agent-config"]);
+    expect(result.modules.map((manifest) => manifest.id)).toEqual([
+      "identity",
+      "access-control",
+      "agent-runtime",
+      "agent-config",
+    ]);
+    expect(result.instances.has("identity")).toBeTrue();
     expect(result.instances.has("access-control")).toBeTrue();
     expect(result.webContributions.get("agent-config")).toEqual({ route: "/agents" });
   });
@@ -258,6 +287,7 @@ describe("module bootstrap", () => {
   test("提供幂等的逆序 dispose", async () => {
     const events: string[] = [];
     const lifecycleManifests = [
+      identityLifecycleManifest,
       {
         id: "access-control",
         kind: "access-control",
@@ -297,6 +327,7 @@ describe("module bootstrap", () => {
   test("工厂失败时逆序回滚全部已登记资源", async () => {
     const events: string[] = [];
     const lifecycleManifests = [
+      identityLifecycleManifest,
       {
         id: "access-control",
         kind: "access-control",
@@ -335,6 +366,7 @@ describe("module bootstrap", () => {
   test("基础工厂返回空实例时失败并回滚", async () => {
     const events: string[] = [];
     const lifecycleManifests = [
+      identityLifecycleManifest,
       {
         id: "access-control",
         kind: "access-control",
@@ -372,6 +404,7 @@ describe("module bootstrap", () => {
   test("贡献挂载失败时逆序回滚挂载项和模块", async () => {
     const events: string[] = [];
     const lifecycleManifests = [
+      identityLifecycleManifest,
       {
         id: "access-control",
         kind: "access-control",

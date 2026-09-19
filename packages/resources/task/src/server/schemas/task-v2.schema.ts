@@ -1,5 +1,5 @@
+import { PaginationParamsSchema, WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
-import { PaginationParamsSchema, WebOkSchema } from "./common.schema";
 
 /** 校验 IANA 时区名称，空字符串由 service 层归一化为默认时区。 */
 const timezoneSchema = z.string().refine((timezone) => {

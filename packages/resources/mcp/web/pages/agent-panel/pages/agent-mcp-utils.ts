@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import type { McpServerConfig, McpServerInfo } from "@/src/types/config";
-import { getMcpDisplayName } from "../../../lib/mcp-resource-access";
+import { getMcpDisplayName, isExternalMcp } from "../../../lib/mcp-resource-access";
 
 export type McpCatalogScope = "all" | "organization" | "public";
 export type KeyValueEntry = { key: string; value: string };
@@ -181,12 +181,23 @@ export function buildMcpPayload(input: {
   };
 }
 
-/** 依据真实资源归属、公开授权状态和查询条件筛选插件。 */
-export function filterMcpServers(servers: McpServerInfo[], query: string, scope: McpCatalogScope): McpServerInfo[] {
+/**
+ * 依据真实资源归属、公开授权状态和查询条件筛选插件。
+ *
+ * 判定依据已从旧栈的 `resourceAccess` 换成新授权视图：归属看 `scope.organizationId` 是否等于当前
+ * 组织（不等即外部资源），公开状态看 `scope.visibility`。`activeOrganizationId` 缺失时按本组织
+ * 视角处理，避免未加载组织上下文时把外部资源误判为本组织资源。
+ */
+export function filterMcpServers(
+  servers: McpServerInfo[],
+  query: string,
+  scope: McpCatalogScope,
+  activeOrganizationId?: string,
+): McpServerInfo[] {
   const keyword = query.trim().toLowerCase();
   return servers.filter((server) => {
-    if (scope === "organization" && server.resourceAccess?.ownership === "external") return false;
-    if (scope === "public" && server.resourceAccess?.publicReadable !== true) return false;
+    if (scope === "organization" && isExternalMcp(server, activeOrganizationId)) return false;
+    if (scope === "public" && server.scope?.visibility !== "public") return false;
     if (!keyword) return true;
     return [getMcpDisplayName(server), server.name, server.summary, server.type]
       .filter(Boolean)
@@ -196,11 +207,11 @@ export function filterMcpServers(servers: McpServerInfo[], query: string, scope:
   });
 }
 
-/** 返回插件目录中本组织与明确公开资源的数量。 */
-export function countMcpScopes(servers: McpServerInfo[]) {
+/** 返回插件目录中本组织与公开资源的数量；判定依据同 {@link filterMcpServers}。 */
+export function countMcpScopes(servers: McpServerInfo[], activeOrganizationId?: string) {
   return {
-    organization: servers.filter((server) => server.resourceAccess?.ownership !== "external").length,
-    public: servers.filter((server) => server.resourceAccess?.publicReadable === true).length,
+    organization: servers.filter((server) => !isExternalMcp(server, activeOrganizationId)).length,
+    public: servers.filter((server) => server.scope?.visibility === "public").length,
   };
 }
 

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { log, warn } from "@fenix/logger";
 import { db } from "@server/db";
 import { skill } from "@server/db/schema";
-import { getGlobalSkillsDir } from "../skill";
+import { getGlobalSkillsDir } from "../skill-content";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "../skill-fs";
 
 export interface SkillStorageMigrationRow {

@@ -1,19 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { mapMcpOptions, mapModelOptions } from "@/src/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ProviderInfo, ResourceAccess } from "@/src/types/config";
+import type { ModelEntry, ProviderInfo } from "@/src/types/config";
 import { buildModelOptions } from "../components/config/ModelConfigDialog";
+import type { ProviderResourceLike } from "../lib/provider-resource-access";
+import {
+  canManageProviderSharing,
+  getProviderAccessBadgeKey,
+  getProviderDisplayName,
+  getProviderKey,
+  isExternalProvider,
+  isProviderWritable,
+  isPublicProvider,
+} from "../lib/provider-resource-access";
 import {
   buildProviderInlineTestPayload,
   buildProviderPublicReadablePayload,
   canWriteProvider,
-  getProviderDisplayName,
+  getProviderKey as getProviderCatalogKey,
   getProviderIconModelId,
-  getProviderKey,
   getProviderResourceBadgeKey,
   providerMatchesScope,
   supportsThinking,
 } from "../pages/agent-panel/pages/agent-models-utils";
 
+const ACTIVE_ORG_ID = "org-current";
+
+/** 本组织 Provider：具备 update 动作，可写且可管理公开受众。 */
 const internalProvider: ProviderInfo = {
   providerId: "provider-internal",
   id: "openai",
@@ -24,18 +36,11 @@ const internalProvider: ProviderInfo = {
   keyHint: "***1234",
   baseURL: "https://internal.example.com",
   modelCount: 1,
-  resourceAccess: {
-    ownership: "internal",
-    sourceOrganizationId: "org-current",
-    sourceOrganizationName: "Current Team",
-    resourceUid: "provider-internal",
-    resourceKey: "org-current/provider-internal",
-    manageable: true,
-    writable: true,
-    publicReadable: false,
-  },
+  scope: { organizationId: ACTIVE_ORG_ID, visibility: "private" },
+  access: { actions: ["read", "update", "delete"] },
 };
 
+/** 跨组织 Provider：只有 read 动作，界面必须完全只读。 */
 const externalProvider: ProviderInfo = {
   providerId: "provider-external",
   id: "openai",
@@ -46,79 +51,134 @@ const externalProvider: ProviderInfo = {
   keyHint: "***5678",
   baseURL: "https://external.example.com",
   modelCount: 1,
-  resourceAccess: {
-    ownership: "external",
-    sourceOrganizationId: "org-source",
-    sourceOrganizationName: "Source Team",
-    resourceUid: "provider-external",
-    resourceKey: "org-source/provider-external",
-    manageable: false,
-    writable: false,
-  },
+  scope: { organizationId: "org-source", visibility: "private" },
+  access: { actions: ["read"] },
 };
 
-const externalModel: ModelEntry = {
+/** 已对其他组织公开的本组织 Provider。 */
+const publicProvider: ProviderInfo = {
+  ...internalProvider,
+  scope: { ...internalProvider.scope, visibility: "public" },
+};
+
+/** 共享来源模型：授权视图与公开状态继承所属 Provider，模型自身不持有归属。 */
+const sharedModel: ModelEntry = {
   id: "model-uuid-shared",
   modelId: "shared-model",
   displayName: "Shared Model",
   provider: "openai",
+  providerId: "provider-external",
   providerDisplayName: "OpenAI Shared",
   contextLimit: 128000,
   outputLimit: 4096,
-  providerResourceKey: "org-source/provider-external",
-  providerResourceAccess: externalProvider.resourceAccess,
+  organizationName: "Source Team",
+  scope: { organizationId: "org-source", visibility: "private" },
+  access: { actions: ["read"] },
 };
 
-const sharedMcpAccess: ResourceAccess = {
-  ownership: "external",
-  sourceOrganizationId: "org-source",
-  sourceOrganizationName: "Source Team",
-  resourceUid: "mcp-external",
-  resourceKey: "org-source/mcp-external",
-  manageable: false,
-  writable: false,
+/** 本组织模型：与所属 Provider 同组织，具备写动作。 */
+const internalModel: ModelEntry = {
+  ...sharedModel,
+  id: "model-uuid-internal",
+  modelId: "internal-model",
+  displayName: "Internal Model",
+  providerId: "provider-internal",
+  providerDisplayName: "OpenAI",
+  organizationName: "Current Team",
+  scope: { organizationId: ACTIVE_ORG_ID, visibility: "private" },
+  access: { actions: ["read", "update"] },
+};
+
+// `/web` MCP 视图的共享来源样例：新授权栈返回 `scope` + `organizationName`，不再有 `resourceAccess`。
+const sharedMcpView = {
+  scope: { organizationId: "org-source", visibility: "private" } as const,
+  organizationName: "Source Team",
 };
 
 describe("provider model resource access flow", () => {
-  // 内部和外部同名 provider 使用 resourceKey 区分，不会覆盖 models map
-  test("uses stable provider resource keys for same-name providers", () => {
+  // 同名 Provider 用归属范围与 providerId 生成的资源键区分，不会互相覆盖。
+  test("uses scope organization id and provider id as the provider key", () => {
     expect(getProviderKey(internalProvider)).toBe("org-current/provider-internal");
     expect(getProviderKey(externalProvider)).toBe("org-source/provider-external");
-    expect(getProviderDisplayName(internalProvider)).toBe("Current Team/openai");
-    expect(getProviderDisplayName(externalProvider)).toBe("Source Team/openai");
+    // 列表消费点与授权子模块共用同一份键推导，避免两处漂移。
+    expect(getProviderCatalogKey(externalProvider)).toBe("org-source/provider-external");
   });
 
-  // 外部 provider 与系统管理的 Gateway Provider 均不暴露 edit/delete/test/add model 写入口。
-  test("marks external and gateway providers as read-only", () => {
-    const gatewayProvider: ProviderInfo = {
-      ...internalProvider,
-      kind: "gateway",
-      gatewayType: "litellm",
-    };
+  // 展示名取配置的展示名，缺失或为空时退回配置名，不得展示空名称。
+  test("falls back to the provider config name when display name is missing", () => {
+    expect(getProviderDisplayName(internalProvider)).toBe("OpenAI");
+    expect(getProviderDisplayName({ ...internalProvider, name: "" })).toBe("openai");
+    expect(getProviderDisplayName({ id: "legacy-provider" })).toBe("legacy-provider");
+  });
 
+  // 跨组织资源按 scope.organizationId 与当前组织比对判定，缺任一侧都按本组织处理。
+  test("detects external providers by scope organization id", () => {
+    expect(isExternalProvider(internalProvider, ACTIVE_ORG_ID)).toBe(false);
+    expect(isExternalProvider(externalProvider, ACTIVE_ORG_ID)).toBe(true);
+    // 组织上下文未就绪时不得把自己的 Provider 误判为共享来源。
+    expect(isExternalProvider(externalProvider, undefined)).toBe(false);
+    // 无归属组织的个人资源按本组织处理。
+    expect(isExternalProvider({ id: "personal" }, ACTIVE_ORG_ID)).toBe(false);
+  });
+
+  // 公开状态只由 scope.visibility 决定，与归属组织无关。
+  test("reads public visibility from scope only", () => {
+    expect(isPublicProvider(internalProvider)).toBe(false);
+    expect(isPublicProvider(publicProvider)).toBe(true);
+  });
+
+  // 可写性只由 access.actions 的 update 决定，跨组织 Provider 只有 read 动作时只读。
+  test("marks external providers as read-only", () => {
+    expect(isProviderWritable(internalProvider)).toBe(true);
+    expect(isProviderWritable(externalProvider)).toBe(false);
+    expect(isProviderWritable({ ...internalProvider, access: { actions: ["read", "create", "delete"] } })).toBe(false);
     expect(canWriteProvider(internalProvider)).toBe(true);
     expect(canWriteProvider(externalProvider)).toBe(false);
+  });
+
+  // 授权视图缺失时保守拒绝写权限，不得沿用旧栈「字段缺失即放行」的兜底。
+  test("denies write access when the authorization view is missing", () => {
+    const withoutAccess: ProviderResourceLike = { id: "legacy-provider", scope: internalProvider.scope };
+    expect(isProviderWritable(withoutAccess)).toBe(false);
+    expect(canManageProviderSharing(withoutAccess)).toBe(false);
+    expect(canManageProviderSharing({ ...withoutAccess, access: {} })).toBe(false);
+  });
+
+  // 系统托管的 Gateway Provider 界面保持只读，避免暴露必然返回 FORBIDDEN 的写入口。
+  test("keeps gateway providers read-only", () => {
+    const gatewayProvider: ProviderInfo = { ...internalProvider, kind: "gateway", gatewayType: "litellm" };
     expect(canWriteProvider(gatewayProvider)).toBe(false);
-    expect(getProviderResourceBadgeKey(internalProvider)).toBe("resource.internal");
-    expect(getProviderResourceBadgeKey(externalProvider)).toBe("resource.external");
+    // 授权动作本身仍表明主体对该 Provider 配置有写权限，只读是目录层的额外约束。
+    expect(isProviderWritable(gatewayProvider)).toBe(true);
+  });
+
+  // 公开受众变更与写配置同权：只有具备 update 动作的主体才能管理。
+  test("requires the update action to manage sharing", () => {
+    expect(canManageProviderSharing(internalProvider)).toBe(true);
+    expect(canManageProviderSharing(externalProvider)).toBe(false);
+  });
+
+  // 角标优先级：跨组织共享优先，其次公开，否则本组织私有。
+  test("derives the access badge key from scope", () => {
+    expect(getProviderResourceBadgeKey(internalProvider, ACTIVE_ORG_ID)).toBe("resource.internal");
+    expect(getProviderResourceBadgeKey(externalProvider, ACTIVE_ORG_ID)).toBe("resource.external");
+    expect(getProviderResourceBadgeKey(publicProvider, ACTIVE_ORG_ID)).toBe("resource.public");
+    expect(getProviderAccessBadgeKey(externalProvider, ACTIVE_ORG_ID)).toBe("resource.external");
   });
 
   // 本组织与公开是独立且可重叠的筛选维度。
   test("matches provider organization and public scopes independently", () => {
-    const publicInternalProvider: ProviderInfo = {
-      ...internalProvider,
-      resourceAccess: { ...internalProvider.resourceAccess!, publicReadable: true },
-    };
     const publicExternalProvider: ProviderInfo = {
       ...externalProvider,
-      resourceAccess: { ...externalProvider.resourceAccess!, publicReadable: true },
+      scope: { ...externalProvider.scope, visibility: "public" },
     };
 
-    expect(providerMatchesScope(internalProvider, "organization")).toBe(true);
-    expect(providerMatchesScope(externalProvider, "organization")).toBe(false);
-    expect(providerMatchesScope(publicInternalProvider, "public")).toBe(true);
-    expect(providerMatchesScope(publicExternalProvider, "public")).toBe(true);
-    expect(providerMatchesScope(externalProvider, "public")).toBe(false);
+    expect(providerMatchesScope(internalProvider, "all", ACTIVE_ORG_ID)).toBe(true);
+    expect(providerMatchesScope(internalProvider, "organization", ACTIVE_ORG_ID)).toBe(true);
+    expect(providerMatchesScope(externalProvider, "organization", ACTIVE_ORG_ID)).toBe(false);
+    expect(providerMatchesScope(publicProvider, "public", ACTIVE_ORG_ID)).toBe(true);
+    expect(providerMatchesScope(publicExternalProvider, "public", ACTIVE_ORG_ID)).toBe(true);
+    expect(providerMatchesScope(externalProvider, "public", ACTIVE_ORG_ID)).toBe(false);
   });
 
   // 自定义 Provider ID 无法识别品牌时，应使用已配置模型 ID 解析图标。
@@ -138,7 +198,7 @@ describe("provider model resource access flow", () => {
     expect(supportsThinking({})).toBe(false);
   });
 
-  // 内部 provider 公开开关复用原 set API payload，并携带 publicReadable
+  // 公开受众写载荷仍以 publicReadable 表达受众变更（写协议不随响应视图切换而改变）。
   test("builds public readable provider set payload", () => {
     expect(buildProviderPublicReadablePayload(true)).toEqual({
       publicReadable: true,
@@ -172,43 +232,66 @@ describe("provider model resource access flow", () => {
     });
   });
 
-  // ModelConfigDialog 使用资源 key 生成稳定引用，展示文案由前端拼 provider/source
-  test("model config dialog options use resource key and display name", () => {
-    expect(buildModelOptions([externalModel])).toEqual([
+  // 模型选项值使用所属 Provider 的资源键，保证跨组织同名 Provider 的模型引用唯一。
+  test("model config dialog options use the provider resource key and display name", () => {
+    expect(buildModelOptions([sharedModel])).toEqual([
       { value: "org-source/provider-external/shared-model", label: "Source Team/OpenAI Shared/Shared Model" },
     ]);
   });
 
-  // Agent Editor 保存模型 UUID，并以 Provider 分组展示短模型名称和品牌标识。
-  test("agent form model options use modelId and display name", () => {
-    expect(mapModelOptions([externalModel])).toEqual([
+  // Provider 资源键不可推导时（缺 providerId）退回 ${provider}/${modelId} 旧格式。
+  test("falls back to the legacy model option value without a provider id", () => {
+    const { providerId: _providerId, organizationName: _organizationName, ...legacyModel } = sharedModel;
+    expect(buildModelOptions([legacyModel])).toEqual([
+      { value: "openai/shared-model", label: "OpenAI Shared/Shared Model" },
+    ]);
+  });
+
+  // 模型共享来源由所属 Provider 的 scope 判定，分组 id 即 Provider 资源键，不会合并跨组织同名服务商。
+  test("groups models by their provider with the inherited scope", () => {
+    expect(mapModelOptions([internalModel, sharedModel], ACTIVE_ORG_ID)).toEqual([
+      {
+        value: "model-uuid-internal",
+        label: "Internal Model",
+        modelId: "internal-model",
+        group: { id: "org-current/provider-internal", label: "OpenAI", scope: "organization" },
+      },
       {
         value: "model-uuid-shared",
         label: "Shared Model",
         modelId: "shared-model",
-        group: {
-          id: "org-source:org-source/provider-external",
-          label: "OpenAI Shared",
-          scope: "shared",
-        },
+        group: { id: "org-source/provider-external", label: "OpenAI Shared", scope: "shared" },
       },
     ]);
+  });
+
+  // 组织上下文缺失或模型未带授权视图时，模型按本组织分组，不得冒充共享来源。
+  test("keeps models in the organization group without an active organization", () => {
+    const { scope: _scope, access: _access, ...modelWithoutAccessView } = internalModel;
+    expect(mapModelOptions([internalModel], undefined)[0]?.group.scope).toBe("organization");
+    // 授权视图缺失时归属键退化为 Provider 配置名。
+    expect(mapModelOptions([modelWithoutAccessView])[0]?.group).toEqual({
+      id: "openai",
+      label: "OpenAI",
+      scope: "organization",
+    });
   });
 
   // AgentFormDialog 的 MCP 选项只展示已启用项，避免禁用 MCP 继续出现在绑定候选中
   test("agent form filters disabled mcp options", () => {
     expect(
       mapMcpOptions([
-        { id: "mcp-enabled", name: "enabled-mcp", enabled: true, resourceAccess: sharedMcpAccess },
-        { id: "mcp-disabled", name: "disabled-mcp", enabled: false, resourceAccess: sharedMcpAccess },
+        { id: "mcp-external", name: "enabled-mcp", enabled: true, ...sharedMcpView },
+        { id: "mcp-disabled", name: "disabled-mcp", enabled: false, ...sharedMcpView },
       ]),
     ).toEqual([
       {
-        id: "mcp-enabled",
+        id: "mcp-external",
         key: "org-source/mcp-external",
         name: "enabled-mcp",
         label: "Source Team/enabled-mcp",
-        resourceAccess: sharedMcpAccess,
+        scope: { organizationId: "org-source", visibility: "private" },
+        organizationName: "Source Team",
       },
     ]);
   });

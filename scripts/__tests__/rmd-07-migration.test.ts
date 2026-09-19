@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
 const RMD_07_MOVES = [
-  ["src/errors/index.ts", "apps/server/src/errors/index.ts"],
   ["src/repositories/agent-engine.ts", "apps/server/src/repositories/agent-engine.ts"],
   ["src/repositories/index.ts", "apps/server/src/repositories/index.ts"],
   ["src/routes/hooks.ts", "apps/server/src/routes/hooks.ts"],
@@ -12,13 +11,11 @@ const RMD_07_MOVES = [
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/routes/web/config/providers.ts", "apps/server/src/routes/web/config/providers.ts"],
   ["src/routes/web/config/sandbox-pools.ts", "apps/server/src/routes/web/config/sandbox-pools.ts"],
   ["src/schemas/api-common.schema.ts", "apps/server/src/schemas/api-common.schema.ts"],
   ["src/schemas/api-instance.schema.ts", "apps/server/src/schemas/api-instance.schema.ts"],
   ["src/schemas/api-model.schema.ts", "apps/server/src/schemas/api-model.schema.ts"],
   ["src/schemas/api-workspace.schema.ts", "apps/server/src/schemas/api-workspace.schema.ts"],
-  ["src/schemas/common.schema.ts", "apps/server/src/schemas/common.schema.ts"],
   ["src/schemas/config.schema.ts", "apps/server/src/schemas/config.schema.ts"],
   ["src/schemas/index.ts", "apps/server/src/schemas/index.ts"],
   ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
@@ -85,9 +82,16 @@ const RMD_07_MOVES = [
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
-  // 仅这 75 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 仅这 72 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 原 75 项中已有三项随 CE 阶段 2 任务 1.2 离开 server host：
+  // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
+  // - `routes/web/config/providers.ts` 由 Provider 资源包接管
+  //   （`packages/resources/model-management/src/server/routes/web/config/providers.ts`），
+  //   宿主只保留 `routes/web/config/index.ts` 的挂载；
+  // - `errors/index.ts` 被删除：它与 `src/errors.ts` 重复导出第二份 `AppError`，无任何导入方
+  //   （`../errors` 始终解析到 `errors.ts`），保留只会让错误语义分叉。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(75);
+    expect(RMD_07_MOVES).toHaveLength(72);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);

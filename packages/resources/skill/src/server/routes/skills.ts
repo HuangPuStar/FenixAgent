@@ -1,11 +1,9 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { db } from "@server/db";
-import { skill } from "@server/db/schema";
-import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { getGlobalSkillsDir } from "../services/skill";
+import { getSkillServerModule } from "../runtime";
+import { getGlobalSkillsDir } from "../services/skill-content";
 import { verifySkillDownloadToken } from "../services/skill-download-token";
 import { assertValidSkillName, getSkillArchivePath } from "../services/skill-fs";
 
@@ -43,12 +41,10 @@ app.get(
       return jsonError(403, "forbidden", "Invalid skill download token");
     }
 
-    const rows = await db
-      .select({ id: skill.id })
-      .from(skill)
-      .where(and(eq(skill.id, payload.skillId), eq(skill.organizationId, payload.organizationId), eq(skill.name, name)))
-      .limit(1);
-    if (rows.length === 0) {
+    // 令牌本身就是这条路径的授权凭据（无 session、无 actor），因此经系统路径按 ID 读取并复核三元组：
+    // 令牌里的组织与名称必须与资源行一致，避免签名有效但指向已变更归属的资源。
+    const record = await getSkillServerModule().system.findById({ resourceId: payload.skillId });
+    if (!record || record.organizationId !== payload.organizationId || record.name !== name) {
       return jsonError(404, "not_found", "Skill not found");
     }
 

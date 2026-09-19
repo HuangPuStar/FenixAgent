@@ -12,6 +12,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
+    "./server/testing": {
+      "types": "./src/server/testing.ts",
+      "default": "./src/server/testing.ts"
+    },
     "./web": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
@@ -22,13 +26,12 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@fenix/access-control": "workspace:*",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",

@@ -5,14 +5,15 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import { createDrizzleAccessControl } from "@fenix/access-control/suite";
 import {
-  configureResourcePermissionRepository,
-  configureResourcePermissionService,
-} from "@fenix/access-control/server";
-import {
+  agentConfigResource,
   agentSitesCompatApp,
   agentSitesProxyApp,
   apiAgentsRoutes,
+  createAgentConfigServerModule,
+  getAgentConfigModule,
+  installAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
 import {
@@ -41,16 +42,23 @@ import {
   stopInstanceViaController,
   touchInstanceActivity,
 } from "@fenix/agent-runtime/server";
+import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
 import {
   apiModelsRoutes,
   apiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
+  createModelManagementServerModule,
   createSystemModelGatewayProviderService,
-  getProvider,
-  listProviders,
+  getModelManagementModule,
+  installModelManagementModule,
+  providerResource,
 } from "@fenix/model-management/server";
+import {
+  getIdentityDirectory,
+  initializeApplicationInfrastructure,
+  registerIdentityDirectory,
+} from "@fenix/platform-sdk/server";
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
-import { apiSystemRoutes, ensureSystemAdmin, organizationRepo } from "@fenix/resource-identity-admin/server";
 import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   apiWorkspaceRoutes,
@@ -74,7 +82,13 @@ import {
   stopFileWsSweep,
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
-import { apiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
+import {
+  apiMcpRoutes,
+  createMcpServerServerModule,
+  installMcpServerModule,
+  knowledgeMcpRoutes,
+  mcpServerResource,
+} from "@fenix/resource-mcp/server";
 import {
   apiSystemLogsRoutes,
   apiSystemObserverRoutes,
@@ -88,7 +102,13 @@ import {
   registerConfiguredSandboxProviders,
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
-import { apiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
+import {
+  apiSkillsRoutes,
+  createSkillServerModule,
+  installSkillServerModule,
+  skillDownloadRoutes,
+  skillResource,
+} from "@fenix/resource-skill/server";
 import { schedulerService } from "@fenix/resource-task/server";
 import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
@@ -96,29 +116,39 @@ import Elysia from "elysia";
 import { startSchedulerUnlessDisabled } from "./bootstrap/scheduler-startup";
 import { runCriticalStartupSequence } from "./bootstrap/startup-sequence";
 import { applyEnv, config } from "./config";
-import { initDb, client as pgClient } from "./db";
+import { db, initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
-import { AppError } from "./errors";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import { authPlugin } from "./plugins/auth";
+import { authPlugin, toActorContext } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { pgResourcePermissionRepo } from "./repositories/resource-permission";
+import { systemApiAuthPlugin } from "./plugins/system-api-auth";
 import webApp from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
+import { createModelGatewaySubjectVerification } from "./services/model-gateway-subject-verification";
 import { syncBuiltin } from "./services/sync-builtin";
 
+/**
+ * Meta Agent 的默认模型解析：取当前主体可见的第一个 Provider 的第一个模型。
+ *
+ * 返回的是 `model` 表的行 ID——`agent_config.model_id` 是它的外键（运行时只认这个外键，不接受
+ * `provider/modelId` 形式的引用），因此这里不能返回模型业务键。
+ *
+ * 读取一律经 Facade：授权与可见性由资源包的授权谓词决定，宿主不再自己拼资源键。
+ */
 setMetaAgentModelResolver(async (ctx) => {
-  const providers = await listProviders(ctx);
-  for (const provider of providers) {
-    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
-    const firstModel = (await getProvider(ctx, providerKey))?.models?.[0];
+  const actor = toActorContext(ctx);
+  const { facade } = getModelManagementModule();
+  const { items } = await facade.list(actor);
+  for (const item of items) {
+    const detail = await facade.getById(actor, item.id);
+    const firstModel = detail?.models[0];
     if (firstModel) return firstModel.id;
   }
   return null;
@@ -128,6 +158,23 @@ const startedAt = new Date().toISOString();
 
 const env = loadServerEnv([]);
 applyEnv(env);
+
+// 平台模块只能经 `@fenix/platform-sdk/server` 读取基础设施，因此宿主必须在任何模块开始工作前完成
+// 唯一初始化。身份目录同样只允许注册一次：两个身份实现并存会让不同模块读到不一致的成员关系视图，
+// 而这类分歧不会在启动期暴露。
+initializeApplicationInfrastructure({
+  database: db,
+  moduleConfigs: {
+    identity: {
+      betterAuthUrl: env.BETTER_AUTH_URL,
+      rcsBaseUrl: env.RCS_BASE_URL,
+      trustedOrigins: env.RCS_TRUSTED_ORIGINS,
+      systemAdminPasswordFile: config.systemAdminPasswordFile,
+      disableSignup: config.disableSignup,
+    },
+  },
+});
+registerIdentityDirectory(createIdentityDirectory());
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
 bindSessionEventBusPort({
@@ -168,11 +215,27 @@ await runCriticalStartupSequence({
   },
   wirePermissions: () => {
     // 模型网关与 builtin 都会查询资源授权，必须在业务资源初始化前完成宿主装配。
-    configureResourcePermissionService({
-      organizationRepo,
-      createError: (message, code, statusCode) => new AppError(message, code, statusCode),
+    // MCP / Skill / AgentConfig / Provider 资源使用同一授权栈：归属列在主表，授权谓词与分页/计数由
+    // 同一份资源注册下推到 SQL。
+    const accessControlSuite = createDrizzleAccessControl({
+      database: db,
+      bindings: [
+        mcpServerResource.storage,
+        skillResource.storage,
+        agentConfigResource.storage,
+        providerResource.storage,
+      ],
     });
-    configureResourcePermissionRepository(pgResourcePermissionRepo);
+    const moduleDeps = {
+      accessControl: accessControlSuite.accessControl,
+      scopeStore: accessControlSuite.scopeStore,
+      authorizedQuery: accessControlSuite.authorizedQuery,
+      identity: getIdentityDirectory(),
+    };
+    installMcpServerModule(createMcpServerServerModule(moduleDeps));
+    installSkillServerModule(createSkillServerModule(moduleDeps));
+    installAgentConfigModule(createAgentConfigServerModule(moduleDeps));
+    installModelManagementModule(createModelManagementServerModule(moduleDeps));
   },
   initModelGateway: async () => {
     registerConfiguredSandboxProviders();
@@ -192,7 +255,17 @@ await runCriticalStartupSequence({
     await runDataMigrations();
     startupLog.info("Data migrations completed");
 
-    const modelGatewayRuntime = createModelGatewayRuntime();
+    // 上游凭据的主体复验端口：用已装配的授权能力 + agent_config 的资源定义，与平台其它入口判定
+    // Agent 可用性的是同一条规则（见 `services/model-gateway-subject-verification`）。
+    const modelManagement = getModelManagementModule();
+    const subjectVerification = createModelGatewaySubjectVerification({
+      accessControl: modelManagement.accessControl,
+      identity: modelManagement.identity,
+      findAgentConfigOrganization: async (agentConfigId) =>
+        (await getAgentConfigModule().service.findRowUnscoped(agentConfigId))?.organizationId,
+    });
+
+    const modelGatewayRuntime = createModelGatewayRuntime({ subjectVerification });
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
       setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
@@ -350,7 +423,7 @@ const app = new Elysia({
   .use(apiSkillsRoutes)
   .use(apiModelsRoutes)
   .use(apiMcpRoutes)
-  .use(apiSystemRoutes)
+  .use(createApiSystemRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(apiSystemLogsRoutes)
   .use(apiSystemModelGatewayRoutes)
   .use(apiSystemObserverRoutes)

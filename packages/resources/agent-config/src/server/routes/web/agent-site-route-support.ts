@@ -1,6 +1,6 @@
+import type { WebErr } from "@fenix/platform-sdk";
 import { db } from "@server/db";
 import { agentConfig } from "@server/db/schema";
-import type { WebErr } from "@server/schemas/common.schema";
 import { inArray } from "drizzle-orm";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";

@@ -5,12 +5,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./server/schema": "./src/server-schema.ts"
+    "./server/runtime": "./src/server/runtime.ts",
+    "./server/config": "./src/server/services/config/agent-config-mcp.ts",
+    "./server/schema": "./src/server-schema.ts",
+    "./server/testing": "./src/server/testing.ts"
   },
   "dependencies": {
-    "@fenix/access-control": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/logger": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "elysia": "^1.4.28",
     "zod": "^4.4.3",
     "@modelcontextprotocol/sdk": "^1.29.0"

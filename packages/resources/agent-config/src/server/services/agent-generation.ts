@@ -1,6 +1,6 @@
-import { listSkills } from "@fenix/resource-skill/server";
-import type { AuthContext } from "@server/plugins/auth";
+import type { ActorContext } from "@fenix/platform-sdk";
 import OpenAI from "openai";
+import { listVisibleSkills } from "./skill-directory";
 
 /** Skill 条目（前端用 name + description 展示，用 id 提交） */
 export interface SkillItem {
@@ -22,14 +22,14 @@ export function isGenerationConfigured(): boolean {
 }
 
 /** 调用 LLM 生成 Agent 配置 */
-export async function generateAgentConfig(ctx: AuthContext, prompt: string): Promise<AgentGenerationResult> {
+export async function generateAgentConfig(actor: ActorContext, prompt: string): Promise<AgentGenerationResult> {
   if (!isGenerationConfigured()) {
     throw new Error("NOT_CONFIGURED");
   }
 
-  // 查询当前组织所有可用 skills
-  const skills = await listSkills(ctx);
-  const skillList = skills.map((s) => `- ${s.name}: ${s.description ?? ""}`).join("\n");
+  // 只在当前主体可见的 Skill 里推荐：生成结果要能直接绑定，推荐不可见的名称只会得到无效绑定。
+  const skills = await listVisibleSkills(actor);
+  const skillList = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
 
   const systemPrompt = `你是一个智能体配置生成助手。根据用户的需求描述，生成智能体的配置信息。
 
@@ -98,7 +98,7 @@ ${skillList || "（暂无可用技能）"}
 
   // 将 LLM 返回的 skill 名称映射为 { id, name, description } 对象，前端用 name + description 展示、id 提交
   const skillNameToInfo = new Map(
-    skills.map((s) => [s.name.toLowerCase(), { id: s.id, name: s.name, description: s.description ?? "" }]),
+    skills.map((s) => [s.name.toLowerCase(), { id: s.id, name: s.name, description: s.description }]),
   );
   const mappedSkills = (parsed.skills ?? [])
     .map((name: string) => skillNameToInfo.get(name.toLowerCase()))

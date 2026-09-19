@@ -9,12 +9,22 @@
  * 传进来的对象引用。
  */
 
+import type { IdentityDirectory } from "./identity/identity-directory";
+
 interface ApplicationInfrastructure {
   readonly database: unknown;
   readonly moduleConfigs: Map<string, unknown>;
 }
 
 let applicationInfrastructure: ApplicationInfrastructure | undefined;
+
+/**
+ * 宿主注入的身份目录实现。
+ *
+ * 与 `moduleConfigs` 不同：它不是配置而是端口，调用方（资源模块）只依赖契约类型，
+ * 不知道实现来自 `@fenix/identity`。`unknown` 只用于存储槽位，读取时收窄为契约类型。
+ */
+let identityDirectory: IdentityDirectory | undefined;
 
 /** 宿主初始化应用基础设施所需的全部输入。 */
 export interface InitializeApplicationInfrastructureInput {
@@ -74,6 +84,38 @@ export function overrideModuleConfig(moduleId: string, config: unknown): void {
 /** 清空已注册的基础设施，供测试在用例之间恢复未初始化状态。 */
 export function resetApplicationInfrastructure(): void {
   applicationInfrastructure = undefined;
+}
+
+/**
+ * 注册身份目录实现。
+ *
+ * 只允许 `apps/server` 在装配阶段调用一次：两个身份实现同时存在会让不同模块读到不一致的
+ * 成员关系视图，且这类分歧不会在启动期暴露，因此这里选择与
+ * {@link initializeApplicationInfrastructure} 相同的严格语义——重复注册直接抛错，
+ * 测试改由 {@link resetIdentityDirectory} 显式复位。
+ */
+export function registerIdentityDirectory(directory: IdentityDirectory): void {
+  if (identityDirectory) {
+    throw new Error("身份目录已注册，禁止重复注册");
+  }
+  identityDirectory = directory;
+}
+
+/**
+ * 读取身份目录实现。
+ *
+ * 只能在处理请求、任务或启动逻辑时调用，不能在模块文件加载时调用，否则可能早于宿主装配。
+ */
+export function getIdentityDirectory(): IdentityDirectory {
+  if (!identityDirectory) {
+    throw new Error("身份目录尚未注册，必须先由 apps/server 调用 registerIdentityDirectory");
+  }
+  return identityDirectory;
+}
+
+/** 清空已注册的身份目录，供测试在用例之间恢复未注册状态。 */
+export function resetIdentityDirectory(): void {
+  identityDirectory = undefined;
 }
 
 function requireInfrastructure(): ApplicationInfrastructure {

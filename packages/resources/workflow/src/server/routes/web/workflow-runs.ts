@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from "@fenix/logger";
+import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { WorkflowError } from "@fenix/workflow-engine";
 import { db } from "@server/db";
 import { workflowSnapshot } from "@server/db/schema";
@@ -27,7 +28,6 @@ import {
   WorkflowRunsResponseSchema,
   WorkflowRunsRouteQuerySchema,
 } from "../../schemas";
-import { WebErrSchema, WebOkSchema } from "../../schemas/common.schema";
 import {
   WorkflowDagEventSchema,
   WorkflowDagRunResultSchema,

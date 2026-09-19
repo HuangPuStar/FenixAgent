@@ -146,7 +146,7 @@ function AgentEditorBody(
   const values = form.watch();
   const readOnly =
     props.mode === "edit" && editor.data
-      ? !isAgentWritable({ name: props.agentName, resourceAccess: editor.data.resourceAccess })
+      ? !isAgentWritable({ name: props.agentName, scope: editor.data.scope, access: editor.data.access })
       : false;
   const title = readOnly
     ? t("dialog.detailTitle")
@@ -265,7 +265,7 @@ function AgentEditorBody(
           />
           {readOnly && (
             <div className="agent-editor-readonly">
-              {t("resource.readOnlyAgent", { source: data.resourceAccess?.sourceOrganizationName ?? values.name })}
+              {t("resource.readOnlyAgent", { source: data.organizationName ?? values.name })}
             </div>
           )}
           <Tabs

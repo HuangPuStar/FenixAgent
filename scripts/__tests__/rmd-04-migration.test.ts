@@ -3,7 +3,9 @@ import { existsSync } from "node:fs";
 
 const RMD_04_MOVES = [
   ["src/routes/api/models.ts", "packages/resources/model-management/src/routes/api/models.ts"],
-  ["src/routes/web/config/models.ts", "packages/resources/model-management/src/routes/web/config/models.ts"],
+  // CE 阶段 2 任务 1.2 把资源包的协议层收敛到 `src/server/`（routes / facades / services / repositories
+  // 各自分层），`web/config/models.ts` 随之再搬一次；RMD-04 的中间落点不得残留。
+  ["src/routes/web/config/models.ts", "packages/resources/model-management/src/server/routes/web/config/models.ts"],
   [
     "src/services/peri-task-detail-service.ts",
     "packages/resources/model-management/src/services/peri-task-detail-service.ts",

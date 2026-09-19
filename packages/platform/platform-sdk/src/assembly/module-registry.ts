@@ -87,19 +87,14 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
   return Object.freeze({
     resolveProfile(profileInput: unknown): ResolvedAssembly {
       const profile = parseAssemblyProfile(profileInput);
+      requireFoundation(profile.identity, "identity");
       requireFoundation(profile.accessControl, "access-control");
       requireFoundation(profile.agentRuntime, "agent-runtime");
       // Shell 只在此校验 ID 与类别，不进入 modules：server 不实例化 Shell。
       requireModule(profile.webShell, "web-shell");
-      if (profile.identity !== undefined) requireFoundation(profile.identity, "identity");
       for (const resourceId of profile.resources) requireModule(resourceId, "resource");
 
-      const requestedIds = [
-        ...(profile.identity === undefined ? [] : [profile.identity]),
-        profile.accessControl,
-        profile.agentRuntime,
-        ...profile.resources,
-      ];
+      const requestedIds = [profile.identity, profile.accessControl, profile.agentRuntime, ...profile.resources];
       const enabledIds = new Set(requestedIds);
       const visiting = new Set<string>();
       const visited = new Set<string>();

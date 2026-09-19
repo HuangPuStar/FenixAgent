@@ -26,12 +26,8 @@ export default defineConfig({
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
-      "@/src/api/api-keys": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/api-keys.ts"),
-      "@/src/api/branding": path.resolve(__dirname, "../../packages/resources/identity-admin/web/api/branding.ts"),
-      "@/src/api/organizations": path.resolve(
-        __dirname,
-        "../../packages/resources/identity-admin/web/api/organizations.ts",
-      ),
+      "@/src/api/api-keys": path.resolve(__dirname, "../../packages/platform/identity/web/api/api-keys.ts"),
+      "@/src/api/organizations": path.resolve(__dirname, "../../packages/platform/identity/web/api/organizations.ts"),
       "@/src/api/observer": path.resolve(__dirname, "../../packages/resources/observer/web/api/observer.ts"),
       "@/src/api/system-logs": path.resolve(__dirname, "../../packages/resources/observer/web/api/system-logs.ts"),
       "@/src/api/system-people-tree": path.resolve(
@@ -144,15 +140,15 @@ export default defineConfig({
       ),
       "@/src/pages/agent-panel/pages/AgentApiKeysPage": path.resolve(
         __dirname,
-        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentApiKeysPage.tsx",
+        "../../packages/platform/identity/web/pages/agent-panel/pages/AgentApiKeysPage.tsx",
       ),
       "@/src/pages/agent-panel/pages/AgentOrganizationsPage": path.resolve(
         __dirname,
-        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx",
+        "../../packages/platform/identity/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx",
       ),
       "@/src/pages/agent-panel/pages/agent-organizations-utils": path.resolve(
         __dirname,
-        "../../packages/resources/identity-admin/web/pages/agent-panel/pages/agent-organizations-utils.ts",
+        "../../packages/platform/identity/web/pages/agent-panel/pages/agent-organizations-utils.ts",
       ),
       "@/src/pages/admin/AdminLogsPage": path.resolve(
         __dirname,
@@ -214,6 +210,10 @@ export default defineConfig({
         __dirname,
         "../../packages/resources/model-management/web/lib/model-gateway-usage.ts",
       ),
+      "@/src/lib/provider-resource-access": path.resolve(
+        __dirname,
+        "../../packages/resources/model-management/web/lib/provider-resource-access.ts",
+      ),
       "@/src/pages/admin/AdminModelGatewayPage": path.resolve(
         __dirname,
         "../../packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx",
@@ -238,10 +238,16 @@ export default defineConfig({
         __dirname,
         "../../packages/resources/model-management/web/components/model-icon",
       ),
-      "@/src/lib/auth-client": path.resolve(__dirname, "src/lib/auth-client.ts"),
+      // 身份客户端的唯一实现落在 @fenix/identity/web；这里保留 @/src 别名是因为资源包与
+      // agent-runtime 的 web contribution 仍以别名引用它，改直依赖会新增 resource/agent-runtime
+      // → platform-impl 的禁止边（见 scripts/lib/architecture-boundary-rules.ts §2.3）。
+      "@/src/lib/auth-client": path.resolve(__dirname, "../../packages/platform/identity/web/lib/auth-client.ts"),
       "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),
       "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),
-      "@/src/contexts/OrgContext": path.resolve(__dirname, "src/contexts/OrgContext.tsx"),
+      "@/src/contexts/OrgContext": path.resolve(
+        __dirname,
+        "../../packages/platform/identity/web/contexts/OrgContext.tsx",
+      ),
       "@/src/lib/theme": path.resolve(__dirname, "src/lib/theme.ts"),
       "@/src": path.resolve(__dirname, "src"),
       "@server": path.resolve(__dirname, "../server/src"),

@@ -1,4 +1,4 @@
-import { WebOkSchema } from "@server/schemas/common.schema";
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 
 /** 写操作成功响应（§7.2 op_id 回显契约）：op_id 与 success/data 平级（消费者

@@ -137,6 +137,10 @@ const envSchema = databaseConnectionPoolSchema.extend({
   RAGFLOW_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
 
   // ── 可选：认证 ──
+  // better-auth 的 baseURL（回调/重定向 URL 基址）。该变量由 better-auth 约定俗成，历史上一直由
+  // `process.env` 直读；CE 阶段 2 任务 1.2 把它并入 env 真相来源，由宿主解析后作为 identity 模块
+  // 配置注入。未设置时 better-auth 自行回退到 RCS_BASE_URL。
+  BETTER_AUTH_URL: z.string().optional(),
   RCS_DISABLE_SIGNUP: z
     .string()
     .default("false")

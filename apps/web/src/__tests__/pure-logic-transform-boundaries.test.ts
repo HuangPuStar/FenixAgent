@@ -3,7 +3,7 @@ import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall, parseTodosFromRawInput } from "../lib/todo";
 import type { TodoItem } from "../lib/types";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { ModelEntry } from "../types/config";
 
 const baseModel: ModelEntry = {
   id: "model-1",
@@ -15,14 +15,12 @@ const baseModel: ModelEntry = {
   outputLimit: null,
 };
 
-const access = (sourceOrganizationName?: string): ResourceAccess => ({
-  ownership: "external",
-  sourceOrganizationId: "org-1",
-  ...(sourceOrganizationName === undefined ? {} : { sourceOrganizationName }),
-  resourceUid: "provider-1",
-  resourceKey: "provider-key",
-  manageable: false,
-  writable: false,
+/** 共享来源模型的 `/web` 视图字段：归属其他组织，只有读动作。 */
+const sharedFields = (organizationName?: string | null): Partial<ModelEntry> => ({
+  providerId: "provider-1",
+  scope: { organizationId: "org-1", visibility: "private" },
+  access: { actions: ["read"] },
+  ...(organizationName === undefined || organizationName === null ? {} : { organizationName }),
 });
 
 const todo = (content: string, status: TodoItem["status"] = "pending", activeForm?: string): TodoItem => ({
@@ -90,33 +88,34 @@ describe("模型选项转换与不可变性", () => {
     expect(buildModelOptions(models)).toEqual([{ value: `${provider}/${modelId}`, label: "OpenAI/GPT 4.1" }]);
   });
 
-  // 资源键必须优先于旧 provider 生成选项值。
+  // Provider 资源键（归属组织 + providerId）必须优先于旧 provider 生成选项值。
   test.each([
-    ["provider-key"],
-    ["org/provider"],
-    ["shared:one"],
-    ["0"],
-  ])("优先使用 providerResourceKey %#", (providerResourceKey) => {
-    const models = [{ ...baseModel, provider: "ignored", providerResourceKey }];
-    expect(buildModelOptions(models)[0]?.value).toBe(`${providerResourceKey}/gpt-4.1`);
-  });
-
-  // 来源组织名只应影响展示标签，不应污染选项值。
-  test.each([["研发部"], ["Team A"], ["0"], ["组织/子组"]])("来源组织名转换标签 %#", (sourceOrganizationName) => {
-    const models = [{ ...baseModel, providerResourceAccess: access(sourceOrganizationName) }];
-    const [option] = buildModelOptions(models);
-    expect(option).toEqual({ value: "openai/gpt-4.1", label: `${sourceOrganizationName}/OpenAI/GPT 4.1` });
-  });
-
-  // 空来源组织名应视为没有前缀，避免多余斜杠。
-  test.each([[undefined], [""], [null]])("空来源组织名不添加标签前缀 %#", (sourceOrganizationName) => {
+    ["org-1", "provider-key"],
+    ["org/source", "provider"],
+    ["shared", "one"],
+    ["0", "provider-0"],
+  ])("优先使用 Provider 资源键 %#", (organizationId, providerId) => {
     const models = [
       {
         ...baseModel,
-        providerResourceAccess:
-          sourceOrganizationName === undefined ? undefined : access(sourceOrganizationName ?? undefined),
+        provider: "ignored",
+        providerId,
+        scope: { organizationId, visibility: "private" as const },
       },
     ];
+    expect(buildModelOptions(models)[0]?.value).toBe(`${organizationId}/${providerId}/gpt-4.1`);
+  });
+
+  // 归属组织展示名只应影响展示标签，不应污染选项值。
+  test.each([["研发部"], ["Team A"], ["0"], ["组织/子组"]])("归属组织名转换标签 %#", (organizationName) => {
+    const models = [{ ...baseModel, ...sharedFields(organizationName) }];
+    const [option] = buildModelOptions(models);
+    expect(option).toEqual({ value: "org-1/provider-1/gpt-4.1", label: `${organizationName}/OpenAI/GPT 4.1` });
+  });
+
+  // 空归属组织展示名应视为没有前缀，避免多余斜杠。
+  test.each([[undefined], [""], [null]])("空归属组织名不添加标签前缀 %#", (organizationName) => {
+    const models = [{ ...baseModel, ...sharedFields(organizationName) }];
     expect(buildModelOptions(models)[0]?.label).toBe("OpenAI/GPT 4.1");
   });
 
@@ -124,13 +123,20 @@ describe("模型选项转换与不可变性", () => {
   test("转换多个模型时保持顺序和输入不可变", () => {
     const models = [
       { ...baseModel, id: "first", modelId: "first-model", displayName: "First" },
-      { ...baseModel, id: "second", modelId: "second-model", displayName: "Second", providerResourceKey: "shared" },
+      {
+        ...baseModel,
+        id: "second",
+        modelId: "second-model",
+        displayName: "Second",
+        providerId: "shared-provider",
+        scope: { organizationId: "shared-org", visibility: "private" as const },
+      },
     ];
     const snapshot = structuredClone(models);
 
     expect(buildModelOptions(models)).toEqual([
       { value: "openai/first-model", label: "OpenAI/First" },
-      { value: "shared/second-model", label: "OpenAI/Second" },
+      { value: "shared-org/shared-provider/second-model", label: "OpenAI/Second" },
     ]);
     expect(models).toEqual(snapshot);
   });

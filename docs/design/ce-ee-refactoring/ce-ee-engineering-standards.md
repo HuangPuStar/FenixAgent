@@ -120,14 +120,14 @@ export interface SkillReferenceResolver {
 
 | 包类别 | 可以依赖 | 禁止依赖 | 说明 |
 | --- | --- | --- | --- |
-| `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps` | 最底层契约：资源范围、授权端口、装配 profile、模块 manifest、应用基础设施访问规则等；不创建或拥有 DB 等具体基础设施 |
+| `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps` | 最底层契约：资源范围、授权端口、身份目录投影、系统管理协议 schema、装配 profile、模块 manifest、应用基础设施访问规则等；不创建或拥有 DB 等具体基础设施 |
 | `packages/platform/identity` | `platform-sdk`、认证/存储等必要基础依赖 | `access-control`、`agent-runtime`、`resources`、`apps` | 有状态平台模块，拥有用户、组织、成员、认证/API Key 及其 DB、route、Web；产出可信身份上下文和公开 Identity Service |
 | `packages/platform/access-control` | `platform-sdk`、同一产品版本的 `identity` 公开入口、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`、Identity 的内部路径 | Identity 与 AccessControl 保持两个包，普通资源不得依赖此具体实现 |
 | `packages/` 中除 `platform/*`、`agent-runtime`、`resources/*` 外的包 | 按各包自身的 SDK 或插件职责声明 | 包间依赖环 | 独立 SDK/插件包，如 `acp-link`、`core`、`orchestration`、`chat-channel`、`remote-runtime`；服务模块直接通过包引用使用其能力，不适用服务模块依赖矩阵的其他限制 |
 | `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、Machine/Sandbox 的专用公开运行入口、无业务语义基础依赖 | 除 Machine/Sandbox 外的 `resources`、具体 AccessControl/Identity、`apps`、Machine/Sandbox 内部路径 | 组合 Environment、Instance、生命周期、并发与 relay/session；固定编译方向是 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` |
 | `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现 |
 | `packages/resources/sandbox` | `platform-sdk`、Machine 公开入口、Sandbox Provider 公开 API、本资源声明的基础依赖 | `agent-runtime`、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有执行环境供给、恢复和管理面，多实现差异留在 Provider 插件点 |
-| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
+| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；需要身份的只读投影（用户展示信息、组织名录、成员关系、系统托管租户）时经 `platform-sdk` 的 `IdentityDirectory` 窄契约，由 app 装配注入；资源间规则见上一节 |
 | `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、已作为公开入口发布的共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle。共享 UI 目前没有独立公开入口，资源 web 不得因此穿透 `apps/web` 内部；复用方式（提取公开入口或其他）单独决定 |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
 | `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
@@ -181,7 +181,7 @@ manifest 的 `kind` 取 `access-control`、`agent-runtime`、`identity`、`resou
 
 `platform-sdk/assembly` 提供唯一的 `AssemblyProfile` 与 `parseAssemblyProfile()`：它只校验 Identity、授权、Agent Runtime、Shell、资源和 Web 模块 ID 列表的通用结构。Identity 与 AccessControl 由各自 manifest 的精确 `dependsOn` 成套绑定；随后 app 对生成 registry 做 ID、类别和依赖校验，不复制 parser。
 
-`webShell` 必须指向一个 `kind` 为 `web-shell` 的已注册模块，否则装配直接失败：Shell 是 profile 描述浏览器侧组合的锚点，允许它悬空等于 profile 与 bundle 静默不一致。`identity` 在 `packages/platform/identity` 落地前为**可选**，未提供时既不校验也不进入装配顺序；Identity 包交付后转为必填（见阶段 2 任务 1.2）。Server 只校验并绑定 `webShell`，不实例化 Shell——它由 `apps/web` 自行消费，因此不进入服务端的 `modules` 与 `instances`。
+`webShell` 必须指向一个 `kind` 为 `web-shell` 的已注册模块，否则装配直接失败：Shell 是 profile 描述浏览器侧组合的锚点，允许它悬空等于 profile 与 bundle 静默不一致。`identity` 在 `packages/platform/identity` 落地前为**可选**，未提供时既不校验也不进入装配顺序；Identity 包已随阶段 2 任务 1.2 交付，现为**必填**——`access-control` 经 `dependsOn` 精确绑定到 `identity`，缺任一即装配失败。Server 只校验并绑定 `webShell`，不实例化 Shell——它由 `apps/web` 自行消费，因此不进入服务端的 `modules` 与 `instances`。
 
 每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts` 与 `apps/*/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
 
@@ -235,7 +235,9 @@ apps/server/src/
 
 可授权资源主表复用现有 `organization_id`、`user_id` 和 `visibility` 作为 `ResourceScope` 的真相来源，由 `ResourceScopeStore` 映射主表列。通用资源可选 `private` 或 `public`；`private` 沿用归属和成员角色规则，`public` 面向任意已认证用户。匿名访问由 Site 等资源专属发布字段或发布实体表达。资源领域、route、前端和普通 Repository 不得自行解释组织、用户、角色或 `visibility`。
 
-`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceScopeStore` 负责 organization、owner、`visibility` 的批量读取、校验与生命周期维护；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、ID、组织、owner 与 `visibility` 列及业务条件，例如 `authorizedQuery.list({ resourceType, columns, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, ResourceScope>`，不得泄漏具体查询条件。
+`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceScopeStore` 负责 organization、owner、`visibility` 的批量读取、校验与生命周期维护；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、表、ID、组织、owner 与 `visibility` 列及业务条件，例如 `authorizedQuery.list({ resourceType, table, columns, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, ResourceScope>`，不得泄漏具体查询条件。
+
+`AuthorizedResourceQuery` 是声明在 `platform-sdk` 的端口（用存储类型包参数化，默认槽位为 `unknown`，因此不导入 Drizzle），Drizzle 实现在 `access-control`；资源包只依赖端口。`ResourceQueryConstraint` 对资源模块保持不透明，其内部载荷由产出它的授权实现私有，条件编译器与动作推导在同一实现包内共享同一份策略函数。
 
 当前授权查询以资源主表为驱动，使用归属列、`visibility` 与成员角色策略过滤资源；不得先查询全量资源再在应用层过滤。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
 
@@ -318,6 +320,8 @@ const config = getModuleConfig<AgentRuntimeEnv>("agent-runtime");
 | DB client、只读部署配置，以及以后同样由 server 统一创建和关闭的基础设施 | AgentConfigService 等业务 service、Repository、Resource Facade、授权实现、当前用户/组织、请求上下文、事务、资源实例 |
 
 判断很简单：某个对象如果会随请求、用户、组织、事务或资源不同而变化，就不能放进应用基础设施；需要时通过函数参数、包公开 API 或 app 装配传递。
+
+`IdentityDirectory` 是本节的**唯一**新增例外，且只因为它通过上面的判据：它是进程级只读投影，不随请求、用户、组织、事务或资源变化，语义上等同于 DB client 的另一种读法。它在 `@fenix/platform-sdk/server` 通过 `registerIdentityDirectory()` 注册、由 identity 实现、由 `apps/server` 在装配时注入；包的深度调用点（runtime 启动参数、观察投影、系统管理投影）因此不必逐层透传参数。它的接口只暴露只读查询，不含授权判断、事务、写入或请求上下文；任何随请求变化的身份数据都必须继续走 `ActorContext` 参数传递，不得经此入口。
 
 包可以直接调用 `getDatabase()`、`getModuleConfig()`，但只能在实际处理请求、任务或启动逻辑时调用，不能在文件加载时调用；否则模块可能早于 server 初始化。未初始化或读取未声明配置时必须报错。测试使用 reset/override API 设置独立的 DB 和配置，不修改全局 `process.env`，也不 mock `apps/server`。
 
@@ -445,7 +449,7 @@ packages/resources/agent-config/db/data-migrations/
 1. `platform-sdk` 不含具体身份、角色、表、DB/Web 实现；Identity 与 AccessControl 保持两个包。
 2. 所有外部资源动作由 Resource Facade 使用可信 ActorContext 和 `AccessControlModule` 授权；Domain Service 不接受 actor，repository 不读取成员/角色，也不复制授权 SQL。
 3. 普通列表查询在数据库分页、排序和计数之前下推授权约束；详情、更新、删除和运行与列表使用同一范围语义。Provider 是模型授权聚合根，Model 不建立独立 owner/visibility。
-4. 旧 `resource_permission` 读取、写入、公开出口和表仅在所有消费者完成结果核验后删除；最终状态不存在双写、兼容表或两套授权判断路径。
+4. 旧 `resource_permission` 读取、写入、公开出口和表仅在所有消费者完成结果核验后删除；最终状态不存在双写、兼容表或两套授权判断路径。阶段 2 任务 1.2 交付的是「读者/写者/出口全部删除、表与三个 pg enum 延至下一发布 DROP」——`visibility` 回填迁移与读取切换同批上线时旧表保留，用于核验回填结果；延期期间该表无任何引用，`schema.ts` 以 `removeWhen` 标注移除条件。目标状态不变。
 5. 多租户、跨组织、owner/admin/member、系统管理员、private/public、API Key 组织恢复及保守拒绝路径均有自动化回归证据。
 
 ### 10.4 Runtime 与基础资源

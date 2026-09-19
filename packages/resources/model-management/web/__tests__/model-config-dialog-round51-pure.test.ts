@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ModelConfig, ModelEntry, ResourceAccess } from "@/src/types/config";
+import type { ModelConfig, ModelEntry } from "@/src/types/config";
 import { mergeModelConfigUpdate } from "../components/config/ModelConfigDialog";
 import { buildModelOptions } from "../lib/model-config-utils";
 
@@ -13,18 +13,6 @@ function modelEntry(overrides: Partial<ModelEntry> = {}): ModelEntry {
     contextLimit: 128000,
     outputLimit: 8192,
     ...overrides,
-  };
-}
-
-function providerAccess(sourceOrganizationName: string): ResourceAccess {
-  return {
-    ownership: "external",
-    sourceOrganizationId: "source-org",
-    sourceOrganizationName,
-    resourceUid: "provider-uid",
-    resourceKey: "source-org/provider",
-    manageable: false,
-    writable: false,
   };
 }
 
@@ -46,30 +34,35 @@ describe("ModelConfigDialog 纯转换", () => {
     expect(buildModelOptions([])).toEqual([]);
   });
 
-  // 没有资源键时应兼容旧格式，使用 provider 和 modelId 拼接值。
-  test("无 providerResourceKey 时使用旧值格式", () => {
+  // 模型未带归属视图（缺 scope/providerId）时兼容旧格式，使用 provider 和 modelId 拼接值。
+  test("缺归属视图时使用旧值格式", () => {
     expect(buildModelOptions([modelEntry()])[0]?.value).toBe("provider-1/model-1");
   });
 
-  // 有资源键时应优先使用资源键，避免不同资源中的 provider 冲突。
-  test("有 providerResourceKey 时使用资源值格式", () => {
-    expect(buildModelOptions([modelEntry({ providerResourceKey: "resource-a" })])[0]?.value).toBe("resource-a/model-1");
+  // 有归属视图时应使用 Provider 资源键，避免跨组织同名 provider 的模型引用冲突。
+  test("有 Provider 资源键时使用资源值格式", () => {
+    const entry = modelEntry({
+      providerId: "provider-uid",
+      scope: { organizationId: "source-org", visibility: "private" },
+      access: { actions: ["read"] },
+    });
+    expect(buildModelOptions([entry])[0]?.value).toBe("source-org/provider-uid/model-1");
   });
 
-  // 没有来源组织时，标签应只包含 provider 显示名和模型显示名。
-  test("无 sourceOrganizationName 时省略来源组织", () => {
+  // 没有归属组织展示名时，标签应只包含 provider 显示名和模型显示名。
+  test("无 organizationName 时省略来源组织", () => {
     expect(buildModelOptions([modelEntry()])[0]?.label).toBe("Provider One/Model One");
   });
 
-  // 有来源组织时，标签应保留来源组织、provider 和模型三级信息。
-  test("有 sourceOrganizationName 时加入来源组织", () => {
-    const entry = modelEntry({ providerResourceAccess: providerAccess("Org A") });
+  // 有归属组织展示名时，标签应保留来源组织、provider 和模型三级信息。
+  test("有 organizationName 时加入来源组织", () => {
+    const entry = modelEntry({ organizationName: "Org A" });
     expect(buildModelOptions([entry])[0]?.label).toBe("Org A/Provider One/Model One");
   });
 
-  // 来源组织为空字符串时应按缺失处理，避免出现多余的斜杠。
-  test("空 sourceOrganizationName 回退到 provider 标签", () => {
-    const entry = modelEntry({ providerResourceAccess: providerAccess("") });
+  // 归属组织展示名为空字符串时应按缺失处理，避免出现多余的斜杠。
+  test("空 organizationName 回退到 provider 标签", () => {
+    const entry = modelEntry({ organizationName: "" });
     expect(buildModelOptions([entry])[0]?.label).toBe("Provider One/Model One");
   });
 

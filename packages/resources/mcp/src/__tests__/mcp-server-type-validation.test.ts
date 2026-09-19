@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 // onConflictDoUpdate 的原子性通过代码审查 + TypeScript 类型保证，集成测试需要 DB
 
 // validateMcpConfig 是纯函数，直接 import
-const { validateMcpConfig, isValidMcpName } = await import("../server/services/config/mcp-server");
+const { validateMcpConfig, isValidMcpName } = await import("../server/services/config/mcp-config");
 
 describe("mcp-server updateMcpServer type validation", () => {
   // streamable-http 类型被 validateMcpConfig 接受

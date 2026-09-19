@@ -4,7 +4,7 @@ import { eventService } from "@fenix/resource-machine/server";
 import { toInvocationDate } from "@fenix/resource-task/server";
 import { clearAllCache, getCache, getCacheBackend } from "../services/cache";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "../test-utils/helpers";
+import { resetAllStubs, stubIdentityDirectory } from "../test-utils/helpers";
 
 const USER_ID = "user-round21";
 
@@ -12,28 +12,26 @@ function request(path = "/", headers?: Record<string, string>) {
   return new Request(`http://localhost${path}`, { headers });
 }
 
+/** 组织名录投影：`getOrganization` 是组织名的唯一来源；`fails` 模拟名录读取故障。 */
 function stubOrganizationName(name: string | null, fails = false) {
-  stubDb({
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: async () => {
-            if (fails) throw new Error("database unavailable");
-            return name ? [{ name }] : [];
-          },
-        }),
-      }),
-    }),
+  stubIdentityDirectory({
+    getOrganization: async (organizationId) => {
+      if (fails) throw new Error("identity directory unavailable");
+      return name ? { id: organizationId, name } : undefined;
+    },
   });
 }
 
-function stubOrgAuth(members: unknown, organizations: unknown = [], onMembers?: () => void) {
-  stubAuthApi({
-    listMembers: async () => {
+/** 成员关系投影：数组顺序即 `member.createdAt` 升序，首个即确定性默认组织（契约保证）。 */
+function stubMemberships(
+  memberships: readonly { organizationId: string; role: "owner" | "admin" | "member" }[],
+  onMembers?: () => void,
+) {
+  stubIdentityDirectory({
+    listMemberships: async () => {
       onMembers?.();
-      return members;
+      return memberships;
     },
-    listOrganizations: async () => organizations,
   });
 }
 
@@ -234,71 +232,86 @@ describe("round21 隔离服务边界", () => {
     ["cookie", "/", { cookie: "x=1; active_org_id=org-cookie" }, "org-cookie"],
   ])("组织上下文解析%s", async (_name, path, headers, expected) => {
     stubOrganizationName("Org");
-    stubOrgAuth([{ userId: USER_ID, role: "owner" }]);
+    stubMemberships([{ organizationId: expected, role: "owner" }]);
     expect((await loadOrgContext({ id: USER_ID }, request(path, headers)))?.organizationId).toBe(expected);
   });
-  // 覆盖该独立行为与边界。
-  test("组织上下文兼容包装 members", async () => {
+  // 角色直接取自身份目录的成员关系投影（旧 better-auth `{ members: [...] }` 包装兼容随该调用一并移除）。
+  test("组织上下文透传成员角色", async () => {
     stubOrganizationName("Wrapped");
-    stubOrgAuth({ members: [{ userId: USER_ID, role: "admin" }] });
+    stubMemberships([{ organizationId: "org-wrapped", role: "admin" }]);
     expect((await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-wrapped")))?.role).toBe("admin");
   });
-  // 覆盖该独立行为与边界。
+  // 组织名只是展示信息，名录读取故障不得让已确定的成员关系整体失败。
   test("组织名称加载失败仍返回成员", async () => {
     stubOrganizationName(null, true);
-    stubOrgAuth([{ userId: USER_ID, role: "member" }]);
+    stubMemberships([{ organizationId: "org-db-failure", role: "member" }]);
     expect(await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-db-failure"))).toMatchObject({
       organizationId: "org-db-failure",
       role: "member",
     });
   });
-  // 指定组织存在当前成员时不得错误回退到其他组织。
+  // 指定组织确实在成员关系中时不得回退到首个组织。
   test("组织上下文保留已授权指定组织", async () => {
-    stubOrgAuth([{ userId: USER_ID, role: "admin" }], [{ id: "org-fallback", name: "Fallback" }]);
+    stubOrganizationName("Fallback");
+    stubMemberships([
+      { organizationId: "org-fallback", role: "owner" },
+      { organizationId: "org-forbidden", role: "admin" },
+    ]);
     expect(await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-forbidden"))).toMatchObject({
       organizationId: "org-forbidden",
       role: "admin",
     });
   });
-  // 覆盖该独立行为与边界。
+  // 无任何成员关系时返回空，由上层处理首次组织创建。
   test("组织上下文无组织返回空", async () => {
-    stubOrgAuth([], []);
+    stubMemberships([]);
     expect(await loadOrgContext({ id: USER_ID }, request())).toBeNull();
   });
-  // 覆盖该独立行为与边界。
-  test("组织上下文回退无成员返回空", async () => {
-    stubOrgAuth([], [{ id: "org-first", name: "First" }]);
+  // 指定组织不在成员关系中时回退到首个成员组织（顺序由契约保证确定性）。
+  test("组织上下文回退非成员指定组织", async () => {
+    stubOrganizationName("First");
+    stubMemberships([{ organizationId: "org-first", role: "owner" }]);
+    expect((await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-foreign")))?.organizationId).toBe(
+      "org-first",
+    );
+  });
+  // 身份目录故障时保守返回空，不得放行任何组织上下文。
+  test("组织上下文身份目录故障返回空", async () => {
+    stubIdentityDirectory({
+      listMemberships: async () => Promise.reject(new Error("unavailable")),
+    });
     expect(await loadOrgContext({ id: USER_ID }, request())).toBeNull();
   });
-  // 覆盖该独立行为与边界。
-  test("组织上下文认证异常返回空", async () => {
-    stubAuthApi({ listOrganizations: async () => Promise.reject(new Error("unavailable")) });
-    expect(await loadOrgContext({ id: USER_ID }, request())).toBeNull();
-  });
-  // 覆盖该独立行为与边界。
+  // 同一用户相同组织命中进程内缓存，不重复访问身份目录。
   test("组织上下文缓存避免重复查询", async () => {
     let calls = 0;
     stubOrganizationName("Cached");
-    stubOrgAuth([{ userId: USER_ID, role: "owner" }], [], () => calls++);
+    stubMemberships([{ organizationId: "org-cached", role: "owner" }], () => calls++);
     const input = request("/?activeOrganizationId=org-cached");
     await loadOrgContext({ id: USER_ID }, input);
     await loadOrgContext({ id: USER_ID }, input);
     expect(calls).toBe(1);
   });
-  // 覆盖该独立行为与边界。
+  // 请求携带不同 active 组织时必须重新向身份目录校验。
   test("组织上下文切换组织重新校验", async () => {
     let calls = 0;
     stubOrganizationName("Switch");
-    stubOrgAuth([{ userId: USER_ID, role: "owner" }], [], () => calls++);
+    stubMemberships(
+      [
+        { organizationId: "org-a", role: "owner" },
+        { organizationId: "org-b", role: "owner" },
+      ],
+      () => calls++,
+    );
     await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-a"));
     await loadOrgContext({ id: USER_ID }, request("/?activeOrganizationId=org-b"));
     expect(calls).toBe(2);
   });
-  // 覆盖该独立行为与边界。
+  // 清理缓存后必须重新查询。
   test("组织上下文清理缓存后重新查询", async () => {
     let calls = 0;
     stubOrganizationName("Clear");
-    stubOrgAuth([{ userId: USER_ID, role: "owner" }], [], () => calls++);
+    stubMemberships([{ organizationId: "org-clear", role: "owner" }], () => calls++);
     const input = request("/?activeOrganizationId=org-clear");
     await loadOrgContext({ id: USER_ID }, input);
     await clearOrgCache();

@@ -1,12 +1,12 @@
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
+import apikeyEN from "../../../../packages/platform/identity/web/i18n/en/apikey.json";
+import orgsEN from "../../../../packages/platform/identity/web/i18n/en/orgs.json";
+import apikeyZH from "../../../../packages/platform/identity/web/i18n/zh/apikey.json";
+import orgsZH from "../../../../packages/platform/identity/web/i18n/zh/orgs.json";
 import channelsEN from "../../../../packages/resources/channel/web/i18n/en/channels.json";
 import channelsZH from "../../../../packages/resources/channel/web/i18n/zh/channels.json";
-import apikeyEN from "../../../../packages/resources/identity-admin/web/i18n/en/apikey.json";
-import orgsEN from "../../../../packages/resources/identity-admin/web/i18n/en/orgs.json";
-import apikeyZH from "../../../../packages/resources/identity-admin/web/i18n/zh/apikey.json";
-import orgsZH from "../../../../packages/resources/identity-admin/web/i18n/zh/orgs.json";
 import knowledgeEN from "../../../../packages/resources/knowledge/web/i18n/locales/en/knowledge.json";
 import knowledgeZH from "../../../../packages/resources/knowledge/web/i18n/locales/zh/knowledge.json";
 import mcpEN from "../../../../packages/resources/mcp/web/i18n/locales/en/mcp.json";

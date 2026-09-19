@@ -1,5 +1,6 @@
 // auth stub 注册表
-// 替代各测试文件中的 mock.module("../auth/better-auth", ...) 和 mock.module("../auth/api-key-service", ...) 调用
+// 替代各测试文件中的 mock.module(".../auth/better-auth", ...) 调用；better-auth 实例的唯一实现
+// 在 `@fenix/identity`，测试由 setup-mocks 统一替换该模块。
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type StubFn = (...args: any[]) => any;
@@ -23,13 +24,7 @@ interface AuthApiStubs {
   getSession: StubFn;
 }
 
-interface ApiKeyServiceStubs {
-  createApiKey: StubFn;
-  hashApiKey: StubFn;
-}
-
 let _authApiStubs: Partial<AuthApiStubs> = {};
-let _apiKeyStubs: Partial<ApiKeyServiceStubs> = {};
 let _authHandlerStub: ((request: Request) => Response | Promise<Response>) | null = null;
 
 // ── better-auth stubs ──
@@ -52,23 +47,9 @@ export function getAuthHandlerStub() {
   return _authHandlerStub;
 }
 
-// ── api-key-service stubs ──
-
-export function stubApiKeyService(overrides: Partial<ApiKeyServiceStubs>) {
-  _apiKeyStubs = { ..._apiKeyStubs, ...overrides };
-}
-
-export function getApiKeyServiceStub<K extends keyof ApiKeyServiceStubs>(name: K): ApiKeyServiceStubs[K] {
-  const fn = _apiKeyStubs[name];
-  if (!fn)
-    throw new Error(`api-key-service stub '${String(name)}' not configured, call stubApiKeyService() in beforeEach`);
-  return fn;
-}
-
 // ── reset ──
 
 export function resetAuthStubs() {
   _authApiStubs = {};
-  _apiKeyStubs = {};
   _authHandlerStub = null;
 }

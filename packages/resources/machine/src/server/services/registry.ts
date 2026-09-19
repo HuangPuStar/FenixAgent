@@ -1,6 +1,7 @@
 import { log } from "@fenix/logger";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { db } from "@server/db";
-import { agentConfig, machine, organization, registryEvent } from "@server/db/schema";
+import { agentConfig, machine, registryEvent } from "@server/db/schema";
 import type { AuthContext } from "@server/plugins/auth";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { writeRegistryEvent } from "../repositories/registry-event";
@@ -370,13 +371,9 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
     throw new Error(`machine '${id}' is still referenced by agent configs`);
   }
 
-  const orgRows = await db.select().from(organization).where(eq(organization.id, ctx.organizationId)).limit(1);
-  const metadata = orgRows[0]?.metadata;
-  const defaultMachineId =
-    metadata && typeof metadata === "object"
-      ? (((metadata as { defaultEngine?: { machineId?: string } }).defaultEngine?.machineId ?? "") as string)
-      : "";
-  if (defaultMachineId === id) {
+  // 组织默认引擎引用经目录读取：`organization` 表的 owner 是身份模块，本包不得直查该表。
+  const organization = await getIdentityDirectory().getOrganization(ctx.organizationId);
+  if (organization?.defaultMachineId === id) {
     throw new Error(`machine '${id}' is still referenced by organization default engine`);
   }
 

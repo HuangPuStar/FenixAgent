@@ -1,5 +1,5 @@
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
-import { WebErrSchema } from "@server/schemas/common.schema";
 import Elysia from "elysia";
 import { IdParamsSchema, OkResponseSchema } from "../../schemas/prod-view.schema";
 import { loadProdView } from "../../services/prod-view";

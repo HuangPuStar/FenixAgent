@@ -26,15 +26,8 @@ const detail: AgentDetail = {
   siteAppIds: ["site-hidden"],
   agentNode: {},
   enableMemory: true,
-  resourceAccess: {
-    ownership: "internal",
-    sourceOrganizationId: "org-1",
-    resourceUid: "agent-1",
-    resourceKey: "org-1/writer",
-    writable: true,
-    manageable: true,
-    publicReadable: false,
-  },
+  scope: { organizationId: "org-1", visibility: "private" },
+  access: { actions: ["read", "update", "delete"] },
 };
 
 describe("Agent 编辑器表单模型", () => {
@@ -122,33 +115,29 @@ describe("Agent 编辑器表单模型", () => {
   // 模型卡片只显示短名称，Provider 与品牌图标键必须保留在结构化字段中。
   test("模型选项拆分 Provider 和短名称", () => {
     expect(
-      mapModelOptions([
-        {
-          id: "model-uuid",
-          modelId: "mimo-v2.5",
-          displayName: "mimo-v2.5",
-          provider: "provider-id",
-          providerDisplayName: "mimo",
-          providerResourceKey: "provider-key",
-          providerResourceAccess: {
-            ownership: "external",
-            sourceOrganizationId: "org-personal",
-            sourceOrganizationName: "Personal1",
-            resourceUid: "provider-uid",
-            resourceKey: "provider-key",
-            manageable: false,
-            writable: false,
+      mapModelOptions(
+        [
+          {
+            id: "model-uuid",
+            modelId: "mimo-v2.5",
+            displayName: "mimo-v2.5",
+            provider: "provider-id",
+            providerId: "provider-uid",
+            providerDisplayName: "mimo",
+            scope: { organizationId: "org-personal", visibility: "private" },
+            access: { actions: ["read"] },
+            contextLimit: null,
+            outputLimit: null,
           },
-          contextLimit: null,
-          outputLimit: null,
-        },
-      ]),
+        ],
+        "org-1",
+      ),
     ).toEqual([
       {
         value: "model-uuid",
         label: "mimo-v2.5",
         modelId: "mimo-v2.5",
-        group: { id: "org-personal:provider-key", label: "mimo", scope: "shared" },
+        group: { id: "org-personal/provider-uid", label: "mimo", scope: "shared" },
       },
     ]);
   });

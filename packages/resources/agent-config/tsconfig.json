@@ -43,7 +43,9 @@
       "@/src/lib/skill-resource-access": ["packages/resources/skill/web/lib/skill-resource-access.ts"],
       "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/model-config-utils": ["packages/resources/model-management/web/lib/model-config-utils.ts"],
+      "@/src/lib/provider-resource-access": ["packages/resources/model-management/web/lib/provider-resource-access.ts"],
       "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
+      "@/src/contexts/OrgContext": ["packages/platform/identity/web/contexts/OrgContext.tsx"],
       "@/src/*": ["apps/web/src/*"]
     }
   },

@@ -8,7 +8,7 @@
 import { docManager } from "@fenix/chat-channel/server";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
-import { findUsersBasicInfoByIds } from "@fenix/resource-identity-admin/server";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { config } from "@server/config";
 import { getCoreRuntime } from "@server/services/core-bootstrap";
 import {
@@ -147,8 +147,7 @@ export async function listInstanceActivitySnapshotsWithUsers(
     return snapshots;
   }
 
-  const userRows = await findUsersBasicInfoByIds(userIds);
-  const userMap = new Map(userRows.map((row) => [row.id, row]));
+  const userMap = await getIdentityDirectory().listUserDisplayInfo(userIds);
 
   return snapshots.map((snapshot) => {
     if (!snapshot.user) {

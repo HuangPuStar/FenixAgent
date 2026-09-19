@@ -3,18 +3,25 @@ import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { McpServerInfo, ModelEntry } from "../types/config";
 
-const externalAccess: ResourceAccess = {
-  ownership: "external",
-  sourceOrganizationId: "org-source",
-  sourceOrganizationName: "Source Team",
-  resourceUid: "resource-uid",
-  resourceKey: "org-source/shared-resource",
-  manageable: false,
-  writable: false,
-  publicReadable: true,
+/** 共享来源模型的 `/web` 视图字段：归属其他组织且只有读动作。 */
+const sharedModelFields: Partial<ModelEntry> = {
+  providerId: "provider-uid",
+  scope: { organizationId: "org-source", visibility: "private" },
+  access: { actions: ["read"] },
+  organizationName: "Source Team",
 };
+
+/** 共享来源 MCP 的 `/web` 视图字段：归属其他组织且公开可读。 */
+function sharedMcpFields(overrides: Partial<McpServerInfo> = {}): Partial<McpServerInfo> {
+  return {
+    scope: { organizationId: "org-source", visibility: "public" },
+    access: { actions: ["read"] },
+    organizationName: "Source Team",
+    ...overrides,
+  };
+}
 
 function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {
@@ -40,7 +47,7 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapMcpOptions([{ id: "mcp-1", name: "files" }])[0].name).toBe("files");
   });
 
-  // 本组织 MCP 缺少 resourceAccess 时使用名称作为稳定 key。
+  // 本组织 MCP 缺少归属范围时使用名称作为稳定 key。
   test("本组织 MCP 使用名称作为 key", () => {
     expect(mapMcpOptions([{ id: "mcp-1", name: "files" }])[0].key).toBe("files");
   });
@@ -91,49 +98,47 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapMcpOptions([])).toEqual([]);
   });
 
-  // 共享 MCP 应优先采用资源 key，避免同名资源冲突。
-  test("共享 MCP 使用 resourceKey 作为 key", () => {
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess: externalAccess }])[0].key).toBe(
-      "org-source/shared-resource",
-    );
+  // 共享 MCP 应使用归属组织与资源 id 拼接的稳定 key，避免同名资源冲突。
+  test("共享 MCP 使用归属组织与资源 id 作为 key", () => {
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields() }])[0].key).toBe("org-source/mcp-1");
   });
 
   // 共享 MCP 标签应包含来源组织，区分跨组织同名资源。
   test("共享 MCP 标签包含来源组织", () => {
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess: externalAccess }])[0].label).toBe(
-      "Source Team/files",
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields() }])[0].label).toBe("Source Team/files");
+  });
+
+  // 归属范围必须按引用传递，供调用方继续判断资源来源与权限。
+  test("共享 MCP 保留归属范围引用", () => {
+    const scope = { organizationId: "org-source", visibility: "public" } as const;
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields({ scope }) }])[0].scope).toBe(scope);
+  });
+
+  // 缺少归属范围时无法推导跨组织 key，回退到资源名。
+  test("缺少归属范围时回退到资源名", () => {
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files" }])[0].key).toBe("files");
+  });
+
+  // 归属组织按原值参与 key 推导，不得被改写或截断。
+  test("归属组织按原值参与 key 推导", () => {
+    const scope = { organizationId: "org-source/legacy", visibility: "private" } as const;
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields({ scope }) }])[0].key).toBe(
+      "org-source/legacy/mcp-1",
     );
-  });
-
-  // 共享 MCP 的访问描述必须按引用传递，供调用方继续判断权限。
-  test("共享 MCP 保留 resourceAccess 引用", () => {
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess: externalAccess }])[0].resourceAccess).toBe(
-      externalAccess,
-    );
-  });
-
-  // 空 resourceKey 是显式资源标识，应原样保留而不进行隐式回退。
-  test("空 resourceKey 被原样保留", () => {
-    const resourceAccess = { ...externalAccess, resourceKey: "" };
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].key).toBe("");
-  });
-
-  // resourceKey 是当前协议的必填稳定标识，应按原值传递。
-  test("resourceKey 按原值保留", () => {
-    const resourceAccess = { ...externalAccess, resourceKey: "org-source/legacy-files" };
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].key).toBe("org-source/legacy-files");
   });
 
   // 空来源组织名不应生成多余斜杠前缀。
   test("空来源组织名使用 MCP 原名称", () => {
-    const resourceAccess = { ...externalAccess, sourceOrganizationName: "" };
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].label).toBe("files");
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields({ organizationName: "" }) }])[0].label).toBe(
+      "files",
+    );
   });
 
   // 缺失来源组织名时共享标记不应影响基础展示名称。
   test("缺失来源组织名使用 MCP 原名称", () => {
-    const { sourceOrganizationName: _sourceOrganizationName, ...resourceAccess } = externalAccess;
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess }])[0].label).toBe("files");
+    expect(
+      mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields({ organizationName: undefined }) }])[0].label,
+    ).toBe("files");
   });
 
   // 转换不能改变调用方传入的 MCP 数组内容。
@@ -145,9 +150,9 @@ describe("AgentFormDialog 选项数据转换边界", () => {
 
   // 转换不能改变调用方传入的 MCP 对象。
   test("转换 MCP 不修改输入对象", () => {
-    const server = { id: "mcp-1", name: "files", resourceAccess: externalAccess };
+    const server = { id: "mcp-1", name: "files", ...sharedMcpFields() };
     mapMcpOptions([server]);
-    expect(server).toEqual({ id: "mcp-1", name: "files", resourceAccess: externalAccess });
+    expect(server).toEqual({ id: "mcp-1", name: "files", ...sharedMcpFields() });
   });
 
   // 每次转换应产生新的数组，避免调用方共享可变容器。
@@ -183,30 +188,31 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapModelOptions([model()])[0]).toMatchObject({
       label: "Model One",
       modelId: "gpt-1",
-      group: { id: "organization:provider-1", label: "Provider One", scope: "organization" },
+      group: { id: "provider-1", label: "Provider One", scope: "organization" },
     });
   });
 
-  // 共享模型仍使用短模型名，来源属性通过 Provider 分组的 scope 表达。
-  test("共享模型保留 Provider 分组与来源范围", () => {
-    expect(mapModelOptions([model({ providerResourceAccess: externalAccess })])[0]).toMatchObject({
+  // 共享模型仍使用短模型名，分组 id 取 Provider 资源键、scope 表达来源范围。
+  test("共享模型保留 Provider 资源键分组与来源范围", () => {
+    expect(mapModelOptions([model(sharedModelFields)], "org-current")[0]).toMatchObject({
       label: "Model One",
       modelId: "gpt-1",
-      group: { id: "org-source:provider-1", label: "Provider One", scope: "shared" },
+      group: { id: "org-source/provider-uid", label: "Provider One", scope: "shared" },
     });
   });
 
-  // 空来源组织名不影响短模型名，Provider 分组仍保留。
+  // 空来源组织展示名不影响短模型名，Provider 分组仍保留。
   test("空模型来源组织名不影响分组", () => {
-    expect(
-      mapModelOptions([model({ providerResourceAccess: { ...externalAccess, sourceOrganizationName: "" } })])[0],
-    ).toMatchObject({ label: "Model One", group: { label: "Provider One", scope: "shared" } });
+    expect(mapModelOptions([model({ ...sharedModelFields, organizationName: "" })], "org-current")[0]).toMatchObject({
+      label: "Model One",
+      group: { label: "Provider One", scope: "shared" },
+    });
   });
 
-  // 缺失来源组织名不影响短模型名和共享 Provider 分组。
+  // 缺失来源组织展示名不影响短模型名和共享 Provider 分组。
   test("缺失模型来源组织名不影响分组", () => {
-    const { sourceOrganizationName: _sourceOrganizationName, ...providerResourceAccess } = externalAccess;
-    expect(mapModelOptions([model({ providerResourceAccess })])[0]).toMatchObject({
+    const { organizationName: _organizationName, ...modelWithoutOrganizationName } = sharedModelFields;
+    expect(mapModelOptions([model(modelWithoutOrganizationName)], "org-current")[0]).toMatchObject({
       label: "Model One",
       group: { label: "Provider One", scope: "shared" },
     });
@@ -254,12 +260,12 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(models.map((item) => item.id)).toEqual(["model-1"]);
   });
 
-  // 模型转换不得修改输入对象的访问描述。
-  test("转换模型不修改输入访问描述", () => {
-    const providerResourceAccess = { ...externalAccess };
-    const input = model({ providerResourceAccess });
-    mapModelOptions([input]);
-    expect(input.providerResourceAccess).toEqual(externalAccess);
+  // 模型转换不得修改输入对象的归属与动作描述。
+  test("转换模型不修改输入归属描述", () => {
+    const input = model(sharedModelFields);
+    const snapshot = structuredClone(input);
+    mapModelOptions([input], "org-current");
+    expect(input).toEqual(snapshot);
   });
 
   // 每次模型转换都应产生独立数组，防止结果容器被复用。
@@ -280,14 +286,18 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(mapMcpOptions([input])[0]).not.toBe(input);
   });
 
-  // 多个共享 MCP 应分别保留各自的资源 key。
+  // 多个共享 MCP 应分别按各自归属组织推导资源 key。
   test("多个共享 MCP 保留各自资源 key", () => {
     expect(
       mapMcpOptions([
-        { id: "mcp-1", name: "files", resourceAccess: { ...externalAccess, resourceKey: "org/files" } },
-        { id: "mcp-2", name: "search", resourceAccess: { ...externalAccess, resourceKey: "org/search" } },
+        { id: "mcp-1", name: "files", ...sharedMcpFields({ scope: { organizationId: "org", visibility: "private" } }) },
+        {
+          id: "mcp-2",
+          name: "search",
+          ...sharedMcpFields({ scope: { organizationId: "team", visibility: "public" } }),
+        },
       ]).map((option) => option.key),
-    ).toEqual(["org/files", "org/search"]);
+    ).toEqual(["org/mcp-1", "team/mcp-2"]);
   });
 
   // 混合本组织和共享 MCP 时应分别使用对应的展示策略。
@@ -295,24 +305,24 @@ describe("AgentFormDialog 选项数据转换边界", () => {
     expect(
       mapMcpOptions([
         { id: "local", name: "files" },
-        { id: "shared", name: "search", resourceAccess: externalAccess },
+        { id: "shared", name: "search", ...sharedMcpFields() },
       ]).map((option) => option.label),
     ).toEqual(["files", "Source Team/search"]);
   });
 
   // 混合本组织和共享模型时均保留稳定短名称，并分别标记 Provider 范围。
   test("混合模型使用短名称与独立范围", () => {
-    const options = mapModelOptions([
-      model({ id: "local" }),
-      model({ id: "shared", providerResourceAccess: externalAccess }),
-    ]);
+    const options = mapModelOptions(
+      [model({ id: "local" }), model({ id: "shared", ...sharedModelFields })],
+      "org-current",
+    );
     expect(options.map((option) => option.label)).toEqual(["Model One", "Model One"]);
     expect(options.map((option) => option.group.scope)).toEqual(["organization", "shared"]);
   });
 
-  // 资源访问中的权限字段不应影响 MCP 的可选性，启用状态才是过滤依据。
+  // 授权动作不应影响 MCP 的可选性，启用状态才是过滤依据。
   test("只读共享 MCP 仍可作为选项", () => {
-    expect(mapMcpOptions([{ id: "mcp-1", name: "files", resourceAccess: externalAccess }])).toHaveLength(1);
+    expect(mapMcpOptions([{ id: "mcp-1", name: "files", ...sharedMcpFields() }])).toHaveLength(1);
   });
 
   // modelId 内容不应改变短标签，但必须作为品牌图标映射键保留。

@@ -152,9 +152,18 @@ export interface ResourceScopeStore<TScope> {
 export type ActorContext = {
   kind: "user";
   userId: string;
-  /** 系统管理员仍保留真实 userId，便于审计；由 AccessControl 解释其系统级权限。 */
+  /**
+   * 系统管理员仍保留真实 userId，便于审计；由 AccessControl 解释其系统级权限。
+   *
+   * 预留能力：当前代码库没有任何生产赋值点，`AccessControlModule` 保留该分支的放行语义，
+   * 待系统管理员产品形态确定后再补判定规则与回归。在此之前该字段只由测试构造。
+   */
   systemRole?: "super-admin";
   activeOrganizationId?: string;
+  /**
+   * 全量成员关系（身份投影的完整性要求，见 3.3）。**不是**可见范围：组织资源的可见范围
+   * 只有 `activeOrganizationId` 这一个组织，此处的其他组织仅用于回答"切过去之后是什么角色"。
+   */
   memberships: ReadonlyArray<{
     organizationId: string;
     role: "owner" | "admin" | "member";
@@ -186,14 +195,34 @@ route / 外部调用
 对资源模块公开的接口保持存储无关。实现内部可以查询成员、主表归属列与 `visibility`，也可以将约束编译为 Drizzle SQL 条件；这些细节不得泄漏给业务模块。`ResourceScopeStore` 由同一平台实现提供，负责组织、owner、`visibility` 的批量读取、校验与生命周期维护。
 
 ```ts
-/** 不透明的列表访问条件；资源模块不得解析其内部结构。 */
+/** 授权实现私有「已解析授权事实」的载荷键；资源模块无法合法读取。 */
+export const RESOURCE_QUERY_CONSTRAINT_PAYLOAD: unique symbol;
+
+/** 不透明的列表访问条件；资源模块不得解析其内部结构，也不得自行构造。 */
 export type ResourceQueryConstraint = Readonly<{
   resourceType: string;
   action: "read" | "use";
+  /** 产出该条件的授权实现 ID；条件编译器校验一致，防止跨实现混搭。 */
+  provider: string;
+  [RESOURCE_QUERY_CONSTRAINT_PAYLOAD]: unknown;
 }>;
 
 export interface AccessControlModule {
-  /** 基于可信 actor 写入资源主表的初始归属。 */
+  /**
+   * 创建期的初始归属。归属列位于资源主表且为 NOT NULL，因此归属必须在 INSERT 之前
+   * 解析、并由同一条 INSERT 写入，不能先建行再补写。
+   */
+  resolveInitialScope(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    /** 仅系统管理 Facade 可显式指定目标组织；普通主体的归属由 activeOrganizationId 决定。 */
+    organizationId?: string;
+  }): Promise<ResourceScope>;
+
+  /**
+   * side-table 型 `ResourceScopeStore`（EE）的独立初始化路径。
+   * CE 使用主表归属列，创建期走 `resolveInitialScope`，不调用本方法。
+   */
   initializeResourceAccess(input: {
     actor: ActorContext;
     resource: ResourceDefinition;
@@ -222,8 +251,20 @@ export interface AccessControlModule {
     resourceId: string;
   }): Promise<ResourceAccess>;
 
+  /** 列表批量版本，避免逐行 `resolveAccess` 造成的 N+1。 */
+  resolveAccessMany(input: {
+    actor: ActorContext;
+    resource: ResourceDefinition;
+    resourceIds: readonly string[];
+  }): Promise<ReadonlyMap<string, ResourceAccess>>;
 }
 ```
+
+可信主体由身份模块产出，不由授权模块反推：`AccessControlModule` 不提供 `createActorContext`，认证层通过 identity 的公开入口解析 session / API Key / Environment secret 后构造 `ActorContext`，其中 `memberships` 是**全量**成员关系。全量的理由是身份投影的完整性：API Key 的组织上下文、系统管理视图与其他模块读取的成员关系都不以「当前组织」为前提，身份层不得自行裁剪。
+
+`memberships` 全量**不等于**可见范围是成员组织的并集。授权口径是：**组织资源的归属组织必须是 actor 的当前 active organization**，actor 作为成员的其他组织一行都不可见；跨组织共享只能由 `visibility = 'public'` 表达。因此 `memberships` 只用于回答「actor 在**当前组织**里是什么角色」（当前组织不在其中即为无组织身份，组织分支整体不成立），谓词实现不得把它展开成组织 ID 的 `IN` 列表——那等于把其他组织的私有资源混进当前组织的列表。多组织用户通过切换组织访问各自的资源，这与迁移前的控制台语义一致。
+
+列表条件与单资源校验必须由**同一份**策略函数派生，不允许各写一套：列表谓词是动作推导在 SQL 中的等价重写，由同一实现包内共享，并有合同测试断言两者在随机 `(actor, resource, scope)` 组合下等价。
 
 `ResourceRecord.access` 只由该入口产出：资源领域、route 与 Repository 都不根据范围、角色或 `visibility` 自行推导。
 
@@ -232,6 +273,32 @@ export interface AccessControlModule {
 `ResourceQueryConstraint` 只用于普通用户的受控集合查询。Domain Service 的 `list()` 可选接收该条件：Resource Facade 调用时必须传入；系统管理 Facade 在完成系统管理员校验后、以及受信任资源模块内部调用时可以省略。省略不是“空权限”或对外绕过，而是无权限 Domain Service 的正常内部调用路径；route 不得直接调用它。
 
 Repository 不直接解释 `ResourceQueryConstraint`。平台提供统一的 `AuthorizedResourceQuery`，接收受控资源的 ID、组织与 owner 列以及业务条件，调用已装配的 `AccessControlModule` 生成最终数据库条件。
+
+`AuthorizedResourceQuery` 是声明在 `platform-sdk` 的**端口**，Drizzle 实现落在 access-control 并由 `apps/server` 装配注入：`platform-sdk` 不导入 Drizzle，因此端口用「存储类型包」把具体存储参数化，默认实例的槽位是 `unknown`；资源包在自身 repository 里用自己的 Drizzle 类型实例化，从而保留完整类型校验，同时不产生 `resources → 具体 AccessControl` 的编译依赖。
+
+资源类型到主表与归属列的映射由**资源包**声明、由 `apps/server` 汇总：
+
+```ts
+/** 资源主表与平台范围列的物理映射；只声明列，不解释列语义。 */
+export interface ResourceStorageBinding<TTable = unknown, TColumn = unknown> {
+  resourceType: string;
+  table: TTable;
+  columns: {
+    id: TColumn;
+    organizationId?: TColumn;
+    ownerUserId?: TColumn;
+    visibility?: TColumn;
+  };
+}
+
+/** 资源对平台注册的唯一入口：语义定义 + 物理绑定。 */
+export interface ResourceRegistration<TTable = unknown, TColumn = unknown> {
+  definition: ResourceDefinition;
+  storage: ResourceStorageBinding<TTable, TColumn>;
+}
+```
+
+`ColumnResourceScopeStore` 以这组绑定建立 `resourceType → (表, 归属列)` 索引，未知 `resourceType` 直接报错而不是静默返回空。
 
 Model 是 Provider 的二级资源，不注册独立 `ResourceDefinition` 或 `ResourceScopeStore`，也不保存独立 owner/visibility。Model 列表和详情必须关联 Provider，并在数据库分页、排序和计数前将 Provider 的授权约束下推；Model 的引用、CRUD 与运行解析按操作复用所属 Provider 的 read/use/update/delete 权限。
 
@@ -304,16 +371,34 @@ LIMIT <limit> OFFSET <offset>;
 
 1. 纯个人资源：owner 可完整管理。
 2. 组织内个人资源：owner 在对应组织内可完整管理。
-3. 普通组织资源：同组织 `owner` / `admin` 可执行资源声明的基础管理动作；`member` 仅可执行 `memberDefaultActions`。
+3. 普通组织资源：资源归属组织**就是当前 active organization** 时，该组织内的 `owner` / `admin` 可执行资源声明的基础管理动作；`member` 仅可执行 `memberDefaultActions`。actor 作为成员的其他组织不构成同组织关系（见 3.3）。
 4. `visibility = public` 只开放资源定义为全局公开声明的默认动作。动作之间是否蕴含由资源定义或资源特定策略明确声明：例如 AgentConfig 可声明公开 `read` 同时允许 `use`；其他资源不得据此默认推导编辑、删除、运行或分享权限。
 5. `admin` / `owner` 默认不自动读取或修改组织内个人资源。审计或代管必须另设显式动作和审计能力。
+
+有效动作的推导必须收敛为**唯一一处**实现，`authorize` / `resolveAccess` / `resolveAccessMany` 与列表条件编译器共用它，规则如下：
+
+- `systemRole === "super-admin"`：直接得到 `ResourceDefinition.actions` 全量。
+- 纯 `personal` 资源：`scope.ownerUserId === actor.userId` 时得到全量。
+- `organization-personal` 资源：组织上下文与 owner 同时匹配时得到全量。
+- `organization` 资源且资源归属组织**就是当前 active organization**、actor 在该组织为 `owner` / `admin`：得到全量。
+- `organization` 资源且资源归属组织**就是当前 active organization**、actor 在该组织为 `member`：得到 `memberDefaultActions`。该分支**只对 `organization` 归属生效**，组织内个人资源不因成员身份获得默认动作。
+- `scope.visibility === "public"`：叠加 `publicDefaultActions`。
+- 以上都不成立：空动作集合。
+
+「同组织」一律是「资源归属组织 = actor 的当前 active organization」：actor 属于多个组织时，非当前组织的资源在列表、详情与写路径上都是空动作集合（当前组织不在 `memberships` 里时同理）。跨组织共享只能由 `visibility = public` 表达，不由成员关系表达。
+
+成员动作与公开动作是**并集**：`public` 在原有归属规则之外扩大受众，不替换归属规则。三个来源都没有结果时，列表条件必须编译为恒假而不是放行全量。
 
 ## 6. 迁移规则
 
 本节定义资源授权适配完成后的目标数据状态与约束。
 
 1. 为支持全局公开的资源主表增加 `visibility` 固定列；不回填 JSONB。既有通用资源全局公开记录回填为 `visibility = public`；对外 Site 访问仍迁移到 Site 自己的发布范围或发布实体。
+
+   `visibility` 使用 `varchar(20) NOT NULL DEFAULT 'private'`，与既有 `agent_site_app.visibility` 同形；不引入跨模块共享的 pg enum，避免 schema 归属拆分后 enum 横跨多个模块。
 2. 不将 `resource_permission` 重命名为 `resource_access_grant`。完成 `visibility` 回填与结果核验后，删除本方案不再使用的旧权限记录和表；不得保留双写或兼容路径。
+
+   实施顺序：`visibility` 回填迁移与四张主表的读取切换同批上线（旧表**保留**），删除旧表的 `DROP` 迁移推迟到下一发布——同一发布内先回填再 DROP 会让回填丧失可核验的对照源，且 DROP 是唯一不可逆步骤，与「回滚不丢授权能力」冲突。延期期间旧表无任何读者与写者，`schema.ts` 中以 `removeWhen` 标注移除条件，禁止新增任何引用。CE 阶段 2 任务 1.2 按此顺序交付。
 3. 先让资源 Service 和 Repository 接入第 3 节稳定接口；删除资源模块内直接 `member/role` 判断和手写授权 SQL。
 4. 将列表改为资源主表驱动的归属与 `visibility` 条件；验证排序、分页、计数、默认归属范围、公开范围和并发更新边界。
 5. 资源创建必须在同一事务中写入主表归属与初始 `visibility`；资源删除不需要额外清理通用授权记录。

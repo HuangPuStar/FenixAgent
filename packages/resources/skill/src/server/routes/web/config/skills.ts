@@ -3,44 +3,50 @@
  *
  * 提供 Skill 的完整 CRUD 操作，包括创建、读取、更新、删除和批量上传。
  *
- * GET    /config/skills        → 列出所有 Skill（当前组织可见）
+ * GET    /config/skills        → 列出所有 Skill（当前主体可见）
  * GET    /config/skills/:name  → 获取单个 Skill 详情
  * POST   /config/skills        → 创建新 Skill
  * PUT    /config/skills/:name  → 更新已有 Skill
+ * PUT    /config/skills/:name/access → 只更新公开受众
  * DELETE /config/skills/:name  → 删除 Skill
  * POST   /config/skills/upload → 批量上传技能目录（multipart/form-data）
  */
 
-import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
-import { WebErrSchema, WebOkSchema } from "@server/schemas/common.schema";
-import {
-  CreateSkillResponseSchema,
-  DeleteSkillResponseSchema,
-  SkillDetailSchema,
-  SkillListResponseSchema,
-  SkillUploadResponseSchema,
-  UpdateSkillResponseSchema,
-} from "@server/schemas/config.schema";
-import { configError, configNotFound, configSuccess, configValidationError } from "@server/services/config-utils";
+import type { ActorContext } from "@fenix/platform-sdk";
+import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
+import { NotFoundError, ValidationError } from "@server/errors";
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
+import * as z from "zod/v4";
+import { getSkillServerModule } from "../../../runtime";
+import { type ImportConflictStrategy, skillSourceDir } from "../../../services/skill-content";
+import { createSkillArchiveBuffer } from "../../../services/skill-fs";
+import { readSkillUploadForm, type UploadFormData } from "../../skill-upload-form";
 import {
-  deleteSkill,
-  getGlobalSkillsDir,
-  getSkill,
-  type ImportConflictStrategy,
-  importSkillDirectories,
-  listSkills,
-  setSkill,
-  setSkillPublicReadable,
-} from "../../../services/skill";
-import { assertValidSkillName, createSkillArchiveBuffer, getSkillSourceDir } from "../../../services/skill-fs";
+  buildSkillConflictBody,
+  isWebSuccess,
+  resolveOrganizationNames,
+  runWebHandler,
+  SkillUploadConflictSchema,
+  toWebSkillDetail,
+  toWebSkillItem,
+  toWebSkillSaveResult,
+  type WebHandlerResult,
+} from "./skill-route-support";
 
-const app = new Elysia({ name: "web-config-skills" }).use(authGuardPlugin);
+/**
+ * `/web/config/skills` 协议层。
+ *
+ * 只做协议接入：请求体校验、把请求映射为应用调用、把结果映射为 `/web` 视图。授权、可见性与名称解析
+ * 全部在 Facade 内完成，本文件不判断组织、角色或 `visibility`。
+ *
+ * 视图变化（决策 D2）：列表与详情不再返回旧栈的 `resourceAccess`，改为返回资源归属 `scope` 与当前
+ * 主体有效动作 `access.actions`；`organizationName` 是展示字段，由身份目录批量解析。
+ */
 
 // ── 请求体类型 ──
 
-interface CreateSkillBody {
-  name?: string;
+interface SkillWriteBody {
   data?: {
     description: string;
     content: string;
@@ -49,247 +55,191 @@ interface CreateSkillBody {
   };
 }
 
-interface UpdateSkillBody {
-  data?: {
-    description: string;
-    content: string;
-    metadata?: Record<string, string>;
-    publicReadable?: boolean;
-  };
+interface CreateSkillBody extends SkillWriteBody {
+  name?: string;
 }
 
 interface UpdateSkillAccessBody {
   publicReadable?: boolean;
 }
 
-interface UploadManifestEntry {
-  skillName: string;
-  relativePath: string;
-}
-
 // ── Handler 函数 ──
 
-/**
- * 列出当前组织可见的所有 Skill。
- */
-async function handleList(ctx: AuthContext) {
-  const skills = await listSkills(ctx);
-  return configSuccess({ skills });
+/** 列出当前主体可见的所有 Skill。 */
+async function handleList(actor: ActorContext): Promise<WebHandlerResult> {
+  const { facade, identity } = getSkillServerModule();
+  const { items } = await facade.list(actor);
+  const organizationNames = await resolveOrganizationNames(
+    identity,
+    items.map((item) => item.scope.organizationId),
+  );
+  return {
+    success: true,
+    data: {
+      skills: items.map((item) => toWebSkillItem(item, organizationNames.get(item.scope.organizationId ?? ""))),
+    },
+  };
 }
 
-/**
- * 获取单个 Skill 的完整详情。
- */
-async function handleGet(ctx: AuthContext, name: string) {
-  if (!name) {
-    return configValidationError("Missing 'name' field");
-  }
-  const skill = await getSkill(ctx, name);
-  if (!skill) {
-    return configNotFound(`Skill '${name}' not found`);
-  }
-  return configSuccess(skill);
+/** 获取单个 Skill 的完整详情（含 SKILL.md 正文）。 */
+async function handleGet(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
+  const { facade, identity } = getSkillServerModule();
+  const detail = await facade.readDetail(actor, nameOrKey);
+  if (!detail) throw new NotFoundError(`Skill '${nameOrKey}' not found`);
+  const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+  return {
+    success: true,
+    data: toWebSkillDetail(detail, organizationNames.get(detail.scope.organizationId ?? "")),
+  };
 }
 
 /**
  * 创建新 Skill。
- * 如果同名 Skill 已存在且属于当前组织（非共享），拒绝创建。
+ *
+ * 同组织同名由 Facade 内的唯一索引判定（返回 409），本层不再预检：预检与写入之间存在竞态窗口，
+ * 且跨组织公开的同名 Skill 不属于本组织，不应被判成冲突。
  */
-async function handleCreate(
-  ctx: AuthContext,
-  body: CreateSkillBody,
-  errorFn: (status: number, body: unknown) => Response,
-) {
-  if (!body.name) {
-    return errorFn(400, configValidationError("Missing 'name' field"));
-  }
-  if (!body.data?.content) {
-    return errorFn(400, configValidationError("Missing required field: data.content"));
-  }
+async function handleCreate(actor: ActorContext, body: CreateSkillBody | undefined): Promise<WebHandlerResult> {
+  const { identity } = getSkillServerModule();
+  const name = body?.name;
+  if (!name) throw new ValidationError("Missing 'name' field");
+  const data = body?.data;
+  if (!data?.content) throw new ValidationError("Missing required field: data.content");
 
-  // 检查同名非共享 Skill 是否已存在
-  const existing = await getSkill(ctx, body.name);
-  if (existing && existing.resourceAccess?.ownership === "internal") {
-    return errorFn(409, configError("CONFLICT", `Skill '${body.name}' already exists`));
-  }
-
-  const result = await setSkill(ctx, body.name, body.data);
-  return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
+  const skill = await getSkillServerModule().facade.create(actor, {
+    name,
+    data: {
+      description: data.description ?? "",
+      content: data.content,
+      ...(data.metadata === undefined ? {} : { metadata: data.metadata }),
+    },
+    ...(data.publicReadable === undefined ? {} : { publicReadable: data.publicReadable }),
+  });
+  const organizationNames = await resolveOrganizationNames(identity, [skill.scope.organizationId]);
+  return {
+    success: true,
+    data: toWebSkillSaveResult(skill, organizationNames.get(skill.scope.organizationId ?? "")),
+  };
 }
 
-/**
- * 更新已有 Skill。
- */
+/** 更新已有 Skill；公开受众请使用独立的 access 接口。 */
 async function handleUpdate(
-  ctx: AuthContext,
-  name: string,
-  data: UpdateSkillBody["data"],
-  errorFn: (status: number, body: unknown) => Response,
-) {
-  if (!data?.content) {
-    return errorFn(400, configValidationError("Missing required field: data.content"));
-  }
-  const result = await setSkill(ctx, name, data);
-  return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
+  actor: ActorContext,
+  nameOrKey: string,
+  body: SkillWriteBody | undefined,
+): Promise<WebHandlerResult> {
+  const { identity } = getSkillServerModule();
+  const data = body?.data;
+  if (!data?.content) throw new ValidationError("Missing required field: data.content");
+
+  const skill = await getSkillServerModule().facade.update(
+    actor,
+    nameOrKey,
+    {
+      description: data.description ?? "",
+      content: data.content,
+      ...(data.metadata === undefined ? {} : { metadata: data.metadata }),
+    },
+    { ...(data.publicReadable === undefined ? {} : { publicReadable: data.publicReadable }) },
+  );
+  const organizationNames = await resolveOrganizationNames(identity, [skill.scope.organizationId]);
+  return {
+    success: true,
+    data: toWebSkillSaveResult(skill, organizationNames.get(skill.scope.organizationId ?? "")),
+  };
 }
 
-/** 仅更新 Skill 的公开读取权限，不触碰 SKILL.md。 */
+/** 仅更新 Skill 的公开受众，不触碰 SKILL.md。 */
 async function handleUpdateAccess(
-  ctx: AuthContext,
-  name: string,
-  body: UpdateSkillAccessBody,
-  errorFn: (status: number, body: unknown) => Response,
-) {
-  if (typeof body.publicReadable !== "boolean") {
-    return errorFn(400, configValidationError("Missing required field: publicReadable"));
+  actor: ActorContext,
+  nameOrKey: string,
+  body: UpdateSkillAccessBody | undefined,
+): Promise<WebHandlerResult> {
+  const { identity } = getSkillServerModule();
+  if (typeof body?.publicReadable !== "boolean") {
+    throw new ValidationError("Missing required field: publicReadable");
   }
-  const result = await setSkillPublicReadable(ctx, name, body.publicReadable);
-  if (!result) {
-    return errorFn(404, configNotFound(`Skill '${name}' not found`));
-  }
-  return configSuccess({ name: result.name, resourceAccess: result.resourceAccess });
+  const skill = await getSkillServerModule().facade.setPublicReadable(actor, nameOrKey, body.publicReadable);
+  const organizationNames = await resolveOrganizationNames(identity, [skill.scope.organizationId]);
+  return {
+    success: true,
+    data: toWebSkillSaveResult(skill, organizationNames.get(skill.scope.organizationId ?? "")),
+  };
 }
 
-/**
- * 删除指定 Skill。
- */
-async function handleDelete(ctx: AuthContext, name: string) {
-  if (!name) {
-    return configValidationError("Missing 'name' field");
-  }
-  const deleted = await deleteSkill(ctx, name);
-  if (!deleted) {
-    return configNotFound(`Skill '${name}' not found`);
-  }
-  return configSuccess(null);
+/** 删除指定 Skill（资源行与文件内容）。 */
+async function handleDelete(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
+  await getSkillServerModule().facade.remove(actor, nameOrKey);
+  return { success: true, data: null };
 }
 
-/**
- * 为当前组织可读 Skill 临时生成带顶层目录的 Web 下载 zip。
- */
-async function handleDownload(ctx: AuthContext, nameOrResourceKey: string) {
-  if (!nameOrResourceKey) {
-    return configValidationError("Missing 'name' field");
+/** 为当前主体可读 Skill 生成带顶层目录的 Web 下载 zip。 */
+async function handleDownload(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
+  const detail = await getSkillServerModule().facade.get(actor, nameOrKey);
+  if (!detail) throw new NotFoundError(`Skill '${nameOrKey}' not found`);
+  // 内容只存在于归属组织的目录下：跨组织公开的 Skill 也从归属组织的目录取归档。
+  const sourceOrganizationId = detail.scope.organizationId;
+  if (sourceOrganizationId === undefined) {
+    throw new Error(`Skill '${detail.name}' 归属组织缺失：组织资源必须落在某个组织上`);
   }
 
-  const detail = await getSkill(ctx, nameOrResourceKey);
-  if (!detail) {
-    return configNotFound(`Skill '${nameOrResourceKey}' not found`);
-  }
-
-  const skillId = detail.id ?? detail.resourceAccess?.resourceUid;
-  if (!skillId) {
-    console.error(
-      `[SkillConfig] skill_download_prepare_missing_id org=${ctx.organizationId} skill=${nameOrResourceKey}`,
-    );
-    return configError("SKILL_DOWNLOAD_UNAVAILABLE", `Skill '${nameOrResourceKey}' download is unavailable`);
-  }
-
-  const sourceOrganizationId = detail.resourceAccess?.sourceOrganizationId ?? ctx.organizationId;
-  const safeName = assertValidSkillName(detail.name);
-  const sourceDir = getSkillSourceDir(getGlobalSkillsDir(), sourceOrganizationId, safeName);
   try {
-    const archiveBuffer = await createSkillArchiveBuffer(sourceDir, { rootDirectory: safeName });
-    return configSuccess({ archiveBuffer, fileName: `${safeName}.zip` });
+    const sourceDir = skillSourceDir(sourceOrganizationId, detail.name);
+    const archiveBuffer = await createSkillArchiveBuffer(sourceDir, { rootDirectory: detail.name });
+    return { success: true, data: { archiveBuffer, fileName: `${detail.name}.zip` } };
   } catch (error) {
+    // 归档缺失是"内容不可下载"，对调用方等价于资源不存在；这里转成 404 并保留日志上下文。
     console.error(
-      `[SkillConfig] skill_download_archive_build_failed org=${ctx.organizationId} sourceOrg=${sourceOrganizationId} skill=${detail.name} sourceDir=${sourceDir}`,
+      `[SkillConfig] skill_download_archive_build_failed org=${sourceOrganizationId} skill=${detail.name}`,
       error,
     );
-    return configNotFound(`Skill archive for '${detail.name}' not found`);
+    throw new NotFoundError(`Skill archive for '${detail.name}' not found`);
   }
 }
 
-/**
- * 批量上传技能目录（接收 multipart/form-data）。
- */
-async function handleUpload(ctx: AuthContext, request: Request, errorFn: (status: number, body: unknown) => Response) {
-  let formData: globalThis.FormData | null;
-  try {
-    formData = (await request.formData()) as globalThis.FormData;
-  } catch {
-    formData = null;
-  }
-  if (!formData) {
-    return errorFn(400, configValidationError("上传表单解析失败"));
-  }
+/** 控制台上传入口的冲突策略只接受 ignore / overwrite（对外 `/api/skills` 用 `overwrite` 布尔）。 */
+function resolveConflictStrategy(formData: UploadFormData): ImportConflictStrategy | undefined {
+  const value = formData.get("conflictStrategy");
+  if (value === null || value === "") return;
+  if (value !== "ignore" && value !== "overwrite") throw new ValidationError("冲突策略无效");
+  return value;
+}
 
-  const manifestRaw = formData.get("manifest");
-  if (typeof manifestRaw !== "string") {
-    return errorFn(400, configValidationError("缺少 manifest"));
-  }
-
-  let manifest: UploadManifestEntry[];
-  try {
-    const parsed = JSON.parse(manifestRaw);
-    if (!Array.isArray(parsed)) {
-      throw new Error("manifest must be an array");
-    }
-    manifest = parsed;
-  } catch {
-    return errorFn(400, configValidationError("manifest 格式无效"));
-  }
-
-  const conflictStrategyValue = formData.get("conflictStrategy");
-  let conflictStrategy: ImportConflictStrategy | undefined;
-  if (typeof conflictStrategyValue === "string" && conflictStrategyValue) {
-    if (conflictStrategyValue !== "ignore" && conflictStrategyValue !== "overwrite") {
-      return errorFn(400, configValidationError("冲突策略无效"));
-    }
-    conflictStrategy = conflictStrategyValue;
-  }
-
-  const files = formData.getAll("files").filter((item: unknown): item is File => item instanceof File);
-  if (manifest.length !== files.length) {
-    return errorFn(400, configValidationError("上传文件与 manifest 数量不一致"));
-  }
-
-  try {
-    const uploadFiles = await Promise.all(
-      manifest.map(async (entry, index) => ({
-        skillName: entry.skillName,
-        relativePath: entry.relativePath,
-        content: await files[index].text(),
-      })),
-    );
-
-    const result = await importSkillDirectories(ctx, uploadFiles, conflictStrategy);
-    if (result.conflicts.length > 0) {
-      return errorFn(
-        409,
-        configError("SKILL_CONFLICT", "检测到同名技能冲突", {
-          conflicts: result.conflicts,
-          allowedStrategies: ["ignore", "overwrite"],
-        }),
-      );
-    }
-    return configSuccess(result);
-  } catch (error_) {
-    const code =
-      error_ instanceof Error && "code" in error_ && typeof error_.code === "string" ? error_.code : "UNKNOWN_ERROR";
-    const message = error_ instanceof Error ? error_.message : "技能导入失败";
-    const status = code === "VALIDATION_ERROR" ? 400 : 500;
-    return errorFn(status, configError(code, message));
-  }
+/** 批量上传技能目录（multipart/form-data）。 */
+async function handleUpload(actor: ActorContext, request: Request): Promise<WebHandlerResult> {
+  const { files, formData } = await readSkillUploadForm(request);
+  const result = await getSkillServerModule().facade.importDirectories(actor, files, resolveConflictStrategy(formData));
+  if (result.conflicts.length > 0) return buildSkillConflictBody(result.conflicts);
+  return { success: true, data: { imported: result.imported, skipped: result.skipped, conflicts: [] } };
 }
 
 // ── 路由注册 ──
+
+const app = new Elysia({ name: "web-config-skills" }).use(authGuardPlugin);
+
+/** 宽松对象响应 schema：各 handler 的 data 结构不同，统一用宽松映射保持 OpenAPI 可读。 */
+const looseOkSchema = WebOkSchema(z.union([z.looseObject({}), z.null()]));
+
+const nameOrKeyParam = {
+  name: "name",
+  in: "path" as const,
+  required: true,
+  description: "Skill 名称或跨组织资源键（org_id/skill-uuid）。",
+  schema: { type: "string" as const },
+};
 
 /** 列出所有 Skill（GET /config/skills） */
 app.get(
   "/config/skills",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store }: any) => {
-    const authCtx = store.authContext!;
-    return await handleList(authCtx);
-  },
+  ({ store, status }: any) => runWebHandler(status, store, (actor) => handleList(actor)),
   {
     sessionAuth: true,
-    response: SkillListResponseSchema,
+    response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema },
     detail: {
       tags: ["SkillConfig"],
       summary: "列出所有 Skill",
-      description: "返回当前组织可见的所有 Skill 列表，包括名称、描述和资源访问信息。",
+      description: "返回当前主体可见的所有 Skill 列表（含归属 `scope` 与有效动作 `access.actions`）。",
     },
   },
 );
@@ -298,41 +248,15 @@ app.get(
 app.get(
   "/config/skills/:name",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, error }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const result = await handleGet(authCtx, name);
-    // handleGet 返回的不是 Elysia error() 调用结果时，直接返回
-    if (
-      result &&
-      typeof result === "object" &&
-      "success" in result &&
-      (result as Record<string, unknown>).success === false
-    ) {
-      const errResult = result as { error?: { code?: string; message?: string } };
-      return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
-    }
-    return result;
-  },
+  ({ store, params, status }: any) => runWebHandler(status, store, (actor) => handleGet(actor, params.name as string)),
   {
     sessionAuth: true,
-    response: {
-      200: WebOkSchema(SkillDetailSchema),
-      404: WebErrSchema,
-    },
+    response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema, 404: WebErrSchema },
     detail: {
       tags: ["SkillConfig"],
       summary: "获取单个 Skill 详情",
-      description: "根据 Skill 名称获取其完整配置详情，包括描述、内容、元数据和资源访问信息。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Skill 名称。",
-          schema: { type: "string" },
-        },
-      ],
+      description: "按名称或跨组织资源键返回 Skill 详情，包含 SKILL.md 正文与元数据。",
+      parameters: [nameOrKeyParam],
     },
   },
 );
@@ -341,31 +265,11 @@ app.get(
 app.get(
   "/config/skills/:name/download",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, error, set }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const result = await handleDownload(authCtx, name);
-    if (
-      result &&
-      typeof result === "object" &&
-      "success" in result &&
-      (result as Record<string, unknown>).success === false
-    ) {
-      const errResult = result as { error?: { code?: string; message?: string } };
-      const code = errResult.error?.code;
-      if (code === "NOT_FOUND") {
-        return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
-      }
-      if (code === "VALIDATION_ERROR") {
-        return error(400, errResult.error ?? { code: "VALIDATION_ERROR", message: "Invalid skill name" });
-      }
-      return error(
-        500,
-        errResult.error ?? { code: "SKILL_DOWNLOAD_UNAVAILABLE", message: "Skill download unavailable" },
-      );
-    }
-
-    const data = (result as { data: { archiveBuffer: Buffer; fileName: string } }).data;
+  async ({ store, params, status, set }: any) => {
+    const result = await runWebHandler(status, store, (actor) => handleDownload(actor, params.name as string));
+    // 归档是二进制流：失败响应由 runWebHandler 映射好后原样返回，只有成功态才需要写响应头。
+    if (!isWebSuccess(result)) return result;
+    const data = result.data as { archiveBuffer: Buffer; fileName: string };
     set.headers["Content-Type"] = "application/zip";
     set.headers["Content-Disposition"] = `attachment; filename="${data.fileName}"`;
     return new Response(data.archiveBuffer);
@@ -375,16 +279,8 @@ app.get(
     detail: {
       tags: ["SkillConfig"],
       summary: "下载 Skill 压缩包",
-      description: "基于当前 Web 登录态和组织权限校验后，直接返回 Skill zip 文件流。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "Skill 名称或跨组织 resourceKey。",
-          schema: { type: "string" },
-        },
-      ],
+      description: "基于当前 Web 登录态与资源可见性校验后，直接返回 Skill zip 文件流。",
+      parameters: [nameOrKeyParam],
     },
   },
 );
@@ -393,22 +289,14 @@ app.get(
 app.post(
   "/config/skills",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, body, error }: any) => {
-    const authCtx = store.authContext!;
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return (await handleCreate(authCtx, (body ?? {}) as CreateSkillBody, (status, data) => error(status, data))) as any;
-  },
+  ({ store, body, status }: any) => runWebHandler(status, store, (actor) => handleCreate(actor, body)),
   {
     sessionAuth: true,
-    response: {
-      200: CreateSkillResponseSchema,
-      400: WebErrSchema,
-      409: WebErrSchema,
-    },
+    response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema, 409: WebErrSchema },
     detail: {
       tags: ["SkillConfig"],
       summary: "创建新 Skill",
-      description: "创建一个新的 Skill 配置。如果当前组织下已有同名内部 Skill（不含共享），返回 409 CONFLICT。",
+      description: "创建新的 Skill；当前组织下已有同名 Skill 时返回 409 CONFLICT。",
     },
   },
 );
@@ -417,70 +305,46 @@ app.post(
 app.put(
   "/config/skills/:name",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const data = (body as UpdateSkillBody)?.data;
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return (await handleUpdate(authCtx, name, data, (status, result) => error(status, result))) as any;
-  },
+  ({ store, params, body, status }: any) =>
+    runWebHandler(status, store, (actor) => handleUpdate(actor, params.name as string, body)),
   {
     sessionAuth: true,
     response: {
-      200: UpdateSkillResponseSchema,
+      200: looseOkSchema,
       400: WebErrSchema,
-    },
-    detail: {
-      tags: ["SkillConfig"],
-      summary: "更新已有 Skill",
-      description: "更新指定 Skill 的配置内容、描述和元数据。公开读取权限请使用独立 access 接口。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "要更新的 Skill 名称。",
-          schema: { type: "string" },
-        },
-      ],
-    },
-  },
-);
-
-/** 更新 Skill 公开读取权限（PUT /config/skills/:name/access） */
-app.put(
-  "/config/skills/:name/access",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const result = await handleUpdateAccess(authCtx, name, (body ?? {}) as UpdateSkillAccessBody, (status, result) =>
-      error(status, result),
-    );
-    // Elysia 无法从包含 error(status, body) 的联合返回值推断此 handler 的 response map。
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia handler response inference limitation
-    return result as any;
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: UpdateSkillResponseSchema,
-      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
       404: WebErrSchema,
     },
     detail: {
       tags: ["SkillConfig"],
-      summary: "更新 Skill 公开读取权限",
-      description: "仅更新资源公开读取权限，不读取、解析或改写 SKILL.md。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "要更新的 Skill 名称。",
-          schema: { type: "string" },
-        },
-      ],
+      summary: "更新已有 Skill",
+      description: "更新指定 Skill 的内容、描述与元数据；公开受众请使用独立 access 接口。",
+      parameters: [nameOrKeyParam],
+    },
+  },
+);
+
+/** 更新 Skill 公开受众（PUT /config/skills/:name/access） */
+app.put(
+  "/config/skills/:name/access",
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  ({ store, params, body, status }: any) =>
+    runWebHandler(status, store, (actor) => handleUpdateAccess(actor, params.name as string, body)),
+  {
+    sessionAuth: true,
+    response: {
+      200: looseOkSchema,
+      400: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      404: WebErrSchema,
+    },
+    detail: {
+      tags: ["SkillConfig"],
+      summary: "更新 Skill 公开受众",
+      description: "仅更新资源公开受众，不读取、解析或改写 SKILL.md。",
+      parameters: [nameOrKeyParam],
     },
   },
 );
@@ -489,40 +353,16 @@ app.put(
 app.delete(
   "/config/skills/:name",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
-  async ({ store, params, error }: any) => {
-    const authCtx = store.authContext!;
-    const name = params.name as string;
-    const result = await handleDelete(authCtx, name);
-    if (
-      result &&
-      typeof result === "object" &&
-      "success" in result &&
-      (result as Record<string, unknown>).success === false
-    ) {
-      const errResult = result as { error?: { code?: string; message?: string } };
-      return error(404, errResult.error ?? { code: "NOT_FOUND", message: `Skill '${name}' not found` });
-    }
-    return result;
-  },
+  ({ store, params, status }: any) =>
+    runWebHandler(status, store, (actor) => handleDelete(actor, params.name as string)),
   {
     sessionAuth: true,
-    response: {
-      200: DeleteSkillResponseSchema,
-      404: WebErrSchema,
-    },
+    response: { 200: looseOkSchema, 400: WebErrSchema, 401: WebErrSchema, 403: WebErrSchema, 404: WebErrSchema },
     detail: {
       tags: ["SkillConfig"],
       summary: "删除 Skill",
       description: "删除指定的 Skill 配置及其文件系统中的内容。",
-      parameters: [
-        {
-          name: "name",
-          in: "path",
-          required: true,
-          description: "要删除的 Skill 名称。",
-          schema: { type: "string" },
-        },
-      ],
+      parameters: [nameOrKeyParam],
     },
   },
 );
@@ -530,19 +370,18 @@ app.delete(
 /** 批量上传技能目录（POST /config/skills/upload） */
 app.post(
   "/config/skills/upload",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型限制
-  async ({ store, request, error }: any) => {
-    const authCtx = store.authContext!;
-    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
-    return (await handleUpload(authCtx, request, (status, data) => error(status, data))) as any;
-  },
+  // 冲突由用户决策而不是请求非法：映射为 409 并带上冲突清单，前端据此弹出覆盖/忽略选择。
+  // biome-ignore lint/suspicious/noExplicitAny: Elysia sessionAuth 注入类型在当前写法下无法稳定推断
+  async ({ store, request, status }: any) =>
+    runWebHandler(status, store, (actor) => handleUpload(actor, request), { SKILL_CONFLICT: 409 }),
   {
     sessionAuth: true,
     response: {
-      200: SkillUploadResponseSchema,
+      200: looseOkSchema,
       400: WebErrSchema,
-      409: WebErrSchema,
-      500: WebErrSchema,
+      401: WebErrSchema,
+      403: WebErrSchema,
+      409: SkillUploadConflictSchema,
     },
     detail: {
       hide: true,

@@ -8,14 +8,12 @@
 
 | 字段 | 必填 | 校验 |
 | --- | --- | --- |
-| `identity` | 否（1.2 起必填） | 必须指向已注册的 `kind: "identity"` 模块 |
+| `identity` | 是 | 必须指向已注册的 `kind: "identity"` 模块 |
 | `accessControl` | 是 | 必须指向已注册的 `kind: "access-control"` 模块 |
 | `agentRuntime` | 是 | 必须指向已注册的 `kind: "agent-runtime"` 模块 |
 | `webShell` | 是 | 必须指向已注册的 `kind: "web-shell"` 模块 |
 | `resources` | 是 | 每项必须是已注册的资源模块 ID，按 `dependsOn` 拓扑排序 |
 | `web` | 是 | 每项必须是已注册的 web contribution；只被浏览器 bundle 消费 |
-
-`identity` 目前为**可选**：`packages/platform/identity` 尚未交付，profile 里不写该字段即不参与校验与装配顺序。阶段 2 任务 1.2 交付 Identity 包后转为必填，并在此处删除本段说明。
 
 `webShell` 只做校验与绑定，**不进入服务端的 `modules` / `instances`**：Shell 由 `apps/web` 自行消费，server 不实例化它。对应的 manifest 是 `apps/web/fenix.module.ts`（`kind: "web-shell"`，纯元数据，只允许 `import type`）。
 

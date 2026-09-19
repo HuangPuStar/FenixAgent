@@ -1,3 +1,4 @@
+import { useOrg } from "@fenix/identity/web";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
@@ -12,7 +13,7 @@ import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 import { NS } from "@/src/i18n";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
-import { getAgentConfigLookupKey, getAgentDisplayName } from "../../../lib/agent-resource-access";
+import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
 import type { AgentInfo } from "../../../types/config";
 
@@ -42,19 +43,27 @@ function useFilterLabels() {
   );
 }
 
-function inferCategory(agent: AgentInfo): FilterId {
+/**
+ * 粗粒度归类；仅用于筛选分组，不参与任何授权判断。
+ *
+ * 跨组织资源统一归入 "general"：它们的名称/描述是对方组织写的，按关键词归类会把共享 Agent 散落到
+ * 各分组里，用户难以预期。是否需要 `activeOrganizationId` 由调用方注入（组织上下文未就绪时按本组织处理）。
+ */
+function inferCategory(agent: AgentInfo, activeOrganizationId?: string): FilterId {
   const text = `${agent.name} ${agent.description ?? ""}`.toLowerCase();
   if (/(data|analyst|analysis|数据|分析|报表)/.test(text)) return "data";
   if (/(search|检索|搜索|知识)/.test(text)) return "search";
   if (/(monitor|alert|监控|告警)/.test(text)) return "monitor";
   if (/(code|coder|program|代码|编程|bug)/.test(text)) return "code";
-  if (agent.resourceAccess?.ownership === "external") return "general";
+  if (isExternalAgent(agent, activeOrganizationId)) return "general";
   return "custom";
 }
 
 export function AgentManagementPage() {
   const navigate = useNavigate();
   const { t } = useTranslation(NS.AGENTS);
+  const { org } = useOrg();
+  const orgId = org?.id;
   const filterLabels = useFilterLabels();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
@@ -98,7 +107,7 @@ export function AgentManagementPage() {
   const filteredNodes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return (nodes ?? []).filter((node) => {
-      const category = inferCategory(node.agent);
+      const category = inferCategory(node.agent, orgId);
       const matchesFilter = activeFilter === "all" || category === activeFilter;
       const displayName = getAgentDisplayName(node.agent).toLowerCase();
       const matchesQuery =
@@ -108,7 +117,7 @@ export function AgentManagementPage() {
         (node.agent.description ?? "").toLowerCase().includes(normalized);
       return matchesFilter && matchesQuery;
     });
-  }, [activeFilter, nodes, query]);
+  }, [activeFilter, nodes, query, orgId]);
 
   // 进入 Agent（可能需要先创建环境）
   const { run: runEnter } = useRequest(
@@ -232,7 +241,7 @@ export function AgentManagementPage() {
                   name={agent.name}
                   description={agent.description || undefined}
                   skills={agent.skillLabels ?? []}
-                  sourceOrg={agent.resourceAccess?.sourceOrganizationName}
+                  sourceOrg={isExternalAgent(agent, orgId) ? agent.organizationName : undefined}
                   onEnter={() => runEnter(node)}
                   onEdit={() => setEditAgentName(getAgentConfigLookupKey(agent))}
                   isBusy={isBusy}

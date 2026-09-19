@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { webHindsightRoutes as hindsightRoutes } from "@fenix/resource-memory/server";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { readJson, resetAllStubs, stubAuthApi, stubDb } from "@server/test-utils/helpers";
+import { readJson, resetAllStubs, stubAuthApi, stubIdentityDirectory } from "@server/test-utils/helpers";
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -43,12 +43,9 @@ describe("round60 hindsight 路由", () => {
     memberId = "member-org-a";
     calls = [];
     upstream = async () => Response.json({ source: "hindsight" });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({ limit: async () => (memberId ? [{ id: memberId }] : []) }),
-        }),
-      }),
+    // Stub 身份目录：bank ID 由 resolveMembershipId 解析；切换 memberId 即切换 bank
+    stubIdentityDirectory({
+      resolveMembershipId: async () => memberId ?? undefined,
     });
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,

@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@fenix/platform-sdk": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",

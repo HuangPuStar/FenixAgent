@@ -1,5 +1,5 @@
-import { findUsersBasicInfoByIds } from "@fenix/resource-identity-admin/server";
-import { organizationRepo } from "@fenix/resource-identity-admin/server/repository";
+// 身份数据经 platform-sdk 的只读窄契约读取：resource 类别不得依赖 platform-impl（identity）。
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { findMachinesBasicInfoByIds } from "@fenix/resource-machine/server";
 import type { SandboxInstance, SandboxPool } from "@server/db/schema";
 import { findSandboxInstanceById, listSandboxInstances } from "../repositories/sandbox-instance-repository";
@@ -66,7 +66,7 @@ export async function listPools(filters: { organization_id?: string; provider_ke
         !filters.organization_id || pool.organizationId === null || pool.organizationId === filters.organization_id,
     )
     .filter((pool) => !filters.provider_key || pool.providerKey === filters.provider_key);
-  const names = await organizationRepo.listNamesByIds(
+  const names = await getIdentityDirectory().listOrganizationNames(
     pools.flatMap((pool) => (pool.organizationId ? [pool.organizationId] : [])),
   );
   return pools.map((pool) => poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null));
@@ -95,14 +95,18 @@ export async function createPool(input: SandboxPoolCreateBody) {
     organizationId: input.organizationId ?? null,
     extra: input.extra ?? null,
   });
-  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  const names = pool.organizationId
+    ? await getIdentityDirectory().listOrganizationNames([pool.organizationId])
+    : new Map();
   return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
 export async function getPool(id: string) {
   const pool = await findSandboxPoolById(id);
   if (!pool) throw new Error(`sandbox pool '${id}' not found`);
-  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  const names = pool.organizationId
+    ? await getIdentityDirectory().listOrganizationNames([pool.organizationId])
+    : new Map();
   return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
@@ -113,7 +117,9 @@ export async function updatePool(id: string, input: SandboxPoolUpdateBody) {
     extra: input.extra ?? null,
   });
   if (!pool) throw new Error(`sandbox pool '${id}' not found`);
-  const names = pool.organizationId ? await organizationRepo.listNamesByIds([pool.organizationId]) : new Map();
+  const names = pool.organizationId
+    ? await getIdentityDirectory().listOrganizationNames([pool.organizationId])
+    : new Map();
   return poolResponse(pool, pool.organizationId ? names.get(pool.organizationId) : null);
 }
 
@@ -139,11 +145,10 @@ export async function listInstances(filters: {
     providerKey: filters.provider_key,
     statuses: filters.status ? [filters.status] : undefined,
   });
-  const [owners, machines] = await Promise.all([
-    findUsersBasicInfoByIds([...new Set(rows.map((row) => row.userId))]),
+  const [ownerMap, machines] = await Promise.all([
+    getIdentityDirectory().listUserDisplayInfo([...new Set(rows.map((row) => row.userId))]),
     findMachinesBasicInfoByIds([...new Set(rows.map((row) => row.machineId))]),
   ]);
-  const ownerMap = new Map(owners.map((owner) => [owner.id, owner]));
   const machineMap = new Map(machines.map((item) => [item.id, item]));
   const start = (filters.page - 1) * filters.page_size;
   return {
@@ -160,10 +165,10 @@ export async function getInstance(id: string) {
   const instance = await findSandboxInstanceById(id);
   if (!instance) throw new Error(`sandbox instance '${id}' not found`);
   const [owners, machines] = await Promise.all([
-    findUsersBasicInfoByIds([instance.userId]),
+    getIdentityDirectory().listUserDisplayInfo([instance.userId]),
     findMachinesBasicInfoByIds([instance.machineId]),
   ]);
-  return instanceResponse(instance, owners[0], machines[0]);
+  return instanceResponse(instance, owners.get(instance.userId), machines[0]);
 }
 
 export async function updateInstance(

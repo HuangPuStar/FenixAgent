@@ -50,6 +50,18 @@ const FORBIDDEN_CROSS_CATEGORY: Readonly<Record<PackageCategory, readonly Packag
 /** `access-control` 与 `identity` 都是 platform 下的可替换实现，调用方必须经 `AccessControlModule` 契约。 */
 const PLATFORM_IMPL_DIRECTORIES = ["packages/platform/access-control", "packages/platform/identity"];
 
+/**
+ * §2.3 中「具体包 → 具体包」的禁则，用于表达**同一类别内部**的方向。
+ *
+ * 类别级禁则表达不了这一类：`identity` 与 `access-control` 都属于 `platform-impl`，而矩阵只允许
+ * 其中一条边——`access-control` 可以使用同版本的 identity 公开入口（授权实现需要把成员关系翻译成
+ * 归属事实），反向的 `identity → access-control` 被禁止（身份层不得读取授权策略，否则两个可替换
+ * 实现会重新耦合成一体）。标准 §158 要求这类方向"必须能被门禁判定，不依赖人工约定"。
+ */
+const FORBIDDEN_PACKAGE_DEPENDENCIES: readonly (readonly [from: string, to: string])[] = [
+  ["@fenix/identity", "@fenix/access-control"],
+];
+
 /** 由包目录推导类别；返回 `undefined` 表示该文件不属于任何 workspace 包。 */
 export function resolvePackageCategory(packageDirectory: string | undefined): PackageCategory | undefined {
   if (!packageDirectory) return undefined;
@@ -179,13 +191,18 @@ function createSpecialDependencyRule(): ArchitectureRule {
         if (target === "@fenix/server-app" || target === "@fenix/web-app") continue; // 由 apps-boundary 负责
 
         const targetCategory = resolvePackageCategory(context.resolvePackageDirectory(target));
-        if (!targetCategory || !forbidden.includes(targetCategory)) continue;
+        const forbiddenPackageEdge = FORBIDDEN_PACKAGE_DEPENDENCIES.some(
+          ([from, to]) => from === context.packageName && to === target,
+        );
+        if (!forbiddenPackageEdge && (!targetCategory || !forbidden.includes(targetCategory))) continue;
 
         diagnostics.push({
           ...positionOf(context, reference.position),
           boundary: { from: context.packageName, to: target },
           filePath: context.relativePath,
-          message: `§2.3 禁止 "${category}" 依赖 "${targetCategory}"，违规边为 "${context.packageName}" → "${target}"`,
+          message: forbiddenPackageEdge
+            ? `§2.3 禁止 "${context.packageName}" 依赖 "${target}"，违规边为 "${context.packageName}" → "${target}"`
+            : `§2.3 禁止 "${category}" 依赖 "${targetCategory}"，违规边为 "${context.packageName}" → "${target}"`,
           ruleId: "special-dependency",
         });
       }

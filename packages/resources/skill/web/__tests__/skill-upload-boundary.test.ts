@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { UploadSkillSummary } from "@/src/types/config";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../lib/skill-upload";
-import type { UploadSkillSummary } from "../types/config";
 
 function file(path: string): File {
   const item = new File(["content"], path.split(/[\\/]/).at(-1) ?? "file.txt");

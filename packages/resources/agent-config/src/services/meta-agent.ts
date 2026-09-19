@@ -11,25 +11,20 @@
 
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { setPublicRead } from "@fenix/access-control/server";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import {
   buildSkillArchive,
-  deleteSkill,
   getGlobalSkillsDir,
-  getSkill,
   getSkillArchivePath,
   getSkillSourceDir,
   parseFrontmatter,
-  setSkill,
-  syncAgentSkills,
-} from "@fenix/resource-skill/server";
-import { listSkills as listStoredSkills } from "@fenix/resource-skill/server/config";
-import { auth } from "@server/auth/better-auth";
+} from "@fenix/resource-skill/server/content";
+import { getSkillServerModule, type SkillSystemRecord } from "@fenix/resource-skill/server/runtime";
 import type { AuthContext } from "@server/plugins/auth";
-import type { SkillConfigRowWithAccess } from "@server/services/config/types";
-import { createAgentConfig, getAgentConfig, updateAgentConfig } from "../server/services/config/agent-config";
+import { getAgentConfigModule } from "../server/runtime";
+import { toAgentConfigWriteData } from "../server/services/config/agent-config";
 
 export const META_ENVIRONMENT_NAME = "meta-agent";
 
@@ -71,25 +66,22 @@ const BUILTIN_SKILLS_DIR = ".agents/skills";
 /** 内置 skill 的 metadata 标记，用于识别 meta agent 创建的 skill，避免误删用户 skill */
 const META_BUILTIN_MARKER = { source: "meta-builtin" } as const;
 
-/** 判断一个 DB skill 行是否由 meta agent 注册 */
-function isMetaBuiltin(row: { metadata: unknown }): boolean {
-  if (!row.metadata || typeof row.metadata !== "object") return false;
-  return (row.metadata as Record<string, string>).source === "meta-builtin";
+/** 判断一条 Skill 记录是否由 meta agent 注册 */
+function isMetaBuiltin(row: { metadata?: Record<string, string> }): boolean {
+  return row.metadata?.source === "meta-builtin";
 }
 
 /**
  * 选择 meta Agent 应绑定的系统托管 builtin skill。
  *
- * Meta Agent 的 builtin 绑定只能来自系统 admin 组织中带有 meta-builtin 标记的
- * 本地记录；业务组织中的同名 skill 不属于 builtin 来源。
+ * 传进来的记录已经限定在系统托管组织内，因此不再需要额外的归属判断：系统组织里的同名 skill 就是
+ * builtin 来源，业务组织中的同名 skill 根本不在这个集合里。
  */
 export function selectSystemBuiltinSkillId(
-  rows: Pick<SkillConfigRowWithAccess, "id" | "name" | "metadata" | "resourceAccess">[],
+  rows: readonly Pick<SkillSystemRecord, "id" | "name" | "metadata">[],
   name: string,
 ): string | null {
-  const selected = rows.find(
-    (row) => row.name === name && row.resourceAccess?.ownership === "internal" && isMetaBuiltin(row),
-  );
+  const selected = rows.find((row) => row.name === name && isMetaBuiltin(row));
   return selected?.id ?? null;
 }
 
@@ -179,15 +171,20 @@ function scanBuiltinSkills(): {
  *
  * 将 `.agents/skills/` 下的内置 skill 同步到指定组织。
  * 该函数只负责“把 builtin 写进目标组织”，不负责启动期的系统级编排。
+ *
+ * 走 Skill 资源的系统路径（`system.*`）：这是启动期编排，没有请求主体可用，也不该伪造一个 super-admin
+ * actor 去通过授权谓词。调用方因此必须自己保证 `ctx` 指向的是系统托管组织。
  */
 export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
+  const { system } = getSkillServerModule();
+  const organizationId = ctx.organizationId;
   const builtinSkills = scanBuiltinSkills();
   if (builtinSkills.length === 0) return;
 
   const builtinNames = new Set(builtinSkills.map((s) => s.name));
 
-  // 查询 DB 中由 meta agent 注册的 skill，找出需要清理的孤儿
-  const allDbSkills = await listStoredSkills(ctx);
+  // 查询该组织中由 meta agent 注册的 skill，找出需要清理的孤儿
+  const allDbSkills = await system.listByOrganization(organizationId);
   const orphans = allDbSkills.filter(
     (s) =>
       // 只清理 meta agent 自己注册的（通过 metadata.source 标记识别）
@@ -199,7 +196,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   if (orphans.length > 0) {
     for (const orphan of orphans) {
       try {
-        await deleteSkill(ctx, orphan.name);
+        await system.removeByName({ organizationId, name: orphan.name });
         log(`[meta-agent] Cleaned up orphan skill: ${orphan.name} (id=${orphan.id})`);
       } catch (err) {
         console.error(`[meta-agent] Failed to delete orphan skill ${orphan.name}:`, err);
@@ -211,7 +208,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
   for (const builtin of builtinSkills) {
     try {
       // 检查是否已有同名用户 skill，避免覆写
-      const existing = await getSkill(ctx, builtin.name);
+      const existing = await system.findByName({ organizationId, name: builtin.name });
       if (existing && !isMetaBuiltin(existing)) {
         log(
           `[meta-agent] Skipping built-in skill "${builtin.name}": user skill with same name exists (id=${existing.id})`,
@@ -219,7 +216,10 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
         continue;
       }
 
-      const info = await setSkill(ctx, builtin.name, {
+      const info = await system.writeDocument({
+        organizationId,
+        ownerUserId: ctx.userId,
+        name: builtin.name,
         description: builtin.description,
         content: builtin.content,
         metadata: { ...META_BUILTIN_MARKER },
@@ -228,7 +228,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
       // 将 .agents/skills/{name}/ 下的额外文件（references/ 等）同步到 data/skills/{name}/
       const builtinDir = join(process.cwd(), BUILTIN_SKILLS_DIR, builtin.name);
       const targetRoot = getGlobalSkillsDir();
-      const targetDir = getSkillSourceDir(targetRoot, ctx.organizationId, builtin.name);
+      const targetDir = getSkillSourceDir(targetRoot, organizationId, builtin.name);
       const extraEntries = readdirSync(builtinDir).filter((e) => e !== "SKILL.md");
       for (const extra of extraEntries) {
         const src = join(builtinDir, extra);
@@ -238,7 +238,7 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
 
       // 有额外文件时需要重建 archive 以包含 references 等目录
       if (extraEntries.length > 0) {
-        const archivePath = getSkillArchivePath(targetRoot, ctx.organizationId, builtin.name);
+        const archivePath = getSkillArchivePath(targetRoot, organizationId, builtin.name);
         await buildSkillArchive(targetDir, archivePath);
       }
 
@@ -252,13 +252,9 @@ export async function syncBuiltinSkills(ctx: AuthContext): Promise<void> {
 /** 从系统 admin 组织反查 builtin 名称对应的 skill id，供后续绑定 AgentConfig 或公开设置。 */
 async function listBuiltinSkillIds(_ctx: AuthContext): Promise<string[]> {
   // builtin 绑定固定来自系统 admin 组织，不从当前业务组织解析同名 skill。
-  const { ensureSystemAdmin } = await import("@fenix/resource-identity-admin/server/system-admin");
-  const admin = await ensureSystemAdmin();
-  const systemSkills = await listStoredSkills({
-    organizationId: admin.organization.id,
-    userId: admin.userId,
-    role: "owner",
-  });
+  // 系统托管租户经 platform-sdk 窄契约读取，identity 在内部完成引导；resource 不得依赖 identity。
+  const tenant = await getIdentityDirectory().resolveSystemTenant();
+  const systemSkills = await getSkillServerModule().system.listByOrganization(tenant.organizationId);
   const skillIds: string[] = [];
   for (const builtin of scanBuiltinSkills()) {
     const skillId = selectSystemBuiltinSkillId(systemSkills, builtin.name);
@@ -269,27 +265,32 @@ async function listBuiltinSkillIds(_ctx: AuthContext): Promise<string[]> {
 
 /**
  * 将 builtin skill 同步到系统 admin 组织，并统一设置为公开可读。
- * 这样其他组织通过现有 external/public readable 机制访问，不再复制物理副本。
+ * 这样其他组织通过现有 public readable 机制访问，不再复制物理副本。
  */
 export async function syncBuiltinSkillsToSystemAdmin(
   ctx: AuthContext,
   deps: {
     syncBuiltinSkills?: (ctx: AuthContext) => Promise<void>;
     listBuiltinSkillIds?: (ctx: AuthContext) => Promise<string[]>;
-    setSkillPublicReadable?: (skillId: string) => Promise<void>;
+    setSkillPublicReadable?: (skillId: string) => Promise<boolean>;
   } = {},
 ): Promise<void> {
   const syncBuiltinSkillsFn = deps.syncBuiltinSkills ?? syncBuiltinSkills;
   const listBuiltinSkillIdsFn = deps.listBuiltinSkillIds ?? listBuiltinSkillIds;
-  // 公开读设置保留在这里，而不是塞进 setSkill 流程里，
+  // 公开受众设置保留在这里，而不是塞进 writeDocument 流程里，
   // 因为“系统托管 + 全组织共享”是 builtin 编排策略，不是普通 skill 写入的默认语义。
   const setSkillPublicReadable =
     deps.setSkillPublicReadable ??
-    ((skillId: string) => setPublicRead(ctx, "skill", ctx.organizationId, skillId, true));
+    ((skillId: string) =>
+      getSkillServerModule().system.setPublicReadable({ resourceId: skillId, publicReadable: true }));
 
   await syncBuiltinSkillsFn(ctx);
   for (const skillId of await listBuiltinSkillIdsFn(ctx)) {
-    await setSkillPublicReadable(skillId);
+    // 设置失败意味着 builtin 只对系统组织可见，业务组织会静默看不到它；这是编排问题，必须留下痕迹。
+    const applied = await setSkillPublicReadable(skillId);
+    if (!applied) {
+      log(`[meta-agent] Failed to set builtin skill ${skillId} public readable: resource not found`);
+    }
   }
   log(`[meta-agent] Builtin skills hosted under admin organization ${ctx.organizationId}`);
 }
@@ -305,15 +306,26 @@ export async function syncBuiltinSkillsToSystemAdmin(
  * 返回 meta AgentConfig ID。
  */
 async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
-  let agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
+  // 走领域服务而不是资源行协议层：这是启动期编排，没有请求主体，也不该伪造 actor 去通过授权谓词。
+  // 名称在组织内唯一，因此按 (name, organizationId) 定位，不会跨组织命中同名 Agent。
+  const { service, associations } = getAgentConfigModule();
+  const locate = { name: META_AGENT_CONFIG_NAME, organizationId: ctx.organizationId };
+
+  let agentConfig = await service.findByNameUnscoped(locate);
   if (!agentConfig) {
     const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
-    await createAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
-      description: "Meta Agent — 工作流编排助手",
-      modelId: defaultModelRef,
-      prompt: null,
+    await service.create({
+      name: META_AGENT_CONFIG_NAME,
+      data: toAgentConfigWriteData({
+        description: "Meta Agent — 工作流编排助手",
+        modelId: defaultModelRef,
+        prompt: null,
+      }),
+      organizationId: ctx.organizationId,
+      ownerUserId: ctx.userId,
+      visibility: "private",
     });
-    agentConfig = await getAgentConfig(ctx, META_AGENT_CONFIG_NAME);
+    agentConfig = await service.findByNameUnscoped(locate);
     if (!agentConfig) {
       throw new Error("Failed to create meta agent config");
     }
@@ -324,8 +336,9 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
     const defaultModelRef = await resolveDefaultMetaModelRef(ctx);
     if (defaultModelRef) {
       log(`[meta-agent] Auto-filling empty model for meta AgentConfig: ${defaultModelRef}`);
-      await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
-        modelId: defaultModelRef,
+      await service.update({
+        resourceId: agentConfig.id,
+        data: toAgentConfigWriteData({ modelId: defaultModelRef }),
       });
     } else {
       log(`[meta-agent] No provider/model available to auto-fill meta AgentConfig model`);
@@ -335,8 +348,9 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   // 已有配置但 prompt 为空时，自动填充系统提示词
   if (!agentConfig.prompt?.trim()) {
     log("[meta-agent] Auto-filling system prompt for meta AgentConfig");
-    await updateAgentConfig(ctx, META_AGENT_CONFIG_NAME, {
-      prompt: META_AGENT_PROMPT,
+    await service.update({
+      resourceId: agentConfig.id,
+      data: toAgentConfigWriteData({ prompt: META_AGENT_PROMPT }),
     });
   }
 
@@ -344,55 +358,57 @@ async function ensureMetaConfig(ctx: AuthContext): Promise<string> {
   const skillIds = await listBuiltinSkillIds(ctx);
 
   // 全量覆盖 meta AgentConfig 的 skill 绑定
-  await syncAgentSkills(agentConfig.id, skillIds);
+  await associations.syncSkills(agentConfig.id, skillIds);
   log(`[meta-agent] Synced ${skillIds.length} skills to meta AgentConfig`);
 
   return agentConfig.id;
 }
 
+/**
+ * 轮换调用方名下 API Key 的端口。
+ *
+ * 资源包不得依赖 `@fenix/identity`（ce-ee-engineering-standards §2.3），而"同名 key 只保留一把"
+ * 的编排又只应在身份侧实现一处，因此由宿主注入 identity 的 `rotateCallerApiKey`。
+ */
+export type RotateCallerApiKey = (input: {
+  readonly headers: Headers;
+  readonly name: string;
+  readonly expiresIn: number | null;
+  readonly metadata: unknown;
+}) => Promise<string>;
+
+/** meta agent 的宿主注入依赖。 */
+export interface MetaAgentDependencies {
+  readonly rotateCallerApiKey?: RotateCallerApiKey;
+}
+
 /** 为 meta agent 获取或创建 API key。同一进程内缓存明文，避免重复创建。 */
-async function ensureMetaApiKey(ctx: AuthContext, headers: Headers): Promise<string> {
+async function ensureMetaApiKey(ctx: AuthContext, headers: Headers, deps: MetaAgentDependencies): Promise<string> {
   const cached = metaApiKeyCache.get(ctx.organizationId);
   if (cached) return cached;
 
-  // 删除所有同名旧 key，避免累积
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth listApiKeys return type is untyped
-  const listResult: any = await (auth.api as any).listApiKeys({ headers });
-  const existingKeys: Array<{ id: string; name?: string }> =
-    listResult?.apiKeys ?? (Array.isArray(listResult) ? listResult : []);
-  for (const old of existingKeys.filter((k) => k.name === META_KEY_LABEL)) {
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: better-auth deleteApiKey return type is untyped
-      await (auth.api as any).deleteApiKey({
-        body: { keyId: old.id },
-        headers,
-      });
-    } catch (err) {
-      // 旧 key 删除失败不阻断，但需要记录以便排查
-      console.error(`[meta-agent] Failed to delete old key ${old.id}:`, err);
-    }
-  }
+  const rotate = deps.rotateCallerApiKey;
+  // 缺失注入时直接失败：没有 key 的 meta environment 会在运行期以更难定位的方式失败。
+  if (!rotate) throw new Error("meta agent 缺少 rotateCallerApiKey 注入，无法轮换 API Key");
 
-  // 创建新 key
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth createApiKey return type is untyped
-  const result: any = await (auth.api as any).createApiKey({
-    body: {
-      name: META_KEY_LABEL,
-      prefix: "rcs_",
-      expiresIn: 86400, // 1 天过期（秒），避免 key 永久残留
-      metadata: { organizationId: ctx.organizationId, role: ctx.role },
-    },
+  const apiKey = await rotate({
     headers,
+    name: META_KEY_LABEL,
+    expiresIn: 86400, // 1 天过期（秒），避免 key 永久残留
+    metadata: { organizationId: ctx.organizationId, role: ctx.role },
   });
-  const apiKey = result?.key ?? result?.fullKey ?? "";
   metaApiKeyCache.set(ctx.organizationId, apiKey);
   return apiKey;
 }
 
 /** 查找或创建 meta environment + spawn 实例 */
-export async function ensureMetaEnvironment(ctx: AuthContext, request: Request): Promise<EnsureMetaResult> {
+export async function ensureMetaEnvironment(
+  ctx: AuthContext,
+  request: Request,
+  deps: MetaAgentDependencies = {},
+): Promise<EnsureMetaResult> {
   const agentConfigId = await ensureMetaConfig(ctx);
-  const apiKey = await ensureMetaApiKey(ctx, request.headers);
+  const apiKey = await ensureMetaApiKey(ctx, request.headers, deps);
   // meta env 按 (organizationId, userId, name="meta-agent") 三元组隔离：
   // 每个用户有自己的 runtime environment，避免触发 acp/index.ts 的 forbiddenSharedRuntime
   // 校验（env 绑定 agentConfig 且 env.userId !== 当前用户 → 4003 → 前端反复重连刷新）。

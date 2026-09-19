@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
-import { WebOkSchema } from "./common.schema";
 /** 会话详情模型 */
 export const SessionDetailSchema = z
   .object({

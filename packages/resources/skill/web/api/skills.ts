@@ -8,7 +8,7 @@
 
 import { request } from "../../../../../apps/web/src/api/request";
 import type {
-  ResourceAccess,
+  ResourceAccessView,
   SkillDetail,
   SkillInfo,
   SkillUploadConflictResponse,
@@ -28,10 +28,10 @@ interface SkillListResult {
   skills: SkillInfo[];
 }
 
-/** 创建/更新响应 */
-interface SkillSaveResult {
+/** 创建/更新响应：与列表项同一套授权视图，另带归属组织展示名。 */
+interface SkillSaveResult extends Partial<ResourceAccessView> {
   name: string;
-  resourceAccess: ResourceAccess;
+  organizationName?: string;
 }
 
 export const skillConfigApi = {

@@ -6,6 +6,7 @@ import { providerApi } from "@/src/api/providers";
 import { ApiError, unwrap } from "@/src/api/request";
 import { dispatchConfigChange } from "@/src/lib/config-events";
 import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import { canManageProviderSharing } from "../../../lib/provider-resource-access";
 import type {
   DiscoveryState,
   ModelDraft,
@@ -135,8 +136,11 @@ export function useAgentModelsData() {
   });
 
   const togglePublic = useRequest(
-    (provider: ProviderInfo, value: boolean) =>
-      unwrap(providerApi.set(getProviderKey(provider), buildProviderPublicReadablePayload(value))),
+    (provider: ProviderInfo, value: boolean) => {
+      // 公开受众只对具备 `update` 动作的主体开放；缺失动作时前端直接拒绝，不发必然 403 的请求。
+      if (!canManageProviderSharing(provider)) throw new Error(t("errors.sharingUnavailable"));
+      return unwrap(providerApi.set(getProviderKey(provider), buildProviderPublicReadablePayload(value)));
+    },
     {
       manual: true,
       onSuccess: () => refreshDomain("providers"),

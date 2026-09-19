@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { installRouteConfigStubs, resetRouteConfigStubs } from "@server/test-utils/agent-config-route-deps";
 import { resetAllStubs, stubConfigPg, stubDb } from "@server/test-utils/helpers";
+import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
+
+/**
+ * 列表读取的兜底行为（S4 接缝迁移）。
+ *
+ * 绑定集合与归属范围来自模块替身，标签投影是真实实现：这里让展示表的查询整体失败，验证列表仍然
+ * 返回隔离后的资源与稳定的 ID 兜底标签——展示信息失败不得拖垮业务结果。
+ */
 
 const route = (await import("../server/routes/web/config/agents")).default;
 
@@ -14,40 +20,36 @@ function request(path: string) {
 describe("round45 Agent 配置列表读取兜底", () => {
   beforeEach(() => {
     resetAllStubs();
-    installRouteConfigStubs();
+    resetAgentModuleStub();
     setTestAuth({
       user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
     });
     setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
-    setListAgentKnowledgeBindingsById(async () => []);
-    stubConfigPg({
-      getUserConfig: async () => ({ defaultAgent: "researcher" }),
-      listAgentConfigs: async () => [
-        {
-          id: "agent-1",
-          organizationId: "org-source",
-          userId: "user-1",
-          name: "researcher",
-          prompt: null,
-          model: null,
-          modelId: "model-1",
-          description: null,
-          extra: null,
-          agentNode: { kind: "machine", machineId: "machine-1" },
-          resourceAccess: {
-            ownership: "external",
-            writable: false,
-            sourceOrganizationId: "org-source",
-            resourceUid: "agent-1",
-            resourceKey: "org-source/agent-1",
-            manageable: false,
-          },
-        },
-      ],
-      listAgentMcpIds: async () => ["mcp-1"],
-      listAgentSiteAppIds: async () => ["site-1"],
-      listAgentSkillIds: async () => ["skill-1"],
+    stubConfigPg({ getUserConfig: async () => ({ defaultAgent: "researcher" }) });
+    installAgentModuleStub({
+      facade: {
+        list: async () => ({
+          items: [
+            authorizedAgent({
+              id: "agent-1",
+              name: "researcher",
+              organizationId: "org-source",
+              ownerUserId: "user-source",
+              visibility: "public",
+              modelId: "model-1",
+              agentNode: { kind: "machine", machineId: "machine-1" },
+              actions: ["read"],
+            }),
+          ],
+          total: 1,
+        }),
+      },
+      associations: {
+        listSkillIds: async () => ["skill-1"],
+        listMcpIds: async () => ["mcp-1"],
+        listSiteAppIds: async () => ["site-1"],
+      },
     });
     stubDb({
       select: () => {
@@ -57,10 +59,9 @@ describe("round45 Agent 配置列表读取兜底", () => {
   });
 
   afterEach(() => {
-    resetRouteConfigStubs();
+    resetAgentModuleStub();
     resetTestAuth();
     setTestOrgContext(null);
-    setListAgentKnowledgeBindingsById(null);
     resetAllStubs();
   });
 
@@ -77,7 +78,8 @@ describe("round45 Agent 配置列表读取兜底", () => {
           id: "agent-1",
           modelLabel: "model-1",
           skillLabels: [{ id: "skill-1", label: "skill-1" }],
-          resourceAccess: { sourceOrganizationId: "org-source", writable: false },
+          scope: { organizationId: "org-source", ownerUserId: "user-source", visibility: "public" },
+          access: { actions: ["read"] },
         },
       ],
     });

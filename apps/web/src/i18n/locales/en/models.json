@@ -56,6 +56,9 @@
   "loadModelConfigError": "Failed to load model config: {{message}}",
   "loadModelsError": "Failed to load model data",
   "unknownError": "Unknown error",
+  "errors": {
+    "sharingUnavailable": "This provider's sharing state cannot be managed"
+  },
   "protocolOptions": {
     "openai": "OpenAI Compatible",
     "anthropic": "Anthropic"

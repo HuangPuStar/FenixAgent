@@ -4,9 +4,16 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/src/api/request";
 import { skillConfigApi } from "@/src/api/skills";
+import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
 import { dispatchConfigChange } from "@/src/lib/config-events";
-import { canManageSkillSharing, canWriteSkill, getSkillKey, getSkillLookupKey } from "@/src/lib/skill-resource-access";
+import {
+  canManageSkillSharing,
+  canWriteSkill,
+  getSkillKey,
+  getSkillLookupKey,
+  isPublicSkill,
+} from "@/src/lib/skill-resource-access";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "@/src/lib/skill-upload";
 import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
 import { AgentSkillsCatalog } from "./agent-skills-catalog";
@@ -41,6 +48,8 @@ function getUploadConflictData(error: unknown): SkillUploadConflictResponse | nu
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  const { org } = useOrg();
+  const activeOrganizationId = org?.id;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -169,7 +178,7 @@ export function AgentSkillsPage() {
 
   const toggleSharing = async (skill: SkillInfo) => {
     if (!canManageSkillSharing(skill)) return;
-    const publicReadable = !skill.resourceAccess?.publicReadable;
+    const publicReadable = !isPublicSkill(skill);
     try {
       await unwrap(skillConfigApi.updateAccess(skill.name, publicReadable));
       toast.success(publicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
@@ -242,6 +251,7 @@ export function AgentSkillsPage() {
     <div className="flex min-h-0 flex-1">
       <AgentSkillsCatalog
         skills={skills}
+        activeOrganizationId={activeOrganizationId}
         loading={catalog.loading}
         error={catalog.error}
         query={query}

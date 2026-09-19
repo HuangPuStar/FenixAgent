@@ -1,4 +1,4 @@
-import { ChangePasswordDialog } from "@fenix/resource-identity-admin/web";
+import { ChangePasswordDialog, signOut, useOrg, useSession } from "@fenix/identity/web";
 import { Link } from "@tanstack/react-router";
 import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
 import { memo, useEffect, useState } from "react";
@@ -10,9 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
-import { signOut, useSession } from "@/src/lib/auth-client";
 import { AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
 

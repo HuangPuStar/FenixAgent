@@ -1,7 +1,7 @@
 // 系统级人员管理查询面：组织 → 成员 → 智能体配置，只读且由 system key 保护。
 
 import { error as logError } from "@fenix/logger";
-import { ApiSystemErrorResponseSchema } from "@fenix/resource-identity-admin/server/schema";
+import { ApiSystemErrorResponseSchema } from "@fenix/platform-sdk";
 import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
 import { SystemPeopleTreeResponseSchema } from "../../schemas/api-system-people-tree.schema";

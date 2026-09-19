@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { log, error as logError } from "@fenix/logger";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { listAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { HINDSIGHT_PLUGIN_DEFAULTS, shouldEnableAgentMemory } from "@fenix/resource-memory/server";
@@ -19,10 +20,10 @@ import {
   getGlobalSkillsDir,
   getSkillArchivePath,
   getSkillSourceDir,
-} from "@fenix/resource-skill/server";
+} from "@fenix/resource-skill/server/content";
 import { config, getBaseUrl } from "@server/config";
 import { db } from "@server/db";
-import { agentConfigMcp, agentConfigSkill, mcpServer, member, model, provider, skill } from "@server/db/schema";
+import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } from "@server/db/schema";
 import { AppError } from "@server/errors";
 import { resolveApiKey } from "@server/services/config-utils";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -579,12 +580,8 @@ export async function buildLaunchSpec(input: BuildLaunchSpecInput): Promise<Agen
     if (hindsightUrl) {
       let bankId: string | null = null;
       try {
-        const rows = await db
-          .select({ id: member.id })
-          .from(member)
-          .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
-          .limit(1);
-        bankId = rows[0]?.id ?? null;
+        // bankId 是既有外部约定（Hindsight bank 标识），成员关系读取经 IdentityDirectory。
+        bankId = (await getIdentityDirectory().resolveMembershipId({ organizationId, userId })) ?? null;
       } catch (err) {
         logError(`[launch-spec-builder] failed to resolve memberId for Hindsight bankId: ${String(err)}`);
       }

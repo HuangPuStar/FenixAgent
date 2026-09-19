@@ -1,6 +1,14 @@
-import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
-import { WebOkSchema } from "@server/schemas/common.schema";
+import { ResourceAccessViewSchema, WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
+
+/**
+ * Agent 配置的协议模型。
+ *
+ * `AgentInfoSchema` / `AgentDetailSchema` 是**对外 `/api` 合同**的视图模型（含已发布合同的
+ * `resourceAccess` 字段形状，由 `toResourceAccessView` 从 `scope + access.actions` 派生）。`/web`
+ * 响应自决策 D2 起改为返回 `scope + access`，其形状由授权栈决定，因此 `/web` 路由用宽松对象承接，
+ * 不再在此声明一份会与授权视图漂移的字段清单。
+ */
 
 export const AgentLabelSchema = z
   .object({
@@ -71,7 +79,7 @@ export const AgentInfoSchema = z
     agentNode: AgentNodeSchema.describe("执行节点；空对象表示运行时按默认策略解析。"),
     knowledgeBaseCount: z.number().describe("绑定的知识库数量。"),
     skillLabels: z.array(AgentLabelSchema).optional().describe("Skill 展示标签列表；仅列表场景返回。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
   })
   .describe("Agent 列表项。");
 
@@ -91,7 +99,7 @@ export const AgentDetailSchema = z
     siteAppIds: z.array(z.string()).optional().describe("绑定的 Site App ID 列表。"),
     agentNode: AgentNodeSchema.describe("执行节点；空对象表示运行时按默认策略解析。"),
     relatedResources: AgentRelatedResourceViewSchema.optional().describe("关联资源的展示视图。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("跨组织共享时的资源访问控制信息。"),
     enableMemory: z.boolean().optional().describe("是否为该 Agent 启用了 Hindsight 记忆功能。"),
   })
   .describe("Agent 详情。");
@@ -137,37 +145,6 @@ export const AgentTemplatesResponseSchema = WebOkSchema(
   }),
 ).describe("Agent 模板列表响应。");
 
-export const AgentListDataSchema = z
-  .object({
-    default_agent: z.string().nullable().describe("当前用户的默认 Agent 名称；未设置时为 null。"),
-    agents: z.array(AgentInfoSchema).describe("当前用户可见的 Agent 列表。"),
-  })
-  .describe("Agent 列表响应数据。");
-
-export const AgentListResponseSchema = WebOkSchema(AgentListDataSchema).describe("Agent 列表响应。");
-
-export const AgentDetailResponseSchema = WebOkSchema(AgentDetailSchema.describe("指定 Agent 的详情。")).describe(
-  "Agent 详情响应。",
-);
-
-export const CreateAgentResponseSchema = WebOkSchema(
-  z.object({
-    name: z.string().describe("已创建的 Agent 名称。"),
-    id: z.string().optional().describe("已创建的 Agent 配置 ID。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("创建后的共享访问控制信息。"),
-  }),
-).describe("创建 Agent 响应。");
-
-export const UpdateAgentResponseSchema = WebOkSchema(
-  z
-    .object({
-      name: z.string().describe("已更新的 Agent 名称。"),
-      resourceAccess: ResourceAccessSchema.optional().describe("更新后的共享访问控制信息。"),
-    })
-    .catchall(z.unknown())
-    .describe("更新后的 Agent 返回数据。"),
-).describe("更新 Agent 响应。");
-
 export const RestartAgentResponseSchema = WebOkSchema(
   z.object({
     environmentIds: z.array(z.string()).describe("绑定该 Agent 的 Environment ID。"),
@@ -182,17 +159,7 @@ export const DeleteAgentResponseSchema = z
   })
   .describe("删除 Agent 响应。");
 
-export const SetDefaultAgentResponseSchema = WebOkSchema(
-  z.object({
-    default_agent: z.string().describe("已设置为默认值的 Agent 名称。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("该 Agent 的共享访问控制信息。"),
-  }),
-).describe("设置默认 Agent 响应。");
-
-export const GetAgentResponseSchema = WebOkSchema(
-  z.union([AgentListDataSchema, AgentDetailSchema]).describe("Agent 列表数据或单个 Agent 详情。"),
-).describe("获取 Agent 列表或详情的响应。");
-
+export type AgentTemplatesResponse = z.infer<typeof AgentTemplatesResponseSchema>;
 export type AgentInfo = z.infer<typeof AgentInfoSchema>;
 export type AgentDetail = z.infer<typeof AgentDetailSchema>;
 export type AgentTemplate = z.infer<typeof AgentTemplateSchema>;

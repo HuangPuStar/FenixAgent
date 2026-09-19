@@ -1,5 +1,5 @@
 import { error as logError } from "@fenix/logger";
-import { ApiSystemErrorResponseSchema } from "@fenix/resource-identity-admin/server/schema";
+import { ApiSystemErrorResponseSchema } from "@fenix/platform-sdk";
 import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
 import {

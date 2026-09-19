@@ -15,8 +15,8 @@
 - `apps/server/src/repositories/`：低层数据访问封装，只做持久化操作，不承载业务规则。
 - `apps/server/src/db/`：数据库连接、Schema 定义等。
 - `apps/server/src/schemas/`：请求参数、响应结构、配置 body 等校验 Schema。
-- `apps/server/src/plugins/`、`apps/server/src/auth/`、`apps/server/src/transport/`：Elysia 横切插件与认证、传输层能力。
-- `apps/server/src/types/`、`apps/server/src/utils/`、`apps/server/src/errors/`、`apps/server/src/errors.ts`：共享类型、纯工具和错误定义。
+- `apps/server/src/plugins/`、`apps/server/src/transport/`：Elysia 横切插件与传输层能力。认证实现本身不在宿主：身份、组织、成员与 API Key 的唯一 owner 是 `packages/platform/identity`，宿主只保留薄认证 adapter。
+- `apps/server/src/types/`、`apps/server/src/utils/`、`apps/server/src/errors.ts`：共享类型、纯工具和跨层错误定义；`apps/server/src/errors/` 只放某个领域错误到 HTTP 响应的映射（如 `orchestration-http.ts`），不再作为通用错误 barrel。
 - `apps/server/src/test-utils/`、`apps/server/src/__tests__/`：测试辅助与主服务测试。
 
 ### 1.2 `packages/` 可插拔能力包
@@ -107,7 +107,11 @@
 
 ## 3. 数据库设计说明
 
-数据库以 PostgreSQL + Drizzle ORM 为标准方案，`apps/server/src/db/schema.ts` 是唯一 Schema 真相来源。
+数据库以 PostgreSQL + Drizzle ORM 为标准方案，Schema 真相来源有两处、共同汇入同一条 Drizzle 迁移链：
+业务表在 `apps/server/src/db/schema.ts`，身份表（`user` / `session` / `account` / `verification` /
+`organization` / `member` / `invitation` / `apikey` / `user_config`）在
+`packages/platform/identity/db/schema.ts`（CE 阶段 2 任务 1.2 迁出）。`drizzle.config.ts` 的 `schema`
+必须同时声明两者，否则 `db:generate` 会误判其中一族已删除。
 
 ### 3.1 表设计基本原则
 

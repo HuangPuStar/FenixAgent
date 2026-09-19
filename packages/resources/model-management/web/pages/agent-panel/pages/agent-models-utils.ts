@@ -1,4 +1,12 @@
 import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import {
+  getProviderAccessBadgeKey,
+  getProviderDisplayName,
+  getProviderKey,
+  isExternalProvider,
+  isProviderWritable,
+  isPublicProvider,
+} from "../../../lib/provider-resource-access";
 
 export type ProviderScope = "all" | "organization" | "public";
 
@@ -7,26 +15,21 @@ export type ProviderScope = "all" | "organization" | "public";
  *
  * 从 AgentModelsPage.tsx 中拆出，使单元测试无需加载组件模块
  * （组件模块引入了 @lobehub/icons，其 antd-style 依赖在 happy-dom 中不可用）。
+ *
+ * 归属、展示名与授权判断已全部下沉到 `lib/provider-resource-access`（新授权视图 `scope` + `access`），
+ * 本模块只保留目录层语义与展示派生函数。
  */
 
-export function getProviderKey(provider: ProviderInfo): string {
-  return provider.resourceAccess?.resourceKey ?? provider.resourceKey ?? provider.id;
-}
+export { getProviderAccessBadgeKey as getProviderResourceBadgeKey, getProviderDisplayName, getProviderKey };
 
-export function getProviderDisplayName(provider: ProviderInfo): string {
-  const source = provider.resourceAccess?.sourceOrganizationName;
-  if (source) return `${source}/${provider.id}`;
-  return provider.id;
-}
-
-export function getProviderResourceBadgeKey(provider: ProviderInfo): string {
-  if (provider.resourceAccess?.ownership === "external") return "resource.external";
-  if (provider.resourceAccess?.publicReadable) return "resource.public";
-  return "resource.internal";
-}
-
+/**
+ * 是否可写。
+ *
+ * 写权限来自 `access.actions` 的 `update`（缺失即拒绝）；Gateway Provider 由系统托管，后端对写操作
+ * 直接返回 FORBIDDEN，因此界面保持只读，避免暴露必然失败的入口。
+ */
 export function canWriteProvider(provider: ProviderInfo): boolean {
-  return provider.kind !== "gateway" && provider.resourceAccess?.writable !== false;
+  return isProviderWritable(provider) && provider.kind !== "gateway";
 }
 
 /**
@@ -37,11 +40,20 @@ export function getProviderIconModelId(provider: ProviderInfo, models: ProviderM
   return models[0]?.id ?? provider.id;
 }
 
-/** 返回 Provider 是否属于指定目录范围；本组织与公开是可重叠维度。 */
-export function providerMatchesScope(provider: ProviderInfo, scope: ProviderScope): boolean {
+/**
+ * 返回 Provider 是否属于指定目录范围；本组织与公开是可重叠维度。
+ *
+ * `activeOrganizationId` 缺失时按本组织视角处理（同 `isExternalProvider`），避免组织上下文未就绪时
+ * 把自己的 Provider 从「本组织」中筛掉。
+ */
+export function providerMatchesScope(
+  provider: ProviderInfo,
+  scope: ProviderScope,
+  activeOrganizationId?: string,
+): boolean {
   if (scope === "all") return true;
-  if (scope === "organization") return provider.resourceAccess?.ownership !== "external";
-  return provider.resourceAccess?.publicReadable === true;
+  if (scope === "organization") return !isExternalProvider(provider, activeOrganizationId);
+  return isPublicProvider(provider);
 }
 
 /** 模型的思考开关来自真实 options.thinking.enabled，不从模型名称推测。 */
@@ -62,6 +74,12 @@ export function formatOptionalNumber(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
+/**
+ * 公开受众写载荷。
+ *
+ * D2 只退休了 `/web` **响应**里的旧字段形状；写协议仍由服务端以 `publicReadable` 表达受众变更
+ * （与 Skill / MCP 的写路径一致），因此这里继续发送该字段。
+ */
 export function buildProviderPublicReadablePayload(publicReadable: boolean): Record<string, unknown> {
   return { publicReadable };
 }

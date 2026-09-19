@@ -1,75 +1,66 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { setConfig } from "@server/config";
-import { _deps, _resetDeps, deleteSkill, importSkillDirectories, setSkill } from "../server/services/skill";
-import type { UploadSkillFile } from "../server/services/skill-fs";
+import {
+  _deps,
+  deleteSkillDocument,
+  importSkillDirectories,
+  normalizeSkillWriteData,
+  resetSkillContentDeps,
+  type UploadSkillFile,
+  writeSkillDocument,
+} from "../server/services/skill-content";
 
-const ctx = { organizationId: "org-1", userId: "user-1", role: "owner" } as const;
+/**
+ * Skill 文档内容层用例（`services/skill-content`）。
+ *
+ * 关注的是**文件系统这个介质自己的一致性规则**：写入前建快照、失败时恢复快照并同步归档、删除时
+ * 清理源目录与归档。资源行的写入顺序与补偿由 Facade 负责（见 `skill-facade` 用例），因此这里用文件
+ * 系统替身断言调用序列与参数，不触碰真实目录。
+ */
+
 const root = "/tmp/rcs-skills";
+const organizationId = "org-1";
+const targetDir = `${root}/${organizationId}`;
+const backupDir = "/tmp/backup";
 
 function makeFile(name: string): UploadSkillFile {
   return { skillName: name, relativePath: "SKILL.md", content: `---\nname: ${name}\n---\nBody` };
 }
 
-function installMocks() {
-  const configPg = {
-    getSkill: mock(async () => null),
-    upsertSkill: mock(async () => "skill-id"),
-    deleteSkill: mock(async () => true),
-    listSkills: mock(async () => []),
-  };
+/** 装入文件系统替身：纯函数（名称校验、分组、冲突规划）用真实实现，磁盘操作全部替换。 */
+function installFs() {
   const skillFs = {
-    assertValidSkillName: (name: string) => name.trim(),
-    getSkillOrganizationDir: (skillRoot: string, organizationId: string) => `${skillRoot}/${organizationId}`,
-    getSkillSourceDir: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}`,
-    getSkillMdPath: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}/SKILL.md`,
-    getSkillArchivePath: (skillRoot: string, organizationId: string, name: string) =>
-      `${skillRoot}/${organizationId}/${name}.zip`,
-    buildSkillArchive: mock(async () => {}),
-    deleteSkillArchive: mock(async () => {}),
-    createSkillValidationError: (msg: string) => {
-      const e = new Error(msg) as Error & { code: string };
-      e.code = "TEST";
-      return e;
-    },
-    groupUploadFiles: (files: UploadSkillFile[]) => {
-      const grouped = new Map<string, UploadSkillFile[]>();
-      for (const file of files) {
-        const skillName = file.skillName.trim();
-        grouped.set(skillName, [...(grouped.get(skillName) ?? []), { ...file, skillName }]);
-      }
-      return grouped;
-    },
-    listSkillsFromDir: mock(async () => []),
+    assertValidSkillName: _deps.skillFs.assertValidSkillName,
+    createSkillValidationError: _deps.skillFs.createSkillValidationError,
+    groupUploadFiles: _deps.skillFs.groupUploadFiles,
+    resolveImportPlan: _deps.skillFs.resolveImportPlan,
+    getSkillOrganizationDir: (_skillRoot: string, orgId: string) => `${_skillRoot}/${orgId}`,
+    getSkillSourceDir: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}`,
+    getSkillMdPath: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}/SKILL.md`,
+    getSkillArchivePath: (_skillRoot: string, orgId: string, name: string) => `${_skillRoot}/${orgId}/${name}.zip`,
     readSkillDetailFromMd: mock(async () => null),
+    readSkillDocumentFromMd: mock(async () => null),
     writeSkillMd: mock(async (dir: string) => `${dir}/SKILL.md`),
-    deleteSkillDir: mock(async () => {}),
-    resolveImportPlan: (grouped: Map<string, UploadSkillFile[]>, conflicts: unknown[], strategy?: string) => {
-      const conflictNames = new Set((conflicts as Array<{ name: string }>).map((item) => item.name));
-      return {
-        pendingEntries: [...grouped.entries()].filter(([name]) => strategy !== "ignore" || !conflictNames.has(name)),
-        skipped: [],
-      };
-    },
+    buildSkillArchive: mock(async () => undefined),
+    deleteSkillArchive: mock(async () => undefined),
+    deleteSkillDir: mock(async () => undefined),
+    createBackupDir: mock(async () => backupDir),
+    backupSkillDirs: mock(async (_backupRoot: string, _dir: string, names: string[]) => {
+      return new Map(names.map((name) => [name, null] as [string, string | null]));
+    }),
+    cleanupWrittenSkills: mock(async () => undefined),
+    restoreFromBackup: mock(async () => undefined),
+    cleanupBackupDir: mock(async () => undefined),
     writeImportFiles: mock(async (_dir: string, entries: [string, UploadSkillFile[]][]) =>
       entries.map(([name]) => name),
     ),
     buildImportedSkillInfos: mock(async (dir: string, names: string[]) =>
       names.map((name) => ({ name, enabled: true, description: `${name} desc`, path: `${dir}/${name}/SKILL.md` })),
     ),
-    backupSkillDirs: mock(async (_backupRoot: string, _targetDir: string, names: string[]) => {
-      return new Map(names.map((name) => [name, null] as [string, string | null]));
-    }),
-    cleanupWrittenSkills: mock(async () => {}),
-    restoreFromBackup: mock(async () => {}),
-    createBackupDir: mock(async () => "/tmp/backup"),
-    cleanupBackupDir: mock(async () => {}),
   };
 
-  _deps.configPg = configPg as unknown as typeof _deps.configPg;
   _deps.skillFs = skillFs as unknown as typeof _deps.skillFs;
-  return { configPg, skillFs };
+  return skillFs;
 }
 
 beforeEach(() => {
@@ -77,130 +68,170 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  _resetDeps();
+  resetSkillContentDeps();
 });
 
-describe("skill archive lifecycle", () => {
-  // setSkill 写入文件后生成 archive，并把 SKILL.md 路径写入 PG。
-  test("setSkill builds archive before upsert", async () => {
-    const { configPg, skillFs } = installMocks();
+describe("skill 文档写入", () => {
+  // 写入顺序：先落盘 SKILL.md，再同步归档，最后才让调用方写资源行——资源行拿到的是已落盘的内容。
+  test("writeSkillDocument 先写文件与归档再回调资源行写入", async () => {
+    const skillFs = installFs();
+    const written: { contentPath: string; description: string; metadata?: Record<string, string> }[] = [];
 
-    await setSkill(ctx, "demo", { description: "Demo", content: "# Demo" });
+    await writeSkillDocument({
+      organizationId,
+      name: "demo",
+      description: "Demo",
+      content: "# Demo",
+      persist: async (result) => {
+        written.push(result);
+      },
+    });
 
-    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/org-1/demo`, `${root}/org-1/demo.zip`);
-    const upsertCalls = configPg.upsertSkill.mock.calls as unknown as Array<
-      [unknown, string, { description: string; metadata?: Record<string, string> | undefined }]
-    >;
-    expect(upsertCalls[0]?.[2]).toEqual({ description: "Demo", metadata: undefined });
+    expect(skillFs.writeSkillMd).toHaveBeenCalledWith(`${targetDir}/demo`, "demo", "Demo", "# Demo", undefined);
+    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${targetDir}/demo`, `${targetDir}/demo.zip`);
+    expect(written).toEqual([{ contentPath: `${targetDir}/demo/SKILL.md`, description: "Demo" }]);
   });
 
-  // 调用方传入完整 SKILL.md 时，应去掉已有 frontmatter 后再生成唯一的规范头部。
-  test("setSkill normalizes a complete SKILL.md before writing", async () => {
-    const { configPg, skillFs } = installMocks();
-    const completeSkill = `---
-name: demo
-description: Embedded description
-category: testing
----
+  // 既有文档里资源行可承载的元数据必须保留并合并本次入参；name / description 由资源行列承载，不入 metadata。
+  test("writeSkillDocument 合并既有文档的可入库元数据", async () => {
+    const skillFs = installFs();
+    skillFs.readSkillDocumentFromMd.mockImplementationOnce(async () => ({
+      metadata: { builtin: "true", name: "demo", description: "旧描述" },
+      content: "# 旧",
+    }));
+    const written: { metadata?: Record<string, string> }[] = [];
 
-# Demo
-`;
+    await writeSkillDocument({
+      organizationId,
+      name: "demo",
+      description: "新描述",
+      content: "# 新",
+      metadata: { source: "meta-agent" },
+      persist: async (result) => {
+        written.push(result);
+      },
+    });
 
-    await setSkill(ctx, "demo", {
+    expect(skillFs.writeSkillMd).toHaveBeenCalledWith(`${targetDir}/demo`, "demo", "新描述", "# 新", {
+      builtin: "true",
+      source: "meta-agent",
+    });
+    expect(written[0]?.metadata).toEqual({ builtin: "true", source: "meta-agent" });
+  });
+
+  // 资源行写入失败（新建路径没有快照）：删除半成品内容与刚生成的归档，把原错误原样上抛。
+  test("资源行写入失败时清理新建内容与归档", async () => {
+    const skillFs = installFs();
+
+    await expect(
+      writeSkillDocument({
+        organizationId,
+        name: "new-skill",
+        description: "New",
+        content: "# New",
+        persist: async () => {
+          throw new Error("pg down");
+        },
+      }),
+    ).rejects.toThrow("pg down");
+
+    expect(skillFs.cleanupWrittenSkills).toHaveBeenCalledWith(targetDir, ["new-skill"]);
+    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, organizationId, "new-skill");
+    expect(skillFs.buildSkillArchive).toHaveBeenCalledTimes(1);
+  });
+
+  // 覆盖既有内容失败（有快照）：恢复旧内容并重建旧归档，文件与归档回到写入前的一致状态。
+  test("资源行写入失败时恢复快照并重建归档", async () => {
+    const skillFs = installFs();
+    skillFs.backupSkillDirs.mockImplementationOnce(async () => new Map([["demo", "/tmp/backup/demo"]]));
+
+    await expect(
+      writeSkillDocument({
+        organizationId,
+        name: "demo",
+        description: "Demo",
+        content: "# Demo",
+        persist: async () => {
+          throw new Error("pg down");
+        },
+      }),
+    ).rejects.toThrow("pg down");
+
+    expect(skillFs.restoreFromBackup).toHaveBeenCalledWith(new Map([["demo", "/tmp/backup/demo"]]), targetDir);
+    const archiveCalls = skillFs.buildSkillArchive.mock.calls as unknown as Array<[string, string]>;
+    expect(archiveCalls).toEqual([
+      [`${targetDir}/demo`, `${targetDir}/demo.zip`],
+      [`${targetDir}/demo`, `${targetDir}/demo.zip`],
+    ]);
+    expect(skillFs.cleanupBackupDir).toHaveBeenCalledWith(backupDir);
+  });
+
+  // 完整 SKILL.md 被误传到 content 时剥离已有 frontmatter，避免写入重复头部（embedding 的元数据仍保留）。
+  test("normalizeSkillWriteData 剥离已有 frontmatter 并合并元数据", () => {
+    const normalized = normalizeSkillWriteData({
       description: "Request description",
-      content: completeSkill,
+      content: "---\nname: demo\ndescription: Embedded description\ncategory: testing\n---\n\n# Demo\n",
       metadata: { source: "meta-agent" },
     });
 
-    expect(skillFs.writeSkillMd).toHaveBeenCalledWith(
-      `${root}/org-1/demo`,
-      "demo",
-      "Request description",
-      "\n# Demo\n",
-      { category: "testing", source: "meta-agent" },
-    );
-    const upsertCalls = configPg.upsertSkill.mock.calls as unknown as Array<
-      [unknown, string, { description: string; metadata?: Record<string, string> | undefined }]
-    >;
-    expect(upsertCalls[0]?.[2]).toEqual({
+    expect(normalized).toEqual({
       description: "Request description",
+      content: "\n# Demo\n",
       metadata: { category: "testing", source: "meta-agent" },
     });
   });
+});
 
-  // 新建 skill 的 PG 写入失败时，清理新 source 与 archive。
-  test("setSkill cleans new source and archive when upsert fails", async () => {
-    const { configPg, skillFs } = installMocks();
-    configPg.upsertSkill.mockImplementationOnce(async () => {
-      throw new Error("pg down");
-    });
+describe("skill 内容删除", () => {
+  // 删除内容清理源目录与归档；归档缺失不影响结果（清理失败只记录日志，不上抛）。
+  test("deleteSkillDocument 清理源目录与归档", async () => {
+    const skillFs = installFs();
 
-    await expect(setSkill(ctx, "new-skill", { description: "New", content: "# New" })).rejects.toThrow("pg down");
+    await deleteSkillDocument({ organizationId, name: "demo" });
 
-    expect(skillFs.cleanupWrittenSkills).toHaveBeenCalledWith(`${root}/org-1`, ["new-skill"]);
-    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, "org-1", "new-skill");
+    expect(skillFs.deleteSkillDir).toHaveBeenCalledWith(`${targetDir}/demo`);
+    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, organizationId, "demo");
+  });
+});
+
+describe("skill 导入归档", () => {
+  // 导入成功后每个被写入的技能都要有归档：克隆与下载都从归档读取。
+  test("importSkillDirectories 为每个写入的技能建归档", async () => {
+    const skillFs = installFs();
+
+    await importSkillDirectories({ organizationId, files: [makeFile("one"), makeFile("two")], conflicts: [] });
+
+    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${targetDir}/one`, `${targetDir}/one.zip`);
+    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${targetDir}/two`, `${targetDir}/two.zip`);
   });
 
-  // 编辑已有 skill 的 PG 写入失败时，恢复旧 source 并重建旧 archive。
-  test("setSkill restores existing archive when upsert fails", async () => {
-    const { configPg, skillFs } = installMocks();
-    skillFs.backupSkillDirs.mockImplementationOnce(async () => new Map([["demo", "/tmp/backup/demo"]]));
-    configPg.upsertSkill.mockImplementationOnce(async () => {
-      throw new Error("pg down");
-    });
-
-    await expect(setSkill(ctx, "demo", { description: "Demo", content: "# Demo" })).rejects.toThrow("pg down");
-
-    expect(skillFs.restoreFromBackup).toHaveBeenCalledWith(new Map([["demo", "/tmp/backup/demo"]]), `${root}/org-1`);
-    expect(skillFs.buildSkillArchive).toHaveBeenCalledTimes(2);
-    const archiveCalls = skillFs.buildSkillArchive.mock.calls as unknown as Array<[string, string]>;
-    expect(archiveCalls[1]).toEqual([`${root}/org-1/demo`, `${root}/org-1/demo.zip`]);
-  });
-
-  // 删除 PG 元数据成功后，同步删除 source 和 archive。
-  test("deleteSkill removes source dir and archive", async () => {
-    const { configPg, skillFs } = installMocks();
-    configPg.getSkill.mockImplementationOnce(
-      async () =>
-        ({
-          name: "demo",
-          organizationId: "org-1",
-          resourceAccess: { writable: true },
-        }) as unknown as null,
-    );
-
-    await expect(deleteSkill(ctx, "demo")).resolves.toBe(true);
-
-    expect(skillFs.deleteSkillDir).toHaveBeenCalledWith(`${root}/org-1/demo`);
-    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, "org-1", "demo");
-  });
-
-  // 全局导入成功后，每个 imported skill 都会生成 archive。
-  test("importSkillDirectories builds archive for imported skills", async () => {
-    const { skillFs } = installMocks();
-
-    await importSkillDirectories(ctx, [makeFile("one"), makeFile("two")]);
-
-    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/org-1/one`, `${root}/org-1/one.zip`);
-    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/org-1/two`, `${root}/org-1/two.zip`);
-  });
-
-  // overwrite 回滚时清理 attempted archive，恢复旧 source 并重建旧 archive。
-  test("importSkillDirectories rebuilds archive after overwrite rollback", async () => {
-    const { configPg, skillFs } = installMocks();
-    configPg.getSkill.mockImplementationOnce(
-      async () => ({ name: "demo", enabled: true, organizationId: "org-1" }) as unknown as null,
-    );
+  // 覆盖导入失败：回滚被覆盖的资源行与归档，恢复快照，再按恢复后的内容重建归档。
+  test("覆盖导入失败时回滚资源行、快照与归档", async () => {
+    const skillFs = installFs();
     skillFs.backupSkillDirs.mockImplementationOnce(async () => new Map([["demo", "/tmp/backup/demo"]]));
     skillFs.buildImportedSkillInfos.mockImplementationOnce(async () => {
       throw new Error("disk full");
     });
+    const rolledBack: string[][] = [];
 
-    await expect(importSkillDirectories(ctx, [makeFile("demo")], "overwrite")).rejects.toThrow("disk full");
+    await expect(
+      importSkillDirectories({
+        organizationId,
+        files: [makeFile("demo")],
+        conflicts: [{ name: "demo", enabled: true, path: `${targetDir}/demo/SKILL.md` }],
+        strategy: "overwrite",
+        onRollbackCleanup: async (names) => {
+          rolledBack.push([...names]);
+        },
+      }),
+    ).rejects.toThrow("disk full");
 
-    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, "org-1", "demo");
-    expect(skillFs.buildSkillArchive).toHaveBeenCalledWith(`${root}/org-1/demo`, `${root}/org-1/demo.zip`);
-    expect(skillFs.restoreFromBackup).toHaveBeenCalledWith(new Map([["demo", "/tmp/backup/demo"]]), `${root}/org-1`);
-    expect(skillFs.cleanupBackupDir).toHaveBeenCalledWith("/tmp/backup");
+    expect(skillFs.cleanupWrittenSkills).toHaveBeenCalledWith(targetDir, ["demo"]);
+    expect(rolledBack).toEqual([["demo"]]);
+    expect(skillFs.deleteSkillArchive).toHaveBeenCalledWith(root, organizationId, "demo");
+    expect(skillFs.restoreFromBackup).toHaveBeenCalledWith(new Map([["demo", "/tmp/backup/demo"]]), targetDir);
+    const archiveCalls = skillFs.buildSkillArchive.mock.calls as unknown as Array<[string, string]>;
+    expect(archiveCalls).toEqual([[`${targetDir}/demo`, `${targetDir}/demo.zip`]]);
+    expect(skillFs.cleanupBackupDir).toHaveBeenCalledWith(backupDir);
   });
 });

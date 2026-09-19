@@ -56,6 +56,9 @@
   "loadModelConfigError": "加载模型配置失败: {{message}}",
   "loadModelsError": "加载模型数据失败",
   "unknownError": "未知错误",
+  "errors": {
+    "sharingUnavailable": "无法管理此服务商的共享状态"
+  },
   "protocolOptions": {
     "openai": "OpenAI 兼容",
     "anthropic": "Anthropic"

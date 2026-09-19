@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 // 测试 mcp-server.ts 的 toServerInfo 纯函数：command 数组守卫
-const { toServerInfo } = await import("../server/services/config/mcp-server");
+const { toServerInfo } = await import("../server/services/config/mcp-config");
 
 describe("toServerInfo", () => {
   // 禁用且无 type 的配置返回 disabled 类型

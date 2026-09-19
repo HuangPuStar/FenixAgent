@@ -7,6 +7,7 @@ import { loadAssemblyProfile } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
 
 const profile = {
+  identity: "identity",
   accessControl: "access-control",
   agentRuntime: "agent-runtime",
   webShell: "default",
@@ -15,6 +16,12 @@ const profile = {
 };
 
 const manifests = [
+  {
+    id: "identity",
+    kind: "identity",
+    dependsOn: [],
+    create: () => ({ id: "identity" }),
+  },
   {
     id: "access-control",
     kind: "access-control",
@@ -35,7 +42,7 @@ const manifests = [
     web: { id: "agent-config", contribution: "page" },
   },
   // profile 的 webShell 必须解析到已注册的 web-shell 模块；Shell 是应用级组合，只做绑定校验，
-  // 不进入 server 的 modules / instances（因此下面的 preflight 仍为 3）。
+  // 不进入 server 的 modules / instances（因此下面的 preflight 仍为 4）。
   {
     id: "default",
     kind: "web-shell",
@@ -53,6 +60,7 @@ test("从 JSON 和 YAML 文件读取同一 assembly profile", async () => {
     await writeFile(
       yamlPath,
       [
+        "identity: identity",
         "accessControl: access-control",
         "agentRuntime: agent-runtime",
         "webShell: default",
@@ -105,6 +113,6 @@ test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
     },
   });
 
-  expect(events).toEqual(["env:0", "preflight:3", "mount:agent-config.routes"]);
+  expect(events).toEqual(["env:0", "preflight:4", "mount:agent-config.routes"]);
   expect(result.webContributions.get("agent-config")).toBe("page");
 });

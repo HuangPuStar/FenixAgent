@@ -47,17 +47,20 @@ export {
   type UpdateEnvironmentResponse,
   UpdateEnvironmentResponseSchema,
 } from "@fenix/agent-runtime/server";
-// Organizations
 export {
-  type ApiKeyInfo,
-  ApiKeyInfoSchema,
-  type OrganizationDetail,
-  OrganizationDetailSchema,
-  type OrganizationInfo,
-  OrganizationInfoSchema,
-  type OrganizationMember,
-  OrganizationMemberSchema,
-} from "@fenix/resource-identity-admin/server/schema";
+  type PaginationParams,
+  PaginationParamsSchema,
+  type PaginationSortParams,
+  PaginationSortParamsSchema,
+  type SortParams,
+  SortParamsSchema,
+  type WebErr,
+  WebErrSchema,
+  WebOkSchema,
+  WebResponseSchema,
+} from "@fenix/platform-sdk";
+// 组织与 API Key 的协议 schema 随身份职责迁入 `@fenix/identity/server` 的路由工厂内部使用，
+// 宿主不再转出（CE 阶段 2 任务 1.2）。
 // Knowledge
 export {
   type CreateKnowledgeBaseRequest,
@@ -122,59 +125,8 @@ export {
   McpKnowledgeReadToolInputSchema,
   McpKnowledgeSearchToolInputSchema,
 } from "@fenix/resource-mcp/server/schema";
-export {
-  type PaginationParams,
-  PaginationParamsSchema,
-  type PaginationSortParams,
-  PaginationSortParamsSchema,
-  type SortParams,
-  SortParamsSchema,
-  type WebErr,
-  WebErrSchema,
-  WebOkSchema,
-  WebResponseSchema,
-} from "./common.schema";
-// Config
-export {
-  type ConfigAction,
-  ConfigActionSchema,
-  type ConfigBody,
-  ConfigBodySchema,
-  CreateSkillResponseSchema,
-  DeleteSkillResponseSchema,
-  type McpInspectResult,
-  McpInspectResultSchema,
-  type McpServerDetail,
-  McpServerDetailSchema,
-  type McpServerInfo,
-  McpServerInfoSchema,
-  type McpToolInfo,
-  McpToolInfoSchema,
-  type ModelConfig,
-  ModelConfigSchema,
-  type ModelEntry,
-  ModelEntrySchema,
-  type ProviderDetail,
-  ProviderDetailSchema,
-  type ProviderInfo,
-  ProviderInfoSchema,
-  type SkillDetail,
-  SkillDetailSchema,
-  type SkillInfo,
-  SkillInfoSchema,
-  type SkillListResponse,
-  SkillListResponseSchema,
-  type SkillSaveResult,
-  SkillSaveResultSchema,
-  type SkillSourceInfo,
-  SkillSourceInfoSchema,
-  type SkillUploadConflict,
-  SkillUploadConflictSchema,
-  SkillUploadResponseSchema,
-  type SkillUploadResult,
-  SkillUploadResultSchema,
-  UpdateSkillResponseSchema,
-} from "./config.schema";
+// Peri Task
+// `./config.schema` 的 Provider / Model 契约不经本 barrel 转发：资源包直接 import 该文件。
 export {
   type PeriTaskDetail,
   PeriTaskDetailParamsSchema,

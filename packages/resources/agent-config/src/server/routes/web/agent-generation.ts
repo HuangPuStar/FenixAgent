@@ -1,5 +1,5 @@
+import { type ActorContext, WebErrSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
-import { WebErrSchema } from "@server/schemas/common.schema";
 import { configError, configSuccess } from "@server/services/config-utils";
 import Elysia from "elysia";
 import { z } from "zod/v4";
@@ -18,14 +18,13 @@ app.post(
   "/agent-generation",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation
   async ({ store, body, error }: any) => {
-    const authCtx = store.authContext!;
-
     if (!isGenerationConfigured()) {
       return error(503, configError("NOT_CONFIGURED", "Agent generation model is not configured"));
     }
 
     try {
-      const result = await generateAgentConfig(authCtx, body.prompt as string);
+      // 生成过程要按主体可见性挑选候选技能，因此传可信主体而不是宿主认证上下文。
+      const result = await generateAgentConfig(store.actor as ActorContext, body.prompt as string);
       return configSuccess(result);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);

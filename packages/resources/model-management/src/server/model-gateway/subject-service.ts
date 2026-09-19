@@ -1,8 +1,8 @@
-import type { SystemApiPagination, SystemApiUserRecord } from "@fenix/resource-identity-admin/server/system-api";
+import type { ApiSystemPagination, ApiSystemUserRecord } from "@fenix/platform-sdk";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { db } from "@server/db";
 import { agentConfig } from "@server/db/schema";
 import { and, ilike, or } from "drizzle-orm";
-import { findModelGatewayUsers } from "../repositories/model-gateway-subject";
 
 export interface ModelGatewaySubjectAgent {
   id: string;
@@ -11,14 +11,14 @@ export interface ModelGatewaySubjectAgent {
   userId: string;
 }
 
-export interface SubjectSearchInput extends SystemApiPagination {
+export interface SubjectSearchInput extends ApiSystemPagination {
   keyword?: string;
   organizationId?: string;
   userId?: string;
 }
 
 export interface ModelGatewaySubjectServiceDeps {
-  findUsers: (input: SubjectSearchInput) => Promise<SystemApiUserRecord[]>;
+  findUsers: (input: SubjectSearchInput) => Promise<ApiSystemUserRecord[]>;
   listAgents: (input: SubjectSearchInput) => Promise<ModelGatewaySubjectAgent[]>;
 }
 
@@ -44,15 +44,25 @@ async function queryAgents(input: SubjectSearchInput): Promise<ModelGatewaySubje
   return rows;
 }
 
+/**
+ * 用户检索经 `IdentityDirectory`：身份表读取的唯一合法落点，本包不得再直查 `user` / `member`。
+ *
+ * 这里返回的是 `/api/system/*` 的完整用户记录（含 `emailVerified` / 手机号等账号状态字段），
+ * 只有系统管理面需要这些字段。
+ */
+async function searchUsersViaDirectory(input: SubjectSearchInput): Promise<ApiSystemUserRecord[]> {
+  return [...(await getIdentityDirectory().searchUsers(input))];
+}
+
 /** 管理端主体选择器：用户来自系统全局，Agent 来自全局 Agent 配置表。 */
 export function createModelGatewaySubjectService(deps: Partial<ModelGatewaySubjectServiceDeps> = {}) {
   const resolved = {
-    findUsers: deps.findUsers ?? findModelGatewayUsers,
+    findUsers: deps.findUsers ?? searchUsersViaDirectory,
     listAgents: deps.listAgents ?? queryAgents,
   };
   return {
     async searchUsers(input: SubjectSearchInput): Promise<{
-      items: SystemApiUserRecord[];
+      items: ApiSystemUserRecord[];
       total: number;
       page: number;
       pageSize: number;

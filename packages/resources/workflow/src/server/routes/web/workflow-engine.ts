@@ -5,6 +5,7 @@
  */
 
 import { createLogger } from "@fenix/logger";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import { WorkflowError } from "@fenix/workflow-engine";
 import { db } from "@server/db";
 import { workflowSnapshot } from "@server/db/schema";
@@ -13,7 +14,6 @@ import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
 import { getVersionYaml, getWorkflowDef } from "../../repositories/workflow-def";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
-import { WebErrSchema } from "../../schemas/common.schema";
 import { cleanupSpawnedInstances, getTeamEngine } from "../../services/workflow";
 import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";

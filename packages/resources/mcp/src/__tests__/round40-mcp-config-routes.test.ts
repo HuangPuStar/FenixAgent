@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AppError } from "@server/errors";
+import type { ActorContext } from "@fenix/platform-sdk";
+import { ConflictError, ForbiddenError, NotFoundError } from "@server/errors";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubConfigPg, stubDb } from "@server/test-utils/helpers";
+import { readJson, resetAllStubs } from "@server/test-utils/helpers";
+import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
+
+/**
+ * `/web/config/mcp` 协议层用例。
+ *
+ * 授权、可见性与资源解析都在应用 Facade 内，本文件只覆盖协议层职责：参数校验、请求映射、视图
+ * 映射与错误码映射。Facade 行为（工具计数降级、名称优先级、删除事务等）由 `mcp-server-facade`
+ * 用例覆盖。
+ */
 
 const mcpRoute = (await import("../server/routes/web/config/mcp")).default;
-
-const now = new Date("2026-08-19T00:00:00.000Z");
 
 function authenticate(organizationId = "org-1") {
   setTestAuth({
@@ -20,7 +28,7 @@ function request(path: string, init?: RequestInit) {
   return mcpRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-function jsonRequest(path: string, method: string, body: Record<string, unknown> = {}) {
+function jsonRequest(path: string, method: string, body: Record<string, unknown>) {
   return request(path, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -28,170 +36,246 @@ function jsonRequest(path: string, method: string, body: Record<string, unknown>
   });
 }
 
-function server(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "mcp-1",
-    userId: "user-1",
-    organizationId: "org-1",
-    name: "demo",
-    type: "remote",
-    config: { type: "remote", url: "https://mcp.example.test" },
-    enabled: true,
-    createdAt: now,
-    updatedAt: now,
-    resourceAccess: {
-      ownership: "internal",
-      sourceOrganizationId: "org-1",
-      resourceUid: "mcp-1",
-      resourceKey: "org-1/mcp-1",
-      manageable: true,
-      writable: true,
-    },
-    ...overrides,
-  };
-}
-
-function stubEmptyToolDb() {
-  stubDb({
-    select: () => ({ from: () => ({ where: async () => [] }) }),
-    delete: () => ({ where: async () => undefined }),
-  });
-}
-
 describe("round40 MCP 配置路由", () => {
   beforeEach(() => {
     resetAllStubs();
+    resetMcpModuleStub();
     authenticate();
-    stubEmptyToolDb();
   });
 
   afterEach(() => {
     resetTestAuth();
     setTestOrgContext(null);
+    resetMcpModuleStub();
   });
 
-  // 认证上下文的组织 ID 必须原样传给列表服务，确保组织隔离由服务层执行。
-  test("列表将认证组织传递给服务层", async () => {
-    let organizationId = "";
-    stubConfigPg({
-      listMcpServers: async (ctx) => {
-        organizationId = ctx.organizationId;
-        return [];
+  // 列表把可信主体（含 active organization 与全量成员关系）原样交给 Facade，协议层不做主体改写。
+  test("列表把可信主体交给 Facade 并返回 servers 数组", async () => {
+    let received: ActorContext | undefined;
+    installMcpModuleStub({
+      facade: {
+        list: async (actor) => {
+          received = actor;
+          return { items: [], total: 0 };
+        },
       },
     });
-
-    const response = await request("/config/mcp");
-
-    expect(response.status).toBe(200);
-    expect(organizationId).toBe("org-1");
-  });
-
-  // 空列表不应触发工具计数查询，也应保持成功响应形状。
-  test("列表返回当前组织的空服务器集合", async () => {
-    stubConfigPg({ listMcpServers: async () => [] });
 
     const response = await request("/config/mcp");
 
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({ success: true, data: { servers: [] } });
+    expect(received).toEqual(testActor());
   });
 
-  // 工具计数查询失败时，列表仍应返回服务器并将数量降为零。
-  test("列表在工具计数失败时回退为零", async () => {
-    stubConfigPg({ listMcpServers: async () => [server()] });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: async () => {
-            throw new Error("db unavailable");
-          },
+  // 列表项视图是展示投影 + 归属 scope + 有效动作，跨组织资源按名录补 organizationName。
+  test("列表项返回 scope 与 access，并按组织名录补名称", async () => {
+    let listedIds: readonly string[] = [];
+    installMcpModuleStub({
+      facade: {
+        list: async () => ({
+          items: [
+            authorizedServer({
+              id: "mcp-external",
+              name: "shared",
+              organizationId: "org-source",
+              visibility: "public",
+              actions: ["read"],
+              toolsCount: 2,
+            }),
+          ],
+          total: 1,
         }),
-      }),
+      },
+      identity: {
+        listOrganizationNames: async (ids) => {
+          listedIds = ids;
+          return new Map([["org-source", "Source Team"]]);
+        },
+      },
+    });
+
+    const body = (await readJson(await request("/config/mcp"))) as {
+      data: { servers: Record<string, unknown>[] };
+    };
+
+    expect(listedIds).toEqual(["org-source"]);
+    expect(body.data.servers[0]).toEqual({
+      id: "mcp-external",
+      name: "shared",
+      type: "remote",
+      enabled: true,
+      summary: "https://mcp.example.test",
+      toolsCount: 2,
+      scope: { organizationId: "org-source", ownerUserId: "user-1", visibility: "public" },
+      access: { actions: ["read"] },
+      organizationName: "Source Team",
+    });
+  });
+
+  // 名录查不到归属组织时整字段省略，不返回空串让前端误以为组织名为空。
+  test("组织名录缺项时省略 organizationName", async () => {
+    installMcpModuleStub({
+      facade: { list: async () => ({ items: [authorizedServer()], total: 1 }) },
+    });
+
+    const body = (await readJson(await request("/config/mcp"))) as {
+      data: { servers: Record<string, unknown>[] };
+    };
+
+    expect(body.data.servers[0]).not.toHaveProperty("organizationName");
+  });
+
+  // 已认证但缺少组织上下文的请求不得进入 Facade：没有 active organization 就无法定义资源归属。
+  test("缺少组织上下文返回 401 且不调用 Facade", async () => {
+    let called = false;
+    installMcpModuleStub({
+      facade: {
+        list: async () => {
+          called = true;
+          return { items: [], total: 0 };
+        },
+      },
+    });
+    setTestAuth({
+      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
+      authContext: null,
     });
 
     const response = await request("/config/mcp");
-    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.data.servers[0]).toMatchObject({ name: "demo", toolsCount: 0, resourceAccess: { writable: true } });
+    expect(response.status).toBe(401);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" },
+    });
+    expect(called).toBeFalse();
   });
 
-  // 普通名称详情查询必须委托当前组织范围内的读取接口。
-  test("详情按普通名称读取内部服务器", async () => {
-    let receivedName = "";
-    stubConfigPg({
-      getMcpServer: async (_ctx, name) => {
-        receivedName = name;
-        return server();
+  // 详情按名称原样透传给 Facade，视图形状是配置 + scope + access，不再有旧栈的 resourceAccess。
+  test("详情按名称查询并返回 scope 与 access", async () => {
+    let received: string | undefined;
+    installMcpModuleStub({
+      facade: {
+        get: async (_actor, nameOrKey) => {
+          received = nameOrKey;
+          return authorizedServer({ actions: ["read", "update"] });
+        },
+      },
+      identity: { listOrganizationNames: async () => new Map([["org-1", "Current Team"]]) },
+    });
+
+    const body = (await readJson(await request("/config/mcp?name=demo"))) as { data: Record<string, unknown> };
+
+    expect(received).toBe("demo");
+    expect(body.data).toEqual({
+      name: "demo",
+      config: { type: "remote", url: "https://mcp.example.test" },
+      scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+      access: { actions: ["read", "update"] },
+      organizationName: "Current Team",
+    });
+  });
+
+  // 资源键（org_id/server-uuid）与名称共用同一入口：Facade 负责解析归属组织。
+  test("详情支持资源键定位", async () => {
+    let received: string | undefined;
+    installMcpModuleStub({
+      facade: {
+        get: async (_actor, nameOrKey) => {
+          received = nameOrKey;
+          return authorizedServer({ name: "shared", organizationId: "org-source", visibility: "public" });
+        },
       },
     });
 
-    const response = await request("/config/mcp?name=demo");
+    const response = await request("/config/mcp?name=org-source/mcp-1");
 
     expect(response.status).toBe(200);
-    expect(receivedName).toBe("demo");
-    expect((await response.json()).data.config).toEqual({ type: "remote", url: "https://mcp.example.test" });
+    expect(received).toBe("org-source/mcp-1");
   });
 
-  // resource key 必须走共享资源读取接口而不是同名内部资源接口。
-  test("详情按 resource key 读取外部服务器", async () => {
-    let receivedKey = "";
-    stubConfigPg({
-      getMcpServerByResourceKey: async (_ctx, key) => {
-        receivedKey = key;
-        return server({ organizationId: "org-2", resourceAccess: { ownership: "external", writable: false } });
-      },
-    });
-
-    const response = await request("/config/mcp?name=org-2/mcp-shared");
-
-    expect(response.status).toBe(200);
-    expect(receivedKey).toBe("org-2/mcp-shared");
-    expect((await response.json()).data.resourceAccess).toEqual({ ownership: "external", writable: false });
-  });
-
-  // 找不到的详情应映射为标准 404 业务错误。
-  test("详情不存在时返回 404", async () => {
-    stubConfigPg({ getMcpServer: async () => null });
+  // 不可见与不存在都表现为 404，不区分两者以免资源名成为跨组织探测面。
+  test("详情不存在返回 404", async () => {
+    installMcpModuleStub({ facade: { get: async () => undefined } });
 
     const response = await request("/config/mcp?name=missing");
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "NOT_FOUND", message: "MCP server 'missing' not found" },
+    });
   });
 
-  // 创建名称不符合约束时不得调用持久化服务。
-  test("创建拒绝非法服务器名称", async () => {
-    let created = false;
-    stubConfigPg({
-      createMcpServer: async () => {
-        created = true;
+  // 名称非法必须在调用 Facade 之前被协议层拒绝。
+  test("创建非法名称返回 400 且不调用 Facade", async () => {
+    let called = false;
+    installMcpModuleStub({
+      facade: {
+        create: async () => {
+          called = true;
+          return "mcp-1";
+        },
       },
     });
 
-    const response = await jsonRequest("/config/mcp", "POST", {
-      name: "Invalid_Name",
-      config: { type: "remote", url: "https://mcp.example.test" },
-    });
+    const response = await jsonRequest("/config/mcp", "POST", { name: "Bad_Name", config: { type: "local" } });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
-    expect(created).toBe(false);
+    expect(await readJson(response)).toMatchObject({ success: false, error: { code: "VALIDATION_ERROR" } });
+    expect(called).toBeFalse();
   });
 
-  // 创建必须校验配置类型和必要字段。
-  test("创建拒绝缺失 URL 的远程配置", async () => {
-    stubConfigPg({ getMcpServer: async () => null });
+  // 配置结构非法时返回校验错误码原文，便于前端定位是 URL 还是命令的问题。
+  test("创建非法配置返回校验错误码", async () => {
+    installMcpModuleStub({ facade: { create: async () => "mcp-1" } });
 
     const response = await jsonRequest("/config/mcp", "POST", { name: "demo", config: { type: "remote" } });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("INVALID_URL");
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "INVALID_URL" },
+    });
   });
 
-  // 内部同名服务器冲突应保留为 409。
-  test("创建内部同名服务器返回 409", async () => {
-    stubConfigPg({ getMcpServer: async () => server() });
+  // 创建把 body 级 publicReadable 与从 config 里剥出的公开开关合并后传给 Facade，config 内不留该字段。
+  test("创建透传配置与公开读取开关", async () => {
+    let received: Record<string, unknown> | undefined;
+    installMcpModuleStub({
+      facade: {
+        create: async (_actor, input) => {
+          received = input;
+          return "mcp-1";
+        },
+      },
+    });
+
+    const response = await jsonRequest("/config/mcp", "POST", {
+      name: "demo",
+      config: { type: "remote", url: "https://mcp.example.test", publicReadable: true },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({ success: true, data: { name: "demo" } });
+    expect(received).toEqual({
+      name: "demo",
+      type: "remote",
+      config: { type: "remote", url: "https://mcp.example.test" },
+      publicReadable: true,
+    });
+  });
+
+  // 同组织同名冲突由 Facade 抛出，协议层映射为 409 而不是 400。
+  test("创建同名冲突返回 409", async () => {
+    installMcpModuleStub({
+      facade: {
+        create: async () => {
+          throw new ConflictError("MCP server 'demo' already exists");
+        },
+      },
+    });
 
     const response = await jsonRequest("/config/mcp", "POST", {
       name: "demo",
@@ -199,261 +283,232 @@ describe("round40 MCP 配置路由", () => {
     });
 
     expect(response.status).toBe(409);
-    expect((await response.json()).error.code).toBe("ALREADY_EXISTS");
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "ALREADY_EXISTS", message: "MCP server 'demo' already exists" },
+    });
   });
 
-  // 创建应剥离配置中的共享标志，并把请求体标志优先传给服务层。
-  test("创建透传请求体 publicReadable 并保留远程类型", async () => {
-    let captured: unknown[] = [];
-    stubConfigPg({
-      getMcpServer: async () => null,
-      createMcpServer: async (...args) => {
-        captured = args;
+  // 无 create 动作的主体（例如 member）创建时必须 403，而不是落库后才发现归属非法。
+  test("创建被授权拒绝返回 403", async () => {
+    installMcpModuleStub({
+      facade: {
+        create: async () => {
+          throw new ForbiddenError("当前主体无权创建该资源");
+        },
       },
     });
 
     const response = await jsonRequest("/config/mcp", "POST", {
       name: "demo",
-      publicReadable: false,
-      config: { type: "remote", url: "https://mcp.example.test", publicReadable: true },
+      config: { type: "remote", url: "https://mcp.example.test" },
     });
 
-    expect(response.status).toBe(200);
-    expect(captured.slice(1)).toEqual([
-      "demo",
-      "remote",
-      { type: "remote", url: "https://mcp.example.test" },
-      { publicReadable: false },
-    ]);
+    expect(response.status).toBe(403);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "FORBIDDEN", message: "当前主体无权创建该资源" },
+    });
   });
 
-  // 更新没有 name 查询参数时应在业务服务调用前失败。
+  // 更新缺少 name 查询参数必须在协议层拒绝：没有定位符就无法确定要改哪个资源。
   test("更新缺少名称返回 400", async () => {
-    const response = await jsonRequest("/config/mcp", "PUT", { type: "remote", url: "https://mcp.example.test" });
+    installMcpModuleStub({ facade: { update: async () => "demo" } });
+
+    const response = await jsonRequest("/config/mcp", "PUT", { config: { type: "remote", url: "https://x.test" } });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("缺少 'name' 查询参数");
-  });
-
-  // 更新同样使用配置验证，避免非法本地命令落库。
-  test("更新拒绝空本地命令", async () => {
-    const response = await jsonRequest("/config/mcp?name=demo", "PUT", { type: "local", command: [] });
-
-    expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("INVALID_COMMAND");
-  });
-
-  // 更新目标不存在时返回 404，不能静默成功。
-  test("更新不存在服务器返回 404", async () => {
-    stubConfigPg({ getMcpServer: async () => null });
-
-    const response = await jsonRequest("/config/mcp?name=missing", "PUT", {
-      type: "remote",
-      url: "https://mcp.example.test",
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "缺少 'name' 查询参数" },
     });
-
-    expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
   });
 
-  // 更新应移除嵌入配置的共享标志，防止其进入服务器配置。
-  test("更新剥离配置内 publicReadable", async () => {
-    let captured: unknown[] = [];
-    stubConfigPg({
-      getMcpServer: async () => server(),
-      updateMcpServer: async (...args) => {
-        captured = args;
-        return true;
+  // 更新把 config 与显式 publicReadable 分开传给 Facade：公开开关不进连接配置。
+  test("更新透传配置与公开读取开关", async () => {
+    let received: { nameOrKey: string; config: unknown; options: unknown } | undefined;
+    installMcpModuleStub({
+      facade: {
+        update: async (_actor, nameOrKey, config, options) => {
+          received = { nameOrKey, config, options };
+          return nameOrKey;
+        },
       },
     });
 
     const response = await jsonRequest("/config/mcp?name=demo", "PUT", {
-      type: "remote",
-      url: "https://next.example.test",
-      publicReadable: true,
+      config: { type: "remote", url: "https://new.example.test", publicReadable: false },
     });
 
     expect(response.status).toBe(200);
-    expect(captured.slice(1)).toEqual([
-      "demo",
-      { type: "remote", url: "https://next.example.test" },
-      { publicReadable: true },
-    ]);
+    expect(received).toEqual({
+      nameOrKey: "demo",
+      config: { type: "remote", url: "https://new.example.test" },
+      options: { publicReadable: false },
+    });
   });
 
-  // 删除缺少名称时必须返回参数校验错误。
-  test("删除缺少名称返回 400", async () => {
-    const response = await request("/config/mcp", { method: "DELETE" });
-
-    expect(response.status).toBe(400);
-    expect((await response.json()).error.code).toBe("VALIDATION_ERROR");
-  });
-
-  // 删除不可写或不属于当前组织的资源时，服务层抛出的权限错误应保留 403。
-  test("删除外部共享服务器返回 403", async () => {
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () => {
-        throw new AppError("read only", "FORBIDDEN", 403);
+  // 更新目标的不可见或不存在统一映射为 404。
+  test("更新不存在资源返回 404", async () => {
+    installMcpModuleStub({
+      facade: {
+        update: async () => {
+          throw new NotFoundError("MCP server 'missing' not found");
+        },
       },
     });
 
-    const response = await request("/config/mcp?name=org-2/mcp-shared", { method: "DELETE" });
-
-    expect(response.status).toBe(403);
-    expect((await response.json()).error).toEqual({ code: "FORBIDDEN", message: "read only" });
-  });
-
-  // 删除前的写权限查询未命中时应返回 404。
-  test("删除权限查询未命中时返回 404", async () => {
-    stubConfigPg({ assertMcpServerInternalWritable: async () => null });
-
-    const response = await request("/config/mcp?name=missing", { method: "DELETE" });
-
-    expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
-  });
-
-  // 主记录删除失败时不应执行工具清理，也应返回 404。
-  test("删除主记录失败时返回 404", async () => {
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () => server(),
-      deleteMcpServer: async () => false,
+    const response = await jsonRequest("/config/mcp?name=missing", "PUT", {
+      config: { type: "remote", url: "https://new.example.test" },
     });
 
-    const response = await request("/config/mcp?name=demo", { method: "DELETE" });
-
     expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect(await readJson(response)).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });
 
-  // 工具清理异常是 best-effort，不应回滚成功删除响应。
-  test("删除在工具清理失败时仍成功", async () => {
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () => server(),
-      deleteMcpServer: async () => true,
-    });
-    stubDb({
-      delete: () => ({
-        where: async () => {
-          throw new Error("cleanup failure");
+  // 删除成功返回空 data：删除目标的 tools 缓存清理在同一条 Facade 调用内完成。
+  test("删除成功返回空数据", async () => {
+    let removed: string | undefined;
+    installMcpModuleStub({
+      facade: {
+        remove: async (_actor, nameOrKey) => {
+          removed = nameOrKey;
         },
-      }),
+      },
     });
 
     const response = await request("/config/mcp?name=demo", { method: "DELETE" });
 
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual({ success: true, data: null });
+    expect(removed).toBe("demo");
   });
 
-  // 启用历史损坏配置必须提示重建，而不能写入 enabled 状态。
-  test("启用缺失类型的配置返回校验错误", async () => {
-    stubConfigPg({ assertMcpServerInternalWritable: async () => server({ config: {} }) });
-
-    const response = await jsonRequest("/config/mcp/actions/enable?name=demo", "POST");
-
-    expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toContain("original config lost");
-  });
-
-  // 启用内部服务器应将 true 传递给组织范围服务。
-  test("启用内部服务器写入 enabled true", async () => {
-    let captured: unknown[] = [];
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () => server(),
-      setMcpServerEnabled: async (...args) => {
-        captured = args;
+  // 其他组织的公开资源可读但不可删，协议层必须映射为 403 而不是 404。
+  test("删除外部资源返回 403", async () => {
+    installMcpModuleStub({
+      facade: {
+        remove: async () => {
+          throw new ForbiddenError("当前主体无权执行资源动作");
+        },
       },
     });
 
-    const response = await jsonRequest("/config/mcp/actions/enable?name=demo", "POST");
+    const response = await request("/config/mcp?name=shared", { method: "DELETE" });
 
-    expect(response.status).toBe(200);
-    expect(captured.slice(1)).toEqual(["demo", true]);
+    expect(response.status).toBe(403);
+    expect(await readJson(response)).toMatchObject({ success: false, error: { code: "FORBIDDEN" } });
   });
 
-  // 禁用内部服务器应将 false 传递给组织范围服务。
-  test("禁用内部服务器写入 enabled false", async () => {
-    let captured: unknown[] = [];
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () => server(),
-      setMcpServerEnabled: async (...args) => {
-        captured = args;
+  // 历史配置丢失了 type 时不得被当成可启用资源：启用前必须能判定其类型。
+  test("启用缺少类型的历史配置返回 400", async () => {
+    let enabled = false;
+    installMcpModuleStub({
+      facade: {
+        getWritable: async () => authorizedServer({ config: { enabled: false } }),
+        setEnabled: async () => {
+          enabled = true;
+          return "demo";
+        },
       },
     });
 
-    const response = await jsonRequest("/config/mcp/actions/disable?name=demo", "POST");
-
-    expect(response.status).toBe(200);
-    expect(captured.slice(1)).toEqual(["demo", false]);
-  });
-
-  // 任意 URL 检测在 URL 缺失时必须短路，避免发起网络请求。
-  test("检测 URL 缺失时返回 400", async () => {
-    const response = await jsonRequest("/config/mcp/actions/test-url", "POST", {});
+    const response = await request("/config/mcp/actions/enable?name=demo", { method: "POST" });
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("URL is required");
+    expect(await readJson(response)).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Cannot enable 'demo': original config lost, please recreate" },
+    });
+    expect(enabled).toBeFalse();
   });
 
-  // inspect 仅支持 remote，其他类型应在探测前被拒绝。
-  test("检测本地服务器工具时返回 400", async () => {
-    stubConfigPg({
-      assertMcpServerInternalWritable: async () =>
-        server({ type: "local", config: { type: "local", command: ["node"] } }),
+  // 启用与禁用都以可写资源的原始配置为前提，并把目标状态交给 Facade。
+  test("启用与禁用传递目标状态", async () => {
+    const calls: boolean[] = [];
+    installMcpModuleStub({
+      facade: {
+        getWritable: async () => authorizedServer(),
+        setEnabled: async (_actor, _nameOrKey, enabled) => {
+          calls.push(enabled);
+          return "demo";
+        },
+      },
     });
 
-    const response = await jsonRequest("/config/mcp/actions/inspect?name=demo", "POST");
+    const enabledBody = await readJson(await request("/config/mcp/actions/enable?name=demo", { method: "POST" }));
+    const disabledBody = await readJson(await request("/config/mcp/actions/disable?name=demo", { method: "POST" }));
 
-    expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toBe("Inspect only supports remote MCP servers");
+    expect(calls).toEqual([true, false]);
+    expect(enabledBody).toEqual({ success: true, data: { name: "demo", enabled: true } });
+    expect(disabledBody).toEqual({ success: true, data: { name: "demo", enabled: false } });
   });
 
-  // 缓存工具列表应允许按授权 resource key 查询并序列化时间戳。
-  test("外部服务器工具列表按 resource key 返回", async () => {
-    stubConfigPg({
-      getMcpServerByResourceKey: async () => server({ organizationId: "org-2" }),
-    });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: async () => [
+  // 需要原始配置的动作（启停、连接检测）都要求可写资源：可见但无 update 动作时返回 403。
+  test("启停与检测对无权资源返回 403", async () => {
+    const denied = async () => {
+      throw new ForbiddenError("当前主体无权执行资源动作");
+    };
+    installMcpModuleStub({ facade: { getWritable: denied, setEnabled: denied } });
+
+    for (const action of ["enable", "disable", "test"]) {
+      const response = await request(`/config/mcp/actions/${action}?name=shared`, { method: "POST" });
+
+      expect(response.status).toBe(403);
+      expect(await readJson(response)).toMatchObject({ success: false, error: { code: "FORBIDDEN" } });
+    }
+  });
+
+  // 工具清单以资源键查询时也必须返回资源自身名称，否则前端会拿资源键与列表项对不上。
+  test("工具清单返回资源自身名称", async () => {
+    installMcpModuleStub({
+      facade: {
+        listTools: async () => ({
+          name: "shared",
+          tools: [
             {
               id: "tool-1",
-              toolName: "search",
-              description: "Search documents",
+              organizationId: "org-source",
+              serverName: "shared",
+              toolName: "audit",
+              description: "读取审计日志",
               inputSchema: { type: "object" },
-              inspectedAt: now,
+              inspectedAt: new Date("2026-08-19T01:00:00.000Z"),
             },
           ],
         }),
-      }),
+      },
     });
 
-    const response = await request("/config/mcp/actions/tools?name=org-2/mcp-shared");
+    const body = await readJson(await request("/config/mcp/actions/tools?name=org-source/mcp-1"));
 
-    expect(response.status).toBe(200);
-    expect((await response.json()).data).toEqual({
-      name: "org-2/mcp-shared",
-      tools: [
-        {
-          id: "tool-1",
-          toolName: "search",
-          description: "Search documents",
-          inputSchema: { type: "object" },
-          inspectedAt: now.getTime(),
-        },
-      ],
+    expect(body).toEqual({
+      success: true,
+      data: {
+        name: "shared",
+        tools: [
+          {
+            id: "tool-1",
+            toolName: "audit",
+            description: "读取审计日志",
+            inputSchema: { type: "object" },
+            inspectedAt: Date.parse("2026-08-19T01:00:00.000Z"),
+          },
+        ],
+      },
     });
   });
 
-  // 缓存工具列表缺少服务器时应映射为 404。
-  test("工具列表服务器不存在时返回 404", async () => {
-    stubConfigPg({ getMcpServer: async () => null });
+  // 非 AppError 的未知异常必须上抛为 500，不能被伪装成权限或校验失败。
+  test("未知异常返回 500", async () => {
+    installMcpModuleStub({
+      facade: {
+        list: async () => {
+          throw new Error("storage failed");
+        },
+      },
+    });
 
-    const response = await request("/config/mcp/actions/tools?name=missing");
-
-    expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await request("/config/mcp")).status).toBe(500);
   });
 });

@@ -1,173 +1,150 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ActorContext } from "@fenix/platform-sdk";
+import { ForbiddenError } from "@server/errors";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubConfigPg } from "@server/test-utils/helpers";
-import { _deps, _resetDeps } from "../server/services/skill";
-import type {
-  ConflictCheckResult,
-  ImportConflictStrategy,
-  ImportSkillsConflict,
-  UploadSkillFile,
-} from "../server/services/skill-fs";
+import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import {
+  authorizedSkill,
+  authorizedSkillDetail,
+  installSkillModuleStub,
+  resetSkillModuleStub,
+  testActor,
+} from "./fixtures";
+
+/**
+ * `/api/skills` 协议层用例（对外已发布合同）。
+ *
+ * 关注两点：一是分页与计数由 Facade/数据库完成（协议层不再内存切片），二是 `resourceAccess` 由
+ * `toResourceAccessView` 从 `scope + access.actions` 派生——它是唯一保留旧字段形状的位置（决策 D2）。
+ */
 
 const apiSkillsRoute = (await import("../server/routes/api/skills")).default;
 
+function authenticate(organizationId = "org-1") {
+  setTestAuth({
+    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
+    authContext: { organizationId, userId: "user-1", role: "owner" },
+  });
+  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+}
+
 function request(path: string, init?: RequestInit) {
-  return apiSkillsRoute.handle(new Request(`http://localhost${path}`, init));
+  return apiSkillsRoute.handle(new Request(`http://localhost/api/skills${path}`, init));
+}
+
+/** 构造一次合法的上传表单；`overwrite` 是已发布合同里的字符串字面量。 */
+function uploadForm(overwrite?: string): FormData {
+  const form = new FormData();
+  form.set("manifest", JSON.stringify([{ skillName: "demo", relativePath: "SKILL.md" }]));
+  if (overwrite !== undefined) form.set("overwrite", overwrite);
+  form.append("files", new File(["# demo"], "SKILL.md", { type: "text/markdown" }));
+  return form;
 }
 
 describe("API Skills Routes", () => {
   beforeEach(() => {
     resetAllStubs();
-    _resetDeps();
-    setTestAuth({
-      user: { id: "user-1", email: "user@test.com", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
-    stubConfigPg({
-      deleteSkill: async () => true,
-      deleteSkillById: async () => true,
-      getSkill: async () => null,
-      getSkillById: async () => null,
-      getSkillByResourceKey: async () => null,
-      listSkills: async () => [],
-      upsertSkill: async () => "skill-1",
-    });
-    _deps.skillFs.readSkillDetailFromMd = mock(async () => null);
-    _deps.skillFs.deleteSkillDir = mock(async () => undefined);
-    _deps.skillFs.deleteSkillArchive = mock(async () => undefined);
-    _deps.skillFs.groupUploadFiles = mock((files) => {
-      const grouped = new Map<string, Array<(typeof files)[number]>>();
-      for (const file of files) {
-        const current = grouped.get(file.skillName) ?? [];
-        current.push(file);
-        grouped.set(file.skillName, current);
-      }
-      return grouped;
-    });
-    _deps.skillFs.resolveImportPlan = mock(
-      (
-        grouped: Map<string, UploadSkillFile[]>,
-        _conflicts: ImportSkillsConflict[],
-        _strategy?: ImportConflictStrategy,
-      ): ConflictCheckResult => ({
-        pendingEntries: Array.from(grouped.entries()),
-        skipped: [],
-      }),
-    );
-    _deps.skillFs.createBackupDir = mock(async () => "/tmp/backup");
-    _deps.skillFs.backupSkillDirs = mock(async () => new Map());
-    _deps.skillFs.cleanupWrittenSkills = mock(async () => undefined);
-    _deps.skillFs.writeImportFiles = mock(async (_targetDir: string, pendingEntries: [string, UploadSkillFile[]][]) =>
-      pendingEntries.map(([name]) => name),
-    );
-    _deps.skillFs.buildImportedSkillInfos = mock(async () => [
-      { id: "skill-1", name: "demo", enabled: true, description: "Demo skill", path: "/tmp/demo/SKILL.md" },
-    ]);
-    _deps.skillFs.buildSkillArchive = mock(async () => undefined);
-    _deps.skillFs.restoreFromBackup = mock(async () => undefined);
-    _deps.skillFs.cleanupBackupDir = mock(async () => undefined);
+    resetSkillModuleStub();
+    installSkillModuleStub();
+    authenticate();
   });
 
   afterEach(() => {
-    _resetDeps();
     resetTestAuth();
     setTestOrgContext(null);
+    resetSkillModuleStub();
   });
 
-  // Skill 列表接口应返回显式 id，避免调用方只能从 resourceAccess 反推 uid。
-  test("GET /api/skills returns paginated list with id", async () => {
-    stubConfigPg({
-      listSkills: async () => [
-        {
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          metadata: null,
-          organizationId: "org-1",
-          userId: "user-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
-        } as never,
-      ],
-    });
+  // 未认证请求必须在 session 守卫处终止，不能进入资源模块。
+  test("未认证列表返回 401", async () => {
+    resetTestAuth();
+    setTestOrgContext(null);
+    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
+    stubEnvironmentRepo({ getBySecret: async () => null });
 
-    const res = await request("/api/skills?page=1&pageSize=10");
-    const json = await res.json();
+    expect((await request("/")).status).toBe(401);
+  });
 
-    expect(res.status).toBe(200);
-    expect(json).toEqual({
-      items: [
-        {
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
+  // 分页与计数下推到 Facade：协议层只把 page/pageSize 换算成 limit/offset，不再内存切片。
+  test("列表把主体与分页下推给 Facade", async () => {
+    let received: { actor?: ActorContext; options?: { limit?: number; offset?: number } } = {};
+    installSkillModuleStub({
+      facade: {
+        list: async (actor, options) => {
+          received = { actor, options };
+          return { items: [authorizedSkill()], total: 7 };
         },
-      ],
-      total: 1,
-      page: 1,
-      pageSize: 10,
+      },
+    });
+
+    const body = await readJson(await request("/?page=2&pageSize=3"));
+
+    expect(body).toMatchObject({ total: 7, page: 2, pageSize: 3 });
+    expect(received.actor).toEqual(testActor());
+    expect(received.options).toEqual({ limit: 3, offset: 3 });
+  });
+
+  // 列表项保留 id 与已发布合同的 resourceAccess 形状；跨组织资源由 scope 派生为 external。
+  test("列表把 scope 与 access 映射为 resourceAccess", async () => {
+    installSkillModuleStub({
+      facade: {
+        list: async () => ({
+          items: [
+            authorizedSkill({
+              id: "skill-external",
+              name: "shared",
+              organizationId: "org-source",
+              visibility: "public",
+              actions: ["read"],
+            }),
+          ],
+          total: 1,
+        }),
+      },
+      identity: { listOrganizationNames: async () => new Map([["org-source", "Source Team"]]) },
+    });
+
+    const body = await readJson(await request("/"));
+
+    expect(body.items[0]).toEqual({
+      id: "skill-external",
+      name: "shared",
+      description: "演示技能",
+      resourceAccess: {
+        ownership: "external",
+        sourceOrganizationId: "org-source",
+        sourceOrganizationName: "Source Team",
+        resourceUid: "skill-external",
+        resourceKey: "org-source/skill-external",
+        manageable: false,
+        writable: false,
+        publicReadable: true,
+      },
     });
   });
 
-  // Skill 详情接口应按 id 查询，而不是继续依赖 name 作为对外标识。
-  test("GET /api/skills/:id returns detail by id", async () => {
-    stubConfigPg({
-      getSkillById: async () =>
-        ({
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          metadata: null,
-          organizationId: "org-1",
-          userId: "user-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
-        }) as never,
+  // 详情按唯一 ID 查询并返回正文；已发布合同不再依赖名称作为对外标识。
+  test("详情按 id 读取并返回正文", async () => {
+    let receivedId = "";
+    installSkillModuleStub({
+      facade: {
+        readDetailById: async (_actor, resourceId) => {
+          receivedId = resourceId;
+          return authorizedSkillDetail({ id: "skill-1", content: "# Demo" });
+        },
+      },
     });
-    _deps.skillFs.readSkillDetailFromMd = mock(async () => ({
-      metadata: { source: "test", description: "ignored" },
-      content: "# Demo",
-    }));
 
-    const res = await request("/api/skills/skill-1");
-    const json = await res.json();
+    const body = await readJson(await request("/skill-1"));
 
-    expect(res.status).toBe(200);
-    expect(json).toEqual({
+    expect(receivedId).toBe("skill-1");
+    expect(body).toEqual({
       id: "skill-1",
       name: "demo",
-      description: "Demo skill",
+      description: "演示技能",
       content: "# Demo",
-      metadata: { source: "test" },
+      metadata: {},
       resourceAccess: {
         ownership: "internal",
         sourceOrganizationId: "org-1",
@@ -180,124 +157,140 @@ describe("API Skills Routes", () => {
     });
   });
 
-  // Skill 创建接口应走 multipart 上传导入链路，并支持 overwrite=true。
-  test("POST /api/skills imports one skill from multipart upload", async () => {
-    stubConfigPg({
-      getSkill: async () => null,
-      upsertSkill: async () => "skill-1",
-      listSkills: async () => [
-        {
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          metadata: null,
-          organizationId: "org-1",
-          userId: "user-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
-        } as never,
-      ],
-      getSkillById: async () =>
-        ({
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          metadata: null,
-          organizationId: "org-1",
-          userId: "user-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
-        }) as never,
-    });
-    _deps.skillFs.readSkillDetailFromMd = mock(async () => ({
-      metadata: { source: "upload" },
-      content: "# Demo",
-    }));
+  // 不可见与不存在返回同一个 404：区分两者会让资源 ID 成为跨组织探测面。
+  test("详情不存在返回 404", async () => {
+    installSkillModuleStub({ facade: { readDetailById: async () => undefined } });
 
+    const response = await request("/missing");
+
+    expect(response.status).toBe(404);
+    expect(await readJson(response)).toEqual({
+      error: { code: "NOT_FOUND", message: "Skill 'missing' not found" },
+    });
+  });
+
+  // 上传创建走与 `/web` 一致的 multipart 协议，overwrite=true 映射为覆盖策略，成功后回读详情。
+  test("上传创建按 overwrite 传策略并返回详情", async () => {
+    let received: { strategy?: string; fileCount?: number } = {};
+    installSkillModuleStub({
+      facade: {
+        importDirectories: async (_actor, files, strategy) => {
+          received = { fileCount: files.length, ...(strategy === undefined ? {} : { strategy }) };
+          return { imported: [authorizedSkill({ id: "skill-1" })], skipped: [], conflicts: [] };
+        },
+        readDetailById: async () => authorizedSkillDetail({ id: "skill-1", content: "# Demo" }),
+      },
+    });
+
+    const response = await request("/", { method: "POST", body: uploadForm("true") });
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({ fileCount: 1, strategy: "overwrite" });
+    expect(await readJson(response)).toMatchObject({ id: "skill-1", content: "# Demo" });
+  });
+
+  // 未传 overwrite 时不带策略：同名冲突由 Facade 返回冲突清单，协议层映射为 409。
+  test("上传命中同名冲突返回 409", async () => {
+    installSkillModuleStub({
+      facade: {
+        importDirectories: async () => ({
+          imported: [],
+          skipped: [],
+          conflicts: [{ name: "demo", enabled: true, path: "/skills/org-1/demo/SKILL.md" }],
+        }),
+      },
+    });
+
+    const response = await request("/", { method: "POST", body: uploadForm() });
+
+    expect(response.status).toBe(409);
+    expect(await readJson(response)).toEqual({
+      error: { code: "CONFLICT", message: "Skill 'demo' already exists" },
+    });
+  });
+
+  // 对外接口一次只允许导入一个 Skill：多技能上传是请求错误而不是部分成功。
+  test("上传多个技能返回 400", async () => {
     const form = new FormData();
-    form.set("manifest", JSON.stringify([{ skillName: "demo", relativePath: "SKILL.md" }]));
-    form.set("overwrite", "true");
-    form.append("files", new File(["# Demo"], "SKILL.md", { type: "text/markdown" }));
+    form.set(
+      "manifest",
+      JSON.stringify([
+        { skillName: "demo", relativePath: "SKILL.md" },
+        { skillName: "other", relativePath: "SKILL.md" },
+      ]),
+    );
+    form.append("files", new File(["# demo"], "SKILL.md", { type: "text/markdown" }));
+    form.append("files", new File(["# other"], "SKILL.md", { type: "text/markdown" }));
 
-    const res = await request("/api/skills/", {
-      method: "POST",
-      body: form,
-    });
-    const json = await res.json();
+    const response = await request("/", { method: "POST", body: form });
 
-    expect(res.status).toBe(200);
-    expect(json).toEqual({
-      id: "skill-1",
-      name: "demo",
-      description: "Demo skill",
-      content: "# Demo",
-      metadata: { source: "upload" },
-      resourceAccess: {
-        ownership: "internal",
-        sourceOrganizationId: "org-1",
-        resourceUid: "skill-1",
-        resourceKey: "org-1/skill-1",
-        manageable: true,
-        writable: true,
-        publicReadable: false,
-      },
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({
+      error: { code: "VALIDATION_ERROR", message: "每次只允许导入一个 Skill" },
     });
   });
 
-  // Skill 删除接口应按 id 删除，并把 id 与 name 一起返回，方便调用方回收本地状态。
-  test("DELETE /api/skills/:id returns deleted id and name", async () => {
-    stubConfigPg({
-      getSkillById: async () =>
-        ({
-          id: "skill-1",
-          name: "demo",
-          description: "Demo skill",
-          metadata: null,
-          organizationId: "org-1",
-          userId: "user-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "org-1",
-            resourceUid: "skill-1",
-            resourceKey: "org-1/skill-1",
-            manageable: true,
-            writable: true,
-            publicReadable: false,
-          },
-        }) as never,
-      deleteSkillById: async () => true,
+  // overwrite 只接受 true / false 两个字面量，其余取值是请求错误。
+  test("上传 overwrite 取值非法返回 400", async () => {
+    const response = await request("/", { method: "POST", body: uploadForm("yes") });
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+  });
+
+  // 删除按唯一 ID 删除并把 id 与 name 一起返回，方便调用方回收本地状态。
+  test("删除按 id 返回 id 与 name", async () => {
+    let removedId = "";
+    installSkillModuleStub({
+      facade: {
+        getById: async () => authorizedSkill({ id: "skill-1" }),
+        removeById: async (_actor, resourceId) => {
+          removedId = resourceId;
+        },
+      },
     });
 
-    const res = await request("/api/skills/skill-1", {
-      method: "DELETE",
-    });
-    const json = await res.json();
+    const response = await request("/skill-1", { method: "DELETE" });
 
-    expect(res.status).toBe(200);
-    expect(json).toEqual({
-      id: "skill-1",
-      name: "demo",
-      deleted: true,
+    expect(response.status).toBe(200);
+    expect(removedId).toBe("skill-1");
+    expect(await readJson(response)).toEqual({ id: "skill-1", name: "demo", deleted: true });
+  });
+
+  // 不可见或不存在时不调用删除：先读后删，读不到即 404，不伪造幂等成功。
+  test("删除不存在技能返回 404 且不调用删除", async () => {
+    let removed = false;
+    installSkillModuleStub({
+      facade: {
+        getById: async () => undefined,
+        removeById: async () => {
+          removed = true;
+        },
+      },
+    });
+
+    const response = await request("/missing", { method: "DELETE" });
+
+    expect(response.status).toBe(404);
+    expect(removed).toBeFalse();
+  });
+
+  // 可读但未获删除动作时，Facade 的拒绝必须按 403 原样映射，不能被降级成 404 或 500。
+  test("删除未获删除动作返回 403", async () => {
+    installSkillModuleStub({
+      facade: {
+        getById: async () => authorizedSkill({ actions: ["read"] }),
+        removeById: async () => {
+          throw new ForbiddenError("当前主体无权执行资源动作");
+        },
+      },
+    });
+
+    const response = await request("/skill-1", { method: "DELETE" });
+
+    expect(response.status).toBe(403);
+    expect(await readJson(response)).toEqual({
+      error: { code: "FORBIDDEN", message: "当前主体无权执行资源动作" },
     });
   });
 });

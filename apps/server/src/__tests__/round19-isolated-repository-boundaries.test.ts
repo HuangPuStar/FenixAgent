@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { shareLinkRepo } from "@fenix/resource-identity-admin/server";
 import { PgAgentMachineRepo } from "@fenix/resource-machine/server";
 import { taskExecutionLogRepo } from "@fenix/resource-task/server";
 import { PgAgentEngineRepo } from "../repositories/agent-engine";
@@ -43,23 +42,6 @@ function taskLog(id: string) {
     skipReason: null,
     resultSummary: null,
     createdAt: new Date("2026-08-19T00:00:00.000Z"),
-  };
-}
-
-function shareLink(id: string) {
-  return {
-    id,
-    organizationId: "org",
-    mode: "view",
-    token: "token",
-    sessionId: "session",
-    environmentId: "environment",
-    createdBy: "user",
-    accessCount: 0,
-    expiresAt: null,
-    lastAccessedAt: null,
-    createdAt: new Date("2026-08-19T00:00:00.000Z"),
-    updatedAt: new Date("2026-08-19T00:00:00.000Z"),
   };
 }
 
@@ -187,95 +169,6 @@ describe("round19 隔离仓储边界", () => {
     expect(await machineRepo.getMachine("missing")).toBeNull();
   });
 
-  // 分享 ID 查询的空结果应为 undefined。
-  test("分享链接 ID 空结果", async () => {
-    stubDb({ select: () => selected([]) });
-    expect(await shareLinkRepo.getById("org", "link")).toBeUndefined();
-  });
-
-  // token 查询不得返回任何默认分享链接。
-  test("分享链接 token 空结果", async () => {
-    stubDb({ select: () => selected([]) });
-    expect(await shareLinkRepo.getByToken("unknown")).toBeUndefined();
-  });
-
-  // 无快照与空数组快照的协议语义不同。
-  test("分享链接无快照返回 null", async () => {
-    stubDb({ select: () => selected([]) });
-    expect(await shareLinkRepo.getEventSnapshot("link")).toBeNull();
-  });
-
-  // 空数组快照必须原样保留。
-  test("分享链接保留空数组快照", async () => {
-    stubDb({ select: () => selected([{ events: [] }]) });
-    expect(await shareLinkRepo.getEventSnapshot("link")).toEqual([]);
-  });
-
-  // 事件对象快照不能在仓储层被篡改。
-  test("分享链接保留对象快照", async () => {
-    const events = { entries: [{ id: "event" }] };
-    stubDb({ select: () => selected([{ events }]) });
-    expect(await shareLinkRepo.getEventSnapshot("link")).toEqual(events);
-  });
-
-  // 删除未命中记录必须明确返回 false。
-  test("分享链接删除未命中返回 false", async () => {
-    stubDb({ delete: () => ({ where: () => Promise.resolve({ count: 0 }) }) });
-    expect(await shareLinkRepo.delete("org", "link")).toBeFalse();
-  });
-
-  // 删除命中记录必须明确返回 true。
-  test("分享链接删除命中返回 true", async () => {
-    stubDb({ delete: () => ({ where: () => Promise.resolve({ count: 1 }) }) });
-    expect(await shareLinkRepo.delete("org", "link")).toBeTrue();
-  });
-
-  // 快照替换必须先删除旧值，防止历史事件残留。
-  test("分享链接快照替换按删除后插入", async () => {
-    const steps: string[] = [];
-    stubDb({
-      delete: () => ({
-        where: async () => {
-          steps.push("delete");
-        },
-      }),
-      insert: () => ({
-        values: async () => {
-          steps.push("insert");
-        },
-      }),
-    });
-    await shareLinkRepo.saveEventSnapshot("link", []);
-    expect(steps).toEqual(["delete", "insert"]);
-  });
-
-  // 访问统计的写入必须 await 完成。
-  test("分享链接等待访问统计写入", async () => {
-    let updated = false;
-    stubDb({
-      update: () => ({
-        set: () => ({
-          where: async () => {
-            updated = true;
-          },
-        }),
-      }),
-    });
-    await shareLinkRepo.updateAccess("org", "link");
-    expect(updated).toBeTrue();
-  });
-
-  // 并发分享读取必须互不覆盖结果。
-  test("分享链接并发读取隔离", async () => {
-    let call = 0;
-    stubDb({ select: () => selected([{ id: ++call === 1 ? "a" : "b" }]) });
-    const [first, second] = await Promise.all([
-      shareLinkRepo.getById("org-a", "a"),
-      shareLinkRepo.getById("org-b", "b"),
-    ]);
-    expect([first?.id, second?.id].sort()).toEqual(["a", "b"]);
-  });
-
   // 最新日志为空时应使用 null 协议值。
   test("任务日志最新空结果", async () => {
     stubDb({ select: () => logs([]) });
@@ -292,20 +185,6 @@ describe("round19 隔离仓储边界", () => {
   test("任务日志最新返回第一项", async () => {
     stubDb({ select: () => logs([taskLog("latest")]) });
     expect(await taskExecutionLogRepo.getLatest("task")).toMatchObject({ id: "latest" });
-  });
-
-  // 分享链接按会话列表必须原样返回数据库结果。
-  test("分享链接会话列表保留结果", async () => {
-    const rows = [shareLink("link-1")];
-    stubDb({ select: () => selected(rows) });
-    expect(await shareLinkRepo.listBySession("org", "session")).toEqual(rows);
-  });
-
-  // 分享链接按组织列表必须保持组织查询结果。
-  test("分享链接组织列表保留结果", async () => {
-    const rows = [shareLink("link-2")];
-    stubDb({ select: () => selected(rows) });
-    expect(await shareLinkRepo.listByOrganizationId("org")).toEqual(rows);
   });
 
   // 新建日志应返回数据库记录。

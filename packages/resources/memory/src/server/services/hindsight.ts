@@ -1,8 +1,8 @@
 /** Hindsight 记忆 MCP 服务配置与 Bank 管理 */
 
-import { member } from "@server/db/schema";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import type { AuthContext } from "@server/plugins/auth";
-import { createMcpServer } from "@server/services/config";
+import { upsertSystemMcpServer } from "@server/services/config";
 
 /** 读取 Hindsight MCP URL 配置，未配置返回 null */
 export function getHindsightConfig(): { url: string } | null {
@@ -42,22 +42,21 @@ export const HINDSIGHT_MCP_SERVER_NAME = "hindsight";
 
 /**
  * 解析当前用户在活跃组织中的 member ID，用作 Hindsight bank ID。
- * 从 member 表查询 (organizationId, userId) 唯一行。
+ *
+ * bankId 是既有外部约定（Hindsight bank 标识），不是授权判据；成员关系读取唯一经
+ * `IdentityDirectory`，本包不得直接查身份表。
  */
 export async function resolveMemberId(ctx: AuthContext): Promise<string | null> {
-  const { db } = await import("@server/db");
-  const { eq, and } = await import("drizzle-orm");
-  const rows = await db
-    .select({ id: member.id })
-    .from(member)
-    .where(and(eq(member.organizationId, ctx.organizationId), eq(member.userId, ctx.userId)))
-    .limit(1);
-  return rows[0]?.id ?? null;
+  const membershipId = await getIdentityDirectory().resolveMembershipId({
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+  });
+  return membershipId ?? null;
 }
 
 /**
  * 为当前用户创建/更新 hindsight MCP server 条目 + 确保 bank 存在。
- * 幂等操作：createMcpServer 内部使用 onConflictDoUpdate。
+ * 幂等操作：系统路径内部使用 onConflictDoUpdate。
  */
 export async function ensureHindsightMcpServer(ctx: AuthContext): Promise<{ ok: boolean; error?: string }> {
   const config = getHindsightConfig();
@@ -71,8 +70,14 @@ export async function ensureHindsightMcpServer(ctx: AuthContext): Promise<{ ok: 
     url: `${config.url}/mcp/${memberId}`,
   };
 
-  // 创建/更新 mcpServer 表记录（幂等）
-  await createMcpServer(ctx, HINDSIGHT_MCP_SERVER_NAME, "remote", mcpConfig);
+  // 创建/更新 mcpServer 表记录（幂等）：系统托管服务器由系统路径写入，不经过用户授权。
+  await upsertSystemMcpServer({
+    name: HINDSIGHT_MCP_SERVER_NAME,
+    type: "remote",
+    config: mcpConfig,
+    organizationId: ctx.organizationId,
+    ownerUserId: ctx.userId,
+  });
 
   // 确保 Hindsight bank 存在
   const bankResult = await ensureBank(memberId);

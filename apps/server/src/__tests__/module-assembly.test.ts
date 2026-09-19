@@ -14,6 +14,7 @@ import { bootstrapServerAssembly } from "../bootstrap";
 
 /** server 侧实例化顺序：基础模块按 profile 声明顺序展开，Web Shell 不参与。 */
 const EXPECTED_SERVER_MODULES = [
+  ["identity", "identity"],
   ["access-control", "access-control"],
   ["agent-runtime", "agent-runtime"],
 ];
@@ -36,6 +37,19 @@ test("真实 profile 与生成的 registry 可解析", async () => {
 test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async () => {
   const events: string[] = [];
   const lifecycleManifests = [
+    {
+      id: "identity",
+      kind: "identity",
+      dependsOn: [],
+      contributions: [{ id: "identity.routes", kind: "app-route", value: "identity-routes" }],
+      create: ({ registerCleanup }) => {
+        events.push("create:identity");
+        registerCleanup(() => {
+          events.push("dispose:identity");
+        });
+        return { id: "identity" };
+      },
+    },
     {
       id: "access-control",
       kind: "access-control",
@@ -77,21 +91,23 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   });
 
   expect(events).toEqual([
-    "preflight:access-control,agent-runtime",
+    "preflight:identity,access-control,agent-runtime",
+    "create:identity",
     "create:access-control",
     "create:agent-runtime",
+    "mount:identity.routes",
     "mount:access-control.routes",
     "mount:agent-runtime.routes",
   ]);
   expect(result.profile.webShell).toBe("default");
-  expect(result.modules.map((manifest) => manifest.id)).toEqual(["access-control", "agent-runtime"]);
+  expect(result.modules.map((manifest) => manifest.id)).toEqual(["identity", "access-control", "agent-runtime"]);
 
   await result.dispose();
-  expect(events.slice(-2)).toEqual(["dispose:agent-runtime", "dispose:access-control"]);
+  expect(events.slice(-3)).toEqual(["dispose:agent-runtime", "dispose:access-control", "dispose:identity"]);
 
   // 宿主可能同时从信号处理和错误路径触发关闭，重复 dispose 不得重复释放资源。
   await result.dispose();
-  expect(events.slice(-2)).toEqual(["dispose:agent-runtime", "dispose:access-control"]);
+  expect(events.slice(-3)).toEqual(["dispose:agent-runtime", "dispose:access-control", "dispose:identity"]);
 });
 
 // profile 引用了未编译进 registry 的 Shell 时，必须在执行任何工厂前失败。

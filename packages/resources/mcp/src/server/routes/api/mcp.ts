@@ -1,7 +1,11 @@
+import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
+import { toResourceAccessView } from "@fenix/platform-sdk";
 import { AppError } from "@server/errors";
-import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import { authGuardPlugin } from "@server/plugins/auth";
 import { ApiErrorResponseSchema } from "@server/schemas/api-common.schema";
 import Elysia from "elysia";
+import type { AuthorizedMcpServer } from "../../facades/mcp-server-facade";
+import { getMcpServerModule } from "../../runtime";
 import {
   type ApiMcpCreateBody,
   ApiMcpCreateBodySchema,
@@ -14,8 +18,17 @@ import {
   type ApiMcpUpdateBody,
   ApiMcpUpdateBodySchema,
 } from "../../schemas/api-mcp.schema";
-import * as configPg from "../../services/config/mcp-server";
-import { countToolsByServer } from "../../services/config/mcp-server";
+import { type McpServerConfig, parseMcpConfigValue, readMcpServerType } from "../../services/config/mcp-config";
+
+/**
+ * `/api/mcp` 协议层（对外已发布合同）。
+ *
+ * 分页与计数下推到数据库的授权查询（决策 D3）：`total` 是当前主体可见资源的真实总数，列表只取
+ * 当前页，不再"全量读出后内存切片"。
+ *
+ * `resourceAccess` 是**唯一**保留旧字段形状的位置（决策 D2）：它由 `toResourceAccessView` 从
+ * `scope + access.actions` 派生，资源包不再各自解释权限。
+ */
 
 /**
  * 将业务异常映射到对外 API 的稳定错误结构。
@@ -33,7 +46,7 @@ function mapApiError(err: unknown): { status: number; body: { error: { code: str
 /**
  * 将 MCP 配置请求体映射为服务层使用的配置对象。
  */
-function toMcpConfig(body: ApiMcpCreateBody | ApiMcpUpdateBody) {
+function toMcpConfig(body: ApiMcpCreateBody | ApiMcpUpdateBody): McpServerConfig {
   const config: Record<string, unknown> = {
     type: body.type ?? (body.url ? "remote" : "local"),
   };
@@ -42,77 +55,82 @@ function toMcpConfig(body: ApiMcpCreateBody | ApiMcpUpdateBody) {
   if (body.headers !== undefined) config.headers = body.headers;
   if (body.timeout !== undefined) config.timeout = body.timeout;
   if (body.oauth !== undefined) config.oauth = body.oauth ?? false;
-  return config;
+  return config as unknown as McpServerConfig;
+}
+
+/** 展示用的服务器类型：配置里的 `type` 优先，缺失时回落到存储列。 */
+function resolveDisplayType(server: AuthorizedMcpServer): "local" | "remote" | "streamable-http" {
+  const config = parseMcpConfigValue(server.config) ?? {};
+  const type = typeof config.type === "string" ? config.type : server.type;
+  if (type === "streamable-http") return "streamable-http";
+  return type === "remote" ? "remote" : "local";
+}
+
+function buildSummary(server: AuthorizedMcpServer): string {
+  const config = parseMcpConfigValue(server.config) ?? {};
+  if (typeof config.url === "string") return config.url;
+  return Array.isArray(config.command) ? ((config.command[0] as string | undefined) ?? "") : "";
+}
+
+/** 派生已发布合同的资源访问视图；组织名称由调用方批量解析后传入。 */
+function buildResourceAccess(
+  server: AuthorizedMcpServer,
+  activeOrganizationId: string | undefined,
+  sourceOrganizationName: string | undefined,
+) {
+  return toResourceAccessView({
+    resource: { id: server.id, scope: server.scope, access: server.access },
+    ...(activeOrganizationId === undefined ? {} : { activeOrganizationId }),
+    ...(sourceOrganizationName === undefined ? {} : { sourceOrganizationName }),
+  });
+}
+
+/** 批量解析归属组织名称；名录不可用时字段整体省略。 */
+async function resolveOrganizationNames(
+  identity: IdentityDirectory,
+  organizationIds: readonly (string | undefined)[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(organizationIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  if (ids.length === 0) return new Map();
+  return identity.listOrganizationNames(ids);
 }
 
 /**
  * 组装对外 MCP 列表项。
  */
-async function toMcpListItem(server: Awaited<ReturnType<typeof configPg.listMcpServers>>[number]) {
-  const type =
-    server.config && typeof server.config === "object" && "type" in server.config
-      ? ((server.config.type as string | undefined) ?? server.type)
-      : server.type;
-
-  try {
-    const toolsCount = await countToolsByServer(server.organizationId, server.name);
-    return {
-      id: server.id,
-      name: server.name,
-      type: (type === "streamable-http" ? "streamable-http" : type === "remote" ? "remote" : "local") as
-        | "local"
-        | "remote"
-        | "streamable-http",
-      enabled: server.enabled ?? true,
-      summary: String(
-        (server.config as Record<string, unknown> | null)?.url ??
-          ((server.config as Record<string, unknown> | null)?.command as string[] | undefined)?.[0] ??
-          "",
-      ),
-      toolsCount,
-      resourceAccess: server.resourceAccess,
-    };
-  } catch {
-    return {
-      id: server.id,
-      name: server.name,
-      type: (type === "streamable-http" ? "streamable-http" : type === "remote" ? "remote" : "local") as
-        | "local"
-        | "remote"
-        | "streamable-http",
-      enabled: server.enabled ?? true,
-      summary: "",
-      toolsCount: 0,
-      resourceAccess: server.resourceAccess,
-    };
-  }
+function toMcpListItem(
+  server: AuthorizedMcpServer,
+  toolsCount: number,
+  activeOrganizationId: string | undefined,
+  sourceOrganizationName: string | undefined,
+) {
+  return {
+    id: server.id,
+    name: server.name,
+    type: resolveDisplayType(server),
+    enabled: server.enabled ?? true,
+    summary: buildSummary(server),
+    toolsCount,
+    resourceAccess: buildResourceAccess(server, activeOrganizationId, sourceOrganizationName),
+  };
 }
 
 /**
  * 组装对外 MCP 详情。
  */
-function toMcpDetail(server: NonNullable<Awaited<ReturnType<typeof configPg.getMcpServer>>>) {
-  const config = (server.config as Record<string, unknown> | null) ?? {};
-  const type =
-    typeof config.type === "string"
-      ? config.type
-      : server.type === "streamable-http"
-        ? "streamable-http"
-        : server.type === "remote"
-          ? "remote"
-          : "local";
-
+function toMcpDetail(
+  server: AuthorizedMcpServer,
+  activeOrganizationId: string | undefined,
+  sourceOrganizationName: string | undefined,
+) {
   return {
     id: server.id,
     name: server.name,
-    type: (type === "streamable-http" ? "streamable-http" : type === "remote" ? "remote" : "local") as
-      | "local"
-      | "remote"
-      | "streamable-http",
+    type: resolveDisplayType(server),
     enabled: server.enabled ?? true,
-    summary: String(config.url ?? (Array.isArray(config.command) ? (config.command[0] ?? "") : "")),
+    summary: buildSummary(server),
     config: server.config,
-    resourceAccess: server.resourceAccess,
+    resourceAccess: buildResourceAccess(server, activeOrganizationId, sourceOrganizationName),
   };
 }
 
@@ -130,15 +148,35 @@ app.get(
   "",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, query, error }: any) => {
-    const authCtx = store.authContext as AuthContext;
+    const actor = store.actor as ActorContext | null;
+    if (!actor) {
+      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    }
     const { page, pageSize } = query as ApiMcpListQuery;
 
     try {
-      const servers = await configPg.listMcpServers(authCtx);
-      const total = servers.length;
-      const start = (page - 1) * pageSize;
-      const items = await Promise.all(servers.slice(start, start + pageSize).map((server) => toMcpListItem(server)));
-      return { items, total, page, pageSize };
+      const { facade, identity } = getMcpServerModule();
+      const { items, total } = await facade.list(actor, {
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+      const organizationNames = await resolveOrganizationNames(
+        identity,
+        items.map((item) => item.scope.organizationId),
+      );
+      return {
+        items: items.map((item) =>
+          toMcpListItem(
+            item,
+            item.toolsCount,
+            actor.activeOrganizationId,
+            organizationNames.get(item.scope.organizationId ?? ""),
+          ),
+        ),
+        total,
+        page,
+        pageSize,
+      };
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -156,7 +194,7 @@ app.get(
     detail: {
       tags: ["External MCP"],
       summary: "获取 MCP Server 列表",
-      description: "返回当前组织可见的 MCP Server 列表，采用稳定分页结构。",
+      description: "返回当前主体可见的 MCP Server 列表，采用稳定分页结构；分页与计数在数据库内完成。",
     },
   },
 );
@@ -165,15 +203,20 @@ app.get(
   "/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext;
+    const actor = store.actor as ActorContext | null;
+    if (!actor) {
+      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    }
     const { id } = params as { id: string };
 
     try {
-      const server = await configPg.getMcpServerById(authCtx, id);
+      const { facade, identity } = getMcpServerModule();
+      const server = await facade.getById(actor, id);
       if (!server) {
         return error(404, { error: { code: "NOT_FOUND", message: `MCP server '${id}' not found` } });
       }
-      return toMcpDetail(server);
+      const organizationNames = await resolveOrganizationNames(identity, [server.scope.organizationId]);
+      return toMcpDetail(server, actor.activeOrganizationId, organizationNames.get(server.scope.organizationId ?? ""));
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -200,25 +243,33 @@ app.post(
   "",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext;
+    const actor = store.actor as ActorContext | null;
+    if (!actor) {
+      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    }
     const payload = body as ApiMcpCreateBody;
 
     try {
-      const existing = await configPg.getMcpServer(authCtx, payload.name);
+      const { facade, identity } = getMcpServerModule();
+      const existing = await facade.get(actor, payload.name);
       if (existing) {
         return error(409, { error: { code: "CONFLICT", message: `MCP server '${payload.name}' already exists` } });
       }
 
       const config = toMcpConfig(payload);
-      await configPg.createMcpServer(authCtx, payload.name, String(config.type ?? "local"), config as never, {
-        publicReadable: payload.publicReadable,
+      const resourceId = await facade.create(actor, {
+        name: payload.name,
+        type: readMcpServerType(config),
+        config,
+        ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
       });
 
-      const detail = await configPg.getMcpServer(authCtx, payload.name);
+      const detail = await facade.getById(actor, resourceId);
       if (!detail) {
         return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
       }
-      return toMcpDetail(detail);
+      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+      return toMcpDetail(detail, actor.activeOrganizationId, organizationNames.get(detail.scope.organizationId ?? ""));
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -246,23 +297,26 @@ app.put(
   "/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, body, error }: any) => {
-    const authCtx = store.authContext as AuthContext;
+    const actor = store.actor as ActorContext | null;
+    if (!actor) {
+      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    }
     const { id } = params as { id: string };
     const payload = body as ApiMcpUpdateBody;
 
     try {
-      const updated = await configPg.updateMcpServerById(authCtx, id, toMcpConfig(payload) as never, {
-        publicReadable: payload.publicReadable,
+      const { facade, identity } = getMcpServerModule();
+      // 不可见或无 `update` 动作都会抛出宿主错误类，由 mapApiError 映射为 404 / 403。
+      await facade.updateById(actor, id, toMcpConfig(payload), {
+        ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
       });
-      if (!updated) {
-        return error(404, { error: { code: "NOT_FOUND", message: `MCP server '${id}' not found` } });
-      }
 
-      const detail = await configPg.getMcpServerById(authCtx, id);
+      const detail = await facade.getById(actor, id);
       if (!detail) {
         return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
       }
-      return toMcpDetail(detail);
+      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+      return toMcpDetail(detail, actor.activeOrganizationId, organizationNames.get(detail.scope.organizationId ?? ""));
     } catch (err) {
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
@@ -276,6 +330,7 @@ app.put(
       200: "api-mcp-detail",
       400: ApiErrorResponseSchema,
       401: ApiErrorResponseSchema,
+      403: ApiErrorResponseSchema,
       404: ApiErrorResponseSchema,
       500: ApiErrorResponseSchema,
     },
@@ -291,16 +346,17 @@ app.delete(
   "/:id",
   // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
   async ({ store, params, error }: any) => {
-    const authCtx = store.authContext as AuthContext;
+    const actor = store.actor as ActorContext | null;
+    if (!actor) {
+      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    }
     const { id } = params as { id: string };
 
     try {
-      const deleted = await configPg.deleteMcpServerById(authCtx, id);
-      if (!deleted) {
-        return error(404, { error: { code: "NOT_FOUND", message: `MCP server '${id}' not found` } });
-      }
+      await getMcpServerModule().facade.removeById(actor, id);
       return { id, deleted: true as const };
     } catch (err) {
+      // 不可见（404）与可见但无 `delete` 动作（403）都由宿主错误类携带状态码。
       const mapped = mapApiError(err);
       return error(mapped.status, mapped.body);
     }
@@ -311,6 +367,7 @@ app.delete(
     response: {
       200: "api-mcp-delete-response",
       401: ApiErrorResponseSchema,
+      403: ApiErrorResponseSchema,
       404: ApiErrorResponseSchema,
       500: ApiErrorResponseSchema,
     },

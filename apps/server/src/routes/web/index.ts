@@ -3,14 +3,9 @@ import {
   webAgentSitesRoutes as webAgentSites,
   webSidebarConfigRoutes as webSidebarConfig,
 } from "@fenix/agent-config/server";
+import { createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
 import { webModelGatewayRoutes as webModelGateway } from "@fenix/model-management/server";
 import { webChannelsRoutes } from "@fenix/resource-channel/server";
-import {
-  webApiKeysRoutes as webApiKeys,
-  webBrandingRoutes as webBranding,
-  webControlRoutes as webControl,
-  webOrganizationsRoutes as webOrganizations,
-} from "@fenix/resource-identity-admin/server";
 import { webKnowledgeBaseRoutes as webKnowledgeBases } from "@fenix/resource-knowledge/server";
 import {
   webFileEventsRoutes as webFileEvents,
@@ -28,11 +23,19 @@ import {
   workflowRunsRoutes,
 } from "@fenix/resource-workflow/server";
 import Elysia from "elysia";
+import { authGuardPlugin } from "../../plugins/auth";
+import webBranding from "./branding";
 import webConfig from "./config";
+import webControl from "./control";
 import webEnvironments from "./environments";
 import webInstances from "./instances";
 import webMetaAgent from "./meta-agent";
 import webPeriTaskDetails from "./peri-task-details";
+
+// 身份路由改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 macro / state 是实例
+// 作用域的，父实例无法向已构造的子实例回填），因此在这里注入而不是让包自建。
+const webApiKeys = createWebApiKeysRoutes({ authGuardPlugin });
+const webOrganizations = createWebOrganizationsRoutes({ authGuardPlugin });
 
 const webApp = new Elysia({ name: "web", prefix: "/web" })
   .use(webApiKeys)

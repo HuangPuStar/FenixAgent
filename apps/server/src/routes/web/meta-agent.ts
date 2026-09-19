@@ -5,12 +5,16 @@
  */
 
 import { EnsureMetaAgentResponseSchema, ensureMetaEnvironment } from "@fenix/agent-config/server";
+import { rotateCallerApiKey } from "@fenix/identity/server";
 import { createLogger } from "@fenix/logger";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebErrSchema } from "../../schemas/common.schema";
 
 const logger = createLogger("meta-agent");
+
+// agent-config 不得依赖 `@fenix/identity`，meta key 的轮换编排由身份侧实现、宿主注入。
+const metaAgentDeps = { rotateCallerApiKey };
 
 const app = new Elysia({ name: "web-meta-agent" }).use(authGuardPlugin).model({
   "ensure-meta-agent-response": EnsureMetaAgentResponseSchema,
@@ -26,7 +30,7 @@ app.post(
     }
 
     try {
-      const result = await ensureMetaEnvironment(authCtx, request);
+      const result = await ensureMetaEnvironment(authCtx, request, metaAgentDeps);
       return { success: true, data: result };
     } catch (err: unknown) {
       logger.error("ensure failed:", err);

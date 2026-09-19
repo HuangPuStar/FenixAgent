@@ -1,4 +1,4 @@
-import { WebOkSchema } from "@server/schemas/common.schema";
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 /** 实例运行状态 */
 export const InstanceStatusSchema = z.enum(["starting", "running", "stopped", "error"]).describe("实例当前运行状态。");

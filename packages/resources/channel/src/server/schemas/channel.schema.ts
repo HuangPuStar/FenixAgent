@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
-import { WebOkSchema } from "./common.schema";
 
 /** 通道平台类型 */
 export const ChannelProviderTypeSchema = z.enum(["wechat", "feishu"]).describe("通道平台类型。");

@@ -1,4 +1,4 @@
-import { WebOkSchema } from "@server/schemas/common.schema";
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 /** 知识库状态 */
 export const KnowledgeBaseStatusSchema = z.enum(["empty", "indexing", "ready", "error"]).describe("知识库状态。");

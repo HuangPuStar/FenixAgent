@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "@fenix/agent-runtime/server";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
@@ -24,7 +25,13 @@ function rows<T>(value: T[]) {
   return Object.assign(Promise.resolve(value), { limit: async () => value });
 }
 
-function agentConfig() {
+/**
+ * LaunchSpec 构建读取的 Agent 资源视图。
+ *
+ * 形状随授权栈迁移：归属列由资源行提供，权限描述是授权栈产出的 `scope + access`，旧栈的
+ * `resourceAccess` 与已被移除的展示列（steps / mode / color 等）都不再是 AgentConfig 的字段。
+ */
+function agentConfig(): AgentConfigDetailWithAccess {
   return {
     id: "agc_isolated",
     userId: "user_isolated",
@@ -33,29 +40,16 @@ function agentConfig() {
     prompt: "仅处理授权请求",
     modelId: "model_isolated",
     model: null,
-    steps: 10,
-    mode: "primary",
-    permission: null,
-    variant: null,
-    temperature: null,
-    topP: null,
-    disable: false,
-    hidden: false,
-    color: null,
     description: null,
-    knowledge: null,
+    extra: null,
+    agentNode: {},
     machineId: null,
+    engineType: null,
+    visibility: "private",
     createdAt: now,
     updatedAt: now,
-    resourceAccess: {
-      ownership: "internal" as const,
-      sourceOrganizationId: "org_isolated",
-      resourceUid: "agc_isolated",
-      resourceKey: "org_isolated/agc_isolated",
-      manageable: true,
-      writable: true,
-      publicReadable: false,
-    },
+    scope: { organizationId: "org_isolated", ownerUserId: "user_isolated", visibility: "private" },
+    access: { actions: ["read", "update", "use"] },
   };
 }
 

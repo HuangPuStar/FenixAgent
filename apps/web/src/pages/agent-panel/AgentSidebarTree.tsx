@@ -1,4 +1,5 @@
 import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { useOrg } from "@fenix/identity/web";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -32,7 +33,6 @@ import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
 import { unwrap } from "@/src/api/request";
-import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
 import { shouldShowRemoteNode } from "../../lib/agent-node";
 import {
@@ -42,7 +42,7 @@ import {
   isAgentWritable,
 } from "../../lib/agent-resource-access";
 import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
-import type { AgentNode, ResourceAccess } from "../../types/config";
+import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
@@ -53,7 +53,11 @@ interface AgentConfigItem {
   modelId?: string | null;
   modelLabel?: string | null;
   description: string | null;
-  resourceAccess?: ResourceAccess;
+  /** 归属范围；缺失按本组织私有保守降级（授权判断只依据 `scope` + `access`）。 */
+  scope?: ResourceScopeView;
+  access?: { actions?: ResourceAccessActions };
+  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
+  organizationName?: string;
   agentNode: AgentNode;
 }
 
@@ -484,8 +488,8 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
         const slashIdx = displayName.indexOf("/");
         const agentLabel = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
         const agentKey = slashIdx >= 0 ? displayName.slice(0, slashIdx) : "";
-        // 访问标签：仅 public/external 展示（internal 不显示徽标）
-        const accessBadgeKey = agent.resourceAccess ? getAgentAccessBadgeKey(agent) : "resource.internal";
+        // 访问标签：仅 public/external 展示（internal 不显示徽标）；外部组织判定需要当前组织 id
+        const accessBadgeKey = getAgentAccessBadgeKey(agent, orgId);
 
         return (
           <div key={agent.id} className="agent-sidebar-agent group relative">

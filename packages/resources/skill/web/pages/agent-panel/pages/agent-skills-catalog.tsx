@@ -30,6 +30,8 @@ import {
   canWriteSkill,
   getSkillKey,
   getSkillOptionLabel,
+  isExternalSkill,
+  isPublicSkill,
 } from "@/src/lib/skill-resource-access";
 import {
   AgentMasterDetailHeader,
@@ -42,6 +44,8 @@ import "./agent-skills.css";
 
 type AgentSkillsCatalogProps = {
   skills: SkillInfo[];
+  /** 当前组织 id；归属判定与「本组织」筛选依据，缺失时按本组织保守处理。 */
+  activeOrganizationId?: string;
   loading: boolean;
   error: Error | undefined;
   query: string;
@@ -82,8 +86,11 @@ function getSkillDisplayName(skill: SkillInfo): {
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const { t } = useTranslation(NS.SKILLS);
-  const filtered = filterSkills(props.skills, props.query, props.scope);
-  const { organization: organizationCount, public: publicCount } = countSkillsByScope(props.skills);
+  const filtered = filterSkills(props.skills, props.query, props.scope, props.activeOrganizationId);
+  const { organization: organizationCount, public: publicCount } = countSkillsByScope(
+    props.skills,
+    props.activeOrganizationId,
+  );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<SkillDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -211,12 +218,12 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
               </header>
               <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
                 {filtered.map((skill) => {
-                  const external = skill.resourceAccess?.ownership === "external";
+                  const external = isExternalSkill(skill, props.activeOrganizationId);
                   const SkillIcon = getSkillIcon(skill);
                   const display = getSkillDisplayName(skill);
                   const active = getSkillKey(skill) === getSkillKey(selectedSkill);
-                  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-                  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
+                  const organizationName = skill.organizationName ?? t("scope.organization");
+                  const publiclyReadable = isPublicSkill(skill);
                   return (
                     <button
                       type="button"
@@ -297,11 +304,11 @@ function SkillDetailView({
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const writable = canWriteSkill(skill);
-  const external = skill.resourceAccess?.ownership === "external";
+  const external = isExternalSkill(skill, props.activeOrganizationId);
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
-  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
+  const organizationName = skill.organizationName ?? t("scope.organization");
+  const publiclyReadable = isPublicSkill(skill);
   const header = (
     <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
@@ -377,7 +384,7 @@ function SkillDetailView({
         </section>
         <div className="mt-7 flex flex-wrap items-center gap-2">
           <span className="rounded-md bg-[#f3f5f8] px-2.5 py-1.5 text-[10px] text-[var(--skills-muted)]">
-            {skill.resourceAccess?.publicReadable
+            {isPublicSkill(skill)
               ? tComponents("resource.public")
               : writable
                 ? t("directory.private")
@@ -403,10 +410,8 @@ function SkillDetailActions({ skill, props }: { skill: SkillInfo; props: AgentSk
       </Button>
       {manageable ? (
         <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
-          {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
-          {skill.resourceAccess?.publicReadable
-            ? tComponents("resource.makePrivate")
-            : tComponents("resource.makePublic")}
+          {isPublicSkill(skill) ? <LockKeyhole /> : <Globe2 />}
+          {isPublicSkill(skill) ? tComponents("resource.makePrivate") : tComponents("resource.makePublic")}
         </Button>
       ) : null}
       {writable ? (

@@ -1,4 +1,26 @@
+import { organization, user } from "@fenix/identity/db";
 import { sql } from "drizzle-orm";
+
+/**
+ * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义。
+ *
+ * 宿主是唯一同时持有两侧表定义的层：宿主的业务表需要身份表作为外键目标，宿主内的身份读取
+ * （如 `services/config/user-config.ts` 读 `user_config`）也经这里取得表对象。它们与宿主表
+ * 共用同一条迁移链（`drizzle.config.ts` 同时声明两个 schema 文件），因此并置不会产生第二份
+ * 真相；跨包读取身份数据仍必须走 `IdentityDirectory`，不得依赖本文件。
+ */
+export {
+  account,
+  apikey,
+  invitation,
+  member,
+  organization,
+  session,
+  user,
+  userConfig,
+  verification,
+} from "@fenix/identity/db";
+
 import {
   boolean,
   check,
@@ -22,6 +44,11 @@ export const modelGatewayCredentialStatusEnum = pgEnum("model_gateway_credential
   "blocked",
   "error",
 ]);
+// 旧授权栈的三个 pg enum 与下方 `resourcePermission` 表随 CE 阶段 2 任务 1.2 的 CE 授权栈下线而失去全部
+// 读写方，但**不能在本发布内删除**：`services/data-migrates/backfill-resource-visibility.ts` 仍要把旧栈的
+// `principal_type='all' AND action='read'` 记录回填成资源主表的 `visibility='public'`，而 SQL 迁移先于启动期
+// data migration 执行——同一发布内 DROP 会让全新库启动即失败、升级库静默丢失公开共享语义。
+// removeWhen：回填已在全部环境记入 `data_migrate_record` 的下一个发布，同时删除回填迁移并生成 DROP TABLE 迁移。
 export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
   "provider",
   "skill",
@@ -30,147 +57,6 @@ export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
 ]);
 export const resourcePermissionPrincipalEnum = pgEnum("resource_permission_principal", ["all", "organization"]);
 export const resourcePermissionActionEnum = pgEnum("resource_permission_action", ["read"]);
-
-// better-auth tables — primary keys stay as text (better-auth generates IDs internally)
-export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: varchar("name").notNull(),
-  email: varchar("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  phoneNumber: varchar("phone_number", { length: 32 }).unique(),
-  phoneNumberVerified: boolean("phone_number_verified").notNull().default(false),
-  image: text("image"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-// better-auth session — activeOrganizationId 由 organization 插件在运行时管理
-export const session = pgTable("session", {
-  id: text("id").primaryKey(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  token: text("token").notNull().unique(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  // better-auth organization 插件会自动注入 activeOrganizationId 列
-  activeOrganizationId: text("active_organization_id"),
-});
-
-export const account = pgTable("account", {
-  id: text("id").primaryKey(),
-  accountId: text("account_id").notNull(),
-  providerId: text("provider_id").notNull(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  idToken: text("id_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
-  scope: text("scope"),
-  password: text("password"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const verification = pgTable("verification", {
-  id: text("id").primaryKey(),
-  identifier: text("identifier").notNull(),
-  value: text("value").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-});
-
-// better-auth organization 插件表
-export const organization = pgTable("organization", {
-  id: text("id").primaryKey(),
-  name: varchar("name").notNull(),
-  slug: varchar("slug").notNull(),
-  logo: text("logo"),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const member = pgTable(
-  "member",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    role: varchar("role").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgUserIdx: uniqueIndex("idx_member_org_user").on(table.organizationId, table.userId),
-  }),
-);
-
-export const invitation = pgTable(
-  "invitation",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    email: varchar("email").notNull(),
-    role: varchar("role").notNull(),
-    status: varchar("status").notNull().default("pending"),
-    // better-auth organization 插件的子团队功能预留列
-    // 当前未启用 teams 功能（organization() 未配置 teams.enabled: true）
-    teamId: text("team_id"),
-    inviterId: text("inviter_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgIdx: index("idx_invitation_org").on(table.organizationId),
-  }),
-);
-
-// better-auth api-key 插件表
-export const apikey = pgTable(
-  "apikey",
-  {
-    id: text("id").primaryKey(),
-    configId: text("config_id").notNull().default("default"),
-    name: text("name"),
-    start: text("start"),
-    referenceId: text("reference_id").notNull(),
-    prefix: text("prefix"),
-    key: text("key").notNull(),
-    refillInterval: integer("refill_interval"),
-    refillAmount: integer("refill_amount"),
-    lastRefillAt: timestamp("last_refill_at", { withTimezone: true }),
-    enabled: boolean("enabled").notNull().default(true),
-    rateLimitEnabled: boolean("rate_limit_enabled").notNull().default(true),
-    rateLimitTimeWindow: integer("rate_limit_time_window"),
-    rateLimitMax: integer("rate_limit_max"),
-    requestCount: integer("request_count").notNull().default(0),
-    remaining: integer("remaining"),
-    lastRequest: timestamp("last_request", { withTimezone: true }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    permissions: text("permissions"),
-    metadata: text("metadata"),
-  },
-  (table) => ({
-    keyIdx: index("idx_apikey_key").on(table.key),
-    referenceIdx: index("idx_apikey_reference").on(table.referenceId),
-  }),
-);
 
 // MCP Tool 缓存表
 export const mcpTool = pgTable(
@@ -502,11 +388,14 @@ export const provider = pgTable(
     baseUrl: text("base_url"),
     apiKey: text("api_key"),
     extraOptions: jsonb("extra_options"),
+    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_provider_org_name").on(table.organizationId, table.name),
+    orgVisibilityIdx: index("idx_provider_org_visibility").on(table.organizationId, table.visibility),
   }),
 );
 
@@ -583,11 +472,14 @@ export const agentConfig = pgTable(
     // 预留给未来可变扩展，避免为低频碎片配置反复加列。
     extra: jsonb("extra"),
     engineType: varchar("engine_type", { length: 32 }).default("opencode"),
+    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_agent_config_org_name").on(table.organizationId, table.name),
+    orgVisibilityIdx: index("idx_agent_config_org_visibility").on(table.organizationId, table.visibility),
   }),
 );
 
@@ -673,11 +565,14 @@ export const mcpServer = pgTable(
     type: varchar("type", { length: 32 }).notNull(),
     config: jsonb("config").notNull(),
     enabled: boolean("enabled").notNull().default(true),
+    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_mcp_server_org_name").on(table.organizationId, table.name),
+    orgVisibilityIdx: index("idx_mcp_server_org_visibility").on(table.organizationId, table.visibility),
   }),
 );
 
@@ -693,11 +588,14 @@ export const skill = pgTable(
     name: varchar("name").notNull(),
     description: text("description"),
     metadata: jsonb("metadata"),
+    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
+    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
+    orgVisibilityIdx: index("idx_skill_org_visibility").on(table.organizationId, table.visibility),
   }),
 );
 
@@ -714,6 +612,10 @@ export const dataMigrateRecord = pgTable(
   }),
 );
 
+/**
+ * 旧授权栈的授权表：新授权栈把受众收敛到资源主表的归属列（`organization_id` + `visibility`），
+ * 本表的全部读写方已随任务 1.2 删除，仅剩启动期回填迁移读取（见上方 enum 处的 removeWhen 说明）。
+ */
 export const resourcePermission = pgTable(
   "resource_permission",
   {
@@ -945,19 +847,6 @@ export const workflowNodeOutput = pgTable(
     orgIdx: index("idx_workflow_node_output_org").on(table.organizationId),
   }),
 );
-
-// 用户偏好（单行）
-export const userConfig = pgTable("user_config", {
-  organizationId: text("organization_id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  defaultAgent: varchar("default_agent"),
-  currentModel: varchar("current_model"),
-  smallModel: varchar("small_model"),
-  permission: jsonb("permission"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 // ─────────────────────────���──────────────────
 // Workflow Board（看板面板）

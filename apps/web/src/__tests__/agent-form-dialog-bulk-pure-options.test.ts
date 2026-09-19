@@ -4,7 +4,7 @@ import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { ModelEntry } from "../types/config";
 
 type McpServer = Parameters<typeof mapMcpOptions>[0][number];
 
@@ -64,14 +64,12 @@ const organizationNames = [
   "long organization name",
 ];
 
-function resourceAccess(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
+/** 共享来源模型的 `/web` 视图字段：归属其他组织且只有读动作。 */
+function sharedModelFields(overrides: Partial<ModelEntry> = {}): Partial<ModelEntry> {
   return {
-    ownership: "external",
-    sourceOrganizationId: "source-org",
-    resourceUid: "resource-uid",
-    resourceKey: "source-org/resource-key",
-    manageable: false,
-    writable: false,
+    providerId: "provider-uid",
+    scope: { organizationId: "source-org", visibility: "private" },
+    access: { actions: ["read"] },
     ...overrides,
   };
 }
@@ -95,7 +93,7 @@ describe("AgentFormDialog MCP 选项批量边界转换", () => {
     const server: McpServer = { id: `enabled-${name}`, name, enabled: true };
 
     expect(mapMcpOptions([server])).toEqual([
-      { id: server.id, key: name, name, label: name, resourceAccess: undefined },
+      { id: server.id, key: name, name, label: name, scope: undefined, organizationName: undefined },
     ]);
   });
 
@@ -111,38 +109,44 @@ describe("AgentFormDialog MCP 选项批量边界转换", () => {
     const server: McpServer = {
       id: `shared-${sourceOrganizationName}`,
       name: "filesystem",
-      resourceAccess: resourceAccess({
-        resourceKey: `key-${sourceOrganizationName}`,
-        sourceOrganizationName,
-      }),
+      scope: { organizationId: "source-org", visibility: "public" },
+      organizationName: sourceOrganizationName,
     };
     const expectedLabel = sourceOrganizationName ? `${sourceOrganizationName}/filesystem` : "filesystem";
 
     expect(mapMcpOptions([server])).toEqual([
       {
         id: server.id,
-        key: `key-${sourceOrganizationName}`,
+        key: `source-org/shared-${sourceOrganizationName}`,
         name: "filesystem",
         label: expectedLabel,
-        resourceAccess: server.resourceAccess,
+        scope: { organizationId: "source-org", visibility: "public" },
+        organizationName: sourceOrganizationName,
       },
     ]);
   });
 
-  // 混合数据映射后应保持启用项顺序、重复项和资源访问引用。
-  test("保持 MCP 顺序、重复项和资源引用", () => {
-    const shared = resourceAccess({ resourceKey: "shared/key", sourceOrganizationName: "共享组" });
+  // 混合数据映射后应保持启用项顺序、重复项和归属范围引用。
+  test("保持 MCP 顺序、重复项和归属范围引用", () => {
+    const scope = { organizationId: "shared-org", visibility: "public" } as const;
     const servers: McpServer[] = [
       { id: "first", name: "same" },
       { id: "hidden", name: "skip", enabled: false },
-      { id: "second", name: "same", resourceAccess: shared },
+      { id: "second", name: "same", scope, organizationName: "共享组" },
       { id: "third", name: "last", enabled: true },
     ];
 
     expect(mapMcpOptions(servers)).toEqual([
-      { id: "first", key: "same", name: "same", label: "same", resourceAccess: undefined },
-      { id: "second", key: "shared/key", name: "same", label: "共享组/same", resourceAccess: shared },
-      { id: "third", key: "last", name: "last", label: "last", resourceAccess: undefined },
+      { id: "first", key: "same", name: "same", label: "same", scope: undefined, organizationName: undefined },
+      {
+        id: "second",
+        key: "shared-org/second",
+        name: "same",
+        label: "共享组/same",
+        scope,
+        organizationName: "共享组",
+      },
+      { id: "third", key: "last", name: "last", label: "last", scope: undefined, organizationName: undefined },
     ]);
   });
 });
@@ -161,25 +165,25 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
         value: entry.id,
         label: displayName === "(group)" ? "group" : displayName,
         modelId: "model-name",
-        group: { id: "organization:provider-name", label: "Open AI", scope: "organization" },
+        group: { id: "provider-name", label: "Open AI", scope: "organization" },
       },
     ]);
   });
 
-  // 共享模型标签应在各种来源名称下包含来源组织上下文。
-  test.each(organizationNames)("格式化共享模型标签：%s", (sourceOrganizationName) => {
+  // 共享模型标签应在各种来源名称下保持短标签，并按 Provider 资源键分组标记共享来源。
+  test.each(organizationNames)("格式化共享模型标签：%s", (organizationName) => {
     const entry = model({
-      id: `external-${sourceOrganizationName}`,
+      id: `external-${organizationName}`,
       providerDisplayName: "Provider",
       displayName: "Model",
-      providerResourceAccess: resourceAccess({ sourceOrganizationName }),
+      ...sharedModelFields({ organizationName }),
     });
-    expect(mapModelOptions([entry])).toEqual([
+    expect(mapModelOptions([entry], "org-current")).toEqual([
       {
         value: entry.id,
         label: "Model",
         modelId: "model-name",
-        group: { id: "source-org:provider-name", label: "Provider", scope: "shared" },
+        group: { id: "source-org/provider-uid", label: "Provider", scope: "shared" },
       },
     ]);
   });
@@ -197,19 +201,19 @@ describe("AgentFormDialog 模型选项批量格式化", () => {
         value: "one",
         label: "重复",
         modelId: "model-name",
-        group: { id: "organization:provider-name", label: "P1", scope: "organization" },
+        group: { id: "provider-name", label: "P1", scope: "organization" },
       },
       {
         value: "two",
         label: "重复",
         modelId: "model-name",
-        group: { id: "organization:provider-name", label: "P2", scope: "organization" },
+        group: { id: "provider-name", label: "P2", scope: "organization" },
       },
       {
         value: "three",
         label: "末尾",
         modelId: "model-name",
-        group: { id: "organization:provider-name", label: "P3", scope: "organization" },
+        group: { id: "provider-name", label: "P3", scope: "organization" },
       },
     ]);
   });
@@ -223,7 +227,8 @@ describe("AgentFormDialog 选项转换不可变性", () => {
       {
         id: `shared-${name}`,
         name,
-        resourceAccess: resourceAccess({ resourceKey: `key-${name}`, sourceOrganizationName: "来源" }),
+        scope: { organizationId: `org-${name}`, visibility: "public" },
+        organizationName: "来源",
       },
       { id: `disabled-${name}`, name, enabled: false },
     ];
@@ -241,12 +246,12 @@ describe("AgentFormDialog 选项转换不可变性", () => {
       model({
         id: `external-${displayName}`,
         displayName,
-        providerResourceAccess: resourceAccess({ sourceOrganizationName: "来源" }),
+        ...sharedModelFields({ organizationName: "来源" }),
       }),
     ];
     const snapshot = structuredClone(input);
 
-    mapModelOptions(input);
+    mapModelOptions(input, "org-current");
 
     expect(input).toEqual(snapshot);
   });

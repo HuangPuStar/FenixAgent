@@ -4,17 +4,17 @@ import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { ModelEntry } from "../types/config";
 
-function access(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
+type McpServer = Parameters<typeof mapMcpOptions>[0][number];
+
+/** 共享来源模型的 `/web` 视图字段：归属其他组织且只有读动作。 */
+function sharedModelFields(organizationName?: string): Partial<ModelEntry> {
   return {
-    ownership: "external",
-    sourceOrganizationId: "source-org",
-    resourceUid: "resource-uid",
-    resourceKey: "source-org/resource-key",
-    manageable: false,
-    writable: false,
-    ...overrides,
+    providerId: "provider-uid",
+    scope: { organizationId: "source-org", visibility: "private" },
+    access: { actions: ["read"] },
+    ...(organizationName === undefined ? {} : { organizationName }),
   };
 }
 
@@ -56,36 +56,43 @@ describe("AgentFormDialog 补充 MCP 选项转换", () => {
     ["反斜杠名称", "mcp-backslash", "folder\\file", "mcp-backslash", "folder\\file"],
   ])("保留未共享 MCP 的%s", (_caseName, id, name, expectedId, expectedName) => {
     expect(mapMcpOptions([{ id, name }])).toEqual([
-      { id: expectedId, key: expectedName, name: expectedName, label: expectedName, resourceAccess: undefined },
+      {
+        id: expectedId,
+        key: expectedName,
+        name: expectedName,
+        label: expectedName,
+        scope: undefined,
+        organizationName: undefined,
+      },
     ]);
   });
 
-  // 共享 MCP 的资源键、来源和名称边界应按既有契约转换。
+  // 共享 MCP 的归属组织、来源展示名和资源名边界应按新视图字段转换。
   test.each([
-    ["共享键含斜杠", "team-a/filesystem", "Team A", "files", "Team A/files"],
-    ["共享键含冒号", "team-a:files", "平台组", "files", "平台组/files"],
-    ["共享键为空格", "shared file", "Team A", "files", "Team A/files"],
-    ["共享键为零", "0", "Team A", "files", "Team A/files"],
-    ["共享键为空字符串", "", "Team A", "files", "Team A/files"],
-    ["来源为零", "resource-key", "0", "files", "0/files"],
-    ["来源为中文", "resource-key", "研发中心", "files", "研发中心/files"],
-    ["来源含斜杠", "resource-key", "组织/平台", "files", "组织/平台/files"],
-    ["来源含空格", "resource-key", "Team A", "files", "Team A/files"],
-    ["来源含换行", "resource-key", "Team\nA", "files", "Team\nA/files"],
-    ["共享名称为空", "resource-key", "Team A", "", "Team A/"],
-    ["共享名称为数字", "resource-key", "Team A", "123", "Team A/123"],
-    ["共享名称有斜杠", "resource-key", "Team A", "repo/files", "Team A/repo/files"],
-    ["共享名称有冒号", "resource-key", "Team A", "git:log", "Team A/git:log"],
-    ["共享名称为 Unicode", "资源/键", "共享组", "文件检索", "共享组/文件检索"],
-    ["共享名称含百分号", "resource-key", "Team A", "100%", "Team A/100%"],
-    ["共享名称含井号", "resource-key", "Team A", "issue#1", "Team A/issue#1"],
-    ["共享名称含前导空格", "resource-key", "Team A", " files", "Team A/ files"],
-    ["共享名称含尾随空格", "resource-key", "Team A", "files ", "Team A/files "],
-    ["共享名称含表情", "resource-key", "Team A", "任务", "Team A/任务"],
-  ])("转换共享 MCP 的%s", (_caseName, resourceKey, sourceOrganizationName, name, label) => {
-    const resourceAccess = access({ resourceKey, sourceOrganizationName });
-    expect(mapMcpOptions([{ id: "shared-id", name, resourceAccess }])).toEqual([
-      { id: "shared-id", key: resourceKey, name, label, resourceAccess },
+    ["共享键含斜杠", "team-a/filesystem", "Team A", "files", "team-a/filesystem/shared-id", "Team A/files"],
+    ["共享键含冒号", "team-a:files", "平台组", "files", "team-a:files/shared-id", "平台组/files"],
+    ["共享键为空格", "shared file", "Team A", "files", "shared file/shared-id", "Team A/files"],
+    ["共享键为零", "0", "Team A", "files", "0/shared-id", "Team A/files"],
+    ["共享键为空字符串", "", "Team A", "files", "files", "Team A/files"],
+    ["来源为零", "resource-org", "0", "files", "resource-org/shared-id", "0/files"],
+    ["来源为中文", "resource-org", "研发中心", "files", "resource-org/shared-id", "研发中心/files"],
+    ["来源含斜杠", "resource-org", "组织/平台", "files", "resource-org/shared-id", "组织/平台/files"],
+    ["来源含空格", "resource-org", "Team A", "files", "resource-org/shared-id", "Team A/files"],
+    ["来源含换行", "resource-org", "Team\nA", "files", "resource-org/shared-id", "Team\nA/files"],
+    ["共享名称为空", "resource-org", "Team A", "", "resource-org/shared-id", "Team A/"],
+    ["共享名称为数字", "resource-org", "Team A", "123", "resource-org/shared-id", "Team A/123"],
+    ["共享名称有斜杠", "resource-org", "Team A", "repo/files", "resource-org/shared-id", "Team A/repo/files"],
+    ["共享名称有冒号", "resource-org", "Team A", "git:log", "resource-org/shared-id", "Team A/git:log"],
+    ["共享名称为 Unicode", "资源/键", "共享组", "文件检索", "资源/键/shared-id", "共享组/文件检索"],
+    ["共享名称含百分号", "resource-org", "Team A", "100%", "resource-org/shared-id", "Team A/100%"],
+    ["共享名称含井号", "resource-org", "Team A", "issue#1", "resource-org/shared-id", "Team A/issue#1"],
+    ["共享名称含前导空格", "resource-org", "Team A", " files", "resource-org/shared-id", "Team A/ files"],
+    ["共享名称含尾随空格", "resource-org", "Team A", "files ", "resource-org/shared-id", "Team A/files "],
+    ["共享名称含表情", "resource-org", "Team A", "任务", "resource-org/shared-id", "Team A/任务"],
+  ])("转换共享 MCP 的%s", (_caseName, organizationId, organizationName, name, expectedKey, expectedLabel) => {
+    const scope = { organizationId, visibility: "public" } as const;
+    expect(mapMcpOptions([{ id: "shared-id", name, scope, organizationName }])).toEqual([
+      { id: "shared-id", key: expectedKey, name, label: expectedLabel, scope, organizationName },
     ]);
   });
 });
@@ -120,7 +127,7 @@ describe("AgentFormDialog 补充模型选项转换", () => {
         label: displayName,
         modelId: "model-name",
         group: {
-          id: "organization:provider-name",
+          id: "provider-name",
           label: providerDisplayName,
           scope: "organization",
         },
@@ -128,47 +135,46 @@ describe("AgentFormDialog 补充模型选项转换", () => {
     ]);
   });
 
-  // 共享模型应在所有边界下保留来源组织前缀。
+  // 共享模型应在所有边界下按 Provider 资源键分组并标记共享来源。
   test.each([
-    ["共享组织为中文", "研发部", "Provider", "Model", "研发部/Provider/Model"],
-    ["共享组织为零", "0", "Provider", "Model", "0/Provider/Model"],
-    ["共享组织含空格", "Team A", "Provider", "Model", "Team A/Provider/Model"],
-    ["共享组织含斜杠", "组织/子组", "Provider", "Model", "组织/子组/Provider/Model"],
-    ["共享组织含冒号", "team:alpha", "Provider", "Model", "team:alpha/Provider/Model"],
-    ["共享组织含换行", "A\nB", "Provider", "Model", "A\nB/Provider/Model"],
-    ["共享提供商为空", "Team A", "", "Model", "Team A//Model"],
-    ["共享显示名为空", "Team A", "Provider", "", "Team A/Provider/"],
-    ["共享提供商含空格", "Team A", "Open AI", "Model", "Team A/Open AI/Model"],
-    ["共享显示名含空格", "Team A", "Provider", "Model Pro", "Team A/Provider/Model Pro"],
-    ["共享提供商含斜杠", "Team A", "cloud/openai", "Model", "Team A/cloud/openai/Model"],
-    ["共享显示名含斜杠", "Team A", "Provider", "vision/large", "Team A/Provider/vision/large"],
-    ["共享提供商为数字", "Team A", "007", "Model", "Team A/007/Model"],
-    ["共享显示名为数字", "Team A", "Provider", "007", "Team A/Provider/007"],
-    ["共享提供商含百分号", "Team A", "100%", "Model", "Team A/100%/Model"],
-    ["共享显示名含百分号", "Team A", "Provider", "100%", "Team A/Provider/100%"],
-    ["共享提供商含表情", "Team A", "云端", "Model", "Team A/云端/Model"],
-    ["共享显示名含表情", "Team A", "Provider", "助手", "Team A/Provider/助手"],
-    ["共享组织保留前导空格", " Team", "Provider", "Model", " Team/Provider/Model"],
-    ["共享组织保留尾随空格", "Team ", "Provider", "Model", "Team /Provider/Model"],
-  ])("拼接共享模型的%s", (_caseName, sourceOrganizationName, providerDisplayName, displayName) => {
+    ["共享组织为中文", "研发部", "Provider", "Model"],
+    ["共享组织为零", "0", "Provider", "Model"],
+    ["共享组织含空格", "Team A", "Provider", "Model"],
+    ["共享组织含斜杠", "组织/子组", "Provider", "Model"],
+    ["共享组织含冒号", "team:alpha", "Provider", "Model"],
+    ["共享组织含换行", "A\nB", "Provider", "Model"],
+    ["共享提供商为空", "Team A", "", "Model"],
+    ["共享显示名为空", "Team A", "Provider", ""],
+    ["共享提供商含空格", "Team A", "Open AI", "Model"],
+    ["共享显示名含空格", "Team A", "Provider", "Model Pro"],
+    ["共享提供商含斜杠", "Team A", "cloud/openai", "Model"],
+    ["共享显示名含斜杠", "Team A", "Provider", "vision/large"],
+    ["共享提供商为数字", "Team A", "007", "Model"],
+    ["共享显示名为数字", "Team A", "Provider", "007"],
+    ["共享提供商含百分号", "Team A", "100%", "Model"],
+    ["共享显示名含百分号", "Team A", "Provider", "100%"],
+    ["共享提供商含表情", "Team A", "云端", "Model"],
+    ["共享显示名含表情", "Team A", "Provider", "助手"],
+    ["共享组织保留前导空格", " Team", "Provider", "Model"],
+    ["共享组织保留尾随空格", "Team ", "Provider", "Model"],
+  ])("拼接共享模型的%s", (_caseName, organizationName, providerDisplayName, displayName) => {
     expect(
-      mapModelOptions([
-        model({ providerDisplayName, displayName, providerResourceAccess: access({ sourceOrganizationName }) }),
-      ]),
+      mapModelOptions(
+        [model({ providerDisplayName, displayName, ...sharedModelFields(organizationName) })],
+        "org-current",
+      ),
     ).toEqual([
       {
         value: "model-id",
         label: displayName,
         modelId: "model-name",
-        group: { id: "source-org:provider-name", label: providerDisplayName, scope: "shared" },
+        group: { id: "source-org/provider-uid", label: providerDisplayName, scope: "shared" },
       },
     ]);
   });
 });
 
-function isModelEntries(
-  input: ModelEntry[] | Array<{ id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess }>,
-): input is ModelEntry[] {
+function isModelEntries(input: ModelEntry[] | McpServer[]): input is ModelEntry[] {
   return input.every((item) => "modelId" in item);
 }
 
@@ -179,8 +185,18 @@ describe("AgentFormDialog 转换不可变性", () => {
     ["MCP 禁用项", [{ id: "one", name: "files", enabled: false }]],
     ["MCP 空名称", [{ id: "one", name: "" }]],
     ["MCP Unicode 名称", [{ id: "one", name: "文件" }]],
-    ["MCP 共享资源", [{ id: "one", name: "files", resourceAccess: access({ sourceOrganizationName: "团队" }) }]],
-    ["MCP 空资源键", [{ id: "one", name: "files", resourceAccess: access({ resourceKey: "" }) }]],
+    [
+      "MCP 共享资源",
+      [
+        {
+          id: "one",
+          name: "files",
+          scope: { organizationId: "team", visibility: "public" as const },
+          organizationName: "团队",
+        },
+      ],
+    ],
+    ["MCP 空归属组织", [{ id: "one", name: "files", scope: { organizationId: "", visibility: "private" as const } }]],
     [
       "MCP 多个项目",
       [
@@ -198,8 +214,8 @@ describe("AgentFormDialog 转换不可变性", () => {
     ["模型基础项", [model()]],
     ["模型空显示名", [model({ displayName: "" })]],
     ["模型 Unicode 项", [model({ id: "模型", providerDisplayName: "云", displayName: "助手" })]],
-    ["模型共享项", [model({ providerResourceAccess: access({ sourceOrganizationName: "团队" }) })]],
-    ["模型空来源", [model({ providerResourceAccess: access({ sourceOrganizationName: "" }) })]],
+    ["模型共享项", [model(sharedModelFields("团队"))]],
+    ["模型空来源", [model(sharedModelFields(""))]],
     ["模型多个项目", [model({ id: "one" }), model({ id: "two", displayName: "第二个" })]],
     ["模型重复展示名", [model({ id: "one" }), model({ id: "two" })]],
     ["模型特殊字符", [model({ id: "id/1", providerDisplayName: "P:1", displayName: "N?1" })]],

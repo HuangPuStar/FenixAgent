@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { mcpApi } from "@/src/api/mcp";
 import { unwrap } from "@/src/api/request";
+import { useOrg } from "@/src/contexts/OrgContext";
 import { NS } from "@/src/i18n";
 import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "@/src/lib/mcp-resource-access";
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@/src/types/config";
@@ -15,6 +16,9 @@ import type { McpCatalogScope } from "./agent-mcp-utils";
 export function AgentMcpPage() {
   const { t } = useTranslation(NS.MCP);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  // 当前组织 id 用于判定资源归属：`/web` 视图只给 scope.organizationId，需要本地比对才知道是否外部资源。
+  const { org } = useOrg();
+  const activeOrganizationId = org?.id;
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<McpCatalogScope>("all");
   const [editorTarget, setEditorTarget] = useState<McpEditorTarget>(null);
@@ -58,8 +62,8 @@ export function AgentMcpPage() {
 
   const toggleSharing = useRequest(
     async (server: McpServerInfo) => {
-      if (!canManageMcpSharing(server) || !server.resourceAccess) throw new Error(t("errors.sharingUnavailable"));
-      const nextPublicReadable = !server.resourceAccess.publicReadable;
+      if (!canManageMcpSharing(server) || !server.scope) throw new Error(t("errors.sharingUnavailable"));
+      const nextPublicReadable = server.scope.visibility !== "public";
       const detail = await unwrap(mcpApi.get(getMcpLookupKey(server)));
       await unwrap(
         mcpApi.update(server.name, {
@@ -115,6 +119,7 @@ export function AgentMcpPage() {
         error={catalog.error}
         query={query}
         scope={scope}
+        activeOrganizationId={activeOrganizationId}
         inspectingKey={inspectingKey}
         sharing={toggleSharing.loading}
         toolsByServer={toolsByServer}

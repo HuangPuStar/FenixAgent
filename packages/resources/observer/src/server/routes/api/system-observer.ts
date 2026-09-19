@@ -4,7 +4,7 @@
 // 系统级视角，不恢复用户/组织上下文。响应 { success, data } 骨架，错误不泄内部细节。
 
 import { error as logError } from "@fenix/logger";
-import { ApiSystemErrorResponseSchema } from "@fenix/resource-identity-admin/server/schema";
+import { ApiSystemErrorResponseSchema } from "@fenix/platform-sdk";
 import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
 import { ApiSystemObserverAcpLinkResponseSchema } from "../../schemas/api-system-observer.schema";

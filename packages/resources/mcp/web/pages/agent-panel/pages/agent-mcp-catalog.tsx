@@ -25,7 +25,13 @@ import {
   AgentMasterDetailWorkspace,
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type { McpServerInfo, McpToolInfo } from "@/src/types/config";
-import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
+import {
+  canManageMcpSharing,
+  canWriteMcp,
+  getMcpDisplayName,
+  getMcpKey,
+  isExternalMcp,
+} from "../../../lib/mcp-resource-access";
 import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
 import "./agent-mcp-detail.css";
@@ -36,6 +42,8 @@ type Props = {
   error?: Error;
   query: string;
   scope: McpCatalogScope;
+  /** 当前组织 id，用于比对 `scope.organizationId` 判定资源是否来自其他组织。 */
+  activeOrganizationId?: string;
   inspectingKey: string | null;
   sharing: boolean;
   toolsByServer: Record<string, McpToolInfo[]>;
@@ -56,8 +64,8 @@ function getMcpIcon(server: McpServerInfo) {
 
 export function AgentMcpCatalog(props: Props) {
   const { t } = useTranslation(NS.MCP);
-  const filtered = filterMcpServers(props.servers, props.query, props.scope);
-  const counts = countMcpScopes(props.servers);
+  const filtered = filterMcpServers(props.servers, props.query, props.scope, props.activeOrganizationId);
+  const counts = countMcpScopes(props.servers, props.activeOrganizationId);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedServer = filtered.find((server) => getMcpKey(server) === selectedKey) ?? filtered[0] ?? null;
 
@@ -155,8 +163,8 @@ export function AgentMcpCatalog(props: Props) {
                 {filtered.map((server) => {
                   const key = getMcpKey(server);
                   const active = key === getMcpKey(selectedServer);
-                  const external = server.resourceAccess?.ownership === "external";
-                  const publiclyReadable = server.resourceAccess?.publicReadable === true;
+                  const external = isExternalMcp(server, props.activeOrganizationId);
+                  const publiclyReadable = server.scope?.visibility === "public";
                   const Icon = getMcpIcon(server);
                   return (
                     <button
@@ -172,12 +180,8 @@ export function AgentMcpCatalog(props: Props) {
                         <small>{server.summary || t("directory.noDescription")}</small>
                       </span>
                       <span className="mcp-directory-meta">
-                        <span
-                          className="mcp-directory-organization"
-                          title={server.resourceAccess?.sourceOrganizationName}
-                        >
-                          {server.resourceAccess?.sourceOrganizationName ??
-                            t(`type.${server.type === "local" ? "local" : "remote"}`)}
+                        <span className="mcp-directory-organization" title={server.organizationName}>
+                          {server.organizationName ?? t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>
                         {publiclyReadable ? <b>{t("scope.public")}</b> : null}
                         {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
@@ -200,8 +204,8 @@ export function AgentMcpCatalog(props: Props) {
 function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Props }) {
   const { t } = useTranslation(NS.MCP);
   const writable = canWriteMcp(server);
-  const external = server.resourceAccess?.ownership === "external";
-  const publiclyReadable = server.resourceAccess?.publicReadable === true;
+  const external = isExternalMcp(server, props.activeOrganizationId);
+  const publiclyReadable = server.scope?.visibility === "public";
   const Icon = getMcpIcon(server);
   return (
     <AgentMasterDetailHeader className="mcp-detail-header">
@@ -210,7 +214,7 @@ function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Prop
         <div>
           <h2>{getMcpDisplayName(server)}</h2>
           <div className="mcp-detail-meta">
-            <span>{server.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</span>
+            <span>{server.organizationName ?? t("scope.organization")}</span>
             {publiclyReadable ? <b>{t("scope.public")}</b> : null}
             {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
           </div>
@@ -294,7 +298,7 @@ function McpDetailActions({ server, props }: { server: McpServerInfo; props: Pro
       {manageable ? (
         <Button variant="ghost" size="sm" disabled={props.sharing} onClick={() => props.onToggleSharing(server)}>
           <Share2 />
-          {tComponents(server.resourceAccess?.publicReadable ? "resource.makePrivate" : "resource.makePublic")}
+          {tComponents(server.scope?.visibility === "public" ? "resource.makePrivate" : "resource.makePublic")}
         </Button>
       ) : null}
       {writable ? (

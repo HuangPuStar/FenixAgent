@@ -9,9 +9,9 @@
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
+    "@fenix/identity": "workspace:*",
     "@fenix/model-management": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*"
   }
 }

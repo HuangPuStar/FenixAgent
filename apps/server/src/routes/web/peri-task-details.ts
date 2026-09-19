@@ -1,10 +1,10 @@
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { docManager } from "@fenix/chat-channel/server";
 import { createPeriTaskDetailStore, getPeriTaskDetail } from "@fenix/model-management/server";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import { NotFoundError } from "../../errors";
 import { authGuardPlugin } from "../../plugins/auth";
-import { WebErrSchema } from "../../schemas/common.schema";
 import {
   PeriTaskDetailParamsSchema,
   PeriTaskDetailQuerySchema,

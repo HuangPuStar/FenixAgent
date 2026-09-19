@@ -7,117 +7,134 @@ import {
   getSkillOptionLabel,
   getSkillOptionValue,
   getSkillResourceBadgeKey,
+  isExternalSkill,
+  isPublicSkill,
   mapSkillOptions,
   normalizeSkillOptionsPayload,
   type SkillOptionLike,
 } from "../lib/skill-resource-access";
-import type { ResourceAccess } from "../types/config";
 
-function access(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
+const ACTIVE_ORG_ID = "org-current";
+
+/** 本组织私有 Skill：归属当前组织，带 update 动作。 */
+function internalSkill(overrides: Partial<SkillOptionLike> = {}): SkillOptionLike {
   return {
-    ownership: "internal",
-    sourceOrganizationId: "org-1",
-    resourceUid: "skill-uid",
-    resourceKey: "org-1/skill-key",
-    manageable: true,
-    writable: true,
+    id: "skill-id",
+    name: "技能",
+    scope: { organizationId: ACTIVE_ORG_ID, visibility: "private" },
+    access: { actions: ["read", "update", "delete"] },
     ...overrides,
   };
 }
 
-function skill(overrides: Partial<SkillOptionLike> = {}): SkillOptionLike {
-  return { id: "skill-id", name: "技能", ...overrides };
+/** 外部组织公开 Skill：归属其他组织，只有读动作。 */
+function externalSkill(overrides: Partial<SkillOptionLike> = {}): SkillOptionLike {
+  return {
+    id: "skill-external",
+    name: "技能",
+    scope: { organizationId: "org-source", visibility: "public" },
+    access: { actions: ["read"] },
+    organizationName: "Source Team",
+    ...overrides,
+  };
 }
 
 describe("skill-resource-access 纯转换空值与边界", () => {
-  test.each([
-    ["资源键", skill({ resourceAccess: access() }), "org-1/skill-key"],
-    ["空资源键", skill({ resourceAccess: access({ resourceKey: "" }) }), ""],
-    ["数字资源键", skill({ resourceAccess: access({ resourceKey: "0" }) }), "0"],
-    ["包含斜杠的资源键", skill({ resourceAccess: access({ resourceKey: "a/b/c" }) }), "a/b/c"],
-    ["无资源访问时的标识", skill(), "skill-id"],
-    ["空标识", skill({ id: "" }), ""],
-    ["无标识时的名称", skill({ id: undefined }), "技能"],
-    ["空名称", skill({ id: undefined, name: "" }), ""],
-  ])("getSkillKey 保留%s", (_label, input, expected) => {
+  test.each<[string, SkillOptionLike, string]>([
+    ["本组织私有资源", internalSkill(), "org-current/skill-id"],
+    ["外部组织资源", externalSkill(), "org-source/skill-external"],
+    ["空标识", internalSkill({ id: "" }), "技能"],
+    ["无标识", internalSkill({ id: undefined }), "技能"],
+    ["无归属组织", { id: "skill-id", name: "技能" }, "技能"],
+    ["无归属组织但有标识", { id: "skill-id", name: "技能", scope: { visibility: "private" } }, "技能"],
+    ["空名称", internalSkill({ id: undefined, name: "" }), ""],
+    ["Unicode 名称", internalSkill({ id: undefined, name: "部署🚀" }), "部署🚀"],
+  ])("getSkillKey 推导%s", (_label, input, expected) => {
     expect(getSkillKey(input)).toBe(expected);
   });
 
-  test.each([
-    ["资源键", skill({ resourceAccess: access() }), "org-1/skill-key"],
-    ["空资源键", skill({ resourceAccess: access({ resourceKey: "" }) }), ""],
-    ["数字资源键", skill({ resourceAccess: access({ resourceKey: "0" }) }), "0"],
-    ["包含空格的资源键", skill({ resourceAccess: access({ resourceKey: "团队 / 技能" }) }), "团队 / 技能"],
-    ["无资源访问", skill(), "技能"],
-    ["有标识但无资源访问", skill({ id: "other" }), "技能"],
-    ["空名称", skill({ name: "" }), ""],
-    ["Unicode 名称", skill({ name: "部署🚀" }), "部署🚀"],
-  ])("getSkillLookupKey 保留%s", (_label, input, expected) => {
+  // 详情接口的 name 参数同时承载技能名与跨组织资源键，查找键必须与稳定键一致。
+  test.each<[string, SkillOptionLike, string]>([
+    ["外部组织资源", externalSkill(), "org-source/skill-external"],
+    ["本组织资源", internalSkill(), "org-current/skill-id"],
+    ["无归属信息", { name: "技能" }, "技能"],
+    ["空名称", { name: "" }, ""],
+  ])("getSkillLookupKey 推导%s", (_label, input, expected) => {
     expect(getSkillLookupKey(input)).toBe(expected);
   });
 
-  test.each([
-    ["资源 UID", skill({ resourceAccess: access() }), "skill-uid"],
-    ["空资源 UID", skill({ resourceAccess: access({ resourceUid: "" }) }), ""],
-    ["数字资源 UID", skill({ resourceAccess: access({ resourceUid: "0" }) }), "0"],
-    ["包含斜杠的资源 UID", skill({ resourceAccess: access({ resourceUid: "org/uid" }) }), "org/uid"],
-    ["无资源访问时的标识", skill(), "skill-id"],
-    ["空标识", skill({ id: "" }), ""],
-    ["无标识时的名称", skill({ id: undefined }), "技能"],
-    ["空名称", skill({ id: undefined, name: "" }), ""],
-  ])("getSkillOptionValue 保留%s", (_label, input, expected) => {
+  test.each<[string, SkillOptionLike, string]>([
+    ["资源标识", internalSkill(), "skill-id"],
+    ["空标识", internalSkill({ id: "" }), ""],
+    ["无标识时退回名称", internalSkill({ id: undefined }), "技能"],
+    ["空名称", internalSkill({ id: undefined, name: "" }), ""],
+    ["外部资源标识", externalSkill(), "skill-external"],
+    ["Unicode 名称", internalSkill({ id: undefined, name: "代码审查" }), "代码审查"],
+  ])("getSkillOptionValue 推导%s", (_label, input, expected) => {
     expect(getSkillOptionValue(input)).toBe(expected);
   });
 
-  test.each([
-    ["来源组织", skill({ resourceAccess: access({ sourceOrganizationName: "研发部" }) }), "研发部/技能"],
-    ["空来源组织", skill({ resourceAccess: access({ sourceOrganizationName: "" }) }), "技能"],
-    ["空格来源组织", skill({ resourceAccess: access({ sourceOrganizationName: " " }) }), " /技能"],
-    ["数字来源组织", skill({ resourceAccess: access({ sourceOrganizationName: "0" }) }), "0/技能"],
-    ["无来源组织", skill({ resourceAccess: access() }), "技能"],
-    ["无资源访问", skill(), "技能"],
-    ["空技能名", skill({ name: "" }), ""],
-    ["Unicode 技能名", skill({ name: "代码审查" }), "代码审查"],
+  test.each<[string, SkillOptionLike, string]>([
+    ["来源组织", externalSkill(), "Source Team/技能"],
+    ["空来源组织", externalSkill({ organizationName: "" }), "技能"],
+    ["空格来源组织", externalSkill({ organizationName: " " }), " /技能"],
+    ["数字来源组织", externalSkill({ organizationName: "0" }), "0/技能"],
+    ["无来源组织", internalSkill(), "技能"],
+    ["空技能名", { name: "", organizationName: "团队" }, "团队/"],
+    ["Unicode 技能名", internalSkill({ id: undefined, name: "代码审查" }), "代码审查"],
   ])("getSkillOptionLabel 转换%s", (_label, input, expected) => {
     expect(getSkillOptionLabel(input)).toBe(expected);
   });
 
-  test.each([
-    ["外部资源", skill({ resourceAccess: access({ ownership: "external" }) }), "resource.external"],
-    ["内部公开资源", skill({ resourceAccess: access({ publicReadable: true }) }), "resource.public"],
-    ["内部非公开资源", skill({ resourceAccess: access({ publicReadable: false }) }), "resource.internal"],
-    ["内部缺失公开标记", skill({ resourceAccess: access() }), "resource.internal"],
-    [
-      "外部公开资源优先外部",
-      skill({ resourceAccess: access({ ownership: "external", publicReadable: true }) }),
-      "resource.external",
-    ],
-    ["无资源访问", skill(), "resource.internal"],
-    [
-      "外部不可写资源",
-      skill({ resourceAccess: access({ ownership: "external", writable: false }) }),
-      "resource.external",
-    ],
-    ["内部可管理资源", skill({ resourceAccess: access({ manageable: true }) }), "resource.internal"],
-  ])("getSkillResourceBadgeKey 转换%s", (_label, input, expected) => {
-    expect(getSkillResourceBadgeKey(input)).toBe(expected);
+  // 归属判定比对 scope.organizationId 与当前组织；缺少归属或当前组织未知时按本组织保守处理。
+  test.each<[string, SkillOptionLike, string | undefined, boolean]>([
+    ["本组织资源", internalSkill(), ACTIVE_ORG_ID, false],
+    ["外部组织资源", externalSkill(), ACTIVE_ORG_ID, true],
+    ["当前组织未知", externalSkill(), undefined, false],
+    ["资源无归属组织", { name: "技能" }, ACTIVE_ORG_ID, false],
+    ["外部资源无当前组织", externalSkill(), "", false],
+  ])("isExternalSkill 判定%s", (_label, input, active, expected) => {
+    expect(isExternalSkill(input, active)).toBe(expected);
   });
 
-  test.each([
-    ["缺失资源访问", skill(), true, false],
-    ["可写且可管理", skill({ resourceAccess: access() }), true, true],
-    ["不可写但可管理", skill({ resourceAccess: access({ writable: false }) }), false, true],
-    ["可写但不可管理", skill({ resourceAccess: access({ manageable: false }) }), true, false],
-    ["均不可用", skill({ resourceAccess: access({ writable: false, manageable: false }) }), false, false],
-    ["外部默认可写", skill({ resourceAccess: access({ ownership: "external" }) }), true, true],
-    ["外部只读", skill({ resourceAccess: access({ ownership: "external", writable: false }) }), false, true],
-    ["外部不可管理", skill({ resourceAccess: access({ ownership: "external", manageable: false }) }), true, false],
-  ])("写入和共享权限处理%s", (_label, input, writable, manageable) => {
+  test.each<[string, SkillOptionLike, boolean]>([
+    ["本组织公开资源", internalSkill({ scope: { organizationId: ACTIVE_ORG_ID, visibility: "public" } }), true],
+    ["本组织私有资源", internalSkill(), false],
+    ["外组织公开资源", externalSkill(), true],
+    ["缺失归属", { name: "技能" }, false],
+  ])("isPublicSkill 判定%s", (_label, input, expected) => {
+    expect(isPublicSkill(input)).toBe(expected);
+  });
+
+  test.each<[string, SkillOptionLike, string | undefined, string]>([
+    ["外部资源", externalSkill(), ACTIVE_ORG_ID, "resource.external"],
+    [
+      "本组织公开资源",
+      internalSkill({ scope: { organizationId: ACTIVE_ORG_ID, visibility: "public" } }),
+      ACTIVE_ORG_ID,
+      "resource.public",
+    ],
+    ["本组织私有资源", internalSkill(), ACTIVE_ORG_ID, "resource.internal"],
+    ["当前组织未知时外部资源算本组织", externalSkill(), undefined, "resource.public"],
+    ["缺失授权视图", { name: "技能" }, ACTIVE_ORG_ID, "resource.internal"],
+  ])("getSkillResourceBadgeKey 转换%s", (_label, input, active, expected) => {
+    expect(getSkillResourceBadgeKey(input, active)).toBe(expected);
+  });
+
+  // 写权限与公开状态管理同源于 update 动作；缺失动作时必须保守判定为不可写。
+  test.each<[string, SkillOptionLike, boolean]>([
+    ["缺失授权视图", { name: "技能" }, false],
+    ["只有读动作", externalSkill(), false],
+    ["带更新动作", internalSkill(), true],
+    ["动作列表为空", internalSkill({ access: { actions: [] } }), false],
+    ["动作字段缺失", internalSkill({ access: {} }), false],
+    ["缺失 access", internalSkill({ access: undefined }), false],
+  ])("canWriteSkill 与 canManageSkillSharing 判定%s", (_label, input, writable) => {
     expect(canWriteSkill(input)).toBe(writable);
-    expect(canManageSkillSharing(input)).toBe(manageable);
+    expect(canManageSkillSharing(input)).toBe(writable);
   });
 
-  test.each([
+  test.each<[string, unknown, unknown[]]>([
     ["空数组", [], []],
     ["null", null, []],
     ["undefined", undefined, []],
@@ -130,31 +147,39 @@ describe("skill-resource-access 纯转换空值与边界", () => {
     expect(normalizeSkillOptionsPayload(payload)).toEqual(expected);
   });
 
-  test.each([
-    ["直接数组", [skill()], "skill-id"],
-    ["历史包装", { skills: [skill()] }, "skill-id"],
-    ["空描述", [skill({ description: "" })], "skill-id"],
-    ["缺失描述", [skill({ description: undefined })], "skill-id"],
-    ["空标识", [skill({ id: "" })], ""],
-    ["无标识", [skill({ id: undefined })], "技能"],
-    ["外部资源", [skill({ resourceAccess: access({ ownership: "external" }) })], "skill-uid"],
-    ["空资源 UID", [skill({ resourceAccess: access({ resourceUid: "" }) })], ""],
+  test.each<[string, unknown, string]>([
+    ["直接数组", [internalSkill()], "skill-id"],
+    ["历史包装", { skills: [internalSkill()] }, "skill-id"],
+    ["空标识", [internalSkill({ id: "" })], ""],
+    ["无标识", [internalSkill({ id: undefined })], "技能"],
+    ["外部资源", [externalSkill()], "skill-external"],
   ])("normalizeSkillOptionsPayload 转换%s", (_label, payload, expectedId) => {
     expect(normalizeSkillOptionsPayload(payload)[0]?.id).toBe(expectedId);
   });
 
-  test.each([
-    ["不修改技能数组", [skill(), skill({ id: "two" })]],
-    ["不修改技能对象", [skill({ description: "说明" })]],
-    ["不修改资源访问对象", [skill({ resourceAccess: access() })]],
-    ["不修改嵌套来源组织", [skill({ resourceAccess: access({ sourceOrganizationName: "团队" }) })]],
-    ["不修改空描述", [skill({ description: "" })]],
-    ["不修改空标识", [skill({ id: "" })]],
-    ["不修改外部资源", [skill({ resourceAccess: access({ ownership: "external" }) })]],
-    [
-      "不修改多个不同资源",
-      [skill({ resourceAccess: access() }), skill({ id: "two", resourceAccess: access({ resourceUid: "uid-2" }) })],
-    ],
+  // 选项透传授权视图字段供调用方分组，同时保留稳定 key 与名称。
+  test("mapSkillOptions 透传归属与展示字段", () => {
+    expect(mapSkillOptions([externalSkill({ description: "Review code" })])).toEqual([
+      {
+        id: "skill-external",
+        key: "org-source/skill-external",
+        name: "技能",
+        label: "Source Team/技能",
+        description: "Review code",
+        scope: { organizationId: "org-source", visibility: "public" },
+        organizationName: "Source Team",
+      },
+    ]);
+  });
+
+  test.each<[string, SkillOptionLike[]]>([
+    ["不修改技能数组", [internalSkill(), internalSkill({ id: "two" })]],
+    ["不修改技能对象", [internalSkill({ description: "说明" })]],
+    ["不修改归属对象", [internalSkill({ scope: { organizationId: "org-source", visibility: "public" } })]],
+    ["不修改来源组织", [externalSkill()]],
+    ["不修改空描述", [internalSkill({ description: "" })]],
+    ["不修改空标识", [internalSkill({ id: "" })]],
+    ["不修改多个不同资源", [internalSkill(), externalSkill()]],
   ])("mapSkillOptions 对%s保持输入不可变", (_label, input) => {
     const before = structuredClone(input);
     const result = mapSkillOptions(input);

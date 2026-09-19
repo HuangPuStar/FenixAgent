@@ -7,19 +7,21 @@
  */
 
 import { request } from "@/src/api/request";
-import type { McpInspectResult, McpServerConfig, McpServerInfo, McpToolInfo } from "@/src/types/config";
+import type {
+  McpInspectResult,
+  McpServerConfig,
+  McpServerDetail,
+  McpServerInfo,
+  McpToolInfo,
+} from "@/src/types/config";
 
 /** 列表响应：后端在 data.servers 中返回服务器数组 */
 interface McpListResult {
   servers: McpServerInfo[];
 }
 
-/** 读取详情响应 */
-interface McpGetResult {
-  name: string;
-  config: McpServerConfig;
-  resourceAccess?: McpServerInfo["resourceAccess"];
-}
+/** 读取详情响应：仅返回完整配置与授权视图（`scope` / `access`），不含列表专有的展示字段。 */
+type McpGetResult = McpServerDetail;
 
 /** 创建/更新响应 */
 interface McpSaveResult {

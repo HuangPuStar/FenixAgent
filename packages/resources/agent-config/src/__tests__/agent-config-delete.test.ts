@@ -1,112 +1,66 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { _resetDeps } from "@fenix/access-control/server";
+import type { AuthorizedResourceQuery } from "@fenix/platform-sdk";
+import { environment } from "@server/db/schema";
+import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import {
-  globalInstanceRegistry,
-  resetOrchestrationInstanceDeps,
-  setOrchestrationInstanceDeps,
-} from "@fenix/agent-runtime/server";
-import type { CoreRuntimeFacade } from "@fenix/core";
-import type { AgentController } from "@fenix/orchestration";
-import { resetAllStubs, stubCoreBootstrap, stubDb, stubResourcePermissionRepo } from "@server/test-utils/helpers";
+  type AgentConfigQueryStorage,
+  createAgentConfigRepository,
+} from "../server/repositories/agent-config-resource";
 
-const now = new Date("2026-07-08T00:00:00.000Z");
+/**
+ * Agent 删除的**持久化语义**（S4 接缝迁移）。
+ *
+ * 删除 Agent 必须先清掉它绑定的 environment 行、再删资源行，且两步在同一事务内——否则残留的
+ * environment 会以已删除的 agent_config 为归属进入脏数据（历史缺陷，见
+ * docs/issues/2026-08-19-agent-delete-instance-leak.md 的删除路径说明）。
+ *
+ * 接缝说明：这段顺序约束落在 Repository（`removeWithEnvironments`），不再由已下线的
+ * `services/config/agent-config.ts#deleteAgentConfig` 承载；"删前停止运行实例"是 Facade 的职责，
+ * 由 `agent-config-delete-stops-instances.test.ts` 覆盖。授权查询端口在这里只是构造依赖，删除路径
+ * 不读资源行，因此任何调用都视为行为回归。
+ */
 
-const AGENT_ROW = {
-  id: "agc_1",
-  organizationId: "org_1",
-  userId: "user_1",
-  name: "demo-agent",
-  prompt: null,
-  model: null,
-  modelId: null,
-  description: null,
-  extra: null,
-  machineId: null,
-  createdAt: now,
-  updatedAt: now,
-};
-
-/** core facade：无 core 快照，stopInstance 静默成功（helper 三路收集的安全依赖）。 */
-const fakeFacade = {
-  listInstances: () => [],
-  stopInstance: async () => {},
-} as unknown as CoreRuntimeFacade;
-
-/** 编排域 fake controller：活跃表为空，stopInstance 静默成功。 */
-const fakeController = {
-  listInstances: () => [],
-  stopInstance: async () => {},
-} as unknown as AgentController;
+/** 删除路径不读资源行：授权查询端口一旦被调用即失败，防止用例悄悄依赖别的接缝。 */
+function unusedQueryPort(): AuthorizedResourceQuery<AgentConfigQueryStorage> {
+  const unused = () => {
+    throw new Error("删除路径不应经授权查询端口读取资源行");
+  };
+  return { list: unused, count: unused, findById: unused };
+}
 
 describe("deleteAgentConfig", () => {
   beforeEach(() => {
     resetAllStubs();
-    globalInstanceRegistry.clear();
-    resetOrchestrationInstanceDeps();
-    // deleteAgentConfig 删除前会调 stopInstancesForEnvironments（三路收集依赖
-    // getCoreRuntime / getOrchestrationController），必须注入 fake，否则 preload
-    // mock 未配置时 getCoreRuntime 返回 undefined → listInstances 抛 TypeError
-    // （同 workflow-cleanup.test.ts 的教训）。
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    setOrchestrationInstanceDeps({
-      getOrchestrationController: () => fakeController,
-      reclaimYjsDocs: async () => {},
-    });
-    // 模块首载时 resource-permission 的 mock.module 尚未替换（bun 惰性替换），
-    // _deps.repo 绑定的是真实实现；_resetDeps 重新赋值后 stub 才生效
-    _resetDeps();
-    stubResourcePermissionRepo({
-      listOwnedByOrganization: async () => [],
-    });
   });
 
   afterEach(() => {
-    globalInstanceRegistry.clear();
-    resetOrchestrationInstanceDeps();
     resetAllStubs();
   });
 
+  // 事务内的删除顺序固定为 environment → agent_config，且资源行删除成功时返回 true。
   test("deletes bound environments before deleting the agent config", async () => {
-    const deleteCalls: string[] = [];
+    const deletedTables: string[] = [];
 
     stubDb({
-      select: (projection?: unknown) => {
-        if (projection) {
-          // 有投影：deleteAgentConfig 删除前收集绑定 envIds（listNamesByIds 的组织
-          // 查询同样走此分支，返回空不影响 decorateResourceAccess 的 org 名映射）
-          return {
-            from: () => ({
-              where: async () => [{ id: "env_1" }],
-            }),
-          };
-        }
-        // 无投影：getAgentConfig 的 agent config 查询
-        return {
-          from: () => ({
-            where: () => Object.assign(Promise.resolve([AGENT_ROW]), { limit: async () => [AGENT_ROW] }),
-          }),
-        };
-      },
       transaction: async (callback: (tx: Record<string, unknown>) => Promise<boolean>) =>
         callback({
-          delete: () => ({
+          delete: (table: unknown) => ({
             where: () => {
-              deleteCalls.push(deleteCalls.length === 0 ? "environment" : "agent_config");
-              if (deleteCalls.at(-1) === "agent_config") {
-                return {
-                  returning: async () => [{ id: "agc_1" }],
-                };
+              if (table === environment) {
+                deletedTables.push("environment");
+                return Promise.resolve({ count: 2 });
               }
-              return Promise.resolve({ count: 2 });
+              deletedTables.push("agent_config");
+              return { returning: async () => [{ id: "agc_1" }] };
             },
           }),
         }),
     });
 
-    const { deleteAgentConfig } = await import("../server/services/config/agent-config");
-    const deleted = await deleteAgentConfig({ organizationId: "org_1", userId: "user_1", role: "owner" }, "demo-agent");
+    const repository = createAgentConfigRepository(unusedQueryPort());
+    const deleted = await repository.removeWithEnvironments({ resourceId: "agc_1", organizationId: "org_1" });
 
     expect(deleted).toBe(true);
-    expect(deleteCalls).toEqual(["environment", "agent_config"]);
+    expect(deletedTables).toEqual(["environment", "agent_config"]);
   });
 });

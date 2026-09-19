@@ -13,6 +13,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
+    "./server/runtime": {
+      "types": "./src/server/runtime.ts",
+      "default": "./src/server/runtime.ts"
+    },
     "./web": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
@@ -39,11 +43,10 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@fenix/access-control": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/orchestration": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",
     "@fenix/resource-memory": "workspace:*",

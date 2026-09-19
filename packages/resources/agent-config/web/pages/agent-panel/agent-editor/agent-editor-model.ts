@@ -1,7 +1,8 @@
 import { z } from "zod/v4";
 import { type AgentNodeSelection, agentNodeToSelection, selectionToAgentNode } from "@/src/lib/agent-node";
-import { getMcpDisplayName, getMcpKey } from "@/src/lib/mcp-resource-access";
-import type { AgentDetail, ModelEntry, ResourceAccess } from "@/src/types/config";
+import { getMcpDisplayName, getMcpKey, type McpResourceLike } from "@/src/lib/mcp-resource-access";
+import { getModelProviderKey, isExternalModelProvider } from "@/src/lib/provider-resource-access";
+import type { AgentDetail, ModelEntry, ResourceScopeView } from "@/src/types/config";
 import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
 
 export interface AgentTemplate {
@@ -49,7 +50,9 @@ export interface AgentMcpOption {
   key: string;
   name: string;
   label: string;
-  resourceAccess?: ResourceAccess;
+  /** 归属范围与展示名，来自 `/web` MCP 视图；选项分组据此区分本组织与共享来源。 */
+  scope?: ResourceScopeView;
+  organizationName?: string;
 }
 
 export interface AgentEditorValues {
@@ -140,7 +143,8 @@ export function agentDetailToEditorValues(detail: AgentDetail): AgentEditorValue
     maxResults: String(detail.knowledge?.policy?.maxResults ?? 5),
     agentNode: agentNodeToSelection(detail.agentNode),
     enableMemory: detail.enableMemory ?? false,
-    publicReadable: detail.resourceAccess?.publicReadable ?? false,
+    // 公开状态来自归属范围本身，不再由服务端预先算成布尔字段。
+    publicReadable: detail.scope?.visibility === "public",
     extra: detail.extra ? JSON.stringify(detail.extra, null, 2) : "",
   };
 }
@@ -241,28 +245,35 @@ export function getModelDisplayLabel(displayName: string): string {
   return parenthesizedName || displayName;
 }
 
-/** 模型选项始终使用数据库 UUID，并将展示名称与 provider 分组在视图边界处收敛。 */
-export function mapModelOptions(models: ModelEntry[]): AgentModelOption[] {
+/**
+ * 模型选项始终使用数据库 UUID，并将展示名称与 provider 分组在视图边界处收敛。
+ *
+ * 分组依据所属 Provider 的授权视图：分组 id 直接取 Provider 的资源键（`scope.organizationId` +
+ * `providerId`，不可推导时退化为配置名），跨组织同名 Provider 因此不会合并到同一个分组；
+ * 共享来源按 `isExternalModelProvider` 判定（`activeOrganizationId` 缺失时按本组织处理）。
+ */
+export function mapModelOptions(models: ModelEntry[], activeOrganizationId?: string): AgentModelOption[] {
   return models.map((model) => {
-    const access = model.providerResourceAccess;
-    const provider = model.providerDisplayName;
     return {
       value: model.id,
       label: getModelDisplayLabel(model.displayName),
       modelId: model.modelId,
       group: {
-        id: `${access?.sourceOrganizationId ?? "organization"}:${model.providerResourceKey ?? model.provider}`,
-        label: provider,
-        scope: access?.ownership === "external" ? "shared" : "organization",
+        id: getModelProviderKey(model),
+        label: model.providerDisplayName,
+        scope: isExternalModelProvider(model, activeOrganizationId) ? "shared" : "organization",
       },
     };
   });
 }
 
-/** MCP 选项过滤显式禁用项，同时保留稳定 ID 与共享来源标签。 */
-export function mapMcpOptions(
-  servers: Array<{ id: string; name: string; enabled?: boolean; resourceAccess?: ResourceAccess }>,
-): AgentMcpOption[] {
+/**
+ * MCP 选项过滤显式禁用项，同时保留稳定 ID 与共享来源标签。
+ *
+ * 入参是 `/web` MCP 视图项；授权视图字段（`scope` / `access` / `organizationName`）透传到选项，
+ * 供调用方按归属分组，本函数不自行判断组织。
+ */
+export function mapMcpOptions(servers: Array<McpResourceLike & { id: string; enabled?: boolean }>): AgentMcpOption[] {
   return servers
     .filter((server) => server.enabled !== false)
     .map((server) => ({
@@ -270,7 +281,8 @@ export function mapMcpOptions(
       key: getMcpKey(server),
       name: server.name,
       label: getMcpDisplayName(server),
-      resourceAccess: server.resourceAccess,
+      scope: server.scope,
+      organizationName: server.organizationName,
     }));
 }
 

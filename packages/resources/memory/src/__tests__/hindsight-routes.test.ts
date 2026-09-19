@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { webHindsightRoutes as webHindsight } from "@fenix/resource-memory/server";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { clearOrgCache, setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubIdentityDirectory } from "@server/test-utils/helpers";
 
 /** 测试用 member ID，对应 resolveMemberId 的返回值 */
 const TEST_MEMBER_ID = "mem-test-member-id";
@@ -31,15 +31,9 @@ describe("web hindsight routes", () => {
     };
     globalThis.fetch = mockFetch as typeof fetch;
 
-    // Stub db：让 resolveMemberId 返回 TEST_MEMBER_ID
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([{ id: TEST_MEMBER_ID }]),
-          }),
-        }),
-      }),
+    // Stub 身份目录：bank ID 由 resolveMembershipId 解析（不再直查身份表）
+    stubIdentityDirectory({
+      resolveMembershipId: async () => TEST_MEMBER_ID,
     });
 
     // 注入测试认证上下文

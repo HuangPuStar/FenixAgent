@@ -6,7 +6,7 @@
     "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/logger": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-machine": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "drizzle-orm": "^0.45.2",

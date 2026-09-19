@@ -1,13 +1,41 @@
+// 只经 `./server/environment` 窄入口取仓储：`@fenix/agent-runtime/server` barrel 会静态引入
+// `launch-spec-builder`，后者又引入 `@fenix/resource-knowledge/server`（含路由模块），而 knowledge
+// 路由反向依赖 `@server/plugins/auth` —— 形成 `auth → agent-runtime → knowledge 路由 → auth` 的
+// 顶层 TDZ 环（`source-route-imports.test.ts` 用全新进程守护这一点）。窄入口只暴露 environment 仓储。
+import { environmentRepo } from "@fenix/agent-runtime/server/environment";
+import {
+  buildPhoneTempEmail,
+  decryptPassword,
+  type EnvironmentSecretResolver,
+  getAuth,
+  getEncryptionKey,
+  IdentityAuthenticationError,
+  isPhoneNumberRegistered,
+  normalizeChineseMainlandPhoneNumber,
+  resolveCredentialAuthentication,
+  resolveIdentityAuthentication,
+} from "@fenix/identity/server";
 import { requestAls } from "@fenix/logger";
-import { eq } from "drizzle-orm";
+import type { ActorContext } from "@fenix/platform-sdk";
 import Elysia from "elysia";
-import { auth } from "../auth/better-auth";
-import { decryptPassword, getEncryptionKey } from "../auth/encryption";
 import { config } from "../config";
-import { db } from "../db";
-import { user } from "../db/schema";
 import { AppError } from "../errors";
-import { buildPhoneTempEmail, normalizeChineseMainlandPhoneNumber } from "../services/phone-number";
+
+/**
+ * 宿主的认证适配层（CE 阶段 2 任务 1.2）。
+ *
+ * 凭据解析（session cookie → Environment Secret → API Key）的唯一实现已迁到
+ * `@fenix/identity`（`services/request-authentication`）。本文件只保留三件宿主才有权做的事：
+ *
+ * 1. **测试 seam**（`setTestAuth` / `resetTestAuth`）：短路认证，供路由级测试注入上下文。identity
+ *    是纯库，不能持有进程级可变测试状态，否则同进程内两次装配会共享它。
+ * 2. **ALS 上下文与 `store` 写入**：日志字段（userId / organizationId / role）属于宿主可观测性契约。
+ * 3. **active organization 解析**（`services/org-context`，含 60 秒进程内缓存）：identity 返回的
+ *    session 结果不含组织上下文，宿主用请求头/cookie 补齐并缓存。
+ *
+ * 错误映射：identity 抛 `IdentityAuthenticationError`（携带 HTTP 状态与稳定错误码），这里转成宿主
+ * 的 `AppError`，使 429 / `RATE_LIMITED` 的对外行为与迁移前完全一致。
+ */
 
 // ────────────────────────────────────────────
 // 测试注入：路由级测试通过 setTestAuth 绕过认证
@@ -56,14 +84,59 @@ export interface AuthContext {
   organizationName?: string;
   userId: string;
   role: "owner" | "admin" | "member";
+  /**
+   * 用户的**全量**组织成员关系，不只当前 active organization。
+   *
+   * 授权只使用其中的**当前组织**那一条（组织资源的可见范围就是 active organization），全量的
+   * 意义是身份投影完整：切组织后的角色、系统管理视图等都以全量成员关系为前提。生产路径由
+   * `services/org-context` 从 `IdentityDirectory` 填充。测试构造的上下文可以省略，此时
+   * {@link toActorContext} 回退为「当前组织 + 当前角色」。
+   */
+  memberships?: readonly { readonly organizationId: string; readonly role: "owner" | "admin" | "member" }[];
 }
 
-function extractToken(request: Request): string | undefined {
-  const authHeader = request.headers.get("Authorization");
-  const xApiKey = request.headers.get("x-api-key");
-  const url = new URL(request.url);
-  const queryToken = url.searchParams.get("token");
-  return authHeader?.replace("Bearer ", "") || xApiKey || queryToken || undefined;
+/**
+ * 把宿主的请求级身份投影为平台可信主体（`ActorContext`）。
+ *
+ * 这是宿主唯一的主体转换点：资源包与平台实现都只消费 `ActorContext`，不得自行解释
+ * `AuthContext.role` 或成员关系。`super-admin` 不在此赋值（决策 D8：当前没有任何生产赋值点，
+ * 契约分支保留给系统管理形态确定后的扩展）。
+ *
+ * `memberships` 缺失时回退为「当前组织 + 当前角色」：只有无法解析全量成员关系的上下文（测试
+ * 构造的 `setTestAuth` / `setTestOrgContext`）才会走到该分支，生产路径始终带全量成员关系。
+ */
+export function toActorContext(ctx: AuthContext): ActorContext {
+  return {
+    kind: "user",
+    userId: ctx.userId,
+    activeOrganizationId: ctx.organizationId,
+    memberships: ctx.memberships ?? [{ organizationId: ctx.organizationId, role: ctx.role }],
+  };
+}
+
+/**
+ * Environment Secret 的存储属于 agent-runtime（`environment` 表），而 `@fenix/identity` 属
+ * `platform-impl`，不得依赖 agent-runtime。凭据**顺序**是身份规则、留在 identity，
+ * 「按密钥查 environment」这一步由宿主实现后注入。
+ *
+ * 未命中或 `userId` 为空时返回 null：与迁移前 `if (envRecord?.userId)` 的判定一致。
+ */
+const resolveEnvironmentSecret: EnvironmentSecretResolver = async (secret) => {
+  const record = await environmentRepo.getBySecret(secret);
+  if (!record?.userId) return null;
+  return {
+    environmentId: record.id,
+    userId: record.userId,
+    organizationId: record.organizationId ?? null,
+  };
+};
+
+/** 把 identity 的认证失败映射回宿主错误类，保持对外状态码与错误码不变。 */
+function toAppError(error: unknown): never {
+  if (error instanceof IdentityAuthenticationError) {
+    throw new AppError(error.message, error.code, error.statusCode);
+  }
+  throw error;
 }
 
 /**
@@ -83,73 +156,9 @@ function enrichAlsContext(user: UserInfo, authContext: AuthContext | null): void
   }
 }
 
-/** 尝试通过 API key / environment secret 认证，成功返回 true 并设置 store */
-async function tryApiKeyAuth(
-  store: { user: UserInfo | null; authEnvironmentId: string | null; authContext: AuthContext | null },
-  request: Request,
-): Promise<boolean> {
-  const token = extractToken(request);
-  if (!token) return false;
-
-  // 0. Environment secret match
-  const { environmentRepo } = await import("@fenix/agent-runtime/server");
-  const envRecord = await environmentRepo.getBySecret(token);
-  if (envRecord?.userId) {
-    const user = await lookupUserById(envRecord.userId);
-    if (user) {
-      store.user = user;
-      store.authEnvironmentId = envRecord.id;
-      const organizationId = envRecord.organizationId ?? envRecord.userId;
-      const role = envRecord.organizationId && envRecord.organizationId !== envRecord.userId ? "member" : "owner";
-      store.authContext = { organizationId, userId: user.id, role: role as "owner" | "admin" | "member" };
-      return true;
-    }
-  }
-
-  // 1. better-auth API Key 验证
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth verifyApiKey return type is untyped
-  const result: any = await auth.api.verifyApiKey({ body: { key: token } });
-  if (!result.valid && result?.error?.code === "RATE_LIMITED") {
-    throw new AppError("API key rate limit exceeded", "RATE_LIMITED", 429);
-  }
-  if (result.valid && result.key) {
-    // biome-ignore lint/suspicious/noExplicitAny: better-auth API key metadata shape is untyped
-    const apiKeyMeta = result.key as any;
-    // better-auth API key 统一以 referenceId 表示归属主体；当前配置下它就是创建该 key 的用户 ID。
-    // 注意：API key 字符串本身不携带组织信息，这里必须依赖 apikey 记录中的 metadata
-    // 来恢复 organizationId / role，才能让纯 Bearer key 请求通过后续的多租户权限校验。
-    const userId = apiKeyMeta.referenceId;
-    const user = await lookupUserById(userId);
-    if (user) {
-      store.user = user;
-      const orgId = apiKeyMeta.organizationId || apiKeyMeta.metadata?.organizationId;
-      if (orgId) {
-        try {
-          const isMember = await isUserMemberOfOrganization(user.id, orgId);
-          if (!isMember) {
-            return false;
-          }
-        } catch {
-          // DB 查询异常时保守拒绝，避免在成员关系不可验证时放行 API key。
-          return false;
-        }
-
-        store.authContext = {
-          organizationId: orgId,
-          userId: user.id,
-          role: (apiKeyMeta.metadata?.role as "owner" | "admin" | "member") || "member",
-        };
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 /**
  * 统一解析 HTTP / WebSocket 升级请求的认证结果。
- * 优先尝试 session cookie，失败后再 fallback 到 API key / environment secret。
+ * 优先尝试 session cookie，失败后再 fallback 到 environment secret / API key。
  */
 export async function authenticateRequest(request: Request): Promise<RequestAuthResult | null> {
   if (_testAuth) {
@@ -161,64 +170,40 @@ export async function authenticateRequest(request: Request): Promise<RequestAuth
     };
   }
 
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (session?.user) {
-    const user = { id: session.user.id, email: session.user.email, name: session.user.name };
-    const authSession = {
-      id: session.session.id,
-      userId: session.session.userId,
-      token: session.session.token,
-    };
-    const { loadOrgContext } = await import("../services/org-context");
-    const authContext = await loadOrgContext(user, request);
+  const result = await resolveIdentityAuthentication(request, { resolveEnvironmentSecret }).catch(toAppError);
+  if (!result) return null;
 
-    return {
-      user,
-      authSession,
-      authEnvironmentId: null,
-      authContext,
-    };
-  }
-
-  const store = {
-    user: null as UserInfo | null,
-    authEnvironmentId: null as string | null,
-    authContext: null as AuthContext | null,
-  };
-  const ok = await tryApiKeyAuth(store, request);
-  if (!ok || !store.user) return null;
+  // session 路径的组织上下文由宿主解析 active organization；凭据路径自带组织上下文。
+  const authContext = result.authSession
+    ? await (await import("../services/org-context")).loadOrgContext(result.user, request)
+    : result.credentialOrganization;
 
   return {
-    user: store.user,
-    authSession: null,
-    authEnvironmentId: store.authEnvironmentId,
-    authContext: store.authContext,
+    user: result.user,
+    authSession: result.authSession,
+    authEnvironmentId: result.authEnvironmentId,
+    authContext,
   };
 }
 
-export async function lookupUserById(userId: string): Promise<UserInfo | null> {
-  const { db } = await import("../db");
-  const { user } = await import("../db/schema");
-  const { eq } = await import("drizzle-orm");
-  const [row] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
-  return row ? { id: row.id, email: row.email, name: row.name } : null;
-}
+/** 仅凭据路径（Environment Secret / API Key）的认证尝试，成功时写入 store。 */
+async function tryApiKeyAuth(
+  store: {
+    user: UserInfo | null;
+    authEnvironmentId: string | null;
+    authContext: AuthContext | null;
+    actor: ActorContext | null;
+  },
+  request: Request,
+): Promise<boolean> {
+  const result = await resolveCredentialAuthentication(request, { resolveEnvironmentSecret }).catch(toAppError);
+  if (!result) return false;
 
-/**
- * 直接从本地 member 表判断用户是否仍属于指定组织。
- * API key 请求本身没有 session/cookie，上游 better-auth 组织接口未必接受这类请求头；
- * 这里改查本地表，避免把“成员校验接口不可用”误判成“调用者未认证”。
- */
-export async function isUserMemberOfOrganization(userId: string, organizationId: string): Promise<boolean> {
-  const { db } = await import("../db");
-  const { member } = await import("../db/schema");
-  const { and, eq } = await import("drizzle-orm");
-  const rows = await db
-    .select({ id: member.id })
-    .from(member)
-    .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
-    .limit(1);
-  return rows.length > 0;
+  store.user = result.user;
+  store.authEnvironmentId = result.authEnvironmentId;
+  store.authContext = result.credentialOrganization;
+  store.actor = result.credentialOrganization ? toActorContext(result.credentialOrganization) : null;
+  return true;
 }
 
 function decryptSensitiveFields(body: Record<string, unknown>): { body: Record<string, unknown>; decrypted: boolean } {
@@ -293,17 +278,12 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
         };
       }
 
-      const [existingUser] = await db
-        .select({ id: user.id })
-        .from(user)
-        .where(eq(user.phoneNumber, phoneNumber))
-        .limit(1);
-      if (existingUser) {
+      if (await isPhoneNumberRegistered(phoneNumber)) {
         set.status = 422;
         return { code: "PHONE_NUMBER_EXISTS", message: "该手机号已注册" };
       }
 
-      return auth.handler(
+      return getAuth().handler(
         new Request(new URL("/api/auth/sign-up/email", request.url).toString(), {
           method: "POST",
           headers: request.headers,
@@ -336,7 +316,7 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
           const { body, decrypted } = decryptSensitiveFields(parsed);
           normalizePhoneFields(body);
           if (decrypted || typeof body.phoneNumber === "string") {
-            return auth.handler(
+            return getAuth().handler(
               new Request(request.url, {
                 method: request.method,
                 headers: request.headers,
@@ -348,7 +328,7 @@ export const authPlugin = new Elysia({ name: "auth", prefix: "/api/auth" })
           // 解密失败，使用原始请求透传
         }
       }
-      return auth.handler(request);
+      return getAuth().handler(request);
     },
     {
       detail: {
@@ -378,6 +358,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
     authEnvironmentId: null as string | null,
     uuid: null as string | null,
     authContext: null as AuthContext | null,
+    actor: null as ActorContext | null,
   })
   .macro({
     sessionAuth(enabled: boolean) {
@@ -393,6 +374,7 @@ export const authGuardPlugin = new Elysia({ name: "auth-guard" })
           store.authSession = authResult.authSession;
           store.authEnvironmentId = authResult.authEnvironmentId;
           store.authContext = authResult.authContext;
+          store.actor = authResult.authContext ? toActorContext(authResult.authContext) : null;
           enrichAlsContext(store.user, store.authContext);
         },
       };

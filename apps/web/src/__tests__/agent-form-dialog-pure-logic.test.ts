@@ -4,9 +4,16 @@ import {
   filterWritableMcps,
   getMcpDisplayName,
   getMcpResourceBadgeKey,
+  type McpResourceLike,
 } from "@/src/lib/mcp-resource-access";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
-import { mapSkillOptions, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
+import {
+  canWriteSkill,
+  getSkillResourceBadgeKey,
+  isExternalSkill,
+  mapSkillOptions,
+  normalizeSkillOptionsPayload,
+} from "@/src/lib/skill-resource-access";
 import {
   mapMcpOptions,
   mapModelOptions,
@@ -17,7 +24,6 @@ import {
   getAgentAccessBadgeKey,
   getAgentConfigLookupKey,
   getAgentDisplayName,
-  getAgentOptionValue,
   isAgentWritable,
 } from "../lib/agent-resource-access";
 import {
@@ -29,29 +35,49 @@ import {
 } from "../lib/agent-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { McpServerInfo, ModelEntry, SkillInfo } from "../types/config";
 
-const externalAccess: ResourceAccess = {
-  ownership: "external",
-  sourceOrganizationId: "org-source",
-  sourceOrganizationName: "Source Team",
-  resourceUid: "shared-uid",
-  resourceKey: "org-source/shared-key",
-  manageable: false,
-  writable: false,
-  publicReadable: true,
-};
+/** 共享来源 Agent 的 `/web` 详情视图字段：归属其他组织且只有读动作。 */
+function sharedAgentFields() {
+  return {
+    scope: { organizationId: "org-source", visibility: "public" as const },
+    access: { actions: ["read" as const] },
+    organizationName: "Source Team",
+  };
+}
+
+/** 共享来源 MCP 的 `/web` 视图字段：归属其他组织且只有读动作。 */
+function sharedMcpFields(overrides: Partial<McpServerInfo> = {}): Partial<McpServerInfo> {
+  return {
+    scope: { organizationId: "org-source", visibility: "public" },
+    access: { actions: ["read"] },
+    organizationName: "Source Team",
+    ...overrides,
+  };
+}
+
+/** 共享来源 Skill 的 `/web` 视图字段：归属其他组织且只有读动作。 */
+function sharedSkillFields(overrides: Partial<SkillInfo> = {}): Partial<SkillInfo> {
+  return {
+    scope: { organizationId: "org-source", visibility: "public" },
+    access: { actions: ["read"] },
+    organizationName: "Source Team",
+    ...overrides,
+  };
+}
 
 const sharedModel: ModelEntry = {
   id: "model-uuid",
   modelId: "gpt-shared",
   displayName: "Shared Model",
   provider: "openai",
+  providerId: "provider-openai",
   providerDisplayName: "OpenAI",
   contextLimit: null,
   outputLimit: null,
-  providerResourceAccess: externalAccess,
-  providerResourceKey: "org-source/provider-openai",
+  scope: { organizationId: "org-source", visibility: "public" },
+  access: { actions: ["read"] },
+  organizationName: "Source Team",
 };
 
 describe("Agent 表单与资源访问纯逻辑", () => {
@@ -59,34 +85,35 @@ describe("Agent 表单与资源访问纯逻辑", () => {
   test("转换 MCP 选项并过滤禁用资源", () => {
     expect(
       mapMcpOptions([
-        { id: "enabled", name: "filesystem", resourceAccess: externalAccess },
+        { id: "enabled", name: "filesystem", ...sharedMcpFields() },
         { id: "disabled", name: "legacy", enabled: false },
       ]),
     ).toEqual([
       {
         id: "enabled",
-        key: "org-source/shared-key",
+        key: "org-source/enabled",
         name: "filesystem",
         label: "Source Team/filesystem",
-        resourceAccess: externalAccess,
+        scope: { organizationId: "org-source", visibility: "public" },
+        organizationName: "Source Team",
       },
     ]);
   });
 
   // Agent 表单模型 value 使用模型 UUID，避免与 provider/modelId 格式的配置值混淆。
   test("将共享模型转换为 Agent 表单选项", () => {
-    expect(mapModelOptions([sharedModel])).toEqual([
+    expect(mapModelOptions([sharedModel], "org-current")).toEqual([
       {
         value: "model-uuid",
         label: "Shared Model",
         modelId: "gpt-shared",
-        group: { id: "org-source:org-source/provider-openai", label: "OpenAI", scope: "shared" },
+        group: { id: "org-source/provider-openai", label: "OpenAI", scope: "shared" },
       },
     ]);
   });
 
-  // 模型配置选择器须优先使用共享 provider key，保证跨组织同名 provider 不冲突。
-  test("构建模型配置查询值时优先共享 provider key", () => {
+  // 模型配置选择器须优先使用共享 Provider 资源键，保证跨组织同名 provider 不冲突。
+  test("构建模型配置查询值时优先共享 Provider 资源键", () => {
     expect(buildModelOptions([sharedModel])).toEqual([
       { value: "org-source/provider-openai/gpt-shared", label: "Source Team/OpenAI/Shared Model" },
     ]);
@@ -163,40 +190,53 @@ describe("Agent 表单与资源访问纯逻辑", () => {
 
   // 外部 Agent 不可写或管理共享，但所有资源定位和展示必须使用来源组织上下文。
   test("按 Agent 资源权限解析标识、展示和操作能力", () => {
-    const agent = { id: "local-id", name: "writer", resourceAccess: externalAccess };
-    expect(getAgentOptionValue(agent)).toBe("org-source/shared-key");
-    expect(getAgentConfigLookupKey(agent)).toBe("org-source/shared-key");
+    const agent = { id: "local-id", name: "writer", ...sharedAgentFields() };
+    expect(getAgentConfigLookupKey(agent)).toBe("org-source/local-id");
+    expect(getAgentConfigLookupKey({ name: "writer" })).toBe("writer");
     expect(getAgentDisplayName(agent)).toBe("Source Team/writer");
     expect(isAgentWritable(agent)).toBe(false);
     expect(canManageAgentSharing(agent)).toBe(false);
-    expect(getAgentAccessBadgeKey(agent)).toBe("resource.external");
+    expect(getAgentAccessBadgeKey(agent, "org-current")).toBe("resource.external");
+    expect(getAgentAccessBadgeKey(agent)).toBe("resource.public");
   });
 
-  // MCP 权限列表只保留可写资源，共享只允许明确 manageable 的资源进入管理入口。
+  // MCP 权限列表只保留带 update 动作的资源，只读共享资源不得进入编辑与管理入口。
   test("过滤不可写 MCP 并映射来源与权限徽标", () => {
-    const writable = { name: "owned" };
-    const readOnly = { name: "shared", resourceAccess: externalAccess };
+    const writable: McpResourceLike = { name: "owned", access: { actions: ["read", "update"] } };
+    const readOnly = { name: "shared", ...sharedMcpFields() };
     expect(filterWritableMcps([writable, readOnly])).toEqual([writable]);
     expect(getMcpDisplayName(readOnly)).toBe("Source Team/shared");
-    expect(getMcpResourceBadgeKey(readOnly)).toBe("resource.external");
+    expect(getMcpResourceBadgeKey(readOnly, "org-current")).toBe("resource.external");
     expect(canManageMcpSharing(readOnly)).toBe(false);
   });
 
   // Skill 历史包装响应与数组响应均应映射为一致的共享资源展示结构，非法载荷安全降级。
   test("归一化 Skill 选项并处理非法载荷", () => {
-    const skills = [{ id: "skill-id", name: "review", description: "Review code", resourceAccess: externalAccess }];
+    const skills = [{ id: "skill-id", name: "review", description: "Review code", ...sharedSkillFields() }];
     expect(mapSkillOptions(skills)).toEqual([
       {
-        id: "shared-uid",
-        key: "org-source/shared-key",
+        id: "skill-id",
+        key: "org-source/skill-id",
         name: "review",
         label: "Source Team/review",
         description: "Review code",
-        resourceAccess: externalAccess,
+        scope: { organizationId: "org-source", visibility: "public" },
+        organizationName: "Source Team",
       },
     ]);
     expect(normalizeSkillOptionsPayload({ skills })).toEqual(mapSkillOptions(skills));
     expect(normalizeSkillOptionsPayload("invalid")).toEqual([]);
+  });
+
+  // Skill 授权判断基于 scope 与 access.actions：外部组织资源只读，缺失动作时保守降级。
+  test("按授权视图判定 Skill 归属与写权限", () => {
+    const shared = { id: "skill-id", name: "review", ...sharedSkillFields() };
+    expect(isExternalSkill(shared, "org-current")).toBe(true);
+    expect(isExternalSkill(shared)).toBe(false);
+    expect(canWriteSkill(shared)).toBe(false);
+    expect(getSkillResourceBadgeKey(shared, "org-current")).toBe("resource.external");
+    expect(canWriteSkill({ name: "own", scope: { organizationId: "org-current", visibility: "private" } })).toBe(false);
+    expect(canWriteSkill({ name: "own", access: { actions: ["read", "update"] } })).toBe(true);
   });
 
   // 每次打开创建表单均须生成独立的默认知识库状态，避免上一次编辑残留选择。

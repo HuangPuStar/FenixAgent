@@ -4,7 +4,7 @@ import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ResourceAccess } from "../types/config";
+import type { McpServerInfo, ModelEntry } from "../types/config";
 
 function createModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {
@@ -19,14 +19,19 @@ function createModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
   };
 }
 
-function createExternalAccess(overrides: Partial<ResourceAccess> = {}): ResourceAccess {
+/** 共享来源模型的 `/web` 视图字段：归属其他组织且只有读动作。 */
+const sharedModelFields: Partial<ModelEntry> = {
+  providerId: "provider-uid",
+  scope: { organizationId: "source-org", visibility: "private" },
+  access: { actions: ["read"] },
+};
+
+/** 共享来源 MCP 的 `/web` 视图字段：归属其他组织且公开可读。 */
+function sharedMcpFields(overrides: Partial<McpServerInfo> = {}): Partial<McpServerInfo> {
   return {
-    ownership: "external",
-    sourceOrganizationId: "source-org",
-    resourceUid: "resource-uid",
-    resourceKey: "source-org/resource-key",
-    manageable: false,
-    writable: false,
+    scope: { organizationId: "source-org", visibility: "public" },
+    access: { actions: ["read"] },
+    organizationName: "来源组",
     ...overrides,
   };
 }
@@ -62,27 +67,30 @@ describe("AgentFormDialog 纯选项映射 round54", () => {
     expect(mapMcpOptions([{ id: "files", name: "filesystem" }])[0].label).toBe("filesystem");
   });
 
-  // 跨组织资源以 resourceKey 区分同名 MCP。
-  test("共享 MCP 优先使用资源 key", () => {
-    const resourceAccess = createExternalAccess({ resourceKey: "platform/files" });
+  // 跨组织资源以归属组织与资源 id 拼接的 key 区分同名 MCP。
+  test("共享 MCP 使用归属组织拼接资源 key", () => {
+    const scope = { organizationId: "platform", visibility: "private" } as const;
 
-    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", resourceAccess }])[0].key).toBe("platform/files");
+    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", ...sharedMcpFields({ scope }) }])[0].key).toBe(
+      "platform/shared-files",
+    );
   });
 
   // 共享资源标签必须包含来源组织，供用户辨别资源归属。
   test("共享 MCP 标签包含来源组织", () => {
-    const resourceAccess = createExternalAccess({ sourceOrganizationName: "平台组" });
-
-    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", resourceAccess }])[0].label).toBe(
-      "平台组/filesystem",
-    );
+    expect(
+      mapMcpOptions([{ id: "shared-files", name: "filesystem", ...sharedMcpFields({ organizationName: "平台组" }) }])[0]
+        .label,
+    ).toBe("平台组/filesystem");
   });
 
   // 缺少来源组织名称时仍应输出可读的原始 MCP 名称。
   test("共享 MCP 缺少来源名称时使用原名称标签", () => {
-    const resourceAccess = createExternalAccess();
-
-    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", resourceAccess }])[0].label).toBe("filesystem");
+    expect(
+      mapMcpOptions([
+        { id: "shared-files", name: "filesystem", ...sharedMcpFields({ organizationName: undefined }) },
+      ])[0].label,
+    ).toBe("filesystem");
   });
 
   // 映射仅过滤禁用项，剩余服务器的输入顺序决定展示顺序。
@@ -96,12 +104,12 @@ describe("AgentFormDialog 纯选项映射 round54", () => {
     ).toEqual(["first", "second"]);
   });
 
-  // MCP 的访问描述应保留原对象，供调用方继续判断共享权限。
-  test("MCP 映射保留资源访问引用", () => {
-    const resourceAccess = createExternalAccess();
+  // MCP 的归属范围应保留原对象，供调用方继续判断共享来源。
+  test("MCP 映射保留归属范围引用", () => {
+    const scope = { organizationId: "source-org", visibility: "public" } as const;
 
-    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", resourceAccess }])[0].resourceAccess).toBe(
-      resourceAccess,
+    expect(mapMcpOptions([{ id: "shared-files", name: "filesystem", ...sharedMcpFields({ scope }) }])[0].scope).toBe(
+      scope,
     );
   });
 
@@ -117,28 +125,26 @@ describe("AgentFormDialog 纯选项映射 round54", () => {
         value: "gpt",
         label: "GPT-5",
         modelId: "model-name",
-        group: { id: "organization:provider-name", label: "OpenAI", scope: "organization" },
+        group: { id: "provider-name", label: "OpenAI", scope: "organization" },
       },
     ]);
   });
 
-  // 共享模型用短标签展示，并由 group.scope 标识共享来源。
-  test("共享模型标签包含来源组织", () => {
-    const providerResourceAccess = createExternalAccess({ sourceOrganizationName: "研究组" });
-
-    expect(mapModelOptions([createModel({ providerResourceAccess })])[0]).toEqual({
+  // 共享模型用短标签展示，分组 id 取 Provider 资源键，group.scope 标识共享来源。
+  test("共享模型按 Provider 资源键分组并标记共享来源", () => {
+    expect(
+      mapModelOptions([createModel({ ...sharedModelFields, organizationName: "研究组" })], "org-current")[0],
+    ).toEqual({
       value: "model-id",
       label: "模型名称",
       modelId: "model-name",
-      group: { id: "source-org:provider-name", label: "提供商名称", scope: "shared" },
+      group: { id: "source-org/provider-uid", label: "提供商名称", scope: "shared" },
     });
   });
 
-  // providerResourceAccess 缺少组织名时仍按 provider 分组，不拼接长标签。
+  // 共享来源缺少组织展示名时仍按 Provider 分组，不拼接长标签。
   test("共享模型缺少来源名称时不添加空前缀", () => {
-    expect(mapModelOptions([createModel({ providerResourceAccess: createExternalAccess() })])[0].label).toBe(
-      "模型名称",
-    );
+    expect(mapModelOptions([createModel(sharedModelFields)], "org-current")[0].label).toBe("模型名称");
   });
 
   // option value 始终使用模型 UUID，而不是可能重复的模型别名。

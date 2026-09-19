@@ -1,4 +1,5 @@
-import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
+import type { ActorContext } from "@fenix/platform-sdk";
+import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import { getModelGatewayServices } from "../../model-gateway";
 import {
@@ -17,18 +18,19 @@ const app = new Elysia({ name: "web-model-gateway", prefix: "/model-gateway" }).
 app.get(
   "/:providerId/usage",
   async ({ store, params, query, status }) => {
-    const context = store.authContext as AuthContext;
+    // `sessionAuth: true` 已由 authGuardPlugin 拒绝未认证请求，因此 actor 必然存在。
+    const actor = store.actor as ActorContext;
     try {
       const services = getModelGatewayServices();
-      const provider = await services.provider.getProviderForUsage(context, params.providerId);
+      const provider = await services.provider.getProviderForUsage(actor, params.providerId);
       const [usage, budget] = await Promise.all([
         services.usage.queryUsage({
           gatewayProviderId: provider.id,
-          userId: context.userId,
+          userId: actor.userId,
           includeBreakdowns: true,
           ...query,
         }),
-        services.budget.getUserBudget(provider.id, context.userId),
+        services.budget.getUserBudget(provider.id, actor.userId),
       ]);
       return {
         ...usage,

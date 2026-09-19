@@ -370,6 +370,26 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("special-dependency");
   });
 
+  // §158 要求同类别内部的方向也能被门禁判定：identity 与 access-control 同属 platform-impl，
+  // 矩阵只允许 access-control → identity，反向边必须被拒。
+  test("rejects identity imports of the access control implementation", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/platform-sdk/package.json": '{"name":"@fenix/platform-sdk"}\n',
+      "packages/platform/access-control/package.json": '{"name":"@fenix/access-control"}\n',
+      "packages/platform/identity/package.json":
+        '{"name":"@fenix/identity","dependencies":{"@fenix/access-control":"workspace:*"}}\n',
+      "packages/platform/identity/src/client.ts":
+        'import { createAccessControl } from "@fenix/access-control";\nvoid createAccessControl;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[special-dependency]");
+    expect(result.stdout).toContain('"@fenix/identity" → "@fenix/access-control"');
+  });
+
   // 登记过的包对放行存量违规，门禁只阻断未登记的新增，这样阶段 2 可以在真实债务上推进。
   test("accepts boundary violations registered in the ledger", async () => {
     const root = await createFixture({

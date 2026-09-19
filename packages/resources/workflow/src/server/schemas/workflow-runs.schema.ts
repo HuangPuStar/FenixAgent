@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
-import { WebOkSchema } from "./common.schema";
 
 /** GET /web/workflow-runs 查询参数 */
 export const WorkflowRunsRouteQuerySchema = z.object({

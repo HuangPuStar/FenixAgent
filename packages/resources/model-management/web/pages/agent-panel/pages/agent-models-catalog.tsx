@@ -27,6 +27,7 @@ import {
 } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
 import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import { ModelIcon } from "../../../components/model-icon/ModelIcon";
+import { isExternalProvider, isPublicProvider } from "../../../lib/provider-resource-access";
 import type { ModelTestState } from "./agent-models-types";
 import {
   canWriteProvider,
@@ -44,6 +45,8 @@ interface ModelsCatalogProps {
   allProviders: ProviderInfo[];
   modelsByProvider: Record<string, ProviderModel[]>;
   selectedProvider: ProviderInfo | null;
+  /** 当前组织 id；判定 Provider 是否为跨组织共享来源，缺失时按本组织视角处理。 */
+  activeOrganizationId?: string;
   query: string;
   scope: ProviderScope;
   detailFailures: string[];
@@ -76,7 +79,7 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
       result[scope] =
         scope === "all"
           ? props.allProviders.length
-          : props.allProviders.filter((item) => providerMatchesScope(item, scope)).length;
+          : props.allProviders.filter((item) => providerMatchesScope(item, scope, props.activeOrganizationId)).length;
       return result;
     },
     { all: 0, organization: 0, public: 0 },
@@ -134,6 +137,7 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
             providers={props.providers}
             modelsByProvider={props.modelsByProvider}
             selected={props.selectedProvider}
+            activeOrganizationId={props.activeOrganizationId}
             onSelect={props.onSelectProvider}
           />
         }
@@ -152,11 +156,13 @@ function ProviderIndex({
   providers,
   modelsByProvider,
   selected,
+  activeOrganizationId,
   onSelect,
 }: {
   providers: ProviderInfo[];
   modelsByProvider: Record<string, ProviderModel[]>;
   selected: ProviderInfo | null;
+  activeOrganizationId?: string;
   onSelect: (provider: ProviderInfo) => void;
 }) {
   const { t } = useTranslation(NS.MODELS);
@@ -175,9 +181,10 @@ function ProviderIndex({
             const key = getProviderKey(provider);
             const iconModelId = getProviderIconModelId(provider, modelsByProvider[key] ?? []);
             const active = key === (selected ? getProviderKey(selected) : null);
-            const organizationName = provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-            const external = provider.resourceAccess?.ownership === "external";
-            const publiclyReadable = provider.resourceAccess?.publicReadable === true;
+            const external = isExternalProvider(provider, activeOrganizationId);
+            const publiclyReadable = isPublicProvider(provider);
+            // `/web` Provider 视图只返回 `scope.organizationId`，跨组织来源因此标注为「组织共享」。
+            const organizationName = external ? t("scope.shared") : t("scope.organization");
             return (
               <button
                 type="button"
@@ -221,8 +228,8 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   const models = props.modelsByProvider[key] ?? [];
   const iconModelId = getProviderIconModelId(provider, models);
   const writable = canWriteProvider(provider);
-  const external = provider.resourceAccess?.ownership === "external";
-  const publiclyReadable = provider.resourceAccess?.publicReadable === true;
+  const external = isExternalProvider(provider, props.activeOrganizationId);
+  const publiclyReadable = isPublicProvider(provider);
   const color = getProviderColor(provider.id);
   const header = (
     <div style={{ "--provider-color": color } as CSSProperties}>
@@ -240,7 +247,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             <h2>{provider.name || provider.id}</h2>
             <div className="models-provider-organization">
               <small>
-                {provider.resourceAccess?.sourceOrganizationName ?? t("scope.organization")} ·{" "}
+                {external ? t("scope.shared") : t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
               </small>
               {external && !publiclyReadable ? (
@@ -294,8 +301,9 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             <small>{t("connection.sharedDescription")}</small>
           </span>
           <Switch
-            checked={Boolean(provider.resourceAccess?.publicReadable)}
-            disabled={!writable || provider.resourceAccess?.manageable !== true || props.toggling}
+            checked={publiclyReadable}
+            // 公开受众变更要求 `update` 动作（`writable` 已包含该判断与 Gateway 只读约束）。
+            disabled={!writable || props.toggling}
             onCheckedChange={(value) => props.onTogglePublic(provider, value)}
           />
         </label>

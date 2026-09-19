@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
-/** RMD-08 开始时从 root-source-owner audit 导出的精确迁移清单。 */
+/**
+ * RMD-08 开始时从 root-source-owner audit 导出的精确迁移清单。
+ *
+ * 第二列是该文件**当前**唯一的 owner 落点。RMD-08 之后只有一项改判：
+ * `password-crypto.ts` 属于身份密码职责，CE 阶段 2 任务 1.2 把它随 `auth-client.ts` 一并迁入
+ * `packages/platform/identity/web/lib/`，不再是 apps/web 的壳文件。
+ */
 const RMD_08_MOVES = [
   ["web/components/MetaAgentPanel.tsx", "apps/web/components/MetaAgentPanel.tsx"],
   ["web/components/ai-elements/chat-message-content.css", "apps/web/components/ai-elements/chat-message-content.css"],
@@ -214,7 +220,7 @@ const RMD_08_MOVES = [
   ["web/src/lib/context-queue.ts", "apps/web/src/lib/context-queue.ts"],
   ["web/src/lib/extract-changed-files.ts", "apps/web/src/lib/extract-changed-files.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
-  ["web/src/lib/password-crypto.ts", "apps/web/src/lib/password-crypto.ts"],
+  ["web/src/lib/password-crypto.ts", "packages/platform/identity/web/lib/password-crypto.ts"],
   ["web/src/lib/retry.ts", "apps/web/src/lib/retry.ts"],
   ["web/src/lib/strip-html-tags.ts", "apps/web/src/lib/strip-html-tags.ts"],
   ["web/src/lib/structured-to-thread.ts", "apps/web/src/lib/structured-to-thread.ts"],
@@ -263,8 +269,8 @@ const RMD_08_MOVES = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 182 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 apps/web 目标。
-  test("removes every legacy source and retains its exact apps/web target", () => {
+  // 182 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
+  test("removes every legacy source and retains its exact owner target", () => {
     expect(RMD_08_MOVES).toHaveLength(182);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);

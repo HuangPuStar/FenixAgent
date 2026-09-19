@@ -52,7 +52,7 @@ Elysia 是后端 HTTP 框架，同时承载 REST API、WebSocket Upgrade、静�
 
 **Drizzle ORM**：类型安全的 SQL 构建器，不引入 Query Builder 抽象层。
 
-- **Schema 定义**：集中在一份 schema 文件中作为唯一真相来源，覆盖 better-auth 核心表 + 组织/API Key 插件表 + 自定义业务表
+- **Schema 定义**：真相来源按职责分为两处、共同汇入同一条迁移链——身份表（better-auth 核心表 + 组织/API Key 插件表 + `user_config`）在 `packages/platform/identity/db/schema.ts`，自定义业务表在 `apps/server/src/db/schema.ts`；`drizzle.config.ts` 同时声明两者
 - **迁移**：通过 CLI 工具从 schema 生成 SQL 迁移文件，开发环境推送同步，生产环境通过独立打包的 migrate 脚本执行
 - **关系**：ORM 的 `relations()` 定义表间关联，类型推断到查询层
 - **索引命名**：`idx_<表名>_org_<字段>` 格式

@@ -260,7 +260,7 @@ function Sharing({
 }) {
   const { t } = useTranslation(NS.AGENTS);
   const manageable =
-    mode === "create" || canManageAgentSharing({ name: form.watch("name"), resourceAccess: data.resourceAccess });
+    mode === "create" || canManageAgentSharing({ name: form.watch("name"), scope: data.scope, access: data.access });
   return (
     <section className="agent-editor-section">
       <Intro
@@ -272,7 +272,7 @@ function Sharing({
         <span>{form.watch("name").slice(0, 1) || "A"}</span>
         <div>
           <small>{t("editor.resourceOwner")}</small>
-          <strong>{data.resourceAccess?.sourceOrganizationName ?? t("editor.currentOrganization")}</strong>
+          <strong>{data.organizationName ?? t("editor.currentOrganization")}</strong>
           <p>{manageable ? t("editor.sharingManageable") : t("editor.sharingNotManageable")}</p>
         </div>
         <em>{t("editor.owner")}</em>

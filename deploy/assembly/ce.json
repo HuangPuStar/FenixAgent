@@ -1,4 +1,5 @@
 {
+  "identity": "identity",
   "accessControl": "access-control",
   "agentRuntime": "agent-runtime",
   "webShell": "default",

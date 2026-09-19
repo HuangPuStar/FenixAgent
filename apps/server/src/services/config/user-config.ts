@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { userConfig } from "../../db/schema";
-import type { AuthContext } from "../../plugins/auth";
 import type { PermissionConfig } from "./types";
 
 // ────────────────────────────────────────────
@@ -15,7 +14,19 @@ export interface UserConfigData {
   permission?: PermissionConfig | null;
 }
 
-export async function getUserConfig(ctx: AuthContext): Promise<UserConfigData> {
+/**
+ * 用户偏好的定位上下文：`user_config` 按组织一行存储，只需要组织与用户标识。
+ *
+ * 刻意不收 `AuthContext`：调用方既有宿主路由（持有 `AuthContext`）也有资源包协议层（只持有
+ * `ActorContext`）。`AuthContext` 与本接口结构兼容，宿主调用点无需改动；两个平台的上下文类型则
+ * 不必互相导入。
+ */
+export interface UserConfigSubject {
+  readonly organizationId: string;
+  readonly userId: string;
+}
+
+export async function getUserConfig(ctx: UserConfigSubject): Promise<UserConfigData> {
   const rows = await db.select().from(userConfig).where(eq(userConfig.organizationId, ctx.organizationId)).limit(1);
   if (rows.length === 0) {
     return { defaultAgent: null, currentModel: null, smallModel: null, permission: null };
@@ -29,7 +40,7 @@ export async function getUserConfig(ctx: AuthContext): Promise<UserConfigData> {
   };
 }
 
-export async function setUserConfig(ctx: AuthContext, patch: UserConfigData) {
+export async function setUserConfig(ctx: UserConfigSubject, patch: UserConfigData) {
   const set: Partial<typeof userConfig.$inferInsert> = { updatedAt: new Date() };
   if (patch.defaultAgent !== undefined) set.defaultAgent = patch.defaultAgent;
   if (patch.currentModel !== undefined) set.currentModel = patch.currentModel;

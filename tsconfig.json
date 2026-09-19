@@ -32,8 +32,7 @@
       "@/components/ui/*": ["./apps/web/components/ui/*"],
       "@/src/*": ["./apps/web/src/*"],
       "@/src/api/agents": ["./packages/resources/agent-config/web/api/agents.ts"],
-      "@/src/api/api-keys": ["./packages/resources/identity-admin/web/api/api-keys.ts"],
-      "@/src/api/branding": ["./packages/resources/identity-admin/web/api/branding.ts"],
+      "@/src/api/api-keys": ["./packages/platform/identity/web/api/api-keys.ts"],
       "@/src/api/channels": ["./packages/resources/channel/web/api/channels.ts"],
       "@/src/api/environments": ["./packages/agent-runtime/web/api/environments.ts"],
       "@/src/api/helpers": ["./apps/web/src/api/helpers.ts"],
@@ -44,7 +43,7 @@
       "@/src/api/model-gateway": ["./packages/resources/model-management/web/api/model-gateway.ts"],
       "@/src/api/models": ["./packages/resources/model-management/web/api/models.ts"],
       "@/src/api/observer": ["./packages/resources/observer/web/api/observer.ts"],
-      "@/src/api/organizations": ["./packages/resources/identity-admin/web/api/organizations.ts"],
+      "@/src/api/organizations": ["./packages/platform/identity/web/api/organizations.ts"],
       "@/src/api/prod-views": ["./packages/resources/prod-view/web/api/prod-views.ts"],
       "@/src/api/providers": ["./packages/resources/model-management/web/api/providers.ts"],
       "@/src/api/request": ["./apps/web/src/api/request.ts"],
@@ -63,18 +62,21 @@
       "@/src/components/agent-panel/MountSiteDialog": [
         "./packages/resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx"
       ],
-      "@/src/contexts/OrgContext": ["./apps/web/src/contexts/OrgContext.tsx"],
+      "@/src/contexts/OrgContext": ["./packages/platform/identity/web/contexts/OrgContext.tsx"],
       "@/src/hooks/use-chat-state": ["./packages/agent-runtime/web/hooks/use-chat-state.ts"],
       "@/src/hooks/use-session-state": ["./packages/agent-runtime/web/hooks/use-session-state.ts"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
-      "@/src/lib/auth-client": ["./apps/web/src/lib/auth-client.ts"],
+      "@/src/lib/auth-client": ["./packages/platform/identity/web/lib/auth-client.ts"],
       "@/src/lib/card-renderer": ["./apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["./apps/web/src/lib/card-renderer/*"],
       "@/src/lib/mcp-resource-access": ["./packages/resources/mcp/web/lib/mcp-resource-access.ts"],
       "@/src/lib/model-config-utils": ["./packages/resources/model-management/web/lib/model-config-utils.ts"],
       "@/src/lib/model-gateway-usage": ["./packages/resources/model-management/web/lib/model-gateway-usage.ts"],
       "@/src/lib/prod-view-modules": ["./packages/resources/prod-view/web/lib/prod-view-modules.ts"],
+      "@/src/lib/provider-resource-access": [
+        "./packages/resources/model-management/web/lib/provider-resource-access.ts"
+      ],
       "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],
       "@/src/lib/skill-resource-access": ["./packages/resources/skill/web/lib/skill-resource-access.ts"],
       "@/src/lib/skill-upload": ["./packages/resources/skill/web/lib/skill-upload.ts"],
@@ -104,7 +106,7 @@
         "./packages/resources/knowledge/web/pages/agent-panel/knowledge-graph-state.ts"
       ],
       "@/src/pages/agent-panel/pages/AgentApiKeysPage": [
-        "./packages/resources/identity-admin/web/pages/agent-panel/pages/AgentApiKeysPage.tsx"
+        "./packages/platform/identity/web/pages/agent-panel/pages/AgentApiKeysPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/AgentChannelsPage": [
         "./packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx"
@@ -119,7 +121,7 @@
         "./packages/resources/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/AgentOrganizationsPage": [
-        "./packages/resources/identity-admin/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx"
+        "./packages/platform/identity/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx"
       ],
       "@/src/pages/agent-panel/pages/AgentProdViewsPage": [
         "./packages/resources/prod-view/web/pages/agent-panel/pages/AgentProdViewsPage.tsx"
@@ -146,7 +148,7 @@
         "./packages/resources/knowledge/web/pages/agent-panel/pages/agent-knowledge-resources.tsx"
       ],
       "@/src/pages/agent-panel/pages/agent-organizations-utils": [
-        "./packages/resources/identity-admin/web/pages/agent-panel/pages/agent-organizations-utils.ts"
+        "./packages/platform/identity/web/pages/agent-panel/pages/agent-organizations-utils.ts"
       ],
       "@/src/pages/agent-panel/session-mutation-refresh": [
         "./packages/agent-runtime/web/agent-panel/session-mutation-refresh.ts"

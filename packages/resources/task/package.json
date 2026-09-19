@@ -5,6 +5,7 @@
   "dependencies": {
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/logger": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "cron-parser": "^4.9.0",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",

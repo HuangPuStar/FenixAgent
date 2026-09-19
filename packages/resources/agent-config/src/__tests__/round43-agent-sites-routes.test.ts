@@ -1,18 +1,34 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { installRouteConfigStubs, resetRouteConfigStubs } from "@server/test-utils/agent-config-route-deps";
-import { resetAllStubs, stubAuthApi, stubConfigPg, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubAuthApi, stubDb } from "@server/test-utils/helpers";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { installAgentModuleStub, resetAgentModuleStub, scopedAgent } from "./fixtures";
+
+/**
+ * Agent Sites（`/web/agent-sites`）的路由用例。
+ *
+ * Sites 自身的持久化仍走 `agentSiteAppRepo` + `stubDb`；其中"这个 Agent 属于当前组织吗"的判定已经
+ * 收敛到 AgentConfig 资源模块，因此用模块替身（`service.findRowUnscoped`）表达，不再经配置服务桩。
+ * 绑定写入（`addAgentSiteApp` / `removeAgentSiteApp`）是真实实现写 `agent_config_site_app`，用 db 替身
+ * 观察写入结果——它是本包私有的绑定表，不属于任何 Facade。
+ */
 
 const route = (await import("../server/routes/web/agent-sites")).default;
 
 const appId = "11111111-1111-4111-8111-111111111111";
 const otherAppId = "22222222-2222-4222-8222-222222222222";
 const now = new Date("2026-08-19T00:00:00.000Z");
+const dialect = new PgDialect();
 let selectResults: unknown[][];
 let createdValues: Record<string, unknown> | undefined;
 let updatedValues: Record<string, unknown> | undefined;
 let deleted = false;
+/** `db.delete(...).where(...)` 收到的参数；绑定解绑用它断言"写进去的是 UUID" */
+let deletedParams: unknown[] = [];
+/** `db.insert(agent_config_site_app).values(...)` 收到的值；绑定断言用它。 */
+let boundValues: Record<string, unknown>[] = [];
 let requests: Array<{ url: string; init: RequestInit | undefined }>;
 let originalFetch: typeof fetch;
 
@@ -58,6 +74,9 @@ function stubRouteDb() {
           createdValues = values;
           return [app(values)];
         },
+        onConflictDoNothing: async () => {
+          boundValues.push(values);
+        },
       }),
     }),
     update: () => ({
@@ -71,9 +90,10 @@ function stubRouteDb() {
       }),
     }),
     delete: () => ({
-      where: async () => {
+      where: (condition: SQL) => {
         deleted = true;
-        return { count: 1 };
+        deletedParams = dialect.sqlToQuery(condition).params;
+        return Promise.resolve({ count: 1 });
       },
     }),
   });
@@ -113,11 +133,13 @@ function remoteResponse(url: string) {
 describe("round43 Agent Sites Web 路由", () => {
   beforeEach(() => {
     resetAllStubs();
-    installRouteConfigStubs();
+    resetAgentModuleStub();
     selectResults = [];
     createdValues = undefined;
     updatedValues = undefined;
     deleted = false;
+    deletedParams = [];
+    boundValues = [];
     requests = [];
     process.env.AGENT_SITES_BASE_URL = "https://agent-sites.test";
     process.env.AGENT_SITES_MASTER_KEY = "test-master-key";
@@ -133,7 +155,7 @@ describe("round43 Agent Sites Web 路由", () => {
   });
 
   afterEach(() => {
-    resetRouteConfigStubs();
+    resetAgentModuleStub();
     globalThis.fetch = originalFetch;
     resetTestAuth();
     setTestOrgContext(null);
@@ -322,37 +344,29 @@ describe("round43 Agent Sites Web 路由", () => {
 
   // 绑定前先确认 agent config 在当前组织内。
   test("绑定不存在 agent config 返回 404", async () => {
-    stubConfigPg({ getAgentConfigById: async () => undefined });
+    installAgentModuleStub({ service: { findRowUnscoped: async () => undefined } });
     expect((await request(`/agent-configs/agent-1/sites/${appId}`, { method: "POST" })).status).toBe(404);
   });
 
   // remoteAppId 绑定必须解析为本地 UUID 后写入关系表。
   test("按远端 ID 绑定 site", async () => {
-    let bound: string | undefined;
-    stubConfigPg({
-      getAgentConfigById: async () => ({ id: "agent-1" }),
-      addAgentSiteApp: async (_agentId, siteId) => {
-        bound = siteId;
-      },
+    installAgentModuleStub({
+      service: { findRowUnscoped: async () => scopedAgent({ id: "agent-1", organizationId: "org-1" }) },
     });
     selectResults = [[app()]];
     const response = await request("/agent-configs/agent-1/sites/app-demo", { method: "POST" });
     expect(response.status).toBe(200);
-    expect(bound).toBe(appId);
+    expect(boundValues).toEqual([{ agentConfigId: "agent-1", siteAppId: appId }]);
   });
 
   // UUID 绑定使用本地 ID 查询路径，避免将 UUID 当作远端 ID。
   test("按 UUID 解绑 site", async () => {
-    let removed: string | undefined;
-    stubConfigPg({
-      getAgentConfigById: async () => ({ id: "agent-1" }),
-      removeAgentSiteApp: async (_agentId, siteId) => {
-        removed = siteId;
-      },
+    installAgentModuleStub({
+      service: { findRowUnscoped: async () => scopedAgent({ id: "agent-1", organizationId: "org-1" }) },
     });
     selectResults = [[app()]];
     expect((await request(`/agent-configs/agent-1/sites/${appId}`, { method: "DELETE" })).status).toBe(200);
-    expect(removed).toBe(appId);
+    expect(deletedParams).toEqual(["agent-1", appId]);
   });
 
   // custom app 不得进入 PocketBase 管理 API 代理。

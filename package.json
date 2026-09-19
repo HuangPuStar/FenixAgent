@@ -64,7 +64,6 @@
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-channel": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
-    "@fenix/resource-identity-admin": "workspace:*",
     "@fenix/resource-observer": "workspace:*",
     "@fenix/resource-prod-view": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",

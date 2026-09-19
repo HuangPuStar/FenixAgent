@@ -9,7 +9,14 @@ import {
   setTestAuth,
 } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { readJson, resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "../test-utils/helpers";
+import {
+  readJson,
+  resetAllStubs,
+  stubAuthApi,
+  stubAuthHandler,
+  stubDb,
+  stubEnvironmentRepo,
+} from "../test-utils/helpers";
 
 const user = { id: "user-1", email: "user-1@example.test", name: "测试用户" };
 
@@ -48,6 +55,27 @@ function sessionGuard() {
     { sessionAuth: true },
   );
 }
+
+/**
+ * 按调用顺序返回查询结果的 DB 替身。
+ *
+ * 凭据解析有固定查询顺序：先按 `referenceId` 查用户，再查该用户是否为目标组织成员。两步都走
+ * `select().from().where().limit()` 链；某个步骤抛错用来覆盖"成员关系不可验证"的保守拒绝分支。
+ */
+function sequencedDb(steps: (() => unknown[])[]) {
+  let call = 0;
+  return {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => steps[call++]?.() ?? [],
+        }),
+      }),
+    }),
+  };
+}
+
+const apiKeyRequest = () => new Request("http://localhost/resource", { headers: { Authorization: "Bearer api-key" } });
 
 function uuidGuard() {
   return new Elysia().use(authGuardPlugin).get("/uuid", ({ store }) => store.uuid, { uuidAuth: true });
@@ -332,6 +360,88 @@ describe("round45 auth plugin", () => {
 
     expect(result?.authSession?.id).toBe("session-1");
     expect(verifyCalled).toBeFalse();
+  });
+
+  // API key 的组织上下文只能由 key metadata 恢复（key 字符串本身不携带组织信息）。
+  test("API key 恢复 key metadata 的组织与角色", async () => {
+    stubAuthApi({
+      getSession: async () => null,
+      verifyApiKey: async () => ({
+        valid: true,
+        key: { referenceId: user.id, organizationId: "org-key", metadata: { role: "admin" } },
+      }),
+    });
+    // 未命中 environment secret 的 Bearer 凭据继续走 API key 校验（替身默认无该入口，须显式声明）。
+    stubEnvironmentRepo({ getBySecret: async () => null });
+    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }], () => [{ userId: user.id }]]));
+
+    const result = await authenticateRequest(apiKeyRequest());
+
+    expect(result?.authContext).toEqual({ organizationId: "org-key", userId: user.id, role: "admin" });
+    expect(result?.authSession).toBeNull();
+  });
+
+  // key 未携带任何组织元数据时必须拒绝，不能让请求落到无组织的默认上下文。
+  test("API key 缺少组织元数据时拒绝", async () => {
+    stubAuthApi({
+      getSession: async () => null,
+      verifyApiKey: async () => ({ valid: true, key: { referenceId: user.id } }),
+    });
+    stubEnvironmentRepo({ getBySecret: async () => null });
+    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }]]));
+
+    expect(await authenticateRequest(apiKeyRequest())).toBeNull();
+  });
+
+  // metadata 声明的组织里没有该用户时必须拒绝（成员关系重校验）。
+  test("API key 非成员时拒绝", async () => {
+    stubAuthApi({
+      getSession: async () => null,
+      verifyApiKey: async () => ({ valid: true, key: { referenceId: user.id, organizationId: "org-other" } }),
+    });
+    stubEnvironmentRepo({ getBySecret: async () => null });
+    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }], () => []]));
+
+    expect(await authenticateRequest(apiKeyRequest())).toBeNull();
+  });
+
+  // 成员关系不可验证（查询故障）时必须保守拒绝，不得放行 API key。
+  test("API key 成员校验异常时保守拒绝", async () => {
+    stubAuthApi({
+      getSession: async () => null,
+      verifyApiKey: async () => ({ valid: true, key: { referenceId: user.id, organizationId: "org-failing" } }),
+    });
+    stubEnvironmentRepo({ getBySecret: async () => null });
+    stubDb(
+      sequencedDb([
+        () => [{ id: user.id, name: user.name, email: user.email }],
+        () => {
+          throw new Error("member lookup unavailable");
+        },
+      ]),
+    );
+
+    expect(await authenticateRequest(apiKeyRequest())).toBeNull();
+  });
+
+  // Environment Secret 路径的组织上下文取 environment 归属，并回传命中的 environment ID。
+  test("Environment Secret 恢复 environment 组织上下文", async () => {
+    stubAuthApi({ getSession: async () => null });
+    stubEnvironmentRepo({
+      getBySecret: async () => ({
+        id: "env-1",
+        userId: user.id,
+        organizationId: "org-env",
+      }),
+    });
+    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }]]));
+
+    const result = await authenticateRequest(
+      new Request("http://localhost/resource", { headers: { Authorization: "Bearer env-secret" } }),
+    );
+
+    expect(result?.authEnvironmentId).toBe("env-1");
+    expect(result?.authContext).toEqual({ organizationId: "org-env", userId: user.id, role: "member" });
   });
 
   // session guard 应将 seam 用户、session 和组织上下文写入 route store。
