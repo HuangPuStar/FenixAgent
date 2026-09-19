@@ -346,20 +346,33 @@ mock.module("@fenix/resource-machine/file-ws-requests", () => {
 // ── react-i18next ──
 // CI 的 bun 包缓存（npmmirror 镜像）解析出的 react-i18next@17.0.8 的 es/index.js
 // 不导出 initReactI18next，导致任何导入 react-i18next 的前端测试抛出 SyntaxError。
-// 这里提供一个最小 mock，覆盖所有 react-i18next 导出，对后端测试无害（它们不导入该模块）。
+// 只有在真实模块不可用（上面那种解析结果）时才回退到最小 mock：该 mock 的 `t()` 原样返回 key，
+// 一旦无条件替换真实模块，所有断言真实文案的前端用例（packages/ui-components 的 demo 与
+// web/__tests__）都会因为读到 key 而失败 —— 2026-09-19 实测：根 bunfig 下 demo 三文件 21 例、
+// chat-composer 2 例、mock-chat-store 1 例全红，去掉本 mock 后同一批用例全绿。
+const reactI18nextUsable = await (async (): Promise<boolean> => {
+  try {
+    const mod = await import("react-i18next");
+    return typeof mod.initReactI18next !== "undefined";
+  } catch {
+    return false;
+  }
+})();
 
-mock.module("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
-  initReactI18next: { type: "3rdParty", init: () => {} },
-  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
-  Trans: ({ children }: { children: any }) => children,
-  // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
-  I18nextProvider: ({ children }: { children: any }) => children,
-  withTranslation: () => (Component: unknown) => Component,
-}));
+if (!reactI18nextUsable) {
+  mock.module("react-i18next", () => ({
+    useTranslation: () => ({
+      t: (key: string) => key,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    }),
+    initReactI18next: { type: "3rdParty", init: () => {} },
+    // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
+    Trans: ({ children }: { children: any }) => children,
+    // biome-ignore lint/suspicious/noExplicitAny: mock 不需要精确类型
+    I18nextProvider: ({ children }: { children: any }) => children,
+    withTranslation: () => (Component: unknown) => Component,
+  }));
+}
 
 // 测试依赖必须经 runtime 的服务端公开入口加载，避免绕过 workspace 的稳定边界。
 const {
