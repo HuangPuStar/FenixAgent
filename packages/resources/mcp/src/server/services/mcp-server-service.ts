@@ -1,7 +1,7 @@
 import type { ResourceQueryConstraint } from "@fenix/platform-sdk";
 import { mcpServer } from "@server/db/schema";
 import { asc } from "drizzle-orm";
-import type { McpServerRepository, McpToolRow, ScopedMcpServerRow } from "../repositories/mcp-server";
+import type { McpServerRepository, McpServerRow, McpToolRow, ScopedMcpServerRow } from "../repositories/mcp-server";
 import type { McpServerConfig, McpServerType } from "./config/mcp-config";
 import { VALID_MCP_TYPES } from "./config/mcp-config";
 
@@ -67,6 +67,17 @@ export interface McpServerService {
     ownerUserId: string;
     visibility: string;
   }): Promise<string | undefined>;
+  /**
+   * 无授权读取单行。
+   *
+   * 命名里带 `Unscoped` 是为了让调用点在代码评审中一眼可见：它绕过授权谓词，只允许系统路径调用
+   * （launch spec 构建按绑定表给出的 ID 取回 MCP 配置）。用户请求路径一律经 `findById`。
+   */
+  findRowUnscoped(resourceId: string): Promise<McpServerRow | undefined>;
+  /**
+   * 无授权按 ID 批量读取（launch spec 构建）；缺失的 ID 不出现在结果里，比对由调用方完成。
+   */
+  listRowsByIdsUnscoped(resourceIds: readonly string[]): Promise<readonly McpServerRow[]>;
   /** 系统托管资源的幂等写入（如 Hindsight MCP）；不做授权，只能由系统路径调用。 */
   upsertSystemServer(input: {
     name: string;
@@ -126,6 +137,15 @@ export function createMcpServerService(repository: McpServerRepository): McpServ
 
     async create(input) {
       return repository.insert(input);
+    },
+
+    async findRowUnscoped(resourceId) {
+      // 无授权读取：调用方必须已自行完成权限校验（launch spec 构建等系统路径）。
+      return repository.findByIdUnscoped({ resourceId });
+    },
+
+    async listRowsByIdsUnscoped(resourceIds) {
+      return repository.listByIdsUnscoped({ resourceIds });
     },
 
     async upsertSystemServer(input) {

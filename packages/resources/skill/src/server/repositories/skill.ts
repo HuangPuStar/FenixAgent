@@ -125,6 +125,14 @@ export interface SkillRepository {
    * （builtin 同步、launch spec 构建）。用户请求路径一律经 `findReadable*`。
    */
   findByIdUnscoped(input: { resourceId: string }): Promise<SkillRow | undefined>;
+  /**
+   * 无授权按 ID 批量读取。
+   *
+   * 与 {@link findByIdUnscoped} 同属系统路径（launch spec 构建要一次取回全部关联 Skill），差别只在
+   * 形状：调用方持有的是绑定表给出的 ID 集合，逐行读会退化成本次启动的 N+1 查询。缺失的 ID 只是不出现在
+   * 结果里，由调用方比对自己对齐既有失败语义。
+   */
+  listByIdsUnscoped(input: { resourceIds: readonly string[] }): Promise<readonly SkillRow[]>;
   /** 无授权按组织列出（builtin 孤儿清理要枚举整个托管租户，不是某个主体的可见集合）。 */
   listByOrganizationUnscoped(input: { organizationId: string }): Promise<readonly SkillRow[]>;
   /** 无授权按 (组织, 名称) 读取（builtin 同步判断"同名用户技能是否已存在"）。 */
@@ -281,6 +289,15 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     async findByIdUnscoped(input) {
       const rows = await getSkillDatabase().select().from(skill).where(eq(skill.id, input.resourceId)).limit(1);
       return rows[0];
+    },
+
+    async listByIdsUnscoped(input) {
+      // 空集合直接返回：`inArray` 配空数组会退化成常量条件，语义（"没有要读的行"）在 SQL 里表达不必要。
+      if (input.resourceIds.length === 0) return [];
+      return getSkillDatabase()
+        .select()
+        .from(skill)
+        .where(inArray(skill.id, [...input.resourceIds]));
     },
 
     async listByOrganizationUnscoped(input) {

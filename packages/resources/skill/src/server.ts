@@ -25,4 +25,5 @@ export { skillDownloadRoutes } from "./server/routes/skills";
 export { createWebSkillsConfigRoutes } from "./server/routes/web/config/skills";
 export { getSkillServerModule, installSkillServerModule } from "./server/runtime";
 export * from "./server/services/config/agent-config-skill";
+export type { SkillService } from "./server/services/skill-service";
 export type { SkillSystemApi, SkillSystemRecord } from "./server/services/skill-system";

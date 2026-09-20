@@ -1,5 +1,5 @@
 import { model } from "@server/db/schema";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, type SQL } from "drizzle-orm";
 import { getModelManagementDatabase } from "../db";
 
 /**
@@ -25,6 +25,14 @@ function database() {
  */
 
 export type ModelRow = typeof model.$inferSelect;
+
+/**
+ * Model 子行的次序键：创建时间升序 + `id` 升序。
+ *
+ * `id` 是必要的次序键：同一次批量写入的多行可能共享 `createdAt`，只按时间排序会让"第一个模型"在两次
+ * 查询之间漂移。
+ */
+export const MODEL_LIST_ORDER: readonly SQL[] = [asc(model.createdAt), asc(model.id)];
 
 /**
  * `model` 表的 jsonb 列形状。
@@ -76,6 +84,20 @@ export interface ModelRepository {
   countByProviderIds(input: { providerIds: readonly string[] }): Promise<ReadonlyMap<string, number>>;
   findById(input: { providerId: string; id: string }): Promise<ModelRow | undefined>;
   findByModelId(input: { providerId: string; modelId: string }): Promise<ModelRow | undefined>;
+  /**
+   * 无授权读取单行（launch spec 构建按 `agent_config.model_id` 取模型行）。
+   *
+   * 命名里带 `Unscoped` 是为了让调用点在代码评审中一眼可见：它绕过授权谓词，只允许系统路径调用。
+   * 用户请求路径一律经 `findById` / `findByModelId`（后两者还要求先给出 `providerId`）。
+   */
+  findRowUnscoped(input: { id: string }): Promise<ModelRow | undefined>;
+  /**
+   * 无授权取某 Provider 下按 {@link MODEL_LIST_ORDER} 排第一的模型。
+   *
+   * "第一个模型"这条规则与它的排序由本包持有：调用方（如 launch spec 构建）只表达"要一个可用的"，
+   * 不重复声明排序键，避免两侧排序分叉。
+   */
+  findFirstByProviderUnscoped(input: { providerId: string }): Promise<ModelRow | undefined>;
   /** 幂等创建；`(provider_id, model_id)` 唯一索引冲突时更新可写列。 */
   upsert(input: {
     providerId: string;
@@ -145,6 +167,21 @@ export function createModelRepository(): ModelRepository {
         .select()
         .from(model)
         .where(and(eq(model.providerId, input.providerId), eq(model.modelId, input.modelId)))
+        .limit(1);
+      return rows[0];
+    },
+
+    async findRowUnscoped(input) {
+      const rows = await database().select().from(model).where(eq(model.id, input.id)).limit(1);
+      return rows[0];
+    },
+
+    async findFirstByProviderUnscoped(input) {
+      const rows = await database()
+        .select()
+        .from(model)
+        .where(eq(model.providerId, input.providerId))
+        .orderBy(...MODEL_LIST_ORDER)
         .limit(1);
       return rows[0];
     },

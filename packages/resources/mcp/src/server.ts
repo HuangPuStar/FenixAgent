@@ -23,3 +23,4 @@ export { getMcpServerModule, installMcpServerModule } from "./server/runtime";
 export * from "./server/services/config/agent-config-mcp";
 export * from "./server/services/config/mcp-config";
 export * from "./server/services/mcp-inspector";
+export type { McpServerService } from "./server/services/mcp-server-service";

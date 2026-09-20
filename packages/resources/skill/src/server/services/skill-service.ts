@@ -89,6 +89,13 @@ export interface SkillService {
    * 绕过授权的路径，不会与「Facade 已授权后调用的领域方法」混在一起。
    */
   findRowUnscoped(resourceId: string): Promise<SkillRow | undefined>;
+  /**
+   * 无授权按 ID 批量读取单批行（launch spec 构建）。
+   *
+   * 与 {@link findRowUnscoped} 同一授权前提，只是调用方持有的是绑定表给出的 ID 集合；缺失的 ID
+   * 不出现在结果里，比对由调用方完成。
+   */
+  listRowsByIdsUnscoped(resourceIds: readonly string[]): Promise<readonly SkillRow[]>;
   /** 无授权按组织列出（builtin 孤儿清理）。 */
   listByOrganizationUnscoped(organizationId: string): Promise<readonly SkillRow[]>;
   /** 无授权按 (组织, 名称) 读取（builtin 同步）。 */
@@ -163,6 +170,10 @@ export function createSkillService(repository: SkillRepository): SkillService {
     async findRowUnscoped(resourceId) {
       // 无授权读取：调用方必须已自行完成权限校验（builtin 同步、launch spec 构建等系统路径）。
       return repository.findByIdUnscoped({ resourceId });
+    },
+
+    async listRowsByIdsUnscoped(resourceIds) {
+      return repository.listByIdsUnscoped({ resourceIds });
     },
 
     async listByOrganizationUnscoped(organizationId) {
