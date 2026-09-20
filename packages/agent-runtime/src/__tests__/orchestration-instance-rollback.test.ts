@@ -7,8 +7,7 @@
  * 永不回收，实例成为仅 stopAllInstances 可清的永久孤儿。
  *
  * 注入方式（禁 mock.module，全部用既有 seam）：
- *   - setOrchestrationInstanceDeps：覆盖 environmentRepo /
- *     getOrchestrationController / getOrchestrationLaunchSpecBuilder；
+ *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / getOrchestrationController；
  *   - 保留真实 buildAgentLaunchSpecForCore（无 agentConfigId 环境走 buildBasicLaunchSpec
  *     分支，需 stubDb 提供 provider/model 行），使 environmentRepo.getById 的
  *     "第 1 次成功（launch 构建链）、第 2 次抛错（registerSupplement）"序号注入可达——
@@ -20,7 +19,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
-import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
+import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { provider } from "@server/db/schema";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
@@ -62,11 +61,6 @@ const fakeController = {
     controllerStopCalls.push(instanceId);
   },
 } as unknown as AgentController;
-
-const fakeLaunchSpecBuilder = {
-  build: async (_envId: string, _userId: string) =>
-    ({ environmentId: ENV_ID, userId: USER_ID }) as unknown as LaunchSpec,
-} as unknown as LaunchSpecBuilder;
 
 const fakeEnvironmentRepo = {
   getById: async (_id: string) => {
@@ -156,7 +150,6 @@ describe("spawnInstanceViaController rollback", () => {
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
       getOrchestrationController: () => fakeController,
-      getOrchestrationLaunchSpecBuilder: () => fakeLaunchSpecBuilder,
     });
   });
 

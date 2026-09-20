@@ -46,7 +46,12 @@ export class MachineOfflineError extends OrchestrationError {
   }
 }
 
-/** LaunchSpec 构建失败：缺少必要配置字段或数据引用无效。 */
+/**
+ * 环境缺少启动条件：未绑定 Agent 配置，或未解析出执行机器。
+ *
+ * CE 1.4 W4 起 LaunchSpec 组装已迁出编排域，本错误保留原错误码（宿主按 422 映射，
+ * chat-channel 依赖它判定「配置性永久失败」），语义收窄为「环境的启动条件不成立」。
+ */
 export class LaunchSpecBuildError extends OrchestrationError {
   constructor(message = "Failed to build launch spec") {
     super(message, "LAUNCH_SPEC_BUILD_FAILED");

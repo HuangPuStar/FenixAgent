@@ -14,8 +14,8 @@ import { getAgentConfigDatabase } from "../db";
 /**
  * AgentConfig **资源行**的持久化访问层。
  *
- * 与同目录的 `agent-config.ts`（LaunchSpec 用的扁平聚合读取）职责不同：这里只处理资源主表本身的
- * 受控读写，是 `route → Facade → Domain Service → Repository` 里的最内层。
+ * 与同目录的 `agent-config.ts`（按 ID 批量取展示名一类的旁路只读查询）职责不同：这里只处理资源主表
+ * 本身的受控读写，是 `route → Facade → Domain Service → Repository` 里的最内层。
  *
  * 受控读取（列表 / 详情 / 按名 / 按资源键）一律经 {@link AuthorizedResourceQuery} 端口：本包只交出
  * 主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。仓储因此不持有任何组织、

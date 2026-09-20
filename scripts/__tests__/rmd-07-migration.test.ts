@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
 const RMD_07_MOVES = [
-  ["src/repositories/agent-engine.ts", "apps/server/src/repositories/agent-engine.ts"],
   ["src/repositories/index.ts", "apps/server/src/repositories/index.ts"],
   ["src/routes/hooks.ts", "apps/server/src/routes/hooks.ts"],
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
@@ -116,8 +115,12 @@ const RMD_07_RELOCATED = [
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
-  // 仅这 63 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
-  // 原 75 项中已有八项的目标不再由 server host 持有：
+  // 仅这 62 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 原 75 项中已有九项的目标不再由 server host 持有：
+  // 任务 1.4 W4b 的一项：`repositories/agent-engine.ts` 的宿主副本随「两条 LaunchSpec 收敛为一条」删除
+  //   （它只为编排域的扁平聚合读取 (`PgAgentEngineRepo`) 供数，收敛后宿主零消费方，按「删除优于兼容」
+  //   删除；同批删除的还有 `PgAgentConfigRepo` 的聚合读入口，见 review/task-1.4-agent-runtime.md）。
+  //   该文件既没有新的 owner 包，也不该以「已迁入宿主」的身份留在本表里，故整行移出。
   // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
   // - `routes/web/config/providers.ts` 由 Provider 资源包接管
@@ -144,7 +147,7 @@ describe("RMD-07 server-host migration", () => {
   // `/api/instances` 与 `/api/openai-chat`，测试则只覆盖搬入包内的 mapper；宿主侧已零消费方，按「删除优于
   // 兼容」把宿主副本删除、owner 落回包内。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(63);
+    expect(RMD_07_MOVES).toHaveLength(62);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);

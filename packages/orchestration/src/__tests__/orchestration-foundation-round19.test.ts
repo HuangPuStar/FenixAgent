@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { AgentController } from "../agent-controller";
 import { AgentNode } from "../agent-node/agent-node";
 import { AgentNodeFsm } from "../agent-node/agent-node-fsm";
-import type { AgentNodeSocket } from "../agent-node/types";
+import type { AgentNodeServicePort, AgentNodeSocket } from "../agent-node/types";
 import {
   AgentNodeUnavailableError,
   EnvironmentNotFoundError,
@@ -11,8 +12,7 @@ import {
   OrchestrationError,
 } from "../errors";
 import { Instance } from "../instance/instance";
-import { LaunchSpecBuilder } from "../launch-spec/launch-spec-builder";
-import type { AgentConfigData, AgentEngineData, EnvironmentData } from "../types/deps";
+import type { EnvironmentData, EnvironmentRepo } from "../types/deps";
 
 class FakeSocket implements AgentNodeSocket {
   readonly sent: unknown[] = [];
@@ -65,34 +65,43 @@ const environment: EnvironmentData = {
   autoStart: false,
 };
 
-const config: AgentConfigData = {
-  id: "config-1",
-  name: "writer",
-  systemPrompt: null,
-  modelProviderId: "provider-1",
-  modelName: "model-1",
-  engineId: "engine-1",
-  skills: [{ skillId: "skill-1", name: "review" }],
-  mcpServers: [{ mcpServerId: "mcp-1", name: "docs" }],
-  knowledgeBases: [{ kbId: "kb-1", name: "handbook" }],
-};
-
-const engine: AgentEngineData = { id: "engine-1", type: "opencode", version: "1.0.0" };
-
-function createBuilder(options?: {
-  environment?: EnvironmentData | null;
-  config?: AgentConfigData | null;
-  engine?: AgentEngineData | null;
-  workspaceRoot?: string;
-}) {
-  return new LaunchSpecBuilder({
-    workspaceRoot: options?.workspaceRoot,
-    environmentRepo: {
-      getEnvironment: async () => (options?.environment === undefined ? environment : options.environment),
+/** 假环境仓库：记录每次 getEnvironment 的入参，便于断言 spawn 透传了请求者身份。 */
+function createEnvironmentRepo(options?: { environment?: EnvironmentData | null }): EnvironmentRepo & {
+  calls: [string, string | undefined][];
+} {
+  const calls: [string, string | undefined][] = [];
+  return {
+    calls,
+    getEnvironment: async (envId, userId) => {
+      calls.push([envId, userId]);
+      return options?.environment === undefined ? environment : options.environment;
     },
-    agentConfigRepo: { getConfig: async () => (options?.config === undefined ? config : options.config) },
-    agentEngineRepo: { getEngine: async () => (options?.engine === undefined ? engine : options.engine) },
-  });
+  };
+}
+
+/**
+ * 假节点服务 + 真 AgentNode：节点能力走真实实现（send/stop 语义需要它），
+ * 服务侧只实现 AgentNodeServicePort 的两个操作，避免依赖 idle 回收与真实 WS。
+ */
+function createController(options?: { environment?: EnvironmentData | null; node?: AgentNode | null }): {
+  controller: AgentController;
+  environmentRepo: ReturnType<typeof createEnvironmentRepo>;
+  released: string[];
+} {
+  const environmentRepo = createEnvironmentRepo({ environment: options?.environment });
+  const released: string[] = [];
+  const node = options?.node === undefined ? createConnectedNode() : options.node;
+  const agentNodeService: AgentNodeServicePort = {
+    ensureNode: (machineId) => {
+      if (node === null) throw new AgentNodeUnavailableError();
+      if (node.machineId !== machineId) throw new AgentNodeUnavailableError();
+      return node;
+    },
+    releaseNode: (machineId) => {
+      released.push(machineId);
+    },
+  };
+  return { controller: new AgentController({ agentNodeService, environmentRepo }), environmentRepo, released };
 }
 
 function createConnectedNode(socket = new FakeSocket()): AgentNode {
@@ -116,96 +125,58 @@ function createInstance(socket = new FakeSocket()): { instance: Instance; socket
 }
 
 describe("编排基础模块隔离测试", () => {
-  // LaunchSpec 会聚合环境、配置、引擎和受控 workspace 路径。
-  test("构建完整 LaunchSpec", async () => {
-    await expect(createBuilder({ workspaceRoot: "/data/workspaces" }).build("env-1", "user-1")).resolves.toEqual({
-      environmentId: "env-1",
-      agentConfig: config,
-      engine,
-      cwd: "/data/workspaces/org-1/user-1/env-1",
-      userId: "user-1",
-    });
-  });
-
-  // 未指定工作区根目录时使用稳定默认值。
-  test("使用默认工作区根目录", async () => {
-    await expect(createBuilder().build("env-1", "user-1")).resolves.toMatchObject({
-      cwd: "workspaces/org-1/user-1/env-1",
-    });
-  });
-
-  // 构建过程必须将请求用户透传给环境仓库以支持归属解析。
-  test("向环境仓库透传用户标识", async () => {
-    const calls: [string, string | undefined][] = [];
-    const builder = new LaunchSpecBuilder({
-      environmentRepo: {
-        getEnvironment: async (envId, userId) => {
-          calls.push([envId, userId]);
-          return environment;
-        },
-      },
-      agentConfigRepo: { getConfig: async () => config },
-      agentEngineRepo: { getEngine: async () => engine },
-    });
-
-    await builder.build("env-1", "user-99");
-    expect(calls).toEqual([["env-1", "user-99"]]);
-  });
-
-  // 不存在的环境应产生稳定的领域错误和诊断信息。
+  // 不存在的环境以领域错误拒绝，并保留环境 ID 作为诊断上下文；
+  // （原 LaunchSpecBuilder 的「环境不存在」断言面在 CE 1.4 W4 收敛到 controller）。
   test("拒绝不存在的环境", async () => {
-    await expect(createBuilder({ environment: null }).build("missing", "user-1")).rejects.toMatchObject({
+    const { controller } = createController({ environment: null });
+    await expect(controller.spawnInstance("missing", "user-1", "inst-1")).rejects.toMatchObject({
+      code: "ENVIRONMENT_NOT_FOUND",
+      message: "Environment 'missing' not found",
+    });
+  });
+
+  // 未绑定 Agent 配置的环境不能创建实例：本域只保证「有配置可启动」，
+  // 错误码保持 LAUNCH_SPEC_BUILD_FAILED（宿主按 422 映射）。
+  test("拒绝未绑定 Agent 配置的环境", async () => {
+    const { controller } = createController({ environment: { ...environment, agentConfigId: null } });
+    await expect(controller.spawnInstance("env-1", "user-1", "inst-1")).rejects.toBeInstanceOf(LaunchSpecBuildError);
+  });
+
+  // 未解析出执行机器的环境同样拒绝，避免实例落到无节点可用的状态。
+  test("拒绝未解析出机器的环境", async () => {
+    const { controller } = createController({ environment: { ...environment, machineId: null } });
+    await expect(controller.spawnInstance("env-1", "user-1", "inst-1")).rejects.toMatchObject({
       code: "LAUNCH_SPEC_BUILD_FAILED",
-      message: "Cannot build launch spec: environment 'missing' not found",
+      message: "Cannot spawn instance: environment 'env-1' has no machineId configured",
     });
   });
 
-  // 未绑定 Agent 配置的环境不能生成伪成功启动配置。
-  test("拒绝缺少 Agent 配置引用的环境", async () => {
-    await expect(
-      createBuilder({ environment: { ...environment, agentConfigId: null } }).build("env-1", "user-1"),
-    ).rejects.toBeInstanceOf(LaunchSpecBuildError);
-  });
+  // 创建实例必须把请求者透传给环境仓库（机器解析可能按用户归属），
+  // 并把环境身份写入实例快照（启动参数由 Runtime 侧按同一身份组装）。
+  test("按环境身份创建实例并透传请求者", async () => {
+    const { controller, environmentRepo } = createController();
+    const instance = await controller.spawnInstance("env-1", "user-99", "inst-1");
 
-  // 配置引用失效时应保留配置 ID 作为诊断上下文。
-  test("拒绝不存在的 Agent 配置", async () => {
-    await expect(createBuilder({ config: null }).build("env-1", "user-1")).rejects.toThrow(
-      "agent config 'config-1' not found",
-    );
-  });
-
-  // 空名称是缺失字段，避免生成不可识别的运行配置。
-  test("拒绝空 Agent 名称", async () => {
-    await expect(createBuilder({ config: { ...config, name: "" } }).build("env-1", "user-1")).rejects.toThrow("'name'");
-  });
-
-  // 空模型名是缺失字段，避免下游运行时才失败。
-  test("拒绝空模型名称", async () => {
-    await expect(createBuilder({ config: { ...config, modelName: "" } }).build("env-1", "user-1")).rejects.toThrow(
-      "'modelName'",
-    );
-  });
-
-  // 空引擎引用是缺失字段，避免访问无效引擎。
-  test("拒绝空引擎引用", async () => {
-    await expect(createBuilder({ config: { ...config, engineId: "" } }).build("env-1", "user-1")).rejects.toThrow(
-      "'engineId'",
-    );
-  });
-
-  // 不存在的引擎必须阻断启动并保留引用链路。
-  test("拒绝不存在的引擎", async () => {
-    await expect(createBuilder({ engine: null }).build("env-1", "user-1")).rejects.toThrow(
-      "engine 'engine-1' not found",
-    );
-  });
-
-  // 有效配置中的嵌套数组必须原样保留给运行时序列化。
-  test("保留技能、MCP 和知识库配置", async () => {
-    const spec = await createBuilder().build("env-1", "user-1");
-    expect(JSON.parse(JSON.stringify(spec))).toMatchObject({
-      agentConfig: { skills: config.skills, mcpServers: config.mcpServers, knowledgeBases: config.knowledgeBases },
+    expect(environmentRepo.calls).toEqual([["env-1", "user-99"]]);
+    expect(instance.info()).toEqual({
+      instanceId: "inst-1",
+      environmentId: "env-1",
+      agentConfigId: "config-1",
+      machineId: "machine-1",
+      status: "running",
     });
+    expect(controller.listInstances().map((active) => active.instanceId)).toEqual(["inst-1"]);
+  });
+
+  // 停止实例后必须移出活跃表并归还节点引用，避免节点引用计数残留导致空闲回收不触发。
+  test("停止实例后移出活跃表并归还引用", async () => {
+    const { controller, released } = createController();
+    await controller.spawnInstance("env-1", "user-1", "inst-1");
+
+    await controller.stopInstance("inst-1");
+
+    expect(controller.listInstances()).toEqual([]);
+    expect(released).toEqual(["machine-1"]);
   });
 
   // 状态机从初始状态可按协议进入连接中。

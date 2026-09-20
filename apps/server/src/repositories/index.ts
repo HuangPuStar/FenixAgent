@@ -10,4 +10,3 @@ export type {
   KnowledgeResourceRow,
 } from "@fenix/resource-knowledge/server";
 export { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "@fenix/resource-knowledge/server";
-export { agentEngineRepo } from "./agent-engine";

@@ -6,15 +6,13 @@
  * 不改新包代码，在本层包装：controller.spawnInstance（编排域校验 + 生命周期）→
  * 组装 core 的 AgentLaunchSpec → launchInstance（真实启动）。
  *
- * 过渡期说明：编排域 LaunchSpec 是扁平聚合视图，缺少 model 的 baseUrl/apiKey/
- * protocol、skills 下载地址、MCP 详细配置等运行时字段，无法直接作为 core 的
- * AgentLaunchSpec。这里复用旧 launch-spec-builder 从 DB 重建完整 AgentLaunchSpec，
- * 与 services/instance.ts 的构建路径保持一致。Phase C 迁移调用方后，应把该构建
- * 收敛回编排域 LaunchSpec 的数据面，避免双份构建。
+ * 启动参数（模型密钥、Skill、MCP、知识库）的组装在本片已迁出：编排域不再构建
+ * LaunchSpec（CE 1.4 W4），本层按 `{ environmentId, userId }` 这一对身份调
+ * `AgentLaunchSpecPort`（宿主绑定 agent-config 的组装器），两条 LaunchSpec 收敛为一条。
  */
 
 import { log, error as logError } from "@fenix/logger";
-import type { Instance, LaunchSpec } from "@fenix/orchestration";
+import type { Instance } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "@server/config";
@@ -25,16 +23,27 @@ import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-r
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/instance";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { globalInstanceRegistry } from "./instance-registry";
-import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
+import { getOrchestrationController } from "./orchestration-bootstrap";
 
 const LOCAL_DEFAULT_NODE_ID = "local-default";
+
+/**
+ * 启动所需的最小实例身份：环境 + 属主。
+ *
+ * 模型/资源参数由组装方从环境行与其绑定配置解析，本层不传递运行时字段。
+ */
+export interface LaunchTargetRef {
+  /** 来源环境 ID。 */
+  readonly environmentId: string;
+  /** 实例属主（真实用户身份，`environment.userId` 优先）。 */
+  readonly userId: string;
+}
 
 const _deps = {
   environmentRepo,
   // 内部函数引用：默认走真实 DB 构建；测试注入假实现以隔离 DB
   buildAgentLaunchSpecForCore,
   getOrchestrationController,
-  getOrchestrationLaunchSpecBuilder,
   // SP-C2：实例停止完成后关闭前端 YJS client。仅回收 Doc 不会断开浏览器连接，
   // shared relay 及 listener 会残留为 Observer 中的孤儿 chat-relay；惰性导入避免
   // 与 chat-channel-bootstrap 的模块循环，测试可注入 spy 验证顺序。
@@ -93,13 +102,13 @@ export interface SpawnInstanceViaControllerOptions {
  * local-default 分支：engineType 仅 local 执行时由上层传入（config.defaultEngineType）；
  * remote 时不传，由 machine 端自行决定（对齐旧 services/instance.ts 的节点选择逻辑）。
  *
- * @param launchSpec 编排域 LaunchSpec（仅取 environmentId/userId，运行时字段从 DB 重建）
+ * @param target 启动身份（环境 + 属主）；运行时参数由组装方解析
  * @param instanceId 编排域 Instance 的 instanceId（与 core 实例一一对应）
  * @param machineId controller 已解析的节点标识（Instance.machineId 快照，禁止重读 env 推导）
  * @param extraEnv 调用方环境变量覆盖，透传给 buildAgentLaunchSpecForCore
  */
 export async function spawnInstanceViaCore(
-  launchSpec: LaunchSpec,
+  target: LaunchTargetRef,
   instanceId: string,
   machineId: string,
   extraEnv?: Record<string, string>,
@@ -107,7 +116,7 @@ export async function spawnInstanceViaCore(
 ): Promise<void> {
   const nodeId = machineId;
 
-  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(launchSpec, extraEnv);
+  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(target, extraEnv);
 
   const facade = getCoreRuntime();
   try {
@@ -164,13 +173,12 @@ export async function spawnInstanceViaController(
     const instance = await controller.spawnInstance(envId, userId, options.instanceUid);
 
     try {
-      // LaunchSpecBuilder 与 controller 内部构建重复（编排域未暴露已构建的 LaunchSpec）。
-      // I4 过渡期可接受：两次构建均为只读 DB 查询；Phase C 后由包内统一。
-      const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
       // instance.machineId 与 controller 内部 ensureNode 使用同一快照（同一次 env 读取的
       // 解析结果），保证 refCount 节点与 core nodeId 一致（A-P2.2）；禁止改回重读 env。
+      // 运行时参数由 `buildAgentLaunchSpecForCore` 按 (environmentId, userId) 经端口组装，
+      // 不再有第二份编排域 LaunchSpec（CE 1.4 W4 收敛）。
       await spawnInstanceViaCore(
-        launchSpec,
+        { environmentId: envId, userId },
         instance.instanceId,
         instance.machineId,
         options.extraEnv,
@@ -215,8 +223,7 @@ export async function spawnInstanceViaController(
  * 该操作复用现有 runtime，不重启进程或断开 relay。
  */
 export async function refreshInstanceEnvironment(instanceId: string, envId: string, userId: string): Promise<void> {
-  const launchSpec = await _deps.getOrchestrationLaunchSpecBuilder().build(envId, userId);
-  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore(launchSpec);
+  const agentLaunchSpec = await _deps.buildAgentLaunchSpecForCore({ environmentId: envId, userId });
   await getCoreRuntime().refreshInstanceEnvironment({ instanceId, launchSpec: agentLaunchSpec });
   log(`[orchestration-instance] refreshed environment: instanceId=${instanceId}`);
 }
@@ -420,51 +427,52 @@ export async function terminateLocalDeadInstance(instanceId: string): Promise<vo
 }
 
 /**
- * 从编排域 LaunchSpec 重建 core 的 AgentLaunchSpec。
+ * 按启动身份重建 core 的 AgentLaunchSpec。
  *
- * 编排域数据面（扁平聚合）不含 model 密钥 / skills 下载地址 / MCP 详细配置，故组装交给
- * `AgentLaunchSpecPort`（宿主绑定 agent-config 的组装器）从 DB 完整解析，保证与既有
- * spawnInstanceFromEnvironment 路径产出的运行时配置一致。本函数只负责**实例上下文**：
- * 环境行、`platformEnv`（USER_META_*）注入、`extraEnv` 合并与机器缓存预热——这些都是
- * 「实例跑在哪、用谁的密钥」的信息，与密钥同源，留在本包（review §15.3 的三张表）。
+ * 编排域数据面（扁平聚合）已随 CE 1.4 W4 删除，组装交给 `AgentLaunchSpecPort`（宿主绑定
+ * agent-config 的组装器）从 DB 完整解析，保证与既有 spawnInstanceFromEnvironment 路径产出的
+ * 运行时配置一致。本函数只负责**实例上下文**：环境行、`platformEnv`（USER_META_*）注入、
+ * `extraEnv` 合并与机器缓存预热——这些都是「实例跑在哪、用谁的密钥」的信息，与密钥同源，
+ * 留在本包（review §15.3 的三张表）。
  *
+ * @param target 启动身份（环境 + 属主）
  * @param extraEnv 调用方环境变量覆盖，按 `{ ...platformEnv, ...extraEnv }` 语义合并
  *                 （显式传入的同名变量优先）。
  */
 async function buildAgentLaunchSpecForCore(
-  launchSpec: LaunchSpec,
+  target: LaunchTargetRef,
   extraEnv?: Record<string, string>,
 ): Promise<AgentLaunchSpec> {
-  const env = await _deps.environmentRepo.getById(launchSpec.environmentId);
+  const env = await _deps.environmentRepo.getById(target.environmentId);
   if (!env) {
-    throw new NotFoundError(`Environment '${launchSpec.environmentId}' not found`);
+    throw new NotFoundError(`Environment '${target.environmentId}' not found`);
   }
 
   const platformEnv: Record<string, string> = {
     USER_META_API_KEY: env.secret,
     USER_META_BASE_URL: getBaseUrl(),
-    USER_META_USER_ID: env.userId ?? launchSpec.userId,
+    USER_META_USER_ID: env.userId ?? target.userId,
     USER_META_ORG_ID: env.organizationId ?? "",
     // langfuse trace 的 user 维度：与 USER_META_USER_ID 同源（environment 属主优先），
     // peri 的 langfuse tracer 经 LANGFUSE_USER_ID 写入 TraceBody.user_id（动态，按实例注入）
-    LANGFUSE_USER_ID: env.userId ?? launchSpec.userId,
+    LANGFUSE_USER_ID: env.userId ?? target.userId,
   };
   // 对齐旧路径：调用方显式传入的同名环境变量优先
   const mergedExtraEnv = { ...platformEnv, ...extraEnv };
-  const organizationId = env.organizationId ?? launchSpec.userId;
-  const ownerUserId = launchSpec.userId;
+  const organizationId = env.organizationId ?? target.userId;
+  const ownerUserId = target.userId;
 
   if (!env.agentConfigId) {
     // 无 agentConfigId 环境（历史遗留 / 系统级环境）走最小 LaunchSpec，等价旧路径
     // spawnInstanceFromEnvironment 的 buildBasicLaunchSpec 分支——不继承
     // prompt / skills / MCP 等额外配置。
-    // 注意：编排域 controller.spawnInstance 的 LaunchSpecBuilder 会在更早阶段对
-    // 无 agentConfigId 环境抛 LaunchSpecBuildError(422)，本分支通常不可达，仅作为
-    // 防御性对齐保留（若编排域侧未来放宽构建约束，此处行为仍与旧路径一致）。
+    // 注意：编排域 controller.spawnInstance 会在更早阶段对无 agentConfigId 环境抛
+    // LaunchSpecBuildError(422)，本分支通常不可达，仅作为防御性对齐保留（若编排域侧
+    // 未来放宽启动约束，此处行为仍与旧路径一致）。
     // 无 agentConfigId 且无 machine 配置时：EnvironmentRepo 回退 local-default
     // （本地执行未禁用），与旧路径行为一致；禁用本地执行时 controller 阶段即拒绝。
     return getAgentLaunchSpecPort().buildMinimalAgentLaunchSpec({
-      environmentId: launchSpec.environmentId,
+      environmentId: target.environmentId,
       organizationId,
       ownerUserId,
       extraEnv: mergedExtraEnv,
@@ -485,11 +493,11 @@ async function buildAgentLaunchSpecForCore(
   if (projection?.node?.kind === "machine") {
     // 运行时入口的服务聚合会回指本模块；仅在实例已进入启动流程后加载，避免模块初始化环。
     const { setAgentMachineCache } = await import("../server/transport/acp-ws-handler");
-    setAgentMachineCache(launchSpec.environmentId, projection.node.machineId);
+    setAgentMachineCache(target.environmentId, projection.node.machineId);
   }
 
   return getAgentLaunchSpecPort().buildAgentLaunchSpec({
-    environmentId: launchSpec.environmentId,
+    environmentId: target.environmentId,
     organizationId,
     ownerUserId,
     agentConfigId: env.agentConfigId,

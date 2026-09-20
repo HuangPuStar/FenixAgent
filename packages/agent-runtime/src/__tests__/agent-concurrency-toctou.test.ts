@@ -3,15 +3,14 @@
  *
  * 背景：spawnInstanceViaController 原先在函数首行做只读并发检查
  * （assertAgentConcurrencyAvailable），之后到 registerSupplement 注册之间隔着
- * controller.spawnInstance、LaunchSpec 构建、core launch 等多个 await 窗口，
+ * controller.spawnInstance、启动参数组装、core launch 等多个 await 窗口，
  * 期间新实例在用户级/定时级统计中完全不可见，N 个并发 spawn 可全部通过检查
  * 造成同用户超发 1+。修复：检查与 in-flight 预留合并为同一同步段
  * （beginSpawnReservation），统计函数把未释放的预留计入各桶，finally 兜底释放。
  *
  * 注入方式（禁 mock.module，全部用既有 seam，结构与
  * orchestration-instance-rollback.test.ts 一致）：
- *   - setOrchestrationInstanceDeps：覆盖 environmentRepo /
- *     getOrchestrationController / getOrchestrationLaunchSpecBuilder；
+ *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / getOrchestrationController；
  *   - 保留真实 buildAgentLaunchSpecForCore（无 agentConfigId 环境走 buildBasicLaunchSpec
  *     分支，需 stubDb 提供 provider/model 行）；
  *   - stubCoreBootstrap("getCoreRuntime") 注入假 facade：launchInstance 挂在可控
@@ -22,7 +21,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
-import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
+import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { provider } from "@server/db/schema";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
@@ -105,11 +104,6 @@ const fakeController = {
   },
   stopInstance: async () => {},
 } as unknown as AgentController;
-
-const fakeLaunchSpecBuilder = {
-  build: async (_envId: string, _userId: string) =>
-    ({ environmentId: ENV_ID, userId: USER_ID }) as unknown as LaunchSpec,
-} as unknown as LaunchSpecBuilder;
 
 const fakeEnvironmentRepo = {
   getById: async (_id: string) => {
@@ -206,7 +200,6 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
       getOrchestrationController: () => fakeController,
-      getOrchestrationLaunchSpecBuilder: () => fakeLaunchSpecBuilder,
     });
   });
 

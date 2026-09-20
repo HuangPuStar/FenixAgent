@@ -12,14 +12,14 @@
  *
  * 注入方式（禁 mock.module，全部用既有 seam）：
  *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / buildAgentLaunchSpecForCore /
- *     getOrchestrationController / getOrchestrationLaunchSpecBuilder；
+ *     getOrchestrationController；
  *   - stubCoreBootstrap({ getCoreRuntime }) 注入假 facade。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, LaunchInstanceRequest } from "@fenix/core";
-import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
+import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, setConfig } from "@server/config";
@@ -27,6 +27,7 @@ import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
+  type LaunchTargetRef,
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
   spawnInstanceViaController,
@@ -59,16 +60,11 @@ const fakeController = {
   stopInstance: async () => {},
 } as unknown as AgentController;
 
-const fakeLaunchSpecBuilder = {
-  build: async (_envId: string, _userId: string) =>
-    ({ environmentId: ENV_ID, userId: USER_ID }) as unknown as LaunchSpec,
-} as unknown as LaunchSpecBuilder;
-
-/** 直接调用 spawnInstanceViaCore 的最小 LaunchSpec（跳过 builder，聚焦 nodeId 透传）。 */
-const MINIMAL_LAUNCH_SPEC = { environmentId: ENV_ID, userId: USER_ID } as unknown as LaunchSpec;
+/** 直接调用 spawnInstanceViaCore 的最小启动身份（跳过组装链，聚焦 nodeId 透传）。 */
+const MINIMAL_TARGET: LaunchTargetRef = { environmentId: ENV_ID, userId: USER_ID };
 
 /** 假 buildAgentLaunchSpecForCore：跳过 DB 构建链，隔离 core 侧配置组装。 */
-const fakeBuildAgentLaunchSpecForCore = async (_launchSpec: LaunchSpec, _extraEnv?: Record<string, string>) =>
+const fakeBuildAgentLaunchSpecForCore = async (_target: LaunchTargetRef, _extraEnv?: Record<string, string>) =>
   ({ workspace: "/tmp/ws", env: {}, agent: { name: "test" } }) as unknown as AgentLaunchSpec;
 
 /** 假 environmentRepo：仅 serve registerSupplement 的 env 查询。 */
@@ -96,7 +92,6 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
       environmentRepo: fakeEnvironmentRepo,
       buildAgentLaunchSpecForCore: fakeBuildAgentLaunchSpecForCore,
       getOrchestrationController: () => fakeController,
-      getOrchestrationLaunchSpecBuilder: () => fakeLaunchSpecBuilder,
     });
   });
 
@@ -125,7 +120,7 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
   // remote 分支透传：直接调用 spawnInstanceViaCore 时 nodeId 原样进入 launchInstance，
   // engineType 保持 undefined（remote 由 machine 端自行决定引擎）
   test("spawnInstanceViaCore passes nodeId through on remote branch", async () => {
-    await spawnInstanceViaCore(MINIMAL_LAUNCH_SPEC, "inst-1", "mach_remote");
+    await spawnInstanceViaCore(MINIMAL_TARGET, "inst-1", "mach_remote");
 
     expect(launchCalls).toHaveLength(1);
     expect(launchCalls[0]).toMatchObject({ instanceId: "inst-1", nodeId: "mach_remote" });
@@ -137,7 +132,7 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
   test("local-default branch keeps engineType passthrough", async () => {
     setConfig({ defaultEngineType: "ccb" });
 
-    await spawnInstanceViaCore(MINIMAL_LAUNCH_SPEC, "inst-1", "local-default");
+    await spawnInstanceViaCore(MINIMAL_TARGET, "inst-1", "local-default");
 
     expect(launchCalls).toHaveLength(1);
     expect(launchCalls[0]).toMatchObject({ instanceId: "inst-1", nodeId: "local-default", engineType: "ccb" });
