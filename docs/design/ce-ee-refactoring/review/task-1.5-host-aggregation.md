@@ -648,3 +648,49 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 `dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
 迁入的两个用例 + `rmd-07-migration` 共 9 pass / 0 fail；`check:root-owner-inventory` 报
 `files=0 unowned=0 ambiguous=0`。
+
+### 1.5c-3b 控制台环境路由迁入 agent-runtime（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebEnvironmentsRoutes(deps)`，同时删掉末尾的 `export default createEnvironmentRoutes()` | `apps/server/src/routes/web/environments.ts` → `packages/agent-runtime/src/routes/web/environments.ts` |
+| 其用例随迁（30 例，认证改用包内守卫替身） | `apps/server/src/__tests__/round44-environments-routes.test.ts` → `packages/agent-runtime/src/__tests__/` |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+default 自执行导出被删除的理由：宿主是唯一的挂载方，`export default createEnvironmentRoutes()` 会让**任何**
+导入方都构造一份路由实例（含测试的 `mock.module` 转发表），与「工厂 + 宿主注入守卫」的形态冲突。
+
+取数方式与 1.5c-3a 的 instances 一致（经 `getBoundAgentRuntime()`，判据见 1.5c-3a 的 §二）——环境能力同样
+声明在 `AgentRuntimePort` 上。本片同样**没有触碰**任何状态机、幂等、lease、限流、disconnect fencing 或
+dispose 逻辑。
+
+**二、测试随迁时的两处口径调整**
+
+1. **认证改经包内守卫替身**：`@server/plugins/auth` 的 `setTestAuth` 换成 `./guard-stubs`，形状由
+   `{ user, authContext: { role, … } }` 收窄为 `{ organizationId, userId }`。30 个用例全部通过，未改任何断言。
+2. **`setTestOrgContext` 与 `stubAuthApi` 一并消失**：前者是宿主 `services/org-context.ts` 的测试 seam
+   （让 `loadOrgContext` 跳过 DB 查询），后者替换宿主 auth 插件的凭据解析。两者服务于**宿主装配路径**，
+   而包内守卫替身直接提供 `authContext` 并自行判定未认证，因此迁入后不再需要——「未认证返回 401」这条
+   用例只保留 `resetTestAuth()`。这不是能力丢失：组织解析与凭据解析都属宿主守卫的职责，其验收范围在宿主
+   装配用例（`guard-stubs.ts` 的注释已写明包内替身刻意不复刻这些规则）。
+
+**三、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`src/routes/web/environments.ts` 移入 `RMD_07_RELOCATED`
+  （长度 45 → 44、11 → 12），两处注释块补记（含说明 `round44-environments-routes.test.ts` 不在本表内）。
+- `scripts/architecture/exceptions.json`：`apps-boundary` 的 `agent-runtime → server-app` 条目再次据实重测——
+  测试侧由 15 处 / 15 文件升为 **17 处 / 17 文件**（`module-stubs` 13 → 15），新增的两处即本片与上一片迁入的
+  `round44-environments-routes.test.ts` 与 `instances-delete-idempotent.test.ts`；非测试侧不变（5 处
+  `@server/db/schema`）。三处新增都属「宿主测试基建的既有耦合」这一已登记形态，不是包对宿主生产实现的依赖。
+- `scripts/root-source-owner-rules.ts` **无需改动**：该文件里 `src/__tests__/round44-environments-routes` 的
+  规则本就登记为 `agent-runtime`（`scripts/__tests__/root-source-owner-inventory.test.ts:176` 也如此断言），
+  本片的落点与台账原本的预期一致；`src/routes/web/environments.ts` 无专门规则（落在 `src/routes/web/` 通配下），
+  按 1.4 W2b 先例不补条目。
+
+**验证证据**：`precheck` 全绿 `All passed (100591ms)`——server-and-script-tests 798 pass（较上片少 30 例，
+即本片迁出的 30）、package-tests 7296 pass（+30）/ web-app-tests 946 pass / 0 fail；`architecture`、
+`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
+迁入的 30 例 + `rmd-07-migration` + `root-source-owner-inventory` 共 55 pass / 0 fail。

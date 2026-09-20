@@ -45,6 +45,7 @@ export type {
   ApiInstanceRouteDependencies,
 } from "./routes/dependencies"; // 路由·注入契约类型（宿主装配层按它们构造注入对象）
 export { createWebControlRoutes } from "./routes/web/control"; // 路由·控制面会话事件与中断（守卫由宿主注入）
+export { createWebEnvironmentsRoutes } from "./routes/web/environments"; // 路由·控制台环境生命周期（守卫由宿主注入）
 export { createWebInstancesRoutes } from "./routes/web/instances"; // 路由·控制台实例生命周期动作与活跃度（守卫由宿主注入）
 export * from "./schemas/acp.schema"; // 协议·ACP
 export type {
