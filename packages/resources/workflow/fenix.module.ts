@@ -10,9 +10,10 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  *
  * `dependsOn: []`：本包服务端生产代码（`src/**`）没有任何对已注册 `resource` 模块的值导入，是叶子模块。
  * 现有跨包导入都属于「不构成装配依赖」的四类边，故不声明：
- * - `@fenix/agent-runtime/server`：`src/server/services/workflow/index.ts:14` 导入 `stopInstance`
- * 清理 run 创建的实例、`src/server/services/workflow/workflow-events.ts:8` 导入事件总线、
- * `src/server/services/workflow/agent-chat-transport.ts:24` 导入实例启动/心跳/停止。agent-runtime 是
+ * - `@fenix/agent-runtime/runtime`：`src/server/services/workflow/index.ts:14` 取运行 port 后调
+ * `stopInstance` 清理 run 创建的实例、`workflow-events.ts` 经 `session.getEventBus` 取事件总线、
+ * `agent-chat-transport.ts` 经 port 做实例启动/心跳/停止（1.4 W6b 前这三处都从 `./server` 取，
+ * 观测面与总线归位后不再有装配面取数）。agent-runtime 是
  * 基础类别，在 assembly profile 里是固定槽位（`requireFoundation`），跨类别边由 §2.3 依赖矩阵负责；
  * - `@fenix/workflow-engine` 与 `@fenix/plugin-sdk`（后者在 `agent-chat-transport.ts:26` 仅 `import type`，
  * 编译期擦除）：两者都未注册为模块，写进 `dependsOn` 会被 registry 生成器以「引用了未注册模块」拒绝；

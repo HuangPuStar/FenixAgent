@@ -16,8 +16,8 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `"@fenix/resource-knowledge": "workspace:*"`。方向是资源包 → 对方根入口公开的 service，与 §2.3
  * 依赖矩阵一致。这条边不可降级为可选：知识库能力缺席时该协议入口只剩鉴权壳。
  *
- * 不声明 `agent-runtime`：同一文件第 1 行还值导入 `@fenix/agent-runtime/server` 的
- * `getEnvironmentBySecret`（用 Bearer token 解析调用方 environment），但 agent-runtime 是 profile 的
+ * 不声明 `agent-runtime`：知识库路由还值导入 `@fenix/agent-runtime/runtime` 的 `getBoundAgentRuntime()`
+ * （经 `getEnvironmentBySecret` 用 Bearer token 解析调用方 environment），但 agent-runtime 是 profile 的
  * 固定基础槽位——`createModuleRegistry` 的 `requireFoundation` 恒启用它并强制其提供工厂——跨类别
  * 方向由 §2.3 矩阵与架构台账管理，不是资源包之间需要成套启用的装配边。
  * `@fenix/platform-sdk` / `@fenix/logger` 是稳定契约与日志基础设施而非模块，同样不进 `dependsOn`。

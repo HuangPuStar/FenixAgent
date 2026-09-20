@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getAllEventBuses, removeEventBus } from "@fenix/agent-runtime/server";
+import { getAllEventBuses, removeEventBus } from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { createWebWorkflowSseRoutes } from "../server/routes/web/workflow-sse";
 import { publishWorkflowEvent } from "../server/services/workflow/workflow-events";

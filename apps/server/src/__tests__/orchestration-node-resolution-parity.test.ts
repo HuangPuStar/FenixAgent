@@ -20,7 +20,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { resolveAgentNode } from "@fenix/agent-config/server";
-import { createExecutionNodeResolver } from "@fenix/agent-runtime/server";
+import { createExecutionNodeResolver } from "@fenix/agent-runtime/server/testing";
 
 /** agent-config 侧判定 → 两侧可比的规范形（sandbox 加前缀，machine 用裸 id，未指定为 null）。 */
 function canonicalFromAgentConfig(input: { agentNode: unknown; machineId: string | null }): string | null {

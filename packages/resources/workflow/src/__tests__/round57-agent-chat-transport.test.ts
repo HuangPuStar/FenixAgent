@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   type AgentSession as ChatAgentSession,
-  createPromptTurn,
-  globalInstanceRegistry,
-  markInstanceRelayAttached,
+  getBoundAgentRuntime,
   type PromptTurn,
-} from "@fenix/agent-runtime/server";
+} from "@fenix/agent-runtime/runtime";
+// 真实 turn 构造与实例登记表属测试 seam（1.4 W6b）；实例能力（relay attach 埋点）经运行 port 触发。
+import { createPromptTurn, globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { AgentChatSessionAdapter, createAgentChatTransport } from "../server/services/workflow/agent-chat-transport";
 import { clearInstanceLeases, hasActiveInstanceLease } from "../server/services/workflow/instance-lease";
@@ -261,7 +261,7 @@ describe("round57 AgentChatTransport 内存链路", () => {
     };
     const controller = new AbortController();
     const session = new AgentChatSessionAdapter(turn, chatSession(), 1_000);
-    markInstanceRelayAttached("instance-round57");
+    getBoundAgentRuntime().markInstanceRelayAttached("instance-round57");
     const { acquireInstanceLease } = await import("../server/services/workflow/instance-lease");
     acquireInstanceLease("instance-round57");
 

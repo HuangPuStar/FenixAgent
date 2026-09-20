@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { agentInstanceService } from "@fenix/agent-runtime/server";
-import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
+import type { AgentRuntime } from "@fenix/agent-runtime/runtime";
+import {
+  resetAgentRuntimePort,
+  setOrchestrationInstanceDeps,
+  stubAgentRuntimePort,
+} from "@fenix/agent-runtime/server/testing";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
@@ -89,35 +93,37 @@ function configureEnvironmentStubs() {
   });
 }
 
-describe("round44 Web 环境路由", () => {
-  const originalResolveInstanceForOperation = agentInstanceService.resolveInstanceForOperation;
-  const originalEnsureInstanceRuntime = agentInstanceService.ensureInstanceRuntime;
-  const originalGetRuntimeSnapshot = agentInstanceService.getRuntimeSnapshot;
-  const originalListInstances = agentInstanceService.listInstances;
+/**
+ * 装配运行 port：环境能力经 stub 注册表转发，实例能力默认空。
+ *
+ * 用例内需要改写实例能力时**再次调用本函数**并把覆盖传进来——port 是整值绑定，重新 `stubAgentRuntimePort`
+ * 会丢掉 beforeEach 装好的环境转发，因此统一走这一个入口而不是在用例里直接调 `stubAgentRuntimePort`。
+ */
+function stubRuntime(overrides: Partial<AgentRuntime> = {}) {
+  stubAgentRuntimePort({
+    createEnvironment: (...args) => environmentServiceRegistry.get("createWebEnvironment")(...args),
+    deleteEnvironment: (...args) => environmentServiceRegistry.get("deleteEnvironment")(...args),
+    getOwnedEnvironment: (...args) => environmentServiceRegistry.get("getOwnedEnvironment")(...args),
+    listEnvironments: (...args) => environmentServiceRegistry.get("listEnvironmentsWithInstances")(...args),
+    updateEnvironment: (...args) => environmentServiceRegistry.get("updateWebEnvironment")(...args),
+    listOwnedInstances: async () => [],
+    ...overrides,
+  });
+}
 
+describe("round44 Web 环境路由", () => {
   beforeEach(() => {
     resetAllStubs();
-    agentInstanceService.listInstances = async () => [];
     authenticate();
     configureEnvironmentStubs();
-    // 环境能力经 port 转发到本文件的 stub 注册表；实例能力保留真实实现——port 是纯直通，
-    // 其内部仍按各用例对 `agentInstanceService` 的改写生效（见 `EnvironmentRouteDeps` 的删除记录）。
-    stubAgentRuntimePort({
-      createEnvironment: (...args) => environmentServiceRegistry.get("createWebEnvironment")(...args),
-      deleteEnvironment: (...args) => environmentServiceRegistry.get("deleteEnvironment")(...args),
-      getOwnedEnvironment: (...args) => environmentServiceRegistry.get("getOwnedEnvironment")(...args),
-      listEnvironments: (...args) => environmentServiceRegistry.get("listEnvironmentsWithInstances")(...args),
-      updateEnvironment: (...args) => environmentServiceRegistry.get("updateWebEnvironment")(...args),
-    });
+    // 环境与实例能力一律经 port 取（1.4 W3b/W6b）：替换点是绑定本身，用例不再改写包内单例
+    //（此前是 `agentInstanceService.resolveInstanceForOperation` 一类的 monkey-patch）。
+    stubRuntime();
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
   });
 
   afterEach(() => {
     resetAgentRuntimePort();
-    agentInstanceService.resolveInstanceForOperation = originalResolveInstanceForOperation;
-    agentInstanceService.ensureInstanceRuntime = originalEnsureInstanceRuntime;
-    agentInstanceService.getRuntimeSnapshot = originalGetRuntimeSnapshot;
-    agentInstanceService.listInstances = originalListInstances;
     resetTestAuth();
     setTestOrgContext(null);
     resetAllStubs();
@@ -393,9 +399,11 @@ describe("round44 Web 环境路由", () => {
       name: "default",
       createdAt: now,
     } as never;
-    agentInstanceService.resolveInstanceForOperation = async () => instance;
-    agentInstanceService.ensureInstanceRuntime = async () => undefined;
-    agentInstanceService.getRuntimeSnapshot = () => ({ state: "running" }) as never;
+    stubRuntime({
+      ensureInstance: async () => instance,
+      ensureInstanceRuntime: async () => undefined,
+      getRuntimeSnapshot: () => ({ state: "running" }) as never,
+    });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST", { instanceUid: "instance-1" });
     const body = await response.json();
@@ -412,17 +420,13 @@ describe("round44 Web 环境路由", () => {
 
   // 远程 Agent node 未连接时应返回可重试的 503，而不是误报配置写入失败。
   test("进入远程环境映射 Agent node 不可用错误", async () => {
-    const instance = {
-      id: "instance-remote",
-      environmentId,
-      ownerUserId: "user-1",
-      name: "default",
-      createdAt: now,
-    } as never;
-    agentInstanceService.resolveInstanceForOperation = async () => instance;
-    agentInstanceService.ensureInstanceRuntime = async () => {
-      throw new AgentNodeUnavailableError();
-    };
+    // port 边界上 `ensureInstance` 已把「解析实例 + 确保 runtime」合成一个动作（1.4 W6b），
+    // 因此这里以该动作整体抛错表达「确保 runtime 时发现节点不可用」；断言面是路由的错误映射与不泄漏。
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new AgentNodeUnavailableError();
+      },
+    });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
     const body = await response.json();
@@ -434,7 +438,6 @@ describe("round44 Web 环境路由", () => {
   // provider 未配置时，进入环境必须脱敏映射为 503。
   test("进入环境映射 provider 未配置错误", async () => {
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
-    const { setOrchestrationInstanceDeps } = await import("@fenix/agent-runtime/server");
     setOrchestrationInstanceDeps({
       getOrchestrationController: () =>
         ({
@@ -451,7 +454,6 @@ describe("round44 Web 环境路由", () => {
   // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
   test("进入环境映射 runtime 未就绪错误", async () => {
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
-    const { setOrchestrationInstanceDeps } = await import("@fenix/agent-runtime/server");
     setOrchestrationInstanceDeps({
       getOrchestrationController: () =>
         ({

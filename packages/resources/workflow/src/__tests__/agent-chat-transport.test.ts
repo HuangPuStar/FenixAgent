@@ -17,11 +17,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   type AgentSession as ChatAgentSession,
-  createPromptTurn,
-  globalInstanceRegistry,
-  markInstanceRelayAttached,
+  getBoundAgentRuntime,
   type PromptTurn,
-} from "@fenix/agent-runtime/server";
+} from "@fenix/agent-runtime/runtime";
+// 真实 turn 构造与实例登记表属测试 seam（1.4 W6b）；实例能力（relay attach 埋点）经运行 port 触发。
+import { createPromptTurn, globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
@@ -308,7 +308,7 @@ describe("AgentChatSessionAdapter", () => {
   // C-P1.4：run 正常结束后 relay 引用计数归零并重新开始 idle 观察窗口
   test("正常结束 → relayCount 归零、lastRelayDetachedAt 重新记录", async () => {
     // 模拟 connect() 的 attach：run 期间 relayCount=1 阻止 idle 回收
-    markInstanceRelayAttached("inst-test");
+    getBoundAgentRuntime().markInstanceRelayAttached("inst-test");
     expect(globalInstanceRegistry.get("inst-test")?.relayCount).toBe(1);
 
     const turn = new FakeTurn();
@@ -324,7 +324,7 @@ describe("AgentChatSessionAdapter", () => {
 
   // C-P1.4：事件流抛错时引用计数同样释放，失败路径不泄漏 relay 计数
   test("事件流抛错 → reject 且 relayCount 归零", async () => {
-    markInstanceRelayAttached("inst-test");
+    getBoundAgentRuntime().markInstanceRelayAttached("inst-test");
 
     const turn = new FakeTurn();
     const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
@@ -337,7 +337,7 @@ describe("AgentChatSessionAdapter", () => {
 
   // C-P1.4：执行超时兜底触发后引用计数释放，超时实例不残留 relay 计数
   test("执行超时 → relayCount 归零", async () => {
-    markInstanceRelayAttached("inst-test");
+    getBoundAgentRuntime().markInstanceRelayAttached("inst-test");
 
     const turn = new FakeTurn();
     const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 30);

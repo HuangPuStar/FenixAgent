@@ -7,7 +7,7 @@ const { validateAgentData, isBuiltInAgent, normalizeKnowledgeConfig } = await im
   "@fenix/agent-config/server/config"
 );
 
-const { validateWorkspacePath, KEBAB_CASE_RE } = await import("@fenix/agent-runtime/server");
+const { validateWorkspacePath, KEBAB_CASE_RE } = await import("@fenix/agent-runtime/server/testing");
 
 // ─�� MCP Server 验证 ──
 

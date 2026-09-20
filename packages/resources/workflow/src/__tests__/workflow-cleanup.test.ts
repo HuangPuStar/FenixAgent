@@ -23,7 +23,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { globalInstanceRegistry } from "@fenix/agent-runtime/server";
+import { globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { cleanupSpawnedInstances } from "../server/services/workflow";
