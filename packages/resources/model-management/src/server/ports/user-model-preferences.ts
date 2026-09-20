@@ -18,7 +18,7 @@ export interface UserModelPreferencesSubject {
   readonly userId: string;
 }
 
-/** 当前偏好的读值；三个字段在「未设置」时都是 `null`（与宿主 `getUserConfig` 的语义一致）。 */
+/** 当前偏好的读值；三个字段在「未设置」时都是 `null`（与 identity 的 `getUserConfig` 语义一致）。 */
 export interface UserModelPreferencesSnapshot {
   readonly currentModel: string | null;
   readonly smallModel: string | null;
@@ -29,7 +29,7 @@ export interface UserModelPreferencesSnapshot {
  * 偏好写入的补丁。
  *
  * 「未提供」与「显式置空」是两种语义：`undefined` 表示不改这一项，`null` 表示清空。宿主实现必须据此
- * 区分（`user-config.ts` 用 `!== undefined` 判定），否则一次只改主模型的请求会把权限配置一并抹掉。
+ * 区分（identity 的 `setUserConfig` 用 `!== undefined` 判定），否则一次只改主模型的请求会把权限配置一并抹掉。
  */
 export interface UserModelPreferencesPatch {
   readonly currentModel?: string | null;

@@ -1,4 +1,28 @@
-import { type EnvironmentRecord, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+/**
+ * 控制台环境路由工厂：`/web/environments/**`（1.5c 从宿主 `apps/server/src/routes/web/environments.ts` 迁入）。
+ *
+ * 归属：环境的 owner 是本包（`environmentRepo` / `services/environment-*` / 运行编排），路由只做协议接入。
+ *
+ * 取数方式：环境与实例的运行能力一律经 `getBoundAgentRuntime()`（相对导入 `../../runtime`）取，判据与
+ * `routes/web/instances.ts` 相同——这些能力都在 `AgentRuntimePort` 上，而 port 是宿主编排层与用例的
+ * **唯一替换点**（`stubAgentRuntimePort`）。直引包内模块函数等于给同一批能力开第二个替换点（1.4 W3b
+ * 收敛掉的形态）；取绑定入口不会产生第二套状态，因为 `createAgentRuntime()` 内部持有的都是本包模块级单例。
+ *
+ * 守卫由宿主注入（与 `/api/instances`、`/acp/*`、`/web/sessions/*`、`/web/instances/*` 同因）：Elysia 的
+ * `macro` / `state` 是实例作用域的，包内自建一份会让同一进程出现两套互不可见的认证状态。
+ *
+ * 迁出时的口径调整：原文件末尾的 `export default createEnvironmentRoutes()` 改为只导出工厂——宿主是唯一
+ * 的挂载方，default 自执行会在任何导入方（含测试的 `mock.module` 转发表）都构造一份路由实例。
+ */
+
+import { createLogger } from "@fenix/logger";
+import { OrchestrationError } from "@fenix/orchestration";
+import { ValidationError as AppValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
+import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
+import Elysia from "elysia";
+import * as z from "zod/v4";
+import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
+import { type EnvironmentRecord, getBoundAgentRuntime } from "../../runtime";
 import {
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
@@ -9,30 +33,22 @@ import {
   EnvironmentListEnvelopeSchema,
   EnvironmentListSchema,
   ListInstancesResponseSchema,
-  mapOrchestrationErrorToHttp,
-  sanitizeResponse,
   UpdateEnvironmentRequestSchema,
   UpdateEnvironmentResponseSchema,
-} from "@fenix/agent-runtime/server";
-import { createLogger } from "@fenix/logger";
-import { OrchestrationError } from "@fenix/orchestration";
-import { ValidationError as AppValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import Elysia from "elysia";
-import * as z from "zod/v4";
-import { authGuardPlugin } from "../../plugins/auth";
+} from "../../schemas/environment.schema";
+import { sanitizeResponse } from "../../services/environment-core";
+import type { AgentRuntimeAuthDependencies } from "../dependencies";
 
 const logger = createLogger("env-route");
 
 /**
- * 创建 Web 环境路由。
+ * 构造 `/web/environments/**` 路由。
  *
- * 环境与实例的运行能力一律经 `getBoundAgentRuntime()` 取（1.4 W3b）：路由不再自持一份可替换的
- * deps 袋子——那等于给同一批能力开第二个替换点，用例要替换运行能力时改绑 port 即可
- *（`@fenix/agent-runtime/server/testing` 的 `stubAgentRuntimePort`）。
+ * 环境与实例的运行能力经运行 port 取（1.4 W3b）：路由不自持一份可替换的 deps 袋子——那等于给同一批
+ * 能力开第二个替换点，用例要替换运行能力时改绑 port 即可。
  */
-export function createEnvironmentRoutes() {
-  const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
+export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) {
+  const app = new Elysia({ name: "web-environments" }).use(deps.authGuardPlugin).model({
     "create-environment-request": CreateEnvironmentRequestSchema,
     "create-environment-response": CreateEnvironmentResponseSchema,
     "delete-environment-response": WebOkSchema(z.null()).describe("删除环境后的成功响应。"),
@@ -363,5 +379,3 @@ export function createEnvironmentRoutes() {
 
   return app;
 }
-
-export default createEnvironmentRoutes();

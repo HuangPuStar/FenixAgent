@@ -1,26 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AgentRuntime } from "@fenix/agent-runtime/runtime";
-import {
-  resetAgentRuntimePort,
-  setOrchestrationInstanceDeps,
-  stubAgentRuntimePort,
-} from "@fenix/agent-runtime/server/testing";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { createEnvironmentRoutes } from "@server/routes/web/environments";
-import { setTestOrgContext } from "@server/services/org-context";
 import {
   environmentServiceRegistry,
   stubCoreBootstrap,
   stubEnvironmentService,
 } from "@server/test-utils/stubs/module-stubs";
+import { createWebEnvironmentsRoutes } from "../routes/web/environments";
+import type { AgentRuntime } from "../runtime";
+import { resetAgentRuntimePort, setOrchestrationInstanceDeps, stubAgentRuntimePort } from "../server/testing";
+import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 路由不再自持 deps 袋子（1.4 W3b）：环境能力经运行 port 取，替换点就是 port 绑定本身
 //（见下方 beforeEach 的 `stubAgentRuntimePort`）。
-const route = createEnvironmentRoutes();
+// 1.5c 随路由一同迁入本包（原 `apps/server/src/__tests__/`）：守卫由宿主注入，认证改用包内守卫替身，
+// 因此 `setTestOrgContext`（宿主 org-context 的测试 seam）在本文件里一并消失——替身直接提供
+// `authContext`，不再经宿主装配路径解析组织。
+const route = createWebEnvironmentsRoutes({ authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin() });
 const environmentId = "env-1";
 const now = new Date("2026-08-19T00:00:00.000Z");
 
@@ -64,11 +62,7 @@ function responseEnvironment(overrides: Record<string, unknown> = {}) {
 }
 
 function authenticate(userId = "user-1", organizationId = "org-1") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@example.test`, name: "Tester" },
-    authContext: { organizationId, userId, role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId, role: "owner" });
+  setTestAuth({ organizationId, userId });
 }
 
 function request(path: string, init?: RequestInit) {
@@ -125,15 +119,12 @@ describe("round44 Web 环境路由", () => {
   afterEach(() => {
     resetAgentRuntimePort();
     resetTestAuth();
-    setTestOrgContext(null);
     resetAllStubs();
   });
 
   // 未认证请求必须由 sessionAuth 在业务服务调用前拒绝。
   test("未认证列表返回 401", async () => {
     resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
 
     expect((await request("/environments")).status).toBe(401);
   });

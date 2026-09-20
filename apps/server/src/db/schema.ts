@@ -4,10 +4,9 @@ import { sql } from "drizzle-orm";
 /**
  * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义。
  *
- * 宿主是唯一同时持有两侧表定义的层：宿主的业务表需要身份表作为外键目标，宿主内的身份读取
- * （如 `services/config/user-config.ts` 读 `user_config`）也经这里取得表对象。它们与宿主表
- * 共用同一条迁移链（`drizzle.config.ts` 同时声明两个 schema 文件），因此并置不会产生第二份
- * 真相；跨包读取身份数据仍必须走 `IdentityDirectory`，不得依赖本文件。
+ * 宿主是唯一同时持有两侧表定义的层：宿主的业务表需要身份表作为外键目标。它们与宿主表共用同一条迁移链
+ * （`drizzle.config.ts` 同时声明两个 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
+ * 走 `IdentityDirectory`，不得依赖本文件。
  */
 export {
   account,
@@ -17,7 +16,6 @@ export {
   organization,
   session,
   user,
-  userConfig,
   verification,
 } from "@fenix/identity/db";
 

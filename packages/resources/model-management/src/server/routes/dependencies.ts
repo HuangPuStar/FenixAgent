@@ -45,3 +45,22 @@ export interface WebConfigModelsRouteDependencies extends WebModelManagementRout
   /** 用户模型偏好的读写端口（宿主 `user_config` 表的薄适配）。 */
   readonly userModelPreferences: UserModelPreferencesPort;
 }
+
+/**
+ * Environment 归属校验的形状。
+ *
+ * 不引用 `@fenix/agent-runtime` 的类型：依赖矩阵不允许 `packages/resources/*` 依赖该包（它与资源包同层，
+ * 且资源包的可依赖面只覆盖 `platform-sdk` 与资源包根入口）。这里按消费侧真正用到的语义声明——「校验通过
+ * 则返回，不存在、跨组织或跨用户都抛 `NotFoundError`」——实现留在宿主，返回值本包不消费。
+ */
+export type EnvironmentOwnershipCheck = (
+  environmentId: string,
+  organizationId: string,
+  userId: string,
+) => Promise<unknown>;
+
+/** `/web/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail` 的附加依赖。 */
+export interface WebPeriTaskDetailsRouteDependencies extends WebModelManagementRouteDependencies {
+  /** 校验 environment 归属；`Environment` 表的 owner 在 `@fenix/agent-runtime`，故由宿主注入。 */
+  readonly getOwnedEnvironment: EnvironmentOwnershipCheck;
+}

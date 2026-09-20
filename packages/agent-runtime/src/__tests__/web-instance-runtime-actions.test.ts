@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AgentInstanceRecord } from "@fenix/agent-runtime/runtime";
-import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { createWebInstancesRoutes } from "../routes/web/instances";
+import type { AgentInstanceRecord } from "../server/repositories/agent-instance";
+import { resetAgentRuntimePort, stubAgentRuntimePort } from "../server/testing";
+import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 路由的运行能力取自运行 port 绑定（1.4 W3b）：本用例用 port 替身替换实例动作，
 // 不再有 `setWebInstanceRouteDeps` 这样的第二个替换点。
-const { default: webInstanceRoutes } = await import("../routes/web/instances");
+// 1.5c 随路由一同迁入本包（原 `apps/server/src/__tests__/`），认证改用包内守卫替身——
+// 路由的守卫由宿主注入，包内用例只能注入替身。
+const webInstanceRoutes = createWebInstancesRoutes({
+  authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin(),
+});
 
 const defaultInstance: AgentInstanceRecord = {
   id: "inst_00000000000000000000000000000001",
@@ -27,10 +32,7 @@ function request(path: string, method: "POST" | "DELETE") {
 describe("Web Instance runtime actions", () => {
   beforeEach(() => {
     resetAllStubs();
-    setTestAuth({
-      user: { id: "user-1", email: "user@fenix.com", name: "User" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
+    setTestAuth({ organizationId: "org-1", userId: "user-1" });
   });
 
   afterEach(() => {

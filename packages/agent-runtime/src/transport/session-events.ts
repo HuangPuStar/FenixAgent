@@ -1,5 +1,17 @@
-import { getEventBus } from "@fenix/agent-runtime/server";
+/**
+ * 会话事件的规范化与发布（1.5c 从宿主 `apps/server/src/services/transport.ts` 迁入）。
+ *
+ * 命名：原名 `transport` 在宿主语境下可读，但本包已有 `src/transport/` 目录，且该目录里
+ * `event-bus.ts` 才是「传输原语」本身；本文件的职责是「把上游载荷规范化后发布到会话总线」，
+ * 因此定名 `session-events`。
+ *
+ * 与 `publishSessionEvent` 配套的 `normalizePayload` 是它的投影函数：Webhook / relay / 控制面
+ * 的上游载荷形状各异（裸字符串、`{content}`、`{message:{content}}`、content block 数组），
+ * 统一在这里压平出 `content` 字段，前端渲染不再各自兜底。
+ */
+
 import { v4 as uuid } from "uuid";
+import { getEventBus } from "./event-bus";
 
 /**
  * Extract plain text from various message payload formats.

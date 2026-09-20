@@ -143,8 +143,8 @@ describe("Config Route Integration", () => {
       }),
     });
     stubConfigPg({
-      // provider / model 的配置面已随任务 1.2 迁入 `@fenix/model-management`，此处只保留仍属宿主
-      // config 服务的用户级配置读写。
+      // provider / model 的配置面已随任务 1.2 迁入 `@fenix/model-management`；用户级配置读写在任务 1.5c
+      // 随 `user_config` 表归位 identity（键名与用例写法不变，安装点见 setup-mocks.ts）。
       getUserConfig: async () => ({ defaultAgent: null, currentModel: null, smallModel: null, permission: null }),
       setUserConfig: async () => {},
     });

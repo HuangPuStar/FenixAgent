@@ -3,18 +3,11 @@ import { existsSync } from "node:fs";
 
 const RMD_07_MOVES = [
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
-  ["src/routes/web/environments.ts", "apps/server/src/routes/web/environments.ts"],
-  ["src/routes/web/instances.ts", "apps/server/src/routes/web/instances.ts"],
-  ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
-  ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
-  ["src/schemas/session.schema.ts", "apps/server/src/schemas/session.schema.ts"],
   ["src/services/build-info.ts", "apps/server/src/services/build-info.ts"],
   ["src/services/config-utils.ts", "apps/server/src/services/config-utils.ts"],
   ["src/services/config/index.ts", "apps/server/src/services/config/index.ts"],
   ["src/services/config/types.ts", "apps/server/src/services/config/types.ts"],
-  ["src/services/config/user-config.ts", "apps/server/src/services/config/user-config.ts"],
   ["src/services/core-bootstrap.ts", "apps/server/src/services/core-bootstrap.ts"],
   ["src/services/data-migrate.ts", "apps/server/src/services/data-migrate.ts"],
   [
@@ -22,7 +15,6 @@ const RMD_07_MOVES = [
     "apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts",
   ],
   ["src/services/sync-builtin.ts", "apps/server/src/services/sync-builtin.ts"],
-  ["src/services/transport.ts", "apps/server/src/services/transport.ts"],
   ["src/types/global.d.ts", "apps/server/src/types/global.d.ts"],
   ...[
     "agent-platform-api-reference.test.ts",
@@ -53,7 +45,6 @@ const RMD_07_MOVES = [
     "structured-logger.test.ts",
     "task-schema.test.ts",
     "test-openai-chat.sh",
-    "web-instance-runtime-actions.test.ts",
     "workspace-symlink-escape.test.ts",
   ].map((file) => [`src/__tests__/${file}`, `apps/server/src/__tests__/${file}`] as const),
 ] as const;
@@ -67,10 +58,31 @@ const RMD_07_MOVES = [
  * `__tests__/round18-openai-response-protocol-boundaries.test.ts`）owner 是 agent-runtime：唯一消费方都在该包内，
  * 宿主副本删除后由包内落点承载，`/api/instances` 与 `/api/openai-chat` 的协议定义不再跨包分叉，测试也随
  * 被测模块落到 owner 包内。
- * 任务 1.5c 的一项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
+ * 任务 1.5c 的五项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
  * `handleWebhookRequest` 与 trigger 仓储本来就在包内，宿主这份只是路由壳。迁出时一并恢复了自 FND-05
  * （入口迁到 `apps/server/src/main.ts`）起丢失的挂载：该路由在旧入口 `src/index.ts` 上是有 `.use()` 的，
  * 迁移时未带过来，导致 `/hooks/:publicHash` 长期不可达（详细证据见 review/task-1.5-host-aggregation.md §七）。
+ * 另两项的 owner 是 agent-runtime：`schemas/session.schema.ts`（会话协议模型）与 `services/transport.ts`
+ * （会话事件规范化与发布，迁入后定名 `transport/session-events.ts`）都只被宿主控制面路由消费，而控制面
+ * 本身也已迁入该包——宿主副本删除后由包内落点承载，`/web/sessions/:id/*` 的协议定义与事件发布不再跨包。
+ * 后三项 owner 同样是 agent-runtime：`routes/web/{instances,environments}.ts`（控制台实例与环境生命周期）
+ * 与其宿主测试 `__tests__/web-instance-runtime-actions.test.ts`。两者的 owner 本就在该包（路由只是运行 port
+ * 的协议接入层），测试随被测路由落到包内、认证改用包内守卫替身；另有同域用例
+ * `__tests__/instances-delete-idempotent.test.ts` 与 `__tests__/round44-environments-routes.test.ts`
+ * （不在本表内，随各片一并迁入包内——后者在 `root-source-owner-rules.ts` 中本就按 agent-runtime 登记）。
+ * 任务 1.5c 的后两项 owner 是 model-management：`routes/web/peri-task-details.ts`（Peri 任务详情路由）
+ * 与 `schemas/peri-task-details.ts`（其协议契约）。两者的 owner 本就在该包——读取逻辑 `getPeriTaskDetail`
+ * 与投影存储 `createPeriTaskDetailStore` 在 1.3 已迁入，协议 schema 也在 1.3 归位（宿主这份与包内副本
+ * **字节相同**，属 §1.3(1) 明令禁止的 app↔package 重复实现），宿主侧那份只是协议接入壳。按「删除优于
+ * 兼容」删除宿主两份副本、owner 落回包内；路由迁入后环境归属校验改由宿主的注入端口提供
+ * （`Environment` 表的 owner 是 agent-runtime，依赖矩阵不允许资源包依赖它）。
+ * 任务 1.5c 的第九项 owner 是 agent-config：`routes/web/meta-agent.ts`（`POST /web/meta-agent/ensure`）。
+ * 查找或创建 meta environment + spawn 实例的编排（`ensureMetaEnvironment`）与响应 schema 本就在该包，
+ * 宿主那份只是协议接入壳；迁入后 apiKey 轮换改由工厂依赖注入（资源包不得依赖 `@fenix/identity`）。
+ * 任务 1.5c 的第十项 owner 是 identity：`services/config/user-config.ts`（`user_config` 表的读写）。
+ * 该表的真相来源本就在 `packages/platform/identity/db/schema.ts`，读写却留在宿主，属「表与它的读写分处
+ * 两层」；迁入 `repositories/user-config.ts` 后两者同址（DB 句柄改为 `getIdentityDatabase()`），宿主经
+ * 包入口取用（唯一消费者是 `services/resource-module-ports.ts` 的两个偏好端口）。
  */
 const RMD_07_RELOCATED = [
   [
@@ -107,6 +119,51 @@ const RMD_07_RELOCATED = [
     "src/routes/hooks.ts",
     "apps/server/src/routes/hooks.ts",
     "packages/resources/workflow/src/server/routes/hooks/index.ts",
+  ],
+  [
+    "src/schemas/session.schema.ts",
+    "apps/server/src/schemas/session.schema.ts",
+    "packages/agent-runtime/src/schemas/session.schema.ts",
+  ],
+  [
+    "src/services/transport.ts",
+    "apps/server/src/services/transport.ts",
+    "packages/agent-runtime/src/transport/session-events.ts",
+  ],
+  [
+    "src/routes/web/instances.ts",
+    "apps/server/src/routes/web/instances.ts",
+    "packages/agent-runtime/src/routes/web/instances.ts",
+  ],
+  [
+    "src/__tests__/web-instance-runtime-actions.test.ts",
+    "apps/server/src/__tests__/web-instance-runtime-actions.test.ts",
+    "packages/agent-runtime/src/__tests__/web-instance-runtime-actions.test.ts",
+  ],
+  [
+    "src/routes/web/environments.ts",
+    "apps/server/src/routes/web/environments.ts",
+    "packages/agent-runtime/src/routes/web/environments.ts",
+  ],
+  [
+    "src/routes/web/peri-task-details.ts",
+    "apps/server/src/routes/web/peri-task-details.ts",
+    "packages/resources/model-management/src/server/routes/web/peri-task-details.ts",
+  ],
+  [
+    "src/schemas/peri-task-details.ts",
+    "apps/server/src/schemas/peri-task-details.ts",
+    "packages/resources/model-management/src/server/schemas/peri-task-details.ts",
+  ],
+  [
+    "src/routes/web/meta-agent.ts",
+    "apps/server/src/routes/web/meta-agent.ts",
+    "packages/resources/agent-config/src/server/routes/web/meta-agent.ts",
+  ],
+  [
+    "src/services/config/user-config.ts",
+    "apps/server/src/services/config/user-config.ts",
+    "packages/platform/identity/src/repositories/user-config.ts",
   ],
 ] as const;
 
@@ -154,19 +211,25 @@ describe("RMD-07 server-host migration", () => {
   // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
   // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
   // 零消费者）不在本表内，无需在此登记。
-  // 任务 1.5c 的一项：`src/routes/hooks.ts` 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回
-  // workflow 包），理由见 relocated 的文档注释。
+  // 任务 1.5c 的十项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
+  // `src/routes/web/{instances,environments}.ts` 与 instances 的宿主测试
+  // `src/__tests__/web-instance-runtime-actions.test.ts`、`src/routes/web/peri-task-details.ts` 与其协议
+  // schema `src/schemas/peri-task-details.ts`、`src/routes/web/meta-agent.ts`、
+  // `src/services/config/user-config.ts`
+  // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime /
+  // model-management / agent-config / identity 包），理由见 relocated 的文档注释。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(49);
+    expect(RMD_07_MOVES).toHaveLength(40);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
     }
   });
 
-  // Provider / Model / Machine / AgentRuntime 契约与 Webhook 入口的 owner 已在包内：旧根路径与宿主路径都不得复活，包内必须有唯一落点。
-  test("relocates the provider, model, agent runtime and webhook contracts to their owner packages", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(7);
+  // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
+  // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
+  test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
+    expect(RMD_07_RELOCATED).toHaveLength(16);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

@@ -8,6 +8,9 @@
  * 三侧状态收敛：任一存在即执行幂等停止，全无则返回 "Already stopped"，
  * 由 route 统一映射 200。
  *
+ * 1.5c 随路由一同迁入本包（原 `apps/server/src/__tests__/`）：认证由宿主注入，包内用例改用守卫替身
+ * （`./guard-stubs`），其余注入方式不变。
+ *
  * 注入方式（禁 mock.module，复用既有 seam）：
  *   - globalInstanceRegistry 为真实单例，beforeEach 清空、用例内注册 supplement；
  *   - core-bootstrap 通过 stubCoreBootstrap 注入 fakeFacade（listInstances 空 +
@@ -16,21 +19,22 @@
  *     （活跃表可操控，模拟"活跃实例正常停止"的成功路径）；未注入的用例走真实
  *     controller 单例（活跃表为空，controller.stopInstance 抛 INSTANCE_NOT_FOUND
  *     被 stopInstanceViaController 吞错——预期日志，不改）；
- *   - auth 通过 setTestAuth 注入，路由直接 handle(Request)。
+ *   - auth 通过守卫替身的 setTestAuth 注入，路由直接 handle(Request)。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { CoreRuntimeFacade } from "@fenix/core";
+import type { AgentController } from "@fenix/orchestration";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { createWebInstancesRoutes } from "../routes/web/instances";
 import {
   globalInstanceRegistry,
   resetOrchestrationBootstrap,
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
-} from "@fenix/agent-runtime/server/testing";
-import type { CoreRuntimeFacade } from "@fenix/core";
-import type { AgentController } from "@fenix/orchestration";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+} from "../server/testing";
+import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";
@@ -64,6 +68,8 @@ const fakeController = {
   },
 } as unknown as AgentController;
 
+const route = createWebInstancesRoutes({ authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin() });
+
 /** 注册一个属于指定 org 的 running supplement（真实注册表单例）。 */
 function registerRunningInstance(instanceId: string, environmentId: string, organizationId: string): void {
   globalInstanceRegistry.register(instanceId, {
@@ -86,10 +92,7 @@ describe("DELETE /web/instances/:id", () => {
     resetOrchestrationInstanceDeps();
     stubDb({});
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    setTestAuth({
-      user: { id: "user-1", email: "user@fenix.com", name: "user" },
-      authContext: { organizationId: ORG_1, userId: "user-1", role: "owner" },
-    });
+    setTestAuth({ organizationId: ORG_1, userId: "user-1" });
     stopCalls.length = 0;
     deleteCalls.length = 0;
   });
@@ -110,8 +113,7 @@ describe("DELETE /web/instances/:id", () => {
     registerRunningInstance("inst_1", "env-1", ORG_1);
     fakeControllerInstances.add("inst_1");
 
-    const mod = await import("@server/routes/web/instances");
-    const response = await mod.default.handle(new Request("http://localhost/instances/inst_1", { method: "DELETE" }));
+    const response = await route.handle(new Request("http://localhost/instances/inst_1", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
     expect((await response.json()) as unknown).toEqual({
@@ -130,9 +132,8 @@ describe("DELETE /web/instances/:id", () => {
     registerRunningInstance("inst_2", "env-1", ORG_1);
     fakeControllerInstances.add("inst_2");
 
-    const mod = await import("@server/routes/web/instances");
-    const first = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
-    const second = await mod.default.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
+    const first = await route.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
+    const second = await route.handle(new Request("http://localhost/instances/inst_2", { method: "DELETE" }));
 
     expect(first.status).toBe(404);
     expect(second.status).toBe(404);
@@ -147,10 +148,7 @@ describe("DELETE /web/instances/:id", () => {
   // 从未存在/已无痕的实例：无 supplement、活跃表空、core 空 → 幂等终态 200，
   // 且不触碰 facade（stopInstance / deleteInstance 均不被调用）
   test("对从未存在或已无痕的实例 DELETE 返回 200 而非 404", async () => {
-    const mod = await import("@server/routes/web/instances");
-    const response = await mod.default.handle(
-      new Request("http://localhost/instances/inst_ghost", { method: "DELETE" }),
-    );
+    const response = await route.handle(new Request("http://localhost/instances/inst_ghost", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
     expect((await response.json()) as unknown).toEqual({
@@ -165,13 +163,9 @@ describe("DELETE /web/instances/:id", () => {
   // 实例保持存活、facade 无任何停止调用
   test("跨组织 DELETE 返回 403 且实例保持存活", async () => {
     registerRunningInstance("inst_4", "env-1", ORG_1);
-    setTestAuth({
-      user: { id: "user-2", email: "user2@fenix.com", name: "user2" },
-      authContext: { organizationId: ORG_2, userId: "user-2", role: "member" },
-    });
+    setTestAuth({ organizationId: ORG_2, userId: "user-2" });
 
-    const mod = await import("@server/routes/web/instances");
-    const response = await mod.default.handle(new Request("http://localhost/instances/inst_4", { method: "DELETE" }));
+    const response = await route.handle(new Request("http://localhost/instances/inst_4", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
     const body = (await response.json()) as { success: false; error: { code: string; message: string } };
@@ -187,8 +181,7 @@ describe("DELETE /web/instances/:id", () => {
   test("supplement 残留（活跃表无记录）时 DELETE 收敛清理", async () => {
     registerRunningInstance("inst_5", "env-1", ORG_1);
 
-    const mod = await import("@server/routes/web/instances");
-    const response = await mod.default.handle(new Request("http://localhost/instances/inst_5", { method: "DELETE" }));
+    const response = await route.handle(new Request("http://localhost/instances/inst_5", { method: "DELETE" }));
 
     expect(response.status).toBe(404);
     expect((await response.json()) as unknown).toEqual({

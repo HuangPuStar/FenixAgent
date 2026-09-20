@@ -67,15 +67,25 @@ function createLazyMock(keys: readonly string[], getStub: (name: string) => any)
   return obj;
 }
 
-// ── config service barrel 导出名称 ──
+// ── PG 支撑的配置面导出名称 ──
 //
-// 只列会触碰 DB / 外部状态的函数；清单必须与 `services/config/index.ts` 的真实导出同步，理由见
-// config-pg-stub.ts。mcp / skill / provider / model 的配置面已在任务 1.2 迁入各自资源包，不在此处。
-const CONFIG_PG_KEYS = ["getUserConfig", "setUserConfig", "upsertSystemMcpServer"] as const;
+// 只列会触碰 DB / 外部状态的函数；清单必须与各模块的真实导出同步，理由见 config-pg-stub.ts。
+// mcp / skill / provider / model 的配置面已在任务 1.2 迁入各自资源包，不在此处。
+//
+// 用户偏好（`getUserConfig` / `setUserConfig`）在任务 1.5c 随 `user_config` 表归位 identity：宿主
+// `services/config/index.ts` 只剩 `upsertSystemMcpServer`，前置两个键改按 identity 的仓储模块登记——
+// 与 `.../identity/src/services/system-api` 的既有做法一致（mock 按解析后的模块路径生效，包入口的
+// re-export 会取到替身）。替身注册表仍是同一个 `config-pg-stub`，用例侧的 `stubConfigPg()` 无需改动。
+const CONFIG_PG_KEYS = ["upsertSystemMcpServer"] as const;
+const USER_CONFIG_KEYS = ["getUserConfig", "setUserConfig"] as const;
 
 mock.module("@server/services/config", () =>
   // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
   createLazyMock(CONFIG_PG_KEYS, getConfigPgStub as (name: string) => any),
+);
+mock.module("../../../../packages/platform/identity/src/repositories/user-config", () =>
+  // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
+  createLazyMock(USER_CONFIG_KEYS, getConfigPgStub as (name: string) => any),
 );
 
 // ── auth.api 方法名称 ──

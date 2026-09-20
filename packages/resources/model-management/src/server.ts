@@ -50,18 +50,20 @@ export { createApiModelsRoutes } from "./server/routes/api/models";
 export { createApiSystemModelGatewayRoutes } from "./server/routes/api/system-model-gateway";
 export type {
   ApiModelManagementRouteDependencies,
+  EnvironmentOwnershipCheck,
   SystemApiModelManagementRouteDependencies,
   WebConfigModelsRouteDependencies,
   WebConfigProvidersRouteDependencies,
   WebModelManagementRouteDependencies,
+  WebPeriTaskDetailsRouteDependencies,
 } from "./server/routes/dependencies";
 export { createWebConfigModelsRoutes } from "./server/routes/web/config/models";
 export { createWebConfigProvidersRoutes } from "./server/routes/web/config/providers";
 export { createWebModelGatewayRoutes } from "./server/routes/web/model-gateway";
+export { createWebPeriTaskDetailsRoutes } from "./server/routes/web/peri-task-details";
 export * from "./server/schemas/api-model.schema";
 export * from "./server/schemas/config.schema";
-// Peri 任务详情 schema 随本包迁出宿主（见 README「边界残留」）：宿主路由
-// `apps/server/src/routes/web/peri-task-details.ts` 经本入口取 schema。
+// Peri 任务详情 schema 与路由同址：schema 在 1.3 归位本包，路由在 1.5c 迁入（宿主侧两份副本均已删除）。
 export * from "./server/schemas/peri-task-details";
 export type { FirstConfiguredModel, ModelService, ModelServiceDeps } from "./server/services/model-service";
 export { createModelService } from "./server/services/model-service";

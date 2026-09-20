@@ -483,3 +483,399 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 **验证证据**：`precheck` 全绿 `All passed (99339ms)`——server-and-script-tests 863 pass / package-tests
 7223 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
 三项 `tsc` 均通过。定向运行 `workflow-source-migration` + `hooks-routes` + `rmd-07-migration` 共 21 pass。
+
+### 1.5c-2 控制面三件套迁入 agent-runtime（2026-09-21）
+
+**一、迁出与落点**（§四 分片表的 control 三件套）
+
+| 改动 | 文件 |
+| --- | --- |
+| 会话协议模型（内容逐字保留，仅新增头注释） | `apps/server/src/schemas/session.schema.ts` → `packages/agent-runtime/src/schemas/session.schema.ts` |
+| 会话事件规范化与发布，迁入后改名 `session-events` | `apps/server/src/services/transport.ts` → `packages/agent-runtime/src/transport/session-events.ts` |
+| 其边界用例（仅改 import 目标） | `apps/server/src/__tests__/transport-normalize.test.ts` → `packages/agent-runtime/src/__tests__/transport-normalize.test.ts` |
+| 新建路由工厂 `createWebControlRoutes(deps)` | `packages/agent-runtime/src/routes/web/control.ts` |
+| 删除宿主副本（256 行） | `apps/server/src/routes/web/control.ts`（删除） |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+**改名理由**：原名 `transport` 在宿主语境下可读，但本包已有 `src/transport/` 目录，且该目录里
+`event-bus.ts` 才是传输原语本身；本文件职责是「把上游载荷规范化后发布到会话总线」，故定名
+`session-events`，与新落点同目录。
+
+**二、【需审核】`control.ts` 的归属在 1.2 → 1.5c 之间改判了两次**
+
+1.2 记录（`review/task-1.2-platform-identity-authorization.md` §实施、`rmd-06` 文档注释、
+`root-source-owner-rules.ts` 的 `TARGET_PREFIX_OVERRIDES`）给出的裁定是「**必须留在宿主**」，理由唯一：
+它同时依赖 Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与既有的
+`resource-machine → agent-runtime` 成环，只有宿主能同时持有两侧。
+
+**这条前提已在本轮之前消失**：1.4 W6b 把 EventBus 与 `environmentRepo` 收敛回 agent-runtime（Machine
+的同名薄封装删除，见 `review/task-1.4-agent-runtime.md` W6b 记录）。迁入前逐行核对，本路由没有任何一处
+跨领域依赖——会话事件与状态（`services/session`）、实例归属（`agentInstanceService`）、环境组织归属
+（`environmentRepo`）三件事的 owner 全在本包。据此按 §四 分片表迁入，1.2 的三处记录同步改写为
+「1.2 暂落宿主、1.5c 按分片表迁回 agent-runtime」。
+
+**取数方式的调整**：包内路由一律直接相对引用实现，**不经** `getBoundAgentRuntime()`。后者是**宿主**
+装配完成的判据，包内路由走它等于自引用本包入口；包内既有惯例（`routes/api/instances.ts`、
+`routes/acp/index.ts`）同样是直引实现。
+
+**三、【需审核】迁出时发现并修复的既有契约缺陷：控制面成功路径固定返回 422**
+
+- **现象**：`/web/sessions/:id/events` 与 `/web/sessions/:id/control` 的成功路径响应校验失败，实测响应体
+  `{"type":"validation","on":"response","property":"data",...}`。
+- **根因**：响应 schema 声明的字段是 `timestamp`（`SessionEventSchema`，见迁移后的
+  `packages/agent-runtime/src/schemas/session.schema.ts`），而事件总线产出的是 `createdAt`（`SessionEvent`
+  定义在冻结文件 `transport/event-bus.ts`）。两者同名不同义，handler 直传总线对象必然不满足 schema。
+- **影响面**：仓内**零消费方**（前端不调用 `/web/sessions/*`，该前缀本就无实现配套），因此不存在对外
+  兼容包袱；但这是与迁出无关的既有缺陷，按红线「发现即处理」在此修复。
+- **修复**：新增边界投影 `toSessionEventView(event)`，把 `createdAt` 映射为 `timestamp` 后返回；两条端点
+  的成功分支改用它。选择显式投影而非「回传总线对象 + 靠 schema 剔除」，是因为落盘的线上形状应当就是
+  schema 本身。用例已用 `expect(typeof body.data.event.timestamp).toBe("number")` 锁定。
+- **回退点**：若审核认为应保留 422 这一既有行为，把 `toSessionEventView` 调用换回直传 `event` 并同步该
+  断言即可；`interrupt` 端点未受影响（返回 `WebOkSchema(z.null())`）。
+
+**四、死协议模型登记**：`session.schema.ts` 的 `SessionDetail` / `SessionListItem` / `SessionHistory` 三组
+模型对应的 `/web/sessions`、`/web/sessions/:id`、`/web/sessions/:id/history` **从未实现**、全仓零消费者。
+迁入时原样保留（本分片只做归属调整，不做协议清理），并在文件头注释登记为后续收口候选；真正被消费的只有
+`SessionEventPayloadSchema` 与 `SendEventResponseSchema`。
+
+**五、测试**（`packages/agent-runtime/src/__tests__/web-control-routes.test.ts`，8 例）
+
+未认证 → 401；总线无会话 → 404（不区分「从未存在」与「已结束」，避免用返回码探测会话）；实例不属于该
+用户 → 403；环境组织与请求上下文不一致 → 403 `Not your organization's session`；成功发事件 → 200 +
+`timestamp` 为数字 + `payload.content` 已规范化 + 事件确实进总线；`/control` 缺省类型
+`control_request`；`/interrupt` 返回 `{success:true,data:null}` 且总线事件序列为
+`["interrupt","session_status"]`；无组织归属的环境仍可命中（同用户边界）。
+
+一处测试基建口径需记录：归属校验要读两份数据，替身来源不同。实例归属走真实仓储
+（`agentInstanceService.getOwnedInstance` → `db.select()...limit()`），用 `stubDb` 队列给行；环境归属走
+`environmentRepo.getById`，而该模块被**宿主 preload**（`apps/server/src/test-utils/setup-mocks.ts`）的
+`mock.module` 换成实时转发 Proxy，默认 `{ getById: async () => null }`，因此包内用例只能经它的登记替身
+`stubEnvironmentRepo` 设置（与 `api-instance-routes.test.ts` 用 `stubCoreBootstrap` 同例）。首轮 5 个
+用例因此全数 403，本文件头注释已写明两条替身路径的差别。
+
+**六、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：三项入 `RMD_07_RELOCATED` 三元组（长度 47 / 9），两处注释
+  与用例标题同步。
+- `scripts/__tests__/rmd-06-migration.test.ts`：`control.ts` 三元组第三项改指
+  `packages/agent-runtime/src/routes/web/control.ts`，头注释改写为「1.2 暂落宿主、1.5c 改判回本包」的完整
+  依据（该断言要求第三项存在，不改会直接失败）。
+- `scripts/root-source-owner-rules.ts`：`src/routes/web/control.ts` 规则由 `platform-identity` 改为
+  `agent-runtime` + `packages/agent-runtime`，并把 `TARGET_PREFIX_OVERRIDES` 里的 control 条目删除（默认
+  推导出的目标正是新落点）；两次改判的依据合并写在该规则上方。
+- `docs/arch/root-source-owner-inventory.md`：按规则重新生成，实测**仅这一行**变化
+  （`diff` 只有第 81 行）；`check:root-owner-inventory` 报 `files=0 unowned=0 ambiguous=0`。
+- `packages/agent-runtime/src/__tests__/registry-environment-isolation-coverage.test.ts`：`normalizePayload`
+  用例的去向说明由「迁到宿主测试」改为「1.4 W2 迁宿主、1.5c 随被测函数回本包」（断言集合不变）。
+- `scripts/architecture/exceptions.json`：`apps-boundary` 的 `@fenix/agent-runtime → @fenix/server-app` 条目据实
+  重测改写——非测试侧 **5 处 / 5 文件**（全部 `@server/db/schema`；`@server/config` 的 1 处随 `a084454c6` 消失，
+  removeWhen 的第②条路径因此不再存在），测试侧 **15 处 / 15 文件**（`module-stubs` 13、`@server/db/schema` 1、
+  `@server/plugins/error-handler` 1）。本次净增的 1 处即本片新增的 `web-control-routes.test.ts`。
+
+**七、【记录，不在本任务实现】发现的过时引用**
+
+- `FUNCTIONAL_MODULE_INVENTORY.md:40` 仍把 `apps/server/src/routes/web/control.ts` 列为「Agent 会话控制与权限交互」
+  的实现文件，并把目标包写成「`agent-session-control`（可并入 `agent-runtime`）」——路径已失效，且本片正是按
+  「并入 agent-runtime」落地的。该文件属 1.5g 台账改写范围，此处只登记。
+- `review/task-1.4-agent-runtime.md` 遗留表里「`plugins/auth.ts` / `routes/web/control.ts` / `services/resource-module-ports.ts`
+  仍从 `./server/environment` 取环境」中的 control 一项已随本片不再成立（该表列的是宿主取用面，本轮后只剩两处）。
+
+**验证证据**：`precheck` 全绿 `All passed (99167ms)`——server-and-script-tests 835 pass / package-tests 7259 pass
+（2 skip）/ web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、三项
+`tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `web-control-routes` + `transport-normalize` +
+`registry-environment-isolation-coverage` + `rmd-06-migration` + `rmd-07-migration` + `workflow-source-migration`
+共 73 pass / 0 fail。
+
+### 1.5c-3a 控制台实例路由迁入 agent-runtime（2026-09-21）
+
+§四 分片表的「environments + instances」一组按可审核粒度拆成两片，本片只做 instances。
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebInstancesRoutes(deps)` | `apps/server/src/routes/web/instances.ts` → `packages/agent-runtime/src/routes/web/instances.ts` |
+| 其两个用例随迁（认证改用包内守卫替身） | `apps/server/src/__tests__/{web-instance-runtime-actions,instances-delete-idempotent}.test.ts` → `packages/agent-runtime/src/__tests__/` |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入（`webInstances` 由 default import 改常量） | `apps/server/src/routes/web/index.ts` |
+
+**二、【需审核】取数裁定：本路由经运行 port，`control.ts` 直引实现，判据是「能力是否在 port 上」**
+
+本片与 1.5c-2 的 `control.ts` 取了**不同**的取数方式，需要一个可复述的判据，否则两者的差异日后会被当成
+不一致而「统一」掉：
+
+- **在运行 port 上的能力 → 经 `getBoundAgentRuntime()`**（本片）。实例的生命周期动作
+  （`stopInstanceRuntime` / `restartInstanceRuntime` / `deleteInstance` / `createInstance` /
+  `ensureInstance` / `getRuntimeSnapshot` / `getOwnedInstance` / `getOwnedEnvironment`）都声明在
+  `AgentRuntimePort` 上，而 port 是宿主编排层与用例的**唯一替换点**（`stubAgentRuntimePort`）。直引包内
+  模块函数等于给同一批能力开第二个替换点——正是 1.4 W3b 收敛掉的形态（此前用例靠 monkey-patch 包内单例）。
+- **不在 port 上的实现 → 直引**（`control.ts`）。它用的是会话总线、`agentInstanceService` 的仓储读与
+  `services/session`，这些不属 port 的能力面（总线另经 `session-event-bus-port` 由宿主注入），直引不会
+  产生第二个替换点。
+
+**「包内路由取绑定入口 = 自引用本包入口」的顾虑不成立**：`createAgentRuntime()` 内部持有的都是本包模块级
+单例（`agentInstanceService`、`globalInstanceRegistry`、relay 连接表），多次构造不产生第二套运行状态
+（`runtime.ts` 的注释与 `createAgentRuntimeModule()` 的幂等语义即为此设计）。因此包内路由经绑定入口取用
+不会分裂状态机、注册表或 lease 状态——用户红线「实例起来之后怎么管不动」在本片成立：**本片没有触碰任何
+状态机、幂等、lease、限流、disconnect fencing 或 dispose 逻辑**，只改路由的落点与守卫注入方式。
+
+**三、测试随迁**
+
+两个用例都直接 `handle(Request)`（不经宿主挂载），因此只需替换认证来源：宿主 `@server/plugins/auth` 的
+`setTestAuth` 换成包内 `./guard-stubs`，形状由 `{ user, authContext: { role, … } }` 收窄为
+`{ organizationId, userId }`（包内替身只维护路由真正消费的两个标识，见 `guard-stubs.ts` 的说明）。
+`stubAgentRuntimePort` / `stubCoreBootstrap` / `setOrchestrationInstanceDeps` 等注入方式一概不变。
+
+一处需要记录的事实：`instances-delete-idempotent.test.ts` 的用例标题与注释仍在描述「已停止 → 200 幂等」
+的**旧契约**，而断言实际锁定的是 **404**（现代码先做归属校验，环境查不到即 404）。这是本片之前就存在的
+描述与断言不一致，属该用例自身的历史（AE-P2.1 之后的契约演进），本片只迁不动：既不改断言也不改标题，
+登记为待复核项。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：两项入 `RMD_07_RELOCATED`（长度 47 → 45、9 → 11），两处
+  注释块补记理由（其中说明 `instances-delete-idempotent.test.ts` 不在本表内、随本片一并迁入）。
+- `scripts/root-source-owner-rules.ts`：删除 `RETAINED_HOST_TEST_RATIONALES` 里的
+  `src/__tests__/web-instance-runtime-actions.test.ts` 条目——该测试已不在宿主，保留理由不再成立（1.4 W2b
+  先例：迁出文件不补规则表条目，只清理 rationale）。`src/routes/web/instances.ts` 无专门规则（落在
+  `src/routes/web/` 通配下），按同一先例不动。
+
+**五、【记录，不在本任务实现】** `instances-delete-idempotent.test.ts` 的标题/注释与断言不一致（见三）。
+
+**验证证据**：`precheck` 全绿 `All passed (100745ms)`——server-and-script-tests 828 pass（较上片少 7 例，
+即本片迁出的 2 + 5）、package-tests 7266 pass（+7）/ web-app-tests 946 pass / 0 fail；`architecture`、
+`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
+迁入的两个用例 + `rmd-07-migration` 共 9 pass / 0 fail；`check:root-owner-inventory` 报
+`files=0 unowned=0 ambiguous=0`。
+
+### 1.5c-3b 控制台环境路由迁入 agent-runtime（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebEnvironmentsRoutes(deps)`，同时删掉末尾的 `export default createEnvironmentRoutes()` | `apps/server/src/routes/web/environments.ts` → `packages/agent-runtime/src/routes/web/environments.ts` |
+| 其用例随迁（30 例，认证改用包内守卫替身） | `apps/server/src/__tests__/round44-environments-routes.test.ts` → `packages/agent-runtime/src/__tests__/` |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+default 自执行导出被删除的理由：宿主是唯一的挂载方，`export default createEnvironmentRoutes()` 会让**任何**
+导入方都构造一份路由实例（含测试的 `mock.module` 转发表），与「工厂 + 宿主注入守卫」的形态冲突。
+
+取数方式与 1.5c-3a 的 instances 一致（经 `getBoundAgentRuntime()`，判据见 1.5c-3a 的 §二）——环境能力同样
+声明在 `AgentRuntimePort` 上。本片同样**没有触碰**任何状态机、幂等、lease、限流、disconnect fencing 或
+dispose 逻辑。
+
+**二、测试随迁时的两处口径调整**
+
+1. **认证改经包内守卫替身**：`@server/plugins/auth` 的 `setTestAuth` 换成 `./guard-stubs`，形状由
+   `{ user, authContext: { role, … } }` 收窄为 `{ organizationId, userId }`。30 个用例全部通过，未改任何断言。
+2. **`setTestOrgContext` 与 `stubAuthApi` 一并消失**：前者是宿主 `services/org-context.ts` 的测试 seam
+   （让 `loadOrgContext` 跳过 DB 查询），后者替换宿主 auth 插件的凭据解析。两者服务于**宿主装配路径**，
+   而包内守卫替身直接提供 `authContext` 并自行判定未认证，因此迁入后不再需要——「未认证返回 401」这条
+   用例只保留 `resetTestAuth()`。这不是能力丢失：组织解析与凭据解析都属宿主守卫的职责，其验收范围在宿主
+   装配用例（`guard-stubs.ts` 的注释已写明包内替身刻意不复刻这些规则）。
+
+**三、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`src/routes/web/environments.ts` 移入 `RMD_07_RELOCATED`
+  （长度 45 → 44、11 → 12），两处注释块补记（含说明 `round44-environments-routes.test.ts` 不在本表内）。
+- `scripts/architecture/exceptions.json`：`apps-boundary` 的 `agent-runtime → server-app` 条目再次据实重测——
+  测试侧由 15 处 / 15 文件升为 **17 处 / 17 文件**（`module-stubs` 13 → 15），新增的两处即本片与上一片迁入的
+  `round44-environments-routes.test.ts` 与 `instances-delete-idempotent.test.ts`；非测试侧不变（5 处
+  `@server/db/schema`）。三处新增都属「宿主测试基建的既有耦合」这一已登记形态，不是包对宿主生产实现的依赖。
+- `scripts/root-source-owner-rules.ts` **无需改动**：该文件里 `src/__tests__/round44-environments-routes` 的
+  规则本就登记为 `agent-runtime`（`scripts/__tests__/root-source-owner-inventory.test.ts:176` 也如此断言），
+  本片的落点与台账原本的预期一致；`src/routes/web/environments.ts` 无专门规则（落在 `src/routes/web/` 通配下），
+  按 1.4 W2b 先例不补条目。
+
+**验证证据**：`precheck` 全绿 `All passed (100591ms)`——server-and-script-tests 798 pass（较上片少 30 例，
+即本片迁出的 30）、package-tests 7296 pass（+30）/ web-app-tests 946 pass / 0 fail；`architecture`、
+`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
+迁入的 30 例 + `rmd-07-migration` + `root-source-owner-inventory` 共 55 pass / 0 fail。
+
+### 1.5c-4 Peri 任务详情路由与协议契约归位 model-management（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebPeriTaskDetailsRoutes(deps)` | `apps/server/src/routes/web/peri-task-details.ts` → `packages/resources/model-management/src/server/routes/web/peri-task-details.ts` |
+| 删除宿主协议副本（与包内副本字节相同） | `apps/server/src/schemas/peri-task-details.ts`（owner 落点 `packages/resources/model-management/src/server/schemas/peri-task-details.ts`，1.3 已存在） |
+| 包入口增加路由出口与两项依赖类型 | `packages/resources/model-management/src/server.ts`、`.../src/server/routes/dependencies.ts` |
+| 宿主注入端口 | `apps/server/src/services/resource-module-ports.ts` |
+| 宿主改为工厂注入、删除本地副本导入 | `apps/server/src/routes/web/index.ts` |
+
+**二、【需审核】环境归属校验改由宿主注入**
+
+判据：§2.3 依赖矩阵里 `packages/resources/<resource>` 的可依赖面是 `platform-sdk` + 本资源基础依赖 +
+**其他资源包**根入口公开的 service/DTO；`agent-runtime` 既不是 `platform-sdk` 也不是资源包，且与资源包
+同层，矩阵未登记 `model-management → agent-runtime` 方向。因此不让 model-management 反向依赖该包，改为
+宿主注入，落点是既有的 `resource-module-ports.ts`——该文件头注释的第一类能力「跨包的窄查询」正是
+「Environment 的 owner 在 agent-runtime」这一情形，`environmentLookup` 是先例。
+
+注入形状按消费侧语义声明（`EnvironmentOwnershipCheck`：校验通过即返回，不存在 / 跨组织 / 跨用户都抛错；
+返回值本包不消费），**不引用** `@fenix/agent-runtime` 的类型，因此不产生资源包对该包的编译期依赖。
+
+宿主实现走 `getBoundAgentRuntime().getOwnedEnvironment(...)` 而不是直读 `environmentRepo`：归属判据只在
+运行 port 的实现里，仓储不做这件事；取用写在调用期而不是模块加载期，宿主测试的 port 替身
+（`stubAgentRuntimePort`）才能在用例内生效。这与 1.5c-2 / 3a / 3b 的「能力在 `AgentRuntimePort` 上就经
+port 取」是同一判据，区别只在注入方向：那三片的消费方在 agent-runtime 包内，本片的消费方在资源包。
+
+**三、协议契约的第二份定义被清除**
+
+宿主 `apps/server/src/schemas/peri-task-details.ts` 与包内副本除文件头注释外**字节相同**（`diff` 仅报
+12 行新增注释）：1.3 已把 owner 判给 model-management 并把 schema 落进包内，但宿主副本未随之删除，宿主路由
+也一直从 `../../schemas/peri-task-details` 取本地副本，而不是像包入口注释声称的「经本入口取 schema」。本片
+按「删除优于兼容」删除宿主副本，宿主不再持有第二份协议定义，包内 `src/server.ts` 的过时注释同步改写。
+
+**四、只搬迁**
+
+路由路径、`sessionAuth: true` 宏、`detail` 元数据、响应 schema 与「以 404 隐藏归属差异」的语义逐字保留；
+`biome-ignore` 的理由注释一并保留（Elysia 在 response schema + error 分支组合下的类型推断问题仍在）。
+`docManager` 仍由包内直引（`@fenix/chat-channel/server` 是本包已声明依赖，矩阵允许资源包依赖独立 SDK 包），
+投影存储仍是模块级构造一次。未触碰任何生命周期、幂等或并发逻辑。
+
+**五、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：两项移入 `RMD_07_RELOCATED`（MOVES 44 → 42、
+  RELOCATED 12 → 14），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` **无需改动**：两条路径都无专门规则（分别落在 `src/routes/web/` 与
+  `src/schemas/` 通配下），按 1.4 W2b 先例「迁出文件不补规则表条目」不动。
+- `scripts/architecture/exceptions.json` **无需改动**：本片删除的是宿主文件、新增的是宿主侧同一处注入，
+  没有产生新的包 → 宿主 `@server/*` 依赖，apps-boundary 计数不变。
+- `src/__tests__/peri-task-detail-service.test.ts` **仍留在宿主**（`RETAINED_HOST_TEST_RATIONALES` 的
+  「跨服务投影装配」）：它直接调用包内的 `getPeriTaskDetail` 并自建 store 替身，不经过本片迁走的路由，
+  保留理由仍成立。
+
+**六、【记录，不在本任务实现】**
+
+包内 `src/server/schemas/peri-task-details.ts` 的文件头记录了归属偏差：1.3 review 的归属裁定把 peri-task
+一族划给 `task` 包，但本包 manifest 的 `dependsOn` 已冻结为 `["agent-config"]`，改引会让依赖声明不完整，
+故当时维持在 model-management。本片是搬迁，不改变该判断，纠正留给后续波次连同 manifest 一起改。
+
+**验证证据**：`precheck` 全绿 `All passed (99785ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`root-source-owner-inventory` 25 pass / 0 fail、model-management 包 226 pass / 0 fail、保留宿主用例
+`peri-task-detail-service.test.ts` 6 pass / 0 fail；`check:root-owner-inventory` 报
+`files=0 unowned=0 ambiguous=0`。本片无测试随迁，故 server 侧用例数与上片持平。
+
+### 1.5c-5 Meta Agent 路由归位 agent-config（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebMetaAgentRoutes(deps)` | `apps/server/src/routes/web/meta-agent.ts` → `packages/resources/agent-config/src/server/routes/web/meta-agent.ts` |
+| 包入口增加路由出口与依赖类型 | `packages/resources/agent-config/src/server.ts`、`.../src/server/routes/dependencies.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+**二、`rotateCallerApiKey` 仍由宿主注入，类型改为必填**
+
+`ensureMetaEnvironment` 的编排与 `EnsureMetaAgentResponseSchema` 本就在 agent-config，宿主那份只是协议接入
+壳，唯一宿主侧实现是 identity 的 `rotateCallerApiKey`——资源包不得依赖 `@fenix/identity`（§2.3），且「同名
+key 只保留一把」的编排只应在身份侧实现一处（理由已写在 `services/meta-agent` 的 `RotateCallerApiKey` 注释）。
+本片只把宿主文件里那句 `const metaAgentDeps = { rotateCallerApiKey }` 换成工厂依赖字段。
+
+新增依赖类型 `WebMetaAgentRouteDependencies` 把该字段声明为**必填**（服务侧的 `MetaAgentDependencies` 是可选，
+因为服务还要支持测试直接调用）：宿主是唯一装配方且一直提供，必填能让缺注入在装配期暴露，而不是等 meta
+environment 拉起时以 500 的形式暴露。
+
+**三、只搬迁**
+
+路由路径、`sessionAuth: true` 宏、401 / 500 两条错误分支的形状与文案、`detail` 元数据、日志模块名
+（`createLogger("meta-agent")`）与 `biome-ignore` 的理由注释逐字保留。未触碰 `ensureMetaEnvironment` 的
+任何编排逻辑（meta environment 的 `(organizationId, userId, name)` 三元组隔离、apiKey 进程内缓存、
+实例 spawn/复用判定均未改动）。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：本项移入 `RMD_07_RELOCATED`（MOVES 42 → 41、
+  RELOCATED 14 → 15），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` **无需改动**：`src/routes/web/meta-agent.ts` 无专门规则（落在
+  `src/routes/web/` 通配下），按 1.4 W2b 先例不补条目；该文件里已有的 `src/services/meta-agent.ts`、
+  `src/schemas/meta-agent.schema.ts`、`web/src/api/meta-agent.ts` 三条 RMD-04 规则指向的是另外三件，
+  不受本片影响。
+- `scripts/architecture/exceptions.json` **无需改动**：本片没有产生新的包 → 宿主 `@server/*` 依赖，宿主侧
+  删除的是路由壳、新增的是同一处注入。
+- 无测试随迁：`apps/server/src/__tests__/` 下从来没有 meta-agent 用例，包内 `__tests__/meta-agent.test.ts`
+  覆盖的是服务编排，本片不改动其被测对象。
+
+**五、非确定性失败的记录**
+
+本片第一次 `precheck` 报 1 fail：`round37-service-boundaries.test.ts` 的
+「Sandbox sandbox-boundary-03 首次等待失败后重启资源并补偿为可连接状态」。证据与判定：①该用例以
+`runtimeConnectTimeoutMs: 1`（1 毫秒）驱动等待循环，属时间敏感用例；②单独运行该文件 130 pass / 0 fail；
+③该文件的导入图只有 agent-runtime / platform-sdk / resource-machine / resource-sandbox，与本片改动
+零交集；④复跑 `precheck` 全绿。故判定为既有的非确定性失败，非本片引入，未做任何改动。
+
+**验证证据**：`precheck` 全绿 `All passed (99811ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`root-source-owner-inventory` + 包内 `meta-agent.test.ts` 共 29 pass / 0 fail。
+
+### 1.5c-6 用户偏好读写随 `user_config` 表归位 identity（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| `getUserConfig` / `setUserConfig` 迁入 identity 的仓储层，DB 句柄改 `getIdentityDatabase()` | `apps/server/src/services/config/user-config.ts` → `packages/platform/identity/src/repositories/user-config.ts` |
+| 包入口增加出口（值 + 两个类型） | `packages/platform/identity/src/server.ts` |
+| 宿主适配端口改从 identity 取用 | `apps/server/src/services/resource-module-ports.ts` |
+| 宿主 config barrel 去掉两条转发 | `apps/server/src/services/config/index.ts` |
+| 宿主 schema 的 `userConfig` 转出与顶部注释据实修正 | `apps/server/src/db/schema.ts` |
+
+归属判据：`user_config` 的真相来源本就是 `packages/platform/identity/db/schema.ts`（CLAUDE.md「数据库与迁移」），
+读写却留在宿主，属「表与它的读写分处两层」。落到 `repositories/` 而不是 `services/`：它只做单表读取与 upsert，
+不含业务规则，与 identity 既有的 `repositories/{user,organization}.ts` 同层同类。
+
+**二、【需审核】取数方向与类型口径**
+
+- **宿主是唯一消费者**：identity 属 `platform-impl`，按 §2.3 任何资源模块与 Agent Runtime 都不得导入其入口
+  （该约束已写在其 `server.ts` 头部），宿主 `apps/server` 是合法消费者——与既有的 `createWebApiKeysRoutes`、
+  `rotateCallerApiKey` 同口径。资源包侧仍只经宿主的注入端口（`userAgentPreferences` /
+  `userModelPreferences`）取数，未新增任何包 → identity 的编译期依赖。
+- **`permission` 在 identity 侧声明为 `unknown`**：持久层只做 jsonb 透传，不做结构校验。宿主适配端口原先的
+  `patch.permission as PermissionConfig | null | undefined` 收窄随之删除（两侧形状一致），宿主权限栈的模型
+  不再被拖进身份包的编译面。
+
+**三、测试 seam 的改指向（行为等价，用例与替身写法不变）**
+
+`setup-mocks.ts` 原先把 `getUserConfig` / `setUserConfig` 挂在 `@server/services/config` barrel 的替身上；本片把
+这两个键改按 identity 仓储模块登记（`mock.module(".../identity/src/repositories/user-config", …)`），与既有的
+`.../identity/src/services/system-api`、`.../identity/src/db` 是同一做法——`mock.module` 按解析后的模块路径生效，
+包入口的 re-export 会取到替身。替身注册表仍是同一个 `config-pg-stub`，因此所有用例侧的
+`stubConfigPg({ getUserConfig, setUserConfig })` 与断言一行未改。
+
+**替身确实生效的证据**：`config-integration.test.ts` 的「models 路由可达」断言 `success: true`，而该路由会经
+端口读偏好；若替身未生效，真实实现会在用例的 DB 替身上调用 `.where(...).limit(1)`（`stubDb` 只声明到 `where`）
+抛错 → 500，该断言必然失败。这条用例本片通过。
+
+**四、两处过时引用一并清掉**
+
+- 宿主 `db/schema.ts` 的 `userConfig` 转出：迁出后宿主对该表零引用（`grep` 只剩转出行本身），删除转出与
+  注释里「宿主内的身份读取（如 `services/config/user-config.ts` 读 `user_config`）」一句。迁移链不受影响：
+  `drizzle.config.ts` 直接声明 `packages/platform/identity/db/schema.ts`。
+- 两个资源包端口注释里指向已不存在文件的路径（`user-config.ts` 用 `!== undefined` 判定）改为指向新落点。
+
+**五、【记录，不在本任务实现】`services/config/index.ts` 的去留**
+
+该 barrel 现在只剩 `upsertSystemMcpServer`（其对应的 Hindsight MCP 路径全仓未接线，1.5a 记录已登记，处置留给
+1.5c 收尾）与类型转发，宿主内已零导入方。本片不删它：删除需要与 `mcp-system-server.ts` 的去留（写进 memory 包
+还是删除）一起决定，属独立裁定，另片处理。
+
+**六、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：本项移入 `RMD_07_RELOCATED`（MOVES 41 → 40、
+  RELOCATED 15 → 16），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` 与 `scripts/architecture/exceptions.json` 均**无需改动**：
+  `src/services/config/user-config.ts` 无专门规则（落在 `src/services/config/` 一类通配下，按 1.4 W2b 先例
+  不补条目），本片也未产生新的包 → 宿主依赖。
+
+**验证证据**：`precheck` 全绿 `All passed (101686ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`config-integration` 17 pass / 0 fail（后者是偏好端口端到端用例，见三）。
