@@ -5,28 +5,25 @@
 // - deps 注入 seam：沿用 setExternalRelayDeps / setChatChannelBootstrapDeps 模式，
 //   测试通过 setObserverServiceDeps(fake) 注入来源与权威回查，不 mock.module。
 //
-// 默认 deps 惰性绑定（D8）：
-// - chat-channel-bootstrap 必须动态 import()：静态导入会把 ioredis/yjs 拖进测试模块图；
-// - environmentRepo 经 preload Proxy 调用时解析（setup-mocks.ts 头注释记载过同款事故：
-//   绑定一次引用会固化导致 stub 失效），因此 getEnvironment 每次调用都经属性访问转发。
+// 默认 deps 全部经运行 port 的只读观测面取（1.4 W6b）：来源快照、实例名回读、环境权威回查
+// 都由 `getBoundAgentRuntime().observe` 提供，不再直接 import 本包的内部登记表与仓储。
+// 观测面每次调用现场取数（`getBoundAgentRuntime()` 经属性访问转发，preload Proxy 的 stub 因此
+// 仍然生效——setup-mocks.ts 头注释记载过「绑定一次引用会固化导致 stub 失效」的事故）。
+// chat-channel-bootstrap 的重依赖（ioredis / yjs）由观测面在方法内动态 import，本文件不感知。
 
 import { findAgentConfigNamesByIds, getAgentConfigById } from "@fenix/agent-config/server";
 import {
-  agentInstanceRepo,
+  type EnvironmentRecord,
   type ExternalRelayConnectionSnapshot,
-  listAcpConnections,
-  listExternalRelayEntries as listExternalRelayEntriesModule,
-} from "@fenix/agent-runtime/server";
-// environment 仓储走 `./server/environment` 窄入口（1.4 W6a）：barrel 会连带拉进启动路径之外的宿主依赖，
-// 窄入口只暴露 environment 仓储与记录类型，与 `apps/server/src/plugins/auth.ts` 同一做法。
-import { type EnvironmentRecord, environmentRepo } from "@fenix/agent-runtime/server/environment";
+  getBoundAgentRuntime,
+} from "@fenix/agent-runtime/runtime";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { findMachineNamesByIds, getMachineConfig } from "@fenix/resource-machine/server";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";
 import type {
   AcpConnectionSnapshot,
-  ChatClientSnapshot,
+  ChatClientConnectionSnapshot,
   KindProvider,
   Observation,
   ObservationNames,
@@ -46,7 +43,7 @@ export class ObserverKindNotFoundError extends Error {
 export interface ObserverServiceDeps {
   listAcpWsConnections: () => readonly AcpConnectionSnapshot[];
   listExternalRelayEntries: () => readonly ExternalRelayConnectionSnapshot[];
-  listChatClients: () => readonly ChatClientSnapshot[] | Promise<readonly ChatClientSnapshot[]>;
+  listChatClients: () => readonly ChatClientConnectionSnapshot[] | Promise<readonly ChatClientConnectionSnapshot[]>;
   getEnvironment: (id: string) => Promise<EnvironmentRecord | null | undefined>;
   getAgentConfigById: (id: string) => Promise<{ machineId: string | null } | null | undefined>;
   getDefaultMachineId: () => string | null;
@@ -61,35 +58,20 @@ export interface ObserverServiceDeps {
   listMachineNamesByIds: (ids: string[]) => Promise<Map<string, string>>;
 }
 
-/** 默认 deps：来源快照全部走真实只读 getter；chat-channel-bootstrap 动态加载（D8）。 */
+/** 默认 deps：全部经运行 port 的只读观测面取（1.4 W6b），本包不再自持来源接线。 */
 const defaultDeps: ObserverServiceDeps = {
-  listAcpWsConnections: () => listAcpConnections(),
-  listExternalRelayEntries: () => listExternalRelayEntriesModule(),
-  listChatClients: async () => {
-    // 惰性加载：chat-channel-bootstrap 会拖入 ioredis/yjs 重依赖，测试注入 fake 时不应加载
-    const { getChatChannelController } = await import("@fenix/agent-runtime/server");
-    const out: ChatClientSnapshot[] = [];
-    getChatChannelController().registry.forEachClientEntry((wsId, client) => {
-      out.push({
-        wsId,
-        userId: client.userId,
-        agentId: client.agentId,
-        instanceId: client.instanceId,
-        rcsSessionId: client.rcsSessionId,
-        acpSessionId: client.acpSessionId,
-        openTime: client.openTime,
-      });
-    });
-    return out;
-  },
-  // 调用时经 preload Proxy 属性访问转发到当前 stub，stub 才能生效（setup-mocks 注释）
-  getEnvironment: (id) => environmentRepo.getById(id),
+  listAcpWsConnections: () => getBoundAgentRuntime().observe.listAcpConnections(),
+  listExternalRelayEntries: () => getBoundAgentRuntime().observe.listExternalRelayConnections(),
+  listChatClients: () => getBoundAgentRuntime().observe.listChatClients(),
+  // 调用时经属性访问转发到当前绑定，用例换绑替身才能生效（setup-mocks 注释记载过「绑定一次引用
+  // 会固化导致 stub 失效」的事故）：故这里写 `getBoundAgentRuntime().observe.x()` 而不是把方法摘出来存。
+  getEnvironment: (id) => getBoundAgentRuntime().observe.getEnvironmentRecord(id),
   getAgentConfigById: (id) => getAgentConfigById(id),
   // 兜底 machine 是 Machine 模块的配置字段（`RCS_DEFAULT_MACHINE_ID` 的 owner 在那边），这里读唯一来源
   // 而不是在观察模块的配置里复制一份同名值：两处各持一份必然漂移。请求时读取——模块加载期宿主可能尚未
   // 完成基础设施初始化。
   getDefaultMachineId: () => getMachineConfig().defaultMachineId ?? null,
-  getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
+  getInstanceName: (instanceUid) => getBoundAgentRuntime().observe.getInstanceName(instanceUid),
   listOrganizationNamesByIds: (ids) => getIdentityDirectory().listOrganizationNames(ids),
   listUserNamesByIds: async (ids) => {
     const users = await getIdentityDirectory().listUserDisplayInfo(ids);

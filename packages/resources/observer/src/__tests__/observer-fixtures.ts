@@ -1,7 +1,7 @@
 // src/__tests__/observer-fixtures.ts
 // Observer 测试夹具：为 observer-service 单测与路由单测提供各来源快照 / 权威表构造工厂与 fake deps。
 //
-// 来源与字段一一对应：AcpConnectionSnapshot / ExternalRelayConnectionSnapshot / ChatClientSnapshot /
+// 来源与字段一一对应：AcpConnectionSnapshot / ExternalRelayConnectionSnapshot / ChatClientConnectionSnapshot /
 // EnvironmentRecord / SpawnedInstance，改动来源字段时同步维护此处。除 workspace 包的公开入口外，
 // 这里不导入任何宿主内部路径（`@server/*`）：夹具随包切片一起迁入，宿主副本因此成为死文件。
 //
@@ -9,7 +9,11 @@
 
 import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
 import type { EnvironmentRecord, ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
-import type { AcpConnectionSnapshot, ChatClientSnapshot, ObserverServiceDeps } from "../server/services/observer";
+import type {
+  AcpConnectionSnapshot,
+  ChatClientConnectionSnapshot,
+  ObserverServiceDeps,
+} from "../server/services/observer";
 
 /** environment 权威表记录构造器（默认 org-1/user-1/acfg-1）。 */
 export function makeEnv(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
@@ -82,7 +86,7 @@ export function makeRelay(overrides: Partial<ExternalRelayConnectionSnapshot> = 
 }
 
 /** chat-relay 客户端快照构造器（rcs_1/ses_1）。 */
-export function makeChat(overrides: Partial<ChatClientSnapshot> = {}): ChatClientSnapshot {
+export function makeChat(overrides: Partial<ChatClientConnectionSnapshot> = {}): ChatClientConnectionSnapshot {
   return {
     wsId: "yjs_1",
     userId: "user-1",

@@ -5,10 +5,13 @@
  * `bind*Port`、路由工厂注入、模块配置），本文件是**本包向外的运行能力面**（其它包与宿主
  * 业务路由消费实例/环境的启动、停止、状态、回收，以及会话与 relay 数据面原语）。
  *
- * 两条契约面：
+ * 三条契约面：
  * - `AgentRuntimePort`：管理面。回答「实例/环境在不在、怎么起、怎么停、怎么回收」。
  * - `AgentRuntimeSessionApi`：数据面。回答「怎么跑一轮」——relay 连接、ACP session/turn、
- *   定向投递。数据面原语是 ACP 协议适配层的直接能力，不是业务语义（不解释 actor/role）。
+ *   定向投递、会话事件总线。数据面原语是 ACP 协议适配层的直接能力，不是业务语义（不解释
+ *   actor/role）。`getEventBus` / `removeEventBus` 有创建/释放副作用，故在这一面而不在观测面。
+ * - `AgentRuntimeObservability`：只读观测面。回答「现场看得到什么」（W6b 新增）。每个方法都
+ *   无副作用，返回当场构造的投影而非包内实体。
  *
  * 设计约束（1.4 裁定）：
  * - 输入只接受已授权的通用参数；Runtime 不查 actor/role/visibility。「启动前取数」（取
@@ -26,15 +29,17 @@
  *   取租约，把记录改成面内的窄视图只会造出第二份投影并在两侧漂移。代价是持久化记录类型出现在
  *   契约面上——这是**有意保留**的取舍，不是待收敛项：同一理由适用于 `EnvironmentRecord`
  *   （W6b 起由本文件显式导出）。
- * - 尚未收口的能力（`environmentRepo`、`agentInstanceRepo`、event bus、`listAcpConnections`、
- *   `listExternalRelayEntries`、`resolveWorkspacePath`、`EnvironmentRecord` 等内部状态访问）不
- *   属于本 port，仍留在 `./server` 并标注 W6；它们不进 port 是因为其消费方（observer、workflow
- *   的部分路径）需要的是内部投影，收敛方式待 W6 按消费方逐包裁定。
+ * - 包外对包内状态的取数已按消费方收敛（W6b）：observer 的连接表与环境/实例回读取 `observe`，
+ *   workflow 的事件总线取 `session`，环境记录读视图取 `observe`。`./server` 上仍保留的是
+ *   **宿主装配面**（`bind*Port` 的实现来源、路由工厂、协议 schema）——宿主的取用不改走 port，
+ *   因为它正是那些 port 的提供方（判据见 review §19.2-3）。
  */
 
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentInstanceRecord } from "./server/repositories/agent-instance";
+import { agentInstanceRepo } from "./server/repositories/agent-instance";
 import type { EnvironmentRecord } from "./server/repositories/environment";
+import { environmentRepo } from "./server/repositories/environment";
 import type {
   RuntimeSnapshot,
   RuntimeState,
@@ -57,10 +62,13 @@ import {
 import {
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
+  listAcpConnections as listAcpConnectionSnapshots,
   sendToAgentWs,
 } from "./server/transport/acp-ws-handler";
 import { connectAgentRelay } from "./server/transport/agent-relay";
 import { closeAllRelayConnections } from "./server/transport/relay";
+import type { ExternalRelayConnectionSnapshot } from "./server/transport/relay/external-relay";
+import { listExternalRelayEntries } from "./server/transport/relay/external-relay";
 import { sendToInstanceRelay } from "./server/transport/relay/relay-handler";
 import {
   listInstanceActivitySnapshotsWithUsers,
@@ -97,6 +105,9 @@ import {
 } from "./services/orchestration-instance";
 import { cleanupOrchestrationInstancesForMachine } from "./services/orchestration-machine-cleanup";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "./services/session";
+import type { EventBus } from "./transport/event-bus";
+import { getEventBus, removeEventBus } from "./transport/event-bus";
+import type { AcpConnectionSnapshot } from "./types/acp-connection";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 契约类型（1.4 W6b：显式声明，不派生自实现；理由见文件头「设计约束」）
@@ -183,6 +194,26 @@ export interface CreateAgentSessionInput {
 export interface SessionRecord {
   readonly id: string;
   readonly status: string;
+}
+
+/**
+ * chat-relay 客户端连接快照（**只读投影**）。
+ *
+ * 字段集是 observer 观察链路的消费面，不是 `@fenix/chat-channel` 的 `ClientConnection` 全量——
+ * 直接把那个类型经本入口透出会把 chat 域的内部类型钉进本包契约，且带出它的加载图。这里的
+ * 取向与「不把 `ChatChannelController` 本体或 `ConnectionRegistry` 透出」一致：观察方拿快照。
+ * 字段随消费面收窄/扩张时，投影构造处会编译失败而不是静默丢字段。
+ */
+export interface ChatClientConnectionSnapshot {
+  readonly wsId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly instanceId: string;
+  readonly rcsSessionId: string;
+  /** 已协商的 ACP session ID；尚未建立时为 null。 */
+  readonly acpSessionId: string | null;
+  /** 连接建立时间（毫秒时间戳）。 */
+  readonly openTime: number;
 }
 
 /** `ensureInstance` 的输入：已授权的实例归属与选择方式（见文件头：不含启动参数）。 */
@@ -358,11 +389,49 @@ export interface AgentRuntimeSessionApi {
   sendToAgentWs(agentId: string, message: object): boolean;
   /** 向实例的 remote relay 定向投递消息。 */
   sendToInstanceRelay(instanceId: string, data: string): boolean;
+  /**
+   * 取（必要时创建）按会话 ID 索引的进程内事件总线。
+   *
+   * **有副作用**（首次调用创建总线），故属数据面而非 `observe`：workflow 用它给每个 workflow 开
+   * 一条 SSE 总线。消费方必须配对调用 {@link removeEventBus}，否则总线与订阅者常驻。
+   */
+  getEventBus(sessionId: string): EventBus;
+  /** 释放会话事件总线；不存在的 key 不抛错（幂等）。 */
+  removeEventBus(sessionId: string): void;
 }
 
-/** 本包的对外运行入口：管理面在顶层，数据面在 `session`。 */
+/**
+ * 只读观测面：观察链路读的运行时投影。
+ *
+ * 供 observer 一类**只读**消费方现场采集状态，也承接只想读运行数据、不想持仓储的消费方
+ *（workflow / meta-agent 的环境候选读视图）。每个方法都无副作用、不改变任何登记表，返回的是
+ * 当场构造的投影而不是包内实体——消费方拿到的是「看得到什么」，不是「能操作什么」。
+ * 需要创建/释放总线的能力在 `session`（见该接口对 `getEventBus` 的说明）。
+ */
+export interface AgentRuntimeObservability {
+  /** ACP（机器接入）连接登记表快照。 */
+  listAcpConnections(): readonly AcpConnectionSnapshot[];
+  /** 外部 relay 连接登记表快照。 */
+  listExternalRelayConnections(): readonly ExternalRelayConnectionSnapshot[];
+  /**
+   * chat-relay 客户端连接快照（由 Chat 域连接登记表现造）。
+   *
+   * 异步且**必须在方法内动态 import** `chat-channel-bootstrap`：它静态拖入 ioredis / yjs，
+   * 静态导入会让本包所有消费方（含只跑替身的用例）都在加载期付这份代价。
+   */
+  listChatClients(): Promise<ChatClientConnectionSnapshot[]>;
+  /** 持久实例名称（观测输出的展示名）；未知实例返回 undefined。 */
+  getInstanceName(instanceUid: string): Promise<string | undefined>;
+  /** 按 ID 读环境记录（观察链路的权威回查）；不存在返回 undefined（沿用仓储的「未找到」惯用法）。 */
+  getEnvironmentRecord(environmentId: string): Promise<EnvironmentRecord | undefined>;
+  /** 列出组织下的环境记录（workflow / meta-agent 的环境候选读视图）。 */
+  listEnvironmentRecordsByOrganization(organizationId: string): Promise<EnvironmentRecord[]>;
+}
+
+/** 本包的对外运行入口：管理面在顶层，数据面在 `session`，只读观测面在 `observe`。 */
 export interface AgentRuntime extends AgentRuntimePort {
   readonly session: AgentRuntimeSessionApi;
+  readonly observe: AgentRuntimeObservability;
 }
 
 /**
@@ -457,6 +526,32 @@ export function createAgentRuntime(): AgentRuntime {
       startPromptTurn: (options) => startPromptTurn(options),
       sendToAgentWs: (agentId, message) => sendToAgentWs(agentId, message),
       sendToInstanceRelay: (instanceId, data) => sendToInstanceRelay(instanceId, data),
+      getEventBus: (sessionId) => getEventBus(sessionId),
+      removeEventBus: (sessionId) => removeEventBus(sessionId),
+    },
+    observe: {
+      listAcpConnections: () => listAcpConnectionSnapshots(),
+      listExternalRelayConnections: () => listExternalRelayEntries(),
+      listChatClients: async () => {
+        // 动态 import 的理由见 `AgentRuntimeObservability.listChatClients` 的注释。
+        const { getChatChannelController } = await import("./server/services/chat-channel-bootstrap");
+        const out: ChatClientConnectionSnapshot[] = [];
+        getChatChannelController().registry.forEachClientEntry((wsId, client) => {
+          out.push({
+            wsId,
+            userId: client.userId,
+            agentId: client.agentId,
+            instanceId: client.instanceId,
+            rcsSessionId: client.rcsSessionId,
+            acpSessionId: client.acpSessionId,
+            openTime: client.openTime,
+          });
+        });
+        return out;
+      },
+      getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
+      getEnvironmentRecord: (environmentId) => environmentRepo.getById(environmentId),
+      listEnvironmentRecordsByOrganization: (organizationId) => environmentRepo.listByOrganizationId(organizationId),
     },
   };
 }
@@ -523,12 +618,15 @@ export function resetAgentRuntimeForTest(): void {
 // 本文件内已声明的契约类型（`Environment*` / `PromptTurnStartResult` / `SessionRecord` 等）随
 // 其声明处直接导出，不在这里重复列——重复会构成重复导出（TS2484）。此处只列来自实现的类型。
 export type {
+  AcpConnectionSnapshot,
   AgentInstanceRecord,
   AgentSession,
   AutomaticInstanceSelection,
   CreateWebEnvironmentParams,
   EngineRelayHandle,
   EnvironmentRecord,
+  EventBus,
+  ExternalRelayConnectionSnapshot,
   InstanceActivityInfo,
   OpenAgentSessionInput,
   OpenAgentSessionResult,

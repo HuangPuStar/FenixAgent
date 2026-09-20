@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentRuntimePort, AgentRuntimeSessionApi } from "../runtime";
+import type { AgentRuntimeObservability, AgentRuntimePort, AgentRuntimeSessionApi } from "../runtime";
 import {
   bindAgentRuntime,
   createAgentRuntime,
@@ -11,10 +11,10 @@ import {
 } from "../runtime";
 
 /**
- * 管理面 41 个方法与数据面 6 个方法的清单。
+ * 管理面 41 个方法、数据面 8 个方法与观测面 6 个方法的清单。
  *
  * `satisfies` 让「清单里写了 port 上不存在的名字」在编辑期就报错，运行期断言再确认实现对象
- * 一个不少、两个面不互相错位。改动 port 面时这张清单会一起失败——这正是契约测试的目的：
+ * 一个不少、三个面不互相错位。改动 port 面时这张清单会一起失败——这正是契约测试的目的：
  * 让公开面的每一次增删都必须显式落到测试上。
  */
 const PORT_METHODS = [
@@ -72,7 +72,20 @@ const SESSION_METHODS = [
   "startPromptTurn",
   "sendToAgentWs",
   "sendToInstanceRelay",
+  // 总线创建/释放有副作用，故属数据面而非观测面（见该接口对 getEventBus 的说明）。
+  "getEventBus",
+  "removeEventBus",
 ] as const satisfies readonly (keyof AgentRuntimeSessionApi)[];
+
+/** 观测面全部无副作用，返回当场构造的投影；`.observe` 上不得出现有副作用的能力。 */
+const OBSERVE_METHODS = [
+  "listAcpConnections",
+  "listExternalRelayConnections",
+  "listChatClients",
+  "getInstanceName",
+  "getEnvironmentRecord",
+  "listEnvironmentRecordsByOrganization",
+] as const satisfies readonly (keyof AgentRuntimeObservability)[];
 
 afterEach(() => {
   // 装配状态是模块级单例：用例结束要把**真实入口**装回去，而不是留空。消费方（宿主路由、编排层、
@@ -84,11 +97,12 @@ afterEach(() => {
 
 describe("AgentRuntime port 契约", () => {
   // 公开的运行入口必须与清单逐名一致：既不缺项，也不留未登记的第二入口。
-  test("管理面与数据面的方法集合与清单完全一致", () => {
+  test("三个契约面的方法集合与清单完全一致", () => {
     const runtime = createAgentRuntime();
 
-    expect(new Set(Object.keys(runtime))).toEqual(new Set([...PORT_METHODS, "session"]));
+    expect(new Set(Object.keys(runtime))).toEqual(new Set([...PORT_METHODS, "session", "observe"]));
     expect(new Set(Object.keys(runtime.session))).toEqual(new Set(SESSION_METHODS));
+    expect(new Set(Object.keys(runtime.observe))).toEqual(new Set(OBSERVE_METHODS));
 
     for (const name of PORT_METHODS) {
       expect(typeof runtime[name]).toBe("function");
@@ -96,12 +110,30 @@ describe("AgentRuntime port 契约", () => {
     for (const name of SESSION_METHODS) {
       expect(typeof runtime.session[name]).toBe("function");
     }
+    for (const name of OBSERVE_METHODS) {
+      expect(typeof runtime.observe[name]).toBe("function");
+    }
   });
 
   // 同一能力不得在两个面各留一份：重复入口会让消费方无从判断该用哪一个。
-  test("管理面与数据面不共享方法名", () => {
-    const overlap = PORT_METHODS.filter((name) => (SESSION_METHODS as readonly string[]).includes(name));
-    expect(overlap).toEqual([]);
+  test("三个契约面互不共享方法名", () => {
+    const planes: Record<string, readonly string[]> = {
+      port: PORT_METHODS,
+      session: SESSION_METHODS,
+      observe: OBSERVE_METHODS,
+    };
+    const overlaps: string[] = [];
+    const names = Object.keys(planes);
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        const a = names[i] as string;
+        const b = names[j] as string;
+        for (const name of planes[a] as readonly string[]) {
+          if ((planes[b] as readonly string[]).includes(name)) overlaps.push(`${a}/${b}:${name}`);
+        }
+      }
+    }
+    expect(overlaps).toEqual([]);
   });
 
   // 未装配即失败：隐式构造第二套入口会让消费方在宿主装配未完成时拿到半可用的 runtime。

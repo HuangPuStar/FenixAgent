@@ -6,8 +6,15 @@
 // env 缺失、关键角色缺省（如 machineId 注册前为 null）、归属不一致 → verified=false，
 // 计入 integrity 的 mismatchedItems。userId 哨兵 "__machine__" 不输出。
 
-import type { ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
-import type { AcpConnectionSnapshot, ChatClientSnapshot, KindProvider, Observation, ObserverContext } from "../types";
+// 类型来源与 types.ts 一致取运行 port 的观测面（1.4 W6b），不再从装配面 `/server` 取。
+import type { ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/runtime";
+import type {
+  AcpConnectionSnapshot,
+  ChatClientConnectionSnapshot,
+  KindProvider,
+  Observation,
+  ObserverContext,
+} from "../types";
 
 /** acp-link Provider（模块单例构造时注册到 ObserverService）。 */
 export const acpLinkProvider: KindProvider = {
@@ -107,7 +114,11 @@ async function toRelayObservation(
 }
 
 /** chat-relay 来源：wsId 取自 registry 的 key（forEachClientEntry 带出）。 */
-async function toChatObservation(client: ChatClientSnapshot, now: number, ctx: ObserverContext): Promise<Observation> {
+async function toChatObservation(
+  client: ChatClientConnectionSnapshot,
+  now: number,
+  ctx: ObserverContext,
+): Promise<Observation> {
   const env = await ctx.getEnvironment(client.agentId);
   const entityIds: { role: string; id: string }[] = [
     { role: "linkId", id: `chat-relay:${client.wsId}` },

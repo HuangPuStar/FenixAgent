@@ -14,8 +14,8 @@ import {
   getBoundAgentRuntime,
   type PromptTurn,
 } from "@fenix/agent-runtime/runtime";
-// environment 仓储走窄入口（1.4 W6a）：只需按组织列环境候选，不必经 barrel 拉进启动路径之外的宿主依赖。
-import { environmentRepo } from "@fenix/agent-runtime/server/environment";
+// 按组织列环境候选改经运行 port 的只读观测面（1.4 W6b）：本包不再直取环境仓储，
+// 环境域的数据访问留在 agent-runtime 内，这里只消费它的只读投影。
 // JSON-RPC 帧提取的唯一实现在 chat-channel 协议层（1.4 W6a 收口）：本包此前自带一份私有副本，
 // 与 agent-runtime 的副本、chat-channel 的正本三处语义等价却各自演进，故一并删除改指正本。
 import { extractJsonRpc } from "@fenix/chat-channel";
@@ -338,7 +338,9 @@ class AgentChatTransport implements Transport {
     // 本包直读会让同一张表出现第二份查询实现（§1 条件 8）。
     // 该仓储当前没有 name 维度的单行查询，这里在组织范围内取回后按 name 过滤；把查询收敛回单行的
     // `findByName(organizationId, name)` 需要 agent-runtime 侧新增仓储方法，已登记为跨包待办。
-    const envCandidates = await environmentRepo.listByOrganizationId(this.organizationId);
+    const envCandidates = await getBoundAgentRuntime().observe.listEnvironmentRecordsByOrganization(
+      this.organizationId,
+    );
     const envRow = envCandidates.find((candidate) => candidate.name === envName);
 
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
