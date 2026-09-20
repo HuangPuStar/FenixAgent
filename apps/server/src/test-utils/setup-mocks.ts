@@ -148,6 +148,11 @@ const realGetModuleConfig = platformServer.getModuleConfig;
 // 才回退——没登记说明该用例不碰 DB，必须原样抛出平台错误，`server-infrastructure.test.ts` 的两条契约
 // 用例正是断言这种情形。
 const realGetDatabase = platformServer.getDatabase;
+// Redis 连接（1.5b 收敛到进程能力面）：生产由 main.ts 在 `initializeApplicationInfrastructure` 里声明
+// provider，agent-runtime 的会话快照与 chat-channel 的 DocManager 都经 `getRedisConnection()` 取用。
+// 回退条件与 DB 一致——测试进程不初始化基础设施，未初始化时落到宿主 `services/cache` 这条唯一取数路径
+// （未配置 `RCS_REDIS_URL` 时返回 null，包内据此跳过快照持久化，与 round29-cache-isolation 的断言一致）。
+const realGetRedisConnection = platformServer.getRedisConnection;
 mock.module("@fenix/platform-sdk/server", () => ({
   ...platformServer,
   getModuleConfig: <TConfig>(moduleId: string): TConfig => {
@@ -170,6 +175,16 @@ mock.module("@fenix/platform-sdk/server", () => ({
       }
       if (!hasDbStub()) throw error;
       return getDbStub() as TDatabase;
+    }
+  },
+  getRedisConnection: <TRedis>(): TRedis | null => {
+    try {
+      return realGetRedisConnection<TRedis>();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("应用基础设施尚未初始化")) {
+        throw error;
+      }
+      return cacheModule.getRedisConnection() as TRedis | null;
     }
   },
 }));
@@ -393,7 +408,6 @@ const {
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
-  bindRedisConnectionPort,
   bindSessionEventBusPort,
   environmentRepo,
   findMachineConnectionById,
@@ -452,9 +466,6 @@ bindMachineEnvironmentPort({
   getOwnedEnvironment: getBoundAgentRuntime().getOwnedEnvironment,
 });
 bindLocalNodeAgentNodeServicePort({ getAgentNodeService });
-// Redis 连接端口（1.4 W2）：实现仍走宿主 services/cache 这条唯一取数路径，测试进程未配置
-// RCS_REDIS_URL 时它返回 null（与 round29-cache-isolation 的断言一致），包内据此跳过快照持久化。
-bindRedisConnectionPort({ getRedisConnection: () => cacheModule.getRedisConnection() });
 bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus });
 bindFileWsPort({
   checkParsedObjectSize: actualFileWsPayload.checkParsedObjectSize,

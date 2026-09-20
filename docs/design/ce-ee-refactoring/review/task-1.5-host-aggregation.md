@@ -204,7 +204,7 @@ mcp / skill / agent-config / model-management 的**实例**，则 `access-contro
 
 | 残留 | 处置 |
 | --- | --- |
-| `chat-channel/src/server/services/doc-manager-instance.ts:4` 的 `@server/services/cache` | 宿主把 `getRedisConnection` 注册进 `@fenix/platform-sdk/server` 的进程能力面（与 `getDatabase` 同构），包改从 platform-sdk 取。台账第 6 条随之销账。 |
+| `chat-channel/src/server/services/doc-manager-instance.ts:4` 的 `@server/services/cache` | 宿主把 `getRedisConnection` 注册进 `@fenix/platform-sdk/server` 的进程能力面（与 `getDatabase` 同构），包改从 platform-sdk 取。台账第 6 条随之销账。**实施时的口径调整见 §七 1.5b 三**：落点改为 `initializeApplicationInfrastructure` 的必填输入，并借此收敛掉 `agent-runtime` 在 1.4 W2 建的同类包级 port。 |
 | `agent-runtime/src/services/orchestration-instance.ts:18` 的 `@server/config`（`config.defaultEngineType` / `getBaseUrl()`） | 改由**模块配置**携带（`getModuleConfig("agent-runtime")`），宿主在 `initializeApplicationInfrastructure` 的 `moduleConfigs` 里补这两个键。这与 1.3 已建立的「配置经模块配置注入、包侧不读 `process.env`」完全同构，不新增机制。 |
 
 `@server/plugins/auth` 的 28 处命中需逐条甄别：按 `routes/web/index.ts` 的既有约定，守卫一律是
@@ -331,3 +331,87 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
   `getBaseUrl()`（:453，注入 `USER_META_BASE_URL`）。包内 `src/server/config.ts` 的
   `AgentRuntimeModuleConfig` 已提供 `getModuleConfig("agent-runtime")` 读取面，只需补这两个字段与
   对应 schema 条目，宿主 `main.ts` 的模块配置同步补键。
+
+### 1.5b 包 → 宿主残留边切断（2026-09-21，实施后）
+
+**一、`agent-runtime` 的 `@server/config`（2 个键）**
+
+| 改动 | 文件 |
+| --- | --- |
+| 模块配置补 `defaultEngineType?` / `baseUrl` 两字段与 schema 条目；头注释由「两类」改「三类」并写明这两个键的来历 | `packages/agent-runtime/src/server/config.ts` |
+| import 改走 `getAgentRuntimeConfig()`，两处取值与两处注释同步 | `packages/agent-runtime/src/services/orchestration-instance.ts` |
+| 测试装配基线补 `baseUrl: "http://stub.invalid"`（`baseUrl` 是新增必填键，不补会让所有走该辅助的包内用例在 `safeParse` 处抛错） | `packages/agent-runtime/src/server/testing.ts` |
+| 模块配置注入这两个键 | `apps/server/src/main.ts` |
+
+**二、删除 `packages/agent-runtime/src/__tests__/instance-machine-fallback.test.ts`（10 个用例）**
+
+逐条读完全文后的定性：
+
+- **3 例**测的是宿主 `setConfig` / `config` 的读写（其中 4 处带 `as any`），被测对象是宿主的测试辅助函数
+  而非本包生产代码；对应的 env 校验（`RCS_DEFAULT_MACHINE_ID` / `RCS_DEFAULT_ENGINE_TYPE`）已由宿主
+  `apps/server/src/__tests__/env-validation.test.ts:79-106` 覆盖。
+- **4 例是自证式**：把生产表达式抄进测试再断言自己（其中 `:61-62` 还把 `config.defaultMachineId` 误当作
+  `resolvedNodeId`），删掉生产实现它们照样通过。
+- **3 例是纯局部变量 if/else**，连生产模块都不 import。
+- 真正的语义由走生产代码的用例覆盖：local-default 分支的引擎透传见
+  `orchestration-instance-nodeid.test.ts:132`；`agent_config.machineId` → 兜底机器 → `local-default` 的
+  fallback 链见 `environment-orchestration.test.ts`（13 例，经 `stubAgentRuntimeConfig` 驱动生产读取路径）。
+- 该文件同时是本包**测试侧**对 `@server/config` 的最后一处引用，删除后包内真实 import 命中归零。
+
+同批改造 `orchestration-instance-nodeid.test.ts`：`:88` 的 `setConfig({ defaultEngineType: undefined })` 删除
+（缺省基线即 `undefined`）、`:133` 改用 `stubAgentRuntimeConfig`、`:42`/`:102` 的 config 快照与恢复逻辑移除。
+
+**三、Redis 读取面收敛（口径调整，需审核）**
+
+§3.5 原计划是「宿主把 `getRedisConnection` 注册进 platform-sdk 的进程能力面」。实施中发现**第二个真实
+用例已存在**：`agent-runtime` 在 1.4 W2 已为 YJS 会话快照建了包级 port
+（`src/server/services/redis-connection-port.ts` 的 `bindRedisConnectionPort` / `getBoundRedisConnection`），
+由宿主 `main.ts:305` 绑定。两个消费方（`chat-channel` 的 DocManager、`agent-runtime` 的会话切换快照）读的
+是同一个部署值，而 `chat-channel` **不能依赖 `agent-runtime`**（依赖方向不允许），包级 port 因此无法被复用
+——若照原计划新增第三个读取面，会形成「同一部署值三处取数点」。
+
+据此把实现从「新增读取面」改为「收敛到唯一读取面」：
+
+| 改动 | 文件 |
+| --- | --- |
+| 新增**必填**输入 `redisConnection: (() => unknown) \| null` 与读取面 `getRedisConnection<TRedis>(): TRedis \| null` | `packages/platform/platform-sdk/src/server.ts` |
+| 测试装配透传（缺省 `null`，与迁移前测试进程行为逐字一致） | `packages/platform/platform-sdk/src/testing/test-application-infrastructure.ts` |
+| 声明生产 provider `() => getRedisConnection()`；删除 `bindRedisConnectionPort` 调用与 import | `apps/server/src/main.ts` |
+| `mock.module` seam 加同名回退（实现与原 `bindRedisConnectionPort` 的替身逐字等价） | `apps/server/src/test-utils/setup-mocks.ts` |
+| 删除包级 port 文件与它在 `@fenix/agent-runtime/server` 的出口；`chat-channel-bootstrap.ts` 改读 platform-sdk | `packages/agent-runtime/src/server/services/redis-connection-port.ts`（删除）、`src/server.ts`、`src/server/services/chat-channel-bootstrap.ts` |
+| 改读 platform-sdk | `packages/chat-channel/src/server/services/doc-manager-instance.ts` |
+
+**必填而非可选是该设计的要点**：选填会让「装配漏传」与「本进程声明不用 Redis」不可区分——配了
+`RCS_REDIS_URL` 的部署会静默退化成进程内缓存，多实例之间的 Y.Doc 快照不再共享且没有任何报错。改成必填
+后，漏传是编译期错误；这正是它可以取代 1.4 W2 那条「未装配即抛错」运行期检查的原因，语义不退化。
+`getRedisConnection()` 未初始化时仍抛错（走 `requireInfrastructure()`），所以未初始化态也没被放过。
+
+**须审核项：这删除了 `@fenix/agent-runtime/server` 的 4 个导出（含 `RedisConnectionProvider` 类型），是
+公共契约变化，且推翻了 1.4 W2 的产出。** 判定依据是 §九「删除优于兼容」与 §2.3「不得并行创建第二套能力」：
+保留两条读取面读同一个 `cache.ts` 才是更差的终局。若审核不通过，回退点是「恢复 port、platform-sdk 的面只
+供 chat-channel 使用」。
+
+**四、台账销账**
+
+`scripts/architecture/exceptions.json` 删除 `apps-boundary @fenix/chat-channel @fenix/server-app`（owner
+`1.5`；其 rationale 原文即写明「缓存能力收敛到 platform-sdk 后本边消失，属 1.5 范围」）。删除前
+`architecture` 门禁报「有 1 条已不再违规，必须删除」，删除后转绿——**这是本次改动生效的正面信号**。
+
+`apps-boundary @fenix/agent-runtime @fenix/server-app`（owner `1.4`）**仍然有效**：该包残留已只剩
+`@server/db/schema`（5 处，归 §1.7）。owner 同为 `1.5` 的 `model-management` / `resource-mcp` 两条边属
+1.5c（宿主业务面迁出），本分片不涉及。
+
+**五、两处已知边界（记录，不修）**
+
+- `setup-mocks.ts` 的 Redis 回退 seam 使 `server-infrastructure.test.ts` 里「未初始化时读取 Redis 必须抛错」
+  这条契约**结构性不可断言**（实测读到的是替身回退值 `null`，而非错误）。已移除该断言并在文件中写明原因；
+  契约本身由与被保留的两条断言同一条 `requireInfrastructure()` 路径保证。这与该文件既有的「宿主 preload
+  会把已登记模块的读取回退到基线」是同一类现象。
+- `cache.ts` 的 `getRedisConnection()` 不触发建连（`_redis` 只在首次 `getCache()` 后非 null）。既有行为，
+  本次逐字保留；传 provider 而非值快照正是为了让宿主建连后的新连接可被读到，`server-infrastructure.test.ts`
+  新增用例锁定这一点。
+
+**验证证据**：`precheck` 全绿 `All passed (98993ms)`——server-and-script-tests 863 pass / package-tests
+7219 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、三项 `tsc` 均通过。
+分项：`platform-sdk` 8 pass、`chat-channel` 653 pass（30 文件）、`agent-runtime` 330 pass（50 文件）、
+`round29-cache-isolation` 68 pass。

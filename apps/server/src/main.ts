@@ -26,7 +26,6 @@ import {
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
-  bindRedisConnectionPort,
   bindSessionEventBusPort,
   createAcpRoutes,
   createApiInstanceRoutes,
@@ -174,6 +173,10 @@ applyEnv(env);
 // 而这类分歧不会在启动期暴露。
 initializeApplicationInfrastructure({
   database: db,
+  // Redis 同样是进程能力：宿主是唯一建连点，包经 `getRedisConnection()` 取用（未配置 `RCS_REDIS_URL` 时
+  // 返回 null，调用方跳过快照持久化）。这里传 provider 而不是连接本身——`services/cache` 首次 `getCache()`
+  // 才建连，装配期取值会把「尚未建连」固化成永久 null。
+  redisConnection: () => getRedisConnection(),
   moduleConfigs: {
     identity: {
       betterAuthUrl: env.BETTER_AUTH_URL,
@@ -182,10 +185,13 @@ initializeApplicationInfrastructure({
       systemAdminPasswordFile: config.systemAdminPasswordFile,
       disableSignup: config.disableSignup,
     },
-    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）加环境解析与
-    // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限）。三项并发
-    // 上限缺省即「不限制」，`config` 已把 env 的 optional 语义原样带过来（`undefined` 而非 0）。「启动参数
-    // 组装」类配置不在这里：那部分职责随 W4 的 launch-spec 装配搬出本包（见 §七 W1/W2/W4 产出栏）。
+    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）、环境解析与
+    // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限），以及启动
+    // 组装残留的两个输入（`defaultEngineType` / `baseUrl`）。三项并发上限缺省即「不限制」，`config` 已把 env 的
+    // optional 语义原样带过来（`undefined` 而非 0）。启动组装的其余职责随 W4 的 launch-spec 装配搬去
+    // agent-config（经 `AgentLaunchSpecPort`），留下的这两个值仍由本包的 `buildAgentLaunchSpecForCore` 消费：
+    // 前者决定本地执行的引擎类型，后者注入 platformEnv 的 `USER_META_BASE_URL`；1.5b 起它们与本块其余键同一
+    // 路径注入，本包不再直读宿主 `@server/config`。
     "agent-runtime": {
       agentMaxConcurrency: config.agentMaxConcurrency,
       userAgentMaxConcurrency: config.userAgentMaxConcurrency,
@@ -195,8 +201,10 @@ initializeApplicationInfrastructure({
       acpActivityTimeoutSeconds: config.acpActivityTimeoutSeconds,
       wsKeepaliveInterval: config.wsKeepaliveInterval,
       defaultMachineId: config.defaultMachineId,
+      defaultEngineType: config.defaultEngineType,
       disableLocalExecution: config.disableLocalExecution,
       workspaceRoot: config.workspaceRoot,
+      baseUrl: getBaseUrl(),
       acpRegistrySecret: env.REGISTRY_SECRET,
       fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
     },
@@ -295,9 +303,6 @@ bindMachineEnvironmentPort({
   getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
   getOwnedEnvironment: agentRuntime.getOwnedEnvironment,
 });
-// YJS 会话快照所需的 Redis 连接（1.4 W2）：包内不再 import 宿主 services/cache，连接的建立与配置
-// 由宿主绑定，包内仅在会话切换的 CAS 快照路径上取用（未配置 RCS_REDIS_URL 时返回 null 并跳过）。
-bindRedisConnectionPort({ getRedisConnection });
 bindSessionEventBusPort({
   getAllBuses: () => getAllEventBuses(),
   removeBus: (sessionId) => removeEventBus(sessionId),

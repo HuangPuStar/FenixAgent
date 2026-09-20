@@ -89,6 +89,11 @@ export {
  * 默认值）。兜底机器 ID 不在本配置里，它归 machine 模块（`getMachineConfig().defaultMachineId`），需要它的
  * 用例经 `stubMachineModuleConfig` 之类入口调整 machine 那份配置。
  *
+ * `defaultEngineType` 与 `baseUrl` 是 1.5b 新增的两个键（本地执行引擎类型 / 平台对外基址），原经宿主
+ * `@server/config` 直读。`defaultEngineType` 刻意**不设**——迁移前宿主测试进程读到的是 `buildConfig({} as Env)`
+ * 的 `undefined`，调用方回退 `"opencode"`；这里设值会让「缺省回退」这条分支失去覆盖。`baseUrl` 是必填项，
+ * 取一个不可达的占位值（与 `buildInertLaunchSpec` 同口径），使用例无法静默依赖真实网络。
+ *
  * `acpRegistrySecret` 刻意**不**照抄宿主 env 的 zod 默认值，而用一个显式的测试值：默认值是部署期密钥，
  * 写进 fixture 会让「密钥不得进入源码」的红线在测试代码里破口，也会让用例静默依赖那个字面量。需要与
  * `/acp/*` 端点握手的用例应从 `getAgentRuntimeConfig().acpRegistrySecret` 取值。
@@ -103,6 +108,7 @@ export function createAgentRuntimeModuleConfig(
     wsKeepaliveInterval: 20,
     disableLocalExecution: false,
     workspaceRoot: join(process.cwd(), "workspaces"),
+    baseUrl: "http://stub.invalid",
     acpRegistrySecret: "test-acp-registry-secret",
     fileWsMaxPayloadMb: 32,
     ...overrides,
