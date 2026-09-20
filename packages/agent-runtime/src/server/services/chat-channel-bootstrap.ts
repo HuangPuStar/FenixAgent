@@ -19,6 +19,7 @@ import {
   persistYjsClearedSnapshotWithCas,
 } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
+import { getRedisConnection as getPlatformRedisConnection } from "@fenix/platform-sdk/server";
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import {
@@ -31,7 +32,6 @@ import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
 import { agentInstanceService } from "./agent-instance-service";
-import { getBoundRedisConnection, type RedisConnectionProvider } from "./redis-connection-port";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 type ChatChannelBootstrapDeps = {
@@ -44,7 +44,7 @@ type ChatChannelBootstrapDeps = {
   markInstanceRelayDetached: typeof markInstanceRelayDetached;
   touchInstanceActivity: typeof touchInstanceActivity;
   terminateLocalDeadInstance: typeof terminateLocalDeadInstance;
-  getRedisConnection: RedisConnectionProvider;
+  getRedisConnection: () => Redis | Cluster | null;
   docManager: typeof docManager;
   isMachineOfflineError: typeof isMachineOfflineError;
   classifyPermanentSpawnFailure: typeof classifyPermanentSpawnFailure;
@@ -72,7 +72,7 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   markInstanceRelayDetached,
   touchInstanceActivity,
   terminateLocalDeadInstance,
-  getRedisConnection: getBoundRedisConnection,
+  getRedisConnection: () => getPlatformRedisConnection<Redis | Cluster>(),
   docManager,
   isMachineOfflineError,
   classifyPermanentSpawnFailure,

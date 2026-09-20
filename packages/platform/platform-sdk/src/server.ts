@@ -14,6 +14,13 @@ import type { IdentityDirectory } from "./identity/identity-directory";
 interface ApplicationInfrastructure {
   readonly database: unknown;
   readonly moduleConfigs: Map<string, unknown>;
+  /**
+   * 进程级 Redis 连接 provider；`null` 表示本进程已声明「不使用 Redis」。
+   *
+   * 存**函数**而不是连接本身：宿主的 `apps/server/src/services/cache.ts` 首次 `getCache()` 时才建连，
+   * 注册期取值会把「尚未建连」固化成永久 `null`，而那个状态在进程生命周期内不会自愈。
+   */
+  readonly redisConnection: (() => unknown) | null;
 }
 
 let applicationInfrastructure: ApplicationInfrastructure | undefined;
@@ -32,6 +39,14 @@ export interface InitializeApplicationInfrastructureInput {
   readonly database: unknown;
   /** 按模块 ID 拆分的已校验只读配置；模块只能读取自己的那一份。 */
   readonly moduleConfigs: Readonly<Record<string, unknown>>;
+  /**
+   * 进程级 Redis 连接 provider；显式传 `null` 表示本进程不使用 Redis。
+   *
+   * 必填而非可选：Redis 是可选基础设施，但「本进程用不用」必须由装配方回答。选填会让「漏传」与
+   * 「声明不用」不可区分——配了 `RCS_REDIS_URL` 的部署会静默退化成进程内缓存，多实例之间的
+   * Y.Doc 快照因此不再共享，且没有任何报错。
+   */
+  readonly redisConnection: (() => unknown) | null;
 }
 
 /**
@@ -47,6 +62,7 @@ export function initializeApplicationInfrastructure(input: InitializeApplication
   applicationInfrastructure = {
     database: input.database,
     moduleConfigs: new Map(Object.entries(input.moduleConfigs)),
+    redisConnection: input.redisConnection,
   };
 }
 
@@ -57,6 +73,21 @@ export function initializeApplicationInfrastructure(input: InitializeApplication
  */
 export function getDatabase<TDatabase = unknown>(): TDatabase {
   return requireInfrastructure().database as TDatabase;
+}
+
+/**
+ * 读取进程级 Redis 连接。
+ *
+ * 未初始化时抛错（同 {@link getDatabase}）；装配方声明 `null` 或宿主尚未建连时返回 `null`。与
+ * `getDatabase` 的差别是有意为之：Redis 是可选基础设施，「本进程没有可用的 Redis」是合法状态，
+ * 调用方据此回退进程内后端，而不是把它当成装配错误。
+ *
+ * 返回类型是泛型：本模块不依赖 ioredis，`unknown` 只用于存储槽位，调用方收窄为具体客户端类型
+ * （`Redis | Cluster`）。连接的生命周期归宿主——本模块只转发，不建连、不关连接。
+ */
+export function getRedisConnection<TRedis = unknown>(): TRedis | null {
+  const provider = requireInfrastructure().redisConnection;
+  return provider ? ((provider() as TRedis | null | undefined) ?? null) : null;
 }
 
 /**

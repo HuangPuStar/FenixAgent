@@ -125,11 +125,6 @@ export {
   getMachineRegistryPort,
 } from "./server/services/machine-registry-port"; // 宿主注入·机器注册表
 export {
-  bindRedisConnectionPort,
-  getBoundRedisConnection,
-  type RedisConnectionProvider,
-} from "./server/services/redis-connection-port"; // 宿主注入·Redis 连接
-export {
   bindSessionEventBusPort,
   getSessionEventBusPort,
   resetSessionEventBusPort,

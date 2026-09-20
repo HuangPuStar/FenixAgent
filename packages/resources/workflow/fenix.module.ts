@@ -5,8 +5,8 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  *
  * 工作流定义 / 版本 / 运行 / 触发的唯一 owner。装配面上的服务端交付物是五组 `/web/workflow-*` 路由
  * （defs、runs、engine action、SSE 事件流、custom-tools）、`/api/workflows/:workflowId/execute`、
- * `/workflow-ui` 静态代理与 Webhook 处理函数 `handleWebhookRequest`；消费者是宿主 `apps/server`
- * （`main.ts` 与 `routes/web/index.ts`、`routes/hooks.ts`）。
+ * `/workflow-ui` 静态代理与 Webhook 接收路由 `createHookRoutes`（`/hooks/:publicHash`，另见
+ * `handleWebhookRequest`）；消费者是宿主 `apps/server`（`main.ts` 与 `routes/web/index.ts`）。
  *
  * `dependsOn: []`：本包服务端生产代码（`src/**`）没有任何对已注册 `resource` 模块的值导入，是叶子模块。
  * 现有跨包导入都属于「不构成装配依赖」的四类边，故不声明：

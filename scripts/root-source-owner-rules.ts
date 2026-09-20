@@ -22,7 +22,6 @@ export const RETAINED_HOST_TEST_RATIONALES: Readonly<Record<string, string>> = {
   "src/__tests__/agent-platform-api-reference.test.ts":
     "Agent Platform API 参考文档与 apps/server 路由契约的宿主一致性。",
   "src/__tests__/architecture-check.test.ts": "scripts/check-architecture.ts 对全仓 apps/server 分层约束的检查。",
-  "src/__tests__/automationState.test.ts": "apps/server 自动化状态装配与全局配置状态。",
   "src/__tests__/build-info.test.ts": "apps/server build-info 服务读取构建元数据的宿主入口。",
   "src/__tests__/capabilities-coalescing.test.ts": "服务端 capability 聚合的跨模块协议装配。",
   "src/__tests__/config-integration.test.ts": "apps/server config 集成、环境变量与持久化配置装配。",
@@ -31,8 +30,6 @@ export const RETAINED_HOST_TEST_RATIONALES: Readonly<Record<string, string>> = {
   "src/__tests__/engine-type-schema.test.ts": "apps/server engine type 通用 schema 契约。",
   "src/__tests__/error-class-semantics.test.ts": "apps/server AppError 分类及 HTTP 错误语义。",
   "src/__tests__/error-handler.test.ts": "apps/server error-handler 插件及 Elysia 响应边界。",
-  "src/__tests__/executable.test.ts": "apps/server executable 工具与进程宿主适配。",
-  "src/__tests__/jsonb-utils.test.ts": "apps/server JSONB 配置工具的数据库宿主边界。",
   "src/__tests__/migrate-agent-config-model-id.test.ts": "apps/server 历史 agent-config model-id 数据迁移入口。",
   "src/__tests__/pagination-bounds.test.ts": "apps/server API 分页通用参数边界。",
   "src/__tests__/peri-task-detail-service.test.ts": "apps/server peri-task detail 跨服务投影装配。",

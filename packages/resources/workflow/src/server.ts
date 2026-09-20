@@ -10,6 +10,7 @@
 
 export { createApiWorkflowRoutes } from "./server/routes/api/workflows";
 export type { WorkflowActorContext, WorkflowRouteDependencies } from "./server/routes/dependencies";
+export { createHookRoutes } from "./server/routes/hooks";
 export { createWebWorkflowCustomToolsRoutes } from "./server/routes/web/workflow-custom-tools";
 export { createWebWorkflowDefsRoutes } from "./server/routes/web/workflow-defs";
 export { createWebWorkflowEngineRoutes } from "./server/routes/web/workflow-engine";

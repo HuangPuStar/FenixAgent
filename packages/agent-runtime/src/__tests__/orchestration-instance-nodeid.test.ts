@@ -21,10 +21,9 @@ import type { CoreRuntimeFacade, LaunchInstanceRequest } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { config, setConfig } from "@server/config";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
-import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   type LaunchTargetRef,
@@ -37,9 +36,6 @@ import {
 const ENV_ID = "env-1";
 const USER_ID = "user-1";
 const INSTANCE_ID = "inst_test";
-
-// 捕获初始配置：afterEach 时恢复，避免 defaultEngineType 设置泄漏到其他用例
-const originalConfig = { ...config };
 
 /** 记录 facade.launchInstance 收到的参数；nodeId 断言的核心观察点。 */
 const launchCalls: Array<Pick<LaunchInstanceRequest, "instanceId" | "nodeId" | "engineType">> = [];
@@ -82,10 +78,9 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
   beforeEach(() => {
     globalInstanceRegistry.clear();
     resetOrchestrationInstanceDeps();
-    // 并发上限归模块配置（缺省基线即「三个上限都不生效」）；`defaultEngineType` 仍是宿主 config 字段
-    // （local-default 分支的引擎透传随 W4 搬出，本用例先按原样从宿主注入）。
+    // 并发上限归模块配置（缺省基线即「三个上限都不生效」）；`defaultEngineType` 1.5b 起同归模块配置，
+    // 缺省基线即 `undefined`（调用方回退 `"opencode"`），需要时用例内用 `stubAgentRuntimeConfig` 覆盖。
     initializeAgentRuntimeModuleConfig();
-    setConfig({ defaultEngineType: undefined });
     launchCalls.length = 0;
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
     setOrchestrationInstanceDeps({
@@ -99,7 +94,6 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
     resetOrchestrationInstanceDeps();
     resetAllStubs();
     globalInstanceRegistry.clear();
-    setConfig(originalConfig);
   });
 
   // A-P2.2 回归：core nodeId 必须恒等于 controller 返回的 Instance.machineId 快照，
@@ -127,10 +121,10 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
     expect(launchCalls[0].engineType).toBeUndefined();
   });
 
-  // local-default 分支：本地执行时 engineType 由 config.defaultEngineType 透传，
+  // local-default 分支：本地执行时 engineType 由模块配置的 defaultEngineType 透传，
   // nodeId 仍为传入的 local-default 快照
   test("local-default branch keeps engineType passthrough", async () => {
-    setConfig({ defaultEngineType: "ccb" });
+    stubAgentRuntimeConfig({ defaultEngineType: "ccb" });
 
     await spawnInstanceViaCore(MINIMAL_TARGET, "inst-1", "local-default");
 

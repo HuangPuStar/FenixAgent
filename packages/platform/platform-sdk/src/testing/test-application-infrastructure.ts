@@ -23,6 +23,14 @@ export interface InitializeTestApplicationInfrastructureInput {
   readonly database?: unknown;
   /** 已校验的只读模块配置，按模块 ID 拆分；缺省为空。 */
   readonly moduleConfigs?: Readonly<Record<string, unknown>>;
+  /**
+   * 进程级 Redis 连接 provider 替身；缺省 `null`（本进程不使用 Redis）。
+   *
+   * 缺省值与迁移前的包内测试进程一致：那时包内没有 Redis 读取面，`docManager` 直读宿主
+   * `cache.ts` 的 `getRedisConnection()`，在测试进程里同样得到 `null`。需要覆盖 Redis 分支
+   * （如快照持久化）的用例显式传入返回假客户端的 provider。
+   */
+  readonly redisConnection?: (() => unknown) | null;
 }
 
 /** 以替身完成应用基础设施初始化；重复调用抛错（语义同 `initializeApplicationInfrastructure`）。 */
@@ -32,5 +40,6 @@ export function initializeTestApplicationInfrastructure(
   initializeApplicationInfrastructure({
     database: input.database ?? getDbStub(),
     moduleConfigs: input.moduleConfigs ?? {},
+    redisConnection: input.redisConnection ?? null,
   });
 }

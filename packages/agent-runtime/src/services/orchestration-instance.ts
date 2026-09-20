@@ -15,7 +15,7 @@ import { log, error as logError } from "@fenix/logger";
 import type { Instance } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { config, getBaseUrl } from "@server/config";
+import { getAgentRuntimeConfig } from "../server/config";
 import { environmentRepo } from "../server/repositories/environment";
 import { getAgentConfigLookupPort } from "../server/services/agent-config-lookup-port";
 import { getAgentLaunchSpecPort } from "../server/services/agent-launch-spec-port";
@@ -94,12 +94,12 @@ export interface SpawnInstanceViaControllerOptions {
  *
  * nodeId 直接取 `Instance.machineId`：它是 controller.spawnInstance 内部同一次
  * environmentRepo.getEnvironment 解析出的 machineId（fallback 链 agent_config.machineId
- * → config.defaultMachineId → local-default 由宿主 EnvironmentRepo 完成），与
+ * → 模块配置的 defaultMachineId → local-default 由宿主 EnvironmentRepo 完成），与
  * ensureNode 的节点获取严格同源。不得在本函数内重读 env 重新解析——否则与 controller
  * 形成两次读取，期间 agent_config.machineId 被修改时，refCount 会记在旧节点而实例
  * 实际启动在新节点（A-P2.2 TOCTOU）。
  *
- * local-default 分支：engineType 仅 local 执行时由上层传入（config.defaultEngineType）；
+ * local-default 分支：engineType 仅 local 执行时由上层传入（模块配置的 defaultEngineType）；
  * remote 时不传，由 machine 端自行决定（对齐旧 services/instance.ts 的节点选择逻辑）。
  *
  * @param target 启动身份（环境 + 属主）；运行时参数由组装方解析
@@ -124,7 +124,7 @@ export async function spawnInstanceViaCore(
       // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定
       await facade.launchInstance({
         instanceId,
-        engineType: config.defaultEngineType ?? "opencode",
+        engineType: getAgentRuntimeConfig().defaultEngineType ?? "opencode",
         nodeId,
         launchSpec: agentLaunchSpec,
       });
@@ -450,7 +450,7 @@ async function buildAgentLaunchSpecForCore(
 
   const platformEnv: Record<string, string> = {
     USER_META_API_KEY: env.secret,
-    USER_META_BASE_URL: getBaseUrl(),
+    USER_META_BASE_URL: getAgentRuntimeConfig().baseUrl,
     USER_META_USER_ID: env.userId ?? target.userId,
     USER_META_ORG_ID: env.organizationId ?? "",
     // langfuse trace 的 user 维度：与 USER_META_USER_ID 同源（environment 属主优先），

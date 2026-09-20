@@ -8,14 +8,18 @@ import * as z from "zod/v4";
  * 装配阶段经 `initializeApplicationInfrastructure({ moduleConfigs: { "agent-runtime": … } })` 注入。包内不做
  * 第二份环境解析：两处默认值一旦分歧便无法在启动期暴露，也会把部署知识泄漏进 runtime。
  *
- * 覆盖范围含两类：
+ * 覆盖范围含三类：
  *
  * 1. **运行态旋钮**（W1 落地）——并发上限、ACP 空闲 / 业务超时、WS 保活间隔。
  * 2. **环境解析与协议入口的部署值**（W2 落地）——本地节点开关、workspace 根、`acp` 注册密钥、file-ws 帧
- *    上限。这些值不参与「启动参数组装」（那部分职责随 1.4 的 W4 搬出本包，届时引擎类型等键与本包一并
- *    解耦），但本包的环境归属解析（`environment-orchestration` 的 fallback 链）、workspace 路径规则与
- *    `/acp/*` 协议入口必须读它们，读宿主 `@server/config` / `@server/env` 会把部署知识反向泄漏进本包，
- *    因此经模块配置注入。
+ *    上限。这些值不参与「启动参数组装」，但本包的环境归属解析（`environment-orchestration` 的 fallback
+ *    链）、workspace 路径规则与 `/acp/*` 协议入口必须读它们，读宿主 `@server/config` / `@server/env`
+ *    会把部署知识反向泄漏进本包，因此经模块配置注入。
+ * 3. **启动组装的两个残留输入**（1.5b 落地）——`defaultEngineType`（本地执行的引擎类型）与 `baseUrl`
+ *    （`platformEnv` 的 `USER_META_BASE_URL`）。1.4 W4 把模型密钥 / Skill / MCP / 知识库的组装搬到
+ *    agent-config（经 `AgentLaunchSpecPort`），但 `orchestration-instance.ts` 的
+ *    `buildAgentLaunchSpecForCore` 仍负责 platformEnv 组装与端口调用，这两个值因此留在本包配置里。
+ *    它们原由 `@server/config` 直读，1.5b 改为与其余键同一路径注入——本包至此不再导入宿主 config。
  *
  * 兜底机器 ID 与 machine 模块的 `MachineModuleConfig.defaultMachineId` 同源（都来自宿主 `RCS_DEFAULT_MACHINE_ID`）。
  * 未沿用 observer 的「读 `getMachineConfig()` 不复制」口径，是因为：observer 读它是为了复述 machine 的身份，
@@ -57,6 +61,10 @@ export interface AgentRuntimeModuleConfig {
   readonly acpRegistrySecret: string;
   /** file-ws 单帧最大载荷（MB）。 */
   readonly fileWsMaxPayloadMb: number;
+  /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"opencode"`。 */
+  readonly defaultEngineType?: string;
+  /** 平台对外基址（宿主 `getBaseUrl()` 的已解析结果），注入 launch spec 的 `USER_META_BASE_URL`。 */
+  readonly baseUrl: string;
 }
 
 /**
@@ -81,6 +89,8 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   workspaceRoot: z.string().min(1),
   acpRegistrySecret: z.string().min(1),
   fileWsMaxPayloadMb: z.number().int().positive(),
+  defaultEngineType: z.string().min(1).optional(),
+  baseUrl: z.string().min(1),
 });
 
 /**
