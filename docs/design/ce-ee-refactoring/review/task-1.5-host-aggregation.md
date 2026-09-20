@@ -879,3 +879,85 @@ environment 拉起时以 500 的形式暴露。
 7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
 三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
 `config-integration` 17 pass / 0 fail（后者是偏好端口端到端用例，见三）。
+
+### 1.5c-7 `services/core-bootstrap.ts` 按 §3.4 拆分（2026-09-21）
+
+计划原文（§四 1.5c 行）：「`services/core-bootstrap.ts` 按 3.4 拆分（`ensureMachineExists` → machine，
+实例注册表 → agent-runtime）」。
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 兜底机器记录的补齐迁入 machine 包，改 `ensureDefaultMachine({ machineId, agentName })`（幂等，返回是否新建） | 宿主 `ensureMachineExists` → `packages/resources/machine/src/server/services/registry.ts` |
+| 宿主启动改为调用包导出，部署值仍由宿主提供 | `apps/server/src/services/core-bootstrap.ts` |
+| 实例登记表收敛（删 core 实例 + 配对注销登记表 + 编排域活跃表）迁入 agent-runtime | 新增 `packages/agent-runtime/src/services/machine-instance-cleanup.ts`（`convergeMachineInstances`） |
+| 端口面：两个旧方法合并为一个 | `packages/agent-runtime/src/runtime.ts`（`AgentRuntimePort`） |
+| 宿主三个使用点（重连分支、断连、沙盒释放）改调单一入口 | `apps/server/src/services/core-bootstrap.ts` |
+
+**二、【需审核】「实例注册表 → agent-runtime」的落法**
+
+宿主 `core-bootstrap` 原有两段与实例登记表有关的代码：①循环 `runtime.listInstances()` 删该 machine 的
+core 实例、逐个 `unregisterInstance`；②调用编排域收敛 `cleanupInstancesForMachine`。候选取法有三：
+
+1. **把整个收敛编排搬到 agent-runtime 的断连/重连调用点**（宿主只留节点与 transport）。否决：沙盒释放
+   （`Sandbox → Machine.releaseMachineRuntime → MachineHostPort.unregisterCoreRuntimeNode`）不经 ACP
+   handler，宿主绑定必须继续承载这段清理，否则沙盒销毁会永久占用并发额度（现有注释 E-P0.1 正是为此）。
+   两处各写一份收敛代码则违背单一 owner。
+2. **宿主直接 import agent-runtime 的收敛函数**。否决：1.4 已把这两次调用从包内直连改为经 port
+   （`unregisterInstance` 即当时新增），回退等于撤销已交付裁定。
+3. **收敛成一个 port 方法，实现在包内**（本片采用）。宿主持有 core 单例、只决定「何时收敛」，三条路径
+   （重连 / 断连 / 沙盒释放）都走同一入口；「删 core 实例」与「注销登记表」在实现里不可分——
+   调用方拿不到中间态，也就没机会漏配对。
+
+**三、端口面收缩（管理面 41 → 40 方法）**
+
+- `cleanupInstancesForMachine(machineId): number` 与 `unregisterInstance(instanceUid): void` 合并为
+  `cleanupMachineInstances(machineId): number`（返回从 core 删掉的实例数；旧方法的返回值只有编排域计数，
+  唯一消费者是宿主的日志，见下）。**这是有意的契约面收缩**：两个方法的唯一消费者都是宿主的同两处循环，
+  合并后旧方法零消费方，按「删除优于兼容」不留零消费者的 port 成员。
+- `unregisterInstance` 的文档契约（「宿主把实例从 Core runtime 删除时必须配对调用」）由新方法内部保证，
+  不再是调用方的义务。
+- 1.4 评审 §（`packages/agent-runtime/src/runtime.ts` 一行）记的「新增 `unregisterInstance`」属历史记录，
+  不追改；本条即其被取代的落点。
+
+**四、行为等价声明**
+
+- **顺序不变**：重连分支仍是「`updateNodeStatus(online)` → 删实例 → 编排域收敛」；断连仍是
+  「节点置 offline → 删实例 → 编排域收敛」；沙盒释放仍走 `unregisterRemoteNode`。
+- **编排域收敛仍无条件调用**（core 侧无实例时也调用），与迁出前的两处一致。
+- **日志文本变化**：原先两条按上下文区分的行（`[core-bootstrap] Deleted instance X on reconnected/
+  disconnected machine Y`）改为一条 `[machine-instance-cleanup] Deleted instance X on machine Y`——包内
+  不知道调用上下文；无任何用例断言这些日志（`grep` 确认仅存在于被删代码内）。兜底机器记录的日志同理
+  改为 `[registry] Auto-created default machine …`。
+- **宿主端行为面不变**：`registerRemoteNode` / `unregisterRemoteNode` / `initCoreRuntime` 的签名、调用点
+  （`main.ts`、`acp-ws-handler`、`MachineHostPort` 绑定）与装配顺序一行未动。
+
+**五、测试与 seam**
+
+- 新增 `packages/agent-runtime/src/__tests__/machine-instance-cleanup.test.ts`（3 例）：只删目标机器的实例、
+  配对注销登记表条目、其它机器不受影响；core 实例为空时仍收敛编排域（沙盒释放路径的关键语义）；
+  幂等重入。core 单例经宿主 preload 的 `stubCoreBootstrap` 注入假 facade，与包内既有接缝一致。
+- `packages/resources/machine/src/__tests__/round39-registry-service.test.ts` 增 2 例：缺失时补建系统记录
+  （`organizationId` / `userId` 为 null、`status=pending`）、已存在时不写（幂等，不覆盖注册信息）。
+- 宿主用例零改动：`@server/services/core-bootstrap` 在 preload 里是整模块替身（`stubCoreBootstrap`），
+  其函数体不执行，故两处循环的搬走对宿主测试进程不可见；`machine-cleanup-node-dispatch.test.ts` 等
+  替身 `unregisterRemoteNode` 的用例同样不受影响。
+
+**六、台账同步**
+
+- `scripts/root-source-owner-rules.ts`、`scripts/architecture/exceptions.json`、`rmd-07-migration.test.ts`
+  均无需改动：`core-bootstrap.ts` 仍留在宿主目标路径（`RMD_07_MOVES` 条目不变），本片未新增包 → 宿主依赖，
+  也未增删文件清单。
+- `packages/agent-runtime/src/__tests__/runtime-port.test.ts` 的清单同步（管理面 41 → 40、两条换一条）——
+  该用例的设计意图就是让 port 面的每次增删都必须显式落到测试上。
+- `FUNCTIONAL_MODULE_INVENTORY.md` 两行（「应用启动、模块装配与内置资源」「插件注册表与 Core Runtime」）
+  仍指向宿主 `core-bootstrap.ts` 且语义成立（Core 单例、节点与 transport 缓存都留在宿主），本片不改。
+- 注释同步：`orchestration-machine-cleanup.ts` 的「背景/调用方」两段、`remote-file-service.ts` 提到
+  「兜底机器由 core-bootstrap 自动创建」的一句，均改指新落点。
+
+**验证证据**：`precheck` 全绿 `All passed (97408ms)`——server-and-script-tests 798 pass / package-tests
+7301 pass（较 1.5c-6 的 7296 增 5，即本片新增的 3 + 2 例）/ 2 skip / web-app-tests 946 pass / 0 fail；
+`architecture`、`dependency-boundaries`（2383 modules，0 条新增违规）、`module-registry`、三项 `tsc`、
+`lint`、`format`、`import-sort` 均通过。定向运行 `machine-instance-cleanup`（3 pass）、`runtime-port`、
+`orchestration-machine-cleanup`、`machine-cleanup-node-dispatch`、`round39-registry-service` 共 47 pass / 0 fail。

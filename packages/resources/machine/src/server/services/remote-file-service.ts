@@ -49,8 +49,8 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
  * 三分语义（§2.4 machineId 配置校验，区分"配置错误"与"连接不可用"）：
  * - 无 machineId 配置 → 返回 null（调用方使用本地 FS）
  * - machineId 已配置但不存在于 DB machine 表 → 422 config_error（配置错误，
- *   message 提示去管理面检查；RCS_DEFAULT_MACHINE_ID 兜底机器由 core-bootstrap
- *   自动创建，存在性校验会通过）
+ *   message 提示去管理面检查；RCS_DEFAULT_MACHINE_ID 兜底机器由宿主的启动引导经本包的
+ *   `ensureDefaultMachine` 自动补齐，存在性校验会通过）
  * - machineId 存在但 file-ws 未连接 → 503 file_service_unavailable（明确拒绝
  *   本地回退，避免"配置了远程机器，用户以为文件在远程，实际落在本地"的分裂场景）
  * - 连接正常 → 返回 machineId

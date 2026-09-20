@@ -93,7 +93,7 @@ import type {
   UpdateWebEnvironmentParams,
 } from "./services/environment-core";
 import { deleteEnvironment, getOwnedEnvironment } from "./services/environment-core";
-import { globalInstanceRegistry } from "./services/instance-registry";
+import { convergeMachineInstances } from "./services/machine-instance-cleanup";
 import { getOrchestrationController } from "./services/orchestration-bootstrap";
 import type { StopInstancesForEnvironmentsOptions } from "./services/orchestration-instance";
 import {
@@ -103,7 +103,6 @@ import {
   stopInstanceViaController,
   terminateLocalDeadInstance,
 } from "./services/orchestration-instance";
-import { cleanupOrchestrationInstancesForMachine } from "./services/orchestration-machine-cleanup";
 import { getSession, resolveExistingSessionId, updateSessionStatus } from "./services/session";
 import type { EventBus } from "./transport/event-bus";
 import { getEventBus, removeEventBus } from "./transport/event-bus";
@@ -351,15 +350,15 @@ export interface AgentRuntimePort {
 
   // ── 回收 ──
 
-  /** 机器下线时清理其上的编排实例，返回清理数量。 */
-  cleanupInstancesForMachine(machineId: string): number;
   /**
-   * 从实例登记表移除一个实例，并清掉它的并发计数。
+   * 机器下线 / 重连 / 退役时收敛其上的全部实例：删除 Core runtime 实例、配对注销实例登记表，
+   * 再清理编排域活跃表与节点引用，返回从 Core runtime 删除的实例数。
    *
-   * 宿主把实例从 Core runtime 删除时必须配对调用：登记表留着条目会继续计入并发额度，
-   * 且 `hasActiveInstance` 会误判为存活，实例再也回收不掉。
+   * 「删 Core 实例」与「注销登记表」是一个不可分的动作（漏掉后者会让幽灵实例永久计入并发额度、
+   * `hasActiveInstance` 误判存活），因此合并为一个方法：调用方拿不到中间态，也就没机会漏配对。
+   * 沙盒释放等不经 ACP handler 的路径同样走这里（E-P0.1）。
    */
-  unregisterInstance(instanceUid: string): void;
+  cleanupMachineInstances(machineId: string): number;
   /** 回收确认已死亡的本地实例（异步；不阻塞调用方消息循环）。 */
   terminateLocalDeadInstance(instanceId: string): Promise<void>;
   /** 启动 ACP 空闲回收巡检。 */
@@ -509,8 +508,7 @@ export function createAgentRuntime(): AgentRuntime {
     resolveExistingSessionId: (sessionId) => resolveExistingSessionId(sessionId),
     updateSessionStatus: (sessionId, status) => updateSessionStatus(sessionId, status),
 
-    cleanupInstancesForMachine: (machineId) => cleanupOrchestrationInstancesForMachine(machineId),
-    unregisterInstance: (instanceUid) => globalInstanceRegistry.unregisterAndDeleteCounter(instanceUid),
+    cleanupMachineInstances: (machineId) => convergeMachineInstances(machineId),
     terminateLocalDeadInstance: (instanceId) => terminateLocalDeadInstance(instanceId),
     startIdleMonitor: () => startAcpIdleMonitor(),
     stopIdleMonitor: () => stopAcpIdleMonitor(),

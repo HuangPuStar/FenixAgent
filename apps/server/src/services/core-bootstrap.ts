@@ -2,7 +2,6 @@ import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
-import { log } from "@fenix/logger";
 import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
 import {
   createRemoteRuntime,
@@ -11,49 +10,10 @@ import {
   SERVER_EPOCH,
   type WsConnectionLike,
 } from "@fenix/remote-runtime";
-import { eq } from "drizzle-orm";
+import { ensureDefaultMachine } from "@fenix/resource-machine/server";
 import { config } from "../config";
-import { db } from "../db";
-import { machine } from "../db/schema";
 
 let facade: CoreRuntimeFacade | null = null;
-
-/**
- * 确保 RCS_DEFAULT_MACHINE_ID 对应的机器记录存在于 DB。
- * 不存在时自动创建 (status=pending, organizationId=NULL, 所有组织可见)。
- */
-async function ensureMachineExists() {
-  if (!config.defaultMachineId) return;
-
-  const existing = await db
-    .select({ id: machine.id })
-    .from(machine)
-    .where(eq(machine.id, config.defaultMachineId))
-    .limit(1);
-
-  if (existing.length > 0) return;
-
-  const now = new Date();
-  const agentName = config.defaultEngineType ?? "opencode";
-
-  await db.insert(machine).values({
-    id: config.defaultMachineId,
-    organizationId: null,
-    userId: null,
-    agentName,
-    name: "system-default",
-    status: "pending",
-    machineInfo: null,
-    labels: [],
-    heartbeatIntervalMs: 30000,
-    lastHeartbeatAt: null,
-    registeredAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  log(`[core-bootstrap] Auto-created machine ${config.defaultMachineId} (status=pending)`);
-}
 
 // 缓存远程 transport 实例
 const remoteTransports = new Map<string, RemoteTransport>();
@@ -86,11 +46,6 @@ function defaultCreateFacade(): CoreRuntimeFacade {
   });
 }
 
-function removeInstanceWithRegistryCleanup(runtime: CoreRuntimeFacade, instanceId: string): void {
-  runtime.deleteInstance(instanceId);
-  getBoundAgentRuntime().unregisterInstance(instanceId);
-}
-
 /** 可替换的 facade 工厂（测试时注入 mock） */
 let _facadeFactory: (() => CoreRuntimeFacade) | null = null;
 
@@ -120,11 +75,18 @@ export function resetCoreRuntime(): void {
 }
 
 /**
- * 初始化 core runtime（含 DB 侧机器记录的自动创建）。
+ * 初始化 core runtime（含部署兜底机器记录的补齐）。
  * 应在服务启动时调用，替代直接调用 getCoreRuntime()。
  */
 export async function initCoreRuntime(): Promise<CoreRuntimeFacade> {
-  await ensureMachineExists();
+  // `machine` 表归 machine 包，此处只提供部署值（兜底机器 ID 与引擎类型都来自宿主 env）：
+  // 记录不存在时补一条 pending 记录，注册时再来认领。
+  if (config.defaultMachineId) {
+    await ensureDefaultMachine({
+      machineId: config.defaultMachineId,
+      agentName: config.defaultEngineType ?? "opencode",
+    });
+  }
   return getCoreRuntime();
 }
 
@@ -151,15 +113,9 @@ export function registerRemoteNode(
   if (existing) {
     // node 已存在（重连场景）：更新状态为 online，清理旧实例以触发重新 launch
     runtime.updateNodeStatus(machineId, "online");
-    // 删除该 machineId 下所有旧实例，确保下次 ensureRunning 重新 launch
-    for (const instance of runtime.listInstances()) {
-      if (instance.nodeId !== machineId) continue;
-      removeInstanceWithRegistryCleanup(runtime, instance.instanceId);
-      log(`[core-bootstrap] Deleted instance ${instance.instanceId} on reconnected machine ${machineId}`);
-    }
-    // 同步清理编排域活跃表与节点引用，否则断连期间残留的幽灵实例会继续计入
-    // 并发额度并阻塞空闲回收（E-P0.1；快速重连短路场景下本分支是唯一入口）
-    getBoundAgentRuntime().cleanupInstancesForMachine(machineId);
+    // 该 machineId 下的旧 core 实例连同实例登记表、编排域活跃表一并收敛，确保下次 ensureRunning
+    // 重新 launch（E-P0.1：快速重连短路场景下本分支是幽灵实例清理的唯一入口）
+    getBoundAgentRuntime().cleanupMachineInstances(machineId);
     // 注意：不关闭 relay 连接，让前端自动重连 ensureRunning 时使用新 transport
     return;
   }
@@ -175,7 +131,7 @@ export function registerRemoteNode(
 
 /**
  * 远程 machine 断连后，清理 transport 缓存并更新 node 状态为 offline。
- * 同时删除该 machineId 下的所有活跃实例记录，使后续 ensureRunning 能重新 launch。
+ * 同时收敛该 machineId 下的所有实例记录，使后续 ensureRunning 能重新 launch。
  */
 export function unregisterRemoteNode(machineId: string): void {
   remoteTransports.delete(machineId);
@@ -184,15 +140,7 @@ export function unregisterRemoteNode(machineId: string): void {
   if (existing) {
     runtime.updateNodeStatus(machineId, "offline");
   }
-  // 删除该 machineId 下所有活跃实例，让 ensureRunning 重新 launch。core、RCS
-  // registry supplement/byEnvironment 与空环境计数器必须同步收敛，否则 sandbox
-  // 销毁等不经过 ACP handler 的路径会永久占用并发额度。
-  for (const instance of runtime.listInstances()) {
-    if (instance.nodeId !== machineId) continue;
-    removeInstanceWithRegistryCleanup(runtime, instance.instanceId);
-    log(`[core-bootstrap] Deleted instance ${instance.instanceId} on disconnected machine ${machineId}`);
-  }
-  // 同步清理编排域活跃表与节点引用，否则断连后幽灵实例永久计入并发额度、
-  // 引用计数残留导致空闲回收不触发（E-P0.1）
-  getBoundAgentRuntime().cleanupInstancesForMachine(machineId);
+  // 该 machineId 下的实例必须连同实例登记表与空环境计数器一并收敛，否则沙盒销毁等
+  // 不经过 ACP handler 的路径（Sandbox → Machine 释放 → 本函数）会永久占用并发额度。
+  getBoundAgentRuntime().cleanupMachineInstances(machineId);
 }
