@@ -1,6 +1,6 @@
+import { Button } from "@fenix/ui-components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 
 interface MemoryVisualizationShellProps {
   panelOpen: boolean;

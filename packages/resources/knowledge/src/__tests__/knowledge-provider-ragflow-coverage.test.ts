@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "@server/config";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
+import { initializeKnowledgeModuleConfig, stubKnowledgeConfig } from "../server/testing";
 
 const originalFetch = globalThis.fetch;
 
@@ -22,7 +22,7 @@ function installFetch(fetchStub: FetchStub): void {
 }
 
 beforeEach(() => {
-  setConfig({
+  initializeKnowledgeModuleConfig({
     ragflowApiUrl: "http://ragflow.test",
     ragflowApiKey: "test-api-key",
     ragflowRequestTimeoutMs: 30_000,
@@ -31,7 +31,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  resetConfig();
 });
 
 describe("RagFlowKnowledgeProvider 补充覆盖", () => {
@@ -352,7 +351,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
 
   // 请求超时时应传播 AbortError，确保调用方可区分网络失败。
   test("listDatasets 在超时时中止 fetch 并传播 AbortError", async () => {
-    setConfig({ ragflowRequestTimeoutMs: 1 });
+    stubKnowledgeConfig({ ragflowRequestTimeoutMs: 1 });
     installFetch(
       mock(
         (_input: string | URL | Request, init?: RequestInit) =>

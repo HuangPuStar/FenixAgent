@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AuthContext } from "@server/plugins/auth";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
+import { initializeMachineModuleConfig } from "../server/testing";
+import type { MachineRequestAuth } from "../server/types/auth";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 const registry = await import("@fenix/resource-machine/server");
 
-const owner: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
+const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
 
 function limitedRows(rows: unknown[]) {
   return { from: () => ({ where: () => ({ limit: async () => rows }) }) };
@@ -35,8 +36,9 @@ function insertRecorder(writes: unknown[], fail = false) {
   }));
 }
 
+// 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
 });
 
 afterEach(() => {
@@ -369,13 +371,15 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     await expect(registry.deleteMachine(owner, "mach-ref")).rejects.toThrow("agent configs");
   });
 
-  // 组织默认引擎引用的机器不能删除，以保持组织默认配置完整。
+  // 组织默认引擎引用的机器不能删除，以保持组织默认配置完整；默认引擎引用经身份目录读取。
   test("删除组织默认引擎引用的机器时拒绝操作", async () => {
     const select = mock()
       .mockImplementationOnce(() => limitedRows([{ id: "mach-default", status: "offline" }]))
-      .mockImplementationOnce(() => limitedRows([]))
-      .mockImplementationOnce(() => limitedRows([{ metadata: { defaultEngine: { machineId: "mach-default" } } }]));
+      .mockImplementationOnce(() => limitedRows([]));
     stubDb({ select });
+    stubIdentityDirectory({
+      getOrganization: async () => ({ id: "org-a", name: "Org A", slug: "org-a", defaultMachineId: "mach-default" }),
+    });
 
     await expect(registry.deleteMachine(owner, "mach-default")).rejects.toThrow("default engine");
   });
@@ -386,8 +390,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     const attemptedEvents: unknown[] = [];
     const select = mock()
       .mockImplementationOnce(() => limitedRows([{ id: "mach-retire", status: "offline" }]))
-      .mockImplementationOnce(() => limitedRows([]))
-      .mockImplementationOnce(() => limitedRows([{ metadata: null }]));
+      .mockImplementationOnce(() => limitedRows([]));
     stubDb({
       select,
       delete: mock(() => ({ where: async () => deleted.push("mach-retire") })),

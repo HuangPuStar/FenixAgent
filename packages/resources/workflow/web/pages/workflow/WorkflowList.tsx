@@ -1,18 +1,19 @@
+import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
-import { AlertTriangle, Inbox, Trash2 } from "lucide-react";
+import { AlertTriangle, Inbox, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { unwrap } from "@/src/api/request";
-import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import { SkeletonTable } from "./components/SkeletonRows";
+import { isUnauthorizedError } from "./utils";
 
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
@@ -37,6 +38,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const { data: workflows = [], loading, error, refresh } = useRequest(() => unwrap(workflowDefApi.list()));
   const workflowsSafe = Array.isArray(workflows) ? workflows : [];
   const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
+  const unauthorized = isUnauthorizedError(error);
 
   // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
   const pollList = useCallback(async () => {
@@ -72,6 +74,9 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         setShowCreateDialog(false);
         setCreateName("");
         setCreateDesc("");
+        // 成功后立即跳到编辑器，表单消失本身就是可见反馈；toast 负责把「确实创建成功」说清楚
+        // （同页删除/恢复都走 toast.success，三处反馈口径保持一致）。
+        toast.success(t("list.create_success"));
         refresh();
         onEditWorkflow(wf.id);
       },
@@ -86,6 +91,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const { run: runDelete } = useRequest((id: string) => unwrap(workflowDefApi.delete(id)), {
     manual: true,
     onSuccess: () => {
+      toast.success(t("list.delete_success"));
       refresh();
       setDeleteTarget(null);
     },
@@ -115,6 +121,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     {
       manual: true,
       onSuccess: () => {
+        toast.success(t("list.recover_success"));
         setShowRecoverPanel(false);
         refresh();
       },
@@ -245,12 +252,30 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
 
       {/* 内容 */}
       {loading ? (
-        <SkeletonTable cols="2fr 100px 120px 80px" rows={4} />
-      ) : error ? (
-        <div className="text-center py-10">
-          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error: errorMsg })}</p>
+        // role="status" + aria-busy 让屏幕阅读器知道这里是「正在加载」而不是空列表；
+        // aria-label 提供可见文本之外的语义（骨架屏本身没有可读文案）。
+        <div role="status" aria-busy="true" aria-label={t("list.loading")}>
+          <SkeletonTable cols="2fr 100px 120px 80px" rows={4} />
         </div>
+      ) : error ? (
+        // 失败必须是**持久**分支：只弹 toast 会落回「暂无工作流」空态，用户看到的是「没有数据」
+        // 而不是「没取到数据」。无权限单独成一个分支且不给重试（原因见 isUnauthorizedError）。
+        unauthorized ? (
+          <div className="text-center py-10" role="alert">
+            <ShieldAlert size={32} className="text-status-error mx-auto mb-2" />
+            <p className="text-[13px] text-text-secondary font-medium">{t("list.unauthorized_title")}</p>
+            <p className="text-[11px] text-text-dim mt-1">{t("list.unauthorized_hint")}</p>
+          </div>
+        ) : (
+          <div className="text-center py-10" role="alert">
+            <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
+            <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error: errorMsg })}</p>
+            {/* 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页 */}
+            <Button variant="outline" size="sm" className="mt-3" onClick={refresh}>
+              <RefreshCw size={13} className="mr-1" /> {t("list.retry")}
+            </Button>
+          </div>
+        )
       ) : workflowsSafe.length === 0 ? (
         <div className="text-center py-10">
           <Inbox size={32} className="text-text-muted mx-auto mb-2" />
@@ -294,7 +319,13 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                   <Button size="xs" variant="outline" onClick={() => onViewVersions(wf.id)}>
                     {t("list.version_history")}
                   </Button>
-                  <Button size="xs" variant="destructive" onClick={() => setDeleteTarget(wf)}>
+                  {/* 纯图标按钮：可访问名只能由 aria-label 提供，否则读屏只播报「按钮」 */}
+                  <Button
+                    size="xs"
+                    variant="destructive"
+                    aria-label={t("list.delete")}
+                    onClick={() => setDeleteTarget(wf)}
+                  >
                     <Trash2 size={12} />
                   </Button>
                 </div>

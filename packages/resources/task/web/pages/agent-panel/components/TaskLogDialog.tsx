@@ -1,15 +1,15 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { ExecutionLogInfo } from "@/src/api/tasks-v2";
-import { taskV2Api } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
+import type { ExecutionLogInfo } from "../../../api/tasks-v2";
+import { taskV2Api } from "../../../api/tasks-v2";
 
 type StatusFilter = "all" | "success" | "failed" | "timeout" | "skipped";
 

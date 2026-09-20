@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { getReadableAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
+import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { db } from "@server/db";
 import { agentConfig, environment, machine } from "@server/db/schema";
-import { ConflictError, NotFoundError, ValidationError } from "@server/errors";
 import { and, eq, isNotNull } from "drizzle-orm";
+import { toActorContext } from "../../services/actor-context";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories/environment";
@@ -153,7 +154,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   // Agent 配置校验：环境必须绑定 Agent 配置，并自动填充 machineName
   let machineName: string | undefined;
   const agent = await getReadableAgentConfigById(
-    { organizationId: organizationId ?? userId, userId, role: "owner" },
+    toActorContext({ organizationId: organizationId ?? userId, userId, role: "owner" }),
     params.agentConfigId,
   );
   if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
@@ -226,7 +227,7 @@ export async function updateWebEnvironment(envId: string, organizationId: string
   }
   if (params.agentConfigId !== undefined) {
     const agent = await getReadableAgentConfigById(
-      { organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" },
+      toActorContext({ organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" }),
       params.agentConfigId,
     );
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);

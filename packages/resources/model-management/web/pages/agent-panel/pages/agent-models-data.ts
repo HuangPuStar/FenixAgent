@@ -1,11 +1,13 @@
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { providerApi } from "@/src/api/providers";
-import { ApiError, unwrap } from "@/src/api/request";
-import { dispatchConfigChange } from "@/src/lib/config-events";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import { providerApi } from "../../../api/providers.ts";
+import { MODELS_NS } from "../../../i18n/namespace";
+import { canManageProviderSharing } from "../../../lib/provider-resource-access";
 import type {
   DiscoveryState,
   ModelDraft,
@@ -40,7 +42,7 @@ function buildModelPayload(draft: ModelDraft): Record<string, unknown> {
 
 /** 真实 Provider/Model API 的唯一页面数据控制器。 */
 export function useAgentModelsData() {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const [modelTest, setModelTest] = useState<ModelTestState | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryState | null>(null);
 
@@ -135,8 +137,11 @@ export function useAgentModelsData() {
   });
 
   const togglePublic = useRequest(
-    (provider: ProviderInfo, value: boolean) =>
-      unwrap(providerApi.set(getProviderKey(provider), buildProviderPublicReadablePayload(value))),
+    (provider: ProviderInfo, value: boolean) => {
+      // 公开受众只对具备 `update` 动作的主体开放；缺失动作时前端直接拒绝，不发必然 403 的请求。
+      if (!canManageProviderSharing(provider)) throw new Error(t("errors.sharingUnavailable"));
+      return unwrap(providerApi.set(getProviderKey(provider), buildProviderPublicReadablePayload(value)));
+    },
     {
       manual: true,
       onSuccess: () => refreshDomain("providers"),

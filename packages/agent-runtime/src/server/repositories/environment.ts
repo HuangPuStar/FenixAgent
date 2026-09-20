@@ -1,5 +1,6 @@
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { db } from "@server/db";
-import { environment, user } from "@server/db/schema";
+import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
@@ -208,12 +209,13 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async listActiveByUsername(username: string): Promise<EnvironmentRecord[]> {
-    const userRow = await db.select().from(user).where(eq(user.name, username)).limit(1);
-    if (userRow.length === 0) return [];
+    // 按登录名定位用户：身份表读取唯一经 IdentityDirectory，本仓储不得直接查身份表。
+    const userInfo = await getIdentityDirectory().findUserByName(username);
+    if (!userInfo) return [];
     const rows = await db
       .select()
       .from(environment)
-      .where(and(eq(environment.status, "active"), eq(environment.userId, userRow[0].id)));
+      .where(and(eq(environment.status, "active"), eq(environment.userId, userInfo.id)));
     return rows.map(rowToRecord);
   }
 

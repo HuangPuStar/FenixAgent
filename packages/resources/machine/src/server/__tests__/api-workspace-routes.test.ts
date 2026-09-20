@@ -3,11 +3,12 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createApiWorkspaceRoutes } from "../routes/api/workspaces";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
 
-const apiWorkspaceRoute = (await import("../../routes/api/workspaces")).default;
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）
+const apiWorkspaceRoute = createApiWorkspaceRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 function request(path: string, init?: RequestInit) {
   return apiWorkspaceRoute.handle(new Request(`http://localhost${path}`, init));
@@ -19,7 +20,6 @@ describe("API Workspace Routes", () => {
       user: { id: "user-1", email: "user@test.com", name: "Tester" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
     });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
     setApiWorkspaceDeps({
       getOwnedEnvironment: async () => {
         throw new Error("not stubbed");
@@ -33,7 +33,6 @@ describe("API Workspace Routes", () => {
   afterEach(async () => {
     setApiWorkspaceDeps(null);
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
   // workspace 文件上传接口应将文件写入 environment 的 user 工作区，并返回标准路径。

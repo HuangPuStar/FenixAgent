@@ -1,6 +1,12 @@
-import { db } from "@server/db";
 import { type NewSandboxInstance, type SandboxInstance, sandboxInstance } from "@server/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { getSandboxDatabase } from "../db";
+
+/**
+ * Sandbox 实例的唯一数据访问点。
+ *
+ * DB 句柄在函数内取（`getSandboxDatabase()`）：模块加载期宿主可能尚未完成基础设施初始化。
+ */
 
 export type SandboxInstancePatch = Partial<
   Pick<
@@ -20,7 +26,7 @@ export async function findActiveSandboxInstance(
   poolId: string,
   userId: string,
 ): Promise<SandboxInstance | null> {
-  const [row] = await db
+  const [row] = await getSandboxDatabase()
     .select()
     .from(sandboxInstance)
     .where(
@@ -35,7 +41,7 @@ export async function findActiveSandboxInstance(
 }
 
 export async function findSandboxInstanceByIdForUser(id: string, userId: string): Promise<SandboxInstance | null> {
-  const [row] = await db
+  const [row] = await getSandboxDatabase()
     .select()
     .from(sandboxInstance)
     .where(and(eq(sandboxInstance.id, id), eq(sandboxInstance.userId, userId)))
@@ -44,7 +50,7 @@ export async function findSandboxInstanceByIdForUser(id: string, userId: string)
 }
 
 export async function findSandboxInstanceById(id: string): Promise<SandboxInstance | null> {
-  const [row] = await db.select().from(sandboxInstance).where(eq(sandboxInstance.id, id)).limit(1);
+  const [row] = await getSandboxDatabase().select().from(sandboxInstance).where(eq(sandboxInstance.id, id)).limit(1);
   return row ?? null;
 }
 
@@ -60,7 +66,7 @@ export async function withSandboxInstanceLock<T>(
   id: string,
   operation: (scope: SandboxInstanceLockScope) => Promise<T>,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
+  return getSandboxDatabase().transaction(async (tx) => {
     const [locked] = await tx.select().from(sandboxInstance).where(eq(sandboxInstance.id, id)).for("update").limit(1);
     if (!locked) throw new Error(`sandbox instance '${id}' not found`);
 
@@ -88,12 +94,16 @@ export async function withSandboxInstanceLock<T>(
 }
 
 export async function findSandboxInstanceByMachineId(machineId: string): Promise<SandboxInstance | null> {
-  const [row] = await db.select().from(sandboxInstance).where(eq(sandboxInstance.machineId, machineId)).limit(1);
+  const [row] = await getSandboxDatabase()
+    .select()
+    .from(sandboxInstance)
+    .where(eq(sandboxInstance.machineId, machineId))
+    .limit(1);
   return row ?? null;
 }
 
 export async function createSandboxInstance(input: NewSandboxInstance): Promise<SandboxInstance> {
-  const [row] = await db.insert(sandboxInstance).values(input).returning();
+  const [row] = await getSandboxDatabase().insert(sandboxInstance).values(input).returning();
   return row;
 }
 
@@ -102,7 +112,7 @@ export async function updateSandboxInstance(
   status: string,
   patch: SandboxInstancePatch = {},
 ): Promise<SandboxInstance | null> {
-  const [row] = await db
+  const [row] = await getSandboxDatabase()
     .update(sandboxInstance)
     .set({ ...patch, status, updatedAt: new Date() })
     .where(eq(sandboxInstance.id, id))
@@ -111,7 +121,10 @@ export async function updateSandboxInstance(
 }
 
 export async function touchSandboxInstanceHeartbeat(id: string, at = new Date()): Promise<void> {
-  await db.update(sandboxInstance).set({ lastHeartbeatAt: at, updatedAt: at }).where(eq(sandboxInstance.id, id));
+  await getSandboxDatabase()
+    .update(sandboxInstance)
+    .set({ lastHeartbeatAt: at, updatedAt: at })
+    .where(eq(sandboxInstance.id, id));
 }
 
 export type SandboxInstanceListFilters = {
@@ -129,7 +142,7 @@ export async function listSandboxInstances(filters: SandboxInstanceListFilters =
   if (filters.userIds?.length) conditions.push(inArray(sandboxInstance.userId, filters.userIds));
   if (filters.providerKey) conditions.push(eq(sandboxInstance.providerKey, filters.providerKey));
   if (filters.statuses?.length) conditions.push(inArray(sandboxInstance.status, filters.statuses));
-  return db
+  return getSandboxDatabase()
     .select()
     .from(sandboxInstance)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -137,6 +150,6 @@ export async function listSandboxInstances(filters: SandboxInstanceListFilters =
 }
 
 export async function deleteSandboxInstance(id: string): Promise<SandboxInstance | null> {
-  const [row] = await db.delete(sandboxInstance).where(eq(sandboxInstance.id, id)).returning();
+  const [row] = await getSandboxDatabase().delete(sandboxInstance).where(eq(sandboxInstance.id, id)).returning();
   return row ?? null;
 }

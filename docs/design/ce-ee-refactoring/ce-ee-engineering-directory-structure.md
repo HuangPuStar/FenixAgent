@@ -49,7 +49,7 @@ fenix/ 或 fenix-ee/
 - `apps/server` 持有服务入口、现有 HTTP/WebSocket 接入、启动组装与进程生命周期；`apps/web` 持有控制台入口、壳与路由适配。`apps/generated` 是生成代码的归属，`deploy/assembly` 是现有装配配置的归属；不因目录图创建新的装配机制。
 - `packages/platform/platform-sdk` 只归属无具体业务实现的平台稳定契约和应用基础设施访问入口，不包含 DB、route 或 Web，也不依赖任何具体平台或资源模块。应用基础设施只定义受限的注册与读取规则，不创建或拥有具体基础设施。
 - `packages/` 中除 `platform/`、`agent-runtime/`、`resources/` 外的包均为独立 SDK 或插件包。服务模块直接通过包引用使用其能力；这些包不适用资源包内部目录或服务模块依赖规则，只要求包间依赖无环。
-- `packages/platform/identity` 与 `packages/platform/access-control` 是同一版本成套替换的有状态平台模块。Identity 拥有用户、组织、成员、认证/API Key 及相应 DB、route、Web；AccessControl 可依赖 Identity 的公开入口，但不得导入其 repository、schema 或内部路径。当前 `packages/resources/identity-admin` 按职责拆分后删除，不保留兼容包。
+- `packages/platform/identity` 与 `packages/platform/access-control` 是同一版本成套替换的有状态平台模块。Identity 拥有用户、组织、成员、认证/API Key 及相应 DB、route、Web；AccessControl 可依赖 Identity 的公开入口，但不得导入其 repository、schema 或内部路径。`packages/resources/identity-admin` 已随 CE 阶段 2 任务 1.2 按职责拆分并删除，未保留兼容包或 re-export shim。
 - `packages/resources/<resource>` 是该业务已有后端、DB 与前端文件的物理归属；不能仅凭业务引用关系把其他资源的源码复制到本包。
 - `packages/agent-runtime` 归属原 `src` 的 Environment、Instance、生命周期与 relay/session 运行组合；已经独立的四个基础运行包仍归各自原包，不复制。
 - 四个基础运行包保持独立 workspace、依赖和测试边界。在线链路的高耦合由 `@fenix/agent-runtime` 组合，不等于将基础能力合并成一个物理 package。

@@ -1,0 +1,268 @@
+/*
+ * Chat 状态与交互面板样式：权限/提问卡片、状态面板页签与列表、交互栈与窄屏收缩。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-status.css，逐字复制
+ * （含色值与注释，未 token 化）。
+ *
+ * 纯化改动：仅作用域说明——保持源选择器前缀（.chat-*）不变，未加包根包裹类，原因同其它分片：
+ * portal 渲染的元素会逃出祖先作用域。
+ *
+ * 源文件首行的 `biome-ignore-all lint/style/noDescendingSpecificity` 说明一并保留：
+ * 该文件的选择器按既有级联顺序排列（如 `.chat-interaction-region > header button strong` 之后
+ * 出现特指度更低的 `.chat-interaction-icon`），跨文件拆分会保留这一顺序，故抑制注释仍然必要。
+ */
+
+/* biome-ignore-all lint/style/noDescendingSpecificity: preserve the established cross-section cascade while this legacy stylesheet is split by responsibility. */
+
+.chat-interaction-stack,
+.chat-status-panel {
+  /* 纯化改动（2026-09-18）：比输入岛卡片每侧窄 16px（共 32px），形成台阶。
+   * 源为 `min(760px, calc(100% - 32px))`：源只在宽列下比卡片窄 28px，列宽不足 792px 时
+   * 与卡片完全齐平（100% - 32px 正好等于卡片宽）。输入岛卡片宽 = min(820px, 100%) - 32px
+   * （`.chat-composer-wrapper` 的 `padding: 0 16px`），故此处按卡片宽再收 32px 取值。 */
+  width: min(756px, calc(100% - 64px));
+  margin: 0 auto;
+}
+.chat-interaction-region,
+.chat-status-panel {
+  /* 用户权威：半圆，只有上半有圆角 */
+  overflow: hidden;
+  border-width: 1px 1px 0 1px;
+  border-color: #dde4ee;
+  border-style: solid;
+  border-radius: 14px 14px 0 0;
+  background: #fff;
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}
+.chat-interaction-region > header button,
+.chat-status-header {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px;
+  color: #33445d;
+}
+.chat-interaction-region > header button strong {
+  font-size: 13px;
+}
+.chat-interaction-region > header button small {
+  color: #8a96a8;
+  font-size: 11px;
+}
+.chat-interaction-region > header button > svg:last-child {
+  width: 15px;
+  margin-left: auto;
+}
+.chat-interaction-region > header button > svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+.chat-interaction-icon {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 7px;
+  background: #eef4ff;
+  color: #2d69db;
+}
+.chat-interaction-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.chat-permission-body,
+.chat-question-body {
+  padding: 2px 14px 13px;
+}
+.chat-permission-copy span,
+.chat-question-copy span {
+  display: block;
+  color: #8a96a8;
+  font-size: 11px;
+}
+.chat-permission-copy strong,
+.chat-question-copy strong {
+  display: block;
+  margin-top: 3px;
+  color: #26364f;
+  font-size: 14px;
+}
+.chat-permission-copy p {
+  margin-top: 3px;
+  color: #718096;
+  font-size: 12px;
+}
+.chat-permission-body code {
+  display: block;
+  overflow: hidden;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #f5f7fa;
+  color: #55657d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-permission-audit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: #7f8ca0;
+  font-size: 11px;
+}
+.chat-permission-audit svg {
+  width: 13px;
+  height: 13px;
+}
+.chat-permission-body footer,
+.chat-question-body footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+.chat-question-body footer > div:first-child {
+  display: flex;
+  margin-right: auto;
+}
+.chat-question-body footer > div:last-child {
+  display: flex;
+}
+.chat-question-options {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+.chat-question-options > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 8px;
+  color: #53627a;
+  text-align: left;
+}
+.chat-question-options > button:hover,
+.chat-question-options > button.is-selected {
+  background: #f0f5ff;
+  color: #245fc9;
+}
+.chat-question-options > button > span {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border-radius: 5px;
+  background: #eef1f5;
+  font-size: 11px;
+}
+.chat-question-options > button svg {
+  width: 13px;
+  height: 13px;
+}
+.chat-question-options strong,
+.chat-question-options small {
+  display: block;
+}
+.chat-question-options strong {
+  font-size: 12px;
+}
+.chat-question-options small {
+  margin-top: 2px;
+  color: #8a96a8;
+  font-size: 11px;
+}
+
+.chat-status-header {
+  padding: 4px 9px;
+}
+.chat-status-tabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+.chat-status-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  color: #748197;
+  font-size: 12px;
+}
+.chat-status-tabs button.is-active {
+  background: #f1f5fc;
+  color: #285eb8;
+}
+.chat-status-tabs svg {
+  width: 15px;
+  height: 15px;
+}
+.chat-status-tabs small {
+  color: #8a96a8;
+  font-size: 10px;
+}
+.chat-status-collapse {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  place-items: center;
+  color: #8290a5;
+}
+.chat-status-collapse svg {
+  width: 15px;
+}
+.chat-status-list {
+  display: grid;
+  padding: 2px 12px 10px;
+}
+.chat-status-list > div,
+.chat-status-list > button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 29px;
+  color: #526178;
+  text-align: left;
+}
+.chat-status-list svg {
+  width: 15px;
+  height: 15px;
+  color: #8c9bb0;
+}
+.chat-status-list [data-status="completed"] svg {
+  color: #25a47a;
+}
+.chat-status-list [data-status="in_progress"] svg,
+.chat-status-list [data-status="running"] svg {
+  color: #d28a27;
+}
+.chat-status-list [data-status="failed"] svg {
+  color: #db5d56;
+}
+.chat-status-list span {
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-status-list small {
+  color: #8a96a8;
+  font-size: 10px;
+}
+.chat-status-list small.is-added {
+  color: #259a70;
+}
+.chat-status-note {
+  padding: 6px 12px 10px;
+  color: #7f8ca0;
+  font-size: 11px;
+}

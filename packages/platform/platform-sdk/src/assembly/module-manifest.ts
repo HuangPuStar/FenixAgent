@@ -1,7 +1,12 @@
 import type { z } from "zod/v4";
 
-/** 构建期 registry 支持的模块类别。 */
-export type ModuleKind = "access-control" | "agent-runtime" | "resource";
+/**
+ * 构建期 registry 支持的模块类别。
+ *
+ * `identity` 与 `web-shell` 是平台基础类别：`identity` 由 `packages/platform/identity` 提供；
+ * `web-shell` 由应用级 Shell manifest 提供（见 `apps/web/fenix.module.ts`）。
+ */
+export type ModuleKind = "access-control" | "agent-runtime" | "identity" | "resource" | "web-shell";
 
 /** 模块声明的部署级环境变量；读取和交叉声明校验由统一 env loader 负责。 */
 export interface EnvDefinition {

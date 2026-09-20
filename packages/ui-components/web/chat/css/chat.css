@@ -1,0 +1,37 @@
+/*
+ * Chat 样式聚合入口。
+ *
+ * 用途：替代宿主 `apps/web/src/pages/agent-panel/agent-panel.css` 的
+ * `@import "../../../../../packages/chat-channel/web/src/pages/agent-panel/chat-design.css"` 与
+ * 该文件第 920-1022 行的 chat 段——即「没有组件负责导入」的那一层设计样式（会话外壳、消息视图、
+ * 工具时间线、状态面板、输入岛、命令面板、划词浮层、窄屏适配）。
+ *
+ * 不在本入口重复导入的样式表（保持与源仓库一致的「由组件自行导入」模式，避免同一 CSS 模块
+ * 出现两个导入来源）：
+ *   - web/chat/primitives/conversation.css（conversation.tsx 导入）：.chat-scroll-navigation 等
+ *   - web/chat/primitives/chat-message-content.css（message.tsx 导入）：.chat-markdown-* 等
+ *   - web/chat/css/chat-navigation-aids.css（view/chat-navigation-aids.tsx 导入）
+ *
+ * 导入顺序按源 `chat-design.css` 的分片顺序 + 源宿主中的实际级联顺序排列，勿随意调整：
+ *   1. shell → messages → tools：对应源 chat-design.css 的第 1、2 片；
+ *      messages-tools 因 500 行红线拆为两片，导入顺序与源文件内的先后一致。
+ *   2. status、composer、command-menu：对应源第 3、4 片；composer 与 command-menu 同源一文件，
+ *      拆分的两片保持源内先后。
+ *   3. selection、responsive：对应源第 5、6 片；responsive 的媒体查询依赖「排在最后」以覆盖
+ *      status / composer 的同特指度规则（如 .chat-composer-model 的 max-width），必须保持在
+ *      status 与 composer 之后。
+ *   4. chat-layout：源由 chat-channel 的 ChatArea.tsx 导入，属性与 shell 无值冲突，位置不敏感。
+ *   5. chat-loading、chat-agent-badge：源在宿主 index.css 中先于上述样式加载，选择器与设计层
+ *      不重叠，位置同样不敏感，此处统一收拢在末尾。
+ */
+@import "./chat-design-shell.css";
+@import "./chat-design-messages.css";
+@import "./chat-design-tools.css";
+@import "./chat-design-status.css";
+@import "./chat-design-composer.css";
+@import "./chat-design-command-menu.css";
+@import "./chat-design-selection.css";
+@import "./chat-design-responsive.css";
+@import "./chat-layout.css";
+@import "./chat-loading.css";
+@import "./chat-agent-badge.css";

@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { apiWorkflowRoutes } from "@fenix/resource-workflow/server";
+import { createApiWorkflowRoutes } from "@fenix/resource-workflow/server";
+import { authGuardPlugin } from "../plugins/auth";
 import webRoutes from "../routes/web";
 
 const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/references");
+
+// 资源包路由是工厂（守卫由宿主注入，Elysia 的 macro / state 是实例作用域的），用例按宿主装配的
+// 同一形状构造一份，只读它的 route 表做路径比对。
+const apiWorkflowRoutes = createApiWorkflowRoutes({ authGuardPlugin });
 
 interface DocumentedRequest {
   file: string;

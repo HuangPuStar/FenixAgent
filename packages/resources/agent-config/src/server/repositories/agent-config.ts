@@ -1,5 +1,4 @@
 import { type AgentConfigData, type AgentConfigRepo, LaunchSpecBuildError } from "@fenix/orchestration";
-import { db } from "@server/db";
 import {
   agentConfig,
   agentConfigMcp,
@@ -12,6 +11,7 @@ import {
   skill,
 } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { getAgentConfigDatabase } from "../db";
 
 /**
  * 编排域 AgentConfigRepo 的 PostgreSQL 实现。
@@ -29,6 +29,7 @@ export class PgAgentConfigRepo implements AgentConfigRepo {
    *   与旧 launch-spec-builder 的阻断策略保持一致，message 携带诊断上下文。
    */
   async getConfig(configId: string): Promise<AgentConfigData | null> {
+    const db = getAgentConfigDatabase();
     const rows = await db
       .select({
         configId: agentConfig.id,
@@ -110,6 +111,7 @@ export const agentConfigRepo = new PgAgentConfigRepo();
  */
 export async function findAgentConfigNamesByIds(ids: string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
+  const db = getAgentConfigDatabase();
   const rows = await db
     .select({ id: agentConfig.id, name: agentConfig.name })
     .from(agentConfig)

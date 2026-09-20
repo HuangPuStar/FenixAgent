@@ -1,102 +1,52 @@
 import { describe, expect, mock, test } from "bun:test";
-import { syncBuiltin } from "@server/services/sync-builtin";
-import { selectSystemBuiltinSkillId, syncBuiltinSkillsToSystemAdmin } from "../services/meta-agent";
+import {
+  type MetaAgentContext,
+  selectSystemBuiltinSkillId,
+  syncBuiltinSkillsToSystemAdmin,
+} from "../server/services/meta-agent";
 
-describe("syncBuiltin", () => {
-  // 启动同步 builtin 时，只应把 skill 托管到系统 admin 组织，而不是复制到所有业务组织。
-  test("syncs builtin skills only to system admin organization", async () => {
-    const syncBuiltinSkillsToSystemAdminSpy = mock(
-      async (_ctx: { organizationId: string; userId: string; role: "owner" | "admin" | "member" }) => {},
-    );
-
-    await syncBuiltin({
-      ensureSystemAdmin: async () => ({
-        created: false,
-        userId: "user_admin",
-        email: "admin@fenix.com",
-        organization: { id: "org_admin", slug: "admin" },
-      }),
-      syncBuiltinSkillsToSystemAdmin: syncBuiltinSkillsToSystemAdminSpy,
-    });
-
-    expect(syncBuiltinSkillsToSystemAdminSpy).toHaveBeenCalledTimes(1);
-    const firstCtx = syncBuiltinSkillsToSystemAdminSpy.mock.calls[0]?.[0];
-    expect(firstCtx).toEqual({
-      organizationId: "org_admin",
-      userId: "user_admin",
-      role: "owner",
-    });
-  });
-});
+/**
+ * builtin skill 在系统托管组织内的挑选与公开化。
+ *
+ * 启动编排（宿主 `apps/server/src/services/sync-builtin.ts` 的 `syncBuiltin`）不在这里覆盖：它属宿主，
+ * 包内用例不得 import `@server/*`（1.3 静态条件 1）。宿主侧的等价覆盖登记在 sharedPatches，随 W3 落地。
+ */
 
 describe("selectSystemBuiltinSkillId", () => {
-  // Meta Agent 只能绑定系统 admin 组织的 builtin，不能绑定业务组织同名 skill。
-  test("ignores business organization duplicates and external resources", () => {
+  // 传入集合已限定在系统托管组织内，因此只按 meta-builtin 标记挑选：业务组织同名 skill 根本不在集合里。
+  test("selects the marked builtin among same-name rows", () => {
     const selected = selectSystemBuiltinSkillId(
       [
-        {
-          id: "stale-local",
-          name: "show-html-or-picture",
-          metadata: null,
-          resourceAccess: {
-            ownership: "internal",
-            sourceOrganizationId: "user-org",
-            resourceUid: "stale-local",
-            resourceKey: "user-org/stale-local",
-            manageable: true,
-            writable: true,
-          },
-        },
-        {
-          id: "system-builtin",
-          name: "show-html-or-picture",
-          metadata: { source: "meta-builtin" },
-          resourceAccess: {
-            ownership: "external",
-            sourceOrganizationId: "system-org",
-            resourceUid: "system-builtin",
-            resourceKey: "system-org/system-builtin",
-            manageable: false,
-            writable: false,
-          },
-        },
+        { id: "user-created", name: "show-html-or-picture" },
+        { id: "system-builtin", name: "show-html-or-picture", metadata: { source: "meta-builtin" } },
       ],
       "show-html-or-picture",
     );
 
-    expect(selected).toBe(null);
+    expect(selected).toBe("system-builtin");
   });
 
-  // 系统 admin 组织中带 meta-builtin 标记的本地 skill 才是合法绑定来源。
-  test("selects marked local builtin for system organization", () => {
+  // 同名的用户自建 skill 不能冒充 builtin：没有标记就不绑定。
+  test("ignores same-name rows without the builtin marker", () => {
     expect(
-      selectSystemBuiltinSkillId(
-        [
-          {
-            id: "system-builtin",
-            name: "show-html-or-picture",
-            metadata: { source: "meta-builtin" },
-            resourceAccess: {
-              ownership: "internal",
-              sourceOrganizationId: "system-org",
-              resourceUid: "system-builtin",
-              resourceKey: "system-org/system-builtin",
-              manageable: true,
-              writable: true,
-            },
-          },
-        ],
-        "show-html-or-picture",
-      ),
-    ).toBe("system-builtin");
+      selectSystemBuiltinSkillId([{ id: "user-created", name: "demo", metadata: { source: "user" } }], "demo"),
+    ).toBe(null);
+  });
+
+  // 集合里没有该名称时返回 null，调用方据此跳过绑定而不是回落到任意同名资源。
+  test("returns null when no same-name builtin exists", () => {
+    expect(
+      selectSystemBuiltinSkillId([{ id: "other", name: "other", metadata: { source: "meta-builtin" } }], "demo"),
+    ).toBe(null);
   });
 });
 
 describe("syncBuiltinSkillsToSystemAdmin", () => {
   // 内置 skill 托管到 admin 组织后，必须统一设置为公开可读。
   test("marks synced builtin skills as public readable", async () => {
-    const syncBuiltinSkillsSpy = mock(async () => {});
-    const setSkillPublicReadableSpy = mock(async (_skillId: string) => {});
+    const syncBuiltinSkillsSpy = mock(async (_ctx: MetaAgentContext) => {});
+    // 返回 true 表示公开化已落库；false 会走「设置失败」日志分支，那条分支不属本用例语义。
+    const setSkillPublicReadableSpy = mock(async (_skillId: string) => true);
 
     await syncBuiltinSkillsToSystemAdmin(
       { organizationId: "org_admin", userId: "user_admin", role: "owner" },

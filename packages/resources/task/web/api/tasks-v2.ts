@@ -1,5 +1,5 @@
-import type { PaginatedResponse } from "@/src/api/request";
-import { request } from "@/src/api/request";
+import type { PaginatedResponse } from "@fenix/web-runtime/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 export interface HttpDefinition {
   url: string;

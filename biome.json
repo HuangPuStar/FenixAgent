@@ -60,7 +60,8 @@
       "!!**/.agents",
       "!!**/coverage",
       "!!**/docs",
-      "!!**/routeTree.gen.ts"
+      "!!**/routeTree.gen.ts",
+      "!!apps/generated"
     ],
     "ignoreUnknown": true
   },

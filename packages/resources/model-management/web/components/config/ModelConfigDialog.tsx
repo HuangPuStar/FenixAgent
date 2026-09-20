@@ -1,16 +1,16 @@
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { ModelConfig, ModelEntry } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { Settings } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { modelApi } from "@/src/api/models";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import { dispatchConfigChange } from "@/src/lib/config-events";
-import { buildModelOptions } from "@/src/lib/model-config-utils";
-import type { ModelConfig, ModelEntry } from "@/src/types/config";
+import { modelApi } from "../../api/models.ts";
+import { MODELS_NS } from "../../i18n/namespace";
+import { buildModelOptions } from "../../lib/model-config-utils.ts";
 
 export { buildModelOptions };
 
@@ -44,7 +44,7 @@ export function ModelConfigDialog({
   onConfigChange,
 }: ModelConfigDialogProps) {
   const [open, setOpen] = useState(false);
-  const { t } = useTranslation(NS.COMPONENTS);
+  const { t } = useTranslation(MODELS_NS);
 
   const modelOptions = buildModelOptions(available);
 

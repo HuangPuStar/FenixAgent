@@ -638,8 +638,8 @@ erDiagram
 | DB Schema | `src/db/schema.ts` → `agent_config.engine_type` | `varchar(32) DEFAULT 'opencode'` |
 | 类型常量 | `src/services/config/types.ts` → `ENGINE_TYPES` | `["opencode", "ccb", "claude-code"]` |
 | 环境变量 | `src/env.ts` → `RCS_ENGINE_TYPE` | `z.enum(["opencode", "ccb"])` |
-| Schema 校验 | `src/schemas/config.schema.ts` | `z.string().optional().describe(...)` |
-| 前端类型 | `web/src/types/config.ts` | `engineType?: string \| null` |
+| Schema 校验 | `packages/resources/model-management/src/server/schemas/config.schema.ts` | `z.string().optional().describe(...)` |
+| 前端类型 | `packages/web-runtime/web/types/config.ts` | `engineType?: string \| null` |
 | Core 注册 | `src/services/core-bootstrap.ts` | `plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()]` |
 | ACP 桥接层 | `packages/acp-link/src/client/instance-manager.ts` | `type AgentType = "opencode" \| "ccb" \| "claude-code"` |
 | acp-runtime | `packages/acp-runtime-cli/src/bin.ts` | `AGENT_TYPE = "opencode" \| "ccb" \| "claude-code"`<br/>`SUPPORTED_ENGINE_TYPES` 默认值 |

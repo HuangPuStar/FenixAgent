@@ -1,5 +1,3 @@
-import { useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +5,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@fenix/ui-components/ui/dialog";
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";

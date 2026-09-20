@@ -35,7 +35,10 @@
   "actions": { "more": "More plugin actions" },
   "loadState": {
     "title": "Could not load the plugin directory",
-    "retry": "Retry"
+    "retry": "Retry",
+    "loading": "Loading the plugin directory",
+    "unauthorizedTitle": "No permission to view the plugin directory",
+    "unauthorizedHint": "Your account or the active organization no longer has access to MCP plugins. Switch organization or ask an administrator to grant access — retrying will not help."
   },
   "errors": {
     "sharingUnavailable": "This plugin's sharing state cannot be managed"
@@ -70,7 +73,9 @@
     "nameImmutable": "Name cannot be changed after creation",
     "manualTab": "Manual configuration",
     "jsonTab": "Import mcp.json",
-    "importAction": "Import"
+    "importAction": "Import",
+    "loadDetailFailed": "Could not load this server's configuration",
+    "loadDetailFailedHint": "Saving now would only fail validation again. Retry, or close and reopen the dialog."
   },
   "form": {
     "name": "Name",

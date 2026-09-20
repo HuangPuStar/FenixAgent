@@ -3,6 +3,14 @@
   "subtitle": "Manage knowledge bases, view resource status and upload indexed materials",
   "loadError": "Failed to load knowledge bases",
   "loadDetailError": "Failed to load knowledge base details",
+  "accessDenied": {
+    "title": "You do not have permission to view knowledge bases",
+    "description": "This account is missing the knowledge base permission this page requires. Sign in with an account that has access, or ask your organization administrator to grant it."
+  },
+  "loadFailure": {
+    "hint": "Please retry. If it keeps failing, try again later or contact your organization administrator.",
+    "formOptions": "Failed to load form options"
+  },
   "searchPlaceholder": "Search knowledge bases...",
   "emptyTitle": "No knowledge bases yet",
   "emptyDescription": "Knowledge bases store and manage documents, providing contextual retrieval capabilities for Agents.",

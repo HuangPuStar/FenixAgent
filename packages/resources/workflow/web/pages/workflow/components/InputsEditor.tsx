@@ -1,9 +1,8 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 /**
  * 工作流节点 inputs 编辑器。
@@ -16,9 +15,26 @@ import { Input } from "@/components/ui/input";
 
 /** 本地编辑状态：输入时不立即通知父组件，blur 时一次性提交 */
 interface DraftEntry {
+  /**
+   * 草稿行的稳定标识，只用于 React key（不参与提交）：`key` 字段由用户编辑，可能为空或重复，
+   * 不能当 key——输入中改键名或删中间行会让整行重挂载，打断 IME 组合（本组件存在的原因见文件头注释）。
+   */
+  id: string;
   key: string;
   value: string;
 }
+
+/**
+ * 草稿行 id 的进程内计数器：只在创建行时递增，保证同一个组件实例内 id 唯一且与行内容无关。
+ * 不用数组下标：删除中间行时后续行会「继承」前一行的 key，正是 noArrayIndexKey 拦下的那类问题。
+ */
+let draftRowCounter = 0;
+
+const createDraftRow = (key: string, value: string): DraftEntry => ({
+  id: `draft-row-${draftRowCounter++}`,
+  key,
+  value,
+});
 
 export function InputsEditor({
   value,
@@ -37,7 +53,7 @@ export function InputsEditor({
 }) {
   const { t } = useTranslation("workflows");
   const [drafts, setDrafts] = useState<DraftEntry[]>(() =>
-    Object.entries(value ?? {}).map(([k, v]) => ({ key: k, value: v })),
+    Object.entries(value ?? {}).map(([k, v]) => createDraftRow(k, v)),
   );
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,7 +66,7 @@ export function InputsEditor({
     const newCount = Object.keys(value ?? {}).length;
     if (newCount !== prevEntryCountRef.current) {
       prevEntryCountRef.current = newCount;
-      setDrafts(Object.entries(value ?? {}).map(([k, v]) => ({ key: k, value: v })));
+      setDrafts(Object.entries(value ?? {}).map(([k, v]) => createDraftRow(k, v)));
     }
   }, [value]);
 
@@ -113,7 +129,7 @@ export function InputsEditor({
 
   const addEntry = () => {
     setDrafts((prev) => {
-      const next = [...prev, { key: "", value: "" }];
+      const next = [...prev, createDraftRow("", "")];
       setFocusKeyIdx(next.length - 1);
       return next;
     });
@@ -140,8 +156,7 @@ export function InputsEditor({
       {drafts.map((entry, i) => {
         const isConfirming = confirmDeleteKey === entry.key && entry.key !== "";
         return (
-          // entry.key is user-editable and may be empty or duplicate, so the index is the most stable identifier.
-          <div key={`draft-${i}`} className="flex items-center gap-1">
+          <div key={entry.id} className="flex items-center gap-1">
             <Input
               value={entry.key}
               onChange={(e) => updateDraft(i, "key", e.target.value)}
@@ -168,7 +183,7 @@ export function InputsEditor({
                 variant="ghost"
                 size="icon"
                 onClick={() => handleDeleteClick(i)}
-                title={isConfirming ? t("components:confirm") : undefined}
+                title={isConfirming ? t("editor.delete_confirm_hint") : undefined}
                 className={`size-6 flex-shrink-0 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
               >
                 <Trash2 size={13} />

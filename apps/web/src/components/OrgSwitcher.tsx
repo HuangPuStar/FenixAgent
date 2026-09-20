@@ -1,6 +1,6 @@
+import { useOrg } from "@fenix/identity/web";
 import { Check, ChevronDown, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useOrg } from "@/src/contexts/OrgContext";
 
 /** Sidebar 顶部组织切换器 */
 export function OrgSwitcher() {

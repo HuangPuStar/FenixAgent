@@ -1,10 +1,10 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Calendar, Check, Copy, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
+import { hindsightApi } from "../../../api/hindsight";
 import type { MemoryDetail, MemoryTableRow } from "../types";
 
 interface MemoryDetailPanelProps {

@@ -1,5 +1,5 @@
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { useTranslation } from "react-i18next";
-import { Textarea } from "@/components/ui/textarea";
 import type { WfMeta } from "../yaml-utils";
 import { ParamsEditor } from "./ParamsEditor";
 

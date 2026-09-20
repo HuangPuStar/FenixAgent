@@ -3,9 +3,9 @@
 // 数据来自 utils.mergeFlatRows（byOrg + byEntity 去重合并）。
 
 import { type FlatRow, name } from "@fenix/resource-sandbox/web";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ObserverNames } from "../../../api/observer";
 
 interface ObserverFlatTableProps {

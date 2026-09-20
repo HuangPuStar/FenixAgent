@@ -809,9 +809,9 @@ src/services/litellm/
 |------|------|----------|
 | `src/db/schema.ts:17` | `providerProtocolEnum` | 枚举添加 `"litellm"` |
 | `src/services/config/types.ts:95` | `ProviderUpsertData.protocol` | 联合类型添加 `"litellm"` |
-| `src/schemas/config.schema.ts` | ~7 处 `z.enum(["openai", "anthropic"])` | 全部添加 `"litellm"` |
-| `src/schemas/api-model.schema.ts` | ~3 处 provider protocol schema | 全部添加 `"litellm"` |
-| `web/src/types/config.ts` | ~2 处前端类型 | 全部添加 `"litellm"` |
+| `packages/resources/model-management/src/server/schemas/config.schema.ts` | ~7 处 `z.enum(["openai", "anthropic"])` | 全部添加 `"litellm"` |
+| `packages/resources/model-management/src/server/schemas/api-model.schema.ts` | ~3 处 provider protocol schema | 全部添加 `"litellm"` |
+| `packages/web-runtime/web/types/config.ts` | ~2 处前端类型 | 全部添加 `"litellm"` |
 | `packages/plugin-sdk/src/agent-launch-spec.ts` | `LaunchModelProtocol` | 添加 `"litellm"`（或仅文档说明无需修改，因为 `toLaunchModelProtocol` 会映射为 `"openai"`） |
 
 **注意**：`LaunchModelProtocol` 是否需要修改取决于插件 SDK 是否需要在类型层面感知 LiteLLM。当前设计通过 `toLaunchModelProtocol` 将 `"litellm"` 映射为 `"openai"`，插件 SDK 只看到 `"openai"`，因此 **plugin-sdk 可以不改**。但后端所有 Zod schema 必须添加 `"litellm"` 以允许前端传入。

@@ -1,13 +1,13 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Pagination } from "@/components/ui/pagination";
-import { Skeleton } from "@/components/ui/skeleton";
-import { unwrap } from "@/src/api/request";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
@@ -87,8 +87,10 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // 筛选条件或搜索词变化时，重置到第 1 页
-  // 筛选/搜索变化时需重置页码，但 effect 体只用 setPage。
+  // 筛选条件或搜索词变化时，重置到第 1 页。
+  // debouncedSearch / statusFilter 是「变化即重置页码」的触发条件，不是 effect 读取的值；按 biome 的建议删掉
+  // 依赖会静默丢掉重置语义（翻到第 3 页后改筛选会停在不存在的页码上），因此用行级 ignore 保留触发语义。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 依赖是触发条件（筛选/搜索变化即回第 1 页），effect 体只调用 setPage
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter]);
@@ -169,9 +171,9 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
       {/* 内容区 */}
       {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            // Static skeleton placeholders have no domain identifier.
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          {/* 占位行没有领域标识：先生成键数组再渲染，避免下标直接作为 key（骨架屏不重排、无行内状态）。 */}
+          {Array.from({ length: 5 }, (_, i) => `run-skeleton-${i}`).map((rowKey) => (
+            <Skeleton key={rowKey} className="h-16 w-full rounded-lg" />
           ))}
         </div>
       ) : error ? (

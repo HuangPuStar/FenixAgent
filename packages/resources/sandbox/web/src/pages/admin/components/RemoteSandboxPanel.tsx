@@ -1,14 +1,16 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+
+import { SANDBOX_NS } from "../../../../i18n/namespace";
 import { type ClusterServer, type RemoteSandbox, systemSandboxApi } from "../../../api/system-sandbox";
 
 type RemoteSandboxPanelProps = {
@@ -37,7 +39,7 @@ function formatRemoteTime(value: string | null | undefined): string {
 }
 
 export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanelProps) {
-  const { t } = useTranslation("observer");
+  const { t } = useTranslation(SANDBOX_NS);
   const [expanded, setExpanded] = useState(false);
   const [sandboxes, setSandboxes] = useState<RemoteSandbox[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,7 +63,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       const result = await systemSandboxApi.server.listSandboxes(server.id, { state: "Running" });
       setSandboxes(result.items);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : t("sandbox.remoteLoadError");
+      const message = cause instanceof Error ? cause.message : t("remoteLoadError");
       setError(message);
       if (message.toLowerCase().includes("unauthorized")) onAuthFailure?.();
     } finally {
@@ -85,7 +87,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       setDetail(sandboxDetail);
       setDiagnostics(diagnosticText);
     } catch (cause) {
-      toast.error(t("sandbox.remoteDetailError"), { description: cause instanceof Error ? cause.message : undefined });
+      toast.error(t("remoteDetailError"), { description: cause instanceof Error ? cause.message : undefined });
     }
   };
 
@@ -108,7 +110,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
         { command: command.trim(), ...(cwd.trim() ? { cwd: cwd.trim() } : {}), background: false, timeout: 30_000 },
         controller.signal,
       );
-      if (!response.body) throw new Error(t("sandbox.commandStreamMissing"));
+      if (!response.body) throw new Error(t("commandStreamMissing"));
       for await (const event of readSseEvents(response.body)) {
         const text = getCommandEventText(event);
         if (event.type === "stderr" || event.type === "error")
@@ -117,7 +119,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       }
     } catch (cause) {
       if (!controller.signal.aborted) {
-        toast.error(t("sandbox.commandError"), { description: cause instanceof Error ? cause.message : undefined });
+        toast.error(t("commandError"), { description: cause instanceof Error ? cause.message : undefined });
       }
     } finally {
       setCommandRunning(false);
@@ -132,27 +134,36 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           type="button"
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium"
           aria-expanded={expanded}
+          aria-controls="remote-sandbox-list"
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          <span>{t("sandbox.remoteSandboxes")}</span>
+          <span>{t("remoteSandboxes")}</span>
           <span className="text-text-muted">{expanded ? sandboxes.length : ""}</span>
-          <span className="ml-auto text-text-muted">
-            {expanded ? t("sandbox.collapseHint") : t("sandbox.expandHint")}
-          </span>
+          <span className="ml-auto text-text-muted">{expanded ? t("collapseHint") : t("expandHint")}</span>
         </button>
         {expanded ? (
-          <div className="space-y-2 border-t border-border p-3">
+          <div id="remote-sandbox-list" aria-busy={loading} className="space-y-2 border-t border-border p-3">
             <div className="flex justify-end">
               <Button size="sm" variant="outline" onClick={() => void loadSandboxes()} disabled={loading}>
                 <RefreshCw className="size-3.5" />
-                {t("sandbox.refreshRemoteSandboxes")}
+                {t("refreshRemoteSandboxes")}
               </Button>
             </div>
-            {loading ? <p className="text-xs text-text-muted">{t("states.loading")}</p> : null}
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            {loading ? (
+              <p className="text-xs text-text-muted" role="status">
+                {t("states.loading")}
+              </p>
+            ) : null}
+            {error ? (
+              <p className="text-xs text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
             {!loading && !error && sandboxes.length === 0 ? (
-              <p className="text-xs text-text-muted">{t("sandbox.remoteSandboxesEmpty")}</p>
+              <p className="text-xs text-text-muted" role="status">
+                {t("remoteSandboxesEmpty")}
+              </p>
             ) : null}
             {sandboxes.map((sandbox) => (
               <div
@@ -161,21 +172,21 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
               >
                 <div className="min-w-0 space-y-1">
                   <div className="min-w-0 break-all">
-                    <b>{t("sandbox.instanceId")}：</b>
+                    <b>{t("instanceId")}：</b>
                     <span className="font-mono">{sandbox.id}</span>
                   </div>
                   <div className="break-all">
-                    <b>{t("sandbox.image")}：</b>
+                    <b>{t("image")}：</b>
                     <span className="font-mono">{getImageName(sandbox)}</span>
                   </div>
                 </div>
                 <div className="min-w-0 space-y-1">
                   <div>
-                    <b>{t("sandbox.createdAt")}：</b>
+                    <b>{t("createdAt")}：</b>
                     <span>{formatRemoteTime(sandbox.createdAt)}</span>
                   </div>
                   <div>
-                    <b>{t("sandbox.lastStartedAt")}：</b>
+                    <b>{t("lastStartedAt")}：</b>
                     <span>{formatRemoteTime(sandbox.status.lastTransitionAt)}</span>
                   </div>
                 </div>
@@ -184,10 +195,10 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
                 </Badge>
                 <span className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
                   <Button size="sm" variant="outline" onClick={() => void openDetail(sandbox)}>
-                    {t("sandbox.detail")}
+                    {t("detail")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => openCommand(sandbox)}>
-                    {t("sandbox.executeCommand")}
+                    {t("executeCommand")}
                   </Button>
                 </span>
               </div>
@@ -201,7 +212,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           style={{ width: "min(96vw, 90rem)", maxWidth: "90rem" }}
         >
           <DialogHeader>
-            <DialogTitle>{selected ? `${t("sandbox.remoteSandboxDetail")} · ${selected.id}` : ""}</DialogTitle>
+            <DialogTitle>{selected ? `${t("remoteSandboxDetail")} · ${selected.id}` : ""}</DialogTitle>
           </DialogHeader>
           {selected ? (
             <div className="min-w-0 space-y-4">
@@ -210,7 +221,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
               </pre>
               {diagnostics !== null ? (
                 <div>
-                  <Label>{t("sandbox.diagnostics")}</Label>
+                  <Label>{t("diagnostics")}</Label>
                   <Textarea readOnly value={diagnostics} className="mt-1 min-h-64 font-mono text-xs" />
                 </div>
               ) : null}
@@ -218,7 +229,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelected(null)}>
-              {t("sandbox.close")}
+              {t("close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -237,11 +248,11 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           style={{ width: "min(96vw, 72rem)", maxWidth: "72rem" }}
         >
           <DialogHeader>
-            <DialogTitle>{t("sandbox.executeCommand")}</DialogTitle>
+            <DialogTitle>{t("executeCommand")}</DialogTitle>
           </DialogHeader>
           <div className="min-w-0 space-y-3">
             <div>
-              <Label htmlFor="remote-command">{t("sandbox.command")}</Label>
+              <Label htmlFor="remote-command">{t("command")}</Label>
               <Input
                 id="remote-command"
                 className="w-full"
@@ -251,7 +262,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
               />
             </div>
             <div>
-              <Label htmlFor="remote-command-cwd">{t("sandbox.cwd")}</Label>
+              <Label htmlFor="remote-command-cwd">{t("cwd")}</Label>
               <Input
                 id="remote-command-cwd"
                 className="w-full"
@@ -263,6 +274,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
             </div>
             <Textarea
               readOnly
+              aria-label={t("commandOutput")}
               value={commandOutput.join("\n")}
               className="min-h-48 w-full bg-background font-mono text-xs text-foreground"
             />
@@ -270,11 +282,11 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           <DialogFooter>
             {commandRunning ? (
               <Button variant="destructive" onClick={() => commandAbort?.abort()}>
-                {t("sandbox.cancelCommand")}
+                {t("cancelCommand")}
               </Button>
             ) : (
               <Button variant="destructive" disabled={!command.trim()} onClick={() => setConfirmCommand(true)}>
-                {t("sandbox.executeCommand")}
+                {t("executeCommand")}
               </Button>
             )}
             <Button
@@ -285,7 +297,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
                 setCommandTarget(null);
               }}
             >
-              {t("sandbox.close")}
+              {t("close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -293,9 +305,9 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       <ConfirmDialog
         open={confirmCommand}
         onOpenChange={setConfirmCommand}
-        title={t("sandbox.confirmExecuteCommandTitle")}
-        description={t("sandbox.confirmExecuteCommandDescription", { command: command.trim() })}
-        confirmLabel={t("sandbox.executeCommand")}
+        title={t("confirmExecuteCommandTitle")}
+        description={t("confirmExecuteCommandDescription", { command: command.trim() })}
+        confirmLabel={t("executeCommand")}
         variant="destructive"
         onConfirm={() => {
           setConfirmCommand(false);

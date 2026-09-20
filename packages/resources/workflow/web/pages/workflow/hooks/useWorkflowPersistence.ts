@@ -1,10 +1,10 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "@/src/api/request";
-import { pushWorkflowError } from "@/src/lib/use-workflow-events";
 import { workflowDefApi } from "../../../api/workflow-defs";
+import { pushWorkflowError } from "../../../lib/use-workflow-events";
 import { flowToYaml, syncEdgeCounter, syncNodeCounter, type WfMeta, yamlToFlow } from "../yaml-utils";
 
 const AUTO_SAVE_DELAY = 3000;
@@ -125,8 +125,9 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     [syncYaml, workflowId, t],
   );
 
-  // 自动保存：有未保存变更时 debounce 3s 自动保存
-  // nodes/edges/meta 故意作为触发器。
+  // 自动保存：有未保存变更时 debounce 3s 自动保存，每次编辑重启定时器。
+  // 「编辑即重启」由 handleSaveDraft 的引用变化传导：handleSaveDraft ← syncYaml ← nodes/edges/meta，
+  // 因此依赖里不再单列 nodes/edges/meta（它们不在 effect 体里被读取，列了是多余依赖）。
   useEffect(() => {
     if (!workflowId || readOnly || lastSavedYaml === "" || !hasUnsavedChanges) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -136,7 +137,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [nodes, edges, meta, workflowId, readOnly, lastSavedYaml, handleSaveDraft, hasUnsavedChanges]);
+  }, [workflowId, readOnly, lastSavedYaml, handleSaveDraft, hasUnsavedChanges]);
 
   // beforeunload：未保存时阻止浏览器关闭
   useEffect(() => {

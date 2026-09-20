@@ -1,12 +1,14 @@
+// W2.5：图标辅助与卡片渲染器的宿主实现已上收到 `@fenix/ui-components`，本包按对方的**声明子路径**取用，
+// 不再以六级相对路径穿透到 `apps/web`（见 §1 静态条件 3：包离开宿主解析环境后必须仍能独立构建）。
 import { describe, expect, test } from "bun:test";
-import { getFileExtension } from "../../../../../../apps/web/src/components/file-icon-helper";
+import { getFileExtension } from "@fenix/ui-components/components/file-icon-helper";
 import {
   getRegisteredAllowedTags,
   getRegisteredComponents,
   getRegisteredTags,
   getTagRenderer,
   registerTagRenderer,
-} from "../../../../../../apps/web/src/lib/card-renderer/registry";
+} from "@fenix/ui-components/lib/card-renderer";
 
 const firstRenderer = (_props: Record<string, unknown>) => null;
 const secondRenderer = (_props: Record<string, unknown>) => null;

@@ -1,11 +1,6 @@
-import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -13,12 +8,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
-
+} from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { hindsightApi } from "../../../api/hindsight";
+import { type HindsightFailure, toHindsightFailure } from "../failure";
 import type { MentalModel } from "../types";
+import { HindsightFailureNotice } from "./HindsightFailureNotice";
 
 /** 内容预览截断长度 */
 const PREVIEW_LENGTH = 200;
@@ -151,6 +151,9 @@ export function MentalModelsView() {
   // 数据状态
   const [models, setModels] = useState<MentalModel[]>([]);
   const [loading, setLoading] = useState(true);
+  // 列表加载失败：必须落成持久分支而不是只弹 toast——toast 消失后界面只剩「暂无心理模型」，
+  // 会把授权失败（403）伪装成空数据（§1.3 前端状态口径）。
+  const [failure, setFailure] = useState<HindsightFailure | null>(null);
 
   // 搜索状态
   const [search, setSearch] = useState("");
@@ -164,12 +167,13 @@ export function MentalModelsView() {
   /** 加载心理模型列表 */
   const loadModels = useCallback(async () => {
     setLoading(true);
+    setFailure(null);
     try {
       const res = await hindsightApi.listMentalModels();
       setModels(Array.isArray(res.items) ? res.items : []);
     } catch (err) {
       console.error("Failed to load mental models:", err);
-      toast.error(err instanceof Error ? err.message : t("mentalModels.loadFailed"));
+      setFailure(toHindsightFailure(err, t("mentalModels.loadFailed")));
     } finally {
       setLoading(false);
     }
@@ -247,8 +251,17 @@ export function MentalModelsView() {
       {/* 卡片网格 */}
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-12" role="status">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : failure ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
+            <HindsightFailureNotice
+              failure={failure}
+              titleKey="mentalModels.loadFailed"
+              retryKey="mentalModels.retry"
+              onRetry={() => void loadModels()}
+            />
           </div>
         ) : filteredModels.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">

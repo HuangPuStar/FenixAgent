@@ -1,10 +1,10 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { GitBranch, Loader, RotateCcw, Star } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { unwrap } from "@/src/api/request";
 import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
 
 export interface VersionIndicatorProps {

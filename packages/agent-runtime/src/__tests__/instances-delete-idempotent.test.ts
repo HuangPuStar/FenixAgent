@@ -22,8 +22,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubCoreBootstrap, stubDb } from "@server/test-utils/helpers";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { resetOrchestrationBootstrap } from "../services/orchestration-bootstrap";
 import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";

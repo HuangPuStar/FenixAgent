@@ -8,7 +8,13 @@ import {
   clearInstanceLeases,
   hasActiveInstanceLease,
 } from "../server/services/workflow/instance-lease";
-import type { InstanceSupplement } from "../types/store";
+
+/**
+ * supplement 形状取自注册表 API 的参数类型：`InstanceSupplement` 定义在宿主
+ * `apps/server/src/types/store.ts`，不是任何包的公开导出（`../types/store` 也只是迁移时留下的悬空路径）。
+ * 用 `Parameters<typeof …register>` 派生既不用复制字段清单，也不会与该类型的 owner（agent-runtime）漂移。
+ */
+type InstanceSupplement = Parameters<typeof globalInstanceRegistry.register>[1];
 
 class MemoryTurn implements PromptTurn {
   prompts: Array<Array<{ type: string; text: string; resource?: unknown }>> = [];

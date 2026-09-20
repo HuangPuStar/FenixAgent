@@ -1,4 +1,14 @@
 import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config";
+import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
@@ -9,24 +19,21 @@ import {
   RefreshCw,
   Search,
   Share2,
+  ShieldAlert,
   TerminalSquare,
   Trash2,
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { McpServerInfo, McpToolInfo } from "@/src/types/config";
-import { canManageMcpSharing, canWriteMcp, getMcpDisplayName, getMcpKey } from "../../../lib/mcp-resource-access";
-import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
+  canManageMcpSharing,
+  canWriteMcp,
+  getMcpDisplayName,
+  getMcpKey,
+  isExternalMcp,
+} from "../../../lib/mcp-resource-access";
+import { countMcpScopes, filterMcpServers, isUnauthorizedError, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
 import "./agent-mcp-detail.css";
 
@@ -36,6 +43,8 @@ type Props = {
   error?: Error;
   query: string;
   scope: McpCatalogScope;
+  /** 当前组织 id，用于比对 `scope.organizationId` 判定资源是否来自其他组织。 */
+  activeOrganizationId?: string;
   inspectingKey: string | null;
   sharing: boolean;
   toolsByServer: Record<string, McpToolInfo[]>;
@@ -56,8 +65,8 @@ function getMcpIcon(server: McpServerInfo) {
 
 export function AgentMcpCatalog(props: Props) {
   const { t } = useTranslation(NS.MCP);
-  const filtered = filterMcpServers(props.servers, props.query, props.scope);
-  const counts = countMcpScopes(props.servers);
+  const filtered = filterMcpServers(props.servers, props.query, props.scope, props.activeOrganizationId);
+  const counts = countMcpScopes(props.servers, props.activeOrganizationId);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedServer = filtered.find((server) => getMcpKey(server) === selectedKey) ?? filtered[0] ?? null;
 
@@ -67,6 +76,19 @@ export function AgentMcpCatalog(props: Props) {
 
   if (props.loading) return <McpCatalogLoading />;
   if (props.error && props.servers.length === 0) {
+    // 无权限单独成一个分支：它不给重试按钮（原因见 `isUnauthorizedError`），
+    // 而一般故障仍然保留重试入口，避免把「点一次就好」和「点了也没用」混成同一种界面。
+    if (isUnauthorizedError(props.error)) {
+      return (
+        <AppPage className="agent-mcp-page">
+          <section className="mcp-load-error" role="alert">
+            <ShieldAlert />
+            <strong>{t("loadState.unauthorizedTitle")}</strong>
+            <p>{t("loadState.unauthorizedHint")}</p>
+          </section>
+        </AppPage>
+      );
+    }
     return (
       <AppPage className="agent-mcp-page">
         <section className="mcp-load-error" role="alert">
@@ -82,8 +104,10 @@ export function AgentMcpCatalog(props: Props) {
     );
   }
 
+  // 这里已不是加载态（loading 在上方提前返回），因此不标 aria-busy：恒真的 busy 会让屏幕阅读器
+  // 把整页更新一直当作「未完成」而推迟播报。加载态的 aria-busy 由 McpCatalogLoading 承担。
   return (
-    <AppPage className="agent-mcp-page" busy>
+    <AppPage className="agent-mcp-page">
       <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
@@ -155,8 +179,8 @@ export function AgentMcpCatalog(props: Props) {
                 {filtered.map((server) => {
                   const key = getMcpKey(server);
                   const active = key === getMcpKey(selectedServer);
-                  const external = server.resourceAccess?.ownership === "external";
-                  const publiclyReadable = server.resourceAccess?.publicReadable === true;
+                  const external = isExternalMcp(server, props.activeOrganizationId);
+                  const publiclyReadable = server.scope?.visibility === "public";
                   const Icon = getMcpIcon(server);
                   return (
                     <button
@@ -172,12 +196,8 @@ export function AgentMcpCatalog(props: Props) {
                         <small>{server.summary || t("directory.noDescription")}</small>
                       </span>
                       <span className="mcp-directory-meta">
-                        <span
-                          className="mcp-directory-organization"
-                          title={server.resourceAccess?.sourceOrganizationName}
-                        >
-                          {server.resourceAccess?.sourceOrganizationName ??
-                            t(`type.${server.type === "local" ? "local" : "remote"}`)}
+                        <span className="mcp-directory-organization" title={server.organizationName}>
+                          {server.organizationName ?? t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>
                         {publiclyReadable ? <b>{t("scope.public")}</b> : null}
                         {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
@@ -200,8 +220,8 @@ export function AgentMcpCatalog(props: Props) {
 function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Props }) {
   const { t } = useTranslation(NS.MCP);
   const writable = canWriteMcp(server);
-  const external = server.resourceAccess?.ownership === "external";
-  const publiclyReadable = server.resourceAccess?.publicReadable === true;
+  const external = isExternalMcp(server, props.activeOrganizationId);
+  const publiclyReadable = server.scope?.visibility === "public";
   const Icon = getMcpIcon(server);
   return (
     <AgentMasterDetailHeader className="mcp-detail-header">
@@ -210,7 +230,7 @@ function McpDetailHeader({ server, props }: { server: McpServerInfo; props: Prop
         <div>
           <h2>{getMcpDisplayName(server)}</h2>
           <div className="mcp-detail-meta">
-            <span>{server.resourceAccess?.sourceOrganizationName ?? t("scope.organization")}</span>
+            <span>{server.organizationName ?? t("scope.organization")}</span>
             {publiclyReadable ? <b>{t("scope.public")}</b> : null}
             {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
           </div>
@@ -294,7 +314,7 @@ function McpDetailActions({ server, props }: { server: McpServerInfo; props: Pro
       {manageable ? (
         <Button variant="ghost" size="sm" disabled={props.sharing} onClick={() => props.onToggleSharing(server)}>
           <Share2 />
-          {tComponents(server.resourceAccess?.publicReadable ? "resource.makePrivate" : "resource.makePublic")}
+          {tComponents(server.scope?.visibility === "public" ? "resource.makePrivate" : "resource.makePublic")}
         </Button>
       ) : null}
       {writable ? (
@@ -334,12 +354,18 @@ function McpToolList({ tools, loading }: { tools: McpToolInfo[]; loading: boolea
 }
 
 function McpCatalogLoading() {
+  const { t } = useTranslation(NS.MCP);
+  // 骨架屏本身没有可读内容，屏幕阅读器只会看到一片空白：文案走 sr-only 的 role="status"，
+  // 容器再用 aria-busy 标出整块仍在加载（与 sandbox 面板的状态语义一致）。
   return (
-    <AppPage className="agent-mcp-page">
+    <AppPage className="agent-mcp-page" busy>
       <Skeleton className="h-7 w-36" />
       <Skeleton className="mt-2 h-4 w-80" />
       <Skeleton className="mt-7 h-10 w-full" />
       <Skeleton className="mt-7 h-[520px] w-full rounded-[10px]" />
+      <span className="sr-only" role="status">
+        {t("loadState.loading")}
+      </span>
     </AppPage>
   );
 }

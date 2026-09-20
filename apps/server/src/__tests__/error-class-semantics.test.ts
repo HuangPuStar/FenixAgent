@@ -3,7 +3,8 @@ import { describe, expect, it } from "bun:test";
 // R14: 验证 instance.ts 和 environment-acp.ts 中错误类使用 AppError/NotFoundError
 // 而非 Object.assign(new Error, { code })
 
-const { NotFoundError, AppError } = await import("../errors");
+// 分类法已上移到 `@fenix/platform-sdk`（宿主与资源包必须共用同一组类，见该模块的文件头注释）。
+const { NotFoundError, AppError } = await import("@fenix/platform-sdk");
 
 describe("R14 错误类语义验证", () => {
   // NotFoundError 具有 code 属性且值为 "NOT_FOUND"

@@ -214,11 +214,14 @@ test("剩余专项测试不落入 apps server fallback", () => {
   });
 });
 
-// resource-permission repository 隔离测试跟随平台访问控制边界，而非 apps/server 宿主。
-test("resource permission 测试归属平台访问控制", () => {
+// 旧授权栈的规则仍记录最近一次 owner（平台访问控制）；文件本身在 CE 阶段 2 任务 1.2 已无消费者。
+test("旧授权栈的根路径规则保留平台访问控制归属", () => {
   for (const file of [
     "src/__tests__/round23-resource-permission-isolation.test.ts",
     "src/__tests__/round64-resource-permission-repository.test.ts",
+    "src/__tests__/resource-permission-pg-repository.test.ts",
+    "src/repositories/resource-permission.ts",
+    "src/schemas/resource-access.schema.ts",
   ]) {
     expect(getMostSpecificRootOwnerRule(file)).toMatchObject({ owner: "platform-access-control", task: "RMD-06" });
   }

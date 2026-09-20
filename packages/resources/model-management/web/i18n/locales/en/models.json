@@ -1,0 +1,493 @@
+{
+  "title": "Model Library",
+  "subtitle": "Connect providers, configure model capabilities, and give Agents reliable model references",
+  "createButton": "New Provider",
+  "searchLabel": "Search model library",
+  "searchPlaceholder": "Search providers, models, or protocols",
+  "selectionAnnouncement": "Selected {{provider}}, {{count}} models",
+  "partialLoadError": "Details for {{count}} providers could not be loaded. Retry to recover them.",
+  "scope": {
+    "label": "Resource scope",
+    "all": "All",
+    "organization": "Organization",
+    "shared": "Shared with me",
+    "public": "Public"
+  },
+  "providerIndex": {
+    "title": "Providers",
+    "description": "Connections and credentials",
+    "models": "{{count}} models",
+    "empty": "No matching providers"
+  },
+  "connection": {
+    "endpoint": "Endpoint",
+    "credential": "Credential",
+    "defaultEndpoint": "Protocol default endpoint",
+    "managedCredential": "Securely managed by the platform",
+    "shared": "Organization sharing",
+    "sharedDescription": "Allow other organizations to read"
+  },
+  "modelsSection": {
+    "title": "Configured Models",
+    "description": "{{count}} models · only runtime-critical capabilities are shown"
+  },
+  "modelTraits": {
+    "thinking": "Thinking supported",
+    "noThinking": "No thinking"
+  },
+  "testStatus": {
+    "running": "Testing",
+    "success": "Passed",
+    "error": "Failed"
+  },
+  "empty": {
+    "title": "No providers yet",
+    "description": "Create a provider to configure its models.",
+    "filteredTitle": "No matches",
+    "filteredDescription": "Change the search term or resource scope and try again."
+  },
+  "loadState": {
+    "title": "Model library failed to load"
+  },
+  "emptyMessage": "No providers yet. Click \"New Provider\" to add one",
+  "loadError": "Failed to load data: {{message}}",
+  "loadProvidersError": "Failed to load provider list: {{message}}",
+  "loadProviderDetailError": "Failed to load provider details: {{message}}",
+  "loadModelConfigError": "Failed to load model config: {{message}}",
+  "loadModelsError": "Failed to load model data",
+  "unknownError": "Unknown error",
+  "errors": {
+    "sharingUnavailable": "This provider's sharing state cannot be managed"
+  },
+  "protocolOptions": {
+    "openai": "OpenAI Compatible",
+    "anthropic": "Anthropic"
+  },
+  "columns": {
+    "id": "ID",
+    "protocol": "Protocol",
+    "apiKey": "API Key",
+    "status": "Status",
+    "models": "Models"
+  },
+  "modelGatewayUsage": {
+    "title": "Model Gateway Usage",
+    "ranges": {
+      "last30d": "Last 30 days",
+      "last7d": "Last 7 days",
+      "last90d": "Last 90 days"
+    },
+    "query": "Query",
+    "querying": "Querying…",
+    "total": "Total spend in the last {{days}} days",
+    "hint": "Click Query to view usage through the Model Gateway.",
+    "breakdowns": {
+      "agent": "Spend by Agent",
+      "model": "Spend by model"
+    },
+    "noData": "No data"
+  },
+  "gateway": {
+    "tag": "Model Gateway",
+    "myUsage": "My usage",
+    "backToModels": "Back to models",
+    "usageTitle": "My usage · {{providerName}}",
+    "usageTitleLoading": "My usage",
+    "usageSubtitle": "Only calls made through this Gateway Provider are included; direct Providers are excluded.",
+    "sharedBudgetTitle": "Global shared budget",
+    "sharedBudgetDescription": "The budget, spend, and remaining balance cover this user's calls across all organizations.",
+    "budgetUsage": "Budget usage this period",
+    "budgetNotSet": "No budget set",
+    "budgetNormal": "Budget healthy",
+    "budgetExhausted": "Exhausted",
+    "unlimited": "Unlimited",
+    "remaining": "Remaining",
+    "nextReset": "Next reset",
+    "neverReset": "Never resets",
+    "budgetDuration": "Budget period",
+    "once": "One-time",
+    "tokensAndRequests": "Tokens and requests",
+    "last30DaysNotice": "The usage data below covers the last 30 days.",
+    "totalTokens": "Total tokens",
+    "requests": "Requests",
+    "promptTokens": "Input tokens",
+    "completionTokens": "Output tokens",
+    "byAgent": "Spend by Agent",
+    "byModel": "Spend by model",
+    "requestsSuffix": "requests",
+    "noData": "No data",
+    "loading": "Loading usage…",
+    "loadError": "Unable to load Model Gateway usage. Please try again.",
+    "forbidden": "You do not have permission to view this Model Gateway usage."
+  },
+  "modelUsage": {
+    "primary": "Primary",
+    "small": "Lightweight"
+  },
+  "resource": {},
+  "validation": {
+    "nameEmpty": "Name cannot be empty",
+    "nameLength": "Name must be between 1-64 characters"
+  },
+  "actions": {
+    "test": "Test",
+    "testing": "Testing...",
+    "view": "View",
+    "edit": "Edit",
+    "delete": "Delete",
+    "add": "Add",
+    "close": "Close",
+    "save": "Save",
+    "saving": "Saving...",
+    "retry": "Retry"
+  },
+  "batchDelete": "Batch Delete",
+  "batchDeleteConfirmTitle": "Confirm Batch Delete",
+  "batchDeleteConfirmDesc": "This action is irreversible. Are you sure you want to delete {{count}} selected providers?",
+  "batchDeleteCount": "{{count}} providers deleted",
+  "batchDeleteError": "Batch delete failed: {{message}}",
+  "saveProvider": {
+    "errorGeneric": "Save failed: {{message}}",
+    "duplicateName": "Provider \"{{name}}\" already exists, please use a different name",
+    "successCreate": "Provider created",
+    "successUpdate": "Provider updated"
+  },
+  "deleteProvider": {
+    "confirmTitle": "Confirm Delete",
+    "confirmDesc": "This action is irreversible. Are you sure you want to delete provider \"{{name}}\"?",
+    "success": "Provider deleted",
+    "error": "Delete failed: {{message}}"
+  },
+  "form": {
+    "editTitle": "Edit Provider",
+    "detailTitle": "Provider Details",
+    "createTitle": "New Provider",
+    "description": "Configure a real connection and discover models from the provider when needed.",
+    "readOnlyDescription": "This provider is shared with you and is read-only.",
+    "id": "ID (Identifier)",
+    "idPlaceholder": "bailian-token-plan",
+    "idImmutable": "ID cannot be changed after creation",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "e.g. Alibaba Bailian",
+    "protocol": "Protocol",
+    "apiKey": "API Key",
+    "apiKeyEditPlaceholder": "Leave empty to keep unchanged",
+    "apiKeyCreatePlaceholder": "Enter API Key",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "Optional, uses provider default URL",
+    "modelsSection": "Available Models",
+    "modelsSectionHint": "Discovered models are not added automatically. Select them before saving.",
+    "fetchModelsError": "Failed to fetch models",
+    "addModelsPartialError": "The provider was saved, but {{count}} models could not be added. Please retry.",
+    "fetchModels": "Fetch Models",
+    "fetching": "Fetching...",
+    "selectAll": "Select / Deselect All",
+    "noModelsFound": "No models found or unable to connect to provider",
+    "noModelsHint": "This may not be a configuration error — some providers do not expose a model listing API"
+  },
+  "testDialog": {
+    "failTitle": "Connection Test Failed — {{name}}",
+    "successTitle": "Connection Test Successful — {{name}}",
+    "modelFailTitle": "Model Test Failed — {{modelId}}",
+    "modelSuccessTitle": "Model Test Successful — {{modelId}}",
+    "modelsFound": "Found {{count}} available models",
+    "added": "Added",
+    "addModelSuccess": "Model {{modelId}} added",
+    "addModelError": "Add failed: {{message}}",
+    "testError": "Test failed",
+    "modelTestPassed": "Test Passed",
+    "modelTestFailed": "Test Failed",
+    "modelTesting": "Testing",
+    "modelTestResponse": "Model Response",
+    "modelTestError": "Error Details",
+    "errors": {
+      "providerListHttp": "{{protocol}} model list request failed (HTTP {{status}})",
+      "providerListMissingData": "{{protocol}} model list response is invalid: missing data array",
+      "providerListMissingModelId": "{{protocol}} model list response is invalid: no valid model IDs found",
+      "modelMessageHttp": "{{protocol}} model message test failed (HTTP {{status}})",
+      "modelMessageEmpty": "{{protocol}} model message API is reachable, but no displayable text was extracted",
+      "detailPrefix": "Error: ",
+      "requestTimeout": "Test request timed out",
+      "requestFailed": "Test request failed",
+      "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing."
+    }
+  },
+  "modelSubrow": {
+    "emptyMessage": "No models yet. Click the button below to add",
+    "emptyTitle": "No configured models",
+    "emptyReadOnly": "This shared provider does not expose any models yet.",
+    "addButton": "+ Add Model",
+    "addButtonLabel": "Add Model",
+    "createTitle": "New Model",
+    "detailTitle": "Model Details — {{id}}",
+    "editTitle": "Edit Model — {{id}}",
+    "modelId": "Model ID",
+    "modelIdPlaceholder": "e.g. qwen3.6-plus",
+    "modelIdEmpty": "Model ID cannot be empty",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "e.g. Qwen3.6 Plus",
+    "contextLimit": "Context Limit",
+    "contextHint": "tokens, conversation context window size",
+    "outputLimit": "Output Limit",
+    "outputHint": "tokens, max reply length per turn",
+    "inputModality": "Input Modalities",
+    "outputModality": "Output Modalities",
+    "thinkingEnabled": "Enable Thinking Mode",
+    "thinkingDescription": "The list only shows whether the model supports thinking mode.",
+    "modalityBadgeInput": "In",
+    "modalityBadgeOutput": "Out",
+    "contextLabel": "Context",
+    "outputLabel": "Output",
+    "noLimitInfo": "No limit info",
+    "saveModel": {
+      "successCreate": "Model added",
+      "successUpdate": "Model updated",
+      "errorGeneric": "Save failed: {{message}}"
+    },
+    "deleteModel": {
+      "confirmTitle": "Confirm Delete Model",
+      "confirmDesc": "This action is irreversible. Are you sure you want to delete model \"{{id}}\"?",
+      "success": "Model deleted",
+      "error": "Delete failed: {{message}}"
+    },
+    "testModel": {
+      "success": "Model {{id}} test succeeded: {{content}}",
+      "error": "Model {{id}} test failed: {{message}}"
+    }
+  },
+  "modelGateway": {
+    "nav": "Model Gateway",
+    "title": "Model Gateway",
+    "subtitle": "Publish gateway models, manage user budgets, and review system-wide usage.",
+    "openLiteLlm": "Open LiteLLM",
+    "models": "Model configuration",
+    "tabs": {
+      "overview": "Overview",
+      "models": "Models",
+      "budgets": "Budgets",
+      "usage": "Usage",
+      "keys": "Key Management"
+    },
+    "budgets": "Global user budgets",
+    "query": "Query",
+    "queryHint": "Click Query to load usage data.",
+    "totalSpend": "Total spend",
+    "unlimited": "Not configured",
+    "selectAll": "Select all users",
+    "amount": "Amount",
+    "once": "One-time",
+    "applySelected": "Apply to selected",
+    "check": "Check status",
+    "connectionCheck": {
+      "succeeded": "Connection check completed: LiteLLM is reachable and {{count}} models were found.",
+      "failed": "Connection check failed: {{message}}",
+      "requestFailed": "Connection check request failed. Please try again."
+    },
+    "sync": "Sync models",
+    "checkHint": "Check LiteLLM's model catalog to see whether the projection is current.",
+    "synced": "Synced",
+    "pending": "Pending sync",
+    "unknown": "Unable to read gateway status",
+    "requestError": "The model gateway request failed. Check LiteLLM and database service status.",
+    "syncDone": "Model sync completed",
+    "modelsPage": {
+      "title": "Model configuration",
+      "description": "Configure models in the LiteLLM admin console. Fenix checks and synchronizes the model catalog.",
+      "litellmConfig": {
+        "title": "Configure models in the LiteLLM admin console",
+        "description": "Return here after configuration, check status, then synchronize models to the Gateway Provider.",
+        "action": "Configure in LiteLLM"
+      },
+      "searchPlaceholder": "Search models",
+      "filters": {
+        "all": "All statuses",
+        "pending": "Pending changes",
+        "synced": "Synced"
+      },
+      "columns": {
+        "model": "Model",
+        "source": "Source",
+        "syncStatus": "Sync status"
+      },
+      "noMatches": "No matching models. Check status first.",
+      "providerBaseUrlChanged": "The Gateway Provider public URL changed and is waiting to be synchronized.",
+      "catalogChanges": "{{count}} catalog changes found. Synchronization will not modify Fenix model configuration."
+    },
+    "budgetsPage": {
+      "defaultTitle": "Default budget for new users",
+      "defaultAmountLabel": "Default budget amount",
+      "defaultDurationLabel": "Default budget period",
+      "duration30d": "30 days",
+      "filters": {
+        "all": "All statuses",
+        "pending": "Not active",
+        "active": "Active",
+        "exhausted": "Exhausted"
+      },
+      "defaultHint": "Determined by the server default and applies only when users first use the gateway.",
+      "searchPlaceholder": "Search name, email, or phone number",
+      "organizationLabel": "Organization",
+      "allOrganizations": "All organizations",
+      "allUsers": "All users",
+      "selectedCount": "{{count}} selected",
+      "resetBudget": "Reset spend",
+      "resetTitle": "Reset user spend",
+      "resetDescription": "Clear the spend for {{count}} users without changing their budget amount or period.",
+      "resetSuccess": "The selected users' spend has been reset",
+      "resetError": "Unable to reset spend. Please try again.",
+      "edit": "Set",
+      "budgetScope": "The budget is shared globally across organizations, Agents, and models.",
+      "singleUserEditing": "Editing one user: change the amount and period above, then click Apply to selected.",
+      "editTitle": "Set global user budget",
+      "confirmSet": "Set",
+      "batchTitle": "Set global user budgets",
+      "dialogHint": "{{count}} users selected; their budget is shared across organizations, Agents, and models.",
+      "cancel": "Cancel",
+      "columns": {
+        "user": "User",
+        "policy": "Budget policy",
+        "spent": "Spent",
+        "remaining": "Remaining",
+        "progress": "Usage progress",
+        "resetAt": "Reset time"
+      },
+      "activeBudget": "Active",
+      "defaultPreview": "Current default preview",
+      "startsOnFirstUse": "Starts on first use",
+      "neverResets": "Never resets",
+      "resetNotScheduled": "Awaiting reset schedule",
+      "exhausted": "Exhausted",
+      "noMatches": "No matching users",
+      "selectUser": "Select {{name}}",
+      "pagination_total": "{{total}} users",
+      "pagination_page_size": "{{size}} / page"
+    },
+    "keysPage": {
+      "title": "Key Management",
+      "description": "Shows only model gateway keys created by Fenix. Key secrets are never displayed and availability is evaluated from current access.",
+      "refresh": "Refresh",
+      "remove": "Delete selected keys",
+      "empty": "No Fenix-managed keys.",
+      "loadError": "Unable to load keys. Please try again.",
+      "removeTitle": "Delete keys",
+      "removeDescription": "Delete {{count}} keys? Fenix blocks each remote key first, then removes its local mapping when the key is blocked or already absent.",
+      "removeSuccess": "Deleted {{count}} keys.",
+      "removeSkipped": "{{count}} keys no longer have a local mapping.",
+      "removeFailed": "Failed to delete {{count}} keys. Please try again.",
+      "select": "Select key {{id}}",
+      "unknownSubject": "Unknown",
+      "subjectLabels": {
+        "organization": "Organization",
+        "user": "User",
+        "agent": "Agent"
+      },
+      "columns": {
+        "id": "ID",
+        "key": "Key ID",
+        "subject": "Subject",
+        "availability": "Availability",
+        "createdAt": "Created"
+      },
+      "reasons": {
+        "usable": "Usable",
+        "USER_NOT_FOUND": "User not found",
+        "ORGANIZATION_NOT_FOUND": "Organization not found",
+        "MEMBERSHIP_NOT_FOUND": "User is no longer a member",
+        "AGENT_NOT_FOUND": "Agent is missing or belongs to another organization",
+        "AGENT_ACCESS_REVOKED": "User no longer has Agent access",
+        "CREDENTIAL_UNUSABLE": "Credential is blocked or unavailable",
+        "unusable": "Unavailable"
+      },
+      "pagination_total": "{{total}} keys",
+      "pagination_page_size": "{{size}} keys/page"
+    },
+    "usagePage": {
+      "querying": "Querying…",
+      "ranges": {
+        "last30d": "Last 30 days",
+        "last7d": "Last 7 days",
+        "custom": "Custom date range"
+      },
+      "filters": {
+        "user": "user",
+        "organization": "organization",
+        "agent": "Agent",
+        "model": "model"
+      },
+      "allSubjects": "All {{subject}}s",
+      "userOption": "{{name}} ({{email}})",
+      "searchSubject": "Search {{subject}}",
+      "noMatches": "No matching options",
+      "rangeHint": "Any date range is supported, up to 90 days per query. Use offline reports for longer periods.",
+      "metrics": {
+        "spend": "Total spend",
+        "gatewayOnly": "Current Gateway Provider only",
+        "tokens": "Total tokens",
+        "tokenDetail": "Input {{prompt}} · Output {{completion}}",
+        "requests": "Requests",
+        "activeAgents": "Active Agents",
+        "coveredUsers": "{{count}} users covered"
+      },
+      "breakdowns": {
+        "model": "By model",
+        "organization": "By organization",
+        "user": "By user",
+        "agent": "By Agent"
+      },
+      "noData": "No data"
+    },
+    "overview": {
+      "recent7dSpend": "Total spend, last 7 days",
+      "onlyGateway": "Model Gateway only",
+      "tokenSummary": "Input {{prompt}} · Output {{completion}} tokens",
+      "activeUsers": "Active users",
+      "activeUsersFoot7d": "With calls in the last 7 days",
+      "configuredModels": "Configured models",
+      "modelsSynced": "Gateway Provider is synced",
+      "modelsPending": "Awaiting sync status check",
+      "usageTrend": "Usage trend",
+      "recent7dGateway": "Last 7 days · Model Gateway only",
+      "amountUsd": "Amount (USD)",
+      "trendPoint": "{{date}}: {{spend}}",
+      "noUsage": "No usage data",
+      "gatewayProvider": "Gateway Provider",
+      "connected": "Connected",
+      "notChecked": "Not checked",
+      "owner": "Owner",
+      "gatewayType": "Gateway type",
+      "connectionAddress": "Connection URL",
+      "defaultProviderName": "Fenix Model Gateway",
+      "manageModels": "Manage model configuration",
+      "refreshStatus": "Refresh status",
+      "loadFailed": "Unable to load model gateway data",
+      "gatewayTypes": {
+        "litellm": "LiteLLM OSS"
+      }
+    },
+    "change": {
+      "added": "Added",
+      "updated": "Updated",
+      "removed": "Removed"
+    }
+  },
+  "modelConfig": {
+    "title": "Model Configuration",
+    "description": "Select primary and lightweight models",
+    "primaryModel": "Primary Model",
+    "primaryModelPlaceholder": "Select primary model",
+    "lightweightModel": "Lightweight Model",
+    "lightweightModelPlaceholder": "Select lightweight model",
+    "updateSuccess": "Model configuration updated",
+    "updateError": "Failed to update model configuration: {{message}}"
+  },
+  "admin": {
+    "gateAuthFailed": "Invalid or expired master key",
+    "loading": "Loading…"
+  },
+  "verticalModels": {
+    "searchLabel": "Search vertical models",
+    "emptyTitle": "No matching models",
+    "emptyDescription": "Try a different keyword, or clear the search to see all models.",
+    "clearSearch": "Clear search"
+  }
+}

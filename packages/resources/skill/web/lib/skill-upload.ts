@@ -3,7 +3,7 @@ import type {
   UploadManifestEntry,
   UploadSkillFileItem,
   UploadSkillSummary,
-} from "../../../../../apps/web/src/types/config";
+} from "@fenix/web-runtime/types/config";
 
 function normalizeRelativePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");

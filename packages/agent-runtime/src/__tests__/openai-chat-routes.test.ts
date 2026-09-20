@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import { AppError, NotFoundError } from "@server/errors";
+import { AppError, NotFoundError } from "@fenix/platform-sdk";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { errorPlugin } from "@server/plugins/error-handler";
 import { setTestOrgContext } from "@server/services/org-context";

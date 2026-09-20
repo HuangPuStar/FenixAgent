@@ -1,7 +1,7 @@
 import type { AgentMachineData, AgentMachineRepo } from "@fenix/orchestration";
-import { db } from "@server/db";
 import { machine } from "@server/db/schema";
 import { eq } from "drizzle-orm";
+import { getMachineDatabase } from "../db";
 
 /** 连接信息缺失时的兜底 host/port：host 指向本机回环，port 0 表示“端口由部署/代理 URL 决定”。 */
 const FALLBACK_HOST = "127.0.0.1";
@@ -24,6 +24,7 @@ export class PgAgentMachineRepo implements AgentMachineRepo {
    *     不在 machine 元数据中维护）。
    */
   async getMachine(machineId: string): Promise<AgentMachineData | null> {
+    const db = getMachineDatabase();
     const rows = await db
       .select({ machineInfo: machine.machineInfo })
       .from(machine)

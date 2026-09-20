@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "@server/db/schema";
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { getKnowledgeDatabase } from "../db";
 
 /** KnowledgeBase 行类型 */
 export type KnowledgeBaseRow = typeof knowledgeBase.$inferSelect;
@@ -90,11 +90,13 @@ export interface IAgentKnowledgeBindingRepo {
 
 class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   async getById(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db.select().from(knowledgeBase).where(eq(knowledgeBase.id, knowledgeBaseId)).limit(1);
     return rows[0] ?? null;
   }
 
   async getByUserAndId(userId: string, knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select()
       .from(knowledgeBase)
@@ -103,6 +105,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async listByUserId(userId: string) {
+    const db = getKnowledgeDatabase();
     return db
       .select()
       .from(knowledgeBase)
@@ -111,6 +114,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async findByUserAndSlug(userId: string, slug: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select()
       .from(knowledgeBase)
@@ -119,6 +123,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async listByOrganizationId(organizationId: string) {
+    const db = getKnowledgeDatabase();
     return db
       .select()
       .from(knowledgeBase)
@@ -127,6 +132,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async getByOrgAndId(organizationId: string, knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select()
       .from(knowledgeBase)
@@ -135,6 +141,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async findByOrgAndSlug(organizationId: string, slug: string, userId?: string) {
+    const db = getKnowledgeDatabase();
     const conditions = [eq(knowledgeBase.organizationId, organizationId), eq(knowledgeBase.slug, slug)];
     if (userId) conditions.push(eq(knowledgeBase.userId, userId));
     const rows = await db
@@ -145,15 +152,18 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async create(data: KnowledgeBaseInsert) {
+    const db = getKnowledgeDatabase();
     const [row] = await db.insert(knowledgeBase).values(data).returning();
     return row;
   }
 
   async update(knowledgeBaseId: string, data: Partial<KnowledgeBaseInsert>) {
+    const db = getKnowledgeDatabase();
     await db.update(knowledgeBase).set(data).where(eq(knowledgeBase.id, knowledgeBaseId));
   }
 
   async delete(knowledgeBaseId: string): Promise<boolean> {
+    const db = getKnowledgeDatabase();
     const result = await db
       .delete(knowledgeBase)
       .where(eq(knowledgeBase.id, knowledgeBaseId))
@@ -162,6 +172,7 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async countBindings(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const [row] = await db
       .select({ count: count() })
       .from(agentKnowledgeBinding)
@@ -170,17 +181,20 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
   }
 
   async listGlobal() {
+    const db = getKnowledgeDatabase();
     return db.select().from(knowledgeBase).orderBy(desc(knowledgeBase.updatedAt));
   }
 }
 
 class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   async getById(resourceId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db.select().from(knowledgeResource).where(eq(knowledgeResource.id, resourceId)).limit(1);
     return rows[0] ?? null;
   }
 
   async getByRemoteId(knowledgeBaseId: string, remoteId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select()
       .from(knowledgeResource)
@@ -190,6 +204,7 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async getBySourceName(knowledgeBaseId: string, sourceName: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select()
       .from(knowledgeResource)
@@ -199,6 +214,7 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async listByKnowledgeBase(knowledgeBaseId: string, limit?: number) {
+    const db = getKnowledgeDatabase();
     return db
       .select()
       .from(knowledgeResource)
@@ -208,6 +224,7 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async countByKnowledgeBase(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const [row] = await db
       .select({ count: count() })
       .from(knowledgeResource)
@@ -216,6 +233,7 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async getStatusSummary(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const [summary] = await db
       .select({
         readyCount: sql<number>`sum(case when ${knowledgeResource.status} = 'ready' then 1 else 0 end)`,
@@ -234,20 +252,24 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async create(data: KnowledgeResourceInsert) {
+    const db = getKnowledgeDatabase();
     const [row] = await db.insert(knowledgeResource).values(data).returning();
     return row;
   }
 
   async update(resourceId: string, data: Partial<KnowledgeResourceInsert>) {
+    const db = getKnowledgeDatabase();
     await db.update(knowledgeResource).set(data).where(eq(knowledgeResource.id, resourceId));
   }
 
   async updateByRemoteIds(remoteIds: string[], data: Partial<KnowledgeResourceInsert>) {
+    const db = getKnowledgeDatabase();
     if (remoteIds.length === 0) return;
     await db.update(knowledgeResource).set(data).where(inArray(knowledgeResource.remoteId, remoteIds));
   }
 
   async delete(resourceId: string): Promise<boolean> {
+    const db = getKnowledgeDatabase();
     const result = await db
       .delete(knowledgeResource)
       .where(eq(knowledgeResource.id, resourceId))
@@ -256,10 +278,12 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
   }
 
   async deleteByKnowledgeBase(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     await db.delete(knowledgeResource).where(eq(knowledgeResource.knowledgeBaseId, knowledgeBaseId));
   }
 
   async findByRemoteIds(remoteIds: string[]) {
+    const db = getKnowledgeDatabase();
     if (remoteIds.length === 0) return [];
     return db.select().from(knowledgeResource).where(inArray(knowledgeResource.remoteId, remoteIds));
   }
@@ -267,6 +291,7 @@ class PgKnowledgeResourceRepo implements IKnowledgeResourceRepo {
 
 class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   async listByAgentConfigId(agentConfigId: string) {
+    const db = getKnowledgeDatabase();
     return db
       .select()
       .from(agentKnowledgeBinding)
@@ -275,6 +300,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   }
 
   async listEnabledByAgentConfigId(agentConfigId: string) {
+    const db = getKnowledgeDatabase();
     return db
       .select()
       .from(agentKnowledgeBinding)
@@ -283,10 +309,12 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   }
 
   async listByKnowledgeBaseId(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     return db.select().from(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
   }
 
   async countByKnowledgeBaseId(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     const [row] = await db
       .select({ count: count() })
       .from(agentKnowledgeBinding)
@@ -295,6 +323,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   }
 
   async countByKnowledgeBaseIds(knowledgeBaseIds: string[]) {
+    const db = getKnowledgeDatabase();
     if (knowledgeBaseIds.length === 0) return {};
     const rows = await db
       .select()
@@ -311,24 +340,29 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   }
 
   async create(data: AgentKnowledgeBindingInsert) {
+    const db = getKnowledgeDatabase();
     const [row] = await db.insert(agentKnowledgeBinding).values(data).returning();
     return row;
   }
 
   async createMany(dataList: AgentKnowledgeBindingInsert[]) {
+    const db = getKnowledgeDatabase();
     if (dataList.length === 0) return;
     await db.insert(agentKnowledgeBinding).values(dataList);
   }
 
   async deleteByAgentConfigId(agentConfigId: string) {
+    const db = getKnowledgeDatabase();
     await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.agentConfigId, agentConfigId));
   }
 
   async deleteByKnowledgeBaseId(knowledgeBaseId: string) {
+    const db = getKnowledgeDatabase();
     await db.delete(agentKnowledgeBinding).where(eq(agentKnowledgeBinding.knowledgeBaseId, knowledgeBaseId));
   }
 
   async listJoinedWithKnowledgeBaseByConfigId(agentConfigId: string) {
+    const db = getKnowledgeDatabase();
     return db
       .select({
         id: agentKnowledgeBinding.id,
@@ -354,6 +388,7 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
   }
 
   async getResourceWithKnowledgeBase(resourceId: string) {
+    const db = getKnowledgeDatabase();
     const rows = await db
       .select({
         id: knowledgeResource.id,

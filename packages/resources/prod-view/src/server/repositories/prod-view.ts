@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { type ProdViewRow, prodView } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getProdViewDatabase } from "../db";
 
 /** ProdView 数据访问层接口 — 封装 ProdView 表的 CRUD 操作 */
 export interface IProdViewRepository {
@@ -32,7 +32,13 @@ export interface IProdViewRepository {
   delete(orgId: string, id: string): Promise<boolean>;
 }
 
-/** PostgreSQL 实现：通过 Drizzle ORM 操作 prodView 表 */
+/**
+ * PostgreSQL 实现：通过 Drizzle ORM 操作 prodView 表。
+ *
+ * DB 句柄在每个方法内按需取用（`getProdViewDatabase()`）而不是在构造期缓存：模块图可能在宿主
+ * `initializeApplicationInfrastructure()` 之前求值，构造期取句柄会直接抛错；句柄本身是宿主单例，
+ * 逐次取用没有额外成本。
+ */
 class PgProdViewRepository implements IProdViewRepository {
   async create(params: {
     organizationId: string;
@@ -42,7 +48,7 @@ class PgProdViewRepository implements IProdViewRepository {
     modulesConfig?: Record<string, unknown>;
     createdBy: string;
   }) {
-    const [row] = await db
+    const [row] = await getProdViewDatabase()
       .insert(prodView)
       .values({
         organizationId: params.organizationId,
@@ -57,7 +63,7 @@ class PgProdViewRepository implements IProdViewRepository {
   }
 
   async getById(orgId: string, id: string) {
-    const rows = await db
+    const rows = await getProdViewDatabase()
       .select()
       .from(prodView)
       .where(and(eq(prodView.organizationId, orgId), eq(prodView.id, id)))
@@ -69,7 +75,7 @@ class PgProdViewRepository implements IProdViewRepository {
     const conditions = [eq(prodView.organizationId, orgId)];
     if (filters?.agentId) conditions.push(eq(prodView.agentId, filters.agentId));
     if (filters?.enabled !== undefined) conditions.push(eq(prodView.enabled, filters.enabled));
-    return db
+    return getProdViewDatabase()
       .select()
       .from(prodView)
       .where(and(...conditions))
@@ -91,7 +97,7 @@ class PgProdViewRepository implements IProdViewRepository {
     if (params.description !== undefined) setData.description = params.description;
     if (params.modulesConfig !== undefined) setData.modulesConfig = params.modulesConfig;
     if (params.enabled !== undefined) setData.enabled = params.enabled;
-    const [row] = await db
+    const [row] = await getProdViewDatabase()
       .update(prodView)
       .set(setData)
       .where(and(eq(prodView.organizationId, orgId), eq(prodView.id, id)))
@@ -100,7 +106,7 @@ class PgProdViewRepository implements IProdViewRepository {
   }
 
   async delete(orgId: string, id: string) {
-    const [deleted] = await db
+    const [deleted] = await getProdViewDatabase()
       .delete(prodView)
       .where(and(eq(prodView.organizationId, orgId), eq(prodView.id, id)))
       .returning({ id: prodView.id });

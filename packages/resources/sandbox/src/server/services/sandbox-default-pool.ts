@@ -1,23 +1,31 @@
 import type { NewSandboxPool, SandboxPool } from "@server/db/schema";
+import { getSandboxConfig, type SandboxModuleConfig } from "../config";
 import { upsertSandboxPool } from "../repositories/sandbox-pool-repository";
 import { parseSandboxResources } from "./sandbox-config";
 
-export type SandboxDefaultPoolSettings = {
-  sandboxEnabled: boolean;
-  defaultSandboxPoolId?: string;
-  defaultSandboxImage?: string;
-  defaultSandboxAgentType?: string;
-  defaultSandboxResourcesJson?: string;
-  defaultSandboxExtraJson?: string;
-};
+/**
+ * 默认资源池引导读取的配置面。
+ *
+ * 定义为模块配置的子集（而非独立结构）：字段只能来自 `SandboxModuleConfig`，两处定义不会漂移，
+ * 同时让调用方可以只注入引导相关字段（测试不需要构造完整运行时超时配置）。
+ */
+export type SandboxDefaultPoolSettings = Pick<
+  SandboxModuleConfig,
+  | "sandboxEnabled"
+  | "defaultSandboxPoolId"
+  | "defaultSandboxImage"
+  | "defaultSandboxAgentType"
+  | "defaultSandboxResourcesJson"
+  | "defaultSandboxExtraJson"
+>;
 
 type SandboxDefaultPoolRepository = {
   upsert(input: NewSandboxPool): Promise<SandboxPool>;
 };
 
-/** 根据启动配置创建或覆盖全局默认 Sandbox Pool。 */
+/** 根据本模块配置创建或覆盖全局默认 Sandbox Pool。 */
 export async function initializeDefaultSandboxPool(
-  settings: SandboxDefaultPoolSettings,
+  settings: SandboxDefaultPoolSettings = getSandboxConfig(),
   repository: SandboxDefaultPoolRepository = { upsert: upsertSandboxPool },
 ): Promise<SandboxPool | null> {
   if (!settings.sandboxEnabled) return null;

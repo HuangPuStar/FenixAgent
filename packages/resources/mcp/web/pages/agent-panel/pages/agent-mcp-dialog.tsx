@@ -1,18 +1,18 @@
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { McpServerInfo } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { mcpApi } from "@/src/api/mcp";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import type { McpServerInfo } from "@/src/types/config";
+import { mcpApi } from "../../../api/mcp";
 import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import {
   buildMcpPayload,
@@ -25,13 +25,30 @@ import {
 
 export type McpEditorTarget = "create" | McpServerInfo | null;
 
+/**
+ * 键值行的视图模型：在提交用的 `KeyValueEntry` 上补一个渲染 id。
+ *
+ * 为什么行需要自己的 id（而不是数组下标或内容派生 key）：下标会在删除中间行时把下一行的 DOM 状态
+ * 错配给上一行；内容（key/value）在输入过程中逐字变化，React 会因此重挂载输入框、每次击键都丢焦点。
+ * id 只在创建行时生成、在编辑期间稳定，且不会进入 payload——提交走 `buildMcpPayload`，它只读 key/value。
+ */
+type KeyValueRow = KeyValueEntry & { id: string };
+
+/** 行 id 只需在单个列表实例内唯一（无排序/跨列表比较需求），模块级自增即可，不需加密随机源。 */
+let rowSequence = 0;
+
+function createKeyValueRow(key = "", value = ""): KeyValueRow {
+  rowSequence += 1;
+  return { id: `row-${rowSequence}`, key, value };
+}
+
 type FormState = {
   name: string;
   type: "local" | "remote";
   command: string;
   url: string;
-  environment: KeyValueEntry[];
-  headers: KeyValueEntry[];
+  environment: KeyValueRow[];
+  headers: KeyValueRow[];
   timeout: string;
   oauthClientId: string;
   oauthClientSecret: string;
@@ -44,8 +61,8 @@ const EMPTY_FORM: FormState = {
   type: "remote",
   command: "",
   url: "",
-  environment: [{ key: "", value: "" }],
-  headers: [{ key: "", value: "" }],
+  environment: [createKeyValueRow()],
+  headers: [createKeyValueRow()],
   timeout: "",
   oauthClientId: "",
   oauthClientSecret: "",
@@ -59,12 +76,18 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
   const [createMode, setCreateMode] = useState<"manual" | "json">("manual");
   const [jsonInput, setJsonInput] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<Error | null>(null);
+  // 详情加载失败后的重试：自增即重新触发下面的加载 effect（错误态在 effect 开头被清掉）。
+  const [reloadKey, setReloadKey] = useState(0);
   const [oauthExpanded, setOauthExpanded] = useState(false);
   const server = target && target !== "create" ? target : null;
   const readOnly = server ? !canWriteMcp(server) : false;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是刻意的重触发信号（详情读失败后点重试重新拉取），规则看不到「依赖变化即重启加载」的意图；移除它会丢掉重试语义（同批 agent-config 的 SiteFrame reloadKey 同款）。
   useEffect(() => {
     if (!target) return;
+    // 换目标（含从失败态重试）先清掉上一次的错误：否则重试成功后旧提示会留在界面上。
+    setDetailError(null);
     if (target === "create") {
       setForm(EMPTY_FORM);
       setCreateMode("manual");
@@ -111,12 +134,15 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       .catch((error: Error) => {
         console.error(t("toast.loadDetailFailed"), error);
         toast.error(t("toast.loadDetailFailed"));
+        // 只弹 toast 会让编辑窗口停在空表单上（保存时再报「名称必填」），因此同时进入持久错误态，
+        // 由渲染层给出 role="alert" 的说明与重试入口；弹窗关闭或换目标时错误态自然作废。
+        if (active) setDetailError(error);
       })
       .finally(() => active && setLoadingDetail(false));
     return () => {
       active = false;
     };
-  }, [t, target]);
+  }, [t, target, reloadKey]);
 
   const save = useRequest(
     async () => {
@@ -187,7 +213,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       title={server ? (readOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")}
       onSubmit={save.run}
       loading={save.loading || loadingDetail}
-      hideSubmit={readOnly}
+      hideSubmit={readOnly || detailError !== null}
       submitLabel={!server && createMode === "json" ? t("dialog.importAction") : undefined}
       width="sm:max-w-2xl"
     >
@@ -199,7 +225,18 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
           </TabsList>
         </Tabs>
       ) : null}
-      {!server && createMode === "json" ? (
+      {detailError ? (
+        // 详情读不到时不能把空表单当「已加载」呈现：给出说明与重试，并在修好前禁用提交。
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <p className="text-sm text-destructive" role="alert">
+            {t("dialog.loadDetailFailed")}
+          </p>
+          <p className="text-xs text-text-muted">{t("dialog.loadDetailFailedHint")}</p>
+          <Button type="button" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
+            {t("loadState.retry")}
+          </Button>
+        </div>
+      ) : !server && createMode === "json" ? (
         <div className="space-y-3">
           <Field label={t("form.jsonConfig")} hint={t("form.jsonConfigHint")}>
             <Textarea
@@ -340,9 +377,9 @@ function KeyValueEditor({
   valuePlaceholder = "VALUE",
 }: {
   label: string;
-  entries: KeyValueEntry[];
+  entries: KeyValueRow[];
   disabled: boolean;
-  onChange: (entries: KeyValueEntry[]) => void;
+  onChange: (entries: KeyValueRow[]) => void;
   namePlaceholder?: string;
   valuePlaceholder?: string;
 }) {
@@ -358,15 +395,14 @@ function KeyValueEditor({
           size="xs"
           variant="outline"
           disabled={disabled}
-          onClick={() => onChange([...entries, { key: "", value: "" }])}
+          onClick={() => onChange([...entries, createKeyValueRow()])}
         >
           {t("btn.add")}
         </Button>
       </div>
       <div className="space-y-2">
         {entries.map((entry, index) => (
-          // 该受控列表仅追加和按索引删除，不发生重排。
-          <div className="flex items-center gap-2" key={index}>
+          <div className="flex items-center gap-2" key={entry.id}>
             <Input
               value={entry.key}
               placeholder={namePlaceholder}
@@ -441,10 +477,10 @@ function OAuthEditor({
   );
 }
 
-function toEntries(record?: Record<string, unknown>): KeyValueEntry[] {
+function toEntries(record?: Record<string, unknown>): KeyValueRow[] {
   return record
-    ? Object.entries(record).map(([key, value]) => ({ key, value: String(value) }))
-    : [{ key: "", value: "" }];
+    ? Object.entries(record).map(([key, value]) => createKeyValueRow(key, String(value)))
+    : [createKeyValueRow()];
 }
 
 function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {

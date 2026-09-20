@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { agentSiteApp } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { getAgentConfigDatabase } from "../db";
 
 export type AgentSiteAppRow = typeof agentSiteApp.$inferSelect;
 export type AgentSiteAppInsert = typeof agentSiteApp.$inferInsert;
@@ -24,6 +24,7 @@ export interface CreateAppParams {
 
 class AgentSiteAppRepo {
   async create(params: CreateAppParams): Promise<AgentSiteAppRow> {
+    const db = getAgentConfigDatabase();
     const [row] = await db
       .insert(agentSiteApp)
       .values({
@@ -43,7 +44,7 @@ class AgentSiteAppRepo {
   }
 
   async listByOrg(organizationId: string): Promise<AgentSiteAppRow[]> {
-    return db
+    return getAgentConfigDatabase()
       .select()
       .from(agentSiteApp)
       .where(eq(agentSiteApp.organizationId, organizationId))
@@ -58,19 +59,23 @@ class AgentSiteAppRepo {
    */
   async listByIds(ids: string[], organizationId: string): Promise<AgentSiteAppRow[]> {
     if (ids.length === 0) return [];
-    return db
+    return getAgentConfigDatabase()
       .select()
       .from(agentSiteApp)
       .where(and(inArray(agentSiteApp.id, ids), eq(agentSiteApp.organizationId, organizationId)));
   }
 
   async getById(id: string): Promise<AgentSiteAppRow | undefined> {
-    const rows = await db.select().from(agentSiteApp).where(eq(agentSiteApp.id, id)).limit(1);
+    const rows = await getAgentConfigDatabase().select().from(agentSiteApp).where(eq(agentSiteApp.id, id)).limit(1);
     return rows[0];
   }
 
   async getByRemoteAppId(remoteAppId: string): Promise<AgentSiteAppRow | undefined> {
-    const rows = await db.select().from(agentSiteApp).where(eq(agentSiteApp.remoteAppId, remoteAppId)).limit(1);
+    const rows = await getAgentConfigDatabase()
+      .select()
+      .from(agentSiteApp)
+      .where(eq(agentSiteApp.remoteAppId, remoteAppId))
+      .limit(1);
     return rows[0];
   }
 
@@ -90,7 +95,7 @@ class AgentSiteAppRepo {
       >
     >,
   ): Promise<AgentSiteAppRow | undefined> {
-    const [row] = await db
+    const [row] = await getAgentConfigDatabase()
       .update(agentSiteApp)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(agentSiteApp.id, id))
@@ -99,7 +104,7 @@ class AgentSiteAppRepo {
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await db.delete(agentSiteApp).where(eq(agentSiteApp.id, id));
+    const result = await getAgentConfigDatabase().delete(agentSiteApp).where(eq(agentSiteApp.id, id));
     return (result as unknown as { count: number }).count > 0;
   }
 }

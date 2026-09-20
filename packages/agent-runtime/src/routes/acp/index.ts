@@ -1,7 +1,7 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
+import { AppError } from "@fenix/platform-sdk";
 import { validateEnv } from "@server/env";
-import { AppError } from "@server/errors";
 import type { RequestAuthResult } from "@server/plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "@server/plugins/auth";
 import type { WsConnection } from "@server/transport/ws-types";

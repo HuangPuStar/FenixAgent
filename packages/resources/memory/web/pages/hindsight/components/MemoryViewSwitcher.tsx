@@ -1,6 +1,6 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
 import type { LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/src/lib/utils";
 
 export interface MemoryViewOption<T extends string> {
   value: T;

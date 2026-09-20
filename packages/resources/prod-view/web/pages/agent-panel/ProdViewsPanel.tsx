@@ -1,23 +1,23 @@
+import { agentApi } from "@fenix/agent-config/web";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { Copy, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { agentApi } from "@/src/api/agents";
-import type { ProdViewInfo } from "@/src/api/prod-views";
-import { prodViewApi } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "@/src/lib/prod-view-modules";
-import { cn } from "@/src/lib/utils";
+import type { ProdViewInfo } from "../../api/prod-views";
+import { prodViewApi } from "../../api/prod-views";
+import { PROD_VIEWS_NS } from "../../i18n/namespace";
+import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "../../lib/prod-view-modules";
 
 interface ProdViewsPanelProps {
   agentId: string | null;
@@ -27,17 +27,16 @@ interface ProdViewsPanelProps {
 function ModuleConfigSection({
   enabledMap,
   onToggle,
-  prodT,
 }: {
   enabledMap: Record<string, boolean>;
   onToggle: (key: string, checked: boolean) => void;
-  prodT: (key: string) => string;
 }) {
-  const { t } = useTranslation(NS.COMPONENTS);
+  // 模块名的键组（`modules.*`）也归本包 prodViews 命名空间，与 panel.* 同源，故只需一次 useTranslation。
+  const { t } = useTranslation(PROD_VIEWS_NS);
 
   const ModuleRow = ({ moduleKey }: { moduleKey: string }) => (
     <div className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
-      <span className="text-sm">{prodT(`modules.${moduleKey}`)}</span>
+      <span className="text-sm">{t(`modules.${moduleKey}`)}</span>
       <Switch checked={enabledMap[moduleKey]} onCheckedChange={(checked) => onToggle(moduleKey, checked)} />
     </div>
   );
@@ -46,7 +45,7 @@ function ModuleConfigSection({
     <div className="space-y-4">
       {/* 附加面板 */}
       <div className="space-y-1.5">
-        <Label className="text-xs font-semibold text-text-secondary">{t("panelMode.viewsPanelModules")}</Label>
+        <Label className="text-xs font-semibold text-text-secondary">{t("panel.moduleSection")}</Label>
         <div className="grid grid-cols-2 gap-2">
           {PANEL_MODULE_KEYS.map((mk) => (
             <ModuleRow key={mk} moduleKey={mk} />
@@ -58,19 +57,32 @@ function ModuleConfigSection({
 }
 
 export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
-  const { t } = useTranslation(NS.COMPONENTS);
-  const prodT = useTranslation(NS.PROD_VIEWS).t;
+  const { t } = useTranslation(PROD_VIEWS_NS);
 
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
-  const { data, loading, error, refresh } = useRequest(() => prodViewApi.list({ agentId: agentId! }), {
-    ready: !!agentId,
-    onError: () => {
-      toast.error(t("panelMode.viewsLoadFailed"));
+  // 列表请求必须经 unwrap 抛出：`request()` 对 HTTP/业务错误是**正常返回** `{ success: false }`，
+  // 不 unwrap 时失败响应会退化成空数组，界面渲染成「点击 + 创建」空态——加载失败与确实没有数据不可区分。
+  const {
+    data: views = [],
+    loading,
+    error,
+    refresh,
+  } = useRequest(
+    async () => {
+      const list = await unwrap(prodViewApi.list({ agentId: agentId! }));
+      return (Array.isArray(list) ? list : []) as ProdViewInfo[];
     },
-  });
+    {
+      ready: !!agentId,
+      onError: () => {
+        toast.error(t("panel.loadFailed"));
+      },
+    },
+  );
 
-  const views: ProdViewInfo[] = data?.success !== false ? (data?.data ?? []) : [];
+  /** 401/403（request 层把两者统一归一为 UNAUTHORIZED）不重试：重试不会改变授权结果，给按钮是无意义的入口。 */
+  const unauthorized = error instanceof ApiError && error.code === "UNAUTHORIZED";
 
   // 加载当前 agent 名称，用于创建时自动填充
   const { data: agentDisplayName } = useRequest(
@@ -127,7 +139,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
             modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
-        toast.success(t("panelMode.viewsUpdateSuccess"));
+        toast.success(t("panel.updateSuccess"));
       } else {
         await unwrap(
           prodViewApi.create({
@@ -137,7 +149,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
             modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
           }),
         );
-        toast.success(t("panelMode.viewsCreateSuccess"));
+        toast.success(t("panel.createSuccess"));
       }
       closeDialog();
       refresh();
@@ -154,7 +166,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
   const handleDelete = async (id: string) => {
     try {
       await unwrap(prodViewApi.del(id));
-      toast.success(t("panelMode.viewsDeleteSuccess"));
+      toast.success(t("panel.deleteSuccess"));
       refresh();
     } catch (err) {
       toast.error((err as Error).message);
@@ -168,7 +180,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       await unwrap(prodViewApi.update(view.id, { enabled: !view.enabled }));
       refresh();
     } catch {
-      toast.error(t("panelMode.viewsToggleFailed"));
+      toast.error(t("panel.toggleFailed"));
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -182,8 +194,8 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
   const copyLink = (id: string) => {
     const url = `${window.location.origin}/view/${id}`;
     navigator.clipboard.writeText(url).then(
-      () => toast.success(t("panelMode.viewsLinkCopied")),
-      () => toast.error(t("panelMode.viewsCopyFailed")),
+      () => toast.success(t("panel.linkCopied")),
+      () => toast.error(t("panel.copyFailed")),
     );
   };
 
@@ -196,23 +208,31 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     <div className="flex flex-col h-full">
       {/* 顶栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 flex-shrink-0">
-        <span className="text-xs font-medium text-text-primary">{t("panelMode.viewsListTitle")}</span>
-        <Button size="xs" variant="ghost" onClick={openCreate} disabled={!agentId}>
+        <span className="text-xs font-medium text-text-primary">{t("panel.listTitle")}</span>
+        {/* 纯图标按钮没有可见文本，必须靠 aria-label 命名（title 只作鼠标悬停提示）。 */}
+        <Button size="xs" variant="ghost" onClick={openCreate} disabled={!agentId} aria-label={t("panel.createTitle")}>
           <Plus className="size-3.5" />
         </Button>
       </div>
 
       {/* 内容区 */}
-      {error ? (
-        <div className="flex-1 flex items-center justify-center py-8 px-4">
-          <p className="text-sm text-text-muted">{t("panelMode.viewsLoadFailed")}</p>
-        </div>
-      ) : loading ? (
-        <div className="p-3 space-y-2.5">
+      {loading ? (
+        <div className="p-3 space-y-2.5" aria-busy="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            // Loading placeholders have no domain identifier.
+            // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，索引键不会引起元素错位；源文件位于 apps/web 时该包未声明 react 依赖、biome 未启用 react 域规则，本包按 T2e 声明 react 后规则才生效
             <Skeleton key={i} className="h-12 w-full" />
           ))}
+        </div>
+      ) : error ? (
+        // 持久错误分支（role="alert"）：失败不能落进下面的「点击 + 创建」空态，否则用户分不清
+        // 「加载失败」与「确实没有数据」，也没有恢复入口；已解构的 refresh 必须接到这里。
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4" role="alert">
+          <p className="text-sm text-text-muted">{unauthorized ? t("noPermission") : t("panel.loadFailed")}</p>
+          {unauthorized ? null : (
+            <Button size="xs" variant="outline" onClick={refresh}>
+              {t("retry")}
+            </Button>
+          )}
         </div>
       ) : views.length === 0 ? (
         <button
@@ -221,7 +241,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
           className="flex-1 flex flex-col items-center justify-center py-8 px-4 gap-3 hover:bg-surface-2/30 transition-colors"
         >
           <Plus className="h-8 w-8 text-text-dim" />
-          <p className="text-sm text-text-muted">{t("panelMode.viewsEmptyHint")}</p>
+          <p className="text-sm text-text-muted">{t("panel.emptyHint")}</p>
         </button>
       ) : (
         <ScrollArea className="flex-1">
@@ -246,7 +266,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                       view.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
                     )}
                   >
-                    {view.enabled ? t("panelMode.viewsEnabled") : t("panelMode.viewsDisabled")}
+                    {view.enabled ? t("panel.enabled") : t("panel.disabled")}
                   </span>
                 </div>
                 {/* 描述 */}
@@ -254,37 +274,27 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                 {/* 底部：操作按钮 + 开关 */}
                 <div className="flex items-center justify-between mt-2.5">
                   <div className="flex items-center gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => openView(view.id)}
-                      title={t("panelMode.viewsOpenView")}
-                    >
+                    <Button variant="ghost" size="xs" onClick={() => openView(view.id)} title={t("panel.openView")}>
                       <ExternalLink className="size-3 mr-1" />
-                      {t("panelMode.viewsOpenView")}
+                      {t("panel.openView")}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => copyLink(view.id)}
-                      title={t("panelMode.viewsCopyLink")}
-                    >
+                    <Button variant="ghost" size="xs" onClick={() => copyLink(view.id)} title={t("panel.copyLink")}>
                       <Copy className="size-3 mr-1" />
-                      {t("panelMode.viewsCopyLink")}
+                      {t("panel.copyLink")}
                     </Button>
-                    <Button variant="ghost" size="xs" onClick={() => openEdit(view)} title={t("panelMode.viewsEdit")}>
+                    <Button variant="ghost" size="xs" onClick={() => openEdit(view)} title={t("panel.edit")}>
                       <Pencil className="size-3 mr-1" />
-                      {t("panelMode.viewsEdit")}
+                      {t("panel.edit")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="xs"
                       className="text-red-500 hover:text-red-600"
                       onClick={() => setDeleteTarget(view)}
-                      title={t("panelMode.viewsDelete")}
+                      title={t("panel.delete")}
                     >
                       <Trash2 className="size-3 mr-1" />
-                      {t("panelMode.viewsDelete")}
+                      {t("panel.delete")}
                     </Button>
                   </div>
                   <Switch
@@ -310,57 +320,66 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? `${t("panelMode.viewsEditTitle")} — ${editingView?.name}` : t("panelMode.viewsCreateTitle")}
+              {isEditing ? `${t("panel.editTitle")} — ${editingView?.name}` : t("panel.createTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* 编辑时显示链接 */}
             {isEditing && editingView && (
               <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span>{t("panelMode.viewsLinkLabel")}:</span>
+                <span>{t("panel.linkLabel")}:</span>
                 <code className="text-brand">{`${window.location.origin}/view/${editingView.id}`}</code>
-                <Button size="xs" variant="ghost" onClick={() => copyLink(editingView.id)}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => copyLink(editingView.id)}
+                  aria-label={t("panel.copyLink")}
+                >
                   <Copy className="h-3 w-3" />
                 </Button>
-                <Button size="xs" variant="ghost" onClick={() => openView(editingView.id)}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => openView(editingView.id)}
+                  aria-label={t("panel.openView")}
+                >
                   <ExternalLink className="h-3 w-3" />
                 </Button>
               </div>
             )}
             {/* 名称 */}
             <div className="space-y-2">
-              <Label>{t("panelMode.viewsNameLabel")}</Label>
+              <Label>{t("panel.nameLabel")}</Label>
               <Input
-                placeholder={t("panelMode.viewsNamePlaceholder")}
+                placeholder={t("panel.namePlaceholder")}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
             </div>
             {/* 描述 */}
             <div className="space-y-2">
-              <Label>{t("panelMode.viewsDescLabel")}</Label>
+              <Label>{t("panel.descLabel")}</Label>
               <Input
-                placeholder={t("panelMode.viewsDescPlaceholder")}
+                placeholder={t("panel.descPlaceholder")}
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
               />
             </div>
             {/* 模块配置 */}
             <div className="space-y-1">
-              <Label className="text-sm">{t("panelMode.viewsModulesLabel")}</Label>
+              <Label className="text-sm">{t("panel.modulesLabel")}</Label>
               <ModuleConfigSection
                 enabledMap={formModules}
                 onToggle={(key, checked) => setFormModules({ ...formModules, [key]: checked })}
-                prodT={prodT}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
-              {t("panelMode.viewsCancel")}
+              {t("panel.cancel")}
             </Button>
             <Button onClick={handleSubmit} disabled={submitting || !formName.trim()}>
-              {submitting ? "..." : t("panelMode.viewsSave")}
+              {submitting ? "..." : t("panel.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -372,8 +391,8 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        title={t("panelMode.viewsDeleteTitle")}
-        description={t("panelMode.viewsDeleteConfirm", { name: deleteTarget?.name ?? "" })}
+        title={t("panel.deleteTitle")}
+        description={t("panel.deleteConfirm", { name: deleteTarget?.name ?? "" })}
         variant="destructive"
         onConfirm={() => {
           if (deleteTarget) handleDelete(deleteTarget.id);

@@ -1,9 +1,9 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { Inbox, Loader, Rocket, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { unwrap } from "@/src/api/request";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import { DAG_STATUS_CFG } from "../utils";
 
@@ -127,6 +127,8 @@ export function VersionPanel({
         <button
           type="button"
           onClick={onClose}
+          // 纯图标按钮：可访问名只能由 aria-label 提供（面板标题已由 wf-prop-title 承载，X 只表示关闭）
+          aria-label={t("editor.version_panel_close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -216,15 +218,44 @@ export function VersionPanel({
             const _cfg = DAG_STATUS_CFG[v.status === "active" ? "SUCCESS" : "CANCELLED"] ?? DAG_STATUS_CFG.PENDING;
             return (
               <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                {/*
+                  整行点击 = 展开/收起该版本 YAML，面板内没有等价的键盘入口（下方操作列只做
+                  设为 latest / 恢复到草稿），所以整行必须自己是可聚焦控件：role="button" + tabIndex
+                  + Enter/Space（Space 默认滚动页面，需 preventDefault），并用 aria-expanded 暴露状态。
+                  本组件沿用内联样式（非 Tailwind），焦点反馈与 hover 同法通过 style 写出，
+                  否则键盘 Tab 到这里没有任何可见提示。
+                */}
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isViewing}
+                  aria-label={t("versions.view_yaml", { version: v.version })}
                   style={{
                     padding: "8px 12px",
                     cursor: "pointer",
                     transition: "background 0.1s",
                   }}
                   onClick={() => handleViewYaml(v.version)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    // 后代隔离：下方操作列是真实的 <button>，落在它们身上的 Enter/Space 属于按钮自身，
+                    // 必须留给浏览器默认激活；整行抢过来会同时吞掉按钮激活并误展开 YAML。
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    handleViewYaml(v.version);
+                  }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                  onFocus={(e) => {
+                    e.currentTarget.style.background = "#f9fafb";
+                    e.currentTarget.style.outline = "2px solid #3b82f6";
+                    e.currentTarget.style.outlineOffset = "-2px";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.background = "";
+                    e.currentTarget.style.outline = "";
+                    e.currentTarget.style.outlineOffset = "";
+                  }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                     <span

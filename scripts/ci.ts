@@ -63,7 +63,7 @@ const STEPS = [
   {
     name: "dependency-boundaries",
     cmd: "bun run check:dependencies",
-    filter: (out: string) => (out.includes("no dependency violations") ? null : out),
+    filter: (out: string) => (out.includes("✓ dependency-boundaries") ? null : out),
   },
   {
     name: "lint",

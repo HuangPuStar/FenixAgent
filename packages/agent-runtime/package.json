@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./module": {
+      "types": "./fenix.module.ts",
+      "default": "./fenix.module.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
@@ -19,6 +23,10 @@
     "./server/orchestration-environment": {
       "types": "./src/server/repositories/environment-orchestration.ts",
       "default": "./src/server/repositories/environment-orchestration.ts"
+    },
+    "./web/api/environments": {
+      "types": "./web/api/environments.ts",
+      "default": "./web/api/environments.ts"
     }
   },
   "scripts": {
@@ -26,7 +34,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@fenix/resource-identity-admin": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",
@@ -34,6 +42,11 @@
     "@fenix/orchestration": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "acp-link": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.10.1",

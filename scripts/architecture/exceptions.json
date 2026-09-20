@@ -1,0 +1,462 @@
+{
+  "_comment": [
+    "架构例外台账：登记存量边界违规，精确到「规则 + 来源包 + 目标包」，每条带所属任务号与移除条件。",
+    "门禁（scripts/check-dependency-boundaries.ts）只阻断未登记的**新增**违规，并在某条不再违规时报错要求删除。",
+    "owner 取值：阶段 2 任务号（1.2 / 1.4 / 1.5 / 1.6）或「未排期」——后者表示该违规不属于阶段 2 任何任务的范围，",
+    "是本次门禁修复后被如实暴露出来的既有债务。全部条目与逐包核查结论见",
+    "docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。",
+    "禁止把 from / to 写成通配（加载器会直接拒绝）：通配会让整类边界静默失效。"
+  ],
+  "handwrittenRegistryBaseline": [
+    "@fenix/access-control",
+    "@fenix/agent-config",
+    "@fenix/agent-runtime",
+    "@fenix/identity",
+    "@fenix/logger",
+    "@fenix/model-management",
+    "@fenix/platform-sdk",
+    "@fenix/resource-channel",
+    "@fenix/resource-knowledge",
+    "@fenix/resource-machine",
+    "@fenix/resource-mcp",
+    "@fenix/resource-observer",
+    "@fenix/resource-sandbox",
+    "@fenix/resource-skill",
+    "@fenix/resource-task",
+    "@fenix/resource-workflow"
+  ],
+  "exceptions": [
+    {
+      "rule": "agent-runtime-not-to-resources",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/resource-knowledge",
+      "owner": "1.4",
+      "removeWhen": "agent-runtime 的知识库能力改为经 Runtime port 注入，不再直接 import 资源包",
+      "rationale": "§2.3 依赖矩阵规定 agent-runtime 只允许依赖 platform-sdk、四个基础运行包与 machine/sandbox 专用入口；8 处命中集中在 routes/api 与 services 的知识库装配。"
+    },
+    {
+      "rule": "agent-runtime-not-to-resources",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/agent-config",
+      "owner": "1.4",
+      "removeWhen": "agent 配置读取收敛为 port 注入（与身份读取收敛为 platform-sdk 窄契约同批处理）",
+      "rationale": "实测 6 处导入 / 6 个文件。agent-runtime 直接读取 agent 配置数据模型，属于跨类别反向依赖；1.4 收敛 Runtime port 时一并消除。"
+    },
+    {
+      "rule": "agent-runtime-not-to-resources",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/resource-memory",
+      "owner": "1.4",
+      "removeWhen": "memory 启动参数改为经 port / launchSpec 注入",
+      "rationale": "实测 1 处导入 / 1 个文件。launch-spec-builder 直接 import 资源包以拼装启动参数，属矩阵外的反向依赖。"
+    },
+    {
+      "rule": "agent-runtime-not-to-resources",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/resource-skill",
+      "owner": "1.4",
+      "removeWhen": "skill 启动参数改为经 port / launchSpec 注入",
+      "rationale": "实测 1 处导入 / 1 个文件。与 resource-memory 同因，均在 launch-spec-builder 内。"
+    },
+    {
+      "rule": "agent-runtime-not-to-resources",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/model-management",
+      "owner": "1.4",
+      "removeWhen": "模型网关解析改为经 platform-sdk 暴露的受限读取入口",
+      "rationale": "实测 1 处导入 / 1 个文件。§5.1 要求应用基础设施（含模型网关配置）经 platform-sdk 的受限入口读取，而不是资源包直连。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/agent-runtime",
+      "owner": "1.5",
+      "removeWhen": "1.5 把 packages/* 依赖的 apps/server 能力下沉为 platform-sdk 入口",
+      "rationale": "32 处环（环长 3–9）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/server-app（27 处）；@fenix/agent-runtime ↔ @fenix/server-app（3 处）；@fenix/agent-runtime ↔ @fenix/resource-knowledge ↔ @fenix/server-app（2 处）。环上出现的主要跨包边：@fenix/server-app → @fenix/agent-runtime（32 处）、@fenix/agent-runtime → @fenix/agent-config（27 处）、@fenix/agent-config → @fenix/server-app（27 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/server-app",
+      "owner": "1.5",
+      "removeWhen": "1.5 把 packages/* 依赖的 apps/server 能力下沉为 platform-sdk 入口",
+      "rationale": "5 处环（环长 3–6）。参与包：@fenix/agent-runtime ↔ @fenix/server-app（4 处）；@fenix/agent-runtime ↔ @fenix/resource-knowledge ↔ @fenix/server-app（1 处）。环上出现的主要跨包边：@fenix/server-app → @fenix/agent-runtime（5 处）、@fenix/agent-runtime → @fenix/server-app（5 处）、@fenix/server-app → @fenix/resource-knowledge（1 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/resource-sandbox",
+      "owner": "1.4",
+      "removeWhen": "machine 侧删除 machine → agent-runtime 边（见同源 special-dependency 条目）",
+      "rationale": "2 处环（环长 13）。参与包：@fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（2 处）。环上出现的主要跨包边：@fenix/resource-sandbox → @fenix/resource-machine（2 处）、@fenix/resource-machine → @fenix/agent-runtime（2 处）、@fenix/agent-runtime → @fenix/resource-sandbox（2 处）。根因：§2.3 只登记 sandbox → machine 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-runtime 反向边闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/agent-config",
+      "owner": "1.5",
+      "removeWhen": "1.4 收敛 agent-config 读取 + 1.5 下沉宿主能力",
+      "rationale": "2 处环（环长 5）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/server-app（2 处）。环上出现的主要跨包边：@fenix/agent-config → @fenix/server-app（2 处）、@fenix/server-app → @fenix/agent-runtime（2 处）、@fenix/agent-runtime → @fenix/agent-config（2 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/agent-config",
+      "to": "@fenix/agent-config",
+      "owner": "1.5",
+      "removeWhen": "1.5 下沉 apps/server 能力，删除包→应用边",
+      "rationale": "10 处环（环长 8–12）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime（7 处）；@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-skill ↔ @fenix/server-app（2 处）；@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/server-app（1 处）。环上出现的主要跨包边：@fenix/agent-runtime → @fenix/agent-config（10 处）、@fenix/agent-config → @fenix/agent-runtime（7 处）、@fenix/server-app → @fenix/agent-runtime（3 处）。根因：agent-config ↔ agent-runtime 双向依赖；包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/server-app",
+      "to": "@fenix/agent-runtime",
+      "owner": "1.5",
+      "removeWhen": "1.5 把 packages/* 依赖的 apps/server 能力下沉为 platform-sdk 入口",
+      "rationale": "2 处环（环长 3–5）。参与包：@fenix/agent-runtime ↔ @fenix/server-app（2 处）。环上出现的主要跨包边：@fenix/agent-runtime → @fenix/server-app（2 处）、@fenix/server-app → @fenix/agent-runtime（2 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-knowledge",
+      "to": "@fenix/resource-knowledge",
+      "owner": "1.5",
+      "removeWhen": "1.5 下沉 apps/server 能力（包内那处随 knowledge 组合面一并处理）",
+      "rationale": "2 处环（环长 2–11）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-knowledge ↔ @fenix/server-app（1 处）；@fenix/resource-knowledge（1 处）。环上出现的主要跨包边：@fenix/resource-knowledge → @fenix/server-app（1 处）、@fenix/server-app → @fenix/agent-runtime（1 处）、@fenix/agent-runtime → @fenix/agent-config（1 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包；包内组合面自环：src/server.ts ↔ src/server/services/agent-knowledge.ts。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/resource-machine",
+      "owner": "1.4",
+      "removeWhen": "machine 删除 machine → agent-runtime 与 machine → sandbox（1.4 固定为 agent-runtime/sandbox → machine 单向）",
+      "rationale": "37 处环（环长 11–17）。参与包：@fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（37 处）。环上出现的主要跨包边：@fenix/resource-machine → @fenix/agent-runtime（37 处）、@fenix/agent-runtime → @fenix/resource-sandbox（37 处）、@fenix/resource-sandbox → @fenix/resource-machine（37 处）。根因：§2.3 只登记 sandbox → machine 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-runtime 反向边闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/agent-config",
+      "owner": "1.5",
+      "removeWhen": "1.5 下沉 apps/server 能力",
+      "rationale": "1 处环（环长 16）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox ↔ @fenix/server-app（1 处）。环上出现的主要跨包边：@fenix/agent-config → @fenix/server-app（1 处）、@fenix/server-app → @fenix/agent-runtime（1 处）、@fenix/agent-runtime → @fenix/resource-sandbox（1 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/resource-sandbox",
+      "owner": "1.4",
+      "removeWhen": "machine 删除 machine → sandbox（见同源 special-dependency 条目）",
+      "rationale": "1 处环（环长 7）。参与包：@fenix/resource-machine ↔ @fenix/resource-sandbox（1 处）。环上出现的主要跨包边：@fenix/resource-sandbox → @fenix/resource-machine（1 处）、@fenix/resource-machine → @fenix/resource-sandbox（1 处）。根因：§2.3 只登记 sandbox → machine，环由反向的 machine → sandbox 闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-sandbox",
+      "to": "@fenix/resource-machine",
+      "owner": "1.4",
+      "removeWhen": "machine 删除 machine → agent-runtime",
+      "rationale": "3 处环（环长 14）。参与包：@fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（3 处）。环上出现的主要跨包边：@fenix/resource-machine → @fenix/agent-runtime（3 处）、@fenix/agent-runtime → @fenix/resource-sandbox（3 处）、@fenix/resource-sandbox → @fenix/resource-machine（3 处）。根因：§2.3 只登记 sandbox → machine 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-runtime 反向边闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/resource-sandbox",
+      "to": "@fenix/resource-sandbox",
+      "owner": "1.4",
+      "removeWhen": "machine 删除 machine → agent-runtime 与 machine → sandbox",
+      "rationale": "8 处环（环长 6–16）。参与包：@fenix/resource-machine ↔ @fenix/resource-sandbox（5 处）；@fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（3 处）。环上出现的主要跨包边：@fenix/resource-sandbox → @fenix/resource-machine（8 处）、@fenix/resource-machine → @fenix/resource-sandbox（5 处）、@fenix/resource-machine → @fenix/agent-runtime（3 处）。根因：§2.3 只登记 sandbox → machine，环由反向的 machine → sandbox 闭合；§2.3 只登记 sandbox → machine 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-runtime 反向边闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/ccb",
+      "to": "@fenix/ccb",
+      "owner": "未排期",
+      "removeWhen": "包内入口自环消除；跨 acp-link 的 3 处按用户裁定不改动",
+      "rationale": "4 处环（环长 2–5）。参与包：@fenix/ccb ↔ acp-link（3 处）；@fenix/ccb（1 处）。环上出现的主要跨包边：@fenix/ccb → acp-link（3 处）、acp-link → @fenix/ccb（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/claude-code",
+      "to": "@fenix/claude-code",
+      "owner": "未排期",
+      "removeWhen": "包内入口自环消除",
+      "rationale": "1 处环（环长 2）。参与包：@fenix/claude-code（1 处）。环上出现的主要跨包边：。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "@fenix/opencode",
+      "to": "@fenix/opencode",
+      "owner": "未排期",
+      "removeWhen": "包内入口自环消除；跨 acp-link 的 3 处按用户裁定不改动",
+      "rationale": "4 处环（环长 2–5）。参与包：@fenix/opencode ↔ acp-link（3 处）；@fenix/opencode（1 处）。环上出现的主要跨包边：@fenix/opencode → acp-link（3 处）、acp-link → @fenix/opencode（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "from": "@fenix-agent/acp-runtime-cli",
+      "to": "acp-link",
+      "owner": "未排期",
+      "removeWhen": "该包不再把 acp-link 作为构建期输入（改为 external 发布），或 acp-link 正式发布后改为普通 dependencies",
+      "rationale": "实测 1 处导入 / 1 个文件。src/bin.ts 从 acp-link 根入口导入 startServer，但 package.json 只把它声明在 devDependencies。这在该包是正确声明：`bun build` 把 acp-link 连同其插件依赖打进单一产物 dist/bin.js（实测 dist/bin.js 内无裸 `acp-link` 导入），发布物自包含，消费者不需要 acp-link。把 `workspace:*` 提升为运行时 dependencies 会改变已发布 npm 包的依赖语义，超出 1.1 范围，故登记为豁免。此条由 1.1 修掉「只认 @fenix/ 前缀」的解析盲区后暴露。"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "from": "acp-link",
+      "to": "@fenix/ccb",
+      "owner": "未排期",
+      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/ccb 发布后把该边改为 dependencies",
+      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:5 值导入 createCcbHandler。"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "from": "acp-link",
+      "to": "@fenix/claude-code",
+      "owner": "未排期",
+      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/claude-code 发布后把该边改为 dependencies",
+      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:6 值导入 createClaudeCodeHandler。"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "from": "acp-link",
+      "to": "@fenix/opencode",
+      "owner": "未排期",
+      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/opencode 发布后把该边改为 dependencies",
+      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:7 值导入 createOpencodeHandler。"
+    },
+    {
+      "rule": "undeclared-workspace-dependency",
+      "from": "acp-link",
+      "to": "@fenix/plugin-sdk",
+      "owner": "未排期",
+      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/plugin-sdk 发布后把该边改为 dependencies",
+      "rationale": "实测 2 处导入 / 2 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:8 与 src/client/instance-manager.ts:5，两处均为 `import type`（AgentLaunchSpec）；后者位于已发布的 `./client` 子路径内。"
+    },
+    {
+      "rule": "no-cross-package-src:packages/chat-channel",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/chat-channel",
+      "owner": "1.4",
+      "removeWhen": "agent-runtime 全部改从 @fenix/chat-channel/server 导入",
+      "rationale": "18 处直接导入 chat-channel 的 src 实现，绕过了该包已声明的 ./server 公开入口。"
+    },
+    {
+      "rule": "no-cross-package-src:packages/chat-channel",
+      "from": "@fenix/model-management",
+      "to": "@fenix/chat-channel",
+      "owner": "未排期",
+      "removeWhen": "model-management 改从 @fenix/chat-channel 公开入口导入",
+      "rationale": "2 处内部穿透；阶段 2 未排期。"
+    },
+    {
+      "rule": "no-cross-package-src:packages/chat-channel",
+      "from": "@fenix/web-runtime",
+      "to": "@fenix/chat-channel",
+      "owner": "1.6",
+      "removeWhen": "structured-to-thread.ts 交还给 chat-channel（packages/chat-channel/web/lib/），web-runtime 不再自行读取 Chat Doc",
+      "rationale": "实测 1 处 / 1 个文件：web/chat/structured-to-thread.ts 第 8–16 行值导入 getEntriesMap / getEntryOrder / getToolCallsMap / isPublicError 与 StructuredMessage 等类型。与同组前两条不同，此处走的正是 chat-channel 的**根入口**——该包声明的浏览器安全面，exports[\".\"] 即 ./src/index.ts——并非绕过 ./server；.dependency-cruiser.cjs 的 workspaceSourcePathPattern 只按解析后的最终路径判定，根入口落在 src/ 因而被计入。因此正确的处置不是改写导入（浏览器侧没有更合适的入口，./server 会把 node 依赖带进 bundle），而是把这份投影层交还给 chat-channel：Chat Doc → 展示结构的投影本属该包的 web 职责。该搬迁与 §1.6 的资源包 web 交付物下沉同批，此前不构成方向问题。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/server-app",
+      "owner": "1.4",
+      "removeWhen": "Environment/Instance/relay 的运行组合收回本包，宿主实现改经 Runtime port 注入",
+      "rationale": "实测 105 处导入 / 54 个文件，其中 88 处非表定义（config、test-utils/stubs、plugins/auth、types/store、transport/ws-types 等）。属 1.4 的运行入口与宿主协议收敛范围：宿主收敛为进程入口后本边自然消失。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 7 处导入 / 7 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-sandbox",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 9 处导入 / 9 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/agent-config",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 11 处导入 / 11 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-workflow",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 4 处导入 / 4 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-knowledge",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/model-management",
+      "to": "@fenix/server-app",
+      "owner": "1.5",
+      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
+      "rationale": "实测 12 处导入 / 9 个文件：6 处表定义（`@server/db/schema`）、4 处宿主 db 模块、2 处宿主 config。模型的持久化与配置解析尚未完全下沉，收敛随 1.5 的宿主协议聚合继续。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-mcp",
+      "to": "@fenix/server-app",
+      "owner": "1.5",
+      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
+      "rationale": "实测 6 处导入 / 6 个文件：5 处表定义（`@server/db/schema`）+ 1 处宿主 auth 插件（宿主协议聚合，属 1.5 范围）。表定义迁出（§1.7）后仅剩后者。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-skill",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 3 处导入 / 3 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-task",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 6 处导入 / 6 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-observer",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-memory",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-prod-view",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 2 处导入 / 2 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/resource-channel",
+      "to": "@fenix/server-app",
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+    },
+    {
+      "rule": "apps-boundary",
+      "from": "@fenix/chat-channel",
+      "to": "@fenix/server-app",
+      "owner": "1.5",
+      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件（宿主 services/cache）。缓存能力收敛到 platform-sdk 后本边消失，属 1.5 范围。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/agent-runtime",
+      "owner": "1.4",
+      "removeWhen": "machine 不再调用 agent-runtime，方向固定为 agent-runtime 经专用入口调用 machine",
+      "rationale": "§2.3 固定 `agent-runtime → machine` 单向依赖。9 处命中，属 1.4 的 Machine 与 Runtime 运行入口收敛范围；反向边必须彻底消除，不能登记为长期共存。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-machine",
+      "to": "@fenix/resource-sandbox",
+      "owner": "1.4",
+      "removeWhen": "machine 不再依赖 sandbox，方向固定为 sandbox → machine",
+      "rationale": "§2.3 固定 `sandbox → machine` 单向。仅 1 处，与上一条同批处理。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/agent-config",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/agent-editor/use-agent-editor.ts 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-knowledge",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-mcp",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentMcpPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/model-management",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentModelsPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-skill",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentSkillsPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "web-package-not-to-app",
+      "from": "@fenix/agent-runtime",
+      "to": "@fenix/web-app",
+      "owner": "1.6",
+      "removeWhen": "agent-runtime 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
+      "rationale": "170 处 / 68 文件，最大的 web 越界面：`@/src/lib`(72)、`@/components/chat`(34)、`@/components/ui`(29)、`@/src/i18n`(12)。chat 渲染与 ai-elements 组件整体属于本包职责，1.6 迁移时随页面一起落入包内 `web/`；共享 UI 经 Shell 的公开面暴露。"
+    },
+    {
+      "rule": "web-package-not-to-app",
+      "from": "@fenix/identity",
+      "to": "@fenix/web-app",
+      "owner": "1.6",
+      "removeWhen": "identity 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
+      "rationale": "实测 45 处 / 15 文件：`@/src/api`(18)、`@/components/ui`(15)、`@/src/i18n`(4)、`@/src/components`(4)、`@/components/config`(2)、`@/src/pages`(1)，另有 1 处相对路径越过 `apps/web/src/__tests__/happy-dom-window`。1.2 已把该 Web 职责整体迁入 packages/platform/identity/web，引用宿主内部实现的债务随之平移，故条目由 `@fenix/resource-identity-admin` 改登记为 `@fenix/identity`（owner 与移除条件不变，仍由 1.6 负责宿主公开面的最终形态）。"
+    },
+    {
+      "rule": "platform-not-to-agent-runtime-resources-apps",
+      "from": "@fenix/identity",
+      "to": "@fenix/web-app",
+      "owner": "1.6",
+      "removeWhen": "identity 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持（与上一条 web-package-not-to-app 同批移除）",
+      "rationale": "实测 35 处，全部是 `packages/platform/identity/web/**` 里被 dependency-cruiser 解析到 `apps/web/src/**` 的 `@/src`、`@/components` 别名。这是与上一条 `web-package-not-to-app` 完全同源的债务，只因 1.2 把身份 Web 职责从 `packages/resources/identity-admin` 迁到 `packages/platform/identity`，才落进本规则 `from: packages/platform/` 的射程（资源包路径此前不在射程内，所以当时只由上一条规则登记）。两条计数不同是因为统计口径不同：本规则按 dependency-cruiser 解析后的真实边计数，上一条按源码里的越界 specifier 计数（含无法解析到 apps/web 的相对路径）。1.6 完成 WebShell 公开面后两条一并删除。"
+    },
+    {
+      "rule": "web-package-not-to-app",
+      "from": "@fenix/chat-channel",
+      "to": "@fenix/web-app",
+      "owner": "1.6",
+      "removeWhen": "chat-channel 的 web contribution 不再引用宿主内部实现",
+      "rationale": "47 处 / 7 文件：`@/components/chat`(14)、`@/src/lib`(13)、`@/src/api`(7)。chat 组件本身是 chat-channel 的职责，1.6 迁移时应整体落入本包 `web/`。"
+    }
+  ]
+}

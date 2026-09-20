@@ -1,9 +1,9 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { parseExpression } from "cron-parser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NS } from "@/src/i18n";
 
 /** cron 预设：内部 ID → cron 表达式 */
 export const PRESETS: Record<string, string> = {

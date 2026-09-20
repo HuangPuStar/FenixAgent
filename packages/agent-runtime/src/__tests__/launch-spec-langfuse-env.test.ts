@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { setConfig } from "@server/config";
 import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "@server/db/schema";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import { buildLaunchSpec } from "../services/launch-spec-builder";
 
 const now = new Date("2026-06-01T00:00:00.000Z");

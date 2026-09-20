@@ -3,8 +3,37 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/src/i18n";
+import componentsEn from "@/src/i18n/locales/en/components.json";
 import { ChatComposer } from "../components/chat/ChatComposer";
 import { CommandMenu } from "../components/chat/CommandMenu";
+
+/** 按点号路径读取字典里的字符串；缺键返回 undefined。 */
+function lookup(dictionary: unknown, path: string): string | undefined {
+  let current: unknown = dictionary;
+  for (const part of path.split(".")) {
+    if (typeof current !== "object" || current === null) return;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return typeof current === "string" ? current : undefined;
+}
+
+/**
+ * 断言渲染结果里出现了某条 composer 文案（命名空间 `components`，字典见 `apps/web/src/i18n/locales/en/components.json`）。
+ *
+ * 同一 bun 进程里 `useTranslation` 的取值取决于同进程其他测试文件：本文件的用例自带 `I18nextProvider`
+ * 且用 `@/src/i18n` 真实单例，单文件跑时返回真实译文；整包跑时其他文件对 `react-i18next` 登记的模块 mock
+ * 会残留到后续文件（`packages/agent-runtime/web/__tests__/file-picker-panel.test.tsx` 等 6 处会替换掉
+ * `useTranslation`），此时即使自带 provider，`t()` 也回显 key。两种形态都接受，元素缺失仍会失败。
+ *
+ * 与 `chat-composer.test.tsx` 的同名 helper 暂各自维护：两份都断言 HTML 子串，但两种形态的成因不同
+ * （本文件是被残留的模块 mock 覆盖，那份是单跑时进程内根本没有 i18n 实例）。待 `web/` 迁入包内、
+ * 字典相对位置变化时一并核对，届时再抽公共测试工具。
+ */
+function expectCopy(html: string, key: string) {
+  const translated = lookup(componentsEn, key);
+  const hit = [key, translated].some((candidate) => typeof candidate === "string" && html.includes(candidate));
+  expect(hit, `文案 ${key} 既没有以译文也没有以 key 形态出现在渲染结果里`).toBe(true);
+}
 
 function renderComposer(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): string {
   return renderToStaticMarkup(
@@ -24,7 +53,7 @@ describe("ChatComposer 服务端渲染", () => {
   test("空闲状态渲染输入框与发送操作", () => {
     const html = renderComposer();
 
-    expect(html).toContain("chatInput.placeholder");
+    expectCopy(html, "chatInput.placeholder");
     expect(html).toContain("lucide-send");
     expect(html).toContain("chat-composer-textarea");
   });
@@ -103,7 +132,7 @@ describe("ChatComposer 服务端渲染", () => {
       envId: "env-ssr",
     });
 
-    expect(html).toContain("chatComposer.skillButton");
+    expectCopy(html, "chatComposer.skillButton");
     expect(html).toContain("lucide-blocks");
     expect(html).toContain("lucide-paperclip");
   });
@@ -139,7 +168,7 @@ describe("ChatComposer 服务端渲染", () => {
     });
 
     expect(html).toContain("40.0k");
-    expect(html).toContain("chatComposer.newSession");
+    expectCopy(html, "chatComposer.newSession");
     expect(html).toContain("chat-composer-context");
   });
 });

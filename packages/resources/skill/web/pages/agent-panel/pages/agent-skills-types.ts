@@ -1,10 +1,8 @@
-import type { ResourceAccess } from "@/src/types/config";
+import type { SkillResourceLike } from "../../../lib/skill-resource-access";
 
-export type SkillInfo = {
-  id?: string;
-  name: string;
+/** 目录页消费的 skill 视图；授权判断由 `lib/skill-resource-access` 基于 `scope` / `access` 完成。 */
+export type SkillInfo = SkillResourceLike & {
   description?: string;
-  resourceAccess?: ResourceAccess;
 };
 
 export type SkillCreateMode = "text" | "upload";

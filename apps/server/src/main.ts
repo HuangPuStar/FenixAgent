@@ -5,14 +5,15 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
+import { createDrizzleAccessControl } from "@fenix/access-control/suite";
 import {
-  configureResourcePermissionRepository,
-  configureResourcePermissionService,
-} from "@fenix/access-control/server";
-import {
-  agentSitesCompatApp,
-  agentSitesProxyApp,
-  apiAgentsRoutes,
+  agentConfigResource,
+  createAgentConfigServerModule,
+  createAgentSitesCompatRoutes,
+  createAgentSitesProxyRoutes,
+  createApiAgentsRoutes,
+  getAgentConfigModule,
+  installAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
 import {
@@ -41,22 +42,29 @@ import {
   stopInstanceViaController,
   touchInstanceActivity,
 } from "@fenix/agent-runtime/server";
+import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
 import {
-  apiModelsRoutes,
-  apiSystemModelGatewayRoutes,
+  createApiModelsRoutes,
+  createApiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
+  createModelManagementServerModule,
   createSystemModelGatewayProviderService,
-  getProvider,
-  listProviders,
+  getModelManagementModule,
+  installModelManagementModule,
+  providerResource,
 } from "@fenix/model-management/server";
-import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
-import { apiSystemRoutes, ensureSystemAdmin, organizationRepo } from "@fenix/resource-identity-admin/server";
-import { apiKnowledgeBaseRoutes, checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
-  apiWorkspaceRoutes,
+  getIdentityDirectory,
+  initializeApplicationInfrastructure,
+  registerIdentityDirectory,
+} from "@fenix/platform-sdk/server";
+import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
+import { checkRagFlowHealth, createApiKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
+import {
   checkParsedObjectSize,
   checkWsMessageSize,
   closeAllFileWsConnections,
+  createApiWorkspaceRoutes,
   disconnectMachine,
   estimateWsMessageBytes,
   eventService,
@@ -74,51 +82,77 @@ import {
   stopFileWsSweep,
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
-import { apiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
 import {
-  apiSystemLogsRoutes,
-  apiSystemObserverRoutes,
-  apiSystemPeopleTreeRoutes,
+  createApiMcpRoutes,
+  createMcpServerServerModule,
+  installMcpServerModule,
+  knowledgeMcpRoutes,
+  mcpServerResource,
+} from "@fenix/resource-mcp/server";
+import {
+  createApiSystemLogsRoutes,
+  createApiSystemObserverRoutes,
+  createApiSystemPeopleTreeRoutes,
 } from "@fenix/resource-observer/server";
 import {
-  apiSandboxClusterRoutes,
-  apiSandboxRoutes,
-  apiSandboxServerRoutes,
+  createApiSandboxClusterRoutes,
+  createApiSandboxRoutes,
+  createApiSandboxServerRoutes,
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
-import { apiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
+import {
+  createApiSkillsRoutes,
+  createSkillServerModule,
+  installSkillServerModule,
+  skillDownloadRoutes,
+  skillResource,
+} from "@fenix/resource-skill/server";
 import { schedulerService } from "@fenix/resource-task/server";
-import { apiWorkflowRoutes, initCustomToolsRegistry, workflowStaticApp } from "@fenix/resource-workflow/server";
+import {
+  createApiWorkflowRoutes,
+  createWorkflowStaticApp,
+  initCustomToolsRegistry,
+} from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { startSchedulerUnlessDisabled } from "./bootstrap/scheduler-startup";
 import { runCriticalStartupSequence } from "./bootstrap/startup-sequence";
-import { applyEnv, config } from "./config";
-import { initDb, client as pgClient } from "./db";
+import { applyEnv, config, getBaseUrl } from "./config";
+import { db, initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
-import { AppError } from "./errors";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import { authPlugin } from "./plugins/auth";
+import { authenticateSiteRequest, authGuardPlugin, authPlugin, toActorContext } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { pgResourcePermissionRepo } from "./repositories/resource-permission";
+import { systemApiAuthPlugin } from "./plugins/system-api-auth";
 import webApp from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
 import { closeCache } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
+import { createModelGatewaySubjectVerification } from "./services/model-gateway-subject-verification";
 import { syncBuiltin } from "./services/sync-builtin";
 
+/**
+ * Meta Agent 的默认模型解析：取当前主体可见的第一个 Provider 的第一个模型。
+ *
+ * 返回的是 `model` 表的行 ID——`agent_config.model_id` 是它的外键（运行时只认这个外键，不接受
+ * `provider/modelId` 形式的引用），因此这里不能返回模型业务键。
+ *
+ * 读取一律经 Facade：授权与可见性由资源包的授权谓词决定，宿主不再自己拼资源键。
+ */
 setMetaAgentModelResolver(async (ctx) => {
-  const providers = await listProviders(ctx);
-  for (const provider of providers) {
-    const providerKey = provider.resourceAccess?.resourceKey ?? provider.name;
-    const firstModel = (await getProvider(ctx, providerKey))?.models?.[0];
+  const actor = toActorContext(ctx);
+  const { facade } = getModelManagementModule();
+  const { items } = await facade.list(actor);
+  for (const item of items) {
+    const detail = await facade.getById(actor, item.id);
+    const firstModel = detail?.models[0];
     if (firstModel) return firstModel.id;
   }
   return null;
@@ -128,6 +162,93 @@ const startedAt = new Date().toISOString();
 
 const env = loadServerEnv([]);
 applyEnv(env);
+
+// 平台模块只能经 `@fenix/platform-sdk/server` 读取基础设施，因此宿主必须在任何模块开始工作前完成
+// 唯一初始化。身份目录同样只允许注册一次：两个身份实现并存会让不同模块读到不一致的成员关系视图，
+// 而这类分歧不会在启动期暴露。
+initializeApplicationInfrastructure({
+  database: db,
+  moduleConfigs: {
+    identity: {
+      betterAuthUrl: env.BETTER_AUTH_URL,
+      rcsBaseUrl: env.RCS_BASE_URL,
+      trustedOrigins: env.RCS_TRUSTED_ORIGINS,
+      systemAdminPasswordFile: config.systemAdminPasswordFile,
+      disableSignup: config.disableSignup,
+    },
+    // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
+    machine: {
+      defaultMachineId: config.defaultMachineId,
+      fileWsIdentityStrict: config.fileWsIdentityStrict,
+      fileEventsMaxClients: config.fileEventsMaxClients,
+    },
+    // 知识模块配置：RAGFlow 三项与 Gotenberg 地址。`GOTENBERG_URL` 尚未进宿主 env schema
+    // （变量收敛归 §1.7），这里先按迁移前的默认值读取，避免把部署知识搬进资源包。
+    knowledge: {
+      ragflowApiUrl: config.ragflowApiUrl,
+      ragflowApiKey: config.ragflowApiKey,
+      ragflowRequestTimeoutMs: config.ragflowRequestTimeoutMs,
+      gotenbergUrl: config.gotenbergUrl,
+    },
+    // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
+    memory: { hindsightMcpUrl: env.HINDSIGHT_MCP_URL },
+    // Skill 模块配置：下载目录、对外 baseUrl 与下载 token 的 HMAC 签名密钥候选。
+    skill: {
+      skillDir: config.skillDir,
+      baseUrl: getBaseUrl(),
+      downloadTokenSigningKeys: env.RCS_API_KEYS.split(","),
+    },
+    // AgentConfig 模块配置：侧边栏隐藏项、站点应用代理凭据与 Agent 智能生成用的模型名。
+    // 生成模型只在 OpenAI Key 存在时下发，等价于迁移前 `OPENAI_API_KEY && OPENAI_MODEL` 的判定
+    // （API Key 由 OpenAI SDK 自行从环境读取，包侧只认模型名是否下发）。
+    "agent-config": {
+      hiddenSidebarTabs: env.APP_HIDDEN_SIDEBAR_TABS,
+      agentSitesBaseUrl: env.AGENT_SITES_BASE_URL,
+      agentSitesMasterKey: env.AGENT_SITES_MASTER_KEY,
+      agentGenerationModel: env.OPENAI_API_KEY ? env.OPENAI_MODEL : undefined,
+    },
+    // 沙盒模块配置：显式列出模块契约需要的字段，而不是把整个宿主 config 传进去——
+    // 模块只能读自己的那一份，宿主字段改名必须在这里被 typecheck 拦住。
+    sandbox: {
+      sandboxEnabled: config.sandboxEnabled,
+      defaultSandboxPoolId: config.defaultSandboxPoolId,
+      defaultSandboxImage: config.defaultSandboxImage,
+      defaultSandboxAgentType: config.defaultSandboxAgentType,
+      defaultSandboxResourcesJson: config.defaultSandboxResourcesJson,
+      defaultSandboxExtraJson: config.defaultSandboxExtraJson,
+      openSandboxClusterUrl: config.openSandboxClusterUrl,
+      openSandboxClusterApiKey: config.openSandboxClusterApiKey,
+      sandboxRuntimeConnectTimeoutMs: config.sandboxRuntimeConnectTimeoutMs,
+      sandboxProviderRequestTimeoutMs: config.sandboxProviderRequestTimeoutMs,
+      sandboxProviderCreateTimeoutMs: config.sandboxProviderCreateTimeoutMs,
+      sandboxProviderResumeTimeoutMs: config.sandboxProviderResumeTimeoutMs,
+      sandboxProviderDestroyTimeoutMs: config.sandboxProviderDestroyTimeoutMs,
+    },
+    // Workflow 模块配置：对外基址（webhook 回调 URL 展示）、acpx-g 代理目标与自定义节点工具目录。
+    // `hmacSecret` 这里省略：宿主 env schema 尚未声明 `RCS_WORKFLOW_HMAC_SECRET`（变量声明与 preflight
+    // 收敛归任务 1.7），省略即回到迁移前的「每进程随机签名密钥」——单实例自洽；多实例部署补声明该变量后
+    // 必须在这里一并下发，否则跨实例恢复的 run 会签名校验失败。
+    workflow: {
+      baseUrl: getBaseUrl(),
+      acpxGUrl: config.acpxGUrl,
+      toolsDir: env.WORKFLOW_TOOLS_DIR,
+    },
+    // 模型管理模块配置：网关适配器参数与默认预算。管理密钥与凭据加密密钥未配置时是 `undefined`，
+    // 包侧据此判定「网关未启用」而不会退化成无鉴权网关；默认预算周期已由 env schema 把
+    // `permanent` / `once` 归一为「未配置」，包侧不再做第二份归一。
+    "model-management": {
+      modelGatewayType: config.modelGatewayType,
+      modelGatewayBaseUrl: config.modelGatewayBaseUrl,
+      modelGatewayPublicBaseUrl: config.modelGatewayPublicBaseUrl,
+      modelGatewayAdminUiUrl: config.modelGatewayAdminUiUrl,
+      modelGatewayAdminKey: config.modelGatewayAdminKey,
+      modelGatewayCredentialEncryptionKey: config.modelGatewayCredentialEncryptionKey,
+      modelGatewayDefaultUserBudgetUsd: config.modelGatewayDefaultUserBudgetUsd,
+      modelGatewayDefaultBudgetDuration: config.modelGatewayDefaultBudgetDuration,
+    },
+  },
+});
+registerIdentityDirectory(createIdentityDirectory());
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
 bindSessionEventBusPort({
@@ -168,11 +289,27 @@ await runCriticalStartupSequence({
   },
   wirePermissions: () => {
     // 模型网关与 builtin 都会查询资源授权，必须在业务资源初始化前完成宿主装配。
-    configureResourcePermissionService({
-      organizationRepo,
-      createError: (message, code, statusCode) => new AppError(message, code, statusCode),
+    // MCP / Skill / AgentConfig / Provider 资源使用同一授权栈：归属列在主表，授权谓词与分页/计数由
+    // 同一份资源注册下推到 SQL。
+    const accessControlSuite = createDrizzleAccessControl({
+      database: db,
+      bindings: [
+        mcpServerResource.storage,
+        skillResource.storage,
+        agentConfigResource.storage,
+        providerResource.storage,
+      ],
     });
-    configureResourcePermissionRepository(pgResourcePermissionRepo);
+    const moduleDeps = {
+      accessControl: accessControlSuite.accessControl,
+      scopeStore: accessControlSuite.scopeStore,
+      authorizedQuery: accessControlSuite.authorizedQuery,
+      identity: getIdentityDirectory(),
+    };
+    installMcpServerModule(createMcpServerServerModule(moduleDeps));
+    installSkillServerModule(createSkillServerModule(moduleDeps));
+    installAgentConfigModule(createAgentConfigServerModule(moduleDeps));
+    installModelManagementModule(createModelManagementServerModule(moduleDeps));
   },
   initModelGateway: async () => {
     registerConfiguredSandboxProviders();
@@ -192,7 +329,17 @@ await runCriticalStartupSequence({
     await runDataMigrations();
     startupLog.info("Data migrations completed");
 
-    const modelGatewayRuntime = createModelGatewayRuntime();
+    // 上游凭据的主体复验端口：用已装配的授权能力 + agent_config 的资源定义，与平台其它入口判定
+    // Agent 可用性的是同一条规则（见 `services/model-gateway-subject-verification`）。
+    const modelManagement = getModelManagementModule();
+    const subjectVerification = createModelGatewaySubjectVerification({
+      accessControl: modelManagement.accessControl,
+      identity: modelManagement.identity,
+      findAgentConfigOrganization: async (agentConfigId) =>
+        (await getAgentConfigModule().service.findRowUnscoped(agentConfigId))?.organizationId,
+    });
+
+    const modelGatewayRuntime = createModelGatewayRuntime({ subjectVerification });
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
       setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
@@ -214,7 +361,8 @@ await runCriticalStartupSequence({
 // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
 // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
 try {
-  const defaultPool = await initializeDefaultSandboxPool(config);
+  // 配置由包自己经 `getModuleConfig("sandbox")` 读取，宿主不再把整个 config 传进模块。
+  const defaultPool = await initializeDefaultSandboxPool();
   if (defaultPool) startupLog.info(`Default sandbox pool initialized: ${defaultPool.id}`);
 } catch (error) {
   startupLog.error("Failed to initialize default sandbox pool", error instanceof Error ? error : undefined);
@@ -249,7 +397,8 @@ startupLog.info("Custom tools registry initialized");
 // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
 const hermesUrl = process.env.HERMES_URL ?? (config as any).channels?.hermesUrl;
 if (hermesUrl) {
-  initHermesClient(hermesUrl);
+  // 平台清单是**部署配置值**（不是环境变量名）：包侧不读 process.env，由宿主在这里下发。
+  initHermesClient(hermesUrl, { platforms: env.HERMES_PLATFORMS });
 }
 
 // Verify RagFlow connectivity (non-blocking — logs warning on failure)
@@ -343,34 +492,34 @@ const app = new Elysia({
   // Token-protected skill archive download for plugins/runtimes
   .use(skillDownloadRoutes)
   // Agent Sites L3 business frontend proxy (/web/site/deploy/:appId/* prefix)
-  .use(agentSitesProxyApp)
+  .use(createAgentSitesProxyRoutes({ authenticateRequest: authenticateSiteRequest }))
   // External API routes
-  .use(apiAgentsRoutes)
-  .use(apiKnowledgeBaseRoutes)
-  .use(apiSkillsRoutes)
-  .use(apiModelsRoutes)
-  .use(apiMcpRoutes)
-  .use(apiSystemRoutes)
-  .use(apiSystemLogsRoutes)
-  .use(apiSystemModelGatewayRoutes)
-  .use(apiSystemObserverRoutes)
-  .use(apiSystemPeopleTreeRoutes)
-  .use(apiSandboxRoutes)
-  .use(apiSandboxClusterRoutes)
-  .use(apiSandboxServerRoutes)
+  .use(createApiAgentsRoutes({ authGuardPlugin }))
+  .use(createApiKnowledgeBaseRoutes({ authGuardPlugin }))
+  .use(createApiSkillsRoutes({ authGuardPlugin }))
+  .use(createApiModelsRoutes({ authGuardPlugin }))
+  .use(createApiMcpRoutes({ authGuardPlugin }))
+  .use(createApiSystemRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSystemLogsRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSystemModelGatewayRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSystemObserverRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSystemPeopleTreeRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(apiInstanceRoutes)
-  .use(apiWorkspaceRoutes)
-  .use(apiWorkflowRoutes)
+  .use(createApiWorkspaceRoutes({ authGuardPlugin }))
+  .use(createApiWorkflowRoutes({ authGuardPlugin }))
   // OpenAI-compatible Chat API
   .use(openaiChatRoutes)
   // Workflow proxy (not under /web prefix)
-  .use(workflowStaticApp)
+  .use(createWorkflowStaticApp({ authGuardPlugin }))
   // MCP routes
   .use(knowledgeMcpRoutes)
   // ACP protocol routes
   .use(acpRoutes)
   // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）
-  .use(agentSitesCompatApp);
+  .use(createAgentSitesCompatRoutes({ authenticateRequest: authenticateSiteRequest }));
 
 const port = config.port;
 const host = config.host;

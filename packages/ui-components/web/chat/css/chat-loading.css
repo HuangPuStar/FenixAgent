@@ -1,0 +1,110 @@
+/*
+ * Chat 加载指示样式：品牌色脉冲三点（含暗色动画）与「思考中」文字微光扫过。
+ *
+ * 复制自 apps/web/src/index.css 第 390-481 行（含 `@keyframes loadingDotBounce` /
+ * `loadingDotBounceDark` / `shimmerSlide`），声明与色值逐字复制，未 token 化。
+ *
+ * 纯化改动：
+ * 1. 作用域收窄：`.loading-text-shimmer` 不含 chat 前缀，为避免命中宿主同名通用元素，
+ *    收窄为 `:where(.chat-conversation) .loading-text-shimmer`。包内唯一使用点是
+ *    view/ChatView.tsx 的 `LoadingIndicator`，位于 `<Conversation className="chat-conversation">` 内，
+ *    且 `:where()` 不贡献特指度，特指度与源选择器一致（0,1,0），不改变级联结果。
+ *    若后续在 `.chat-conversation` 之外复用该指示器，需同步扩展此作用域，否则微光样式会静默失效。
+ * 2. `.chat-loading-dots` 及 `span` 规则保持源选择器不变（已带 chat 前缀）。
+ *
+ * 已知共存关系：宿主 apps/web/src/index.css 仍保留同名的 `.chat-loading-dots` /
+ * `.loading-text-shimmer` 与同名 keyframes（内容一致）。两者在同一文档中不产生视觉差异，
+ * 但 keyframes 属全局命名空间，集成后如需彻底去重应由宿主侧移除同名定义。
+ */
+/* ============================================================
+   Chat loading dots — 品牌色脉冲波纹
+   ============================================================ */
+
+.chat-loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+
+.chat-loading-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  animation: loadingDotBounce 1.4s ease-in-out infinite both;
+}
+
+.chat-loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.chat-loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.chat-loading-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes loadingDotBounce {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0.3;
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.3);
+  }
+}
+
+.dark .chat-loading-dots span {
+  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
+}
+
+@keyframes loadingDotBounceDark {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0.3;
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.35);
+  }
+}
+
+.dark .chat-loading-dots span {
+  animation-name: loadingDotBounceDark;
+}
+
+/* "思考中" 文字微光扫过动画（选择器已按文件头第 1 条收窄到 chat 会话作用域） */
+:where(.chat-conversation) .loading-text-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-brand-light) 50%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmerSlide 2s ease-in-out infinite;
+}
+
+@keyframes shimmerSlide {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

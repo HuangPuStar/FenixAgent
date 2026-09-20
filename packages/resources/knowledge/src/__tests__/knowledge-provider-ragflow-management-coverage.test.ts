@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "@server/config";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const originalFetch = globalThis.fetch;
 
@@ -23,12 +23,15 @@ function provider(): RagFlowKnowledgeProvider {
 }
 
 beforeEach(() => {
-  setConfig({ ragflowApiUrl: "http://ragflow.test", ragflowApiKey: "tenant-api-key", ragflowRequestTimeoutMs: 30_000 });
+  initializeKnowledgeModuleConfig({
+    ragflowApiUrl: "http://ragflow.test",
+    ragflowApiKey: "tenant-api-key",
+    ragflowRequestTimeoutMs: 30_000,
+  });
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  resetConfig();
 });
 
 describe("RagFlow 供应商管理真实分支", () => {

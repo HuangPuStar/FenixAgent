@@ -1,5 +1,5 @@
 import { OpenSandboxClusterProvider, type OpenSandboxClusterProviderConfig } from "@fenix/sandbox-provider";
-import { config } from "@server/config";
+import { getSandboxConfig } from "../config";
 import { SandboxExecutionHandler } from "./sandbox-execution-handler";
 import { SandboxManager } from "./sandbox-manager";
 import { SandboxProviderRegistry } from "./sandbox-provider-registry";
@@ -17,10 +17,10 @@ export type SandboxProviderConfig = {
   sandboxProviderDestroyTimeoutMs: number;
 };
 
-/** 根据应用配置注册可用的沙盒 Provider，不在模块加载阶段发起网络请求。 */
+/** 根据本模块配置注册可用的沙盒 Provider，不在模块加载阶段发起网络请求。 */
 export function registerConfiguredSandboxProviders(
   registry: SandboxProviderRegistry = sandboxProviderRegistry,
-  settings: SandboxProviderConfig = config,
+  settings: SandboxProviderConfig = getSandboxConfig(),
 ): void {
   if (!settings.openSandboxClusterUrl || !settings.openSandboxClusterApiKey) return;
   const providerConfig: OpenSandboxClusterProviderConfig = {
@@ -37,3 +37,5 @@ export function registerConfiguredSandboxProviders(
 export { SandboxExecutionHandler } from "./sandbox-execution-handler";
 export { SandboxManager } from "./sandbox-manager";
 export { SandboxProviderRegistry } from "./sandbox-provider-registry";
+// 协调器可以脱离 Manager 单测（锁语义与 Provider 状态迁移是它自己的合同），因此对外导出。
+export { SandboxRemoteReconciler, type SandboxRemoteReconcilerDependencies } from "./sandbox-remote-reconciler";

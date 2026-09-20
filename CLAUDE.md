@@ -31,7 +31,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
 - 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置、前端业务实现与构建产物。
-- `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
+- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
 
 ### 后端地图
 
@@ -43,7 +43,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 - `apps/server/src/repositories/`：数据访问层。
 - `apps/server/src/schemas/`：请求、响应和配置 schema。
 - `apps/server/src/transport/`：WebSocket、SSE、relay 和 EventBus。
-- `apps/server/src/db/schema.ts`：数据库 schema 真相来源。
+- `apps/server/src/db/schema.ts`：数据库 schema 真相来源之一（业务表）；身份表（`user` / `session` / `account` / `verification` / `organization` / `member` / `invitation` / `apikey` / `user_config`）的真相来源是 `packages/platform/identity/db/schema.ts`，两者共同汇入同一条 Drizzle 迁移链。
 - `apps/server/src/__tests__/`、`apps/server/src/test-utils/`：后端测试和测试基础设施。
 
 ### 前端地图
@@ -201,8 +201,9 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ## 数据库与迁移
 
-- Schema 真相来源是 `apps/server/src/db/schema.ts`。
+- Schema 真相来源有两个，共同汇入同一条迁移链：业务表在 `apps/server/src/db/schema.ts`，身份表在 `packages/platform/identity/db/schema.ts`（CE 阶段 2 任务 1.2 迁出）。`drizzle.config.ts` 的 `schema` 必须同时声明两者，否则 `db:generate` 会误判其中一族已删除。改身份表就到 identity 包改，不得在宿主复制一份。
 - 标准流程：修改 schema → `bun run db:generate --name <name>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 运行相关测试和 `bun run precheck`。
+- 跨组织可见性由四张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider`）的 `visibility varchar(20) NOT NULL DEFAULT 'private'` 表达；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
 - 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
 - 迁移设计必须考虑已有数据、锁范围、回滚或补偿策略，以及多实例并发启动时的幂等性。

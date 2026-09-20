@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { getBaseUrl } from "@server/config";
+import { getSkillConfig } from "../config";
 
 interface SkillTokenInput {
   id: string;
@@ -16,10 +16,17 @@ interface SkillDownloadPayload {
   exp: number;
 }
 
+/**
+ * 取签名密钥。
+ *
+ * 密钥来自模块配置（宿主 `RCS_API_KEYS` 的逗号分隔列表），本包不再直读 `process.env`：环境变量的
+ * 真相来源是宿主 `apps/server/src/env.ts`。取第一个非空项即宿主既有语义（签名用首 key）。
+ * 密钥材料只在此函数内流转，调用方与错误信息都不得回显它。
+ */
 function getSigningKey(): string | null {
   return (
-    process.env.RCS_API_KEYS?.split(",")
-      .map((key) => key.trim())
+    getSkillConfig()
+      .downloadTokenSigningKeys.map((key) => key.trim())
       .filter(Boolean)[0] ?? null
   );
 }
@@ -31,7 +38,8 @@ function signPayload(encodedPayload: string, key: string): string {
 /** 生成短期 skill zip 下载 token。 */
 export function generateSkillDownloadToken(skill: SkillTokenInput, options?: { expiresInSeconds?: number }): string {
   const key = getSigningKey();
-  if (!key) throw new Error("RCS_API_KEYS is required for skill download token");
+  // 只报字段名与来源，不回显任何密钥材料；宿主 env 必填 RCS_API_KEYS，走到这里说明装配漏了模块配置。
+  if (!key) throw new Error("Skill 下载 token 缺少签名密钥：模块配置 downloadTokenSigningKeys 为空");
 
   const iat = Math.floor(Date.now() / 1000);
   const payload: SkillDownloadPayload = {
@@ -81,8 +89,14 @@ export function verifySkillDownloadToken(token: string): SkillDownloadPayload | 
   }
 }
 
-/** 构建带签名 token 的 skill zip 下载 URL。 */
+/**
+ * 构建带签名 token 的 skill zip 下载 URL。
+ *
+ * baseUrl 由宿主经模块配置注入（宿主 `getBaseUrl()` 的产物），本包不再导入宿主工具。这里防御性去掉
+ * 尾部斜杠，避免宿主配置残留 `/` 时拼出 `//skills/...` 这种被某些代理判成不同路径的 URL。
+ */
 export function buildSkillDownloadUrl(skill: SkillTokenInput, options?: { expiresInSeconds?: number }): string {
   const token = generateSkillDownloadToken(skill, options);
-  return `${getBaseUrl()}/skills/${encodeURIComponent(skill.name)}/download?token=${token}`;
+  const baseUrl = getSkillConfig().baseUrl.replace(/\/+$/, "");
+  return `${baseUrl}/skills/${encodeURIComponent(skill.name)}/download?token=${token}`;
 }

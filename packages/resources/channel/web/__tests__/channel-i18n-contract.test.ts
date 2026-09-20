@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
-import channelsEN from "../i18n/en/channels.json";
-import channelsZH from "../i18n/zh/channels.json";
+import channelsEN from "../i18n/locales/en/channels.json";
+import channelsZH from "../i18n/locales/zh/channels.json";
 
 /** 组件内可静态校验与动态翻译调用的 AST 扫描结果。 */
 interface TranslationCalls {

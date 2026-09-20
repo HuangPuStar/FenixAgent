@@ -1,0 +1,346 @@
+/*
+ * Chat 命令面板样式：命令 popover / inline 菜单 / 能力面板（--panel 变体）的头部、搜索、
+ * 列表项、分区标题、勾选与 MCP 状态、底部快捷键提示。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-composer.css 的命令面板段
+ * （源第 179-377 行、507-579 行、585-625 行），逐字复制（含色值，未 token 化；后改的色值见第 4 条）。
+ * 源文件 658 行，因仓库 500 行红线按职责拆分：输入岛本体见 chat-design-composer.css（本文件为其对侧）。
+ *
+ * 纯化改动：
+ * 1. 选择器归属切分：源第 581-583 行 `.chat-composer-plugin[data-open]` 属输入岛控件，已移入
+ *    chat-design-composer.css（与其 `:hover` 规则同文件，保持源级联顺序）。
+ * 2. 未加包根包裹类：`.chat-command-menu--popover` / `--inline` 由 popover 或 portal 渲染，
+ *    祖先包裹会逃出作用域导致样式静默失效，故保持源选择器前缀不变。
+ * 3. `.chat-command-menu--panel` 段为「能力面板」形态，与 popover/inline 形态共用基础类名，
+ *    靠特指度（(0,3,0) 覆盖 (0,2,0)）生效，与源一致，未调整顺序。
+ * 4. 面板改版（2026-09-18，配合 CommandMenu 的行首 `/` → `Sparkles` 图标）：去掉蓝色字体与蓝色
+ *    强调色（`.chat-command-menu-name` 的 `#3d5f95` / `#58739d`、hover 与 `.is-active` 的 `#294d87`、
+ *    `.chat-command-menu-title svg` 的 `#3567ad`），名称改用菜单正文色 `#263247` 且不再加粗
+ *    （源 620，能力面板内 600 → 400），hover 底色改中性 `#f5f7fa`；行首新增 16px 图标列
+ *    （技能行与 MCP 行的名称列因此对齐），尾列提示与勾选合并为 `.chat-command-menu-tail`；
+ *    选中勾选由蓝色 `#5f83bd` 改为与 MCP「已连接」同源的绿 `#25856e`；
+ *    `.is-active` 的左侧强调条改用包内 token `var(--color-brand)`（唯一的蓝，来自主题色）。
+ */
+.chat-command-popover {
+  width: min(600px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #e3e7ed;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgb(41 58 88 / 10%);
+}
+
+.chat-command-menu {
+  overflow: hidden;
+  border: 1px solid #e3e7ed;
+  border-radius: 11px;
+  color: #263247;
+  background: #fff;
+  box-shadow: 0 8px 28px rgb(41 58 88 / 10%);
+}
+
+.chat-command-menu--popover {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-command-menu--inline {
+  position: absolute;
+  z-index: 50;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+}
+
+.chat-command-menu-header {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid #eceef2;
+}
+
+.chat-command-menu-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #445269;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.chat-command-menu-title svg {
+  width: 14px;
+  height: 14px;
+  color: #445269;
+  stroke-width: 1.8;
+}
+
+.chat-command-menu-count {
+  color: #9299a6;
+  font-size: 10px;
+}
+
+.chat-command-menu-search {
+  display: flex;
+  height: 46px;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 8px 3px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #f6f8fb;
+}
+
+.chat-command-menu-search > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: #8a96a8;
+}
+
+.chat-command-menu-input {
+  height: 36px;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #33445f;
+  font-size: 13px;
+  box-shadow: none;
+}
+
+.chat-command-menu-input:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+.chat-command-menu-scroll {
+  height: min(322px, 46vh);
+}
+
+.chat-command-menu-list {
+  padding: 4px 8px 7px;
+}
+
+.chat-command-menu-item {
+  display: grid;
+  width: 100%;
+  min-height: 42px;
+  grid-template-columns: 16px minmax(120px, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: #687286;
+  text-align: left;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+
+.chat-command-menu-item:hover,
+.chat-command-menu-item.is-active {
+  color: #263247;
+  background: #f5f7fa;
+}
+
+.chat-command-menu-item.is-active {
+  box-shadow: inset 2px 0 var(--color-brand);
+}
+
+.chat-command-menu-name {
+  overflow: hidden;
+  color: #263247;
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-command-menu-description {
+  overflow: hidden;
+  color: #8b94a3;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-command-menu-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
+}
+
+.chat-command-menu-hint {
+  color: #a1a7b1;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.chat-command-menu-empty {
+  padding: 34px 18px;
+  color: #8b97a9;
+  font-size: 12px;
+  text-align: center;
+}
+
+.chat-command-menu-footer {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 11px;
+  border-top: 1px solid #eceef2;
+  color: #9299a6;
+  font-size: 9px;
+}
+
+.chat-command-menu-footer span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-command-menu-footer kbd {
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid #e1e5eb;
+  border-radius: 4px;
+  padding: 0 3px;
+  color: #6f798a;
+  background: #f8f9fb;
+  font: inherit;
+}
+
+.chat-command-menu-footer kbd + kbd {
+  margin-left: -2px;
+}
+
+.chat-command-menu-footer svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Command capability panel follows the ui-sandbox composer slot and density. */
+.chat-command-menu--panel {
+  width: 100%;
+  margin-bottom: 6px;
+  border: 1px solid #e3e7ed;
+  border-radius: 11px;
+  box-shadow: 0 5px 20px rgb(41 58 88 / 5%);
+}
+
+.chat-command-menu--panel .chat-command-menu-search {
+  height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid #eceef2;
+  border-radius: 0;
+  background: #fff;
+}
+
+.chat-command-menu--panel .chat-command-menu-search > svg {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+}
+
+.chat-command-menu--panel .chat-command-menu-input {
+  height: 38px;
+  font-size: 14px;
+}
+
+.chat-command-menu--panel .chat-command-menu-scroll {
+  height: min(210px, 34vh);
+}
+
+.chat-command-menu--panel .chat-command-menu-list {
+  padding: 2px 8px;
+}
+
+.chat-command-menu--panel .chat-command-menu-item {
+  min-height: 34px;
+  grid-template-columns: 16px minmax(150px, max-content) minmax(0, 1fr) auto;
+  gap: 6px;
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+.chat-command-menu--panel .chat-command-menu-mcp {
+  grid-template-columns: 16px minmax(120px, 220px) minmax(0, 1fr) auto;
+}
+
+.chat-command-menu--panel .chat-command-menu-mcp .chat-command-menu-name,
+.chat-command-menu--panel .chat-command-menu-mcp .chat-command-menu-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-command-menu--panel .chat-command-menu-item:hover,
+.chat-command-menu--panel .chat-command-menu-item.is-active {
+  color: #263247;
+  background: #f7f8fa;
+  box-shadow: none;
+}
+
+.chat-command-menu--panel .chat-command-menu-name {
+  color: #263247;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.chat-command-menu--panel .chat-command-menu-description,
+.chat-command-menu--panel .chat-command-menu-hint {
+  font-size: 12px;
+}
+
+.chat-command-menu-section + .chat-command-menu-section {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid #edf0f4;
+}
+
+.chat-command-menu-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px 4px;
+}
+
+.chat-command-menu-section-title strong {
+  color: #263247;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.chat-command-menu-section-title span {
+  color: #8b94a5;
+  font-size: 11px;
+}
+
+.chat-command-menu-check,
+.chat-command-menu-command-icon,
+.chat-command-menu-mcp-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.chat-command-menu-check {
+  color: #25856e;
+}
+
+.chat-command-menu-mcp-state {
+  margin-left: auto;
+  color: #25856e;
+  font-size: 11px;
+  font-style: normal;
+}

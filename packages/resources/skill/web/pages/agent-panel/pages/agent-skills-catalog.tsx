@@ -1,3 +1,14 @@
+import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
+import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { SkillDetail as SkillDetailData } from "@fenix/web-runtime/types/config";
 import {
   AlertTriangle,
   ChevronRight,
@@ -13,35 +24,29 @@ import {
   RefreshCw,
   Search,
   Share2,
+  ShieldAlert,
   Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MessageResponse } from "@/components/ai-elements/message";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
 import {
   canManageSkillSharing,
   canWriteSkill,
   getSkillKey,
   getSkillOptionLabel,
-} from "@/src/lib/skill-resource-access";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { SkillDetail as SkillDetailData } from "@/src/types/config";
+  isExternalSkill,
+  isPublicSkill,
+} from "../../../lib/skill-resource-access";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
-import { countSkillsByScope, filterSkills } from "./agent-skills-utils";
+import { countSkillsByScope, filterSkills, isSkillAccessDenied } from "./agent-skills-utils";
 import "./agent-skills.css";
 
 type AgentSkillsCatalogProps = {
   skills: SkillInfo[];
+  /** 当前组织 id；归属判定与「本组织」筛选依据，缺失时按本组织保守处理。 */
+  activeOrganizationId?: string;
   loading: boolean;
   error: Error | undefined;
   query: string;
@@ -82,8 +87,11 @@ function getSkillDisplayName(skill: SkillInfo): {
 
 export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const { t } = useTranslation(NS.SKILLS);
-  const filtered = filterSkills(props.skills, props.query, props.scope);
-  const { organization: organizationCount, public: publicCount } = countSkillsByScope(props.skills);
+  const filtered = filterSkills(props.skills, props.query, props.scope, props.activeOrganizationId);
+  const { organization: organizationCount, public: publicCount } = countSkillsByScope(
+    props.skills,
+    props.activeOrganizationId,
+  );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<SkillDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -117,6 +125,20 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   }, [props.onLoadDetail, selectedSkill]);
 
   if (props.loading) return <SkillsLoading />;
+  // 无权限（401/403，见 `isSkillAccessDenied`）整页接管：此时目录、详情与顶部创建/导入入口都会被
+  // 同一守卫拒绝，渲染半个页面只会剩下一排点了没反应的按钮。**刻意不给重试按钮**——授权失败是稳定
+  // 结论而不是瞬时故障，重试只会把用户引向无意义的重复请求；真正要做的是重新登录或找组织管理员。
+  if (props.error && props.skills.length === 0 && isSkillAccessDenied(props.error)) {
+    return (
+      <AppPage className="agent-skills-page">
+        <section className="skills-load-error" role="alert">
+          <ShieldAlert />
+          <strong>{t("accessDenied.title")}</strong>
+          <p>{t("accessDenied.description")}</p>
+        </section>
+      </AppPage>
+    );
+  }
   if (props.error && props.skills.length === 0) {
     return (
       <AppPage className="agent-skills-page">
@@ -134,7 +156,7 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   }
 
   return (
-    <AppPage className="agent-skills-page" busy>
+    <AppPage className="agent-skills-page">
       <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
@@ -211,12 +233,12 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
               </header>
               <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
                 {filtered.map((skill) => {
-                  const external = skill.resourceAccess?.ownership === "external";
+                  const external = isExternalSkill(skill, props.activeOrganizationId);
                   const SkillIcon = getSkillIcon(skill);
                   const display = getSkillDisplayName(skill);
                   const active = getSkillKey(skill) === getSkillKey(selectedSkill);
-                  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-                  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
+                  const organizationName = skill.organizationName ?? t("scope.organization");
+                  const publiclyReadable = isPublicSkill(skill);
                   return (
                     <button
                       type="button"
@@ -297,11 +319,11 @@ function SkillDetailView({
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   const writable = canWriteSkill(skill);
-  const external = skill.resourceAccess?.ownership === "external";
+  const external = isExternalSkill(skill, props.activeOrganizationId);
   const SkillIcon = getSkillIcon(skill);
   const display = getSkillDisplayName(skill);
-  const organizationName = skill.resourceAccess?.sourceOrganizationName ?? t("scope.organization");
-  const publiclyReadable = skill.resourceAccess?.publicReadable === true;
+  const organizationName = skill.organizationName ?? t("scope.organization");
+  const publiclyReadable = isPublicSkill(skill);
   const header = (
     <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
@@ -377,7 +399,7 @@ function SkillDetailView({
         </section>
         <div className="mt-7 flex flex-wrap items-center gap-2">
           <span className="rounded-md bg-[#f3f5f8] px-2.5 py-1.5 text-[10px] text-[var(--skills-muted)]">
-            {skill.resourceAccess?.publicReadable
+            {isPublicSkill(skill)
               ? tComponents("resource.public")
               : writable
                 ? t("directory.private")
@@ -403,10 +425,8 @@ function SkillDetailActions({ skill, props }: { skill: SkillInfo; props: AgentSk
       </Button>
       {manageable ? (
         <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
-          {skill.resourceAccess?.publicReadable ? <LockKeyhole /> : <Globe2 />}
-          {skill.resourceAccess?.publicReadable
-            ? tComponents("resource.makePrivate")
-            : tComponents("resource.makePublic")}
+          {isPublicSkill(skill) ? <LockKeyhole /> : <Globe2 />}
+          {isPublicSkill(skill) ? tComponents("resource.makePrivate") : tComponents("resource.makePublic")}
         </Button>
       ) : null}
       {writable ? (
@@ -420,17 +440,19 @@ function SkillDetailActions({ skill, props }: { skill: SkillInfo; props: AgentSk
 
 function SkillsLoading() {
   return (
-    <AppPage className="agent-skills-page">
+    // `busy` 只挂在骨架态：`aria-busy="true"` 常驻会让屏幕阅读器把已加载页面当成持续更新中的区域，
+    // 而骨架行本身没有可访问文本，需要一个繁忙标记让读屏用户知道「内容还在来」。
+    <AppPage className="agent-skills-page" busy>
       <div>
         <Skeleton className="h-7 w-36" />
         <Skeleton className="mt-2 h-4 w-72" />
       </div>
       <Skeleton className="mt-5 h-10 w-full max-w-4xl" />
       <div className="mt-6 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white">
-        {Array.from({ length: 8 }).map((_, index) => (
+        {Array.from({ length: 8 }, (_, index) => `skill-loading-row-${index}`).map((rowKey) => (
           <div
-            // Static loading placeholders have no domain identifier.
-            key={index}
+            // 骨架占位行无领域标识，键由行下标派生：`key={index}` 会被 biome 的 lint/suspicious/noArrayIndexKey 拦下。
+            key={rowKey}
             className="flex h-[62px] items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
           >
             <Skeleton className="size-9 rounded-lg" />

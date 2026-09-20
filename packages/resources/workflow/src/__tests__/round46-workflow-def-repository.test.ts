@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import {
   deleteWorkflowDef,
   getVersions,
@@ -14,6 +14,7 @@ import {
   setLatestVersion,
   updateWorkflowMeta,
 } from "../server/repositories/workflow-def";
+import { initializeWorkflowModuleConfig } from "../server/testing";
 
 const ctx = { organizationId: "org-a", userId: "user-a" };
 
@@ -65,7 +66,7 @@ function updated<T>(rows: T[], onSet?: (value: unknown) => void) {
   });
 }
 
-beforeEach(resetAllStubs);
+beforeEach(initializeWorkflowModuleConfig);
 afterEach(resetAllStubs);
 
 describe("round46 工作流定义仓储真实行为", () => {

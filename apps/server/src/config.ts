@@ -55,6 +55,8 @@ function buildConfig(env: Env) {
     fileWsSweepEnabled: env.RCS_FILE_WS_SWEEP_ENABLED,
     /** file-ws 身份绑定严格模式（§7.1）。默认 false（宽松）：未知 machine 放行 + 告警；true 时 close(4404)。两阶段过渡软开关。 */
     fileWsIdentityStrict: env.RCS_FILE_WS_IDENTITY_STRICT,
+    /** `/web/file-events` 文件变更事件订阅的并发连接上限；与 YJS 分池，不挤占同一配额。 */
+    fileEventsMaxClients: env.RCS_FILE_EVENTS_MAX_CLIENTS,
     /** 沙盒创建或恢复后等待 ACP Runtime 回连的最长时间（毫秒）。 */
     sandboxRuntimeConnectTimeoutMs: env.RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS ?? 10000,
     /** 是否启用沙盒默认策略。 */
@@ -89,6 +91,13 @@ function buildConfig(env: Env) {
     ragflowApiKey: process.env.RAGFLOW_API_KEY || "",
     /** Timeout in milliseconds for RagFlow API requests. */
     ragflowRequestTimeoutMs: parseInt(process.env.RAGFLOW_REQUEST_TIMEOUT_MS || "30000", 10),
+    /**
+     * Gotenberg（文档转 PDF）服务地址，Knowledge 模块的文档导入使用。
+     *
+     * 与 RAGFlow 三项同源：都是 legacy 的 `process.env` 直读，尚未进 `apps/server/src/env.ts`
+     * 的 schema（变量声明与 preflight 收敛归 §1.7）。默认值取自迁移前的实现。
+     */
+    gotenbergUrl: process.env.GOTENBERG_URL || "http://127.0.0.1:3200",
     disableSignup: env.RCS_DISABLE_SIGNUP,
     defaultMachineId: env.RCS_DEFAULT_MACHINE_ID,
     defaultEngineType: env.RCS_DEFAULT_ENGINE_TYPE,

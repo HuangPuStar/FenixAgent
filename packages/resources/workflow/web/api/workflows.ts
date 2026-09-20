@@ -41,7 +41,7 @@ export interface VersionYamlResponse {
 
 // ── API Client ──
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 const ENDPOINT = "/web/workflow-defs";
 

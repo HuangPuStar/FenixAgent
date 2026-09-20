@@ -1,8 +1,8 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { NS } from "@/src/i18n";
 import type { KnowledgeBaseInfo } from "../../../types/knowledge";
 
 interface AgentKnowledgeDirectoryProps {

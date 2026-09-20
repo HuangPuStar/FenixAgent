@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentInstanceRecord } from "@fenix/agent-runtime/server";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
-import { resetAllStubs } from "../test-utils/helpers";
 
 const {
   default: webInstanceRoutes,

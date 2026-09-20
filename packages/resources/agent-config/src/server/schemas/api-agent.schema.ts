@@ -1,4 +1,3 @@
-import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
 import * as z from "zod/v4";
 import { AgentDetailSchema, AgentInfoSchema, AgentKnowledgeConfigSchema } from "./config.schema";
 
@@ -50,15 +49,16 @@ export const ApiAgentUpdateBodySchema = ApiAgentUpsertBodySchema.omit({ name: tr
   })
   .describe("更新 Agent 请求体。");
 
-export const ApiAgentListItemSchema = AgentInfoSchema.omit({
-  resourceAccess: true,
-  skillLabels: true,
-  modelLabel: true,
-})
-  .extend({
-    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
-  })
-  .describe("对外 Agent 列表项。");
+/**
+ * 对外 Agent 列表项。
+ *
+ * `resourceAccess` 沿用 `AgentInfoSchema` 的定义：它是已发布合同的字段形状（`ResourceAccessViewSchema`），
+ * 由 `toResourceAccessView` 从 `scope + access.actions` 派生；`/web` 视图的 `scope + access` 不出现在
+ * 对外合同里。
+ */
+export const ApiAgentListItemSchema = AgentInfoSchema.omit({ skillLabels: true, modelLabel: true }).describe(
+  "对外 Agent 列表项。",
+);
 
 export const ApiAgentListResponseSchema = z
   .object({

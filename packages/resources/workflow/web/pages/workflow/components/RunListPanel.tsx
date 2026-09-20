@@ -1,8 +1,8 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ExternalLink, Inbox, Loader, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { unwrap } from "@/src/api/request";
 import { type RunSummary, workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
 

@@ -1,7 +1,25 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { parseExpression } from "cron-parser";
 import { z } from "zod/v4";
-import type { AgentDefinition, HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
+import type { AgentDefinition, HttpDefinition, TaskV2Info } from "../../../api/tasks-v2";
 import type { TaskFormValues } from "../components/TaskForm";
+
+/**
+ * 授权类错误码：`forbidden` 是宿主 `/web/*` 守卫与组织归属校验（`requireTeamScope`）的后端值，
+ * `UNAUTHORIZED` 是 request 层对**没有** code 的 401/403 归一后的值——`normalizeErrorCode` 只在响应
+ * 未携带 code 时才按 HTTP 状态映射，带 code 的响应原样透传。两种都认，否则「无权限」会退化成通用失败。
+ */
+const UNAUTHORIZED_CODES: ReadonlySet<string> = new Set(["forbidden", "UNAUTHORIZED"]);
+
+/**
+ * 判断加载失败是否属于「无权限」（401/403）。
+ *
+ * 用途是把它从通用加载失败里拆出来：授权是持久状态，再点一次重试只会拿到同一个 403，
+ * 因此调用方对它只展示原因、不给重试入口（通用失败分支必须保留重试）。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && UNAUTHORIZED_CODES.has(error.code);
+}
 
 function isValidCronExpression(cron: string, timezone: string): boolean {
   const parts = cron.trim().split(/\s+/);

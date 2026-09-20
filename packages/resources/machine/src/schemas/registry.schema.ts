@@ -1,4 +1,4 @@
-import { WebOkSchema } from "@server/schemas/common.schema";
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 
 /** 机器注册记录 */

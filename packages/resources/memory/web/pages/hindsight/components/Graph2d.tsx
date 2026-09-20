@@ -1,9 +1,8 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import cytoscape from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { NS } from "@/src/i18n";
 
 // Register the fcose extension
 cytoscape.use(fcose);

@@ -3,8 +3,9 @@
 // 任务从 DB 删除后，execute 发现任务不存在时必须清理残留 job 并返回 failed，
 // 且不写执行日志、不遗留 running 状态（否则同一任务会被永久误判为 running）。
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { SchedulerService } from "../server/services/scheduler/index";
+import { resetStubsWithDb } from "./db-stub";
 
 // 任务查询（getById 链：select().from().where().limit()）返回给定行集合
 function stubTaskLookup(rows: unknown[]) {
@@ -25,6 +26,7 @@ describe("SchedulerService stale job cleanup", () => {
   beforeEach(() => {
     // 每次测试新建实例，避免 runningTasks/activeJobs 跨测试泄漏
     scheduler = new SchedulerService();
+    resetStubsWithDb();
   });
 
   afterEach(() => {

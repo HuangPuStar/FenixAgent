@@ -14,6 +14,7 @@ import {
   type AgentSession as ChatAgentSession,
   connectAgentRelay,
   createAgentSession,
+  environmentRepo,
   markInstanceRelayAttached,
   markInstanceRelayDetached,
   type PromptTurn,
@@ -26,9 +27,6 @@ import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { db } from "@server/db";
-import { environment } from "@server/db/schema";
-import { and, eq } from "drizzle-orm";
 import { acquireInstanceLease, releaseInstanceLease } from "./instance-lease";
 
 const logger = createLogger("wf-agent-chat");
@@ -80,6 +78,18 @@ export class AgentChatSessionAdapter implements AgentSession {
     chatSession: ChatAgentSession,
     /** 执行超时兜底时长（毫秒）；测试注入小值，生产使用 DEFAULT_EXECUTE_TIMEOUT_MS */
     private readonly timeoutMs: number = DEFAULT_EXECUTE_TIMEOUT_MS,
+    /**
+     * relay 意外关闭时交死亡信号的入口（默认即 agent-runtime 的 `terminateLocalDeadInstance`）。
+     *
+     * 可注入的理由与边界：清理的实现在 agent-runtime，而它读的 core runtime 仍是宿主模块
+     * （`@server/services/core-bootstrap`，agent-runtime 待迁 CoreRuntimePort），包内用例既不能 import
+     * 宿主模块、也无法经端口注入它。本包只拥有**调用点**（relay_closed → 交死亡信号），因此把这一个
+     * 协作者收成构造参数：用例可断言「调用一次且携带死亡实例 id」，清理语义（core 快照校验、controller
+     * 与 core 双侧停止）由 owner 的 `packages/agent-runtime/src/__tests__/local-instance-death-cleanup.test.ts`
+     * 覆盖。待 agent-runtime 提供 `/server/testing` 的死亡清理替身后，本参数与用例的注入都应删除、改回
+     * 模块级调用（已登记为 openIssue）。
+     */
+    private readonly terminateDeadInstance: (instanceId: string) => void | Promise<void> = terminateLocalDeadInstance,
   ) {
     this.turn = turn;
     this.instanceId = chatSession.instanceId;
@@ -186,7 +196,7 @@ export class AgentChatSessionAdapter implements AgentSession {
         // 本地实例 relay 意外关闭：触发实例级清理（C-P2.4）。实例可能被本轮 run 之外
         // 的进程复用，清理只移除死亡实例本身，不影响同节点其他健康实例；主动关闭
         // 路径（dispose/stop/idle 回收）的监听器先于 handle close 注销，不会误触发。
-        void terminateLocalDeadInstance(this.instanceId);
+        void this.terminateDeadInstance(this.instanceId);
         const payload = asAny.payload as Record<string, unknown> | undefined;
         const code = typeof payload?.code === "string" ? payload.code : "relay_disconnected";
         const existing = chunks.join("");
@@ -340,12 +350,13 @@ class AgentChatTransport implements Transport {
   ): Promise<AgentSession> {
     logger.debug(`connect start: envName=${envName}`);
 
-    // 1. 按 name + orgId 查 Environment
-    const [envRow] = await db
-      .select({ id: environment.id, userId: environment.userId })
-      .from(environment)
-      .where(and(eq(environment.name, envName), eq(environment.organizationId, this.organizationId)))
-      .limit(1);
+    // 1. 按 name + orgId 解析 Environment
+    // 走 agent-runtime 的环境仓储而不是直读 environment 表：环境域的数据访问归 agent-runtime，
+    // 本包直读会让同一张表出现第二份查询实现（§1 条件 8）。
+    // 该仓储当前没有 name 维度的单行查询，这里在组织范围内取回后按 name 过滤；把查询收敛回单行的
+    // `findByName(organizationId, name)` 需要 agent-runtime 侧新增仓储方法，已登记为跨包待办。
+    const envCandidates = await environmentRepo.listByOrganizationId(this.organizationId);
+    const envRow = envCandidates.find((candidate) => candidate.name === envName);
 
     if (!envRow) throw new Error(`Environment '${envName}' not found`);
 

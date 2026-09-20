@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ModelEntry } from "@/src/types/config";
+import type { ModelEntry } from "@fenix/web-runtime/types/config";
 import { buildModelOptions } from "../lib/model-config-utils";
 
 describe("buildModelOptions", () => {
@@ -41,16 +41,10 @@ describe("buildModelOptions", () => {
         providerDisplayName: "OpenAI Shared",
         contextLimit: null,
         outputLimit: null,
-        providerResourceKey: "org-source/provider-uid",
-        providerResourceAccess: {
-          ownership: "external",
-          sourceOrganizationId: "org-source",
-          sourceOrganizationName: "Source Team",
-          resourceUid: "provider-uid",
-          resourceKey: "org-source/provider-uid",
-          manageable: false,
-          writable: false,
-        },
+        providerId: "provider-uid",
+        organizationName: "Source Team",
+        scope: { organizationId: "org-source", visibility: "private" },
+        access: { actions: ["read"] },
       },
     ];
     const result = buildModelOptions(available);

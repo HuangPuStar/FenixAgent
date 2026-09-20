@@ -9,7 +9,6 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import type { ResourceAccess } from "@fenix/access-control/server";
 import matter from "gray-matter";
 import * as yaml from "js-yaml";
 
@@ -23,18 +22,17 @@ export interface SkillInfo {
   enabled: boolean;
   description: string;
   path: string;
-  resourceAccess?: ResourceAccess;
 }
 
-export interface SkillDetail {
-  id?: string;
-  name: string;
-  description: string;
-  content: string;
-  enabled: boolean;
-  path: string;
+/**
+ * SKILL.md 的解析结果：正文与 frontmatter。
+ *
+ * `metadata` 是字符串化后的 frontmatter（详情接口的元数据契约就是 string map），`name` /
+ * `description` 由资源行的列承载，调用方按需过滤。
+ */
+export interface SkillDocumentContent {
   metadata: Record<string, string>;
-  resourceAccess?: ResourceAccess;
+  content: string;
 }
 
 export interface UploadSkillFile {
@@ -104,7 +102,7 @@ export function getSkillArchivePath(skillRoot: string, organizationId: string, n
 }
 
 /** 从原始 Markdown 文本中解析 YAML frontmatter */
-export function parseFrontmatter(raw: string): { metadata: Record<string, string>; content: string } {
+export function parseFrontmatter(raw: string): SkillDocumentContent {
   const parsed = matter(raw);
   const metadata: Record<string, string> = {};
 
@@ -337,9 +335,7 @@ export async function listSkillsFromDir(baseDir: string): Promise<SkillInfo[]> {
 // ────────────────────────────────────────────
 
 /** 读取并解析 SKILL.md，文件不存在返回 null */
-export async function readSkillDetailFromMd(
-  mdPath: string,
-): Promise<{ metadata: Record<string, string>; content: string } | null> {
+export async function readSkillDetailFromMd(mdPath: string): Promise<SkillDocumentContent | null> {
   if (!existsSync(mdPath)) return null;
   const raw = await readFile(mdPath, "utf-8");
   return parseFrontmatter(raw);

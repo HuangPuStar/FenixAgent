@@ -1,13 +1,14 @@
 // src/__tests__/knowledge-provider-ragflow.test.ts
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { resetConfig, setConfig } from "@server/config";
 import { checkRagFlowHealth, RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
+import { initializeKnowledgeModuleConfig, stubKnowledgeConfig } from "../server/testing";
 
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   globalThis.fetch = originalFetch;
-  setConfig({
+  // 每个用例都经包内测试装配入口初始化模块配置与 DB 句柄（含基础设施复位），不再读宿主 config 单例。
+  initializeKnowledgeModuleConfig({
     ragflowApiUrl: "http://ragflow.test",
     ragflowApiKey: "test-api-key",
     ragflowRequestTimeoutMs: 30000,
@@ -16,12 +17,11 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  resetConfig();
 });
 
 describe("RagFlowKnowledgeProvider", () => {
   test("createKnowledgeBase 在未配置 API key 时抛出明确错误", async () => {
-    setConfig({ ragflowApiKey: "" });
+    stubKnowledgeConfig({ ragflowApiKey: "" });
     const fetchSpy = mock(async () => ({
       ok: true,
       text: async () => JSON.stringify({ code: 0, data: { id: "unused" } }),

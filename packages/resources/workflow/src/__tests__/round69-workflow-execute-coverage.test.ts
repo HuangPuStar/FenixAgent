@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { DAGRunResult } from "@fenix/workflow-engine";
-import { resetAllStubs, stubDb, stubPgStorageAdapter } from "@server/test-utils/helpers";
 import { clearAllEngines, getTeamEngine } from "../server/services/workflow";
 import { executeWorkflow } from "../server/services/workflow/workflow-execute";
+import { initializeWorkflowModuleConfig, stubPgStorageAdapter } from "../server/testing";
 
 const organizationId = "org-workflow-execute";
 const workflowId = "workflow-execute";
@@ -67,7 +68,7 @@ function runResult(status: DAGRunResult["status"], outputs?: DAGRunResult["outpu
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeWorkflowModuleConfig();
   clearAllEngines();
   storagePath = await mkdtemp(join(tmpdir(), "workflow-execute-"));
   await writeFile(join(storagePath, "v2.yaml"), yaml, "utf-8");

@@ -1,11 +1,13 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Calendar, Loader2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
+import { hindsightApi } from "../../../api/hindsight";
+import { type HindsightFailure, toHindsightFailure } from "../failure";
 import type { MemoryDetail } from "../types";
+import { HindsightFailureNotice } from "./HindsightFailureNotice";
 
 interface MemoryDetailModalProps {
   memoryId: string | null;
@@ -17,7 +19,7 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
   const { t } = useTranslation(NS.HINDSIGHT);
   const [memory, setMemory] = useState<MemoryDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<HindsightFailure | null>(null);
 
   // 加载记忆详情
   useEffect(() => {
@@ -25,7 +27,7 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
 
     const loadMemory = async () => {
       setLoading(true);
-      setError(null);
+      setFailure(null);
       setMemory(null);
 
       try {
@@ -33,7 +35,7 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
         setMemory(data);
       } catch (err) {
         console.error("Error loading memory:", err);
-        setError((err as Error).message);
+        setFailure(toHindsightFailure(err));
       } finally {
         setLoading(false);
       }
@@ -63,12 +65,19 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
-        ) : error ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center text-destructive">
-              <div className="text-sm">{t("memoryDetailModal.errorPrefix", { message: error })}</div>
+        ) : failure ? (
+          failure.kind === "forbidden" ? (
+            // 授权失败不给「Error: Cannot resolve bank ID」这类回显，改走统一的无权限文案（无重试）。
+            <div className="flex flex-col items-center justify-center py-20 text-center" role="alert">
+              <HindsightFailureNotice failure={failure} />
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center text-destructive">
+                <div className="text-sm">{t("memoryDetailModal.errorPrefix", { message: failure.detail })}</div>
+              </div>
+            </div>
+          )
         ) : memory ? (
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             {/* 文本 */}

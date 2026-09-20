@@ -1,28 +1,31 @@
 {
+  // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig。
+  // 为什么不能继承 `apps/web/tsconfig.json`（静态条件 3：`packages/**` 内不得出现指向 `apps/web`
+  // 的相对路径）：那会让「包的编译设置」由宿主应用的 tsconfig 决定，宿主改一行就联动本包，
+  // 而本包在 §1.6 后已不归属 apps/web。这里把真正需要的选项内联（对照 HEAD：本文件本来就没有 extends）。
+  // - `web/` 是浏览器面，需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
+  // - `paths` 只映射唯一残留的宿主导入（表定义，归任务 1.7），其余一律走包内相对路径或
+  //   `@fenix/*` 的包 exports；原 `@/` 别名表随切片切断（失效映射留着会掩盖新的别名回潮）；
+  // - 不写 `baseUrl`：paths 的值在无 baseUrl 时相对本文件解析，且 TS 6.0 起 baseUrl 已弃用。
   "compilerOptions": {
-    "baseUrl": ".",
-    "jsx": "react-jsx",
+    "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
+    "rootDir": "../../..",
     "paths": {
-      "@server/*": ["../../../apps/server/src/*"],
-      "@/components/ui/*": ["../../../apps/web/components/ui/*"],
-      "@/components/*": ["../../../apps/web/components/*"],
-      "@/src/api/hindsight": ["web/api/hindsight.ts"],
-      "@/src/api/environments": ["../../../packages/agent-runtime/web/api/environments.ts"],
-      "@/src/api/fs": ["../../../apps/web/src/api/fs.ts"],
-      "@/src/api/request": ["../../../apps/web/src/api/request.ts"],
-      "@/src/api/sites": ["../../agent-config/web/api/sites.ts"],
-      "@/src/components/agent-panel/WorkbenchPanel": [
-        "../../../apps/web/src/components/agent-panel/WorkbenchPanel.tsx"
-      ],
-      "@/src/components/file-icon-helper": ["../../../apps/web/src/components/file-icon-helper.tsx"],
-      "@/src/i18n": ["../../../apps/web/src/i18n/index.ts"],
-      "@/src/lib/card-renderer": ["../../../apps/web/src/lib/card-renderer/index.ts"],
-      "@/src/lib/utils": ["../../../apps/web/src/lib/utils.ts"],
-      "@/src/*": ["../../../apps/web/src/*"]
+      "@server/db/schema": ["../../../apps/server/src/db/schema.ts"]
     }
   },
-  "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]
+  "include": ["fenix.module.ts", "src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]
 }

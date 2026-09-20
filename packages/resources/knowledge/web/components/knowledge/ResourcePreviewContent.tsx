@@ -1,4 +1,8 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
+import DOMPurify from "dompurify";
 import { Loader2 } from "lucide-react";
 import mammoth from "mammoth";
 import { useCallback, useEffect, useState } from "react";
@@ -7,11 +11,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { NS } from "@/src/i18n";
-import type { KnowledgeResourceInfo } from "@/src/types/knowledge";
+import { kbApi } from "../../api/knowledge-bases";
+import type { KnowledgeResourceInfo } from "../../types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */
 function getVideoMimeType(ext: string): string {
@@ -233,8 +234,10 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
     runOfficeCheck();
   }, [runOfficeCheck]);
 
-  // 资源变化时触发加载
-  // resource.id 故意保留——同类型资源切换时 needsFetch/needsOfficeCheck 不变，必须依赖 resource.id 才会重新拉取预览。
+  // 资源变化时触发加载。
+  // `resource.id` 是刻意的重触发信号，而不是被 effect body 读取的值：同类型的两个资源互换时
+  // `needsFetch` / `needsOfficeCheck` 都不变，只有资源身份能表达「换了资源」，删掉它预览会停在上一个资源。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 规则是语法分析，看不到「依赖变化即重新拉取」的意图（同批 agent-config 的 SiteFrame reloadKey 同款）
   useEffect(() => {
     setFetchedContent(null);
     setOfficeMode("checking");
@@ -343,8 +346,9 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
             <div className="flex-1 overflow-auto p-6">
               <div
                 className="prose prose-sm max-w-none dark:prose-invert [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg"
-                // Mammoth outputs sanitized HTML.
-                dangerouslySetInnerHTML={{ __html: docxHtml }}
+                // Mammoth 的输出不是可信 HTML（docx 可携带任意标签与属性），与切片预览一致先经 DOMPurify 再注入。
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（mammoth 输出不可直接注入）
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docxHtml) }}
               />
             </div>
           );
@@ -528,30 +532,30 @@ function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
   );
 }
 
-/** 渲染表头单元格，使用列索引作为 key（表格列位置固定） */
+/** 渲染表头单元格：列位置即语义（第 N 列），用列索引作 key */
 function renderHeaderCells(headerRow: string[]) {
   return headerRow.map((cell, colIdx) => (
-    // Table column indices are positional and stable.
+    // biome-ignore lint/suspicious/noArrayIndexKey: 表格是内容快照的整表重绘（不重排、不增量插入），列位置即语义；表头文本可重复，内容派生键会撞键
     <th key={`h-${colIdx}`} className="border border-border px-3 py-1 text-text-primary text-left whitespace-nowrap">
       {cell}
     </th>
   ));
 }
 
-/** 渲染单个数据行的所有单元格 */
+/** 渲染单个数据行的所有单元格：单元格位置由「行号 + 列号」确定 */
 function renderRowCells(row: string[], rowIdx: number) {
   return row.map((cell, colIdx) => (
-    // Table cell indices are positional and stable.
+    // biome-ignore lint/suspicious/noArrayIndexKey: 同上——单元格无领域标识且内容可重复（空单元格成片出现），位置键是唯一稳定键
     <td key={`c-${rowIdx}-${colIdx}`} className="border border-border px-3 py-0.5 text-text-primary whitespace-nowrap">
       {cell}
     </td>
   ));
 }
 
-/** 渲染表格数据行，使用行索引作为 key（表格位置固定） */
+/** 渲染表格数据行：行位置即语义（第 N 行），用行索引作 key */
 function renderBodyRows(rows: string[][], maxRows: number) {
   return rows.slice(1, maxRows).map((row, rowIdx) => (
-    // Table row indices are positional and stable.
+    // biome-ignore lint/suspicious/noArrayIndexKey: 同上——表格整表重绘且行内容可完全重复（空白行），位置键不会引起元素错位
     <tr key={`r-${rowIdx}`} className="hover:bg-surface-2/50">
       <td className="border border-border px-2 py-0.5 text-text-muted text-right select-none">{rowIdx + 2}</td>
       {renderRowCells(row, rowIdx)}

@@ -35,7 +35,7 @@ module.exports = {
   forbidden: [
     {
       name: "no-circular",
-      comment: "workspace 模块依赖必须有向无环。",
+      comment: "workspace 模块依赖必须有向无环。违规按「规则 + 包对」登记在架构例外台账中。",
       severity: "error",
       from: { path: "(?:^|/)(?:apps|packages)/" },
       to: { circular: true },
@@ -50,6 +50,8 @@ module.exports = {
       },
       to: {
         path: workspaceSourcePathPattern(targetRoot),
+        // 必须保留 local：每个合法的 `@fenix/x` 导入都会解析到 packages/x/src/，
+        // 去掉该过滤会产生数百条把公开导出误判为内部穿透的假阳性。
         dependencyTypes: ["local"],
       },
     })),
@@ -62,10 +64,13 @@ module.exports = {
     },
     {
       name: "agent-runtime-not-to-resources",
-      comment: "agent-runtime 层不能反向依赖资源领域包。",
+      comment: "agent-runtime 层不能反向依赖资源领域包；Machine/Sandbox 是设计登记的专用运行入口例外。",
       severity: "error",
       from: { path: "(?:^|/)packages/agent-runtime/" },
-      to: { path: "(?:^|/)packages/resources/" },
+      to: {
+        path: "(?:^|/)packages/resources/",
+        pathNot: "(?:^|/)packages/resources/(?:machine|sandbox)/",
+      },
     },
     {
       name: "ce-not-to-ee",
@@ -77,8 +82,16 @@ module.exports = {
   ],
   options: {
     exclude: "(^|/)dist/",
+    // 只把 npm 依赖留在图外；workspace 包必须被跟随，否则包间边会静默消失。
     doNotFollow: { path: "node_modules" },
+    // 别名表以仓库根 tsconfig.json 为唯一来源；dependency-cruiser 的 paths 以运行目录为基准，
+    // 因此门禁必须在仓库根执行（package.json 的 check:dependencies 已保证这一点）。
+    tsConfig: { fileName: "tsconfig.json" },
     enhancedResolveOptions: {
+      // 本仓库的 workspace 包只有 exports、没有 main；不声明 exportsFields 会让所有
+      // `@fenix/*` 导入解析失败，进而让循环与跨包规则全部静默失效。
+      exportsFields: ["exports"],
+      conditionNames: ["import", "require", "node", "default", "types"],
       extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
     },
   },

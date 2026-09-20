@@ -28,7 +28,7 @@ describe("source route imports", () => {
   test("资源包路由可由源码入口独立加载", async () => {
     const modulePaths = [
       "./packages/resources/skill/src/server/routes/web/config/skills.ts",
-      "./packages/resources/agent-config/src/routes/web/sidebar-config.ts",
+      "./packages/resources/agent-config/src/server/routes/web/sidebar-config.ts",
     ];
 
     for (const modulePath of modulePaths) {

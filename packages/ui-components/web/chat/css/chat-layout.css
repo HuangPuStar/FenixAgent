@@ -1,0 +1,31 @@
+/*
+ * Chat 的唯一高度链（仅包内自有的会话外壳部分）。
+ *
+ * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-layout.css 的 `.acp-main-root` /
+ * `.chat-main-column` / `.chat-interface-*` 段，声明逐字复制；注释沿用源文并说明未复制的部分。
+ * 源文件语义：消息时间线仍由 Conversation/use-stick-to-bottom 管理；这里仅约束外层 flex 容器，
+ * 避免页面留白侵占可滚动区域或产生第二个滚动容器。
+ *
+ * 纯化改动（按复制清单要求裁剪）：
+ * 1. 未复制宿主页面外壳选择器 `.agent-panel-body` / `.agent-panel-content` / `.agent-panel-content--chat`
+ *    / `.agent-chat-workspace` / `.agent-chat-area`——它们属于宿主页面布局，包内不存在对应 DOM。
+ * 2. 源的共享规则
+ *    `.agent-panel-body, .agent-panel-content, .agent-chat-workspace, .agent-chat-area, .acp-main-root, ...`
+ *    在裁剪后只保留包内四类名，拆分不改变 `.acp-main-root` 等自身命中的声明。
+ * 3. 本包对应的 `chat-scroll-navigation` 定位所需的 `--chat-floating-artifacts-width` 由宿主壳提供，
+ *    缺失时回退 0px（见 web/chat/primitives/conversation.css）。
+ */
+.acp-main-root,
+.chat-main-column,
+.chat-interface-root,
+.chat-interface-column {
+  min-width: 0;
+  min-height: 0;
+}
+
+.acp-main-root,
+.chat-main-column,
+.chat-interface-root,
+.chat-interface-column {
+  overflow: hidden;
+}

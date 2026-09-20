@@ -2,7 +2,19 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import ReactDOMServer from "react-dom/server";
 
 // 显式 mock react-i18next，避免其他测试文件的 mock.module 残留影响 SSR 渲染
+/**
+ * `react-i18next` 替身的跨包并集出口：`useTranslation` 由本文件自带翻译表，
+ * 其余出口给同签名直通版本——bun 1.4.2 下 `mock.module` 的命名空间会被同进程后续文件复用，
+ * 缺少 `I18nextProvider` 会让之后加载的组件（如 identity 的弹窗）在渲染期直接抛错。
+ */
+const REACT_I18NEXT_UNION = {
+  I18nextProvider: ({ children }: { children?: unknown }) => children,
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  Trans: ({ children }: { children?: unknown }) => children,
+};
+
 mock.module("react-i18next", () => ({
+  ...REACT_I18NEXT_UNION,
   I18nextProvider: ({ children }: { children: unknown }) => children,
   useTranslation: () => ({
     t: (key: string) => key,

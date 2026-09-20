@@ -1,0 +1,24 @@
+{
+  "name": "@fenix/identity",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@better-auth/api-key": "1.6.11",
+    "@fenix/logger": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "better-auth": "1.6.11",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "zod": "^4.4.3"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
+    "./module": "./fenix.module.ts",
+    "./server": "./src/server.ts",
+    "./web": {
+      "types": "./web/index.ts",
+      "default": "./web/index.ts"
+    }
+  }
+}

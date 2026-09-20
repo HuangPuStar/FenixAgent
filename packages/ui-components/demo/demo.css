@@ -1,0 +1,223 @@
+/*
+ * demo 样式入口。
+ *
+ * 三个 @import 的顺序有语义：
+ * 1. `tailwindcss` —— 引擎本体；
+ * 2. `../web/styles/theme.css` —— 包内设计 token 与 @source（web/ 目录），与消费方接入方式一致；
+ * 3. `tw-animate-css` —— 只为展示页补上 animate-in / animate-out / animate-accordion-* 等动画类，
+ *    包本身不引入它（宿主没有该依赖时组件仍然可用，只是没有过渡动画）。
+ *
+ * 其余规则只服务展示页布局（左侧导航 + 右侧内容、区块间距、示例卡片边框），
+ * 不参与包的发布产物。
+ */
+
+@import "tailwindcss";
+@import "../web/styles/theme.css";
+@import "tw-animate-css";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+/* 与源宿主 apps/web/src/index.css 的 @layer base 对齐：13px 基准字号 + --font-body
+   决定组件的视觉尺寸，缺了会让展示页比宿主里明显偏大；底色与字色同样取宿主的
+   surface-0 / text-primary（而非 --color-background/--color-foreground）。 */
+html {
+  background-color: var(--color-surface-0);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 源宿主的自定义滚动条。属于应用壳，只为展示页观感一致而复制，不进包产物。 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ---------- 外壳：左侧导航 + 右侧内容 ---------- */
+
+.demo-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.demo-nav {
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: 220px;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 24px 16px;
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-surface-1);
+}
+
+.demo-nav-title {
+  margin-bottom: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.demo-nav-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.demo-nav-item:hover {
+  background-color: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.demo-nav-item[data-active="true"] {
+  background-color: var(--color-brand-subtle);
+  color: var(--color-brand);
+  font-weight: 500;
+}
+
+.demo-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.demo-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  height: var(--navbar-height);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-background);
+}
+
+.demo-topbar-label {
+  margin-right: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.demo-content {
+  max-width: 960px;
+  padding: 32px 24px 72px;
+}
+
+/* ---------- 分区与示例卡片 ---------- */
+
+.demo-section-title {
+  margin: 0 0 24px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.demo-example {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface-1);
+}
+
+.demo-example-title {
+  margin: 0 0 16px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.demo-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+}
+
+.demo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.demo-hint {
+  margin: 12px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+/* ---------- 主题分区 ---------- */
+
+.demo-token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.demo-token {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.demo-token-swatch {
+  height: 48px;
+}
+
+.demo-token-label {
+  padding: 6px 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+/* card-renderer 示例标签的展示样式（见 providers.tsx） */
+.demo-tag-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--color-border-active);
+  border-radius: var(--radius);
+  font-size: 13px;
+}

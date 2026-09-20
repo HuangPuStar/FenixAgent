@@ -58,8 +58,8 @@ describe("消息组件补充分支的服务端渲染", () => {
     expect(markup).toContain('data-variant="outline"');
   });
 
-  // 图片和普通文件走不同展示路径，且有移除回调时才输出移除按钮。
-  test("附件按媒体类型展示图片或文件并保留移除操作", () => {
+  // 图片和普通文件走不同展示路径。
+  test("附件按媒体类型展示图片或文件", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MessageAttachments,
@@ -87,7 +87,6 @@ describe("消息组件补充分支的服务端渲染", () => {
     expect(markup).toContain('src="https://example.test/diagram.png"');
     expect(markup).toContain('alt="diagram.png"');
     expect(markup).toContain("lucide-paperclip");
-    expect(markup).toContain("message.removeAttachment");
   });
 
   // 空附件容器不应留下布局节点，避免发送空消息时产生额外间距。

@@ -9,7 +9,7 @@ export const ROOT_OWNERS = [
   "model-management",
   "agent-config",
   "resource-knowledge",
-  "identity-admin",
+  "platform-identity",
   "platform-access-control",
   "delete",
 ] as const;
@@ -443,6 +443,9 @@ const ROOT_OWNER_RULES_BASE: readonly Omit<RootOwnerRule, "targetPrefix">[] = [
     task: "RMD-05",
   },
 
+  // RMD-06 的旧授权栈文件（仓储、协议 schema、3 个专项测试）在 CE 阶段 2 任务 1.2 被删除：
+  // 新授权栈把归属收敛到资源主表的 `organization_id` + `visibility` 列，这些文件失去全部消费者。
+  // 规则保留最近一次的 owner 以便追溯历史归属；`delete` 只用于 Finder 元数据与构建产物，不适用于此。
   {
     prefix: "src/repositories/resource-permission.ts",
     owner: "platform-access-control",
@@ -455,34 +458,37 @@ const ROOT_OWNER_RULES_BASE: readonly Omit<RootOwnerRule, "targetPrefix">[] = [
     targetRoot: targetRoot("packages/platform/access-control"),
     task: "RMD-06",
   },
+  // RMD-06 的 6 个 owner 目标在 CE 阶段 2 任务 1.2 之后再次变化：`control.ts` 落宿主
+  // （见 TARGET_PREFIX_OVERRIDES），`user.ts` / `ChangePasswordDialog.tsx` 随身份职责迁入
+  // `packages/platform/identity`，`share-link.ts` 与 `token.ts` 因无任何调用方被删除。
   {
     prefix: "src/routes/web/control.ts",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
   {
     prefix: "src/repositories/share-link.ts",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
   {
     prefix: "src/repositories/token.ts",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
   {
     prefix: "src/repositories/user.ts",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
   {
     prefix: "web/components/ChangePasswordDialog.tsx",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
 
@@ -869,8 +875,8 @@ const ROOT_OWNER_RULES_BASE: readonly Omit<RootOwnerRule, "targetPrefix">[] = [
   },
   {
     prefix: "web/src/__tests__/token-",
-    owner: "identity-admin",
-    targetRoot: targetRoot("packages/resources/identity-admin"),
+    owner: "platform-identity",
+    targetRoot: targetRoot("packages/platform/identity"),
     task: "RMD-06",
   },
   { prefix: "web/src/__tests__/", owner: "apps-web", targetRoot: targetRoot("apps/web"), task: "RMD-08" },
@@ -893,6 +899,10 @@ const TARGET_PREFIX_OVERRIDES: Readonly<Record<string, string>> = {
     "packages/resources/agent-config/web/components/agent-panel/SiteFrame.tsx",
   "web/src/components/agent-panel/SiteTabsBar.tsx":
     "packages/resources/agent-config/web/components/agent-panel/SiteTabsBar.tsx",
+  // RMD-06 原计划把控制路由迁入身份包，CE 阶段 2 任务 1.2 实施时改判为宿主路由：`control.ts`
+  // 同时依赖 Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与既有的
+  // `resource-machine → agent-runtime` 形成环，只有宿主能同时持有两侧。
+  "src/routes/web/control.ts": "apps/server/src/routes/web/control.ts",
 };
 
 export const ROOT_OWNER_RULES: readonly RootOwnerRule[] = ROOT_OWNER_RULES_BASE.map((rule) => ({

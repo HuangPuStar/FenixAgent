@@ -1,13 +1,9 @@
-import { EmbeddingModelManager } from "@fenix/model-management/web";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useRequest } from "ahooks";
-import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
-import type { ReactNode } from "react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
+import { useOrg, useSession } from "@fenix/identity/web";
+import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -16,11 +12,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
 import {
   Select,
   SelectContent,
@@ -29,21 +25,24 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { unwrap } from "@/src/api/request";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { NS } from "@/src/i18n";
-import { useSession } from "@/src/lib/auth-client";
-import { KnowledgeGraphPanel } from "@/src/pages/agent-panel/components/KnowledgeGraphPanel";
-import { AgentKnowledgeDirectory } from "@/src/pages/agent-panel/pages/agent-knowledge-directory";
-import { AgentKnowledgeResources } from "@/src/pages/agent-panel/pages/agent-knowledge-resources";
-import { AgentMasterDetailWorkspace } from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
+} from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useRequest } from "ahooks";
+import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
+import type { ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { kbApi } from "../../../api/knowledge-bases";
+import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
+import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
+import { EmbeddingModelManager } from "../../../src/pages/agent-panel/components/EmbeddingModelManager";
+import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
 import type {
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
@@ -51,10 +50,12 @@ import type {
   KnowledgeParseMethod,
   KnowledgeResourceInfo,
   UnassociatedKnowledgeBase,
-} from "@/src/types/knowledge";
-import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
-import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
-import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
+} from "../../../types/knowledge";
+import { KnowledgeGraphPanel } from "../KnowledgeGraphPanel";
+import { AgentKnowledgeAccessDenied, isKnowledgeAccessDenied } from "./agent-knowledge-access-denied";
+import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
+import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
+import { AgentKnowledgeResources } from "./agent-knowledge-resources";
 import "./agent-knowledge.css";
 
 /** 资源状态 → 语义色 badge 样式 */
@@ -175,14 +176,22 @@ export function AgentKnowledgeBasesPage() {
   }, []);
   const items: KnowledgeBaseInfo[] = Array.isArray(listData) ? listData : [];
 
-  const { data: formOptions, refresh: refreshFormOptions } = useRequest(() => unwrap(kbApi.getFormOptions()), {
+  const {
+    data: formOptions,
+    error: formOptionsError,
+    refresh: refreshFormOptions,
+  } = useRequest(() => unwrap(kbApi.getFormOptions()), {
     refreshDeps: [],
     onError: (err) => {
-      // 选项拉取失败仅记录，不弹 toast——表单仍可用（分块方法是静态兜底）
+      // 选项拉取失败不再静默降级：创建弹窗的解析配置区会整区接管为可重试的显式错误态
+      // （见下面 formOptionsFailed 分支）。这里只保留诊断上下文。
       console.error("Failed to load knowledge form options", err);
     },
   });
   const options: KnowledgeFormOptions | null = formOptions ?? null;
+  // 判据：`error && 无选项` 才整区接管；已有选项后的刷新失败保留旧选项（ahooks 在失败时保留
+  // 上一次成功的数据），此时表单照常可用，不弹错误区。
+  const formOptionsFailed = formOptionsError != null && options == null;
 
   // 详情查询（手动触发）
   const { run: runLoadDetail, loading: detailLoading } = useRequest(
@@ -242,12 +251,13 @@ export function AgentKnowledgeBasesPage() {
     },
   );
 
-  // 更新知识库（静默操作，不弹 toast）
+  // 更新知识库
   const { run: runUpdate, loading: updateSaving } = useRequest(
     (id: string, payload: { name: string; description?: string }) => unwrap(kbApi.update({ id }, payload)),
     {
       manual: true,
       onSuccess: (updated, [id]) => {
+        toast.success(t("toast.updated"));
         setDialogOpen(false);
         // 用后端返回的最新数据同步详情头部，避免改名/改描述后需刷新才生效
         setSelectedDetail((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
@@ -262,10 +272,11 @@ export function AgentKnowledgeBasesPage() {
 
   const saving = createSaving || updateSaving;
 
-  // 删除知识库（静默操作，不弹 toast）
+  // 删除知识库
   const { run: runDelete } = useRequest((id: string) => unwrap(kbApi.del({ id })), {
     manual: true,
     onSuccess: (_data, [id]) => {
+      toast.success(t("toast.deleted"));
       setConfirmOpen(false);
       if (kbId === id) {
         pushKbId(null);
@@ -326,12 +337,13 @@ export function AgentKnowledgeBasesPage() {
     }, 2000);
   };
 
-  // 删除资源（静默操作，不弹 toast）
+  // 删除资源
   const { run: runDeleteResource } = useRequest(
     (kbId: string, resourceId: string) => unwrap(kbApi.deleteResource({ kbId, resourceId })),
     {
       manual: true,
       onSuccess: (_data, [kbId]) => {
+        toast.success(t("toast.resourceDeleted"));
         setDeletingResourceId(null);
         runLoadDetail(kbId as string);
       },
@@ -461,6 +473,17 @@ export function AgentKnowledgeBasesPage() {
             </div>
           ))}
         </div>
+      </AppPage>
+    );
+  }
+
+  // 无权限（401/403，request 层归一为 UNAUTHORIZED）整页接管：此时列表、目录、详情以及顶部的
+  // 创建/导入入口都会被同一守卫拒绝，渲染半个页面只会让用户看到一堆点了没反应的按钮。
+  // 判定与原因说明见 agent-knowledge-access-denied.tsx。
+  if (isKnowledgeAccessDenied(listError)) {
+    return (
+      <AppPage className="agent-knowledge-page">
+        <AgentKnowledgeAccessDenied />
       </AppPage>
     );
   }
@@ -814,140 +837,147 @@ export function AgentKnowledgeBasesPage() {
           </FieldGroup>
 
           {/* 解析配置（仅创建模式） */}
-          {!editingItem && (
-            <>
-              <p className="text-[12px] text-[#94a3b8]">{t("form.configLockedAfterCreate")}</p>
+          {!editingItem &&
+            (formOptionsFailed ? (
+              <KnowledgeLoadFailure
+                error={formOptionsError}
+                title={t("loadFailure.formOptions")}
+                onRetry={refreshFormOptions}
+              />
+            ) : (
+              <>
+                <p className="text-[12px] text-[#94a3b8]">{t("form.configLockedAfterCreate")}</p>
 
-              {/* 嵌入模型 */}
-              <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")} required>
-                <Select
-                  value={formEmbeddingModel}
-                  onValueChange={setFormEmbeddingModel}
-                  disabled={(options?.embeddingModels?.length ?? 0) === 0}
-                >
-                  <SelectTrigger className="h-10 w-full">
-                    <SelectValue placeholder={t("form.embeddingModelPlaceholder")} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[320px]">
-                    {(() => {
-                      const models = options?.embeddingModels ?? [];
-                      const grouped = new Map<string, Map<string, typeof models>>();
-                      for (const m of models) {
-                        const prov = m.provider || "Unknown";
-                        const inst = m.instance || "default";
-                        if (!grouped.has(prov)) grouped.set(prov, new Map());
-                        const instMap = grouped.get(prov)!;
-                        if (!instMap.has(inst)) instMap.set(inst, []);
-                        instMap.get(inst)!.push(m);
-                      }
-                      const providers = Array.from(grouped.entries());
-                      return providers.length === 0 ? (
-                        <div className="px-2 py-4 text-center text-[13px] text-muted-foreground">
-                          {t("form.noEmbeddingModels")}
-                        </div>
-                      ) : (
-                        providers.map(([provider, instMap], providerIdx) => (
-                          <SelectGroup key={provider}>
-                            <SelectLabel
-                              className={
-                                "px-2 text-[11px] font-semibold uppercase tracking-wider text-[#64748b]" +
-                                (providerIdx > 0 ? " mt-1 border-t border-[#eef2f8] pt-2.5" : "")
-                              }
-                            >
-                              {provider}
-                            </SelectLabel>
-                            {Array.from(instMap.entries()).map(([instance, items]) => (
-                              <Fragment key={instance}>
-                                <SelectLabel className="pl-5 text-[11px] font-medium text-[#94a3b8]">
-                                  {instance}
-                                </SelectLabel>
-                                {items.map((m) => (
-                                  <SelectItem key={m.name} value={m.name} className="pl-8 text-[13px]">
-                                    {m.name.split("@")[0] || m.name}
-                                  </SelectItem>
-                                ))}
-                              </Fragment>
-                            ))}
-                          </SelectGroup>
-                        ))
-                      );
-                    })()}
-                  </SelectContent>
-                </Select>
-              </FieldGroup>
-
-              {/* 解析方法 */}
-              <FieldGroup label={t("form.parseMethod")} hint={t("form.parseMethodHint")}>
-                <div className="flex gap-6">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
-                    <input
-                      type="radio"
-                      name="parseMethod"
-                      value="builtin"
-                      checked={formParseMethod === "builtin"}
-                      onChange={() => setFormParseMethod("builtin")}
-                      className="h-4 w-4 accent-[#1677ff]"
-                    />
-                    {t("form.parseMethodBuiltin")}
-                  </label>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
-                    <input
-                      type="radio"
-                      name="parseMethod"
-                      value="pipeline"
-                      checked={formParseMethod === "pipeline"}
-                      onChange={() => setFormParseMethod("pipeline")}
-                      className="h-4 w-4 accent-[#1677ff]"
-                    />
-                    {t("form.parseMethodPipeline")}
-                  </label>
-                </div>
-              </FieldGroup>
-
-              {/* 内置分块方法 */}
-              {formParseMethod === "builtin" && (
-                <FieldGroup required label={t("form.chunkMethod")} hint={t("form.chunkMethodHint")}>
-                  <Select value={formChunkMethod} onValueChange={setFormChunkMethod}>
+                {/* 嵌入模型 */}
+                <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")} required>
+                  <Select
+                    value={formEmbeddingModel}
+                    onValueChange={setFormEmbeddingModel}
+                    disabled={(options?.embeddingModels?.length ?? 0) === 0}
+                  >
                     <SelectTrigger className="h-10 w-full">
-                      <SelectValue placeholder={t("form.chunkMethodPlaceholder")} />
+                      <SelectValue placeholder={t("form.embeddingModelPlaceholder")} />
                     </SelectTrigger>
-                    <SelectContent>
-                      {(options?.chunkMethods ?? []).map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label ?? t(c.labelKey ?? "")}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-[320px]">
+                      {(() => {
+                        const models = options?.embeddingModels ?? [];
+                        const grouped = new Map<string, Map<string, typeof models>>();
+                        for (const m of models) {
+                          const prov = m.provider || "Unknown";
+                          const inst = m.instance || "default";
+                          if (!grouped.has(prov)) grouped.set(prov, new Map());
+                          const instMap = grouped.get(prov)!;
+                          if (!instMap.has(inst)) instMap.set(inst, []);
+                          instMap.get(inst)!.push(m);
+                        }
+                        const providers = Array.from(grouped.entries());
+                        return providers.length === 0 ? (
+                          <div className="px-2 py-4 text-center text-[13px] text-muted-foreground">
+                            {t("form.noEmbeddingModels")}
+                          </div>
+                        ) : (
+                          providers.map(([provider, instMap], providerIdx) => (
+                            <SelectGroup key={provider}>
+                              <SelectLabel
+                                className={
+                                  "px-2 text-[11px] font-semibold uppercase tracking-wider text-[#64748b]" +
+                                  (providerIdx > 0 ? " mt-1 border-t border-[#eef2f8] pt-2.5" : "")
+                                }
+                              >
+                                {provider}
+                              </SelectLabel>
+                              {Array.from(instMap.entries()).map(([instance, items]) => (
+                                <Fragment key={instance}>
+                                  <SelectLabel className="pl-5 text-[11px] font-medium text-[#94a3b8]">
+                                    {instance}
+                                  </SelectLabel>
+                                  {items.map((m) => (
+                                    <SelectItem key={m.name} value={m.name} className="pl-8 text-[13px]">
+                                      {m.name.split("@")[0] || m.name}
+                                    </SelectItem>
+                                  ))}
+                                </Fragment>
+                              ))}
+                            </SelectGroup>
+                          ))
+                        );
+                      })()}
                     </SelectContent>
                   </Select>
                 </FieldGroup>
-              )}
 
-              {/* Pipeline 选择 */}
-              {formParseMethod === "pipeline" && (
-                <FieldGroup label={t("form.pipeline")} hint={t("form.pipelineHint")}>
-                  {(options?.pipelines?.length ?? 0) === 0 ? (
-                    <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 text-center shadow-sm">
-                      <p className="text-[13px] font-medium text-[#64748b]">{t("form.noPipelines")}</p>
-                      <p className="mt-1 text-[12px] text-[#94a3b8]">{t("form.noPipelinesHint")}</p>
-                    </div>
-                  ) : (
-                    <Select value={formPipeline} onValueChange={setFormPipeline}>
+                {/* 解析方法 */}
+                <FieldGroup label={t("form.parseMethod")} hint={t("form.parseMethodHint")}>
+                  <div className="flex gap-6">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                      <input
+                        type="radio"
+                        name="parseMethod"
+                        value="builtin"
+                        checked={formParseMethod === "builtin"}
+                        onChange={() => setFormParseMethod("builtin")}
+                        className="h-4 w-4 accent-[#1677ff]"
+                      />
+                      {t("form.parseMethodBuiltin")}
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                      <input
+                        type="radio"
+                        name="parseMethod"
+                        value="pipeline"
+                        checked={formParseMethod === "pipeline"}
+                        onChange={() => setFormParseMethod("pipeline")}
+                        className="h-4 w-4 accent-[#1677ff]"
+                      />
+                      {t("form.parseMethodPipeline")}
+                    </label>
+                  </div>
+                </FieldGroup>
+
+                {/* 内置分块方法 */}
+                {formParseMethod === "builtin" && (
+                  <FieldGroup required label={t("form.chunkMethod")} hint={t("form.chunkMethodHint")}>
+                    <Select value={formChunkMethod} onValueChange={setFormChunkMethod}>
                       <SelectTrigger className="h-10 w-full">
-                        <SelectValue placeholder={t("form.pipelinePlaceholder")} />
+                        <SelectValue placeholder={t("form.chunkMethodPlaceholder")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {(options?.pipelines ?? []).map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
+                        {(options?.chunkMethods ?? []).map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label ?? t(c.labelKey ?? "")}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                </FieldGroup>
-              )}
-            </>
-          )}
+                  </FieldGroup>
+                )}
+
+                {/* Pipeline 选择 */}
+                {formParseMethod === "pipeline" && (
+                  <FieldGroup label={t("form.pipeline")} hint={t("form.pipelineHint")}>
+                    {(options?.pipelines?.length ?? 0) === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 text-center shadow-sm">
+                        <p className="text-[13px] font-medium text-[#64748b]">{t("form.noPipelines")}</p>
+                        <p className="mt-1 text-[12px] text-[#94a3b8]">{t("form.noPipelinesHint")}</p>
+                      </div>
+                    ) : (
+                      <Select value={formPipeline} onValueChange={setFormPipeline}>
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue placeholder={t("form.pipelinePlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(options?.pipelines ?? []).map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </FieldGroup>
+                )}
+              </>
+            ))}
         </div>
       </FormDialog>
 

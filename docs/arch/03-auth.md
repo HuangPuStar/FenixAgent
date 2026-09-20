@@ -18,6 +18,8 @@ FenixAgent 面向三种客户端场景提供服务，每种的安全约束和认
 
 认证系统基于 [better-auth](https://www.better-auth.com) 构建，复用其 Session、Organization、API Key 等标准插件能力，在此之上封装多通道认证调度和组织上下文解析。
 
+实现归属：本条链路的唯一 owner 是 `packages/platform/identity`（better-auth 实例、可信来源推导、API Key 组织恢复、组织上下文解析、身份表 schema）。`apps/server` 只保留薄认证 adapter 与守卫实例，`/web/*` 路由以工厂形式接收该守卫；其它模块需要身份数据时经 `@fenix/platform-sdk` 的 `IdentityDirectory` 窄契约，不得导入 identity 的内部路径。
+
 ### 1. Session 认证
 
 标准的用户名密码认证。
@@ -64,22 +66,30 @@ Machine → ws://<host>/acp/ws?secret=<REGISTRY_SECRET>
 
 ### 多凭证支持
 
-Session 认证路由（`sessionAuth: true`）实际上接受两种凭证，决定先后尝试：
+用户级认证路由实际上**按固定顺序尝试三种凭证**，任一命中即停止（顺序与判定是契约的一部分，
+唯一实现在 `packages/platform/identity/src/services/request-authentication.ts`）：
 
-1. 先检查 session cookie
-2. cookie 不存在或失效时，尝试 API Key
+1. 先检查 better-auth session cookie
+2. 无 session 时尝试 **Environment Secret**——命中后以 environment 属主为审计主体，组织上下文取
+   该 environment 绑定的组织（个人 environment 回落为属主）
+3. 仍未命中时尝试 better-auth API Key——从 key metadata 恢复组织，并二次校验成员关系仍然有效，
+   校验异常保守拒绝
 
 ```mermaid
 flowchart TD
     REQ["请求到达"] --> COOKIE{"session cookie 有效?"}
     COOKIE -->|是| CTX["构建认证上下文<br/>用户 + 组织ID + 角色"]
     CTX --> PASS["放行"]
-    COOKIE -->|否| APIKEY["尝试 API Key 认证"]
+    COOKIE -->|否| ENVSECRET{"Environment Secret 命中?"}
+    ENVSECRET -->|是| CTX2["按 environment 属主与所属组织<br/>构建认证上下文"]
+    CTX2 --> PASS
+    ENVSECRET -->|否| APIKEY["尝试 API Key 认证"]
     APIKEY -->|成功| PASS2["放行"]
     APIKEY -->|失败| NULL["拒绝（401）"]
 ```
 
-**设计意图**：同一套 `/web/*` 和 `/api/*` 路由同时支持浏览器（cookie）和 CLI 工具（API Key）两种客户端，无需维护两套认证入口。
+**设计意图**：同一套 `/web/*` 和 `/api/*` 路由同时支持浏览器（cookie）、Agent 进程
+（Environment Secret）与 CLI 工具（API Key）三类客户端，无需维护多套认证入口。
 
 ### 组织上下文解析
 

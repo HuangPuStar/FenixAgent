@@ -10,7 +10,7 @@
  * 实例删除，setModelStatus 用于屏蔽/取消屏蔽单个模型。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type {
   ConfiguredProviderNode,
   EmbeddingFactoryOption,

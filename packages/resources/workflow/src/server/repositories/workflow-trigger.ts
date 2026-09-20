@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { workflowTrigger } from "@server/db/schema";
 import { desc, eq } from "drizzle-orm";
+import { getWorkflowDatabase } from "../db";
 
 export type WorkflowTriggerRow = typeof workflowTrigger.$inferSelect;
 export type WorkflowTriggerInsert = typeof workflowTrigger.$inferInsert;
@@ -17,21 +17,25 @@ export interface IWorkflowTriggerRepo {
 
 class PgWorkflowTriggerRepo implements IWorkflowTriggerRepo {
   async getByHash(publicHash: string): Promise<WorkflowTriggerRow | null> {
+    const db = getWorkflowDatabase();
     const [row] = await db.select().from(workflowTrigger).where(eq(workflowTrigger.publicHash, publicHash)).limit(1);
     return row ?? null;
   }
 
   async getById(id: string): Promise<WorkflowTriggerRow | null> {
+    const db = getWorkflowDatabase();
     const [row] = await db.select().from(workflowTrigger).where(eq(workflowTrigger.id, id)).limit(1);
     return row ?? null;
   }
 
   async create(data: WorkflowTriggerInsert): Promise<WorkflowTriggerRow> {
+    const db = getWorkflowDatabase();
     const [row] = await db.insert(workflowTrigger).values(data).returning();
     return row;
   }
 
   async delete(id: string): Promise<boolean> {
+    const db = getWorkflowDatabase();
     const result = await db
       .delete(workflowTrigger)
       .where(eq(workflowTrigger.id, id))
@@ -40,10 +44,12 @@ class PgWorkflowTriggerRepo implements IWorkflowTriggerRepo {
   }
 
   async update(id: string, data: Partial<WorkflowTriggerInsert>): Promise<void> {
+    const db = getWorkflowDatabase();
     await db.update(workflowTrigger).set(data).where(eq(workflowTrigger.id, id));
   }
 
   async listByWorkflow(workflowId: string): Promise<WorkflowTriggerRow[]> {
+    const db = getWorkflowDatabase();
     return db
       .select()
       .from(workflowTrigger)
@@ -52,6 +58,7 @@ class PgWorkflowTriggerRepo implements IWorkflowTriggerRepo {
   }
 
   async listByOrg(organizationId: string): Promise<WorkflowTriggerRow[]> {
+    const db = getWorkflowDatabase();
     return db
       .select()
       .from(workflowTrigger)

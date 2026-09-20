@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { McpServerInfo } from "@fenix/web-runtime/types/config";
 import { getMcpDisplayName } from "../lib/mcp-resource-access";
 import {
   buildMcpPayload,
   countMcpScopes,
   filterMcpServers,
+  isUnauthorizedError,
   McpImportError,
   parseMcpCommand,
   parseMcpJson,
 } from "../pages/agent-panel/pages/agent-mcp-utils";
-import type { McpServerInfo, ResourceAccess } from "../types/config";
+
+const ACTIVE_ORG_ID = "org-current";
 
 const servers: McpServerInfo[] = [
   {
@@ -17,14 +21,8 @@ const servers: McpServerInfo[] = [
     type: "local",
     enabled: true,
     summary: "读取工作区文件",
-    resourceAccess: {
-      ownership: "internal",
-      sourceOrganizationId: "org-current",
-      resourceUid: "mcp-filesystem",
-      resourceKey: "filesystem",
-      manageable: true,
-      writable: true,
-    } satisfies ResourceAccess,
+    scope: { organizationId: ACTIVE_ORG_ID, visibility: "private" },
+    access: { actions: ["read", "update"] },
   },
   {
     id: "mcp-browser",
@@ -32,15 +30,9 @@ const servers: McpServerInfo[] = [
     type: "remote",
     enabled: true,
     summary: "浏览器控制",
-    resourceAccess: {
-      ownership: "external",
-      sourceOrganizationId: "org-shared",
-      sourceOrganizationName: "共享团队",
-      resourceUid: "mcp-browser",
-      resourceKey: "org-shared/browser-control",
-      manageable: false,
-      writable: false,
-    } satisfies ResourceAccess,
+    scope: { organizationId: "org-shared", visibility: "public" },
+    access: { actions: ["read", "use"] },
+    organizationName: "共享团队",
   },
 ];
 
@@ -134,34 +126,59 @@ describe("plugin marketplace filters", () => {
     expect(getMcpDisplayName(servers[1])).toBe("共享团队/browser-control");
   });
 
-  // 本组织与公开筛选分别依据 ownership 和 publicReadable。
+  // 本组织与公开筛选分别依据 scope.organizationId 归属比对和 scope.visibility。
   test("filters organization and public scopes independently", () => {
-    const publicInternal = {
-      ...servers[0],
-      resourceAccess: { ...servers[0].resourceAccess!, publicReadable: true },
-    };
-    const publicExternal = {
-      ...servers[1],
-      resourceAccess: { ...servers[1].resourceAccess!, publicReadable: true },
-    };
-    const catalog = [publicInternal, publicExternal];
+    const publicInternal = { ...servers[0], scope: { ...servers[0].scope!, visibility: "public" as const } };
+    const catalog = [publicInternal, servers[1]];
 
-    expect(filterMcpServers(catalog, "", "organization").map((server) => server.name)).toEqual(["filesystem"]);
-    expect(filterMcpServers(catalog, "", "public").map((server) => server.name)).toEqual([
+    expect(filterMcpServers(catalog, "", "organization", ACTIVE_ORG_ID).map((server) => server.name)).toEqual([
+      "filesystem",
+    ]);
+    expect(filterMcpServers(catalog, "", "public", ACTIVE_ORG_ID).map((server) => server.name)).toEqual([
       "filesystem",
       "browser-control",
     ]);
-    expect(countMcpScopes(catalog)).toEqual({ organization: 1, public: 2 });
+    expect(countMcpScopes(catalog, ACTIVE_ORG_ID)).toEqual({ organization: 1, public: 2 });
   });
 
-  // 外部定向共享但未公开的 MCP 不应进入公开筛选。
-  test("does not treat every external MCP as public", () => {
-    expect(filterMcpServers(servers, "", "public")).toEqual([]);
-    expect(countMcpScopes(servers)).toEqual({ organization: 1, public: 0 });
+  // 外部组织私有 MCP 不属于本组织也不公开，两个筛选都不应包含它。
+  test("does not treat every external MCP as public or internal", () => {
+    const privateExternal = {
+      ...servers[1],
+      scope: { organizationId: "org-shared", visibility: "private" as const },
+    };
+
+    expect(filterMcpServers([privateExternal], "", "public", ACTIVE_ORG_ID)).toEqual([]);
+    expect(filterMcpServers([privateExternal], "", "organization", ACTIVE_ORG_ID)).toEqual([]);
+    expect(countMcpScopes([privateExternal], ACTIVE_ORG_ID)).toEqual({ organization: 0, public: 0 });
+  });
+
+  // 组织上下文未就绪（当前组织未知）时不得把资源误判为外部资源，也不应把本组织资源从目录中隐藏。
+  test("treats resources as internal when the active organization is unknown", () => {
+    expect(filterMcpServers(servers, "", "organization").map((server) => server.name)).toEqual([
+      "filesystem",
+      "browser-control",
+    ]);
+    expect(countMcpScopes(servers)).toEqual({ organization: 2, public: 1 });
   });
 
   // 搜索应覆盖名称、说明与传输类型。
   test("searches plugin names and summaries", () => {
     expect(filterMcpServers(servers, "浏览器", "all").map((server) => server.name)).toEqual(["browser-control"]);
+  });
+});
+
+describe("catalog load failure classification", () => {
+  // 401/403 在 request 层归一为 UNAUTHORIZED，页面靠这条判定进入「无权限」分支并去掉重试按钮。
+  test("treats the normalized 401/403 error code as unauthorized", () => {
+    expect(isUnauthorizedError(new ApiError("请求缺少组织上下文", "UNAUTHORIZED"))).toBe(true);
+  });
+
+  // 其他错误码与普通 Error 都不得被当成无权限：误判会让网络/服务端故障丢掉重试入口。
+  test("does not classify other failures as unauthorized", () => {
+    expect(isUnauthorizedError(new ApiError("boom", "SERVER_ERROR"))).toBe(false);
+    expect(isUnauthorizedError(new ApiError("missing", "NOT_FOUND"))).toBe(false);
+    expect(isUnauthorizedError(new Error("UNAUTHORIZED"))).toBe(false);
+    expect(isUnauthorizedError(undefined)).toBe(false);
   });
 });

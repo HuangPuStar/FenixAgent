@@ -1,4 +1,4 @@
-import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
+import { ResourceAccessViewSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 
 /**
@@ -68,7 +68,7 @@ export const ApiMcpListItemSchema = z
     enabled: z.boolean().describe("MCP Server 是否启用。"),
     summary: z.string().describe("MCP Server 摘要信息。"),
     toolsCount: z.number().int().min(0).describe("缓存的 MCP Tool 数量。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("资源访问控制信息（已发布合同的稳定字段形状）。"),
   })
   .describe("MCP 列表项。");
 
@@ -95,7 +95,7 @@ export const ApiMcpDetailSchema = z
     enabled: z.boolean().describe("MCP Server 是否启用。"),
     summary: z.string().describe("MCP Server 摘要信息。"),
     config: z.unknown().describe("MCP Server 完整配置。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("资源访问控制信息（已发布合同的稳定字段形状）。"),
   })
   .describe("MCP 详情。");
 

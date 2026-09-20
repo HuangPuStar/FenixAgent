@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterNavGroups, SIDEBAR_NAV_GROUPS } from "@/src/pages/agent-panel/AgentSidebarConfig";
+import { filterNavGroups, SIDEBAR_NAV_GROUPS } from "../../pages/agent-panel/AgentSidebarConfig";
 
 describe("agent sidebar config", () => {
   // 黑名单命中的 tab 会从对应导航组中移除

@@ -42,111 +42,22 @@ export interface PermissionObjectConfig {
 export type PermissionConfig = PermissionAction | PermissionObjectConfig;
 
 // ────────────────────────────────────────────
-// Resource Access
-// ────────────────────────────────────────────
-
-import type { ResourceAccess } from "@fenix/access-control/server";
-
-export type { ResourceAccess, ResourceAccessInput } from "@fenix/access-control/server";
-
-// ────────────────────────────────────────────
 // MCP Server
 // ────────────────────────────────────────────
 
-/** MCP server type discriminator */
-export type McpServerType = "local" | "remote" | "streamable-http";
-
-/** OAuth configuration for remote MCP servers */
-export interface McpOAuthConfig {
-  clientId?: string;
-  clientSecret?: string;
-  scope?: string;
-  redirectUri?: string;
-}
-
-/** Local MCP server config (command-based) */
-export interface McpLocalConfig {
-  type: "local";
-  command: string[];
-  environment?: Record<string, string>;
-  enabled?: boolean;
-  timeout?: number;
-}
-
-/** Remote MCP server config (URL-based, SSE transport) */
-export interface McpRemoteConfig {
-  type: "remote";
-  url: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
-  oauth?: McpOAuthConfig | false;
-  timeout?: number;
-}
-
-/** Streamable HTTP MCP server config */
-export interface McpStreamableHttpConfig {
-  type: "streamable-http";
-  url: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
-  timeout?: number;
-}
-
-/** Disabled MCP server config (minimal) */
-export interface McpDisabledConfig {
-  enabled: false;
-}
-
-/** Union of all MCP server config variants */
-export type McpServerConfig = McpLocalConfig | McpRemoteConfig | McpStreamableHttpConfig | McpDisabledConfig;
-
-/** Server info returned to frontend for list display */
-export interface McpServerInfoOutput {
-  name: string;
-  type: "local" | "remote" | "streamable-http" | "disabled";
-  enabled: boolean;
-  summary: string;
-  timeout?: number;
-  resourceAccess?: ResourceAccess;
-  resourceKey?: string;
-}
-
-/** Additional options accepted by MCP writes. */
-export interface McpServerSetOptions {
-  publicReadable?: boolean;
-}
-
-// ────────────────────────────────────────────
-// Skill
-// ────────────────────────────────────────────
-
-/** Skill metadata stored in skill.metadata JSONB */
-export type SkillMetadata = Record<string, string>;
-
-/** Data shape accepted by upsertSkill */
-export interface SkillUpsertData {
-  description?: string;
-  metadata?: SkillMetadata;
-}
-
-/** Skill config row decorated with resource access metadata. */
-export interface SkillConfigRowWithAccess {
-  id: string;
-  userId: string;
-  organizationId: string;
-  name: string;
-  description: string | null;
-  metadata: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-  resourceAccess: ResourceAccess;
-}
-
-/** Additional options accepted by skill writes. */
-export interface SkillSetOptions {
-  publicReadable?: boolean;
-  auditAction?: "set" | "upload_create" | "upload_overwrite";
-}
+/**
+ * MCP 配置模型的定义已随资源收拢到 `@fenix/resource-mcp`（资源包自持校验、类型归一与展示），
+ * 宿主只是转发方，不在此重复声明——重复定义会让两侧的配置语义各自漂移。
+ */
+export type {
+  McpDisabledConfig,
+  McpLocalConfig,
+  McpOAuthConfig,
+  McpRemoteConfig,
+  McpServerConfig,
+  McpServerType,
+  McpStreamableHttpConfig,
+} from "@fenix/resource-mcp/server";
 
 // ────────────────────────────────────────────
 // User Config

@@ -1,3 +1,15 @@
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@fenix/ui-components/ui/dropdown-menu";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   AlertTriangle,
   ExternalLink,
@@ -10,19 +22,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { SiteApp } from "@/src/api/sites";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
+import type { SiteApp } from "../../../api/sites";
 import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
@@ -232,7 +232,7 @@ function SitesLoading() {
       <Skeleton className="mt-7 h-10 w-full" />
       <div className="mt-7 grid grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          // 静态骨架无领域标识。
+          // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，无领域标识可用作 key，索引键不会引起元素错位；源文件位于 apps/web 时未声明 react 依赖、规则未启用。
           <Skeleton key={index} className="h-64 rounded-[10px]" />
         ))}
       </div>

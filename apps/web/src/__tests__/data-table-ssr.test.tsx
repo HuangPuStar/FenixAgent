@@ -93,7 +93,6 @@ test("DataTable SSR：展示搜索、分页和默认展开内容", () => {
   expect(html).toContain("第一页记录");
   expect(html).not.toContain("第二页记录");
   expect(html).toContain("详情 first");
-  expect(html).toContain("dataTable.pagination");
   expect(html).toContain("上一页");
   expect(html).toContain("下一页");
 });

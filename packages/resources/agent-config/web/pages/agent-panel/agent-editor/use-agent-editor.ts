@@ -1,20 +1,25 @@
+import { useOrg } from "@fenix/identity/web";
+import { modelApi } from "@fenix/model-management/web";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
+import { kbApi } from "@fenix/resource-knowledge/web";
+import { registryApi } from "@fenix/resource-machine/web";
+import { isExternalMcp, mcpApi } from "@fenix/resource-mcp/web";
+import { hindsightApi } from "@fenix/resource-memory/web";
 import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
+import {
+  getSkillOptionValue,
+  isExternalSkill,
+  normalizeSkillOptionsPayload,
+  skillConfigApi,
+} from "@fenix/resource-skill/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { AgentDetail, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { hindsightApi } from "@/src/api/hindsight";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { mcpApi } from "@/src/api/mcp";
-import { modelApi } from "@/src/api/models";
-import { registryApi } from "@/src/api/registry";
-import { unwrap } from "@/src/api/request";
-import { agentSitesApi } from "@/src/api/sites";
-import { skillConfigApi } from "@/src/api/skills";
-import { dispatchConfigChange } from "@/src/lib/config-events";
-import { getSkillOptionValue, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
-import type { AgentDetail, ResourceAccess } from "@/src/types/config";
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import { agentApi } from "../../../api/agents";
+import { agentSitesApi } from "../../../api/sites";
 import {
   type AgentEditorOption,
   type AgentEditorValues,
@@ -32,7 +37,12 @@ import {
 export interface AgentEditorData {
   initialValues: AgentEditorValues;
   agentId: string | null;
-  resourceAccess?: ResourceAccess;
+  /** 归属范围；缺失按本组织私有保守降级。 */
+  scope?: ResourceScopeView;
+  /** 当前主体对该 Agent 的有效动作；缺失按不可写保守降级。 */
+  access?: { actions?: ResourceAccessActions };
+  /** 归属组织展示名；身份名录不可用时后端整字段省略，视图回退到「当前组织」文案。 */
+  organizationName?: string;
   relatedResources?: AgentRelatedResources;
   hindsightEnabled: boolean;
   sandboxEnabled: boolean;
@@ -104,6 +114,9 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [progressiveData, setProgressiveData] = useState<AgentEditorData | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  // MCP 选项分组要区分本组织与共享来源，而 `/web` 视图只返回 scope，必须与当前组织 id 比对。
+  const { org } = useOrg();
+  const activeOrganizationId = org?.id;
 
   const loadService = useCallback(async (): Promise<AgentEditorData> => {
     if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));
@@ -113,7 +126,9 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     setProgressiveData({
       initialValues,
       agentId: detail?.id ?? null,
-      resourceAccess: detail?.resourceAccess,
+      scope: detail?.scope,
+      access: detail?.access,
+      organizationName: detail?.organizationName,
       relatedResources: detail?.relatedResources,
       hindsightEnabled: false,
       sandboxEnabled: false,
@@ -171,7 +186,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
 
     const typedDetail = detail;
     const related = typedDetail?.relatedResources;
-    const rawModelOptions = mapModelOptions(modelData.available ?? []);
+    const rawModelOptions = mapModelOptions(modelData.available ?? [], activeOrganizationId);
     const modelOptions = rawModelOptions.map((option) => ({
       id: option.value,
       label: option.label,
@@ -218,7 +233,9 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     return {
       initialValues: resolvedInitialValues,
       agentId: typedDetail?.id ?? null,
-      resourceAccess: typedDetail?.resourceAccess,
+      scope: typedDetail?.scope,
+      access: typedDetail?.access,
+      organizationName: typedDetail?.organizationName,
       relatedResources: related,
       hindsightEnabled: Boolean(hindsight?.enabled),
       sandboxEnabled: poolsData.enabled,
@@ -235,9 +252,10 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
           description: skill.description,
           meta: skill.key,
           group: {
-            id: skill.resourceAccess?.sourceOrganizationId ?? "organization",
-            label: skill.resourceAccess?.sourceOrganizationName ?? t("editor.currentOrganization"),
-            scope: skill.resourceAccess?.ownership === "external" ? ("shared" as const) : ("organization" as const),
+            id: skill.scope?.organizationId ?? "organization",
+            label: skill.organizationName ?? t("editor.currentOrganization"),
+            // 归属其他组织的 Skill 标记为共享来源；判定依据是新授权视图的 scope，不再读取旧 resourceAccess。
+            scope: isExternalSkill(skill, activeOrganizationId) ? ("shared" as const) : ("organization" as const),
           },
         })),
         related?.skills,
@@ -248,9 +266,10 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
           label: mcp.name,
           meta: mcp.key,
           group: {
-            id: mcp.resourceAccess?.sourceOrganizationId ?? "organization",
-            label: mcp.resourceAccess?.sourceOrganizationName ?? t("editor.currentOrganization"),
-            scope: mcp.resourceAccess?.ownership === "external" ? ("shared" as const) : ("organization" as const),
+            id: mcp.scope?.organizationId ?? "organization",
+            label: mcp.organizationName ?? t("editor.currentOrganization"),
+            // 归属其他组织的 MCP 标记为共享来源；判定依据是新授权视图的 scope，不再读取旧 resourceAccess。
+            scope: isExternalMcp(mcp, activeOrganizationId) ? ("shared" as const) : ("organization" as const),
           },
         })),
         related?.mcps,
@@ -281,7 +300,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       templates: templatesData.templates,
       resourceErrors,
     };
-  }, [agentName, defaultName, mode, t]);
+  }, [agentName, defaultName, mode, t, activeOrganizationId]);
 
   const loadRequest = useRequest(loadService, {
     ready: open && (mode === "create" || !!agentName),

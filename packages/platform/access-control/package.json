@@ -5,11 +5,12 @@
   "type": "module",
   "exports": {
     "./module": "./fenix.module.ts",
-    "./server": "./src/server.ts",
-    "./server/schema": "./src/schemas/resource-access.schema.ts"
+    "./suite": "./src/suite.ts"
   },
   "dependencies": {
+    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
-    "@fenix/platform-sdk": "workspace:*"
+    "@fenix/platform-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   }
 }

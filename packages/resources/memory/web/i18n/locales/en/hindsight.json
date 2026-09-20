@@ -72,7 +72,8 @@
     "deleteConfirm": "Are you sure you want to delete this mental model?",
     "lastRefreshed": "Last refreshed",
     "loadFailed": "Failed to load mental models",
-    "deleteFailed": "Delete failed"
+    "deleteFailed": "Delete failed",
+    "retry": "Retry"
   },
   "recall": {
     "query": "Query",
@@ -91,6 +92,10 @@
     "loading": "Loading...",
     "loadFailed": "Failed to load Hindsight status",
     "retry": "Retry"
+  },
+  "errors": {
+    "forbiddenTitle": "No permission to access this memory bank",
+    "forbiddenHint": "This account has no memory bank in the current organization, so no data can be loaded. Retrying will not change the result—please ask an administrator to check the organization membership mapping."
   },
   "dataView": {
     "loadingMemories": "Loading memories...",

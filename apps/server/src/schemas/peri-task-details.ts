@@ -1,5 +1,5 @@
+import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
-import { WebOkSchema } from "./common.schema";
 
 export const PeriTaskDetailParamsSchema = z.object({
   environmentId: z.string().min(1).max(255),

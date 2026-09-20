@@ -3,10 +3,10 @@
 // 行可点击 → 拓扑反查：把该 machine 承载的 leaf 在归属树中高亮。
 
 import { name } from "@fenix/resource-sandbox/web";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/src/lib/utils";
 import type { ObserverMachineTree as ObserverMachineTreeView, ObserverNames } from "../../../api/observer";
 
 interface ObserverMachineTreeProps {

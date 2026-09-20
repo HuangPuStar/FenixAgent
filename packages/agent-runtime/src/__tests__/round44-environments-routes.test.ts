@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
+import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
+import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import { NotFoundError, ValidationError } from "@server/errors";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { createEnvironmentRoutes, type EnvironmentRouteDeps } from "@server/routes/web/environments";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubAuthApi, stubCoreBootstrap, stubEnvironmentService } from "@server/test-utils/helpers";
-import { environmentServiceRegistry } from "@server/test-utils/stubs/module-stubs";
+import {
+  environmentServiceRegistry,
+  stubCoreBootstrap,
+  stubEnvironmentService,
+} from "@server/test-utils/stubs/module-stubs";
 
 const route = createEnvironmentRoutes({
   createWebEnvironment: (...args: Parameters<EnvironmentRouteDeps["createWebEnvironment"]>) =>

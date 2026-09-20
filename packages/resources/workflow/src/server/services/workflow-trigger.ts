@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { getBaseUrl } from "@server/config";
-import { and, eq } from "drizzle-orm";
+import { getWorkflowConfig } from "../config";
 import type { WorkflowTriggerRow } from "../repositories/workflow-trigger";
 import { workflowTriggerRepo } from "../repositories/workflow-trigger";
 
@@ -43,7 +42,7 @@ export function maskHash(hash: string): string {
 
 /** 构造完整 webhook URL */
 function buildWebhookUrl(publicHash: string): string {
-  return `${getBaseUrl()}/hooks/${publicHash}`;
+  return `${getWorkflowConfig().baseUrl}/hooks/${publicHash}`;
 }
 
 /** 将行转换为视图（masked hash，不含完整 webhookUrl） */
@@ -163,18 +162,13 @@ export async function handleWebhookRequest(
 /** 触发 workflow 执行 */
 async function triggerWorkflow(organizationId: string, workflowId: string, inputs: WebhookPayload): Promise<void> {
   const { getTeamEngine } = await import("./workflow");
-  const { getVersionYaml } = await import("../repositories/workflow-def");
+  // 动态 import 保留原样：本文件被 workflow/index.ts 反向引用，静态化会造成循环导入
+  const { getVersionYaml, getWorkflowDef } = await import("../repositories/workflow-def");
 
   const engine = getTeamEngine(organizationId);
 
   // 获取最新版本的 YAML — 多租户关键：必须带 organizationId 过滤
-  const { db } = await import("@server/db");
-  const { workflow } = await import("@server/db/schema");
-  const [wf] = await db
-    .select()
-    .from(workflow)
-    .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
-    .limit(1);
+  const wf = await getWorkflowDef(workflowId, organizationId);
   if (!wf) throw new Error(`Workflow ${workflowId} not found`);
 
   const version = wf.latestVersion ?? 0;

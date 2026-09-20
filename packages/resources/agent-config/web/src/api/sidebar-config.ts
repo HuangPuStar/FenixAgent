@@ -1,4 +1,4 @@
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 /** 侧边栏公开配置 */
 export interface SidebarConfig {

@@ -1,23 +1,25 @@
 "use client";
 
+import { Button } from "@fenix/ui-components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Slider } from "@fenix/ui-components/ui/slider";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import DOMPurify from "dompurify";
 import { Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { NS } from "@/src/i18n";
+import { kbApi } from "../../../../api/knowledge-bases";
+import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
 import type {
   KnowledgeRetrievalChunk,
   KnowledgeSearchResultData,
   MetaDataFilter,
   MetaDataFilterMethod,
   RerankModelOption,
-} from "@/src/types/knowledge";
+} from "../../../../types/knowledge";
 
 /** 检索测试默认参数常量 */
 const DEFAULTS = {
@@ -83,6 +85,9 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<KnowledgeSearchResultData | null>(null);
   const [hasRun, setHasRun] = useState(false);
+  // 检索失败原因。判据：`error && 无数据` 才让失败区接管结果区；`retrieval.noResults` 只表达
+  // 「确实没有命中」，不得在失败时渲染（见下方结果区分支）。
+  const [error, setError] = useState<unknown>(null);
 
   // rerank 模型列表（组件内拉取）
   const [rerankModels, setRerankModels] = useState<RerankModelOption[]>([]);
@@ -112,6 +117,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
     setLoading(true);
     setHasRun(false);
     setResult(null);
+    setError(null);
 
     try {
       // disabled 时不发送 meta_data_filter，避免 RAGFlow 端行为差异
@@ -153,7 +159,11 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
       // request() 不抛异常，需手动检查 success
       if (!resp.success || resp.data == null) {
         console.error("[RetrievalTestPanel] API returned error", resp.error);
-        toast.error(resp.error?.message ?? t("retrieval.error"));
+        const message = resp.error?.message ?? t("retrieval.error");
+        // 错误信封（普通对象，含 code）原样交给失败区：`isKnowledgeAccessDenied` 据此决定
+        // 是否走无权限态（不给重试）。缺信封时构造同形的 `{ code, message }` 兜底。
+        setError(resp.error ?? { code: "UNKNOWN", message });
+        toast.error(message);
         setHasRun(true);
         return;
       }
@@ -161,6 +171,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
       setHasRun(true);
     } catch (err) {
       console.error("[RetrievalTestPanel] search failed", err);
+      setError(err);
       toast.error(err instanceof Error ? err.message : t("retrieval.error"));
     } finally {
       setLoading(false);
@@ -390,7 +401,12 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           </div>
         )}
 
-        {hasRun && result && (
+        {/* 检索失败：整区接管为可重试的持久错误态（重试重跑同一次检索）。 */}
+        {!loading && error != null && (
+          <KnowledgeLoadFailure error={error} title={t("retrieval.error")} onRetry={runSearch} />
+        )}
+
+        {error == null && hasRun && result && (
           <div className="space-y-4">
             {/* 结果统计 */}
             <div className="flex items-center justify-between">
@@ -415,7 +431,8 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           </div>
         )}
 
-        {hasRun && !result && (
+        {/* 空态只表达「确实没有命中」：失败（error != null）由上面的失败区分支接管。 */}
+        {error == null && hasRun && !result && (
           <div className="flex items-center justify-center min-h-[150px]">
             <p className="text-[13px] text-[#94a3b8]">{t("retrieval.noResults")}</p>
           </div>
@@ -437,11 +454,13 @@ function fmtScore(s: number | null | undefined): string {
 
 /**
  * RAGFlow 高亮内容渲染组件。
- * 使用 dangerouslySetInnerHTML 渲染后端返回的含 <em> 标签的高亮 HTML，来源受控。
+ *
+ * 后端返回的是带 `<em>` / `<span class>` 高亮标记的 HTML，必须经 DOMPurify 清洗后再注入：
+ * 检索结果包含知识库原文，不能视为受控内容（清洗保留高亮标签与 class，见 dompurify 默认白名单）。
  */
 function HighlightSpan({ html, className }: { html: string; className: string }) {
-  // RAGFlow 后端返回的高亮 HTML 来源受控。
-  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（保留 <em>/class 高亮标签）
+  return <span className={className} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
 }
 
 // ============================================================

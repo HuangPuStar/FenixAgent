@@ -4,7 +4,7 @@
  * 遵循外部 API 规范：稳定分页结构、统一错误格式。
  */
 
-import { ResourceAccessSchema } from "@fenix/access-control/server/schema";
+import { ResourceAccessViewSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 
 /**
@@ -65,7 +65,7 @@ export const ApiSkillListItemSchema = z
     id: z.string().describe("Skill 唯一 ID。"),
     name: z.string().describe("Skill 名称。"),
     description: z.string().nullable().describe("Skill 描述。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("资源访问控制信息（已发布合同的稳定字段形状）。"),
   })
   .describe("对外 Skill 列表项。");
 
@@ -93,7 +93,7 @@ export const ApiSkillDetailSchema = z
     description: z.string().nullable().describe("Skill 描述。"),
     content: z.string().describe("SKILL.md 正文内容。"),
     metadata: z.record(z.string(), z.string()).describe("额外元数据。"),
-    resourceAccess: ResourceAccessSchema.optional().describe("资源访问控制信息。"),
+    resourceAccess: ResourceAccessViewSchema.optional().describe("资源访问控制信息（已发布合同的稳定字段形状）。"),
   })
   .describe("对外 Skill 详情。");
 

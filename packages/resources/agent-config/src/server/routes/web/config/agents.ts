@@ -1,12 +1,12 @@
-import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
-import { AppError } from "@server/errors";
-import { authGuardPlugin } from "@server/plugins/auth";
-import { WebErrSchema } from "@server/schemas/common.schema";
+import type { ActorContext } from "@fenix/platform-sdk";
+import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { AgentNameQuerySchema, GetAgentResponseSchema } from "../../../schemas/config.schema";
+import { AgentNameQuerySchema } from "../../../schemas/config.schema";
+import type { WebConfigAgentsRouteDependencies } from "../../dependencies";
 import {
   agentRouteModels,
+  buildWebErrorBody,
   handleCreate,
   handleDelete,
   handleGet,
@@ -15,124 +15,68 @@ import {
   handleSet,
   handleSetDefault,
   handleTemplates,
+  runWebHandler,
 } from "./agent-route-support";
 
-const app = new Elysia({ name: "web-config-agents" }).use(authGuardPlugin).model(agentRouteModels);
-
-type WebErrorBody = z.infer<typeof WebErrSchema>;
+/**
+ * `/web/config/agents` 协议层。
+ *
+ * 只做协议接入：请求体校验、把请求映射为应用调用、把结果映射为 `/web` 视图。授权、可见性、名称与
+ * 资源键解析全部在 Facade 内完成，本文件不判断组织、角色或 `visibility`。
+ *
+ * 视图变化（决策 D2）：列表与详情不再返回旧栈的 `resourceAccess`，改为返回资源归属 `scope` 与当前
+ * 主体有效动作 `access.actions`；`organizationName` 是展示字段，由身份目录批量解析。
+ *
+ * 改为工厂（CE 阶段 2 任务 1.3）：会话守卫与默认 Agent 偏好端口（身份族 `user_config` 表）都由宿主
+ * 注入，包侧不再深链 `@server/plugins/auth` 与 `@server/services/config/user-config`。
+ */
 
 function toRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-function isConfigErrorResult(value: unknown): value is { success: false; error: { code?: string; message?: string } } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "success" in value &&
-    (value as { success?: unknown }).success === false &&
-    "error" in value
-  );
+/**
+ * 成功响应 schema。
+ *
+ * 宽松对象而不是逐字段声明：`scope` / `access` 的形状由授权栈决定，本包不再重复声明一份字段清单，
+ * 与 mcp / skill 的同名路由保持一致。
+ */
+const looseOkSchema = WebOkSchema(z.union([z.looseObject({}), z.null()]));
+
+// biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+function nameQuery(query: any): string | undefined {
+  const name = query?.name;
+  return typeof name === "string" && name.length > 0 ? name : undefined;
 }
 
-function mapConfigErrorStatus(code: string | undefined): number {
-  switch (code) {
-    case "VALIDATION_ERROR":
-    case "INVALID_KNOWLEDGE_BINDINGS":
-      return 400;
-    case "FORBIDDEN":
-      return 403;
-    case "NOT_FOUND":
-      return 404;
-    case "ALREADY_EXISTS":
-      return 409;
-    default:
-      return 400;
-  }
-}
-
-function buildWebErrorBody(code: string, message: string): WebErrorBody {
-  return {
-    success: false,
-    error: { code, message },
-  };
-}
-
-function resolveConfigRouteError<TCode extends 400 | 403 | 404 | 409>(
-  result: unknown,
-): { code: TCode; body: WebErrorBody } | null {
-  if (!isConfigErrorResult(result)) return null;
-
-  return {
-    code: mapConfigErrorStatus(result.error.code) as TCode,
-    body: buildWebErrorBody(result.error.code ?? "UNKNOWN_ERROR", result.error.message ?? "未知错误"),
-  };
-}
-
-function resolveThrownAgentError(error_: unknown): { code: 400; body: WebErrorBody } | null {
-  if (
-    error_ instanceof InvalidKnowledgeBindingError ||
-    (typeof error_ === "object" &&
-      error_ !== null &&
-      "code" in error_ &&
-      (error_ as { code?: string }).code === "INVALID_KNOWLEDGE_BINDINGS")
-  ) {
-    const message = error_ instanceof Error ? error_.message : "知识库绑定无效";
-    return {
-      code: 400,
-      body: buildWebErrorBody("INVALID_KNOWLEDGE_BINDINGS", message),
-    };
-  }
-
-  if (error_ instanceof AppError && error_.code === "VALIDATION_ERROR") {
-    return {
-      code: 400,
-      body: buildWebErrorBody("VALIDATION_ERROR", error_.message),
-    };
-  }
-
-  return null;
-}
-
-app.get("/config/agents/templates", () => handleTemplates(), {
-  sessionAuth: true,
-  response: {
-    200: "agent-templates-response",
-    400: WebErrSchema,
-    401: WebErrSchema,
-    403: WebErrSchema,
-    404: WebErrSchema,
-  },
-  detail: {
-    tags: ["AgentConfig"],
-    summary: "获取 Agent 模板列表",
-    description: "返回系统内置的 Agent 模板列表，供前端创建 Agent 时选择预设 prompt 与默认 skill。",
-  },
+const nameQuerySchema = z.object({
+  name: AgentNameQuerySchema.shape.name.describe("Agent 名称或共享资源键；不传则为列表模式。"),
 });
 
-app.get(
-  "/config/agents",
-  async ({ store, query, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    try {
-      const result = (name ? await handleGet(authCtx, name) : await handleList(authCtx)) as
-        | z.infer<typeof GetAgentResponseSchema>
-        | WebErrorBody;
-      const err = resolveConfigRouteError<400 | 403 | 404>(result);
-      if (err) return status(err.code, err.body);
-      return result as z.infer<typeof GetAgentResponseSchema>;
-    } catch (error_) {
-      const err = resolveThrownAgentError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
+/**
+ * OpenAPI 的 `name` 查询参数描述。
+ *
+ * 用工厂函数而不是共享常量：常量在第一次使用处被上下文定型后，`schema.type` 会被拓宽成 `string`，
+ * 后续使用点反而报类型错误；这里每次返回一个新的字面量对象。
+ */
+function nameParamDetail() {
+  return {
+    name: "name",
+    in: "query" as const,
+    required: true,
+    description: "Agent 名称或共享资源键。",
+    schema: { type: "string" as const },
+  };
+}
+
+export function createWebConfigAgentsRoutes(deps: WebConfigAgentsRouteDependencies) {
+  const { userAgentPreferences } = deps;
+  const app = new Elysia({ name: "web-config-agents" }).use(deps.authGuardPlugin).model(agentRouteModels);
+
+  app.get("/config/agents/templates", () => handleTemplates(), {
     sessionAuth: true,
-    query: "agent-name-query",
     response: {
-      200: GetAgentResponseSchema,
+      200: "agent-templates-response",
       400: WebErrSchema,
       401: WebErrSchema,
       403: WebErrSchema,
@@ -140,231 +84,185 @@ app.get(
     },
     detail: {
       tags: ["AgentConfig"],
-      summary: "获取 Agent 列表或详情",
-      description:
-        "不带 `name` 查询参数时返回当前可见的 Agent 列表；带 `name` 时返回指定 Agent 的完整详情，包括 skill、MCP 和知识库关联信息。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: false,
-          description: "Agent 名称或共享资源键；传入后接口切换为详情查询模式。",
-          schema: { type: "string" },
-        },
-      ],
+      summary: "获取 Agent 模板列表",
+      description: "返回系统内置的 Agent 模板列表，供前端创建 Agent 时选择预设 prompt 与默认 skill。",
     },
-  },
-);
+  });
 
-app.post(
-  "/config/agents",
-  async ({ store, body, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof body?.name === "string" ? body.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
-    }
-    try {
-      const result = await handleCreate(authCtx, name, toRecord(body?.data));
-      const err = resolveConfigRouteError<400 | 403 | 404 | 409>(result);
-      if (err) return status(err.code, err.body);
-      return result;
-    } catch (error_) {
-      const err = resolveThrownAgentError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "agent-mutation-body",
-    response: {
-      200: "agent-create-response",
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
-      409: WebErrSchema,
+  app.get(
+    "/config/agents",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, query, status }: any) => {
+      const name = nameQuery(query);
+      return runWebHandler(status, store, (actor: ActorContext) =>
+        name ? handleGet(actor, name) : handleList(actor, userAgentPreferences),
+      );
     },
-    detail: {
-      tags: ["AgentConfig"],
-      summary: "创建 Agent 配置",
-      description: "创建新的 Agent 配置，并根据请求内容同步知识库绑定、Skill 绑定和 MCP 绑定。",
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "获取 Agent 列表或详情",
+        description:
+          "不带 `name` 查询参数时返回当前可见的 Agent 列表；带 `name` 时返回指定 Agent 的完整详情，包括 skill、MCP 和知识库关联信息。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: false,
+            description: "Agent 名称或共享资源键；传入后接口切换为详情查询模式。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-app.put(
-  "/config/agents",
-  async ({ store, query, body, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
-    }
-    try {
-      const result = await handleSet(authCtx, name, toRecord(body?.data));
-      const err = resolveConfigRouteError<400 | 403 | 404 | 409>(result);
-      if (err) return status(err.code, err.body);
-      return result;
-    } catch (error_) {
-      const err = resolveThrownAgentError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
-    sessionAuth: true,
-    query: z.object({ name: AgentNameQuerySchema.shape.name }),
-    body: "agent-update-body",
-    response: {
-      200: "agent-update-response",
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
-      409: WebErrSchema,
+  app.post(
+    "/config/agents",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, body, status }: any) => {
+      const name = typeof body?.name === "string" ? body.name : undefined;
+      if (!name) return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+      return runWebHandler(status, store, (actor: ActorContext) => handleCreate(actor, name, toRecord(body?.data)));
     },
-    detail: {
-      tags: ["AgentConfig"],
-      summary: "更新 Agent 配置",
-      description:
-        "更新指定 Agent 的可变更字段，并在保存后同步知识库、Skill 与 MCP 关联；仅当前组织可写的 Agent 允许修改。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待更新的 Agent 名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      body: "agent-mutation-body",
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+        409: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "创建 Agent 配置",
+        description: "创建新的 Agent 配置，并根据请求内容同步知识库绑定、Skill 绑定和 MCP 绑定。",
+      },
     },
-  },
-);
+  );
 
-app.post(
-  "/config/agents/restart",
-  async ({ store, query, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
-    }
-    const result = await handleRestart(authCtx, name);
-    const err = resolveConfigRouteError<403 | 404>(result);
-    if (err) return status(err.code, err.body);
-    return result;
-  },
-  {
-    sessionAuth: true,
-    query: z.object({ name: AgentNameQuerySchema.shape.name }),
-    response: {
-      200: "agent-restart-response",
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  app.put(
+    "/config/agents",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, query, body, status }: any) => {
+      const name = nameQuery(query);
+      if (!name) return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+      return runWebHandler(status, store, (actor: ActorContext) => handleSet(actor, name, toRecord(body?.data)));
     },
-    detail: {
-      tags: ["AgentConfig"],
-      summary: "重启 Agent 运行实例",
-      description:
-        "重启当前组织内指定 Agent 绑定 Environment 下的活跃 runtime；保留持久 Agent Instance 身份，并使用最新 Agent 配置重新启动。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待重启运行实例的 Agent 名称。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      body: "agent-update-body",
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+        409: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "更新 Agent 配置",
+        description:
+          "更新指定 Agent 的可变更字段，并在保存后同步知识库、Skill 与 MCP 关联；仅当前组织可写的 Agent 允许修改。",
+        parameters: [nameParamDetail()],
+      },
     },
-  },
-);
+  );
 
-app.delete(
-  "/config/agents",
-  async ({ store, query, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof query?.name === "string" ? query.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
-    }
-    try {
-      const result = await handleDelete(authCtx, name);
-      const err = resolveConfigRouteError<400 | 403 | 404>(result);
-      if (err) return status(err.code, err.body);
-      return result;
-    } catch (error_) {
-      const err = resolveThrownAgentError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
-    sessionAuth: true,
-    query: z.object({ name: AgentNameQuerySchema.shape.name }),
-    response: {
-      200: "agent-delete-response",
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  app.post(
+    "/config/agents/restart",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, query, status }: any) => {
+      const name = nameQuery(query);
+      if (!name) return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+      return runWebHandler(status, store, (actor: ActorContext) => handleRestart(actor, name));
     },
-    detail: {
-      tags: ["AgentConfig"],
-      summary: "删除 Agent 配置",
-      description: "删除指定 Agent 配置。内置 Agent 不允许删除，共享只读 Agent 也不允许删除。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待删除的 Agent 名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: z.object({ name: AgentNameQuerySchema.shape.name }),
+      response: {
+        200: "agent-restart-response",
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "重启 Agent 运行实例",
+        description:
+          "重启当前组织内指定 Agent 绑定 Environment 下的活跃 runtime；保留持久 Agent Instance 身份，并使用最新 Agent 配置重新启动。",
+        parameters: [nameParamDetail()],
+      },
     },
-  },
-);
+  );
 
-app.post(
-  "/config/agents/default",
-  async ({ store, body, status }) => {
-    const authCtx = store.authContext!;
-    const name = typeof body?.name === "string" ? body.name : undefined;
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
-    }
-    try {
-      const result = await handleSetDefault(authCtx, name);
-      const err = resolveConfigRouteError<400 | 403 | 404>(result);
-      if (err) return status(err.code, err.body);
-      return result;
-    } catch (error_) {
-      const err = resolveThrownAgentError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "agent-set-default-body",
-    response: {
-      200: "agent-set-default-response",
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  app.delete(
+    "/config/agents",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, query, status }: any) => {
+      const name = nameQuery(query);
+      if (!name) return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+      return runWebHandler(status, store, (actor: ActorContext) => handleDelete(actor, name));
     },
-    detail: {
-      tags: ["AgentConfig"],
-      summary: "设置默认 Agent",
-      description: "将指定 Agent 设置为当前用户的默认 Agent，后续创建会话或打开面板时可作为默认选择。",
+    {
+      sessionAuth: true,
+      query: z.object({ name: AgentNameQuerySchema.shape.name }),
+      response: {
+        200: "agent-delete-response",
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "删除 Agent 配置",
+        description: "删除指定 Agent 配置。内置 Agent 不允许删除，只读的共享 Agent 也不允许删除。",
+        parameters: [nameParamDetail()],
+      },
     },
-  },
-);
+  );
 
-export default app;
+  app.post(
+    "/config/agents/default",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia status 函数在自定义 response schema 下类型不稳定
+    ({ store, body, status }: any) => {
+      const name = typeof body?.name === "string" ? body.name : undefined;
+      if (!name) return status(400, buildWebErrorBody("VALIDATION_ERROR", "Missing 'name' field"));
+      return runWebHandler(status, store, (actor: ActorContext) => handleSetDefault(actor, name, userAgentPreferences));
+    },
+    {
+      sessionAuth: true,
+      body: "agent-set-default-body",
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["AgentConfig"],
+        summary: "设置默认 Agent",
+        description: "将指定 Agent 设置为当前用户的默认 Agent，后续创建会话或打开面板时可作为默认选择。",
+      },
+    },
+  );
+
+  return app;
+}

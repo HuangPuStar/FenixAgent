@@ -1,11 +1,13 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { ArrowLeft, Gauge } from "lucide-react";
+import { ArrowLeft, Gauge, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { queryMyModelGatewayUsage } from "../../../api/model-gateway";
-import { buildRecentUsageDateRange } from "../../../lib/model-gateway-usage";
+import { MODELS_NS } from "../../../i18n/namespace";
+import { buildRecentUsageDateRange, classifyUsageFailure } from "../../../lib/model-gateway-usage";
 
 function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -15,12 +17,14 @@ function formatTokens(value: number): string {
 
 /** 从指定模型 Gateway Provider 卡片进入的当前用户用量总览。 */
 export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const navigate = useNavigate();
   const overviewRequest = useRequest(async () => {
     return queryMyModelGatewayUsage(providerId, buildRecentUsageDateRange(30));
   });
   const data = overviewRequest.data;
+  // 失败态是持久的页面状态（不是一次性 toast）：无权限与可重试失败分成两支，见 classifyUsageFailure。
+  const failure = classifyUsageFailure(overviewRequest.error);
   const totals = useMemo(() => {
     return (data?.records ?? []).reduce(
       (current, record) => ({
@@ -72,10 +76,27 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
         </div>
       </div>
       {overviewRequest.loading ? (
-        <div className="mt-6 text-sm text-text-muted">{t("gateway.loading")}</div>
-      ) : overviewRequest.error ? (
-        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          {t("gateway.loadError")}
+        <div className="mt-6 text-sm text-text-muted" role="status" aria-busy="true">
+          {t("gateway.loading")}
+        </div>
+      ) : failure === "forbidden" ? (
+        // 401/403 是终态：给出原因即可，重试按钮只会让用户反复撞同一堵墙。
+        <div
+          className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+          role="alert"
+        >
+          {t("gateway.forbidden")}
+        </div>
+      ) : failure ? (
+        <div
+          className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+          role="alert"
+        >
+          <span>{t("gateway.loadError")}</span>
+          <Button size="sm" variant="outline" onClick={() => void overviewRequest.refresh()}>
+            <RefreshCw className="size-4" />
+            {t("actions.retry")}
+          </Button>
         </div>
       ) : (
         <div className="mt-6 grid gap-6 xl:grid-cols-[2fr_0.92fr]">
@@ -175,7 +196,7 @@ function SpendBreakdown({
   items: Array<{ name?: string; modelId?: string; spendUsd: number; requests: number }>;
   requestSuffix: string;
 }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const maxSpend = Math.max(...items.map((item) => item.spendUsd), 0);
   return (
     <Card className="border-[#e1e7f0] shadow-sm">

@@ -48,7 +48,17 @@ ResourceModule = domain + services + repositories/adapters + schemas
 
 跨 package 只能使用包名和 `package.json#exports` 声明的公开入口，例如 `@fenix/agent-runtime`、`@fenix/core`、`@fenix/chat-channel/server`、`@fenix/agent-config/web`。禁止跨包相对导入任何 `packages/**/src/**` 路径；相对导入仅允许在同一 package 内部使用。
 
-每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。`apps` 同样遵守该规则。
+每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。`apps` 同样遵守该规则。只在构建或测试中使用的 workspace 依赖声明在 `devDependencies`，`dependencies` 保留给运行时需要被消费者解析的依赖。
+
+资源包 `web/` 交付物的第三方（非 workspace）依赖同样必须显式声明，按“是否需要与宿主共用同一实例”分为三类；判定依据只能是包内**实际导入**，只出现在注释或文档里的引用不算使用：
+
+1. 需要与宿主共用同一实例的框架库——`react`、`react-dom`、`react-i18next`、`i18next`、`@tanstack/react-router`——凡该包 `web/` 实际导入即声明为 `peerDependencies`，版本范围与根 `package.json` 逐字一致。写进 `dependencies` 会打进第二份实例：第二份 React 的 context/hooks、第二份 i18next 的命名空间注册表都会让组件静默取到空值或回退成 key 回显。
+2. 可独立打进浏览器 bundle、重复实例不影响语义的普通库（`lucide-react`、`ahooks`、`sonner` 等）声明为 `dependencies`，版本对齐根 `package.json`。
+3. 只在测试文件中导入的库（含 `happy-dom` 等 DOM 环境）声明为 `devDependencies`；写进 `dependencies` 会把测试依赖带进宿主的生产依赖图与发布物。
+
+反向同样成立：`dependencies` 里没有任何导入的条目必须删除，删除前逐条 grep 全包确认，避免声明与真实加载图长期漂移。
+
+§2.4 中由生成 registry 引入的 `apps/*/fenix.module.ts` 是上述相对导入禁令的唯一例外：它是构建期装配描述符，不作为可安装入口对外暴露。
 
 ### 2.2 资源模块之间的依赖规则
 
@@ -118,15 +128,15 @@ export interface SkillReferenceResolver {
 
 | 包类别 | 可以依赖 | 禁止依赖 | 说明 |
 | --- | --- | --- | --- |
-| `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps` | 最底层契约：资源范围、授权端口、装配 profile、模块 manifest、应用基础设施访问规则等；不创建或拥有 DB 等具体基础设施 |
+| `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps` | 最底层契约：资源范围、授权端口、身份目录投影、系统管理协议 schema、装配 profile、模块 manifest、应用基础设施访问规则等；不创建或拥有 DB 等具体基础设施 |
 | `packages/platform/identity` | `platform-sdk`、认证/存储等必要基础依赖 | `access-control`、`agent-runtime`、`resources`、`apps` | 有状态平台模块，拥有用户、组织、成员、认证/API Key 及其 DB、route、Web；产出可信身份上下文和公开 Identity Service |
 | `packages/platform/access-control` | `platform-sdk`、同一产品版本的 `identity` 公开入口、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`、Identity 的内部路径 | Identity 与 AccessControl 保持两个包，普通资源不得依赖此具体实现 |
 | `packages/` 中除 `platform/*`、`agent-runtime`、`resources/*` 外的包 | 按各包自身的 SDK 或插件职责声明 | 包间依赖环 | 独立 SDK/插件包，如 `acp-link`、`core`、`orchestration`、`chat-channel`、`remote-runtime`；服务模块直接通过包引用使用其能力，不适用服务模块依赖矩阵的其他限制 |
 | `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、Machine/Sandbox 的专用公开运行入口、无业务语义基础依赖 | 除 Machine/Sandbox 外的 `resources`、具体 AccessControl/Identity、`apps`、Machine/Sandbox 内部路径 | 组合 Environment、Instance、生命周期、并发与 relay/session；固定编译方向是 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` |
 | `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现 |
 | `packages/resources/sandbox` | `platform-sdk`、Machine 公开入口、Sandbox Provider 公开 API、本资源声明的基础依赖 | `agent-runtime`、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有执行环境供给、恢复和管理面，多实现差异留在 Provider 插件点 |
-| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；资源间规则见上一节 |
-| `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle |
+| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；需要身份的只读投影（用户展示信息、组织名录、成员关系、系统托管租户）时经 `platform-sdk` 的 `IdentityDirectory` 窄契约，由 app 装配注入；资源间规则见上一节 |
+| `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、已作为公开入口发布的共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle。共享 UI 目前没有独立公开入口，资源 web 不得因此穿透 `apps/web` 内部；复用方式（提取公开入口或其他）单独决定 |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
 | `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
 
@@ -153,12 +163,14 @@ Machine/Sandbox ─────────────────────�
 
 1. Platform 需要的能力只有在它定义身份、租户、授权等平台基础语义时，才重新归类为 `packages/platform/*`；平台模块可以拥有 DB、route、Web 和 migration。若仍是普通业务资源，Platform 不得直接依赖，只能由 app 编排或通过经评审的窄端口注入。
 2. Agent Runtime 只有在某资源是所有 Runtime 装配必需的运行基础能力、调用不解释 actor/role/visibility、依赖能保持无环，并且多实现差异已收敛在资源内部 Provider/adapter 时，才能直接依赖其专用公开运行入口。任一条件不满足，使用 Resource Facade、app use case 或窄端口。
-3. 每条例外必须精确写入本矩阵和架构门禁，例如 `agent-runtime → sandbox`；禁止使用 `agent-runtime → resources/*` 或 `platform → resources/*` 通配规则。
+3. 每条例外必须精确写入本矩阵和架构门禁，例如 `agent-runtime → sandbox`；禁止使用 `agent-runtime → resources/*` 或 `platform → resources/*` 通配规则。禁则的覆盖范围包括同一类别内部各包之间的方向（例如 `identity → access-control`），矩阵写明的方向必须能被门禁判定，不依赖人工约定。
 4. 被依赖包只能暴露稳定 service/DTO 或专用 runtime-facing subpath；调用方不得导入 route、repository、schema 或 `src/**`，不得把资源授权、存储模型和管理面泄漏到 Platform/Runtime。
 5. `package.json` 编译依赖、manifest `dependsOn` 和 assembly 必须表达同一方向；必需模块成套启用。新增例外必须同时更新本矩阵，并提供 dependency-cruiser/architecture check、contract test 和循环依赖测试。
 6. 若能力需要替换整个模块，具体直接依赖不成立，应依赖稳定契约并由 app 装配；若只替换同一资源的 Provider/adapter，则资源包保持稳定，调用方可以依赖资源公开入口。
 
 `fenix.module.ts` 的 `dependsOn` 是**装配依赖**，表示一个 manifest 被 profile 启用时需要同时启用哪些模块；它不能取代 TypeScript 的 `package.json` dependency，也不能放宽上述编译依赖规则。反过来，两个包存在 TypeScript 依赖也不必然意味着它们必须在每个 assembly profile 中同时启用：是否需要共同启用取决于其公开能力是否在该 profile 中被实际装配。
+
+manifest 的 `kind` 取 `access-control`、`agent-runtime`、`identity`、`resource`、`web-shell` 之一；`capabilities` 是模块对外声明的能力标识，同一 capability 不得由两个已启用模块提供。两者都参与 profile 与 preflight 校验；需要新增类别或固定语义时先修订本节。
 
 ### 2.4 配置驱动的静态装配
 
@@ -177,7 +189,11 @@ Machine/Sandbox ─────────────────────�
 
 `platform-sdk/assembly` 提供唯一的 `AssemblyProfile` 与 `parseAssemblyProfile()`：它只校验 Identity、授权、Agent Runtime、Shell、资源和 Web 模块 ID 列表的通用结构。Identity 与 AccessControl 由各自 manifest 的精确 `dependsOn` 成套绑定；随后 app 对生成 registry 做 ID、类别和依赖校验，不复制 parser。
 
-每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
+`webShell` 必须指向一个 `kind` 为 `web-shell` 的已注册模块，否则装配直接失败：Shell 是 profile 描述浏览器侧组合的锚点，允许它悬空等于 profile 与 bundle 静默不一致。`identity` 在 `packages/platform/identity` 落地前为**可选**，未提供时既不校验也不进入装配顺序；Identity 包已随阶段 2 任务 1.2 交付，现为**必填**——`access-control` 经 `dependsOn` 精确绑定到 `identity`，缺任一即装配失败。Server 只校验并绑定 `webShell`，不实例化 Shell——它由 `apps/web` 自行消费，因此不进入服务端的 `modules` 与 `instances`。
+
+每个可装配包在根目录导出 `fenix.module.ts`，声明稳定 `id`、`kind`、`dependsOn`、资源 module、基础模块工厂及可选 web contribution。构建脚本扫描受版本控制的 `packages/**/fenix.module.ts` 与 `apps/*/fenix.module.ts`，生成仅含静态 `import` 的 `apps/generated/module-registry.ts`。app 不手写注册表。
+
+`apps/*` 下的 manifest 是本节前一段「WebShell 是应用级组合，不是资源模块」的直接结果：Shell 不在 `packages` 中，`webShell` 却必须指向一个已注册模块，因此允许应用根目录提供 manifest。两条附加约束保证它不会污染服务端 registry：该目录下的 manifest 只能是 `kind: "web-shell"`，且文件内只允许 `import type`（类型导入在运行时被擦除），不得出现值导入与 `export ... from`；生成器以相对路径引入它，不建立 `apps/server → apps/web` 的包依赖。
 
 启动流程依次执行：读取 JSON/YAML → 校验结构和重复 ID → 从**生成 registry**确认 ID 和类别 → 校验 manifest 依赖、capability 冲突、所需 env 与 migration preflight → 创建依赖并挂载 route/web contribution。profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；其位置由发布脚本固定，不能由 profile 自己指定。配置中禁止出现任意文件路径、URL、npm 包名、表达式或代码片段；它不能 import、下载或执行新代码。
 
@@ -227,7 +243,9 @@ apps/server/src/
 
 可授权资源主表复用现有 `organization_id`、`user_id` 和 `visibility` 作为 `ResourceScope` 的真相来源，由 `ResourceScopeStore` 映射主表列。通用资源可选 `private` 或 `public`；`private` 沿用归属和成员角色规则，`public` 面向任意已认证用户。匿名访问由 Site 等资源专属发布字段或发布实体表达。资源领域、route、前端和普通 Repository 不得自行解释组织、用户、角色或 `visibility`。
 
-`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceScopeStore` 负责 organization、owner、`visibility` 的批量读取、校验与生命周期维护；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、ID、组织、owner 与 `visibility` 列及业务条件，例如 `authorizedQuery.list({ resourceType, columns, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, ResourceScope>`，不得泄漏具体查询条件。
+`AccessControlModule` 负责回答“当前主体可以看哪些资源范围”和“是否允许操作单个资源”；`ResourceScopeStore` 负责 organization、owner、`visibility` 的批量读取、校验与生命周期维护；统一授权查询能力将访问约束编译为当前存储方案所需的 Drizzle 条件。资源 Repository 只声明资源类型、表、ID、组织、owner 与 `visibility` 列及业务条件，例如 `authorizedQuery.list({ resourceType, table, columns, businessWhere, access })`，不编写 member/role 判断或授权 SQL。Service 返回 `ResourceRecord<TData, ResourceScope>`，不得泄漏具体查询条件。
+
+`AuthorizedResourceQuery` 是声明在 `platform-sdk` 的端口（用存储类型包参数化，默认槽位为 `unknown`，因此不导入 Drizzle），Drizzle 实现在 `access-control`；资源包只依赖端口。`ResourceQueryConstraint` 对资源模块保持不透明，其内部载荷由产出它的授权实现私有，条件编译器与动作推导在同一实现包内共享同一份策略函数。
 
 当前授权查询以资源主表为驱动，使用归属列、`visibility` 与成员角色策略过滤资源；不得先查询全量资源再在应用层过滤。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
 
@@ -262,6 +280,8 @@ TanStack Router 仍保持文件路由：应用的 `routes/` 是薄文件，静�
 ```text
 assembly.web      → generated module registry → resources/*/web contribution
 ```
+
+浏览器侧消费 contribution 时不得因重导出链加载服务端模块（§10.2.4）。服务端 registry 与浏览器消费的清单是否共用一份产物由实现决定，约束是浏览器入口的加载图里不出现服务端实现。
 
 因此，资源页不能反向决定全局布局；Shell 可收集已启用资源模块的导航、路由和页面 contribution，但不得导入资源模块的 server service、repository 或 db。若将来确实有两个以上独立 Web 应用复用同一完整 Shell，才把已稳定的 Shell 实现抽取为 package；即使如此，`apps/web` 仍是最终选择和装配入口。
 
@@ -308,6 +328,8 @@ const config = getModuleConfig<AgentRuntimeEnv>("agent-runtime");
 | DB client、只读部署配置，以及以后同样由 server 统一创建和关闭的基础设施 | AgentConfigService 等业务 service、Repository、Resource Facade、授权实现、当前用户/组织、请求上下文、事务、资源实例 |
 
 判断很简单：某个对象如果会随请求、用户、组织、事务或资源不同而变化，就不能放进应用基础设施；需要时通过函数参数、包公开 API 或 app 装配传递。
+
+`IdentityDirectory` 是本节的**唯一**新增例外，且只因为它通过上面的判据：它是进程级只读投影，不随请求、用户、组织、事务或资源变化，语义上等同于 DB client 的另一种读法。它在 `@fenix/platform-sdk/server` 通过 `registerIdentityDirectory()` 注册、由 identity 实现、由 `apps/server` 在装配时注入；包的深度调用点（runtime 启动参数、观察投影、系统管理投影）因此不必逐层透传参数。它的接口只暴露只读查询，不含授权判断、事务、写入或请求上下文；任何随请求变化的身份数据都必须继续走 `ActorContext` 参数传递，不得经此入口。
 
 包可以直接调用 `getDatabase()`、`getModuleConfig()`，但只能在实际处理请求、任务或启动逻辑时调用，不能在文件加载时调用；否则模块可能早于 server 初始化。未初始化或读取未声明配置时必须报错。测试使用 reset/override API 设置独立的 DB 和配置，不修改全局 `process.env`，也不 mock `apps/server`。
 
@@ -435,7 +457,7 @@ packages/resources/agent-config/db/data-migrations/
 1. `platform-sdk` 不含具体身份、角色、表、DB/Web 实现；Identity 与 AccessControl 保持两个包。
 2. 所有外部资源动作由 Resource Facade 使用可信 ActorContext 和 `AccessControlModule` 授权；Domain Service 不接受 actor，repository 不读取成员/角色，也不复制授权 SQL。
 3. 普通列表查询在数据库分页、排序和计数之前下推授权约束；详情、更新、删除和运行与列表使用同一范围语义。Provider 是模型授权聚合根，Model 不建立独立 owner/visibility。
-4. 旧 `resource_permission` 读取、写入、公开出口和表仅在所有消费者完成结果核验后删除；最终状态不存在双写、兼容表或两套授权判断路径。
+4. 旧 `resource_permission` 读取、写入、公开出口和表仅在所有消费者完成结果核验后删除；最终状态不存在双写、兼容表或两套授权判断路径。阶段 2 任务 1.2 交付的是「读者/写者/出口全部删除、表与三个 pg enum 延至下一发布 DROP」——`visibility` 回填迁移与读取切换同批上线时旧表保留，用于核验回填结果；延期期间该表无任何引用，`schema.ts` 以 `removeWhen` 标注移除条件。目标状态不变。
 5. 多租户、跨组织、owner/admin/member、系统管理员、private/public、API Key 组织恢复及保守拒绝路径均有自动化回归证据。
 
 ### 10.4 Runtime 与基础资源
@@ -465,4 +487,4 @@ packages/resources/agent-config/db/data-migrations/
 1. 空库与真实历史升级库迁移、关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
 3. `bun run precheck`、`bun run build:web`、`bun run docs:build`、migration smoke、关键 E2E、deploy preflight/readiness 和回滚演练全部通过，且没有 error 或 warning。
-4. 旧实现、临时边界豁免、兼容 shim、双写、未登记依赖和待决设计矛盾为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
+4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。

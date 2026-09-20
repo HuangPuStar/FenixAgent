@@ -45,6 +45,22 @@ const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 
+/**
+ * Hermes 客户端启动参数。
+ *
+ * `platforms` 是**已部署配置值**，不是环境变量名：本包不读 `process.env`（§1 静态条件 4），
+ * 平台清单与网关地址同源同时机，由宿主在装配期从 `HERMES_PLATFORMS` 取来后注入
+ * （`apps/server/src/env.ts` 是该变量的真相来源与校验点）。
+ *
+ * 两种缺省的语义必须区分：未给出（`undefined` / 空字符串）用内置常见平台清单；给出但解析为空
+ * （例如 `" , "`）表示**不订阅任何平台**，连接后不发订阅帧——把后者折叠成「用默认清单」会让
+ * 一次部署配置的收窄变成静默放宽。
+ */
+export interface HermesClientOptions {
+  /** 逗号分隔的平台清单；逐项 trim 并丢弃空项，解析结果为空时不发送订阅帧。 */
+  platforms?: string;
+}
+
 export class HermesClient {
   private ws: WebSocket | null = null;
   private status: HermesStatus = {
@@ -68,11 +84,11 @@ export class HermesClient {
   // safe to always subscribe to all of them.
   private static readonly KNOWN_PLATFORMS = ["feishu", "telegram", "discord", "slack", "wecom", "weixin", "dingtalk"];
 
-  constructor(url: string) {
+  constructor(url: string, options: HermesClientOptions = {}) {
     this.status.url = url;
-    const envPlatforms = process.env.HERMES_PLATFORMS;
-    if (envPlatforms) {
-      this.platforms = envPlatforms
+    const configuredPlatforms = options.platforms;
+    if (configuredPlatforms) {
+      this.platforms = configuredPlatforms
         .split(",")
         .map((p) => p.trim())
         .filter(Boolean);
@@ -375,11 +391,11 @@ export async function resetHermesClient(): Promise<void> {
   await client?.stop();
 }
 
-export function initHermesClient(url: string): HermesClient {
+export function initHermesClient(url: string, options: HermesClientOptions = {}): HermesClient {
   if (hermesClientInstance) {
     hermesClientInstance.stop();
   }
-  hermesClientInstance = new HermesClient(url);
+  hermesClientInstance = new HermesClient(url, options);
   hermesClientInstance.start().catch((err) => {
     logError("[Hermes] Client start failed:", err);
   });

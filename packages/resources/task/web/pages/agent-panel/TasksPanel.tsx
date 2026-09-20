@@ -1,20 +1,22 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { CheckCircle2, Clock, Play, Settings2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Play, RefreshCw, Settings2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { ExecutionLogInfo, TaskV2Info } from "@/src/api/tasks-v2";
-import { taskV2Api } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
-import { cn } from "@/src/lib/utils";
+import type { ExecutionLogInfo, TaskV2Info } from "../../api/tasks-v2";
+import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
+import { isUnauthorizedError } from "./pages/agent-tasks-utils";
 
 interface TasksPanelProps {
   agentId: string | null;
@@ -44,21 +46,31 @@ function formatTime(timestamp: number): string {
 }
 
 export function TasksPanel({ agentId }: TasksPanelProps) {
-  const { t } = useTranslation(NS.COMPONENTS);
+  // 面板文案统一读本包命名空间：`panelMode.tasks*` 曾借宿主 `components` 命名空间（键的最终所在地 = 包的 owner，
+  // 计划 §4），现随 `web/i18n/locales/{en,zh}/tasks-v2.json` 自持；宿主同名键由 W3 的宿主 patch 删除。
   const taskT = useTranslation(NS.TASKS_V2).t;
 
   const [selectedTask, setSelectedTask] = useState<{ id: string; name: string } | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // ── 任务列表 ──
-  const { data, loading, error, refresh } = useRequest(() => taskV2Api.list({ agentId: agentId!, pageSize: 50 }), {
+  // 必须经 `unwrap` 而不是自己读信封：ahooks 只在 promise reject 时置 `error`，旧写法（读 `data.success`）
+  // 在请求失败时把 error 恒留为 undefined，失败被静默降级成空数组，「加载失败」于是显示成「暂无任务」，
+  // 也没有任何恢复入口。授权类失败（401/403）另走无权限分支，不给重试。
+  const {
+    data: pageData,
+    loading,
+    error,
+    refresh,
+  } = useRequest(async () => unwrap(taskV2Api.list({ agentId: agentId!, pageSize: 50 })), {
     ready: !!agentId,
     onError: () => {
-      toast.error(t("panelMode.tasksLoadFailed"));
+      toast.error(taskT("panelMode.tasksLoadFailed"));
     },
   });
 
-  const tasks: TaskV2Info[] = data?.success !== false ? (data?.data?.items ?? []) : [];
+  const tasks: TaskV2Info[] = pageData?.items ?? [];
+  const unauthorized = isUnauthorizedError(error);
 
   // 列表加载后默认选中第一条
   useEffect(() => {
@@ -76,7 +88,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       await taskV2Api.trigger(taskId);
       refresh();
     } catch {
-      toast.error(t("panelMode.tasksTriggerFailed") ?? "Trigger failed");
+      toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
     } finally {
       setTriggeringIds((prev) => {
         const next = new Set(prev);
@@ -92,7 +104,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       await taskV2Api.toggle(taskId);
       refresh();
     } catch {
-      toast.error(t("panelMode.tasksToggleFailed"));
+      toast.error(taskT("panelMode.tasksToggleFailed"));
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -151,31 +163,44 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       {/* ── 上半部分：任务列表 ── */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 flex-shrink-0">
-          <span className="text-xs font-medium text-text-primary">{t("panelMode.tasksListTitle")}</span>
+          <span className="text-xs font-medium text-text-primary">{taskT("panelMode.tasksListTitle")}</span>
           <Link to="/agent/tasks" className="text-xs text-brand hover:text-brand-hover transition-colors">
-            {t("panelMode.tasksManage")}
+            {taskT("panelMode.tasksManage")}
           </Link>
         </div>
         {error ? (
-          <div className="flex-1 flex items-center justify-center py-8 px-4">
-            <p className="text-sm text-text-muted">{t("panelMode.tasksLoadFailed")}</p>
+          // 持久错误分支（`role="alert"`）：失败不能落进下面的「暂无任务」空态，否则用户分不清
+          // 「加载失败」与「确实没有绑定任务」；非授权失败必须给重试入口，授权失败只说明原因。
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4 text-center" role="alert">
+            <AlertTriangle className="h-6 w-6 text-text-dim" />
+            <p className="text-sm text-text-muted">
+              {unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
+            </p>
+            {unauthorized ? (
+              <p className="text-xs text-text-muted">{taskT("loadState.unauthorizedHint")}</p>
+            ) : (
+              <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
+                <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                {taskT("loadState.retry")}
+              </Button>
+            )}
           </div>
         ) : loading ? (
-          <div className="p-3 space-y-2.5">
+          <div className="p-3 space-y-2.5" aria-busy="true">
             {Array.from({ length: 3 }).map((_, i) => (
-              // Loading skeletons have no domain identifier.
+              // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，索引键不会引起元素错位；包内按 T2e 声明 react 后本规则才启用。
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
         ) : tasks.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 gap-3">
-            <p className="text-sm text-text-muted">{t("panelMode.tasksEmpty")}</p>
+            <p className="text-sm text-text-muted">{taskT("panelMode.tasksEmpty")}</p>
             <Link
               to="/agent/tasks"
               className="inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand-hover transition-colors"
             >
               <Settings2 className="h-3.5 w-3.5" />
-              {t("panelMode.tasksManage")}
+              {taskT("panelMode.tasksManage")}
             </Link>
           </div>
         ) : (
@@ -186,39 +211,38 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
                 <div
                   key={task.id}
                   className={cn(
-                    "group flex items-center gap-3 px-3 py-2.5 border-b border-border/40 hover:bg-surface-2/50 cursor-pointer transition-colors",
+                    "group flex items-center gap-3 px-3 py-2.5 border-b border-border/40 hover:bg-surface-2/50 transition-colors",
                     selectedTask?.id === task.id && "bg-surface-2",
                     !task.enabled && "opacity-50",
                   )}
-                  onClick={() => handleTaskClick(task)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") handleTaskClick(task);
-                  }}
-                  role="button"
-                  tabIndex={0}
                 >
-                  {/* 左侧：状态圆点 + 名称 + 执行计划 + 上次状态 */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* 左侧选择区落到真正的 button 上：容器不再伪造 role="button" 去包住右侧的 Button/Switch，
+                      嵌套交互控件会让读屏与键盘落到哪个控件产生歧义，也违反「按钮里不放按钮」。
+                      代价是点击热区收敛到这一块（其余位置是行内留白，不再触发选中）。 */}
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-left"
+                    aria-pressed={selectedTask?.id === task.id}
+                    onClick={() => handleTaskClick(task)}
+                  >
                     <span
                       className={cn("shrink-0 size-2 rounded-full", task.enabled ? "bg-emerald-500" : "bg-slate-400")}
                     />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-text-primary truncate">{task.name}</p>
-                      <p className="text-xs text-text-muted truncate">{cronDesc ?? task.cron}</p>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-text-primary truncate">{task.name}</span>
+                      <span className="block text-xs text-text-muted truncate">{cronDesc ?? task.cron}</span>
                       {renderLastRun(task)}
-                    </div>
-                  </div>
-                  {/* 右侧：hover 时显示 Play，始终显示 Switch */}
+                    </span>
+                  </button>
+                  {/* 右侧：hover 时显示 Play，始终显示 Switch。都是纯图标控件，可访问名只能由 aria-label 提供。 */}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                       disabled={triggeringIds.has(task.id)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTrigger(task.id);
-                      }}
+                      aria-label={taskT("action.execute")}
+                      onClick={() => handleTrigger(task.id)}
                     >
                       <Play className="size-3" />
                     </Button>
@@ -227,7 +251,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
                       onCheckedChange={() => handleToggle(task.id)}
                       disabled={togglingIds.has(task.id)}
                       size="sm"
-                      onClick={(e) => e.stopPropagation()}
+                      aria-label={task.enabled ? taskT("card.disabled") : taskT("card.enabled")}
                     />
                   </div>
                 </div>
@@ -263,12 +287,10 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
   const PAGE_SIZE = 20;
   const [page, setPage] = useState(1);
 
+  // 与任务列表同理：经 `unwrap` 抛出 ApiError，失败才带得出错误码（无权限分支据此判定），
+  // 自造 `new Error(...)` 会把 401/403 与普通故障混成同一类，页面只能一律给重试。
   const { data, loading, error, run } = useRequest(
-    async (p: number) => {
-      const { success, data, error } = await taskV2Api.logs(taskId, { page: p, pageSize: PAGE_SIZE });
-      if (!success) throw new Error(error?.message ?? "请求失败");
-      return data;
-    },
+    async (p: number) => unwrap(taskV2Api.logs(taskId, { page: p, pageSize: PAGE_SIZE })),
     {
       defaultParams: [1],
       refreshDeps: [taskId],
@@ -276,6 +298,8 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
   );
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  // 与列表侧同口径：401/403 是持久授权状态，只说明原因（标题 + 提示）且不给重试；其余失败给一次重试。
+  const unauthorized = isUnauthorizedError(error);
 
   return (
     <>
@@ -290,9 +314,21 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
       {/* 日志内容 */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {error ? (
-          <p className="text-center text-destructive py-8 text-sm">{error.message}</p>
+          // 权限态与瞬时故障分开：401/403 只说明原因，其余失败给一次重试（沿用分页按钮的 run(page) 入口）。
+          <div className="flex flex-col items-center gap-2 py-8 px-3 text-center" role="alert">
+            <p className="text-sm text-destructive">
+              {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
+            </p>
+            {unauthorized ? (
+              <p className="text-xs text-text-muted">{t("loadState.unauthorizedHint")}</p>
+            ) : (
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => run(page)}>
+                {t("loadState.retry")}
+              </Button>
+            )}
+          </div>
         ) : loading ? (
-          <div className="py-4 px-3 space-y-2">
+          <div className="py-4 px-3 space-y-2" aria-busy="true">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-4 w-1/2" />

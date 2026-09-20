@@ -78,11 +78,11 @@ RMD-01、RMD-02、RMD-03、RMD-04、RMD-05、RMD-06、RMD-07、RMD-08、RMD-09 �
 | `web/src/components/agent-panel/SiteTabsBar.tsx` | packages/resources/agent-config/web/components/agent-panel/SiteTabsBar.tsx | agent-config | RMD-05 |
 | `src/repositories/resource-permission.ts` | packages/platform/access-control/src/repositories/resource-permission.ts | platform-access-control | RMD-06 |
 | `src/schemas/resource-access.schema.ts` | packages/platform/access-control/src/schemas/resource-access.schema.ts | platform-access-control | RMD-06 |
-| `src/routes/web/control.ts` | packages/resources/identity-admin/src/routes/web/control.ts | identity-admin | RMD-06 |
-| `src/repositories/share-link.ts` | packages/resources/identity-admin/src/repositories/share-link.ts | identity-admin | RMD-06 |
-| `src/repositories/token.ts` | packages/resources/identity-admin/src/repositories/token.ts | identity-admin | RMD-06 |
-| `src/repositories/user.ts` | packages/resources/identity-admin/src/repositories/user.ts | identity-admin | RMD-06 |
-| `web/components/ChangePasswordDialog.tsx` | packages/resources/identity-admin/web/components/ChangePasswordDialog.tsx | identity-admin | RMD-06 |
+| `src/routes/web/control.ts` | apps/server/src/routes/web/control.ts | platform-identity | RMD-06 |
+| `src/repositories/share-link.ts` | packages/platform/identity/src/repositories/share-link.ts | platform-identity | RMD-06 |
+| `src/repositories/token.ts` | packages/platform/identity/src/repositories/token.ts | platform-identity | RMD-06 |
+| `src/repositories/user.ts` | packages/platform/identity/src/repositories/user.ts | platform-identity | RMD-06 |
+| `web/components/ChangePasswordDialog.tsx` | packages/platform/identity/web/components/ChangePasswordDialog.tsx | platform-identity | RMD-06 |
 | `src/__tests__/acp-` | packages/agent-runtime/src/__tests__/acp- | agent-runtime | RMD-01 |
 | `src/__tests__/agent-chat-` | packages/agent-runtime/src/__tests__/agent-chat- | agent-runtime | RMD-01 |
 | `src/__tests__/agent-concurrency` | packages/agent-runtime/src/__tests__/agent-concurrency | agent-runtime | RMD-01 |
@@ -157,7 +157,7 @@ RMD-01、RMD-02、RMD-03、RMD-04、RMD-05、RMD-06、RMD-07、RMD-08、RMD-09 �
 | `web/src/__tests__/agent-editor-model` | packages/resources/model-management/web/src/__tests__/agent-editor-model | model-management | RMD-04 |
 | `web/src/__tests__/agent-sidebar-config` | packages/resources/agent-config/web/src/__tests__/agent-sidebar-config | agent-config | RMD-04 |
 | `web/src/__tests__/context-panel` | packages/resources/knowledge/web/src/__tests__/context-panel | resource-knowledge | RMD-05 |
-| `web/src/__tests__/token-` | packages/resources/identity-admin/web/src/__tests__/token- | identity-admin | RMD-06 |
+| `web/src/__tests__/token-` | packages/platform/identity/web/src/__tests__/token- | platform-identity | RMD-06 |
 | `web/src/__tests__/` | apps/web/src/__tests__/ | apps-web | RMD-08 |
 | `web/src/api/` | apps/web/src/api/ | apps-web | RMD-08 |
 | `web/src/components/` | apps/web/src/components/ | apps-web | RMD-08 |

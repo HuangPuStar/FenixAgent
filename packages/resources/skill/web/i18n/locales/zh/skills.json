@@ -22,6 +22,10 @@
     "noDescription": "暂无用途说明",
     "private": "未公开"
   },
+  "accessDenied": {
+    "title": "无权查看技能",
+    "description": "当前账号没有查看该组织技能库的权限。请使用有权限的账号登录，或联系组织管理员开通。"
+  },
   "loadState": {
     "title": "技能库加载失败",
     "retry": "重新加载"

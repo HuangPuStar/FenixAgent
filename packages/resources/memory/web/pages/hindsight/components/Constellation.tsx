@@ -1,7 +1,7 @@
 import { layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import type { GraphData, GraphLink, GraphNode } from "./Graph2d";
 
 // ============================================================================
@@ -279,6 +279,81 @@ export function Constellation({
       linksWithIndices: linksIdx,
     };
   }, [data, nodeColorFn, linkColorFn, nodeHeatFn]);
+
+  // ----- Label drawing helper -----
+  // 只依赖模块级常量（`layoutWithLines` / `FONT_SMALL`）与入参，不读任何组件状态，故用 `useCallback`
+  // 固定身份：身份不稳定时 `animate`（deps 含 drawLabel）每次渲染都会重建，启动动画帧链的 effect
+  // 随之被反复取消重启。
+  const drawLabel = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      n: PreparedNode,
+      _i: number,
+      sx: number,
+      sy: number,
+      r: number,
+      isHovered: boolean,
+      force: boolean,
+      dark: boolean,
+      zoom: number,
+    ) => {
+      if (zoom > 1.5 || isHovered) {
+        // Card mode
+        const cardW = Math.min(220, 80 + zoom * 25);
+        const textW = cardW - 16;
+        const { lines } = layoutWithLines(n.prepared, textW, 15);
+        const maxLines = isHovered ? Math.min(lines.length, 5) : Math.min(lines.length, Math.floor(zoom));
+        const cardH = 8 + maxLines * 15 + 8;
+
+        const cardX = sx - cardW / 2;
+        const cardY = sy + r + 4;
+
+        ctx.fillStyle = isHovered
+          ? dark
+            ? "#1c1c1e"
+            : "#f4f4f5"
+          : dark
+            ? "rgba(9,9,11,0.92)"
+            : "rgba(255,255,255,0.92)";
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardW, cardH, 6);
+        ctx.fill();
+
+        ctx.strokeStyle = isHovered ? n.color : dark ? "rgba(63,63,70,0.5)" : "rgba(212,212,216,0.6)";
+        ctx.lineWidth = isHovered ? 1.5 : 0.5;
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardW, cardH, 6);
+        ctx.stroke();
+
+        if (isHovered) {
+          ctx.shadowColor = n.color;
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.roundRect(cardX, cardY, cardW, cardH, 6);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.font = FONT_SMALL;
+        ctx.fillStyle = isHovered ? (dark ? "#e4e4e7" : "#18181b") : dark ? "#71717a" : "#71717a";
+        ctx.textAlign = "left";
+        for (let j = 0; j < maxLines; j++) {
+          ctx.fillText(lines[j].text, cardX + 8, cardY + 8 + j * 15 + 11);
+        }
+      } else {
+        // Inline label
+        ctx.font = FONT_SMALL;
+        ctx.fillStyle = isHovered ? (dark ? "#e4e4e7" : "#18181b") : dark ? "#52525b" : "#a1a1aa";
+        ctx.globalAlpha = isHovered ? 1 : force ? 0.85 : Math.min(1, (zoom - 0.3) * 2.5);
+        ctx.textAlign = "left";
+        const text = n.node.label || n.node.id.substring(0, 12);
+        const label = text.length > 45 ? `${text.slice(0, 45)}...` : text;
+        ctx.fillText(label, sx + r + 5, sy + 4);
+        ctx.globalAlpha = 1;
+      }
+    },
+    [],
+  );
 
   // ----- Animation loop -----
   const animate = useCallback(() => {
@@ -621,79 +696,9 @@ export function Constellation({
     heatLegendEndpoints,
     nodeSizeFn,
     sizeLegendLabel,
-    // drawLabel is a render-scope helper that does not need stable identity.
     drawLabel,
     compactLabels,
   ]);
-
-  // ----- Label drawing helper -----
-  function drawLabel(
-    ctx: CanvasRenderingContext2D,
-    n: PreparedNode,
-    _i: number,
-    sx: number,
-    sy: number,
-    r: number,
-    isHovered: boolean,
-    force: boolean,
-    dark: boolean,
-    zoom: number,
-  ) {
-    if (zoom > 1.5 || isHovered) {
-      // Card mode
-      const cardW = Math.min(220, 80 + zoom * 25);
-      const textW = cardW - 16;
-      const { lines } = layoutWithLines(n.prepared, textW, 15);
-      const maxLines = isHovered ? Math.min(lines.length, 5) : Math.min(lines.length, Math.floor(zoom));
-      const cardH = 8 + maxLines * 15 + 8;
-
-      const cardX = sx - cardW / 2;
-      const cardY = sy + r + 4;
-
-      ctx.fillStyle = isHovered
-        ? dark
-          ? "#1c1c1e"
-          : "#f4f4f5"
-        : dark
-          ? "rgba(9,9,11,0.92)"
-          : "rgba(255,255,255,0.92)";
-      ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, 6);
-      ctx.fill();
-
-      ctx.strokeStyle = isHovered ? n.color : dark ? "rgba(63,63,70,0.5)" : "rgba(212,212,216,0.6)";
-      ctx.lineWidth = isHovered ? 1.5 : 0.5;
-      ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, 6);
-      ctx.stroke();
-
-      if (isHovered) {
-        ctx.shadowColor = n.color;
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.roundRect(cardX, cardY, cardW, cardH, 6);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-
-      ctx.font = FONT_SMALL;
-      ctx.fillStyle = isHovered ? (dark ? "#e4e4e7" : "#18181b") : dark ? "#71717a" : "#71717a";
-      ctx.textAlign = "left";
-      for (let j = 0; j < maxLines; j++) {
-        ctx.fillText(lines[j].text, cardX + 8, cardY + 8 + j * 15 + 11);
-      }
-    } else {
-      // Inline label
-      ctx.font = FONT_SMALL;
-      ctx.fillStyle = isHovered ? (dark ? "#e4e4e7" : "#18181b") : dark ? "#52525b" : "#a1a1aa";
-      ctx.globalAlpha = isHovered ? 1 : force ? 0.85 : Math.min(1, (zoom - 0.3) * 2.5);
-      ctx.textAlign = "left";
-      const text = n.node.label || n.node.id.substring(0, 12);
-      const label = text.length > 45 ? `${text.slice(0, 45)}...` : text;
-      ctx.fillText(label, sx + r + 5, sy + 4);
-      ctx.globalAlpha = 1;
-    }
-  }
 
   // ----- Setup & resize -----
   useEffect(() => {

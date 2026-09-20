@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { taskExecutionLog } from "@server/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
+import { getTaskDatabase } from "../db";
 
 /** TaskExecutionLog 行类型 */
 export type TaskExecutionLogRow = typeof taskExecutionLog.$inferSelect;
@@ -23,6 +23,7 @@ export interface ITaskExecutionLogRepo {
 
 class PgTaskExecutionLogRepo implements ITaskExecutionLogRepo {
   async listByTask(taskId: string) {
+    const db = getTaskDatabase();
     return db
       .select()
       .from(taskExecutionLog)
@@ -31,6 +32,7 @@ class PgTaskExecutionLogRepo implements ITaskExecutionLogRepo {
   }
 
   async listByTaskPaged(taskId: string, page: number, pageSize: number) {
+    const db = getTaskDatabase();
     const offset = (page - 1) * pageSize;
     const [{ total }] = await db
       .select({ total: sql<number>`count(*)` })
@@ -47,6 +49,7 @@ class PgTaskExecutionLogRepo implements ITaskExecutionLogRepo {
   }
 
   async getLatest(taskId: string) {
+    const db = getTaskDatabase();
     const rows = await db
       .select()
       .from(taskExecutionLog)
@@ -57,20 +60,24 @@ class PgTaskExecutionLogRepo implements ITaskExecutionLogRepo {
   }
 
   async getById(logId: string) {
+    const db = getTaskDatabase();
     const rows = await db.select().from(taskExecutionLog).where(eq(taskExecutionLog.id, logId)).limit(1);
     return rows[0] ?? null;
   }
 
   async create(data: TaskExecutionLogInsert) {
+    const db = getTaskDatabase();
     const [row] = await db.insert(taskExecutionLog).values(data).returning();
     return row;
   }
 
   async update(logId: string, data: Partial<TaskExecutionLogInsert>) {
+    const db = getTaskDatabase();
     await db.update(taskExecutionLog).set(data).where(eq(taskExecutionLog.id, logId));
   }
 
   async deleteByTask(taskId: string) {
+    const db = getTaskDatabase();
     await db.delete(taskExecutionLog).where(eq(taskExecutionLog.taskId, taskId));
   }
 }

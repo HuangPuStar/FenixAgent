@@ -1,42 +1,12 @@
+import { useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, History, Pencil } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { WorkflowEditor } from "@/src/pages/workflow/WorkflowEditor";
-import { WorkflowList } from "@/src/pages/workflow/WorkflowList";
-import { WorkflowRuns } from "@/src/pages/workflow/WorkflowRuns";
-import { WorkflowVersions } from "@/src/pages/workflow/WorkflowVersions";
-
-type WfView = "list" | "edit" | "versions" | "runs";
-
-interface WfRoute {
-  view: WfView;
-  workflowId?: string;
-  runId?: string;
-}
-
-function parseWfPath(): WfRoute {
-  const path = window.location.pathname.replace(/^\/ctrl\/?/, "");
-  const parts = path.split("/");
-  const params = new URLSearchParams(window.location.search);
-  const runId = params.get("runId") ?? undefined;
-
-  if (parts[0] !== "workflow") return { view: "list" };
-
-  // /ctrl/workflow/runs
-  if (parts[1] === "runs") {
-    return { view: "runs" };
-  }
-  // /ctrl/workflow/:workflowId/versions
-  if (parts[1] && parts[2] === "versions") {
-    return { view: "versions", workflowId: parts[1] };
-  }
-  // /ctrl/workflow/:workflowId/edit
-  if (parts[1] && parts[2] === "edit") {
-    return { view: "edit", workflowId: parts[1], runId };
-  }
-  // /ctrl/workflow（默认列表页）
-  return { view: "list" };
-}
+import { WorkflowEditor } from "./workflow/WorkflowEditor";
+import { WorkflowList } from "./workflow/WorkflowList";
+import { WorkflowRuns } from "./workflow/WorkflowRuns";
+import { WorkflowVersions } from "./workflow/WorkflowVersions";
+import { parseWorkflowPath, type WfRoute, type WfView, WORKFLOW_LIST_PATH } from "./workflow/workflow-path";
 
 function TabItems(t: (key: string) => string) {
   return [
@@ -45,25 +15,48 @@ function TabItems(t: (key: string) => string) {
   ];
 }
 
+/**
+ * 本页的导航契约（P0 禁令相关，改动前先读这里）。
+ *
+ * 页面原先自持 `/ctrl/workflow/*` 子路由：`window.history.pushState` 改写地址栏 + 本地 state 跟随
+ * popstate。前端规范把 location 写操作列为 P0 禁令（`docs/developer/guide/frontend-development.md`
+ * 的导航一节），因此改为「状态从 Router 派生、跳转走 Router」：`useLocation()` 订阅当前地址，
+ * `useNavigate()` 按**已注册**的路由 ID 跳转。视图解析（含路径空间为什么是 `/agent/workflow`）
+ * 在 `./workflow/workflow-path`，那里是纯函数、有独立用例。
+ */
 export function WorkflowPage() {
   const { t } = useTranslation("workflows");
-  const [route, setRoute] = useState(parseWfPath);
+  const navigate = useNavigate();
+  const location = useLocation();
+  // `strict: false`：本页不拥有路由定义，只能读当前匹配上的全部 search（`runId` 由编辑视图消费）
+  const search = useSearch({ strict: false }) as { runId?: string };
+  // 视图每轮渲染从 Router 的 pathname 派生，不再维护第二份路由 state：
+  // 上一版用 state + popstate 手工跟随地址栏，前进/后退之外的程序化跳转必须自己补一次 setState，
+  // 两份状态一旦分叉就会出现「地址栏已变、界面没变」。
+  const route: WfRoute = { ...parseWorkflowPath(location.pathname), runId: search.runId };
 
-  useEffect(() => {
-    const sync = () => setRoute(parseWfPath());
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-
-  const navigateTo = useCallback((view: WfView, workflowId?: string, runId?: string) => {
-    let path = "/ctrl/workflow";
-    if (view === "runs") path = "/ctrl/workflow/runs";
-    if (view === "edit" && workflowId) path = `/ctrl/workflow/${workflowId}/edit`;
-    if (view === "versions" && workflowId) path = `/ctrl/workflow/${workflowId}/versions`;
-    if (runId) path += `?runId=${runId}`;
-    window.history.pushState(null, "", path);
-    setRoute({ view, workflowId, runId });
-  }, []);
+  const navigateTo = useCallback(
+    (view: WfView, workflowId?: string, runId?: string) => {
+      if (view === "edit" && workflowId) {
+        void navigate({
+          to: "/agent/workflow/$id/edit",
+          params: { id: workflowId },
+          search: runId ? { runId } : {},
+        });
+        return;
+      }
+      if (view === "versions" && workflowId) {
+        void navigate({ to: "/agent/workflow/$id/versions", params: { id: workflowId } });
+        return;
+      }
+      if (view === "runs") {
+        void navigate({ to: WORKFLOW_LIST_PATH, search: { tab: "runs" } });
+        return;
+      }
+      void navigate({ to: WORKFLOW_LIST_PATH });
+    },
+    [navigate],
+  );
 
   // 全屏独立视图：编辑器
   if (route.view === "edit" && route.workflowId) {

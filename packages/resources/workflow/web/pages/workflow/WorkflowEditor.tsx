@@ -16,6 +16,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useContextQueue } from "@fenix/web-runtime/chat/use-context-queue";
 import {
   Bot,
   Boxes,
@@ -36,12 +41,6 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { MetaAgentPanel } from "@/components/MetaAgentPanel";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { unwrap } from "@/src/api/request";
-import { useContextQueue } from "@/src/lib/use-context-queue";
 import { type CustomToolItem, customToolsApi, type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -51,6 +50,7 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
+import { MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigSheet } from "./components/NodeConfigSheet";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
@@ -307,7 +307,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "D") {
         e.preventDefault();
-        import("@/src/lib/context-queue").then(({ dumpContext }) => {
+        import("@fenix/web-runtime/chat/context-queue").then(({ dumpContext }) => {
           console.log("[Workflow CQ]", new Date().toLocaleTimeString(), dumpContext());
         });
       }

@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { agentConfigSiteApp } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getAgentConfigDatabase } from "../../db";
 
 /**
  * Agent ↔ SiteApp 绑定关系服务。
@@ -12,7 +12,7 @@ import { and, eq } from "drizzle-orm";
  * 避免单点操作走"读-改-写"全量覆盖带来的并发丢更新风险。
  */
 export async function listAgentSiteAppIds(agentConfigId: string): Promise<string[]> {
-  const rows = await db
+  const rows = await getAgentConfigDatabase()
     .select({ siteAppId: agentConfigSiteApp.siteAppId })
     .from(agentConfigSiteApp)
     .where(eq(agentConfigSiteApp.agentConfigId, agentConfigId));
@@ -21,17 +21,19 @@ export async function listAgentSiteAppIds(agentConfigId: string): Promise<string
 
 /** 全量覆盖 Agent 的 SiteApp 关联（先删后插）。 */
 export async function syncAgentSiteApps(agentConfigId: string, siteAppIds: string[]): Promise<void> {
-  await db.delete(agentConfigSiteApp).where(eq(agentConfigSiteApp.agentConfigId, agentConfigId));
+  await getAgentConfigDatabase().delete(agentConfigSiteApp).where(eq(agentConfigSiteApp.agentConfigId, agentConfigId));
 
   const valid = siteAppIds.filter((id) => id?.trim());
   if (valid.length === 0) return;
 
-  await db.insert(agentConfigSiteApp).values(
-    valid.map((siteAppId) => ({
-      agentConfigId,
-      siteAppId,
-    })),
-  );
+  await getAgentConfigDatabase()
+    .insert(agentConfigSiteApp)
+    .values(
+      valid.map((siteAppId) => ({
+        agentConfigId,
+        siteAppId,
+      })),
+    );
 }
 
 /**
@@ -40,12 +42,12 @@ export async function syncAgentSiteApps(agentConfigId: string, siteAppIds: strin
  * 组织一致性校验由路由层在调用前完成，本函数不做权限判断。
  */
 export async function addAgentSiteApp(agentConfigId: string, siteAppId: string): Promise<void> {
-  await db.insert(agentConfigSiteApp).values({ agentConfigId, siteAppId }).onConflictDoNothing();
+  await getAgentConfigDatabase().insert(agentConfigSiteApp).values({ agentConfigId, siteAppId }).onConflictDoNothing();
 }
 
 /** 解绑单个 SiteApp（不存在时静默成功，DELETE 天然幂等）。 */
 export async function removeAgentSiteApp(agentConfigId: string, siteAppId: string): Promise<void> {
-  await db
+  await getAgentConfigDatabase()
     .delete(agentConfigSiteApp)
     .where(and(eq(agentConfigSiteApp.agentConfigId, agentConfigId), eq(agentConfigSiteApp.siteAppId, siteAppId)));
 }

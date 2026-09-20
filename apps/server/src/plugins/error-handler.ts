@@ -1,8 +1,8 @@
 import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
+import { AppError } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia, { ValidationError } from "elysia";
-import { AppError } from "../errors";
 import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
 import { logError } from "./logger";
 
@@ -17,7 +17,9 @@ import { logError } from "./logger";
 export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
   { as: "global" },
   ({ error, set, code, request }) => {
-    // 自定义错误类优先 — Service 层抛出的 AppError 子类
+    // 自定义错误类优先 — Service 层抛出的 AppError 子类。
+    // 分类法已上移到 `@fenix/platform-sdk`：资源包（跨包服务）与宿主必须共用同一组类，
+    // 否则 `instanceof` 判不出资源包抛出的错误，403/404 会静默退化为 500。
     if (error instanceof AppError) {
       set.status = error.statusCode;
       logError({ request, error, set });

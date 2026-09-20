@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { AppError, NotFoundError } from "@server/errors";
+import { AppError, NotFoundError } from "@fenix/platform-sdk";
 import type { RegisterEnvironmentRequest } from "@server/types/api";
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { environmentRepo } from "../server/repositories/environment";

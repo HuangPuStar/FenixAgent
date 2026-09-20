@@ -1,21 +1,40 @@
 import { log, error as logError } from "@fenix/logger";
-import { db } from "@server/db";
 import { machine } from "@server/db/schema";
 import { eq } from "drizzle-orm";
+import { getMachineDatabase } from "../db";
 import { touchSandboxInstanceHeartbeatForMachine } from "./machine-sandbox-projection";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 
-const deps = { markHeartbeatTimeout, updateHeartbeat };
-const defaultDeps = { ...deps };
+/** 用例登记的替换值；`null` 表示全部走默认实现。 */
+let injected: Partial<{
+  markHeartbeatTimeout: typeof markHeartbeatTimeout;
+  updateHeartbeat: typeof updateHeartbeat;
+}> | null = null;
+
+/**
+ * 依赖句柄用 getter 暴露：默认实现按**调用时**读取模块绑定。
+ *
+ * 本包处在 `machine → agent-runtime → sandbox → machine` 的既有环上（台账登记的方向性豁免，1.4 收敛），
+ * 顶层把导入的 `const` 读进对象字面量，会在环的另一侧入口加载时抛 TDZ，而宿主 preload 会加载本包，
+ * 导致全仓测试一起失败。getter 不改调用点、不改依赖图，只推迟读取时机。
+ */
+const deps = {
+  get markHeartbeatTimeout(): typeof markHeartbeatTimeout {
+    return injected?.markHeartbeatTimeout ?? markHeartbeatTimeout;
+  },
+  get updateHeartbeat(): typeof updateHeartbeat {
+    return injected?.updateHeartbeat ?? updateHeartbeat;
+  },
+};
 
 /** 测试用：替换 Registry 写入依赖，避免测试进程接触真实 DB。 */
 export function setRegistryHeartbeatDeps(overrides: Partial<typeof deps>): void {
-  Object.assign(deps, overrides);
+  injected = { ...injected, ...overrides };
 }
 
 /** 测试用：恢复 Registry 写入依赖。 */
 export function resetRegistryHeartbeatDeps(): void {
-  Object.assign(deps, defaultDeps);
+  injected = null;
 }
 
 type HeartbeatEntry = {
@@ -87,7 +106,7 @@ export function startMachineSweep(intervalMs = 60_000): void {
   sweepTimer = setInterval(async () => {
     try {
       const mod = await import("@fenix/agent-runtime/server");
-      const onlineMachines = await db.select().from(machine).where(eq(machine.status, "online"));
+      const onlineMachines = await getMachineDatabase().select().from(machine).where(eq(machine.status, "online"));
       for (const m of onlineMachines) {
         const conn = mod.findMachineConnectionById(m.id);
         if (!conn) {

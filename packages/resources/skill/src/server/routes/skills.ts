@@ -1,11 +1,9 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { db } from "@server/db";
-import { skill } from "@server/db/schema";
-import { and, eq } from "drizzle-orm";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { getGlobalSkillsDir } from "../services/skill";
+import { getSkillServerModule } from "../runtime";
+import { getGlobalSkillsDir } from "../services/skill-content";
 import { verifySkillDownloadToken } from "../services/skill-download-token";
 import { assertValidSkillName, getSkillArchivePath } from "../services/skill-fs";
 
@@ -21,12 +19,19 @@ function jsonError(status: number, code: string, message: string): Response {
   return Response.json({ success: false, error: { code, message } }, { status });
 }
 
-const app = new Elysia({ name: "skills", prefix: "/skills" }).model({
+/**
+ * 受令牌保护的 `/skills/:name/download`。
+ *
+ * 与其他两条路由不同，这条**不是工厂**：令牌本身就是授权凭据（无 session、无 actor），不需要宿主的
+ * `sessionAuth` 宏，因此没有需要注入的守卫，也没有第二份实例可注入。它保留为模块级实例，按名导出，
+ * 与工厂导出并列在 `src/server.ts`，宿主挂载点见 `apps/server/src/main.ts`。
+ */
+export const skillDownloadRoutes = new Elysia({ name: "skills", prefix: "/skills" }).model({
   "skill-download-params": SkillDownloadParamsSchema,
   "skill-download-query": SkillDownloadQuerySchema,
 });
 
-app.get(
+skillDownloadRoutes.get(
   "/:name/download",
   // biome-ignore lint/suspicious/noExplicitAny: 下载接口返回二进制流，Elysia 在 query + 非 JSON 响应场景下类型推断不稳定
   async ({ params, query, set }: any) => {
@@ -43,12 +48,10 @@ app.get(
       return jsonError(403, "forbidden", "Invalid skill download token");
     }
 
-    const rows = await db
-      .select({ id: skill.id })
-      .from(skill)
-      .where(and(eq(skill.id, payload.skillId), eq(skill.organizationId, payload.organizationId), eq(skill.name, name)))
-      .limit(1);
-    if (rows.length === 0) {
+    // 令牌本身就是这条路径的授权凭据（无 session、无 actor），因此经系统路径按 ID 读取并复核三元组：
+    // 令牌里的组织与名称必须与资源行一致，避免签名有效但指向已变更归属的资源。
+    const record = await getSkillServerModule().system.findById({ resourceId: payload.skillId });
+    if (!record || record.organizationId !== payload.organizationId || record.name !== name) {
       return jsonError(404, "not_found", "Skill not found");
     }
 
@@ -85,5 +88,3 @@ app.get(
     },
   },
 );
-
-export default app;

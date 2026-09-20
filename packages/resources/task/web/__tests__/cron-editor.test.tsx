@@ -13,12 +13,6 @@ mock.module("react-i18next", () => ({
   Trans: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-// Mock the CSS module imports used by UI components
-mock.module("@/src/i18n", () => ({
-  default: { t },
-  NS: { TASKS_V2: "tasksV2" },
-}));
-
 const { describeCron } = await import("../pages/agent-panel/components/CronEditor");
 
 afterEach(() => {

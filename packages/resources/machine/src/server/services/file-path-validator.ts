@@ -5,7 +5,7 @@
 // 可直接单测。
 
 import { isAbsolute, win32 } from "node:path";
-import { ValidationError } from "@server/errors";
+import { ValidationError } from "@fenix/platform-sdk";
 
 /** 常见文件系统单个路径段的 NAME_MAX；按 UTF-8 字节校验，避免多字节名称绕过字符数限制。 */
 export const MAX_FILE_NAME_BYTES = 255;

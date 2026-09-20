@@ -1,0 +1,68 @@
+import { describe, expect, test } from "bun:test";
+
+const { pushContext, removeContext, flushContext, clearContextQueue } = await import("../chat/context-queue");
+
+describe("context-queue", () => {
+  test("flushContext 返回 null 当队列为空", () => {
+    clearContextQueue();
+    expect(flushContext()).toBeNull();
+  });
+
+  test("pushContext + flushContext 返回拼接的 system-reminder block", () => {
+    clearContextQueue();
+    pushContext("route", "当前页面: /agent/chat/agent-123");
+    pushContext("session", "sessionId: ses-456");
+    const result = flushContext();
+    expect(result).not.toBeNull();
+    expect(result!.startsWith("<system-reminder>")).toBe(true);
+    expect(result!.endsWith("</system-reminder>")).toBe(true);
+    expect(result).toContain("当前页面: /agent/chat/agent-123");
+    expect(result).toContain("sessionId: ses-456");
+  });
+
+  test("flushContext 清空队列后再次 flush 返回 null", () => {
+    clearContextQueue();
+    pushContext("route", "test");
+    flushContext();
+    expect(flushContext()).toBeNull();
+  });
+
+  test("pushContext 覆盖同 key 的旧值", () => {
+    clearContextQueue();
+    pushContext("route", "旧页面");
+    pushContext("route", "新页面");
+    const result = flushContext();
+    expect(result).toContain("新页面");
+    expect(result).not.toContain("旧页面");
+  });
+
+  test("removeContext 移除指定 key", () => {
+    clearContextQueue();
+    pushContext("route", "页面");
+    pushContext("session", "会话");
+    removeContext("session");
+    const result = flushContext();
+    expect(result).toContain("页面");
+    expect(result).not.toContain("会话");
+  });
+
+  test("removeContext 不存在的 key 不报错", () => {
+    clearContextQueue();
+    expect(() => removeContext("nonexistent")).not.toThrow();
+  });
+
+  // 意图：keep-alive 会话的引用上下文只能由对应会话消费，全局上下文仍可随当前会话发送。
+  test("flushContext 隔离会话队列", () => {
+    clearContextQueue();
+    pushContext("route", "全局页面");
+    pushContext("quote-a", "会话 A 引用", "session-a");
+    pushContext("quote-b", "会话 B 引用", "session-b");
+
+    const sessionA = flushContext("session-a");
+    expect(sessionA).toContain("全局页面");
+    expect(sessionA).toContain("会话 A 引用");
+    expect(sessionA).not.toContain("会话 B 引用");
+    expect(flushContext("session-a")).toBeNull();
+    expect(flushContext("session-b")).toContain("会话 B 引用");
+  });
+});

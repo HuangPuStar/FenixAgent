@@ -1,8 +1,8 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "@/src/api/request";
 import { type TriggerItem, workflowDefApi } from "../../../api/workflow-defs";
 
 export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onClose: () => void }) {

@@ -1,3 +1,12 @@
+// 本文件覆盖 agent-config 的编辑器表单模型（`agent-editor-model`）与模型选项映射——被测实现属对方域，
+// 按跨包规则从包根 `@fenix/agent-config/web` 消费。文件落在本包目录是任务 1.2 按目录整体迁移的残留，
+// 归宿应为 agent-config 的 `web/__tests__/`（见 README 已知项）。
+//
+// 历史（2026-09-20，已解除）：本链一度整文件 0 断言执行，两个原因都在宿主侧——`apps/web/src/i18n/index.ts`
+// 曾按 observer 的旧布局深链 `web/i18n/{en,zh}/observer.json`（该包已迁到 `web/i18n/locales/**`），以及
+// preload 把 `globalThis.window` 置成 globalThis，触发 `antd-style` 的 SSR 守卫裸调 `matchMedia`。宿主
+// i18n 改指各包 `@fenix/*/web/i18n` 后本链已在无 DOM 的 `bun test` 进程里正常求值：实测本文件与
+// `web/__tests__/provider-model-resource-access-flow.test.ts` 合计 32 pass / 0 fail。
 import { describe, expect, test } from "bun:test";
 import {
   agentDetailToEditorValues,
@@ -9,7 +18,7 @@ import {
   mapModelOptions,
   mergeSelectedOptions,
 } from "@fenix/agent-config/web";
-import type { AgentDetail } from "@/src/types/config";
+import type { AgentDetail } from "@fenix/web-runtime/types/config";
 
 const detail: AgentDetail = {
   id: "agent-1",
@@ -26,15 +35,8 @@ const detail: AgentDetail = {
   siteAppIds: ["site-hidden"],
   agentNode: {},
   enableMemory: true,
-  resourceAccess: {
-    ownership: "internal",
-    sourceOrganizationId: "org-1",
-    resourceUid: "agent-1",
-    resourceKey: "org-1/writer",
-    writable: true,
-    manageable: true,
-    publicReadable: false,
-  },
+  scope: { organizationId: "org-1", visibility: "private" },
+  access: { actions: ["read", "update", "delete"] },
 };
 
 describe("Agent 编辑器表单模型", () => {
@@ -122,33 +124,29 @@ describe("Agent 编辑器表单模型", () => {
   // 模型卡片只显示短名称，Provider 与品牌图标键必须保留在结构化字段中。
   test("模型选项拆分 Provider 和短名称", () => {
     expect(
-      mapModelOptions([
-        {
-          id: "model-uuid",
-          modelId: "mimo-v2.5",
-          displayName: "mimo-v2.5",
-          provider: "provider-id",
-          providerDisplayName: "mimo",
-          providerResourceKey: "provider-key",
-          providerResourceAccess: {
-            ownership: "external",
-            sourceOrganizationId: "org-personal",
-            sourceOrganizationName: "Personal1",
-            resourceUid: "provider-uid",
-            resourceKey: "provider-key",
-            manageable: false,
-            writable: false,
+      mapModelOptions(
+        [
+          {
+            id: "model-uuid",
+            modelId: "mimo-v2.5",
+            displayName: "mimo-v2.5",
+            provider: "provider-id",
+            providerId: "provider-uid",
+            providerDisplayName: "mimo",
+            scope: { organizationId: "org-personal", visibility: "private" },
+            access: { actions: ["read"] },
+            contextLimit: null,
+            outputLimit: null,
           },
-          contextLimit: null,
-          outputLimit: null,
-        },
-      ]),
+        ],
+        "org-1",
+      ),
     ).toEqual([
       {
         value: "model-uuid",
         label: "mimo-v2.5",
         modelId: "mimo-v2.5",
-        group: { id: "org-personal:provider-key", label: "mimo", scope: "shared" },
+        group: { id: "org-personal/provider-uid", label: "mimo", scope: "shared" },
       },
     ]);
   });

@@ -11,6 +11,7 @@
 import path from "node:path";
 import { createLogger } from "@fenix/logger";
 import { CustomNodeRegistry } from "@fenix/workflow-engine";
+import { getWorkflowConfig } from "../../config";
 
 const logger = createLogger("workflow-tools");
 
@@ -25,7 +26,9 @@ export async function initCustomToolsRegistry(toolsDir?: string): Promise<Custom
   if (_registry) return _registry;
   if (_initPromise) return _initPromise;
 
-  const dir = toolsDir ?? process.env.WORKFLOW_TOOLS_DIR ?? path.resolve(process.cwd(), "tools");
+  // 工具目录来自模块配置（宿主 env `WORKFLOW_TOOLS_DIR`）；显式入参优先，便于用例与专用装配覆盖。
+  // 配置未就绪时读取会抛错，因此本函数必须在 `initializeApplicationInfrastructure()` 之后调用（宿主在装配末端调用）。
+  const dir = toolsDir ?? getWorkflowConfig().toolsDir ?? path.resolve(process.cwd(), "tools");
   logger.info("Discovering custom tools", { dir });
 
   _initPromise = CustomNodeRegistry.discover(dir)

@@ -1,4 +1,20 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
 import type { DAGEvent } from "../../api/workflow-engine";
+
+/**
+ * 判断工作流页面加载失败是否属于「无权限」。
+ *
+ * 判据是错误**码**而不是 HTTP 状态码：`@fenix/web-runtime/api/request` 把无业务错误码的 401/403 一并
+ * 归一为 `UNAUTHORIZED`。401 需要重新登录、403 是永久拒绝，两者都不会因为再点一次重试而改变，所以
+ * 无权限分支单独渲染且**不给**重试按钮，避免把用户引向无意义的重复请求（与同批资源包
+ * `packages/resources/mcp` 的 `isUnauthorizedError` 同一口径）。
+ *
+ * 放在这里而不是各页面内部：列表页与版本页都要做同一判定，重复两份会在补第三个页面时漂移；
+ * 出现第三个消费方或需要按状态码细分时再上移到公共模块。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "UNAUTHORIZED";
+}
 
 export function dedupEvents(events: DAGEvent[]): DAGEvent[] {
   const seen = new Set<string>();

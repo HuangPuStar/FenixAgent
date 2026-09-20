@@ -1,19 +1,20 @@
 "use client";
 
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import DOMPurify from "dompurify";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "@/src/types/knowledge";
+import { kbApi } from "../../../../api/knowledge-bases";
+import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
+import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "../../../../types/knowledge";
 
 interface ChunkDetailSheetProps {
   open: boolean;
@@ -37,6 +38,9 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
   const { t } = useTranslation(NS.KNOWLEDGE);
   const [data, setData] = useState<KnowledgeChunkListResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  // 切片列表的失败原因。判据：`error && 无数据` 才让失败区接管列表区（见下方渲染分支），
+  // 已有数据后的翻页 / 搜索失败保留旧数据。
+  const [error, setError] = useState<unknown>(null);
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -52,8 +56,12 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
           kbApi.listChunks({ kbId, resourceId: resource.id }, { page: p, pageSize, keyword: kw?.trim() || undefined }),
         );
         setData(result);
+        setError(null);
       } catch (err) {
         console.error("Failed to fetch chunks", err);
+        // 持久错误态由渲染分支按「error && 无数据」接管列表区；toast 只作为
+        // 「已有数据时翻页/搜索失败」的瞬时补充提示（此时列表保留旧数据，见渲染分支）。
+        setError(err);
         toast.error(t("chunk.fetchFailed"));
       } finally {
         setLoading(false);
@@ -199,7 +207,18 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
             <div className="flex-1 overflow-auto px-5 py-4 space-y-3 min-h-0">
               {loading && <ChunkListSkeleton />}
 
-              {!loading && data && data.items.length === 0 && (
+              {/* 失败且无数据：整区接管为可重试的持久错误态（重试接原请求：同页码 + 同搜索词）。
+                  已有数据时的失败不进这里，下面的列表继续渲染旧数据。 */}
+              {!loading && error != null && data == null && (
+                <KnowledgeLoadFailure
+                  error={error}
+                  title={t("chunk.fetchFailed")}
+                  onRetry={() => fetchChunks(page, keyword)}
+                />
+              )}
+
+              {/* 空态只表达「确实没有数据」：请求失败时不得落回空态，因此在 error == null 时才渲染。 */}
+              {!loading && error == null && data && data.items.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 gap-2">
                   <Search className="h-8 w-8 text-[#cbd5e1]" />
                   <p className="text-[13px] text-[#94a3b8]">{hasKeyword ? t("chunk.noMatch") : t("chunk.empty")}</p>
@@ -238,7 +257,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                       className={`text-[12px] text-[#475569] leading-relaxed break-words [&_video]:max-w-full [&_video]:rounded-lg [&_img]:max-w-full [&_img]:rounded-lg [&_table]:w-full [&_a]:text-[#6366f1] [&_a]:underline ${
                         textMode === "ellipse" ? "line-clamp-3" : ""
                       }`}
-                      // 内容已经 DOMPurify 清洗。
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（RAGFlow 切片内容含后端 HTML，不可直接注入）
                       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chunk.content) }}
                     />
 
@@ -347,7 +366,7 @@ function ChunkListSkeleton() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        // Static skeleton placeholders have stable indices.
+        // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，占位块无领域标识，索引键不会引起元素错位
         <div key={`skeleton-${i}`} className="rounded-xl border border-[#eef2f6] bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2.5">
             <Skeleton className="h-3 w-8 rounded" />

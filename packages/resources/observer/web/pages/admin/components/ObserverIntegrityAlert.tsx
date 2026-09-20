@@ -3,10 +3,10 @@
 // 全部一致时显示绿色确认文案。
 
 import type { IntegrityRow } from "@fenix/resource-sandbox/web";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/src/lib/utils";
 
 interface ObserverIntegrityAlertProps {
   rows: IntegrityRow[];

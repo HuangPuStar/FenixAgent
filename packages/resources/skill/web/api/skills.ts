@@ -6,14 +6,14 @@
  * 上传使用 FormData，PUT 上传文件到 Skill 目录。
  */
 
-import { request } from "../../../../../apps/web/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type {
-  ResourceAccess,
+  ResourceAccessView,
   SkillDetail,
   SkillInfo,
   SkillUploadConflictResponse,
   SkillUploadResponse,
-} from "../../../../../apps/web/src/types/config";
+} from "@fenix/web-runtime/types/config";
 
 /** 创建/更新 Skill 所需的 data 载荷 */
 export interface SkillData {
@@ -28,10 +28,10 @@ interface SkillListResult {
   skills: SkillInfo[];
 }
 
-/** 创建/更新响应 */
-interface SkillSaveResult {
+/** 创建/更新响应：与列表项同一套授权视图，另带归属组织展示名。 */
+interface SkillSaveResult extends Partial<ResourceAccessView> {
   name: string;
-  resourceAccess: ResourceAccess;
+  organizationName?: string;
 }
 
 export const skillConfigApi = {

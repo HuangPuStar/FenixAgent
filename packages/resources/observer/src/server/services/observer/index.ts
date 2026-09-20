@@ -12,6 +12,7 @@ export {
 export { acpLinkProvider, collectAcpLink } from "./providers/acp-link";
 export { buildRelationTree } from "./relation-tree";
 export type {
+  AcpConnectionSnapshot,
   AgentNodeView,
   ChatClientSnapshot,
   InstanceNodeView,

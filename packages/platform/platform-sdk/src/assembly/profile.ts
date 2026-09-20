@@ -6,6 +6,14 @@ const moduleIdSchema = z
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 
 const assemblyProfileSchema = z.strictObject({
+  /**
+   * Identity 模块 ID。
+   *
+   * 必填：`packages/platform/identity` 是身份、组织与成员的唯一 owner，`AccessControlModule`
+   * 需要经它产出可信 `ActorContext`（成员关系与系统托管租户），因此任何 profile 都不能
+   * 以"无身份模块"的形态启动。
+   */
+  identity: moduleIdSchema,
   accessControl: moduleIdSchema,
   agentRuntime: moduleIdSchema,
   webShell: moduleIdSchema,
@@ -15,6 +23,8 @@ const assemblyProfileSchema = z.strictObject({
 
 /** CE、EE 与客户版本共用的静态装配 profile。 */
 export interface AssemblyProfile {
+  /** 见 {@link assemblyProfileSchema} 中 `identity` 的必填说明。 */
+  readonly identity: string;
   readonly accessControl: string;
   readonly agentRuntime: string;
   readonly webShell: string;

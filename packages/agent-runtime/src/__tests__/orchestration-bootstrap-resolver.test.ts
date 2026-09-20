@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs } from "@server/test-utils/helpers";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { createExecutionNodeResolver } from "../services/orchestration-bootstrap";
 
 describe("createExecutionNodeResolver", () => {

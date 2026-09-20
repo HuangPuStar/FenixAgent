@@ -57,8 +57,8 @@ describe("WorkflowEditor trigger integration", () => {
 });
 
 describe("Trigger i18n keys", () => {
-  const enSrc = readFileSync(join(webSrc, "i18n/en/workflows.json"), "utf-8");
-  const zhSrc = readFileSync(join(webSrc, "i18n/zh/workflows.json"), "utf-8");
+  const enSrc = readFileSync(join(webSrc, "i18n/locales/en/workflows.json"), "utf-8");
+  const zhSrc = readFileSync(join(webSrc, "i18n/locales/zh/workflows.json"), "utf-8");
   const en = JSON.parse(enSrc);
   const zh = JSON.parse(zhSrc);
 

@@ -1,4 +1,4 @@
-import type { AgentNode } from "../types/config";
+import type { AgentNode } from "@fenix/web-runtime/types/config";
 
 export type AgentNodeSelection =
   | { kind: "default" }

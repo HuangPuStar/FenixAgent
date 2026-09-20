@@ -1,67 +1,18 @@
 // config service stub 注册表
 // 替代各测试文件中的 mock.module("../services/config/index", ...) 调用
+//
+// 键清单必须与本模块的真实函数导出逐一对应：`mock.module` 是整体替换，清单缺少真实导出会让导入方拿到
+// `undefined` 而非明确报错。CE 阶段 2 任务 1.2 把 mcp / skill / provider / model 的配置面移入各自的资源包
+// （调用方改为资源模块 Facade），这些键随之失效，已删除；纯净函数导出（`parseJsonb` / `parseJsonbOr`）
+// 不入清单——它们应由真实实现承担，打桩只会掩盖错误。
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type StubFn = (...args: any[]) => any;
 
 interface ConfigPgStubs {
-  AGENT_SETTABLE_FIELDS: string[];
-  addAgentSiteApp: StubFn;
-  addModel: StubFn;
-  createAgentConfig: StubFn;
-  createMcpServer: StubFn;
-  deleteAgentConfig: StubFn;
-  deleteMcpServerById: StubFn;
-  deleteMcpServer: StubFn;
-  deleteProviderById: StubFn;
-  deleteProvider: StubFn;
-  deleteSkill: StubFn;
-  deleteSkillById: StubFn;
-  assertMcpServerInternalWritableById: StubFn;
-  assertMcpServerInternalWritable: StubFn;
-  assertAgentConfigInternalWritable: StubFn;
-  assertProviderInternalWritableById: StubFn;
-  assertProviderInternalWritable: StubFn;
-  getAgentConfig: StubFn;
-  getAgentConfigById: StubFn;
-  getAgentConfigByResourceKey: StubFn;
-  getReadableAgentConfigById: StubFn;
-  getMcpServerById: StubFn;
-  getMcpServer: StubFn;
-  getMcpServerByResourceKey: StubFn;
-  getProviderById: StubFn;
-  getProvider: StubFn;
-  getProviderByResourceKey: StubFn;
-  getSkill: StubFn;
-  getSkillById: StubFn;
-  getSkillByResourceKey: StubFn;
   getUserConfig: StubFn;
-  listAgentConfigs: StubFn;
-  listAgentMcpIds: StubFn;
-  listAgentSiteAppIds: StubFn;
-  listAgentSkillIds: StubFn;
-  listMcpServers: StubFn;
-  listProviders: StubFn;
-  listSkills: StubFn;
-  removeAgentSiteApp: StubFn;
-  removeModel: StubFn;
-  removeModelById: StubFn;
-  resolveAgentNode: StubFn;
-  restartAgentConfigInstances: StubFn;
-  setMcpServerEnabled: StubFn;
-  setSkillPublicReadable: StubFn;
   setUserConfig: StubFn;
-  syncAgentMcps: StubFn;
-  syncAgentSiteApps: StubFn;
-  syncAgentSkills: StubFn;
-  updateAgentConfig: StubFn;
-  updateProviderById: StubFn;
-  updateMcpServerById: StubFn;
-  updateMcpServer: StubFn;
-  updateModel: StubFn;
-  updateModelById: StubFn;
-  upsertProvider: StubFn;
-  upsertSkill: StubFn;
+  upsertSystemMcpServer: StubFn;
 }
 
 let _stubs: Partial<ConfigPgStubs> = {};
