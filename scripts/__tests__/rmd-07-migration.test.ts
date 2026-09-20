@@ -4,9 +4,7 @@ import { existsSync } from "node:fs";
 const RMD_07_MOVES = [
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
-  ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
   ["src/services/build-info.ts", "apps/server/src/services/build-info.ts"],
   ["src/services/config-utils.ts", "apps/server/src/services/config-utils.ts"],
   ["src/services/config/index.ts", "apps/server/src/services/config/index.ts"],
@@ -74,6 +72,12 @@ const RMD_07_MOVES = [
  * 的协议接入层），测试随被测路由落到包内、认证改用包内守卫替身；另有同域用例
  * `__tests__/instances-delete-idempotent.test.ts` 与 `__tests__/round44-environments-routes.test.ts`
  * （不在本表内，随各片一并迁入包内——后者在 `root-source-owner-rules.ts` 中本就按 agent-runtime 登记）。
+ * 任务 1.5c 的后两项 owner 是 model-management：`routes/web/peri-task-details.ts`（Peri 任务详情路由）
+ * 与 `schemas/peri-task-details.ts`（其协议契约）。两者的 owner 本就在该包——读取逻辑 `getPeriTaskDetail`
+ * 与投影存储 `createPeriTaskDetailStore` 在 1.3 已迁入，协议 schema 也在 1.3 归位（宿主这份与包内副本
+ * **字节相同**，属 §1.3(1) 明令禁止的 app↔package 重复实现），宿主侧那份只是协议接入壳。按「删除优于
+ * 兼容」删除宿主两份副本、owner 落回包内；路由迁入后环境归属校验改由宿主的注入端口提供
+ * （`Environment` 表的 owner 是 agent-runtime，依赖矩阵不允许资源包依赖它）。
  */
 const RMD_07_RELOCATED = [
   [
@@ -136,6 +140,16 @@ const RMD_07_RELOCATED = [
     "apps/server/src/routes/web/environments.ts",
     "packages/agent-runtime/src/routes/web/environments.ts",
   ],
+  [
+    "src/routes/web/peri-task-details.ts",
+    "apps/server/src/routes/web/peri-task-details.ts",
+    "packages/resources/model-management/src/server/routes/web/peri-task-details.ts",
+  ],
+  [
+    "src/schemas/peri-task-details.ts",
+    "apps/server/src/schemas/peri-task-details.ts",
+    "packages/resources/model-management/src/server/schemas/peri-task-details.ts",
+  ],
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
@@ -182,13 +196,14 @@ describe("RMD-07 server-host migration", () => {
   // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
   // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
   // 零消费者）不在本表内，无需在此登记。
-  // 任务 1.5c 的六项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
+  // 任务 1.5c 的八项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
   // `src/routes/web/{instances,environments}.ts` 与 instances 的宿主测试
-  // `src/__tests__/web-instance-runtime-actions.test.ts`
-  // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime 包），
-  // 理由见 relocated 的文档注释。
+  // `src/__tests__/web-instance-runtime-actions.test.ts`、`src/routes/web/peri-task-details.ts` 与其协议
+  // schema `src/schemas/peri-task-details.ts`
+  // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime / model-management
+  // 包），理由见 relocated 的文档注释。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(44);
+    expect(RMD_07_MOVES).toHaveLength(42);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
@@ -198,7 +213,7 @@ describe("RMD-07 server-host migration", () => {
   // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
   // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
   test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(12);
+    expect(RMD_07_RELOCATED).toHaveLength(14);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

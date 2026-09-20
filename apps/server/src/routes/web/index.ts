@@ -9,7 +9,7 @@ import {
   createWebInstancesRoutes,
 } from "@fenix/agent-runtime/server";
 import { createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
-import { createWebModelGatewayRoutes } from "@fenix/model-management/server";
+import { createWebModelGatewayRoutes, createWebPeriTaskDetailsRoutes } from "@fenix/model-management/server";
 import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
 import { createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import { createWebFileEventsRoutes, createWebFsRoutes, createWebRegistryRoutes } from "@fenix/resource-machine/server";
@@ -25,17 +25,18 @@ import {
 } from "@fenix/resource-workflow/server";
 import Elysia from "elysia";
 import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
-import { environmentLookup } from "../../services/resource-module-ports";
+import { environmentLookup, verifyEnvironmentOwnership } from "../../services/resource-module-ports";
 import webBranding from "./branding";
 import webConfig from "./config";
 import webMetaAgent from "./meta-agent";
-import webPeriTaskDetails from "./peri-task-details";
 
 // 资源包路由一律改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 macro / state 是实例
 // 作用域的，父实例无法向已构造的子实例回填），因此在这里注入而不是让包自建。
 // - `authenticateRequest`：`/web/file-events` 走 WS 升级，不经过 `sessionAuth` 宏，自己调用宿主的
 //   显式认证入口；
-// - `environmentLookup`：通道绑定要读 Environment 归属，而该表的 owner 是 `@fenix/agent-runtime`。
+// - `environmentLookup`：通道绑定要读 Environment 归属，而该表的 owner 是 `@fenix/agent-runtime`；
+// - `verifyEnvironmentOwnership`：peri 任务详情路由要校验 Environment 归属，同因（该表的 owner 是
+//   `@fenix/agent-runtime`，资源包不得依赖它）。
 // 端口实现见 `services/resource-module-ports.ts`。
 const webApiKeys = createWebApiKeysRoutes({ authGuardPlugin });
 const webOrganizations = createWebOrganizationsRoutes({ authGuardPlugin });
@@ -50,6 +51,10 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
 const webHindsight = createWebHindsightRoutes({ authGuardPlugin });
 const webKnowledgeBases = createWebKnowledgeBaseRoutes({ authGuardPlugin });
 const webModelGateway = createWebModelGatewayRoutes({ authGuardPlugin });
+const webPeriTaskDetails = createWebPeriTaskDetailsRoutes({
+  authGuardPlugin,
+  getOwnedEnvironment: verifyEnvironmentOwnership,
+});
 const webTasksV2Routes = createWebTasksV2Routes({ authGuardPlugin });
 const webRegistry = createWebRegistryRoutes({ authGuardPlugin });
 const webWorkflowDefs = createWebWorkflowDefsRoutes({ authGuardPlugin });

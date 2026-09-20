@@ -694,3 +694,70 @@ dispose 逻辑。
 即本片迁出的 30）、package-tests 7296 pass（+30）/ web-app-tests 946 pass / 0 fail；`architecture`、
 `dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
 迁入的 30 例 + `rmd-07-migration` + `root-source-owner-inventory` 共 55 pass / 0 fail。
+
+### 1.5c-4 Peri 任务详情路由与协议契约归位 model-management（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebPeriTaskDetailsRoutes(deps)` | `apps/server/src/routes/web/peri-task-details.ts` → `packages/resources/model-management/src/server/routes/web/peri-task-details.ts` |
+| 删除宿主协议副本（与包内副本字节相同） | `apps/server/src/schemas/peri-task-details.ts`（owner 落点 `packages/resources/model-management/src/server/schemas/peri-task-details.ts`，1.3 已存在） |
+| 包入口增加路由出口与两项依赖类型 | `packages/resources/model-management/src/server.ts`、`.../src/server/routes/dependencies.ts` |
+| 宿主注入端口 | `apps/server/src/services/resource-module-ports.ts` |
+| 宿主改为工厂注入、删除本地副本导入 | `apps/server/src/routes/web/index.ts` |
+
+**二、【需审核】环境归属校验改由宿主注入**
+
+判据：§2.3 依赖矩阵里 `packages/resources/<resource>` 的可依赖面是 `platform-sdk` + 本资源基础依赖 +
+**其他资源包**根入口公开的 service/DTO；`agent-runtime` 既不是 `platform-sdk` 也不是资源包，且与资源包
+同层，矩阵未登记 `model-management → agent-runtime` 方向。因此不让 model-management 反向依赖该包，改为
+宿主注入，落点是既有的 `resource-module-ports.ts`——该文件头注释的第一类能力「跨包的窄查询」正是
+「Environment 的 owner 在 agent-runtime」这一情形，`environmentLookup` 是先例。
+
+注入形状按消费侧语义声明（`EnvironmentOwnershipCheck`：校验通过即返回，不存在 / 跨组织 / 跨用户都抛错；
+返回值本包不消费），**不引用** `@fenix/agent-runtime` 的类型，因此不产生资源包对该包的编译期依赖。
+
+宿主实现走 `getBoundAgentRuntime().getOwnedEnvironment(...)` 而不是直读 `environmentRepo`：归属判据只在
+运行 port 的实现里，仓储不做这件事；取用写在调用期而不是模块加载期，宿主测试的 port 替身
+（`stubAgentRuntimePort`）才能在用例内生效。这与 1.5c-2 / 3a / 3b 的「能力在 `AgentRuntimePort` 上就经
+port 取」是同一判据，区别只在注入方向：那三片的消费方在 agent-runtime 包内，本片的消费方在资源包。
+
+**三、协议契约的第二份定义被清除**
+
+宿主 `apps/server/src/schemas/peri-task-details.ts` 与包内副本除文件头注释外**字节相同**（`diff` 仅报
+12 行新增注释）：1.3 已把 owner 判给 model-management 并把 schema 落进包内，但宿主副本未随之删除，宿主路由
+也一直从 `../../schemas/peri-task-details` 取本地副本，而不是像包入口注释声称的「经本入口取 schema」。本片
+按「删除优于兼容」删除宿主副本，宿主不再持有第二份协议定义，包内 `src/server.ts` 的过时注释同步改写。
+
+**四、只搬迁**
+
+路由路径、`sessionAuth: true` 宏、`detail` 元数据、响应 schema 与「以 404 隐藏归属差异」的语义逐字保留；
+`biome-ignore` 的理由注释一并保留（Elysia 在 response schema + error 分支组合下的类型推断问题仍在）。
+`docManager` 仍由包内直引（`@fenix/chat-channel/server` 是本包已声明依赖，矩阵允许资源包依赖独立 SDK 包），
+投影存储仍是模块级构造一次。未触碰任何生命周期、幂等或并发逻辑。
+
+**五、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：两项移入 `RMD_07_RELOCATED`（MOVES 44 → 42、
+  RELOCATED 12 → 14），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` **无需改动**：两条路径都无专门规则（分别落在 `src/routes/web/` 与
+  `src/schemas/` 通配下），按 1.4 W2b 先例「迁出文件不补规则表条目」不动。
+- `scripts/architecture/exceptions.json` **无需改动**：本片删除的是宿主文件、新增的是宿主侧同一处注入，
+  没有产生新的包 → 宿主 `@server/*` 依赖，apps-boundary 计数不变。
+- `src/__tests__/peri-task-detail-service.test.ts` **仍留在宿主**（`RETAINED_HOST_TEST_RATIONALES` 的
+  「跨服务投影装配」）：它直接调用包内的 `getPeriTaskDetail` 并自建 store 替身，不经过本片迁走的路由，
+  保留理由仍成立。
+
+**六、【记录，不在本任务实现】**
+
+包内 `src/server/schemas/peri-task-details.ts` 的文件头记录了归属偏差：1.3 review 的归属裁定把 peri-task
+一族划给 `task` 包，但本包 manifest 的 `dependsOn` 已冻结为 `["agent-config"]`，改引会让依赖声明不完整，
+故当时维持在 model-management。本片是搬迁，不改变该判断，纠正留给后续波次连同 manifest 一起改。
+
+**验证证据**：`precheck` 全绿 `All passed (99785ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`root-source-owner-inventory` 25 pass / 0 fail、model-management 包 226 pass / 0 fail、保留宿主用例
+`peri-task-detail-service.test.ts` 6 pass / 0 fail；`check:root-owner-inventory` 报
+`files=0 unowned=0 ambiguous=0`。本片无测试随迁，故 server 侧用例数与上片持平。
