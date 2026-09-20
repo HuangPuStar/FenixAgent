@@ -1343,3 +1343,40 @@ W6a / W6b 各自独立验证；两片合并后由 W7 统一跑 `precheck` / `bui
 
 **本片收到的用户补充裁定（2026-09-21，针对任务 1.5）**：「`/api/*` 目前还没有外部使用，接口是可以调整的（如有必要）」。记此以备 §1.5 引用——该任务若需要调整 `/api/*` 的契约形状（例如宿主能力下沉或迁包时的路由归属变更），不必按对外兼容契约处理。
 
+## 二十二、W7 收口（任务 1.4 结项，2026-09-21）
+
+### 22.1 收口验证（§七 W7 定义的四项 + §八 全量项）
+
+| 项 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck` | **全绿 `All passed`（86.4s）**，12 个子项全部 ✓（server 911 / packages 7228 / web 946，0 fail） |
+| `bun run build:web` | ✓ built in 1.58s（含 `apps/web/dist/` 产物，后端静态挂载依赖此项） |
+| `bun run docs:build` | ✓ build complete in 10.25s |
+| 台账核对 | `owner:"1.4"` 共 **5 条**（4 条 `no-circular` + 1 条 `apps-boundary`），全部经 21.4 按实测复核改写；`check:dependencies`（2397 modules / 12 条例外 / 0 新增 / 0 stale）与 `architecture:check`（2245 files / 11 rules / 28 条例外）均 ✓ |
+| 本文件收尾 | §一 状态与顶部导航已更新（W6a / W6b 已交付，仅剩 W7）；本节即收尾记录 |
+
+### 22.2 §八 五条验收的对照结论
+
+| 验收条 | 结论 |
+| --- | --- |
+| 1. `agent-runtime` 单包边界不变；`core` / `orchestration` / `chat-channel` / `remote-runtime` 未合并 | ✓ 全程无新增跨包 `src` 导入（`check:dependencies` 的 12 条例外无新增） |
+| 2. `src/server.ts` 收窄为 port 面；非测试代码资源包导入归零；`toActorContext` 归零 | ✓ `/runtime` 三面定型（41 / 8 / 6），`server.ts` 展开后公开面 196 → 103 名；W4b 已删 `agent-runtime-not-to-resources` 相关命中与 `toActorContext` |
+| 3. machine / sandbox 相关台账全删；`machine/package.json` 无 `@fenix/agent-runtime` 与 `@fenix/resource-sandbox` | ⚠ **部分达成**（§10.4 已记录）：W5 实测删 3 条，剩余 4 条仍是真实违规——machine 侧仍存在指向 agent-runtime / agent-config 的反向边（21.4 的四包环族），`machine/package.json` 相应声明仍在。本任务未消除该族，`removeWhen` 已按实测改写 |
+| 4. 三条链路共用同一 relay/ACP 规则；`extractJsonRpc` 全仓一处实现 | ✓ W6a 已收口（唯一实现在 `chat-channel/src/protocol/acp-channel.ts`），W6b 未回退 |
+| 5. 8 个边界项测试齐备 + 2 处补强 | ✓ W6a 补齐（`acp-routes-ws-message-limit.test.ts` 等），W6b 的改口未削弱断言面（21.2-4 记录了唯一一处语义等价改写） |
+| 冻结区（第二节红线） | ✓ 10 个文件在 **W6b 三片**合并 diff 中全部为空；全周期仅 `relay-handler.ts` 有一处计划内删行（§19.3-5） |
+
+### 22.3 结项状态与未结项
+
+**结项**：1.4 的接口收窄与依赖方向目标已交付——`agent-runtime` 有显式的三面运行契约、跨包消费方（observer / workflow / agent-config / task / channel / mcp / prod-view）一律经 `/runtime` 取数、测试 seam 收进 `./server/testing` 唯一入口、装配面只留宿主注入与协议交付。
+
+**未结项（已登记，不阻塞 1.4 结项）**：
+
+| 项 | 归属 |
+| --- | --- |
+| `machine → agent-config` / `machine → agent-runtime` 反向边构成的 37 处环族（4 条 1.4 台账 + 2 条 1.5 台账） | machine 包的方向收敛，须在 §1.5 或 machine 包的独立任务中处理；W5 已把能独立做的 3 条做完（§10.4） |
+| §1.7 表定义迁出（消除 5 处 `@server/db/schema`）与 §1.5 模块配置携带 baseUrl（消除 `orchestration-instance.ts` 的 `@server/config`） | 1.7 / 1.5；两条都完成后按剩余事实重测 `apps-boundary` 条目 |
+| §21.6 的六项遗留（`getBySecret` 双实现、`SpawnedInstance.apiKey`、悬空 exports 条目、台账尾注旧口径等） | 见 21.6 表 |
+
+**下一步**：任务 1.4 至此收口，转入任务 1.5（`apps/server` 宿主与协议聚合）。
+
