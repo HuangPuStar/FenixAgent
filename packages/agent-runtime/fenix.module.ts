@@ -7,17 +7,17 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 专用公开运行入口，不依赖 AccessControl、Identity 或任何资源模块。Runtime 接受的是已经
  * 授权的通用启动输入，不解释 actor/role/visibility。
  *
- * 工厂按需加载服务端运行组合面，使生成的 registry 保持为轻量 manifest 索引，不把 Elysia、
- * Drizzle 与 relay 全量拖进任何导入 registry 的位置。
+ * 工厂按需加载运行组合根（`src/runtime.ts`），使生成的 registry 保持为轻量 manifest 索引，
+ * 不把 Elysia、Drizzle 与 relay 全量拖进任何导入 registry 的位置。
  *
- * 已知不足：当前返回的是 Runtime 服务端公开入口的整体表面，而不是收敛后的启动/停止/状态/
- * 回收 port。任务 1.4 定义 Runtime port 时必须替换本工厂；此处不使用占位实现，以免形成
- * 第二套运行入口。
+ * `create` 返回收敛后的运行 port（`AgentRuntimeModule.runtime`），不是服务端公开入口的整体
+ * 表面（1.4 W3 前的临时形态）：端口的目标是让 registry 驱动的装配能拿到唯一的实例/环境
+ * 生命周期入口，而宿主装配面（`./server` 的注入 port、路由工厂）由宿主显式调用。
  */
 export const moduleManifest = {
   id: "agent-runtime",
   kind: "agent-runtime",
   dependsOn: [],
   capabilities: ["runtime.agent"],
-  create: () => import("./src/server"),
+  create: () => import("./src/runtime").then((module) => module.createAgentRuntimeModule()),
 } satisfies ModuleManifest;

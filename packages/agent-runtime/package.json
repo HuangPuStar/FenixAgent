@@ -12,6 +12,10 @@
       "types": "./fenix.module.ts",
       "default": "./fenix.module.ts"
     },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"

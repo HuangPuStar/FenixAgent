@@ -1,4 +1,6 @@
-import type { OpenAIChatCompletionResponse } from "@fenix/agent-runtime/server";
+// 1.4 W3：改为相对导入。此前经本包公开面自引用，会让 `./server` barrel 成为包内实现的一部分，
+// 收窄公开面时容易在「谁依赖谁」上产生误判。
+import type { OpenAIChatCompletionResponse } from "../schemas/openai-chat.schema";
 
 // ── ACP 事件类型 ──
 
