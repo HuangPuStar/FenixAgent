@@ -49,7 +49,6 @@ export const RETAINED_HOST_TEST_RATIONALES: Readonly<Record<string, string>> = {
   "src/__tests__/structured-logger.test.ts": "apps/server structured logger 的进程级观测装配。",
   "src/__tests__/task-schema.test.ts": "apps/server task 通用 schema 与 API 参数契约。",
   "src/__tests__/test-openai-chat.sh": "apps/server OpenAI chat HTTP 入口的端到端脚本。",
-  "src/__tests__/web-instance-runtime-actions.test.ts": "apps/server web instance runtime action 路由装配。",
   "src/__tests__/workspace-symlink-escape.test.ts": "apps/server workspace 文件 API 的 symlink 安全边界。",
 };
 

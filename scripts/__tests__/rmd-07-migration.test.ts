@@ -4,7 +4,6 @@ import { existsSync } from "node:fs";
 const RMD_07_MOVES = [
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
   ["src/routes/web/environments.ts", "apps/server/src/routes/web/environments.ts"],
-  ["src/routes/web/instances.ts", "apps/server/src/routes/web/instances.ts"],
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
@@ -51,7 +50,6 @@ const RMD_07_MOVES = [
     "structured-logger.test.ts",
     "task-schema.test.ts",
     "test-openai-chat.sh",
-    "web-instance-runtime-actions.test.ts",
     "workspace-symlink-escape.test.ts",
   ].map((file) => [`src/__tests__/${file}`, `apps/server/src/__tests__/${file}`] as const),
 ] as const;
@@ -65,13 +63,17 @@ const RMD_07_MOVES = [
  * `__tests__/round18-openai-response-protocol-boundaries.test.ts`）owner 是 agent-runtime：唯一消费方都在该包内，
  * 宿主副本删除后由包内落点承载，`/api/instances` 与 `/api/openai-chat` 的协议定义不再跨包分叉，测试也随
  * 被测模块落到 owner 包内。
- * 任务 1.5c 的三项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
+ * 任务 1.5c 的五项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
  * `handleWebhookRequest` 与 trigger 仓储本来就在包内，宿主这份只是路由壳。迁出时一并恢复了自 FND-05
  * （入口迁到 `apps/server/src/main.ts`）起丢失的挂载：该路由在旧入口 `src/index.ts` 上是有 `.use()` 的，
  * 迁移时未带过来，导致 `/hooks/:publicHash` 长期不可达（详细证据见 review/task-1.5-host-aggregation.md §七）。
  * 另两项的 owner 是 agent-runtime：`schemas/session.schema.ts`（会话协议模型）与 `services/transport.ts`
  * （会话事件规范化与发布，迁入后定名 `transport/session-events.ts`）都只被宿主控制面路由消费，而控制面
  * 本身也已迁入该包——宿主副本删除后由包内落点承载，`/web/sessions/:id/*` 的协议定义与事件发布不再跨包。
+ * 后两项 owner 同样是 agent-runtime：`routes/web/instances.ts`（控制台实例生命周期动作与活跃度）与其宿主
+ * 测试 `__tests__/web-instance-runtime-actions.test.ts`。实例生命周期的 owner 本就在该包（路由只是运行 port
+ * 的协议接入层），测试随被测路由落到包内、认证改用包内守卫替身；另有一个同域用例
+ * `__tests__/instances-delete-idempotent.test.ts`（不在本表内，随本片一并迁入包内）。
  */
 const RMD_07_RELOCATED = [
   [
@@ -119,6 +121,16 @@ const RMD_07_RELOCATED = [
     "apps/server/src/services/transport.ts",
     "packages/agent-runtime/src/transport/session-events.ts",
   ],
+  [
+    "src/routes/web/instances.ts",
+    "apps/server/src/routes/web/instances.ts",
+    "packages/agent-runtime/src/routes/web/instances.ts",
+  ],
+  [
+    "src/__tests__/web-instance-runtime-actions.test.ts",
+    "apps/server/src/__tests__/web-instance-runtime-actions.test.ts",
+    "packages/agent-runtime/src/__tests__/web-instance-runtime-actions.test.ts",
+  ],
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
@@ -165,11 +177,12 @@ describe("RMD-07 server-host migration", () => {
   // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
   // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
   // 零消费者）不在本表内，无需在此登记。
-  // 任务 1.5c 的三项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`
+  // 任务 1.5c 的五项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
+  // `src/routes/web/instances.ts` 与后者的宿主测试 `src/__tests__/web-instance-runtime-actions.test.ts`
   // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime 包），
   // 理由见 relocated 的文档注释。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(47);
+    expect(RMD_07_MOVES).toHaveLength(45);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
@@ -179,7 +192,7 @@ describe("RMD-07 server-host migration", () => {
   // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
   // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
   test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(9);
+    expect(RMD_07_RELOCATED).toHaveLength(11);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

@@ -586,3 +586,65 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `web-control-routes` + `transport-normalize` +
 `registry-environment-isolation-coverage` + `rmd-06-migration` + `rmd-07-migration` + `workflow-source-migration`
 共 73 pass / 0 fail。
+
+### 1.5c-3a 控制台实例路由迁入 agent-runtime（2026-09-21）
+
+§四 分片表的「environments + instances」一组按可审核粒度拆成两片，本片只做 instances。
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebInstancesRoutes(deps)` | `apps/server/src/routes/web/instances.ts` → `packages/agent-runtime/src/routes/web/instances.ts` |
+| 其两个用例随迁（认证改用包内守卫替身） | `apps/server/src/__tests__/{web-instance-runtime-actions,instances-delete-idempotent}.test.ts` → `packages/agent-runtime/src/__tests__/` |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入（`webInstances` 由 default import 改常量） | `apps/server/src/routes/web/index.ts` |
+
+**二、【需审核】取数裁定：本路由经运行 port，`control.ts` 直引实现，判据是「能力是否在 port 上」**
+
+本片与 1.5c-2 的 `control.ts` 取了**不同**的取数方式，需要一个可复述的判据，否则两者的差异日后会被当成
+不一致而「统一」掉：
+
+- **在运行 port 上的能力 → 经 `getBoundAgentRuntime()`**（本片）。实例的生命周期动作
+  （`stopInstanceRuntime` / `restartInstanceRuntime` / `deleteInstance` / `createInstance` /
+  `ensureInstance` / `getRuntimeSnapshot` / `getOwnedInstance` / `getOwnedEnvironment`）都声明在
+  `AgentRuntimePort` 上，而 port 是宿主编排层与用例的**唯一替换点**（`stubAgentRuntimePort`）。直引包内
+  模块函数等于给同一批能力开第二个替换点——正是 1.4 W3b 收敛掉的形态（此前用例靠 monkey-patch 包内单例）。
+- **不在 port 上的实现 → 直引**（`control.ts`）。它用的是会话总线、`agentInstanceService` 的仓储读与
+  `services/session`，这些不属 port 的能力面（总线另经 `session-event-bus-port` 由宿主注入），直引不会
+  产生第二个替换点。
+
+**「包内路由取绑定入口 = 自引用本包入口」的顾虑不成立**：`createAgentRuntime()` 内部持有的都是本包模块级
+单例（`agentInstanceService`、`globalInstanceRegistry`、relay 连接表），多次构造不产生第二套运行状态
+（`runtime.ts` 的注释与 `createAgentRuntimeModule()` 的幂等语义即为此设计）。因此包内路由经绑定入口取用
+不会分裂状态机、注册表或 lease 状态——用户红线「实例起来之后怎么管不动」在本片成立：**本片没有触碰任何
+状态机、幂等、lease、限流、disconnect fencing 或 dispose 逻辑**，只改路由的落点与守卫注入方式。
+
+**三、测试随迁**
+
+两个用例都直接 `handle(Request)`（不经宿主挂载），因此只需替换认证来源：宿主 `@server/plugins/auth` 的
+`setTestAuth` 换成包内 `./guard-stubs`，形状由 `{ user, authContext: { role, … } }` 收窄为
+`{ organizationId, userId }`（包内替身只维护路由真正消费的两个标识，见 `guard-stubs.ts` 的说明）。
+`stubAgentRuntimePort` / `stubCoreBootstrap` / `setOrchestrationInstanceDeps` 等注入方式一概不变。
+
+一处需要记录的事实：`instances-delete-idempotent.test.ts` 的用例标题与注释仍在描述「已停止 → 200 幂等」
+的**旧契约**，而断言实际锁定的是 **404**（现代码先做归属校验，环境查不到即 404）。这是本片之前就存在的
+描述与断言不一致，属该用例自身的历史（AE-P2.1 之后的契约演进），本片只迁不动：既不改断言也不改标题，
+登记为待复核项。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：两项入 `RMD_07_RELOCATED`（长度 47 → 45、9 → 11），两处
+  注释块补记理由（其中说明 `instances-delete-idempotent.test.ts` 不在本表内、随本片一并迁入）。
+- `scripts/root-source-owner-rules.ts`：删除 `RETAINED_HOST_TEST_RATIONALES` 里的
+  `src/__tests__/web-instance-runtime-actions.test.ts` 条目——该测试已不在宿主，保留理由不再成立（1.4 W2b
+  先例：迁出文件不补规则表条目，只清理 rationale）。`src/routes/web/instances.ts` 无专门规则（落在
+  `src/routes/web/` 通配下），按同一先例不动。
+
+**五、【记录，不在本任务实现】** `instances-delete-idempotent.test.ts` 的标题/注释与断言不一致（见三）。
+
+**验证证据**：`precheck` 全绿 `All passed (100745ms)`——server-and-script-tests 828 pass（较上片少 7 例，
+即本片迁出的 2 + 5）、package-tests 7266 pass（+7）/ web-app-tests 946 pass / 0 fail；`architecture`、
+`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行
+迁入的两个用例 + `rmd-07-migration` 共 9 pass / 0 fail；`check:root-owner-inventory` 报
+`files=0 unowned=0 ambiguous=0`。
