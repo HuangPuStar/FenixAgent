@@ -13,6 +13,10 @@
       "types": "./web/i18n/namespace.ts",
       "default": "./web/i18n/namespace.ts"
     },
+    "./lib/admin-key": {
+      "types": "./web/lib/admin-key.ts",
+      "default": "./web/lib/admin-key.ts"
+    },
     "./lib/config-events": {
       "types": "./web/lib/config-events.ts",
       "default": "./web/lib/config-events.ts"

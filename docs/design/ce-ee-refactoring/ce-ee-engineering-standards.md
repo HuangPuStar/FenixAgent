@@ -50,6 +50,14 @@ ResourceModule = domain + services + repositories/adapters + schemas
 
 每个 package 必须显式声明其 workspace dependency，避免依赖被根 workspace 的偶然提升掩盖。`apps` 同样遵守该规则。只在构建或测试中使用的 workspace 依赖声明在 `devDependencies`，`dependencies` 保留给运行时需要被消费者解析的依赖。
 
+资源包 `web/` 交付物的第三方（非 workspace）依赖同样必须显式声明，按“是否需要与宿主共用同一实例”分为三类；判定依据只能是包内**实际导入**，只出现在注释或文档里的引用不算使用：
+
+1. 需要与宿主共用同一实例的框架库——`react`、`react-dom`、`react-i18next`、`i18next`、`@tanstack/react-router`——凡该包 `web/` 实际导入即声明为 `peerDependencies`，版本范围与根 `package.json` 逐字一致。写进 `dependencies` 会打进第二份实例：第二份 React 的 context/hooks、第二份 i18next 的命名空间注册表都会让组件静默取到空值或回退成 key 回显。
+2. 可独立打进浏览器 bundle、重复实例不影响语义的普通库（`lucide-react`、`ahooks`、`sonner` 等）声明为 `dependencies`，版本对齐根 `package.json`。
+3. 只在测试文件中导入的库（含 `happy-dom` 等 DOM 环境）声明为 `devDependencies`；写进 `dependencies` 会把测试依赖带进宿主的生产依赖图与发布物。
+
+反向同样成立：`dependencies` 里没有任何导入的条目必须删除，删除前逐条 grep 全包确认，避免声明与真实加载图长期漂移。
+
 §2.4 中由生成 registry 引入的 `apps/*/fenix.module.ts` 是上述相对导入禁令的唯一例外：它是构建期装配描述符，不作为可安装入口对外暴露。
 
 ### 2.2 资源模块之间的依赖规则

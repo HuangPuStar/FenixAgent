@@ -12,8 +12,6 @@ export type { SystemApiSandboxRouteDependencies, WebSandboxRouteDependencies } f
 export { createWebSandboxPoolsRoutes } from "./routes/web/sandbox-pools";
 export type { SandboxModuleConfig } from "./server/config";
 export { getSandboxConfig } from "./server/config";
-export type { SandboxDatabase } from "./server/db";
-export { getSandboxDatabase } from "./server/db";
 export * from "./server/repositories/sandbox-instance-repository";
 export * from "./server/repositories/sandbox-pool-repository";
 export * from "./server/schemas/api-sandbox.schema";

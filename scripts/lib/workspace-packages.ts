@@ -62,7 +62,7 @@ export async function loadWorkspacePackages(repositoryRoot: string): Promise<rea
         return typeof manifest.name === "string" ? { directory, name: manifest.name } : undefined;
       } catch {
         // 分组目录与未声明的中间目录没有 package.json，不构成 workspace 包。
-        return undefined;
+        return;
       }
     }),
   );
@@ -89,7 +89,7 @@ export function createSpecifierPackageResolver(
       const candidate = segments.slice(0, end).join("/");
       if (names.has(candidate)) return candidate;
     }
-    return undefined;
+    return;
   };
 }
 

@@ -64,7 +64,7 @@ const FORBIDDEN_PACKAGE_DEPENDENCIES: readonly (readonly [from: string, to: stri
 
 /** 由包目录推导类别；返回 `undefined` 表示该文件不属于任何 workspace 包。 */
 export function resolvePackageCategory(packageDirectory: string | undefined): PackageCategory | undefined {
-  if (!packageDirectory) return undefined;
+  if (!packageDirectory) return;
   if (packageDirectory === "apps/server") return "apps-server";
   if (packageDirectory === "apps/web") return "apps-web";
   if (packageDirectory === "packages/platform/platform-sdk") return "platform-sdk";
@@ -92,12 +92,12 @@ function isWebContribution(relativePath: string): boolean {
 
 /** 说明符相对当前文件是否越界进入 `apps/` 下的某个应用。 */
 function resolveEscapeTarget(context: RuleContext, specifier: string): string | undefined {
-  if (!specifier.startsWith(".")) return undefined;
+  if (!specifier.startsWith(".")) return;
 
   const targetPath = normalizePath(relative(context.root, resolve(dirname(context.absolutePath), specifier)));
   if (isInside("apps/server", targetPath)) return "@fenix/server-app";
   if (isInside("apps/web", targetPath)) return "@fenix/web-app";
-  return undefined;
+  return;
 }
 
 /**

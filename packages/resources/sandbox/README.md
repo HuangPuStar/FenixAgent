@@ -8,7 +8,7 @@
 - **Provider 抽象**：`SandboxProviderRegistry` 与 `@fenix/sandbox-provider` 的具体实现。装配期由 `registerConfiguredSandboxProviders()` 按模块配置注册，模块加载期不发网络请求。
 - **执行入口**：`SandboxExecutionHandler` 把一次执行请求解析为可用的沙盒实例，等待 Machine 回连后返回 `machine_id` 作为寻址节点。
 - **远程 Cluster 管理**：`createSandboxClusterClient()` 在服务端附加 Cluster 凭据，浏览器不接触该凭据。
-- **HTTP 交付物**：`/api/system/sandbox`、`/api/system/sandbox-cluster`、`/api/system/sandbox-server` 与 `/web/config/sandbox-pools`；浏览器出口 `@fenix/resource-sandbox/web`（控制台页面与 API client）。
+- **HTTP 交付物**：`/api/system/sandbox-pools`（含 `/:poolId`）、`/api/system/sandbox-instances`（含 `/:instanceId` 与 `/rebuild`）、`/api/system/sandbox-cluster`、`/api/system/sandbox-server` 与 `/web/config/sandbox-pools`；浏览器出口 `@fenix/resource-sandbox/web`（控制台页面与 API client）。
 - **模块组合根**：`src/module.ts` 的 `createSandboxModule()` 返回进程级单例（`providers` / `manager` / `executions`），`fenix.module.ts` 是它的惰性描述符。
 
 ## 依赖边界
@@ -37,7 +37,7 @@ const apiSandbox = createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthP
 const webSandboxPools = createWebSandboxPoolsRoutes({ authGuardPlugin });
 ```
 
-包内用例注入 `src/__tests__/guard-stubs.ts` 的替身（只提供工厂注册路由所必需的 `error` 装饰器与同名宏）；「路由 + 真实守卫 + `RCS_SYSTEM_API_KEYS`」这条已发布合同由宿主用例覆盖，不在本包重复断言。
+包内用例注入 `src/__tests__/guard-stubs.ts` 的替身（只提供工厂注册路由所必需的 `error` 装饰器与同名宏）；「路由 + 真实守卫 + `RCS_SYSTEM_API_KEYS`」这条已发布合同的覆盖归 §1.5 的宿主用例，本包不重复断言（替身放行不等于合同已验）。
 
 ## 配置与 DB
 
@@ -53,6 +53,6 @@ const webSandboxPools = createWebSandboxPoolsRoutes({ authGuardPlugin });
 ## 边界外的已知项
 
 - **表定义仍在宿主**：`@server/db/schema` 的导入是本包唯一的宿主内部依赖（repository 与类型标注），迁出归 §1.7；`sandbox-instance-snapshot.ts` 只从快照 JSON 重建配置，不感知表结构。
-- **`dependsOn` 暂为空**：生产代码依赖 `@fenix/resource-machine/server`，但 machine 尚未注册为模块，声明会让 registry 生成器以「引用了未注册模块」失败。machine 的 manifest 落地后必须补成 `dependsOn: ["machine"]`（workspace 依赖已在 `package.json`）。
+- **`dependsOn: ["machine"]` 与 machine 侧的反向边**：本包生产代码静态导入 `@fenix/resource-machine/server` 的公开入口（创建沙盒机器、机器在线判定、释放机器 runtime、机器归属查询），两者必须成套启用，方向与 §2.3 固定的 `sandbox → machine` 一致，workspace 依赖已在 `package.json`。machine 侧的反向边（`machine → sandbox`）已由架构台账登记为 `special-dependency`（owner 1.4，removeWhen：machine 不再依赖 sandbox），属于必须消除的越界边，因此 machine 不声明本模块：把这条边写进 `dependsOn` 会被生成器以「已由架构台账登记为越界边，不能编码成装配依赖」拒绝，两个模块同时启用时装配顺序也会因循环失败。
 - **未声明 `contributions` 与 `web`**：消费方是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状需与消费端同时定型；当前宿主按显式调用装配，不形成第二套装配路径。
 - **`restart` 不持有行锁**：它只复用已存在的 Provider 资源、不创建新资源，与 `recover`（锁内重建）的并发边界不同；若将来 `restart` 需要创建资源，必须一并纳入锁内。

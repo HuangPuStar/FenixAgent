@@ -17,6 +17,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
     "./server": "./src/server.ts"
   },
   "devDependencies": {

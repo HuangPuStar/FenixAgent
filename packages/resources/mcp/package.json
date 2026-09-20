@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
     "./server/config": "./src/server/services/config/agent-config-mcp.ts",

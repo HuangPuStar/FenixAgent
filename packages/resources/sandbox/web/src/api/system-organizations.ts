@@ -12,7 +12,7 @@
 // 客户端后，删除本文件并把调用方改指 identity；届时本文件不得再作为「第二份实现」保留。
 
 import { request, unwrap } from "@fenix/web-runtime/api/request";
-import { getAdminKey } from "../lib/admin-key";
+import { getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 
 /** 组织下拉的选项（系统组织目录的字段子集）。 */
 export interface SystemOrganizationOption {

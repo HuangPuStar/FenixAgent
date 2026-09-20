@@ -5,12 +5,12 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { Input } from "@fenix/ui-components/ui/input";
+import { setAdminKey } from "@fenix/web-runtime/lib/admin-key";
 import { KeyRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
-import { setAdminKey } from "../../../lib/admin-key";
 
 interface MasterKeyGateProps {
   onUnlock: () => void;

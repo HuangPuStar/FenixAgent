@@ -7,6 +7,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./module": {
+      "types": "./fenix.module.ts",
+      "default": "./fenix.module.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"

@@ -132,7 +132,7 @@ function findManifestObject(sourceFile: ts.SourceFile): ts.ObjectLiteralExpressi
       return unwrapObjectLiteral(declaration.initializer);
     }
   }
-  return undefined;
+  return;
 }
 
 function findProperty(
@@ -144,7 +144,7 @@ function findProperty(
     const name = property.name;
     if ((ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && name.text === propertyName) return property;
   }
-  return undefined;
+  return;
 }
 
 function readStringProperty(
@@ -153,7 +153,7 @@ function readStringProperty(
   manifestFile: string,
 ): string | undefined {
   const property = findProperty(objectLiteral, propertyName);
-  if (!property) return undefined;
+  if (!property) return;
   if (!ts.isStringLiteralLike(property.initializer)) {
     throw new Error(`manifest 的 ${propertyName} 必须是字符串字面量: ${manifestFile}`);
   }
@@ -202,17 +202,17 @@ function findRuntimeFields(objectLiteral: ts.ObjectLiteralExpression): string[] 
 
 /** 从 `exports` 字段解析 `./module` 的目标路径，兼容字符串与条件对象两种写法。 */
 function readModuleExportTarget(exportsField: unknown): string | undefined {
-  if (typeof exportsField !== "object" || exportsField === null || Array.isArray(exportsField)) return undefined;
+  if (typeof exportsField !== "object" || exportsField === null || Array.isArray(exportsField)) return;
 
   const entry = (exportsField as Record<string, unknown>)[PACKAGE_MODULE_EXPORT_KEY];
   if (typeof entry === "string") return entry;
-  if (typeof entry !== "object" || entry === null) return undefined;
+  if (typeof entry !== "object" || entry === null) return;
 
   for (const condition of ["types", "import", "require", "node", "default"]) {
     const target = (entry as Record<string, unknown>)[condition];
     if (typeof target === "string") return target;
   }
-  return undefined;
+  return;
 }
 
 /**

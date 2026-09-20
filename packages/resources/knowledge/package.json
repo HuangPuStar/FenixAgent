@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/schema": "./src/server/schemas/knowledge.schema.ts"
   },

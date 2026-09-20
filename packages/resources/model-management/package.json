@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./module": {
+      "types": "./fenix.module.ts",
+      "default": "./fenix.module.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
@@ -33,6 +37,7 @@
     "@fenix/model-gateway-sdk": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "zod": "^4.4.3"

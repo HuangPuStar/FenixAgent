@@ -11,7 +11,7 @@
 
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { createBoundaryRules } from "./lib/architecture-boundary-rules";
 import { exceptionFingerprint, loadArchitectureLedger } from "./lib/architecture-exceptions";

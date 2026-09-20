@@ -4,9 +4,13 @@ import { existsSync } from "node:fs";
 /**
  * RMD-08 开始时从 root-source-owner audit 导出的精确迁移清单。
  *
- * 第二列是该文件**当前**唯一的 owner 落点。RMD-08 之后只有一项改判：
- * `password-crypto.ts` 属于身份密码职责，CE 阶段 2 任务 1.2 把它随 `auth-client.ts` 一并迁入
- * `packages/platform/identity/web/lib/`，不再是 apps/web 的壳文件。
+ * 第二列是该文件**当前**唯一的 owner 落点。RMD-08 之后有三项改判：
+ * 1. `password-crypto.ts` 属于身份密码职责，CE 阶段 2 任务 1.2 把它随 `auth-client.ts` 一并迁入
+ *    `packages/platform/identity/web/lib/`，不再是 apps/web 的壳文件。
+ * 2. `system-sandbox.test.ts` 验证的是沙盒资源自身的请求构造约定，CE 阶段 2 任务 1.3 把 owner 从应用壳
+ *    交给 `packages/resources/sandbox`，宿主侧删除（见下方 relocated 断言）。
+ * 3. `admin-key.ts` 是跨资源复用的浏览器端密钥投影，CE 阶段 2 任务 1.3 把它从应用壳上收到
+ *    `packages/web-runtime/web/lib/admin-key.ts`，宿主侧删除（见下方 relocated 断言）。
  */
 const RMD_08_MOVES = [
   ["web/components/MetaAgentPanel.tsx", "apps/web/components/MetaAgentPanel.tsx"],
@@ -116,7 +120,6 @@ const RMD_08_MOVES = [
     "web/src/__tests__/structured-thread-boundaries.test.ts",
     "apps/web/src/__tests__/structured-thread-boundaries.test.ts",
   ],
-  ["web/src/__tests__/system-sandbox.test.ts", "apps/web/src/__tests__/system-sandbox.test.ts"],
   ["web/src/__tests__/task-form-schema.test.ts", "apps/web/src/__tests__/task-form-schema.test.ts"],
   ["web/src/__tests__/todo.test.ts", "apps/web/src/__tests__/todo.test.ts"],
   ["web/src/__tests__/tree-component.test.tsx", "apps/web/src/__tests__/tree-component.test.tsx"],
@@ -207,7 +210,6 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
   ["web/src/i18n/locales/zh/tasks.json", "apps/web/src/i18n/locales/zh/tasks.json"],
   ["web/src/i18n/locales/zh/toolNarrator.json", "apps/web/src/i18n/locales/zh/toolNarrator.json"],
-  ["web/src/lib/admin-key.ts", "apps/web/src/lib/admin-key.ts"],
   ["web/src/lib/agent-node.ts", "apps/web/src/lib/agent-node.ts"],
   ["web/src/lib/agent-resource-access.ts", "apps/web/src/lib/agent-resource-access.ts"],
   ["web/src/lib/agent-utils.ts", "apps/web/src/lib/agent-utils.ts"],
@@ -269,9 +271,9 @@ const RMD_08_MOVES = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 182 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
+  // 180 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(182);
+    expect(RMD_08_MOVES).toHaveLength(180);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -282,5 +284,19 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the retired card renderer test deleted", () => {
     expect(existsSync("web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
+  });
+
+  // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。
+  test("relocates the sandbox request helper test to the resource package", () => {
+    expect(existsSync("web/src/__tests__/system-sandbox.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/system-sandbox.test.ts")).toBe(false);
+    expect(existsSync("packages/resources/sandbox/web/__tests__/system-sandbox.test.ts")).toBe(true);
+  });
+
+  // 跨资源复用的密钥投影已上收到 web-runtime：宿主两份旧路径都不得复活，且包内保留唯一实现。
+  test("relocates the admin key projection to web runtime", () => {
+    expect(existsSync("web/src/lib/admin-key.ts")).toBe(false);
+    expect(existsSync("apps/web/src/lib/admin-key.ts")).toBe(false);
+    expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 });

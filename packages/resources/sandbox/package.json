@@ -9,9 +9,17 @@
     "@fenix/sandbox-provider": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",
+    "ahooks": "^3.9.7",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
+    "lucide-react": "^1.16.0",
+    "sonner": "^2.0.7",
     "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-i18next": "^17.0.8"
   },
   "exports": {
     ".": "./src/index.ts",

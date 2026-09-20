@@ -18,6 +18,7 @@ i18n 命名空间表、事件总线与 chat 投影层。本期从 `apps/web` 迁
 | --- | --- | --- |
 | `@fenix/web-runtime/api/request` | `web/api/request.ts` | 统一 HTTP 客户端（credentials / 超时 / 错误标准化） |
 | `@fenix/web-runtime/i18n/namespace` | `web/i18n/namespace.ts` | `NS` 常量表与 `Namespace` 类型 |
+| `@fenix/web-runtime/lib/admin-key` | `web/lib/admin-key.ts` | 系统 Master Key 的 sessionStorage 读写（唯一实现） |
 | `@fenix/web-runtime/lib/config-events` | `web/lib/config-events.ts` | 通用配置变更事件总线 |
 | `@fenix/web-runtime/lib/artifacts-preview-events` | `web/lib/artifacts-preview-events.ts` | 通用文件预览事件总线 |
 | `@fenix/web-runtime/lib/chat-stats` | `web/lib/chat-stats.ts` | `chat:stats` 摘要协议与节流派发器 |
@@ -78,3 +79,9 @@ web/                  源码；必须在 web/ 下（Tailwind @source 约定，�
 `apps/web/src/{api/request.ts, lib/{config-events,artifacts-preview-events,chat-stats,structured-to-thread,todo}.ts,
 hooks/{use-changed-files-stats,usePageVisible}.ts}` 与 `apps/web/src/i18n/index.ts` 的 `NS` 常量表。
 实现逐字保留，仅修正包内跨模块引用路径。
+
+2026-09-20 追加 `web/lib/admin-key.ts`：系统 Master Key 的 sessionStorage 助手原先只存在于宿主
+`apps/web/src/lib/admin-key.ts`，资源包经 vite 别名 `@/src/lib/admin-key` 引用（observer 6 处、
+model-management 2 处）。为切断资源包对 `@/` 宿主的依赖且不产生第二份实现，实现逐字迁入本包
+（存储键 `rcs_admin_master_key` 不变），宿主副本随即删除，消费方改经 `@fenix/web-runtime/lib/admin-key`
+深链引用。Master Key 的存档位置、回门时机与理由见 `docs/arch/21` §5。

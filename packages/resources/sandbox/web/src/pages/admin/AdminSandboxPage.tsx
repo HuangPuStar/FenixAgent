@@ -4,11 +4,11 @@
 //   - 面板内任意请求返回 UNAUTHORIZED（request 层把 401/403 归一为该码）：清 key、带错误回到门。
 // 页面主体（Tab、列表、对话框）在 ./components/SandboxDashboard，状态编排在 ./use-sandbox-dashboard。
 
+import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../i18n/namespace";
-import { clearAdminKey, getAdminKey } from "../../lib/admin-key";
 import { MasterKeyGate } from "./components/MasterKeyGate";
 import { SandboxDashboard } from "./components/SandboxDashboard";
 

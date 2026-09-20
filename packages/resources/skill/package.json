@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
     "./server/content": "./src/server-content.ts",
