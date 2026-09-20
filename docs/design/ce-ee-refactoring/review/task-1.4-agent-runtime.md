@@ -1,10 +1,10 @@
 # 任务 1.4 执行计划与设计裁定：Agent Runtime、Machine 与 Sandbox
 
-本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型），**W3b 已交付**（第十四节，消费方改调 port）；W4 设计已定稿、四项裁定已落（2026-09-21，见第十五节，W4a / W4b 两片）→ **W4a 已交付**（第十六节，端口 + 宿主绑定 + 4 文件反转），**W4b 已交付**（第十七节，删旧路径 + 消台账）；W6 设计已定稿、四项裁定已落（2026-09-21，见第十八节，W6a / W6b 两片）→ **W6 未开工**。
+本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型），**W3b 已交付**（第十四节，消费方改调 port）；W4 设计已定稿、四项裁定已落（2026-09-21，见第十五节，W4a / W4b 两片）→ **W4a 已交付**（第十六节，端口 + 宿主绑定 + 4 文件反转），**W4b 已交付**（第十七节，删旧路径 + 消台账）；W6 设计已定稿、四项裁定已落（2026-09-21，见第十八节，W6a / W6b 两片）→ **W6a 已交付**（第十九节，测试 seam 与泄漏面机械收敛），**W6b 已交付**（第二十节设计、第二十一节交付记录，新契约面与测试 seam 归位）。**仅剩 W7 收口**（`precheck` / `build:web` / `docs:build` / 台账核对）。
 
 任务目标见[阶段 2 执行计划 §1.4](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）与 [§10.4](../ce-ee-engineering-standards.md)（Runtime 与基础资源验收）。
 
-## 一、任务状态：W5、W1、W2、W3a、W3b、W4a、W4b 已交付（2026-09-21），W6 设计已定稿、未开工
+## 一、任务状态：W5、W1、W2、W3a、W3b、W4a、W4b、W6a、W6b 已交付（2026-09-21），W7 收口待办
 
 | 证据 | 结论 |
 | --- | --- |
@@ -16,8 +16,10 @@
 | 台账总数 **20 → 19**（W4a 削 1 条 `owner: "1.5"` 的 `no-circular`，见 16.4；由门禁强制，非 1.4 条目减少） | 跨包代表边落回包内，指纹并入包内自环条目 |
 | `owner: "1.4"` 共 **11 → 7** 条（W4b：增 1 条 `no-circular`、削 4 条 `agent-runtime-not-to-resources`、转 1 条给 §1.7，见 17.4） | 剩余 7 条随 W6 与既登记的既有债务处理 |
 | 台账总数 **20 → 16**（W4b：命中 20 → 16；登记条目 48 → 44） | 4 条 `agent-runtime-not-to-resources` 的见证边随组装搬出消失，由门禁强制删除 |
+| `owner: "1.4"` 共 **7 → 5** 条（W6a：门禁报 stale 削 2 条，含 `agent-runtime → resource-sandbox` 的 `no-circular`，见 19.4） | 剩余 5 条经 W6b-4 按实测复核改写（0 增 0 削），全部是同一 37 处环族在 6 个包对指纹下的代表边（见 21.4） |
+| 台账总数 **44 → 40**（W6a：削 4 条，0 新增 0 改写） | W6a 的机械收敛结果；W6b-4 只改写 1.4 名下 5 条的计数与 `removeWhen`，条目数不变（见 21.4） |
 
-**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节；W3b「消费方改调 port」——第十四节；W4a「端口 + 宿主绑定 + 4 文件反转」——第十六节；W4b「删旧路径 + 消台账」——第十七节。**W4 设计已定稿**（第十五节，四项裁定：组装落点 A / 端口方向 pull / 测试按断言面改写 / 第二端口 A）。**W6 设计已定稿**（第十八节，四项裁定：拆 W6a/W6b / 跨包测试用例能走 port 就走 port / 观测取数扩 `/runtime` 只读面 / 删冗余 tsconfig 别名）。**未开工**：W6。
+**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节；W3b「消费方改调 port」——第十四节；W4a「端口 + 宿主绑定 + 4 文件反转」——第十六节；W4b「删旧路径 + 消台账」——第十七节；W6a「测试 seam 与泄漏面机械收敛」——第十九节；W6b「新契约面与测试 seam 归位」——第二十一节。**W4 设计已定稿**（第十五节，四项裁定：组装落点 A / 端口方向 pull / 测试按断言面改写 / 第二端口 A）。**W6 设计已定稿**（第十八节，四项裁定：拆 W6a/W6b / 跨包测试用例能走 port 就走 port / 观测取数扩 `/runtime` 只读面 / 删冗余 tsconfig 别名；W6b 三处形状由第二十节补裁）。**未开工**：W7 收口（`precheck` / `build:web` / `docs:build` / 台账核对）。
 
 阶段 1（`fa2bbaef0`「迁移 Runtime 与 Chat 残留」等）已完成的是**物理归属**：Environment、Instance、relay、ACP session、Chat、YJS 的代码已在 `packages/agent-runtime`，Machine/Sandbox 已是独立包。1.4 要的是**接口收窄与依赖方向**，这部分未动。
 
@@ -1266,4 +1268,78 @@ W6a / W6b 各自独立验证；两片合并后由 W7 统一跑 `precheck` / `bui
 | 宿主 `plugins/auth.ts:8` 的 `environmentRepo.getBySecret` 与 port 的 `getEnvironmentBySecret`（`services/environment-acp.ts`）**不是同一实现**，合并属认证路径变更 | 须单独评估，不在 W6b |
 | `plugins/auth.ts` / `routes/web/control.ts` / `services/resource-module-ports.ts` 仍从 `./server/environment` 取环境（宿主取用面） | 若要彻底删除 `environmentRepo` 的公开导出，须先裁定上一条 |
 | `packages/resources/{task,observer}/fenix.module.ts` 注释与代码不一致（task 称生产从 `./server` 取 `openAgentSession`，实为从 `/runtime` 取 `AgentRuntimePort`；observer 称值导入两个仓储，实为只 import `ModuleManifest`） | W6b-3 顺手订正注释 |
+
+## 二十一、W6b 交付记录（新契约面与测试 seam 归位，2026-09-21）
+
+### 21.1 交付清单（对账 §20.5）
+
+| 片 | §20.5 内容 | 落地结果 | 提交 |
+| --- | --- | --- | --- |
+| W6b-1 | `runtime.ts` 显式契约类型 | 11 处 `Awaited<ReturnType<…>>` + 4 处 `Parameters<…>` 收敛为具名契约类型（`LightweightSession` 定名）；三个无显式返回类型的实现补契约类型 | `cd4d19947`（3 文件 +136 / −42） |
+| W6b-2 | `observe` 平面 + `session` 补 bus + 生产消费方改调 port | 三面定型（管理面 41 / 数据面 8 / 观测面 6 方法）；observer 5 处取数、workflow 事件总线、workflow + meta-agent 的环境候选读视图全部改走 port | `384fecc68`（10 文件 +206 / −82） |
+| W6b-3 | 测试 seam 移入 `./server/testing` | `测试取用·` 清零；跨包测试按 §20.4 三分改口（apps/server 5 文件 + 包 11 文件） | `abd24f9b0`（24 文件 +160 / −196） |
+| W6b-4 | 台账复核 + §二十一 | 本节；`owner:"1.4"` 5 条按实测改写（21.4） | 本次提交 |
+
+**公开面收敛实测**（同一脚本、同一口径，递归展开 `export *` 后去重）：W6a 后 196 名 → W6b-1 后 196 → W6b-2 后 196 → **W6b-3 后 103 名**。前两片只增不改装配面，收敛全部发生在 W6b-3（删 seam 行与随 `export *` 整行消失的名字）。
+
+**冻结区**：§二 的 10 个文件在 W6b 三片合并 diff（`cd4d19947~1..abd24f9b0`）中 **diff 全部为空**。
+
+### 21.2 据实改写与偏离（非范围扩张）
+
+1. **§20.6「顺手订正注释」的范围从 2 个包扩到 6 个。** 实测 `mcp`（称值导入 `getEnvironmentBySecret`）、`channel`（称取 `findRunningInstanceByEnvironment` / `sendToAgentWs` / `sendToInstanceRelay`）、`workflow`（称 `index.ts:14` 导入 `stopInstance`、`workflow-events.ts:8` 导入总线）、`prod-view`（称 `createWebEnvironment` + `agentInstanceService.findOrCreateDefaultInstance`）四处与 task / observer 同因失实——六处的实际代码都是 `import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime"`。全部按实测改写并保留各自的「这条边为何不进 `dependsOn`」论证。
+2. **§20.4 第 2 类的清单里，只有一部分是「取错入口」的实例。** `AgentInstanceRecord` / `AutomaticInstanceSelection` 实测全仓零导入者；`EventBus`（类型）在 workflow 侧的实际需要是 `session.getEventBus` 的返回类型，随第 1 类一并走 port。真正落进第 2 类的改口是 `AgentSession` / `PromptTurn` / `PromptTurnStartOptions` / `OpenAgentSessionResult` 四名。
+3. **§20.4 第 3 类里 observer 的两个连接表读函数留在 `./server/testing` 而未走 `observe` 面。** `listAcpConnections` / `listExternalRelayEntries` 在**生产**里由 `observe` 平面承接（§20.3），但集成用例断言的是「真注册表 + 真处理函数」的配对（先 `handleAcpWsOpen` 再读表），走 port 投影会让断言语义变成「port 转发正确」，与用例意图不符。按第 3 类的判据（内部登记表）落位。
+4. **round44 的「进入远程环境映射 Agent node 不可用错误」改为整体覆盖 `ensureInstance`。** port 边界上 `ensureInstance` 已把「解析实例 + 确保 runtime」合成一个动作（这是 §4.4 方案 A 的定义），覆盖 `ensureInstanceRuntime`（只被原 `ensureInstance` 内部调用）拦不到抛错点。用例内写明该合成关系，断言语义（路由错误映射 + 不泄漏）不变。
+
+### 21.3 非显然取舍
+
+1. **`getAllEventBuses` / `removeEventBus` 双出口。** §20.4-4 已裁定它们在**生产**面不动（它们是 `bindSessionEventBusPort` 的实现来源）；同时又从 `./server/testing` 再出口一次，让 workflow 的 SSE 用例不必从生产面取测试用途的名字。代价是同一符号两个入口，收益是「生产面只留生产名」这条判据不必为测试破例。
+2. **`getBoundCoreRuntimePort` / `resetCoreRuntimePortForTest` 是 §20.4 未列举、按同一判据应移的名字。** `bindCoreRuntimePort` 与 `CoreRuntimePort` 类型留生产面（宿主注入），读句柄与测试复位移入 `./server/testing`；workflow 的 `core-runtime-stub.ts` 因此拆成两条 import。
+3. **`ChatClientConnectionSnapshot` 是包内自声明的窄投影，不是 `@fenix/chat-channel` 类型的 re-export**（§20.2 裁定 2）。字段只取 observer 实读的那几个，chat 侧字段变化会在投影的收窄处编译失败，而不是静默丢字段；同时避免为了一个快照类型把 ioredis / yjs 拖进 `/runtime` 的类型图。
+4. **`observe` 全部返回窄投影而非包内实体。** `getInstanceName` 回字符串而非 `AgentInstanceRecord`、`listChatClients` 回快照数组而非 `ChatChannelController` 本体——「观测方拿到的是看得到什么，不是能操作什么」（§20.3）。
+
+### 21.4 台账复核（`owner:"1.4"` 5 条按事实登记）
+
+复核方法：按门禁参数（`--config .dependency-cruiser.cjs apps packages`）重跑 dependency-cruiser，解析 `cycle` 数组聚类；非环条目用全仓 grep 逐名核对。
+
+| 条目 | 上次记载 | W6b-3 后实测 | 处置 |
+| --- | --- | --- | --- |
+| `no-circular` `machine → agent-config` | 1 处环（环长 13） | 1 处环（环长 13） | 计数一致；`removeWhen` 据实改写（共同闭合边是 `machine → agent-config`） |
+| `no-circular` `machine → machine` | 37 处环（环长 11–17） | **10 处环（环长 11–16）** | 据实改写 |
+| `no-circular` `sandbox → machine` | 3 处环（环长 14） | **3 处环（环长 12–15）** | 处数一致、环长改写 |
+| `no-circular` `sandbox → sandbox` | 8 处环（环长 6–16） | **7 处环（环长 12–15）** | 据实改写 |
+| `apps-boundary` `agent-runtime → server-app` | 6 处导入 / 6 文件（非测试）；测试侧 16 处 / 15 文件 | 不变 | 追加复核记录，`removeWhen` 两条路径均未变化 |
+
+**环族的结构结论（本次复核的主要发现）**：这 4 条与 `agent-config → agent-config`（1.5）、`agent-runtime → agent-runtime`（1.5）6 条指纹合起来覆盖**同一个 37 处环族**，族内总数 37 与环长范围 11–17 **与上次记载完全一致**；变化的是 dependency-cruiser 挑出的**代表边**在 6 个包对间的分布（例如 `machine → machine` 指纹下 37 → 10 处，`sandbox → sandbox` 8 → 7 处）。W6b 收窄 agent-runtime 的装配面导出后环上跨包边已同质化为固定的 4 条：`machine → agent-config`、`agent-config → agent-runtime`、`agent-runtime → sandbox`、`sandbox → machine`，每条环各含一次。这印证 §19.4 记的既有现象：**删掉某条指纹下的条目不等于环被消解**，唯一的共同闭合边是 `machine → agent-config`（4 条 `removeWhen` 已按此据实改写）。
+
+**未纳入本片的偏差（只记录）**：台账 6 条 `no-circular` 条目共用一段尾注「实测 223 条 `circular` 边只有 161 条被上报」，该数字是更早口径，W6b-3 实测为 **79 条 `circular` 边 / 47 条上报**。本片只更新 `owner:"1.4"` 的 4 条，其余条目（含 1.5 名下 2 条）留待各自 owner 或最终收口统一改写。
+
+### 21.5 验证证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck`（W6b-3 后） | **全绿 `All passed`（87.0s）**：format / import-sort / module-registry / architecture / tsc(server) / tsc(web) / tsc(app skeletons) / dependency-boundaries / lint / server-and-script-tests / package-tests / web-app-tests 全部 ✓ |
+| ├ `server-and-script-tests` | 911 pass / 0 fail（67 文件） |
+| ├ `package-tests` | 7228 pass / 2 skip / 0 fail（589 文件） |
+| └ `web-app-tests` | 946 pass / 0 fail（54 文件） |
+| `env -u ANTHROPIC_MODEL bun run check:dependencies`（W6b-4 后） | ✓ 2397 modules / 12 条已登记例外 / 0 条新增违规 / 0 条 stale |
+| `env -u ANTHROPIC_MODEL bun run architecture:check`（W6b-4 后） | ✓ 2245 files / 11 rules / 28 条已登记例外 |
+| `bun run typecheck` | ✓ 0 错误（W6b-1 / W6b-2 / W6b-3 各跑一次） |
+| W6b-2 三包专项 | observer 83 pass / workflow 721 pass / agent-config 403 pass，0 fail |
+| 冻结区 | 10 文件在 W6b 三片合并 diff 中全部为空（21.1） |
+| 台账条目合法性 | 改写后 `check-dependencies` 与 `architecture:check` 均无 stale / 无未登记违规 |
+
+### 21.6 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| 宿主 `plugins/auth.ts` 的 `environmentRepo.getBySecret` 与 port 的 `getEnvironmentBySecret` **不是同一实现**，合并属认证路径变更 | 须单独评估（§20.6-1，本片未动） |
+| `plugins/auth.ts` / `routes/web/control.ts` / `services/resource-module-ports.ts` 仍从 `./server/environment` 取环境（宿主取用面） | 若要删 `environmentRepo` 的公开导出须先裁定上一条 |
+| `SpawnedInstance` 带 `apiKey: string` 且已在公开面外透（`server/services/agent-instance-runtime-projection.ts:30`） | 安全面待裁定项，须与用户确认后定归属（§19.6 顺延） |
+| `packages/agent-runtime` 的 `./server/orchestration-environment` 导出条目全仓零导入者（悬空入口）；同批检查的 `./web/api/environments` **有 3 处 web 消费方，§19.6 的「零导入者」记载对它不成立** | W7 收口（§19.6 顺延；W6b-4 范围只含台账与本节） |
+| 台账其余条目共用尾注里的 223 / 161 是更早口径，实测 79 / 47 | 各 owner 或最终收口统一（21.4 末段） |
+| `extract-acp-event.test.ts` 位于 agent-runtime 但只测 chat-channel 的实现 | 只记录不建议实施（§19.6 顺延） |
+| `bun.lock` 有一行与本任务无关的既有漂移（`packages/resources/agent-config` 缺 `@fenix/plugin-sdk`） | 不在本任务内修（§19.6 顺延） |
+
+**本片收到的用户补充裁定（2026-09-21，针对任务 1.5）**：「`/api/*` 目前还没有外部使用，接口是可以调整的（如有必要）」。记此以备 §1.5 引用——该任务若需要调整 `/api/*` 的契约形状（例如宿主能力下沉或迁包时的路由归属变更），不必按对外兼容契约处理。
 
