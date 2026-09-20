@@ -9,8 +9,7 @@ import {
   ApiInstanceConnectBodySchema,
   ApiInstanceConnectResponseSchema,
 } from "../../schemas/api-instance.schema";
-import { connectAgentInstance } from "../../server/services/api-instance";
-import type { ActorProjection } from "../../services/actor-context";
+import { connectAgentInstance, type InstanceOwner } from "../../server/services/api-instance";
 import type { ApiInstanceRouteDependencies } from "../dependencies";
 
 const ApiErrorResponseSchema = z.object({
@@ -79,10 +78,10 @@ export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
     "/agents/:agentId/instances/connect",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
     async ({ store, params, body, error, set, request }: any) => {
-      // store.authContext 由注入的守卫写入（宿主 `AuthContext`，含 `role` / `memberships`）；这里按
-      // 「构造平台 ActorContext 所需的主体投影」收窄——agent-config 的可见性读入口只接受 ActorContext，
-      // 而构造它必须知道当前组织角色。守卫未提供 role 时按最小权限收敛（见 services/actor-context.ts）。
-      const authCtx = store.authContext as ActorProjection;
+      // store.authContext 由注入的守卫写入（宿主 `AuthContext`）；这里按连接入口真正消费的两个字段
+      // （组织 + 用户）收窄。可见性判定由 agent-config 按该用户的真实成员关系完成（§9.1），本层不再
+      // 转发 `role`——曾经转发的伪造角色会让读出来的 `access.actions` 虚高。
+      const authCtx = store.authContext as InstanceOwner;
       try {
         return await connectAgentInstance(authCtx, params.agentId, body as ApiInstanceConnectBody);
       } catch (err) {

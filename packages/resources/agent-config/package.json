@@ -14,6 +14,7 @@
     "./web/i18n": "./web/i18n/index.ts",
     "./server/system-prompt": "./src/server/services/agent-system-prompt.ts",
     "./server/agent-launch-spec": "./src/server/services/agent-launch-spec/index.ts",
+    "./server/agent-config-lookup": "./src/server/services/agent-config-lookup.ts",
     "./server/api-agent-schema": "./src/server/schemas/api-agent.schema.ts",
     "./server/config": "./src/server/services/config/agent-config.ts"
   },

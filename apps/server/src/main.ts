@@ -19,6 +19,8 @@ import {
 import { createAgentRuntimeModule } from "@fenix/agent-runtime/runtime";
 import {
   bindAcpInstanceActivityPort,
+  bindAgentConfigLookupPort,
+  bindAgentLaunchSpecPort,
   bindCoreRuntimePort,
   bindEnvironmentAcpLifecyclePort,
   bindFileWsPort,
@@ -139,6 +141,7 @@ import { closeCache, getRedisConnection } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { createModelGatewaySubjectVerification } from "./services/model-gateway-subject-verification";
+import { createPreLaunchPorts, type PreLaunchPortsDeps } from "./services/pre-launch-ports";
 import { syncBuiltin } from "./services/sync-builtin";
 
 /**
@@ -318,6 +321,10 @@ bindEnvironmentAcpLifecyclePort({
   stopInstances: agentRuntime.stopInstancesForEnvironments,
 });
 bindAcpInstanceActivityPort(agentRuntime.touchInstanceActivity);
+// 模型网关的运行时凭证解析器：既注入 agent-runtime 的旧解析器槽位（`setRuntimeCredentialResolver`），
+// 也在启动序列之后交给 agent-config 的启动参数组装器（见下方端口绑定）。两处在 W4a 并存是因为旧
+// launch-spec-builder 尚未删除；W4b 删旧路径后只留构造期注入。
+let runtimeCredentialResolver: PreLaunchPortsDeps["runtimeCredentialResolver"];
 await runCriticalStartupSequence({
   initDb: async () => {
     await initDb();
@@ -378,6 +385,7 @@ await runCriticalStartupSequence({
     const modelGatewayRuntime = createModelGatewayRuntime({ subjectVerification });
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
+      runtimeCredentialResolver = modelGatewayRuntime.resolveRuntimeCredential;
       agentRuntime.setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
       startupLog.info("Model gateway runtime initialized");
       return;
@@ -393,6 +401,17 @@ await runCriticalStartupSequence({
     ).ensureProvider();
   },
 });
+
+// agent-runtime 的「启动前取数」两个端口（启动参数组装 + Agent 配置查询）：实现在 agent-config，宿主
+// 装配后绑定（见 `services/pre-launch-ports.ts`）。绑定点必须在 `wirePermissions` 之后——那时 agent-config /
+// skill / mcp / model-management 四个模块才装配完成；也必须在本行之后才能拿到模型网关凭证解析器。
+const preLaunchPorts = createPreLaunchPorts({
+  runtimeCredentialResolver,
+  hindsightApiToken: env.HINDSIGHT_API_TOKEN,
+});
+bindAgentLaunchSpecPort(preLaunchPorts.launchSpec);
+bindAgentConfigLookupPort(preLaunchPorts.lookup);
+startupLog.info("Pre-launch ports bound (agent launch spec / agent config lookup)");
 
 // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
 // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。

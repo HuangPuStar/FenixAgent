@@ -13,19 +13,18 @@
  * 收敛回编排域 LaunchSpec 的数据面，避免双份构建。
  */
 
-import { getReadableAgentConfigById } from "@fenix/agent-config/server";
 import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "@server/config";
 import { environmentRepo } from "../server/repositories/environment";
+import { getAgentConfigLookupPort } from "../server/services/agent-config-lookup-port";
+import { getAgentLaunchSpecPort } from "../server/services/agent-launch-spec-port";
 import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-runtime-port";
 import type { InstanceSpawnSource, InstanceSupplement } from "../types/instance";
-import { toActorContext } from "./actor-context";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { globalInstanceRegistry } from "./instance-registry";
-import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
 import { getOrchestrationController, getOrchestrationLaunchSpecBuilder } from "./orchestration-bootstrap";
 
 const LOCAL_DEFAULT_NODE_ID = "local-default";
@@ -423,13 +422,14 @@ export async function terminateLocalDeadInstance(instanceId: string): Promise<vo
 /**
  * 从编排域 LaunchSpec 重建 core 的 AgentLaunchSpec。
  *
- * 编排域数据面（扁平聚合）不含 model 密钥 / skills 下载地址 / MCP 详细配置，
- * 复用旧 buildLaunchSpec 从 DB 完整解析，保证与既有 spawnInstanceFromEnvironment
- * 路径产出的运行时配置一致。platformEnv（USER_META_*）注入也与之对齐，
- * extraEnv 可覆盖同名默认值。
+ * 编排域数据面（扁平聚合）不含 model 密钥 / skills 下载地址 / MCP 详细配置，故组装交给
+ * `AgentLaunchSpecPort`（宿主绑定 agent-config 的组装器）从 DB 完整解析，保证与既有
+ * spawnInstanceFromEnvironment 路径产出的运行时配置一致。本函数只负责**实例上下文**：
+ * 环境行、`platformEnv`（USER_META_*）注入、`extraEnv` 合并与机器缓存预热——这些都是
+ * 「实例跑在哪、用谁的密钥」的信息，与密钥同源，留在本包（review §15.3 的三张表）。
  *
- * @param extraEnv 调用方环境变量覆盖，按旧路径 `{ ...platformEnv, ...extraEnv }`
- *                 语义合并（显式传入的同名变量优先）。
+ * @param extraEnv 调用方环境变量覆盖，按 `{ ...platformEnv, ...extraEnv }` 语义合并
+ *                 （显式传入的同名变量优先）。
  */
 async function buildAgentLaunchSpecForCore(
   launchSpec: LaunchSpec,
@@ -451,6 +451,8 @@ async function buildAgentLaunchSpecForCore(
   };
   // 对齐旧路径：调用方显式传入的同名环境变量优先
   const mergedExtraEnv = { ...platformEnv, ...extraEnv };
+  const organizationId = env.organizationId ?? launchSpec.userId;
+  const ownerUserId = launchSpec.userId;
 
   if (!env.agentConfigId) {
     // 无 agentConfigId 环境（历史遗留 / 系统级环境）走最小 LaunchSpec，等价旧路径
@@ -461,36 +463,36 @@ async function buildAgentLaunchSpecForCore(
     // 防御性对齐保留（若编排域侧未来放宽构建约束，此处行为仍与旧路径一致）。
     // 无 agentConfigId 且无 machine 配置时：EnvironmentRepo 回退 local-default
     // （本地执行未禁用），与旧路径行为一致；禁用本地执行时 controller 阶段即拒绝。
-    return buildBasicLaunchSpec({
-      organizationId: env.organizationId ?? launchSpec.userId,
-      userId: launchSpec.userId,
+    return getAgentLaunchSpecPort().buildMinimalAgentLaunchSpec({
       environmentId: launchSpec.environmentId,
+      organizationId,
+      ownerUserId,
       extraEnv: mergedExtraEnv,
     });
   }
 
-  const accessCtx = toActorContext({
-    organizationId: env.organizationId ?? "",
-    userId: launchSpec.userId,
-    role: "owner",
-  });
-  const agentConfig = await getReadableAgentConfigById(accessCtx, env.agentConfigId);
-  if (!agentConfig) {
-    throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);
-  }
   // 缓存 environmentId → machineId 映射，供 sendToAgentWs（Hermes/IM 通道）使用；
   // 与旧路径 spawnInstanceFromEnvironment 的 setAgentMachineCache 语义对齐。
-  if (agentConfig.machineId) {
+  // 取一次投影而不是复用组装器读到的行：节点判定只在 agent-config（`resolveAgentNode`），
+  // 本包不再持有资源行；代价是启动路径多一次已授权读（每次实例启动一次，非热路径）。
+  const projection = await getAgentConfigLookupPort().findVisibleAgentConfig({
+    agentConfigId: env.agentConfigId,
+    organizationId,
+    userId: ownerUserId,
+  });
+  // 配置不可读时不在这里报错：组装端口有自己的可见性判定，且错误语义必须与它一致
+  // （`NotFoundError` + 同一个 message），否则同一故障会随"哪一步先读"改变形态。
+  if (projection?.node?.kind === "machine") {
     // 运行时入口的服务聚合会回指本模块；仅在实例已进入启动流程后加载，避免模块初始化环。
     const { setAgentMachineCache } = await import("../server/transport/acp-ws-handler");
-    setAgentMachineCache(launchSpec.environmentId, agentConfig.machineId);
+    setAgentMachineCache(launchSpec.environmentId, projection.node.machineId);
   }
 
-  return buildLaunchSpec({
-    organizationId: env.organizationId ?? launchSpec.userId,
-    userId: launchSpec.userId,
+  return getAgentLaunchSpecPort().buildAgentLaunchSpec({
     environmentId: launchSpec.environmentId,
-    agentConfig,
+    organizationId,
+    ownerUserId,
+    agentConfigId: env.agentConfigId,
     environmentSecret: env.secret,
     extraEnv: mergedExtraEnv,
   });

@@ -1,13 +1,17 @@
-import { getReadableAgentConfigById } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
-import { type ActorProjection, toActorContext } from "../../services/actor-context";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
+import {
+  type AgentConfigLookupPort,
+  type AgentConfigLookupResult,
+  getAgentConfigLookupPort,
+} from "./agent-config-lookup-port";
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";
 
 type InstanceDeps = {
   createWebEnvironment: typeof createWebEnvironment;
-  getReadableAgentConfigById: typeof getReadableAgentConfigById;
+  /** 按真实用户身份的组织可见性读 Agent 配置投影（端口动词，替代旧的 `getReadableAgentConfigById`）。 */
+  findVisibleAgentConfig: AgentConfigLookupPort["findVisibleAgentConfig"];
   resolveInstance: typeof agentInstanceService.resolveInstanceForOperation;
   ensureInstanceRuntime: typeof agentInstanceService.ensureInstanceRuntime;
   listEnvironmentsByOrganizationId: typeof environmentRepo.listByOrganizationId;
@@ -15,7 +19,7 @@ type InstanceDeps = {
 
 const defaultDeps: InstanceDeps = {
   createWebEnvironment,
-  getReadableAgentConfigById,
+  findVisibleAgentConfig: (input) => getAgentConfigLookupPort().findVisibleAgentConfig(input),
   resolveInstance: agentInstanceService.resolveInstanceForOperation.bind(agentInstanceService),
   ensureInstanceRuntime: agentInstanceService.ensureInstanceRuntime.bind(agentInstanceService),
   listEnvironmentsByOrganizationId: async (organizationId: string) =>
@@ -48,11 +52,10 @@ export interface AgentInstanceConnectResult {
   };
 }
 
-interface AgentConfigRecord {
-  id: string;
-  organizationId?: string | null;
-  name: string;
-  description?: string | null;
+/** 连接入口只认「谁、在哪个组织」，不再接受角色——可见性判定由端口按真实成员关系完成（§9.1）。 */
+export interface InstanceOwner {
+  readonly organizationId: string;
+  readonly userId: string;
 }
 
 function toKebabSegment(input: string): string {
@@ -64,7 +67,7 @@ function toKebabSegment(input: string): string {
     .slice(0, 32);
 }
 
-function ensureReadableAgent(agent: AgentConfigRecord | null | undefined): AgentConfigRecord {
+function ensureReadableAgent(agent: AgentConfigLookupResult | null | undefined): AgentConfigLookupResult {
   if (!agent) {
     throw new AppError("Agent not found", "NOT_FOUND", 404);
   }
@@ -79,12 +82,16 @@ function pickEnvironment(environments: EnvironmentRecord[]): EnvironmentRecord |
  * 将 AgentConfig 解析为一个可连接的 instance 入口，必要时自动创建 environment / 启动 instance。
  */
 export async function connectAgentInstance(
-  ctx: ActorProjection,
+  ctx: InstanceOwner,
   agentConfigId: string,
   options: AgentInstanceConnectOptions = {},
 ): Promise<AgentInstanceConnectResult> {
   const agent = ensureReadableAgent(
-    (await deps.getReadableAgentConfigById(toActorContext(ctx), agentConfigId)) as AgentConfigRecord | null,
+    await deps.findVisibleAgentConfig({
+      agentConfigId,
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    }),
   );
 
   const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(

@@ -84,14 +84,6 @@
     },
     {
       "rule": "no-circular",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/agent-config",
-      "owner": "1.5",
-      "removeWhen": "1.4 收敛 agent-config 读取 + 1.5 下沉宿主能力",
-      "rationale": "2 处环（环长 5）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/server-app（2 处）。环上出现的主要跨包边：@fenix/agent-config → @fenix/server-app（2 处）、@fenix/server-app → @fenix/agent-runtime（2 处）、@fenix/agent-runtime → @fenix/agent-config（2 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
-    },
-    {
-      "rule": "no-circular",
       "from": "@fenix/agent-config",
       "to": "@fenix/agent-config",
       "owner": "1.5",

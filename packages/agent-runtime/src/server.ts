@@ -72,7 +72,9 @@ export {
   type InstanceCreationSource,
 } from "./server/repositories"; // 泄漏·持久化边界（W6：observer/workflow/machine 直接吃 repo）
 export * from "./server/repositories/environment-orchestration"; // 泄漏·编排域环境读视图（W6）
+export * from "./server/services/agent-config-lookup-port"; // 宿主注入·Agent 配置查询投影（W4a）
 export * from "./server/services/agent-instance-service"; // 测试取用·实例生命周期服务（W6：宿主用例改写 resolve/ensure/snapshot）
+export * from "./server/services/agent-launch-spec-port"; // 宿主注入·启动参数组装（W4a）
 export * from "./server/services/api-instance"; // 测试取用·程序化 API 实例入口（W6：包内用例取 setApiInstanceDeps/connectAgentInstance）
 export * from "./server/services/chat-channel-bootstrap"; // 泄漏·Chat 域装配（W6：observer 取 chat channel 控制器）
 export * from "./server/services/core-runtime-port"; // 宿主注入·Core runtime 与远端节点
