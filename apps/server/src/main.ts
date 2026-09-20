@@ -110,6 +110,7 @@ import {
 import { schedulerService } from "@fenix/resource-task/server";
 import {
   createApiWorkflowRoutes,
+  createHookRoutes,
   createWorkflowStaticApp,
   initCustomToolsRegistry,
 } from "@fenix/resource-workflow/server";
@@ -575,6 +576,8 @@ const app = new Elysia({
   .use(createWorkflowStaticApp({ authGuardPlugin }))
   // MCP routes
   .use(knowledgeMcpRoutes)
+  // Webhook trigger routes (no auth；凭 publicHash) —— 位置与原入口 `src/index.ts` 的顺序一致
+  .use(createHookRoutes())
   // ACP protocol routes
   .use(createAcpRoutes({ authGuardPlugin, authenticateRequest }))
   // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）

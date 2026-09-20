@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
 const RMD_07_MOVES = [
-  ["src/routes/hooks.ts", "apps/server/src/routes/hooks.ts"],
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
   ["src/routes/web/environments.ts", "apps/server/src/routes/web/environments.ts"],
   ["src/routes/web/instances.ts", "apps/server/src/routes/web/instances.ts"],
@@ -68,6 +67,10 @@ const RMD_07_MOVES = [
  * `__tests__/round18-openai-response-protocol-boundaries.test.ts`）owner 是 agent-runtime：唯一消费方都在该包内，
  * 宿主副本删除后由包内落点承载，`/api/instances` 与 `/api/openai-chat` 的协议定义不再跨包分叉，测试也随
  * 被测模块落到 owner 包内。
+ * 任务 1.5c 的一项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
+ * `handleWebhookRequest` 与 trigger 仓储本来就在包内，宿主这份只是路由壳。迁出时一并恢复了自 FND-05
+ * （入口迁到 `apps/server/src/main.ts`）起丢失的挂载：该路由在旧入口 `src/index.ts` 上是有 `.use()` 的，
+ * 迁移时未带过来，导致 `/hooks/:publicHash` 长期不可达（详细证据见 review/task-1.5-host-aggregation.md §七）。
  */
 const RMD_07_RELOCATED = [
   [
@@ -99,6 +102,11 @@ const RMD_07_RELOCATED = [
     "src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
     "apps/server/src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
     "packages/agent-runtime/src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
+  ],
+  [
+    "src/routes/hooks.ts",
+    "apps/server/src/routes/hooks.ts",
+    "packages/resources/workflow/src/server/routes/hooks/index.ts",
   ],
 ] as const;
 
@@ -146,17 +154,19 @@ describe("RMD-07 server-host migration", () => {
   // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
   // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
   // 零消费者）不在本表内，无需在此登记。
+  // 任务 1.5c 的一项：`src/routes/hooks.ts` 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回
+  // workflow 包），理由见 relocated 的文档注释。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(50);
+    expect(RMD_07_MOVES).toHaveLength(49);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
     }
   });
 
-  // Provider / Model / Machine / AgentRuntime 契约的 owner 已在包内：旧根路径与宿主路径都不得复活，包内必须有唯一落点。
-  test("relocates the provider, model and agent runtime contracts to their owner packages", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(6);
+  // Provider / Model / Machine / AgentRuntime 契约与 Webhook 入口的 owner 已在包内：旧根路径与宿主路径都不得复活，包内必须有唯一落点。
+  test("relocates the provider, model, agent runtime and webhook contracts to their owner packages", () => {
+    expect(RMD_07_RELOCATED).toHaveLength(7);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

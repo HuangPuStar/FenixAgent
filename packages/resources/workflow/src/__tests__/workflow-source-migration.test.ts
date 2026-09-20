@@ -304,12 +304,14 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
-  // 路由目录已统一到 `src/server/routes/{web,api}`：其余深度意味着还留着旧布局的第二套入口。
-  test("路由文件只出现在 routes/web 与 routes/api 下", () => {
+  // 路由目录按**协议前缀**分层，未在册的前缀意味着还留着旧布局的第二套入口。
+  // 1.5c 新增 `hooks/`：Webhook 是无认证的独立协议面（既非控制台 `/web/*` 也非对外 `/api/*`），
+  // 与 ACP、MCP 同类；加前缀必须在此登记，等同于一次布局评审。
+  test("路由文件只出现在 routes/{web,api,hooks} 下", () => {
     const routeFiles = sourceFiles.filter((file) => file.includes("/server/routes/"));
     const strays = routeFiles.filter((file) => {
       const rel = relative(resolve(PKG_ROOT, "src/server/routes"), file);
-      return !/^(web|api)\/[^/]+\.ts$/.test(rel) && rel !== "dependencies.ts";
+      return !/^(web|api|hooks)\/[^/]+\.ts$/.test(rel) && rel !== "dependencies.ts";
     });
     expect(strays.map((file) => relative(PKG_ROOT, file))).toEqual([]);
     expect(routeFiles.length).toBeGreaterThanOrEqual(8);

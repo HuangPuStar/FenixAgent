@@ -415,3 +415,71 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 7219 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、三项 `tsc` 均通过。
 分项：`platform-sdk` 8 pass、`chat-channel` 653 pass（30 文件）、`agent-runtime` 330 pass（50 文件）、
 `round29-cache-isolation` 68 pass。
+
+### 1.5c-1 Webhook 入口迁出 + 修复丢失的挂载（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createHookRoutes()`（无 deps，见下） | `packages/resources/workflow/src/server/routes/hooks/index.ts` |
+| `@fenix/resource-workflow/server` 增加出口 | `packages/resources/workflow/src/server.ts` |
+| 删除宿主副本（56 行） | `apps/server/src/routes/hooks.ts`（删除） |
+| 挂载点插在 `knowledgeMcpRoutes` 与 `createAcpRoutes` 之间（与原入口顺序一致） | `apps/server/src/main.ts` |
+
+**工厂不接收守卫依赖**：无认证是这个端点的**协议语义**（trigger 的 `publicHash` 即凭据），不是「守卫尚未
+注入」。这与 §3.5 所论的「守卫必须由宿主注入」不冲突——那条约束管的是**需要**认证的 `/web/*` 与 `/api/*`；
+本端点唯一用到的宿主能力是 HTTP 边缘本身，`handleWebhookRequest` 与 trigger 仓储本来就在包内，因此没有
+`WorkflowRouteDependencies` 参数。
+
+**二、目录形状（由门禁反馈定案）**
+
+首次落点是 `routes/hooks.ts`（与 `dependencies.ts` 同级）。`precheck` 第一次运行即失败：
+
+```
+✗ package-tests  packages/resources/workflow/src/__tests__/workflow-source-migration.test.ts:314
+  路由文件只出现在 routes/web 与 routes/api 下  →  ["src/server/routes/hooks.ts"]
+```
+
+该断言是 workflow 包自有的布局契约（任务 1.3 §1），意在「其余深度意味着还留着旧布局的第二套入口」。
+裁定：**登记第三个协议前缀 `hooks/`，落点为 `routes/hooks/index.ts`**，而不是放宽成「允许 routes 根下的
+散文件」（那会削弱规则本身）。依据是仓内已有同类先例——`packages/agent-runtime/src/routes/acp/index.ts`
+同为「协议前缀目录 + index」的形态；Webhook 与 ACP、MCP 同属独立协议面，既非控制台 `/web/*` 也非对外
+`/api/*`（CLAUDE.md「内部协议能力使用独立前缀，不得混入 `/web` 或 `/api`」）。测试的正则由 `^(web|api)/`
+改 `^(web|api|hooks)/` 并写明「加前缀必须在此登记，等同于一次布局评审」。
+
+**三、迁出时发现并修复的既有缺陷：`/hooks/:publicHash` 自 FND-05 起不可达**
+
+- **根因**：该端点由提交 `38bc236f0` 引入，`.use(hooksRoutes)` 挂在当时的入口 `src/index.ts` 上。FND-05
+  （`a22fc214a`「迁移 FND-05 应用入口至 apps」）把入口整体挪到 `apps/server/src/main.ts` 并删除旧入口，
+  挂载没有跟着带过去。证据：`git log -S 'hooksRoutes' -- apps/server/src/main.ts` **空结果**（新入口从未
+  挂载过它），而 `git log --diff-filter=D -- src/index.ts` 唯一命中 `a22fc214a`。
+- **影响**：`services/workflow-trigger.ts:44` 的 `buildWebhookUrl()` 会产出 `${baseUrl}/hooks/${publicHash}`，
+  并在 trigger 的 create / regenerate 响应里作为 `webhookUrl` 对外返回——即**平台把一条 404 的地址展示给
+  用户**，Webhook 触发能力自 FND-05 起实质不可用。属「迁移丢挂载」而非设计变更：本包 `fenix.module.ts`
+  与 README 一直把 Webhook 列为交付面。
+- **修复与迁出合一**：路由落回 owner 包的同时在 `main.ts` 按原顺序恢复 `.use(createHookRoutes())`，并补
+  4 个路由契约用例锁定行为（见下）。这是「修复与迁移同批做」的边界内动作，未扩展到其他协议面。
+
+**四、测试**（`packages/resources/workflow/src/__tests__/hooks-routes.test.ts`，4 例）
+
+未知 `publicHash` → 404 `{error:"trigger not found"}`；已禁用 trigger → **同一** 404 响应（否则穷举 hash
+即可探测 trigger 存在性）；声明超过 1MB 的 `content-length` → 413；命中已启用 trigger → 立即 200
+`{received:true}`（触发是 fire-and-forget）。`stubDb` 提供 `select().from().where().limit()` 队列替身。
+
+一处测试口径需记录：内存构造的 `Request` 不带 `content-length`（实测为 `null`，真实部署下该头由 HTTP
+传输层按实际 body 写入），因此 413 用例**显式声明**该头并配小 body，文件内已注明两者在边缘层等价。
+
+**五、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`src/routes/hooks.ts` 从 `RMD_07_MOVES` 移入
+  `RMD_07_RELOCATED` 三元组（长度 50 → 49、6 → 7），两处注释块补记理由，relocated 用例标题加入 webhook。
+- `packages/resources/workflow/fenix.module.ts`：描述符注释的交付面加入 `createHookRoutes`，消费者列表
+  去掉已迁出的宿主路径。
+- `scripts/root-source-owner-rules.ts:809` 的 `src/routes/hooks.ts` 规则**保留不动**：它按**根目录** `src/`
+  逐文件审计（该路径在 RMD-07 之前就已不存在于根），与宿主 `apps/server/src/routes/hooks.ts` 的删除无关；
+  本轮不属该清单的改动范围。
+
+**验证证据**：`precheck` 全绿 `All passed (99339ms)`——server-and-script-tests 863 pass / package-tests
+7223 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc` 均通过。定向运行 `workflow-source-migration` + `hooks-routes` + `rmd-07-migration` 共 21 pass。
