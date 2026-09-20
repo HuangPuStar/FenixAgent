@@ -9,9 +9,11 @@ import { existsSync } from "node:fs";
  * 与 RMD-06 目标不同的第三项表示 1.2 再次搬迁，此时 RMD-06 的中间落点不得残留。
  *
  * 1.2 的落点变更：
- * - `control.ts` 最终落宿主 `apps/server/src/routes/web/control.ts`——它同时依赖 Agent Runtime
- *   的会话服务与 Machine 的事件服务，放进任一模块都会与既有的 `resource-machine →
- *   agent-runtime` 形成环（原计划为迁入 agent-runtime，实施时因依赖方向冲突改判）。
+ * - `control.ts` 在 1.2 暂落宿主 `apps/server/src/routes/web/control.ts`——当时的理由是它同时依赖
+ *   Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与既有的 `resource-machine →
+ *   agent-runtime` 形成环（原计划为迁入 agent-runtime，实施时因依赖方向冲突改判）；1.5c 按 §四
+ *   分片表改判回 `packages/agent-runtime/src/routes/web/control.ts`：1.4 W6b 已把 EventBus 与
+ *   `environmentRepo` 收敛回 agent-runtime（Machine 的同名薄封装删除），上述环的构成前提随之消失。
  * - `user.ts` / `ChangePasswordDialog.tsx` 随身份职责整体迁入 `packages/platform/identity`。
  * - `share-link.ts` / `token.ts` 与 2 个 token 前端测试删除：前者只有自身的 barrel 导出、
  *   无任何调用方（分享表保留在宿主 schema，删除推迟到 1.7），后者是遗留内存 token 实现。
@@ -47,7 +49,7 @@ const RMD_06_MOVES = [
   [
     "src/routes/web/control.ts",
     "packages/resources/identity-admin/src/routes/web/control.ts",
-    "apps/server/src/routes/web/control.ts",
+    "packages/agent-runtime/src/routes/web/control.ts",
   ],
   ["src/repositories/share-link.ts", "packages/resources/identity-admin/src/repositories/share-link.ts", null],
   ["src/repositories/token.ts", "packages/resources/identity-admin/src/repositories/token.ts", null],

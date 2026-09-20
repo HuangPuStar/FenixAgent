@@ -1,3 +1,12 @@
+/**
+ * 会话协议模型（1.5c 从宿主 `apps/server/src/schemas/session.schema.ts` 迁入；会话与实例的 owner 是本包）。
+ *
+ * 已知边界：`SessionDetail` / `SessionListItem` / `SessionHistory` 三组模型对应的 `/web/sessions`、
+ * `/web/sessions/:id`、`/web/sessions/:id/history` 端点**从未实现**，全仓也没有消费者——它们的注释
+ * 描述的是设计意图而非现存接口。迁入时原样保留（本分片只做归属调整，不做协议模型清理），登记为
+ * 后续收口候选；真正被消费的只有 `SessionEventPayloadSchema` 与 `SendEventResponseSchema`（控制面）。
+ */
+
 import { WebOkSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 /** 会话详情模型 */

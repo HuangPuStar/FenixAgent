@@ -78,7 +78,7 @@ RMD-01、RMD-02、RMD-03、RMD-04、RMD-05、RMD-06、RMD-07、RMD-08、RMD-09 �
 | `web/src/components/agent-panel/SiteTabsBar.tsx` | packages/resources/agent-config/web/components/agent-panel/SiteTabsBar.tsx | agent-config | RMD-05 |
 | `src/repositories/resource-permission.ts` | packages/platform/access-control/src/repositories/resource-permission.ts | platform-access-control | RMD-06 |
 | `src/schemas/resource-access.schema.ts` | packages/platform/access-control/src/schemas/resource-access.schema.ts | platform-access-control | RMD-06 |
-| `src/routes/web/control.ts` | apps/server/src/routes/web/control.ts | platform-identity | RMD-06 |
+| `src/routes/web/control.ts` | packages/agent-runtime/src/routes/web/control.ts | agent-runtime | RMD-06 |
 | `src/repositories/share-link.ts` | packages/platform/identity/src/repositories/share-link.ts | platform-identity | RMD-06 |
 | `src/repositories/token.ts` | packages/platform/identity/src/repositories/token.ts | platform-identity | RMD-06 |
 | `src/repositories/user.ts` | packages/platform/identity/src/repositories/user.ts | platform-identity | RMD-06 |

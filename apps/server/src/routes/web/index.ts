@@ -3,6 +3,7 @@ import {
   createWebAgentSitesRoutes,
   createWebSidebarConfigRoutes,
 } from "@fenix/agent-config/server";
+import { createWebControlRoutes } from "@fenix/agent-runtime/server";
 import { createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
 import { createWebModelGatewayRoutes } from "@fenix/model-management/server";
 import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
@@ -23,7 +24,6 @@ import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentLookup } from "../../services/resource-module-ports";
 import webBranding from "./branding";
 import webConfig from "./config";
-import webControl from "./control";
 import webEnvironments from "./environments";
 import webInstances from "./instances";
 import webMetaAgent from "./meta-agent";
@@ -37,6 +37,7 @@ import webPeriTaskDetails from "./peri-task-details";
 // 端口实现见 `services/resource-module-ports.ts`。
 const webApiKeys = createWebApiKeysRoutes({ authGuardPlugin });
 const webOrganizations = createWebOrganizationsRoutes({ authGuardPlugin });
+const webControl = createWebControlRoutes({ authGuardPlugin });
 const webSidebarConfig = createWebSidebarConfigRoutes();
 const webAgentSites = createWebAgentSitesRoutes({ authGuardPlugin });
 const webChannelsRoutes = createWebChannelsRoutes({ authGuardPlugin, environmentLookup });

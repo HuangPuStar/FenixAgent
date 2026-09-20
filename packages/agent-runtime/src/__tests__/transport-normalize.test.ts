@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const { normalizePayload } = await import("@server/services/transport");
+const { normalizePayload } = await import("../transport/session-events");
 
 // extractContent is not exported; we test it via normalizePayload's content field
 

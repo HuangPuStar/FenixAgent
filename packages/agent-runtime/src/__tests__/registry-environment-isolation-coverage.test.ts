@@ -195,5 +195,7 @@ describe("environment-core 的隔离、失败与响应边界", () => {
 });
 
 // 此处原有 `normalizePayload` 的边界用例（null / 字符串 / 直接 content / 嵌套 message / 文本块拼接 /
-// 非文本块 / uuid 保留），已随被测函数归属迁到宿主测试 `apps/server/src/__tests__/transport-normalize.test.ts`：
-// 被测函数属宿主 transport，两处断言集合相同，留在包内只会让本包测试反向依赖宿主实现（1.4 W2）。
+// 非文本块 / uuid 保留），1.4 W2 曾随被测函数迁到宿主测试 `apps/server/src/__tests__/transport-normalize.test.ts`；
+// 1.5c 该服务随控制面一起迁入本包并定名 `transport/session-events.ts`，用例随之回到本包
+// `src/__tests__/transport-normalize.test.ts`（断言集合不变）。两处不相邻的迁移说明同一件事：
+// 用例跟随被测函数，被测函数在哪一侧由归属决定，不由测试文件的位置决定。

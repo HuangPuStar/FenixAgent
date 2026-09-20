@@ -44,6 +44,7 @@ export type {
   AgentRuntimeAuthDependencies,
   ApiInstanceRouteDependencies,
 } from "./routes/dependencies"; // 路由·注入契约类型（宿主装配层按它们构造注入对象）
+export { createWebControlRoutes } from "./routes/web/control"; // 路由·控制面会话事件与中断（守卫由宿主注入）
 export * from "./schemas/acp.schema"; // 协议·ACP
 export type {
   CreateEnvironmentRequest,

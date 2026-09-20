@@ -483,3 +483,106 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 **验证证据**：`precheck` 全绿 `All passed (99339ms)`——server-and-script-tests 863 pass / package-tests
 7223 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
 三项 `tsc` 均通过。定向运行 `workflow-source-migration` + `hooks-routes` + `rmd-07-migration` 共 21 pass。
+
+### 1.5c-2 控制面三件套迁入 agent-runtime（2026-09-21）
+
+**一、迁出与落点**（§四 分片表的 control 三件套）
+
+| 改动 | 文件 |
+| --- | --- |
+| 会话协议模型（内容逐字保留，仅新增头注释） | `apps/server/src/schemas/session.schema.ts` → `packages/agent-runtime/src/schemas/session.schema.ts` |
+| 会话事件规范化与发布，迁入后改名 `session-events` | `apps/server/src/services/transport.ts` → `packages/agent-runtime/src/transport/session-events.ts` |
+| 其边界用例（仅改 import 目标） | `apps/server/src/__tests__/transport-normalize.test.ts` → `packages/agent-runtime/src/__tests__/transport-normalize.test.ts` |
+| 新建路由工厂 `createWebControlRoutes(deps)` | `packages/agent-runtime/src/routes/web/control.ts` |
+| 删除宿主副本（256 行） | `apps/server/src/routes/web/control.ts`（删除） |
+| `@fenix/agent-runtime/server` 增加出口 | `packages/agent-runtime/src/server.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+**改名理由**：原名 `transport` 在宿主语境下可读，但本包已有 `src/transport/` 目录，且该目录里
+`event-bus.ts` 才是传输原语本身；本文件职责是「把上游载荷规范化后发布到会话总线」，故定名
+`session-events`，与新落点同目录。
+
+**二、【需审核】`control.ts` 的归属在 1.2 → 1.5c 之间改判了两次**
+
+1.2 记录（`review/task-1.2-platform-identity-authorization.md` §实施、`rmd-06` 文档注释、
+`root-source-owner-rules.ts` 的 `TARGET_PREFIX_OVERRIDES`）给出的裁定是「**必须留在宿主**」，理由唯一：
+它同时依赖 Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与既有的
+`resource-machine → agent-runtime` 成环，只有宿主能同时持有两侧。
+
+**这条前提已在本轮之前消失**：1.4 W6b 把 EventBus 与 `environmentRepo` 收敛回 agent-runtime（Machine
+的同名薄封装删除，见 `review/task-1.4-agent-runtime.md` W6b 记录）。迁入前逐行核对，本路由没有任何一处
+跨领域依赖——会话事件与状态（`services/session`）、实例归属（`agentInstanceService`）、环境组织归属
+（`environmentRepo`）三件事的 owner 全在本包。据此按 §四 分片表迁入，1.2 的三处记录同步改写为
+「1.2 暂落宿主、1.5c 按分片表迁回 agent-runtime」。
+
+**取数方式的调整**：包内路由一律直接相对引用实现，**不经** `getBoundAgentRuntime()`。后者是**宿主**
+装配完成的判据，包内路由走它等于自引用本包入口；包内既有惯例（`routes/api/instances.ts`、
+`routes/acp/index.ts`）同样是直引实现。
+
+**三、【需审核】迁出时发现并修复的既有契约缺陷：控制面成功路径固定返回 422**
+
+- **现象**：`/web/sessions/:id/events` 与 `/web/sessions/:id/control` 的成功路径响应校验失败，实测响应体
+  `{"type":"validation","on":"response","property":"data",...}`。
+- **根因**：响应 schema 声明的字段是 `timestamp`（`SessionEventSchema`，见迁移后的
+  `packages/agent-runtime/src/schemas/session.schema.ts`），而事件总线产出的是 `createdAt`（`SessionEvent`
+  定义在冻结文件 `transport/event-bus.ts`）。两者同名不同义，handler 直传总线对象必然不满足 schema。
+- **影响面**：仓内**零消费方**（前端不调用 `/web/sessions/*`，该前缀本就无实现配套），因此不存在对外
+  兼容包袱；但这是与迁出无关的既有缺陷，按红线「发现即处理」在此修复。
+- **修复**：新增边界投影 `toSessionEventView(event)`，把 `createdAt` 映射为 `timestamp` 后返回；两条端点
+  的成功分支改用它。选择显式投影而非「回传总线对象 + 靠 schema 剔除」，是因为落盘的线上形状应当就是
+  schema 本身。用例已用 `expect(typeof body.data.event.timestamp).toBe("number")` 锁定。
+- **回退点**：若审核认为应保留 422 这一既有行为，把 `toSessionEventView` 调用换回直传 `event` 并同步该
+  断言即可；`interrupt` 端点未受影响（返回 `WebOkSchema(z.null())`）。
+
+**四、死协议模型登记**：`session.schema.ts` 的 `SessionDetail` / `SessionListItem` / `SessionHistory` 三组
+模型对应的 `/web/sessions`、`/web/sessions/:id`、`/web/sessions/:id/history` **从未实现**、全仓零消费者。
+迁入时原样保留（本分片只做归属调整，不做协议清理），并在文件头注释登记为后续收口候选；真正被消费的只有
+`SessionEventPayloadSchema` 与 `SendEventResponseSchema`。
+
+**五、测试**（`packages/agent-runtime/src/__tests__/web-control-routes.test.ts`，8 例）
+
+未认证 → 401；总线无会话 → 404（不区分「从未存在」与「已结束」，避免用返回码探测会话）；实例不属于该
+用户 → 403；环境组织与请求上下文不一致 → 403 `Not your organization's session`；成功发事件 → 200 +
+`timestamp` 为数字 + `payload.content` 已规范化 + 事件确实进总线；`/control` 缺省类型
+`control_request`；`/interrupt` 返回 `{success:true,data:null}` 且总线事件序列为
+`["interrupt","session_status"]`；无组织归属的环境仍可命中（同用户边界）。
+
+一处测试基建口径需记录：归属校验要读两份数据，替身来源不同。实例归属走真实仓储
+（`agentInstanceService.getOwnedInstance` → `db.select()...limit()`），用 `stubDb` 队列给行；环境归属走
+`environmentRepo.getById`，而该模块被**宿主 preload**（`apps/server/src/test-utils/setup-mocks.ts`）的
+`mock.module` 换成实时转发 Proxy，默认 `{ getById: async () => null }`，因此包内用例只能经它的登记替身
+`stubEnvironmentRepo` 设置（与 `api-instance-routes.test.ts` 用 `stubCoreBootstrap` 同例）。首轮 5 个
+用例因此全数 403，本文件头注释已写明两条替身路径的差别。
+
+**六、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：三项入 `RMD_07_RELOCATED` 三元组（长度 47 / 9），两处注释
+  与用例标题同步。
+- `scripts/__tests__/rmd-06-migration.test.ts`：`control.ts` 三元组第三项改指
+  `packages/agent-runtime/src/routes/web/control.ts`，头注释改写为「1.2 暂落宿主、1.5c 改判回本包」的完整
+  依据（该断言要求第三项存在，不改会直接失败）。
+- `scripts/root-source-owner-rules.ts`：`src/routes/web/control.ts` 规则由 `platform-identity` 改为
+  `agent-runtime` + `packages/agent-runtime`，并把 `TARGET_PREFIX_OVERRIDES` 里的 control 条目删除（默认
+  推导出的目标正是新落点）；两次改判的依据合并写在该规则上方。
+- `docs/arch/root-source-owner-inventory.md`：按规则重新生成，实测**仅这一行**变化
+  （`diff` 只有第 81 行）；`check:root-owner-inventory` 报 `files=0 unowned=0 ambiguous=0`。
+- `packages/agent-runtime/src/__tests__/registry-environment-isolation-coverage.test.ts`：`normalizePayload`
+  用例的去向说明由「迁到宿主测试」改为「1.4 W2 迁宿主、1.5c 随被测函数回本包」（断言集合不变）。
+- `scripts/architecture/exceptions.json`：`apps-boundary` 的 `@fenix/agent-runtime → @fenix/server-app` 条目据实
+  重测改写——非测试侧 **5 处 / 5 文件**（全部 `@server/db/schema`；`@server/config` 的 1 处随 `a084454c6` 消失，
+  removeWhen 的第②条路径因此不再存在），测试侧 **15 处 / 15 文件**（`module-stubs` 13、`@server/db/schema` 1、
+  `@server/plugins/error-handler` 1）。本次净增的 1 处即本片新增的 `web-control-routes.test.ts`。
+
+**七、【记录，不在本任务实现】发现的过时引用**
+
+- `FUNCTIONAL_MODULE_INVENTORY.md:40` 仍把 `apps/server/src/routes/web/control.ts` 列为「Agent 会话控制与权限交互」
+  的实现文件，并把目标包写成「`agent-session-control`（可并入 `agent-runtime`）」——路径已失效，且本片正是按
+  「并入 agent-runtime」落地的。该文件属 1.5g 台账改写范围，此处只登记。
+- `review/task-1.4-agent-runtime.md` 遗留表里「`plugins/auth.ts` / `routes/web/control.ts` / `services/resource-module-ports.ts`
+  仍从 `./server/environment` 取环境」中的 control 一项已随本片不再成立（该表列的是宿主取用面，本轮后只剩两处）。
+
+**验证证据**：`precheck` 全绿 `All passed (99167ms)`——server-and-script-tests 835 pass / package-tests 7259 pass
+（2 skip）/ web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、三项
+`tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `web-control-routes` + `transport-normalize` +
+`registry-environment-isolation-coverage` + `rmd-06-migration` + `rmd-07-migration` + `workflow-source-migration`
+共 73 pass / 0 fail。
