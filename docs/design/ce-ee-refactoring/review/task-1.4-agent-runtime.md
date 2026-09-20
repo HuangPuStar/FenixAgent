@@ -1,10 +1,10 @@
 # 任务 1.4 执行计划与设计裁定：Agent Runtime、Machine 与 Sandbox
 
-本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型）；W3b → W6 未开工。
+本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型），**W3b 已交付**（第十四节，消费方改调 port）；W4 设计已定稿、三项裁定已落（2026-09-21，见第十五节，W4a / W4b 两片）→ W4a 编码中，W6 未开工。
 
 任务目标见[阶段 2 执行计划 §1.4](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）与 [§10.4](../ce-ee-engineering-standards.md)（Runtime 与基础资源验收）。
 
-## 一、任务状态：W5、W1、W2、W3a 已交付（2026-09-20），其余切片未开工
+## 一、任务状态：W5、W1、W2、W3a、W3b 已交付（2026-09-21），W4 / W6 未开工
 
 | 证据 | 结论 |
 | --- | --- |
@@ -14,7 +14,7 @@
 | `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条，W2 削 0 条） | 剩余 11 条随 W3/W4、W6 处理；W2 的 `apps-boundary` 条目按职责面重写 rationale 而非删除（见 12.4） |
 | 台账总数 **51 → 49**（W1 削 2 条 `owner: "1.5"` 的 `no-circular`，见 11.3；W2 无增删） | 包对指纹随边消失而失效，非 1.4 条目减少 |
 
-**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节。**未开工**：W3b「消费方改调 port」→ W4（与 W3 同批设计，见 4.4）→ W6。
+**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节；W3b「消费方改调 port」——第十四节。**W4 设计已定稿**（第十五节，三项裁定：组装落点 A / 端口方向 pull / 测试按断言面改写），W4a 编码中；**未开工**：W6。
 
 阶段 1（`fa2bbaef0`「迁移 Runtime 与 Chat 残留」等）已完成的是**物理归属**：Environment、Instance、relay、ACP session、Chat、YJS 的代码已在 `packages/agent-runtime`，Machine/Sandbox 已是独立包。1.4 要的是**接口收窄与依赖方向**，这部分未动。
 
@@ -263,8 +263,8 @@ apps/server 注入 AgentInstanceManager ──────┘
 | **W1 依赖类型与配置 seam** ✅ 已交付（2026-09-20，见第十一节） | 4 个文件的类型搬家；`agent-concurrency.ts`、`acp-idle-monitor.ts` 换用包内 `getBoundCoreRuntime`；7 个运行态配置值改模块配置注入 | 非测试代码中 `@server/config`、`@server/types/*`、`@server/services/core-bootstrap` 归零（按文件收敛口径，见 11.2） | 实测削 2 条（原预测「无」）：两条 `owner: "1.5"` 的 `no-circular` 因跨包见证边消失而失效，见 11.3 |
 | **W2 宿主接缝收敛** ✅ 已交付（2026-09-20，见第十二节） | `@server/db` + `@server/db/schema` 换 owner 侧入口（含表归属裁定）；`@server/plugins/auth` 认证上下文裁定；`cache` / `openai-response-mapper` / `transport` / `config-utils` / `org-context` / `repositories` 收口；消除 `routes/acp/index.ts` 对 `@server/routes/web/environments` 的反向依赖 | 非表定义宿主导入 **30 行 / 14 文件 → 11 行 / 8 文件**（消 19 行 / 6 类）；残留 5 行归 W4「启动前取数」、6 行表定义归 §1.7——「22 个文件全清」口径已按裁定修正，见 12.1 | 实测削 **0** 条：按裁定「按职责面收敛 + 表定义显式豁免」，`apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）不删、改写 rationale，见 12.4 |
 | **W3a Runtime port 定型（契约面）** ✅ 已交付（2026-09-20，见第十三节） | 落 `src/runtime.ts`（`AgentRuntimePort` 管理面 33 方法 + `AgentRuntimeSessionApi` 数据面 6 方法 + `createAgentRuntimeModule`）；`package.json` 增 `./runtime` 子路径；`src/server.ts` 收窄为逐行角色标注的清单（嵌套 barrel 不再透传）；替换 `fenix.module.ts` 工厂；新增 port 契约测试 | 契约面定型，**不改符号可达性**（实测 314 → 314 名，零增零减）；消费方本片不动 | 无 |
-| **W3b 消费方改调 port** | 30 个非测试消费文件改调 `/runtime`；删除已迁走符号；去掉 `main.ts` 的 `bindAgentInstanceRuntimeOperations` 转发（§4.6） | 9 个包/应用、31 个文件的调用面收敛 | 无 |
-| **W4 启动前取数搬出** | 新建 `AgentInstanceStarter` port；`launch-spec-builder`(663) 与 `actor-context.ts`(42) 从 agent-runtime 删除；`skill` / `mcp` / `model-management` 补包根公开 Domain Service（6 张表的读取）；`agent-config` 补「组织范围读」系统入口（9.1）；agent-config Facade 组装已授权 `AgentLaunchSpec` 并调 port；两条 spec 路径按 9.2 收敛为一条 | 消除 `agent-runtime-not-to-resources` 的服务端命中 | 删 `agent-runtime-not-to-resources` 5 条（knowledge / agent-config / memory / skill / model-management；与 §1.7 同批核对 `@/src/lib/model-config-utils` 别名） |
+| **W3b 消费方改调 port** ✅ 已交付（2026-09-21，见第十四节） | 非测试消费文件改调 `/runtime`；删除已迁走符号；去掉 `main.ts` 的 `bindAgentInstanceRuntimeOperations` 转发（§4.6） | 13 个生产文件改调 port；`server.ts` 导出面 314 → 233；剩余 14 个 barrel 消费方全部属「宿主注入 / 协议 / 错误映射 / 泄漏(W6)」 | 实测削 **1** 条（`no-circular` @fenix/resource-machine → @fenix/agent-config，环的见证边消失），见 14.8 |
+| **W4 启动前取数搬出**（2026-09-21 裁定拆两片，设计见第十五节） | **W4a（只加不删）**：`skill` / `mcp` / `model-management` 补包根公开 Domain Service（6 张表的读取）；`agent-config` 补「组织范围读」系统入口（§9.1）；Facade 组装已授权 `AgentLaunchSpec` 并调新建的 `AgentInstanceStarter` port；宿主绑定实现。**W4b（删旧路径）**：`launch-spec-builder`(663) 与 `actor-context.ts`(42) 从 agent-runtime 删除；按 §9.2 删 `packages/orchestration/src/launch-spec/`(107)；台账收口 | 消除 `agent-runtime-not-to-resources` 的服务端命中 | W4b：删 `agent-runtime-not-to-resources` **4 条**（knowledge / agent-config / memory / skill）；`model-management` 条**不删**——见证边是 `web/components/chat/composer-toolbar.tsx` 的前端共享别名，按 §15.2-2 改写 removeWhen 并转 §1.7 |
 | **W5 Machine/Sandbox 方向** ✅ 已交付（2026-09-20，见第十节） | machine 6 处 + sandbox 2 处反转换 port；package.json 与 manifest 同步 | 方向固定为 `agent-runtime → sandbox → machine` | 实测删 3 条（§5.3 预测的 7 条中有 4 条仍是真实违规，原因见 10.4） |
 | **W6 链路与边界补强** | 2 份 `extractJsonRpc` 副本收口；chat-channel 值导入归属；2 处边界测试缺口 | 第 4、5 条验收 | 删 `no-cross-package-src:packages/chat-channel`（与 §1.6 同批） |
 | **W7 收口** | `bun run precheck`、`bun run build:web`、`bun run docs:build`、台账核对、本文件收尾 | 全绿证据 | 复核 14 条 1.4 条目全部消除或按新事实重登记 |
@@ -790,3 +790,98 @@ W3 的第二步：非测试消费方全部改调 `@fenix/agent-runtime/runtime`�
 | 泄漏面 9 个生产文件（`environmentRepo` / `getEventBus` / `getChatChannelController` / observer 三文件 / `agent-node-bridge` / `resolveWorkspacePath` / `listAcpConnections` 等） | W6 |
 | `runtime.ts` 的派生返回类型 + 契约面上的 `AgentInstanceRecord`（裁定二的已知代价） | W6 |
 | `launch-spec-builder`（`W4·`，663 行）与 `AgentInstanceStarter` port、`actor-context.ts` | W4 |
+
+## 十五、W4 设计（启动前取数搬出，2026-09-21）
+
+本节是 W4a 编码前的设计记录，经用户 2026-09-21 裁定「先写设计小节再编码」后落笔。**W4 的目标**：把「实例起来之前拿什么参数」从 `agent-runtime` 搬出，使 `agent-runtime` 不再 import 任何资源领域包（消除 `agent-runtime-not-to-resources` 的见证边），同时按 §9.1 消除伪造 `role`、按 §9.2 收敛两条 LaunchSpec。**边界**：状态机、幂等、lease、限流、disconnect fencing、dispose、重连（第十节冻结区）一行不动。
+
+### 15.1 两片切分与验收口径
+
+| 片 | 动作 | 验收 |
+| --- | --- | --- |
+| **W4a（只加不删）** | 新契约与实现先落地并绑定，旧路径仍在 | 全绿；行为零变化；`server.ts` 导出面不减名 |
+| **W4b（删旧路径）** | 删 `launch-spec-builder`(663) / `actor-context.ts`(42) / `packages/orchestration/src/launch-spec/`(107)；消台账 | 全绿；台账 5 条中 4 条删除（见 15.5） |
+
+### 15.2 勘察实测：与 §七 估算的四处偏差
+
+1. **`agent-config` 是 6 个文件的 port 反转，不止「补组织范围读入口」。** `packages/agent-runtime/src` 非测试代码 import `@fenix/agent-config` 的命中实测 6 文件：`services/launch-spec-builder.ts:10`（type）、`:11`（`composeAgentSystemPrompt`）、`services/orchestration-instance.ts:16`、`services/orchestration-bootstrap.ts:21`（`agentConfigRepo` + `resolveAgentNode`）、`server/services/environment-web.ts:2`（`getReadableAgentConfigById` + `resolveAgentNode`）、`server/services/api-instance.ts:1`、`server/transport/acp-ws-handler.ts:709`（动态 `import`，取 machineId）。台账指纹是包对级，**6 文件全清才能删该条**，故 6 处必须同片处理，不能只改启动路径。
+2. **`model-management` 的见证边不在服务端，W4b 删不掉该条。** `packages/agent-runtime` 全仓（含 `web/`）对 `@fenix/model-management` 的命中只有一处：`tsconfig.json:29` 把 `@/src/lib/model-config-utils` 别名指向 `packages/resources/model-management/web/lib/model-config-utils.ts`，唯一消费方是 `packages/agent-runtime/web/components/chat/composer-toolbar.tsx:6`（与 `apps/web` 的 `apps/web/vite.config.ts:205` 同一条前端共享别名边）。因此该条目的 removeWhen「模型网关解析改为经 platform-sdk 暴露的受限读取入口」与服务端无关，**W4 不改其归属，需按新事实改写 removeWhen 并转 §1.7/前端边界批次**（与 `apps-boundary` 条目 #27 同因：直读 `@server/db/schema` 表定义的债归 §1.7）。
+3. **`mcp` 两张表的直读走的是 `apps-boundary`，不是 `agent-runtime-not-to-resources`。** `launch-spec-builder.ts:27` 的 `mcpServer` / `agentConfigMcp` 来自 `@server/db/schema`，命中规则 `apps-boundary`（台账 #27，owner 1.7，11 文件）。故 §七 表格「台账削 5 条」应为 **削 4 条**（knowledge / agent-config / memory / skill）。
+4. **§9.2 的收敛代价比预估小：扁平 `LaunchSpec` 的有效载荷只有 2–3 个标量。** 实测全部消费点：`agent-node.ts:163` 取 `launchSpec.environmentId` 与 `launchSpec.agentConfig.id`；`orchestration-instance.ts:103`（`spawnInstanceViaCore`）只取 `environmentId` / `userId`（函数注释原文「仅取 environmentId/userId」）；`buildAgentLaunchSpecForCore` 自己按 `environmentId` 重读 env 行；`AgentController.spawnInstance` 在步骤 1 已经读到 `environment.agentConfigId`。`cwd` / `engine` / `agentConfig.skills` 在 builder 之外**零消费方**。故「先建扁平 spec、再重读 DB 建增强 spec」的双路径可以在 W4b 直接删除：`AgentController` 改从已读到的 env 行取 `agentConfigId`，`_spawnInstance` 改吃 `{ environmentId, agentConfigId }`，`spawnInstanceViaCore` / `refreshInstanceEnvironment` 改吃 `(environmentId, userId)`。
+
+### 15.3 目标形状与契约
+
+**端口方向裁定为 pull（推荐）**，理由：§3.2 的爆炸半径实测是「2 个调用点 + 1 处宿主绑定」，而 push 版（Facade 主动调 `AgentInstanceStarter.startInstance`、各启动方改走 Facade）必须改启动入口本身——`AgentInstanceRuntimeOperations` 三动词与 `AgentInstanceRuntimeAdapter.start` 的签名都在**冻结文件** `agent-instance-service.ts` 内，改它即违反红线。因此：
+
+```text
+环境行（agent-runtime 读，仅 environmentId/organizationId/agentConfigId/secret）
+        │
+        ├─ AgentLaunchSpecPort（agent-runtime 声明并消费，apps/server 绑定）
+        │        │  实现：调 agent-config 的 Domain Service
+        │        └─→ AgentConfig（skill/mcp/model-management/knowledge/memory 的包根 Domain Service）
+        │
+        └─ 取回 AgentLaunchSpec → 合并 platformEnv → core.launchInstance（原路径不变）
+```
+
+**新端口 `AgentLaunchSpecPort`（不是 `AgentInstanceStarter`）**：§4.4 已裁定 `AgentInstanceStarter` 一名由 `AgentInstanceRuntimeOperations`（包内反向 seam，W3b 后由 `runtime.ts` 装配时绑定）持有，冻结文件只允许 import 行变更 → **无法让名**，新端口另行命名，落点 `packages/agent-runtime/src/server/services/agent-launch-spec-port.ts`（既有 10 个「宿主注入·」port 同层同向，零新增包间边）：
+
+```ts
+/** 一次实例启动所需的已授权启动参数请求（资源解析由 agent-config 完成）。 */
+export interface AgentLaunchSpecRequest {
+  environmentId: string;
+  organizationId: string;
+  ownerUserId: string;   // 实例属主（真实身份，不是伪造 actor；§9.1）
+  agentConfigId: string; // 来自 environment 行
+  environmentSecret: string; // 仅用于知识库 MCP 的 Authorization header（见下「密钥边界」）
+  extraEnv?: Record<string, string>;
+}
+
+/** agent-runtime 消费、apps/server 绑定：产出已授权的 AgentLaunchSpec。 */
+export interface AgentLaunchSpecPort {
+  buildAgentLaunchSpec(request: AgentLaunchSpecRequest): Promise<AgentLaunchSpec>;
+}
+```
+
+**三张表：什么留在 agent-runtime / 什么搬进 agent-config / 什么新增**
+
+| 项 | 归属 | 说明 |
+| --- | --- | --- |
+| 环境行读取（`environmentRepo.getById`）、`platformEnv`（`USER_META_*` / `LANGFUSE_USER_ID`）、`extraEnv` 合并、core `launchInstance` 调用 | **留 agent-runtime**（`orchestration-instance.ts`） | 属「实例上下文」，与密钥同源；`env.userId` / `env.organizationId` / `env.secret` 都在这里取 |
+| `buildLaunchSpec`(663) 主体：skill 文件系统、Hindsight env、knowledge 绑定、MCP 翻译、model/provider 解析、`composeAgentSystemPrompt`、`buildBasicLaunchSpec`、`RuntimeCredentialResolver`、`setBuildLaunchSpec` 测试缝 | **迁 agent-config**（`src/server/services/agent-launch-spec/*`，单文件需按 500 行上限拆分） | 迁入后 `composeAgentSystemPrompt` 与 `AgentConfigDetailWithAccess` 变为包内依赖，自动消解 2 处边 |
+| `getAgentConfigById` / `getReadableAgentConfigById` 之外的「组织范围读」入口（§9.1） | **agent-config 新增**，落 `src/server/system-entries.ts` | 归属组织相同 → 放行；否则资源对其他组织公开可读 → 放行（对齐 `createWebEnvironment:156` 的绑定校验）；否则 `null`。**不接受 `ActorContext`，不返回 `access` 元数据**（消除 §9.1 的虚高定时炸弹） |
+| skill / mcp / model-management / knowledge / memory 的读取 | **各资源包补包根公开 Domain Service**（§2.2：Domain Service 不接受 actor、不做用户授权） | 现状 `skill` / `mcp` 包根只有 `get*ServerModule()` 间接读，`model-management` 只到 repository/service 层；`knowledge` / `memory` 已有够用的包根入口 |
+| `resolveAgentNode`（纯函数 `{agentNode, machineId} → AgentNode`） | **随调用点归位** | `environment-web` / `orchestration-bootstrap` 的用法在 6 文件反转中一并处理，不放公开面 |
+| `buildLangfuseEnv()`（读宿主 `config.langfuse*`） | **留 agent-runtime 侧合并** | 合并顺序必须保持 `{ ...hindsight, ...langfuse, ...extraEnv }`（显式传入优先），故 agent-config 只产出 Hindsight 部分 |
+
+**密钥边界（本节的关键取舍）**：`environmentSecret` 必须进入组装函数——`buildLaunchSpec:561` 把它写进知识库 MCP 项的 `Authorization: Bearer` header，只有组装方知道该 header 的形状。因此端口入参**含密钥**，边界约束为：仅同进程内传递，不落盘、不入日志、不进错误消息（现有实现已如此，迁移不得放宽）；`extraEnv` 合并仍在 agent-runtime 完成，密钥不经端口回流。
+
+### 15.4 W4a 交付清单（只加不删）
+
+1. `packages/agent-runtime/src/server/services/agent-launch-spec-port.ts`：`AgentLaunchSpecPort` + 绑定/复位（`bindAgentLaunchSpecPort` / `resetAgentLaunchSpecPort`），并在 `orchestration-instance.ts` 的 `buildAgentLaunchSpecForCore` 内改为经端口取 spec（旧 `buildLaunchSpec` 调用暂时保留为端口的默认实现，保证本片行为零变化）。
+2. `packages/resources/agent-config`：迁入 spec 组装（`agent-launch-spec/`，拆到 ≤500 行/文件）+ `system-entries.ts` 补组织范围读入口 + Facade 侧补齐「谁调组装」的边界（**W4a 不新增启动路径**）。
+3. 三个资源包补包根 Domain Service：`skill`（skill 行按 ID 读）、`mcp`（mcpServer 行按 ID 读）、`model-management`（model/provider 受控读——已有 `createProviderService`/`ProviderFacade`，按其口径收敛为 Domain Service）。
+4. `apps/server/src/main.ts` 绑定 `AgentLaunchSpecPort`（实现委托 agent-config），并保留既有 `setRuntimeCredentialResolver` 绑定的等价注入路径（改为构造期注入 agent-config 的组装 service）。
+5. 6 文件的 agent-config 依赖反转：`orchestration-bootstrap.ts`（`agentConfigRepo` 随 15.2-4 的收敛删）、`environment-web.ts`、`api-instance.ts`、`acp-ws-handler.ts`、`orchestration-instance.ts` 改走新入口或端口；`actor-context.ts` 保留到 W4b 一并删除（其消费点在本片全部改造完毕）。
+
+### 15.5 W4b 交付清单（删旧路径 + 台账）
+
+1. 删 `packages/agent-runtime/src/services/launch-spec-builder.ts`(663) 与 `services/actor-context.ts`(42)；`server.ts` 的 `W4·` 行一并删除。
+2. 按 §9.2 删 `packages/orchestration/src/launch-spec/`(107)：`AgentController` 去掉 `launchSpecBuilder` 依赖、改从 env 行取 `agentConfigId`；`_spawnInstance` 改吃 `{ environmentId, agentConfigId }`；`spawnInstanceViaCore` / `refreshInstanceEnvironment` 改吃 `(environmentId, userId)`；`orchestration/src/index.ts` 的导出与 `types/deps.ts` 的 `AgentConfigData` / `AgentConfigRepo` / `AgentEngineData` / `AgentEngineRepo` 一并删除，`apps/server/src/repositories/agent-engine.ts` 随之删除。
+3. **台账**：削 `agent-runtime-not-to-resources` **4 条**（`resource-knowledge` / `agent-config` / `resource-memory` / `resource-skill`——见证边分别在 `launch-spec-builder.ts:16` / 6 文件 / `:17` / `:24`）；`model-management` 条按 15.2-2 改写 removeWhen 并转 §1.7，**不删**。
+4. 测试迁移：12 个 agent-runtime 用例文件（`round43-launch-spec-builder`、`round44-launch-spec-builder-config`、`launch-spec-*` 5 个、`rmd01-runtime-surface`、`orchestration-instance-rollback`、`agent-concurrency-toctou`、`orchestration-instance-nodeid`）+ `apps/server/src/__tests__/round22-launch-spec-isolation.test.ts` + `apps/server/src/test-utils/stubs/module-stubs.ts` 的 `stubLaunchSpecBuilder`。其中 4–5 个文件断言的是 drizzle 查询结构，迁入 agent-config 后应改为对 Domain Service 替身断言（规模见 15.7 裁定项三）。
+
+### 15.6 验证方式
+
+- 每片：`env -u ANTHROPIC_MODEL bun run precheck` 全绿；`bun run check:dependencies` 台账条目数与预期一致（W4a 不变、W4b −4）。
+- 行为等价证据：W4a 保留旧实现为端口默认实现，可用「同一 `environmentId` + `userId` 产出 spec 逐字段对比」的临时脚本取证（仅在 W4a 提交前跑，不进仓库）；W4b 后由迁移后的用例覆盖同一断言面。
+- `packages/orchestration` 改动：`bun test packages/orchestration/` 专项。
+
+### 15.7 三项裁定（2026-09-21 用户弹窗确认）
+
+| 项 | 候选 | 裁定 |
+| --- | --- | --- |
+| **组装落点** | A = 组装迁入 `agent-config` 且三资源包补包根 Domain Service（§2.2 终态，伴随 `apps-boundary` 债减少）；B = 只搬文件、6 表读沿用 `@server/db/schema`，Domain Service 收口留 §1.7（W4a 规模最小） | **A**（按 §4.4/§4.5 原计划） |
+| **端口方向** | pull（`AgentLaunchSpecPort`，agent-runtime 取数、宿主绑定）；push（Facade 主动调启动，需穿冻结文件 `agent-instance-service.ts`） | **pull**（`AgentLaunchSpecPort`） |
+| **测试迁移口径** | 按断言面改写（drizzle 查询结构断言 → Domain Service 替身断言，业务结果不变）；逐行保留查询结构断言（W4a 规模显著上升，需另议切片） | **按断言面改写** |
+
+由此 W4a 的规模基线确定为：新增 1 个端口 + 1 个 org 范围读入口 + 3 组包根 Domain Service + 663 行组装迁入并拆文件（≤500 行/文件）+ 6 文件依赖反转 + 12 个 agent-runtime 用例与 1 个宿主用例按断言面改写。**该规模超过用户既定红线「约 300 行以上非测试逻辑需先反馈范围」**——已在本节反馈并获批，实施中若再出现职责、数据流或公共契约的明显变化，按 CLAUDE.md 要求再次反馈。
