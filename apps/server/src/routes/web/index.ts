@@ -1,6 +1,7 @@
 import {
   createWebAgentGenerationRoutes,
   createWebAgentSitesRoutes,
+  createWebMetaAgentRoutes,
   createWebSidebarConfigRoutes,
 } from "@fenix/agent-config/server";
 import {
@@ -8,7 +9,7 @@ import {
   createWebEnvironmentsRoutes,
   createWebInstancesRoutes,
 } from "@fenix/agent-runtime/server";
-import { createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
+import { createWebApiKeysRoutes, createWebOrganizationsRoutes, rotateCallerApiKey } from "@fenix/identity/server";
 import { createWebModelGatewayRoutes, createWebPeriTaskDetailsRoutes } from "@fenix/model-management/server";
 import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
 import { createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
@@ -28,7 +29,6 @@ import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentLookup, verifyEnvironmentOwnership } from "../../services/resource-module-ports";
 import webBranding from "./branding";
 import webConfig from "./config";
-import webMetaAgent from "./meta-agent";
 
 // 资源包路由一律改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 macro / state 是实例
 // 作用域的，父实例无法向已构造的子实例回填），因此在这里注入而不是让包自建。
@@ -36,7 +36,9 @@ import webMetaAgent from "./meta-agent";
 //   显式认证入口；
 // - `environmentLookup`：通道绑定要读 Environment 归属，而该表的 owner 是 `@fenix/agent-runtime`；
 // - `verifyEnvironmentOwnership`：peri 任务详情路由要校验 Environment 归属，同因（该表的 owner 是
-//   `@fenix/agent-runtime`，资源包不得依赖它）。
+//   `@fenix/agent-runtime`，资源包不得依赖它）；
+// - `rotateCallerApiKey`：meta agent 要轮换调用方名下的 API Key，而「同名 key 只保留一把」的编排只在
+//   身份侧实现一处（资源包不得依赖 `@fenix/identity`），故由这里从 identity 取来注入。
 // 端口实现见 `services/resource-module-ports.ts`。
 const webApiKeys = createWebApiKeysRoutes({ authGuardPlugin });
 const webOrganizations = createWebOrganizationsRoutes({ authGuardPlugin });
@@ -55,6 +57,7 @@ const webPeriTaskDetails = createWebPeriTaskDetailsRoutes({
   authGuardPlugin,
   getOwnedEnvironment: verifyEnvironmentOwnership,
 });
+const webMetaAgent = createWebMetaAgentRoutes({ authGuardPlugin, rotateCallerApiKey });
 const webTasksV2Routes = createWebTasksV2Routes({ authGuardPlugin });
 const webRegistry = createWebRegistryRoutes({ authGuardPlugin });
 const webWorkflowDefs = createWebWorkflowDefsRoutes({ authGuardPlugin });

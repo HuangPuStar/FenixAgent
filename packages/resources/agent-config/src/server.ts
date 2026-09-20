@@ -33,10 +33,12 @@ export type {
   SiteRequestIdentity,
   WebAgentConfigRouteDependencies,
   WebConfigAgentsRouteDependencies,
+  WebMetaAgentRouteDependencies,
 } from "./server/routes/dependencies";
 export { createWebAgentGenerationRoutes } from "./server/routes/web/agent-generation";
 export { createWebAgentSitesRoutes } from "./server/routes/web/agent-sites";
 export { createWebConfigAgentsRoutes } from "./server/routes/web/config/agents";
+export { createWebMetaAgentRoutes } from "./server/routes/web/meta-agent";
 export { createWebSidebarConfigRoutes } from "./server/routes/web/sidebar-config";
 export { getAgentConfigModule, installAgentConfigModule, resetAgentConfigModule } from "./server/runtime";
 export type {

@@ -761,3 +761,57 @@ port 取」是同一判据，区别只在注入方向：那三片的消费方在
 `root-source-owner-inventory` 25 pass / 0 fail、model-management 包 226 pass / 0 fail、保留宿主用例
 `peri-task-detail-service.test.ts` 6 pass / 0 fail；`check:root-owner-inventory` 报
 `files=0 unowned=0 ambiguous=0`。本片无测试随迁，故 server 侧用例数与上片持平。
+
+### 1.5c-5 Meta Agent 路由归位 agent-config（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 新建路由工厂 `createWebMetaAgentRoutes(deps)` | `apps/server/src/routes/web/meta-agent.ts` → `packages/resources/agent-config/src/server/routes/web/meta-agent.ts` |
+| 包入口增加路由出口与依赖类型 | `packages/resources/agent-config/src/server.ts`、`.../src/server/routes/dependencies.ts` |
+| 宿主改为工厂注入 | `apps/server/src/routes/web/index.ts` |
+
+**二、`rotateCallerApiKey` 仍由宿主注入，类型改为必填**
+
+`ensureMetaEnvironment` 的编排与 `EnsureMetaAgentResponseSchema` 本就在 agent-config，宿主那份只是协议接入
+壳，唯一宿主侧实现是 identity 的 `rotateCallerApiKey`——资源包不得依赖 `@fenix/identity`（§2.3），且「同名
+key 只保留一把」的编排只应在身份侧实现一处（理由已写在 `services/meta-agent` 的 `RotateCallerApiKey` 注释）。
+本片只把宿主文件里那句 `const metaAgentDeps = { rotateCallerApiKey }` 换成工厂依赖字段。
+
+新增依赖类型 `WebMetaAgentRouteDependencies` 把该字段声明为**必填**（服务侧的 `MetaAgentDependencies` 是可选，
+因为服务还要支持测试直接调用）：宿主是唯一装配方且一直提供，必填能让缺注入在装配期暴露，而不是等 meta
+environment 拉起时以 500 的形式暴露。
+
+**三、只搬迁**
+
+路由路径、`sessionAuth: true` 宏、401 / 500 两条错误分支的形状与文案、`detail` 元数据、日志模块名
+（`createLogger("meta-agent")`）与 `biome-ignore` 的理由注释逐字保留。未触碰 `ensureMetaEnvironment` 的
+任何编排逻辑（meta environment 的 `(organizationId, userId, name)` 三元组隔离、apiKey 进程内缓存、
+实例 spawn/复用判定均未改动）。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：本项移入 `RMD_07_RELOCATED`（MOVES 42 → 41、
+  RELOCATED 14 → 15），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` **无需改动**：`src/routes/web/meta-agent.ts` 无专门规则（落在
+  `src/routes/web/` 通配下），按 1.4 W2b 先例不补条目；该文件里已有的 `src/services/meta-agent.ts`、
+  `src/schemas/meta-agent.schema.ts`、`web/src/api/meta-agent.ts` 三条 RMD-04 规则指向的是另外三件，
+  不受本片影响。
+- `scripts/architecture/exceptions.json` **无需改动**：本片没有产生新的包 → 宿主 `@server/*` 依赖，宿主侧
+  删除的是路由壳、新增的是同一处注入。
+- 无测试随迁：`apps/server/src/__tests__/` 下从来没有 meta-agent 用例，包内 `__tests__/meta-agent.test.ts`
+  覆盖的是服务编排，本片不改动其被测对象。
+
+**五、非确定性失败的记录**
+
+本片第一次 `precheck` 报 1 fail：`round37-service-boundaries.test.ts` 的
+「Sandbox sandbox-boundary-03 首次等待失败后重启资源并补偿为可连接状态」。证据与判定：①该用例以
+`runtimeConnectTimeoutMs: 1`（1 毫秒）驱动等待循环，属时间敏感用例；②单独运行该文件 130 pass / 0 fail；
+③该文件的导入图只有 agent-runtime / platform-sdk / resource-machine / resource-sandbox，与本片改动
+零交集；④复跑 `precheck` 全绿。故判定为既有的非确定性失败，非本片引入，未做任何改动。
+
+**验证证据**：`precheck` 全绿 `All passed (99811ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`root-source-owner-inventory` + 包内 `meta-agent.test.ts` 共 29 pass / 0 fail。
