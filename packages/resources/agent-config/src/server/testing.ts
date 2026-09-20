@@ -74,6 +74,7 @@ export function createStubAgentConfigFacade(overrides: Partial<AgentConfigFacade
     list: unstubbed("facade.list"),
     get: unstubbed("facade.get"),
     getById: unstubbed("facade.getById"),
+    findReadableRowById: unstubbed("facade.findReadableRowById"),
     existsInOrganization: unstubbed("facade.existsInOrganization"),
     create: unstubbed("facade.create"),
     update: unstubbed("facade.update"),
