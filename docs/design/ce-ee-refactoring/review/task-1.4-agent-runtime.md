@@ -1,10 +1,10 @@
 # 任务 1.4 执行计划与设计裁定：Agent Runtime、Machine 与 Sandbox
 
-本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型），**W3b 已交付**（第十四节，消费方改调 port）；W4 设计已定稿、四项裁定已落（2026-09-21，见第十五节，W4a / W4b 两片）→ **W4a 已交付**（第十六节，端口 + 宿主绑定 + 4 文件反转），W4b 与 W6 未开工。
+本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测），**W3a 已交付**（第十三节，Runtime port 定型），**W3b 已交付**（第十四节，消费方改调 port）；W4 设计已定稿、四项裁定已落（2026-09-21，见第十五节，W4a / W4b 两片）→ **W4a 已交付**（第十六节，端口 + 宿主绑定 + 4 文件反转），**W4b 已交付**（第十七节，删旧路径 + 消台账）→ **W6 未开工**。
 
 任务目标见[阶段 2 执行计划 §1.4](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）与 [§10.4](../ce-ee-engineering-standards.md)（Runtime 与基础资源验收）。
 
-## 一、任务状态：W5、W1、W2、W3a、W3b、W4a 已交付（2026-09-21），W4b / W6 未开工
+## 一、任务状态：W5、W1、W2、W3a、W3b、W4a、W4b 已交付（2026-09-21），W6 未开工
 
 | 证据 | 结论 |
 | --- | --- |
@@ -14,8 +14,10 @@
 | `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条，W2 削 0 条） | 剩余 11 条随 W3/W4、W6 处理；W2 的 `apps-boundary` 条目按职责面重写 rationale 而非删除（见 12.4） |
 | 台账总数 **51 → 49**（W1 削 2 条 `owner: "1.5"` 的 `no-circular`，见 11.3；W2 无增删） | 包对指纹随边消失而失效，非 1.4 条目减少 |
 | 台账总数 **20 → 19**（W4a 削 1 条 `owner: "1.5"` 的 `no-circular`，见 16.4；由门禁强制，非 1.4 条目减少） | 跨包代表边落回包内，指纹并入包内自环条目 |
+| `owner: "1.4"` 共 **11 → 7** 条（W4b：增 1 条 `no-circular`、削 4 条 `agent-runtime-not-to-resources`、转 1 条给 §1.7，见 17.4） | 剩余 7 条随 W6 与既登记的既有债务处理 |
+| 台账总数 **20 → 16**（W4b：命中 20 → 16；登记条目 48 → 44） | 4 条 `agent-runtime-not-to-resources` 的见证边随组装搬出消失，由门禁强制删除 |
 
-**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节；W3b「消费方改调 port」——第十四节；W4a「端口 + 宿主绑定 + 4 文件反转」——第十六节。**W4 设计已定稿**（第十五节，四项裁定：组装落点 A / 端口方向 pull / 测试按断言面改写 / 第二端口 A），**W4b 未开工**；**未开工**：W6。
+**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节；W3a「Runtime port 定型（契约面）」——第十三节；W3b「消费方改调 port」——第十四节；W4a「端口 + 宿主绑定 + 4 文件反转」——第十六节；W4b「删旧路径 + 消台账」——第十七节。**W4 设计已定稿**（第十五节，四项裁定：组装落点 A / 端口方向 pull / 测试按断言面改写 / 第二端口 A）。**未开工**：W6。
 
 阶段 1（`fa2bbaef0`「迁移 Runtime 与 Chat 残留」等）已完成的是**物理归属**：Environment、Instance、relay、ACP session、Chat、YJS 的代码已在 `packages/agent-runtime`，Machine/Sandbox 已是独立包。1.4 要的是**接口收窄与依赖方向**，这部分未动。
 
@@ -1001,3 +1003,71 @@ W4 按 §15.1 拆两片，本节是 **W4a（只加不删）**：新契约与新�
 | 台账：削 `agent-runtime-not-to-resources` 4 条（`resource-knowledge` / `agent-config` / `resource-memory` / `resource-skill`）；`model-management` 条按 §15.2-2 改写 `removeWhen` 并转 §1.7 | W4b |
 | 测试迁移：12 个 agent-runtime 用例文件 + `apps/server/src/__tests__/round22-launch-spec-isolation.test.ts` + `apps/server/src/test-utils/stubs/module-stubs.ts` 的 `stubLaunchSpecBuilder`，按断言面改写（裁定三） | W4b |
 | 启动路径新增的一次已授权读（16.3-3）；`agentNode` 与 `machineId` 不一致存量行的行为收敛（16.2-2） | 观察项，无移除条件 |
+
+## 十七、W4b 交付记录（删旧路径 + 消台账，2026-09-21）
+
+W4 的第二片，按 §15.1 的切分执行「删旧路径」，两个提交落地——`9c9685aa2`（W4b-1，按 §9.2 收敛两条 LaunchSpec、编排域只吃启动身份）与 `afe16d3c3`（W4b-2，删组装旧路径 + 测试按断言面迁移 + 消台账）；合计 59 文件 +1503/−3931。
+
+**「实例起来之后怎么管」一行未动**：冻结区 10 个文件（清单同 §16）在 `3ed23a59c..HEAD` 的合并 diff **实测为空**（`git diff --stat` 无输出），未用到 §二 允许的 import 行变更。
+
+### 17.1 交付清单（对账 §15.5 与 §16.6）
+
+| 条目 | 落点 | 提交 |
+| --- | --- | --- |
+| §15.5-2 按 §9.2 删扁平 LaunchSpec | `packages/orchestration/src/launch-spec/`（`launch-spec-builder.ts` 107 + `types.ts` 23）删除；`AgentController.spawnInstance` 只吃 `{environmentId, agentConfigId}`，两类拒绝保留为 `LaunchSpecBuildError`（错误码与 422 映射不变）；`orchestration-instance.ts` 启动身份收窄为 `LaunchTargetRef`；`orchestration-bootstrap.ts` 内联节点读取口径（§15.7 裁定 A）；`types/deps.ts` 的 `AgentConfigData` / `AgentConfigRepo` / `AgentEngineData` / `AgentEngineRepo` 与宿主死代码 `apps/server/src/repositories/agent-engine.ts`(37) 一并删除 | `9c9685aa2` |
+| 节点规则等价钉桩 | 新增 `apps/server/src/__tests__/orchestration-node-resolution-parity.test.ts`（76 行 / 17 例）：用同一组输入把内联口径与 `@fenix/agent-config` 的 `resolveAgentNode` 逐字钉住 | `9c9685aa2` |
+| §15.5-1 删组装旧路径 | `services/launch-spec-builder.ts`(663) / `services/actor-context.ts`(42) 删除；两个端口删过渡默认实现、未绑定即 fail-fast；`runtime.ts` 删 `setRuntimeCredentialResolver`；`server.ts` 删 `W4·` 标注行与旧导出；`main.ts` 删旧槽位调用；`module-stubs.ts` 删零消费方的 `stubLaunchSpecBuilder` | `afe16d3c3` |
+| §15.5-4 测试迁移 | 见 17.2-1：删 10 个旧用例文件（1949 行 / 52 个 `test(`）、新增 4 个、改写 3 个；1 个文件判定保留不动 | `afe16d3c3` |
+| §16.6 两个端口的过渡实现 | `legacyAgentLaunchSpecPort` / `legacyAgentConfigLookupPort` 删除，端口与其余 10 个「宿主注入·」端口同形 | `afe16d3c3` |
+| §15.5-3 台账 | 削 4 条 + `model-management` 条转 §1.7 + `apps-boundary` 条据实重测（见 17.4） | `afe16d3c3` |
+
+### 17.2 偏离与判定（对账 §15.5-4）
+
+1. **测试迁移的实际范围不是「12 个文件」。** 逐文件判定后：**删除 10 个**（`launch-spec-*` 7 个 + `round43` + `round44` + workflow 的 `workflow-provider-model-access`）、**新增 4 个**（`agent-launch-spec-mcp-resolution` / `-model-resolution` / `-memory-env`、`model-management` 的 `model-service`）、**改写 3 个**（`agent-launch-spec-assembler` 补 2 例、宿主 `round22` 整文件重写为输入边界 + 反向守卫、`agent-concurrency-toctou` 与 `orchestration-instance-rollback` 的注入方式）。`rmd01-runtime-surface.test.ts` **保留不动**：它那一行 `src/services/launch-spec-builder.ts` 属「旧根路径不得存在」的守卫清单，仓库根 `src/` 整体已不存在、条目语义仍成立，改动等于顺手改无关文件。
+2. **`machine 配置不改变调用方隔离标识`（`round43:168`）判为「新 API 结构上消除」而非搬运。** 新组装器只吃 `{organizationId, userId, …}`，从不读 `agentConfig.machineId` 参与身份判定，该断言在新接口下**没有对应可失败的形状**；以 assembler 新增用例「并发组装保持调用方身份隔离」（4 个组织并发、逐个断言身份保留）替代。**这是断言面的替换，不是等价迁移**，在此显式记账。
+3. **`launch-spec-builder-hindsight.test.ts` 是死测试。** 它在被测文件里自造了一份 `buildCcbHindsightEnv`，从不执行生产代码；因此迁入的不是「原样搬运」而是按现实现重新钉住同一条行为契约（`agent-launch-spec-memory-env.test.ts`）。同批把 `memory-env.ts` 里夸大校验范围的注释按实现改正（实现只校验「数组 + 首项是字符串」）。
+4. **`pre-launch-ports.ts`（宿主端口翻译 `ownerUserId → userId`、注入 `resolveSecretReference`）零测试覆盖。** 补测需挂载 agent-config / model-management / mcp / skill 四个模块注册表，宿主测试基建无此先例；按 CLAUDE.md「超出当前任务的改进建议只记录」列为遗留项（17.6）。
+5. **包内两处用例改吃 `stubAgentLaunchSpecPort`**（本片新增于 `packages/agent-runtime/src/server/testing.ts`）：端口改 fail-fast 后，`orchestration-instance-rollback` 与 `agent-concurrency-toctou` 无法再用「真实组装 + `stubDb` 供 provider/model 行」走完启动链路。替身返回一份内容无关的 spec（`apiKey` 留空串），两文件随之删去 provider/model 行替身——断言面从「组装能跑通」变为「编排语义」，与本片把组装 owner 交还 agent-config 一致。
+6. **`stubDb` 不再是本包启动链路的隐性前提。** 回滚用例的序号注入（`getById` 第 2 次抛错）仍然依赖真实 `buildAgentLaunchSpecForCore` 先读环境行，因此「环境行读取」没有被一起替换掉——替换的只有端口之后的那一段。
+
+### 17.3 非显然取舍
+
+1. **`@server/config` 留在了 agent-runtime。** `orchestration-instance.ts` 的 `config.defaultEngineType`（本地执行的 engine）与 `getBaseUrl()`（喂 `USER_META_BASE_URL`）是「实例跑在哪、用谁的密钥」的实例上下文（§15.3 三张表），不属于被搬走的「取数」。代价是 `apps-boundary` 条不能按原计划随 W4 完成，`removeWhen` 据实改写（17.4）。
+2. **替身的复位挂 `resetAllStubs()`**，而不是让用例显式 `afterEach`：`initializeAgentRuntimeModuleConfig()` 的 `beforeEach` 已经会复位全部替身，漏挂复位会让「单跑绿、全量跑红」——即本包 `testing.ts` 文件头给 `registerStubResetter` 定的用法。
+3. **端口的「未绑定即失败」判据回到严格形态。** W4a 为了让包内既有用例零改动而暂时放宽（回退到包内旧实现），W4b 删回退后未绑定即抛 `AgentLaunchSpecPort has not been bound`，宿主侧唯一绑定点是 `main.ts` 的 `bindAgentLaunchSpecPort(preLaunchPorts.launchSpec)`。
+4. **两个端口的替身只在 agent-runtime 侧新增，agent-config 侧不新增。** 组装规则的断言归 agent-config 的 `agent-launch-spec-*.test.ts`（真实实现，逐字段），端口替身只服务「编排语义」用例；两侧都不需要「既存在替身又断言真实组装」的双份实现。
+
+### 17.4 台账 20 → 16（削 4 条 + 2 条据实改写）
+
+| 条目 | 处置 | 事实 |
+| --- | --- | --- |
+| `agent-runtime-not-to-resources` × 4：`resource-knowledge` / `agent-config` / `resource-memory` / `resource-skill` | **删除** | 门禁直接报「4 条已不再违规，必须删除」，与 §15.5-3 的计划逐条一致。登记条目 48 → 44、命中 19（W4a）→ 20（W4b-1）→ **16**、`owner: "1.4"` 11 → **7** |
+| `agent-runtime-not-to-resources` / `@fenix/model-management` | **不删**，改写 `removeWhen` + `owner` 转 `1.7` | 唯一命中仍是 `tsconfig.json:29` 的 `@/src/lib/model-config-utils` 前端共享别名（消费方 `composer-toolbar.tsx:6`）；**服务端命中已随搬出归零**。剩余边与 §5.1 无关，按 §15.2-2 转 §1.7 与前端边界批次 |
+| `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`） | **保留**，按剩余事实重测并改写 `removeWhen` / `rationale` | 11 处 / 8 文件（W2 后）→ **6 处 / 6 文件**：表定义 5（归 §1.7）+ `@server/config` 1（`orchestration-instance.ts`，17.3-1）；测试侧 30 处 / 23 文件 → **16 处 / 15 文件**。原 `removeWhen` 把 `@server/config` 记为「W4 消除」不成立 |
+| `no-circular` / `@fenix/resource-machine → @fenix/agent-config` | **新增**（W4b-1） | 同族 36 处环的代表边随本次删边移位，环与根因均未变，按台账纪律必须登记（与 §16.4 的 20 → 19 同源现象） |
+
+### 17.5 验证证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run check:dependencies` | ✓ 2396 modules / 44 条登记 / **16 条命中** / 0 条新增违规 |
+| `bun run architecture:check` | ✓ 2244 files / 11 rules / 28 条已登记例外 |
+| `env -u ANTHROPIC_MODEL bun run precheck` | **除既有红项外全绿**：format / import-sort / module-registry / architecture / tsc(server,web,app skeletons) / dependency-boundaries / lint / package-tests / web-app-tests 通过；`server-and-script-tests` 因 `db-pool-config.test.ts` 失败 |
+| ├ `package-tests` | 7231 pass / 2 skip / 0 fail（589 文件；W4a 7239 / 595 → 文件数 −6 = 删 10 增 4） |
+| ├ `web-app-tests` | 946 pass / 0 fail（54 文件） |
+| └ `server-and-script-tests` | 906 pass / 1 fail（67 文件）。失败项见下 |
+| 新增/改写用例逐文件复跑 | `mcp-resolution` 21 pass、`model-resolution` 14 pass、`memory-env` 9 pass、`assembler` 8 pass、`model-service` 4 pass、宿主 `round22` 42 pass、`orchestration-node-resolution-parity` 17 pass |
+| `bun test packages/agent-runtime/` | 800 pass / 0 fail（98 文件） |
+| 冻结区 | 10 个文件在 `3ed23a59c..HEAD` 合并 diff 为空 |
+| 提交规模 | `9c9685aa2` 24 文件 +344/−562；`afe16d3c3` 38 文件 +1159/−3369 |
+
+**既有红项（非本片引入，未修复）**：`apps/server/src/__tests__/db-pool-config.test.ts` 报 `SyntaxError: Export named 'attachDatabasePoolErrorLogger' not found in module 'apps/server/src/db/index.ts'`。成因是宿主测试基建 `setup-mocks.ts:256-280` 的 `createDbMock` 只定义 `db` / `client` / `initDb` 三个导出，而该文件与 `db/index.ts:44` 同出自 `9f189d747`；属独立的基建缺口，修复方式是给 `createDbMock` 补该导出。**无关性取证**（不是自述）：把本片改动的 5 个 `apps/server/src` 文件临时还原为 HEAD 版本后单文件复跑，得到逐字相同的 `0 pass / 1 fail / 1 error`，随后已还原（逐文件 sha256 校验一致）；另在 HEAD（`9c9685aa2`）的独立 worktree 中复现同一失败。**该红项使本片不能宣称 `precheck` 全绿**，只宣称「除该既有失败外全绿」。§13.4 曾记录它在 W3b 期间不再出现——按本轮实测，它的红/绿取决于同进程测试文件组合，故该记录不作为本片免责任依据。
+
+### 17.6 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| `createDbMock` 缺 `attachDatabasePoolErrorLogger` 导出（17.5 既有红项）——**阻断 `precheck` 全绿** | 测试基建独立缺口（登记自 §10.5，本轮复现）；阶段最终提交前必须修复 |
+| `apps/server/src/services/pre-launch-ports.ts` 无测试覆盖（`ownerUserId → userId` 翻译、`resolveSecretReference` 注入） | 遗留项，按 CLAUDE.md 只记录；补测需宿主侧能挂载 4 个资源模块注册表 |
+| W6「测试 seam 移出公开面 / 泄漏面收口」：`server.ts` 仍标 `泄漏·` 9 处、`测试取用·` 与 `set*Deps` 一类 seam | W6 |
+| `@server/config` 的 1 处（17.3-1）与表定义 5 处（§1.7） | `apps-boundary` 条的两条消除路径 |
