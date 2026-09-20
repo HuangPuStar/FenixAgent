@@ -15,7 +15,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
-import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,

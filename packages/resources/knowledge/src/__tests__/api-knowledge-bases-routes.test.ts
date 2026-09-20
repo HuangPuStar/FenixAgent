@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubKnowledgeBaseService } from "@server/test-utils/helpers";
+import { stubKnowledgeBaseService } from "@server/test-utils/stubs/module-stubs";
 
 const apiKnowledgeBasesRoute = (await import("../server/routes/api/knowledge-bases")).default;
 

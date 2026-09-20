@@ -19,6 +19,15 @@ interface ManifestFixture {
   readonly prologue?: string;
   /** 追加进描述符字面量的原始字段行。 */
   readonly fields?: string;
+  /** 包内源码文件（包内相对路径 → 内容），用于构造跨模块导入用例。 */
+  readonly sources?: Readonly<Record<string, string>>;
+}
+
+/** 临时 workspace 的架构例外台账条目；字段与 `scripts/architecture/exceptions.json` 一致。 */
+interface LedgerEntryFixture {
+  readonly rule: string;
+  readonly from: string;
+  readonly to: string;
 }
 
 function defaultModuleId(fixture: ManifestFixture): string {
@@ -46,6 +55,7 @@ function renderManifestSource(fixture: ManifestFixture): string {
 async function withWorkspace(
   fixtures: readonly ManifestFixture[],
   run: (root: string, outputFile: string) => Promise<void>,
+  options: { readonly ledger?: readonly LedgerEntryFixture[] } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "fenix-module-registry-"));
   const outputFile = join(root, "apps/generated/module-registry.ts");
@@ -65,7 +75,29 @@ async function withWorkspace(
           ...exportsField,
         }),
       );
+
+      for (const [relativePath, source] of Object.entries(fixture.sources ?? {})) {
+        const sourcePath = join(packageRoot, relativePath);
+        await mkdir(dirname(sourcePath), { recursive: true });
+        await writeFile(sourcePath, source);
+      }
     }
+
+    if (options.ledger) {
+      await mkdir(join(root, "scripts/architecture"), { recursive: true });
+      await writeFile(
+        join(root, "scripts/architecture/exceptions.json"),
+        JSON.stringify({
+          exceptions: options.ledger.map((entry) => ({
+            ...entry,
+            owner: "1.3",
+            removeWhen: "fixture 用例结束",
+            rationale: "fixture",
+          })),
+        }),
+      );
+    }
+
     await run(root, outputFile);
   } finally {
     await rm(root, { force: true, recursive: true });
@@ -369,6 +401,119 @@ test("拒绝 dependsOn 引用未注册模块或自身", async () => {
         "模块 self 不能依赖自身",
       );
     },
+  );
+});
+
+/** 资源包 pair fixture：`importer` 通过 `sourcePath` 里的 `source` 导入 `@fenix/dependency`。 */
+function resourcePairFixture(input: {
+  readonly source: string;
+  readonly sourcePath?: string;
+  readonly dependsOn?: readonly string[];
+  readonly importerKind?: string;
+}): ManifestFixture[] {
+  return [
+    { path: "packages/resources/dependency", name: "@fenix/dependency", id: "dependency" },
+    {
+      path: "packages/resources/importer",
+      name: "@fenix/importer",
+      id: "importer",
+      kind: input.importerKind,
+      dependsOn: input.dependsOn ?? [],
+      dependencies: { "@fenix/dependency": "workspace:*" },
+      sources: { [input.sourcePath ?? "src/server/consumer.ts"]: input.source },
+    },
+  ];
+}
+
+const STATIC_CROSS_IMPORT =
+  'import { fromDependency } from "@fenix/dependency/server";\nexport const value = fromDependency;\n';
+
+// 资源包导入了已注册资源模块却留空 dependsOn 时，装配校验拿到的是一张假依赖图：只有反向校验能拦住。
+test("要求资源包 dependsOn 覆盖对其它已注册资源模块的静态值导入", async () => {
+  await withWorkspace(resourcePairFixture({ source: STATIC_CROSS_IMPORT }), async (root, outputFile) => {
+    await expect(generateModuleRegistry({ repositoryRoot: root, outputFile })).rejects.toThrow(
+      "模块 importer 的服务端代码导入了已注册模块 dependency（packages/resources/importer/src/server/consumer.ts:1），" +
+        '但 manifest 未声明 dependsOn: ["dependency"]',
+    );
+  });
+
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT, dependsOn: ["dependency"] }),
+    async (root, outputFile) => {
+      expect((await generateModuleRegistry({ repositoryRoot: root, outputFile })).moduleCount).toBe(2);
+    },
+  );
+
+  // 类型导入编译期擦除，不产生运行期耦合。
+  await withWorkspace(
+    resourcePairFixture({
+      source: 'import type { FromDependency } from "@fenix/dependency/server";\nexport type Value = FromDependency;\n',
+    }),
+    async (root, outputFile) => {
+      expect((await generateModuleRegistry({ repositoryRoot: root, outputFile })).moduleCount).toBe(2);
+    },
+  );
+
+  // 动态导入延迟求值，但仍是运行期耦合，只是失败点更晚。
+  await withWorkspace(
+    resourcePairFixture({ source: 'export function load() {\n  return import("@fenix/dependency/server");\n}\n' }),
+    async (root, outputFile) => {
+      await expect(generateModuleRegistry({ repositoryRoot: root, outputFile })).rejects.toThrow(
+        '未声明 dependsOn: ["dependency"]',
+      );
+    },
+  );
+
+  // 测试装配不进入 profile，单元测试跨包导入不构成装配依赖。
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT, sourcePath: "src/__tests__/consumer.test.ts" }),
+    async (root, outputFile) => {
+      expect((await generateModuleRegistry({ repositoryRoot: root, outputFile })).moduleCount).toBe(2);
+    },
+  );
+
+  // 基础模块在 profile 里是固定槽位，其跨类别边由 §2.3 矩阵与架构台账负责。
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT, importerKind: "agent-runtime" }),
+    async (root, outputFile) => {
+      expect((await generateModuleRegistry({ repositoryRoot: root, outputFile })).moduleCount).toBe(2);
+    },
+  );
+});
+
+// 台账登记的越界边必须消除而不是编码成装配依赖：声明它会让 profile 同时启用两者时装配循环失败。
+test("已登记为越界边的跨模块导入不要求 dependsOn，也不得写入 dependsOn", async () => {
+  const ledger = [{ rule: "special-dependency", from: "@fenix/importer", to: "@fenix/dependency" }];
+
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT }),
+    async (root, outputFile) => {
+      expect((await generateModuleRegistry({ repositoryRoot: root, outputFile })).moduleCount).toBe(2);
+    },
+    { ledger },
+  );
+
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT, dependsOn: ["dependency"] }),
+    async (root, outputFile) => {
+      await expect(generateModuleRegistry({ repositoryRoot: root, outputFile })).rejects.toThrow(
+        "已由架构台账登记为越界边（rule: special-dependency, owner: 1.3）",
+      );
+    },
+    { ledger },
+  );
+});
+
+// no-circular 的 from/to 只是环上被挑中的一条边，不能当作「这两个包的边已登记」。
+test("no-circular 台账条目不能豁免缺失的 dependsOn", async () => {
+  await withWorkspace(
+    resourcePairFixture({ source: STATIC_CROSS_IMPORT }),
+    async (root, outputFile) => {
+      await expect(generateModuleRegistry({ repositoryRoot: root, outputFile })).rejects.toThrow(
+        '未声明 dependsOn: ["dependency"]',
+      );
+    },
+    { ledger: [{ rule: "no-circular", from: "@fenix/importer", to: "@fenix/dependency" }] },
   );
 });
 

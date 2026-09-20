@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AuthorizedResourceQuery } from "@fenix/platform-sdk";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { environment } from "@server/db/schema";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import {
   type AgentConfigQueryStorage,
   createAgentConfigRepository,

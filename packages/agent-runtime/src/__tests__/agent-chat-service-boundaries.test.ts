@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { NotFoundError } from "@fenix/platform-sdk";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
-import { NotFoundError } from "@server/errors";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import { openAgentSession, setAgentChatServiceDeps } from "../services/agent-chat-service";
 
 const VALID_AGENT_CONFIG_ID = "123e4567-e89b-12d3-a456-426614174000";

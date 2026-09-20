@@ -4,8 +4,8 @@
 // 注：HTTP 层 Zod（min(1)）已拦截空串，本测试守护 service 层防御纵深，
 // 因为 createTaskV2/updateTaskV2 是公共导出，可能被非 HTTP 入口调用。
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { ScheduledTaskV2Row } from "@server/db/schema";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import { createTaskV2, updateTaskV2 } from "../server/services/task-v2";
 
 const USER_ID = "user-1";

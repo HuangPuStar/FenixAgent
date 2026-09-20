@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -7,7 +8,6 @@ import {
 } from "@fenix/resource-skill/server/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs } from "@server/test-utils/helpers";
 import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
 
 /**

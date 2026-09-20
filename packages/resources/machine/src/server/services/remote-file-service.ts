@@ -1,10 +1,10 @@
 import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { environmentRepo } from "@fenix/agent-runtime/server";
+import { AppError } from "@fenix/platform-sdk";
 import { findActiveSandboxInstance, findReadableSandboxPoolById } from "@fenix/resource-sandbox/server";
 import { config } from "@server/config";
 import { db } from "@server/db";
 import { machine } from "@server/db/schema";
-import { AppError } from "@server/errors";
 import { eq } from "drizzle-orm";
 import { isFileWsConnected } from "../transport/file-ws-handler";
 import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";

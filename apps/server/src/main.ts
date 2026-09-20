@@ -95,9 +95,9 @@ import {
   apiSystemPeopleTreeRoutes,
 } from "@fenix/resource-observer/server";
 import {
-  apiSandboxClusterRoutes,
-  apiSandboxRoutes,
-  apiSandboxServerRoutes,
+  createApiSandboxClusterRoutes,
+  createApiSandboxRoutes,
+  createApiSandboxServerRoutes,
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
@@ -171,6 +171,23 @@ initializeApplicationInfrastructure({
       trustedOrigins: env.RCS_TRUSTED_ORIGINS,
       systemAdminPasswordFile: config.systemAdminPasswordFile,
       disableSignup: config.disableSignup,
+    },
+    // 沙盒模块配置：显式列出模块契约需要的字段，而不是把整个宿主 config 传进去——
+    // 模块只能读自己的那一份，宿主字段改名必须在这里被 typecheck 拦住。
+    sandbox: {
+      sandboxEnabled: config.sandboxEnabled,
+      defaultSandboxPoolId: config.defaultSandboxPoolId,
+      defaultSandboxImage: config.defaultSandboxImage,
+      defaultSandboxAgentType: config.defaultSandboxAgentType,
+      defaultSandboxResourcesJson: config.defaultSandboxResourcesJson,
+      defaultSandboxExtraJson: config.defaultSandboxExtraJson,
+      openSandboxClusterUrl: config.openSandboxClusterUrl,
+      openSandboxClusterApiKey: config.openSandboxClusterApiKey,
+      sandboxRuntimeConnectTimeoutMs: config.sandboxRuntimeConnectTimeoutMs,
+      sandboxProviderRequestTimeoutMs: config.sandboxProviderRequestTimeoutMs,
+      sandboxProviderCreateTimeoutMs: config.sandboxProviderCreateTimeoutMs,
+      sandboxProviderResumeTimeoutMs: config.sandboxProviderResumeTimeoutMs,
+      sandboxProviderDestroyTimeoutMs: config.sandboxProviderDestroyTimeoutMs,
     },
   },
 });
@@ -287,7 +304,8 @@ await runCriticalStartupSequence({
 // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
 // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。
 try {
-  const defaultPool = await initializeDefaultSandboxPool(config);
+  // 配置由包自己经 `getModuleConfig("sandbox")` 读取，宿主不再把整个 config 传进模块。
+  const defaultPool = await initializeDefaultSandboxPool();
   if (defaultPool) startupLog.info(`Default sandbox pool initialized: ${defaultPool.id}`);
 } catch (error) {
   startupLog.error("Failed to initialize default sandbox pool", error instanceof Error ? error : undefined);
@@ -428,9 +446,9 @@ const app = new Elysia({
   .use(apiSystemModelGatewayRoutes)
   .use(apiSystemObserverRoutes)
   .use(apiSystemPeopleTreeRoutes)
-  .use(apiSandboxRoutes)
-  .use(apiSandboxClusterRoutes)
-  .use(apiSandboxServerRoutes)
+  .use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
+  .use(createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(apiInstanceRoutes)
   .use(apiWorkspaceRoutes)
   .use(apiWorkflowRoutes)

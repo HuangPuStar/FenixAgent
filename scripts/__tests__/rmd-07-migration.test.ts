@@ -11,8 +11,6 @@ const RMD_07_MOVES = [
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/routes/web/config/sandbox-pools.ts", "apps/server/src/routes/web/config/sandbox-pools.ts"],
-  ["src/schemas/api-common.schema.ts", "apps/server/src/schemas/api-common.schema.ts"],
   ["src/schemas/api-instance.schema.ts", "apps/server/src/schemas/api-instance.schema.ts"],
   ["src/schemas/api-model.schema.ts", "apps/server/src/schemas/api-model.schema.ts"],
   ["src/schemas/api-workspace.schema.ts", "apps/server/src/schemas/api-workspace.schema.ts"],
@@ -82,16 +80,22 @@ const RMD_07_MOVES = [
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
-  // 仅这 72 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
-  // 原 75 项中已有三项随 CE 阶段 2 任务 1.2 离开 server host：
+  // 仅这 70 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 原 75 项中已有五项的目标不再由 server host 持有：
+  // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
   // - `routes/web/config/providers.ts` 由 Provider 资源包接管
   //   （`packages/resources/model-management/src/server/routes/web/config/providers.ts`），
   //   宿主只保留 `routes/web/config/index.ts` 的挂载；
   // - `errors/index.ts` 被删除：它与 `src/errors.ts` 重复导出第二份 `AppError`，无任何导入方
   //   （`../errors` 始终解析到 `errors.ts`），保留只会让错误语义分叉。
+  // 任务 1.3 的两项（详见 review/task-1.3-resource-packages.md §6.1）：
+  // - `routes/web/config/sandbox-pools.ts` 由 Sandbox 资源包接管
+  //   （`packages/resources/sandbox/src/routes/web/sandbox-pools.ts`），宿主只保留挂载；
+  // - `schemas/api-common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/system-api.ts`
+  //   （`ApiErrorResponseSchema` 与错误分类法同批下沉，workflow 包的同名转发 shim 一并删除）。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(72);
+    expect(RMD_07_MOVES).toHaveLength(70);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);

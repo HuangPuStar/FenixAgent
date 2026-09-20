@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { readJson, resetAllStubs, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubConfigPg, stubIdentityDirectory } from "@server/test-utils/helpers";
+import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
 import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../server/facades/provider-facade";
 import {
   AVAILABLE_MODELS_CACHE_TTL_MS,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubAuthApi } from "@server/test-utils/helpers";
 import { stubCustomTools } from "@server/test-utils/stubs/module-stubs";
 import webWorkflowCustomTools from "../server/routes/web/workflow-custom-tools";
 

@@ -16,9 +16,9 @@
 import { getReadableAgentConfigById } from "@fenix/agent-config/server";
 import { log, error as logError } from "@fenix/logger";
 import type { Instance, LaunchSpec } from "@fenix/orchestration";
+import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "@server/config";
-import { NotFoundError } from "@server/errors";
 import type { AuthContext } from "@server/plugins/auth";
 import { getCoreRuntime } from "@server/services/core-bootstrap";
 import type { InstanceSpawnSource, InstanceSupplement } from "@server/types/store";

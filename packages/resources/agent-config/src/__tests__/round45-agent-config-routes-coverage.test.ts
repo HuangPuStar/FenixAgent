@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubConfigPg, stubDb } from "@server/test-utils/helpers";
+import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
 import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
 
 /**

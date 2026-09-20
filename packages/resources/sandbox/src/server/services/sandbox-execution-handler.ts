@@ -4,7 +4,7 @@ import {
   type MachineStatusReader,
   waitForMachineConnection,
 } from "@fenix/resource-machine/server";
-import { config } from "@server/config";
+import { getSandboxConfig } from "../config";
 import { SandboxRuntimeNotReadyError } from "./sandbox-errors";
 import type { SandboxManager, SandboxManagerCreateInput } from "./sandbox-manager";
 
@@ -39,7 +39,7 @@ export class SandboxExecutionHandler {
       organizationId: input.organizationId,
     });
 
-    const runtimeConnectTimeoutMs = input.runtimeConnectTimeoutMs ?? config.sandboxRuntimeConnectTimeoutMs;
+    const runtimeConnectTimeoutMs = input.runtimeConnectTimeoutMs ?? getSandboxConfig().sandboxRuntimeConnectTimeoutMs;
     const waitForConnection = (machineId: string) =>
       waitForMachineConnection(machineId, runtimeConnectTimeoutMs, this.readMachineOnline);
 

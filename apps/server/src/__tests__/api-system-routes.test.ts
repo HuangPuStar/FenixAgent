@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createApiSystemRoutes } from "@fenix/identity/server";
-import { resetAllStubs, stubSystemApi } from "@server/test-utils/helpers";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { systemApiAuthPlugin } from "../plugins/system-api-auth";
+import { stubSystemApi } from "../test-utils/stubs/system-api-stub";
 
 // `/api/system/*` 的实现已迁到 `@fenix/identity`（CE 阶段 2 任务 1.2），但守卫
 // `systemApiAuthPlugin` 是宿主所有：它被 identity 之外的 observer / sandbox /

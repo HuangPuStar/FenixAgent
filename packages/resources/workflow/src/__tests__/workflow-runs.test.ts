@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubAuthApi, stubPgStorageAdapter } from "@server/test-utils/helpers";
+import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
 
 // route 模块导入 — pg-storage-adapter 已在 setup-mocks.ts 中通过 preload mock 注册，
 // stub 行为通过 stubPgStorageAdapter() 在 beforeEach 中配置

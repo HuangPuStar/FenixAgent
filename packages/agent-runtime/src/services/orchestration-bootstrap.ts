@@ -20,9 +20,9 @@
 import { randomBytes } from "node:crypto";
 import { agentConfigRepo, resolveAgentNode } from "@fenix/agent-config/server";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
+import { AppError } from "@fenix/platform-sdk";
 import { sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { config } from "@server/config";
-import { AppError } from "@server/errors";
 import { agentEngineRepo } from "@server/repositories";
 import type { ExecutionNodeResolver } from "../server/repositories/environment-orchestration";
 import { environmentOrchestrationRepo } from "../server/repositories/environment-orchestration";

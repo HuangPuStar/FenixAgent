@@ -8,8 +8,8 @@ import {
   listExternalRelayEntries,
   setExternalRelayDeps,
 } from "@fenix/agent-runtime/server";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AuthContext } from "@server/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
 import {
   createRelayHandle,
   createWs,
@@ -21,6 +21,7 @@ import {
   makeRelay,
   makeSpawnedInstance,
 } from "@server/test-utils/observer-fixtures";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import {
   buildRelationTree,
   type Observation,

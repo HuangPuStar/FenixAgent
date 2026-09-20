@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { getReadableAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
+import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { db } from "@server/db";
 import { agentConfig, environment, machine } from "@server/db/schema";
-import { ConflictError, NotFoundError, ValidationError } from "@server/errors";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";

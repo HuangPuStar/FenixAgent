@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
-import { resetAllStubs, stubCoreBootstrap, stubRegistry } from "@server/test-utils/helpers";
-import { registryRegistry } from "@server/test-utils/stubs/module-stubs";
+import { registryRegistry, stubCoreBootstrap, stubRegistry } from "@server/test-utils/stubs/module-stubs";
 import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
 import type { WsConnection } from "../transport/ws-types";
 

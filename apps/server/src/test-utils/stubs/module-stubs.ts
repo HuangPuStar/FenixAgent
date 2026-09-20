@@ -1,7 +1,8 @@
-// 统一 stub 注册表 — 所有新增模块的 stub 集中管理
-// 使用 createStubRegistry 工厂避免重复代码
+// 宿主自身模块的 stub 注册表 — 集中管理
+// 使用 `@fenix/platform-sdk/testing` 的 createStubRegistry 工厂避免重复代码；平台契约（DB、模块配置、
+// 身份目录、认证入口）的替身在那个子路径，本文件只保留宿主模块（services/*、transport/*）的替身。
 
-import { createStubRegistry } from "./create-stub-registry";
+import { createStubRegistry } from "@fenix/platform-sdk/testing";
 
 // ── 各模块的 stub 注册表实例 ──
 // throwOnMissing=false：未配置时返回空函数而非抛错，

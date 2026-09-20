@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { AuthContext } from "@server/plugins/auth";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 import type { WsConnection } from "@server/transport/ws-types";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
 

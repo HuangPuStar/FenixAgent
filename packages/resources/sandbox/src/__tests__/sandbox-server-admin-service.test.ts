@@ -1,16 +1,14 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createSandboxServerAdminService } from "@fenix/resource-sandbox/server";
-import { config, setConfig } from "@server/config";
+import { initializeSandboxModuleConfig } from "../server/testing";
 
 describe("sandbox server admin service", () => {
-  const originalUrl = config.openSandboxClusterUrl;
-  const originalKey = config.openSandboxClusterApiKey;
-
-  afterEach(() => setConfig({ openSandboxClusterUrl: originalUrl, openSandboxClusterApiKey: originalKey }));
-
   // 远程列表查询必须把主服务参数转换为 OpenSandbox 的分页参数，并保留状态过滤。
   test("maps list query to the fixed Server proxy path", async () => {
-    setConfig({ openSandboxClusterUrl: "http://cluster.internal", openSandboxClusterApiKey: "cluster-secret" });
+    initializeSandboxModuleConfig({
+      openSandboxClusterUrl: "http://cluster.internal",
+      openSandboxClusterApiKey: "cluster-secret",
+    });
     let receivedRequest: Request | undefined;
     const service = createSandboxServerAdminService(async (input, init) => {
       receivedRequest = new Request(String(input), init);
@@ -35,7 +33,10 @@ describe("sandbox server admin service", () => {
 
   // 诊断接口只能通过固定代理路径访问，不能让调用方注入任意远程路径。
   test("uses the fixed diagnostics path", async () => {
-    setConfig({ openSandboxClusterUrl: "http://cluster.internal", openSandboxClusterApiKey: "cluster-secret" });
+    initializeSandboxModuleConfig({
+      openSandboxClusterUrl: "http://cluster.internal",
+      openSandboxClusterApiKey: "cluster-secret",
+    });
     const paths: string[] = [];
     const service = createSandboxServerAdminService(async (input) => {
       paths.push(String(input));
@@ -51,7 +52,10 @@ describe("sandbox server admin service", () => {
 
   // 命令执行必须保留 Execd 的 SSE body 和 Content-Type，不在主服务中消费事件。
   test("returns the upstream command stream unchanged", async () => {
-    setConfig({ openSandboxClusterUrl: "http://cluster.internal", openSandboxClusterApiKey: "cluster-secret" });
+    initializeSandboxModuleConfig({
+      openSandboxClusterUrl: "http://cluster.internal",
+      openSandboxClusterApiKey: "cluster-secret",
+    });
     let receivedRequest: Request | undefined;
     const service = createSandboxServerAdminService(async (input, init) => {
       receivedRequest = new Request(String(input), init);

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { setApiInstanceDeps } from "@fenix/agent-runtime/server";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 
 const apiInstanceRoute = (await import("../routes/api/instances")).default;
 

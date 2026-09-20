@@ -12,8 +12,7 @@
  * `../../../services/available-models-cache`，与 `/web/config/providers` 共享。
  */
 
-import { type ActorContext, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { ValidationError } from "@server/errors";
+import { type ActorContext, ValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
 import {
   ModelPreferencesBodySchema,

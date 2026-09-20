@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxExecutionHandler } from "@fenix/resource-sandbox/server";
-import { resetAllStubs } from "@server/test-utils/helpers";
 
 afterEach(() => {
   resetAllStubs();

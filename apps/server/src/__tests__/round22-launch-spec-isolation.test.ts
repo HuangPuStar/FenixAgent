@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "@fenix/agent-runtime/server";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
 import { config, setConfig } from "../config";
 import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
@@ -16,7 +17,6 @@ import {
   safeJsonStringify,
   toKeyHint,
 } from "../services/config-utils";
-import { resetAllStubs, stubDb } from "../test-utils/helpers";
 
 const now = new Date("2026-08-19T00:00:00.000Z");
 const originalConfig = { ...config };

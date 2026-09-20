@@ -1,8 +1,8 @@
 import { log, error as logError } from "@fenix/logger";
+import { NotFoundError } from "@fenix/platform-sdk";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { db } from "@server/db";
 import { environment } from "@server/db/schema";
-import { NotFoundError } from "@server/errors";
 import type { InstanceSpawnSource } from "@server/types/store";
 import { and, eq } from "drizzle-orm";
 import { agentInstanceService } from "../server/services/agent-instance-service";

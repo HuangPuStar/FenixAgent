@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import {
   resolveBoundKnowledgeBasesByConfigId,
   searchKnowledgeDetailedForAgent,

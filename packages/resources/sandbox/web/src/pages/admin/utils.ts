@@ -5,8 +5,17 @@
 // byOrg 叶子（递归携带 org/user/agent/instance 上下文）与 byEntity 叶子
 // （roleId → machineId）按 id 去重；byOrg 叶子携带 payload(openTime)，
 // byEntity 侧缺失时用 byOrg 值补齐。
+//
+// 入参类型是 `web/src/types/acp-link-view.ts` 的结构子集（observer 的真实视图模型在
+// 对方包内且无 `./web` 出口，反向 import 会形成包级环）；此处用子集类型，所以 observer
+// 传入的完整视图类型可直接赋值，不改变调用方。
 
-import type { AcpLinkSnapshot, ObserverLeaf, ObserverOrgNode } from "@/src/api/observer";
+import type {
+  AcpLinkViewLeaf,
+  AcpLinkViewNames,
+  AcpLinkViewOrgNode,
+  AcpLinkViewSnapshot,
+} from "../../types/acp-link-view";
 
 /** 平坦表行（各角色 id 可缺省为 null；openTime 取自 LeafView.payload）。 */
 export interface FlatRow {
@@ -22,7 +31,7 @@ export interface FlatRow {
 
 /** 由 byOrg 上下文 + 叶子构造平坦行。 */
 function leafToRow(
-  leaf: ObserverLeaf,
+  leaf: AcpLinkViewLeaf,
   ctx: {
     organizationId: string | null;
     userId: string | null;
@@ -44,7 +53,7 @@ function leafToRow(
 }
 
 /** 全部观察平坦表：byOrg + byEntity 叶子按 id 去重，openTime 缺失侧用 byOrg 值补齐。 */
-export function mergeFlatRows(view: AcpLinkSnapshot): FlatRow[] {
+export function mergeFlatRows(view: AcpLinkViewSnapshot): FlatRow[] {
   const rows = new Map<string, FlatRow>();
   const add = (row: FlatRow) => {
     const existing = rows.get(row.id);
@@ -66,7 +75,7 @@ export function mergeFlatRows(view: AcpLinkSnapshot): FlatRow[] {
     });
   };
 
-  const walkOrg = (org: ObserverOrgNode) => {
+  const walkOrg = (org: AcpLinkViewOrgNode) => {
     for (const user of org.children) {
       for (const agent of user.children) {
         for (const instance of agent.children) {
@@ -115,7 +124,7 @@ export function mergeFlatRows(view: AcpLinkSnapshot): FlatRow[] {
 }
 
 /** 拓扑反查索引：machineId → 其承载的全部 leaf id（归属树 + machine 树合并去重）。 */
-export function machineReverseIndex(view: AcpLinkSnapshot): Map<string, string[]> {
+export function machineReverseIndex(view: AcpLinkViewSnapshot): Map<string, string[]> {
   const index = new Map<string, string[]>();
   const push = (machineId: string, leafId: string) => {
     const list = index.get(machineId) ?? [];
@@ -125,7 +134,7 @@ export function machineReverseIndex(view: AcpLinkSnapshot): Map<string, string[]
     }
   };
 
-  const walkOrg = (org: ObserverOrgNode) => {
+  const walkOrg = (org: AcpLinkViewOrgNode) => {
     for (const user of org.children) {
       for (const agent of user.children) {
         for (const instance of agent.children) {
@@ -153,7 +162,7 @@ export interface IntegrityRow {
 }
 
 /** integrity 归纳：把 mismatchedItems 映射为告警区展示行。 */
-export function integrityRows(view: AcpLinkSnapshot): IntegrityRow[] {
+export function integrityRows(view: AcpLinkViewSnapshot): IntegrityRow[] {
   return view.integrity.mismatchedItems.map((item) => ({ kind: item.kind, id: item.id }));
 }
 
@@ -161,7 +170,7 @@ export function integrityRows(view: AcpLinkSnapshot): IntegrityRow[] {
  * name(id) 展示助手：按角色查 names 字典得到可读名称，缺失回退原始 id。
  * 返回空串表示该角色无值（如 machine 树里无 org 归属的叶子），调用方展示占位符。
  */
-export function name(names: AcpLinkSnapshot["names"], role: keyof AcpLinkSnapshot["names"], id: string | null): string {
+export function name(names: AcpLinkViewNames, role: keyof AcpLinkViewNames, id: string | null): string {
   if (!id) return "";
   return names[role][id] ?? id;
 }
@@ -181,7 +190,7 @@ export interface ChatRelayStatsPayload {
  * 从叶子 payload 安全收窄出 chat-relay 连接概要；非 chat-relay 或无 payload 返回 null。
  * payload 是 Record<string, unknown>，这里逐字段类型收窄，避免 as any（CLAUDE.md）。
  */
-export function chatRelayPayload(leaf: ObserverLeaf): ChatRelayStatsPayload | null {
+export function chatRelayPayload(leaf: AcpLinkViewLeaf): ChatRelayStatsPayload | null {
   if (leaf.source !== "chat-relay" || !leaf.payload) return null;
   const p = leaf.payload;
   return {
@@ -217,9 +226,9 @@ export function formatClockTime(ts: number): string {
  * 同会话多标签页计数：按 rcsSessionId 分组统计 chat-relay 叶子数。
  * 用于区分「同一会话开多个标签页」（正常）与「陈旧残留连接」（同实例却不同会话/无会话）。
  */
-export function sessionTabCounts(orgs: ObserverOrgNode[]): Map<string, number> {
+export function sessionTabCounts(orgs: AcpLinkViewOrgNode[]): Map<string, number> {
   const counts = new Map<string, number>();
-  const visit = (leaf: ObserverLeaf) => {
+  const visit = (leaf: AcpLinkViewLeaf) => {
     const info = chatRelayPayload(leaf);
     if (!info?.rcsSessionId) return;
     counts.set(info.rcsSessionId, (counts.get(info.rcsSessionId) ?? 0) + 1);
@@ -241,7 +250,7 @@ export function sessionTabCounts(orgs: ObserverOrgNode[]): Map<string, number> {
 export interface YjsSessionGroup {
   rcsSessionId: string;
   /** 该会话下的链接（同一实例内；无 rcsSessionId 的非 chat-relay 链接不属于任何会话） */
-  leaves: ObserverLeaf[];
+  leaves: AcpLinkViewLeaf[];
 }
 
 /**
@@ -249,9 +258,12 @@ export interface YjsSessionGroup {
  * chat-relay 链接从 payload 收窄 rcsSessionId；acp-ws / external-relay 等无会话链接
  * 归入 ungrouped，仍直接挂在实例层下（Y.Doc 实例只有一个、链接可以有多个的展示语义）。
  */
-export function groupYjsSessions(leaves: ObserverLeaf[]): { sessions: YjsSessionGroup[]; ungrouped: ObserverLeaf[] } {
-  const sessionsBySession = new Map<string, ObserverLeaf[]>();
-  const ungrouped: ObserverLeaf[] = [];
+export function groupYjsSessions(leaves: AcpLinkViewLeaf[]): {
+  sessions: YjsSessionGroup[];
+  ungrouped: AcpLinkViewLeaf[];
+} {
+  const sessionsBySession = new Map<string, AcpLinkViewLeaf[]>();
+  const ungrouped: AcpLinkViewLeaf[] = [];
   for (const leaf of leaves) {
     const info = chatRelayPayload(leaf);
     if (info?.rcsSessionId) {

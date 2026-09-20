@@ -26,9 +26,10 @@ import {
 } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import type { InstanceSupplement } from "@server/types/store";
 import { AgentChatSessionAdapter } from "../server/services/workflow/agent-chat-transport";
 import {

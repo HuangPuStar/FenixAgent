@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { agentConfigResource } from "@fenix/agent-config/server";
 import { createStubAccessControl } from "@fenix/model-management/server/testing";
 import { ResourceAccessDeniedError } from "@fenix/platform-sdk";
-import { getIdentityDirectoryStub, resetAllStubs, stubIdentityDirectory } from "@server/test-utils/helpers";
+import { getIdentityDirectoryStub, resetAllStubs, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
 
 /**

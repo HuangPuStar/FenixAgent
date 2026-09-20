@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
 
 const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";

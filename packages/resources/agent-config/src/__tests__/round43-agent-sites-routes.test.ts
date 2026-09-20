@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "@server/test-utils/helpers";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { installAgentModuleStub, resetAgentModuleStub, scopedAgent } from "./fixtures";

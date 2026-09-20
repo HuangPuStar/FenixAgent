@@ -1,5 +1,5 @@
 import type { ActorContext } from "@fenix/platform-sdk";
-import { AppError } from "@server/errors";
+import { AppError } from "@fenix/platform-sdk";
 import { configError } from "@server/services/config-utils";
 
 /**

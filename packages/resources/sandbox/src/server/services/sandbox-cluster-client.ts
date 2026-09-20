@@ -1,4 +1,4 @@
-import { config } from "@server/config";
+import { getSandboxConfig } from "../config";
 
 export type SandboxClusterFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -41,6 +41,8 @@ function extractClusterErrorMessage(text: string): string | undefined {
 /** 为主服务管理 API 提供带鉴权的 Cluster JSON 和流式请求。 */
 export function createSandboxClusterClient(fetchImpl: SandboxClusterFetch = fetch) {
   async function request(path: string, init: RequestInit = {}): Promise<Response> {
+    // 配置在请求时读取：模块加载期宿主可能尚未完成基础设施初始化。
+    const config = getSandboxConfig();
     if (!config.openSandboxClusterUrl || !config.openSandboxClusterApiKey) {
       throw new SandboxClusterUnavailableError();
     }

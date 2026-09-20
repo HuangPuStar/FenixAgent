@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";

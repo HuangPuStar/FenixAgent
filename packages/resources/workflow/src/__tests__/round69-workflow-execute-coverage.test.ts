@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { DAGRunResult } from "@fenix/workflow-engine";
-import { resetAllStubs, stubDb, stubPgStorageAdapter } from "@server/test-utils/helpers";
+import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
 import { clearAllEngines, getTeamEngine } from "../server/services/workflow";
 import { executeWorkflow } from "../server/services/workflow/workflow-execute";
 

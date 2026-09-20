@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { type ResourceAccess, ResourceAccessDeniedError, type ResourceQueryConstraint } from "@fenix/platform-sdk";
-import { ConflictError, ForbiddenError, NotFoundError } from "@server/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  type ResourceAccess,
+  ResourceAccessDeniedError,
+  type ResourceQueryConstraint,
+} from "@fenix/platform-sdk";
 import { mcpServerResource } from "../server/access/mcp-server-resource";
 import { McpServerFacade } from "../server/facades/mcp-server-facade";
 import { createStubMcpServerService } from "../server/testing";

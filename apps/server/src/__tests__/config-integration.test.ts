@@ -15,6 +15,8 @@ import {
   installModelManagementModule,
   resetModelManagementModuleForTesting,
 } from "@fenix/model-management/server/testing";
+import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -22,10 +24,9 @@ import {
   resetSkillServerModuleForTesting,
 } from "@fenix/resource-skill/server/testing";
 import { setConfig } from "../config";
-import { ForbiddenError, NotFoundError } from "../errors";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { resetAllStubs, stubConfigPg, stubDb } from "../test-utils/helpers";
+import { stubConfigPg } from "../test-utils/stubs/config-pg-stub";
 
 const configRoute = (await import("../routes/web/config/index")).default;
 

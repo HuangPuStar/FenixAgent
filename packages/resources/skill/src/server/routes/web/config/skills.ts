@@ -13,8 +13,7 @@
  */
 
 import type { ActorContext } from "@fenix/platform-sdk";
-import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { NotFoundError, ValidationError } from "@server/errors";
+import { NotFoundError, ValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";

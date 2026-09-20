@@ -10,7 +10,7 @@ import type { AgentConfigServerModule } from "./module";
  * 把装配故障伪装成业务结果。
  *
  * 本文件是包导出面 `./server/runtime` 的入口：宿主只需要装配结果时从这里导入，不要经 `./server`
- * barrel——barrel 会连带导出 HTTP 路由（elysia 端点、`@server/errors`、agent-runtime 的动态入口），
+ * barrel——barrel 会连带导出 HTTP 路由（elysia 端点、agent-runtime 的动态入口），
  * 把调用方拉进宿主的依赖图（mcp / skill 包同一入口的注释记录了这类环的历史成因）。
  */
 

@@ -48,11 +48,13 @@ test("Sandbox 文件均落在规定的新 owner 路径", () => {
   expect(targetPaths.filter((path) => !existsSync(resolve(repositoryRoot, path)))).toEqual([]);
 });
 
-// 宿主只能经稳定 server 入口装配三条 Sandbox API 路由。
-test("Sandbox server 入口导出已迁移的 API 路由", () => {
+// 宿主只能经稳定 server 入口装配 Sandbox 路由；守卫由宿主注入，因此入口导出的是工厂。
+test("Sandbox server 入口导出已迁移的路由工厂", () => {
   const source = readFileSync(serverEntry, "utf8");
 
-  expect(source).toContain('export { default as apiSandboxRoutes } from "./routes/api/sandbox"');
-  expect(source).toContain('export { default as apiSandboxClusterRoutes } from "./routes/api/sandbox-cluster"');
-  expect(source).toContain('export { default as apiSandboxServerRoutes } from "./routes/api/sandbox-server"');
+  expect(source).toContain('export { createApiSandboxRoutes, mapSandboxApiError } from "./routes/api/sandbox"');
+  expect(source).toContain(
+    'export { createApiSandboxClusterRoutes, mapSandboxClusterAdminError } from "./routes/api/sandbox-cluster"',
+  );
+  expect(source).toContain('export { createApiSandboxServerRoutes } from "./routes/api/sandbox-server"');
 });

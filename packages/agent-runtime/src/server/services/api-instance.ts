@@ -1,5 +1,5 @@
 import { getReadableAgentConfigById } from "@fenix/agent-config/server";
-import { AppError } from "@server/errors";
+import { AppError } from "@fenix/platform-sdk";
 import type { AuthContext } from "@server/plugins/auth";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";

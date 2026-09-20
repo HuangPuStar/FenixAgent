@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getAllEventBuses, removeEventBus } from "@fenix/agent-runtime/server";
+import { resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { resetAllStubs, stubAuthApi, stubDb } from "@server/test-utils/helpers";
 import { publishWorkflowEvent } from "../server/services/workflow/workflow-events";
 
 // workflow-sse 路由模块 — 生产 SSE 事件流端点（原 transport/sse-writer 的 SSE 行为测试迁移至此）

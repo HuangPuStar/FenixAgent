@@ -2,13 +2,15 @@
 // 系统 Master Key 输入门（docs/arch/21 §5）：写入 sessionStorage → 触发面板加载。
 // 不纳入 better-auth 会话体系；401 由面板层 clearAdminKey() 后带错误提示回到本门。
 
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Input } from "@fenix/ui-components/ui/input";
 import { KeyRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { setAdminKey } from "@/src/lib/admin-key";
+
+import { SANDBOX_NS } from "../../../../i18n/namespace";
+import { setAdminKey } from "../../../lib/admin-key";
 
 interface MasterKeyGateProps {
   onUnlock: () => void;
@@ -17,8 +19,9 @@ interface MasterKeyGateProps {
 }
 
 export function MasterKeyGate({ onUnlock, error }: MasterKeyGateProps) {
-  const { t } = useTranslation("observer");
+  const { t } = useTranslation(SANDBOX_NS);
   const [key, setKey] = useState("");
+  const errorId = "master-key-error";
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -45,9 +48,17 @@ export function MasterKeyGate({ onUnlock, error }: MasterKeyGateProps) {
               value={key}
               onChange={(event) => setKey(event.target.value)}
               placeholder={t("login.inputPlaceholder")}
+              aria-label={t("login.inputPlaceholder")}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
               autoFocus
             />
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {/* 鉴权失败提示用 role="alert"：它在提交后异步出现，需要主动播报。 */}
+            {error ? (
+              <p id={errorId} role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
             <Button type="submit" disabled={!key.trim()}>
               {t("login.submit")}
             </Button>

@@ -1,6 +1,6 @@
 import type { CoreRuntimeFacade, RuntimeInstanceStatus } from "@fenix/core";
+import { AppError } from "@fenix/platform-sdk";
 import { config } from "@server/config";
-import { AppError } from "@server/errors";
 import { getCoreRuntime } from "@server/services/core-bootstrap";
 import type { InstanceSpawnSource, InstanceSupplement } from "@server/types/store";
 import { globalInstanceRegistry, type InstanceRegistry } from "./instance-registry";

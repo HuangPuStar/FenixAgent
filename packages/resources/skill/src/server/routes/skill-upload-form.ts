@@ -1,4 +1,4 @@
-import { ValidationError } from "@server/errors";
+import { ValidationError } from "@fenix/platform-sdk";
 import type { UploadSkillFile } from "../services/skill-content";
 
 /**

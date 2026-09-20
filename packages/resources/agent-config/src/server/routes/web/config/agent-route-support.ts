@@ -1,5 +1,5 @@
 import type { ActorContext, IdentityDirectory, WebErrSchema } from "@fenix/platform-sdk";
-import { AppError, ConflictError, ForbiddenError, ValidationError } from "@server/errors";
+import { AppError, ConflictError, ForbiddenError, ValidationError } from "@fenix/platform-sdk";
 import { getUserConfig, setUserConfig } from "@server/services/config/user-config";
 import { isValidResourceName } from "@server/services/config-utils";
 import type * as z from "zod/v4";

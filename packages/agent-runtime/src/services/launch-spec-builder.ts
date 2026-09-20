@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
 import { log, error as logError } from "@fenix/logger";
+import { AppError } from "@fenix/platform-sdk";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import type { AgentLaunchSpec, McpServerConfig, ModelConfig } from "@fenix/plugin-sdk";
 import { listAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
@@ -24,7 +25,6 @@ import {
 import { config, getBaseUrl } from "@server/config";
 import { db } from "@server/db";
 import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider, skill } from "@server/db/schema";
-import { AppError } from "@server/errors";
 import { resolveApiKey } from "@server/services/config-utils";
 import { and, asc, eq, inArray } from "drizzle-orm";
 

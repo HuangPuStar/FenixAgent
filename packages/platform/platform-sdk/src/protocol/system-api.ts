@@ -1,11 +1,12 @@
 import * as z from "zod/v4";
 
 /**
- * `/api/system/*` 的共享协议契约。
+ * `/api/*` 对外系统 API 的共享协议契约。
  *
  * 该协议面由多个模块共同贡献（identity 的用户/组织/API Key 管理，observer 的日志、观测与
- * 人员树），调用方按单一形状解析，因此形状必须只有一个定义处。放在平台契约包里而不是任一
- * 贡献方内部：模块之间不得互相导入对方的 schema。
+ * 人员树，资源包的 `/api/*` 资源接口），调用方按单一形状解析，因此形状必须只有一个定义处。
+ * 放在平台契约包里而不是任一贡献方内部：模块之间不得互相导入对方的 schema，也不得导入宿主
+ * `apps/server` 的同名文件（转发 shim 被「删除优于兼容」原则禁止）。
  *
  * 错误响应刻意不携带 `data`，与 `/web/*` 的 `{ success, data }` 信封区分开。
  */
@@ -18,6 +19,26 @@ export const ApiSystemErrorResponseSchema = z.object({
 
 /** `/api/system/*` 的错误响应体。 */
 export type ApiSystemErrorResponse = z.infer<typeof ApiSystemErrorResponseSchema>;
+
+/**
+ * 对外 `/api/*` 的统一错误响应（含 `/api/system/*` 之外的资源包路由）。
+ *
+ * 与 {@link ApiSystemErrorResponseSchema} 的线上形状一致，但两者是分别声明的协议面：前者是
+ * `/api/system/*` 的既有合同，后者是资源包 `/api/*` 路由共用的错误信封。保持两个具名导出而不是
+ * 让其中一方指向另一方，是为了让任一面的 OpenAPI 描述可以独立演进；形状若发生分歧，应先在
+ * `docs/design/` 记录再拆分。资源包不得自行 `z.object({ error: ... })` 复制该形状。
+ */
+export const ApiErrorResponseSchema = z
+  .object({
+    error: z.object({
+      code: z.string().describe("错误码。"),
+      message: z.string().describe("错误描述。"),
+    }),
+  })
+  .describe("统一错误响应。");
+
+/** 对外 `/api/*` 的统一错误响应体。 */
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;
 
 /** OpenAPI/JSON Schema 生成阶段不支持 `z.date()`，这里约定序列化后只暴露字符串或时间戳。 */
 const FlexibleDateTimeSchema = z.union([z.string(), z.number()]);

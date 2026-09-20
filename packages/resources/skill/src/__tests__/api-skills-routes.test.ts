@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { ForbiddenError } from "@server/errors";
+import { ForbiddenError } from "@fenix/platform-sdk";
+import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import {
   authorizedSkill,
   authorizedSkillDetail,

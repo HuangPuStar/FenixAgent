@@ -1,7 +1,7 @@
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { error as logError, warn as logWarn } from "@fenix/logger";
+import { AppError, NotFoundError } from "@fenix/platform-sdk";
 import { validateEnv } from "@server/env";
-import { AppError, NotFoundError } from "@server/errors";
 import { authenticateRequest, type RequestAuthResult } from "@server/plugins/auth";
 import type { WsConnection } from "@server/transport/ws-types";
 import Elysia from "elysia";

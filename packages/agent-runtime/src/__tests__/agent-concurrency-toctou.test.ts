@@ -23,9 +23,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { config, setConfig } from "@server/config";
 import { provider } from "@server/db/schema";
-import { resetAllStubs, stubCoreBootstrap, stubDb } from "@server/test-utils/helpers";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import {
   beginSpawnReservation,
   getActiveAgentCount,

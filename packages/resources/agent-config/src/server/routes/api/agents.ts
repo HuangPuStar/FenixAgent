@@ -1,9 +1,7 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
-import { toResourceAccessView } from "@fenix/platform-sdk";
+import { ApiErrorResponseSchema, AppError, toResourceAccessView } from "@fenix/platform-sdk";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
-import { AppError } from "@server/errors";
 import { authGuardPlugin } from "@server/plugins/auth";
-import { ApiErrorResponseSchema } from "@server/schemas/api-common.schema";
 import Elysia from "elysia";
 import type { AuthorizedAgentConfig } from "../../facades/agent-config-facade";
 import { toAgentResourceKey } from "../../facades/agent-config-facade";

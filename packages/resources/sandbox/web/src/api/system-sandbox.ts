@@ -1,5 +1,5 @@
-import { request, unwrap } from "@/src/api/request";
-import { getAdminKey } from "@/src/lib/admin-key";
+import { request, unwrap } from "@fenix/web-runtime/api/request";
+import { getAdminKey } from "../lib/admin-key";
 
 export interface SandboxResources {
   cpu: number;
@@ -266,7 +266,9 @@ export const systemSandboxApi = {
       const response = await fetch(`/api/system/sandbox-cluster/servers/${encodeURIComponent(id)}/tunnel/frpc.toml`, {
         headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` },
       });
-      if (!response.ok) throw new Error("下载 tunnel 配置失败");
+      // 该端点直接回文本（非 /web 的 { success, data } 信封），故不经 request()。
+      // 失败信息是诊断上下文（进入 toast 的 description），面向用户的标题由 UI 侧 t() 提供。
+      if (!response.ok) throw new Error(`download tunnel config failed with HTTP ${response.status}`);
       return response.text();
     },
   },
@@ -294,7 +296,7 @@ export const systemSandboxApi = {
         `/api/system/sandbox-server/servers/${encodeURIComponent(serverId)}/sandboxes/${encodeURIComponent(sandboxId)}/diagnostics`,
         { headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` } },
       );
-      if (!response.ok) throw new Error(await readResponseError(response, "获取诊断概览失败"));
+      if (!response.ok) throw new Error(await readResponseError(response));
       return response.text();
     },
     executeCommand: async (serverId: string, sandboxId: string, body: SandboxCommandBody, signal: AbortSignal) => {
@@ -310,13 +312,18 @@ export const systemSandboxApi = {
           signal,
         },
       );
-      if (!response.ok) throw new Error(await readResponseError(response, "执行命令失败"));
+      if (!response.ok) throw new Error(await readResponseError(response));
       return response;
     },
   },
 };
 
-async function readResponseError(response: Response, fallback: string): Promise<string> {
+/**
+ * 解析流式端点的错误响应：优先取 `{ error: { message } }` 里的服务端消息，
+ * 否则回退原始文本，最后回退 HTTP 状态码。
+ * 只保留诊断上下文，不产出面向用户的文案——调用方以 t() 提供标题，本值进 description。
+ */
+async function readResponseError(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
   try {
     const payload: unknown = JSON.parse(text);
@@ -330,5 +337,5 @@ async function readResponseError(response: Response, fallback: string): Promise<
   } catch {
     // 非 JSON 错误直接回退到原始文本。
   }
-  return text.trim() || fallback;
+  return text.trim() || `HTTP ${response.status}`;
 }

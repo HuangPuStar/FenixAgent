@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
-import { resetAllStubs, stubEnvironmentRepo, stubRegistry } from "@server/test-utils/helpers";
-import { registryRegistry } from "@server/test-utils/stubs/module-stubs";
+import { registryRegistry, stubEnvironmentRepo, stubRegistry } from "@server/test-utils/stubs/module-stubs";
 import { gate } from "../services/agent-file-service";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb, stubRegistry } from "@server/test-utils/helpers";
-import { registryRegistry } from "@server/test-utils/stubs/module-stubs";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { registryRegistry, stubRegistry } from "@server/test-utils/stubs/module-stubs";
 
 const heartbeat = await import("@fenix/resource-machine/server");
 

@@ -4,6 +4,7 @@ export * from "./assembly/module-registry";
 export * from "./assembly/profile";
 export * from "./env-loader";
 export * from "./identity/identity-directory";
+export * from "./protocol/errors";
 export * from "./protocol/resource-access-view";
 export * from "./protocol/system-api";
 export * from "./protocol/web-envelope";

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { readJson, resetAllStubs, stubAuthApi, stubRegistry } from "@server/test-utils/helpers";
+import { stubRegistry } from "@server/test-utils/stubs/module-stubs";
 
 const registryRoutes = (await import("../routes/web/registry")).default;
 

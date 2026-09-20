@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import type { AuthContext } from "@server/plugins/auth";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
 
 const registry = await import("@fenix/resource-machine/server");
 

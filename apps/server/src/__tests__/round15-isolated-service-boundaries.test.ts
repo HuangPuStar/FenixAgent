@@ -7,13 +7,13 @@ import {
   shouldCountInstanceActivity,
 } from "@fenix/agent-runtime/server";
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "@fenix/chat-channel/server";
+import { AppError } from "@fenix/platform-sdk";
 import {
   DEFAULT_MACHINE_CONNECTION_TIMEOUT_MS,
   type MachineSleep,
   type MachineStatusReader,
   waitForMachineConnection,
 } from "@fenix/resource-machine/server";
-import { AppError } from "../errors";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
 
 async function withFrozenClock<T>(run: () => Promise<T>): Promise<T> {

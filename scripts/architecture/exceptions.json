@@ -484,14 +484,6 @@
     },
     {
       "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-sandbox",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "sandbox 的 web contribution 不再引用宿主内部实现",
-      "rationale": "33 处 / 7 文件：`@/components/ui`(23)、`@/src/api`(5)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
       "from": "@fenix/resource-skill",
       "to": "@fenix/web-app",
       "owner": "1.6",

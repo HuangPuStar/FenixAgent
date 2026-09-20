@@ -4,10 +4,12 @@ import {
   type AuthorizedResource,
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
   ResourceAccessDeniedError,
   type ResourceAction,
 } from "@fenix/platform-sdk";
-import { ConflictError, ForbiddenError, NotFoundError } from "@server/errors";
 import type { McpToolRow, ScopedMcpServerRow } from "../repositories/mcp-server";
 import type { McpServerConfig } from "../services/config/mcp-config";
 import type { McpServerService } from "../services/mcp-server-service";

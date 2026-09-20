@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 
 /**
  * agent-config-site-app service：list / sync 行为

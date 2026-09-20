@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { agentKnowledgeBindingRepo, knowledgeResourceRepo } from "../server/repositories/knowledge-base";
 
 describe("知识库仓储边界行为", () => {

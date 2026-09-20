@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubAuthApi } from "@server/test-utils/helpers";
 import { getTeamEngine } from "../server/services/workflow";
 
 const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;

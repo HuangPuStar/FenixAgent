@@ -3,10 +3,11 @@ import {
   type AuthorizedResource,
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
+  ForbiddenError,
+  NotFoundError,
   ResourceAccessDeniedError,
   type ResourceAction,
 } from "@fenix/platform-sdk";
-import { ForbiddenError, NotFoundError } from "@server/errors";
 import type { ModelRepository, ModelRow, ModelWriteData } from "../repositories/model-resource";
 import { PROVIDER_LIST_ORDER, type ProviderWriteData, type ScopedProviderRow } from "../repositories/provider-resource";
 import type { ProviderService } from "../services/provider-service";

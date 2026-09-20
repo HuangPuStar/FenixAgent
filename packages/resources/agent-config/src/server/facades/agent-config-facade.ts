@@ -3,10 +3,11 @@ import {
   type AuthorizedResource,
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
+  ForbiddenError,
+  NotFoundError,
   ResourceAccessDeniedError,
   type ResourceAction,
 } from "@fenix/platform-sdk";
-import { ForbiddenError, NotFoundError } from "@server/errors";
 import type { AgentConfigWriteData, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
 import { AGENT_CONFIG_LIST_ORDER } from "../repositories/agent-config-resource";
 import type { AgentConfigService } from "../services/agent-config-service";

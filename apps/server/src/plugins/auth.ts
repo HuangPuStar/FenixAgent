@@ -16,10 +16,9 @@ import {
   resolveIdentityAuthentication,
 } from "@fenix/identity/server";
 import { requestAls } from "@fenix/logger";
-import type { ActorContext } from "@fenix/platform-sdk";
+import { type ActorContext, AppError } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import { config } from "../config";
-import { AppError } from "../errors";
 
 /**
  * 宿主的认证适配层（CE 阶段 2 任务 1.2）。
@@ -33,8 +32,8 @@ import { AppError } from "../errors";
  * 3. **active organization 解析**（`services/org-context`，含 60 秒进程内缓存）：identity 返回的
  *    session 结果不含组织上下文，宿主用请求头/cookie 补齐并缓存。
  *
- * 错误映射：identity 抛 `IdentityAuthenticationError`（携带 HTTP 状态与稳定错误码），这里转成宿主
- * 的 `AppError`，使 429 / `RATE_LIMITED` 的对外行为与迁移前完全一致。
+ * 错误映射：identity 抛 `IdentityAuthenticationError`（携带 HTTP 状态与稳定错误码），这里转成
+ * 平台契约的 `AppError`（`@fenix/platform-sdk`），使 429 / `RATE_LIMITED` 的对外行为与迁移前完全一致。
  */
 
 // ────────────────────────────────────────────

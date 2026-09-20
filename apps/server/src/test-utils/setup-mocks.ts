@@ -5,19 +5,25 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
-import type { IdentityDirectory } from "@fenix/platform-sdk";
-import { registerIdentityDirectory } from "@fenix/platform-sdk/server";
+import type { IdentityConfig } from "@fenix/identity/server";
+import {
+  getAuthApiStub,
+  getAuthHandlerStub,
+  getDbStub,
+  getModuleConfigStub,
+  hasModuleConfigStub,
+  registerModuleConfigBaseline,
+  registerStubResetter,
+  registerTestIdentityDirectory,
+} from "@fenix/platform-sdk/testing";
 import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
 import * as actualFileWsCloseLog from "@fenix/resource-machine/file-ws-close-log";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "@fenix/resource-machine/file-ws-handler";
 import * as actualFileWsPayload from "@fenix/resource-machine/file-ws-payload";
 import * as actualFileWsRequests from "@fenix/resource-machine/file-ws-requests";
-import { getAuthApiStub, getAuthHandlerStub } from "./stubs/auth-stub";
-import { getConfigPgStub } from "./stubs/config-pg-stub";
-import { getDbStub } from "./stubs/db-stub";
-import { getIdentityDirectoryStub } from "./stubs/identity-directory-stub";
-import { getIdentityConfigStub } from "./stubs/identity-stub";
+import { createSandboxModuleConfig } from "@fenix/resource-sandbox/server/testing";
+import { getConfigPgStub, resetConfigPgStubs } from "./stubs/config-pg-stub";
 import {
   coreBootstrapRegistry,
   customToolsRegistry,
@@ -27,8 +33,10 @@ import {
   pgStorageAdapterRegistry,
   registryHeartbeatRegistry,
   registryRegistry,
+  resetEnvironmentRepoStub,
+  resetModuleStubs,
 } from "./stubs/module-stubs";
-import { getSystemApiStub } from "./stubs/system-api-stub";
+import { getSystemApiStub, resetSystemApiStubs } from "./stubs/system-api-stub";
 
 // biome-ignore lint/suspicious/noExplicitAny: stub 注册表需要宽松类型
 type AnyFn = (...args: any[]) => any;
@@ -101,6 +109,65 @@ mock.module("../../../../packages/platform/identity/src/auth/better-auth", () =>
   };
 });
 
+// ── identity 模块配置基线 ──
+
+// 默认值与 `apps/server/src/env.ts` 的对应变量保持一致：未显式 stub 的用例应当拿到「生产默认配置」，
+// 而不是空对象。登记在基线层（见 `@fenix/platform-sdk/testing` 的 module-config-stub），
+// `resetAllStubs()` 只清用例覆盖、不清基线。
+const IDENTITY_CONFIG_BASELINE = {
+  betterAuthUrl: undefined,
+  rcsBaseUrl: undefined,
+  trustedOrigins: undefined,
+  systemAdminPasswordFile: "./data/password.txt",
+  disableSignup: false,
+} satisfies IdentityConfig;
+registerModuleConfigBaseline("identity", IDENTITY_CONFIG_BASELINE);
+
+// ── 资源模块配置的读取 seam（宿主测试进程）──
+
+// 资源模块的路由在请求期经 `getModuleConfig()` 读自己的配置，而宿主测试进程刻意不初始化应用基础设施
+// （理由见 `@fenix/platform-sdk/testing` 的 module-config-stub：platform-sdk 自己的用例依赖「未初始化时
+// 读取必须失败」）。没有 seam，任何「路由可达」类宿主用例都会在请求期直接 500——这是迁移后的路由与旧
+// 宿主路由最本质的差别。这里只在**基础设施尚未初始化**这一种情况下退回模块配置替身注册表（preload 期
+// 登记的基线 + 用例覆盖）；已初始化时保持生产读取路径不变。未登记该模块的基线时原样抛出平台错误：
+// platform-sdk 的 `server-infrastructure.test.ts` 断言的是「未初始化必须报应用基础设施尚未初始化」，
+// 换成替身自己的「未登记」错误会让那条契约用例失去意义。
+const platformServer = await import("@fenix/platform-sdk/server");
+// 真实实现必须在这里先取到值：`mock.module` 会就地替换模块导出，若在替身里回头调用 `platformServer` 的
+// 同名属性，拿到的就是替身自己（实测表现为栈溢出）。
+const realGetModuleConfig = platformServer.getModuleConfig;
+mock.module("@fenix/platform-sdk/server", () => ({
+  ...platformServer,
+  getModuleConfig: <TConfig>(moduleId: string): TConfig => {
+    try {
+      return realGetModuleConfig<TConfig>(moduleId);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("应用基础设施尚未初始化")) {
+        throw error;
+      }
+      if (!hasModuleConfigStub(moduleId)) throw error;
+      return getModuleConfigStub<TConfig>(moduleId);
+    }
+  },
+}));
+
+// 沙盒模块配置基线：字段清单与缺省值取自包自身的 `./server/testing`（唯一真相），宿主不另抄一份字段表。
+// 后续资源包按同一形状在此登记自己模块的基线（缺省值取 `apps/server/src/config.ts` 的部署默认值）。
+registerModuleConfigBaseline("sandbox", createSandboxModuleConfig());
+
+// ── 宿主模块替身的复位登记 ──
+
+// 平台契约的 `resetAllStubs()` 只复位它自己持有的替身；宿主模块替身（config-pg、system-api、
+// services/* 与 environment 的注册表）由本目录的 `stubs/*` 持有，跨进程唯一入口是这里登记的复位器。
+// 用例只调用一个复位入口（`@fenix/platform-sdk/testing` 的 `resetAllStubs`），漏复位哪一层都会让该层的
+// 用例级配置泄漏到下一条用例，症状是「单独跑通过、全量跑失败」。登记在 preload 期完成，早于任何用例。
+registerStubResetter(() => {
+  resetConfigPgStubs();
+  resetModuleStubs();
+  resetEnvironmentRepoStub();
+  resetSystemApiStubs();
+});
+
 // ── identity 的基础设施入口（DB 与模块配置）──
 
 // identity 经 `@fenix/platform-sdk/server` 读取 DB 与模块配置，生产由宿主 main.ts 的
@@ -115,7 +182,7 @@ mock.module("../../../../packages/platform/identity/src/db", () => ({
   getIdentityDatabase: () => identityDbProxy,
 }));
 mock.module("../../../../packages/platform/identity/src/config", () => ({
-  getIdentityConfig: () => getIdentityConfigStub(),
+  getIdentityConfig: () => getModuleConfigStub<IdentityConfig>("identity"),
 }));
 
 // ── 身份只读窄契约（IdentityDirectory）──
@@ -124,11 +191,7 @@ mock.module("../../../../packages/platform/identity/src/config", () => ({
 // 宿主，若这里不注册，任何经 `getIdentityDirectory()` 的调用都会抛错（org-context、acp 空闲监控、
 // observer 名称解析等）。注册的是转发代理而非快照：用例在任意时刻 `stubIdentityDirectory()` 都能
 // 立即生效，不需要重新注册。
-registerIdentityDirectory(
-  new Proxy({} as IdentityDirectory, {
-    get: (_target, prop) => getIdentityDirectoryStub()[prop as keyof IdentityDirectory],
-  }),
-);
+registerTestIdentityDirectory();
 
 // ── system api service 导出名称 ──
 

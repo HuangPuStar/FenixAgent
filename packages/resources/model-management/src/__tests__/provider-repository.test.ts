@@ -4,7 +4,7 @@ import {
   RESOURCE_QUERY_CONSTRAINT_PAYLOAD,
   type ResourceQueryConstraint,
 } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { PROVIDER_RESOURCE_TYPE, providerResource } from "../server/access/provider-resource";
 import {
   createProviderRepository,

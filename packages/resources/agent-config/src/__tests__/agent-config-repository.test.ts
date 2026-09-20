@@ -4,7 +4,7 @@ import {
   RESOURCE_QUERY_CONSTRAINT_PAYLOAD,
   type ResourceQueryConstraint,
 } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb } from "@server/test-utils/helpers";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../server/access/agent-config-resource";
 import {
   AGENT_CONFIG_LIST_ORDER,

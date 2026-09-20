@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubAuthHandler, stubDb } from "@fenix/platform-sdk/testing";
 import { authPlugin } from "../plugins/auth";
-import { resetAllStubs, stubAuthHandler, stubDb } from "../test-utils/helpers";
 
 function createUserLookupDb(rows: Array<{ id: string }>) {
   return {

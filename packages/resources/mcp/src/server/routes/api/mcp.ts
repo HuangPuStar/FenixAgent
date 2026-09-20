@@ -1,8 +1,6 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
-import { toResourceAccessView } from "@fenix/platform-sdk";
-import { AppError } from "@server/errors";
+import { ApiErrorResponseSchema, AppError, toResourceAccessView } from "@fenix/platform-sdk";
 import { authGuardPlugin } from "@server/plugins/auth";
-import { ApiErrorResponseSchema } from "@server/schemas/api-common.schema";
 import Elysia from "elysia";
 import type { AuthorizedMcpServer } from "../../facades/mcp-server-facade";
 import { getMcpServerModule } from "../../runtime";

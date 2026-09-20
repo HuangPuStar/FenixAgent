@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubDb, stubRegistry } from "@server/test-utils/helpers";
+import { stubRegistry } from "@server/test-utils/stubs/module-stubs";
 
 beforeEach(() => {
   resetAllStubs();

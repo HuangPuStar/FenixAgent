@@ -9,9 +9,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE } from "../services/file-types";
 import { remoteUploadFiles } from "../services/remote-file-service";
 

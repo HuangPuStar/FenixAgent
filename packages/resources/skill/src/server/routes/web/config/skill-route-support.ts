@@ -1,6 +1,5 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
-import { WebErrSchema } from "@fenix/platform-sdk";
-import { AppError } from "@server/errors";
+import { AppError, WebErrSchema } from "@fenix/platform-sdk";
 import * as z from "zod/v4";
 import type { SkillDetailView, SkillListItem } from "../../../facades/skill-facade";
 

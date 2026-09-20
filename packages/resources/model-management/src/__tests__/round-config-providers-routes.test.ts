@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "@server/errors";
+import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs } from "@server/test-utils/helpers";
 import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../server/facades/provider-facade";
 import {
   createStubModelManagementServerModule,

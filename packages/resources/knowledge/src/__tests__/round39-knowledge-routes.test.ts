@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetConfig, setConfig } from "@server/config";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs } from "@server/test-utils/helpers";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,

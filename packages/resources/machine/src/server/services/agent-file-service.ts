@@ -11,7 +11,7 @@
 
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
-import { AppError, ValidationError } from "@server/errors";
+import { AppError, ValidationError } from "@fenix/platform-sdk";
 import { BusyError } from "../transport/file-ws-requests";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
 import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";

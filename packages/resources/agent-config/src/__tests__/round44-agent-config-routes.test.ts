@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "@server/errors";
+import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubConfigPg, stubDb } from "@server/test-utils/helpers";
+import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
 import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
 
 /**

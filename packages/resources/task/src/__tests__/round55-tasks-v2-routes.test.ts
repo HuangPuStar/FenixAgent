@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { readJson, resetAllStubs, stubAuthApi, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import type { TaskExecutionLogRow } from "../server/repositories/task";
 import { taskExecutionLogRepo } from "../server/repositories/task";
 import type { ScheduledTaskV2Row } from "../server/repositories/task-v2";

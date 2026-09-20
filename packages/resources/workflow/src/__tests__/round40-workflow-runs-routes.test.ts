@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { type DAGRunResult, WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs, stubAuthApi, stubPgStorageAdapter } from "@server/test-utils/helpers";
+import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
 import { getTeamEngine } from "../server/services/workflow";
 
 const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;

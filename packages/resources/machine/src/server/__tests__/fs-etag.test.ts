@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import {
   computeListFingerprint,
   computeReadFingerprint,

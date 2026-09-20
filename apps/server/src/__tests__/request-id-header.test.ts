@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { AppError } from "@fenix/platform-sdk";
 import Elysia from "elysia";
-import { AppError } from "../errors";
 import { errorPlugin } from "../plugins/error-handler";
 import { deriveRequestId, injectRequestId, isRecoverableCtrlSpa404, logError } from "../plugins/logger";
 

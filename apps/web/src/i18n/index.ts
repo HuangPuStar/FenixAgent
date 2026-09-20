@@ -1,3 +1,6 @@
+// 资源包自持的命名空间从包内 i18n 子路径取用（键的最终所在地 = 包的 owner）：本包页面与它导出的
+// MasterKeyGate 都读 SANDBOX_NS，未注册时这些控制台页面会整页显示原始 key。
+import { SANDBOX_NS, sandboxResources } from "@fenix/resource-sandbox/web/i18n";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
@@ -78,6 +81,8 @@ export const NS = {
   AGENT_HOME: "agentHome",
   PROD_VIEWS: "prodViews",
   TOOL_NARRATOR: "toolNarrator",
+  // 资源包自持命名空间：常量由包声明（SANDBOX_NS），宿主只登记，不复制字面量。
+  SANDBOX: SANDBOX_NS,
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -113,6 +118,7 @@ i18n
         [NS.AGENT_HOME]: agentHomeEN,
         [NS.PROD_VIEWS]: prodViewsEN,
         [NS.TOOL_NARRATOR]: toolNarratorEN,
+        [NS.SANDBOX]: sandboxResources.en,
       },
       zh: {
         [NS.COMMON]: commonZH,
@@ -140,6 +146,7 @@ i18n
         [NS.AGENT_HOME]: agentHomeZH,
         [NS.PROD_VIEWS]: prodViewsZH,
         [NS.TOOL_NARRATOR]: toolNarratorZH,
+        [NS.SANDBOX]: sandboxResources.zh,
       },
     },
     fallbackLng: "en",
@@ -168,6 +175,7 @@ i18n
       NS.AGENT_HOME,
       NS.PROD_VIEWS,
       NS.TOOL_NARRATOR,
+      NS.SANDBOX,
     ],
     interpolation: { escapeValue: false },
     detection: {

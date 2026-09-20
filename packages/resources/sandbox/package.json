@@ -7,13 +7,18 @@
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-machine": "workspace:*",
     "@fenix/sandbox-provider": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "zod": "^4.3.6"
   },
   "exports": {
     ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
-    "./web": "./web/index.ts"
+    "./server/testing": "./src/server/testing.ts",
+    "./web": "./web/index.ts",
+    "./web/i18n": "./web/i18n/index.ts"
   }
 }

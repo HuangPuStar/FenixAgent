@@ -34,6 +34,7 @@
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/core": "workspace:*",
     "@fenix/orchestration": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "acp-link": "workspace:*",
     "yjs": "^13.6.21",
     "ioredis": "^5.10.1"

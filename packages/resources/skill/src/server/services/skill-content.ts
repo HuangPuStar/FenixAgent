@@ -10,8 +10,8 @@
  */
 
 import { error as logError } from "@fenix/logger";
+import { ValidationError } from "@fenix/platform-sdk";
 import { config } from "@server/config";
-import { ValidationError } from "@server/errors";
 import type {
   ImportConflictStrategy,
   ImportSkillsConflict,

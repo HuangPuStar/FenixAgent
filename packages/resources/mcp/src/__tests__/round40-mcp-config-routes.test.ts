@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { ConflictError, ForbiddenError, NotFoundError } from "@server/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs } from "@server/test-utils/helpers";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
 
 /**

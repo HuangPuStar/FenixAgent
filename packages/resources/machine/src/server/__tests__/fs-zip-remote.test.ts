@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { resetAllStubs, stubDb, stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
 import { contentDispositionAttachment } from "../../routes/web/fs";
 import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
 

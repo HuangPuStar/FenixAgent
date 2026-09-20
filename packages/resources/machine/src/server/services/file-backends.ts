@@ -16,7 +16,7 @@ import type { Stats } from "node:fs";
 import { lstat, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
-import { NotFoundError, ValidationError } from "@server/errors";
+import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import type { FileOpOptions } from "../transport/file-ws-requests";
 import { type FileChangeKind, publishFileChanged } from "./file-event-limiter";
 import { normalizeUploadRelativePath } from "./file-path-validator";

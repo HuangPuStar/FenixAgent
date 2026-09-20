@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import type { AuthContext } from "@server/plugins/auth";
-import { resetAllStubs, stubDb, stubIdentityDirectory } from "@server/test-utils/helpers";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。

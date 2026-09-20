@@ -16,7 +16,7 @@ export type { SkillSystemApi, SkillSystemRecord } from "./services/skill-system"
  * 把装配故障伪装成业务结果。
  *
  * 本文件是包导出面 `./server/runtime` 的入口：宿主与资源包只需要装配结果时从这里导入，不要经
- * `./server` barrel——barrel 会连带导出 HTTP 路由（elysia 端点、`@server/errors`、下载 token），把
+ * `./server` barrel——barrel 会连带导出 HTTP 路由（elysia 端点、下载 token），把
  * 调用方拉进宿主的依赖图，在宿主服务与资源包之间形成环（见
  * `scripts/architecture/exceptions.json` 的 no-circular 说明，mcp 包同一入口的注释记录了历史成因）。
  */

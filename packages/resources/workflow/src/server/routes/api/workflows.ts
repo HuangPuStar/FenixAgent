@@ -5,11 +5,11 @@
  * 允许外部系统通过 API Key 调用已发布的工作流并获取执行结果。
  */
 
+import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
 import { WorkflowError } from "@fenix/workflow-engine";
 import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import { z } from "zod/v4";
-import { ApiErrorResponseSchema } from "../../schemas/api-common.schema";
 import {
   ApiWorkflowAuthorizationHeadersSchema,
   ApiWorkflowExecuteAsyncSchema,

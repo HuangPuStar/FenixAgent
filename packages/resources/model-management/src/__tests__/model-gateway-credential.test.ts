@@ -7,7 +7,7 @@ import {
   listModelGatewayCredentialsAfter,
   upsertModelGatewayCredential,
 } from "@fenix/model-management/server";
-import { resetDbStub, stubDb } from "@server/test-utils/stubs/db-stub";
+import { resetDbStub, stubDb } from "@fenix/platform-sdk/testing";
 
 const KEY = "a".repeat(32);
 

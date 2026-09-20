@@ -12,8 +12,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
-import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import { gate } from "../services/agent-file-service";
 import type { FileAuthContext } from "../services/file-types";
 

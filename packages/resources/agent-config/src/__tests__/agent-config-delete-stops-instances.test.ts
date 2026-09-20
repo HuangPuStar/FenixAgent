@@ -27,7 +27,8 @@ import {
 } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
-import { resetAllStubs, stubCoreBootstrap } from "@server/test-utils/helpers";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { agentConfigResource } from "../server/access/agent-config-resource";
 import { AgentConfigFacade } from "../server/facades/agent-config-facade";
 import { createStubAgentConfigService } from "../server/testing";

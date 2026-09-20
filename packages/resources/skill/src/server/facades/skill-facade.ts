@@ -3,12 +3,15 @@ import {
   type ActorContext,
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
   type ResourceAccess,
   ResourceAccessDeniedError,
   type ResourceAction,
   type ResourceScope,
+  ValidationError,
 } from "@fenix/platform-sdk";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@server/errors";
 import type { ScopedSkillRow, SkillWriteData } from "../repositories/skill";
 import { SKILL_LIST_ORDER, toSkillMetadata } from "../repositories/skill";
 import type { ImportConflictStrategy, ImportSkillsConflict, UploadSkillFile } from "../services/skill-content";

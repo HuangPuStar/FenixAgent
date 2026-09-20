@@ -1,7 +1,7 @@
 import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
-import { AppError } from "@server/errors";
+import { AppError } from "@fenix/platform-sdk";
 import type { AuthContext } from "@server/plugins/auth";
 import { getRemoteMachineId, remoteUploadFiles } from "./remote-file-service";
 import { isUserPath, normalizeUserRoutePath, resolveWorkspacePath } from "./workspace-fs";

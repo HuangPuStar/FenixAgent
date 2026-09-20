@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { NotFoundError } from "@server/errors";
+import { NotFoundError } from "@fenix/platform-sdk";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { setTestOrgContext } from "@server/services/org-context";
-import { readJson, resetAllStubs } from "@server/test-utils/helpers";
 import * as mcpInspector from "../server/services/mcp-inspector";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub } from "./fixtures";
 

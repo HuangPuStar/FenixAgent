@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { setConfig } from "@server/config";
 import {
-  resetAllStubs,
   stubCoreBootstrap,
-  stubDb,
   stubEnvironmentService,
   stubRegistry,
   stubRegistryHeartbeat,
-} from "@server/test-utils/helpers";
+} from "@server/test-utils/stubs/module-stubs";
 import type { WsConnection } from "@server/transport/ws-types";
 import type { AcpConnectionEntry } from "@server/types/store";
 

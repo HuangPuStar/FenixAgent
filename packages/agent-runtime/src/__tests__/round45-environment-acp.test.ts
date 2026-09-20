@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
-import { AppError, NotFoundError } from "@server/errors";
-import { resetAllStubs, stubEnvironmentRepo } from "@server/test-utils/helpers";
+import { AppError, NotFoundError } from "@fenix/platform-sdk";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import {
   createTemporaryEnvironment,
   deregisterEnvironment,
