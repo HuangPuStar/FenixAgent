@@ -272,3 +272,62 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
   `docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md` 不存在，1.5g 一并处理
   （改为指向真实存在的文档或删除该论据）。
 - **`@server/db/schema` 的 114 处生产命中**不在本任务范围（§1.7），1.5 只能保证不新增。
+
+## 七、交付记录
+
+### 1.5a 宿主死代码清理（2026-09-21）
+
+**删除清单（15 个文件，每项均经「零生产消费方」独立核验）**：
+
+| 文件 | 核验证据 |
+| --- | --- |
+| `logger.ts` | `@fenix/logger` 的兼容桥，仓内零 import（`import { logError } from "./logger"` 解析到 `plugins/logger.ts`，非本文件）；文件自述「新代码请直接使用 `@fenix/logger`」 |
+| `plugins/require-team-scope.ts` + `__tests__/require-team-scope.test.ts` | 生产零消费方；组织范围判定已由 `@fenix/access-control` + Resource Facade 承担 |
+| `utils/executable.ts` + `__tests__/executable.test.ts` | 宿主版零生产消费方；`acp-link/src/client/resolve-executable.ts` 与 `plugin-{ccb,opencode}/src/process/executable.ts` 各有实现 |
+| `services/config/jsonb.ts` + `__tests__/jsonb-utils.test.ts` | `parseJsonb` / `parseJsonbOr` 生产零消费方；`mcp` 包内已有同因实现 |
+| `schemas/index.ts` | 160 行纯转发 barrel，全仓零 import（含 `../schemas` 与 `@server/schemas` 两种形式） |
+| `schemas/sidebar-config.schema.ts` | owner 是 `@fenix/agent-config`；宿主这份的唯一引用就是上面那个 barrel |
+| `transport/ws-types.ts` | 零消费方；machine 与 agent-runtime 各自自持同名类型并已在包内写明取代理由 |
+| `types/messages.ts` | 全仓零 import |
+| `repositories/index.ts` | 全仓无 `@server/repositories` 消费方，仅 `setup-mocks.ts` 一处历史注释提及 |
+| `services/automationState.ts` + `types/api.ts` + `__tests__/automationState.test.ts` | 两份互相引用形成孤岛，`automation_state` 全仓无写入方（裁定见 §3.6） |
+
+**同步更新的既有台账（两处，均属「删除即销账」的既有惯例）**：
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`RMD_07_MOVES` 移出 9 个源文件项 + 3 个测试项，长度
+  62 → 50，并在既有注释块末尾补记本批的逐项删除理由。
+- `scripts/root-source-owner-rules.ts`：`RETAINED_HOST_TEST_RATIONALES` 移除随删除消失的 3 条
+  （`automationState` / `executable` / `jsonb-utils`）。
+
+**本轮未动**（登记理由，避免后续误判为遗漏）：
+
+- `services/config/mcp-system-server.ts`：它是「宿主对系统初始化路径的唯一出口」，但对应的
+  `RegisterSystemMcpServer` 端口从未被注入（`ensureHindsightMcpServer` 全仓仅测试调用）。这条
+  Hindsight 路径未接线，是迁入 memory 包还是删除需要更多判断，留给 1.5c。
+- `services/config-utils.ts` 的信封函数：删除需要同步调整 `resource-module-ports.ts` 的 import，
+  与 1.5c 的端口收敛同批处理更安全。
+
+**验证证据**：
+
+- `precheck` 第二次运行全绿：`All passed (109653ms)`，其中 package-tests 48091ms / 7228 pass /
+  0 fail。
+- **一次非确定性失败的记录**：首次运行 `package-tests` 报
+  `packages/chat-channel/src/channel/gateway-shared-relay.test.ts` 单项耗时 898839ms 后失败，
+  整个 package-tests 从基线 58.6s 涨到 902s。该文件单独复跑为 **11 pass / 0 fail / 6.72s**，
+  重跑全量亦通过。判定为并发环境下的偶发卡死：与本批删除无依赖交集（被删文件全部在
+  `apps/server`，该测试属 `chat-channel`），且同批的 `tsc (server)`、`architecture`、
+  `dependency-boundaries` 三项均通过。
+
+### 1.5b 勘察结论（实施前更新）
+
+- **`@server/plugins/auth` 的真实深链为 0**：全仓只有 2 处 import，均为宿主自身测试引用
+  `setTestAuth` / `resetTestAuth`（宿主测试工具，合法）；其余 28 处命中全部是解释「守卫改为工厂
+  注入」的注释。§六 中「需逐条甄别、可能撑大范围」的风险据此消除。
+- **缓存下沉的落点已确认**：`packages/platform/platform-sdk/src/server.ts` 的既有惯例
+  （`registerIdentityDirectory` + `unknown` 存储槽、读取时收窄为契约类型）正是模板。注意语义与
+  `getDatabase` 不同——无 `RCS_REDIS_URL` 时 Redis 连接合法地为 `null`，且 `cache.ts` 是**惰性**
+  建连（首次 `getCache()` 时才赋值 `_redis`），因此注册面必须存 **provider 函数**而非值快照。
+- **`agent-runtime` 的 `@server/config` 只剩两个键**：`config.defaultEngineType`（:127）与
+  `getBaseUrl()`（:453，注入 `USER_META_BASE_URL`）。包内 `src/server/config.ts` 的
+  `AgentRuntimeModuleConfig` 已提供 `getModuleConfig("agent-runtime")` 读取面，只需补这两个字段与
+  对应 schema 条目，宿主 `main.ts` 的模块配置同步补键。

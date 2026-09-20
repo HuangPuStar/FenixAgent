@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
 const RMD_07_MOVES = [
-  ["src/repositories/index.ts", "apps/server/src/repositories/index.ts"],
   ["src/routes/hooks.ts", "apps/server/src/routes/hooks.ts"],
   ["src/routes/web/index.ts", "apps/server/src/routes/web/index.ts"],
   ["src/routes/web/environments.ts", "apps/server/src/routes/web/environments.ts"],
@@ -10,15 +9,11 @@ const RMD_07_MOVES = [
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/schemas/index.ts", "apps/server/src/schemas/index.ts"],
   ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
   ["src/schemas/session.schema.ts", "apps/server/src/schemas/session.schema.ts"],
-  ["src/schemas/sidebar-config.schema.ts", "apps/server/src/schemas/sidebar-config.schema.ts"],
-  ["src/services/automationState.ts", "apps/server/src/services/automationState.ts"],
   ["src/services/build-info.ts", "apps/server/src/services/build-info.ts"],
   ["src/services/config-utils.ts", "apps/server/src/services/config-utils.ts"],
   ["src/services/config/index.ts", "apps/server/src/services/config/index.ts"],
-  ["src/services/config/jsonb.ts", "apps/server/src/services/config/jsonb.ts"],
   ["src/services/config/types.ts", "apps/server/src/services/config/types.ts"],
   ["src/services/config/user-config.ts", "apps/server/src/services/config/user-config.ts"],
   ["src/services/core-bootstrap.ts", "apps/server/src/services/core-bootstrap.ts"],
@@ -29,15 +24,10 @@ const RMD_07_MOVES = [
   ],
   ["src/services/sync-builtin.ts", "apps/server/src/services/sync-builtin.ts"],
   ["src/services/transport.ts", "apps/server/src/services/transport.ts"],
-  ["src/transport/ws-types.ts", "apps/server/src/transport/ws-types.ts"],
-  ["src/types/api.ts", "apps/server/src/types/api.ts"],
   ["src/types/global.d.ts", "apps/server/src/types/global.d.ts"],
-  ["src/types/messages.ts", "apps/server/src/types/messages.ts"],
-  ["src/utils/executable.ts", "apps/server/src/utils/executable.ts"],
   ...[
     "agent-platform-api-reference.test.ts",
     "architecture-check.test.ts",
-    "automationState.test.ts",
     "build-info.test.ts",
     "capabilities-coalescing.test.ts",
     "config-integration.test.ts",
@@ -46,8 +36,6 @@ const RMD_07_MOVES = [
     "engine-type-schema.test.ts",
     "error-class-semantics.test.ts",
     "error-handler.test.ts",
-    "executable.test.ts",
-    "jsonb-utils.test.ts",
     "migrate-agent-config-model-id.test.ts",
     "pagination-bounds.test.ts",
     "peri-task-detail-service.test.ts",
@@ -146,8 +134,20 @@ describe("RMD-07 server-host migration", () => {
   // `__tests__/round18-openai-response-protocol-boundaries.test.ts`。前两者唯一消费方是 agent-runtime 的
   // `/api/instances` 与 `/api/openai-chat`，测试则只覆盖搬入包内的 mapper；宿主侧已零消费方，按「删除优于
   // 兼容」把宿主副本删除、owner 落回包内。
+  // 任务 1.5a 的十二项（本轮移出本表，无新 owner）：宿主侧副本零生产消费方，按「删除优于兼容」删除。
+  // 源文件九项：`repositories/index.ts`（全仓无 `@server/repositories` 消费方，仅一处历史注释提及）、
+  // `schemas/index.ts`（160 行纯转发 barrel，仓内零 import）、`schemas/sidebar-config.schema.ts`（owner 是
+  // agent-config 包，宿主这份的唯一引用就是上面那个 barrel）、`services/automationState.ts` 与
+  // `types/api.ts`（两份互相引用形成孤岛，`automation_state` 全仓无写入方，裁定见
+  // review/task-1.5-host-aggregation.md §3.6）、`services/config/jsonb.ts`（`parseJsonb` / `parseJsonbOr`
+  // 生产零消费方，mcp 包内已有同因实现）、`transport/ws-types.ts` 与 `types/messages.ts`（machine /
+  // agent-runtime 各自自持同名类型并已在包内写明取代理由）、`utils/executable.ts`（acp-link 与
+  // plugin-ccb / plugin-opencode 各有实现）。
+  // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
+  // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
+  // 零消费者）不在本表内，无需在此登记。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(62);
+    expect(RMD_07_MOVES).toHaveLength(50);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
