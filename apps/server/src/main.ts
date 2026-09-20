@@ -185,9 +185,10 @@ initializeApplicationInfrastructure({
       systemAdminPasswordFile: config.systemAdminPasswordFile,
       disableSignup: config.disableSignup,
     },
-    // Agent Runtime 模块配置：本包自己的 7 个运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活
-    // 间隔）。三项并发上限缺省即「不限制」，`config` 已把 env 的 optional 语义原样带过来（`undefined` 而非 0）。
-    // 编排与启动参数类配置不在这里：它们随 W4 的 launch-spec 装配一起搬出宿主（见 §七 W1/W4 产出栏）。
+    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）加环境解析与
+    // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限）。三项并发
+    // 上限缺省即「不限制」，`config` 已把 env 的 optional 语义原样带过来（`undefined` 而非 0）。「启动参数
+    // 组装」类配置不在这里：那部分职责随 W4 的 launch-spec 装配搬出本包（见 §七 W1/W2/W4 产出栏）。
     "agent-runtime": {
       agentMaxConcurrency: config.agentMaxConcurrency,
       userAgentMaxConcurrency: config.userAgentMaxConcurrency,
@@ -196,6 +197,11 @@ initializeApplicationInfrastructure({
       acpIdleSweepIntervalSeconds: config.acpIdleSweepIntervalSeconds,
       acpActivityTimeoutSeconds: config.acpActivityTimeoutSeconds,
       wsKeepaliveInterval: config.wsKeepaliveInterval,
+      defaultMachineId: config.defaultMachineId,
+      disableLocalExecution: config.disableLocalExecution,
+      workspaceRoot: config.workspaceRoot,
+      acpRegistrySecret: env.REGISTRY_SECRET,
+      fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
     machine: {

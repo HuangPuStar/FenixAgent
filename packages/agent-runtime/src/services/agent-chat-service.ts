@@ -1,9 +1,9 @@
 import { log, error as logError } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
-import { db } from "@server/db";
 import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getAgentRuntimeDatabase } from "../server/db";
 import { agentInstanceService } from "../server/services/agent-instance-service";
 import { createWebEnvironment } from "../server/services/environment-web";
 import { connectAgentRelay } from "../server/transport/agent-relay";
@@ -382,6 +382,7 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
   }
 
   let environmentId: string;
+  const db = getAgentRuntimeDatabase();
   const existingRows = await db
     .select({ id: environment.id })
     .from(environment)

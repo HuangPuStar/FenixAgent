@@ -8,9 +8,27 @@ import * as z from "zod/v4";
  * 装配阶段经 `initializeApplicationInfrastructure({ moduleConfigs: { "agent-runtime": … } })` 注入。包内不做
  * 第二份环境解析：两处默认值一旦分歧便无法在启动期暴露，也会把部署知识泄漏进 runtime。
  *
- * 覆盖范围只含「运行态自身的旋钮」——并发上限、ACP 空闲 / 业务超时、WS 保活间隔。编排与启动参数类的配置
- * （默认机器、引擎类型、workspace 根、langfuse 等）仍由持有它们的调用方读宿主配置：那部分职责随 1.4 的 W4
- * 搬出本包，提前搬进这里只会形成第二处取数点。
+ * 覆盖范围含两类：
+ *
+ * 1. **运行态旋钮**（W1 落地）——并发上限、ACP 空闲 / 业务超时、WS 保活间隔。
+ * 2. **环境解析与协议入口的部署值**（W2 落地）——本地节点开关、workspace 根、`acp` 注册密钥、file-ws 帧
+ *    上限。这些值不参与「启动参数组装」（那部分职责随 1.4 的 W4 搬出本包，届时引擎类型等键与本包一并
+ *    解耦），但本包的环境归属解析（`environment-orchestration` 的 fallback 链）、workspace 路径规则与
+ *    `/acp/*` 协议入口必须读它们，读宿主 `@server/config` / `@server/env` 会把部署知识反向泄漏进本包，
+ *    因此经模块配置注入。
+ *
+ * 兜底机器 ID 与 machine 模块的 `MachineModuleConfig.defaultMachineId` 同源（都来自宿主 `RCS_DEFAULT_MACHINE_ID`）。
+ * 未沿用 observer 的「读 `getMachineConfig()` 不复制」口径，是因为：observer 读它是为了复述 machine 的身份，
+ * 而这里读它的 `environment-orchestration` fallback 链是 agent-runtime 自己的节点选择策略（`agent_config.machineId`
+ * → 兜底机器 → `local-default`），值必须与 `disableLocalExecution` 在同一处决策；且 agent-runtime 目前不依赖
+ * `@fenix/resource-machine`，为一个字符串引入新的跨包边不在本任务授权内。宿主是唯一取数点，两款模块配置各持
+ * 一份自己的切片，不构成两处 env 解析。
+ *
+ * 已知分歧（W2 记录，不在本任务修）：`server/services/workspace-resolver.ts` 仍直读 `process.env.WORKSPACE_ROOT`。
+ * 它与本配置的 `workspaceRoot` 是同一个部署值的两处取数点，宿主解析规则一致（`WORKSPACE_ROOT ?? cwd/workspaces`）。
+ * 未随 W2 收敛的原因是该函数被 machine / chat-channel 两个包及其大量测试直接复用（12+ 文件），改读模块配置
+ * 需要这些包的测试进程一并初始化基础设施，超出 1.4 的范围。移除条件：这些包的测试基础设施补齐模块配置注入后
+ * 统一改读 `getAgentRuntimeConfig().workspaceRoot`。
  *
  * 这些字段暂由宿主直接提供，而不是走模块 `envDefinitions`（声明、校验与 preflight 收敛归任务 1.7）。
  */
@@ -29,6 +47,16 @@ export interface AgentRuntimeModuleConfig {
   readonly acpActivityTimeoutSeconds: number;
   /** `/acp/ws` 服务端 keep_alive 数据帧间隔（秒）。 */
   readonly wsKeepaliveInterval: number;
+  /** agent config 未绑定 `machineId` 时的兜底机器 ID；缺省表示退回本地默认节点。 */
+  readonly defaultMachineId?: string;
+  /** 是否禁用本地 `local-default` 节点；启用后实例必须路由到远程 machine。 */
+  readonly disableLocalExecution: boolean;
+  /** workspace 根目录；宿主已解析为绝对路径（`WORKSPACE_ROOT`，默认运行目录下的 `workspaces`）。 */
+  readonly workspaceRoot: string;
+  /** `/acp/*` 接入方必须携带的共享密钥（query `secret`）。 */
+  readonly acpRegistrySecret: string;
+  /** file-ws 单帧最大载荷（MB）。 */
+  readonly fileWsMaxPayloadMb: number;
 }
 
 /**
@@ -48,6 +76,11 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   acpIdleSweepIntervalSeconds: z.number().int().positive(),
   acpActivityTimeoutSeconds: z.number().int().positive(),
   wsKeepaliveInterval: z.number().int().positive(),
+  defaultMachineId: z.string().min(1).optional(),
+  disableLocalExecution: z.boolean(),
+  workspaceRoot: z.string().min(1),
+  acpRegistrySecret: z.string().min(1),
+  fileWsMaxPayloadMb: z.number().int().positive(),
 });
 
 /**

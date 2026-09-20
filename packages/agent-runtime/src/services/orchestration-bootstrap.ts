@@ -6,7 +6,7 @@
  *     （local-default 占位节点 + agent-node-bridge 的真实节点委托）
  *   - agentConfigRepo / agentEngineRepo / environmentOrchestrationRepo：
  *     I4 第一阶段实现的编排域 Repo（src/repositories/）
- *   - workspaceRoot：config.workspaceRoot（WORKSPACE_ROOT 环境变量，默认 cwd/workspaces）
+ *   - workspaceRoot：模块配置（宿主 `WORKSPACE_ROOT`，默认 cwd/workspaces）
  *
  * 单例缓存是必要的：AgentController 内部维护活跃实例表，多个实例会各自持有一份
  * 互不可见的实例表，导致 stopInstance / listInstances 语义分裂。
@@ -21,9 +21,9 @@ import { randomBytes } from "node:crypto";
 import { agentConfigRepo, resolveAgentNode } from "@fenix/agent-config/server";
 import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
 import { AppError } from "@fenix/platform-sdk";
-import { sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
-import { config } from "@server/config";
+import { getSandboxConfig, sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
 import { agentEngineRepo } from "@server/repositories";
+import { getAgentRuntimeConfig } from "../server/config";
 import type { ExecutionNodeResolver } from "../server/repositories/environment-orchestration";
 import { environmentOrchestrationRepo } from "../server/repositories/environment-orchestration";
 import { getLocalNodeAgentNodeService } from "../server/services/local-node-agent-node-service-port";
@@ -37,8 +37,8 @@ export function getOrchestrationLaunchSpecBuilder(): LaunchSpecBuilder {
       agentConfigRepo,
       environmentRepo: environmentOrchestrationRepo,
       agentEngineRepo,
-      // config.ts 已 resolve 保证非 null（WORKSPACE_ROOT 默认 ./workspaces）
-      workspaceRoot: config.workspaceRoot,
+      // 模块配置的 workspaceRoot 已由宿主 resolve 为绝对路径（WORKSPACE_ROOT 默认 ./workspaces）
+      workspaceRoot: getAgentRuntimeConfig().workspaceRoot,
     });
   }
   return launchSpecBuilder;
@@ -90,7 +90,7 @@ async function prepareSandboxNode(
  * 执行节点解析器工厂（R6）：决策逻辑与依赖分离，便于直接单测。
  *
  * 依赖以快照注入（prepareSandbox 实现 + sandbox 开关 + 默认资源池）：
- * 生产使用 config 单例与 sandboxExecutionHandler；测试注入 fake 依赖即可覆盖
+ * 生产使用 Sandbox 模块配置与 sandboxExecutionHandler；测试注入 fake 依赖即可覆盖
  * 全部分支，无需触达 DB / provider。
  *
  * 解析优先级对齐旧 spawnInstanceFromEnvironment：
@@ -118,14 +118,14 @@ export function createExecutionNodeResolver(
     agentNode: unknown;
     configMachineId: string | null;
   }): Promise<string | null> {
-    // 动态读取 config：config 单例初始为空 env 构建（src/config.ts 延迟解析设计），
-    // 真实值由 index.ts 顶层 applyEnv(validateEnv()) 写入。本 resolver 在模块
-    // 求值阶段创建，若在此冻结默认值会永久拿到空配置，导致默认沙盒策略在运行时
-    // 失效（2026-08-17 事故：resolver 冻结 sandboxEnabled=false，spawn 静默回退
-    // local-default）。deps 显式注入（测试）优先于 config 动态读取。
-    const sandboxEnabled = deps.sandboxEnabled ?? config.sandboxEnabled;
+    // 动态读取模块配置：本 resolver 在模块求值阶段创建，而模块配置由宿主在装配阶段经
+    // `initializeApplicationInfrastructure()` 注入，模块加载期读取会抛错。若在工厂里冻结默认值，
+    // 解析器会永久拿到构造那一刻的值，导致默认沙盒策略在运行时失效（2026-08-17 事故：resolver
+    // 冻结 sandboxEnabled=false，spawn 静默回退 local-default）。deps 显式注入（测试）优先。
+    const sandboxConfig = getSandboxConfig();
+    const sandboxEnabled = deps.sandboxEnabled ?? sandboxConfig.sandboxEnabled;
     const defaultSandboxPoolId =
-      deps.defaultSandboxPoolId === undefined ? config.defaultSandboxPoolId : deps.defaultSandboxPoolId;
+      deps.defaultSandboxPoolId === undefined ? sandboxConfig.defaultSandboxPoolId : deps.defaultSandboxPoolId;
     const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
     const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
     const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;

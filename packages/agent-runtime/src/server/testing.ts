@@ -12,6 +12,7 @@
  * 配置必须真的经 `initializeApplicationInfrastructure()` 装进去。
  */
 
+import { join } from "node:path";
 import { overrideModuleConfig } from "@fenix/platform-sdk/server";
 import { getDbStub, initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentRuntimeModuleConfig } from "./config";
@@ -20,13 +21,22 @@ import { getAgentRuntimeConfig } from "./config";
 /**
  * 构造一份字段齐全的 Agent Runtime 模块配置。
  *
- * 四个超时/保活旋钮取宿主部署默认值（`apps/server/src/env.ts` 的 zod default，与 `apps/server/src/config.ts`
+ * 超时/保活旋钮取宿主部署默认值（`apps/server/src/env.ts` 的 zod default，与 `apps/server/src/config.ts`
  * 同源）：ACP 空闲 / 巡检 / 业务超时 300 / 300 / 1200 秒，WS 保活间隔 20 秒。
  *
  * **三个并发上限刻意不设置**。它们在宿主 env schema 里是 `optional`（`RCS_USER_AGENT_MAX_CONCURRENCY` 除外，
  * 部署默认 10），而迁移前宿主测试进程读到的是 `buildConfig({} as Env)`——即全部 `undefined`，限流不生效。
  * 这里若照抄部署默认值，`userAgentMaxConcurrency: 10` 会给宿主用例新引入一条它们从未见过的用户级配额
  * （单用户多实例的用例会变成 429）。需要验证限流的用例显式传值。
+ *
+ * 其余部署值同理按「宿主测试进程实际读到的值」填：`workspaceRoot` 取宿主 `config.ts` 对空 env 的解析结果
+ * （`WORKSPACE_ROOT ?? ./workspaces` 相对 cwd 的绝对路径）；`disableLocalExecution` 取 `false`（宿主 env
+ * 默认值）。兜底机器 ID 不在本配置里，它归 machine 模块（`getMachineConfig().defaultMachineId`），需要它的
+ * 用例经 `stubMachineModuleConfig` 之类入口调整 machine 那份配置。
+ *
+ * `acpRegistrySecret` 刻意**不**照抄宿主 env 的 zod 默认值，而用一个显式的测试值：默认值是部署期密钥，
+ * 写进 fixture 会让「密钥不得进入源码」的红线在测试代码里破口，也会让用例静默依赖那个字面量。需要与
+ * `/acp/*` 端点握手的用例应从 `getAgentRuntimeConfig().acpRegistrySecret` 取值。
  */
 export function createAgentRuntimeModuleConfig(
   overrides: Partial<AgentRuntimeModuleConfig> = {},
@@ -36,6 +46,10 @@ export function createAgentRuntimeModuleConfig(
     acpIdleSweepIntervalSeconds: 300,
     acpActivityTimeoutSeconds: 1200,
     wsKeepaliveInterval: 20,
+    disableLocalExecution: false,
+    workspaceRoot: join(process.cwd(), "workspaces"),
+    acpRegistrySecret: "test-acp-registry-secret",
+    fileWsMaxPayloadMb: 32,
     ...overrides,
   };
 }

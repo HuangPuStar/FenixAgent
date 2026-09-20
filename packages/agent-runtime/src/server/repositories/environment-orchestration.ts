@@ -1,8 +1,8 @@
 import type { EnvironmentData, EnvironmentRepo } from "@fenix/orchestration";
-import { config } from "@server/config";
-import { db } from "@server/db";
 import { agentConfig, environment } from "@server/db/schema";
 import { eq } from "drizzle-orm";
+import { getAgentRuntimeConfig } from "../config";
+import { getAgentRuntimeDatabase } from "../db";
 
 /**
  * 宿主注入的"执行节点解析器"（可选）。
@@ -51,7 +51,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    *   2. agent_config.machineId 列（仅 agentNode 为 null 时生效 —— agentNode 存在
    *      即权威，与 resolveAgentNode 语义对齐，避免 spawn/文件路径分裂；
    *      空串视为未绑定，见下方 `||` 注释）；
-   *   3. config.defaultMachineId（RCS_DEFAULT_MACHINE_ID 环境变量）；
+   *   3. 模块配置 defaultMachineId（宿主 RCS_DEFAULT_MACHINE_ID）；
    *   4. 本地执行占位节点 "local-default"（RCS_DISABLE_LOCAL_EXECUTION 未设置时），
    *      与旧路径 nodeId 三选一（agent config 绑定 > 系统默认 > local-default）一致；
    *   5. 禁用本地执行且无任何 machine 配置时为 null，编排域视为配置错误拒绝启动。
@@ -59,6 +59,8 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    * core 侧在 disableLocalExecution 时同样不注册 local-default 节点。
    */
   async getEnvironment(envId: string, userId?: string): Promise<EnvironmentData | null> {
+    const db = getAgentRuntimeDatabase();
+    const { defaultMachineId, disableLocalExecution } = getAgentRuntimeConfig();
     const rows = await db
       .select({
         id: environment.id,
@@ -108,10 +110,10 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         // 否则 spawn 用列、文件路径忽略列会分裂，实例在列绑定机器上运行而文件操作
         // 落到默认机器/本地）。agentNode 为 null（历史数据、合并前恒为 null）时列照常生效。
         (row.agentNode == null ? row.configMachineId || null : null) ??
-        config.defaultMachineId ??
+        defaultMachineId ??
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。
-        (config.disableLocalExecution ? null : "local-default"),
+        (disableLocalExecution ? null : "local-default"),
       autoStart: row.autoStart ?? false,
     };
   }

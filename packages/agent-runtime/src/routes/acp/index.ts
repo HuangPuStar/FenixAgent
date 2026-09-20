@@ -1,7 +1,6 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import { AppError } from "@fenix/platform-sdk";
-import { validateEnv } from "@server/env";
 import type { RequestAuthResult } from "@server/plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
@@ -11,6 +10,7 @@ import {
   AcpRegistrySecretQuerySchema,
   AcpRelayParamsSchema,
 } from "../../schemas/acp.schema";
+import { getAgentRuntimeConfig } from "../../server/config";
 import { environmentRepo } from "../../server/repositories/environment";
 import { getChatChannelController } from "../../server/services/chat-channel-bootstrap";
 import { getFileWsPort } from "../../server/services/file-ws-port";
@@ -42,15 +42,14 @@ function isOverWsLimit(data: unknown): boolean {
 }
 
 /**
- * file-ws 单帧最大载荷（字节），来源 `RCS_FILE_WS_MAX_PAYLOAD_MB`（默认 32MB，§7.6）。
+ * file-ws 单帧最大载荷（字节），来源模块配置的 `fileWsMaxPayloadMb`（宿主 `RCS_FILE_WS_MAX_PAYLOAD_MB`，默认 32MB，§7.6）。
  *
- * 惰性求值并缓存：本模块在 index.ts 的 `applyEnv(validateEnv())` 之前被静态 import，
- * 且 validateEnv 在测试环境缺少必填变量时会抛错，不能在模块顶层调用；
- * 首次消息到达时 env 已校验完毕，取一次后缓存。
+ * 惰性求值并缓存：模块配置由宿主在装配阶段注入，本模块可能在装配完成前被静态 import，
+ * 不能在模块顶层读取；首次消息到达时配置已就绪，取一次后缓存（配置进程内不可变）。
  */
 let fileWsMaxPayloadBytes: number | null = null;
 function getFileWsMaxPayloadBytes(): number {
-  fileWsMaxPayloadBytes ??= validateEnv().RCS_FILE_WS_MAX_PAYLOAD_MB * 1024 * 1024;
+  fileWsMaxPayloadBytes ??= getAgentRuntimeConfig().fileWsMaxPayloadMb * 1024 * 1024;
   return fileWsMaxPayloadBytes;
 }
 
@@ -129,7 +128,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     async open(ws) {
       const url = new URL(ws.data.request.url);
       const secret = url.searchParams.get("secret");
-      const registrySecret = validateEnv().REGISTRY_SECRET;
+      const registrySecret = getAgentRuntimeConfig().acpRegistrySecret;
 
       if (!secret || !registrySecret || secret !== registrySecret) {
         log("[ACP-WS] Upgrade rejected: invalid or missing registry secret");
@@ -197,7 +196,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     async open(ws) {
       const url = new URL(ws.data.request.url);
       const secret = url.searchParams.get("secret");
-      const registrySecret = validateEnv().REGISTRY_SECRET;
+      const registrySecret = getAgentRuntimeConfig().acpRegistrySecret;
 
       if (!secret || !registrySecret || secret !== registrySecret) {
         log("[File-WS] Upgrade rejected: invalid or missing registry secret");

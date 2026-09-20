@@ -65,6 +65,7 @@ export * from "./transport/event-bus";
 // 本包运行态类型（1.4 W1 从宿主 `@server/types/*` 收回）：ACP 连接登记项与快照、实例注册表补充字段、
 // 环境注册报文。`WsConnection` 一并导出，使 `AcpConnectionEntry["ws"]` 这类派生在包外可解析。
 export * from "./types/acp-connection";
+export * from "./types/auth";
 export * from "./types/environment";
 export * from "./types/instance";
 export * from "./types/ws-types";

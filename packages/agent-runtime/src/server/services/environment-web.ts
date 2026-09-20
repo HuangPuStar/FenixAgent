@@ -2,12 +2,12 @@ import { randomBytes } from "node:crypto";
 import { getReadableAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
 import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { db } from "@server/db";
 import { agentConfig, environment, machine } from "@server/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { toActorContext } from "../../services/actor-context";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
+import { getAgentRuntimeDatabase } from "../db";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories/environment";
 import { environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
@@ -72,6 +72,7 @@ function toEnvironmentRecord(row: typeof environment.$inferSelect): EnvironmentR
  */
 async function findReusableEnvironment(params: CreateWebEnvironmentParams): Promise<EnvironmentRecord | null> {
   const organizationId = params.organizationId ?? params.userId;
+  const db = getAgentRuntimeDatabase();
   const environments = await db.select().from(environment).where(eq(environment.organizationId, organizationId));
 
   // 绑定 agent 的 runtime environment 需要和访问者一一对应；
@@ -97,6 +98,7 @@ async function insertEnvironmentRecord(params: {
   machineName?: string;
 }): Promise<EnvironmentRecord> {
   const now = new Date();
+  const db = getAgentRuntimeDatabase();
   await db.insert(environment).values({
     id: params.id,
     name: params.name,
@@ -161,6 +163,7 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
   const agentNode = resolveAgentNode(agent);
   if (agentNode?.kind === "machine") {
+    const db = getAgentRuntimeDatabase();
     const m = await db
       .select({ agentName: machine.agentName })
       .from(machine)
@@ -235,6 +238,7 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     let machineName: string | null = null;
     const agentNode = resolveAgentNode(agent);
     if (agentNode?.kind === "machine") {
+      const db = getAgentRuntimeDatabase();
       const m = await db
         .select({ agentName: machine.agentName })
         .from(machine)
@@ -260,6 +264,7 @@ export async function updateWebEnvironment(envId: string, organizationId: string
 /** 获取团队所有环境并组装实例信息（web/environments 路由用） */
 export async function listEnvironmentsWithInstances(organizationId: string, viewerUserId?: string) {
   // LEFT JOIN agentConfig 一次性拿到 environment + agent_name
+  const db = getAgentRuntimeDatabase();
   const rows = await db
     .select({
       env: environment,
