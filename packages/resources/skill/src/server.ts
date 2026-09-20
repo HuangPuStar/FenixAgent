@@ -19,6 +19,7 @@ export type {
   SkillWriteInput,
 } from "./server/facades/skill-facade";
 export { createSkillServerModule, type SkillModuleDeps, type SkillServerModule } from "./server/module";
+export type { SkillRow } from "./server/repositories/skill";
 export { createApiSkillsRoutes } from "./server/routes/api/skills";
 export type { SkillRouteDependencies } from "./server/routes/dependencies";
 export { skillDownloadRoutes } from "./server/routes/skills";

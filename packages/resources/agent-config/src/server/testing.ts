@@ -53,12 +53,19 @@ const agentConfigDbProxy = new Proxy({} as Record<string, any>, {
  *
  * 必须经 `initializeTestApplicationInfrastructure` 走生产读取路径（`getModuleConfig("agent-config")`），
  * 而不是给模块留测试专用的配置分支；初始化只允许一次，故先复位。
+ *
+ * `extraModuleConfigs` 给"同一用例还要读别的模块配置"的场景用（如启动参数组装要读 `memory` 的
+ * Hindsight 地址）：初始化只允许一次，无法先调用本函数再调用另一个包的初始化入口，只能一次传齐。
+ * 与 workflow 包 `initializeWorkflowModule` 的同名参数同形。
  */
-export function initializeAgentConfigModuleConfig(overrides: Partial<AgentConfigModuleConfig> = {}): void {
+export function initializeAgentConfigModuleConfig(
+  overrides: Partial<AgentConfigModuleConfig> = {},
+  extraModuleConfigs: Readonly<Record<string, unknown>> = {},
+): void {
   resetAllStubs();
   initializeTestApplicationInfrastructure({
     database: agentConfigDbProxy,
-    moduleConfigs: { "agent-config": createAgentConfigModuleConfig(overrides) },
+    moduleConfigs: { "agent-config": createAgentConfigModuleConfig(overrides), ...extraModuleConfigs },
   });
 }
 

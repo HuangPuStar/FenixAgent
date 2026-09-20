@@ -15,6 +15,7 @@ export {
   type McpServerModuleDeps,
   type McpServerServerModule,
 } from "./server/module";
+export type { McpServerRow } from "./server/repositories/mcp-server";
 export { createApiMcpRoutes } from "./server/routes/api/mcp";
 export type { McpRouteDependencies } from "./server/routes/dependencies";
 export { default as knowledgeMcpRoutes } from "./server/routes/mcp/knowledge";
