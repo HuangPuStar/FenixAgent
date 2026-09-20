@@ -961,3 +961,65 @@ core 实例、逐个 `unregisterInstance`；②调用编排域收敛 `cleanupIns
 `architecture`、`dependency-boundaries`（2383 modules，0 条新增违规）、`module-registry`、三项 `tsc`、
 `lint`、`format`、`import-sort` 均通过。定向运行 `machine-instance-cleanup`（3 pass）、`runtime-port`、
 `orchestration-machine-cleanup`、`machine-cleanup-node-dispatch`、`round39-registry-service` 共 47 pass / 0 fail。
+
+### 1.5c-8 `services/config/*` 与 `config-utils.ts` 信封函数删除（2026-09-21）
+
+1.5a 计划行原文：「`services/config/index.ts`、`services/config-utils.ts` 的信封函数（`resolveApiKey`
+保留）、`services/config/mcp-system-server.ts`（零消费方薄包装）」，判据「删除后 `precheck` 全绿；每项删除
+均有『零生产消费方』证据」。1.5a 交付记录把后两项留到本片（见 §七 1.5a「本轮未动」），本片收口。
+
+**一、删除清单与零消费方证据**
+
+| 项 | 「零生产消费方」证据 | 现 owner / 取代者 |
+| --- | --- | --- |
+| `services/config/mcp-system-server.ts`（23 行） | 唯一消费者是同批删除的 `services/config/index.ts`；它服务的端口 `RegisterSystemMcpServer` 从未被注入——`ensureHindsightMcpServer` 在 `apps/**` 命中 0 处生产调用，包内只有 `src/server/services/hindsight.ts` 的定义与 7 条用例 | 接线时在装配点委托一次 `getMcpServerModule().service.upsertSystemServer`（原包装体就是这一行） |
+| `services/config/index.ts`（3 行 barrel） | 三条导出全零导入方：`upsertSystemMcpServer`（同上）、`AuthContext` 类型（宿主全部 `AuthContext` 消费方都直接取自 `plugins/auth`，如 `sync-builtin.ts` / `org-context.ts`）、`PermissionAction` / `PermissionConfig`（宿主无消费方）。唯一提到该路径的代码是 `setup-mocks.ts` 的 `mock.module("@server/services/config")`，而仓内没有任何用例需要它提供的键 | `services/config/types.ts` 保留（`env.ts` 的 `ENGINE_TYPES` 取自它，`rmd-07` 条目不变） |
+| `config-utils.ts` 的 8 个信封/工具函数（`configSuccess` / `configError` / `configNotFound` / `configValidationError` / `isValidResourceName` / `toKeyHint` / `safeJsonStringify` / `safeJsonParse`） | 生产消费方只有 `resolveApiKey`（`services/resource-module-ports.ts:27` 的 `resolveSecretReference`）一个；其余 8 个只被 `round16` / `round22` 两条宿主用例引用 | 包内自持：`@fenix/model-management` 的 `src/server/config-envelope.ts`（`configSuccess` / `configError` / `toKeyHint`，其 `toKeyHint` 改为传入 resolver）、`@fenix/agent-config` 的 `isValidAgentName`（与 `isValidResourceName` 逐字符等价，agent-config README 早已登记「删除时须同批改这两条用例」）；`safeJson*` 的唯一消费方是已迁出的旧 `/web/config/*` 路由，迁出后无取代者 |
+
+**二、`upsertSystemMcpServer` 两候选的取舍（1.5a 留给本片的判断）**
+
+- **候选「迁入 memory 包」不成立**：memory 包的 `fenix.module.ts` 把 `dependsOn` 冻结为 `[]`
+  （`assertDependsOnDeclared` 要求每条都在 `package.json` 有 workspace 依赖），而写入实现属
+  `@fenix/resource-mcp`——跨包依赖过不去，这正是当初引入 `RegisterSystemMcpServer` 参数注入的原因
+  （`hindsight.ts` 头注释）。把宿主这份适配器搬进 memory 包只会复现同一个依赖问题。
+- **采用删除**：整条 Hindsight 登记路径未接线（`ensureHindsightMcpServer` 生产零调用；`main.ts:227` 只把
+  `HINDSIGHT_MCP_URL` 传进模块配置，没有消费者），宿主这 6 行是死适配器。删除不改变 memory README 第 10 条
+  遗留的 (a) 接线 / (b) 删除 裁定——那条裁定针对**包内**登记实现与 7 条用例，本片未动它们；本片只是把「接线」
+  的成本降到装配点一次委托，已在该条尾部补记。
+
+**三、测试处置**
+
+- `round16`（−11 例）/ `round22`（−28 例）中被删函数的部分同步删除，保留 `resolveApiKey`（宿主仍要注入它）
+  与两文件其它主题；两文件头部注释改写，说明「输入边界」现在只剩密钥解引用与系统提示词拼装，以及被删部分的
+  行为由哪里覆盖。
+- **为什么不把断言改指包内实现**：包内 `toKeyHint` 多一个 resolver 形参、`configSuccess` / `configError` 的
+  消费方是包内路由工厂，签名与调用面都与宿主版不同，且包内已有自己的用例
+  （`round-config-providers-routes.test.ts` 经 provider 视图覆盖 keyHint 与信封形状）。宿主侧再抄一份断言
+  等于给包内实现加第二套测试入口，与「同一能力只有一个 owner」相悖。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`RMD_07_MOVES` 移出 `services/config/index.ts` 一项，
+  长度 40 → 39，并在 MOVES 注释块末尾补记本批删除理由（含「另两个删除项不在本表内」的说明）。
+- `scripts/root-source-owner-rules.ts`：无本批相关条目（`RETAINED_HOST_TEST_RATIONALES` 中 `round16` /
+  `round22` 两条仍成立——文件保留、主题未变）；`scripts/architecture/exceptions.json`、`FUNCTIONAL_MODULE_INVENTORY.md`
+  对本批无命中。
+
+**五、注释与 README 同步**
+
+- 包内注释三处改为现在时的事实陈述：`memory/.../hindsight.ts` 的端口注释（不再声称宿主已有可原样传入的实现，
+  改述为「宿主在接线处委托一次」+ 删除记录）、`mcp/src/__tests__/mcp-source-migration.test.ts` 的
+  「不在本清单里」说明、`mcp/src/server/runtime.ts` 的环约束说明（保留约束，补记该文件已删除）。
+- README 三份：`memory/README.md` 第 10 条追加 2026-09-21 更新（见上）；`mcp/README.md` 的领域服务条改为
+  「宿主在接线处经 `./server/runtime` 调用」；`agent-config/README.md` 把 `isValidResourceName` 从「待宿主
+  删除」挪入「已删除」清单。
+- **顺带修正一处 1.5c-6 遗留的失真**：`agent-config/README.md` 同一段落的「宿主 `user_config` 的读写」条目仍
+  指向 1.5c-6 已删除的 `apps/server/src/services/config/user-config.ts`，随本次同段改写为 identity 的
+  `src/repositories/user-config.ts`。同因的 `packages/platform/identity/README.md:45`（消费者路径同样过时）
+  不在本片改动面内，留 §1.5g。
+
+**验证证据**：定向运行 `round16` / `round22` / `config-integration` / `rmd-07` 共 47 pass / 0 fail；
+`mcp` + `memory` 两包 291 pass / 0 fail。`precheck` 全绿 `All passed (101203ms)`——server-and-script-tests
+**759 pass / 0 fail**（较 1.5c-7 的 798 少 39，恰为本片删除的 11 + 28 条断言，无其它用例受影响）；
+package-tests 7301 pass / 2 skip / 0 fail（与 1.5c-7 持平）；web-app-tests 946 pass / 0 fail；
+`architecture`、`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。

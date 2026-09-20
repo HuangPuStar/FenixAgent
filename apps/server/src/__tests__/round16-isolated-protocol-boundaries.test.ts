@@ -3,17 +3,7 @@ import { composeAgentSystemPrompt, DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/ag
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "@fenix/chat-channel/server";
 import { AppError, PaginationParamsSchema } from "@fenix/platform-sdk";
 import { ApiMcpListQuerySchema } from "@fenix/resource-mcp/server/schema";
-import {
-  configError,
-  configNotFound,
-  configSuccess,
-  configValidationError,
-  isValidResourceName,
-  resolveApiKey,
-  safeJsonParse,
-  safeJsonStringify,
-  toKeyHint,
-} from "../services/config-utils";
+import { resolveApiKey } from "../services/config-utils";
 
 type EnvironmentSnapshot = { value: string | undefined };
 const apiKeyEnvironmentName = "FENIX_ROUND16_TEST_API_KEY";
@@ -28,6 +18,15 @@ afterEach(() => {
   apiKeyEnvironment = { value: undefined };
 });
 
+/**
+ * round16 协议与输入边界的隔离用例。
+ *
+ * 本文件原有的 `/web/config/*` 共享工具断言（响应信封、资源名校验、密钥提示、JSON 安全转换）随宿主
+ * `services/config-utils.ts` 的信封函数在任务 1.5c 删除：那些函数的消费方是已迁入资源包的旧路由，
+ * 宿主副本零生产消费方，行为由包内实现（`@fenix/model-management` 的 `config-envelope.ts`、
+ * `@fenix/agent-config` 的 `isValidAgentName`）的用例覆盖。保留 `resolveApiKey`：它是宿主仍要注入的
+ * 密钥引用解析（见 `services/resource-module-ports.ts`）。
+ */
 describe("round16 isolated protocol and boundary coverage", () => {
   // 默认模板必须同时注入产品身份与用户提示词。
   test("默认系统提示词替换两个占位符", () => {
@@ -58,50 +57,6 @@ describe("round16 isolated protocol and boundary coverage", () => {
     expect(composeAgentSystemPrompt("规则 {{agentName}}", "A", "  ")).toBe("规则 A");
   });
 
-  // 成功配置响应必须保持调用方数据原样。
-  test("配置成功响应封装业务数据", () => {
-    expect(configSuccess({ id: "resource-1" })).toEqual({ success: true, data: { id: "resource-1" } });
-  });
-
-  // 错误响应不应凭空携带 data 字段。
-  test("配置错误响应省略未提供的数据", () => {
-    expect(configError("INVALID", "无效")).toEqual({ success: false, error: { code: "INVALID", message: "无效" } });
-  });
-
-  // 错误响应应允许返回安全的附加诊断数据。
-  test("配置错误响应保留显式附加数据", () => {
-    expect(configError("INVALID", "无效", { field: "name" })).toEqual({
-      success: false,
-      error: { code: "INVALID", message: "无效" },
-      data: { field: "name" },
-    });
-  });
-
-  // 未找到资源应统一映射为 NOT_FOUND。
-  test("配置未找到响应使用固定错误码", () => {
-    expect(configNotFound("Agent 不存在")).toEqual({
-      success: false,
-      error: { code: "NOT_FOUND", message: "Agent 不存在" },
-    });
-  });
-
-  // 参数校验失败应统一映射为 VALIDATION_ERROR。
-  test("配置校验响应使用固定错误码", () => {
-    expect(configValidationError("名称不合法").error.code).toBe("VALIDATION_ERROR");
-  });
-
-  // 合法 Unicode 名称可以包含单个连字符和空格。
-  test("资源名称接受 Unicode 字母数字与单连字符", () => {
-    expect(isValidResourceName("知识库-2026 A")).toBe(true);
-  });
-
-  // 资源名称边界必须拒绝连续连字符、首尾空格和超长值。
-  test("资源名称拒绝危险或越界格式", () => {
-    expect(isValidResourceName("a--b")).toBe(false);
-    expect(isValidResourceName(" a")).toBe(false);
-    expect(isValidResourceName("a".repeat(65))).toBe(false);
-  });
-
   // 环境变量引用只在变量存在时解析，避免把引用文本当作密钥使用。
   test("API Key 环境引用解析为当前环境值", () => {
     apiKeyEnvironment = { value: process.env[apiKeyEnvironmentName] };
@@ -120,31 +75,6 @@ describe("round16 isolated protocol and boundary coverage", () => {
     expect(resolveApiKey("plain-key")).toBe("plain-key");
     expect(resolveApiKey("")).toBeNull();
     expect(resolveApiKey(null)).toBeNull();
-  });
-
-  // Key hint 仅暴露前四位和后三位，短密钥统一掩码。
-  test("API Key 提示掩码不泄露完整密钥", () => {
-    expect(toKeyHint("abcdefgh")).toBe("abcd***fgh");
-    expect(toKeyHint("abc")).toBe("*******");
-    expect(toKeyHint(null)).toBe("*******");
-  });
-
-  // JSON 序列化应保留 false 与零等有效值。
-  test("JSON 安全序列化保留有效假值", () => {
-    expect(safeJsonStringify(false)).toBe("false");
-    expect(safeJsonStringify(0)).toBe("0");
-  });
-
-  // 空值不应写入 JSONB，非法 JSON 也不能中断请求。
-  test("JSON 安全处理空值和非法输入", () => {
-    expect(safeJsonStringify(null)).toBeUndefined();
-    expect(safeJsonParse<{ id: string }>("{")).toBeNull();
-    expect(safeJsonParse<{ id: string }>(null)).toBeNull();
-  });
-
-  // JSON 反序列化应恢复调用方指定的数据形状。
-  test("JSON 安全反序列化有效对象", () => {
-    expect(safeJsonParse<{ id: string }>('{"id":"one"}')).toEqual({ id: "one" });
   });
 
   // 机器离线 AppError 应阻止无意义的自动重连。

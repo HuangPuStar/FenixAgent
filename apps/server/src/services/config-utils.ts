@@ -1,64 +1,21 @@
 /**
- * Config 路由共享工具函数。
- * 所有 /web/config/* 路由统一使用这些函数构建响应和处理验证。
+ * 宿主密钥引用解析。
+ *
+ * `{env:NAME}` → `process.env[NAME]`，明文原样返回，空值 `null`。唯一消费方是
+ * `services/resource-module-ports.ts` 的 `resolveSecretReference`：资源包不得读宿主环境变量
+ * （环境真相来源只能是 `apps/server/src/env.ts`），因此密钥引用的解析实现由宿主注入。
+ *
+ * 本文件原有的 `/web/config/*` 共享工具已随路由迁出归零生产消费方，按「删除优于兼容」于任务 1.5c
+ * 删除：`configSuccess` / `configError`（含 `configNotFound` / `configValidationError`）与 `toKeyHint`
+ * 由包内自持（`@fenix/model-management` 的 `src/server/config-envelope.ts`，密钥提示改为传入解析器）；
+ * `isValidResourceName` 与 `@fenix/agent-config` 的 `isValidAgentName` 逐字符等价；`safeJsonParse` /
+ * `safeJsonStringify` 的唯一消费方就是那些旧路由，迁出后无人引用。保留各自的包内副本即可，
+ * 宿主再留一份会让同一份协议出现两种定义。
  */
 
-/** 统一成功响应 */
-export function configSuccess<T>(data: T) {
-  return { success: true as const, data };
-}
-
-/** 统一错误响应 */
-export function configError(code: string, message: string, data?: unknown) {
-  return { success: false as const, error: { code, message }, ...(data !== undefined ? { data } : {}) };
-}
-
-/** NOT_FOUND 快捷方式 */
-export function configNotFound(resource: string) {
-  return configError("NOT_FOUND", resource);
-}
-
-/** VALIDATION_ERROR 快捷方式 */
-export function configValidationError(message: string) {
-  return configError("VALIDATION_ERROR", message);
-}
-
-/** 通用资源名校验：1-64 字符，Unicode 字母、数字和单连字符 */
-export function isValidResourceName(name: string): boolean {
-  return (
-    typeof name === "string" &&
-    name.length >= 1 &&
-    name.length <= 64 &&
-    !name.includes("--") &&
-    /^[\p{L}0-9][\p{L}0-9 -]*[\p{L}0-9]$|^[\p{L}0-9]$/u.test(name)
-  );
-}
-
-/** 从 apiKey 字段生成 keyHint：仅暴露前 4 位和后 3 位，短 key 或空 key 返回固定掩码。 */
-export function toKeyHint(apiKey: string | undefined | null): string | null {
-  const realKey = resolveApiKey(apiKey);
-  if (!realKey || realKey.length <= 7) return "*******";
-  return `${realKey.slice(0, 4)}***${realKey.slice(-3)}`;
-}
-
-/** 解析 apiKey：明文直接返回，{env:XXX} 引用尝试环境变量 */
+/** 解析 apiKey：明文直接返回，`{env:XXX}` 引用尝试环境变量 */
 export function resolveApiKey(raw: string | undefined | null): string | null {
   if (!raw) return null;
   const envMatch = raw.match(/^\{env:(.+)\}$/);
   return envMatch ? (process.env[envMatch[1]] ?? null) : raw;
-}
-
-/** JSONB 安全序列化 */
-export function safeJsonStringify(value: unknown): string | undefined {
-  return value != null ? JSON.stringify(value) : undefined;
-}
-
-/** JSONB 安全反序列化 */
-export function safeJsonParse<T>(value: string | null | undefined): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
 }
