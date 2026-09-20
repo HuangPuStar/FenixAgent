@@ -1,7 +1,5 @@
 import { OrchestrationError } from "@fenix/orchestration";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
-import { logError } from "@server/plugins/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
@@ -12,6 +10,8 @@ import {
   ApiInstanceConnectResponseSchema,
 } from "../../schemas/api-instance.schema";
 import { connectAgentInstance } from "../../server/services/api-instance";
+import type { ActorProjection } from "../../services/actor-context";
+import type { ApiInstanceRouteDependencies } from "../dependencies";
 
 const ApiErrorResponseSchema = z.object({
   error: z.object({
@@ -61,47 +61,59 @@ function mapApiError(error: unknown): { status: number; body: { error: { code: s
   };
 }
 
-const app = new Elysia({ name: "api-instances", prefix: "/api" }).use(authGuardPlugin).model({
-  "api-instance-agent-params": ApiInstanceAgentConfigParamsSchema,
-  "api-instance-connect-body": ApiInstanceConnectBodySchema,
-  "api-instance-connect-response": ApiInstanceConnectResponseSchema,
-});
+/**
+ * `/api/agents/:agentId/instances/connect` 路由工厂。
+ *
+ * 两个宿主依赖（CE 阶段 2 任务 1.4 W2）：会话守卫必须与宿主 `/web/*` 路由是同一份实例（Elysia 的
+ * macro / state 是实例作用域的，包内自建一份会让同一进程出现两套互不可见的认证状态）；`logError` 是
+ * 宿主请求日志管道的 onError 钩子，要读宿主中间件写入的 requestId 与耗时，包内没有它们的来源。
+ */
+export function createApiInstanceRoutes(deps: ApiInstanceRouteDependencies) {
+  const app = new Elysia({ name: "api-instances", prefix: "/api" }).use(deps.authGuardPlugin).model({
+    "api-instance-agent-params": ApiInstanceAgentConfigParamsSchema,
+    "api-instance-connect-body": ApiInstanceConnectBodySchema,
+    "api-instance-connect-response": ApiInstanceConnectResponseSchema,
+  });
 
-app.post(
-  "/agents/:agentId/instances/connect",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, body, error, set, request }: any) => {
-    const authCtx = store.authContext as AuthContext;
-    try {
-      return await connectAgentInstance(authCtx, params.agentId, body as ApiInstanceConnectBody);
-    } catch (err) {
-      const mapped = mapApiError(err);
-      // 先记录最终状态再返回映射响应：诊断信息（如 sandboxId/providerKey）只进
-      // 服务端日志，不出现在对外响应体（与 errorPlugin 的映射+日志顺序约定一致）
-      set.status = mapped.status;
-      logError({ request, error: err, set });
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-instance-agent-params",
-    body: "api-instance-connect-body",
-    response: {
-      200: "api-instance-connect-response",
-      401: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      409: ApiErrorResponseSchema,
-      422: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-      503: ApiErrorResponseSchema,
+  app.post(
+    "/agents/:agentId/instances/connect",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, body, error, set, request }: any) => {
+      // store.authContext 由注入的守卫写入（宿主 `AuthContext`，含 `role` / `memberships`）；这里按
+      // 「构造平台 ActorContext 所需的主体投影」收窄——agent-config 的可见性读入口只接受 ActorContext，
+      // 而构造它必须知道当前组织角色。守卫未提供 role 时按最小权限收敛（见 services/actor-context.ts）。
+      const authCtx = store.authContext as ActorProjection;
+      try {
+        return await connectAgentInstance(authCtx, params.agentId, body as ApiInstanceConnectBody);
+      } catch (err) {
+        const mapped = mapApiError(err);
+        // 先记录最终状态再返回映射响应：诊断信息（如 sandboxId/providerKey）只进
+        // 服务端日志，不出现在对外响应体（与 errorPlugin 的映射+日志顺序约定一致）
+        set.status = mapped.status;
+        deps.logError({ request, error: err, set });
+        return error(mapped.status, mapped.body);
+      }
     },
-    detail: {
-      tags: ["External Instance"],
-      summary: "连接 Agent Instance",
-      description: "根据 Agent 配置定位并准备一个可连接的实例，必要时自动创建 environment 和启动实例。",
+    {
+      sessionAuth: true,
+      params: "api-instance-agent-params",
+      body: "api-instance-connect-body",
+      response: {
+        200: "api-instance-connect-response",
+        401: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
+        422: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+        503: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External Instance"],
+        summary: "连接 Agent Instance",
+        description: "根据 Agent 配置定位并准备一个可连接的实例，必要时自动创建 environment 和启动实例。",
+      },
     },
-  },
-);
+  );
 
-export default app;
+  return app;
+}

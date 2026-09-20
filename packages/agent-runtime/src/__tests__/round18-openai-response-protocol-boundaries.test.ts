@@ -101,7 +101,10 @@ describe("openai response mapper protocol boundaries", () => {
   // 流式工具调用必须向客户端暴露约定的简化协议文本（带标题分支）。
   test("streams a tool call delta as simplified XML", async () => {
     const chunks = await collect(
-      mapToSSEChunks(events([update({ sessionUpdate: "tool_call", title: "search" }), completion("end_turn")]), "agent-1"),
+      mapToSSEChunks(
+        events([update({ sessionUpdate: "tool_call", title: "search" }), completion("end_turn")]),
+        "agent-1",
+      ),
     );
 
     expect(chunks[0]).toContain('<tool_call name=\\"search\\" />');

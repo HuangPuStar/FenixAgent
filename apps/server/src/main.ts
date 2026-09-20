@@ -17,9 +17,7 @@ import {
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
 import {
-  acpRoutes,
   agentInstanceService,
-  apiInstanceRoutes,
   bindAcpInstanceActivityPort,
   bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
@@ -31,6 +29,9 @@ import {
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
   closeAllRelayConnections,
+  createAcpRoutes,
+  createApiInstanceRoutes,
+  createOpenaiChatRoutes,
   environmentRepo,
   findMachineConnectionById,
   getAcpEventBus,
@@ -38,7 +39,6 @@ import {
   getAllEventBuses,
   getOrchestrationController,
   getOwnedEnvironment,
-  openaiChatRoutes,
   removeEventBus,
   resolveWorkspacePath,
   setRuntimeCredentialResolver,
@@ -133,10 +133,16 @@ import { db, initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import { authenticateSiteRequest, authGuardPlugin, authPlugin, toActorContext } from "./plugins/auth";
+import {
+  authenticateRequest,
+  authenticateSiteRequest,
+  authGuardPlugin,
+  authPlugin,
+  toActorContext,
+} from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { systemApiAuthPlugin } from "./plugins/system-api-auth";
 import webApp from "./routes/web";
@@ -549,17 +555,17 @@ const app = new Elysia({
   .use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(apiInstanceRoutes)
+  .use(createApiInstanceRoutes({ authGuardPlugin, logError }))
   .use(createApiWorkspaceRoutes({ authGuardPlugin }))
   .use(createApiWorkflowRoutes({ authGuardPlugin }))
   // OpenAI-compatible Chat API
-  .use(openaiChatRoutes)
+  .use(createOpenaiChatRoutes({ authGuardPlugin }))
   // Workflow proxy (not under /web prefix)
   .use(createWorkflowStaticApp({ authGuardPlugin }))
   // MCP routes
   .use(knowledgeMcpRoutes)
   // ACP protocol routes
-  .use(acpRoutes)
+  .use(createAcpRoutes({ authGuardPlugin, authenticateRequest }))
   // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）
   .use(createAgentSitesCompatRoutes({ authenticateRequest: authenticateSiteRequest }));
 

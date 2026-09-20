@@ -3,9 +3,16 @@
 // 编排域错误 → HTTP 的单一真相来源（1.4 W2 从宿主 `src/errors/` 搬入）：宿主全局 errorPlugin 与
 // `/web/environments` 仍需要它，因此留在公开面；`/api/instances` 与本包共用同一份映射。
 export * from "./errors/orchestration-http";
-export { default as acpRoutes } from "./routes/acp";
-export { default as apiInstanceRoutes } from "./routes/api/instances";
-export { default as openaiChatRoutes } from "./routes/api/openai-chat";
+// 三条路由是工厂（1.4 W2）：会话守卫 / 请求级认证 / 错误日志由宿主装配注入，包内不再持有宿主认证状态。
+export { createAcpRoutes } from "./routes/acp";
+export { createApiInstanceRoutes } from "./routes/api/instances";
+export { createOpenaiChatRoutes } from "./routes/api/openai-chat";
+export type {
+  AcpRouteDependencies,
+  AgentRuntimeAuthDependencies,
+  ApiInstanceRouteDependencies,
+  RequestErrorLogger,
+} from "./routes/dependencies";
 export * from "./schemas/acp.schema";
 export * from "./schemas/environment.schema";
 export type {

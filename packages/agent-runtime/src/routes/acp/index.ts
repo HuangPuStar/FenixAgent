@@ -1,9 +1,7 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { log, error as logError } from "@fenix/logger";
 import { AppError } from "@fenix/platform-sdk";
-import type { RequestAuthResult } from "@server/plugins/auth";
-import { authenticateRequest, authGuardPlugin } from "@server/plugins/auth";
-import Elysia from "elysia";
+import Elysia, { type AnyElysia } from "elysia";
 import { v4 as uuid } from "uuid";
 import {
   AcpAgentListResponseSchema,
@@ -20,7 +18,9 @@ import {
   handleExternalRelayMessage,
   handleExternalRelayOpen,
 } from "../../server/transport/relay/external-relay";
+import type { RequestAuthResult } from "../../types/auth";
 import type { WsConnection } from "../../types/ws-types";
+import type { AcpRouteDependencies } from "../dependencies";
 
 /** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */
 const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
@@ -75,6 +75,29 @@ function adaptWs(ws: any): WsConnection {
   };
 }
 
+/**
+ * Elysia `ws()` 的 hooks 参数类型。
+ *
+ * 从 Elysia 自己的签名取（`Parameters<AnyElysia["ws"]>[1]`），而不是手写一份 WS 上下文形状：hooks
+ * 里的 `open` / `message` / `close` 参数类型、`detail`、`query` 的模型引用都仍由 Elysia 提供上下文
+ * 类型，将来升级 Elysia 时约束跟着走。
+ */
+type AcpWsHooks = Parameters<AnyElysia["ws"]>[1];
+
+/**
+ * 在 `AnyElysia` 上注册 WS 路由（等价于 `app.ws(path, hooks)`，多一层是为了 hooks 参数的静态类型）。
+ *
+ * 为什么不直接把 hooks 字面量写进 `app.ws()`：宿主守卫跨包注入，接收者只能是 `AnyElysia`（泛型实参
+ * 全为 `any`），此时 Elysia 需要**从字面量实参**推导 Input / Schema / MacroContext，条件类型在 `any`
+ * 上展开的深度会超过 TS 上限（TS2589，`/ws`、`/file-ws`、`/yjs`、`/relay` 四处都会触发；`.get()`
+ * 的泛型层级更浅，直接调用没问题，故 HTTP 路由不走这里）。把 hooks 的静态类型预先固定为
+ * `AcpWsHooks`（并先收进变量再传参）后，Elysia 不再对该字面量做深度推导，类型检查与运行时行为都与
+ * 直接调用一致——`query` 的模型引用、宏、hooks 形状依旧在**注册期**由 Elysia 解析和校验。
+ */
+function declareAcpWsRoute(app: AnyElysia, path: string, hooks: AcpWsHooks): AnyElysia {
+  return app.ws(path, hooks);
+}
+
 /** Response shape for an ACP agent */
 function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environmentRepo.getById>>>) {
   return {
@@ -86,16 +109,29 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
   };
 }
 
-const app = new Elysia({ name: "acp", prefix: "/acp" })
-  .use(authGuardPlugin)
-  .model({
+/**
+ * `/acp/*` 路由工厂（机器接入 WS、前端 YJS WS、外部客户端 Relay WS 与 ACP Agent 列表）。
+ *
+ * 两个宿主依赖（CE 阶段 2 任务 1.4 W2）：会话守卫必须与宿主 `/web/*` 路由是同一份实例（Elysia 的
+ * macro / state 是实例作用域的）；WS 升级路径用 `authenticateRequest` 自己认证——它要在 `open` 里区分
+ * 「未认证 / 无组织上下文 / 通过」并分别以 4003 关闭连接，因此需要认证函数本身而不是让守卫短路请求，
+ * 且必须与守卫是同一份解析。
+ */
+export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
+  // 装配按「守卫 → 路由」分条书写，WS 走 `declareAcpWsRoute`（成因见其注释）：宿主守卫跨包，
+  // 接收者类型只能是 `AnyElysia`，本函数不对它的泛型做任何假设。
+  //
+  // 守卫必须**先于**路由注册挂上：`sessionAuth: true` 是注册期解析的宏，顺序反了请求期不会校验
+  // （`__tests__/acp-routes-auth.test.ts` 覆盖这一点）。
+  const base: AnyElysia = new Elysia({ name: "acp", prefix: "/acp" });
+  const app: AnyElysia = base.use(deps.authGuardPlugin).model({
     "acp-agent-list-response": AcpAgentListResponseSchema,
     "acp-relay-params": AcpRelayParamsSchema,
     "acp-registry-secret-query": AcpRegistrySecretQuerySchema,
-  })
+  });
 
   /** GET /acp/agents — List current user's team ACP agents */
-  .get(
+  const withAgentList: AnyElysia = app.get(
     "/agents",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema 下的类型推断过于严格
     async ({ store }: any) => {
@@ -114,10 +150,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         description: "返回当前组织下所有使用 ACP worker 的环境列表及在线状态摘要。",
       },
     },
-  )
+  );
 
   /** WS /acp/ws — WebSocket endpoint for acp-link connections */
-  .ws("/ws", {
+  const withMachineWs: AnyElysia = declareAcpWsRoute(withAgentList, "/ws", {
     detail: {
       tags: ["ACP"],
       summary: "ACP 机器接入 WebSocket",
@@ -163,10 +199,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         handleAcpWsClose(adaptWs(ws), wsId, code, reason);
       }
     },
-  })
+  });
 
   /** WS /acp/file-ws — WebSocket endpoint for remote file operations */
-  .ws("/file-ws", {
+  const withFileWs: AnyElysia = declareAcpWsRoute(withMachineWs, "/file-ws", {
     detail: {
       tags: ["ACP"],
       summary: "ACP 远程文件 WebSocket",
@@ -232,10 +268,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         getFileWsPort().handleFileWsClose(adaptWs(ws), wsId);
       }
     },
-  })
+  });
 
   /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
-  .ws("/yjs/:agentId", {
+  const withYjsWs: AnyElysia = declareAcpWsRoute(withFileWs, "/yjs/:agentId", {
     detail: {
       tags: ["ACP"],
       summary: "YJS Frontend WebSocket",
@@ -250,7 +286,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
       let authResult: RequestAuthResult | null = null;
       try {
-        authResult = await authenticateRequest(ws.data.request);
+        authResult = await deps.authenticateRequest(ws.data.request);
       } catch (err) {
         if (err instanceof AppError && err.code === "RATE_LIMITED") {
           adaptWs(ws).close(4008, "rate_limited");
@@ -333,10 +369,10 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
         getChatChannelController().gateway.handleClose(yjsWsId);
       }
     },
-  })
+  });
 
   /** WS /acp/relay/:agentId — 供 API Key 外部客户端经 connect API 建立 ACP JSON-RPC 中继 */
-  .ws("/relay/:agentId", {
+  const withRelayWs: AnyElysia = declareAcpWsRoute(withYjsWs, "/relay/:agentId", {
     detail: {
       tags: ["ACP"],
       summary: "ACP 外部客户端 Relay WebSocket",
@@ -351,7 +387,7 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
 
       let authResult: RequestAuthResult | null = null;
       try {
-        authResult = await authenticateRequest(ws.data.request);
+        authResult = await deps.authenticateRequest(ws.data.request);
       } catch (err) {
         if (err instanceof AppError && err.code === "RATE_LIMITED") {
           adaptWs(ws).close(4008, "rate_limited");
@@ -397,4 +433,5 @@ const app = new Elysia({ name: "acp", prefix: "/acp" })
     },
   });
 
-export default app;
+  return withRelayWs;
+}
