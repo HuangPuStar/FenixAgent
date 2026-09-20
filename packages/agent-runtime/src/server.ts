@@ -51,6 +51,7 @@ export * from "./server/services/environment-web";
 export * from "./server/services/file-ws-port";
 export * from "./server/services/local-node-agent-node-service-port";
 export * from "./server/services/machine-registry-port";
+export * from "./server/services/redis-connection-port";
 export * from "./server/services/session-event-bus-port";
 export { resolveWorkspacePath } from "./server/services/workspace-resolver";
 export * from "./server/transport/acp-ws-handler";

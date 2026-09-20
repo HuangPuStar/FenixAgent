@@ -25,6 +25,7 @@ import {
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindRedisConnectionPort,
   bindSessionEventBusPort,
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
@@ -147,7 +148,7 @@ import { ctrlStaticPlugin } from "./plugins/static";
 import { systemApiAuthPlugin } from "./plugins/system-api-auth";
 import webApp from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
-import { closeCache } from "./services/cache";
+import { closeCache, getRedisConnection } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { createModelGatewaySubjectVerification } from "./services/model-gateway-subject-verification";
@@ -299,6 +300,9 @@ bindMachineEnvironmentPort({
   getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
   getOwnedEnvironment,
 });
+// YJS 会话快照所需的 Redis 连接（1.4 W2）：包内不再 import 宿主 services/cache，连接的建立与配置
+// 由宿主绑定，包内仅在会话切换的 CAS 快照路径上取用（未配置 RCS_REDIS_URL 时返回 null 并跳过）。
+bindRedisConnectionPort({ getRedisConnection });
 bindSessionEventBusPort({
   getAllBuses: () => getAllEventBuses(),
   removeBus: (sessionId) => removeEventBus(sessionId),

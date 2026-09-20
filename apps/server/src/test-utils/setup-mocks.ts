@@ -393,6 +393,7 @@ const {
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindRedisConnectionPort,
   bindSessionEventBusPort,
   environmentRepo,
   findMachineConnectionById,
@@ -406,6 +407,7 @@ const {
 // 测试 preload 以惰性 stub 绑定路由依赖；该测试钩子不得进入 Machine 的生产公开入口。
 const { bindMachineEnvironmentPort, bindMachineHostPort } = await import("@fenix/resource-machine/server");
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
+const cacheModule = await import("../services/cache");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
   registerRemoteNode: (...args) => {
@@ -443,6 +445,9 @@ bindMachineEnvironmentPort({
   getOwnedEnvironment,
 });
 bindLocalNodeAgentNodeServicePort({ getAgentNodeService });
+// Redis 连接端口（1.4 W2）：实现仍走宿主 services/cache 这条唯一取数路径，测试进程未配置
+// RCS_REDIS_URL 时它返回 null（与 round29-cache-isolation 的断言一致），包内据此跳过快照持久化。
+bindRedisConnectionPort({ getRedisConnection: () => cacheModule.getRedisConnection() });
 bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus });
 bindFileWsPort({
   checkParsedObjectSize: actualFileWsPayload.checkParsedObjectSize,

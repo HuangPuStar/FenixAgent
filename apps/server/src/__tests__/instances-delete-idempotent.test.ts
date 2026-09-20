@@ -20,14 +20,17 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  globalInstanceRegistry,
+  resetOrchestrationBootstrap,
+  resetOrchestrationInstanceDeps,
+  setOrchestrationInstanceDeps,
+} from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
-import { globalInstanceRegistry } from "../services/instance-registry";
-import { resetOrchestrationBootstrap } from "../services/orchestration-bootstrap";
-import { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";
