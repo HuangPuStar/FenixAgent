@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createApiInstanceRoutes, setApiInstanceDeps } from "@fenix/agent-runtime/server";
+import { createApiInstanceRoutes } from "@fenix/agent-runtime/server";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { setApiInstanceDeps } from "../server/services/api-instance";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 服务端诊断日志的收集器：生产装配注入宿主 `plugins/logger` 的 `logError`，测试注入 spy 以断言

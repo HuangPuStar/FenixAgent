@@ -6,15 +6,17 @@
 // - 纯内存零持久化：所有输出即用即弃，不缓存、不写库；
 // - 只读：只调用各来源的只读能力，不做任何管控动作。
 //
-// 类型来源说明：连接快照类型统一由 `@fenix/agent-runtime/server` 公开（1.4 W1 起该包自持
-// `AcpConnectionEntry` / `AcpConnectionSnapshot`，不再落在宿主 `@server/types/*`）。这里只 import type
-// （编译期擦除），避免把 relay / acp-ws 模块运行时图拖进观察链路。
+// 类型来源说明：连接快照与环境记录类型统一由 `@fenix/agent-runtime/runtime` 的**只读观测面**公开
+// （1.4 W6b：此前来自 `./server` 装配面，那是宿主注入侧的口径）。这里只 import type（编译期擦除），
+// 避免把 relay / acp-ws 模块运行时图拖进观察链路。`ChatClientConnectionSnapshot` 不再是本包自持的
+// 定义——它是观测面给出的投影，本包只消费，避免同一形状有两份定义各自漂移。
 
 import type {
   AcpConnectionSnapshot,
+  ChatClientConnectionSnapshot,
   EnvironmentRecord,
   ExternalRelayConnectionSnapshot,
-} from "@fenix/agent-runtime/server";
+} from "@fenix/agent-runtime/runtime";
 
 export type { AcpConnectionSnapshot };
 
@@ -46,23 +48,15 @@ export interface KindProvider {
   collect(ctx: ObserverContext): Promise<Observation[]>;
 }
 
-/** 只读来源快照（chat-relay 用；避免直接暴露 ClientConnection 内部类型）。 */
-export interface ChatClientSnapshot {
-  wsId: string;
-  userId: string;
-  agentId: string;
-  instanceId: string;
-  rcsSessionId: string;
-  acpSessionId: string | null;
-  openTime: number;
-}
+/** 只读来源快照（chat-relay 用）。定义在观测面上，本包只消费，不另立一份同形类型。 */
+export type { ChatClientConnectionSnapshot };
 
 /** Provider 收到的上下文：只读来源 + 权威回查，全部可注入（测试友好）。 */
 export interface ObserverContext {
   sources: {
     acpWs(): Promise<readonly AcpConnectionSnapshot[]> | readonly AcpConnectionSnapshot[];
     externalRelay(): Promise<readonly ExternalRelayConnectionSnapshot[]> | readonly ExternalRelayConnectionSnapshot[];
-    chatClients(): Promise<readonly ChatClientSnapshot[]> | readonly ChatClientSnapshot[];
+    chatClients(): Promise<readonly ChatClientConnectionSnapshot[]> | readonly ChatClientConnectionSnapshot[];
   };
   /** environment 权威表回查（org/user/agentConfigId 对齐的唯一依据） */
   getEnvironment: (envId: string) => Promise<EnvironmentRecord | null | undefined>;

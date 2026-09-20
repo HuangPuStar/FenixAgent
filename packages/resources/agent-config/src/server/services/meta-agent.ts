@@ -121,8 +121,8 @@ export interface EnsureMetaResult {
  * 用户维度隔离是干净的；这里只是把"查找"也按用户维度收敛。
  */
 export async function findMetaEnvironment(ctx: MetaAgentContext): Promise<{ id: string; name: string } | null> {
-  const { environmentRepo } = await import("@fenix/agent-runtime/server");
-  const envs = await environmentRepo.listByOrganizationId(ctx.organizationId);
+  // 按组织列环境改经运行 port 的只读观测面（1.4 W6b）：本包不再直取环境仓储。
+  const envs = await getBoundAgentRuntime().observe.listEnvironmentRecordsByOrganization(ctx.organizationId);
   const meta = envs.find((e) => e.name === META_ENVIRONMENT_NAME && e.userId === ctx.userId);
   return meta ? { id: meta.id, name: meta.name } : null;
 }

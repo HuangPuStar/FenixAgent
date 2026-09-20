@@ -11,8 +11,9 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `@fenix/resource-channel/web`，宿主 §1.6 的 WebShell 装配从那里取页面、API client 与语言资源。
  *
  * `dependsOn: []`：本包是叶子模块，装配上不要求任何其它资源模块同批启用，故此处没有逐条依赖证据。
- * `src/**` 生产代码里唯一跨包的值导入是 `@fenix/agent-runtime/server`（`services/hermes-client.ts` 的
- * `findRunningInstanceByEnvironment` / `sendToAgentWs` / `sendToInstanceRelay`），属 profile 固定槽位的
+ * `src/**` 生产代码里唯一跨包的值导入是 `@fenix/agent-runtime/runtime`（`services/hermes-client.ts` 的
+ * `getBoundAgentRuntime()`，经它取 `findRunningInstanceByEnvironment` / `session.sendToAgentWs` /
+ * `session.sendToInstanceRelay`），属 profile 固定槽位的
  * `agent-runtime` 类别，不是资源模块之间的装配边：生成器的装配依赖校验（`assertDependsOnComplete`）
  * 只对 `resource` 类别之间的值导入做强制，补进 `dependsOn` 反而会把固定槽位编码成可选依赖。
  *

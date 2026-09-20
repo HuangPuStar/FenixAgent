@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
-import type { AuthContext } from "@fenix/agent-runtime/server";
+import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import {
   type ExternalRelayEnvironment,
   handleExternalRelayClose,
   handleExternalRelayMessage,
   handleExternalRelayOpen,
   setExternalRelayDeps,
-} from "@fenix/agent-runtime/server";
-import type { EngineRelayHandle } from "@fenix/plugin-sdk";
+} from "../server/transport/relay/external-relay";
+import type { AuthContext } from "../types/auth";
 import type { WsConnection } from "../types/ws-types";
 
 interface MockWs extends WsConnection {

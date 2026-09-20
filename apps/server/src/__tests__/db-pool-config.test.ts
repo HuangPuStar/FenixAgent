@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { attachDatabasePoolErrorLogger, buildDatabasePoolOptions } from "../db";
+// 本用例断言的是池参数映射与错误监听的**真实语义**，必须取真实实现：测试 preload 用替身整体
+// 顶掉 `../db`（`test-utils/setup-mocks.ts` 的 `createDbMock` 只提供 db/client/initDb），从
+// `../db` 取会拿到替身、断言失去判别力。故这两个无副作用函数留在 `../db/pool-config` 叶子模块。
+import { attachDatabasePoolErrorLogger, buildDatabasePoolOptions } from "../db/pool-config";
 import { parseDatabaseConnectionPoolConfig } from "../env";
 
 type DatabaseClientErrorListener = (error: Error) => void;

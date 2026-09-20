@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
+import type { EnvironmentRecord } from "@fenix/agent-runtime/runtime";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { ChannelBindingRow } from "../server/repositories/channel-binding";
 import { channelBindingRepo } from "../server/repositories/channel-binding";

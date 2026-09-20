@@ -14,7 +14,7 @@ export { buildRelationTree } from "./relation-tree";
 export type {
   AcpConnectionSnapshot,
   AgentNodeView,
-  ChatClientSnapshot,
+  ChatClientConnectionSnapshot,
   InstanceNodeView,
   IntegritySummary,
   KindProvider,

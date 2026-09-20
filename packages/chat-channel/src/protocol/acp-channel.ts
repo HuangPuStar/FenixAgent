@@ -28,10 +28,18 @@ import {
   truncateUtf8Safe,
 } from "../schema";
 
-/** 从消息中提取 JSON-RPC 对象（兼容原始和包裹两种格式） */
-export function extractJsonRpc(msg: Record<string, unknown>): Record<string, unknown> | null {
-  if (msg.jsonrpc === "2.0") return msg;
-  const payload = msg.payload as Record<string, unknown> | undefined;
+/**
+ * 从消息中提取 JSON-RPC 对象（兼容原始和包裹两种格式）。
+ *
+ * 形参取 `unknown` 而非 `Record<string, unknown>`：三条链路（workflow transport、agent-runtime
+ * 的 relay 事件映射、chat-channel 自身）的入参分别是 `unknown` / `RelayEvent` / 具体消息类型，
+ * 形参过窄会逼每个调用方各自补一次 cast——那正是此前出现两份私有副本的原因（1.4 W6a 收口）。
+ * 非对象入参走 `.jsonrpc` / `.payload` 属性访问得到 `undefined`，与既有行为一致。
+ */
+export function extractJsonRpc(msg: unknown): Record<string, unknown> | null {
+  const record = msg as Record<string, unknown>;
+  if (record.jsonrpc === "2.0") return record;
+  const payload = record.payload as Record<string, unknown> | undefined;
   if (payload?.jsonrpc === "2.0") return payload;
   return null;
 }

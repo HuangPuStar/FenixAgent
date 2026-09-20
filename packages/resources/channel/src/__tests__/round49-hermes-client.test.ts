@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { EventBus } from "@fenix/agent-runtime/server";
+// EventBus 值属测试 seam（1.4 W6b）：生产侧不再从 `./server` 出口，跨包用例经唯一测试入口取。
+import { EventBus } from "@fenix/agent-runtime/server/testing";
 import { bindAcpEventBusPort, resetAcpEventBusPort } from "../server/services/acp-event-bus-port";
 import { HermesClient } from "../server/services/hermes-client";
 

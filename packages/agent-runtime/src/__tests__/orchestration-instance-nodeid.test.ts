@@ -17,13 +17,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, LaunchInstanceRequest } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, setConfig } from "@server/config";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
 import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {

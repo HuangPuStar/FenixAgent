@@ -19,11 +19,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
 import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort, stubAgentRuntimeConfig } from "../server/testing";
 import {
   beginSpawnReservation,

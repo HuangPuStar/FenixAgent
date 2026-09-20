@@ -1,10 +1,9 @@
-import {
-  bindCoreRuntimePort,
-  type CoreRuntimePort,
-  getBoundCoreRuntimePort,
-  resetCoreRuntimePortForTest,
-} from "@fenix/agent-runtime/server";
+import { bindCoreRuntimePort, type CoreRuntimePort } from "@fenix/agent-runtime/server";
+import { getBoundCoreRuntimePort, resetCoreRuntimePortForTest } from "@fenix/agent-runtime/server/testing";
 import type { CoreRuntimeFacade } from "@fenix/core";
+
+// 两个入口分取（1.4 W6b）：`bindCoreRuntimePort` / `CoreRuntimePort` 是宿主注入契约，生产面就是它的
+// 归属；`getBoundCoreRuntimePort` / `resetCoreRuntimePortForTest` 只对测试有意义，从唯一测试入口取。
 
 /**
  * 包内用例的 Core runtime 端口替身（`@fenix/agent-runtime/server` 的 `bindCoreRuntimePort`）。

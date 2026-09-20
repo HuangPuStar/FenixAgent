@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AgentSession as ChatAgentSession, PromptTurn } from "@fenix/agent-runtime/server";
-import { globalInstanceRegistry } from "@fenix/agent-runtime/server";
+import type { AgentSession as ChatAgentSession, PromptTurn } from "@fenix/agent-runtime/runtime";
+import { globalInstanceRegistry } from "@fenix/agent-runtime/server/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { AgentChatSessionAdapter } from "../server/services/workflow/agent-chat-transport";
 import {

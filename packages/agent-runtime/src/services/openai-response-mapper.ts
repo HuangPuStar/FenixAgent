@@ -1,5 +1,8 @@
 // 1.4 W3：改为相对导入。此前经本包公开面自引用，会让 `./server` barrel 成为包内实现的一部分，
 // 收窄公开面时容易在「谁依赖谁」上产生误判。
+// 1.4 W6a：本文件原有的 `extractJsonRpc` 私有副本删除，改指 chat-channel 协议层的唯一实现
+//（形参已放宽为 `unknown`，`RelayEvent` 可直接传入，无需在调用点补 cast）。
+import { extractJsonRpc } from "@fenix/chat-channel";
 import type { OpenAIChatCompletionResponse } from "../schemas/openai-chat.schema";
 
 // ── ACP 事件类型 ──
@@ -22,21 +25,6 @@ export interface SessionUpdateEvent {
   entries?: Array<{ content: string; priority?: string; status?: string }>;
   used?: number;
   size?: number;
-}
-
-// ── 统一 JSON-RPC 提取 ──
-
-/**
- * 从 relay 事件中提取 JSON-RPC 对象。
- * 兼容两种格式：
- *   server.ts 路径：raw { jsonrpc, method, params } (event 本身)
- *   session-manager 路径：{ type: "session_data", payload: rawJsonRpc }
- */
-function extractJsonRpc(ev: RelayEvent): Record<string, unknown> | null {
-  if ((ev as unknown as Record<string, unknown>).jsonrpc === "2.0") return ev as unknown as Record<string, unknown>;
-  const payload = ev.payload as Record<string, unknown> | undefined;
-  if (payload?.jsonrpc === "2.0") return payload;
-  return null;
 }
 
 // ── 消息分类 ──

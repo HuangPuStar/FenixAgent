@@ -20,10 +20,13 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  *
  * 不声明其它反向边，逐条对应一种「不构成装配依赖」的形态：
  *
- * - `agent-runtime` 同样是值导入（`@fenix/agent-runtime/server` 的 `environmentRepo` / `agentInstanceRepo` /
- *   `listAcpConnections` / `listExternalRelayEntries`，以及延迟加载的 `getChatChannelController`），但它是
- *   `agent-runtime` 类别的基础模块，在 profile 里是固定槽位（`requireFoundation(profile.agentRuntime)`
- *   总是启用），不进入资源模块的装配依赖校验范围；跨类别边由 §2.3 矩阵与架构台账负责（owner 1.4）。
+ * - `agent-runtime` 同样是值导入，但只经 `@fenix/agent-runtime/runtime` 的 `getBoundAgentRuntime()`
+ *   取只读观测面（`observe.listAcpConnections` / `listExternalRelayConnections` / `listChatClients` /
+ *   `getInstanceName` / `getEnvironmentRecord`）：1.4 W6b 之前这里直取 `@fenix/agent-runtime/server` 的
+ *   环境与实例仓储、连接表 getter 与延迟加载的 chat 控制器，现在这些取数全部收敛进运行 port。
+ *   agent-runtime 是 `agent-runtime` 类别的基础模块，在 profile 里是固定槽位
+ *   （`requireFoundation(profile.agentRuntime)` 总是启用），不进入资源模块的装配依赖校验范围；
+ *   跨类别边由 §2.3 矩阵与架构台账负责（owner 1.4）。
  * - `resource-sandbox` 只被 `web/**` 引用（`MasterKeyGate`、`mergeFlatRows` 等控制台组件），web 贡献
  *   不进入服务端装配顺序，其启用由 profile 的 `web` 列表表达（§1.6）；写进 `dependsOn` 等于凭空声明
  *   一条服务端不具备的边。

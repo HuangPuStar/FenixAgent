@@ -717,6 +717,7 @@
       "dependencies": {
         "@fenix/agent-config": "workspace:*",
         "@fenix/agent-runtime": "workspace:*",
+        "@fenix/chat-channel": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",

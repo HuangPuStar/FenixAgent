@@ -15,7 +15,9 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  *
  * `dependsOn: []`：本包服务端生产代码（`src/**`，排除 `__tests__`）没有任何指向已注册资源模块的值导入。
  * 唯一的 workspace 值导入是 `src/server/services/scheduler/agent-executor.ts` 的
- * `@fenix/agent-runtime/server`（`openAgentSession`、`PromptTurn`）：agent-runtime 是 profile 的固定基础
+ * `@fenix/agent-runtime/runtime`（`getBoundAgentRuntime()` 与 `AgentRuntimePort["openAgentSession"]`、
+ * `PromptTurn`；1.4 W6b 之前写的是 `@fenix/agent-runtime/server`，"生产从装配面取会话能力" 的记载
+ * 已与代码不符）：agent-runtime 是 profile 的固定基础
  * 槽位（registry 的 `requireFoundation` 总是启用），不属于「资源模块之间必须成套启用」的装配依赖；
  * 生成器的 `assertDependsOnComplete` 同样只对 `kind: "resource"` 的目标包生效，写进来只会给 profile
  * 增加一条恒真的边，不产生任何保护。

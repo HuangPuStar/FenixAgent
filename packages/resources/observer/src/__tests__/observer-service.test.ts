@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+// 注册表驱动的 seam（1.4 W6b）：生产侧不再从 `./server` 出口，跨包用例经唯一测试入口取。
 import {
   handleAcpWsClose,
   handleAcpWsOpen,
@@ -7,7 +8,7 @@ import {
   listAcpConnections,
   listExternalRelayEntries,
   setExternalRelayDeps,
-} from "@fenix/agent-runtime/server";
+} from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import {
   buildRelationTree,

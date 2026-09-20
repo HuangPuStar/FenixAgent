@@ -1,12 +1,10 @@
 import { log } from "@fenix/logger";
 import { findMachineConnectionById, sendToWs } from "../acp-ws-handler";
 
-// ── JSON-RPC 兼容提取 ──
-// C2 迁移说明：extractJsonRpc/extractAcpEvent 已迁入 @fenix/chat-channel
-// （protocol/acp-channel.ts，私有帧规范化边界），此处仅保留 re-export 兼容
-// 既有调用方（hermes 等）；聚合层消费路径不再直接出现私有帧类型。
-
-export { extractAcpEvent, extractJsonRpc } from "@fenix/chat-channel";
+// C2 迁移说明：extractJsonRpc/extractAcpEvent 的实现在 `@fenix/chat-channel` 协议层
+// （protocol/acp-channel.ts，私有帧规范化边界）。1.4 W6a 删除了此处的 re-export：
+// 它只是历史转出口（原注释声称的「hermes 等调用方」并不存在，hermes 只用
+// `sendToInstanceRelay`），消费方一律直接从 chat-channel 取。
 
 // ── 兼容层：保留机器侧 relay 函数 ──
 // 这些函数被 hermes-client.ts 使用，用于向远程机器发送消息。

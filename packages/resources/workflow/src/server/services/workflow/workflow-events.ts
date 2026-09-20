@@ -5,7 +5,9 @@
  * 复用 transport/event-bus 的 EventBus 实例管理。
  */
 
-import { type EventBus, getEventBus, removeEventBus } from "@fenix/agent-runtime/server";
+// EventBus 归运行 port 的数据面（1.4 W6b）：总线的创建/释放是有副作用的能力，不是纯观测，
+// 故在 `session` 而不是 `observe`。本包不再直取宿主的 transport/event-bus 模块。
+import { type EventBus, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { nanoid } from "nanoid";
 
 /** Workflow SSE 事件类型 */
@@ -35,7 +37,7 @@ function workflowBusKey(workflowId: string): string {
 
 /** 获取指定 workflow 的 EventBus */
 export function getWorkflowEventBus(workflowId: string): EventBus {
-  return getEventBus(workflowBusKey(workflowId));
+  return getBoundAgentRuntime().session.getEventBus(workflowBusKey(workflowId));
 }
 
 /** 发布一个 workflow SSE 事件 */
@@ -56,5 +58,5 @@ export function publishWorkflowEvent(
 
 /** 清理 workflow EventBus（防止内存泄漏） */
 export function removeWorkflowEventBus(workflowId: string): void {
-  removeEventBus(workflowBusKey(workflowId));
+  getBoundAgentRuntime().session.removeEventBus(workflowBusKey(workflowId));
 }

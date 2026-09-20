@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  EventBus,
-  getAllEventBuses,
-  getEventBus,
-  removeEventBus,
-  shouldCountInstanceActivity,
-} from "@fenix/agent-runtime/server";
+import { getAllEventBuses, getEventBus, removeEventBus } from "@fenix/agent-runtime/server";
+// 测试 seam（1.4 W6b）：`EventBus` 值与活跃度判定不在生产面上，经唯一测试入口取。
+import { EventBus, shouldCountInstanceActivity } from "@fenix/agent-runtime/server/testing";
 import { classifyPermanentSpawnFailure, isMachineOfflineError } from "@fenix/chat-channel/server";
 import { AppError } from "@fenix/platform-sdk";
 import {

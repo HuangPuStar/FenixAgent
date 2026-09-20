@@ -1,6 +1,10 @@
 // src/__tests__/extract-acp-event.test.ts
+//
+// 1.4 W6a：`extractAcpEvent` 的唯一实现在 `@fenix/chat-channel` 协议层，本包此前经
+// `@fenix/agent-runtime/server` 的三层转出口取它（relay-handler → relay/index → server.ts），
+// 已随转出口一并删除。用例改为直接向实现方取（本包生产代码不消费该符号，故这是唯一消费点）。
 import { expect, test } from "bun:test";
-import { extractAcpEvent } from "@fenix/agent-runtime/server";
+import { extractAcpEvent } from "@fenix/chat-channel";
 
 // 原始引擎格式：type=agent_message_chunk
 test("extracts raw engine type", () => {

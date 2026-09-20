@@ -33,6 +33,46 @@ import {
   resetAgentLaunchSpecPort,
 } from "./services/agent-launch-spec-port";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 包内处理函数与内部登记表的测试 seam（1.4 W6b）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 驱动包内处理函数、读写内部登记表的 seam。
+ *
+ * 这些名字**只对测试有意义**：生产消费方要么已经经运行 port（`@fenix/agent-runtime/runtime`）
+ * 取能力，要么属于宿主装配面。放在这里而不是留在生产 `./server` 上，是因为跨包用例无法改相对导入
+ * ——`./server` 上留着它们等于把「测试可以驱动内部实现」变成公开契约的一部分。
+ *
+ * 三类用途：
+ * 1. **驱动协议处理函数**：`handleAcpWsOpen` / `handleAcpWsClose` / `handleExternalRelayOpen` /
+ *    `handleExternalRelayClose` 建连接、`setExternalRelayDeps` 装其协作者、`listAcpConnections` /
+ *    `listExternalRelayEntries` 读回登记表快照——observer 的集成用例借此验证快照字段与句柄不外泄；
+ * 2. **读写实例登记表与活跃度**：`globalInstanceRegistry`（workflow 用例断言 relayCount / activity）、
+ *    `shouldCountInstanceActivity`（保活消息过滤）；
+ * 3. **复位编排替身与总线**：`setOrchestrationInstanceDeps` / `resetOrchestrationInstanceDeps` /
+ *    `resetOrchestrationBootstrap` / `createExecutionNodeResolver`、`createPromptTurn`
+ *    （真实 turn 的过滤层可达性回归）、`KEBAB_CASE_RE` / `validateWorkspacePath`、`EventBus`（值）。
+ *
+ * `getAllEventBuses` / `removeEventBus` 同时被宿主装配层使用（`bindSessionEventBusPort` 的实现来源），
+ * 它们在生产 `./server` 上另有出口；这里再出口一次是为了让 workflow 的 SSE 用例不必从生产面取数。
+ */
+export { shouldCountInstanceActivity } from "../services/acp-idle-monitor";
+export { createPromptTurn } from "../services/agent-chat-service";
+export { KEBAB_CASE_RE, validateWorkspacePath } from "../services/environment-core";
+export { globalInstanceRegistry } from "../services/instance-registry";
+export { createExecutionNodeResolver, resetOrchestrationBootstrap } from "../services/orchestration-bootstrap";
+export { resetOrchestrationInstanceDeps, setOrchestrationInstanceDeps } from "../services/orchestration-instance";
+export { EventBus, getAllEventBuses, removeEventBus } from "../transport/event-bus";
+export { getBoundCoreRuntimePort, resetCoreRuntimePortForTest } from "./services/core-runtime-port";
+export { handleAcpWsClose, handleAcpWsOpen, listAcpConnections } from "./transport/acp-ws-handler";
+export {
+  handleExternalRelayClose,
+  handleExternalRelayOpen,
+  listExternalRelayEntries,
+  setExternalRelayDeps,
+} from "./transport/relay/external-relay";
+
 /**
  * 构造一份字段齐全的 Agent Runtime 模块配置。
  *

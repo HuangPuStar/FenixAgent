@@ -14,8 +14,8 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * （生成器的扫描范围是 `src/**`，`web/**` 不参与服务端装配顺序）：
  *
  * - 唯一需要参与装配依赖判定的跨包值导入是 `src/server/services/prod-view.ts` 的
- *   `@fenix/agent-runtime/server`（`createWebEnvironment` 建视图专用 environment，
- *   `agentInstanceService.findOrCreateDefaultInstance` 解析该用户的持久实例）。agent-runtime 是
+ *   `@fenix/agent-runtime/runtime`（取运行 port 后调 `createEnvironment` 建视图专用 environment、
+ *   `findOrCreateDefaultInstance` 解析该用户的持久实例）。agent-runtime 是
  *   `agent-runtime` 类别的基础模块，在 profile 里是固定槽位（`requireFoundation` 总是启用），不进入
  *   资源模块的装配依赖校验范围；该跨类别边由 §2.3 依赖矩阵与架构台账负责（owner 1.4）。
  * - 另有 3 处 `@fenix/platform-sdk` 值导入（`src/server/db.ts` 的 `getDatabase`，两个路由文件的

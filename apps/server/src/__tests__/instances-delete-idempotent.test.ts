@@ -25,7 +25,7 @@ import {
   resetOrchestrationBootstrap,
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
-} from "@fenix/agent-runtime/server";
+} from "@fenix/agent-runtime/server/testing";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
