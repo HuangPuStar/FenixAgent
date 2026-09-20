@@ -4,6 +4,10 @@
  * These types provide compile-time safety for config data flowing through
  * service functions, route handlers, and the config API. They mirror the
  * frontend types in apps/web/src/types/config.ts; keep both in sync.
+ *
+ * 用户偏好（`user_config`）的记录类型不在此处：它在任务 1.5c 随表的读写一起归位
+ * `@fenix/identity`（`repositories/user-config.ts` 的 `UserConfigData`），本文件原有的同名副本
+ * 既无导入方、也没有前端镜像，属重复定义，随迁出删除。
  */
 
 // ────────────────────────────────────────────
@@ -58,18 +62,6 @@ export type {
   McpServerType,
   McpStreamableHttpConfig,
 } from "@fenix/resource-mcp/server";
-
-// ────────────────────────────────────────────
-// User Config
-// ────────────────────────────────────────────
-
-/** User config data (preferences per organization) */
-export interface UserConfigData {
-  defaultAgent?: string | null;
-  currentModel?: string | null;
-  smallModel?: string | null;
-  permission?: PermissionConfig | null;
-}
 
 // ────────────────────────────────────────────
 // Engine Type

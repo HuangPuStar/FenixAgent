@@ -18,6 +18,13 @@ export type { IdentityConfig } from "./config";
 export type { IOrganizationRepo } from "./repositories/organization";
 export { organizationRepo } from "./repositories/organization";
 export { isPhoneNumberRegistered } from "./repositories/user";
+/**
+ * 用户偏好（`user_config`）的读写。1.5c 从宿主 `apps/server/src/services/config/user-config.ts` 迁入：
+ * 表的真相来源本就在本包，宿主是唯一消费者（`services/resource-module-ports.ts` 的两个偏好端口）。
+ * `permission` 按 jsonb 原样透传，模型属于宿主的权限栈。
+ */
+export type { UserConfigData, UserConfigSubject } from "./repositories/user-config";
+export { getUserConfig, setUserConfig } from "./repositories/user-config";
 export { createApiSystemRoutes } from "./routes/api/system";
 export type { SystemApiRouteDependencies, WebIdentityRouteDependencies } from "./routes/dependencies";
 export { createWebApiKeysRoutes } from "./routes/web/api-keys";

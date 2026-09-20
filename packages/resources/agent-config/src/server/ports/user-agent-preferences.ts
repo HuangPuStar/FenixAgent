@@ -18,7 +18,7 @@ export interface UserAgentPreferencesSubject {
   readonly userId: string;
 }
 
-/** 当前偏好的读值；未设置时为 `null`（与宿主 `getUserConfig` 的语义一致）。 */
+/** 当前偏好的读值；未设置时为 `null`（与 identity 的 `getUserConfig` 语义一致）。 */
 export interface UserAgentPreferencesSnapshot {
   readonly defaultAgent: string | null;
 }
@@ -27,7 +27,7 @@ export interface UserAgentPreferencesSnapshot {
  * 偏好写入的补丁。
  *
  * 「未提供」与「显式置空」是两种语义：`undefined` 表示不改这一项，`null` 表示清空。宿主实现必须据此
- * 区分（`user-config.ts` 用 `!== undefined` 判定），否则只改默认 Agent 的请求会顺带抹掉模型偏好。
+ * 区分（identity 的 `setUserConfig` 用 `!== undefined` 判定），否则只改默认 Agent 的请求会顺带抹掉模型偏好。
  */
 export interface UserAgentPreferencesPatch {
   readonly defaultAgent?: string | null;

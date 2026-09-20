@@ -8,7 +8,6 @@ const RMD_07_MOVES = [
   ["src/services/config-utils.ts", "apps/server/src/services/config-utils.ts"],
   ["src/services/config/index.ts", "apps/server/src/services/config/index.ts"],
   ["src/services/config/types.ts", "apps/server/src/services/config/types.ts"],
-  ["src/services/config/user-config.ts", "apps/server/src/services/config/user-config.ts"],
   ["src/services/core-bootstrap.ts", "apps/server/src/services/core-bootstrap.ts"],
   ["src/services/data-migrate.ts", "apps/server/src/services/data-migrate.ts"],
   [
@@ -80,6 +79,10 @@ const RMD_07_MOVES = [
  * 任务 1.5c 的第九项 owner 是 agent-config：`routes/web/meta-agent.ts`（`POST /web/meta-agent/ensure`）。
  * 查找或创建 meta environment + spawn 实例的编排（`ensureMetaEnvironment`）与响应 schema 本就在该包，
  * 宿主那份只是协议接入壳；迁入后 apiKey 轮换改由工厂依赖注入（资源包不得依赖 `@fenix/identity`）。
+ * 任务 1.5c 的第十项 owner 是 identity：`services/config/user-config.ts`（`user_config` 表的读写）。
+ * 该表的真相来源本就在 `packages/platform/identity/db/schema.ts`，读写却留在宿主，属「表与它的读写分处
+ * 两层」；迁入 `repositories/user-config.ts` 后两者同址（DB 句柄改为 `getIdentityDatabase()`），宿主经
+ * 包入口取用（唯一消费者是 `services/resource-module-ports.ts` 的两个偏好端口）。
  */
 const RMD_07_RELOCATED = [
   [
@@ -157,6 +160,11 @@ const RMD_07_RELOCATED = [
     "apps/server/src/routes/web/meta-agent.ts",
     "packages/resources/agent-config/src/server/routes/web/meta-agent.ts",
   ],
+  [
+    "src/services/config/user-config.ts",
+    "apps/server/src/services/config/user-config.ts",
+    "packages/platform/identity/src/repositories/user-config.ts",
+  ],
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
@@ -203,14 +211,15 @@ describe("RMD-07 server-host migration", () => {
   // 测试三项：`automationState` / `executable` / `jsonb-utils` 的唯一被测对象即上述宿主副本，随被测模块删除。
   // 同批删除的 `plugins/require-team-scope.ts`（生产零消费方）与 `logger.ts`（`@fenix/logger` 的兼容桥、
   // 零消费者）不在本表内，无需在此登记。
-  // 任务 1.5c 的九项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
+  // 任务 1.5c 的十项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
   // `src/routes/web/{instances,environments}.ts` 与 instances 的宿主测试
   // `src/__tests__/web-instance-runtime-actions.test.ts`、`src/routes/web/peri-task-details.ts` 与其协议
-  // schema `src/schemas/peri-task-details.ts`、`src/routes/web/meta-agent.ts`
+  // schema `src/schemas/peri-task-details.ts`、`src/routes/web/meta-agent.ts`、
+  // `src/services/config/user-config.ts`
   // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime /
-  // model-management / agent-config 包），理由见 relocated 的文档注释。
+  // model-management / agent-config / identity 包），理由见 relocated 的文档注释。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(41);
+    expect(RMD_07_MOVES).toHaveLength(40);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
@@ -220,7 +229,7 @@ describe("RMD-07 server-host migration", () => {
   // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
   // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
   test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(15);
+    expect(RMD_07_RELOCATED).toHaveLength(16);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

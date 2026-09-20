@@ -815,3 +815,67 @@ environment 拉起时以 500 的形式暴露。
 7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
 三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
 `root-source-owner-inventory` + 包内 `meta-agent.test.ts` 共 29 pass / 0 fail。
+
+### 1.5c-6 用户偏好读写随 `user_config` 表归位 identity（2026-09-21）
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| `getUserConfig` / `setUserConfig` 迁入 identity 的仓储层，DB 句柄改 `getIdentityDatabase()` | `apps/server/src/services/config/user-config.ts` → `packages/platform/identity/src/repositories/user-config.ts` |
+| 包入口增加出口（值 + 两个类型） | `packages/platform/identity/src/server.ts` |
+| 宿主适配端口改从 identity 取用 | `apps/server/src/services/resource-module-ports.ts` |
+| 宿主 config barrel 去掉两条转发 | `apps/server/src/services/config/index.ts` |
+| 宿主 schema 的 `userConfig` 转出与顶部注释据实修正 | `apps/server/src/db/schema.ts` |
+
+归属判据：`user_config` 的真相来源本就是 `packages/platform/identity/db/schema.ts`（CLAUDE.md「数据库与迁移」），
+读写却留在宿主，属「表与它的读写分处两层」。落到 `repositories/` 而不是 `services/`：它只做单表读取与 upsert，
+不含业务规则，与 identity 既有的 `repositories/{user,organization}.ts` 同层同类。
+
+**二、【需审核】取数方向与类型口径**
+
+- **宿主是唯一消费者**：identity 属 `platform-impl`，按 §2.3 任何资源模块与 Agent Runtime 都不得导入其入口
+  （该约束已写在其 `server.ts` 头部），宿主 `apps/server` 是合法消费者——与既有的 `createWebApiKeysRoutes`、
+  `rotateCallerApiKey` 同口径。资源包侧仍只经宿主的注入端口（`userAgentPreferences` /
+  `userModelPreferences`）取数，未新增任何包 → identity 的编译期依赖。
+- **`permission` 在 identity 侧声明为 `unknown`**：持久层只做 jsonb 透传，不做结构校验。宿主适配端口原先的
+  `patch.permission as PermissionConfig | null | undefined` 收窄随之删除（两侧形状一致），宿主权限栈的模型
+  不再被拖进身份包的编译面。
+
+**三、测试 seam 的改指向（行为等价，用例与替身写法不变）**
+
+`setup-mocks.ts` 原先把 `getUserConfig` / `setUserConfig` 挂在 `@server/services/config` barrel 的替身上；本片把
+这两个键改按 identity 仓储模块登记（`mock.module(".../identity/src/repositories/user-config", …)`），与既有的
+`.../identity/src/services/system-api`、`.../identity/src/db` 是同一做法——`mock.module` 按解析后的模块路径生效，
+包入口的 re-export 会取到替身。替身注册表仍是同一个 `config-pg-stub`，因此所有用例侧的
+`stubConfigPg({ getUserConfig, setUserConfig })` 与断言一行未改。
+
+**替身确实生效的证据**：`config-integration.test.ts` 的「models 路由可达」断言 `success: true`，而该路由会经
+端口读偏好；若替身未生效，真实实现会在用例的 DB 替身上调用 `.where(...).limit(1)`（`stubDb` 只声明到 `where`）
+抛错 → 500，该断言必然失败。这条用例本片通过。
+
+**四、两处过时引用一并清掉**
+
+- 宿主 `db/schema.ts` 的 `userConfig` 转出：迁出后宿主对该表零引用（`grep` 只剩转出行本身），删除转出与
+  注释里「宿主内的身份读取（如 `services/config/user-config.ts` 读 `user_config`）」一句。迁移链不受影响：
+  `drizzle.config.ts` 直接声明 `packages/platform/identity/db/schema.ts`。
+- 两个资源包端口注释里指向已不存在文件的路径（`user-config.ts` 用 `!== undefined` 判定）改为指向新落点。
+
+**五、【记录，不在本任务实现】`services/config/index.ts` 的去留**
+
+该 barrel 现在只剩 `upsertSystemMcpServer`（其对应的 Hindsight MCP 路径全仓未接线，1.5a 记录已登记，处置留给
+1.5c 收尾）与类型转发，宿主内已零导入方。本片不删它：删除需要与 `mcp-system-server.ts` 的去留（写进 memory 包
+还是删除）一起决定，属独立裁定，另片处理。
+
+**六、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：本项移入 `RMD_07_RELOCATED`（MOVES 41 → 40、
+  RELOCATED 15 → 16），两处注释块补记。
+- `scripts/root-source-owner-rules.ts` 与 `scripts/architecture/exceptions.json` 均**无需改动**：
+  `src/services/config/user-config.ts` 无专门规则（落在 `src/services/config/` 一类通配下，按 1.4 W2b 先例
+  不补条目），本片也未产生新的包 → 宿主依赖。
+
+**验证证据**：`precheck` 全绿 `All passed (101686ms)`——server-and-script-tests 798 pass / package-tests
+7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
+三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
+`config-integration` 17 pass / 0 fail（后者是偏好端口端到端用例，见三）。

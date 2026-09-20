@@ -9,7 +9,8 @@
  *    「归属校验是否通过」，故只透出校验本身，判据留在 owner 侧。
  * 2. **身份族的 `user_config` 表**（{@link userAgentPreferences} / {@link userModelPreferences}）——
  *    该表的真相来源是 `packages/platform/identity/db/schema.ts`，资源包不得直读；两个适配器把各包
- *    真正读写的偏好子集映射到宿主既有的 `getUserConfig` / `setUserConfig`，同一张表只留一组写入语义。
+ *    真正读写的偏好子集映射到 identity 的 `getUserConfig` / `setUserConfig`（1.5c 起该读写随表归位
+ *    identity），同一张表只留一组写入语义。
  * 3. **读宿主 env 的密钥引用解析**（{@link resolveSecretReference}）——`{env:NAME}` 的真相来源是
  *    宿主 `apps/server/src/env.ts`，包内 `src/**` 不得读 `process.env`。
  *
@@ -20,13 +21,9 @@
 import type { UserAgentPreferencesPort } from "@fenix/agent-config/server";
 import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { environmentRepo } from "@fenix/agent-runtime/server";
+import { getUserConfig, setUserConfig } from "@fenix/identity/server";
 import type { EnvironmentOwnershipCheck, UserModelPreferencesPort } from "@fenix/model-management/server";
 import type { ChannelEnvironmentLookup } from "@fenix/resource-channel/server";
-// 经 `@server/services/config` barrel 取，而不是深链 `./config/user-config`：宿主测试的 config 服务替身
-// （`apps/server/src/test-utils/setup-mocks.ts`）整体替换的是 barrel，深链会让「不连 DB 的宿主用例」直接
-// 打到真实 `user_config` 查询（实测报错 `db.select().from(userConfig)…limit is not a function`）。
-import { getUserConfig, setUserConfig } from "@server/services/config";
-import type { PermissionConfig } from "./config/types";
 import { resolveApiKey } from "./config-utils";
 
 /**
@@ -86,12 +83,12 @@ export const userModelPreferences: UserModelPreferencesPort = {
     };
   },
   async write(subject, patch) {
+    // 端口与 identity 的仓储都把权限对象声明为 `unknown`（宿主权限栈的模型不进资源包的编译面，持久层也
+    // 只做 jsonb 透传），两侧形状一致，无需再收窄成具体类型。
     await setUserConfig(subject, {
       currentModel: patch.currentModel,
       smallModel: patch.smallModel,
-      // 端口把权限对象声明为 `unknown`（宿主权限栈的模型不进资源包的编译面），这里恢复成宿主自己的
-      // 类型：写入值本就来自同一条读路径（`read()` 的 `permission`），宿主是它的类型真相来源。
-      permission: patch.permission as PermissionConfig | null | undefined,
+      permission: patch.permission,
     });
   },
 };
