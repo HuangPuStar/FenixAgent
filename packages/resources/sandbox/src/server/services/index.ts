@@ -35,6 +35,7 @@ export function registerConfiguredSandboxProviders(
 }
 
 export { SandboxExecutionHandler } from "./sandbox-execution-handler";
+export { resolveSandboxMachineRoute } from "./sandbox-machine-route";
 export { SandboxManager } from "./sandbox-manager";
 export { SandboxProviderRegistry } from "./sandbox-provider-registry";
 // 协调器可以脱离 Manager 单测（锁语义与 Provider 状态迁移是它自己的合同），因此对外导出。

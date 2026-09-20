@@ -1,15 +1,11 @@
 import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
-import {
-  findActiveSandboxInstance,
-  findReadableSandboxPoolById,
-  getSandboxConfig,
-} from "@fenix/resource-sandbox/server";
 import { machine } from "@server/db/schema";
 import { eq } from "drizzle-orm";
 import { getMachineConfig } from "../config";
 import { getMachineDatabase } from "../db";
 import { getEnvironmentById } from "../environment-port";
+import { getMachineSandboxRoutePort, type SandboxRouteResult } from "../sandbox-route-port";
 import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
 
 type RemoteMachineResolutionInput = {
@@ -64,26 +60,24 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
   if (!env) return null;
   const agentCfg = env.agentConfigId ? await getAgentConfigById(env.agentConfigId) : null;
   const agentNode = agentCfg ? resolveAgentNode(agentCfg) : {};
-  const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
-  // 沙盒开关与默认池读 Sandbox 模块配置（唯一来源）：同名值不在本包配置里复制一份，两处字段必然漂移。
-  const sandboxConfig = getSandboxConfig();
-  const useDefaultSandbox = agentNode?.kind !== "machine" && !explicitSandboxPoolId && sandboxConfig.sandboxEnabled;
-  const sandboxPoolId = explicitSandboxPoolId ?? (useDefaultSandbox ? sandboxConfig.defaultSandboxPoolId : null);
-  const sandboxSelected = Boolean(explicitSandboxPoolId || (useDefaultSandbox && sandboxPoolId));
 
-  let sandboxMachineId: string | null = null;
-  if (sandboxPoolId && env.userId) {
-    const pool = await findReadableSandboxPoolById(sandboxPoolId, env.organizationId ?? env.userId);
-    if (pool) {
-      const instance = await findActiveSandboxInstance(pool.providerKey, pool.id, env.userId);
-      sandboxMachineId = instance?.machineId ?? null;
-    }
-  }
+  // 沙盒分支归 sandbox 判定：池选择与活跃实例查询读的是它自己的模块配置和池、实例表，本包不反向查询，
+  // 只取它装配时注入的端口结果。端口为空表示该 assembly profile 未装配沙盒模块——降级为「无沙盒能力」，
+  // 不是错误（与绑定式 host port 的 fail-fast 语义不同）。
+  const sandboxPort = getMachineSandboxRoutePort();
+  const sandboxRoute: SandboxRouteResult = sandboxPort
+    ? await sandboxPort.resolveSandboxRoute({
+        explicitSandboxPoolId: agentNode?.kind === "sandbox" ? (agentNode.sandboxPoolId ?? null) : null,
+        boundToMachine: agentNode?.kind === "machine",
+        organizationId: env.organizationId ?? env.userId ?? "",
+        userId: env.userId ?? "",
+      })
+    : { sandboxSelected: false, machineId: null };
 
   const machineId = selectRemoteMachineId({
     agentNode,
-    sandboxMachineId,
-    sandboxSelected,
+    sandboxMachineId: sandboxRoute.machineId,
+    sandboxSelected: sandboxRoute.sandboxSelected,
     defaultMachineId: getMachineConfig().defaultMachineId ?? null,
   });
 

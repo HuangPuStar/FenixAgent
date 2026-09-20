@@ -4,10 +4,12 @@
 
 ## 定位与 owner
 
-本包属 `resources` 类别，解析 AgentNode 为执行节点、承载机器侧文件读写。装配面上的消费者是宿主
-`apps/server`（挂载路由、接入 file-ws、启动心跳巡检、优雅关闭）与 `@fenix/resource-sandbox` /
-`@fenix/resource-observer` / `@fenix/agent-config` / `@fenix/agent-runtime`（经本包 `./server` 公开入口
-取机器身份、回连状态与注册表 API）。机器元数据不在这里重复建表。
+本包属 `resources` 类别，解析 AgentNode 为执行节点、承载机器侧文件读写。装配面上的消费者：宿主
+`apps/server`（挂载路由、接入 file-ws、启动心跳巡检、优雅关闭）、`@fenix/resource-sandbox`（机器寻址、
+沙盒实例投影、沙盒路由判定）与 `@fenix/resource-observer`（读机器注册表），三者入口都是本包 `./server`
+的公开面；`@fenix/agent-config` 只经 `./web` 取 `registryApi`。`@fenix/agent-runtime` **不**消费本包
+（1.4 起该反向边已消除）：它需要的机器注册 / 心跳 / 断连能力由宿主经 `MachineRegistryPort` 注入。
+机器元数据不在这里重复建表。
 
 强断言的实测口径（改动本节时同步复跑，避免留下不成立的「唯一 / 只有 / 全部」）：
 
@@ -50,7 +52,7 @@
   （`transport/file-ws-*` 与 `transport/file-op-retry.ts` 的重试熔断）。远端需宿主绑定 `FileWsPort` 的实现。
 - **状态投影与运行时释放**：`services/machine-sandbox-projection.ts` 把机器注册 / 心跳投影到 `sandbox_instance`
   （sandbox 经本包读该状态，不自行监听机器事件）；`services/machine-runtime.ts` 的 `releaseMachineRuntime`
-  经 agent-runtime 宿主端口注销远端节点。
+  经 `MachineHostPort.unregisterCoreRuntimeNode` 注销远端节点（实现由宿主绑定，见「宿主运行态端口」）。
 - **本地节点**：`src/services/local-node-service.ts` 的 `LocalNodeAwareService` 为 `local-default` 提供常驻
   在线的 stub AgentNode，其余 machineId 原样委托真实节点服务。
 - **数据访问**：`src/server/db.ts` 是包内唯一 DB 句柄（`getDatabase()`），3 个 repository
@@ -146,10 +148,34 @@
   宿主 barrel 里的这些导入是**值导入**（zod schema），改指包根会把本包的整个 server 图拉进宿主的 schema
   barrel；`./server/schema` 的存在意义正是给这条路径留一个窄口，因此「删出口」与「改指包根」必须同批评估，
   不能只删出口——knowledge / mcp 两个包有同形状的 `./server/schema` 与同一批宿主消费点，三者应一起定夺。
-- **反向边待消除**：`machine → sandbox`（1 处）与 `machine → agent-runtime`（9 处）由 owner 1.4 收敛，方向固定为
-  `sandbox → machine`、`agent-runtime → machine`；消除前两者都不能写进 `dependsOn`（写进去会被生成器的装配依赖
-  反向校验拒绝，装配顺序也会成环）。`dependsOn: ["agent-config"]` 的代码证据只有一处：
-  `src/server/services/remote-file-service.ts` 值导入 `getAgentConfigById` / `resolveAgentNode`。
+- **反向边已消除（1.4，2026-09-20）**：`machine → sandbox`（1 处）与 `machine → agent-runtime`（9 处）已随
+  「宿主运行态端口」落地清零，方向固定为 `sandbox → machine`、`agent-runtime → machine`；台账里的两条
+  `special-dependency` 与一条 `no-circular` 同批删除。`dependsOn: ["agent-config"]` 现在是本包唯一的包间
+  运行时依赖，代码证据只有一处：`src/server/services/remote-file-service.ts` 值导入 `getAgentConfigById` /
+  `resolveAgentNode`。
+  **为什么台账只删 3 条而不是 7 条**：反向边消失不等于环消失。本包仍有 `@server/db/schema` 这一条指向宿主的边
+  （7 个文件，归 §1.7 的表定义迁出），而宿主装配 agent-runtime 与 sandbox、agent-runtime 又依赖 sandbox、
+  sandbox 依赖本包，于是环由 `machine → apps/server → agent-runtime → sandbox → machine` 继续闭合，
+  `no-circular` 里 machine 相关的其余条目因此仍是**真实违规**（查 `scripts/architecture/exceptions.json` 时
+  不能按 §5.3 的预测数删条目）。
+
+## 宿主运行态端口
+
+本包不导入 `@fenix/agent-runtime`（1.4 起），它需要的三类**只存在于装配层**的能力改由端口注入，绑定语义与
+agent-runtime 的 `bindCoreRuntimePort` 一致：装配阶段一次绑定（重复绑定报错），未绑定即失败、不隐式回退到本地
+实现——回退会让宿主持有的运行态与包内看到的裂成两份。
+
+| 端口 | 绑定方 | 提供的原语 |
+|------|--------|-----------|
+| `MachineHostPort`（`src/server/host-port.ts`） | 宿主 `apps/server` | workspace 根路径、Core runtime 节点查询 / 注销、file-ws 连接索引、断连清理 |
+| `MachineEnvironmentPort`（`src/server/environment-port.ts`） | 宿主 `apps/server` | 环境记录读取与归属校验（实现仍在 agent-runtime） |
+| `MachineSandboxRoutePort`（`src/server/sandbox-route-port.ts`） | `@fenix/resource-sandbox` | 「环境该路由到哪台机器」的沙盒判定（读 sandbox 自己的配置与池、实例表） |
+
+`MachineSandboxRoutePort` 与另外两个的失败语义不同：**未装配返回 null**，调用方按「该 assembly profile 没有
+沙盒能力」降级而不是报错——不含 sandbox 模块的部署里 `getRemoteMachineId` 必须照常走默认机器或本地 FS。
+
+绑定发生在 `apps/server/src/main.ts`（前两个）与 `createSandboxModule()`（第三个）；测试侧宿主 preload 用同一
+组绑定转发到 stub 注册表，包内用例另经 `setMachineHostPort` / `setMachineEnvironmentPort` 的浅合并替换层打桩。
 
 ## 守卫由宿主注入
 
@@ -182,8 +208,8 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
 - 配置经 `getMachineConfig()`（`getModuleConfig("machine")`，`src/server/config.ts`），形状校验用
   `z.strictObject`（宿主字段改名或拼错立刻失败）：`defaultMachineId`（`RCS_DEFAULT_MACHINE_ID`，缺省表示无兜底
   机器）、`fileWsIdentityStrict`（`RCS_FILE_WS_IDENTITY_STRICT`，默认宽松）、`fileEventsMaxClients`
-  （`RCS_FILE_EVENTS_MAX_CLIENTS`，默认 200）。沙盒侧字段（`sandboxEnabled` / 默认池）经 sandbox 自己的
-  `getSandboxConfig()` 读唯一来源，不在本接口复制。
+  （`RCS_FILE_EVENTS_MAX_CLIENTS`，默认 200）。沙盒侧字段（`sandboxEnabled` / 默认池）不在本接口：环境是否落在
+  沙盒里已由 sandbox 自己判定并经 `MachineSandboxRoutePort` 注入结果（见「宿主运行态端口」）。
 - **读取必须发生在调用时**：配置在请求 / 连接路径上取值，模块加载期不读，避免装配顺序对基础设施初始化产生前置
   要求（`getModuleConfig` 在未初始化时抛错）。
 - DB 经 `src/server/db.ts` 的 `getMachineDatabase()`（平台 `getDatabase()`），同样在调用时取句柄。
@@ -198,8 +224,9 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
      的查询语义）；`registry.ts:419-426` 的 `bindAgentConfigs` **写** `agent_config.machineId`——写路径没有对应
      的公开 API，必须由 agent-config 提供绑定入口，属 §1.4。
   2. `sandbox_instance`（owner `@fenix/resource-sandbox`）：`src/server/services/machine-sandbox-projection.ts:1`
-     引入，把机器注册 / 心跳投影为实例状态（`update` 两处）。反向边 `machine → sandbox` 的收敛同属 §1.4
-     （见「边界残留」末条），二者应同批处理。
+     引入，把机器注册 / 心跳投影为实例状态（`update` 两处）。这个**写**路径无法由 sandbox 侧代劳（机器事件的
+     接收方在本包），且它是 `machine → sandbox` 反向边消失后仅存的接触面：不再有值导入，只剩经
+     `@server/db/schema` 的表定义访问，已并入 `apps-boundary` 台账（owner §1.7 的表定义迁出批次）。
 - **service 直连 DB 未收敛**：`getMachineDatabase()` 的调用点除 3 个 repository 外，还有 4 个 service
   （`registry.ts` / `registry-heartbeat.ts` / `remote-file-service.ts` / `machine-sandbox-projection.ts`），
   4 个 service 合计 30 处，其中 `registry.ts` 一个文件 26 处。

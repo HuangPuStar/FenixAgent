@@ -392,11 +392,17 @@ const {
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
   bindSessionEventBusPort,
+  environmentRepo,
+  findMachineConnectionById,
   getAgentNodeService,
   getAllEventBuses,
+  getOwnedEnvironment,
   removeEventBus,
+  resolveWorkspacePath,
+  triggerMachineCleanupByMachineId,
 } = await import("@fenix/agent-runtime/server");
 // 测试 preload 以惰性 stub 绑定路由依赖；该测试钩子不得进入 Machine 的生产公开入口。
+const { bindMachineEnvironmentPort, bindMachineHostPort } = await import("@fenix/resource-machine/server");
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
@@ -414,6 +420,25 @@ bindMachineRegistryPort({
   startHeartbeat: (machineId, intervalMs, onTimeout) =>
     registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout),
   stopHeartbeat: (machineId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId),
+});
+// Machine 包的宿主运行态与环境读取端口（1.4 起由装配层绑定，包不再反向导入 agent-runtime）。
+// 转发方向与上面的 core runtime 端口一致：Core runtime 句柄走 coreBootstrapRegistry（用例经
+// stubCoreBootstrap 配置），环境读取走 environmentRepo 的实时 Proxy（用例经 stubEnvironmentRepo 配置）。
+bindMachineHostPort({
+  resolveWorkspacePath,
+  // 可选链保留「未配置 stub 时查无此机」的既有语义：`createStubRegistry` 是 throwOnMissing=false
+  // （未配置返回空函数），无 stub 时 `getCoreRuntime()` 求值为 undefined，对账面据此判定节点不存在；
+  // 直接取 `.getNode` 会 TypeError 把「未配置」变成测试崩溃。
+  getCoreRuntimeNode: (machineId) => coreBootstrapRegistry.get("getCoreRuntime")()?.getNode(machineId) ?? null,
+  unregisterCoreRuntimeNode: (machineId) => {
+    coreBootstrapRegistry.get("unregisterRemoteNode")(machineId);
+  },
+  findMachineConnectionById,
+  triggerMachineCleanupByMachineId,
+});
+bindMachineEnvironmentPort({
+  getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
+  getOwnedEnvironment,
 });
 bindLocalNodeAgentNodeServicePort({ getAgentNodeService });
 bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus });

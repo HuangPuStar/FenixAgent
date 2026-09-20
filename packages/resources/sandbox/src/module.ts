@@ -1,5 +1,7 @@
+import { bindMachineSandboxRoutePort } from "@fenix/resource-machine/server";
 import { sandboxExecutionHandler, sandboxManager, sandboxProviderRegistry } from "./server/services/index";
 import type { SandboxExecutionHandler } from "./server/services/sandbox-execution-handler";
+import { resolveSandboxMachineRoute } from "./server/services/sandbox-machine-route";
 import type { SandboxManager } from "./server/services/sandbox-manager";
 import type { SandboxProviderRegistry } from "./server/services/sandbox-provider-registry";
 
@@ -26,6 +28,9 @@ export interface SandboxModule {
 
 /** 创建 Sandbox 模块实例。 */
 export function createSandboxModule(): SandboxModule {
+  // 把「环境该路由到哪台机器」的沙盒判定注入 machine（方向 sandbox → machine）。绑定只在这里发生：
+  // 不含沙盒模块的 assembly profile 下端口保持为空，machine 按「无沙盒能力」降级而不是报错。
+  bindMachineSandboxRoutePort({ resolveSandboxRoute: resolveSandboxMachineRoute });
   return {
     id: "sandbox",
     providers: sandboxProviderRegistry,

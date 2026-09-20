@@ -31,9 +31,16 @@ import {
   closeAcpConnectionsForEnvironments,
   closeAllAcpConnections,
   closeAllRelayConnections,
+  environmentRepo,
+  findMachineConnectionById,
+  getAcpEventBus,
   getAgentNodeService,
+  getAllEventBuses,
   getOrchestrationController,
+  getOwnedEnvironment,
   openaiChatRoutes,
+  removeEventBus,
+  resolveWorkspacePath,
   setRuntimeCredentialResolver,
   spawnInstanceViaController,
   startAcpIdleMonitor,
@@ -41,6 +48,7 @@ import {
   stopInstancesForEnvironments,
   stopInstanceViaController,
   touchInstanceActivity,
+  triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
 import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
 import {
@@ -61,13 +69,14 @@ import {
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth, createApiKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import {
+  bindMachineEnvironmentPort,
+  bindMachineHostPort,
   checkParsedObjectSize,
   checkWsMessageSize,
   closeAllFileWsConnections,
   createApiWorkspaceRoutes,
   disconnectMachine,
   estimateWsMessageBytes,
-  eventService,
   formatFileWsCloseLog,
   handleFileWsClose,
   handleFileWsMessage,
@@ -251,14 +260,29 @@ initializeApplicationInfrastructure({
 registerIdentityDirectory(createIdentityDirectory());
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+// Machine 包的宿主运行态：workspace 根、Core runtime 节点、file-ws 连接索引与断连清理都是宿主进程级单例，
+// 包不反向导入 agent-runtime 取值，改由这里一次绑定（未装配时包内调用即失败，不隐式回退）。
+bindMachineHostPort({
+  resolveWorkspacePath,
+  // Core runtime 单例归宿主（`./services/core-bootstrap`），此处只暴露「按 machineId 查节点」的窄视图。
+  getCoreRuntimeNode: (machineId) => getCoreRuntime().getNode(machineId),
+  unregisterCoreRuntimeNode: unregisterRemoteNode,
+  findMachineConnectionById,
+  triggerMachineCleanupByMachineId,
+});
+// Machine 包读 environment 的两个原语（记录读取 + 归属校验）：实现仍在 agent-runtime，由此处转发。
+bindMachineEnvironmentPort({
+  getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
+  getOwnedEnvironment,
+});
 bindSessionEventBusPort({
-  getAllBuses: () => eventService.getAllBuses(),
-  removeBus: (sessionId) => eventService.removeBus(sessionId),
+  getAllBuses: () => getAllEventBuses(),
+  removeBus: (sessionId) => removeEventBus(sessionId),
 });
 bindLocalNodeAgentNodeServicePort({
   getAgentNodeService: () => new LocalNodeAwareService(getAgentNodeService),
 });
-bindAcpEventBusPort({ getAcpBus: (agentId) => eventService.getAcpBus(agentId) });
+bindAcpEventBusPort({ getAcpBus: (agentId) => getAcpEventBus(agentId) });
 bindFileWsPort({
   checkParsedObjectSize,
   checkWsMessageSize,
