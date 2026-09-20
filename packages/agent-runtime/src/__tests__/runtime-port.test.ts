@@ -11,7 +11,7 @@ import {
 } from "../runtime";
 
 /**
- * 管理面 33 个方法与数据面 6 个方法的清单。
+ * 管理面 42 个方法与数据面 6 个方法的清单。
  *
  * `satisfies` 让「清单里写了 port 上不存在的名字」在编辑期就报错，运行期断言再确认实现对象
  * 一个不少、两个面不互相错位。改动 port 面时这张清单会一起失败——这正是契约测试的目的：
@@ -20,6 +20,10 @@ import {
 const PORT_METHODS = [
   // 启动
   "ensureInstance",
+  "ensureInstanceRuntime",
+  "findOrCreateDefaultInstance",
+  "findOrCreateWorkflowInstanceWithStatus",
+  "createInstance",
   "createEnvironment",
   "updateEnvironment",
   "restartActiveInstancesForEnvironments",
@@ -27,6 +31,9 @@ const PORT_METHODS = [
   "setRuntimeCredentialResolver",
   // 停止
   "stopInstance",
+  "stopInstanceRuntime",
+  "restartInstanceRuntime",
+  "deleteInstance",
   "stopInstancesForEnvironments",
   "deleteEnvironment",
   "closeAcpConnectionsForEnvironments",
@@ -39,6 +46,7 @@ const PORT_METHODS = [
   "findRunningInstanceByEnvironment",
   "listRuntimeInstances",
   "getRuntimeInstance",
+  "getOwnedInstance",
   "listOwnedInstances",
   "getRuntimeSnapshot",
   "listInstanceActivity",
@@ -51,6 +59,7 @@ const PORT_METHODS = [
   "updateSessionStatus",
   // 回收
   "cleanupInstancesForMachine",
+  "unregisterInstance",
   "terminateLocalDeadInstance",
   "startIdleMonitor",
   "stopIdleMonitor",
@@ -67,8 +76,11 @@ const SESSION_METHODS = [
 ] as const satisfies readonly (keyof AgentRuntimeSessionApi)[];
 
 afterEach(() => {
-  // 装配状态是模块级单例，用例之间必须解绑，避免影响同进程的其它测试文件。
+  // 装配状态是模块级单例：用例结束要把**真实入口**装回去，而不是留空。消费方（宿主路由、编排层、
+  // 资源包）一律经 `getBoundAgentRuntime()` 取值，留空会让同进程后续测试文件在调用点报「未绑定」
+  //（`bun test packages/` 在同进程顺序跑全部文件，实测 round57 因此失败）。
   resetAgentRuntimeForTest();
+  bindAgentRuntime(createAgentRuntime());
 });
 
 describe("AgentRuntime port 契约", () => {
@@ -95,11 +107,14 @@ describe("AgentRuntime port 契约", () => {
 
   // 未装配即失败：隐式构造第二套入口会让消费方在宿主装配未完成时拿到半可用的 runtime。
   test("未绑定时取用运行入口直接失败", () => {
+    resetAgentRuntimeForTest();
+
     expect(() => getBoundAgentRuntime()).toThrow("AgentRuntime has not been bound");
   });
 
   // 一次装配全局共享：重复绑定不同实例意味着进程内存在两套绑定状态，排查时无法区分哪一套在生效。
   test("绑定后可取用，重复绑定不同实例失败", () => {
+    resetAgentRuntimeForTest();
     const first = createAgentRuntime();
     bindAgentRuntime(first);
     expect(getBoundAgentRuntime()).toBe(first);

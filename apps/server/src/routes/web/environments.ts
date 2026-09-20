@@ -1,23 +1,18 @@
+import { type AgentRuntimePort, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import {
-  agentInstanceService,
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
-  createWebEnvironment,
-  deleteEnvironment,
   EnterEnvironmentRequestSchema,
   EnterEnvironmentResponseSchema,
   EnvironmentDetailEnvelopeSchema,
   EnvironmentInfoSchema,
   EnvironmentListEnvelopeSchema,
   EnvironmentListSchema,
-  getOwnedEnvironment,
   ListInstancesResponseSchema,
-  listEnvironmentsWithInstances,
   mapOrchestrationErrorToHttp,
   sanitizeResponse,
   UpdateEnvironmentRequestSchema,
   UpdateEnvironmentResponseSchema,
-  updateWebEnvironment,
 } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
@@ -29,31 +24,17 @@ import { authGuardPlugin } from "../../plugins/auth";
 
 const logger = createLogger("env-route");
 
-/** Web 环境路由依赖，测试可在不替换运行时模块的情况下提供本地实现。 */
-export interface EnvironmentRouteDeps {
-  createWebEnvironment: typeof createWebEnvironment;
-  deleteEnvironment: typeof deleteEnvironment;
-  getOwnedEnvironment: typeof getOwnedEnvironment;
-  listEnvironmentsWithInstances: typeof listEnvironmentsWithInstances;
-  sanitizeResponse: typeof sanitizeResponse;
-  updateWebEnvironment: typeof updateWebEnvironment;
-}
-
-const defaultEnvironmentRouteDeps: EnvironmentRouteDeps = {
-  createWebEnvironment,
-  deleteEnvironment,
-  getOwnedEnvironment,
-  listEnvironmentsWithInstances,
-  sanitizeResponse,
-  updateWebEnvironment,
-};
+/** 环境记录的读法（创建/更新/归属校验）来自运行 port 的契约。 */
+type EnvironmentRecordResult = Awaited<ReturnType<AgentRuntimePort["createEnvironment"]>>;
 
 /**
  * 创建 Web 环境路由。
  *
- * 默认装配保持生产公开入口契约；显式依赖仅供路由隔离测试使用，避免替换共享模块。
+ * 环境与实例的运行能力一律经 `getBoundAgentRuntime()` 取（1.4 W3b）：路由不再自持一份可替换的
+ * deps 袋子——那等于给同一批能力开第二个替换点，用例要替换运行能力时改绑 port 即可
+ *（`@fenix/agent-runtime/server/testing` 的 `stubAgentRuntimePort`）。
  */
-export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvironmentRouteDeps) {
+export function createEnvironmentRoutes() {
   const app = new Elysia({ name: "web-environments" }).use(authGuardPlugin).model({
     "create-environment-request": CreateEnvironmentRequestSchema,
     "create-environment-response": CreateEnvironmentResponseSchema,
@@ -80,7 +61,7 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       // 避免前端把其他成员的 runtime 误挂到自己的 agent 上。
       return {
         success: true as const,
-        data: await deps.listEnvironmentsWithInstances(authCtx.organizationId, user.id),
+        data: await getBoundAgentRuntime().listEnvironments(authCtx.organizationId, user.id),
       };
     },
     {
@@ -109,9 +90,9 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
         autoStart?: boolean;
       };
 
-      let record: Awaited<ReturnType<EnvironmentRouteDeps["createWebEnvironment"]>>;
+      let record: EnvironmentRecordResult;
       try {
-        record = await deps.createWebEnvironment({
+        record = await getBoundAgentRuntime().createEnvironment({
           name: b.name,
           description: b.description,
           agentConfigId: b.agentConfigId,
@@ -130,14 +111,15 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       }
 
       if (b.autoStart && record.userId) {
-        agentInstanceService
+        const runtime = getBoundAgentRuntime();
+        runtime
           .findOrCreateDefaultInstance(record.id, record.userId)
-          .then((instance) => agentInstanceService.ensureInstanceRuntime(instance))
+          .then((instance) => runtime.ensureInstanceRuntime(instance))
           .then(() => logger.info(`Auto-started instance for new environment: ${record.name}`))
           .catch((err: unknown) => logger.error(`Failed to auto-start instance for ${record.name}:`, err));
       }
 
-      return { success: true as const, data: { ...deps.sanitizeResponse(record), secret: record.secret } };
+      return { success: true as const, data: { ...sanitizeResponse(record), secret: record.secret } };
     },
     {
       sessionAuth: true,
@@ -162,8 +144,8 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       const authCtx = store.authContext!;
       const user = store.user!;
       try {
-        const env = await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
-        return { success: true as const, data: { ...deps.sanitizeResponse(env), secret: env.secret } };
+        const env = await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        return { success: true as const, data: { ...sanitizeResponse(env), secret: env.secret } };
       } catch (err: unknown) {
         if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
           return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
@@ -198,10 +180,10 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
         autoStart?: boolean;
       };
 
-      let updated: Awaited<ReturnType<EnvironmentRouteDeps["updateWebEnvironment"]>>;
+      let updated: Awaited<ReturnType<AgentRuntimePort["updateEnvironment"]>>;
       try {
-        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
-        updated = await deps.updateWebEnvironment(params.id, authCtx.organizationId, {
+        await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        updated = await getBoundAgentRuntime().updateEnvironment(params.id, authCtx.organizationId, {
           name: b.name,
           description: b.description,
           agentConfigId: b.agentConfigId,
@@ -218,7 +200,7 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
         }
         throw err;
       }
-      return { success: true as const, data: deps.sanitizeResponse(updated!) };
+      return { success: true as const, data: sanitizeResponse(updated!) };
     },
     {
       sessionAuth: true,
@@ -244,7 +226,7 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       const user = store.user!;
       const authCtx = store.authContext!;
       try {
-        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
       } catch (err: unknown) {
         if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
           return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
@@ -253,20 +235,19 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
 
       const b = body as { instanceUid?: string };
       try {
-        const instance = await agentInstanceService.resolveInstanceForOperation({
+        const instance = await getBoundAgentRuntime().ensureInstance({
           environmentId: params.id,
           ownerUserId: user.id,
           requestedInstanceUid: b.instanceUid,
           automaticSelection: "chat",
         });
-        await agentInstanceService.ensureInstanceRuntime(instance);
         return {
           success: true as const,
           data: {
             instanceUid: instance.id,
             environmentId: instance.environmentId,
             name: instance.name,
-            status: agentInstanceService.getRuntimeSnapshot(instance.id).state,
+            status: getBoundAgentRuntime().getRuntimeSnapshot(instance.id).state,
             createdAt: instance.createdAt.toISOString(),
           },
         };
@@ -318,13 +299,13 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       const authCtx = store.authContext!;
       const user = store.user!;
       try {
-        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
       } catch (err: unknown) {
         if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
           return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
         throw err;
       }
-      await deps.deleteEnvironment(params.id);
+      await getBoundAgentRuntime().deleteEnvironment(params.id);
       return { success: true as const, data: null };
     },
     {
@@ -349,13 +330,13 @@ export function createEnvironmentRoutes(deps: EnvironmentRouteDeps = defaultEnvi
       const authCtx = store.authContext!;
       const user = store.user!;
       try {
-        await deps.getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
+        await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
       } catch (err: unknown) {
         if (err instanceof Error && (err as { code?: string }).code === "NOT_FOUND")
           return error(404, { success: false, error: { code: "NOT_FOUND", message: err.message } });
         throw err;
       }
-      const instances = await agentInstanceService.listInstances(user.id, params.id);
+      const instances = await getBoundAgentRuntime().listOwnedInstances(user.id, params.id);
       return {
         success: true as const,
         data: {

@@ -1,4 +1,4 @@
-import { findRunningInstanceByEnvironment, sendToAgentWs, sendToInstanceRelay } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { log, error as logError } from "@fenix/logger";
 import { getAcpEventBusPort } from "./acp-event-bus-port";
 import { findBindingForMessage } from "./channel-binding";
@@ -267,10 +267,11 @@ export class HermesClient {
     this.ensureOutboundRouting(hermesMsg.data.source.platform, hermesMsg.data.source.chat_id, agentId, replyTo);
 
     // Try spawned instance first
-    const instance = await findRunningInstanceByEnvironment(agentId);
+    const runtime = getBoundAgentRuntime();
+    const instance = await runtime.findRunningInstanceByEnvironment(agentId);
     log(`[Hermes] findRunningInstanceByEnvironment(${agentId}) => ${instance ? instance.id : "null"}`);
     if (instance) {
-      const sent = sendToInstanceRelay(instance.id, JSON.stringify(acpMsg));
+      const sent = runtime.session.sendToInstanceRelay(instance.id, JSON.stringify(acpMsg));
       if (sent) {
         log(`[Hermes] Routed message to instance ${instance.id} for agent ${agentId}`);
         return;
@@ -278,7 +279,7 @@ export class HermesClient {
     }
 
     // Fallback: direct ACP connection
-    const sent = sendToAgentWs(agentId, acpMsg);
+    const sent = getBoundAgentRuntime().session.sendToAgentWs(agentId, acpMsg);
     log(`[Hermes] sendToAgentWs(${agentId}) => ${sent}`);
     if (sent) {
       log(`[Hermes] Routed message to agent ${agentId} via ACP WS`);

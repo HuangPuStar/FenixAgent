@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { SpawnedInstance } from "@fenix/agent-runtime/server";
+import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import {

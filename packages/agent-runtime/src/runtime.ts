@@ -18,6 +18,10 @@
  * - 本文件不新增行为：每个方法都是既有包内实现的显式转发。返回类型暂时用 `Awaited<ReturnType<...>>`
  *   派生自实现（`listEnvironmentsWithInstances` 一类含 DB join 投影的函数尚无显式返回类型），
  *   移除条件：W6 收敛消息面时把这些派生类型替换为显式契约类型。
+ * - 实例记录级操作（`getOwnedInstance` / `createInstance` / `stopInstanceRuntime` / …）**直通
+ *   `AgentInstanceRecord`**（1.4 W3b 裁定）：控制台要回显实例名/environmentId、编排层要拿记录去
+ *   取租约，把记录改成面内的窄视图只会造出第二份投影并在两侧漂移。代价是持久化记录类型出现在
+ *   契约面上，与上面那条派生返回类型一并记入 W6 收敛清单。
  * - 尚未收口的能力（`environmentRepo`、`agentInstanceRepo`、event bus、`listAcpConnections`、
  *   `listExternalRelayEntries`、`resolveWorkspacePath`、`EnvironmentRecord` 等内部状态访问）不
  *   属于本 port，仍留在 `./server` 并标注 W6；它们不进 port 是因为其消费方（observer、workflow
@@ -25,7 +29,7 @@
  */
 
 import type { AgentInstanceRecord } from "./server/repositories/agent-instance";
-import type { RuntimeSnapshot } from "./server/services/agent-instance-runtime-coordinator";
+import type { RuntimeSnapshot, RuntimeStopMode } from "./server/services/agent-instance-runtime-coordinator";
 import type { SpawnedInstance } from "./server/services/agent-instance-runtime-projection";
 import {
   findRunningInstanceByEnvironment,
@@ -34,7 +38,7 @@ import {
   stopInstance,
 } from "./server/services/agent-instance-runtime-projection";
 import type { AutomaticInstanceSelection } from "./server/services/agent-instance-service";
-import { agentInstanceService } from "./server/services/agent-instance-service";
+import { agentInstanceService, bindAgentInstanceRuntimeOperations } from "./server/services/agent-instance-service";
 import {
   createWebEnvironment,
   listEnvironmentsWithInstances,
@@ -61,11 +65,15 @@ import { createAgentSession, createPromptTurn, openAgentSession, startPromptTurn
 import { getEnvironmentBySecret } from "./services/environment-acp";
 import type { EnvironmentRole } from "./services/environment-core";
 import { deleteEnvironment, getOwnedEnvironment } from "./services/environment-core";
+import { globalInstanceRegistry } from "./services/instance-registry";
 import { setRuntimeCredentialResolver } from "./services/launch-spec-builder";
+import { getOrchestrationController } from "./services/orchestration-bootstrap";
 import type { StopInstancesForEnvironmentsOptions } from "./services/orchestration-instance";
 import {
   refreshInstanceEnvironment,
+  spawnInstanceViaController,
   stopInstancesForEnvironments,
+  stopInstanceViaController,
   terminateLocalDeadInstance,
 } from "./services/orchestration-instance";
 import { cleanupOrchestrationInstancesForMachine } from "./services/orchestration-machine-cleanup";
@@ -98,9 +106,15 @@ export interface EnsureInstanceInput {
   readonly signal?: AbortSignal;
 }
 
-/** `ensureInstance` 的结果：只给出实例标识，实例详情走状态组的查询方法。 */
-export interface EnsureInstanceResult {
-  readonly instanceUid: string;
+/** `createInstance` 的输入：新建一个非默认的持久实例（不启动 runtime，启动走 `ensureInstanceRuntime`）。 */
+export interface CreateInstanceInput {
+  readonly environmentId: string;
+  /** 实例属主；必须与环境属主一致，由调用方保证（Runtime 不解释 actor）。 */
+  readonly ownerUserId: string;
+  /** 记录创建者（审计列）；交互式控制台里与属主相同。 */
+  readonly actorUserId: string;
+  /** 实例名，须唯一可读；空串、超过 100 字符或保留名 `default` 会被实现拒绝（400）。 */
+  readonly name: string;
 }
 
 /**
@@ -112,8 +126,24 @@ export interface EnsureInstanceResult {
 export interface AgentRuntimePort {
   // ── 启动 ──
 
-  /** 确保指定环境下属主的实例存在且已启动（`resolveInstanceForOperation` + `ensureInstanceRuntime`）。 */
-  ensureInstance(input: EnsureInstanceInput): Promise<EnsureInstanceResult>;
+  /** 确保指定环境下属主的实例存在且已启动，返回该实例记录（`resolveInstanceForOperation` + `ensureInstanceRuntime`）。 */
+  ensureInstance(input: EnsureInstanceInput): Promise<AgentInstanceRecord>;
+  /** 启动一个已存在的实例记录（幂等：目标状态已达成时直接返回）。 */
+  ensureInstanceRuntime(instance: AgentInstanceRecord, signal?: AbortSignal): Promise<void>;
+  /** 查找或创建环境的下属主默认实例（`chat` 类，名 `default`），不启动 runtime。 */
+  findOrCreateDefaultInstance(environmentId: string, ownerUserId: string): Promise<AgentInstanceRecord>;
+  /**
+   * 查找或创建环境的下属主 workflow 持久实例（名 `primary`），并回报本次是否新建。
+   *
+   * `created` 是编排层的所有权判据：只有自己创建的实例才由自己负责停止，复用别人已启动的实例
+   * 不能顺手停掉（见 workflow 的实例清理路径）。
+   */
+  findOrCreateWorkflowInstanceWithStatus(
+    environmentId: string,
+    ownerUserId: string,
+  ): Promise<{ instance: AgentInstanceRecord; created: boolean }>;
+  /** 新建持久实例记录（`creationSource: "user"`）；不做环境归属校验，调用方先查环境。 */
+  createInstance(input: CreateInstanceInput): Promise<AgentInstanceRecord>;
   /** 创建 Web 环境（含默认实例的启动编排）。 */
   createEnvironment(params: Parameters<typeof createWebEnvironment>[0]): Promise<CreateEnvironmentResult>;
   /** 更新环境配置；是否重启实例由实现按需决定。 */
@@ -135,6 +165,12 @@ export interface AgentRuntimePort {
 
   /** 停止单个实例（含组织归属校验；幂等，目标状态已达成时返回成功）。 */
   stopInstance(instanceUid: string, organizationId: string): Promise<StopInstanceResult>;
+  /** 停止实例 runtime，保留实例记录（`mode: "strict"` 下停止失败即抛错）。 */
+  stopInstanceRuntime(instance: AgentInstanceRecord, mode?: RuntimeStopMode): Promise<void>;
+  /** 用同一实例 uid 重启 runtime（记录不变；默认实例同样支持）。 */
+  restartInstanceRuntime(instance: AgentInstanceRecord): Promise<void>;
+  /** 停止 runtime 并删除实例记录；默认实例被拒（`DEFAULT_INSTANCE_DELETE_DENIED` 409）。 */
+  deleteInstance(instance: AgentInstanceRecord): Promise<void>;
   /** 停止指定环境下的全部实例，返回被停止的实例 ID。 */
   stopInstancesForEnvironments(
     environmentIds: string[],
@@ -168,6 +204,8 @@ export interface AgentRuntimePort {
   listRuntimeInstances(organizationId: string): SpawnedInstance[];
   /** 按实例 ID 读内存运行态实例（带可选归属校验）。 */
   getRuntimeInstance(instanceUid: string, userId?: string): SpawnedInstance | undefined;
+  /** 按属主读单个持久实例记录；不属于该属主（或 uid 非法）按未找到处理。 */
+  getOwnedInstance(instanceUid: string, ownerUserId: string): Promise<AgentInstanceRecord>;
   /** 按属主列出持久实例记录及其运行态快照。 */
   listOwnedInstances(
     ownerUserId: string,
@@ -196,6 +234,13 @@ export interface AgentRuntimePort {
 
   /** 机器下线时清理其上的编排实例，返回清理数量。 */
   cleanupInstancesForMachine(machineId: string): number;
+  /**
+   * 从实例登记表移除一个实例，并清掉它的并发计数。
+   *
+   * 宿主把实例从 Core runtime 删除时必须配对调用：登记表留着条目会继续计入并发额度，
+   * 且 `hasActiveInstance` 会误判为存活，实例再也回收不掉。
+   */
+  unregisterInstance(instanceUid: string): void;
   /** 回收确认已死亡的本地实例（异步；不阻塞调用方消息循环）。 */
   terminateLocalDeadInstance(instanceId: string): Promise<void>;
   /** 启动 ACP 空闲回收巡检。 */
@@ -260,8 +305,14 @@ export function createAgentRuntime(): AgentRuntime {
         automaticSelection: input.automaticSelection,
       });
       await agentInstanceService.ensureInstanceRuntime(instance, input.signal);
-      return { instanceUid: instance.id };
+      return instance;
     },
+    ensureInstanceRuntime: (instance, signal) => agentInstanceService.ensureInstanceRuntime(instance, signal),
+    findOrCreateDefaultInstance: (environmentId, ownerUserId) =>
+      agentInstanceService.findOrCreateDefaultInstance(environmentId, ownerUserId),
+    findOrCreateWorkflowInstanceWithStatus: (environmentId, ownerUserId) =>
+      agentInstanceService.findOrCreateWorkflowInstanceWithStatus(environmentId, ownerUserId),
+    createInstance: (input) => agentInstanceService.createUserInstance(input),
     createEnvironment: (params) => createWebEnvironment(params),
     updateEnvironment: (environmentId, organizationId, params) =>
       updateWebEnvironment(environmentId, organizationId, params),
@@ -271,6 +322,9 @@ export function createAgentRuntime(): AgentRuntime {
     setRuntimeCredentialResolver: (resolver) => setRuntimeCredentialResolver(resolver),
 
     stopInstance: (instanceUid, organizationId) => stopInstance(instanceUid, organizationId),
+    stopInstanceRuntime: (instance, mode) => agentInstanceService.stopInstanceRuntime(instance, mode),
+    restartInstanceRuntime: (instance) => agentInstanceService.restartInstanceRuntime(instance),
+    deleteInstance: (instance) => agentInstanceService.deleteInstance(instance),
     stopInstancesForEnvironments: (environmentIds, options) => stopInstancesForEnvironments(environmentIds, options),
     deleteEnvironment: (environmentId) => deleteEnvironment(environmentId),
     closeAcpConnectionsForEnvironments: (environmentIds) => closeAcpConnectionsForEnvironments(environmentIds),
@@ -285,6 +339,7 @@ export function createAgentRuntime(): AgentRuntime {
       findRunningInstanceByEnvironment(environmentId, userId),
     listRuntimeInstances: (organizationId) => listRuntimeInstances(organizationId),
     getRuntimeInstance: (instanceUid, userId) => getInstance(instanceUid, userId),
+    getOwnedInstance: (instanceUid, ownerUserId) => agentInstanceService.getOwnedInstance(instanceUid, ownerUserId),
     listOwnedInstances: (ownerUserId, environmentId) => agentInstanceService.listInstances(ownerUserId, environmentId),
     getRuntimeSnapshot: (instanceUid) => agentInstanceService.getRuntimeSnapshot(instanceUid),
     listInstanceActivity: (now, organizationId, showError) =>
@@ -299,6 +354,7 @@ export function createAgentRuntime(): AgentRuntime {
     updateSessionStatus: (sessionId, status) => updateSessionStatus(sessionId, status),
 
     cleanupInstancesForMachine: (machineId) => cleanupOrchestrationInstancesForMachine(machineId),
+    unregisterInstance: (instanceUid) => globalInstanceRegistry.unregisterAndDeleteCounter(instanceUid),
     terminateLocalDeadInstance: (instanceId) => terminateLocalDeadInstance(instanceId),
     startIdleMonitor: () => startAcpIdleMonitor(),
     stopIdleMonitor: () => stopAcpIdleMonitor(),
@@ -327,9 +383,25 @@ let boundRuntime: AgentRuntime | null = null;
  * `createMachineModule` / `createSandboxModule` 同口径）。首次创建时完成 `bindAgentRuntime`，
  * 使 `getBoundAgentRuntime()` 可作为「宿主装配已完成」的判据——装配未走到 Runtime 时，
  * 消费方拿到的是明确的「未绑定」失败，而不是一个依赖尚未就绪的入口。
+ *
+ * 同时在本组合根绑定实例生命周期所需的编排操作（`AgentInstanceRuntimeOperations`，§4.6）：
+ * 那是本包的内部装配 seam，不是对外 port——此前由宿主把包自己导出的
+ * `spawnInstanceViaController` / `stopInstanceViaController` 再转发回来绑定，宿主只是中间人。
+ * 放在这里之后，宿主只表达「装配 Runtime 模块」，不再复述本包的内部接线。
  */
 export function createAgentRuntimeModule(): AgentRuntimeModule {
-  boundRuntime ??= createAgentRuntime();
+  if (!boundRuntime) {
+    boundRuntime = createAgentRuntime();
+    // 只在首次装配时绑定：重复调用不得覆盖用例或宿主后置绑定的替身（同 `bind*Port` 的一次装配语义）。
+    bindAgentInstanceRuntimeOperations({
+      spawnInstance: spawnInstanceViaController,
+      stopInstance: stopInstanceViaController,
+      hasActiveInstance: (instanceUid) =>
+        getOrchestrationController()
+          .listInstances()
+          .some((instance) => instance.instanceId === instanceUid),
+    });
+  }
   return { id: "agent-runtime", runtime: boundRuntime };
 }
 
@@ -361,4 +433,13 @@ export function resetAgentRuntimeForTest(): void {
   boundRuntime = null;
 }
 
-export type { AgentSession, PromptTurn, PromptTurnStartOptions, SpawnedInstance };
+export type {
+  AgentInstanceRecord,
+  AgentSession,
+  AutomaticInstanceSelection,
+  PromptTurn,
+  PromptTurnStartOptions,
+  RuntimeSnapshot,
+  RuntimeStopMode,
+  SpawnedInstance,
+};

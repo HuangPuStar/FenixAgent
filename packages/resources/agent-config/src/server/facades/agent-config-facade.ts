@@ -210,12 +210,11 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     });
     if (environmentIds.length > 0) {
       // 动态 import 保持与运行时装配的惰性边界，避免删除链在模块初始化期形成循环依赖。
-      const { closeAcpConnectionsForEnvironments, stopInstancesForEnvironments } = await import(
-        "@fenix/agent-runtime/server"
-      );
+      const { getBoundAgentRuntime } = await import("@fenix/agent-runtime/runtime");
+      const runtime = getBoundAgentRuntime();
       // 先关闭本地 ACP 连接，再停止运行实例；否则客户端仍会用已删除环境继续发消息。
-      closeAcpConnectionsForEnvironments([...environmentIds]);
-      await stopInstancesForEnvironments([...environmentIds], { organizationId: row.organizationId });
+      runtime.closeAcpConnectionsForEnvironments([...environmentIds]);
+      await runtime.stopInstancesForEnvironments([...environmentIds], { organizationId: row.organizationId });
     }
 
     const deleted = await this.service.remove({ resourceId: row.id, organizationId: row.organizationId });
@@ -240,8 +239,10 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     if (environmentIds.length === 0) return { environmentIds: [], restartedInstanceIds: [] };
 
     // 惰性导入避免 agent-config → agent-instance-service → orchestration-instance → config 的循环依赖。
-    const { agentInstanceService } = await import("@fenix/agent-runtime/server");
-    const restartedInstanceIds = await agentInstanceService.restartActiveInstancesForEnvironments([...environmentIds]);
+    const { getBoundAgentRuntime } = await import("@fenix/agent-runtime/runtime");
+    const restartedInstanceIds = await getBoundAgentRuntime().restartActiveInstancesForEnvironments([
+      ...environmentIds,
+    ]);
     return { environmentIds: [...environmentIds], restartedInstanceIds };
   }
 

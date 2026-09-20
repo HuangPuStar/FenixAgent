@@ -1,4 +1,4 @@
-import { agentInstanceService, createWebEnvironment } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { prodViewRepo } from "../repositories/prod-view";
 import type { CreateProdViewInput, UpdateProdViewInput } from "../schemas/prod-view.schema";
 
@@ -41,8 +41,10 @@ export interface ProdViewServiceDeps {
 }
 
 const defaultDeps: ProdViewServiceDeps = {
-  createWebEnvironment,
-  findOrCreateDefaultInstance: agentInstanceService.findOrCreateDefaultInstance.bind(agentInstanceService),
+  // 每次调用现取运行 port（1.4 W3b）：绑定发生在宿主装配阶段，模块求值期取会在装配完成前就抛错。
+  createWebEnvironment: (params) => getBoundAgentRuntime().createEnvironment(params),
+  findOrCreateDefaultInstance: (environmentId, ownerUserId) =>
+    getBoundAgentRuntime().findOrCreateDefaultInstance(environmentId, ownerUserId),
 };
 const deps: ProdViewServiceDeps = { ...defaultDeps };
 

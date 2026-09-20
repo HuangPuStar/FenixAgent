@@ -1,9 +1,14 @@
-import { openAgentSession, type PromptTurn } from "@fenix/agent-runtime/server";
+import type { AgentRuntimePort, PromptTurn } from "@fenix/agent-runtime/runtime";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { log, error as logError } from "@fenix/logger";
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
 
+/** 默认实现：经运行 port 打开一次程序化会话（1.4 W3b；`api/primary` 类持久实例 + 独立 relay/ACP session）。 */
+const defaultOpenAgentSession: AgentRuntimePort["openAgentSession"] = (input) =>
+  getBoundAgentRuntime().openAgentSession(input);
+
 const deps = {
-  openAgentSession,
+  openAgentSession: defaultOpenAgentSession,
 };
 
 /** 测试用：覆盖 executor 依赖。 */
@@ -12,7 +17,7 @@ export function setAgentExecutorDeps(overrides: Partial<typeof deps> | null): vo
     Object.assign(deps, overrides);
     return;
   }
-  deps.openAgentSession = openAgentSession;
+  deps.openAgentSession = defaultOpenAgentSession;
 }
 
 interface AgentDefinition {

@@ -16,10 +16,9 @@ import {
   installAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
+import { createAgentRuntimeModule } from "@fenix/agent-runtime/runtime";
 import {
-  agentInstanceService,
   bindAcpInstanceActivityPort,
-  bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
   bindEnvironmentAcpLifecyclePort,
   bindFileWsPort,
@@ -27,9 +26,6 @@ import {
   bindMachineRegistryPort,
   bindRedisConnectionPort,
   bindSessionEventBusPort,
-  closeAcpConnectionsForEnvironments,
-  closeAllAcpConnections,
-  closeAllRelayConnections,
   createAcpRoutes,
   createApiInstanceRoutes,
   createOpenaiChatRoutes,
@@ -38,17 +34,8 @@ import {
   getAcpEventBus,
   getAgentNodeService,
   getAllEventBuses,
-  getOrchestrationController,
-  getOwnedEnvironment,
   removeEventBus,
   resolveWorkspacePath,
-  setRuntimeCredentialResolver,
-  spawnInstanceViaController,
-  startAcpIdleMonitor,
-  stopAcpIdleMonitor,
-  stopInstancesForEnvironments,
-  stopInstanceViaController,
-  touchInstanceActivity,
   triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
 import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
@@ -283,6 +270,11 @@ initializeApplicationInfrastructure({
   },
 });
 registerIdentityDirectory(createIdentityDirectory());
+// 运行 port（1.4 W3b）：实例/环境生命周期与会话数据面只有这一个入口，宿主在装配阶段绑定一次，
+// 路由与消费包随后经 `getBoundAgentRuntime()` 取用。同时由本模块的 create 绑定包内编排 seam
+//（§4.6：`AgentInstanceRuntimeOperations` 是包内装配细节，宿主不再把包导出的函数转发回去）。
+// §1.5 的 registry 驱动装配接管后，这一行由模块 create 承担。
+const agentRuntime = createAgentRuntimeModule().runtime;
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
 // Machine 包的宿主运行态：workspace 根、Core runtime 节点、file-ws 连接索引与断连清理都是宿主进程级单例，
@@ -298,7 +290,7 @@ bindMachineHostPort({
 // Machine 包读 environment 的两个原语（记录读取 + 归属校验）：实现仍在 agent-runtime，由此处转发。
 bindMachineEnvironmentPort({
   getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
-  getOwnedEnvironment,
+  getOwnedEnvironment: agentRuntime.getOwnedEnvironment,
 });
 // YJS 会话快照所需的 Redis 连接（1.4 W2）：包内不再 import 宿主 services/cache，连接的建立与配置
 // 由宿主绑定，包内仅在会话切换的 CAS 快照路径上取用（未配置 RCS_REDIS_URL 时返回 null 并跳过）。
@@ -321,19 +313,11 @@ bindFileWsPort({
   handleFileWsOpen,
   parseFileWsMessage,
 });
-bindAgentInstanceRuntimeOperations({
-  spawnInstance: spawnInstanceViaController,
-  stopInstance: stopInstanceViaController,
-  hasActiveInstance: (instanceUid) =>
-    getOrchestrationController()
-      .listInstances()
-      .some((instance) => instance.instanceId === instanceUid),
-});
 bindEnvironmentAcpLifecyclePort({
-  closeAcpConnections: closeAcpConnectionsForEnvironments,
-  stopInstances: stopInstancesForEnvironments,
+  closeAcpConnections: agentRuntime.closeAcpConnectionsForEnvironments,
+  stopInstances: agentRuntime.stopInstancesForEnvironments,
 });
-bindAcpInstanceActivityPort(touchInstanceActivity);
+bindAcpInstanceActivityPort(agentRuntime.touchInstanceActivity);
 await runCriticalStartupSequence({
   initDb: async () => {
     await initDb();
@@ -394,7 +378,7 @@ await runCriticalStartupSequence({
     const modelGatewayRuntime = createModelGatewayRuntime({ subjectVerification });
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
-      setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
+      agentRuntime.setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
       startupLog.info("Model gateway runtime initialized");
       return;
     }
@@ -469,7 +453,7 @@ startMachineSweep(60_000);
 if (config.fileWsSweepEnabled) {
   startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
 }
-startAcpIdleMonitor();
+agentRuntime.startIdleMonitor();
 
 const app = new Elysia({
   websocket: {
@@ -625,13 +609,13 @@ function gracefulShutdown(signal: string): Promise<void> {
   gracefulShutdownPromise = (async () => {
     const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
     startupLog.info(`Received ${signal}, shutting down...`);
-    const runtimeDrain = agentInstanceService.shutdownRuntimes();
+    const runtimeDrain = agentRuntime.shutdown();
     schedulerService.stop();
     const hermesClient = getHermesClient();
     await withShutdownDeadline(hermesClient?.stop() ?? Promise.resolve(), "hermes", deadline);
-    stopAcpIdleMonitor();
-    closeAllRelayConnections();
-    closeAllAcpConnections();
+    agentRuntime.stopIdleMonitor();
+    agentRuntime.closeAllRelayConnections();
+    agentRuntime.closeAllAcpConnections();
     // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
     stopFileWsSweep();
     closeAllFileWsConnections();

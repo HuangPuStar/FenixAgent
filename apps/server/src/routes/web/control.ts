@@ -2,15 +2,8 @@
 // 本路由是 `/web/control/*` 的协议适配层，依赖 Agent Runtime 的会话服务与事件总线，落点必须是宿主
 // 而非任一模块：放进 agent-runtime 会让宿主专属的协议适配反向拖入机器域（1.4 已把 EventBus 收敛回
 // agent-runtime，Machine 的同名薄封装删除）。
-import {
-  type AgentInstanceRecord,
-  agentInstanceService,
-  environmentRepo,
-  getEventBus,
-  getSession,
-  resolveExistingSessionId,
-  updateSessionStatus,
-} from "@fenix/agent-runtime/server";
+import { type AgentInstanceRecord, type AgentRuntimePort, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import { environmentRepo, getEventBus } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
@@ -24,9 +17,12 @@ const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({
   "session-event-payload": SessionEventPayloadSchema,
 });
 
+/** 会话记录的读法来自运行 port 的契约（`LightweightSession` 是包内类型，不单独透出）。 */
+type SessionRecord = NonNullable<Awaited<ReturnType<AgentRuntimePort["getSession"]>>>;
+
 type OwnershipCheckResult =
   | { error: true; response: Response }
-  | { error: false; session: NonNullable<Awaited<ReturnType<typeof getSession>>>; sessionId: string };
+  | { error: false; session: SessionRecord; sessionId: string };
 
 async function checkOwnership(
   userId: string | null,
@@ -40,7 +36,7 @@ async function checkOwnership(
       response: errorFn(403, { success: false, error: { code: "forbidden", message: "Not authenticated" } }),
     };
   }
-  const resolvedSessionId = await resolveExistingSessionId(sessionId);
+  const resolvedSessionId = await getBoundAgentRuntime().resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
     return {
       error: true,
@@ -51,7 +47,7 @@ async function checkOwnership(
   // 任一边界不匹配均保守拒绝，避免依赖可伪造的 session ID 编码推导身份。
   let instance: AgentInstanceRecord;
   try {
-    instance = await agentInstanceService.getOwnedInstance(resolvedSessionId, userId);
+    instance = await getBoundAgentRuntime().getOwnedInstance(resolvedSessionId, userId);
   } catch {
     return {
       error: true,
@@ -80,7 +76,7 @@ async function checkOwnership(
       }),
     };
   }
-  const activeSession = await getSession(resolvedSessionId);
+  const activeSession = await getBoundAgentRuntime().getSession(resolvedSessionId);
   if (!activeSession) {
     return {
       error: true,
@@ -174,7 +170,7 @@ const interruptSessionHandler: any = async ({ store, params, error }: any) => {
   const { sessionId } = ownership;
 
   publishSessionEvent(sessionId, "interrupt", { action: "interrupt" }, "outbound");
-  await updateSessionStatus(sessionId, "idle");
+  getBoundAgentRuntime().updateSessionStatus(sessionId, "idle");
   return { success: true as const, data: null };
 };
 

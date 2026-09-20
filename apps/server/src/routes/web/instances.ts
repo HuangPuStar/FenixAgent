@@ -1,9 +1,7 @@
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import {
-  agentInstanceService,
-  getOwnedEnvironment,
   InstanceActivityListResponseSchema,
   InstanceActivityQuerySchema,
-  listInstanceActivitySnapshotsWithUsers,
   SpawnInstanceFromEnvironmentRequestSchema,
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "@fenix/agent-runtime/server";
@@ -11,25 +9,6 @@ import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
-
-const _deps = {
-  getOwnedEnvironment,
-  getOwnedInstance: agentInstanceService.getOwnedInstance.bind(agentInstanceService),
-  stopInstanceRuntime: agentInstanceService.stopInstanceRuntime.bind(agentInstanceService),
-  restartInstanceRuntime: agentInstanceService.restartInstanceRuntime.bind(agentInstanceService),
-  deleteInstance: agentInstanceService.deleteInstance.bind(agentInstanceService),
-};
-const _defaultDeps = { ..._deps };
-
-/** 测试用：覆盖实例 action 依赖，避免加载真实数据库和 runtime。 */
-export function setWebInstanceRouteDeps(overrides: Partial<typeof _deps>): void {
-  Object.assign(_deps, overrides);
-}
-
-/** 测试用：恢复实例 action 默认依赖。 */
-export function resetWebInstanceRouteDeps(): void {
-  Object.assign(_deps, _defaultDeps);
-}
 
 const app = new Elysia({ name: "web-instances" }).use(authGuardPlugin).model({
   "instance-activity-query": InstanceActivityQuerySchema,
@@ -52,7 +31,7 @@ app.get(
     const organizationId = store.authContext?.organizationId ?? store.user?.id;
     return {
       success: true as const,
-      data: await listInstanceActivitySnapshotsWithUsers(Date.now(), organizationId, query.showError === true),
+      data: await getBoundAgentRuntime().listInstanceActivity(Date.now(), organizationId, query.showError === true),
     };
   },
   {
@@ -81,7 +60,7 @@ app.post(
     const b = body as { environmentId: string };
 
     try {
-      await getOwnedEnvironment(b.environmentId, authCtx.organizationId, user.id);
+      await getBoundAgentRuntime().getOwnedEnvironment(b.environmentId, authCtx.organizationId, user.id);
     } catch (err: unknown) {
       if (err instanceof Error && "code" in err && (err as { code?: string }).code === "NOT_FOUND") {
         return error(404, { success: false, error: { code: "NOT_FOUND", message: (err as Error).message } });
@@ -89,20 +68,21 @@ app.post(
       throw err;
     }
 
-    const persistentInstance = await agentInstanceService.createUserInstance({
+    const runtime = getBoundAgentRuntime();
+    const persistentInstance = await runtime.createInstance({
       environmentId: b.environmentId,
       ownerUserId: user.id,
       actorUserId: user.id,
       name: `instance-${crypto.randomUUID()}`,
     });
-    await agentInstanceService.ensureInstanceRuntime(persistentInstance);
+    await runtime.ensureInstanceRuntime(persistentInstance);
     return {
       success: true as const,
       data: {
         instanceUid: persistentInstance.id,
         environmentId: persistentInstance.environmentId,
         name: persistentInstance.name,
-        status: agentInstanceService.getRuntimeSnapshot(persistentInstance.id).state,
+        status: runtime.getRuntimeSnapshot(persistentInstance.id).state,
         createdAt: persistentInstance.createdAt.toISOString(),
       },
     };
@@ -124,8 +104,9 @@ app.post(
 
 /** 校验实例与 Environment 均属于当前用户和组织。 */
 async function getOwnedInstanceForAction(instanceUid: string, organizationId: string, userId: string) {
-  const instance = await _deps.getOwnedInstance(instanceUid, userId);
-  await _deps.getOwnedEnvironment(instance.environmentId, organizationId, userId);
+  const runtime = getBoundAgentRuntime();
+  const instance = await runtime.getOwnedInstance(instanceUid, userId);
+  await runtime.getOwnedEnvironment(instance.environmentId, organizationId, userId);
   return instance;
 }
 
@@ -138,7 +119,7 @@ app.post(
     const user = store.user!;
     try {
       const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
-      await _deps.stopInstanceRuntime(instance, "strict");
+      await getBoundAgentRuntime().stopInstanceRuntime(instance, "strict");
       return { success: true as const, data: null };
     } catch (err: unknown) {
       const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
@@ -171,7 +152,7 @@ app.post(
     const user = store.user!;
     try {
       const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
-      await _deps.restartInstanceRuntime(instance);
+      await getBoundAgentRuntime().restartInstanceRuntime(instance);
       return { success: true as const, data: null };
     } catch (err: unknown) {
       const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;
@@ -204,7 +185,7 @@ app.delete(
     const user = store.user!;
     try {
       const instance = await getOwnedInstanceForAction(params.id, authCtx.organizationId, user.id);
-      await _deps.deleteInstance(instance);
+      await getBoundAgentRuntime().deleteInstance(instance);
       return { success: true as const, data: null };
     } catch (err: unknown) {
       const code = err instanceof Error && "code" in err ? (err as { code?: string }).code : undefined;

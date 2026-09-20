@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { agentInstanceService } from "@fenix/agent-runtime/server";
+import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { createEnvironmentRoutes, type EnvironmentRouteDeps } from "@server/routes/web/environments";
+import { createEnvironmentRoutes } from "@server/routes/web/environments";
 import { setTestOrgContext } from "@server/services/org-context";
 import {
   environmentServiceRegistry,
@@ -13,24 +14,9 @@ import {
   stubEnvironmentService,
 } from "@server/test-utils/stubs/module-stubs";
 
-const route = createEnvironmentRoutes({
-  createWebEnvironment: (...args: Parameters<EnvironmentRouteDeps["createWebEnvironment"]>) =>
-    (environmentServiceRegistry.get("createWebEnvironment") as EnvironmentRouteDeps["createWebEnvironment"])(...args),
-  deleteEnvironment: (...args: Parameters<EnvironmentRouteDeps["deleteEnvironment"]>) =>
-    (environmentServiceRegistry.get("deleteEnvironment") as EnvironmentRouteDeps["deleteEnvironment"])(...args),
-  getOwnedEnvironment: (...args: Parameters<EnvironmentRouteDeps["getOwnedEnvironment"]>) =>
-    (environmentServiceRegistry.get("getOwnedEnvironment") as EnvironmentRouteDeps["getOwnedEnvironment"])(...args),
-  listEnvironmentsWithInstances: (...args: Parameters<EnvironmentRouteDeps["listEnvironmentsWithInstances"]>) =>
-    (
-      environmentServiceRegistry.get(
-        "listEnvironmentsWithInstances",
-      ) as EnvironmentRouteDeps["listEnvironmentsWithInstances"]
-    )(...args),
-  sanitizeResponse: (...args: Parameters<EnvironmentRouteDeps["sanitizeResponse"]>) =>
-    (environmentServiceRegistry.get("sanitizeResponse") as EnvironmentRouteDeps["sanitizeResponse"])(...args),
-  updateWebEnvironment: (...args: Parameters<EnvironmentRouteDeps["updateWebEnvironment"]>) =>
-    (environmentServiceRegistry.get("updateWebEnvironment") as EnvironmentRouteDeps["updateWebEnvironment"])(...args),
-});
+// 路由不再自持 deps 袋子（1.4 W3b）：环境能力经运行 port 取，替换点就是 port 绑定本身
+//（见下方 beforeEach 的 `stubAgentRuntimePort`）。
+const route = createEnvironmentRoutes();
 const environmentId = "env-1";
 const now = new Date("2026-08-19T00:00:00.000Z");
 
@@ -99,7 +85,6 @@ function configureEnvironmentStubs() {
     deleteEnvironment: async () => {},
     getOwnedEnvironment: async () => environment(),
     listEnvironmentsWithInstances: async () => [],
-    sanitizeResponse: () => responseEnvironment(),
     updateWebEnvironment: async () => environment(),
   });
 }
@@ -115,10 +100,20 @@ describe("round44 Web 环境路由", () => {
     agentInstanceService.listInstances = async () => [];
     authenticate();
     configureEnvironmentStubs();
+    // 环境能力经 port 转发到本文件的 stub 注册表；实例能力保留真实实现——port 是纯直通，
+    // 其内部仍按各用例对 `agentInstanceService` 的改写生效（见 `EnvironmentRouteDeps` 的删除记录）。
+    stubAgentRuntimePort({
+      createEnvironment: (...args) => environmentServiceRegistry.get("createWebEnvironment")(...args),
+      deleteEnvironment: (...args) => environmentServiceRegistry.get("deleteEnvironment")(...args),
+      getOwnedEnvironment: (...args) => environmentServiceRegistry.get("getOwnedEnvironment")(...args),
+      listEnvironments: (...args) => environmentServiceRegistry.get("listEnvironmentsWithInstances")(...args),
+      updateEnvironment: (...args) => environmentServiceRegistry.get("updateWebEnvironment")(...args),
+    });
     stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
   });
 
   afterEach(() => {
+    resetAgentRuntimePort();
     agentInstanceService.resolveInstanceForOperation = originalResolveInstanceForOperation;
     agentInstanceService.ensureInstanceRuntime = originalEnsureInstanceRuntime;
     agentInstanceService.getRuntimeSnapshot = originalGetRuntimeSnapshot;

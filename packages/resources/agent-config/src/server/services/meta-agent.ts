@@ -11,7 +11,7 @@
 
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentInstanceService } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import {
@@ -428,12 +428,11 @@ export async function ensureMetaEnvironment(
   const existing = await findMetaEnvironment(ctx);
   if (existing) {
     try {
-      const instance = await agentInstanceService.resolveInstanceForOperation({
+      const instance = await getBoundAgentRuntime().ensureInstance({
         environmentId: existing.id,
         ownerUserId: ctx.userId,
         automaticSelection: "chat",
       });
-      await agentInstanceService.ensureInstanceRuntime(instance);
       return {
         environmentId: existing.id,
         instanceId: instance.id,
@@ -448,8 +447,7 @@ export async function ensureMetaEnvironment(
     }
   }
 
-  const { createWebEnvironment } = await import("@fenix/agent-runtime/server");
-  const env = await createWebEnvironment({
+  const env = await getBoundAgentRuntime().createEnvironment({
     name: META_ENVIRONMENT_NAME,
     description: "Meta Agent — 工作流编排助手（自动创建）",
     agentConfigId,
@@ -458,12 +456,11 @@ export async function ensureMetaEnvironment(
   });
 
   try {
-    const instance = await agentInstanceService.resolveInstanceForOperation({
+    const instance = await getBoundAgentRuntime().ensureInstance({
       environmentId: env.id,
       ownerUserId: ctx.userId,
       automaticSelection: "chat",
     });
-    await agentInstanceService.ensureInstanceRuntime(instance);
     return {
       environmentId: env.id,
       instanceId: instance.id,

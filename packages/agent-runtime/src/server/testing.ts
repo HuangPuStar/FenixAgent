@@ -1,11 +1,13 @@
 /**
  * Agent Runtime 服务端测试装配入口；不得从生产 `./server` 入口导出。
  *
- * 与 machine / knowledge / sandbox 的同名入口同口径，收敛三件事，避免宿主 preload 与包内用例各抄一份字段清单：
+ * 与 machine / knowledge / sandbox 的同名入口同口径，收敛四件事，避免宿主 preload 与包内用例各抄一份字段清单：
  * 1. 「字段齐全 + 缺省值」的模块配置构造（宿主 preload 的基线登记与本包用例共用这一份真相）；
  * 2. 经 `initializeTestApplicationInfrastructure()` 走**生产读取路径**（`getAgentRuntimeConfig()` →
  *    `getModuleConfig("agent-runtime")`）完成装配，而不是给包内代码留测试专用配置分支；
- * 3. 用例内调整配置的 `overrideModuleConfig()` 入口（基础设施只允许初始化一次）。
+ * 3. 用例内调整配置的 `overrideModuleConfig()` 入口（基础设施只允许初始化一次）；
+ * 4. 运行 port 的替身装配（`stubAgentRuntimePort` / `resetAgentRuntimePort`）——1.4 W3b 起消费方经
+ *    `getBoundAgentRuntime()` 取运行能力，替换点因此收敛到绑定本身。
  *
  * 为什么包内用例不能改用 `getModuleConfigStub()`：那是宿主 preload 为「刻意不初始化基础设施」的进程准备的
  * 模块级替身（见 platform-sdk 的 `module-config-stub.ts`）；本包生产代码读的是 `getModuleConfig()`，
@@ -15,6 +17,8 @@
 import { join } from "node:path";
 import { overrideModuleConfig } from "@fenix/platform-sdk/server";
 import { getDbStub, initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
+import type { AgentRuntime } from "../runtime";
+import { bindAgentRuntime, createAgentRuntime, resetAgentRuntimeForTest } from "../runtime";
 import type { AgentRuntimeModuleConfig } from "./config";
 import { getAgentRuntimeConfig } from "./config";
 
@@ -94,3 +98,32 @@ export function stubAgentRuntimeConfig(overrides: Partial<AgentRuntimeModuleConf
 
 /** 读取当前生效的模块配置（走生产校验路径，便于用例断言注入值确实被消费方看到）。 */
 export { getAgentRuntimeConfig };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 运行 port 的替身（1.4 W3b）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 用「真实入口 + 给定覆盖」装配运行 port 的替身。
+ *
+ * 生产消费方一律经 `getBoundAgentRuntime()` 取运行能力（1.4 W3b），因此「替换运行能力」的唯一缝
+ * 就是绑定本身：路由、编排层、资源包拿到的是同一份绑定，不需要各自维护 deps 对象——那正是
+ * `/web/instances` 的 `setWebInstanceRouteDeps` 被删除的原因。
+ *
+ * 未覆盖的方法保留真实实现；真实实现内部的仓储与宿主端口仍按各自的替身生效（宿主 preload 已经把
+ * 环境仓储等换成转发 Proxy），所以这里只覆盖「本用例要断言或要绕开」的那几个方法即可。
+ * `session` 是嵌套对象，需要替换数据面时整体传入。
+ *
+ * 与其它 `bind*Port` 同口径：**一次装配**。用例结束必须 `resetAgentRuntimePort()`，否则绑定是
+ * 进程级的，会泄漏到同进程的后续测试文件。
+ */
+export function stubAgentRuntimePort(overrides: Partial<AgentRuntime>): void {
+  resetAgentRuntimeForTest();
+  bindAgentRuntime({ ...createAgentRuntime(), ...overrides });
+}
+
+/** 复位运行 port 绑定并回到默认的真实入口，供用例 `afterEach` 调用。 */
+export function resetAgentRuntimePort(): void {
+  resetAgentRuntimeForTest();
+  bindAgentRuntime(createAgentRuntime());
+}

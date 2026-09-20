@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AuthContext, SpawnedInstance } from "@fenix/agent-runtime/server";
+import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
+import type { AuthContext } from "@fenix/agent-runtime/server";
 import {
   type ExternalRelayEnvironment,
   handleExternalRelayClose,

@@ -7,7 +7,8 @@
 //
 // 全部为 type-only 导入（除类型外无运行时依赖），不会把服务运行时图拖进测试模块。
 
-import type { EnvironmentRecord, ExternalRelayConnectionSnapshot, SpawnedInstance } from "@fenix/agent-runtime/server";
+import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
+import type { EnvironmentRecord, ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
 import type { AcpConnectionSnapshot, ChatClientSnapshot, ObserverServiceDeps } from "../server/services/observer";
 
 /** environment 权威表记录构造器（默认 org-1/user-1/acfg-1）。 */

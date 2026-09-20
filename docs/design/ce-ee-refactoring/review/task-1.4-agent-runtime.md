@@ -670,3 +670,123 @@ W3 按裁定拆两步（先定型面、再改调消费方）。本节是 **W3a**
 | 测试 seam（`set*Deps` / `reset*` / `_uuid`）仍随叶子文件透出 | W6（按 §13.1 注释口径移出公开面，包内用例改相对导入；现仅 `api-instance` 的 `setApiInstanceDeps` 有 2 处包内测试经公开面导入） |
 | `server.ts` 经 relay 原样透出的 `extractAcpEvent` / `extractJsonRpc`（chat-channel 实现，台账 `no-cross-package-src:packages/chat-channel`） | W6（与 §1.6 同批） |
 | `runtime.ts` 的派生返回类型 | W6（替换为显式契约类型） |
+
+## 十四、W3b 交付记录（消费方改调 port，2026-09-21）
+
+W3 的第二步：非测试消费方全部改调 `@fenix/agent-runtime/runtime`、删除已迁走符号、去掉 `main.ts` 对 `bindAgentInstanceRuntimeOperations` 的转发（§4.6）。**不动**「实例起来之后怎么管」（状态机、幂等、lease、并发限流、disconnect fencing、dispose、重连）——本片只收敛「谁从哪个入口取运行能力」，实现与生命周期语义零变化。
+
+### 14.1 两项裁定（用户弹窗确认）
+
+| 问题 | 裁定 | 落地 |
+| --- | --- | --- |
+| 管理面要不要把 `/web/instances` 控制台的实例 CRUD（`createUserInstance` / `deleteInstance` / `restartInstanceRuntime` / `getOwnedInstance`）纳入 `/runtime` | **纳入，一个面收全** | 四项进 port 的「启动 / 停止 / 状态」组，`routes/web/instances.ts` 一并改调 `getBoundAgentRuntime()`；§4.1 的「9 个包/应用、31 个文件」因此完整收敛。代价：控制台实例 CRUD 与跨包消费方共用同一面，且控制台路由测试的 `setWebInstanceRouteDeps` 必须改成绑定假 runtime |
+| port 的实例标识用什么类型 | **直通既有类型，W6 收敛** | `ensureInstance` / `findOrCreateDefaultInstance` / `createInstance` / `getOwnedInstance` / `listOwnedInstances` 一律返回既有 `AgentInstanceRecord`；W3a 自造的 `EnsureInstanceResult`（`{ instanceUid }`）删除。零行为风险（W3a 的 `listOwnedInstances` 已是这个口径）；代价是持久化记录类型出现在契约面上，与派生返回类型一并记入 W6 |
+
+### 14.2 交付清单
+
+| 文件 | 变更 |
+| --- | --- |
+| `packages/agent-runtime/src/runtime.ts` | port 管理面 **33 → 42** 方法（新增 9：`ensureInstanceRuntime` / `findOrCreateDefaultInstance` / `findOrCreateWorkflowInstanceWithStatus` / `createInstance` / `stopInstanceRuntime` / `restartInstanceRuntime` / `deleteInstance` / `getOwnedInstance` / `unregisterInstance`）；`ensureInstance` 由投影改直通 `AgentInstanceRecord`；新增 `CreateInstanceInput`；`createAgentRuntimeModule()` 首次装配时绑定包内 `AgentInstanceRuntimeOperations`（§4.6）；类型出口补 `AgentInstanceRecord` / `AutomaticInstanceSelection` / `RuntimeSnapshot` / `RuntimeStopMode`（数据面 6 方法不变） |
+| `packages/agent-runtime/src/server/testing.ts` | 新增 `stubAgentRuntimePort(overrides)` / `resetAgentRuntimePort()`——替换点收敛到 port 绑定本身（真实入口 + 覆盖），见 14.6 |
+| `packages/agent-runtime/src/server.ts` | 导出面 **314 → 233**；清单 52 行 → 40 行；角色前缀删除 `运行·`，新增 `测试取用·`（判据「删除即破坏用例」）与 `W4·`，判据写进文件头 |
+| `apps/server/src/main.ts` | 去掉 `bindAgentInstanceRuntimeOperations({ spawnInstance, stopInstance, hasActiveInstance })` 转发（§4.6）；`agentInstanceService` / `getOwnedEnvironment` / `setRuntimeCredentialResolver` / `startAcpIdleMonitor` / `stopAcpIdleMonitor` / `closeAll*Connections` / `stopInstancesForEnvironments` / `closeAcpConnectionsForEnvironments` / `touchInstanceActivity` / `shutdown` 改经 `createAgentRuntimeModule().runtime` 取用；`bindMachineEnvironmentPort` / `bindEnvironmentAcpLifecyclePort` / `bindAcpInstanceActivityPort` 的实参改取 port |
+| `apps/server/src/routes/web/instances.ts` | 删除 `_deps` 袋子与 `setWebInstanceRouteDeps` / `resetWebInstanceRouteDeps`；spawn/stop/restart/delete 与活跃度快照改调 port（`createUserInstance` → `createInstance`） |
+| `apps/server/src/routes/web/environments.ts` | 删除 `EnvironmentRouteDeps` 注入（`createEnvironmentRoutes()` 恢复无参）；环境 CRUD/列表/归属校验改调 port；`EnvironmentRouteDeps["createWebEnvironment"]` 的派生返回类型改为 `AgentRuntimePort["createEnvironment"]` 派生 |
+| `apps/server/src/routes/web/control.ts` | 会话状态机入口（`resolveExistingSessionId` / `getSession` / `updateSessionStatus`）与实例归属（`getOwnedInstance`）改调 port；`LightweightSession` 不外透，改从 `AgentRuntimePort["getSession"]` 派生 |
+| `apps/server/src/routes/web/peri-task-details.ts`、`services/core-bootstrap.ts` | `getOwnedEnvironment` / `cleanupOrchestrationInstancesForMachine` / `globalInstanceRegistry.unregisterAndDeleteCounter` 改调 port（后者即新增的 `unregisterInstance`） |
+| `packages/resources/*`（9 文件） | workflow（`agent-chat-transport.ts` 的实例解析/启动/relay attach-detach/活动打点、`index.ts` 的停止）、agent-config（`facade` / `meta-agent`）、channel（`hermes-client`）、mcp（`knowledge`）、task（`agent-executor`：默认实现走 port）、prod-view 全部改调 port |
+| `apps/server/src/test-utils/setup-mocks.ts` | preload 增加 `bindAgentRuntime(createAgentRuntime())`：测试进程按生产装配路径绑定真实入口（其内部读的仍是本文件换过的替身），需要替换单个方法时用 `stubAgentRuntimePort()` |
+
+### 14.3 port 面（42 管理面方法，按组）
+
+| 组 | 数 | 方法 |
+| --- | --- | --- |
+| 启动 | 10 | `ensureInstance` / `ensureInstanceRuntime` / `findOrCreateDefaultInstance` / `findOrCreateWorkflowInstanceWithStatus` / `createInstance` / `createEnvironment` / `updateEnvironment` / `restartActiveInstancesForEnvironments` / `openAgentSession` / `setRuntimeCredentialResolver` |
+| 停止 | 9 | `stopInstance` / `stopInstanceRuntime` / `restartInstanceRuntime` / `deleteInstance` / `stopInstancesForEnvironments` / `deleteEnvironment` / `closeAcpConnectionsForEnvironments` / `closeAllAcpConnections` / `closeAllRelayConnections` |
+| 状态 | 17 | `getOwnedEnvironment` / `listEnvironments` / `getEnvironmentBySecret` / `findRunningInstanceByEnvironment` / `listRuntimeInstances` / `getRuntimeInstance` / `getOwnedInstance` / `listOwnedInstances` / `getRuntimeSnapshot` / `listInstanceActivity` / `touchInstanceActivity` / `markInstanceRelayAttached` / `markInstanceRelayDetached` / `refreshInstanceEnvironment` / `getSession` / `resolveExistingSessionId` / `updateSessionStatus` |
+| 回收 | 6 | `cleanupInstancesForMachine` / `unregisterInstance` / `terminateLocalDeadInstance` / `startIdleMonitor` / `stopIdleMonitor` / `shutdown` |
+
+数据面 `AgentRuntimeSessionApi` 仍是 6 方法（`connectRelay` / `createAgentSession` / `createPromptTurn` / `startPromptTurn` / `sendToAgentWs` / `sendToInstanceRelay`）。**每个方法都是既有包内函数的显式转发**（调用时属性访问，如 `agentInstanceService.ensureInstanceRuntime(...)`），本片不新增行为。
+
+### 14.4 `server.ts` 导出面收敛（314 → 233）
+
+同一 AST 程序对 `HEAD:packages/agent-runtime/src/server.ts` 与新版各做一次 `getExportsOfModule` 去重计数：**314 → 233**（净削 81），无新增名字。逐行构成：
+
+**删除 12 行**（括号内为该行在 HEAD 时的名字数，含与保留行重叠者）：`server/instance/agent-instance-id`(2)、`server/services/agent-instance-runtime-coordinator`(7)、`server/services/agent-instance-runtime-projection`(15)、`server/services/environment-web`(5)、`server/transport/agent-relay`(2)、`server/transport/relay/client-close`(1)、`services/agent-concurrency`(11)、`services/environment`(30，聚合面)、`services/environment-acp`(20)、`services/environment-startup-lock`(1)、`services/orchestration-machine-cleanup`(3)、`services/session`(6)。行内名字数合计 −103，去重后净削小于此，差额来自与保留行重叠的名字。
+
+**收窄 1 行**：`export * from "./services/environment-core"`（14 名）拆成两行显式面——`bindEnvironmentAcpLifecyclePort`（宿主注入·，`main.ts` 唯一消费方）与 `KEBAB_CASE_RE` / `sanitizeResponse` / `validateWorkspacePath`（泄漏·，W6 归位），−10。
+
+**改标 12 行**（保留导出、改角色前缀，`运行·` 前缀随之在本文件消失）：`测试取用·` 7 行（`agent-instance-service`、`api-instance`、`acp-idle-monitor`、`agent-chat-service`、`instance-registry`、`orchestration-bootstrap`、`orchestration-instance`）、`泄漏·` 4 行（`chat-channel-bootstrap`、`acp-ws-handler`、relay 具名行、`agent-node-bridge`）、`W4·` 1 行（`launch-spec-builder`）。
+
+删除与改标的判据（写入文件头，可复核）：**改后既无生产也无测试消费方 → 删除**；**仅测试消费、或属泄漏/下游任务的既定范围 → 改标**。改标 `测试取用·` 而非删行的原因见 14.7 第 6 条。
+
+### 14.5 消费方台账
+
+**改调 `/runtime` 的生产文件 13 个**：`apps/server` 6（`main.ts`、`routes/web/{peri-task-details,environments,instances,control}.ts`、`services/core-bootstrap.ts`）+ `packages` 7（agent-config `meta-agent`、channel `hermes-client`、mcp `knowledge`、prod-view、task `agent-executor`、workflow `agent-chat-transport` 与 `index`）。另有 4 个测试文件只迁移类型导入（`SpawnedInstance` / `AgentInstanceRecord`）。
+
+**仍经 `@fenix/agent-runtime/server` 取值的生产文件 14 个，无一处取「运行域能力」**：
+
+| 文件 | 取自 barrel 的符号 | 角色 | 归属 |
+| --- | --- | --- | --- |
+| `apps/server/src/main.ts` | `bind*Port` 8 个、`createAcpRoutes` / `createApiInstanceRoutes` / `createOpenaiChatRoutes`、`environmentRepo`、`getAcpEventBus` / `getAllEventBuses` / `removeEventBus`、`getAgentNodeService`、`findMachineConnectionById`、`triggerMachineCleanupByMachineId`、`resolveWorkspacePath` | 宿主注入 | 保留（`environmentRepo` / event bus / `getAgentNodeService` 属 W6 泄漏面） |
+| `apps/server/src/schemas/index.ts` | 协议 schema 具名清单（environment / instance / openai-chat） | 协议 | 保留 |
+| `apps/server/src/routes/web/environments.ts` | 环境 schema 11 个、`mapOrchestrationErrorToHttp`、`sanitizeResponse` | 协议 + 错误映射 | `sanitizeResponse` 归 W6 |
+| `apps/server/src/routes/web/instances.ts` | 实例 schema 4 个 | 协议 | 保留 |
+| `apps/server/src/plugins/error-handler.ts` | `mapOrchestrationErrorToHttp` | 错误映射 | 保留 |
+| `apps/server/src/routes/web/control.ts` | `environmentRepo`、`getEventBus` | 泄漏 | W6 |
+| `apps/server/src/services/resource-module-ports.ts` | `environmentRepo` | 泄漏 | W6 |
+| `apps/server/src/services/transport.ts` | `getEventBus` | 泄漏 | W6 |
+| `packages/resources/agent-config/src/server/services/meta-agent.ts` | `environmentRepo`（动态 import） | 泄漏 | W6 |
+| `packages/resources/observer/src/server/services/observer/observer-service.ts` | `agentInstanceRepo`、`environmentRepo`、`listAcpConnections`、`listExternalRelayEntries`、`EnvironmentRecord`、`ExternalRelayConnectionSnapshot` | 泄漏 | W6 |
+| `packages/resources/observer/.../observer/types.ts` | `AcpConnectionSnapshot`、`EnvironmentRecord`、`ExternalRelayConnectionSnapshot` | 泄漏 | W6 |
+| `packages/resources/observer/.../observer/providers/acp-link.ts` | `ExternalRelayConnectionSnapshot` | 泄漏 | W6 |
+| `packages/resources/workflow/.../agent-chat-transport.ts` | `environmentRepo` | 泄漏 | W6 |
+| `packages/resources/workflow/.../workflow-events.ts` | `EventBus`、`getEventBus`、`removeEventBus` | 泄漏 | W6 |
+
+即：**`运行·` 面已无非测试消费方**，剩余 14 个文件分属「宿主注入 / 协议 / 错误映射 / 泄漏」四类，前三类是本片刻意保留的接口，第四类整体归 W6（与 §13.5 登记的收口对象同批）。
+
+### 14.6 §4.6 落点与测试缝收敛
+
+- **`AgentInstanceRuntimeOperations` 在组合根绑定**：`createAgentRuntimeModule()` 首次调用时 `bindAgentInstanceRuntimeOperations({ spawnInstance: spawnInstanceViaController, stopInstance: stopInstanceViaController, hasActiveInstance: 查 getOrchestrationController().listInstances() })`，且**只在首次绑定**（重复调用不覆盖用例后置的替身）。`main.ts` 侧只剩 `const agentRuntime = createAgentRuntimeModule().runtime;`——宿主不再把包自己导出的函数转发回来绑定。§1.5 的 registry 驱动装配接管后这一行由模块 create 承担。
+- **替换缝三条归一为一条**：`setWebInstanceRouteDeps` / `resetWebInstanceRouteDeps`（删除）、`EnvironmentRouteDeps` 注入参数（删除）、port 绑定（`stubAgentRuntimePort` / `resetAgentRuntimePort`，新增）。路由不再自持可替换 deps 袋子——那不是第二个能力实现，只是同一批能力的第二个替换点。
+- **宿主 preload 绑真实入口**（`setup-mocks.ts`）：`bunfig.toml` 的 preload 对全部 `bun test`（含 `bun test packages/`）生效，因此消费方在测试进程里拿到的是「真实 port + 本文件换过的替身」，与「路由直接调用包内函数」行为一致。port 的直通形态（调用时属性访问）让 round44 对 `agentInstanceService.*` 的打桩继续生效，用例只需为「要断言或要绕开」的方法加覆盖。
+- **端口装配泄漏的修复（本片实测发现）**：装配状态是模块级单例，`runtime-port.test.ts` 原 `afterEach` 只调 `resetAgentRuntimeForTest()`，把绑定留成「空」。`bun test packages/` 在同进程顺序跑全部文件，于是后续文件（workflow round57 ×5、round68 ×4，共 9 例）在调用点报 `AgentRuntime has not been bound`。修复是 `afterEach` 复位后重新 `bindAgentRuntime(createAgentRuntime())`，并在用例体内显式复位/绑定；判据（「留空会让同进程后续测试文件在调用点失败」）写进用例注释。**这条不是测试写法问题，而是「模块级绑定 + 同进程多文件」这一装配形态的固有约束**，W6 移出测试 seam 时须一并保留。
+
+### 14.7 非显然取舍
+
+1. **`ensureInstance` 直通记录、删除 `EnsureInstanceResult`**（裁定二）。投影类型是 W3a 为「实例详情走状态组查询」自造的最小视图；一旦控制台 CRUD 进面（裁定一），调用方要回显 `name` / `environmentId`、编排层要拿记录去取租约，投影只会造出第二份视图并在两侧漂移。内部路径重构直接删除，不留兼容 shim。
+2. **方法逐个直通，不在 port 内做「按 uid 查记录再启动」的包装**。若 `ensureInstanceRuntime(uid)` 在 port 里先查记录，就会在调用方刚完成归属校验之后再加一次仓储查询与 TOCTOU 窗口。代价是方法签名带 `AgentInstanceRecord`，收益是语义与实现一一对应。
+3. **`stubAgentRuntimePort` 用「真实入口 + 覆盖」而不是「空对象 + 覆盖」**。消费方通常只覆盖少数方法，未覆盖的方法必须保持真实语义，否则每个用例都要复述整张 42 方法清单（那正是被删除的 deps 袋子的翻版）。
+4. **`unregisterInstance` 进 port 而不是让宿主继续 import `globalInstanceRegistry`**：「从 Core runtime 删实例」必须与「清并发计数」配对，配对语义属实例生命周期（漏掉会让 `hasActiveInstance` 误判存活、实例再也回收不掉），不该作为内部表访问散在宿主里。
+5. **`LightweightSession` 不外透**（`control.ts`）：会话记录的读法用 `AgentRuntimePort["getSession"]` 派生类型表达，避免为一个宿主导出的派生类型往 port 加类型出口。与 §13.3 第 5 条同源：派生类型会随实现漂移，一并记入 W6。
+6. **跨包测试经 barrel 取运行内部符号的行改标而非删除**（`测试取用·`）：workflow 用例取 `globalInstanceRegistry` / `markInstanceRelayAttached` / `createPromptTurn`、observer 用例取 relay/ACP 连接表——这些**跨包用例无法改相对导入**，删行会直接打断用例，而先给「测试专用入口」属于 W6「测试 seam 移出公开面」的裁量（是否给、给成什么形状需与本包测试入口的既有口径统一）。本片不预判，改为在清单上把这类行显式标出。
+
+### 14.8 台账 −1 条（21 → 20）
+
+`no-circular` / `@fenix/resource-machine → @fenix/agent-config`（owner 1.5，1 处环、环长 16，参与包 `agent-config ↔ agent-runtime ↔ resource-machine ↔ resource-sandbox ↔ server-app`）。W3b 把 agent-config 对 `@fenix/agent-runtime/server` 的值导入改为经 `/runtime` 取运行能力后，该环的见证边消失，门禁报「架构例外台账有 1 条已不再违规，必须删除」。已按台账纪律删除并复跑门禁确认（0 条新增违规）。
+
+### 14.9 验证证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck` | **全绿（11/11 步骤，92391ms）** |
+| ├ `server-and-script-tests` | 908 pass / 0 fail（66 文件） |
+| ├ `package-tests` | 7229 pass / 2 skip / 0 fail（593 文件） |
+| └ `web-app-tests` | 946 pass / 0 fail（54 文件） |
+| `bun run check:dependencies` | ✓ 2391 modules / **20 条已登记例外** / 0 条新增违规 |
+| `bun run architecture:check` | ✓（precheck 步骤） |
+| 导出面 | 同一 AST 程序去重计数：`HEAD` **314** → 新 **233**（无新增名字；逐行明细见 14.4） |
+| 专项用例 | `round44-environments-routes.test.ts` + `web-instance-runtime-actions.test.ts` 32 pass / 0 fail；`bun test packages/agent-runtime/` 850 pass / 0 fail（107 文件） |
+| 用例数 | `package-tests` 7229（与 W3a 持平：本片不新增用例，只改写替换缝与修复装配泄漏） |
+
+**对 §13.4「既有红项」的更正**：`apps/server/src/__tests__/db-pool-config.test.ts` 本轮实测 **5 pass / 0 fail**，`server-and-script-tests` 全绿。用 `HEAD` 版 `setup-mocks.ts` 单独复测同样通过 → 该红项在 W3b **之前**就已不出现，§10.5 / §12.6 / §13.4 登记它的表述已过期。本片据实修正记录，**不把它的消失算作 W3b 的成果**（W3b 未触碰 `db/index.ts` 与 `createDbMock`）。
+
+### 14.10 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| 测试侧经 barrel 取值共 36 个文件（`apps/server` 8、`packages/agent-runtime` 16、workflow 7、channel 2、observer 2、task 1），其中跨包用例（workflow / observer / channel / task）无法改相对导入 | W6（测试 seam 移出公开面；跨包用例需先给测试专用入口） |
+| `sanitizeResponse` / `KEBAB_CASE_RE` / `validateWorkspacePath` 仍在公开面（宿主路由取响应脱敏与名称校验） | W6 |
+| 泄漏面 9 个生产文件（`environmentRepo` / `getEventBus` / `getChatChannelController` / observer 三文件 / `agent-node-bridge` / `resolveWorkspacePath` / `listAcpConnections` 等） | W6 |
+| `runtime.ts` 的派生返回类型 + 契约面上的 `AgentInstanceRecord`（裁定二的已知代价） | W6 |
+| `launch-spec-builder`（`W4·`，663 行）与 `AgentInstanceStarter` port、`actor-context.ts` | W4 |
