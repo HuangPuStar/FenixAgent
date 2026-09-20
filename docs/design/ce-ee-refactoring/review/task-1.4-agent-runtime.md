@@ -1195,3 +1195,75 @@ W6a / W6b 各自独立验证；两片合并后由 W7 统一跑 `precheck` / `bui
 | `extract-acp-event.test.ts` 位于 agent-runtime 但只测 chat-channel 的实现（导出归属建议） | 只记录不建议实施（迁移会把本包测试计数搬给 chat-channel） |
 | `runtime.ts` 11 处派生返回类型 + 2 处 `Parameters<…>` 显式化、`/runtime` 只读观测面、跨包测试专用入口、`owner:"1.4"` 剩余 4 条复核 | W6b（§18.5） |
 
+## 二十、W6b 设计（新契约面与测试 seam 归位，2026-09-21）
+
+本节是 W6b 编码前的设计记录。方向由 W6 四项裁定（§18.3-2 / §18.3-3）给定，**三处形状问题**由用户 2026-09-21 弹窗确认（20.2）。**边界**：状态机、幂等、lease、限流、disconnect fencing、dispose、重连（第十节冻结区）一行不动。
+
+### 20.1 勘察实测（四处与 §18.5 记载不符）
+
+1. **§18.5 第 3 项：`Parameters<…>` 是 4 处不是 2 处**。实测 `runtime.ts:147`（`Parameters<typeof createWebEnvironment>[0]`）、`:152`（`updateWebEnvironment` 第 3 参）、`:158`（`openAgentSession` 第 1 参）、`:261`（`createAgentSession` 第 1 参）。`Awaited<ReturnType<…>>` 是 11 处（与记载一致）：`:85`–`:93` 九个别名 + `:159`（`openAgentSession`）+ `:224`（`getSession`）。**三个实现没有显式返回类型**，正是要补契约类型的那三个：`createWebEnvironment`、`updateWebEnvironment`、`listEnvironmentsWithInstances`（`environment-web.ts:143 / :223 / :267`）。其余实现已有显式返回类型，只是契约面用派生写法绕开了它。
+2. **§18.5 第 4 项：`owner:"1.4"` 实测 5 条不是 4 条**。原文「剩余 4 条（5 条 `no-circular` …、1 条 `apps-boundary`）」自相矛盾；实测为 4 条 `no-circular`（`machine→agent-config`、`machine→machine`、`sandbox→machine`、`sandbox→sandbox`）+ 1 条 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）= **5 条**。
+3. **§18.5 第 1 项漏了两个 observer 的真实取数**。① `agentInstanceRepo.getById(uid)?.name`（`observer-service.ts:15,92` 的 `getInstanceName`，解析观察输出的实例展示名）；② `environmentRepo.getById(id)`（`:22,86` 的 `getEnvironment`，权威回查 env 归属）。两者与已列的三张快照表同属 observer 默认 deps 的取数面，只搬其中三项会让观察链路一半走 port、一半走 `./server`。本片一并纳入（20.3）。
+4. **跨包消费方清点结果分三类，第 3 类是「取错入口」而非「需要新入口」**。① 真观测：observer 的三张表 + 两个记录回读；② 真功能依赖：workflow `workflow-events.ts:8` 的 `getEventBus` / `removeEventBus` / `EventBus` 类型（每个 workflow 一条 SSE 总线，**有创建与释放副作用**）；③ 取错入口：workflow 测试从 `./server` 取 `AgentSession` / `PromptTurn`，而生产代码从 `/runtime` 取同名符号（`agent-chat-transport.ts:12`）；task 测试从 `./server` 取 `OpenAgentSessionResult`，该类型是 `openAgentSession` 的返回类型、归属运行面。第 3 类不需要新入口，改 import 源即可。
+
+### 20.2 三项裁定（2026-09-21 用户弹窗确认）
+
+| # | 裁定 | 落点 |
+| --- | --- | --- |
+| 1 | **新增第三平面 `observe`（只读，全部无副作用）；workflow 的 session bus 归 `session` 数据面** | 20.3 |
+| 2 | **chat 客户端快照用 agent-runtime 自声明的窄投影类型 `ChatClientConnectionSnapshot`**，不 re-export `@fenix/chat-channel` 的 `ClientConnection` | 20.3 |
+| 3 | **复用既有 `./server/testing` 作为跨包测试专用入口**，不新开子路径 | 20.4 |
+
+裁定 1 的理由：§18.5 原文把 workflow 的 `EventBus` 归入「只读观测面」，但 `getEventBus` 会建总线、`removeEventBus` 会释放总线，放进去会让平面命名说谎；而事件总线本就是会话级数据面原语，与 `session` 的 `connectRelay` / `createPromptTurn` 同层。裁定后两个平面的文档注释都成立。
+
+### 20.3 W6b-1 / W6b-2：`/runtime` 新平面与生产消费方改调 port
+
+**`AgentRuntime.observe`（`AgentRuntimeObservability`，全部无副作用）**
+
+| 方法 | 转发到 | 消费方 |
+| --- | --- | --- |
+| `listAcpConnections()` | `acp-ws-handler.listAcpConnections` | observer |
+| `listExternalRelayConnections()` | `external-relay.listExternalRelayEntries` | observer |
+| `listChatClients()` | 包内新造：`getChatChannelController().registry.forEachClientEntry` → `ChatClientConnectionSnapshot[]` | observer |
+| `getInstanceName(instanceUid)` | `agentInstanceRepo.getById(uid)?.name` | observer |
+| `getEnvironmentRecord(environmentId)` | `environmentRepo.getById` | observer |
+| `listEnvironmentRecordsByOrganization(organizationId)` | `environmentRepo.listByOrganizationId` | workflow、meta-agent |
+
+**`AgentRuntime.session` 增补（有副作用，故不属 observe）**：`getEventBus(sessionId)`、`removeEventBus(sessionId)` → 转发 `transport/event-bus`。
+
+**`/runtime` 的类型面增补**：`AcpConnectionSnapshot`、`ExternalRelayConnectionSnapshot`、`ChatClientConnectionSnapshot`、`EnvironmentRecord`、`EventBus`（值类型，供 `session.getEventBus` 的返回类型）、`OpenAgentSessionResult`。
+
+**关键取舍**：
+- **`observe` 返回的是窄投影而不是包内实体**。`getInstanceName` 只回字符串而不是 `AgentInstanceRecord`：observer 的单一真实用途就是展示名（CLAUDE.md「不做推测性抽象」），回实体等于把「观测方拿到完整记录」变成契约。`listChatClients` 同理——不把 `ChatChannelController` 本体或 `ConnectionRegistry` 透出，按裁定 2 现造窄投影。
+- **`ChatClientConnectionSnapshot` 的字段取 observer 实际读的那几个**。写进文件头说明它是**投影**、字段随消费面收敛；若 chat 侧字段变化，投影的收窄处会编译失败而不是静默丢字段。
+- **`EnvironmentRecord` 由 `/runtime` 导出**，`./server/environment` 窄入口保留给宿主的 3 处取用（`plugins/auth.ts` 的 `getBySecret`、`routes/web/control.ts` 的 `getById`、`services/resource-module-ports.ts` 的窄查询）。**不扩大本片范围**把宿主侧也改调 port：`plugins/auth.ts` 走的是 Environment Secret 认证路径，`environmentRepo.getBySecret` 与 port 的 `getEnvironmentBySecret`（`services/environment-acp.ts`）**不是同一个实现**，改它属于认证路径变更，须单独评估，记入 20.6。
+
+### 20.4 W6b-3：测试 seam 移入 `./server/testing`
+
+`server.ts` 上 7 行 `测试取用·` 全部移出生产面，`./server/testing` 成为唯一的跨包测试入口。移出后按消费性质三分：
+
+1. **改走 port 替身**（W6 裁定 2）：能经 `stubAgentRuntimePort({ … })` 覆盖的一律改走 port。已知落点：`apps/server/src/__tests__/round44-environments-routes.test.ts` 的 `agentInstanceService` monkey-patch（`resolveInstanceForOperation` → `ensureInstance`、`ensureInstanceRuntime`、`getRuntimeSnapshot`、`listInstances` → `listOwnedInstances`）；workflow 三个测试文件的 `markInstanceRelayAttached`（port 已有同名方法）。
+2. **改从 `/runtime` 取**（取错入口的那一类）：`AgentSession`、`PromptTurn`、`PromptTurnStartOptions`、`OpenAgentSessionResult`、`EventBus`（类型）、`AgentInstanceRecord`、`AutomaticInstanceSelection`。
+3. **移入 `./server/testing`**：驱动包内处理函数的 seam 与内部登记表——`handleAcpWsOpen` / `handleAcpWsClose` / `handleExternalRelayOpen` / `handleExternalRelayClose` / `setExternalRelayDeps`、`globalInstanceRegistry`、`setOrchestrationInstanceDeps` / `resetOrchestrationInstanceDeps` / `resetOrchestrationBootstrap`、`shouldCountInstanceActivity`、`createExecutionNodeResolver`、`createPromptTurn`、`KEBAB_CASE_RE` / `validateWorkspacePath`、`EventBus`（值）、`getAllEventBuses`（workflow-sse 测试的清理用途）。
+
+**`host 取用·` 的地方不动**：`main.ts` 的 12 个 `bind*Port` 与 4 个 host port 实现来源（`resolveWorkspacePath` / `findMachineConnectionById` / `triggerMachineCleanupByMachineId` / `getAgentNodeService`）、`sanitizeResponse`、`getAllEventBuses` / `removeEventBus` / `getAcpEventBus`（它们正是 `bindSessionEventBusPort` 的实现来源）、路由工厂与协议 schema 族。W6a 已用 `宿主取用·` 标注（§19.2-3）。
+
+### 20.5 分片与验证
+
+| 片 | 范围 | 可独立验证 |
+| --- | --- | --- |
+| W6b-1 | `runtime.ts` 显式契约类型（§18.5 第 3 项）：11 处派生 + 4 处 `Parameters<…>` + 三个无显式返回类型的实现补契约类型；`LightweightSession` 定名（不沿用内部语义） | `bun run typecheck` + 包内 `bun test packages/agent-runtime/` |
+| W6b-2 | `observe` 平面 + `session` 补 bus + `/runtime` 类型面；observer / workflow / meta-agent 生产消费方改调 port（§20.3） | 三包测试 + `check:dependencies` + `architecture:check` |
+| W6b-3 | 测试 seam 移入 `./server/testing`，跨包测试按 20.4 三分改口 | 全仓 `bun run precheck` |
+| W6b-4 | 台账复核（`owner:"1.4"` 5 条按事实登记）+ §二十一 交付记录 | `architecture:check` |
+
+每片各自跑通 `precheck` 后提交；三片合并后由 W7 统一跑 `precheck` / `build:web` / `docs:build` / 台账核对。
+
+### 20.6 遗留项（本片不动，只记录）
+
+| 项 | 归属 |
+| --- | --- |
+| 宿主 `plugins/auth.ts:8` 的 `environmentRepo.getBySecret` 与 port 的 `getEnvironmentBySecret`（`services/environment-acp.ts`）**不是同一实现**，合并属认证路径变更 | 须单独评估，不在 W6b |
+| `plugins/auth.ts` / `routes/web/control.ts` / `services/resource-module-ports.ts` 仍从 `./server/environment` 取环境（宿主取用面） | 若要彻底删除 `environmentRepo` 的公开导出，须先裁定上一条 |
+| `packages/resources/{task,observer}/fenix.module.ts` 注释与代码不一致（task 称生产从 `./server` 取 `openAgentSession`，实为从 `/runtime` 取 `AgentRuntimePort`；observer 称值导入两个仓储，实为只 import `ModuleManifest`） | W6b-3 顺手订正注释 |
+
