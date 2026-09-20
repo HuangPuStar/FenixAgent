@@ -8,10 +8,13 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `@fenix/resource-sandbox`（执行请求等待机器回连后寻址）。
  *
  * `dependsOn: ["agent-config"]`：本包 `src/server/services/remote-file-service.ts` 经
- * `@fenix/agent-config/server` 读取 Agent 配置并解析 AgentNode。反向的 `machine → sandbox` 边（同一个
- * 文件里查询沙盒实例判定文件是否可读）已由架构台账登记为 `special-dependency`（owner 1.4，方向固定为
- * sandbox → machine，须消除），因此**不得**写进 `dependsOn`：两者同时启用时装配顺序会成环，生成器的
- * 装配依赖反向校验也会拒绝这种编码。
+ * `@fenix/agent-config/server` 读取 Agent 配置并解析 AgentNode。这是本包唯一的包间**运行时**依赖。
+ *
+ * 装配契约（1.4 起）：本包不再导入 `@fenix/agent-runtime`，宿主运行态（workspace 根、Core runtime 节点、
+ * file-ws 连接索引、断连清理）与 environment 读取改由 `apps/server` 经 `bindMachineHostPort` /
+ * `bindMachineEnvironmentPort` 在装配阶段注入；`@fenix/resource-sandbox` 则在自己的模块装配时经
+ * `bindMachineSandboxRoutePort` 注入沙盒路由判定。因此 `sandbox → machine` 与 `agent-runtime → machine`
+ * 保持单向，两条反向边（旧台账 `special-dependency`，owner 1.4）已随本任务消除。
  *
  * `create`：惰性组合根（`src/module.ts` 的 `createMachineModule()`），模块索引层只 import 本文件，装配期
  * 再按需加载 `./server` 图——file-ws 连接索引、心跳巡检与事件队列都是进程级单例，装配只能从这一处进入。

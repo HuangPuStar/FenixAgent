@@ -31,13 +31,16 @@ const OLD_RMD01_RUNTIME_PATHS = [
 ];
 
 describe("RMD-01 agent-runtime 公开迁移面", () => {
-  // 宿主只能经稳定 server 入口装配 ACP 与两条外部 API 路由。
-  test("server 入口导出迁入后的 ACP、instances 与 OpenAI Chat 路由", () => {
+  // 宿主只能经稳定 server 入口装配 ACP 与两条外部 API 路由；1.4 W2 起三者是工厂，
+  // 认证守卫 / 请求级认证 / 错误日志由宿主装配注入，包内不持有宿主认证状态。
+  test("server 入口导出迁入后的 ACP、instances 与 OpenAI Chat 路由工厂", () => {
     const source = readFileSync(SERVER_ENTRY, "utf8");
 
-    expect(source).toContain('export { default as acpRoutes } from "./routes/acp"');
-    expect(source).toContain('export { default as apiInstanceRoutes } from "./routes/api/instances"');
-    expect(source).toContain('export { default as openaiChatRoutes } from "./routes/api/openai-chat"');
+    expect(source).toContain('export { createAcpRoutes } from "./routes/acp"');
+    expect(source).toContain('export { createApiInstanceRoutes } from "./routes/api/instances"');
+    expect(source).toContain('export { createOpenaiChatRoutes } from "./routes/api/openai-chat"');
+    // 依赖类型必须一起导出：宿主装配层要按它们构造注入对象。
+    expect(source).toContain('} from "./routes/dependencies";');
   });
 
   // 物理迁移完成后，旧根后端路径不得残留为第二份 runtime 实现。

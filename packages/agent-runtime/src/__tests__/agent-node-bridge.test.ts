@@ -1,15 +1,25 @@
 /**
- * agent-node-bridge 测试：惰性单例与 NaN 空闲超时防御。
+ * agent-node-bridge 测试：装配契约、惰性单例与断连分发。
  *
- * 背景：桥接层模块在静态导入阶段执行（早于 index.ts 的 applyEnv(validateEnv())），
- * 此前 config.acpIdleTimeoutSeconds 为 undefined，undefined * 1000 = NaN 会让
- * setTimeout(fn, NaN) 立即触发——机器注册后瞬间被空闲回收关闭（无限重连循环）。
- * 回归断言：undefined 配置下创建的 AgentNodeService 不会立即回收节点。
+ * 背景（1.4 W1 配置搬家）：空闲回收阈值 `idleTimeoutMs` 的来源从宿主 `config` 改为本包模块配置
+ * （`acpIdleTimeoutSeconds`）。迁移前的风险场景是——桥接层模块在静态导入阶段执行（早于宿主
+ * `applyEnv(validateEnv())`），`config.acpIdleTimeoutSeconds` 为 `undefined`，`undefined * 1000 = NaN`
+ * 让 `setTimeout(fn, NaN)` 立即触发，机器注册后瞬间被空闲回收关闭（表现为无限重连循环），旧实现因此用
+ * `Number.isFinite` 兜底 300s。
+ *
+ * 迁移后的语义变化：配置缺失不再退化为 NaN，而是由 `getAgentRuntimeConfig()` 抛错（未装配时抛
+ * 「应用基础设施尚未初始化」，装配但漏键时抛「agent-runtime 模块配置校验失败」），兜底值随之删除。
+ * 本文件据此断言：
+ *   1. 装配后创建的 AgentNodeService 不会立即回收节点（即定时器周期不是 NaN）；
+ *   2. 配置漏键时 `createAgentNodeService()` 抛校验错误，而不是造出一个 NaN 定时器；
+ *   3. 惰性单例复用与 disconnect 分发语义不变。
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentNodeSocket } from "@fenix/orchestration";
-import { config, setConfig } from "@server/config";
+import { overrideModuleConfig } from "@fenix/platform-sdk/server";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import {
   createAgentNodeService,
   dispatchAgentNodeDisconnect,
@@ -35,21 +45,17 @@ class MockSocket implements AgentNodeSocket {
   }
 }
 
-/** 模拟模块加载期（config 尚未 applyEnv）的状态：idle 配置为 undefined。 */
-function simulatePreApplyEnvState(): void {
-  setConfig({ acpIdleTimeoutSeconds: undefined });
-}
-
 describe("agent-node-bridge", () => {
-  const original = config;
-
-  afterEach(() => {
-    setConfig(original);
+  beforeEach(() => {
+    initializeAgentRuntimeModuleConfig({ acpIdleTimeoutSeconds: 300 });
   });
 
-  test("createAgentNodeService：idle 配置未就绪时兜底 300s，注册节点不会被立即回收", async () => {
-    simulatePreApplyEnvState();
+  afterEach(() => {
+    resetAllStubs();
+  });
 
+  // 空闲阈值取自注入的模块配置：注册节点后的定时器必须真的等到 300s，而不是 NaN 造成的 0ms 立即回收
+  test("createAgentNodeService：装配后注册的节点不会被立即回收", async () => {
     const service = createAgentNodeService();
     const socket = new MockSocket();
     const node = service.handleIncomingConnection("m1", socket);
@@ -63,9 +69,8 @@ describe("agent-node-bridge", () => {
     node.close();
   });
 
+  // ensureNode 占引用后空闲定时器不回收节点（阈值仍来自模块配置，不因单例复用而变化）
   test("createAgentNodeService：ensureNode 取消空闲回收后节点保持 connected", async () => {
-    simulatePreApplyEnvState();
-
     const service = createAgentNodeService();
     const socket = new MockSocket();
     service.handleIncomingConnection("m1", socket);
@@ -76,6 +81,14 @@ describe("agent-node-bridge", () => {
 
     service.releaseNode("m1");
     node.close();
+  });
+
+  // 配置缺失必须显式失败：迁移前这里会静默造出 NaN 定时器把节点秒回收，掩盖「宿主漏注入某个键」。
+  // 宿主 main.ts 的注入清单一旦漏项（或键名改错），strictObject 校验必须在读取处立刻报出模块与字段。
+  test("createAgentNodeService：模块配置缺字段时抛校验错误，不退化为 NaN 定时器", () => {
+    // overrideModuleConfig 是整值替换：只给一个键，等价于宿主注入清单漏掉其余三个
+    overrideModuleConfig("agent-runtime", { acpIdleTimeoutSeconds: 300 });
+    expect(() => createAgentNodeService()).toThrow(/agent-runtime 模块配置校验失败/);
   });
 
   test("getAgentNodeService：惰性创建且复用同一实例", () => {

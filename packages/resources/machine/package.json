@@ -4,11 +4,9 @@
   "type": "module",
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
-    "@fenix/agent-runtime": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
-    "@fenix/resource-sandbox": "workspace:*",
     "@fenix/web-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },

@@ -18,11 +18,11 @@ import {
   registerStubResetter,
   resetAllStubs,
 } from "@fenix/platform-sdk/testing";
-import { createSandboxModuleConfig } from "@fenix/resource-sandbox/server/testing";
 import type { MachineModuleConfig } from "./config";
 import { getMachineConfig } from "./config";
 import type { MachineEnvironmentRecord } from "./environment-port";
 import { setMachineEnvironmentPort } from "./environment-port";
+import { setMachineHostPort } from "./host-port";
 import { setFileWsTransport } from "./transport/file-ws-port";
 
 // ── 依赖替换入口（转发本包各模块的可替换句柄，供用例与宿主测试统一从这里取）──
@@ -67,9 +67,8 @@ const machineDbProxy = new Proxy({} as Record<string, any>, {
  * 必须经 `initializeTestApplicationInfrastructure` 走生产读取路径（`getModuleConfig("machine")`），而不是给模块
  * 留测试专用的配置分支；初始化只允许一次，故先复位。
  *
- * 同时注入 Sandbox 模块配置：远程文件路由要读默认沙盒池（`remote-file-service` 经 `getSandboxConfig()` 读唯一
- * 来源），该场景离开沙盒配置会直接抛「模块 sandbox 未声明」。缺省值经 sandbox 自己的构造器取，避免这里抄一份
- * 沙盒字段清单。
+ * 只注入 Machine 自己的模块配置：沙盒路由判定已随 1.4 迁回 Sandbox 模块并经
+ * `bindMachineSandboxRoutePort` 注入（见 `host-port.ts` 的同批说明），本包不再读 `getSandboxConfig()`。
  */
 export function initializeMachineModuleConfig(overrides: Partial<MachineModuleConfig> = {}): void {
   resetAllStubs();
@@ -77,7 +76,6 @@ export function initializeMachineModuleConfig(overrides: Partial<MachineModuleCo
     database: machineDbProxy,
     moduleConfigs: {
       machine: createMachineModuleConfig(overrides),
-      sandbox: createSandboxModuleConfig(),
     },
   });
 }
@@ -146,6 +144,7 @@ export function stubFileWsTransport(overrides: Parameters<typeof setFileWsTransp
 registerStubResetter(() => {
   setFileWsTransport(null);
   setMachineEnvironmentPort(null);
+  setMachineHostPort(null);
 });
 
 // 工作区根锁的**实现**归平台契约（`WORKSPACE_ROOT` 是跨包共享的进程级根：只有本包参与互斥等于没锁，

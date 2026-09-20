@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
-import type { InstanceSupplement } from "@server/types/store";
 import {
   getActiveAgentCount,
   getActiveScheduledAgentCount,
@@ -8,6 +7,7 @@ import {
   isActiveRuntimeStatus,
 } from "../services/agent-concurrency";
 import { globalInstanceRegistry } from "../services/instance-registry";
+import type { InstanceSupplement } from "../types/instance";
 
 function makeSnapshot(instanceId: string, status: RuntimeInstanceSnapshot["status"]): RuntimeInstanceSnapshot {
   return {

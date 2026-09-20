@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { agentInstance } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getAgentRuntimeDatabase } from "../db";
 
 /** Agent Instance 的不可变创建来源。 */
 export type InstanceCreationSource = "user" | "api" | "workflow";
@@ -47,11 +47,13 @@ export interface IAgentInstanceRepo {
 
 class PgAgentInstanceRepo implements IAgentInstanceRepo {
   async getById(instanceUid: string): Promise<AgentInstanceRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const [row] = await db.select().from(agentInstance).where(eq(agentInstance.id, instanceUid)).limit(1);
     return row;
   }
 
   async findOwnedById(instanceUid: string, ownerUserId: string): Promise<AgentInstanceRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const [row] = await db
       .select()
       .from(agentInstance)
@@ -66,6 +68,7 @@ class PgAgentInstanceRepo implements IAgentInstanceRepo {
     creationSource: InstanceCreationSource,
     name: string,
   ): Promise<AgentInstanceRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const [row] = await db
       .select()
       .from(agentInstance)
@@ -82,12 +85,14 @@ class PgAgentInstanceRepo implements IAgentInstanceRepo {
   }
 
   async insert(input: CreateAgentInstanceInput): Promise<AgentInstanceRecord> {
+    const db = getAgentRuntimeDatabase();
     const [row] = await db.insert(agentInstance).values(input).returning();
     if (!row) throw new Error("Agent Instance insert did not return a row");
     return row;
   }
 
   async findOrCreateByCreationKey(input: CreateAgentInstanceInput): Promise<AgentInstanceRecord> {
+    const db = getAgentRuntimeDatabase();
     const [created] = await db
       .insert(agentInstance)
       .values(input)
@@ -113,6 +118,7 @@ class PgAgentInstanceRepo implements IAgentInstanceRepo {
   }
 
   async listByOwner(ownerUserId: string, environmentId?: string): Promise<AgentInstanceRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const condition = environmentId
       ? and(eq(agentInstance.ownerUserId, ownerUserId), eq(agentInstance.environmentId, environmentId))
       : eq(agentInstance.ownerUserId, ownerUserId);
@@ -120,10 +126,12 @@ class PgAgentInstanceRepo implements IAgentInstanceRepo {
   }
 
   async listByEnvironment(environmentId: string): Promise<AgentInstanceRecord[]> {
+    const db = getAgentRuntimeDatabase();
     return db.select().from(agentInstance).where(eq(agentInstance.environmentId, environmentId));
   }
 
   async deleteById(instanceUid: string): Promise<boolean> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db
       .delete(agentInstance)
       .where(eq(agentInstance.id, instanceUid))

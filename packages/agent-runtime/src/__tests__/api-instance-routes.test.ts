@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setApiInstanceDeps } from "@fenix/agent-runtime/server";
+import { createApiInstanceRoutes, setApiInstanceDeps } from "@fenix/agent-runtime/server";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
-const apiInstanceRoute = (await import("../routes/api/instances")).default;
+// 服务端诊断日志的收集器：生产装配注入宿主 `plugins/logger` 的 `logError`，测试注入 spy 以断言
+// 「诊断（sandboxId / providerKey）只进服务端日志、不出现在对外响应」。
+const loggedErrors: Array<{ readonly request: Request; readonly error: unknown }> = [];
+
+const apiInstanceRoute = createApiInstanceRoutes({
+  authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin(),
+  logError: (ctx) => {
+    loggedErrors.push({ request: ctx.request, error: ctx.error });
+  },
+});
 
 function request(path: string, init?: RequestInit) {
   return apiInstanceRoute.handle(new Request(`http://localhost${path}`, init));
@@ -20,11 +28,8 @@ describe("API Instance Routes", () => {
     stubCoreBootstrap({
       getCoreRuntime: () => ({ listInstances: () => [] }),
     });
-    setTestAuth({
-      user: { id: "user-1", email: "user@test.com", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
+    loggedErrors.length = 0;
+    setTestAuth({ organizationId: "org-1", userId: "user-1" });
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
       getReadableAgentConfigById: async () => null,
@@ -49,7 +54,6 @@ describe("API Instance Routes", () => {
   afterEach(() => {
     setApiInstanceDeps(null);
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
   // connect 接口应支持外部共享 Agent，并为当前用户创建独立 runtime environment。
@@ -138,6 +142,8 @@ describe("API Instance Routes", () => {
     expect(json.error.code).toBe("SERVICE_UNAVAILABLE");
     // 脱敏断言：providerKey 不得出现在对外响应
     expect(json.error.message).not.toContain("missing-provider");
+    // 脱敏的另一半：原始错误（含 providerKey）必须交给注入的服务端日志钩子，否则诊断信息彻底丢失
+    expect(loggedErrors.some((entry) => entry.error instanceof SandboxProviderNotConfiguredError)).toBe(true);
   });
 
   // Sandbox Runtime 未就绪错误同样返回 503；message 固定文案，

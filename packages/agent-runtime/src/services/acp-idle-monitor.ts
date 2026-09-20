@@ -9,14 +9,14 @@ import { docManager } from "@fenix/chat-channel/server";
 import type { RuntimeInstanceSnapshot } from "@fenix/core";
 import { createLogger } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { config } from "@server/config";
-import { getCoreRuntime } from "@server/services/core-bootstrap";
+import { getAgentRuntimeConfig } from "../server/config";
 import {
   getInstance,
   type InstanceActivityInfo,
   stopInstance,
   toInstanceActivityInfo,
 } from "../server/services/agent-instance-runtime-projection";
+import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-runtime-port";
 import { isActiveRuntimeStatus } from "./agent-concurrency";
 import { globalInstanceRegistry } from "./instance-registry";
 
@@ -70,6 +70,7 @@ export function markInstanceRelayDetached(instanceId: string, at = Date.now()): 
 function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActivityInfo {
   const meta = snapshot.pluginMetadata ?? {};
   const createdAtSeconds = Math.floor(snapshot.createdAt.getTime() / 1000);
+  const { acpIdleTimeoutSeconds, acpActivityTimeoutSeconds } = getAgentRuntimeConfig();
   return {
     id: snapshot.instanceId,
     port: typeof meta.port === "number" ? meta.port : 0,
@@ -87,10 +88,10 @@ function toFallbackActivityInfo(snapshot: RuntimeInstanceSnapshot): InstanceActi
     relay_count: 0,
     last_relay_detached_at: null,
     idle_seconds: 0,
-    idle_timeout_seconds: config.acpIdleTimeoutSeconds,
+    idle_timeout_seconds: acpIdleTimeoutSeconds,
     idle_kill_eligible: false,
     inactivity_seconds: 0,
-    activity_timeout_seconds: config.acpActivityTimeoutSeconds,
+    activity_timeout_seconds: acpActivityTimeoutSeconds,
     activity_kill_eligible: false,
   };
 }
@@ -110,6 +111,7 @@ export function listInstanceActivitySnapshots(
   const runtime = _deps.getCoreRuntime();
   const instances = runtime.listInstances();
   const results: InstanceActivityInfo[] = [];
+  const { acpIdleTimeoutSeconds, acpActivityTimeoutSeconds } = getAgentRuntimeConfig();
   for (const snapshot of instances) {
     if (!shouldIncludeSnapshot(snapshot, showError)) continue;
     const supplement = globalInstanceRegistry.get(snapshot.instanceId);
@@ -128,9 +130,7 @@ export function listInstanceActivitySnapshots(
 
     const instance = _deps.getInstance(snapshot.instanceId);
     if (!instance) continue;
-    results.push(
-      toInstanceActivityInfo(instance, supplement, config.acpIdleTimeoutSeconds, config.acpActivityTimeoutSeconds, now),
-    );
+    results.push(toInstanceActivityInfo(instance, supplement, acpIdleTimeoutSeconds, acpActivityTimeoutSeconds, now));
   }
   return results.sort((a, b) => b.idle_seconds - a.idle_seconds);
 }
@@ -190,8 +190,9 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
   const docCount = docManager.openedDocCount();
   logger.info(`[ACP-IDLE] yjs realtime docs: chat=${docCount.chat} session=${docCount.session}`);
 
-  const idleTimeoutMs = config.acpIdleTimeoutSeconds * 1000;
-  const activityTimeoutMs = config.acpActivityTimeoutSeconds * 1000;
+  const { acpIdleTimeoutSeconds, acpActivityTimeoutSeconds } = getAgentRuntimeConfig();
+  const idleTimeoutMs = acpIdleTimeoutSeconds * 1000;
+  const activityTimeoutMs = acpActivityTimeoutSeconds * 1000;
   const snapshots = listInstanceActivitySnapshots(now);
   for (const snapshot of snapshots) {
     const supplement = globalInstanceRegistry.get(snapshot.id);
@@ -206,7 +207,7 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
     const inactiveTooLong = now - supplement.lastActivityAt >= activityTimeoutMs;
     if (inactiveTooLong) {
       logger.info(
-        `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${config.acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
+        `[ACP-IDLE] Stopping inactive instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} inactivity=${snapshot.inactivity_seconds}s timeout=${acpActivityTimeoutSeconds}s relayCount=${snapshot.relay_count}`,
       );
       try {
         await reclaimInstance(snapshot, supplement, "inactive");
@@ -224,7 +225,7 @@ export async function runAcpIdleMonitorSweep(now = Date.now()): Promise<void> {
     if (now - idleSince < idleTimeoutMs) continue;
 
     logger.info(
-      `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${config.acpIdleTimeoutSeconds}s`,
+      `[ACP-IDLE] Stopping idle instance id=${snapshot.id} env=${snapshot.environment_id ?? ""} idle=${snapshot.idle_seconds}s timeout=${acpIdleTimeoutSeconds}s`,
     );
     try {
       await reclaimInstance(snapshot, supplement, "idle");
@@ -241,7 +242,7 @@ export function startAcpIdleMonitor(): void {
     runAcpIdleMonitorSweep().catch((err) => {
       logger.error("[ACP-IDLE] Sweep failed", err instanceof Error ? err : undefined);
     });
-  }, config.acpIdleSweepIntervalSeconds * 1000);
+  }, getAgentRuntimeConfig().acpIdleSweepIntervalSeconds * 1000);
 }
 
 /** 停止 ACP 空闲巡检定时器。 */

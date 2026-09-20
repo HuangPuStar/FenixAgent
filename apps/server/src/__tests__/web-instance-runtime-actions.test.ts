@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AgentInstanceRecord } from "@fenix/agent-runtime/server";
+import type { AgentInstanceRecord } from "@fenix/agent-runtime/runtime";
+import { resetAgentRuntimePort, stubAgentRuntimePort } from "@fenix/agent-runtime/server/testing";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
 
-const {
-  default: webInstanceRoutes,
-  resetWebInstanceRouteDeps,
-  setWebInstanceRouteDeps,
-} = await import("../routes/web/instances");
+// 路由的运行能力取自运行 port 绑定（1.4 W3b）：本用例用 port 替身替换实例动作，
+// 不再有 `setWebInstanceRouteDeps` 这样的第二个替换点。
+const { default: webInstanceRoutes } = await import("../routes/web/instances");
 
 const defaultInstance: AgentInstanceRecord = {
   id: "inst_00000000000000000000000000000001",
@@ -28,7 +27,6 @@ function request(path: string, method: "POST" | "DELETE") {
 describe("Web Instance runtime actions", () => {
   beforeEach(() => {
     resetAllStubs();
-    resetWebInstanceRouteDeps();
     setTestAuth({
       user: { id: "user-1", email: "user@fenix.com", name: "User" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
@@ -36,7 +34,7 @@ describe("Web Instance runtime actions", () => {
   });
 
   afterEach(() => {
-    resetWebInstanceRouteDeps();
+    resetAgentRuntimePort();
     resetTestAuth();
     resetAllStubs();
   });
@@ -44,7 +42,7 @@ describe("Web Instance runtime actions", () => {
   // Default 实例停止只释放 runtime，必须保留持久记录且不能调用删除。
   test("POST /instances/:id/stop stops a Default runtime without deleting it", async () => {
     const calls: string[] = [];
-    setWebInstanceRouteDeps({
+    stubAgentRuntimePort({
       getOwnedInstance: async () => defaultInstance,
       getOwnedEnvironment: async () => ({ id: defaultInstance.environmentId }) as never,
       stopInstanceRuntime: async (instance, mode) => {
@@ -65,7 +63,7 @@ describe("Web Instance runtime actions", () => {
   // Default 实例重启必须复用原 uid，不能通过 delete + spawn 模拟重启。
   test("POST /instances/:id/restart restarts a Default runtime with the same identity", async () => {
     const calls: string[] = [];
-    setWebInstanceRouteDeps({
+    stubAgentRuntimePort({
       getOwnedInstance: async () => defaultInstance,
       getOwnedEnvironment: async () => ({ id: defaultInstance.environmentId }) as never,
       restartInstanceRuntime: async (instance) => {

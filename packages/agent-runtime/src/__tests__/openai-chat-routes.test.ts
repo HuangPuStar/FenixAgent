@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { AppError, NotFoundError } from "@fenix/platform-sdk";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { errorPlugin } from "@server/plugins/error-handler";
-import { setTestOrgContext } from "@server/services/org-context";
 import Elysia from "elysia";
 import type { OpenAgentSessionResult } from "../services/agent-chat-service";
+import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const openaiChatModule = await import("../routes/api/openai-chat");
-const openaiChatRoute = openaiChatModule.default;
+// 会话守卫由宿主注入（生产装配传宿主 `authGuardPlugin`）；包内用例注入替身，见 guard-stubs.ts。
+const openaiChatRoute = openaiChatModule.createOpenaiChatRoutes({
+  authGuardPlugin: createStubAgentRuntimeAuthGuardPlugin(),
+});
 const { setOpenAIChatRouteDeps } = openaiChatModule;
 
 function request(path: string, init?: RequestInit) {
@@ -16,7 +18,7 @@ function request(path: string, init?: RequestInit) {
 }
 
 // 挂载 errorPlugin 的完整 app：模拟生产装配（apps/server/src/main.ts 中 errorPlugin 先于
-// openaiChatRoutes）。rethrow 的 AppError / OrchestrationError 只有经过 errorPlugin
+// createOpenaiChatRoutes 的实例）。rethrow 的 AppError / OrchestrationError 只有经过 errorPlugin
 // 才能映射出 503/409/429 等稳定状态码（本地 handle 无 onError，错误会落成 500）。
 const appWithErrorPlugin = new Elysia().use(errorPlugin).use(openaiChatRoute);
 
@@ -26,17 +28,12 @@ function requestWithErrorPlugin(path: string, init?: RequestInit) {
 
 describe("OpenAI Chat Routes", () => {
   beforeEach(() => {
-    setTestAuth({
-      user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { organizationId: "test-org", userId: "test-user", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "test-org", userId: "test-user", role: "owner" });
+    setTestAuth({ organizationId: "test-org", userId: "test-user" });
   });
 
   afterEach(() => {
     setOpenAIChatRouteDeps(null);
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
   // 缺少 user 消息时返回 400
@@ -116,17 +113,12 @@ describe("OpenAI Chat Routes", () => {
 
 describe("OpenAI Chat Routes — 错误映射（errorPlugin 装配）", () => {
   beforeEach(() => {
-    setTestAuth({
-      user: { id: "test-user", email: "test@test.com", name: "Test" },
-      authContext: { organizationId: "test-org", userId: "test-user", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "test-org", userId: "test-user", role: "owner" });
+    setTestAuth({ organizationId: "test-org", userId: "test-user" });
   });
 
   afterEach(() => {
     setOpenAIChatRouteDeps(null);
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
   function post(body: unknown) {

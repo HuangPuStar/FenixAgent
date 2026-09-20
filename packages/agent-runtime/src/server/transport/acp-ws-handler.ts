@@ -1,8 +1,5 @@
 import { createLogger, error as logError } from "@fenix/logger";
 import { hasRuntimeFence, MACHINE_PROTOCOL_VERSION, SERVER_EPOCH } from "@fenix/remote-runtime";
-import { config } from "@server/config";
-import type { WsConnection } from "@server/transport/ws-types";
-import type { AcpConnectionEntry, AcpConnectionSnapshot } from "@server/types/store";
 import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import { touchEnvironmentPoll } from "../../services/environment-acp";
 import {
@@ -11,6 +8,9 @@ import {
   getAgentNodeService,
   wsToAgentNodeSocket,
 } from "../../transport/agent-node-bridge";
+import type { AcpConnectionEntry, AcpConnectionSnapshot } from "../../types/acp-connection";
+import type { WsConnection } from "../../types/ws-types";
+import { getAgentRuntimeConfig } from "../config";
 import { agentInstanceService } from "../services/agent-instance-service";
 import { getBoundCoreRuntimePort, getBoundCoreRuntime as getCoreRuntime } from "../services/core-runtime-port";
 import { getMachineRegistryPort } from "../services/machine-registry-port";
@@ -51,8 +51,16 @@ export function recordAcpInstanceActivity(instanceId: string, message: Record<st
 const pendingMachineRegistrations = new Set<string>();
 const MACHINE_CONNECTION_CONFLICT_REASON = "machine_already_connected";
 
-const SERVER_KEEPALIVE_INTERVAL_MS = config.wsKeepaliveInterval * 1000;
-const _CLIENT_ACTIVITY_TIMEOUT_MS = SERVER_KEEPALIVE_INTERVAL_MS * 3;
+/**
+ * 服务端 keep_alive 数据帧间隔（ms）。
+ *
+ * 调用时读取而不是模块级常量：本模块的加载早于宿主 `initializeApplicationInfrastructure`，顶层求值会抛
+ * 「模块 agent-runtime 未声明应用基础设施配置」。旧实现读宿主 `config` 时顶层求值得到的是 undefined，
+ * 乘 1000 后静默变成 NaN 定时器——比抛错更难定位，因此这里不保留「undefined 兜底」分支。
+ */
+function serverKeepaliveIntervalMs(): number {
+  return getAgentRuntimeConfig().wsKeepaliveInterval * 1000;
+}
 
 export function sendToWs(ws: WsConnection, msg: object): void {
   if (ws.readyState !== 1) return;
@@ -118,6 +126,9 @@ export function handleAcpWsOpen(
       handleAcpConnect(boundEnvId).catch(() => {});
     });
 
+    // 保活间隔在调用时从模块配置读取一次，用于定时器周期与下面的静默阈值：两者必须是同一个值，
+    // 否则「3 个保活周期」的语义会随读取时机漂移。
+    const keepaliveIntervalMs = serverKeepaliveIntervalMs();
     const keepalive = setInterval(() => {
       const entry = connections.get(wsId);
       if (entry?.ws.readyState !== 1) {
@@ -125,7 +136,8 @@ export function handleAcpWsOpen(
         return;
       }
       const silenceMs = Date.now() - entry.lastClientActivity;
-      if (silenceMs > _CLIENT_ACTIVITY_TIMEOUT_MS) {
+      // 客户端静默超过 3 个保活周期即视为死连接（阈值随注入的间隔自动缩放）。
+      if (silenceMs > keepaliveIntervalMs * 3) {
         logger.debug(`Client inactive for ${Math.round(silenceMs / 1000)}s, closing dead connection`);
         try {
           entry.ws.close(1000, "client inactive");
@@ -135,7 +147,7 @@ export function handleAcpWsOpen(
         return;
       }
       sendToWs(entry.ws, { type: "keep_alive" });
-    }, SERVER_KEEPALIVE_INTERVAL_MS);
+    }, keepaliveIntervalMs);
 
     connections.set(wsId, {
       agentId: boundEnvId,

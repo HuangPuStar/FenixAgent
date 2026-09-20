@@ -195,7 +195,11 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(typeof server.createApiWorkspaceRoutes).toBe("function");
     expect(server.FileEventsSubscribeSchema).toBeDefined();
     expect(server.LocalNodeAwareService).toBeDefined();
-    expect(server.eventService).toBeDefined();
+    // 宿主 seam 的公开入口：装配层经 `bindMachineHostPort` / `bindMachineEnvironmentPort` 注入运行态，
+    // sandbox 模块经 `bindMachineSandboxRoutePort` 注入路由判定。三者取代了 1.4 收敛前的反向导入。
+    expect(typeof server.bindMachineHostPort).toBe("function");
+    expect(typeof server.bindMachineEnvironmentPort).toBe("function");
+    expect(typeof server.bindMachineSandboxRoutePort).toBe("function");
   });
 
   // 遍历有效性自检：walker 若漏掉目录，后续「不存在违规引用」的断言会成片退化为恒真。
@@ -256,7 +260,6 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
       "packages/resources/machine/src/schemas/file.schema.ts",
       "packages/resources/machine/src/schemas/file-events.schema.ts",
       "packages/resources/machine/src/schemas/registry.schema.ts",
-      "packages/resources/machine/src/services/event-service.ts",
       "packages/resources/machine/src/services/local-node-service.ts",
       "packages/resources/machine/src/__tests__/fs-symlink-escape.test.ts",
       "packages/resources/machine/src/__tests__/fs-upload-escape.test.ts",
@@ -400,12 +403,13 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // README 是 §1 静态条件 6 的交付物，但「文件存在」不等于「五段式非占位」。
-  // 与 sandbox 的差异：本包在五段式之上多两段本包专属内容（守卫注入方式、配置与 DB 读取时机），
-  // 因此这里断言「必需段按序出现 + 额外段在白名单内」，而不是整份标题等值。
+  // 与 sandbox 的差异：本包在五段式之上多三段本包专属内容（守卫注入方式、配置与 DB 读取时机、
+  // 1.4 起的宿主运行态端口装配契约），因此这里断言「必需段按序出现 + 额外段在白名单内」，
+  // 而不是整份标题等值。
   test("README 含五段式必需章节且非占位", () => {
     const readme = readFileSync(join(PKG_ROOT, "README.md"), "utf8");
     const required = ["## 定位与 owner", "## 服务端交付物", "## web 面与 i18n", "## 边界残留", "## 已知项"];
-    const extra = ["## 守卫由宿主注入", "## 配置与 DB"];
+    const extra = ["## 守卫由宿主注入", "## 配置与 DB", "## 宿主运行态端口"];
     const headings = readme.split("\n").filter((line) => line.startsWith("## "));
 
     expect(readme.startsWith("# @fenix/resource-machine")).toBe(true);

@@ -1,7 +1,6 @@
 import { getReadableAgentConfigById } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
-import type { AuthContext } from "@server/plugins/auth";
-import { toActorContext } from "../../services/actor-context";
+import { type ActorProjection, toActorContext } from "../../services/actor-context";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";
@@ -80,7 +79,7 @@ function pickEnvironment(environments: EnvironmentRecord[]): EnvironmentRecord |
  * 将 AgentConfig 解析为一个可连接的 instance 入口，必要时自动创建 environment / 启动 instance。
  */
 export async function connectAgentInstance(
-  ctx: AuthContext,
+  ctx: ActorProjection,
   agentConfigId: string,
   options: AgentInstanceConnectOptions = {},
 ): Promise<AgentInstanceConnectResult> {

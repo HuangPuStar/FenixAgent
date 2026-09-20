@@ -1,4 +1,4 @@
-import { getEnvironmentBySecret } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
 import {
   getKnowledgeGraphForAgent,
@@ -209,7 +209,7 @@ app.all(
       return status(401, { error: { code: "UNAUTHORIZED", message: "Missing bearer token" } });
     }
 
-    const environment = await getEnvironmentBySecret(token);
+    const environment = await getBoundAgentRuntime().getEnvironmentBySecret(token);
     if (!environment) {
       return status(401, { error: { code: "UNAUTHORIZED", message: "Invalid bearer token" } });
     }

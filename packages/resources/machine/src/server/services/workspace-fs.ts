@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { resolveWorkspacePath as computeWorkspacePath } from "@fenix/agent-runtime/server";
 import { getEnvironmentById } from "../environment-port";
+import { getMachineHostPort } from "../host-port";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -212,7 +212,11 @@ export async function resolveWorkspacePath(
   const env = await getEnvironmentById(environmentId);
   if (!env) return null;
 
-  const workspaceDir = computeWorkspacePath(env.organizationId ?? env.userId ?? "", env.userId ?? "", env.id);
+  const workspaceDir = getMachineHostPort().resolveWorkspacePath(
+    env.organizationId ?? env.userId ?? "",
+    env.userId ?? "",
+    env.id,
+  );
   const userDir = join(workspaceDir, "user");
   await mkdir(userDir, { recursive: true });
 

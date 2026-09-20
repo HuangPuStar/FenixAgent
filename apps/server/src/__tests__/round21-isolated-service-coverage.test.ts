@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getAllEventBuses } from "@fenix/agent-runtime/server";
+import {
+  getAcpEventBus,
+  getAllEventBuses,
+  getEventBus,
+  removeAcpEventBus,
+  removeEventBus,
+} from "@fenix/agent-runtime/server";
 import { resetAllStubs, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
-import { eventService } from "@fenix/resource-machine/server";
 import { toInvocationDate } from "@fenix/resource-task/server";
 import { clearAllCache, getCache, getCacheBackend } from "../services/cache";
 import { clearOrgCache, loadOrgContext, setTestOrgContext } from "../services/org-context";
@@ -46,7 +51,7 @@ afterEach(async () => {
   setTestOrgContext(null);
   await clearOrgCache();
   await clearAllCache();
-  for (const [sessionId] of getAllEventBuses()) eventService.removeBus(sessionId);
+  for (const [sessionId] of getAllEventBuses()) removeEventBus(sessionId);
 });
 
 describe("round21 隔离服务边界", () => {
@@ -124,36 +129,36 @@ describe("round21 隔离服务边界", () => {
 
   // EventBus 注册表须支持 ACP 生命周期释放。
   test("事件服务创建 ACP 总线", () => {
-    expect(eventService.getAcpBus("acp-round21")).toBe(eventService.getAcpBus("acp-round21"));
+    expect(getAcpEventBus("acp-round21")).toBe(getAcpEventBus("acp-round21"));
   });
   // 覆盖该独立行为与边界。
   test("事件服务释放 ACP 总线", () => {
-    const bus = eventService.getAcpBus("acp-release");
-    eventService.removeAcpBus("acp-release");
+    const bus = getAcpEventBus("acp-release");
+    removeAcpEventBus("acp-release");
     expect(() =>
       bus.publish({ id: "closed", sessionId: "acp-release", type: "message", payload: null, direction: "inbound" }),
     ).toThrow("EventBus is closed");
   });
   // 同一会话的空游标与末尾游标应提供稳定分页。
-  test("事件服务空会话返回空分页", () => expect(eventService.getEventsSince("empty-session", 0)).toEqual([]));
+  test("事件服务空会话返回空分页", () => expect(getEventBus("empty-session").getEventsSince(0)).toEqual([]));
   // 覆盖该独立行为与边界。
   test("事件服务末尾游标返回空分页", () => {
-    eventService.publishEvent("cursor-session", {
+    getEventBus("cursor-session").publish({
       id: "one",
       sessionId: "cursor-session",
       type: "message",
       payload: null,
       direction: "inbound",
     });
-    expect(eventService.getEventsSince("cursor-session", 1)).toEqual([]);
+    expect(getEventBus("cursor-session").getEventsSince(1)).toEqual([]);
   });
   // 发布需向每个独立订阅者送达相同事件。
   test("事件服务通知多个订阅者", () => {
     const first: string[] = [];
     const second: string[] = [];
-    eventService.subscribe("multi-session", (event) => first.push(event.id));
-    eventService.subscribe("multi-session", (event) => second.push(event.id));
-    eventService.publishEvent("multi-session", {
+    getEventBus("multi-session").subscribe((event) => first.push(event.id));
+    getEventBus("multi-session").subscribe((event) => second.push(event.id));
+    getEventBus("multi-session").publish({
       id: "one",
       sessionId: "multi-session",
       type: "message",
@@ -165,11 +170,11 @@ describe("round21 隔离服务边界", () => {
   // 某一订阅者异常不应阻止其他订阅者。
   test("事件服务隔离订阅者异常", () => {
     const received: string[] = [];
-    eventService.subscribe("error-session", () => {
+    getEventBus("error-session").subscribe(() => {
       throw new Error("subscriber failed");
     });
-    eventService.subscribe("error-session", (event) => received.push(event.id));
-    eventService.publishEvent("error-session", {
+    getEventBus("error-session").subscribe((event) => received.push(event.id));
+    getEventBus("error-session").publish({
       id: "one",
       sessionId: "error-session",
       type: "message",
@@ -178,26 +183,26 @@ describe("round21 隔离服务边界", () => {
     });
     expect(received).toEqual(["one"]);
   });
-  // getBus 返回可用于读取当前序号的同一实例。
+  // getEventBus 返回可用于读取当前序号的同一实例。
   test("事件服务暴露当前总线", () => {
-    eventService.publishEvent("bus-session", {
+    getEventBus("bus-session").publish({
       id: "one",
       sessionId: "bus-session",
       type: "message",
       payload: null,
       direction: "inbound",
     });
-    expect(eventService.getBus("bus-session").getLastSeqNum()).toBe(1);
+    expect(getEventBus("bus-session").getLastSeqNum()).toBe(1);
   });
   // 删除不存在的总线必须幂等。
   test("事件服务重复删除安全", () => {
-    eventService.removeBus("missing-session");
-    expect(() => eventService.removeBus("missing-session")).not.toThrow();
+    removeEventBus("missing-session");
+    expect(() => removeEventBus("missing-session")).not.toThrow();
   });
   // 注册表视图必须包含当前总线。
   test("事件服务列出当前总线", () => {
-    eventService.getBus("listed-session");
-    expect(eventService.getAllBuses().has("listed-session")).toBe(true);
+    getEventBus("listed-session");
+    expect(getAllEventBuses().has("listed-session")).toBe(true);
   });
   // 创建多个缓存空间后清理必须全部释放。
   test("缓存清理释放全部命名空间", async () => {
@@ -321,27 +326,27 @@ describe("round21 隔离服务边界", () => {
 
   // 事件服务要隔离分页、订阅与释放生命周期。
   test("事件服务按游标分页", () => {
-    eventService.publishEvent("session-events", {
+    getEventBus("session-events").publish({
       id: "one",
       sessionId: "session-events",
       type: "message",
       payload: {},
       direction: "inbound",
     });
-    const second = eventService.publishEvent("session-events", {
+    const second = getEventBus("session-events").publish({
       id: "two",
       sessionId: "session-events",
       type: "message",
       payload: {},
       direction: "outbound",
     });
-    expect(eventService.getEventsSince("session-events", 1)).toEqual([second]);
+    expect(getEventBus("session-events").getEventsSince(1)).toEqual([second]);
   });
   // 覆盖该独立行为与边界。
   test("事件服务释放订阅", () => {
     const received: string[] = [];
-    const unsubscribe = eventService.subscribe("session-subscribe", (event) => received.push(event.id));
-    eventService.publishEvent("session-subscribe", {
+    const unsubscribe = getEventBus("session-subscribe").subscribe((event) => received.push(event.id));
+    getEventBus("session-subscribe").publish({
       id: "first",
       sessionId: "session-subscribe",
       type: "message",
@@ -349,7 +354,7 @@ describe("round21 隔离服务边界", () => {
       direction: "inbound",
     });
     unsubscribe();
-    eventService.publishEvent("session-subscribe", {
+    getEventBus("session-subscribe").publish({
       id: "second",
       sessionId: "session-subscribe",
       type: "message",
@@ -360,8 +365,8 @@ describe("round21 隔离服务边界", () => {
   });
   // 覆盖该独立行为与边界。
   test("事件服务删除总线释放资源", () => {
-    const bus = eventService.getBus("session-release");
-    eventService.removeBus("session-release");
+    const bus = getEventBus("session-release");
+    removeEventBus("session-release");
     expect(getAllEventBuses().has("session-release")).toBe(false);
     expect(() =>
       bus.publish({ id: "after", sessionId: "session-release", type: "message", payload: null, direction: "inbound" }),
@@ -369,20 +374,24 @@ describe("round21 隔离服务边界", () => {
   });
   // 覆盖该独立行为与边界。
   test("事件服务隔离会话分页", () => {
-    eventService.publishEvent("session-a", {
+    getEventBus("session-a").publish({
       id: "a",
       sessionId: "session-a",
       type: "message",
       payload: null,
       direction: "inbound",
     });
-    eventService.publishEvent("session-b", {
+    getEventBus("session-b").publish({
       id: "b",
       sessionId: "session-b",
       type: "message",
       payload: null,
       direction: "inbound",
     });
-    expect(eventService.getEventsSince("session-a", 0).map((event) => event.id)).toEqual(["a"]);
+    expect(
+      getEventBus("session-a")
+        .getEventsSince(0)
+        .map((event) => event.id),
+    ).toEqual(["a"]);
   });
 });

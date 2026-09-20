@@ -8,9 +8,9 @@ import * as z from "zod/v4";
  * 装配阶段经 `initializeApplicationInfrastructure({ moduleConfigs: { machine } })` 注入。包内不做第二份
  * 环境解析：两处默认值一旦分歧便无法在启动期暴露，也会把部署知识泄漏进资源模块。
  *
- * 不含沙盒侧字段（`sandboxEnabled` / 默认池）：远程文件路由确实要读默认沙盒池，但那两项是 Sandbox 模块
- * 配置的字段，本包经 `getSandboxConfig()` 读取唯一来源，不在本接口里复制一份（两个模块配置各持一份同名
- * 字段必然漂移）。
+ * 不含沙盒侧字段（`sandboxEnabled` / 默认池）：远程文件路由要判断环境是否落在沙盒里，但该判定读的是
+ * Sandbox 模块自己的配置与池、实例表，已随 1.4 迁回那个包并经 `MachineSandboxRoutePort` 注入结果。
+ * 本接口因此不再需要沙盒字段，也不会出现两个模块配置各持一份同名字段而漂移。
  *
  * 这些字段暂由宿主直接提供，而不是走模块 `envDefinitions`（声明、校验与 preflight 收敛归任务 1.7）。
  */

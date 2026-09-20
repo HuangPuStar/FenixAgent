@@ -24,9 +24,9 @@ import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/s
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { config, setConfig } from "@server/config";
 import { provider } from "@server/db/schema";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig } from "../server/testing";
 import {
   beginSpawnReservation,
   getActiveAgentCount,
@@ -47,9 +47,6 @@ import {
 const ENV_ID = "env-1";
 const USER_ID = "user-1";
 const INSTANCE_ID = "inst_test";
-
-// 捕获初始配置：afterEach 时恢复，避免并发限制覆盖泄漏到其他用例
-const originalConfig = { ...config };
 
 const now = new Date("2026-07-01T00:00:00.000Z");
 
@@ -151,11 +148,9 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     // 迁入包后并发统计不能依赖宿主模块 specifier 的 mock 身份；直接注入与启动
     // 流程相同的 facade/registry，确保预留释放后仍按正式 runtime 快照计数。
     setAgentConcurrencyDeps({ getRuntime: () => fakeFacade, registry: globalInstanceRegistry });
-    setConfig({
-      agentMaxConcurrency: undefined,
-      userAgentMaxConcurrency: undefined,
-      scheduledAgentMaxConcurrency: undefined,
-    });
+    // 并发上限走模块配置（不再是宿主 config）：缺省基线即「三个上限都不生效」，需要限额的用例
+    // 用 stubAgentRuntimeConfig 显式声明。内含 resetAllStubs，故必须在 stubDb() 之前调用。
+    initializeAgentRuntimeModuleConfig();
     launchGate = null;
     launchCalls = 0;
     launchShouldFail = false;
@@ -220,14 +215,13 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     resetAgentConcurrencyDeps();
     resetAllStubs();
     globalInstanceRegistry.clear();
-    setConfig(originalConfig);
   });
 
   // 用户级并发窗口回归：launch 挂起（实例尚未在 core/supplement 可见）时，
   // 第二个同用户 spawn 必须被预留计数拒绝；launch 完成后统计无缝切换为正式实例，
   // 第三个 spawn 仍被拒绝（不得因预留释放而超发）
   test("user concurrency window: in-flight reservation blocks second spawn and stays blocked after handoff", async () => {
-    setConfig({ userAgentMaxConcurrency: 1 });
+    stubAgentRuntimeConfig({ userAgentMaxConcurrency: 1 });
     launchGate = deferred<void>();
 
     const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" });
@@ -258,7 +252,7 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
   // 总并发窗口回归：agentMaxConcurrency 限额在 launch 挂起窗口内同样对第二个
   // spawn 生效（预留计入总并发桶），launch 完成后仍保持占用
   test("total concurrency window: in-flight reservation counts toward total limit", async () => {
-    setConfig({ agentMaxConcurrency: 1 });
+    stubAgentRuntimeConfig({ agentMaxConcurrency: 1 });
     launchGate = deferred<void>();
 
     const p1 = spawnInstanceViaController(ENV_ID, USER_ID, "interactive", { instanceUid: "inst_test_concurrency" });
@@ -286,7 +280,7 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
   // launch 失败路径：预留必须随 finally 释放，否则额度被永久占用，
   // 同一用户后续 spawn 永远被拒
   test("launch failure releases reservation and does not permanently consume quota", async () => {
-    setConfig({ userAgentMaxConcurrency: 1 });
+    stubAgentRuntimeConfig({ userAgentMaxConcurrency: 1 });
     launchShouldFail = true;
 
     await expect(
@@ -305,7 +299,7 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
   // controller.spawnInstance 抛错路径（环境校验/环境级并发超限）：原 try 外的
   // 失败点移入 try 后，预留必须经 finally 释放
   test("controller spawn failure releases reservation", async () => {
-    setConfig({ userAgentMaxConcurrency: 1 });
+    stubAgentRuntimeConfig({ userAgentMaxConcurrency: 1 });
     controllerShouldFail = true;
 
     await expect(

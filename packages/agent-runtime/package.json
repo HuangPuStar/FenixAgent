@@ -12,9 +12,17 @@
       "types": "./fenix.module.ts",
       "default": "./fenix.module.ts"
     },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
+    },
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
+    },
+    "./server/testing": {
+      "types": "./src/server/testing.ts",
+      "default": "./src/server/testing.ts"
     },
     "./server/environment": {
       "types": "./src/server/repositories/environment.ts",

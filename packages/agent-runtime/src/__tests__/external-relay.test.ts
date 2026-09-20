@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { SpawnedInstance } from "@fenix/agent-runtime/server";
+import type { SpawnedInstance } from "@fenix/agent-runtime/runtime";
+import type { AuthContext } from "@fenix/agent-runtime/server";
 import {
   type ExternalRelayEnvironment,
   handleExternalRelayClose,
@@ -8,8 +9,7 @@ import {
   setExternalRelayDeps,
 } from "@fenix/agent-runtime/server";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { AuthContext } from "@server/plugins/auth";
-import type { WsConnection } from "@server/transport/ws-types";
+import type { WsConnection } from "../types/ws-types";
 
 interface MockWs extends WsConnection {
   messages: string[];
@@ -84,7 +84,8 @@ function makeInstance(id: string): SpawnedInstance {
   };
 }
 
-const authCtx: AuthContext = { organizationId: "org-1", userId: "user-1", role: "owner" };
+// 认证上下文按本包最小投影（组织 + 用户）：归属校验不看 role，多写字段会用例与宿主授权模型耦合
+const authCtx: AuthContext = { organizationId: "org-1", userId: "user-1" };
 
 /** 记录 deps 调用轨迹，供各用例断言 */
 const calls = {

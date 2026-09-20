@@ -2,6 +2,7 @@ import { log, error as logError } from "@fenix/logger";
 import { machine } from "@server/db/schema";
 import { eq } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
+import { getMachineHostPort } from "../host-port";
 import { touchSandboxInstanceHeartbeatForMachine } from "./machine-sandbox-projection";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 
@@ -12,11 +13,11 @@ let injected: Partial<{
 }> | null = null;
 
 /**
- * 依赖句柄用 getter 暴露：默认实现按**调用时**读取模块绑定。
+ * 依赖句柄用 getter 暴露：替换值按**调用时**读取，用例可在本模块 import 之后登记。
  *
- * 本包处在 `machine → agent-runtime → sandbox → machine` 的既有环上（台账登记的方向性豁免，1.4 收敛），
- * 顶层把导入的 `const` 读进对象字面量，会在环的另一侧入口加载时抛 TDZ，而宿主 preload 会加载本包，
- * 导致全仓测试一起失败。getter 不改调用点、不改依赖图，只推迟读取时机。
+ * 历史上本包处在 `machine → agent-runtime → sandbox → machine` 的环上，顶层把导入的 `const` 读进
+ * 对象字面量会在环的另一侧入口加载时抛 TDZ（宿主 preload 会加载本包，导致全仓测试一起失败）；
+ * 该环已由 1.4 消除（本包不再导入 agent-runtime 与 sandbox），getter 作为替换机制的惰性读取保留。
  */
 const deps = {
   get markHeartbeatTimeout(): typeof markHeartbeatTimeout {
@@ -105,15 +106,15 @@ export function startMachineSweep(intervalMs = 60_000): void {
   if (sweepTimer) return;
   sweepTimer = setInterval(async () => {
     try {
-      const mod = await import("@fenix/agent-runtime/server");
       const onlineMachines = await getMachineDatabase().select().from(machine).where(eq(machine.status, "online"));
+      const hostPort = getMachineHostPort();
       for (const m of onlineMachines) {
-        const conn = mod.findMachineConnectionById(m.id);
+        const conn = hostPort.findMachineConnectionById(m.id);
         if (!conn) {
           log(`[registry-sweep] Machine ${m.id} has no active WS connection, triggering disconnect cleanup`);
           await deps.markHeartbeatTimeout(m.id);
           // sweep 检测到的断连无法关联具体 wsId，走 machineId 维度的清理
-          mod.triggerMachineCleanupByMachineId(m.id, "sweep: no active WS connection");
+          hostPort.triggerMachineCleanupByMachineId(m.id, "sweep: no active WS connection");
         }
       }
     } catch (err) {

@@ -16,31 +16,27 @@ import {
   installAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
+import { createAgentRuntimeModule } from "@fenix/agent-runtime/runtime";
 import {
-  acpRoutes,
-  agentInstanceService,
-  apiInstanceRoutes,
   bindAcpInstanceActivityPort,
-  bindAgentInstanceRuntimeOperations,
   bindCoreRuntimePort,
   bindEnvironmentAcpLifecyclePort,
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindRedisConnectionPort,
   bindSessionEventBusPort,
-  closeAcpConnectionsForEnvironments,
-  closeAllAcpConnections,
-  closeAllRelayConnections,
+  createAcpRoutes,
+  createApiInstanceRoutes,
+  createOpenaiChatRoutes,
+  environmentRepo,
+  findMachineConnectionById,
+  getAcpEventBus,
   getAgentNodeService,
-  getOrchestrationController,
-  openaiChatRoutes,
-  setRuntimeCredentialResolver,
-  spawnInstanceViaController,
-  startAcpIdleMonitor,
-  stopAcpIdleMonitor,
-  stopInstancesForEnvironments,
-  stopInstanceViaController,
-  touchInstanceActivity,
+  getAllEventBuses,
+  removeEventBus,
+  resolveWorkspacePath,
+  triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
 import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
 import {
@@ -61,13 +57,14 @@ import {
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth, createApiKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import {
+  bindMachineEnvironmentPort,
+  bindMachineHostPort,
   checkParsedObjectSize,
   checkWsMessageSize,
   closeAllFileWsConnections,
   createApiWorkspaceRoutes,
   disconnectMachine,
   estimateWsMessageBytes,
-  eventService,
   formatFileWsCloseLog,
   handleFileWsClose,
   handleFileWsMessage,
@@ -124,15 +121,21 @@ import { db, initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import { authenticateSiteRequest, authGuardPlugin, authPlugin, toActorContext } from "./plugins/auth";
+import {
+  authenticateRequest,
+  authenticateSiteRequest,
+  authGuardPlugin,
+  authPlugin,
+  toActorContext,
+} from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { systemApiAuthPlugin } from "./plugins/system-api-auth";
 import webApp from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
-import { closeCache } from "./services/cache";
+import { closeCache, getRedisConnection } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
 import { runDataMigrations } from "./services/data-migrate";
 import { createModelGatewaySubjectVerification } from "./services/model-gateway-subject-verification";
@@ -175,6 +178,24 @@ initializeApplicationInfrastructure({
       trustedOrigins: env.RCS_TRUSTED_ORIGINS,
       systemAdminPasswordFile: config.systemAdminPasswordFile,
       disableSignup: config.disableSignup,
+    },
+    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）加环境解析与
+    // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限）。三项并发
+    // 上限缺省即「不限制」，`config` 已把 env 的 optional 语义原样带过来（`undefined` 而非 0）。「启动参数
+    // 组装」类配置不在这里：那部分职责随 W4 的 launch-spec 装配搬出本包（见 §七 W1/W2/W4 产出栏）。
+    "agent-runtime": {
+      agentMaxConcurrency: config.agentMaxConcurrency,
+      userAgentMaxConcurrency: config.userAgentMaxConcurrency,
+      scheduledAgentMaxConcurrency: config.scheduledAgentMaxConcurrency,
+      acpIdleTimeoutSeconds: config.acpIdleTimeoutSeconds,
+      acpIdleSweepIntervalSeconds: config.acpIdleSweepIntervalSeconds,
+      acpActivityTimeoutSeconds: config.acpActivityTimeoutSeconds,
+      wsKeepaliveInterval: config.wsKeepaliveInterval,
+      defaultMachineId: config.defaultMachineId,
+      disableLocalExecution: config.disableLocalExecution,
+      workspaceRoot: config.workspaceRoot,
+      acpRegistrySecret: env.REGISTRY_SECRET,
+      fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
     machine: {
@@ -249,16 +270,39 @@ initializeApplicationInfrastructure({
   },
 });
 registerIdentityDirectory(createIdentityDirectory());
+// 运行 port（1.4 W3b）：实例/环境生命周期与会话数据面只有这一个入口，宿主在装配阶段绑定一次，
+// 路由与消费包随后经 `getBoundAgentRuntime()` 取用。同时由本模块的 create 绑定包内编排 seam
+//（§4.6：`AgentInstanceRuntimeOperations` 是包内装配细节，宿主不再把包导出的函数转发回去）。
+// §1.5 的 registry 驱动装配接管后，这一行由模块 create 承担。
+const agentRuntime = createAgentRuntimeModule().runtime;
 bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
 bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+// Machine 包的宿主运行态：workspace 根、Core runtime 节点、file-ws 连接索引与断连清理都是宿主进程级单例，
+// 包不反向导入 agent-runtime 取值，改由这里一次绑定（未装配时包内调用即失败，不隐式回退）。
+bindMachineHostPort({
+  resolveWorkspacePath,
+  // Core runtime 单例归宿主（`./services/core-bootstrap`），此处只暴露「按 machineId 查节点」的窄视图。
+  getCoreRuntimeNode: (machineId) => getCoreRuntime().getNode(machineId),
+  unregisterCoreRuntimeNode: unregisterRemoteNode,
+  findMachineConnectionById,
+  triggerMachineCleanupByMachineId,
+});
+// Machine 包读 environment 的两个原语（记录读取 + 归属校验）：实现仍在 agent-runtime，由此处转发。
+bindMachineEnvironmentPort({
+  getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
+  getOwnedEnvironment: agentRuntime.getOwnedEnvironment,
+});
+// YJS 会话快照所需的 Redis 连接（1.4 W2）：包内不再 import 宿主 services/cache，连接的建立与配置
+// 由宿主绑定，包内仅在会话切换的 CAS 快照路径上取用（未配置 RCS_REDIS_URL 时返回 null 并跳过）。
+bindRedisConnectionPort({ getRedisConnection });
 bindSessionEventBusPort({
-  getAllBuses: () => eventService.getAllBuses(),
-  removeBus: (sessionId) => eventService.removeBus(sessionId),
+  getAllBuses: () => getAllEventBuses(),
+  removeBus: (sessionId) => removeEventBus(sessionId),
 });
 bindLocalNodeAgentNodeServicePort({
   getAgentNodeService: () => new LocalNodeAwareService(getAgentNodeService),
 });
-bindAcpEventBusPort({ getAcpBus: (agentId) => eventService.getAcpBus(agentId) });
+bindAcpEventBusPort({ getAcpBus: (agentId) => getAcpEventBus(agentId) });
 bindFileWsPort({
   checkParsedObjectSize,
   checkWsMessageSize,
@@ -269,19 +313,11 @@ bindFileWsPort({
   handleFileWsOpen,
   parseFileWsMessage,
 });
-bindAgentInstanceRuntimeOperations({
-  spawnInstance: spawnInstanceViaController,
-  stopInstance: stopInstanceViaController,
-  hasActiveInstance: (instanceUid) =>
-    getOrchestrationController()
-      .listInstances()
-      .some((instance) => instance.instanceId === instanceUid),
-});
 bindEnvironmentAcpLifecyclePort({
-  closeAcpConnections: closeAcpConnectionsForEnvironments,
-  stopInstances: stopInstancesForEnvironments,
+  closeAcpConnections: agentRuntime.closeAcpConnectionsForEnvironments,
+  stopInstances: agentRuntime.stopInstancesForEnvironments,
 });
-bindAcpInstanceActivityPort(touchInstanceActivity);
+bindAcpInstanceActivityPort(agentRuntime.touchInstanceActivity);
 await runCriticalStartupSequence({
   initDb: async () => {
     await initDb();
@@ -342,7 +378,7 @@ await runCriticalStartupSequence({
     const modelGatewayRuntime = createModelGatewayRuntime({ subjectVerification });
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
-      setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
+      agentRuntime.setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
       startupLog.info("Model gateway runtime initialized");
       return;
     }
@@ -417,7 +453,7 @@ startMachineSweep(60_000);
 if (config.fileWsSweepEnabled) {
   startFileWsSweep(config.fileWsSweepIntervalMs, config.fileWsIdleTimeoutMs);
 }
-startAcpIdleMonitor();
+agentRuntime.startIdleMonitor();
 
 const app = new Elysia({
   websocket: {
@@ -507,17 +543,17 @@ const app = new Elysia({
   .use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
   .use(createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(apiInstanceRoutes)
+  .use(createApiInstanceRoutes({ authGuardPlugin, logError }))
   .use(createApiWorkspaceRoutes({ authGuardPlugin }))
   .use(createApiWorkflowRoutes({ authGuardPlugin }))
   // OpenAI-compatible Chat API
-  .use(openaiChatRoutes)
+  .use(createOpenaiChatRoutes({ authGuardPlugin }))
   // Workflow proxy (not under /web prefix)
   .use(createWorkflowStaticApp({ authGuardPlugin }))
   // MCP routes
   .use(knowledgeMcpRoutes)
   // ACP protocol routes
-  .use(acpRoutes)
+  .use(createAcpRoutes({ authGuardPlugin, authenticateRequest }))
   // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）
   .use(createAgentSitesCompatRoutes({ authenticateRequest: authenticateSiteRequest }));
 
@@ -573,13 +609,13 @@ function gracefulShutdown(signal: string): Promise<void> {
   gracefulShutdownPromise = (async () => {
     const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
     startupLog.info(`Received ${signal}, shutting down...`);
-    const runtimeDrain = agentInstanceService.shutdownRuntimes();
+    const runtimeDrain = agentRuntime.shutdown();
     schedulerService.stop();
     const hermesClient = getHermesClient();
     await withShutdownDeadline(hermesClient?.stop() ?? Promise.resolve(), "hermes", deadline);
-    stopAcpIdleMonitor();
-    closeAllRelayConnections();
-    closeAllAcpConnections();
+    agentRuntime.stopIdleMonitor();
+    agentRuntime.closeAllRelayConnections();
+    agentRuntime.closeAllAcpConnections();
     // 先停巡检再关连接，避免巡检定时器与关闭流程并发操作同一索引
     stopFileWsSweep();
     closeAllFileWsConnections();

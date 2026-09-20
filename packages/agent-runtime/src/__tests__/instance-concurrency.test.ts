@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { config, setConfig } from "@server/config";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig } from "../server/testing";
 import { resetAgentConcurrencyDeps, setAgentConcurrencyDeps } from "../services/agent-concurrency";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { spawnInstanceViaController } from "../services/orchestration-instance";
@@ -15,27 +16,23 @@ function makeRuntime(statuses: Array<"starting" | "running" | "stopped" | "stopp
 }
 
 describe("instance concurrency limits", () => {
-  const originalConfig = { ...config };
-
   beforeEach(() => {
     globalInstanceRegistry.clear();
     resetAgentConcurrencyDeps();
-    setConfig({
-      ...originalConfig,
-      agentMaxConcurrency: undefined,
-      scheduledAgentMaxConcurrency: undefined,
-    });
+    // 并发上限走模块配置（不再是宿主 config）：缺省基线即「三个上限都不生效」，
+    // 需要限额的用例用 stubAgentRuntimeConfig 显式声明。
+    initializeAgentRuntimeModuleConfig();
   });
 
   afterEach(() => {
     globalInstanceRegistry.clear();
     resetAgentConcurrencyDeps();
-    setConfig(originalConfig);
+    resetAllStubs();
   });
 
   // 总并发超限时应在触达编排域（controller / DB）前直接拒绝
   test("spawnInstanceViaController rejects when total concurrency limit is reached", async () => {
-    setConfig({ ...originalConfig, agentMaxConcurrency: 1 });
+    stubAgentRuntimeConfig({ agentMaxConcurrency: 1 });
     setAgentConcurrencyDeps({
       getRuntime: () => makeRuntime(["running"]) as never,
     });
@@ -50,8 +47,7 @@ describe("instance concurrency limits", () => {
 
   // scheduled 并发超限时只拒绝 scheduled 启动
   test("spawnInstanceViaController rejects when scheduled concurrency limit is reached", async () => {
-    setConfig({
-      ...originalConfig,
+    stubAgentRuntimeConfig({
       agentMaxConcurrency: 10,
       scheduledAgentMaxConcurrency: 1,
     });

@@ -1,4 +1,4 @@
-import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { docManager } from "@fenix/chat-channel/server";
 import { createPeriTaskDetailStore, getPeriTaskDetail } from "@fenix/model-management/server";
 import { NotFoundError, WebErrSchema } from "@fenix/platform-sdk";
@@ -27,7 +27,11 @@ const app = new Elysia({ name: "web-peri-task-details" }).use(authGuardPlugin).g
           taskId: params.taskId,
         },
         query,
-        { getOwnedEnvironment, store: detailStore },
+        {
+          getOwnedEnvironment: (id, organizationId, userId) =>
+            getBoundAgentRuntime().getOwnedEnvironment(id, organizationId, userId),
+          store: detailStore,
+        },
       );
       return { success: true as const, data };
     } catch (err: unknown) {

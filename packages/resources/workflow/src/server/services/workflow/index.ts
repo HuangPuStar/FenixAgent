@@ -11,7 +11,7 @@
  * - workflow 结束后统一销毁启动的实例
  */
 
-import { stopInstance } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { createLogger } from "@fenix/logger";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
@@ -58,7 +58,7 @@ export async function cleanupSpawnedInstances(instanceIds: Set<string>, organiza
       continue;
     }
     try {
-      await stopInstance(instanceId, organizationId);
+      await getBoundAgentRuntime().stopInstance(instanceId, organizationId);
     } catch (err) {
       // 单个实例停止失败不中断其余清理；stopInstance 对不存在/跨 org 实例返回
       // ok:false 不抛错，此处仅兜底意外异常

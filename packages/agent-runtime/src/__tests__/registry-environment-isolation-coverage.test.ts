@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { normalizePayload } from "@server/services/transport";
 import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import {
   generateEnvSecret,
@@ -195,68 +194,6 @@ describe("environment-core 的隔离、失败与响应边界", () => {
   });
 });
 
-describe("transport payload 的失败与兼容边界", () => {
-  // null payload 必须稳定规范化为空文本。
-  test("null payload 转为空文本", () => {
-    expect(normalizePayload("assistant", null)).toMatchObject({ content: "", raw: null });
-  });
-  // 原始字符串作为兼容输入必须保留。
-  test("字符串 payload 转为文本", () => {
-    expect(normalizePayload("assistant", "hello")).toMatchObject({ content: "hello", raw: "hello" });
-  });
-  // 直接 content 字段优先于嵌套消息。
-  test("直接 content 优先", () => {
-    expect(normalizePayload("assistant", { content: "direct", message: { content: "nested" } }).content).toBe("direct");
-  });
-  // 子进程消息格式可从 message.content 提取文本。
-  test("读取嵌套 message content", () => {
-    expect(normalizePayload("assistant", { message: { content: "nested" } }).content).toBe("nested");
-  });
-  // 流式文本块按顺序拼接。
-  test("拼接文本块", () => {
-    expect(
-      normalizePayload("assistant", {
-        message: {
-          content: [
-            { type: "text", text: "a" },
-            { type: "text", text: "b" },
-          ],
-        },
-      }).content,
-    ).toBe("ab");
-  });
-  // 非文本块不得污染聊天正文。
-  test("忽略非文本块", () => {
-    expect(normalizePayload("assistant", { message: { content: [{ type: "image", text: "secret" }] } }).content).toBe(
-      "",
-    );
-  });
-  // 未知对象保持可审计 raw 但不猜测内容。
-  test("未知对象不猜测文本", () => {
-    expect(normalizePayload("assistant", { value: 1 })).toMatchObject({ content: "" });
-  });
-  // uuid 为空时不应被视为有效事件标识。
-  test("空 uuid 不被保留", () => {
-    expect(normalizePayload("assistant", { uuid: "" }).uuid).toBeUndefined();
-  });
-  // 非空 uuid 需透传给去重消费者。
-  test("透传 uuid", () => {
-    expect(normalizePayload("assistant", { uuid: "u-1" }).uuid).toBe("u-1");
-  });
-  // permission 的 false 是有效值，不能被 truthy 判断吞掉。
-  test("保留拒绝 permission 结果", () => {
-    expect(normalizePayload("permission", { approved: false }).approved).toBe(false);
-  });
-  // task_state 仅透传数组任务，拒绝不完整的标量。
-  test("task_state 保留任务数组", () => {
-    expect(normalizePayload("task_state", { tasks: [{ id: "t" }] }).tasks).toEqual([{ id: "t" }]);
-  });
-  // tool name 的 name 别名保持旧 Agent 兼容。
-  test("tool name 别名归一化", () => {
-    expect(normalizePayload("tool", { name: "read" }).tool_name).toBe("read");
-  });
-  // input 别名需要归一化到 tool_input。
-  test("tool input 别名归一化", () => {
-    expect(normalizePayload("tool", { input: { path: "a" } }).tool_input).toEqual({ path: "a" });
-  });
-});
+// 此处原有 `normalizePayload` 的边界用例（null / 字符串 / 直接 content / 嵌套 message / 文本块拼接 /
+// 非文本块 / uuid 保留），已随被测函数归属迁到宿主测试 `apps/server/src/__tests__/transport-normalize.test.ts`：
+// 被测函数属宿主 transport，两处断言集合相同，留在包内只会让本包测试反向依赖宿主实现（1.4 W2）。

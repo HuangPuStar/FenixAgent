@@ -1,18 +1,11 @@
 // 迁移自 `packages/resources/identity-admin/src/routes/web/control.ts`（CE 阶段 2 任务 1.2）：
-// 本路由是 `/web/control/*` 的协议适配层，同时依赖 Agent Runtime 的会话服务与 Machine 的
-// 事件服务，落点必须是宿主而非任一模块；放进 agent-runtime 会让 `agent-runtime → resource-machine`
-// 与既有的 `resource-machine → agent-runtime` 形成环形依赖。
-import {
-  type AgentInstanceRecord,
-  agentInstanceService,
-  environmentRepo,
-  getSession,
-  resolveExistingSessionId,
-  updateSessionStatus,
-} from "@fenix/agent-runtime/server";
+// 本路由是 `/web/control/*` 的协议适配层，依赖 Agent Runtime 的会话服务与事件总线，落点必须是宿主
+// 而非任一模块：放进 agent-runtime 会让宿主专属的协议适配反向拖入机器域（1.4 已把 EventBus 收敛回
+// agent-runtime，Machine 的同名薄封装删除）。
+import { type AgentInstanceRecord, type AgentRuntimePort, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import { environmentRepo, getEventBus } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { eventService } from "@fenix/resource-machine/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
@@ -24,9 +17,12 @@ const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({
   "session-event-payload": SessionEventPayloadSchema,
 });
 
+/** 会话记录的读法来自运行 port 的契约（`LightweightSession` 是包内类型，不单独透出）。 */
+type SessionRecord = NonNullable<Awaited<ReturnType<AgentRuntimePort["getSession"]>>>;
+
 type OwnershipCheckResult =
   | { error: true; response: Response }
-  | { error: false; session: NonNullable<Awaited<ReturnType<typeof getSession>>>; sessionId: string };
+  | { error: false; session: SessionRecord; sessionId: string };
 
 async function checkOwnership(
   userId: string | null,
@@ -40,7 +36,7 @@ async function checkOwnership(
       response: errorFn(403, { success: false, error: { code: "forbidden", message: "Not authenticated" } }),
     };
   }
-  const resolvedSessionId = await resolveExistingSessionId(sessionId);
+  const resolvedSessionId = await getBoundAgentRuntime().resolveExistingSessionId(sessionId);
   if (!resolvedSessionId) {
     return {
       error: true,
@@ -51,7 +47,7 @@ async function checkOwnership(
   // 任一边界不匹配均保守拒绝，避免依赖可伪造的 session ID 编码推导身份。
   let instance: AgentInstanceRecord;
   try {
-    instance = await agentInstanceService.getOwnedInstance(resolvedSessionId, userId);
+    instance = await getBoundAgentRuntime().getOwnedInstance(resolvedSessionId, userId);
   } catch {
     return {
       error: true,
@@ -80,7 +76,7 @@ async function checkOwnership(
       }),
     };
   }
-  const activeSession = await getSession(resolvedSessionId);
+  const activeSession = await getBoundAgentRuntime().getSession(resolvedSessionId);
   if (!activeSession) {
     return {
       error: true,
@@ -109,7 +105,7 @@ const sendSessionEventHandler: any = async ({ store, params, body, error }: any)
   );
   const event = publishSessionEvent(sessionId, eventType, b, "outbound");
   log(
-    `[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${eventService.getBus(sessionId).subscriberCount()}`,
+    `[RC-DEBUG] web -> server: published outbound event id=${event.id} type=${event.type} direction=${event.direction} subscribers=${getEventBus(sessionId).subscriberCount()}`,
   );
   return { success: true as const, data: { status: "ok" as const, event } };
 };
@@ -174,7 +170,7 @@ const interruptSessionHandler: any = async ({ store, params, error }: any) => {
   const { sessionId } = ownership;
 
   publishSessionEvent(sessionId, "interrupt", { action: "interrupt" }, "outbound");
-  await updateSessionStatus(sessionId, "idle");
+  getBoundAgentRuntime().updateSessionStatus(sessionId, "idle");
   return { success: true as const, data: null };
 };
 

@@ -1,29 +1,9 @@
 /** API 请求/响应类型定义 */
 
 // --- Environment ---
-
-export interface EnvironmentResponse {
-  id: string;
-  machine_name: string | null;
-  directory: string | null;
-  branch: string | null;
-  status: string;
-  username: string | null;
-  last_poll_at: number | null;
-  worker_type?: string;
-  capabilities?: Record<string, unknown> | null;
-}
-
-export interface RegisterEnvironmentRequest {
-  machine_name?: string;
-  directory?: string;
-  branch?: string;
-  git_repo_url?: string;
-  worker_type?: string;
-  bridge_id?: string;
-  capabilities?: Record<string, unknown>;
-  metadata?: { worker_type?: string };
-}
+// 环境（worker）注册的请求 / 响应体已随 1.4 的 W1 类型搬家收回其 owner
+// `@fenix/agent-runtime/server`（`EnvironmentResponse` / `RegisterEnvironmentRequest`）：它们描述的是该包的
+// 注册入口与响应映射的输入输出，宿主只是转发，实测宿主零消费方。
 
 export interface SessionSummaryResponse {
   id: string;

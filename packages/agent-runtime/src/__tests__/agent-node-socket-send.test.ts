@@ -12,8 +12,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import type { WsConnection } from "@server/transport/ws-types";
 import { wsToAgentNodeSocket } from "../transport/agent-node-bridge";
+import type { WsConnection } from "../types/ws-types";
 
 function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {
   const messages: string[] = [];

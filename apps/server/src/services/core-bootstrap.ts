@@ -1,4 +1,4 @@
-import { cleanupOrchestrationInstancesForMachine, globalInstanceRegistry } from "@fenix/agent-runtime/server";
+import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
@@ -88,7 +88,7 @@ function defaultCreateFacade(): CoreRuntimeFacade {
 
 function removeInstanceWithRegistryCleanup(runtime: CoreRuntimeFacade, instanceId: string): void {
   runtime.deleteInstance(instanceId);
-  globalInstanceRegistry.unregisterAndDeleteCounter(instanceId);
+  getBoundAgentRuntime().unregisterInstance(instanceId);
 }
 
 /** 可替换的 facade 工厂（测试时注入 mock） */
@@ -159,7 +159,7 @@ export function registerRemoteNode(
     }
     // 同步清理编排域活跃表与节点引用，否则断连期间残留的幽灵实例会继续计入
     // 并发额度并阻塞空闲回收（E-P0.1；快速重连短路场景下本分支是唯一入口）
-    cleanupOrchestrationInstancesForMachine(machineId);
+    getBoundAgentRuntime().cleanupInstancesForMachine(machineId);
     // 注意：不关闭 relay 连接，让前端自动重连 ensureRunning 时使用新 transport
     return;
   }
@@ -194,5 +194,5 @@ export function unregisterRemoteNode(machineId: string): void {
   }
   // 同步清理编排域活跃表与节点引用，否则断连后幽灵实例永久计入并发额度、
   // 引用计数残留导致空闲回收不触发（E-P0.1）
-  cleanupOrchestrationInstancesForMachine(machineId);
+  getBoundAgentRuntime().cleanupInstancesForMachine(machineId);
 }

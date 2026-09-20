@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { AppError, NotFoundError } from "@fenix/platform-sdk";
-import type { RegisterEnvironmentRequest } from "@server/types/api";
 import type { EnvironmentRecord } from "../server/repositories/environment";
 import { environmentRepo } from "../server/repositories/environment";
+import type { RegisterEnvironmentRequest } from "../types/environment";
 import { deleteEnvironment, toResponse } from "./environment-core";
 
 /** 通过 secret 获取环境信息（认证用），仅返回认证所需字段 */

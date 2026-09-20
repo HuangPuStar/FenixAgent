@@ -1,4 +1,4 @@
-import { eventService } from "@fenix/resource-machine/server";
+import { getEventBus } from "@fenix/agent-runtime/server";
 import { v4 as uuid } from "uuid";
 
 /**
@@ -87,7 +87,7 @@ export function publishSessionEvent(
   payload: unknown,
   direction: "inbound" | "outbound",
 ) {
-  const bus = eventService.getBus(sessionId);
+  const bus = getEventBus(sessionId);
   const eventId = uuid();
 
   const normalized = normalizePayload(type, payload);

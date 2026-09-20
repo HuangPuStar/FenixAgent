@@ -10,13 +10,13 @@ import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
-import type { InstanceSupplement } from "@server/types/store";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
   stopInstancesForEnvironments,
 } from "../services/orchestration-instance";
+import type { InstanceSupplement } from "../types/instance";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";

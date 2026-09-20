@@ -14,45 +14,10 @@ import {
   safeJsonStringify,
   toKeyHint,
 } from "../services/config-utils";
-import {
-  buildOpenAIError,
-  mapToNonStreamingResponse,
-  mapToSSEChunks,
-  type RelayEvent,
-} from "../services/openai-response-mapper";
 
 type EnvironmentSnapshot = { value: string | undefined };
 const apiKeyEnvironmentName = "FENIX_ROUND16_TEST_API_KEY";
 let apiKeyEnvironment: EnvironmentSnapshot = { value: undefined };
-
-function sessionUpdate(update: Record<string, unknown>): RelayEvent {
-  return {
-    type: "session_data",
-    payload: { jsonrpc: "2.0", method: "session/update", params: { update } },
-  };
-}
-
-function completion(stopReason: string): RelayEvent {
-  return { type: "session_data", payload: { jsonrpc: "2.0", result: { stopReason } } };
-}
-
-async function collectChunks(
-  events: AsyncIterable<RelayEvent>,
-  signal?: AbortSignal,
-  onStopReason?: (reason: string) => void,
-) {
-  const chunks: string[] = [];
-  for await (const chunk of mapToSSEChunks(events, "agent-round16", signal, onStopReason)) {
-    chunks.push(chunk);
-  }
-  return chunks;
-}
-
-async function* eventStream(events: RelayEvent[]): AsyncGenerator<RelayEvent> {
-  for (const event of events) {
-    yield event;
-  }
-}
 
 afterEach(() => {
   if (apiKeyEnvironment.value === undefined) {
@@ -180,118 +145,6 @@ describe("round16 isolated protocol and boundary coverage", () => {
   // JSON 反序列化应恢复调用方指定的数据形状。
   test("JSON 安全反序列化有效对象", () => {
     expect(safeJsonParse<{ id: string }>('{"id":"one"}')).toEqual({ id: "one" });
-  });
-
-  // 原始 JSON-RPC 事件也必须被协议映射器识别。
-  test("非流式映射接受原始 JSON-RPC 事件", () => {
-    const response = mapToNonStreamingResponse(
-      [
-        {
-          jsonrpc: "2.0",
-          method: "session/update",
-          params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "原始事件" } } },
-        } as unknown as RelayEvent,
-      ],
-      "agent-round16",
-    );
-
-    expect(response.choices[0].message.content).toBe("原始事件");
-    expect(response.choices[0].finish_reason).toBe("end_turn");
-  });
-
-  // 无效协议包不能污染 OpenAI 响应内容。
-  test("非流式映射忽略无效协议事件", () => {
-    const response = mapToNonStreamingResponse([{ type: "other", payload: { value: "ignored" } }], "agent-round16");
-
-    expect(response.choices[0].message.content).toBe("");
-  });
-
-  // 未知 session update 仅作为空 reasoning，不得伪造正文。
-  test("非流式映射忽略未知更新类型", () => {
-    const response = mapToNonStreamingResponse([sessionUpdate({ sessionUpdate: "unknown_update" })], "agent-round16");
-
-    expect(response.choices[0].message.content).toBe("");
-    expect(response.choices[0].message.reasoning_content).toBeUndefined();
-  });
-
-  // 流式思考块必须进入 reasoning_content delta。
-  test("流式映射输出思考增量", async () => {
-    const chunks = await collectChunks(
-      eventStream([
-        sessionUpdate({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "分析" } }),
-        completion("stop"),
-      ]),
-    );
-
-    expect(chunks[0]).toContain('"reasoning_content":"分析"');
-    expect(chunks).toContain("data: [DONE]\n\n");
-  });
-
-  // 流式工具调用必须向客户端暴露约定的简化协议文本。
-  test("流式映射输出工具调用增量", async () => {
-    const chunks = await collectChunks(
-      eventStream([sessionUpdate({ sessionUpdate: "tool_call", title: "search" }), completion("end_turn")]),
-    );
-
-    expect(chunks[0]).toContain('<tool_call name=\\"search\\" />');
-  });
-
-  // 缺少标题的工具调用必须使用 unknown，防止空 XML 属性。
-  test("流式工具调用为缺失标题提供默认值", async () => {
-    const chunks = await collectChunks(
-      eventStream([sessionUpdate({ sessionUpdate: "tool_call_update" }), completion("end_turn")]),
-    );
-
-    expect(chunks[0]).toContain('<tool_result name=\\"unknown\\" />');
-  });
-
-  // 完成事件应该只发送一次终态并透传结束原因。
-  test("流式映射透传完成原因并结束", async () => {
-    const reasons: string[] = [];
-    const chunks = await collectChunks(
-      eventStream([
-        completion("cancelled"),
-        sessionUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "不得发送" } }),
-      ]),
-      undefined,
-      (reason) => reasons.push(reason),
-    );
-
-    expect(reasons).toEqual(["cancelled"]);
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]).toContain('"finish_reason":"cancelled"');
-  });
-
-  // 流自然结束也必须释放客户端等待并补发终态。
-  test("流式映射在无完成事件时补发终态", async () => {
-    const chunks = await collectChunks(eventStream([]));
-
-    expect(chunks).toEqual(
-      expect.arrayContaining([expect.stringContaining('"finish_reason":"end_turn"'), "data: [DONE]\n\n"]),
-    );
-  });
-
-  // 已取消的请求不得继续消费或向客户端写入事件。
-  test("流式映射在取消信号后立即释放", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const chunks = await collectChunks(
-      eventStream([
-        sessionUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "取消后内容" } }),
-      ]),
-      controller.signal,
-    );
-
-    expect(chunks).toEqual(
-      expect.arrayContaining([expect.stringContaining('"finish_reason":"end_turn"'), "data: [DONE]\n\n"]),
-    );
-    expect(chunks.join("")).not.toContain("取消后内容");
-  });
-
-  // OpenAI 错误体只应在 401 时暴露 invalid_api_key 语义。
-  test("OpenAI 错误映射区分认证失败与其他错误", () => {
-    expect(buildOpenAIError(401, "认证失败", "authentication_error").body.error.code).toBe("invalid_api_key");
-    expect(buildOpenAIError(500, "内部失败", "server_error").body.error.code).toBeUndefined();
   });
 
   // 机器离线 AppError 应阻止无意义的自动重连。

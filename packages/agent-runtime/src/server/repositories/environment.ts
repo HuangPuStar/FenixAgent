@@ -1,8 +1,8 @@
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { db } from "@server/db";
 import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getAgentRuntimeDatabase } from "../db";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
 
 /** Environment 持久化记录 */
@@ -112,6 +112,7 @@ function rowToRecord(row: typeof environment.$inferSelect): EnvironmentRecord {
 
 class PgEnvironmentRepo implements IEnvironmentRepo {
   async create(params: EnvironmentCreateParams): Promise<EnvironmentRecord> {
+    const db = getAgentRuntimeDatabase();
     const id = params.id ?? `env_${uuid().replace(/-/g, "")}`;
     const now = new Date();
     const name = params.name || `env-${id.slice(4, 12)}`;
@@ -162,16 +163,19 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async getById(id: string): Promise<EnvironmentRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.id, id)).limit(1);
     return rows[0] ? rowToRecord(rows[0]) : undefined;
   }
 
   async getBySecret(secret: string): Promise<EnvironmentRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.secret, secret)).limit(1);
     return rows[0] ? rowToRecord(rows[0]) : undefined;
   }
 
   async update(id: string, patch: EnvironmentUpdateParams): Promise<boolean> {
+    const db = getAgentRuntimeDatabase();
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.status !== undefined) set.status = patch.status;
     if (patch.lastPollAt !== undefined) set.lastPollAt = patch.lastPollAt;
@@ -189,21 +193,25 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async delete(id: string): Promise<boolean> {
+    const db = getAgentRuntimeDatabase();
     const result = await db.delete(environment).where(eq(environment.id, id));
     return (result as unknown as { count: number }).count > 0;
   }
 
   async listActive(): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.status, "active"));
     return rows.map(rowToRecord);
   }
 
   async listAll(): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment);
     return rows.map(rowToRecord);
   }
 
   async listByUserId(userId: string): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.userId, userId));
     return rows.map(rowToRecord);
   }
@@ -212,6 +220,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
     // 按登录名定位用户：身份表读取唯一经 IdentityDirectory，本仓储不得直接查身份表。
     const userInfo = await getIdentityDirectory().findUserByName(username);
     if (!userInfo) return [];
+    const db = getAgentRuntimeDatabase();
     const rows = await db
       .select()
       .from(environment)
@@ -220,11 +229,13 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async listAcpAgents(): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.workerType, "acp"));
     return rows.map(rowToRecord);
   }
 
   async listAcpAgentsByUserId(userId: string): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db
       .select()
       .from(environment)
@@ -233,11 +244,13 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async listByOrganizationId(organizationId: string): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db.select().from(environment).where(eq(environment.organizationId, organizationId));
     return rows.map(rowToRecord);
   }
 
   async listOnlineAcpAgents(): Promise<EnvironmentRecord[]> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db
       .select()
       .from(environment)
@@ -246,6 +259,7 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 
   async findByAgentConfigId(organizationId: string, agentConfigId: string): Promise<EnvironmentRecord | undefined> {
+    const db = getAgentRuntimeDatabase();
     const rows = await db
       .select()
       .from(environment)

@@ -6,6 +6,7 @@
 
 import { mock } from "bun:test";
 import { createAgentConfigModuleConfig } from "@fenix/agent-config/server/testing";
+import { createAgentRuntimeModuleConfig } from "@fenix/agent-runtime/server/testing";
 import type { IdentityConfig } from "@fenix/identity/server";
 import { createModelManagementModuleConfig } from "@fenix/model-management/server/testing";
 import {
@@ -179,6 +180,7 @@ mock.module("@fenix/platform-sdk/server", () => ({
 // 缺省值与 `apps/server/src/config.ts` 的部署默认值一致；两侧一旦分歧，宿主 main.ts 的注入清单与包内
 // `strictObject` 校验会在启动期先失败，不会静默走测试缺省值。
 registerModuleConfigBaseline("agent-config", createAgentConfigModuleConfig());
+registerModuleConfigBaseline("agent-runtime", createAgentRuntimeModuleConfig());
 registerModuleConfigBaseline("knowledge", createKnowledgeModuleConfig());
 registerModuleConfigBaseline("machine", createMachineModuleConfig());
 registerModuleConfigBaseline("memory", createMemoryModuleConfig());
@@ -391,13 +393,22 @@ const {
   bindFileWsPort,
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
+  bindRedisConnectionPort,
   bindSessionEventBusPort,
+  environmentRepo,
+  findMachineConnectionById,
   getAgentNodeService,
   getAllEventBuses,
   removeEventBus,
+  resolveWorkspacePath,
+  triggerMachineCleanupByMachineId,
 } = await import("@fenix/agent-runtime/server");
+// 运行 port 从它自己的入口取：宿主测试进程也要按生产装配路径绑定（见下方 bindAgentRuntime 处）。
+const { bindAgentRuntime, createAgentRuntime, getBoundAgentRuntime } = await import("@fenix/agent-runtime/runtime");
 // 测试 preload 以惰性 stub 绑定路由依赖；该测试钩子不得进入 Machine 的生产公开入口。
+const { bindMachineEnvironmentPort, bindMachineHostPort } = await import("@fenix/resource-machine/server");
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
+const cacheModule = await import("../services/cache");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
   registerRemoteNode: (...args) => {
@@ -415,7 +426,35 @@ bindMachineRegistryPort({
     registryHeartbeatRegistry.get("startHeartbeat")(machineId, intervalMs, onTimeout),
   stopHeartbeat: (machineId) => registryHeartbeatRegistry.get("stopHeartbeat")(machineId),
 });
+// 运行 port（1.4 W3b）：生产消费方一律经 `getBoundAgentRuntime()` 取实例/环境生命周期与会话数据面，
+// 装配未走到这里时调用即失败（不隐式回退）。测试进程绑定**真实**入口：它的内部实现读的仍是本文件
+// 换过的那些替身（环境仓储 Proxy、DB mock、各 port 转发），所以行为与「路由直接调用包内函数」一致。
+// 需要替换某个方法时用 `@fenix/agent-runtime/server/testing` 的 `stubAgentRuntimePort()`。
+bindAgentRuntime(createAgentRuntime());
+// Machine 包的宿主运行态与环境读取端口（1.4 起由装配层绑定，包不再反向导入 agent-runtime）。
+// 转发方向与上面的 core runtime 端口一致：Core runtime 句柄走 coreBootstrapRegistry（用例经
+// stubCoreBootstrap 配置），环境读取走 environmentRepo 的实时 Proxy（用例经 stubEnvironmentRepo 配置）。
+bindMachineHostPort({
+  resolveWorkspacePath,
+  // 可选链保留「未配置 stub 时查无此机」的既有语义：`createStubRegistry` 是 throwOnMissing=false
+  // （未配置返回空函数），无 stub 时 `getCoreRuntime()` 求值为 undefined，对账面据此判定节点不存在；
+  // 直接取 `.getNode` 会 TypeError 把「未配置」变成测试崩溃。
+  getCoreRuntimeNode: (machineId) => coreBootstrapRegistry.get("getCoreRuntime")()?.getNode(machineId) ?? null,
+  unregisterCoreRuntimeNode: (machineId) => {
+    coreBootstrapRegistry.get("unregisterRemoteNode")(machineId);
+  },
+  findMachineConnectionById,
+  triggerMachineCleanupByMachineId,
+});
+bindMachineEnvironmentPort({
+  getEnvironmentById: (environmentId) => environmentRepo.getById(environmentId),
+  // 归属校验从运行 port 取，与宿主装配层同一条路径（Machine 包只声明形状，取值来源由装配决定）。
+  getOwnedEnvironment: getBoundAgentRuntime().getOwnedEnvironment,
+});
 bindLocalNodeAgentNodeServicePort({ getAgentNodeService });
+// Redis 连接端口（1.4 W2）：实现仍走宿主 services/cache 这条唯一取数路径，测试进程未配置
+// RCS_REDIS_URL 时它返回 null（与 round29-cache-isolation 的断言一致），包内据此跳过快照持久化。
+bindRedisConnectionPort({ getRedisConnection: () => cacheModule.getRedisConnection() });
 bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus });
 bindFileWsPort({
   checkParsedObjectSize: actualFileWsPayload.checkParsedObjectSize,

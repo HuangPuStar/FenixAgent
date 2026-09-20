@@ -77,14 +77,6 @@
     {
       "rule": "no-circular",
       "from": "@fenix/agent-runtime",
-      "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "1.5 把 packages/* 依赖的 apps/server 能力下沉为 platform-sdk 入口",
-      "rationale": "5 处环（环长 3–6）。参与包：@fenix/agent-runtime ↔ @fenix/server-app（4 处）；@fenix/agent-runtime ↔ @fenix/resource-knowledge ↔ @fenix/server-app（1 处）。环上出现的主要跨包边：@fenix/server-app → @fenix/agent-runtime（5 处）、@fenix/agent-runtime → @fenix/server-app（5 处）、@fenix/server-app → @fenix/resource-knowledge（1 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/agent-runtime",
       "to": "@fenix/resource-sandbox",
       "owner": "1.4",
       "removeWhen": "machine 侧删除 machine → agent-runtime 边（见同源 special-dependency 条目）",
@@ -108,14 +100,6 @@
     },
     {
       "rule": "no-circular",
-      "from": "@fenix/server-app",
-      "to": "@fenix/agent-runtime",
-      "owner": "1.5",
-      "removeWhen": "1.5 把 packages/* 依赖的 apps/server 能力下沉为 platform-sdk 入口",
-      "rationale": "2 处环（环长 3–5）。参与包：@fenix/agent-runtime ↔ @fenix/server-app（2 处）。环上出现的主要跨包边：@fenix/agent-runtime → @fenix/server-app（2 处）、@fenix/server-app → @fenix/agent-runtime（2 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
-    },
-    {
-      "rule": "no-circular",
       "from": "@fenix/resource-knowledge",
       "to": "@fenix/resource-knowledge",
       "owner": "1.5",
@@ -129,22 +113,6 @@
       "owner": "1.4",
       "removeWhen": "machine 删除 machine → agent-runtime 与 machine → sandbox（1.4 固定为 agent-runtime/sandbox → machine 单向）",
       "rationale": "37 处环（环长 11–17）。参与包：@fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（37 处）。环上出现的主要跨包边：@fenix/resource-machine → @fenix/agent-runtime（37 处）、@fenix/agent-runtime → @fenix/resource-sandbox（37 处）、@fenix/resource-sandbox → @fenix/resource-machine（37 处）。根因：§2.3 只登记 sandbox → machine 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-runtime 反向边闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/agent-config",
-      "owner": "1.5",
-      "removeWhen": "1.5 下沉 apps/server 能力",
-      "rationale": "1 处环（环长 16）。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox ↔ @fenix/server-app（1 处）。环上出现的主要跨包边：@fenix/agent-config → @fenix/server-app（1 处）、@fenix/server-app → @fenix/agent-runtime（1 处）、@fenix/agent-runtime → @fenix/resource-sandbox（1 处）。根因：包 ↔ 应用倒置：环内的 packages 包导入 apps/server 内部实现，apps/server 又装配这些包。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/resource-sandbox",
-      "owner": "1.4",
-      "removeWhen": "machine 删除 machine → sandbox（见同源 special-dependency 条目）",
-      "rationale": "1 处环（环长 7）。参与包：@fenix/resource-machine ↔ @fenix/resource-sandbox（1 处）。环上出现的主要跨包边：@fenix/resource-sandbox → @fenix/resource-machine（1 处）、@fenix/resource-machine → @fenix/resource-sandbox（1 处）。根因：§2.3 只登记 sandbox → machine，环由反向的 machine → sandbox 闭合。`from` / `to` 是 dependency-cruiser 为这个环挑出的一条**真实边**（环上相邻两点），不是环的参与者全集：被挑中的若是包内边，包对指纹就会把跨包环显示成包内自环（`@fenix/resource-machine → @fenix/resource-machine` 的 37 处全部是跨包环，被挑中的边恰好落在 machine 包内）。归属依据是 `cycle` 数组里的参与者集合，不是 `from` / `to` 的包名。上报粒度同样是每环一条：实测 223 条 `circular` 边只有 161 条被上报，无法按边登记。环长 = `cycle` 数组长度（环上节点数）。owner 约定见 docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。"
     },
     {
       "rule": "no-circular",
@@ -255,8 +223,8 @@
       "from": "@fenix/agent-runtime",
       "to": "@fenix/server-app",
       "owner": "1.4",
-      "removeWhen": "Environment/Instance/relay 的运行组合收回本包，宿主实现改经 Runtime port 注入",
-      "rationale": "实测 105 处导入 / 54 个文件，其中 88 处非表定义（config、test-utils/stubs、plugins/auth、types/store、transport/ws-types 等）。属 1.4 的运行入口与宿主协议收敛范围：宿主收敛为进程入口后本边自然消失。"
+      "removeWhen": "W4「启动前取数搬出」（消除 `@server/config` / `@server/db` / `@server/services/config-utils` / `@server/repositories`）与 §1.7 表定义迁出（消除 `@server/db/schema`）均完成后，本包不再引用 `@server/**`；两条路径互不依赖，任一条完成后按剩余事实重测本条。",
+      "rationale": "W2 交付后（2c57097f3）实测 11 处导入 / 8 个文件（非测试，含 import type）：6 处 `@server/db/schema` 表定义（§9.3 裁定归 §1.7）+ 5 处非表定义（`@server/config` 2、`@server/db` 1、`@server/services/config-utils` 1、`@server/repositories` 1），全部集中在 `launch-spec-builder.ts` / `orchestration-instance.ts` / `orchestration-bootstrap.ts`，属 W4 启动前取数范围。W1 交付后基线为 30 处 / 14 文件（27 值 + 3 类型），W2 消除 19 处 / 6 类（`plugins/auth` 6、`db` 5、`config` 2、`env` 1、`plugins/logger` 1、`services/cache` 1、`services/openai-response-mapper` 1、`schemas/api-instance.schema` 1、`errors/orchestration-http` 1）；测试侧另由 49 处 / 28 文件降为 30 处 / 23 文件。原 105 处 / 54 文件是 W2 动手前的全量口径（含测试与当时仍在宿主的模块导入）。按裁定「按职责面收敛 + 表定义显式豁免」保留本条，删除条件见 removeWhen。"
     },
     {
       "rule": "apps-boundary",
@@ -369,22 +337,6 @@
       "owner": "1.5",
       "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
       "rationale": "实测 1 处导入 / 1 个文件（宿主 services/cache）。缓存能力收敛到 platform-sdk 后本边消失，属 1.5 范围。"
-    },
-    {
-      "rule": "special-dependency",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/agent-runtime",
-      "owner": "1.4",
-      "removeWhen": "machine 不再调用 agent-runtime，方向固定为 agent-runtime 经专用入口调用 machine",
-      "rationale": "§2.3 固定 `agent-runtime → machine` 单向依赖。9 处命中，属 1.4 的 Machine 与 Runtime 运行入口收敛范围；反向边必须彻底消除，不能登记为长期共存。"
-    },
-    {
-      "rule": "special-dependency",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/resource-sandbox",
-      "owner": "1.4",
-      "removeWhen": "machine 不再依赖 sandbox，方向固定为 sandbox → machine",
-      "rationale": "§2.3 固定 `sandbox → machine` 单向。仅 1 处，与上一条同批处理。"
     },
     {
       "rule": "special-dependency",

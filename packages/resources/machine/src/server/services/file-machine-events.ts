@@ -17,9 +17,9 @@
 // 发布链：本模块 → file-event-limiter（限频合并，D20 增量 batch）→ file-event-queue
 // （异步、按环境 fan-out、溢出收敛 invalidate_all）。本模块不直接碰队列发布。
 
-import { getBoundCoreRuntime } from "@fenix/agent-runtime/server";
 import { createLogger, error as logError } from "@fenix/logger";
 import { getMachineConfig } from "../config";
+import { getMachineHostPort } from "../host-port";
 import { writeRegistryEvent } from "../repositories/registry-event";
 import type { FileWsConnectionEntry } from "../transport/ws-types";
 import {
@@ -187,7 +187,7 @@ export function registerMachineDeclaration(machineId: string, rawEnvs: unknown):
  * 两阶段过渡软开关：旧机器端无 4404 退避语义，服务端先上严格校验会硬阻塞（§10）。
  */
 export function handleFileWsRegisterIdentity(entry: FileWsConnectionEntry, machineId: string): boolean {
-  const node = getBoundCoreRuntime()?.getNode(machineId);
+  const node = getMachineHostPort().getCoreRuntimeNode(machineId);
   if (node) return false;
   if (getMachineConfig().fileWsIdentityStrict) {
     logger.warn(`file-ws register rejected (unknown_machine): machineId=${machineId} wsId=${entry.wsId}`);

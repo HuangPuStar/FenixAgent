@@ -18,13 +18,13 @@
 
 import { log, error as logError } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
-import type { AuthContext } from "@server/plugins/auth";
-import type { WsConnection } from "@server/transport/ws-types";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
   touchInstanceActivity,
 } from "../../../services/acp-idle-monitor";
+import type { AuthContext } from "../../../types/auth";
+import type { WsConnection } from "../../../types/ws-types";
 import { type EnvironmentRecord, environmentRepo } from "../../repositories";
 import {
   getRunningInstancesByEnvironment,
