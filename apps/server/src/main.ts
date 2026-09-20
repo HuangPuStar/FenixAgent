@@ -321,9 +321,9 @@ bindEnvironmentAcpLifecyclePort({
   stopInstances: agentRuntime.stopInstancesForEnvironments,
 });
 bindAcpInstanceActivityPort(agentRuntime.touchInstanceActivity);
-// 模型网关的运行时凭证解析器：既注入 agent-runtime 的旧解析器槽位（`setRuntimeCredentialResolver`），
-// 也在启动序列之后交给 agent-config 的启动参数组装器（见下方端口绑定）。两处在 W4a 并存是因为旧
-// launch-spec-builder 尚未删除；W4b 删旧路径后只留构造期注入。
+// 模型网关的运行时凭证解析器：在启动序列里解析后交给 agent-config 的启动参数组装器
+// （见下方 `createPreLaunchPorts` + 端口绑定）。W4b 删掉 agent-runtime 的旧解析器槽位后，
+// 这是唯一注入点：组装器遇到 `kind = "gateway"` 的 Provider 时用它换签发凭证。
 let runtimeCredentialResolver: PreLaunchPortsDeps["runtimeCredentialResolver"];
 await runCriticalStartupSequence({
   initDb: async () => {
@@ -386,7 +386,6 @@ await runCriticalStartupSequence({
     if (modelGatewayRuntime) {
       await modelGatewayRuntime.services.provider.ensureProvider();
       runtimeCredentialResolver = modelGatewayRuntime.resolveRuntimeCredential;
-      agentRuntime.setRuntimeCredentialResolver(modelGatewayRuntime.resolveRuntimeCredential);
       startupLog.info("Model gateway runtime initialized");
       return;
     }

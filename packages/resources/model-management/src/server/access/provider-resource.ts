@@ -13,7 +13,8 @@ import type { PgColumn } from "drizzle-orm/pg-core";
  * `AccessControlModule` 产出。
  *
  * 不声明 `use`：Provider 没有独立的"运行"语义——运行发生在 Agent 上（`agent_config` 的 `use`），
- * Provider 只是被 LaunchSpec 读取的配置行，而该读取是系统路径（见 `launch-spec-builder.ts`）。
+ * Provider 只是被 LaunchSpec 读取的配置行，而该读取是系统路径（见 `@fenix/agent-config` 的
+ * `server/services/agent-launch-spec/model-resolution.ts`）。
  *
  * 这是本包唯一的授权聚合根（决策 D6）：Model 是 Provider 的子表，不注册独立资源、不建 owner /
  * visibility，其读写一律先对 Provider 授权（见 `provider-facade.ts` 的 `listModels` / `addModel`）。

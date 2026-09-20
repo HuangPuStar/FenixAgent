@@ -1,7 +1,9 @@
-// 只经 `./server/environment` 窄入口取仓储：`@fenix/agent-runtime/server` barrel 会静态引入
-// `launch-spec-builder`，后者又引入 `@fenix/resource-knowledge/server`（含路由模块），而 knowledge
-// 路由反向依赖 `@server/plugins/auth` —— 形成 `auth → agent-runtime → knowledge 路由 → auth` 的
-// 顶层 TDZ 环（`source-route-imports.test.ts` 用全新进程守护这一点）。窄入口只暴露 environment 仓储。
+// 只经 `./server/environment` 窄入口取仓储：`@fenix/agent-runtime/server` barrel 还会拉进启动路径之外的
+// 宿主依赖（表定义等，见台账 `apps-boundary`），窄入口只暴露 environment 仓储，足够 auth 使用。
+// 历史上这里另有一条更强的理由：barrel 曾静态引入 `launch-spec-builder`，后者引入
+// `@fenix/resource-knowledge/server`（含路由模块），而 knowledge 路由反向依赖 `@server/plugins/auth`，
+// 形成 `auth → agent-runtime → knowledge 路由 → auth` 的顶层 TDZ 环（`source-route-imports.test.ts`
+// 用全新进程守护这一点）。任务 1.4 W4b 随「启动前取数搬出」删除了该 builder，环已不复存在。
 import type { AuthenticateSiteRequest } from "@fenix/agent-config/server";
 import { environmentRepo } from "@fenix/agent-runtime/server/environment";
 import {

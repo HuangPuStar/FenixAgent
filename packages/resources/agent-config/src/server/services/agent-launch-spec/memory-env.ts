@@ -58,8 +58,9 @@ export async function buildMemoryLaunchEnv(
 
   // opencode 路径：用动态构造的插件条目替换 `extra.plugin` 里可能存在的旧条目（用户可手改 extra，
   // 不替换就会出现两份同名的记忆插件，行为取决于插件加载顺序）。
-  // 校验形状而不是整体强转：`extra.plugin` 是用户可写的 JSON，非 `[name, options]` 形状的条目对
-  // opencode 没有意义，丢弃比原样透传更可预测（迁移前的实现用双强制转换原样透传）。
+  // 校验形状而不是整体强转：`extra.plugin` 是用户可写的 JSON，非数组、或首项不是插件名的条目对
+  // opencode 没有意义，丢弃比原样透传更可预测（迁移前的实现用双强制转换原样透传）。校验到此为止：
+  // 其余条目按原样保留——它们由用户自己负责，本函数只负责替换记忆插件那一条。
   const configuredPlugins: unknown = input.extra?.plugin;
   const existingPlugins = (Array.isArray(configuredPlugins) ? configuredPlugins : []).filter(
     (entry): entry is [string, Record<string, unknown>] =>

@@ -1,3 +1,6 @@
+import type { ModelRow, ProviderRow } from "@fenix/model-management/server";
+import { createModelService } from "@fenix/model-management/server";
+import { createStubModelRepository, createStubProviderRepository } from "@fenix/model-management/server/testing";
 import {
   type AccessControlModule,
   type ActorContext,
@@ -11,6 +14,9 @@ import {
   type ResourceScopeStore,
   type ResourceVisibility,
 } from "@fenix/platform-sdk";
+import type { McpServerRow } from "@fenix/resource-mcp/server";
+import { createStubMcpServerService } from "@fenix/resource-mcp/server/testing";
+import { createStubSkillService } from "@fenix/resource-skill/server/testing";
 import { agentConfigResource } from "../server/access/agent-config-resource";
 import type { AgentConfigFacadeApi, AuthorizedAgentConfig } from "../server/facades/agent-config-facade";
 import type {
@@ -22,6 +28,7 @@ import type {
 import type { AgentConfigRow, ScopedAgentConfigRow } from "../server/repositories/agent-config-resource";
 import type { AgentAssociations } from "../server/services/agent-associations";
 import type { AgentConfigService } from "../server/services/agent-config-service";
+import type { AgentLaunchSpecAssemblerDeps } from "../server/services/agent-launch-spec";
 import {
   createStubAgentAssociations,
   createStubAgentConfigFacade,
@@ -227,4 +234,100 @@ export function createRecordingScopeStore(initial: ResourceScope = { visibility:
  */
 export function denied(): never {
   throw new ResourceAccessDeniedError("当前主体无权执行资源动作");
+}
+
+// ── 启动参数组装（`server/services/agent-launch-spec/`）的公共 fixture ──
+//
+// 该目录的四个用例文件（assembler / model-resolution / mcp-resolution / memory-env）都要构造同一份
+// `AgentLaunchSpecAssemblerDeps`，以及指向同一批表（provider / model / mcp_server）的行替身。行构造器
+// 集中在此，是为了让「模型行与 Provider 行长什么样」只有一份定义：它们随 model-management 的表结构
+// 演进，分散到各用例文件里改漏一处，只有那一个文件会安静地失败。
+
+/** Provider 行替身：默认是 openai 直连，`apiKey` 走 `{env:...}` 引用（解引用能力由宿主注入）。 */
+export function providerRow(overrides: Partial<ProviderRow> = {}): ProviderRow {
+  return {
+    id: "provider-1",
+    userId: "user-1",
+    organizationId: "org-1",
+    name: "openai",
+    displayName: "OpenAI",
+    kind: "direct",
+    gatewayType: null,
+    protocol: "openai",
+    baseUrl: "https://api.example.com",
+    apiKey: "{env:PROVIDER_KEY}",
+    extraOptions: null,
+    visibility: "private",
+    createdAt: FIXTURE_NOW,
+    updatedAt: FIXTURE_NOW,
+    ...overrides,
+  };
+}
+
+/** 模型行替身：默认挂在 {@link providerRow} 的 Provider 上。 */
+export function modelRow(overrides: Partial<ModelRow> = {}): ModelRow {
+  return {
+    id: "model-1",
+    providerId: "provider-1",
+    organizationId: "org-1",
+    modelId: "gpt-4o",
+    displayName: "GPT-4o",
+    modalities: null,
+    limitConfig: null,
+    cost: null,
+    options: null,
+    createdAt: FIXTURE_NOW,
+    updatedAt: FIXTURE_NOW,
+    ...overrides,
+  };
+}
+
+/** MCP 行替身：默认一条启用的 stdio 行；`config` 是结构体，字符串形态由用例自行构造。 */
+export function mcpRow(overrides: Partial<McpServerRow> = {}): McpServerRow {
+  return {
+    id: "mcp-1",
+    userId: "user-1",
+    organizationId: "org-1",
+    name: "filesystem",
+    type: "stdio",
+    config: { type: "stdio", command: "npx", args: ["-y", "fs-mcp"] },
+    enabled: true,
+    visibility: "private",
+    createdAt: FIXTURE_NOW,
+    updatedAt: FIXTURE_NOW,
+    ...overrides,
+  };
+}
+
+/**
+ * 组装依赖替身：默认一个已绑定 Provider 的模型、无 skill / MCP / 知识库绑定、Langfuse 三键齐全。
+ *
+ * 默认值刻意都是「能跑通」的一档：需要覆盖失败路径的用例改一项即可，不必从零搭一份 deps。
+ * `resolveProviderApiKey` 复刻宿主 `resolveApiKey` 的真实语义：只认完整的 `{env:VAR}` 引用，解析不到
+ * 返回 null（组装器再退化为空串）——写成"解析不到就把引用式原样返回"会让用例无法钉住这条边界。
+ */
+export function launchSpecDeps(overrides: Partial<AgentLaunchSpecAssemblerDeps> = {}): AgentLaunchSpecAssemblerDeps {
+  return {
+    associations: createStubAgentAssociations(),
+    skills: createStubSkillService(),
+    mcp: createStubMcpServerService(),
+    models: createModelService({
+      modelRepository: createStubModelRepository({ findRowUnscoped: async () => modelRow() }),
+      providerRepository: createStubProviderRepository({
+        findRowByOrganizationUnscoped: async () => providerRow(),
+      }),
+    }),
+    env: {
+      agentSystemPrompt: "你当前的 Agent 名称是「{{agentName}}」。",
+      baseUrl: "https://platform.example.com",
+      langfuse: { publicKey: "pk-1", secretKey: "sk-1", baseUrl: "https://lf.example.com" },
+    },
+    resolveProviderApiKey: (raw) => {
+      if (raw === null) return null;
+      const reference = /^\{env:([^}]+)\}$/.exec(raw);
+      if (!reference) return raw;
+      return reference[1] === "PROVIDER_KEY" ? "resolved-key" : null;
+    },
+    ...overrides,
+  };
 }

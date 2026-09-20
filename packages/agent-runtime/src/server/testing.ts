@@ -16,11 +16,22 @@
 
 import { join } from "node:path";
 import { overrideModuleConfig } from "@fenix/platform-sdk/server";
-import { getDbStub, initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
+import {
+  getDbStub,
+  initializeTestApplicationInfrastructure,
+  registerStubResetter,
+  resetAllStubs,
+} from "@fenix/platform-sdk/testing";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import type { AgentRuntime } from "../runtime";
 import { bindAgentRuntime, createAgentRuntime, resetAgentRuntimeForTest } from "../runtime";
 import type { AgentRuntimeModuleConfig } from "./config";
 import { getAgentRuntimeConfig } from "./config";
+import {
+  type AgentLaunchSpecPort,
+  bindAgentLaunchSpecPort,
+  resetAgentLaunchSpecPort,
+} from "./services/agent-launch-spec-port";
 
 /**
  * 构造一份字段齐全的 Agent Runtime 模块配置。
@@ -127,3 +138,59 @@ export function resetAgentRuntimePort(): void {
   resetAgentRuntimeForTest();
   bindAgentRuntime(createAgentRuntime());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 启动参数组装 port 的替身（1.4 W4b）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 启动参数组装 port 的替身：返回一份字段齐全但内容无关的 `AgentLaunchSpec`。
+ *
+ * 内容是无关的，因为组装规则的 owner 是 `@fenix/agent-config`（`agent-launch-spec-*.test.ts` 逐条
+ * 覆盖）；本包用例经这个 port 只是为了走完启动链路，断言的是**编排语义**（并发预留的可见性窗口、
+ * 失败回滚、节点归属、机器缓存预热）。真实组装器未装配时 port fail-fast（W4b 删掉了过渡默认实现），
+ * 因此凡是走到 `buildAgentLaunchSpecForCore` 的包内用例都必须先装配它——装配**一次**，与其它
+ * `bind*Port` 同口径。
+ *
+ * 与 `stubAgentRuntimePort` 的差别在于复位方式：这里把复位挂到 `resetAllStubs()`，因为
+ * `initializeAgentRuntimeModuleConfig()` 的 `beforeEach` 已经会复位全部替身，漏挂复位会让「单跑绿、
+ * 全量跑红」。需要断言「请求被怎么组装」时用 `overrides` 覆盖对应动词。
+ */
+export function stubAgentLaunchSpecPort(overrides: Partial<AgentLaunchSpecPort> = {}): void {
+  resetAgentLaunchSpecPort();
+  bindAgentLaunchSpecPort({
+    buildAgentLaunchSpec: async (request) => buildInertLaunchSpec(request),
+    buildMinimalAgentLaunchSpec: async (request) => buildInertLaunchSpec(request),
+    ...overrides,
+  });
+}
+
+/**
+ * 组装一份只满足类型、不被任何断言消费的 spec。
+ *
+ * `apiKey` 留空串而不是写一个像样的假密钥：它是「密钥不得写入源码」红线在测试代码里的落点，
+ * 空值也让「用例其实在依赖这份内容」当场暴露（真实 engine 拿到空密钥会立刻失败）。
+ */
+function buildInertLaunchSpec(request: {
+  environmentId: string;
+  organizationId: string;
+  ownerUserId: string;
+}): AgentLaunchSpec {
+  return {
+    organizationId: request.organizationId,
+    userId: request.ownerUserId,
+    environmentId: request.environmentId,
+    agent: { name: "stub-agent" },
+    model: {
+      provider: "stub-provider",
+      protocol: "openai",
+      baseUrl: "http://stub.invalid",
+      apiKey: "",
+      model: "stub-model",
+    },
+    skills: [],
+    mcpServers: [],
+  };
+}
+
+registerStubResetter(resetAgentLaunchSpecPort);

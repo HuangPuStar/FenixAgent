@@ -22,9 +22,6 @@ export const environmentCoreRegistry = createStubRegistry("environmentCore", fal
 // ../services/core-bootstrap — 核心运行时引导，5 个测试文件使用
 export const coreBootstrapRegistry = createStubRegistry("coreBootstrap", false);
 
-// ../services/launch-spec-builder — 启动规格构建器，5 个测试文件使用
-export const launchSpecBuilderRegistry = createStubRegistry("launchSpecBuilder", false);
-
 // ../services/instance — 实例管理服务，2 个测试文件使用
 export const instanceRegistry = createStubRegistry("instance", false);
 
@@ -89,7 +86,6 @@ export const stubRepositories = repositoriesRegistry.stub;
 export const stubSession = sessionRegistry.stub;
 export const stubEnvironmentCore = environmentCoreRegistry.stub;
 export const stubCoreBootstrap = coreBootstrapRegistry.stub;
-export const stubLaunchSpecBuilder = launchSpecBuilderRegistry.stub;
 export const stubInstance = instanceRegistry.stub;
 export const stubEnvironmentWeb = environmentWebRegistry.stub;
 export const stubConfigSkill = configSkillRegistry.stub;
@@ -111,7 +107,6 @@ export function resetModuleStubs() {
   sessionRegistry.reset();
   environmentCoreRegistry.reset();
   coreBootstrapRegistry.reset();
-  launchSpecBuilderRegistry.reset();
   instanceRegistry.reset();
   environmentWebRegistry.reset();
   configSkillRegistry.reset();

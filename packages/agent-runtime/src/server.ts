@@ -16,10 +16,9 @@
  * - `宿主注入·` 宿主实现、包内消费的 port，缺绑定即启动失败；
  * - `路由·`／`协议·`／`错误映射·`／`模块配置·` 宿主装配与协议接入面；
  * - `泄漏·` 内部实现泄漏，不属于任何 port（W6 按消费方收敛，**不得新增消费方**）；
- * - `测试取用·` 仅测试消费的实现细节（W6 随测试 seam 移出公开面）；
- * - `W4·` 启动参数组装（W4 随 `AgentInstanceStarter` 搬出）。
+ * - `测试取用·` 仅测试消费的实现细节（W6 随测试 seam 移出公开面）。
  *
- * 未收口标注的移除条件：`W4` = 启动前取数搬出后删除；`W6` = 泄漏与测试 seam 收口任务按包删除。
+ * 未收口标注的移除条件：`W6` = 泄漏与测试 seam 收口任务按包删除。
  * `测试取用·` 的判据是「删除即破坏用例」：其中跨包用例（workflow / observer）无法改相对导入，
  * 删行须先给出测试专用入口，属 W6「测试 seam 移出公开面」的裁量范围，本片不预判。
  * `set*Deps` / `reset*` / `_uuid` 一类测试 seam 随所属叶子文件透出，不是公共契约——按
@@ -72,9 +71,9 @@ export {
   type InstanceCreationSource,
 } from "./server/repositories"; // 泄漏·持久化边界（W6：observer/workflow/machine 直接吃 repo）
 export * from "./server/repositories/environment-orchestration"; // 泄漏·编排域环境读视图（W6）
-export * from "./server/services/agent-config-lookup-port"; // 宿主注入·Agent 配置查询投影（W4a）
+export * from "./server/services/agent-config-lookup-port"; // 宿主注入·Agent 配置查询投影
 export * from "./server/services/agent-instance-service"; // 测试取用·实例生命周期服务（W6：宿主用例改写 resolve/ensure/snapshot）
-export * from "./server/services/agent-launch-spec-port"; // 宿主注入·启动参数组装（W4a）
+export * from "./server/services/agent-launch-spec-port"; // 宿主注入·启动参数组装
 export * from "./server/services/api-instance"; // 测试取用·程序化 API 实例入口（W6：包内用例取 setApiInstanceDeps/connectAgentInstance）
 export * from "./server/services/chat-channel-bootstrap"; // 泄漏·Chat 域装配（W6：observer 取 chat channel 控制器）
 export * from "./server/services/core-runtime-port"; // 宿主注入·Core runtime 与远端节点
@@ -111,7 +110,6 @@ export {
   validateWorkspacePath,
 } from "./services/environment-core"; // 宿主注入·环境 ACP 生命周期绑定
 export * from "./services/instance-registry"; // 测试取用·实例注册表（W6：跨包用例断言并发额度残留）
-export * from "./services/launch-spec-builder"; // W4·启动参数组装（随 AgentInstanceStarter 搬出）
 export * from "./services/orchestration-bootstrap"; // 测试取用·编排域装配（W6：宿主用例复位编排替身）
 export * from "./services/orchestration-instance"; // 测试取用·实例 spawn/stop 编排（W6：宿主用例注入编排替身）
 export * from "./transport/agent-node-bridge"; // 泄漏·本地 AgentNode 桥接（W6：宿主取节点服务，无 port 归属）

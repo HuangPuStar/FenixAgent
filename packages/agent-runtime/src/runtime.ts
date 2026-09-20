@@ -66,7 +66,6 @@ import { getEnvironmentBySecret } from "./services/environment-acp";
 import type { EnvironmentRole } from "./services/environment-core";
 import { deleteEnvironment, getOwnedEnvironment } from "./services/environment-core";
 import { globalInstanceRegistry } from "./services/instance-registry";
-import { setRuntimeCredentialResolver } from "./services/launch-spec-builder";
 import { getOrchestrationController } from "./services/orchestration-bootstrap";
 import type { StopInstancesForEnvironmentsOptions } from "./services/orchestration-instance";
 import {
@@ -158,8 +157,6 @@ export interface AgentRuntimePort {
   openAgentSession(
     input: Parameters<typeof openAgentSession>[0],
   ): Promise<Awaited<ReturnType<typeof openAgentSession>>>;
-  /** 宿主装配：模型凭据解析器（启动前取数的一部分，W4 随 AgentInstanceStarter 一并调整）。 */
-  setRuntimeCredentialResolver(resolver: Parameters<typeof setRuntimeCredentialResolver>[0]): void;
 
   // ── 停止 ──
 
@@ -319,7 +316,6 @@ export function createAgentRuntime(): AgentRuntime {
     restartActiveInstancesForEnvironments: (environmentIds) =>
       agentInstanceService.restartActiveInstancesForEnvironments(environmentIds),
     openAgentSession: (input) => openAgentSession(input),
-    setRuntimeCredentialResolver: (resolver) => setRuntimeCredentialResolver(resolver),
 
     stopInstance: (instanceUid, organizationId) => stopInstance(instanceUid, organizationId),
     stopInstanceRuntime: (instance, mode) => agentInstanceService.stopInstanceRuntime(instance, mode),

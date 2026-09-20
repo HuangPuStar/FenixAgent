@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AgentConfigDetailWithAccess } from "@fenix/agent-config/server";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
-import { buildBasicLaunchSpec, buildLaunchSpec } from "@fenix/agent-runtime/server";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
-import { config, setConfig } from "../config";
-import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "../db/schema";
 import {
   configError,
   configNotFound,
@@ -18,111 +12,30 @@ import {
   toKeyHint,
 } from "../services/config-utils";
 
-const now = new Date("2026-08-19T00:00:00.000Z");
-const originalConfig = { ...config };
-
-function rows<T>(value: T[]) {
-  return Object.assign(Promise.resolve(value), { limit: async () => value });
-}
-
 /**
- * LaunchSpec 构建读取的 Agent 资源视图。
+ * 宿主侧的启动规格边界与输入边界。
  *
- * 形状随授权栈迁移：归属列由资源行提供，权限描述是授权栈产出的 `scope + access`，旧栈的
- * `resourceAccess` 与已被移除的展示列（steps / mode / color 等）都不再是 AgentConfig 的字段。
+ * 「启动规格」这一半在本文件里只剩**反向断言**：启动参数组装（`AgentLaunchSpec`）自任务 1.4 W4b 起
+ * 完全由 `@fenix/agent-config` 拥有、经 `AgentLaunchSpecPort` 注入，宿主不再持有 `buildLaunchSpec`。
+ * 组装规则本身由 agent-config 的 `agent-launch-spec-*.test.ts` 逐条覆盖，这里只守住「宿主不再有第二份
+ * 实现入口」——同一份规格出现两个入口时，只有其中一个会跟着改动走。
+ *
+ * 「输入边界」这一半仍是宿主自有职责：资源名校验、`{env:...}` 密钥解引用、控制台响应包装、JSON 安全
+ * 转换、系统提示词拼装与密钥提示。
  */
-function agentConfig(): AgentConfigDetailWithAccess {
-  return {
-    id: "agc_isolated",
-    userId: "user_isolated",
-    organizationId: "org_isolated",
-    name: "隔离助手",
-    prompt: "仅处理授权请求",
-    modelId: "model_isolated",
-    model: null,
-    description: null,
-    extra: null,
-    agentNode: {},
-    machineId: null,
-    engineType: null,
-    visibility: "private",
-    createdAt: now,
-    updatedAt: now,
-    scope: { organizationId: "org_isolated", ownerUserId: "user_isolated", visibility: "private" },
-    access: { actions: ["read", "update", "use"] },
-  };
-}
 
-function installDb(raw: unknown, enabled = true) {
-  const providerRow = {
-    id: "provider_isolated",
-    userId: "user_isolated",
-    organizationId: "org_isolated",
-    name: "provider-isolated",
-    displayName: "Provider",
-    protocol: "openai",
-    baseUrl: "https://provider.invalid",
-    apiKey: "{env:ROUND22_PROVIDER_KEY}",
-    extraOptions: {},
-    createdAt: now,
-    updatedAt: now,
-  };
-  const modelRow = {
-    id: "model_isolated",
-    organizationId: "org_isolated",
-    providerId: "provider_isolated",
-    modelId: "model-isolated",
-    displayName: "Model",
-    modalities: ["text"],
-    limitConfig: null,
-    cost: null,
-    options: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  const mcpRow = {
-    id: "mcp_isolated",
-    organizationId: "org_isolated",
-    name: "隔离 MCP",
-    enabled,
-    type: "custom",
-    config: raw,
-  };
-  stubDb({
-    select: () => ({
-      from: (table: unknown) => ({
-        where: () => {
-          if (table === model) return rows([modelRow]);
-          if (table === provider) return rows([providerRow]);
-          if (table === agentConfigSkill) return rows([]);
-          if (table === agentConfigMcp) return rows([{ mcpServerId: "mcp_isolated" }]);
-          if (table === mcpServer) return rows([mcpRow]);
-          return rows([]);
-        },
-      }),
-    }),
-  });
-}
-
-async function build(raw: unknown, enabled = true) {
-  installDb(raw, enabled);
-  return buildLaunchSpec({
-    organizationId: "org_isolated",
-    userId: "user_isolated",
-    environmentId: "env_isolated",
-    agentConfig: agentConfig(),
-    environmentSecret: "not-asserted",
-  });
-}
-
-describe("round22 隔离启动规格与输入边界", () => {
-  beforeEach(() => {
-    resetAllStubs();
-    setConfig(originalConfig as never);
-    setListAgentKnowledgeBindingsById(async () => []);
-    delete process.env.ROUND22_PROVIDER_KEY;
-  });
+describe("round22 宿主启动规格边界与输入边界", () => {
+  beforeEach(() => delete process.env.ROUND22_PROVIDER_KEY);
   afterEach(() => delete process.env.ROUND22_PROVIDER_KEY);
+
+  // 宿主不再从 agent-runtime 取启动参数组装入口：该实现在 W4b 随旧 builder 一并删除，重新导出等于
+  // 复活一条绕过端口（以及绕过 agent-config 可见性判定）的取数路径。
+  test("agent-runtime 入口不再导出启动参数组装", async () => {
+    const runtime: Record<string, unknown> = await import("@fenix/agent-runtime/server");
+
+    expect(runtime.buildLaunchSpec).toBeUndefined();
+    expect(runtime.buildBasicLaunchSpec).toBeUndefined();
+  });
 
   // 名称边界拒绝可能造成资源混淆或路径歧义的字符。
   test.each([
@@ -194,107 +107,6 @@ describe("round22 隔离启动规格与输入边界", () => {
     ["裁剪完整模板", "  {{userPrompt}}  ", "隔离助手", " 内容 ", "内容"],
   ])("系统提示词%s", (_label, template, name, prompt, expected) =>
     expect(composeAgentSystemPrompt(template, name, prompt)).toBe(expected));
-
-  // 合法 MCP 配置经真实 builder 转换，且不会跨组织读取模型。
-  test.each([
-    ["local", { type: "local", command: ["node", "server.js", 9], environment: { SAFE: "1" }, timeout: 500 }, "stdio"],
-    [
-      "remote",
-      { type: "remote", url: "https://mcp.invalid/tools", headers: { Authorization: "Bearer scoped" } },
-      "streamable-http",
-    ],
-    ["streamable", { type: "streamable-http", url: "https://mcp.invalid/http", timeout: 1000 }, "streamable-http"],
-    ["stdio", { type: "stdio", command: "bun", args: ["run", 1, "serve"] }, "stdio"],
-  ])("MCP 配置%s", async (_label, raw, type) => {
-    process.env.ROUND22_PROVIDER_KEY = "provider-key";
-    const spec = await build(raw);
-    expect(spec.mcpServers[0]?.type).toBe(type as "stdio" | "streamable-http");
-    expect(spec.model.apiKey).toBe("provider-key");
-    expect(spec.organizationId).toBe("org_isolated");
-  });
-
-  // 并发构建共享只读配置时，每个结果都必须保持本组织标识且互不丢失 MCP。
-  test("并发构建保持启动规格隔离", async () => {
-    process.env.ROUND22_PROVIDER_KEY = "provider-key";
-    installDb({ type: "stdio", command: "bun", args: ["run", "safe"] });
-    const specs = await Promise.all(
-      Array.from({ length: 4 }, () =>
-        buildLaunchSpec({
-          organizationId: "org_isolated",
-          userId: "user_isolated",
-          environmentId: "env_isolated",
-          agentConfig: agentConfig(),
-          environmentSecret: "not-asserted",
-        }),
-      ),
-    );
-    expect(specs).toHaveLength(4);
-    expect(specs.every((spec) => spec.organizationId === "org_isolated")).toBe(true);
-    expect(specs.every((spec) => spec.mcpServers[0]?.type === "stdio")).toBe(true);
-  });
-
-  // 非法或禁用 MCP 必须在启动前失败，不能静默丢失工具能力。
-  test.each([
-    ["空 local", { type: "local", command: [] }],
-    ["空 remote", { type: "remote", url: "  " }],
-    ["空 stdio", { type: "stdio", command: "" }],
-    ["未知类型", { type: "socket", address: "localhost" }],
-    ["损坏 JSON", "{broken"],
-  ])("拒绝 MCP 配置%s", async (_label, raw) =>
-    await expect(build(raw)).rejects.toMatchObject({ code: "INVALID_CONFIG", statusCode: 400 }));
-
-  // 禁用 MCP 即使配置合法也不可注入运行时。
-  test("拒绝禁用 MCP", async () =>
-    await expect(build({ type: "stdio", command: "bun" }, false)).rejects.toMatchObject({
-      code: "INVALID_CONFIG",
-      statusCode: 400,
-    }));
-
-  // 最小启动路径不继承绑定资源，并保留调用方的显式环境变量。
-  test.each([
-    ["省略环境 ID", undefined],
-    ["保留环境 ID", "env_minimal"],
-  ])("最小启动规格%s", async (_label, environmentId) => {
-    const providerRow = {
-      id: "provider_minimal",
-      organizationId: "org_isolated",
-      name: "provider-minimal",
-      protocol: "anthropic",
-      baseUrl: "",
-      apiKey: null,
-      createdAt: now,
-    };
-    const modelRow = {
-      id: "model_minimal",
-      organizationId: "org_isolated",
-      providerId: "provider_minimal",
-      modelId: "claude-isolated",
-      modalities: null,
-      createdAt: now,
-    };
-    stubDb({
-      select: () => ({
-        from: (table: unknown) => ({
-          where: () => ({
-            orderBy: () =>
-              table === provider
-                ? Promise.resolve([providerRow])
-                : { limit: async () => (table === model ? [modelRow] : []) },
-          }),
-        }),
-      }),
-    });
-    const spec = await buildBasicLaunchSpec({
-      organizationId: "org_isolated",
-      userId: "user_isolated",
-      environmentId,
-      extraEnv: { EXPLICIT: "wins" },
-    });
-    expect(spec.environmentId).toBe(environmentId);
-    expect(spec.env?.EXPLICIT).toBe("wins");
-    expect(spec.skills).toEqual([]);
-    expect(spec.mcpServers).toEqual([]);
-  });
 
   // 密钥提示只能暴露前四位和后三位，避免配置页泄露完整凭据。
   test.each([

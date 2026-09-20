@@ -11,8 +11,8 @@
  * 注入方式（禁 mock.module，全部用既有 seam，结构与
  * orchestration-instance-rollback.test.ts 一致）：
  *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / getOrchestrationController；
- *   - 保留真实 buildAgentLaunchSpecForCore（无 agentConfigId 环境走 buildBasicLaunchSpec
- *     分支，需 stubDb 提供 provider/model 行）；
+ *   - 保留真实 buildAgentLaunchSpecForCore（它先读环境行，再经 AgentLaunchSpecPort 组装，
+ *     组装端口用替身——W4b 后未装配即失败），使 launch 窗口的时序仍经过真实编排代码；
  *   - stubCoreBootstrap("getCoreRuntime") 注入假 facade：launchInstance 挂在可控
  *     deferred（launchGate）上模拟慢启动窗口，listInstances 动态返回已 launch 的
  *     实例快照（与真实 core 快照语义一致）。
@@ -22,10 +22,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { provider } from "@server/db/schema";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
-import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort, stubAgentRuntimeConfig } from "../server/testing";
 import {
   beginSpawnReservation,
   getActiveAgentCount,
@@ -107,8 +106,7 @@ const fakeController = {
 
 const fakeEnvironmentRepo = {
   getById: async (_id: string) => {
-    // 无 agentConfigId：真实 buildAgentLaunchSpecForCore 走 buildBasicLaunchSpec 分支，
-    // 不触碰 config/agent-knowledge 等 mock 依赖
+    // 无 agentConfigId：buildAgentLaunchSpecForCore 走最小 spec 分支（组装端口已装配替身）
     return {
       organizationId: "org-1",
       userId: USER_ID,
@@ -143,7 +141,7 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     // 流程相同的 facade/registry，确保预留释放后仍按正式 runtime 快照计数。
     setAgentConcurrencyDeps({ getRuntime: () => fakeFacade, registry: globalInstanceRegistry });
     // 并发上限走模块配置（不再是宿主 config）：缺省基线即「三个上限都不生效」，需要限额的用例
-    // 用 stubAgentRuntimeConfig 显式声明。内含 resetAllStubs，故必须在 stubDb() 之前调用。
+    // 用 stubAgentRuntimeConfig 显式声明。内含 resetAllStubs，故必须在本行之后装配端口替身。
     initializeAgentRuntimeModuleConfig();
     launchGate = null;
     launchCalls = 0;
@@ -151,52 +149,9 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     controllerShouldFail = false;
     launchedInstances.length = 0;
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    // buildBasicLaunchSpec 的 resolveFirstReadableModelConfig 需要 provider/model 行；
-    // 查询结构（where → orderBy，model 查询多一层 limit）与 rollback 测试一致
-    stubDb({
-      select: () => ({
-        from: (table: unknown) => ({
-          where: () => ({
-            orderBy: () => {
-              if (table === provider) {
-                return Promise.resolve([
-                  {
-                    id: "provider-1",
-                    userId: USER_ID,
-                    organizationId: "org-1",
-                    name: "openai",
-                    displayName: "OpenAI",
-                    protocol: "openai",
-                    baseUrl: "https://api.example.com",
-                    apiKey: "internal-key",
-                    extraOptions: {},
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ]);
-              }
-              return {
-                limit: async () => [
-                  {
-                    id: "model-1",
-                    organizationId: "org-1",
-                    providerId: "provider-1",
-                    modelId: "gpt-4o",
-                    displayName: "GPT-4o",
-                    modalities: null,
-                    limitConfig: null,
-                    cost: null,
-                    options: null,
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ],
-              };
-            },
-          }),
-        }),
-      }),
-    });
+    // 组装端口装配替身：本文件断言的是并发预留的可见性窗口与释放，spec 内容无关；
+    // 真实组装器已迁往 agent-config，未装配即失败（W4b）
+    stubAgentLaunchSpecPort();
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
       getOrchestrationController: () => fakeController,

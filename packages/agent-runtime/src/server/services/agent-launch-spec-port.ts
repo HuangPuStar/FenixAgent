@@ -1,8 +1,4 @@
-import { getReadableAgentConfigById } from "@fenix/agent-config/server";
-import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { toActorContext } from "../../services/actor-context";
-import { buildBasicLaunchSpec, buildLaunchSpec } from "../../services/launch-spec-builder";
 
 /**
  * 启动参数组装的能力契约：`agent-runtime` 声明并消费，宿主 `apps/server` 绑定实现。
@@ -66,45 +62,8 @@ export function resetAgentLaunchSpecPort(): void {
   boundPort = null;
 }
 
-/**
- * 取当前生效的组装能力。
- *
- * W4a 过渡期语义：宿主未绑定端口时回退到**包内旧组装实现**（`buildLaunchSpec` / `buildBasicLaunchSpec`）。
- * 该回退只为「本包用例仍按旧实现断言」而存在，W4b 删除旧实现时一并删除；届时本函数与其余宿主注入
- * 端口同形——未装配即 fail-fast，禁止隐式创建替代实现。
- */
+/** 取当前生效的组装能力；未装配即失败，禁止隐式创建替代实现。 */
 export function getAgentLaunchSpecPort(): AgentLaunchSpecPort {
-  return boundPort ?? legacyAgentLaunchSpecPort;
+  if (!boundPort) throw new Error("AgentLaunchSpecPort has not been bound");
+  return boundPort;
 }
-
-/** W4a 过渡期默认实现：待删除的旧路径，经端口暴露以免调用点分叉（W4b 随旧实现删除）。 */
-const legacyAgentLaunchSpecPort: AgentLaunchSpecPort = {
-  async buildAgentLaunchSpec(request) {
-    // 旧路径按调用方给出的组织 + 用户伪造 owner 主体读取配置行（§9.1 要消除的写法），
-    // 仅在宿主未绑定端口时可达。
-    const agentConfig = await getReadableAgentConfigById(
-      toActorContext({ organizationId: request.organizationId, userId: request.ownerUserId, role: "owner" }),
-      request.agentConfigId,
-    );
-    if (!agentConfig) {
-      throw new NotFoundError(`AgentConfig '${request.agentConfigId}' not found`);
-    }
-    return buildLaunchSpec({
-      organizationId: request.organizationId,
-      userId: request.ownerUserId,
-      environmentId: request.environmentId,
-      agentConfig,
-      environmentSecret: request.environmentSecret,
-      extraEnv: request.extraEnv,
-    });
-  },
-
-  buildMinimalAgentLaunchSpec(request) {
-    return buildBasicLaunchSpec({
-      organizationId: request.organizationId,
-      userId: request.ownerUserId,
-      environmentId: request.environmentId,
-      extraEnv: request.extraEnv,
-    });
-  },
-};

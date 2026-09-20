@@ -29,42 +29,10 @@
     {
       "rule": "agent-runtime-not-to-resources",
       "from": "@fenix/agent-runtime",
-      "to": "@fenix/resource-knowledge",
-      "owner": "1.4",
-      "removeWhen": "agent-runtime 的知识库能力改为经 Runtime port 注入，不再直接 import 资源包",
-      "rationale": "§2.3 依赖矩阵规定 agent-runtime 只允许依赖 platform-sdk、四个基础运行包与 machine/sandbox 专用入口；8 处命中集中在 routes/api 与 services 的知识库装配。"
-    },
-    {
-      "rule": "agent-runtime-not-to-resources",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/agent-config",
-      "owner": "1.4",
-      "removeWhen": "agent 配置读取收敛为 port 注入（与身份读取收敛为 platform-sdk 窄契约同批处理）",
-      "rationale": "实测 6 处导入 / 6 个文件。agent-runtime 直接读取 agent 配置数据模型，属于跨类别反向依赖；1.4 收敛 Runtime port 时一并消除。"
-    },
-    {
-      "rule": "agent-runtime-not-to-resources",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/resource-memory",
-      "owner": "1.4",
-      "removeWhen": "memory 启动参数改为经 port / launchSpec 注入",
-      "rationale": "实测 1 处导入 / 1 个文件。launch-spec-builder 直接 import 资源包以拼装启动参数，属矩阵外的反向依赖。"
-    },
-    {
-      "rule": "agent-runtime-not-to-resources",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/resource-skill",
-      "owner": "1.4",
-      "removeWhen": "skill 启动参数改为经 port / launchSpec 注入",
-      "rationale": "实测 1 处导入 / 1 个文件。与 resource-memory 同因，均在 launch-spec-builder 内。"
-    },
-    {
-      "rule": "agent-runtime-not-to-resources",
-      "from": "@fenix/agent-runtime",
       "to": "@fenix/model-management",
-      "owner": "1.4",
-      "removeWhen": "模型网关解析改为经 platform-sdk 暴露的受限读取入口",
-      "rationale": "实测 1 处导入 / 1 个文件。§5.1 要求应用基础设施（含模型网关配置）经 platform-sdk 的受限入口读取，而不是资源包直连。"
+      "owner": "1.7",
+      "removeWhen": "agent-runtime 的 web 侧不再经 `@/src/lib/model-config-utils` 共享别名直读 model-management 的 web 实现——该边随 §1.7 的真相源/配置边界收口与前端边界批次一并消除（与 `apps-boundary` 直读 `@server/db/schema` 同因：属「跨包直读实现细节」而非启动取数）",
+      "rationale": "实测 1 处导入 / 1 个文件，且**不在服务端**：`packages/agent-runtime/tsconfig.json` 把 `@/src/lib/model-config-utils` 别名指向 `packages/resources/model-management/web/lib/model-config-utils.ts`，唯一消费方是 `packages/agent-runtime/web/components/chat/composer-toolbar.tsx`（与 `apps/web` 的 `apps/web/vite.config.ts` 同一条前端共享别名边，见 review §15.2-2）。W4b 之前本条的服务端见证边是 `services/launch-spec-builder.ts` 与 orchestration 组装链对模型网关配置的直读，随「启动前取数搬出」迁往 `@fenix/agent-config` 的 `server/services/agent-launch-spec/model-resolution.ts`，服务端命中已归零；剩余边与 §5.1「应用基础设施经 platform-sdk 受限入口读取」无关，W4 不再处置，按 review §15.2-2 转 §1.7。"
     },
     {
       "rule": "no-circular",
@@ -223,8 +191,8 @@
       "from": "@fenix/agent-runtime",
       "to": "@fenix/server-app",
       "owner": "1.4",
-      "removeWhen": "W4「启动前取数搬出」（消除 `@server/config` / `@server/db` / `@server/services/config-utils` / `@server/repositories`）与 §1.7 表定义迁出（消除 `@server/db/schema`）均完成后，本包不再引用 `@server/**`；两条路径互不依赖，任一条完成后按剩余事实重测本条。",
-      "rationale": "W2 交付后（2c57097f3）实测 11 处导入 / 8 个文件（非测试，含 import type）：6 处 `@server/db/schema` 表定义（§9.3 裁定归 §1.7）+ 5 处非表定义（`@server/config` 2、`@server/db` 1、`@server/services/config-utils` 1、`@server/repositories` 1），全部集中在 `launch-spec-builder.ts` / `orchestration-instance.ts` / `orchestration-bootstrap.ts`，属 W4 启动前取数范围。W1 交付后基线为 30 处 / 14 文件（27 值 + 3 类型），W2 消除 19 处 / 6 类（`plugins/auth` 6、`db` 5、`config` 2、`env` 1、`plugins/logger` 1、`services/cache` 1、`services/openai-response-mapper` 1、`schemas/api-instance.schema` 1、`errors/orchestration-http` 1）；测试侧另由 49 处 / 28 文件降为 30 处 / 23 文件。原 105 处 / 54 文件是 W2 动手前的全量口径（含测试与当时仍在宿主的模块导入）。按裁定「按职责面收敛 + 表定义显式豁免」保留本条，删除条件见 removeWhen。"
+      "removeWhen": "两条互不依赖的路径都完成后本包不再引用 `@server/**`：①§1.7 表定义迁出（消除 5 处 `@server/db/schema`）；②§1.5 宿主能力下沉或模块配置携带 baseUrl（消除 `orchestration-instance.ts` 的 `@server/config`）。W4「启动前取数搬出」只消除了后一条路径的一部分（见 rationale），任一条完成后按剩余事实重测本条。",
+      "rationale": "W4b-2 交付后（a0556aaee）实测 **6 处导入 / 6 文件**（非测试）：5 处 `@server/db/schema` 表定义（`server/repositories/{agent-instance,environment,environment-orchestration}.ts`、`server/services/environment-web.ts`、`services/agent-chat-service.ts`，按 §9.3 裁定归 §1.7）+ 1 处 `@server/config`（`services/orchestration-instance.ts` 的 `config.defaultEngineType` 与 `getBaseUrl()`）。**W4 只消除了 5 处、不是全部**：W2 交付后（2c57097f3）本条的 11 处 / 8 文件中，`launch-spec-builder.ts`（3 处）随 W4b 整文件删除、`orchestration-bootstrap.ts`（1 处 `agentEngineRepo`）随 §9.2 收敛删除，而 `orchestration-instance.ts` 的 `@server/config` **按 §15.3 明确留在本包**——`getBaseUrl()` 喂 `USER_META_BASE_URL`、`config.defaultEngineType` 决定本地执行引擎，两者都是「实例上下文」（与密钥同源），不属于被搬走的「取数」，因此原 removeWhen 把它记为「W4 消除」不成立，据实改写。W1 交付后基线 30 处 / 14 文件（27 值 + 3 类型），W2 消除 19 处 / 6 类；测试侧由 49 处 / 28 文件降为 30 处 / 23 文件（W2 后），再降到 **16 处 / 15 文件**（W4b-2 后；其中 `@server/test-utils/stubs/module-stubs` 12 处、`@server/config` 2、`@server/db/schema` 1、`@server/plugins/error-handler` 1，属宿主测试基建的既有耦合）。原 105 处 / 54 文件是 W2 动手前的全量口径（含测试与当时仍在宿主的模块导入）。按裁定「按职责面收敛 + 表定义显式豁免」保留本条，删除条件见 removeWhen。"
     },
     {
       "rule": "apps-boundary",

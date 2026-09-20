@@ -210,8 +210,8 @@ const envSchema = databaseConnectionPoolSchema.extend({
   WORKSPACE_ROOT: z.string().optional(),
 
   // ── 可选：Langfuse 观测透传（统一派发到 machine 上 agent 进程）──
-  // 主服务声明后由 launch-spec-builder 经 launchSpec.env 透传到 machine 上
-  // agent 进程（peri 的 langfuse-client 直读同名变量）；未设置则不注入。
+  // 主服务声明后由启动参数组装器（`@fenix/agent-config` 的 `agent-launch-spec`）经 launchSpec.env
+  // 透传到 machine 上 agent 进程（peri 的 langfuse-client 直读同名变量）；未设置则不注入。
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_BASE_URL: z.string().optional(),

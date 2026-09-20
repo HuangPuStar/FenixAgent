@@ -11,7 +11,7 @@ import {
 } from "../runtime";
 
 /**
- * 管理面 42 个方法与数据面 6 个方法的清单。
+ * 管理面 41 个方法与数据面 6 个方法的清单。
  *
  * `satisfies` 让「清单里写了 port 上不存在的名字」在编辑期就报错，运行期断言再确认实现对象
  * 一个不少、两个面不互相错位。改动 port 面时这张清单会一起失败——这正是契约测试的目的：
@@ -28,7 +28,6 @@ const PORT_METHODS = [
   "updateEnvironment",
   "restartActiveInstancesForEnvironments",
   "openAgentSession",
-  "setRuntimeCredentialResolver",
   // 停止
   "stopInstance",
   "stopInstanceRuntime",

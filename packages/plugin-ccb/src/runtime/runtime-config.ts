@@ -129,7 +129,8 @@ export function buildCcbRuntimeConfig(
   config.poorMode = true;
 
   // Hindsight 插件：检测 launchSpec.env 中的 HINDSIGHT_* 变量
-  // 这些变量由 launch-spec-builder 在检测到"记忆开启"时注入
+  // 这些变量由启动参数组装器在检测到"记忆开启"时注入
+  // （`@fenix/agent-config` 的 `server/services/agent-launch-spec/memory-env.ts`）
   if (launchSpec.env?.HINDSIGHT_API_URL) {
     config.enabledPlugins = { "hindsight-memory@hindsight": true };
   }

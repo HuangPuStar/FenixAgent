@@ -20,13 +20,15 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 表定义，迁出归 §1.7）一处。系统托管 MCP server 的写入（`@fenix/resource-mcp` 的系统路径）经
  * `ensureHindsightMcpServer()` 的参数注入，不构成模块边。
  *
- * 不声明消费者侧的反向边：本包的两条入边是
+ * 不声明消费者侧的反向边：唯一的入边是
  * `packages/resources/agent-config/src/server/services/agent-associations.ts`（记忆开关读写，由
- * agent-config 的 manifest 声明该边）与 `packages/agent-runtime/src/services/launch-spec-builder.ts`
- * （启动参数，台账 `agent-runtime-not-to-resources`，owner 1.4，须消除）。后者属越界边，编码成装配依赖
- * 会让 profile 同时启用两者时装配循环失败。硬约束还来自生成器的 `assertDependsOnDeclared`：`dependsOn`
- * 的每条都必须在 `package.json` 的 `dependencies` 里能找到 `workspace:` 区间，而本包只声明了
- * `@fenix/platform-sdk`，写入任何模块 ID 都会以「未声明编译依赖」失败。
+ * agent-config 的 manifest 声明该边）；启动参数的记忆 env 自任务 1.4 W4b 起也组装在 agent-config
+ * （`src/server/services/agent-launch-spec/memory-env.ts`），与前一处同包、同一条已声明的边。
+ * `@fenix/agent-runtime` 曾有一条越界入边（旧 `src/services/launch-spec-builder.ts`，台账
+ * `agent-runtime-not-to-resources`，owner 1.4），W4b 随「启动前取数搬出」删除该文件后一并消除；
+ * 编码成装配依赖会让 profile 同时启用两者时装配循环失败。硬约束还来自生成器的
+ * `assertDependsOnDeclared`：`dependsOn` 的每条都必须在 `package.json` 的 `dependencies` 里能找到
+ * `workspace:` 区间，而本包只声明了 `@fenix/platform-sdk`，写入任何模块 ID 都会以「未声明编译依赖」失败。
  *
  * `create`：惰性组合根（`src/module.ts` 的 `createMemoryModule()`），模块索引层只 import 本文件，
  * 装配期才加载 `./server` 图。不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的

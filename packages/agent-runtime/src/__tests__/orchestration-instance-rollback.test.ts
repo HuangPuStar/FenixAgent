@@ -8,10 +8,10 @@
  *
  * 注入方式（禁 mock.module，全部用既有 seam）：
  *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / getOrchestrationController；
- *   - 保留真实 buildAgentLaunchSpecForCore（无 agentConfigId 环境走 buildBasicLaunchSpec
- *     分支，需 stubDb 提供 provider/model 行），使 environmentRepo.getById 的
- *     "第 1 次成功（launch 构建链）、第 2 次抛错（registerSupplement）"序号注入可达——
- *     若替换 build 链，getById 只剩 registerSupplement 一个调用方，无法区分失败点；
+ *   - 保留真实 buildAgentLaunchSpecForCore（它先读环境行，再经 AgentLaunchSpecPort 组装），使
+ *     environmentRepo.getById 的"第 1 次成功（launch 构建链）、第 2 次抛错（registerSupplement）"
+ *     序号注入可达——若连环境行读取一起替换掉，getById 只剩 registerSupplement 一个调用方，
+ *     无法区分失败点。组装端口本身用替身（W4b 后未装配即失败），本文件不断言 spec 内容；
  *   - core-bootstrap 被 setup-mocks.ts 全局 mock，setCoreRuntimeFactory 不可用，
  *     改用 stubCoreBootstrap("getCoreRuntime") 注入假 facade。
  */
@@ -20,10 +20,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/server";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { provider } from "@server/db/schema";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
-import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -34,8 +33,6 @@ import {
 const ENV_ID = "env-1";
 const USER_ID = "user-1";
 const INSTANCE_ID = "inst_test";
-
-const now = new Date("2026-07-01T00:00:00.000Z");
 
 /** 记录 controller.stopInstance 调用；仅此一处状态被假 controller 修改。 */
 const controllerStopCalls: string[] = [];
@@ -66,8 +63,8 @@ const fakeEnvironmentRepo = {
   getById: async (_id: string) => {
     getByIdCalls += 1;
     if (failOnSecondCall && getByIdCalls === 2) throw new Error("db down");
-    // 无 agentConfigId：真实 buildAgentLaunchSpecForCore 走 buildBasicLaunchSpec 分支，
-    // 不触碰 config/agent-knowledge 等 mock 依赖
+    // 无 agentConfigId：buildAgentLaunchSpecForCore 走最小 spec 分支；组装端口已被替身装配，
+    // 因此这里读到环境行即可，不再需要供 provider/model 行
     return {
       organizationId: "org-1",
       userId: USER_ID,
@@ -93,7 +90,7 @@ describe("spawnInstanceViaController rollback", () => {
     globalInstanceRegistry.clear();
     resetOrchestrationInstanceDeps();
     // 并发上限归模块配置（不再是宿主 config）：缺省基线即「三个上限都不生效」，
-    // 本文件只关心回滚语义，不需要限额。内含 resetAllStubs，故必须在 stubDb() 之前调用。
+    // 本文件只关心回滚语义，不需要限额。内含 resetAllStubs，故必须在本行之后装配端口替身。
     initializeAgentRuntimeModuleConfig();
     getByIdCalls = 0;
     failOnSecondCall = false;
@@ -101,52 +98,9 @@ describe("spawnInstanceViaController rollback", () => {
     controllerStopCalls.length = 0;
     facadeStopCalls.length = 0;
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    // buildBasicLaunchSpec 的 resolveFirstReadableModelConfig 需要 provider/model 行；
-    // 查询结构（where → orderBy，model 查询多一层 limit）与 launch-spec-builder-errors.test.ts 一致
-    stubDb({
-      select: () => ({
-        from: (table: unknown) => ({
-          where: () => ({
-            orderBy: () => {
-              if (table === provider) {
-                return Promise.resolve([
-                  {
-                    id: "provider-1",
-                    userId: USER_ID,
-                    organizationId: "org-1",
-                    name: "openai",
-                    displayName: "OpenAI",
-                    protocol: "openai",
-                    baseUrl: "https://api.example.com",
-                    apiKey: "internal-key",
-                    extraOptions: {},
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ]);
-              }
-              return {
-                limit: async () => [
-                  {
-                    id: "model-1",
-                    organizationId: "org-1",
-                    providerId: "provider-1",
-                    modelId: "gpt-4o",
-                    displayName: "GPT-4o",
-                    modalities: null,
-                    limitConfig: null,
-                    cost: null,
-                    options: null,
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ],
-              };
-            },
-          }),
-        }),
-      }),
-    });
+    // 无 agentConfigId 的环境走最小 spec 分支，但走不走哪一支不是本文件的事：装配替身后
+    // 组装链不再是失败点，getById 的序号注入才能锚定到 registerSupplement
+    stubAgentLaunchSpecPort();
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
       getOrchestrationController: () => fakeController,
