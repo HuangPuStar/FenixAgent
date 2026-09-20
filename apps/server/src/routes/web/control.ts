@@ -2,7 +2,7 @@
 // 本路由是 `/web/control/*` 的协议适配层，依赖 Agent Runtime 的会话服务与事件总线，落点必须是宿主
 // 而非任一模块：放进 agent-runtime 会让宿主专属的协议适配反向拖入机器域（1.4 已把 EventBus 收敛回
 // agent-runtime，Machine 的同名薄封装删除）。
-import { type AgentInstanceRecord, type AgentRuntimePort, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import { type AgentInstanceRecord, getBoundAgentRuntime, type SessionRecord } from "@fenix/agent-runtime/runtime";
 import { environmentRepo, getEventBus } from "@fenix/agent-runtime/server";
 import { log } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
@@ -16,9 +16,6 @@ const app = new Elysia({ name: "web-control" }).use(authGuardPlugin).model({
   "send-event-response": SendEventResponseSchema,
   "session-event-payload": SessionEventPayloadSchema,
 });
-
-/** 会话记录的读法来自运行 port 的契约（`LightweightSession` 是包内类型，不单独透出）。 */
-type SessionRecord = NonNullable<Awaited<ReturnType<AgentRuntimePort["getSession"]>>>;
 
 type OwnershipCheckResult =
   | { error: true; response: Response }

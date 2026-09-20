@@ -1,4 +1,4 @@
-import { type AgentRuntimePort, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import { type EnvironmentRecord, getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
 import {
   CreateEnvironmentRequestSchema,
   CreateEnvironmentResponseSchema,
@@ -23,9 +23,6 @@ import * as z from "zod/v4";
 import { authGuardPlugin } from "../../plugins/auth";
 
 const logger = createLogger("env-route");
-
-/** 环境记录的读法（创建/更新/归属校验）来自运行 port 的契约。 */
-type EnvironmentRecordResult = Awaited<ReturnType<AgentRuntimePort["createEnvironment"]>>;
 
 /**
  * 创建 Web 环境路由。
@@ -90,7 +87,7 @@ export function createEnvironmentRoutes() {
         autoStart?: boolean;
       };
 
-      let record: EnvironmentRecordResult;
+      let record: EnvironmentRecord;
       try {
         record = await getBoundAgentRuntime().createEnvironment({
           name: b.name,
@@ -180,7 +177,7 @@ export function createEnvironmentRoutes() {
         autoStart?: boolean;
       };
 
-      let updated: Awaited<ReturnType<AgentRuntimePort["updateEnvironment"]>>;
+      let updated: EnvironmentRecord;
       try {
         await getBoundAgentRuntime().getOwnedEnvironment(params.id, authCtx.organizationId, user.id);
         updated = await getBoundAgentRuntime().updateEnvironment(params.id, authCtx.organizationId, {
