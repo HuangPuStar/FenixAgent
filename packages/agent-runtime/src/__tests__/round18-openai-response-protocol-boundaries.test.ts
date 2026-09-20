@@ -98,6 +98,24 @@ describe("openai response mapper protocol boundaries", () => {
     expect(result.choices[0].message.content).toBe('<tool_call name="unknown" />\n');
   });
 
+  // 流式工具调用必须向客户端暴露约定的简化协议文本（带标题分支）。
+  test("streams a tool call delta as simplified XML", async () => {
+    const chunks = await collect(
+      mapToSSEChunks(events([update({ sessionUpdate: "tool_call", title: "search" }), completion("end_turn")]), "agent-1"),
+    );
+
+    expect(chunks[0]).toContain('<tool_call name=\\"search\\" />');
+  });
+
+  // 缺少标题的流式工具调用必须使用 unknown 默认名，防止空 XML 属性。
+  test("streams a tool update with the unknown default name", async () => {
+    const chunks = await collect(
+      mapToSSEChunks(events([update({ sessionUpdate: "tool_call_update" }), completion("end_turn")]), "agent-1"),
+    );
+
+    expect(chunks[0]).toContain('<tool_result name=\\"unknown\\" />');
+  });
+
   // 未命名工具结果同样应保留稳定的默认名称。
   test("uses an unknown name for unnamed tool updates", () => {
     const result = mapToNonStreamingResponse([update({ sessionUpdate: "tool_call_update" })], "agent-1");

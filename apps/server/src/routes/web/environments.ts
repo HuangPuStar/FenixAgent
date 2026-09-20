@@ -13,6 +13,7 @@ import {
   getOwnedEnvironment,
   ListInstancesResponseSchema,
   listEnvironmentsWithInstances,
+  mapOrchestrationErrorToHttp,
   sanitizeResponse,
   UpdateEnvironmentRequestSchema,
   UpdateEnvironmentResponseSchema,
@@ -24,7 +25,6 @@ import { ValidationError as AppValidationError, WebErrSchema, WebOkSchema } from
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { mapOrchestrationErrorToHttp } from "../../errors/orchestration-http";
 import { authGuardPlugin } from "../../plugins/auth";
 
 const logger = createLogger("env-route");

@@ -1,9 +1,9 @@
+import { mapOrchestrationErrorToHttp } from "@fenix/agent-runtime/server";
 import { isCoreRuntimeError } from "@fenix/core";
 import { OrchestrationError } from "@fenix/orchestration";
 import { AppError } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia, { ValidationError } from "elysia";
-import { mapOrchestrationErrorToHttp } from "../errors/orchestration-http";
 import { logError } from "./logger";
 
 // 必须显式 `{ as: "global" }`：Elysia 的 use() 只合并 plugin 中 scope 为
@@ -28,7 +28,7 @@ export const errorPlugin = new Elysia({ name: "error-handler" }).onError(
 
     // 编排域错误：按稳定错误码映射 HTTP 状态（未映射的 code 保守落 500）。
     // message 必须脱敏 —— 编排域错误可能携带 envId/machineId，原样返回会泄漏
-    // 内部资源标识；映射规则与 /api/instances 共用 src/errors/orchestration-http.ts 单一真相来源。
+    // 内部资源标识；映射规则与 /api/instances 共用 agent-runtime 的 errors/orchestration-http 单一真相来源。
     if (error instanceof OrchestrationError) {
       const { status, message } = mapOrchestrationErrorToHttp(error);
       set.status = status;

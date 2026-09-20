@@ -1,10 +1,10 @@
 import { log, error as logError } from "@fenix/logger";
 import { type AuthContext, authGuardPlugin } from "@server/plugins/auth";
-import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "@server/services/openai-response-mapper";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { OpenAIChatCompletionRequestSchema, OpenAIErrorResponseSchema } from "../../schemas/openai-chat.schema";
 import { openAgentSession } from "../../services/agent-chat-service";
+import { buildOpenAIError, mapToNonStreamingResponse, mapToSSEChunks } from "../../services/openai-response-mapper";
 
 const AGENT_TIMEOUT_MS = 300_000; // 5 分钟
 const deps = {

@@ -11,7 +11,6 @@ const RMD_07_MOVES = [
   ["src/routes/web/meta-agent.ts", "apps/server/src/routes/web/meta-agent.ts"],
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
-  ["src/schemas/api-instance.schema.ts", "apps/server/src/schemas/api-instance.schema.ts"],
   ["src/schemas/index.ts", "apps/server/src/schemas/index.ts"],
   ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
   ["src/schemas/session.schema.ts", "apps/server/src/schemas/session.schema.ts"],
@@ -29,7 +28,6 @@ const RMD_07_MOVES = [
     "src/services/data-migrates/migrate-agent-config-model-id.ts",
     "apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts",
   ],
-  ["src/services/openai-response-mapper.ts", "apps/server/src/services/openai-response-mapper.ts"],
   ["src/services/sync-builtin.ts", "apps/server/src/services/sync-builtin.ts"],
   ["src/services/transport.ts", "apps/server/src/services/transport.ts"],
   ["src/transport/ws-types.ts", "apps/server/src/transport/ws-types.ts"],
@@ -58,7 +56,6 @@ const RMD_07_MOVES = [
     "round15-isolated-service-boundaries.test.ts",
     "round16-isolated-protocol-boundaries.test.ts",
     "round18-agent-config-model-migration-boundaries.test.ts",
-    "round18-openai-response-protocol-boundaries.test.ts",
     "round19-isolated-repository-boundaries.test.ts",
     "round21-isolated-service-coverage.test.ts",
     "round22-launch-spec-isolation.test.ts",
@@ -76,10 +73,14 @@ const RMD_07_MOVES = [
 ] as const;
 
 /**
- * 任务 1.3 收口时删掉的宿主 schema 副本，三元组为 `[旧根路径, 宿主 schemas 路径, 包内 owner 落点]`。
+ * 已删除的宿主副本，三元组为 `[旧根路径, 宿主路径, 包内 owner 落点]`。
  *
- * 这三份契约的 owner 是 Provider / Model / Machine 资源包，宿主副本在删除前已零消费方（`schemas/index.ts`
- * 不转发）；与包内实现并存会让同一份协议出现两种定义，且分歧只在运行期暴露。
+ * 任务 1.3 的三份契约 owner 是 Provider / Model / Machine 资源包，宿主副本在删除前已零消费方
+ * （`schemas/index.ts` 不转发）；与包内实现并存会让同一份协议出现两种定义，且分歧只在运行期暴露。
+ * 任务 1.4 W2 的三份（`schemas/api-instance.schema.ts`、`services/openai-response-mapper.ts` 及其协议边界测试
+ * `__tests__/round18-openai-response-protocol-boundaries.test.ts`）owner 是 agent-runtime：唯一消费方都在该包内，
+ * 宿主副本删除后由包内落点承载，`/api/instances` 与 `/api/openai-chat` 的协议定义不再跨包分叉，测试也随
+ * 被测模块落到 owner 包内。
  */
 const RMD_07_RELOCATED = [
   [
@@ -97,10 +98,25 @@ const RMD_07_RELOCATED = [
     "apps/server/src/schemas/api-workspace.schema.ts",
     "packages/resources/machine/src/schemas/api-workspace.schema.ts",
   ],
+  [
+    "src/schemas/api-instance.schema.ts",
+    "apps/server/src/schemas/api-instance.schema.ts",
+    "packages/agent-runtime/src/schemas/api-instance.schema.ts",
+  ],
+  [
+    "src/services/openai-response-mapper.ts",
+    "apps/server/src/services/openai-response-mapper.ts",
+    "packages/agent-runtime/src/services/openai-response-mapper.ts",
+  ],
+  [
+    "src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
+    "apps/server/src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
+    "packages/agent-runtime/src/__tests__/round18-openai-response-protocol-boundaries.test.ts",
+  ],
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
-  // 仅这 66 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 仅这 63 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
   // 原 75 项中已有八项的目标不再由 server host 持有：
   // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
@@ -122,17 +138,22 @@ describe("RMD-07 server-host migration", () => {
   // `AcpConnectionSnapshot` / `WsConnection` → `@fenix/agent-runtime/server`，`InstanceSupplement` 等同文件
   // 内其他字段类型一并收回），实测宿主 0 消费方，按「删除优于兼容」删除宿主文件——它既不是宿主自有类型，
   // 也不该以「已迁入宿主」的身份留在本表里（见 review/task-1.4-agent-runtime.md）。
+  // 任务 1.4 W2 的三项（本轮从本表移入下方 relocated 断言）：`schemas/api-instance.schema.ts`、
+  // `services/openai-response-mapper.ts` 与后者的协议边界测试
+  // `__tests__/round18-openai-response-protocol-boundaries.test.ts`。前两者唯一消费方是 agent-runtime 的
+  // `/api/instances` 与 `/api/openai-chat`，测试则只覆盖搬入包内的 mapper；宿主侧已零消费方，按「删除优于
+  // 兼容」把宿主副本删除、owner 落回包内。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(66);
+    expect(RMD_07_MOVES).toHaveLength(63);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
     }
   });
 
-  // Provider / Model / Machine 契约的 owner 已在资源包：旧根路径与宿主 schemas 路径都不得复活，包内必须有唯一落点。
-  test("relocates the provider and model schemas to the model management package", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(3);
+  // Provider / Model / Machine / AgentRuntime 契约的 owner 已在包内：旧根路径与宿主路径都不得复活，包内必须有唯一落点。
+  test("relocates the provider, model and agent runtime contracts to their owner packages", () => {
+    expect(RMD_07_RELOCATED).toHaveLength(6);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

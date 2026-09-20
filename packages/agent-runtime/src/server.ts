@@ -1,5 +1,8 @@
 /** 服务端 Agent Runtime 的公开装配入口。 */
 
+// 编排域错误 → HTTP 的单一真相来源（1.4 W2 从宿主 `src/errors/` 搬入）：宿主全局 errorPlugin 与
+// `/web/environments` 仍需要它，因此留在公开面；`/api/instances` 与本包共用同一份映射。
+export * from "./errors/orchestration-http";
 export { default as acpRoutes } from "./routes/acp";
 export { default as apiInstanceRoutes } from "./routes/api/instances";
 export { default as openaiChatRoutes } from "./routes/api/openai-chat";

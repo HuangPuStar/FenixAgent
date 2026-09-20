@@ -41,7 +41,6 @@ export const RETAINED_HOST_TEST_RATIONALES: Readonly<Record<string, string>> = {
   "src/__tests__/round16-isolated-protocol-boundaries.test.ts": "apps/server ACP/API 协议边界隔离审计基线。",
   "src/__tests__/round18-agent-config-model-migration-boundaries.test.ts":
     "agent-config model migration 与 apps/server 数据迁移边界。",
-  "src/__tests__/round18-openai-response-protocol-boundaries.test.ts": "OpenAI response 与 apps/server 对外协议边界。",
   "src/__tests__/round19-isolated-repository-boundaries.test.ts": "apps/server repository 分层边界审计基线。",
   "src/__tests__/round21-isolated-service-coverage.test.ts": "apps/server 服务覆盖率隔离审计基线。",
   "src/__tests__/round22-launch-spec-isolation.test.ts": "launchSpec 与 apps/server 启动装配隔离边界。",
