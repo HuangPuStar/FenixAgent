@@ -1,21 +1,21 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import {
   stubCoreBootstrap,
   stubEnvironmentService,
   stubRegistry,
   stubRegistryHeartbeat,
 } from "@server/test-utils/stubs/module-stubs";
-import type { WsConnection } from "@server/transport/ws-types";
-import type { AcpConnectionEntry } from "@server/types/store";
+import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+import type { AcpConnectionEntry } from "../types/acp-connection";
+import type { WsConnection } from "../types/ws-types";
 
 // registry / registry-heartbeat / environment / core-bootstrap 已在 setup-mocks.ts 中
 // 通过 preload mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。
 
 beforeEach(() => {
-  resetAllStubs();
-  setConfig({ wsKeepaliveInterval: 30 });
+  // 内含 resetAllStubs：本包模块配置与 DB 替身都按「每个用例重新装配」处理（WS 保活间隔沿用迁移前的 30s）。
+  initializeAgentRuntimeModuleConfig({ wsKeepaliveInterval: 30 });
   stubDb({
     select: mock(() => {
       throw new Error("unexpected db call in test");

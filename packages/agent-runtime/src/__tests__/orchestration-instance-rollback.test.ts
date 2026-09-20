@@ -22,9 +22,9 @@ import type { EnvironmentRecord, IEnvironmentRepo } from "@fenix/agent-runtime/s
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController, Instance, LaunchSpec, LaunchSpecBuilder } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { config, setConfig } from "@server/config";
 import { provider } from "@server/db/schema";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -35,9 +35,6 @@ import {
 const ENV_ID = "env-1";
 const USER_ID = "user-1";
 const INSTANCE_ID = "inst_test";
-
-// 捕获初始配置：afterEach 时恢复，避免并发限制覆盖泄漏到其他用例
-const originalConfig = { ...config };
 
 const now = new Date("2026-07-01T00:00:00.000Z");
 
@@ -101,11 +98,9 @@ describe("spawnInstanceViaController rollback", () => {
   beforeEach(() => {
     globalInstanceRegistry.clear();
     resetOrchestrationInstanceDeps();
-    setConfig({
-      agentMaxConcurrency: undefined,
-      userAgentMaxConcurrency: undefined,
-      scheduledAgentMaxConcurrency: undefined,
-    });
+    // 并发上限归模块配置（不再是宿主 config）：缺省基线即「三个上限都不生效」，
+    // 本文件只关心回滚语义，不需要限额。内含 resetAllStubs，故必须在 stubDb() 之前调用。
+    initializeAgentRuntimeModuleConfig();
     getByIdCalls = 0;
     failOnSecondCall = false;
     launchShouldFail = false;
@@ -169,7 +164,6 @@ describe("spawnInstanceViaController rollback", () => {
     resetOrchestrationInstanceDeps();
     resetAllStubs();
     globalInstanceRegistry.clear();
-    setConfig(originalConfig);
   });
 
   // registerSupplement 的 env 查询（getById 第 2 次）抛错时，须回滚 controller 活跃表、

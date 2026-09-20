@@ -36,7 +36,6 @@ const RMD_07_MOVES = [
   ["src/types/api.ts", "apps/server/src/types/api.ts"],
   ["src/types/global.d.ts", "apps/server/src/types/global.d.ts"],
   ["src/types/messages.ts", "apps/server/src/types/messages.ts"],
-  ["src/types/store.ts", "apps/server/src/types/store.ts"],
   ["src/utils/executable.ts", "apps/server/src/utils/executable.ts"],
   ...[
     "agent-platform-api-reference.test.ts",
@@ -101,8 +100,8 @@ const RMD_07_RELOCATED = [
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
-  // 仅这 67 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
-  // 原 75 项中已有七项的目标不再由 server host 持有：
+  // 仅这 66 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 原 75 项中已有八项的目标不再由 server host 持有：
   // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
   // - `routes/web/config/providers.ts` 由 Provider 资源包接管
@@ -119,8 +118,12 @@ describe("RMD-07 server-host migration", () => {
   // - `schemas/api-model.schema.ts`、`schemas/config.schema.ts` 的 owner 是 model-management 包；
   // - `schemas/api-workspace.schema.ts` 的 owner 是 machine 包——该宿主文件与包内同名文件**字节相同**
   //   且已无任何导入方，属 §1.3(1) 明令禁止的 app↔package 重复实现，按「删除优于兼容」删除。
+  // 任务 1.4 的一项：`src/types/store.ts` 的六个接口在 W1 归位 owner 包（`AcpConnectionEntry` /
+  // `AcpConnectionSnapshot` / `WsConnection` → `@fenix/agent-runtime/server`，`InstanceSupplement` 等同文件
+  // 内其他字段类型一并收回），实测宿主 0 消费方，按「删除优于兼容」删除宿主文件——它既不是宿主自有类型，
+  // 也不该以「已迁入宿主」的身份留在本表里（见 review/task-1.4-agent-runtime.md）。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(67);
+    expect(RMD_07_MOVES).toHaveLength(66);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);

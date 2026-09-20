@@ -24,6 +24,7 @@ import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, setConfig } from "@server/config";
 import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -85,12 +86,10 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
   beforeEach(() => {
     globalInstanceRegistry.clear();
     resetOrchestrationInstanceDeps();
-    setConfig({
-      agentMaxConcurrency: undefined,
-      userAgentMaxConcurrency: undefined,
-      scheduledAgentMaxConcurrency: undefined,
-      defaultEngineType: undefined,
-    });
+    // 并发上限归模块配置（缺省基线即「三个上限都不生效」）；`defaultEngineType` 仍是宿主 config 字段
+    // （local-default 分支的引擎透传随 W4 搬出，本用例先按原样从宿主注入）。
+    initializeAgentRuntimeModuleConfig();
+    setConfig({ defaultEngineType: undefined });
     launchCalls.length = 0;
     stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
     setOrchestrationInstanceDeps({

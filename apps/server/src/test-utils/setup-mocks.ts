@@ -6,6 +6,7 @@
 
 import { mock } from "bun:test";
 import { createAgentConfigModuleConfig } from "@fenix/agent-config/server/testing";
+import { createAgentRuntimeModuleConfig } from "@fenix/agent-runtime/server/testing";
 import type { IdentityConfig } from "@fenix/identity/server";
 import { createModelManagementModuleConfig } from "@fenix/model-management/server/testing";
 import {
@@ -179,6 +180,7 @@ mock.module("@fenix/platform-sdk/server", () => ({
 // 缺省值与 `apps/server/src/config.ts` 的部署默认值一致；两侧一旦分歧，宿主 main.ts 的注入清单与包内
 // `strictObject` 校验会在启动期先失败，不会静默走测试缺省值。
 registerModuleConfigBaseline("agent-config", createAgentConfigModuleConfig());
+registerModuleConfigBaseline("agent-runtime", createAgentRuntimeModuleConfig());
 registerModuleConfigBaseline("knowledge", createKnowledgeModuleConfig());
 registerModuleConfigBaseline("machine", createMachineModuleConfig());
 registerModuleConfigBaseline("memory", createMemoryModuleConfig());

@@ -6,36 +6,17 @@
 // - 纯内存零持久化：所有输出即用即弃，不缓存、不写库；
 // - 只读：只调用各来源的只读能力，不做任何管控动作。
 //
-// 类型来源说明：ExternalRelayConnectionSnapshot 由 `@fenix/agent-runtime/server` 公开；
-// AcpConnectionSnapshot 按消费面在本文件自持（理由见下方定义），两处都只 import type（编译期擦除），
-// 避免把 relay / acp-ws 模块运行时图拖进观察链路。
+// 类型来源说明：连接快照类型统一由 `@fenix/agent-runtime/server` 公开（1.4 W1 起该包自持
+// `AcpConnectionEntry` / `AcpConnectionSnapshot`，不再落在宿主 `@server/types/*`）。这里只 import type
+// （编译期擦除），避免把 relay / acp-ws 模块运行时图拖进观察链路。
 
-import type { EnvironmentRecord, ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
+import type {
+  AcpConnectionSnapshot,
+  EnvironmentRecord,
+  ExternalRelayConnectionSnapshot,
+} from "@fenix/agent-runtime/server";
 
-/**
- * acp-ws 连接只读快照——观察链路消费的窄视图。
- *
- * 权威定义今天在宿主 `apps/server/src/types/store.ts`（agent-runtime 的 `listAcpConnections()` 返回它），
- * 但 `@server/*` 是宿主内部路径，包内生产代码不得依赖（任务 1.3 §1 静态条件 1）。这里按**消费面自持**
- * 一份结构相同的窄类型，而不是要求平台先加一个契约：它只在依赖注入 seam（`ObserverServiceDeps`）的签名上
- * 出现，类型来源由装配方决定。
- *
- * 漂移是编译期可见的而不是静默的：TS 结构类型要求 `listAcpConnections()` 的返回值满足这里声明的字段形状，
- * 宿主侧字段改名或改型会在装配点（`observer-service.ts` 的默认 deps）编译失败。宿主**新增**字段不进入本
- * 视图——本包不读它，观察快照本身也刻意不暴露句柄类字段（见 store.ts 的同款注释）。
- *
- * 待该类型获得公共落点（agent-runtime `/server` 或 platform-sdk）时，本定义应被删除替换，不并行保留两份。
- */
-export interface AcpConnectionSnapshot {
-  wsId: string;
-  userId: string;
-  agentId: string | null;
-  boundEnvId: string | null;
-  machineId: string | null;
-  isMachine: boolean;
-  openTime: number;
-  capabilities: Record<string, unknown> | null;
-}
+export type { AcpConnectionSnapshot };
 
 /** acp-link kind 的三类现场来源（linkId 前缀 = source，见 §4.4 linkId 归一化）。 */
 export const OBSERVER_LINK_SOURCES = ["acp-ws", "external-relay", "chat-relay"] as const;

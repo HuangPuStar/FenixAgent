@@ -1,19 +1,20 @@
 # 任务 1.4 执行计划与设计裁定：Agent Runtime、Machine 与 Sandbox
 
-本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（见第十节）；W1 → W2 → W3 与 W4/W6 未开工。
+本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节）；W2 → W3（W4 同批）→ W6 未开工。
 
 任务目标见[阶段 2 执行计划 §1.4](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）与 [§10.4](../ce-ee-engineering-standards.md)（Runtime 与基础资源验收）。
 
-## 一、任务状态：W5 已交付（2026-09-20），其余切片未开工
+## 一、任务状态：W5、W1 已交付（2026-09-20），其余切片未开工
 
 | 证据 | 结论 |
 | --- | --- |
 | `docs/design/ce-ee-refactoring/review/` 只有 `task-1.2-*`、`task-1.3-*` | 无 1.4 实施记录 |
 | git 历史无任何以 1.4 为目标的提交 | 未开工 |
 | `packages/agent-runtime/fenix.module.ts` 注释：「当前返回的是 Runtime 服务端公开入口的整体表面，而不是收敛后的启动/停止/状态/回收 port」 | 第 2 条自述未完成（W3 范围） |
-| `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条） | 剩余 11 条随 W1–W4、W6 处理 |
+| `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条） | 剩余 11 条随 W2–W4、W6 处理 |
+| 台账总数 **51 → 49**（W1 削 2 条 `owner: "1.5"` 的 `no-circular`，见 11.3） | 包对指纹随边消失而失效，非 1.4 条目减少 |
 
-**已交付**：W5「Machine/Sandbox 方向」——第十节。**未开工**：W1 → W2 → W3（W4 与 W3 同批）→ W6。
+**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节。**未开工**：W2 → W3（W4 与 W3 同批）→ W6。
 
 阶段 1（`fa2bbaef0`「迁移 Runtime 与 Chat 残留」等）已完成的是**物理归属**：Environment、Instance、relay、ACP session、Chat、YJS 的代码已在 `packages/agent-runtime`，Machine/Sandbox 已是独立包。1.4 要的是**接口收窄与依赖方向**，这部分未动。
 
@@ -253,7 +254,7 @@ apps/server 注入 AgentInstanceManager ──────┘
 
 | 切片 | 范围 | 产出 | 台账影响 |
 | --- | --- | --- | --- |
-| **W1 依赖类型与配置 seam** | 4 个文件的类型搬家；`agent-concurrency.ts`、`acp-idle-monitor.ts` 换用包内 `getBoundCoreRuntime`；3 个并发配置值与 `config.wsKeepaliveInterval` 改注入 | 非测试代码中 `@server/config`、`@server/types/*`、`@server/services/core-bootstrap` 归零 | 无（包对未全清） |
+| **W1 依赖类型与配置 seam** ✅ 已交付（2026-09-20，见第十一节） | 4 个文件的类型搬家；`agent-concurrency.ts`、`acp-idle-monitor.ts` 换用包内 `getBoundCoreRuntime`；7 个运行态配置值改模块配置注入 | 非测试代码中 `@server/config`、`@server/types/*`、`@server/services/core-bootstrap` 归零（按文件收敛口径，见 11.2） | 实测削 2 条（原预测「无」）：两条 `owner: "1.5"` 的 `no-circular` 因跨包见证边消失而失效，见 11.3 |
 | **W2 宿主接缝收敛** | `@server/db` + `@server/db/schema` 换 owner 侧入口（含表归属裁定）；`@server/plugins/auth` 认证上下文裁定；`cache` / `openai-response-mapper` / `transport` / `config-utils` / `org-context` / `repositories` 收口；消除 `routes/acp/index.ts` 对 `@server/routes/web/environments` 的反向依赖 | 22 个非测试文件中的宿主路径依赖归零 | 删 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`） |
 | **W3 Runtime port 定型** | 落 `src/runtime.ts`；收窄 `src/server.ts`；替换 `fenix.module.ts` 工厂；消费方按 port 改调 | 9 个包/应用、31 个文件的调用面收敛 | 无 |
 | **W4 启动前取数搬出** | 新建 `AgentInstanceStarter` port；`launch-spec-builder`(663) 与 `actor-context.ts`(42) 从 agent-runtime 删除；`skill` / `mcp` / `model-management` 补包根公开 Domain Service（6 张表的读取）；`agent-config` 补「组织范围读」系统入口（9.1）；agent-config Facade 组装已授权 `AgentLaunchSpec` 并调 port；两条 spec 路径按 9.2 收敛为一条 | 消除 `agent-runtime-not-to-resources` 的服务端命中 | 删 `agent-runtime-not-to-resources` 5 条（knowledge / agent-config / memory / skill / model-management；与 §1.7 同批核对 `@/src/lib/model-config-utils` 别名） |
@@ -430,3 +431,79 @@ interface SandboxRouteResult {
 | `machine → agent_config` 的表读写（`registry.ts` 的引用检查与 `bindAgentConfigs` 写路径） | 需 agent-config 提供按 machineId 的绑定入口，W4 同批 |
 | `sandbox_instance` 投影写路径（`machine-sandbox-projection.ts`） | 机器事件接收方在本包，写路径无法由 sandbox 代劳；接触面已降为表定义 |
 | `scripts/root-source-owner-rules.ts:281` 的 `src/services/event-service.ts` 规则 | 该规则已无匹配文件（`check-root-source-owner-inventory.ts` 只审计实际存在的根目录源文件），属 RMD-02 历史清单 |
+
+## 十一、W1 交付记录（依赖类型与配置 seam，2026-09-20）
+
+### 11.1 交付清单
+
+**类型搬家：宿主 `@server/types/*` 的使用方归零。**
+
+| 动作 | 内容 |
+| --- | --- |
+| 新建 | `src/types/ws-types.ts`(29)、`src/types/acp-connection.ts`(53)、`src/types/instance.ts`(26)、`src/types/environment.ts`(32) |
+| 宿主删除 | `apps/server/src/types/store.ts`（112 行，`git rm`）；`apps/server/src/types/api.ts` −26 行（环境注册请求/响应类型已随 owner 收回） |
+| 公开面 | `src/server.ts` 末端 re-export 上述 4 个类型文件（含 `WsConnection`，使 `AcpConnectionEntry["ws"]` 这类派生在包外可解析） |
+| import 改指 | `routes/acp/index.ts`、`server/transport/relay/external-relay.ts`、`transport/agent-node-bridge.ts`、`server/transport/acp-ws-handler.ts` + 3 个测试文件 |
+| 去重 | `packages/resources/observer/src/server/services/observer/types.ts` 删除自持的 `AcpConnectionSnapshot`，改为 `import type` 自 `@fenix/agent-runtime/server`（`AcpConnectionSnapshot` / `ExternalRelayConnectionSnapshot` / `EnvironmentRecord` 三者均在该包公开面上） |
+
+**配置 seam：7 个运行态旋钮改由模块配置注入，宿主不再被包直接读取。**
+
+| 动作 | 内容 |
+| --- | --- |
+| 新建 | `src/server/config.ts`（`AgentRuntimeModuleConfig`，zod `strictObject`，7 键：3 个并发上限 + 3 个 ACP 超时 + WS 保活间隔）；`src/server/testing.ts`（`createAgentRuntimeModuleConfig` / `initializeAgentRuntimeModuleConfig` / `stubAgentRuntimeConfig`，仿 knowledge 范式） |
+| 导出 | `package.json` 增 `./server/testing`；`src/server.ts` 增 `export * from "./server/config"`（配置读取入口是本包，测试装配入口不在此处） |
+| 宿主注入 | `apps/server/src/main.ts` 增 `initializeApplicationInfrastructure` 的 `"agent-runtime"` 条目，值取自 `config.*`（本任务只注入，不接 `loadServerEnv` 管道，见 §9.5） |
+| 读取改签名 | `agent-concurrency.ts`（3 个上限 + `getBoundCoreRuntime`）、`acp-idle-monitor.ts`（3 个超时 + `getBoundCoreRuntime`）、`acp-ws-handler.ts`（保活间隔）改为调用时读 `getAgentRuntimeConfig()` |
+| 测试基线 | `apps/server/src/test-utils/setup-mocks.ts` 增 `registerModuleConfigBaseline("agent-runtime", createAgentRuntimeModuleConfig())` |
+| 测试迁移 | 7 个文件从宿主 `setConfig` 迁到模块配置：`acp-idle-monitor` / `acp-machine-connection-lookup` / `agent-concurrency-toctou` / `agent-node-bridge` / `instance-concurrency` / `orchestration-instance-rollback` / `orchestration-instance-nodeid` |
+
+三个并发上限**刻意不设基线默认**：迁移前宿主测试经 `buildConfig({} as Env)` 读到 `undefined`，照抄部署默认（10）会给宿主用例引入从未见过的用户级配额。
+
+顺带清掉 W1 自己引入的最后一处宿主类型残留：`acp-idle-monitor.test.ts` 里 5 处 `ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>` 改为包内 `CoreRuntimeFacade`。**这两处保真修正的边界**：`rmd-07-migration.test.ts` 的搬迁表删掉 `apps/server/src/types/store.ts` 条目（67 → 66——宿主文件已删，表若保留该行会报「target missing」）；`platform-sdk/src/__tests__/server-infrastructure.test.ts` 的哨兵模块 ID 由 `"agent-runtime"` 改为 `"never-registered-module"`（宿主 preload 新登记了 agent-runtime 基线，原 ID 再也读不到「未初始化」状态）。两条断言语义保持不变。
+
+### 11.2 「按文件收敛」口径的确认与结果
+
+W1 验收口径经裁定取**按文件收敛**（而非「按符号」或「全包解锁」）：只要求 W1 触及的文件不再出现这三类宿主导入，不要求整包归零——后者是 W2 的交付。
+
+| 断言 | 实测 |
+| --- | --- |
+| `grep -rn '"@server/types' packages/agent-runtime/src` | **0** |
+| `grep -rn "@server/services/core-bootstrap" packages/agent-runtime/src` | **0** |
+| `grep -rln '"@server/config' packages/agent-runtime/src \| grep -v __tests__` | 4 个文件：`server/repositories/environment-orchestration.ts`、`services/orchestration-instance.ts`、`services/launch-spec-builder.ts`、`services/orchestration-bootstrap.ts`——均为 W2/W4 范围（launch-spec-builder 整体在 W4 删除） |
+| 非测试文件剩余 `@server/*` 值导入 | **27 行**，全部落在 W2 已声明的范围（`@server/db`、`@server/db/schema`、`@server/plugins/auth`、`@server/env`、`@server/schemas`、`@server/errors`、`@server/plugins/logger`、`@server/services/*`、`@server/repositories`） |
+| 全仓 `@server/types/store` 引用 | 3 处，全部是注释（observer / machine ws-types / workflow 测试），无 import |
+
+### 11.3 台账 −2 条（原预测「无」）
+
+门禁从「2378 模块 / **23** 条已登记例外 / 0 新增违规」变为「2383 模块 / **21** 条已登记例外 / 0 新增违规」：**两条原处于「已匹配」状态的指纹失去了违规**，随即被门禁判为陈旧并要求删除。
+
+删除的条目（`owner: "1.5"`，与 §5.3 预计删的 machine 条目不同批）：
+
+- `no-circular`：`@fenix/agent-runtime → @fenix/server-app`
+- `no-circular`：`@fenix/server-app → @fenix/agent-runtime`
+
+机制：这两条登记的是「环的见证边恰好落在这条跨包边上」的环。W1 删除了 `agent-concurrency.ts` / `acp-idle-monitor.ts` / `acp-ws-handler.ts` 对 `@server/config`、`@server/services/core-bootstrap` 的值导入，环上这些跨包边消失，dependency-cruiser 为剩余环重新挑出的见证边落回包内（该指纹只剩 `@fenix/agent-runtime → @fenix/agent-runtime` 那一条，仍是真实违规，见台账同组条目）。
+
+**这不等于宿主导入已收敛**：本包非测试代码仍有 27 行指向宿主的值导入（11.2 表），其中 `@server/db/schema`（7 个文件）的 `apps-boundary` 条目 owner 已改判 §1.7。删除动作同时满足台账规则「已登记但不再违规必须删除」；台账为待清偿清单，不是永久豁免名单。
+
+### 11.4 验证证据
+
+| 项 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck` | 12 步中 11 步 ✓；`server-and-script-tests` ✗（870 pass / 1 fail / 1 error，失败项全部来自 §10.5 的既有失败） |
+| `bun test packages/`（门禁 `package-tests`） | 7275 pass / 2 skip / 0 fail（593 文件） |
+| `bun test apps/web`（门禁 `web-app-tests`） | 946 pass / 0 fail |
+| `bun run check:dependencies` | ✓ 2383 模块、21 条已登记例外、0 条新增违规 |
+| `bun run architecture:check` | ✓ 2231 文件、11 规则、28 条例外 |
+| 冻结区绝缘性 | 10 个冻结文件中 9 个 `git diff HEAD` 为空；`server/transport/relay/external-relay.ts` 仅 1 行，且是 `WsConnection` 的 import 路径（`@server/transport/ws-types` → `../../types/ws-types`） |
+| 未创建 commit | 按项目规则（未经明确要求不创建 commit），W1 交付留在工作区 |
+
+`precheck` 唯一红项仍是 `apps/server/src/__tests__/db-pool-config.test.ts`：`createDbMock`（`setup-mocks.ts:256-280`）只定义 `db` / `client` / `initDb`，而该测试与 `apps/server/src/db/index.ts:44` 的 `attachDatabasePoolErrorLogger` 同出自旧提交 `9f189d747`；两个文件在本任务中均零改动。**因此 W1 同样不宣称 `precheck` 全绿**，只宣称「除该既有失败外全绿」。无关性证明与修复归属见 §10.5。
+
+### 11.5 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| 非测试文件 27 行宿主导入（`@server/db` / `db/schema` / `plugins/auth` / `env` / `schemas` / `errors` / `plugins/logger` / `services/*` / `repositories`） | W2（含 `@server/env` 与 `@server/plugins/auth`，随认证上下文裁定一并处置） |
+| `@server/config` 的 4 个消费文件 | `environment-orchestration.ts` / `orchestration-instance.ts` / `orchestration-bootstrap.ts` 归 W2；`launch-spec-builder.ts` 整体在 W4 删除 |
+| 三个并发上限不在测试基线的缺省值里 | `createAgentRuntimeModuleConfig` 只给四个超时/保活旋钮填部署默认；并发上限留 `undefined`（= 不限流），需要验证限流的用例显式传值。若 W2 之后有用例依赖非 `undefined` 的并发上限，届时按用例传入而不是改基线 |

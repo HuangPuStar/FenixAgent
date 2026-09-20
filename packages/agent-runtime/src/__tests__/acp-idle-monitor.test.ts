@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { SpawnedInstance } from "@fenix/agent-runtime/server";
-import { setConfig } from "@server/config";
+import type { CoreRuntimeFacade } from "@fenix/core";
+import { initializeAgentRuntimeModuleConfig } from "../server/testing";
 import {
   listInstanceActivitySnapshots,
   resetAcpIdleMonitorDeps,
@@ -30,7 +31,9 @@ describe("acp idle monitor", () => {
   beforeEach(() => {
     globalInstanceRegistry.clear();
     resetAcpIdleMonitorDeps();
-    setConfig({
+    // 空闲 / 巡检 / 业务超时走模块配置（不再是宿主 config）：用例断言的时间点（1200s 空闲、3600s 业务静默）
+    // 依赖这组值，缺省基线是 300 / 300 / 1200，会让「未超时」的断言提前成立。
+    initializeAgentRuntimeModuleConfig({
       acpIdleTimeoutSeconds: 1200,
       acpIdleSweepIntervalSeconds: 60,
       acpActivityTimeoutSeconds: 3600,
@@ -81,7 +84,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: busyInstance.id, status: "running" },
           ],
-        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === busyInstance.id) return busyInstance;
@@ -131,7 +134,7 @@ describe("acp idle monitor", () => {
               pluginMetadata: { port: 9527 },
             },
           ],
-        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === trackedInstance.id) return trackedInstance;
         return;
@@ -185,7 +188,7 @@ describe("acp idle monitor", () => {
             { instanceId: idleInstance.id, status: "running" },
             { instanceId: activeInstance.id, status: "running" },
           ],
-        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === idleInstance.id) return idleInstance;
         if (instanceId === activeInstance.id) return activeInstance;
@@ -218,7 +221,7 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [{ instanceId: staleInstance.id, status: "running" }],
-        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === staleInstance.id) return staleInstance;
         return;
@@ -250,7 +253,7 @@ describe("acp idle monitor", () => {
       getCoreRuntime: () =>
         ({
           listInstances: () => [{ instanceId: activeInstance.id, status: "running" }],
-        }) as unknown as ReturnType<typeof import("@server/services/core-bootstrap").getCoreRuntime>,
+        }) as unknown as CoreRuntimeFacade,
       getInstance: (instanceId: string) => {
         if (instanceId === activeInstance.id) return activeInstance;
         return;

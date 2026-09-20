@@ -1,8 +1,8 @@
 import type { CoreRuntimeFacade, RuntimeInstanceStatus } from "@fenix/core";
 import { AppError } from "@fenix/platform-sdk";
-import { config } from "@server/config";
-import { getCoreRuntime } from "@server/services/core-bootstrap";
-import type { InstanceSpawnSource, InstanceSupplement } from "@server/types/store";
+import { getAgentRuntimeConfig } from "../server/config";
+import { getBoundCoreRuntime as getCoreRuntime } from "../server/services/core-runtime-port";
+import type { InstanceSpawnSource, InstanceSupplement } from "../types/instance";
 import { globalInstanceRegistry, type InstanceRegistry } from "./instance-registry";
 
 const _deps = {
@@ -154,17 +154,20 @@ export function assertAgentConcurrencyAvailable(
   runtime: Pick<CoreRuntimeFacade, "listInstances"> = _deps.getRuntime(),
   registry: Pick<InstanceRegistry, "get"> = _deps.registry,
 ): void {
-  const totalLimit = config.agentMaxConcurrency;
+  // 配置在调用时读取（与 initializeApplicationInfrastructure 的装配顺序解耦）；三个上限缺省即不限制。
+  const {
+    agentMaxConcurrency: totalLimit,
+    userAgentMaxConcurrency: userLimit,
+    scheduledAgentMaxConcurrency: scheduledLimit,
+  } = getAgentRuntimeConfig();
   if (totalLimit && getActiveAgentCount(runtime) >= totalLimit) {
     throw new AppError("已达到 Agent 总并发上限", "AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }
 
-  const userLimit = config.userAgentMaxConcurrency;
   if (userLimit && getActiveUserAgentCount(userId, runtime, registry) >= userLimit) {
     throw new AppError("已达到当前用户 Agent 并发上限", "USER_AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }
 
-  const scheduledLimit = config.scheduledAgentMaxConcurrency;
   if (source === "scheduled" && scheduledLimit && getActiveScheduledAgentCount(runtime, registry) >= scheduledLimit) {
     throw new AppError("已达到定时任务 Agent 并发上限", "SCHEDULED_AGENT_CONCURRENCY_LIMIT_REACHED", 429);
   }

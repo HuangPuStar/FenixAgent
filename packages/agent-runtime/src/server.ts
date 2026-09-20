@@ -25,6 +25,9 @@ export {
   SpawnInstanceFromEnvironmentResponseSchema,
 } from "./schemas/instance.schema";
 export * from "./schemas/openai-chat.schema";
+// 模块配置读取入口：本包 7 个运行态旋钮（并发上限、ACP 超时、WS 保活）的唯一真相，宿主经
+// `initializeApplicationInfrastructure({ moduleConfigs })` 注入。测试装配入口在 `./server/testing`，不出现在这里。
+export * from "./server/config";
 export * from "./server/instance/agent-instance-id";
 export * from "./server/repositories";
 export * from "./server/repositories/environment-orchestration";
@@ -59,3 +62,9 @@ export * from "./services/orchestration-machine-cleanup";
 export * from "./services/session";
 export * from "./transport/agent-node-bridge";
 export * from "./transport/event-bus";
+// 本包运行态类型（1.4 W1 从宿主 `@server/types/*` 收回）：ACP 连接登记项与快照、实例注册表补充字段、
+// 环境注册报文。`WsConnection` 一并导出，使 `AcpConnectionEntry["ws"]` 这类派生在包外可解析。
+export * from "./types/acp-connection";
+export * from "./types/environment";
+export * from "./types/instance";
+export * from "./types/ws-types";

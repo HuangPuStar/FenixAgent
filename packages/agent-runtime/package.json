@@ -16,6 +16,10 @@
       "types": "./src/server.ts",
       "default": "./src/server.ts"
     },
+    "./server/testing": {
+      "types": "./src/server/testing.ts",
+      "default": "./src/server/testing.ts"
+    },
     "./server/environment": {
       "types": "./src/server/repositories/environment.ts",
       "default": "./src/server/repositories/environment.ts"

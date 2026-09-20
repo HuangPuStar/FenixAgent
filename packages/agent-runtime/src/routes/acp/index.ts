@@ -4,7 +4,6 @@ import { AppError } from "@fenix/platform-sdk";
 import { validateEnv } from "@server/env";
 import type { RequestAuthResult } from "@server/plugins/auth";
 import { authenticateRequest, authGuardPlugin } from "@server/plugins/auth";
-import type { WsConnection } from "@server/transport/ws-types";
 import Elysia from "elysia";
 import { v4 as uuid } from "uuid";
 import {
@@ -21,6 +20,7 @@ import {
   handleExternalRelayMessage,
   handleExternalRelayOpen,
 } from "../../server/transport/relay/external-relay";
+import type { WsConnection } from "../../types/ws-types";
 
 /** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */
 const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
