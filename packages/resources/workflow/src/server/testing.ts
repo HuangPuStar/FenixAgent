@@ -67,10 +67,9 @@ const workflowDbProxy = new Proxy({} as Record<string, unknown>, {
  * 必须在 `beforeEach` 调用：初始化只允许一次，`resetAllStubs()` 会连同应用基础设施一起复位，
  * 因此每个用例都能重新装配自己的配置与 DB 替身。
  *
- * 第二个参数声明「本用例还会读到哪些模块的配置」：个别用例经 `@fenix/agent-runtime/server` 的
- * `buildLaunchSpec` 间接读其他资源包的模块配置（如 `skill` 的技能根目录），此时必须一并声明，否则
- * 生产读取路径会以「模块 X 未声明应用基础设施配置」失败。配置对象由**对方包的 `/server/testing`
- * 工厂**产出（字段清单归各包自持），本包不手抄字段表。
+ * 第二个参数声明「本用例还会读到哪些模块的配置」：用例经本包的生产路径间接读其他资源包的模块配置
+ * （如 `skill` 的技能根目录）时必须一并声明，否则生产读取路径会以「模块 X 未声明应用基础设施配置」
+ * 失败。配置对象由**对方包的 `/server/testing` 工厂**产出（字段清单归各包自持），本包不手抄字段表。
  */
 export function initializeWorkflowModuleConfig(
   overrides: Partial<WorkflowModuleConfig> = {},

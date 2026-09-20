@@ -70,6 +70,20 @@ export interface AgentNodeServiceConfig {
 }
 
 /**
+ * 启动一个实例所需的身份：环境 + 它绑定的 Agent 配置。
+ *
+ * 编排域只负责「在哪个节点上为哪个环境建实例」；实例起来之前需要什么运行参数
+ * （模型密钥、Skill、MCP、知识库）由 Runtime 侧的启动参数端口组装（CE 1.4 W4），
+ * 本域不构建也不持有 LaunchSpec。
+ */
+export interface SpawnInstanceTarget {
+  /** 来源环境 ID。 */
+  environmentId: string;
+  /** 环境绑定的 Agent 配置 ID（未绑定的环境在 AgentController 阶段即被拒绝）。 */
+  agentConfigId: string;
+}
+
+/**
  * AgentNodeService 的最小依赖面（供 AgentController 等上层消费）。
  *
  * 只声明上层需要的两个操作，`AgentNodeService` 与测试 mock 均可满足该结构，

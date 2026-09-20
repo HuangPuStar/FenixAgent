@@ -84,6 +84,7 @@ export function createStubSkillService(overrides: Partial<SkillService> = {}): S
     remove: unstubbed("service.remove"),
     removeByName: unstubbed("service.removeByName"),
     findRowUnscoped: unstubbed("service.findRowUnscoped"),
+    listRowsByIdsUnscoped: unstubbed("service.listRowsByIdsUnscoped"),
     listByOrganizationUnscoped: unstubbed("service.listByOrganizationUnscoped"),
     findByNameUnscoped: unstubbed("service.findByNameUnscoped"),
     setVisibilityUnscoped: unstubbed("service.setVisibilityUnscoped"),

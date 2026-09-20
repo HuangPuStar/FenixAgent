@@ -1,12 +1,10 @@
 /**
- * 编排域装配层：构造并缓存 AgentController / LaunchSpecBuilder 单例（I4 集成第二阶段）。
+ * 编排域装配层：构造并缓存 AgentController 单例（I4 集成第二阶段）。
  *
  * 依赖全部来自 src/ 侧已实现的 Repo 单例与 bridge 单例：
  *   - agentNodeService：由宿主经 Machine port 绑定的本地节点感知包装
  *     （local-default 占位节点 + agent-node-bridge 的真实节点委托）
- *   - agentConfigRepo / agentEngineRepo / environmentOrchestrationRepo：
- *     I4 第一阶段实现的编排域 Repo（src/repositories/）
- *   - workspaceRoot：模块配置（宿主 `WORKSPACE_ROOT`，默认 cwd/workspaces）
+ *   - environmentOrchestrationRepo：I4 第一阶段实现的编排域 Repo（src/repositories/）
  *
  * 单例缓存是必要的：AgentController 内部维护活跃实例表，多个实例会各自持有一份
  * 互不可见的实例表，导致 stopInstance / listInstances 语义分裂。
@@ -18,31 +16,12 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { agentConfigRepo, resolveAgentNode } from "@fenix/agent-config/server";
-import { AgentController, LaunchSpecBuilder } from "@fenix/orchestration";
+import { AgentController } from "@fenix/orchestration";
 import { AppError } from "@fenix/platform-sdk";
 import { getSandboxConfig, sandboxExecutionHandler } from "@fenix/resource-sandbox/server";
-import { agentEngineRepo } from "@server/repositories";
-import { getAgentRuntimeConfig } from "../server/config";
 import type { ExecutionNodeResolver } from "../server/repositories/environment-orchestration";
 import { environmentOrchestrationRepo } from "../server/repositories/environment-orchestration";
 import { getLocalNodeAgentNodeService } from "../server/services/local-node-agent-node-service-port";
-
-let launchSpecBuilder: LaunchSpecBuilder | null = null;
-
-/** 获取 LaunchSpecBuilder 单例（按 envId + userId 聚合构建编排域 LaunchSpec）。 */
-export function getOrchestrationLaunchSpecBuilder(): LaunchSpecBuilder {
-  if (!launchSpecBuilder) {
-    launchSpecBuilder = new LaunchSpecBuilder({
-      agentConfigRepo,
-      environmentRepo: environmentOrchestrationRepo,
-      agentEngineRepo,
-      // 模块配置的 workspaceRoot 已由宿主 resolve 为绝对路径（WORKSPACE_ROOT 默认 ./workspaces）
-      workspaceRoot: getAgentRuntimeConfig().workspaceRoot,
-    });
-  }
-  return launchSpecBuilder;
-}
 
 let controller: AgentController | null = null;
 
@@ -53,7 +32,6 @@ export function getOrchestrationController(): AgentController {
       // 本地节点感知包装：无 machineId 的环境回退 local-default 时返回本地占位节点，
       // 其余 machineId 委托真实 AgentNodeService（远程机器 WS 节点）。
       agentNodeService: getLocalNodeAgentNodeService(),
-      launchSpecBuilder: getOrchestrationLaunchSpecBuilder(),
       environmentRepo: environmentOrchestrationRepo,
     });
   }
@@ -64,8 +42,8 @@ export function getOrchestrationController(): AgentController {
  * 准备 sandbox 执行节点并返回其 machineId。
  *
  * 幂等性：SandboxManager.createOrReuse 按 provider + pool + userId 复用活跃实例，
- * 同一环境 + 用户的多次解析（AgentController 与 LaunchSpecBuilder 各调一次
- * getEnvironment）会命中同一 sandbox 实例，machineId 保持一致（A-P2.2 同源约束）。
+ * 同一环境 + 用户的多次解析（每次 spawn 一次 getEnvironment，重试与并发 spawn 会各调一次）
+ * 会命中同一 sandbox 实例，machineId 保持一致（A-P2.2 同源约束）。
  */
 async function prepareSandboxNode(
   sandboxPoolId: string,
@@ -87,6 +65,57 @@ async function prepareSandboxNode(
 }
 
 /**
+ * `agent_config.agentNode` 列的规范化结果；`null` 表示形状非法（调用方回退 `machineId` 列）。
+ */
+type NormalizedAgentNode =
+  | { readonly kind: "machine"; readonly machineId: string }
+  | { readonly kind: "sandbox"; readonly sandboxPoolId: string }
+  // 空对象 `{}`：显式「未指定节点」。与 `null`（形状非法）语义不同，见 readExplicitNode
+  | { readonly kind: null };
+
+/**
+ * 规范化 `agentNode` JSON 列；`{}` → 显式未指定，形状非法 → `null`。
+ *
+ * 本函数与 `@fenix/agent-config` 的 `normalizeAgentNode` **规则同一**：agent-runtime 不得
+ * 依赖资源包（工程规范 §2.3 依赖矩阵），而执行节点解析发生在本包（阶段 2 任务 1.4 的 W4b
+ * 裁定 A），故本包保留一份读取口径。两份文本由
+ * `apps/server/src/__tests__/orchestration-node-resolution-parity.test.ts` 用同一组输入钉住：
+ * 任一侧改规则而另一侧未跟随会直接红。
+ */
+function normalizeAgentNodeValue(input: unknown): NormalizedAgentNode | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).length === 0) return { kind: null };
+  if (value.kind === "machine" && typeof value.machineId === "string" && value.machineId.length > 0) {
+    return { kind: "machine", machineId: value.machineId };
+  }
+  if (value.kind === "sandbox" && typeof value.sandboxPoolId === "string" && value.sandboxPoolId.length > 0) {
+    return { kind: "sandbox", sandboxPoolId: value.sandboxPoolId };
+  }
+  return null;
+}
+
+/**
+ * 读取环境行的显式执行节点：`agentNode` 优先，形状非法时回退 `machineId` 列。
+ *
+ * 与 `@fenix/agent-config` 的 `resolveAgentNode` 逐字等价（含边界）：
+ * `agentNode` 为 `null`/`undefined` 或形状非法 → 用 `machineId` 列（空串视为未绑定）；
+ * `agentNode` 为 `{}` → 显式未指定，列被忽略；两者都取不到 → 两个字段均为 `null`。
+ */
+function readExplicitNode(input: { agentNode: unknown; configMachineId: string | null }): {
+  readonly sandboxPoolId: string | null;
+  readonly machineId: string | null;
+} {
+  const hasAgentNode = input.agentNode !== null && input.agentNode !== undefined;
+  const normalized = hasAgentNode ? normalizeAgentNodeValue(input.agentNode) : null;
+  if (normalized?.kind === "sandbox") return { sandboxPoolId: normalized.sandboxPoolId, machineId: null };
+  if (normalized?.kind === "machine") return { sandboxPoolId: null, machineId: normalized.machineId };
+  // `{}`（kind === null）→ 显式未指定，忽略列；`null`（形状非法）或无 agentNode → 回退列
+  if (normalized?.kind === null) return { sandboxPoolId: null, machineId: null };
+  return { sandboxPoolId: null, machineId: input.configMachineId || null };
+}
+
+/**
  * 执行节点解析器工厂（R6）：决策逻辑与依赖分离，便于直接单测。
  *
  * 依赖以快照注入（prepareSandbox 实现 + sandbox 开关 + 默认资源池）：
@@ -98,7 +127,7 @@ async function prepareSandboxNode(
  *
  * 返回 null 表示无业务解析结果，由 EnvironmentRepo 走默认 fallback 链
  * （agentNode 为 null 时 agent_config.machineId 列 → RCS_DEFAULT_MACHINE_ID →
- * local-default；agentNode 存在时跳过列，与 resolveAgentNode 语义对齐）。
+ * local-default；agentNode 存在时跳过列，与 readExplicitNode 的语义对齐）。
  */
 export function createExecutionNodeResolver(
   deps: {
@@ -126,15 +155,16 @@ export function createExecutionNodeResolver(
     const sandboxEnabled = deps.sandboxEnabled ?? sandboxConfig.sandboxEnabled;
     const defaultSandboxPoolId =
       deps.defaultSandboxPoolId === undefined ? sandboxConfig.defaultSandboxPoolId : deps.defaultSandboxPoolId;
-    const agentNode = resolveAgentNode({ agentNode: input.agentNode, machineId: input.configMachineId });
-    const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
-    const explicitMachineId = agentNode?.kind === "machine" ? agentNode.machineId : null;
+    const { sandboxPoolId: explicitSandboxPoolId, machineId: explicitMachineId } = readExplicitNode({
+      agentNode: input.agentNode,
+      configMachineId: input.configMachineId,
+    });
 
     // 显式 sandbox：环境绑定沙盒资源池，准备执行节点（含 ACP 回连等待）
     if (explicitSandboxPoolId) {
       return prepareSandbox(explicitSandboxPoolId, input.userId ?? "", input.organizationId);
     }
-    // 显式 machine：agentNode 中显式声明的机器
+    // 显式 machine：agentNode 中显式声明的机器，或回退到的 machineId 列
     if (explicitMachineId) {
       return Promise.resolve(explicitMachineId);
     }
@@ -158,7 +188,6 @@ environmentOrchestrationRepo.setExecutionNodeResolver(resolveExecutionNode);
 /** 重置单例缓存（仅用于测试）。 */
 export function resetOrchestrationBootstrap(): void {
   controller = null;
-  launchSpecBuilder = null;
   // 测试注入自定义 resolver 后必须重置，避免跨测试污染
   environmentOrchestrationRepo.setExecutionNodeResolver(resolveExecutionNode);
 }

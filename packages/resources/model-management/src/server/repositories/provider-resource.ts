@@ -6,7 +6,7 @@ import type {
   ScopedRow,
 } from "@fenix/platform-sdk";
 import { provider } from "@server/db/schema";
-import { asc, eq, type SQL } from "drizzle-orm";
+import { and, asc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { PROVIDER_RESOURCE_TYPE, providerResource } from "../access/provider-resource";
 import { getModelManagementDatabase } from "../db";
@@ -117,6 +117,24 @@ export interface ProviderRepository {
    * （LaunchSpec 构建、模型网关 provider 同步）。用户请求路径一律经 `findReadable*`。
    */
   findByIdUnscoped(input: { resourceId: string }): Promise<ProviderRow | undefined>;
+  /**
+   * 无授权按 (组织, 资源 ID) 读取单行。
+   *
+   * 与 {@link findByIdUnscoped} 的区别是它额外要求归属组织一致——子表行（`model`）随父行冗余了
+   * `organization_id`，launch spec 构建要用它确认"模型行引用的 Provider 确实属于同一个组织"，
+   * 避免读到跨组织拼出来的脏数据。
+   */
+  findRowByOrganizationUnscoped(input: {
+    resourceId: string;
+    organizationId: string;
+  }): Promise<ProviderRow | undefined>;
+  /**
+   * 无授权按组织列出（按 {@link PROVIDER_LIST_ORDER}）。
+   *
+   * 系统路径用（launch spec 的"首个可用模型"要枚举组织内 Provider），调用方只表达"这个组织的"，
+   * 不重复声明排序键。
+   */
+  listByOrganizationUnscoped(input: { organizationId: string }): Promise<readonly ProviderRow[]>;
 }
 
 /** 主表归属列的唯一定义来自资源注册，仓储不再重复声明列名。 */
@@ -233,6 +251,23 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
     async findByIdUnscoped(input) {
       const rows = await database().select().from(provider).where(eq(provider.id, input.resourceId)).limit(1);
       return rows[0];
+    },
+
+    async findRowByOrganizationUnscoped(input) {
+      const rows = await database()
+        .select()
+        .from(provider)
+        .where(and(eq(provider.id, input.resourceId), eq(provider.organizationId, input.organizationId)))
+        .limit(1);
+      return rows[0];
+    },
+
+    async listByOrganizationUnscoped(input) {
+      return database()
+        .select()
+        .from(provider)
+        .where(eq(provider.organizationId, input.organizationId))
+        .orderBy(...PROVIDER_LIST_ORDER);
     },
   };
 }

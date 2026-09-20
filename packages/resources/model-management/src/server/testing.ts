@@ -103,6 +103,8 @@ export function createStubModelRepository(overrides: Partial<ModelRepository> = 
     countByProviderIds: unstubbed("models.countByProviderIds"),
     findById: unstubbed("models.findById"),
     findByModelId: unstubbed("models.findByModelId"),
+    findRowUnscoped: unstubbed("models.findRowUnscoped"),
+    findFirstByProviderUnscoped: unstubbed("models.findFirstByProviderUnscoped"),
     upsert: unstubbed("models.upsert"),
     updateById: unstubbed("models.updateById"),
     updateByModelId: unstubbed("models.updateByModelId"),
@@ -122,6 +124,8 @@ export function createStubProviderRepository(overrides: Partial<ProviderReposito
     updateById: unstubbed("repository.updateById"),
     removeById: unstubbed("repository.removeById"),
     findByIdUnscoped: unstubbed("repository.findByIdUnscoped"),
+    findRowByOrganizationUnscoped: unstubbed("repository.findRowByOrganizationUnscoped"),
+    listByOrganizationUnscoped: unstubbed("repository.listByOrganizationUnscoped"),
     ...overrides,
   };
 }

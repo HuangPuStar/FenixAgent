@@ -1,15 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { getReadableAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { createLogger } from "@fenix/logger";
 import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { agentConfig, environment, machine } from "@server/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { toActorContext } from "../../services/actor-context";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
 import { getAgentRuntimeDatabase } from "../db";
 import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories/environment";
 import { environmentRepo } from "../repositories/environment";
+import { getAgentConfigLookupPort } from "./agent-config-lookup-port";
 import { agentInstanceService } from "./agent-instance-service";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
@@ -154,20 +153,23 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
   }
 
   // Agent 配置校验：环境必须绑定 Agent 配置，并自动填充 machineName
+  // 读取经 `AgentConfigLookupPort`：本包不再持有资源行，只取「叫什么、跑在哪」的投影，
+  // 可见性判定与节点解析（`agentNode` 优先、回退 `machineId`）都在 agent-config 完成。
   let machineName: string | undefined;
-  const agent = await getReadableAgentConfigById(
-    toActorContext({ organizationId: organizationId ?? userId, userId, role: "owner" }),
-    params.agentConfigId,
-  );
+  const agent = await getAgentConfigLookupPort().findVisibleAgentConfig({
+    agentConfigId: params.agentConfigId,
+    organizationId: organizationId ?? userId,
+    userId,
+  });
   if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
   // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
-  const agentNode = resolveAgentNode(agent);
-  if (agentNode?.kind === "machine") {
+  // （machineName 推导留在本包：machine 表属本包数据，不构成跨包依赖）
+  if (agent.node?.kind === "machine") {
     const db = getAgentRuntimeDatabase();
     const m = await db
       .select({ agentName: machine.agentName })
       .from(machine)
-      .where(eq(machine.id, agentNode.machineId))
+      .where(eq(machine.id, agent.node.machineId))
       .limit(1);
     machineName = m[0]?.agentName ?? undefined;
   }
@@ -229,20 +231,20 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     patch.name = params.name;
   }
   if (params.agentConfigId !== undefined) {
-    const agent = await getReadableAgentConfigById(
-      toActorContext({ organizationId, userId: existingEnv.userId ?? organizationId, role: "owner" }),
-      params.agentConfigId,
-    );
+    const agent = await getAgentConfigLookupPort().findVisibleAgentConfig({
+      agentConfigId: params.agentConfigId,
+      organizationId,
+      userId: existingEnv.userId ?? organizationId,
+    });
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
     patch.agentConfigId = params.agentConfigId;
     let machineName: string | null = null;
-    const agentNode = resolveAgentNode(agent);
-    if (agentNode?.kind === "machine") {
+    if (agent.node?.kind === "machine") {
       const db = getAgentRuntimeDatabase();
       const m = await db
         .select({ agentName: machine.agentName })
         .from(machine)
-        .where(eq(machine.id, agentNode.machineId))
+        .where(eq(machine.id, agent.node.machineId))
         .limit(1);
       machineName = m[0]?.agentName ?? null;
     }

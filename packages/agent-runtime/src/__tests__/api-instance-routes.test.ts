@@ -32,7 +32,7 @@ describe("API Instance Routes", () => {
     setTestAuth({ organizationId: "org-1", userId: "user-1" });
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
-      getReadableAgentConfigById: async () => null,
+      findVisibleAgentConfig: async () => null,
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },
@@ -59,7 +59,7 @@ describe("API Instance Routes", () => {
   // connect 接口应支持外部共享 Agent，并为当前用户创建独立 runtime environment。
   test("POST /api/agents/:agentId/instances/connect creates user runtime for shared agent", async () => {
     setApiInstanceDeps({
-      getReadableAgentConfigById: async () =>
+      findVisibleAgentConfig: async () =>
         ({
           id: "agc-demo",
           organizationId: "org-2",
@@ -121,7 +121,7 @@ describe("API Instance Routes", () => {
   // 直出会向外部 API Key 调用方泄漏内部标识（main 遗留透传，合并后已脱敏）。
   test("ensureInstanceRuntime 抛 SandboxProviderNotConfiguredError 返回 503 SERVICE_UNAVAILABLE 且 message 脱敏", async () => {
     setApiInstanceDeps({
-      getReadableAgentConfigById: async () =>
+      findVisibleAgentConfig: async () =>
         ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
       listEnvironmentsByOrganizationId: async () => [],
       createWebEnvironment: async () =>
@@ -150,7 +150,7 @@ describe("API Instance Routes", () => {
   // 不得泄漏 sbi_* sandboxId（main 遗留透传点，合并后已脱敏）。
   test("ensureInstanceRuntime 抛 SandboxRuntimeNotReadyError 返回 503 且不泄漏 sandboxId", async () => {
     setApiInstanceDeps({
-      getReadableAgentConfigById: async () =>
+      findVisibleAgentConfig: async () =>
         ({ id: "agc-sandbox", organizationId: "org-1", name: "Sandbox Agent", description: null }) as never,
       listEnvironmentsByOrganizationId: async () => [],
       createWebEnvironment: async () =>
@@ -176,7 +176,7 @@ describe("API Instance Routes", () => {
   // 不再拼接 error.message（可能携带 machineId，属泄漏口）
   test("ensureInstanceRuntime 抛普通 Error 返回 500 INTERNAL_ERROR 且 message 脱敏", async () => {
     setApiInstanceDeps({
-      getReadableAgentConfigById: async () =>
+      findVisibleAgentConfig: async () =>
         ({ id: "agc-demo", organizationId: "org-1", userId: "user-1", name: "Demo Agent" }) as never,
       listEnvironmentsByOrganizationId: async () => [],
       createWebEnvironment: async () =>

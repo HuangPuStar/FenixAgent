@@ -702,16 +702,18 @@ export async function findMachineConnectionByAgentId(agentId: string): Promise<A
   if (cachedMachineId) {
     return findMachineConnectionById(cachedMachineId);
   }
-  // 2. 查 environment → agentConfig → machineId
+  // 2. 查 environment → agentConfig → 执行节点（无授权读：调用方已持有 environment 并校验过归属）
   const { environmentRepo } = await import("../repositories/environment");
   const env = await environmentRepo.getById(agentId);
   if (!env?.agentConfigId) return null;
-  const { getAgentConfigById } = await import("@fenix/agent-config/server");
-  const agentCfg = await getAgentConfigById(env.agentConfigId);
-  if (!agentCfg?.machineId) return null;
+  const { getAgentConfigLookupPort } = await import("../services/agent-config-lookup-port");
+  const agentCfg = await getAgentConfigLookupPort().findAgentConfig(env.agentConfigId);
+  // 只有 machine 节点有 machineId；sandbox 节点在本缓存（machineId → 连接）里无对应键。
+  if (agentCfg?.node?.kind !== "machine") return null;
+  const machineId = agentCfg.node.machineId;
   // 3. 缓存并查找连接
-  agentMachineCache.set(agentId, agentCfg.machineId);
-  return findMachineConnectionById(agentCfg.machineId);
+  agentMachineCache.set(agentId, machineId);
+  return findMachineConnectionById(machineId);
 }
 
 /** 导出 agentMachineCache 供 relay-handler 预热和查询 */

@@ -63,6 +63,8 @@ export * from "./server/schemas/config.schema";
 // Peri 任务详情 schema 随本包迁出宿主（见 README「边界残留」）：宿主路由
 // `apps/server/src/routes/web/peri-task-details.ts` 经本入口取 schema。
 export * from "./server/schemas/peri-task-details";
+export type { FirstConfiguredModel, ModelService, ModelServiceDeps } from "./server/services/model-service";
+export { createModelService } from "./server/services/model-service";
 export * from "./server/services/model-write-data";
 export type { ProviderService, ProviderServiceReadInput } from "./server/services/provider-service";
 export { createProviderService, parseProviderResourceKey } from "./server/services/provider-service";

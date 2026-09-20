@@ -43,7 +43,7 @@ let reservationTokenSeq = 0;
  * 已通过并发检查、实例尚未在 core 快照 / supplement 可见的 in-flight 预留。
  *
  * 设计原因（A-P2.1）：检查（assertAgentConcurrencyAvailable）与 supplement 注册
- * 之间隔着 controller.spawnInstance、LaunchSpec 构建、core launch 等多个 await，
+ * 之间隔着 controller.spawnInstance、启动参数组装、core launch 等多个 await，
  * 期间新实例在用户级/定时级统计中完全不可见，N 个并发 spawn 可全部通过检查造成
  * 超发。begin/release 均为同步函数（Bun 单线程 event loop 下 Set 操作原子），
  * 检查与登记合并到同一同步段即消除该窗口。

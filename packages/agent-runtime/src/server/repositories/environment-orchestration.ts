@@ -41,7 +41,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    * 按环境 ID 读取环境数据；仅记录不存在时返回 `null`。
    *
    * 无 agentConfigId 的环境（ACP/Bridge 注册路径创建）不在此拒绝：编排域
-   * LaunchSpecBuilder 的 agentConfig 必填约束在 spawn 层兜底（LaunchSpecBuildError
+   * AgentController 的 agentConfig 必填约束在 spawn 层兜底（LaunchSpecBuildError
    * → 422），这里只需保证 machineId 仍按 fallback 链解析，与
    * src/services/remote-file-service.ts 的 getRemoteMachineId 语义对齐。
    *
@@ -79,7 +79,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
     const row = rows[0];
     // 仅记录不存在时返回 null。无 agentConfigId 的环境（ACP/Bridge 注册路径创建）不再在此
     // 拒绝（断裂点 5）：machineId fallback 仍需执行，agentConfig 必填约束由编排域
-    // LaunchSpecBuilder 在 spawn 层兜底（错误从 404 变为 422，见类注释）。
+    // AgentController 在 spawn 层兜底（错误从 404 变为 422，见类注释）。
     if (!row) return null;
 
     // 业务节点解析（sandbox / agentNode）优先，默认链兜底。

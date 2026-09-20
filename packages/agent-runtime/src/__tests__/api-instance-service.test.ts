@@ -7,7 +7,7 @@ describe("api instance service", () => {
       createWebEnvironment: async () => {
         throw new Error("not stubbed");
       },
-      getReadableAgentConfigById: async () => {
+      findVisibleAgentConfig: async () => {
         throw new Error("not stubbed");
       },
       listEnvironmentsByOrganizationId: async () => [],
@@ -29,7 +29,7 @@ describe("api instance service", () => {
     const spawnCalls: unknown[] = [];
     setApiInstanceDeps({
       listEnvironmentsByOrganizationId: async () => [],
-      getReadableAgentConfigById: async () =>
+      findVisibleAgentConfig: async () =>
         ({
           id: "agc-1",
           name: "Demo Agent",
@@ -58,7 +58,7 @@ describe("api instance service", () => {
       },
     });
 
-    const result = await connectAgentInstance({ organizationId: "org-1", userId: "user-1", role: "owner" }, "agc-1");
+    const result = await connectAgentInstance({ organizationId: "org-1", userId: "user-1" }, "agc-1");
 
     expect(result.instanceId).toBe("inst-created");
     expect(spawnCalls).toHaveLength(1);

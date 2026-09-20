@@ -15,6 +15,7 @@ export {
   type McpServerModuleDeps,
   type McpServerServerModule,
 } from "./server/module";
+export type { McpServerRow } from "./server/repositories/mcp-server";
 export { createApiMcpRoutes } from "./server/routes/api/mcp";
 export type { McpRouteDependencies } from "./server/routes/dependencies";
 export { default as knowledgeMcpRoutes } from "./server/routes/mcp/knowledge";
@@ -23,3 +24,4 @@ export { getMcpServerModule, installMcpServerModule } from "./server/runtime";
 export * from "./server/services/config/agent-config-mcp";
 export * from "./server/services/config/mcp-config";
 export * from "./server/services/mcp-inspector";
+export type { McpServerService } from "./server/services/mcp-server-service";

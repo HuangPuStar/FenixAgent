@@ -7,7 +7,7 @@ import type {
   ScopedRow,
 } from "@fenix/platform-sdk";
 import { mcpServer, mcpTool } from "@server/db/schema";
-import { and, eq, type SQL, sql } from "drizzle-orm";
+import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { MCP_SERVER_RESOURCE_TYPE, mcpServerResource } from "../access/mcp-server-resource";
 import { getMcpDatabase } from "../db";
@@ -90,6 +90,21 @@ export interface McpServerRepository {
   deleteById(input: { resourceId: string }): Promise<boolean>;
   /** 删除服务器与其缓存的 tools（同一事务）：`mcp_tool` 没有独立生命周期，不能留下孤儿行。 */
   deleteWithTools(input: { resourceId: string; organizationId: string; serverName: string }): Promise<boolean>;
+  /**
+   * 无授权读取单行。
+   *
+   * 命名里带 `Unscoped` 是为了让调用点在代码评审中一眼可见：它绕过授权谓词，只允许系统路径调用
+   * （launch spec 构建要按绑定表给出的 ID 取回 MCP 配置）。用户请求路径一律经 `findReadable*`。
+   */
+  findByIdUnscoped(input: { resourceId: string }): Promise<McpServerRow | undefined>;
+  /**
+   * 无授权按 ID 批量读取（launch spec 构建）。
+   *
+   * 与 {@link findByIdUnscoped} 同一授权前提，差别只在形状与查询次数：调用方持有的是绑定表给出的
+   * ID 集合。**不过滤 `enabled` 与 `visibility`**：禁用项由调用方按既有语义记日志并跳过，读层擅自
+   * 过滤会让"配置了但被禁用"与"配置丢失"两种情况无法区分。
+   */
+  listByIdsUnscoped(input: { resourceIds: readonly string[] }): Promise<readonly McpServerRow[]>;
   countTools(input: { organizationId: string; serverName: string }): Promise<number>;
   listTools(input: { organizationId: string; serverName: string }): Promise<McpToolRow[]>;
   replaceTools(input: {
@@ -204,6 +219,20 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
         })
         .returning({ id: mcpServer.id });
       return rows[0]?.id;
+    },
+
+    async findByIdUnscoped(input) {
+      const rows = await getMcpDatabase().select().from(mcpServer).where(eq(mcpServer.id, input.resourceId)).limit(1);
+      return rows[0];
+    },
+
+    async listByIdsUnscoped(input) {
+      // 空集合直接返回：`inArray` 配空数组只会产生恒假条件，语义在 SQL 里表达不必要。
+      if (input.resourceIds.length === 0) return [];
+      return getMcpDatabase()
+        .select()
+        .from(mcpServer)
+        .where(inArray(mcpServer.id, [...input.resourceIds]));
     },
 
     async updateById(input) {

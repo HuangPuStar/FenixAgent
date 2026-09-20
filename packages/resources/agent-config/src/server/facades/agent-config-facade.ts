@@ -65,6 +65,14 @@ export interface AgentConfigFacadeApi {
   get(actor: ActorContext, nameOrKey: string): Promise<AuthorizedAgentConfig | undefined>;
   getById(actor: ActorContext, resourceId: string): Promise<AuthorizedAgentConfig | undefined>;
   /**
+   * 系统路径读取：按资源 ID 走同一条受控读取（同一个 `read` 谓词），**只返回数据字段**。
+   *
+   * 与 {@link getById} 的唯一差别是不为结果补 `access`：`access` 是"当前主体能做什么"的结论，属于
+   * 持有 actor 的协议层视图；系统路径（LaunchSpec 构建、环境绑定校验）只要数据，带上它会让调用方
+   * 以为自己拿到了权限结论（review §9.1 的"`access` 元数据虚高"）。顺带省掉一次 `resolveAccess` 查询。
+   */
+  findReadableRowById(actor: ActorContext, resourceId: string): Promise<ScopedAgentConfigRow | undefined>;
+  /**
    * 创建期同名冲突判定：名称在**归属组织内**是否已存在。
    *
    * 与 `get` 的差别是口径而不是精度：`get` 走授权可见集合（含其他组织的公开同名资源），拿它做创建
@@ -121,6 +129,12 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     const access = await this.listConstraint(actor, "read");
     const row = await this.service.findById({ access, resourceId });
     return row ? this.withAccess(actor, row) : undefined;
+  }
+
+  /** 系统路径读取：与 {@link getById} 同一个谓词，不补 `access`（见接口注释）。 */
+  async findReadableRowById(actor: ActorContext, resourceId: string): Promise<ScopedAgentConfigRow | undefined> {
+    const access = await this.listConstraint(actor, "read");
+    return this.service.findById({ access, resourceId });
   }
 
   /**

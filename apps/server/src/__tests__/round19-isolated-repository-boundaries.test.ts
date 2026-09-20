@@ -2,9 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { PgAgentMachineRepo } from "@fenix/resource-machine/server";
 import { taskExecutionLogRepo } from "@fenix/resource-task/server";
-import { PgAgentEngineRepo } from "../repositories/agent-engine";
 
-const engineRepo = new PgAgentEngineRepo();
 const machineRepo = new PgAgentMachineRepo();
 
 function selected<T>(rows: T[]) {
@@ -49,18 +47,6 @@ beforeEach(resetAllStubs);
 afterEach(resetAllStubs);
 
 describe("round19 隔离仓储边界", () => {
-  // 已引用的引擎必须映射为稳定的编排数据。
-  test("引擎仓储映射已引用引擎", async () => {
-    stubDb({ selectDistinct: () => selected([{ engineType: "opencode" }]) });
-    expect(await engineRepo.getEngine("opencode")).toEqual({ id: "opencode", type: "opencode", version: "latest" });
-  });
-
-  // 未引用引擎不能被误判为可用。
-  test("引擎仓储拒绝不存在引擎", async () => {
-    stubDb({ selectDistinct: () => selected([]) });
-    expect(await engineRepo.getEngine("unknown")).toBeNull();
-  });
-
   // 显式 host 必须优先于 IP。
   test("机器优先显式 host", async () => {
     stubDb({ select: () => selected([{ machineInfo: { host: "relay", ip: "10.0.0.1", port: 8443 } }]) });
