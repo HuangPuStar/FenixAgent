@@ -231,8 +231,8 @@
       "from": "@fenix/agent-runtime",
       "to": "@fenix/server-app",
       "owner": "1.4",
-      "removeWhen": "Environment/Instance/relay 的运行组合收回本包，宿主实现改经 Runtime port 注入",
-      "rationale": "实测 105 处导入 / 54 个文件，其中 88 处非表定义（config、test-utils/stubs、plugins/auth、types/store、transport/ws-types 等）。属 1.4 的运行入口与宿主协议收敛范围：宿主收敛为进程入口后本边自然消失。"
+      "removeWhen": "W4「启动前取数搬出」（消除 `@server/config` / `@server/db` / `@server/services/config-utils` / `@server/repositories`）与 §1.7 表定义迁出（消除 `@server/db/schema`）均完成后，本包不再引用 `@server/**`；两条路径互不依赖，任一条完成后按剩余事实重测本条。",
+      "rationale": "W2 交付后（2c57097f3）实测 11 处导入 / 8 个文件（非测试，含 import type）：6 处 `@server/db/schema` 表定义（§9.3 裁定归 §1.7）+ 5 处非表定义（`@server/config` 2、`@server/db` 1、`@server/services/config-utils` 1、`@server/repositories` 1），全部集中在 `launch-spec-builder.ts` / `orchestration-instance.ts` / `orchestration-bootstrap.ts`，属 W4 启动前取数范围。W1 交付后基线为 30 处 / 14 文件（27 值 + 3 类型），W2 消除 19 处 / 6 类（`plugins/auth` 6、`db` 5、`config` 2、`env` 1、`plugins/logger` 1、`services/cache` 1、`services/openai-response-mapper` 1、`schemas/api-instance.schema` 1、`errors/orchestration-http` 1）；测试侧另由 49 处 / 28 文件降为 30 处 / 23 文件。原 105 处 / 54 文件是 W2 动手前的全量口径（含测试与当时仍在宿主的模块导入）。按裁定「按职责面收敛 + 表定义显式豁免」保留本条，删除条件见 removeWhen。"
     },
     {
       "rule": "apps-boundary",

@@ -1,20 +1,20 @@
 # 任务 1.4 执行计划与设计裁定：Agent Runtime、Machine 与 Sandbox
 
-本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节）；W2 → W3（W4 同批）→ W6 未开工。
+本文是阶段 2 任务 1.4 的执行计划与设计裁定记录。设计裁定已全部落定（见第九节），**W5 已交付**（第十节），**W1 已交付**（第十一节），**W2 已交付**（第十二节，含验收口径修正与台账重测）；W3（W4 同批）→ W6 未开工。
 
 任务目标见[阶段 2 执行计划 §1.4](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）与 [§10.4](../ce-ee-engineering-standards.md)（Runtime 与基础资源验收）。
 
-## 一、任务状态：W5、W1 已交付（2026-09-20），其余切片未开工
+## 一、任务状态：W5、W1、W2 已交付（2026-09-20），其余切片未开工
 
 | 证据 | 结论 |
 | --- | --- |
 | `docs/design/ce-ee-refactoring/review/` 只有 `task-1.2-*`、`task-1.3-*` | 无 1.4 实施记录 |
 | git 历史无任何以 1.4 为目标的提交 | 未开工 |
 | `packages/agent-runtime/fenix.module.ts` 注释：「当前返回的是 Runtime 服务端公开入口的整体表面，而不是收敛后的启动/停止/状态/回收 port」 | 第 2 条自述未完成（W3 范围） |
-| `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条） | 剩余 11 条随 W2–W4、W6 处理 |
-| 台账总数 **51 → 49**（W1 削 2 条 `owner: "1.5"` 的 `no-circular`，见 11.3） | 包对指纹随边消失而失效，非 1.4 条目减少 |
+| `scripts/architecture/exceptions.json` 中 `owner: "1.4"` 共 **14 → 11** 条（W5 削 3 条，W2 削 0 条） | 剩余 11 条随 W3/W4、W6 处理；W2 的 `apps-boundary` 条目按职责面重写 rationale 而非删除（见 12.4） |
+| 台账总数 **51 → 49**（W1 削 2 条 `owner: "1.5"` 的 `no-circular`，见 11.3；W2 无增删） | 包对指纹随边消失而失效，非 1.4 条目减少 |
 
-**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节。**未开工**：W2 → W3（W4 与 W3 同批）→ W6。
+**已交付**：W5「Machine/Sandbox 方向」——第十节；W1「依赖类型与配置 seam」——第十一节；W2「宿主接缝收敛」——第十二节。**未开工**：W3（W4 与 W3 同批）→ W6。
 
 阶段 1（`fa2bbaef0`「迁移 Runtime 与 Chat 残留」等）已完成的是**物理归属**：Environment、Instance、relay、ACP session、Chat、YJS 的代码已在 `packages/agent-runtime`，Machine/Sandbox 已是独立包。1.4 要的是**接口收窄与依赖方向**，这部分未动。
 
@@ -255,7 +255,7 @@ apps/server 注入 AgentInstanceManager ──────┘
 | 切片 | 范围 | 产出 | 台账影响 |
 | --- | --- | --- | --- |
 | **W1 依赖类型与配置 seam** ✅ 已交付（2026-09-20，见第十一节） | 4 个文件的类型搬家；`agent-concurrency.ts`、`acp-idle-monitor.ts` 换用包内 `getBoundCoreRuntime`；7 个运行态配置值改模块配置注入 | 非测试代码中 `@server/config`、`@server/types/*`、`@server/services/core-bootstrap` 归零（按文件收敛口径，见 11.2） | 实测削 2 条（原预测「无」）：两条 `owner: "1.5"` 的 `no-circular` 因跨包见证边消失而失效，见 11.3 |
-| **W2 宿主接缝收敛** | `@server/db` + `@server/db/schema` 换 owner 侧入口（含表归属裁定）；`@server/plugins/auth` 认证上下文裁定；`cache` / `openai-response-mapper` / `transport` / `config-utils` / `org-context` / `repositories` 收口；消除 `routes/acp/index.ts` 对 `@server/routes/web/environments` 的反向依赖 | 22 个非测试文件中的宿主路径依赖归零 | 删 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`） |
+| **W2 宿主接缝收敛** ✅ 已交付（2026-09-20，见第十二节） | `@server/db` + `@server/db/schema` 换 owner 侧入口（含表归属裁定）；`@server/plugins/auth` 认证上下文裁定；`cache` / `openai-response-mapper` / `transport` / `config-utils` / `org-context` / `repositories` 收口；消除 `routes/acp/index.ts` 对 `@server/routes/web/environments` 的反向依赖 | 非表定义宿主导入 **30 行 / 14 文件 → 11 行 / 8 文件**（消 19 行 / 6 类）；残留 5 行归 W4「启动前取数」、6 行表定义归 §1.7——「22 个文件全清」口径已按裁定修正，见 12.1 | 实测削 **0** 条：按裁定「按职责面收敛 + 表定义显式豁免」，`apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）不删、改写 rationale，见 12.4 |
 | **W3 Runtime port 定型** | 落 `src/runtime.ts`；收窄 `src/server.ts`；替换 `fenix.module.ts` 工厂；消费方按 port 改调 | 9 个包/应用、31 个文件的调用面收敛 | 无 |
 | **W4 启动前取数搬出** | 新建 `AgentInstanceStarter` port；`launch-spec-builder`(663) 与 `actor-context.ts`(42) 从 agent-runtime 删除；`skill` / `mcp` / `model-management` 补包根公开 Domain Service（6 张表的读取）；`agent-config` 补「组织范围读」系统入口（9.1）；agent-config Facade 组装已授权 `AgentLaunchSpec` 并调 port；两条 spec 路径按 9.2 收敛为一条 | 消除 `agent-runtime-not-to-resources` 的服务端命中 | 删 `agent-runtime-not-to-resources` 5 条（knowledge / agent-config / memory / skill / model-management；与 §1.7 同批核对 `@/src/lib/model-config-utils` 别名） |
 | **W5 Machine/Sandbox 方向** ✅ 已交付（2026-09-20，见第十节） | machine 6 处 + sandbox 2 处反转换 port；package.json 与 manifest 同步 | 方向固定为 `agent-runtime → sandbox → machine` | 实测删 3 条（§5.3 预测的 7 条中有 4 条仍是真实违规，原因见 10.4） |
@@ -473,6 +473,8 @@ W1 验收口径经裁定取**按文件收敛**（而非「按符号」或「全�
 | 非测试文件剩余 `@server/*` 值导入 | **27 行**，全部落在 W2 已声明的范围（`@server/db`、`@server/db/schema`、`@server/plugins/auth`、`@server/env`、`@server/schemas`、`@server/errors`、`@server/plugins/logger`、`@server/services/*`、`@server/repositories`） |
 | 全仓 `@server/types/store` 引用 | 3 处，全部是注释（observer / machine ws-types / workflow 测试），无 import |
 
+**W2 交付后的复核（修正 W1 当时对残余的归类）**：上表「非测试文件剩余 27 行值导入」中，W2 清掉 16 行，剩 11 行——其中 6 行是 `@server/db/schema` **表定义**（§9.3 裁定归 §1.7，不属 W2），5 行是 `@server/config`(2) / `@server/db`(1) / `@server/services/config-utils`(1) / `@server/repositories`(1)，全部集中在 `launch-spec-builder.ts`、`orchestration-instance.ts`、`orchestration-bootstrap.ts` 三个文件，属 **W4「启动前取数搬出」**。W1 表中把 `orchestration-instance.ts` / `orchestration-bootstrap.ts` 的 `@server/config` 写作「W2 范围」过于乐观：这两个调用点与 `@server/repositories` 一样，是「取 agentConfig / 组装 LaunchSpec」的一部分，随 W4 删除或改指才消失（见 12.1、12.5）。另 3 行类型导入（`import type`）W2 已全部消除。
+
 ### 11.3 台账 −2 条（原预测「无」）
 
 门禁从「2378 模块 / **23** 条已登记例外 / 0 新增违规」变为「2383 模块 / **21** 条已登记例外 / 0 新增违规」：**两条原处于「已匹配」状态的指纹失去了违规**，随即被门禁判为陈旧并要求删除。
@@ -507,3 +509,88 @@ W1 验收口径经裁定取**按文件收敛**（而非「按符号」或「全�
 | 非测试文件 27 行宿主导入（`@server/db` / `db/schema` / `plugins/auth` / `env` / `schemas` / `errors` / `plugins/logger` / `services/*` / `repositories`） | W2（含 `@server/env` 与 `@server/plugins/auth`，随认证上下文裁定一并处置） |
 | `@server/config` 的 4 个消费文件 | `environment-orchestration.ts` / `orchestration-instance.ts` / `orchestration-bootstrap.ts` 归 W2；`launch-spec-builder.ts` 整体在 W4 删除 |
 | 三个并发上限不在测试基线的缺省值里 | `createAgentRuntimeModuleConfig` 只给四个超时/保活旋钮填部署默认；并发上限留 `undefined`（= 不限流），需要验证限流的用例显式传值。若 W2 之后有用例依赖非 `undefined` 的并发上限，届时按用例传入而不是改基线 |
+
+## 十二、W2 交付记录（宿主接缝收敛，2026-09-20）
+
+W2 按用户指令「每个子任务完成先提交，再下一子任务」分四批交付：
+
+| 批次 | 提交 | 文件数 | 范围 |
+| --- | --- | --- | --- |
+| W2a 宿主接缝层 | `c4b1f038c` | 17（+187 −62） | 新建 `server/db.ts`（`AgentRuntimeDatabase` + `getAgentRuntimeDatabase()`，与 machine / knowledge / agent-config 同口径）与 `types/auth.ts`（认证上下文最小投影）；`server/config.ts` 增 5 个部署值键；4 个仓储/服务共 28 处改为方法内取句柄；`/acp` 的 `validateEnv()`、`orchestration-bootstrap` 的 `workspaceRoot` 与 sandbox 开关改读模块配置 |
+| W2b 宿主模块搬包 | `d4c4a302d` | 13（+62 −168） | `git mv` 三模块入包：`errors/orchestration-http.ts`、`schemas/api-instance.schema.ts`、`services/openai-response-mapper.ts`（含其独有的协议边界用例） |
+| W2c 路由工厂化与认证注入 | `8d3a842d2` | 12（+532 −261） | 三条路由改工厂 + 新增 `routes/dependencies.ts` 注入契约；宿主 `main.ts` 注入 `authGuardPlugin` / `authenticateRequest` / `logError`；包内认证替身与 `/acp` 请求级认证用例 |
+| W2d 宿主服务接缝收口 | `2c57097f3` | 9（+64 −75） | `RedisConnectionPort`（宿主与 preload 双绑定，未装配显式抛错）；3 个宿主被测对象的用例迁回宿主测试目录；删 13 条重复 `normalizePayload` 用例 |
+
+### 12.1 口径修正：产出不是「22 个非测试文件的宿主路径依赖归零」
+
+§7 给 W2 写的产出是「22 个非测试文件中的宿主路径依赖归零 → 删 `apps-boundary`」。经用户裁定，W2 的验收口径为**按职责面收敛 + 表定义显式豁免**：非表定义、非「启动前取数」的宿主导入归零；表定义按 §9.3 显式豁免给 §1.7。按此口径实测（`git grep '@server/'`，剔除纯注释行；**含 `import type` 行**，故与 §11.2 的「值导入 27 行」口径相差 3 行类型导入）：
+
+| 目标模块 | W1 交付后（`11f46a936`） | W2 交付后（`2c57097f3`） | 处置 |
+| --- | --- | --- | --- |
+| `@server/plugins/auth` | 6 行 / 3 文件 | 0 | W2c 认证注入 |
+| `@server/db` | 6 行 / 4 文件 | 1 行 / 1 文件 | W2a 换包内 `getAgentRuntimeDatabase()`；剩 `launch-spec-builder.ts`（W4 删文件） |
+| `@server/config` | 4 行 / 4 文件 | 2 行 / 2 文件 | W2a 消 2 行；剩 `orchestration-instance.ts`、`launch-spec-builder.ts` → W4 |
+| `@server/plugins/logger` | 1 行 / 1 文件 | 0 | W2c `logError` 注入 |
+| `@server/env` | 1 行 / 1 文件 | 0 | W2a 模块配置（`validateEnv()` → `getAgentRuntimeConfig()`） |
+| `@server/services/cache` | 1 行 / 1 文件 | 0 | W2d `RedisConnectionPort` |
+| `@server/services/openai-response-mapper` | 1 行 / 1 文件 | 0 | W2b 搬包 |
+| `@server/schemas/api-instance.schema` | 1 行 / 1 文件 | 0 | W2b 搬包 |
+| `@server/errors/orchestration-http` | 1 行 / 1 文件 | 0 | W2b 搬包 |
+| `@server/db/schema`（表定义） | 6 行 / 6 文件 | 6 行 / 6 文件 | **不动**，§9.3 裁定归 §1.7 |
+| `@server/services/config-utils` | 1 行 / 1 文件 | 1 行 / 1 文件 | W4（`launch-spec-builder.ts`） |
+| `@server/repositories` | 1 行 / 1 文件 | 1 行 / 1 文件 | W4（`orchestration-bootstrap.ts` 组装 `LaunchSpecBuilder`） |
+| **合计** | **30 行 / 14 文件**（27 值 + 3 类型） | **11 行 / 8 文件**（全为值导入） | W2 消 19 行 / 6 类（16 值 + 3 类型） |
+
+非表定义残留 5 行 / 3 文件全部落在 W4 的三个文件上（`launch-spec-builder.ts` 3、`orchestration-instance.ts` 1、`orchestration-bootstrap.ts` 1）；表定义 6 行 / 6 文件落在 §1.7。**「22 个文件」的来历与修正**：该数字出自 W2 表的估算，实测 W1 交付后宿主导入分布在 14 个非测试文件上，W2 后余 8 个——两个数字都不是 22；口径修正后以 12.1 表为准。
+
+测试侧由 49 行 / 28 文件降为 30 行 / 23 文件：消除 `@server/plugins/auth`(5)、`@server/routes/web/instances`(5)、`@server/services/org-context`(3)、`@server/services/transport`(2)、`@server/services/openai-response-mapper`(1)、`@server/routes/web/environments`(1)。剩余 30 行为宿主 test-utils 替身（`@server/test-utils/stubs/module-stubs` 12）、表定义（`@server/db/schema` 11）、宿主 config（`@server/config` 6）、`@server/plugins/error-handler` 1，随 W4 删除被测模块或 §1.7 表定义迁出处理。
+
+§7 提到的「消除 `routes/acp/index.ts` 对 `@server/routes/web/environments` 的反向依赖」——实测该文件对 `@server/routes/*` 的**非测试**反向依赖在 W2 动手前的基线已不存在（阶段 1 迁移时消除，`git grep '@server/routes' 11f46a936` 非测试零命中）；测试侧 6 行（`instances-delete-idempotent`、`round44-environments-routes`）随 W2d 把这两个用例迁回宿主测试目录而消失。
+
+### 12.2 偏离 §7 切片定义的三处（按裁定意图调整，非范围扩张）
+
+| 项 | §7 字面口径 | 实际处置 | 理由 |
+| --- | --- | --- | --- |
+| W2b 搬包前提 | 弹窗时的前提是「待搬模块消费方都只有本包」 | `openai-response-mapper`、`orchestration-http` 在宿主仍有消费方（后者被 `plugins/error-handler.ts`、`routes/web/environments.ts` 消费；前者被宿主测试消费） | 裁定意图是「前三个搬包」，仍照搬；据此定公开面：`orchestration-http` 留在 `@fenix/agent-runtime/server`（宿主两处改指包公开面，错误→HTTP 映射只有一份定义），`openai-response-mapper` / `api-instance.schema` **不进**公开面（唯一消费方在包内，进公开面与 W3「收窄 `server.ts`」相悖）；宿主 `round16` 中与搬入的 `round18` 重复的 10 例删除，`round16` 独有的 2 条流式工具调用用例补进 `round18`，覆盖不降级 |
+| W2c 测试改动量 | 「改指既有测试」 | 新增 `__tests__/guard-stubs.ts`、`__tests__/acp-routes-auth.test.ts`（2 例） | 认证接缝替换后 `/acp` 路由此前**只有 `readFileSync` 源码文本断言**（`acp-ws-auth.test.ts`），没有请求级运行时覆盖；守卫必须与 `/web/*` 同一实例是本接缝的核心契约，缺覆盖等于把「装配顺序」变成不可验证项 |
+| `repositories` / `@server/config` 归属 | W2 表中「`repositories` 收口」列在 W2 | 留 W4 | `agentEngineRepo` 只被 `orchestration-bootstrap.ts` 用于组装 `LaunchSpecBuilder`，与 `orchestration-instance.ts` 的 `config.defaultEngineType`、`getBaseUrl()` 同属「启动前取数」，随 W4 删文件消失；在 W2 硬拆会把 W4 的输入切成两半 |
+
+### 12.3 非显然取舍
+
+**Elysia WS 路由的 TS2589（W2c 唯一阻塞项）。** 三条路由改工厂后，`routes/acp/index.ts` 的接收者类型只能是 `AnyElysia`（宿主守卫跨包，any 泛型实例），而 `Elysia.ws()` 会据 hooks 实参推导 `Input` / `Schema` / `MacroContext` 三层泛型（`MergeSchema<UnwrapRoute<...>>` 等）；在 any 泛型实例 + 内联字面量实参时展开深度超限，`/ws`、`/file-ws`、`/yjs`、`/relay` 四处均报 TS2589（TS 每次只报一处，修好一处才暴露下一处）。可行修法是把 hooks 的静态类型预固定为 `Parameters<AnyElysia["ws"]>[1]`，经 `declareAcpWsRoute(app, path, hooks)` 传参——不对内联字面量做深度推导，`tsc` 干净、无需 `as any`、handler 参数仍有 Elysia 提供的上下文类型、注册期行为（`query` 的模型引用、宏解析）不变。
+
+已实测排除的替代方案：`(app as any).ws(...)`（消 TS2589 但引入 22 处 TS7006 隐式 any——接收者为 `any` 时实参无上下文类型）、`hooks: any` 参数（同 TS7006）、段结果标注为具体 `Elysia`（TS2322 不变性错误 + `query: string` 不能赋给 `AnySchema`）。**教训**：中途曾在未被 tsconfig `include` 的 scratch 文件里验证「`hooks: any` 仍有上下文类型」，得出错误结论；探针文件必须落在程序包含范围内，否则「假绿」。
+
+**W2a 的一次非确定性失败。** W2a 的 `bun test packages/` 首轮出现 91 条失败、复跑不复现，判定为跨文件 mock 污染导致的非确定性失败（未定位到具体污染源，后续三轮全量测试未再复现）；交付证据以复跑结果与 `precheck` 的 `package-tests` 步骤为准。
+
+**两处部署值的双取数点（W2a 记录在 `config.ts` 注释）。** `workspace-resolver.ts` 仍直读 `process.env.WORKSPACE_ROOT`，与 W2a 新增的模块配置键是同一部署值的两个取数点；`defaultMachineId` 与 machine 模块同源但未改用 `getMachineConfig()`（agent-runtime 目前不依赖 `@fenix/resource-machine`，为一个字符串引入新跨包边不在授权范围）。两者都是**同一部署值的重复取数**，收敛需要 machine / chat-channel 的测试进程一并初始化基础设施，超出 1.4 范围，随 §1.5 的配置管道一并处理。
+
+### 12.4 台账 `apps-boundary` 不删、按职责面重测改写
+
+§7 预测 W2 删掉 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）。按裁定「按职责面收敛 + 表定义显式豁免」，该条**不删**（`owner` 仍 `1.4`），只按实测改写 `removeWhen` 与 `rationale`：原文「实测 105 处导入 / 54 个文件，其中 88 处非表定义」是 W2 动手前的全量口径（含测试与当时的宿主模块导入），与交付后的职责面划分已不匹配，改写为「11 处 / 8 文件 + 两类归属」。台账其余条目与总数（49）不变，`owner: "1.4"` 仍 11 条，W2 削 0 条——**切片交付 ≠ 台账削减**（§3.3），本条的删除条件要等 W4 与 §1.7 两条路径都走完。
+
+### 12.5 验证证据
+
+| 项 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck` | 12 步中 11 步 ✓（`format` / `import-sort` / `module-registry` / `architecture` / `tsc`×3 / `dependency-boundaries` / `lint` / `package-tests` / `web-app-tests`）；`server-and-script-tests` ✗，唯一失败仍是 12.6 记录的既有红项 |
+| 宿主 + 脚本测试（`server-and-script-tests`） | 903 pass / 1 fail / 1 error（失败项即既有红项） |
+| `package-tests` | 7223 pass / 2 skip / 0 fail（592 文件） |
+| `web-app-tests` | 946 pass / 0 fail |
+| `bunx tsc -p tsconfig.json --noEmit` | 干净（门禁三步 tsc 全绿） |
+| `bun run check:dependencies` | ✓ 2389 模块、21 条已登记例外、0 条新增违规 |
+| `bun run architecture:check` | ✓ 2237 文件、11 规则、28 条已登记例外（无陈旧条目） |
+| `bun run docs:build` | ✓ |
+| 冻结区 | `git diff 11f46a936..HEAD` 对第二节 10 个文件命中 **0** 行（W2 全周期未触碰冻结区，连 import 行都没有） |
+
+**用例数变化的完整解释**（门禁输出的 pass 计数，逐批实测）：`package-tests` 7275（W1 后）→ 7297（W2b，+22 = 搬入的 `round18`）→ 7299（W2c，+2 = 新增 `/acp` 认证用例）→ 7223（W2d，−76 = 迁回宿主的 63 例 + 删除的 13 条重复用例）；宿主与脚本 870（W1 后）→ 840（W2b，−30 = `round18` 迁出 20 例 + `round16` 删除 10 例）→ 903（W2d，+63 = 迁回的 3 个用例文件）。`web-app-tests` 全程 946 不变。
+
+### 12.6 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| `@server/config`(2) / `@server/db`(1) / `@server/services/config-utils`(1) / `@server/repositories`(1)，集中在 `launch-spec-builder.ts`、`orchestration-instance.ts`、`orchestration-bootstrap.ts` | W4「启动前取数搬出」（前两个文件删除或改指，`orchestration-bootstrap` 的组装点随 `LaunchSpecBuilder` 迁移） |
+| 6 处 `@server/db/schema` 表定义（`agent-instance` / `environment` / `environment-orchestration` / `environment-web` / `agent-chat-service` / `launch-spec-builder`） | §1.7 表定义迁出（§9.3 裁定） |
+| 包内测试侧 30 行宿主导入（test-utils 替身 12、表定义 11、宿主 config 6、error-handler 1） | W4（删除 `launch-spec-*` / `orchestration-*` 用例时一并消失）与 §1.7 |
+| `workspace-resolver.ts` 直读 `process.env.WORKSPACE_ROOT`、`defaultMachineId` 未走 `getMachineConfig()` | §1.5 配置管道（两处部署值的重复取数，见 12.3） |
+| `apps/server/src/__tests__/db-pool-config.test.ts`（既有红项，非本任务引入、未修复） | 测试基础设施独立缺口：`setup-mocks.ts` 的 `createDbMock` 缺 `attachDatabasePoolErrorLogger` 导出，与 `apps/server/src/db/index.ts:44` 同出自 `9f189d747`。取证与无关性证明见 §10.5；修复方式是给 `createDbMock` 补导出，不随 1.4 夹带 |
